@@ -1,7 +1,7 @@
 ---
 version: alpha
 name: Windows Fluent UI for OpenClaw
-description: Windows Fluent UI for OpenClaw is the design system for OpenClaw's native Windows companion suite — a WinUI 3 system-tray app that connects your PC to OpenClaw, the AI-powered personal assistant. The app pairs your PC to an OpenClaw gateway, exposes allowlisted Windows node capabilities over MCP, and guides first-run pairing through a setup wizard. Its interface follows Windows Fluent design conventions — Mica surfaces, the user's system accent, and Segoe UI Variable type — so it feels like a quiet, native extension of the OS rather than a bolted-on dashboard.
+description: Windows Fluent UI for OpenClaw is the design system for OpenClaw's native Windows companion suite, a WinUI 3 system-tray app that connects your PC to OpenClaw, the AI-powered personal assistant. The app pairs your PC to an OpenClaw gateway, exposes allowlisted Windows node capabilities over MCP, and guides first-run pairing through a setup wizard. Its interface follows Windows Fluent design conventions (Mica surfaces, the user's system accent, and Segoe UI Variable type) so it feels like a quiet, native extension of the OS rather than a bolted-on dashboard.
 colors:
   ink: "#1b1b1b"
   paper: "#f3f3f3"
@@ -72,7 +72,7 @@ x-colophon:
     meta:
       version: 1
       updatedBy: xaml+manual
-      note: These tokens are the source of truth for DESIGN (brand, color, type, spacing, principles) and are framework-agnostic — components.jsx shows design intent for the canvas preview, not shipping code. They were captured by manual inspection of the repo's WinUI 3 / XAML and C# surfaces (the CSS/JSX scanner finds no files in a XAML repo) and map to Windows Fluent system resources (SystemAccentColor, Mica, Segoe UI Variable). To ship, port the design into native code via the port targets in `authority`. Edit in the Design System canvas or directly.
+      note: These tokens are the source of truth for DESIGN (brand, color, type, spacing, principles) and are framework-agnostic, and components.jsx shows design intent for the canvas preview, not shipping code. They were captured by manual inspection of the repo's WinUI 3 / XAML and C# surfaces (the CSS/JSX scanner finds no files in a XAML repo) and map to Windows Fluent system resources (SystemAccentColor, Mica, Segoe UI Variable). To ship, port the design into native code via the port targets in `authority`. Edit in the Design System canvas or directly.
     authority:
       designSource: self
       owner: OpenClaw Windows (openclaw/openclaw-windows-node)
@@ -106,7 +106,7 @@ x-colophon:
     principles:
       - Defer to Windows. Theme off SystemAccentColor and Fluent resources so the app follows the user's accent, light/dark, and high-contrast choices.
       - One accent, and it means "act here". Selection, focus, and primary actions share the system accent; don't spend it on decoration.
-      - Hierarchy over decoration — size, weight, and space do the work before color does.
+      - Hierarchy over decoration. Size, weight, and space do the work before color does.
       - "State must be legible: connected, pairing, and error states read clearly via positive/warning/critical, never color alone."
       - No hard-coded hex in UI. Use tokens/theme resources so dark and high-contrast modes stay correct.
       - "Motion is a cue, not a garnish: 120-200ms ease-out, no bounce."
@@ -203,19 +203,19 @@ x-colophon:
         themes:
           dark: "#2d2d2d"
           highContrast: "#000000"
-        usage: Fill for input/entry controls — combo boxes, text fields, the chat composer. Fluent ControlFillColorDefault (distinct from the Card surface used for cards/flyouts).
+        usage: Fill for input/entry controls (combo boxes, text fields, the chat composer). Fluent ControlFillColorDefault (distinct from the Card surface used for cards/flyouts).
       controlLine:
         resource: ControlStrokeColorDefaultBrush
         themes:
           dark: "#353535"
           highContrast: "#ffffff"
-        usage: Border for input/entry controls — combo boxes, text fields, composer, avatars. Fluent ControlStrokeColorDefault (distinct from the Card/divider stroke used for cards).
+        usage: Border for input/entry controls (combo boxes, text fields, composer, avatars). Fluent ControlStrokeColorDefault (distinct from the Card/divider stroke used for cards).
       accentSubtle:
         resource: AccentFillColorSecondaryBrush
         themes:
           dark: "#47b6ef"
           highContrast: "#ffff00"
-        usage: Softer accent fill for the user's own chat bubble. Fluent AccentFillColorSecondary (SystemAccent at ~90%) — quieter than the full accent reserved for primary actions.
+        usage: Softer accent fill for the user's own chat bubble. Fluent AccentFillColorSecondary (SystemAccent at ~90%), quieter than the full accent reserved for primary actions.
     typography:
       display:
         weights:
