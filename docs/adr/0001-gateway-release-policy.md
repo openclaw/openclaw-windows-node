@@ -33,11 +33,13 @@ evidence.
 - An operator may configure an exact stable `FallbackVersion`. Setup offers it
   only after a typed installed-version, protocol, or server-version failure.
 - Legacy `recommended`, `exact`, and `fallback` configurations are translated
-  into the new selector model. Legacy selections without a recorded version
-  follow the upstream `latest` recommendation or `extended-stable` fallback
-  tag. An explicitly recorded legacy version remains exact. Custom installers
-  still require an explicitly recorded exact version because they cannot resolve
-  npm tags.
+  into the new selector model. Legacy `recommended` without a recorded version
+  follows the upstream `latest` recommendation. Legacy `fallback` without a
+  recorded version resolves to the pinned exact stable fallback
+  `2026.9.4` instead of crossing to the mutable `extended-stable` channel.
+  An explicitly recorded legacy version remains exact. Custom installers still
+  require an explicitly recorded exact version because they cannot resolve npm
+  tags.
 - Embedded release evidence, the product security floor, and the
   candidate-promotion workflow are removed.
 - Setup continues to pin and verify Node `24.19.0`. This decision changes the

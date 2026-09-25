@@ -407,10 +407,12 @@ Normal setup uses npm `latest`. `Gateway.Version` may select an upstream npm
 channel tag or an exact OpenClaw package version. `Gateway.FallbackVersion` may
 name an exact stable release to offer after a typed compatibility failure.
 Legacy `recommended`, `exact`, and `fallback` selections are migrated when the
-configuration is loaded. Legacy recommendation and fallback configurations
-without a recorded version follow the upstream `latest` and `extended-stable`
-tags. Explicit legacy versions remain exact. Custom installers still require an
-explicit exact version because they cannot resolve npm tags. The cross-repository
+configuration is loaded. Legacy recommendation without a recorded version
+follows the upstream `latest` tag. Legacy fallback without a recorded version
+resolves to the pinned exact stable fallback `2026.9.4` instead of crossing to
+`extended-stable`. Explicit legacy versions remain exact. Custom installers
+still require an explicit exact version because they cannot resolve npm tags.
+The cross-repository
 release gate may pass
 `--gateway-candidate-package <absolute-tgz>` with
 `--validate-gateway-candidate`, headless mode, and rollback-on-failure. The
