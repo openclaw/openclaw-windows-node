@@ -85,6 +85,7 @@ public static class SetupStepFactory
         new VerifyLocalAiWslStep(),
         new ConfigureLocalAiGatewayStep(),
         new RestartGatewayStep(),
+        new FinalizeLocalAiModelReplacementStep(),
     ];
 
     public static List<SetupStep> BuildDefaultSteps()

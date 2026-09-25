@@ -37,7 +37,6 @@ public sealed partial class CapabilitiesPage : Page
     private bool _treatBundledAllOnAsPlaceholder;
     private bool _forceLocalAiNetworkingConsent;
     private bool _localAiRecoveryOnly;
-    private bool _localAiRecoveryModelPinned;
     private CancellationTokenSource? _tailscaleStatusCancellation;
     private int _tailscaleStatusGeneration;
     private int _step = 1;
@@ -112,7 +111,6 @@ public sealed partial class CapabilitiesPage : Page
             args?.StartAtLocalAiReview == true ||
             previewPage is "capabilities-review" or "capabilities-review-consent";
         _localAiRecoveryOnly = args?.StartAtLocalAiReview == true;
-        _localAiRecoveryModelPinned = args?.PinLocalAiModel == true;
         _forceLocalAiNetworkingConsent = previewPage == "capabilities-review-consent";
         if (localAiReviewPreview)
             _config.LocalAi.Enabled = true;
@@ -347,11 +345,7 @@ public sealed partial class CapabilitiesPage : Page
                 {
                     LocalInferenceEligibilityResult selectedEligibility =
                         LocalInferenceEligibility.Evaluate(_localAiHardware, selectedModelId);
-                    if (_localAiRecoveryModelPinned)
-                    {
-                        eligibility = selectedEligibility;
-                    }
-                    else if (!selectedEligibility.CanInstall)
+                    if (!selectedEligibility.CanInstall)
                     {
                         _config.LocalAi.SelectedModelId = null;
                     }
@@ -361,8 +355,6 @@ public sealed partial class CapabilitiesPage : Page
                 eligibility ??= LocalInferenceEligibility.Evaluate(
                         _localAiHardware,
                         _config.LocalAi.SelectedModelId);
-                if (_localAiRecoveryModelPinned && !eligibility.CanInstall)
-                    hardwareReason = DescribeLocalAiUnavailable(eligibility);
             }
         }
         catch (Exception ex)
@@ -595,7 +587,7 @@ public sealed partial class CapabilitiesPage : Page
         LocalAiOptionContent.IsHitTestVisible = isAvailable;
         LocalAiOptionContent.Opacity = isAvailable ? 1 : 0.55;
         LocalAiToggle.IsEnabled = isAvailable && !_localAiRecoveryOnly;
-        LocalAiModelSelector.IsEnabled = isAvailable && !_localAiRecoveryModelPinned;
+        LocalAiModelSelector.IsEnabled = isAvailable;
         LocalAiNetworkingConsentCheckBox.IsEnabled = isAvailable;
         AutomationProperties.SetHelpText(
             LocalAiOptionContent,

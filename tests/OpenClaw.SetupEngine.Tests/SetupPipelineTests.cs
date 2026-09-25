@@ -162,8 +162,9 @@ public class SetupPipelineTests
         Assert.Contains(steps, step => step is AcquireLocalAiRuntimeStep);
         Assert.Contains(steps, step => step is AcquireLocalAiModelStep);
         Assert.Contains(steps, step => step is VerifyLocalAiWslStep);
-        Assert.IsType<ConfigureLocalAiGatewayStep>(steps[^2]);
-        Assert.IsType<RestartGatewayStep>(steps[^1]);
+        Assert.IsType<ConfigureLocalAiGatewayStep>(steps[^3]);
+        Assert.IsType<RestartGatewayStep>(steps[^2]);
+        Assert.IsType<FinalizeLocalAiModelReplacementStep>(steps[^1]);
         Assert.True(
             steps.FindIndex(step => step is ValidateLocalAiRecoveryGatewayStep) <
             steps.FindIndex(step => step is AcquireLocalAiRuntimeStep));
