@@ -1,5 +1,7 @@
 using System.Runtime.Versioning;
+using System.Security.Cryptography;
 using System.Security.Principal;
+using System.Text;
 using OpenClaw.Connection.Migration;
 using OpenClaw.Shared;
 using OpenClaw.TestSupport;
@@ -73,6 +75,33 @@ public sealed class MigrationStartupRecordReaderTests
         Assert.Equal(MigrationStartupRecordStatus.Invalid, fixture.Read().Status);
     }
 
+    [Fact]
+    public void CorruptCompletion_StillReportsTheReceiptAsPresent()
+    {
+        using var fixture = new Fixture();
+        Directory.CreateDirectory(fixture.Directory);
+        File.WriteAllBytes(Path.Combine(fixture.Directory, MigrationRecordCodec.CompletionFileName), [1, 2, 3]);
+
+        var result = fixture.Read();
+
+        // Undecodable, but the file proves data already moved. Admission must still protect it.
+        Assert.Equal(MigrationStartupRecordStatus.Invalid, result.Status);
+        Assert.True(result.CompletionPresent);
+    }
+
+    [Fact]
+    public void CorruptIntentAlone_DoesNotClaimAReceipt()
+    {
+        using var fixture = new Fixture();
+        Directory.CreateDirectory(fixture.Directory);
+        File.WriteAllBytes(Path.Combine(fixture.Directory, MigrationRecordCodec.IntentFileName), [1, 2, 3]);
+
+        var result = fixture.Read();
+
+        Assert.Equal(MigrationStartupRecordStatus.Invalid, result.Status);
+        Assert.False(result.CompletionPresent);
+    }
+
     [Theory]
     [InlineData("intent", "completed.dpapi")]
     [InlineData("completed", "intent.dpapi")]
@@ -110,7 +139,39 @@ public sealed class MigrationStartupRecordReaderTests
         var path = fixture.Write("completed");
         using var locked = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
 
-        Assert.Equal(MigrationStartupRecordStatus.Unavailable, fixture.Read().Status);
+        var result = fixture.Read();
+
+        Assert.Equal(MigrationStartupRecordStatus.Unavailable, result.Status);
+        // A lock hides the contents, not the fact that a receipt exists.
+        Assert.True(result.CompletionPresent);
+    }
+
+    /// <summary>
+    /// BinaryReader reports a malformed string length as a plain IOException. Reporting that as
+    /// an inspection failure sends the record to InspectionFailed, and a receipt there blocks
+    /// startup from a screen that offers no way out. Recovery is the only screen with a discard.
+    /// </summary>
+    [Fact]
+    public void ARecordThatDecryptsButDoesNotParse_RequiresRecovery()
+    {
+        using var fixture = new Fixture();
+        System.IO.Directory.CreateDirectory(fixture.Directory);
+        // A negative 7-bit-encoded string length, which is what BinaryReader rejects.
+        var plain = new byte[] { 0xFF, 0xFF, 0xFF, 0xFF, 0x0F, 0x41, 0x42 };
+        var protectedBytes = ProtectedData.Protect(
+            plain,
+            Encoding.UTF8.GetBytes("OpenClaw.InnoToStore.Migration.v1"),
+            DataProtectionScope.CurrentUser);
+        // The record must genuinely reach the parser, or this proves nothing.
+        Assert.Throws<IOException>(
+            () => MigrationRecordCodec.DecodeForRenewedConsent(protectedBytes, fixture.Binding, Now));
+        File.WriteAllBytes(
+            Path.Combine(fixture.Directory, MigrationRecordCodec.CompletionFileName), protectedBytes);
+
+        var result = fixture.Read();
+
+        Assert.Equal(MigrationStartupRecordStatus.Invalid, result.Status);
+        Assert.True(result.CompletionPresent);
     }
 
     [Theory]
@@ -124,6 +185,61 @@ public sealed class MigrationStartupRecordReaderTests
             stream.SetLength(size);
 
         Assert.Equal(MigrationStartupRecordStatus.Invalid, fixture.Read().Status);
+    }
+
+    [Fact]
+    public void ReparsePointAncestor_IsUnavailableNotRecovery()
+    {
+        using var fixture = new Fixture();
+        using var target = new TempDirectory();
+        var targetPath = target.Combine("roaming");
+        System.IO.Directory.CreateDirectory(targetPath);
+        System.IO.Directory.CreateDirectory(Path.GetDirectoryName(fixture.Binding.RoamingDirectory)!);
+        var start = new System.Diagnostics.ProcessStartInfo("cmd.exe")
+        {
+            Arguments = $"/d /c mklink /J \"{fixture.Binding.RoamingDirectory}\" \"{targetPath}\"",
+            UseShellExecute = false,
+            RedirectStandardError = true,
+            CreateNoWindow = true
+        };
+        using var process = System.Diagnostics.Process.Start(start)!;
+        process.WaitForExit();
+        Assert.True(process.ExitCode == 0, process.StandardError.ReadToEnd());
+        try
+        {
+            // Recovery cannot repair a junction, so this must not be reported as a corrupt record.
+            Assert.Equal(MigrationStartupRecordStatus.Unavailable, fixture.Read().Status);
+        }
+        finally
+        {
+            System.IO.Directory.Delete(fixture.Binding.RoamingDirectory);
+        }
+    }
+
+    [Fact]
+    public void CompletionDirectory_IsTreatedAsAReceipt()
+    {
+        using var fixture = new Fixture();
+        System.IO.Directory.CreateDirectory(
+            Path.Combine(fixture.Directory, MigrationRecordCodec.CompletionFileName));
+
+        var result = fixture.Read();
+
+        // File.Exists answers false for a directory, so an existence check would have failed
+        // open here and allowed normal startup. Only a definite not-found proves nothing moved.
+        Assert.Equal(MigrationStartupRecordStatus.Unavailable, result.Status);
+        Assert.True(result.CompletionPresent);
+    }
+
+    [Fact]
+    public void NoRecordsAtAll_DoesNotClaimAReceipt()
+    {
+        using var fixture = new Fixture();
+
+        var result = fixture.Read();
+
+        Assert.Equal(MigrationStartupRecordStatus.None, result.Status);
+        Assert.False(result.CompletionPresent);
     }
 
     private sealed class Fixture : IDisposable

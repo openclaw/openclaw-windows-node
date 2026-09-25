@@ -114,6 +114,20 @@ jobs:
       shell: pwsh
       run: ./scripts/test-msix-ci-artifacts.ps1
 
+    - name: Validate developer migration test package
+      shell: pwsh
+      run: ./scripts/test-migration-test-msix.ps1
+
+    # installer.iss is only compiled for real in the tag-only release job, so a
+    # Pascal Script error would otherwise be found at release time. The runner image
+    # does not ship Inno Setup; the release job installs it the same way.
+    - name: Install Inno Setup
+      run: choco install innosetup -y --no-progress
+
+    - name: Compile installer script
+      shell: pwsh
+      run: ./scripts/Test-InstallerScriptCompiles.ps1 -RequireCompiler
+
     - name: Validate Store MSIX bundle construction
       shell: pwsh
       run: ./scripts/test-msix-bundle.ps1
@@ -933,6 +947,50 @@ jobs:
           artifacts/msix/${{ matrix.architecture }}/OpenClaw-${{ matrix.architecture }}.msix
           artifacts/msix/${{ matrix.architecture }}/msix-metadata.json
         if-no-files-found: error
+
+    - name: Resolve migration build switch
+      id: migration-switch
+      shell: pwsh
+      run: |
+        $override = $env:MigrationProductionEnabled
+        if ([string]::IsNullOrWhiteSpace($override)) {
+          $propsPath = Join-Path $env:GITHUB_WORKSPACE 'src\OpenClaw.Tray.WinUI\Migration.Build.props'
+          [xml]$props = Get-Content -LiteralPath $propsPath -Raw
+          $node = $props.SelectSingleNode('/Project/PropertyGroup/MigrationProductionEnabled')
+          if ($null -eq $node) {
+            throw "MigrationProductionEnabled is not declared in $propsPath."
+          }
+          $override = $node.InnerText
+        }
+        $value = $override.Trim().ToLowerInvariant()
+        if ($value -ne 'true' -and $value -ne 'false') {
+          throw "MigrationProductionEnabled must be true or false, got '$override'."
+        }
+        "enabled=$value" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+    - name: Stage developer migration test package
+      if: steps.migration-switch.outputs.enabled == 'true'
+      shell: pwsh
+      run: >
+        .\scripts\Export-MigrationTestMsix.ps1 -Architecture ${{ matrix.architecture }}
+        -PackageDirectory "artifacts\msix\${{ matrix.architecture }}"
+        -OutputDirectory "artifacts\msix-migration-test\${{ matrix.architecture }}"
+        -VersionInfoPath "$env:RUNNER_TEMP\openclaw-msix-version.json"
+
+    - name: Upload developer migration test artifact
+      if: steps.migration-switch.outputs.enabled == 'true'
+      uses: actions/upload-artifact@v7
+      with:
+        name: openclaw-msix-dev-migration-test-${{ matrix.architecture }}
+        path: |
+          artifacts/msix-migration-test/${{ matrix.architecture }}/OpenClaw-MigrationTest-${{ matrix.architecture }}.msix
+          artifacts/msix-migration-test/${{ matrix.architecture }}/OpenClaw-MigrationTest.cer
+          artifacts/msix-migration-test/${{ matrix.architecture }}/msix-metadata.json
+          artifacts/msix-migration-test/${{ matrix.architecture }}/INSTALL.txt
+        if-no-files-found: error
+        # The disposable signer is valid for 30 days and the package is not timestamped,
+        # so a longer retention would only offer an artifact that can no longer install.
+        retention-days: 30
 
     - name: Provision disposable Dev MSIX certificate
       shell: pwsh

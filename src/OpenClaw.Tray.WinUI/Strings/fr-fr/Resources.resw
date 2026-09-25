@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
@@ -4277,7 +4277,7 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Port local</value>
   </data>
   <data name="ConnectionPage_SaveAmpConnect.Content" xml:space="preserve">
-    <value>Enregistrer &amp;amp; connecter</value>
+    <value>Enregistrer &amp; connecter</value>
   </data>
   <data name="ConnectionPage_Cancel.Content" xml:space="preserve">
     <value>Annuler</value>
@@ -4538,7 +4538,7 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Confidentialité Windows</value>
   </data>
   <data name="PermissionsPage_CameraMicrophoneAmpScreen.Text" xml:space="preserve">
-    <value>Accès caméra, microphone &amp;amp; écran</value>
+    <value>Accès caméra, microphone &amp; écran</value>
   </data>
   <data name="PermissionsPage_SystemLevelPrivacyPermissions.Text" xml:space="preserve">
     <value>Les autorisations de confidentialité au niveau système sont gérées par Windows. Ouvrez les Paramètres de confidentialité Windows pour accorder ou révoquer l'accès à OpenClaw.</value>
@@ -4616,7 +4616,7 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Lecture seule</value>
   </data>
   <data name="SandboxPage_ReadAmpWrite.Content" xml:space="preserve">
-    <value>Lecture &amp;amp; écriture</value>
+    <value>Lecture &amp; écriture</value>
   </data>
   <data name="SandboxPage_Downloads.Text" xml:space="preserve">
     <value>Téléchargements</value>
@@ -4628,7 +4628,7 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Lecture seule</value>
   </data>
   <data name="SandboxPage_ReadAmpWrite2.Content" xml:space="preserve">
-    <value>Lecture &amp;amp; écriture</value>
+    <value>Lecture &amp; écriture</value>
   </data>
   <data name="SandboxPage_Desktop.Text" xml:space="preserve">
     <value>Bureau</value>
@@ -4640,7 +4640,7 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Lecture seule</value>
   </data>
   <data name="SandboxPage_ReadAmpWrite3.Content" xml:space="preserve">
-    <value>Lecture &amp;amp; écriture</value>
+    <value>Lecture &amp; écriture</value>
   </data>
   <data name="SandboxPage_ToolDirectoriesOnYour.Text" xml:space="preserve">
     <value>Les répertoires d'outils de votre PATH bénéficient également d'un accès en lecture seule dans le bac à sable, afin que les outils en ligne de commande comme git, node, python et dotnet soient utilisables. Les racines de lecteur ne sont jamais accordées.</value>
@@ -4658,7 +4658,7 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Lecture seule</value>
   </data>
   <data name="SandboxPage_ReadAmpWrite4.Content" xml:space="preserve">
-    <value>Lecture &amp;amp; écriture</value>
+    <value>Lecture &amp; écriture</value>
   </data>
   <data name="SandboxPage_NoCustomFoldersAdded.Text" xml:space="preserve">
     <value>Aucun dossier personnalisé ajouté.</value>
@@ -4682,7 +4682,7 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Écriture: l'agent peut remplacer votre presse-papiers (sans pouvoir le lire)</value>
   </data>
   <data name="SandboxPage_ReadAmpWrite5.Content" xml:space="preserve">
-    <value>Lecture &amp;amp; écriture</value>
+    <value>Lecture &amp; écriture</value>
   </data>
   <data name="SandboxPage_Network.Text" xml:space="preserve">
     <value>📡 Réseau</value>
@@ -4980,7 +4980,7 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Installation MSIX détectée</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Message" xml:space="preserve">
-    <value>La suppression d'OpenClaw via Paramètres Windows &amp;amp;#x2192; Applications ne nettoiera PAS la passerelle locale (distribution WSL, image disque). Utilisez d'abord Supprimer la passerelle locale ci-dessous, puis désinstallez OpenClaw.</value>
+    <value>La suppression d'OpenClaw via Paramètres Windows → Applications ne nettoiera PAS la passerelle locale (distribution WSL, image disque). Utilisez d'abord Supprimer la passerelle locale ci-dessous, puis désinstallez OpenClaw.</value>
   </data>
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>Supprime la distribution WSL (OpenClawGateway), son image disque, l'entrée de démarrage automatique et efface les identifiants de la passerelle. Votre jeton MCP est conservé. L'intégration sera réinitialisée.</value>
@@ -7156,9 +7156,6 @@ Choisissez {1} pour quitter cet aperçu sans démarrer la migration et continuer
   <data name="Migration_StoreValidationFailed" xml:space="preserve">
     <value>OpenClaw n'a pas pu valider en toute sécurité la configuration précédente pour la migration. Aucune finalisation n'a été enregistrée et l'application précédente n'a pas été modifiée. Fermez cet aperçu et réessayez plus tard. Ne désinstallez pas l'application précédente, ne supprimez pas les données de migration et ne lancez pas le nettoyage de la passerelle.</value>
   </data>
-  <data name="Migration_StoreCredentialUnavailable" xml:space="preserve">
-    <value>OpenClaw n'a pas pu résoudre un identifiant pour la passerelle active. Aucune finalisation n'a été enregistrée et l'application précédente n'a pas été modifiée. Fermez cet aperçu et restaurez la configuration de la passerelle active avant de réessayer. Ne désinstallez pas l'application précédente, ne supprimez pas les données de migration et ne lancez pas le nettoyage de la passerelle.</value>
-  </data>
   <data name="Migration_StoreAwaitingInnoRemoval" xml:space="preserve">
     <value>OpenClaw a enregistré la fin de la migration et préservé votre configuration. Fermez cet aperçu, désinstallez l'application OpenClaw Companion précédente dans les paramètres Windows, puis ouvrez la version du Store. Ne supprimez pas les données de migration et ne lancez pas le nettoyage de la passerelle.</value>
   </data>
@@ -7185,6 +7182,143 @@ Choisissez {1} pour quitter cet aperçu sans démarrer la migration et continuer
   </data>
   <data name="Migration_StorePending" xml:space="preserve">
     <value>Une migration précédente nécessite une récupération ou une finalisation. Cette version de test ne peut ni la poursuivre ni démarrer normalement. Fermez cet aperçu. Ne désinstallez pas l'application précédente, ne supprimez pas les données de migration et ne lancez pas le nettoyage de la passerelle.</value>
+  </data>
+  <data name="Migration2_Title" xml:space="preserve">
+    <value>Passer à la version du Store</value>
+  </data>
+  <data name="Migration2_Consent" xml:space="preserve">
+    <value>Gardez vos paramètres, votre passerelle, vos fichiers et vos modèles en place.</value>
+  </data>
+  <data name="Migration2_PrepareStepTitle" xml:space="preserve">
+    <value>Nous préparerons votre configuration</value>
+  </data>
+  <data name="Migration2_PrepareStepBody" xml:space="preserve">
+    <value>Nous fermerons l'application précédente en toute sécurité, vérifierons votre installation et vos paramètres, puis enregistrerons des données de migration protégées.</value>
+  </data>
+  <data name="Migration2_RemoveStepTitle" xml:space="preserve">
+    <value>Vous désinstallerez l'application précédente</value>
+  </data>
+  <data name="Migration2_RemoveStepBody" xml:space="preserve">
+    <value>Lorsque vous y serez invité, désinstallez-la manuellement. Rien ne sera désinstallé automatiquement.</value>
+  </data>
+  <data name="Migration2_FinishStepTitle" xml:space="preserve">
+    <value>Utilisez ensuite la version du Store</value>
+  </data>
+  <data name="Migration2_FinishStepBody" xml:space="preserve">
+    <value>Nous vérifions la désinstallation avant de démarrer la version du Store.</value>
+  </data>
+  <data name="Migration2_ConsentHint" xml:space="preserve">
+    <value>Choisissez Pas maintenant pour quitter sans démarrer la migration. La version Store reste fermée tant que l'application précédente est installée.</value>
+  </data>
+  <data name="Migration2_ConsentWarningTitle" xml:space="preserve">
+    <value>Avant de continuer</value>
+  </data>
+  <data name="Migration2_ConsentWarning" xml:space="preserve">
+    <value>Si la validation réussit, l'application précédente ne pourra plus démarrer normalement.</value>
+  </data>
+  <data name="Migration2_Closing" xml:space="preserve">
+    <value>Demande de fermeture sécurisée de l'application précédente...</value>
+  </data>
+  <data name="Migration2_Preparing" xml:space="preserve">
+    <value>Validation de votre configuration existante...</value>
+  </data>
+  <data name="Migration2_Completing" xml:space="preserve">
+    <value>Enregistrement de la fin de la migration...</value>
+  </data>
+  <data name="Migration2_Finalizing" xml:space="preserve">
+    <value>Vérification de la désinstallation et finalisation de la migration...</value>
+  </data>
+  <data name="Migration2_CloseInno" xml:space="preserve">
+    <value>Fermez OpenClaw Companion depuis son menu dans la zone de notification, puis choisissez Réessayer.</value>
+  </data>
+  <data name="Migration2_CloseInnoTitle" xml:space="preserve">
+    <value>Fermez l'application précédente</value>
+  </data>
+  <data name="Migration2_CloseInnoWarningTitle" xml:space="preserve">
+    <value>Ne désinstallez pas encore</value>
+  </data>
+  <data name="Migration2_CloseInnoWarning" xml:space="preserve">
+    <value>Ne forcez pas sa fermeture et ne la désinstallez pas encore. Nous vous indiquerons quand vous pourrez la désinstaller en toute sécurité.</value>
+  </data>
+  <data name="Migration2_AwaitingRemoval" xml:space="preserve">
+    <value>Votre configuration a été validée et la fin de la migration enregistrée.
+
+1. Ouvrez Applications installées et désinstallez uniquement l'application OpenClaw Companion précédente. Gardez la version du Store.
+
+2. Revenez ici et choisissez Réessayer pour vérifier la désinstallation et terminer.
+
+Vos paramètres, votre passerelle, vos fichiers et vos modèles restent en place.</value>
+  </data>
+  <data name="Migration2_RemovalTitle" xml:space="preserve">
+    <value>Désinstallez l'application précédente</value>
+  </data>
+  <data name="Migration2_RemovalWarningTitle" xml:space="preserve">
+    <value>Conservez votre configuration</value>
+  </data>
+  <data name="Migration2_RemovalWarning" xml:space="preserve">
+    <value>Ne supprimez pas les données de migration et ne lancez pas le nettoyage de la passerelle.</value>
+  </data>
+  <data name="Migration2_ValidationFailed" xml:space="preserve">
+    <value>OpenClaw n'a pas pu terminer la migration en toute sécurité. Ne désinstallez pas l'application précédente et ne lancez pas le nettoyage de la passerelle. Consultez le journal de l'application, résolvez le problème et réessayez.</value>
+  </data>
+  <data name="Migration2_UpdateRequired" xml:space="preserve">
+    <value>Mettez d'abord l'application précédente à jour vers une version compatible prenant en charge la migration. Votre configuration n'a pas été modifiée. Cette application reste inactive tant que l'application précédente est installée.</value>
+  </data>
+  <data name="Migration2_Unsupported" xml:space="preserve">
+    <value>Cette installation ne peut pas être migrée en toute sécurité. Seule l'installation par défaut pour le même utilisateur Windows et avec une architecture correspondante est prise en charge. Votre configuration n'a pas été modifiée. Cette application reste inactive tant que l'application précédente est installée.</value>
+  </data>
+  <data name="Migration2_InspectionFailed" xml:space="preserve">
+    <value>OpenClaw n'a pas pu vérifier en toute sécurité l'installation ou les enregistrements de migration. Consultez le journal de l'application avant de réessayer. Ne supprimez pas les données de migration et ne lancez pas le nettoyage de la passerelle.</value>
+  </data>
+  <data name="Migration2_Recovery" xml:space="preserve">
+    <value>Cette migration nécessite une récupération. Consultez le journal de l'application. Si l'application précédente est toujours installée, supprimez-la dans Applications installées, puis sélectionnez Réessayer. Ne supprimez pas les données de migration manuellement et ne lancez pas le nettoyage de la passerelle.</value>
+  </data>
+  <data name="Migration2_FinalizationFailed" xml:space="preserve">
+    <value>OpenClaw n'a pas pu terminer la migration. Le reçu de fin de migration a été conservé pour permettre une récupération. Consultez le journal de l'application et réessayez. Ne supprimez pas les données de migration et ne lancez pas le nettoyage de la passerelle.</value>
+  </data>
+  <data name="Migration2_InstalledApps" xml:space="preserve">
+    <value>Ouvrir Applications installées</value>
+  </data>
+  <data name="Migration2_DiscardRecords" xml:space="preserve">
+    <value>Supprimer les données de migration illisibles</value>
+  </data>
+  <data name="Migration2_DiscardFailed" xml:space="preserve">
+    <value>OpenClaw n'a pas pu supprimer les données de migration. Si l'application OpenClaw précédente est en cours d'exécution, fermez-la et réessayez. Consultez le journal de l'application pour plus de détails.</value>
+  </data>
+  <data name="Migration2_LaunchFailed" xml:space="preserve">
+    <value>Windows n'a pas pu ouvrir la page demandée. Réessayez ou ouvrez manuellement Paramètres Windows &gt; Applications &gt; Applications installées si la migration est terminée.</value>
+  </data>
+  <data name="Migration2_InnoRecommendation.Text" xml:space="preserve">
+    <value>Recommandé</value>
+  </data>
+  <data name="Migration2_InnoCardTitle.Text" xml:space="preserve">
+    <value>Passer à la version du Microsoft Store</value>
+  </data>
+  <data name="Migration2_InnoCardDescription.Text" xml:space="preserve">
+    <value>Recevez les prochaines mises à jour d'OpenClaw via le Microsoft Store. Votre configuration OpenClaw existante sera conservée.</value>
+  </data>
+  <data name="Migration2_InnoAction" xml:space="preserve">
+    <value>Installer la version du Store et migrer</value>
+  </data>
+  <data name="Migration2_InnoConsentTitle" xml:space="preserve">
+    <value>Passer à la version du Store ?</value>
+  </data>
+  <data name="Migration2_InnoConsent" xml:space="preserve">
+    <value>Le Microsoft Store s'ouvre pour vous permettre d'installer la version du Store. Lorsque vous l'ouvrirez, elle pourra fermer cette application et terminer la migration sans redemander votre accord.
+
+Vos paramètres, votre passerelle, vos fichiers et vos modèles restent en place.</value>
+  </data>
+  <data name="Migration2_InnoGranted" xml:space="preserve">
+    <value>Le consentement à la migration a été enregistré. Installez et ouvrez la version du Store pour continuer. Gardez cette application installée jusqu'à la confirmation de la fin de la migration.</value>
+  </data>
+  <data name="Migration2_InnoFailed" xml:space="preserve">
+    <value>OpenClaw n'a pas pu enregistrer le consentement à la migration ou ouvrir la fiche du Store. Consultez le journal de l'application et réessayez. Ne désinstallez pas cette application.</value>
+  </data>
+  <data name="Migration2_Close" xml:space="preserve">
+    <value>Fermer</value>
+  </data>
+  <data name="Migration2_Busy" xml:space="preserve">
+    <value>Veuillez patienter jusqu'à la fin de cette étape.</value>
   </data>
   <data name="Chat_Code_Copy" xml:space="preserve"><value>Copier le code</value></data>
   <data name="Chat_Code_Label" xml:space="preserve"><value>Bloc de code</value></data>

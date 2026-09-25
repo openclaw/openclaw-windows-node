@@ -220,6 +220,10 @@ public sealed class UIThreadFixture : IDisposable
 
                     _startupPhase = "getting dispatcher";
                     Dispatcher = DispatcherQueue.GetForCurrentThread();
+                    // Match generated WinUI startup so awaited event handlers and
+                    // rendering helpers resume on this UI thread, not the thread pool.
+                    SynchronizationContext.SetSynchronizationContext(
+                        new DispatcherQueueSynchronizationContext(Dispatcher));
 
                     _startupPhase = "creating hidden test window";
                     Container = new Grid { Padding = new Microsoft.UI.Xaml.Thickness(24) };

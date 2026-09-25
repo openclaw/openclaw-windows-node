@@ -16,6 +16,7 @@ public sealed class MigrationRecordTests
 
     [Theory]
     [InlineData("intent")]
+    [InlineData("consent")]
     [InlineData("completed")]
     public void ProtectedRecord_RoundTripsWithoutPlaintext(string kind)
     {
@@ -160,8 +161,61 @@ public sealed class MigrationRecordTests
     }
 
     [Theory]
+    [InlineData("inventory")]
+    [InlineData("target")]
+    [InlineData("fingerprint")]
+    [InlineData("autostart")]
+    [InlineData("expiry")]
+    [InlineData("future")]
+    public void Consent_RequiresStrictNonInventoryFields(string field)
+    {
+        using var temp = new TempDirectory();
+        var record = CreateRecord(temp, "consent");
+        switch (field)
+        {
+            case "inventory": record.InventoryJson = "{}"; break;
+            case "target": record.TargetVersion = "2026.9.18.0"; break;
+            case "fingerprint": record.Fingerprint = new string('a', 64); break;
+            case "autostart": record.AutoStart = true; break;
+            case "expiry": record.ExpiresUtc = Now.AddDays(31); break;
+            case "future":
+                record.CreatedUtc = Now.AddSeconds(1);
+                record.ExpiresUtc = record.CreatedUtc.AddDays(30);
+                break;
+        }
+
+        Assert.Throws<InvalidDataException>(() => MigrationRecordCodec.Encode(record, Now));
+    }
+
+    [Theory]
+    [InlineData("OpenClawFoundation.OpenClaw")]
+    [InlineData("CN=4BA40A7A-B719-4C40-BF91-84AF4F1136FC")]
+    [InlineData("{M0LTB0T-TRAY-4PP1-D3N7}")]
+    public void Consent_IsBoundToPackageAndSourceContract(string field)
+    {
+        using var temp = new TempDirectory();
+        var record = CreateRecord(temp, "consent");
+        var entropy = Encoding.UTF8.GetBytes("OpenClaw.InnoToStore.Migration.v1");
+        var plain = ProtectedData.Unprotect(MigrationRecordCodec.Encode(record, Now), entropy, DataProtectionScope.CurrentUser);
+        try
+        {
+            var index = plain.AsSpan().IndexOf(Encoding.UTF8.GetBytes(field));
+            Assert.True(index >= 0);
+            plain[index] = (byte)'X';
+            var bytes = ProtectedData.Protect(plain, entropy, DataProtectionScope.CurrentUser);
+            Assert.Throws<InvalidDataException>(() => MigrationRecordCodec.Decode(bytes, record.Binding, Now));
+            Assert.Throws<InvalidDataException>(() => MigrationRecordCodec.DecodeForRenewedConsent(bytes, record.Binding, Now));
+        }
+        finally
+        {
+            Array.Clear(plain);
+        }
+    }
+
+    [Theory]
     [InlineData("completed", 10, false)]
     [InlineData("intent", 2, false)]
+    [InlineData("consent", 2, false)]
     [InlineData("missing", 0, false)]
     [InlineData("missing-readonly-foreign", 0, false)]
     [InlineData("missing-tampered", 2, false)]
@@ -170,20 +224,21 @@ public sealed class MigrationRecordTests
     [InlineData("missing-codec", 2, false)]
     [InlineData("completed", 10, true)]
     [InlineData("intent", 2, true)]
+    [InlineData("consent", 2, true)]
     [InlineData("corrupt", 2, true)]
     [InlineData("wrong-path", 2, true)]
     public async Task WindowsPowerShellChecker_UsesTheSameContract(string kind, int expectedExit, bool clockRollback)
     {
         using var temp = new TempDirectory();
         var root = RepositoryRoot();
-        var record = CreateRecord(temp, kind == "intent" ? "intent" : "completed");
+        var record = CreateRecord(temp, kind is "intent" or "consent" ? kind : "completed");
         Directory.CreateDirectory(record.Binding.InstallDirectory);
         if (kind != "missing-codec")
             File.Copy(Path.Combine(root, "src", "OpenClaw.Connection", "Migration", "MigrationRecordCodec.cs"),
                 Path.Combine(record.Binding.InstallDirectory, "MigrationRecordCodec.cs"));
         // Encode at an injected later time to simulate rollback without changing Windows' clock.
         record.CreatedUtc = clockRollback ? DateTime.UtcNow.AddHours(1) : DateTime.UtcNow.AddMinutes(-1);
-        if (kind == "intent")
+        if (kind is "intent" or "consent")
             record.ExpiresUtc = record.CreatedUtc.AddDays(30);
         var directory = Path.Combine(record.Binding.RoamingDirectory, MigrationRecordCodec.DirectoryName);
         Directory.CreateDirectory(directory);
@@ -579,9 +634,9 @@ public sealed class MigrationRecordTests
             MigrationId = Guid.NewGuid().ToString("D"),
             SourceVersion = "2026.9.17.0",
             TargetVersion = kind == "completed" ? "2026.9.18.0" : "",
-            Fingerprint = new string('a', 64),
+            Fingerprint = kind == "consent" ? MigrationRecordCodec.ConsentFingerprint : new string('a', 64),
             InventoryJson = kind == "intent" ? "{\"sensitiveInventory\":\"test-only\"}" : "",
-            AutoStart = true,
+            AutoStart = kind != "consent",
             CreatedUtc = Now,
             ExpiresUtc = kind == "completed" ? DateTime.SpecifyKind(DateTime.MaxValue, DateTimeKind.Utc) : Now.AddDays(30),
             Binding = new MigrationBinding

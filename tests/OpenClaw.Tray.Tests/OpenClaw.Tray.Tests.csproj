@@ -93,6 +93,8 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ActivationRoute.cs" Link="Services\ActivationRoute.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ActivationPlan.cs" Link="Services\ActivationPlan.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ActivationRouter.cs" Link="Services\ActivationRouter.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\StoreMigrationWorkflow.cs" Link="Services\StoreMigrationWorkflow.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\StoreMigrationListing.cs" Link="Services\StoreMigrationListing.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SettingsChangeEffects.cs" Link="Services\SettingsChangeEffects.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SettingsChangeCoordinator.cs" Link="Services\SettingsChangeCoordinator.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AppShutdownPlan.cs" Link="Services\AppShutdownPlan.cs" />

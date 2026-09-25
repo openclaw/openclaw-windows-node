@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Security;
+using System.Security.Cryptography;
 using OpenClaw.Shared;
 
 namespace OpenClaw.Connection.Migration;
@@ -17,7 +18,18 @@ public enum StoreMigrationFinalizationState
     Finalized
 }
 
-public sealed record StoreMigrationFinalizationDecision(StoreMigrationFinalizationState State)
+/// <param name="State">What finalization concluded.</param>
+/// <param name="SourceRemoved">
+/// Whether finalization got past verifying that the Inno source is gone. Once it is, no outcome
+/// may refuse launch. The completion receipt exists to stop two live installations sharing one
+/// data directory, and with the source removed there is no second installation left to stop.
+/// Blocking past that point strands the user: the receipt blocks the app that is already
+/// uninstalled, and the migration window will not hand over to the app that remains. Every such
+/// outcome keeps the receipt, so the failed step is still retried on the next launch.
+/// </param>
+public sealed record StoreMigrationFinalizationDecision(
+    StoreMigrationFinalizationState State,
+    bool SourceRemoved = false)
 {
     /// <summary>
     /// A refused startup preference still finalizes the migration: Windows gave a durable answer,
@@ -311,6 +323,7 @@ public sealed class MigrationInventoryCapture(MigrationBinding binding) : IMigra
 
 /// <summary>
 /// Reparse-safe final cleanup that keeps the completion receipt until all earlier cleanup succeeds.
+/// The caller must hold prepare.lock while consent, intent, then completion are removed.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class MigrationFinalizationRecordCleaner(MigrationBinding binding) : IStoreMigrationRecordCleaner
@@ -319,10 +332,14 @@ public sealed class MigrationFinalizationRecordCleaner(MigrationBinding binding)
     {
         ArgumentNullException.ThrowIfNull(receipt);
         var directory = Path.Combine(binding.RoamingDirectory, MigrationRecordCodec.DirectoryName);
+        var consentLockPath = Path.Combine(directory, InnoMigrationConsentStore.WriterLockFileName);
+        var consentPath = Path.Combine(directory, MigrationRecordCodec.ConsentFileName);
         var intentPath = Path.Combine(directory, MigrationRecordCodec.IntentFileName);
         var completionPath = Path.Combine(directory, MigrationRecordCodec.CompletionFileName);
 
         MigrationRecordCodec.RejectReparsePoints(directory);
+        MigrationRecordCodec.RejectReparsePoints(consentLockPath);
+        MigrationRecordCodec.RejectReparsePoints(consentPath);
         MigrationRecordCodec.RejectReparsePoints(intentPath);
         MigrationRecordCodec.RejectReparsePoints(completionPath);
         var durable = MigrationRecordCodec.ReadCompletion(
@@ -331,6 +348,8 @@ public sealed class MigrationFinalizationRecordCleaner(MigrationBinding binding)
             throw new InvalidDataException("Completion receipt changed before cleanup.");
 
         // The receipt is the recovery anchor, so it is always deleted last.
+        File.Delete(consentLockPath);
+        File.Delete(consentPath);
         File.Delete(intentPath);
         File.Delete(completionPath);
     }
@@ -394,7 +413,7 @@ public sealed class StoreMigrationFinalizationCoordinator(
 
             var durable = records.Read();
             if (durable.Status != MigrationStartupRecordStatus.Completed || durable.Record is null)
-                return new(StoreMigrationFinalizationState.InspectionFailed);
+                return new(StoreMigrationFinalizationState.InspectionFailed, SourceRemoved: true);
 
             MigrationInventory current;
             try
@@ -405,13 +424,13 @@ public sealed class StoreMigrationFinalizationCoordinator(
                                              InvalidDataException)
             {
                 logger.Error($"Store migration finalization inventory failed: {exception.Message}");
-                return new(StoreMigrationFinalizationState.InspectionFailed);
+                return new(StoreMigrationFinalizationState.InspectionFailed, SourceRemoved: true);
             }
 
             if (!string.Equals(current.Fingerprint, durable.Record.Fingerprint, StringComparison.Ordinal))
             {
                 logger.Warn("Store migration finalization inventory no longer matches the completion receipt.");
-                return new(StoreMigrationFinalizationState.InspectionFailed);
+                return new(StoreMigrationFinalizationState.InspectionFailed, SourceRemoved: true);
             }
 
             var startupRefused = false;
@@ -428,7 +447,7 @@ public sealed class StoreMigrationFinalizationCoordinator(
                                              UnauthorizedAccessException or InvalidOperationException)
             {
                 logger.Error($"Store migration startup preference finalization failed: {exception.Message}");
-                return new(StoreMigrationFinalizationState.StartupPreferenceFailed);
+                return new(StoreMigrationFinalizationState.StartupPreferenceFailed, SourceRemoved: true);
             }
 
             try
@@ -436,22 +455,23 @@ public sealed class StoreMigrationFinalizationCoordinator(
                 cleaner.ClearCompleted(durable.Record);
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
-                                             InvalidDataException)
+                                             InvalidDataException or FormatException or
+                                             CryptographicException)
             {
                 logger.Error($"Store migration record cleanup failed: {exception.Message}");
-                return new(StoreMigrationFinalizationState.RecordCleanupFailed);
+                return new(StoreMigrationFinalizationState.RecordCleanupFailed, SourceRemoved: true);
             }
 
             logger.Info($"Store migration finalized: {durable.Record.MigrationId}.");
             return new(startupRefused
                 ? StoreMigrationFinalizationState.StartupPreferenceRefused
-                : StoreMigrationFinalizationState.Finalized);
+                : StoreMigrationFinalizationState.Finalized, SourceRemoved: true);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
                                          InvalidDataException)
         {
             logger.Error($"Store migration finalization could not acquire the preparation lock: {exception.Message}");
-            return new(StoreMigrationFinalizationState.RecordCleanupFailed);
+            return new(StoreMigrationFinalizationState.RecordCleanupFailed, SourceRemoved: true);
         }
     }
 }

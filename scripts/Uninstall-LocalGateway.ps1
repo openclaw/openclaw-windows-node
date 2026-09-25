@@ -420,9 +420,65 @@ function Resolve-AppDataDir {
                 continue
             }
 
-            $identityDir = Join-Path (Join-Path $DataDir 'gateways') $id
+            $gatewaysDir = Join-Path $DataDir 'gateways'
+            $identityDir = Join-Path $gatewaysDir $id
+            # This directory is deleted recursively, so the record id must stay a single
+            # path segment. A traversal id would otherwise escape the gateways directory.
+            # \A and \z rather than ^ and $: .NET lets $ match before a trailing newline.
+            if ($id -notmatch '\A[A-Za-z0-9._-]+\z' -or $id -eq '.' -or $id -eq '..') {
+                Add-CleanupWarning "Skipped identity cleanup for local gateway record with an unsafe id '$id'."
+                continue
+            }
+
             try {
                 if (Test-Path -LiteralPath $identityDir -PathType Container) {
+                    # Remove-Item -Recurse follows junctions on Windows PowerShell 5.1, which is
+                    # what runs this during Inno uninstall. Deleting through a reparse point would
+                    # destroy whatever it targets, so refuse it the way the migration codec does.
+                    # Every ancestor up to $DataDir is checked, not just the leaf: a junction at
+                    # 'gateways' redirects the whole subtree while the leaf itself looks ordinary.
+                    # Descendants are checked too, because -Recurse follows a junction planted
+                    # inside the identity directory just as readily as one above it.
+                    $redirected = $null
+                    $probe = $identityDir
+                    $stopAt = $DataDir.TrimEnd('\', '/')
+                    while ($probe) {
+                        $probeItem = Get-Item -LiteralPath $probe -Force -ErrorAction Stop
+                        if ($probeItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+                            $redirected = $probe
+                            break
+                        }
+                        if ($probe.TrimEnd('\', '/') -eq $stopAt) { break }
+                        $parent = Split-Path -Path $probe -Parent
+                        if (-not $parent -or $parent -eq $probe) { break }
+                        $probe = $parent
+                    }
+                    if (-not $redirected) {
+                        # Walked explicitly rather than with Get-ChildItem -Recurse, which follows
+                        # junctions on 5.1 and would enumerate the target it is meant to detect.
+                        $pending = New-Object System.Collections.Stack
+                        $pending.Push($identityDir)
+                        while ($pending.Count -gt 0 -and -not $redirected) {
+                            $current = $pending.Pop()
+                            foreach ($child in [System.IO.Directory]::EnumerateFileSystemEntries($current)) {
+                                $childItem = Get-Item -LiteralPath $child -Force -ErrorAction Stop
+                                if ($childItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+                                    $redirected = $child
+                                    break
+                                }
+                                if ($childItem.PSIsContainer) {
+                                    $pending.Push($child)
+                                }
+                            }
+                        }
+                    }
+
+                    if ($redirected) {
+                        Add-CleanupWarning ("Skipped identity cleanup for local gateway record '$id': " +
+                            "'$redirected' is a reparse point.")
+                        continue
+                    }
+
                     Remove-Item -LiteralPath $identityDir -Recurse -Force -ErrorAction Stop
                     Write-GatewayLog "Deleted identity directory for local gateway record $id."
                 }

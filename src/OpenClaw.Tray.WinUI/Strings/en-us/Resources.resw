@@ -4985,7 +4985,7 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>MSIX installation detected</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Message" xml:space="preserve">
-    <value>Removing OpenClaw from Windows Settings &amp;#x2192; Apps will NOT clean up the Local Gateway (WSL distro, disk image). Use Remove Local Gateway below FIRST, then uninstall OpenClaw.</value>
+    <value>Removing OpenClaw from Windows Settings → Apps will NOT clean up the Local Gateway (WSL distro, disk image). Use Remove Local Gateway below FIRST, then uninstall OpenClaw.</value>
   </data>
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>Removes the WSL distro (OpenClawGateway), its disk image, autostart entry, and clears gateway credentials. Your MCP token is preserved. Onboarding will reset.</value>
@@ -7220,9 +7220,6 @@ Choose {1} to exit this preview without starting migration and continue using th
   <data name="Migration_StoreValidationFailed" xml:space="preserve">
     <value>OpenClaw could not safely validate the previous setup for migration. No completion was recorded and the previous app was not changed. Close this preview and try again later. Do not uninstall the previous app, delete migration data, or run gateway cleanup.</value>
   </data>
-  <data name="Migration_StoreCredentialUnavailable" xml:space="preserve">
-    <value>OpenClaw could not resolve a credential for the active gateway. No completion was recorded and the previous app was not changed. Close this preview and restore the active gateway configuration before retrying. Do not uninstall the previous app, delete migration data, or run gateway cleanup.</value>
-  </data>
   <data name="Migration_StoreAwaitingInnoRemoval" xml:space="preserve">
     <value>OpenClaw recorded migration completion and preserved your setup. Close this preview, uninstall the previous OpenClaw Companion app through Windows Settings, then open the Store version. Do not delete migration data or run gateway cleanup.</value>
   </data>
@@ -7249,6 +7246,143 @@ Choose {1} to exit this preview without starting migration and continue using th
   </data>
   <data name="Migration_StorePending" xml:space="preserve">
     <value>A previous migration needs recovery or finalization. This test build cannot continue it or start normally. Close this preview. Do not uninstall the previous app, delete migration data, or run gateway cleanup.</value>
+  </data>
+  <data name="Migration2_Title" xml:space="preserve">
+    <value>Move to the Store version</value>
+  </data>
+  <data name="Migration2_Consent" xml:space="preserve">
+    <value>Keep your settings, gateway, files, and models where they are.</value>
+  </data>
+  <data name="Migration2_PrepareStepTitle" xml:space="preserve">
+    <value>We'll prepare your setup</value>
+  </data>
+  <data name="Migration2_PrepareStepBody" xml:space="preserve">
+    <value>We'll safely close the previous app, check your installation and settings, and save protected migration records.</value>
+  </data>
+  <data name="Migration2_RemoveStepTitle" xml:space="preserve">
+    <value>You'll remove the previous app</value>
+  </data>
+  <data name="Migration2_RemoveStepBody" xml:space="preserve">
+    <value>When prompted, uninstall it manually. Nothing is uninstalled automatically.</value>
+  </data>
+  <data name="Migration2_FinishStepTitle" xml:space="preserve">
+    <value>Then use the Store version</value>
+  </data>
+  <data name="Migration2_FinishStepBody" xml:space="preserve">
+    <value>We verify removal before starting the Store version.</value>
+  </data>
+  <data name="Migration2_ConsentHint" xml:space="preserve">
+    <value>Choose Not now to leave without starting migration. The Store version stays closed while the previous app is installed.</value>
+  </data>
+  <data name="Migration2_ConsentWarningTitle" xml:space="preserve">
+    <value>Before you continue</value>
+  </data>
+  <data name="Migration2_ConsentWarning" xml:space="preserve">
+    <value>If validation succeeds, the previous app can no longer start normally.</value>
+  </data>
+  <data name="Migration2_Closing" xml:space="preserve">
+    <value>Asking the previous app to close safely...</value>
+  </data>
+  <data name="Migration2_Preparing" xml:space="preserve">
+    <value>Validating your existing setup...</value>
+  </data>
+  <data name="Migration2_Completing" xml:space="preserve">
+    <value>Recording migration completion...</value>
+  </data>
+  <data name="Migration2_Finalizing" xml:space="preserve">
+    <value>Checking removal and finishing migration...</value>
+  </data>
+  <data name="Migration2_CloseInno" xml:space="preserve">
+    <value>Close OpenClaw Companion from its tray menu, then choose Retry.</value>
+  </data>
+  <data name="Migration2_CloseInnoTitle" xml:space="preserve">
+    <value>Close the previous app</value>
+  </data>
+  <data name="Migration2_CloseInnoWarningTitle" xml:space="preserve">
+    <value>Don't uninstall yet</value>
+  </data>
+  <data name="Migration2_CloseInnoWarning" xml:space="preserve">
+    <value>Don't force-close or uninstall it yet. We'll tell you when it's safe to uninstall.</value>
+  </data>
+  <data name="Migration2_AwaitingRemoval" xml:space="preserve">
+    <value>Your setup has been validated and migration completion recorded.
+
+1. Open Installed apps and uninstall only the previous OpenClaw Companion app. Keep the Store version.
+
+2. Return here and choose Retry to verify removal and finish.
+
+Your settings, gateway, files, and models stay in place.</value>
+  </data>
+  <data name="Migration2_RemovalTitle" xml:space="preserve">
+    <value>Remove the previous app</value>
+  </data>
+  <data name="Migration2_RemovalWarningTitle" xml:space="preserve">
+    <value>Keep your setup</value>
+  </data>
+  <data name="Migration2_RemovalWarning" xml:space="preserve">
+    <value>Don't delete migration data or run gateway cleanup.</value>
+  </data>
+  <data name="Migration2_ValidationFailed" xml:space="preserve">
+    <value>OpenClaw could not safely complete migration. Do not uninstall the previous app or run gateway cleanup. Check the app log, resolve the problem, and retry.</value>
+  </data>
+  <data name="Migration2_UpdateRequired" xml:space="preserve">
+    <value>Update the previous app to a supported migration-capable version first. Your setup has not been changed. This app stays inactive while the previous app is installed.</value>
+  </data>
+  <data name="Migration2_Unsupported" xml:space="preserve">
+    <value>This installation cannot be migrated safely. Only the default installation for the same Windows user and matching architecture is supported. Your setup has not been changed. This app stays inactive while the previous app is installed.</value>
+  </data>
+  <data name="Migration2_InspectionFailed" xml:space="preserve">
+    <value>OpenClaw could not safely inspect the installation or migration records. Check the app log before retrying. Do not delete migration data or run gateway cleanup.</value>
+  </data>
+  <data name="Migration2_Recovery" xml:space="preserve">
+    <value>This migration needs recovery. Check the app log. If the previous app is still installed, remove it from Installed apps and select Retry. Do not delete migration data by hand or run gateway cleanup.</value>
+  </data>
+  <data name="Migration2_FinalizationFailed" xml:space="preserve">
+    <value>OpenClaw could not finish migration. The completion receipt was kept for recovery. Check the app log and retry. Do not delete migration data or run gateway cleanup.</value>
+  </data>
+  <data name="Migration2_InstalledApps" xml:space="preserve">
+    <value>Open Installed apps</value>
+  </data>
+  <data name="Migration2_DiscardRecords" xml:space="preserve">
+    <value>Discard unreadable migration data</value>
+  </data>
+  <data name="Migration2_DiscardFailed" xml:space="preserve">
+    <value>OpenClaw could not discard the migration data. If the previous OpenClaw app is running, close it and try again. Check the app log for details.</value>
+  </data>
+  <data name="Migration2_LaunchFailed" xml:space="preserve">
+    <value>Windows could not open the requested page. Try again, or open Windows Settings &gt; Apps &gt; Installed apps manually if migration is complete.</value>
+  </data>
+  <data name="Migration2_InnoRecommendation.Text" xml:space="preserve">
+    <value>Recommended</value>
+  </data>
+  <data name="Migration2_InnoCardTitle.Text" xml:space="preserve">
+    <value>Move to the Microsoft Store version</value>
+  </data>
+  <data name="Migration2_InnoCardDescription.Text" xml:space="preserve">
+    <value>Get future OpenClaw updates through Microsoft Store. Your existing OpenClaw setup will be preserved.</value>
+  </data>
+  <data name="Migration2_InnoAction" xml:space="preserve">
+    <value>Install Store version and migrate</value>
+  </data>
+  <data name="Migration2_InnoConsentTitle" xml:space="preserve">
+    <value>Move to the Store version?</value>
+  </data>
+  <data name="Migration2_InnoConsent" xml:space="preserve">
+    <value>Microsoft Store opens so you can install the Store version. When you open it, it can close this app and finish the move without asking again.
+
+Your settings, gateway, files, and models stay where they are.</value>
+  </data>
+  <data name="Migration2_InnoGranted" xml:space="preserve">
+    <value>Migration consent was saved. Install and open the Store version to continue. Keep this app installed until migration completion is confirmed.</value>
+  </data>
+  <data name="Migration2_InnoFailed" xml:space="preserve">
+    <value>OpenClaw could not save migration consent or open the Store listing. Check the app log and retry. Do not uninstall this app.</value>
+  </data>
+  <data name="Migration2_Close" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="Migration2_Busy" xml:space="preserve">
+    <value>Please wait for this step to finish.</value>
   </data>
   <data name="Chat_Code_Copy" xml:space="preserve"><value>Copy code</value></data>
   <data name="Chat_Code_Label" xml:space="preserve"><value>Code block</value></data>

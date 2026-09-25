@@ -18,6 +18,43 @@ The setup flow walks users through:
 
 The setup flow no longer configures remote/manual gateways inline. The Welcome page's **Connect to an existing gateway** option routes through `AdvancedSetupPage`, closes setup, and opens the tray app's Connections tab.
 
+### Store migration preview
+
+The gated Inno-to-Store migration window reuses the wizard's visual design:
+Mica backdrop, mascot, centered heading, themed content card, and persistent
+footer actions. Its content scrolls independently so consent and recovery
+actions remain available in smaller windows or with enlarged text.
+Consent uses three short titled sections and a separate, non-dismissible warning.
+Manual close and removal use step-specific headings and short instructions;
+warnings stay in the same native InfoBar style as setup. Buttons retain the
+wizard's 100-DIP minimum width, neutral left-hand dismissal, accent right-hand
+primary action, and standard content/footer spacing. The title bar stays
+"Move to the Store version"; retry/recovery states do not use setup step dots.
+The window also sets the native OpenClaw icon for taskbar previews and the
+window switcher; the custom title-bar image alone does not supply that icon.
+The migration-capable Inno Settings page promotes this handoff with a
+theme-aware recommended card that reuses the same card padding, typography,
+accent badge, and primary-button styling as the rest of the app. The card
+carries no decorative icon, so its text aligns with every other settings row,
+and its action shares that single row. Its confirmation dialog
+asks a question rather than repeating the button label, and states the handoff
+grant and preserved data; detailed removal and finalization guidance stays in
+the Store wizard, where the user can act on it.
+
+This is a separate pre-start workflow, not a page in the setup pipeline.
+`StoreMigrationStartupGuard` and `StoreMigrationWorkflow` retain migration
+ownership; displaying the window does not construct `SetupWindow`, install a
+gateway, or start normal app services. Consent, retry, and uninstall verification
+are unchanged. The same visual workflow serves configured production Release
+builds and explicit Debug previews. The first supported Inno release is pinned
+to `2026.9.5.0`, and `MigrationProductionEnabled` is checked in as `true`, so
+non-Dev Release builds for `win-x64` and `win-arm64` carry the migration
+surfaces. Enablement is gated at tag time, not by the checked-in default:
+publication is blocked until that release's artifacts and acceptance are
+verified, and the switch is set to `false` and retagged if acceptance fails.
+See [Release migration gates](RELEASING.md) for the shared build contract and
+the two-PR coordinated-release requirements.
+
 ## Screen Details
 
 ### Welcome

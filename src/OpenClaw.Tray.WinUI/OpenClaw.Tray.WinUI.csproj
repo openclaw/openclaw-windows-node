@@ -58,23 +58,7 @@
     <RuntimeIdentifier>win-arm64</RuntimeIdentifier>
   </PropertyGroup>
 
-  <!-- Read-only admission experiment; never enabled in a shipping configuration. -->
-  <PropertyGroup Condition="'$(StoreMigrationPreview)' == 'true'">
-    <DefineConstants>$(DefineConstants);STORE_MIGRATION_PREVIEW</DefineConstants>
-  </PropertyGroup>
-  <ItemGroup Condition="'$(StoreMigrationPreview)' == 'true'">
-    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
-      <_Parameter1>StoreMigrationPreviewMinimumSourceVersion</_Parameter1>
-      <_Parameter2>$(StoreMigrationPreviewMinimumSourceVersion)</_Parameter2>
-    </AssemblyAttribute>
-  </ItemGroup>
-  <Target Name="ValidateStoreMigrationPreview" BeforeTargets="CoreCompile"
-          Condition="'$(StoreMigrationPreview)' == 'true'">
-    <Error Condition="'$(Configuration)' != 'Debug' or '$(PackageMsix)' != 'true' or '$(DevBuild)' == 'true'"
-           Text="Store migration preview is restricted to Debug MSIX builds with the production identity. It must not ship." />
-    <Error Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('$(StoreMigrationPreviewMinimumSourceVersion)', '^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$'))"
-           Text="Store migration preview requires an explicit numeric StoreMigrationPreviewMinimumSourceVersion. No production source version has been approved." />
-  </Target>
+  <Import Project="Migration.Build.props" />
 
   <!-- Unpackaged (default): traditional EXE distribution via Inno Setup -->
   <PropertyGroup Condition="'$(PackageMsix)' != 'true'">

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
@@ -4980,7 +4980,7 @@
     <value>偵測到 MSIX 安裝</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Message" xml:space="preserve">
-    <value>透過 Windows 設定 &amp;amp;#x2192; 應用程式移除 OpenClaw 不會清除本機閘道(WSL 散發版、磁碟映像)。請先使用下方的「移除本機閘道」,然後再解除安裝 OpenClaw。</value>
+    <value>透過 Windows 設定 → 應用程式移除 OpenClaw 不會清除本機閘道(WSL 散發版、磁碟映像)。請先使用下方的「移除本機閘道」,然後再解除安裝 OpenClaw。</value>
   </data>
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>移除 WSL 散發版 (OpenClawGateway)、其磁碟映像、自動啟動項目,並清除閘道認證。您的 MCP 權杖會保留。導覽流程將重設。</value>
@@ -7156,9 +7156,6 @@
   <data name="Migration_StoreValidationFailed" xml:space="preserve">
     <value>OpenClaw 無法安全驗證舊版設定是否可移轉。未記錄完成狀態，舊版應用程式也未被變更。請關閉此預覽，稍後再試。請勿解除安裝舊版應用程式、刪除移轉資料或執行閘道清理。</value>
   </data>
-  <data name="Migration_StoreCredentialUnavailable" xml:space="preserve">
-    <value>OpenClaw 無法解析作用中閘道的認證。未記錄完成狀態，舊版應用程式也未被變更。請關閉此預覽，還原作用中閘道設定後再試。請勿解除安裝舊版應用程式、刪除移轉資料或執行閘道清理。</value>
-  </data>
   <data name="Migration_StoreAwaitingInnoRemoval" xml:space="preserve">
     <value>OpenClaw 已記錄移轉完成並保留您的設定。請關閉此預覽，透過 Windows 設定解除安裝舊版 OpenClaw Companion 應用程式，然後開啟 Store 版本。請勿刪除移轉資料或執行閘道清理。</value>
   </data>
@@ -7185,6 +7182,143 @@
   </data>
   <data name="Migration_StorePending" xml:space="preserve">
     <value>先前的移轉需要復原或完成。此測試版本無法繼續該移轉或正常啟動。請關閉此預覽。請勿解除安裝舊版應用程式、刪除移轉資料或執行閘道清理。</value>
+  </data>
+  <data name="Migration2_Title" xml:space="preserve">
+    <value>移轉至 Store 版本</value>
+  </data>
+  <data name="Migration2_Consent" xml:space="preserve">
+    <value>將您的設定、閘道、檔案和模型保留在原處。</value>
+  </data>
+  <data name="Migration2_PrepareStepTitle" xml:space="preserve">
+    <value>我們將準備您的設定</value>
+  </data>
+  <data name="Migration2_PrepareStepBody" xml:space="preserve">
+    <value>我們將安全關閉舊版應用程式，檢查您的安裝和設定，並儲存受保護的移轉記錄。</value>
+  </data>
+  <data name="Migration2_RemoveStepTitle" xml:space="preserve">
+    <value>您將解除安裝舊版應用程式</value>
+  </data>
+  <data name="Migration2_RemoveStepBody" xml:space="preserve">
+    <value>收到提示後，請手動解除安裝。不會自動解除安裝任何應用程式。</value>
+  </data>
+  <data name="Migration2_FinishStepTitle" xml:space="preserve">
+    <value>然後使用 Store 版本</value>
+  </data>
+  <data name="Migration2_FinishStepBody" xml:space="preserve">
+    <value>我們會驗證移除狀態後再啟動 Store 版本。</value>
+  </data>
+  <data name="Migration2_ConsentHint" xml:space="preserve">
+    <value>選擇「現在不要」即可離開，不會開始移轉。舊版應用程式仍安裝時，商店版本不會啟動。</value>
+  </data>
+  <data name="Migration2_ConsentWarningTitle" xml:space="preserve">
+    <value>繼續之前</value>
+  </data>
+  <data name="Migration2_ConsentWarning" xml:space="preserve">
+    <value>如果驗證成功，舊版應用程式將無法正常啟動。</value>
+  </data>
+  <data name="Migration2_Closing" xml:space="preserve">
+    <value>正在要求舊版應用程式安全關閉...</value>
+  </data>
+  <data name="Migration2_Preparing" xml:space="preserve">
+    <value>正在驗證您的現有設定...</value>
+  </data>
+  <data name="Migration2_Completing" xml:space="preserve">
+    <value>正在記錄移轉完成狀態...</value>
+  </data>
+  <data name="Migration2_Finalizing" xml:space="preserve">
+    <value>正在檢查解除安裝狀態並完成移轉...</value>
+  </data>
+  <data name="Migration2_CloseInno" xml:space="preserve">
+    <value>請透過系統匣選單關閉 OpenClaw Companion，然後選擇「重試」。</value>
+  </data>
+  <data name="Migration2_CloseInnoTitle" xml:space="preserve">
+    <value>關閉舊版應用程式</value>
+  </data>
+  <data name="Migration2_CloseInnoWarningTitle" xml:space="preserve">
+    <value>暫時不要解除安裝</value>
+  </data>
+  <data name="Migration2_CloseInnoWarning" xml:space="preserve">
+    <value>暫時不要強制關閉或解除安裝該應用程式。我們會在可以安全解除安裝時通知您。</value>
+  </data>
+  <data name="Migration2_AwaitingRemoval" xml:space="preserve">
+    <value>您的設定已通過驗證，移轉完成狀態已記錄。
+
+1. 開啟「已安裝的應用程式」，僅解除安裝舊版 OpenClaw Companion 應用程式。請保留 Store 版本。
+
+2. 返回此處並選擇「重試」以驗證移除狀態並完成移轉。
+
+您的設定、閘道、檔案和模型將保留在原處。</value>
+  </data>
+  <data name="Migration2_RemovalTitle" xml:space="preserve">
+    <value>解除安裝舊版應用程式</value>
+  </data>
+  <data name="Migration2_RemovalWarningTitle" xml:space="preserve">
+    <value>保留您的設定</value>
+  </data>
+  <data name="Migration2_RemovalWarning" xml:space="preserve">
+    <value>請勿刪除移轉資料或執行閘道清理。</value>
+  </data>
+  <data name="Migration2_ValidationFailed" xml:space="preserve">
+    <value>OpenClaw 無法安全完成移轉。請勿解除安裝舊版應用程式或執行閘道清理。請查看應用程式記錄，解決問題後重試。</value>
+  </data>
+  <data name="Migration2_UpdateRequired" xml:space="preserve">
+    <value>請先將舊版應用程式更新至受支援且具備移轉功能的版本。您的設定未被變更。在舊版應用程式仍安裝的情況下，此應用程式將保持未啟用狀態。</value>
+  </data>
+  <data name="Migration2_Unsupported" xml:space="preserve">
+    <value>無法安全移轉此安裝。僅支援相同 Windows 使用者且架構相符的預設安裝。您的設定未被變更。在舊版應用程式仍安裝的情況下，此應用程式將保持未啟用狀態。</value>
+  </data>
+  <data name="Migration2_InspectionFailed" xml:space="preserve">
+    <value>OpenClaw 無法安全檢查安裝或移轉記錄。請先查看應用程式記錄再重試。請勿刪除移轉資料或執行閘道清理。</value>
+  </data>
+  <data name="Migration2_Recovery" xml:space="preserve">
+    <value>此移轉需要復原。請查看應用程式記錄。如果舊版應用程式仍已安裝，請在「已安裝的應用程式」中將其解除安裝，然後選擇「重試」。請勿手動刪除移轉資料或執行閘道清理。</value>
+  </data>
+  <data name="Migration2_FinalizationFailed" xml:space="preserve">
+    <value>OpenClaw 無法完成移轉。完成收據已保留以供復原。請查看應用程式記錄並重試。請勿刪除移轉資料或執行閘道清理。</value>
+  </data>
+  <data name="Migration2_InstalledApps" xml:space="preserve">
+    <value>開啟「已安裝的應用程式」</value>
+  </data>
+  <data name="Migration2_DiscardRecords" xml:space="preserve">
+    <value>捨棄無法讀取的移轉資料</value>
+  </data>
+  <data name="Migration2_DiscardFailed" xml:space="preserve">
+    <value>OpenClaw 無法捨棄移轉資料。如果舊版 OpenClaw 應用程式正在執行，請關閉它並重試。詳情請查看應用程式記錄。</value>
+  </data>
+  <data name="Migration2_LaunchFailed" xml:space="preserve">
+    <value>Windows 無法開啟要求的頁面。請再試一次，或在移轉完成後手動開啟 Windows 設定 &gt; 應用程式 &gt; 已安裝的應用程式。</value>
+  </data>
+  <data name="Migration2_InnoRecommendation.Text" xml:space="preserve">
+    <value>建議</value>
+  </data>
+  <data name="Migration2_InnoCardTitle.Text" xml:space="preserve">
+    <value>移轉至 Microsoft Store 版本</value>
+  </data>
+  <data name="Migration2_InnoCardDescription.Text" xml:space="preserve">
+    <value>透過 Microsoft Store 取得 OpenClaw 的後續更新。您現有的 OpenClaw 設定將會保留。</value>
+  </data>
+  <data name="Migration2_InnoAction" xml:space="preserve">
+    <value>安裝 Store 版本並移轉</value>
+  </data>
+  <data name="Migration2_InnoConsentTitle" xml:space="preserve">
+    <value>移轉至 Store 版本？</value>
+  </data>
+  <data name="Migration2_InnoConsent" xml:space="preserve">
+    <value>將開啟 Microsoft Store，讓您安裝 Store 版本。您開啟該版本後，它可以關閉此應用程式並完成移轉，無需再次徵求您的同意。
+
+您的設定、閘道、檔案和模型將保留在原處。</value>
+  </data>
+  <data name="Migration2_InnoGranted" xml:space="preserve">
+    <value>已儲存移轉授權。請安裝並開啟 Store 版本以繼續。在確認移轉完成之前，請保留此應用程式。</value>
+  </data>
+  <data name="Migration2_InnoFailed" xml:space="preserve">
+    <value>OpenClaw 無法儲存移轉授權或開啟 Store 中的應用程式頁面。請查看應用程式記錄並重試。請勿解除安裝此應用程式。</value>
+  </data>
+  <data name="Migration2_Close" xml:space="preserve">
+    <value>關閉</value>
+  </data>
+  <data name="Migration2_Busy" xml:space="preserve">
+    <value>請等待此步驟完成。</value>
   </data>
   <data name="Chat_Code_Copy" xml:space="preserve"><value>複製程式碼</value></data>
   <data name="Chat_Code_Label" xml:space="preserve"><value>程式碼區塊</value></data>

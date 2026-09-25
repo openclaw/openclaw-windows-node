@@ -41,10 +41,22 @@ namespace OpenClaw.Connection.Migration
         }
     }
 
+    /// <summary>
+    /// A migration path is unusable because of its shape, not because a record is corrupt.
+    /// Startup admission reports this as an inspection problem: recovery cannot repair a
+    /// reparse point, so offering recovery would be dead-end guidance.
+    /// </summary>
+    public sealed class MigrationPathRejectedException : IOException
+    {
+        public MigrationPathRejectedException(string message) : base(message) { }
+    }
+
     public static class MigrationRecordCodec
     {
         public const string DirectoryName = "store-migration";
         public const string IntentFileName = "intent.dpapi";
+        public const string ConsentFileName = "consent.dpapi";
+        public const string ConsentFingerprint = "0000000000000000000000000000000000000000000000000000000000000000";
         public const string CompletionFileName = "completed.dpapi";
         public const string PackageName = "OpenClawFoundation.OpenClaw";
         public const string PackagePublisher = "CN=4BA40A7A-B719-4C40-BF91-84AF4F1136FC";
@@ -104,7 +116,7 @@ namespace OpenClaw.Connection.Migration
             return DecodeCore(bytes, expected, utcNow, false);
         }
 
-        // Only a newly confirmed preparation may renew an expired intent.
+        // Only a newly confirmed grant/preparation may renew expired consent/intent.
 #if NET10_0_OR_GREATER
         [System.Runtime.Versioning.SupportedOSPlatform("windows")]
 #endif
@@ -176,18 +188,30 @@ namespace OpenClaw.Connection.Migration
 
         public static void RejectReparsePoints(string path)
         {
+            if (HasReparsePointAncestor(path))
+                throw new InvalidDataException("Migration paths must not contain reparse points.");
+        }
+
+        /// <summary>
+        /// Probes the same condition as <see cref="RejectReparsePoints"/> without throwing, for
+        /// callers that must report a path shape separately from a corrupt record.
+        /// </summary>
+        public static bool HasReparsePointAncestor(string path)
+        {
             var current = Path.GetFullPath(path);
             while (!string.IsNullOrEmpty(current))
             {
                 try
                 {
                     if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
-                        throw new InvalidDataException("Migration paths must not contain reparse points.");
+                        return true;
                 }
                 catch (FileNotFoundException) { }
                 catch (DirectoryNotFoundException) { }
                 current = Path.GetDirectoryName(current);
             }
+
+            return false;
         }
 
         private static void Validate(MigrationRecord record, MigrationBinding expected, DateTime utcNow, bool renewConsent = false)
@@ -222,6 +246,15 @@ namespace OpenClaw.Connection.Migration
                     (!renewConsent && utcNow >= record.ExpiresUtc) ||
                     record.TargetVersion != "" || string.IsNullOrWhiteSpace(record.InventoryJson))
                     throw new InvalidDataException("Migration intent is invalid or expired. Confirm migration again.");
+            }
+            else if (record.Kind == "consent")
+            {
+                // Consent authorizes later preparation, not an inventory snapshot or uninstall.
+                if (record.CreatedUtc > utcNow || record.ExpiresUtc != record.CreatedUtc.AddDays(30) ||
+                    (!renewConsent && utcNow >= record.ExpiresUtc) ||
+                    record.TargetVersion != "" || record.InventoryJson != "" ||
+                    record.Fingerprint != ConsentFingerprint || record.AutoStart)
+                    throw new InvalidDataException("Migration consent is invalid or expired. Confirm migration again.");
             }
             else if (record.Kind == "completed")
             {

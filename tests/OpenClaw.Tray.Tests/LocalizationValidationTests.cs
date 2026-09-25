@@ -837,6 +837,49 @@ public class LocalizationValidationTests
         }
     }
 
+    /// <summary>
+    /// Matches an XML entity or numeric character reference that survived XML
+    /// decoding. A .resw value is stored escaped and decoded once when loaded,
+    /// so a well-formed resource can never yield one of these after decoding.
+    /// Seeing one means the literal text was escaped an extra time.
+    /// </summary>
+    private static readonly Regex SurvivingXmlEntity = new(
+        @"&(?:#x?[0-9A-Fa-f]+|amp|lt|gt|quot|apos);",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+    [Fact]
+    public void Resources_DoNotContainOverEscapedXmlEntities()
+    {
+        var stringsDir = GetStringsDirectory();
+        var failures = new List<string>();
+
+        foreach (var localeDir in Directory.GetDirectories(stringsDir).OrderBy(d => d, StringComparer.Ordinal))
+        {
+            var reswPath = Path.Combine(localeDir, "Resources.resw");
+            if (!File.Exists(reswPath)) continue;
+
+            var locale = Path.GetFileName(localeDir);
+            foreach (var (key, value) in LoadResw(reswPath))
+            {
+                var match = SurvivingXmlEntity.Match(value);
+                if (match.Success)
+                {
+                    failures.Add($"{locale} :: {key} :: renders literal '{match.Value}'");
+                }
+            }
+        }
+
+        Assert.True(
+            failures.Count == 0,
+            "Resource values must not contain XML entities that survive decoding; users see the raw " +
+            "escape sequence instead of the intended character. This happens when already-escaped text " +
+            "is escaped again, for example lifting a XAML attribute into .resw ('&#x2192;' becomes " +
+            "'&amp;#x2192;') or re-escaping a translated value ('&amp;' becomes '&amp;amp;'). " +
+            "Store the literal character instead: write an arrow as '\u2192' and an ampersand as a " +
+            "single '&' in the source text, which the .resw writer escapes exactly once." +
+            Environment.NewLine + string.Join(Environment.NewLine, failures));
+    }
+
     [Fact]
     public void AllLocales_ContainRuntimeOnboardingKeys()
     {

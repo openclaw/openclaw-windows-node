@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
     <xsd:element name="root" msdata:IsDataSet="true">
@@ -4959,7 +4959,7 @@ Os controles de arquivo, rede, área de transferência, tempo limite e aprovaç�
     <value>Instalação MSIX detectada</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Message" xml:space="preserve">
-    <value>Remover o OpenClaw pelas Configurações do Windows &amp;#x2192; Aplicativos NÃO removerá o Gateway local (distro WSL, imagem de disco). Use Remover Gateway local abaixo PRIMEIRO e só depois desinstale o OpenClaw.</value>
+    <value>Remover o OpenClaw pelas Configurações do Windows → Aplicativos NÃO removerá o Gateway local (distro WSL, imagem de disco). Use Remover Gateway local abaixo PRIMEIRO e só depois desinstale o OpenClaw.</value>
   </data>
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>Remove a distro WSL (OpenClawGateway), sua imagem de disco, a entrada de inicialização automática, e apaga as credenciais do Gateway. Seu token MCP é preservado. A integração será reiniciada.</value>
@@ -7210,9 +7210,6 @@ Escolha {1} para sair desta prévia sem iniciar a migração e continuar usando 
   <data name="Migration_StoreValidationFailed" xml:space="preserve">
     <value>O OpenClaw não pôde validar com segurança a configuração anterior para a migração. Nenhuma conclusão foi registrada e o aplicativo anterior não foi alterado. Feche esta prévia e tente novamente mais tarde. Não desinstale o aplicativo anterior, não exclua os dados de migração nem execute a limpeza do gateway.</value>
   </data>
-  <data name="Migration_StoreCredentialUnavailable" xml:space="preserve">
-    <value>O OpenClaw não conseguiu resolver uma credencial para o gateway ativo. Nenhuma conclusão foi registrada e o aplicativo anterior não foi alterado. Feche esta prévia e restaure a configuração do gateway ativo antes de tentar novamente. Não desinstale o aplicativo anterior, não exclua os dados de migração nem execute a limpeza do gateway.</value>
-  </data>
   <data name="Migration_StoreAwaitingInnoRemoval" xml:space="preserve">
     <value>O OpenClaw registrou a conclusão da migração e preservou sua configuração. Feche esta prévia, desinstale o aplicativo OpenClaw Companion anterior nas Configurações do Windows e abra a versão da Store. Não exclua os dados de migração nem execute a limpeza do gateway.</value>
   </data>
@@ -7239,6 +7236,143 @@ Escolha {1} para sair desta prévia sem iniciar a migração e continuar usando 
   </data>
   <data name="Migration_StorePending" xml:space="preserve">
     <value>Uma migração anterior precisa de recuperação ou finalização. Esta versão de teste não pode continuá-la nem iniciar normalmente. Feche esta prévia. Não desinstale o aplicativo anterior, não exclua os dados de migração nem execute a limpeza do gateway.</value>
+  </data>
+  <data name="Migration2_Title" xml:space="preserve">
+    <value>Mudar para a versão da Store</value>
+  </data>
+  <data name="Migration2_Consent" xml:space="preserve">
+    <value>Mantenha suas configurações, gateway, arquivos e modelos onde estão.</value>
+  </data>
+  <data name="Migration2_PrepareStepTitle" xml:space="preserve">
+    <value>Vamos preparar sua configuração</value>
+  </data>
+  <data name="Migration2_PrepareStepBody" xml:space="preserve">
+    <value>Vamos fechar o aplicativo anterior com segurança, verificar sua instalação e configurações e salvar registros protegidos de migração.</value>
+  </data>
+  <data name="Migration2_RemoveStepTitle" xml:space="preserve">
+    <value>Você removerá o aplicativo anterior</value>
+  </data>
+  <data name="Migration2_RemoveStepBody" xml:space="preserve">
+    <value>Quando solicitado, desinstale-o manualmente. Nada será desinstalado automaticamente.</value>
+  </data>
+  <data name="Migration2_FinishStepTitle" xml:space="preserve">
+    <value>Depois, use a versão da Store</value>
+  </data>
+  <data name="Migration2_FinishStepBody" xml:space="preserve">
+    <value>Verificamos a remoção antes de iniciar a versão da Store.</value>
+  </data>
+  <data name="Migration2_ConsentHint" xml:space="preserve">
+    <value>Selecione Agora não para sair sem iniciar a migração. A versão da Store permanece fechada enquanto o aplicativo anterior estiver instalado.</value>
+  </data>
+  <data name="Migration2_ConsentWarningTitle" xml:space="preserve">
+    <value>Antes de continuar</value>
+  </data>
+  <data name="Migration2_ConsentWarning" xml:space="preserve">
+    <value>Se a validação for bem-sucedida, o aplicativo anterior não poderá mais iniciar normalmente.</value>
+  </data>
+  <data name="Migration2_Closing" xml:space="preserve">
+    <value>Solicitando o encerramento seguro do aplicativo anterior...</value>
+  </data>
+  <data name="Migration2_Preparing" xml:space="preserve">
+    <value>Validando sua configuração existente...</value>
+  </data>
+  <data name="Migration2_Completing" xml:space="preserve">
+    <value>Registrando a conclusão da migração...</value>
+  </data>
+  <data name="Migration2_Finalizing" xml:space="preserve">
+    <value>Verificando a desinstalação e finalizando a migração...</value>
+  </data>
+  <data name="Migration2_CloseInno" xml:space="preserve">
+    <value>Feche o OpenClaw Companion pelo menu na bandeja do sistema e selecione Tentar novamente.</value>
+  </data>
+  <data name="Migration2_CloseInnoTitle" xml:space="preserve">
+    <value>Feche o aplicativo anterior</value>
+  </data>
+  <data name="Migration2_CloseInnoWarningTitle" xml:space="preserve">
+    <value>Não desinstale ainda</value>
+  </data>
+  <data name="Migration2_CloseInnoWarning" xml:space="preserve">
+    <value>Não force o encerramento nem desinstale o aplicativo ainda. Avisaremos quando for seguro desinstalar.</value>
+  </data>
+  <data name="Migration2_AwaitingRemoval" xml:space="preserve">
+    <value>Sua configuração foi validada e a conclusão da migração foi registrada.
+
+1. Abra Aplicativos instalados e desinstale apenas o aplicativo OpenClaw Companion anterior. Mantenha a versão da Store.
+
+2. Volte aqui e selecione Tentar novamente para verificar a remoção e finalizar.
+
+Suas configurações, gateway, arquivos e modelos permanecem no mesmo local.</value>
+  </data>
+  <data name="Migration2_RemovalTitle" xml:space="preserve">
+    <value>Remova o aplicativo anterior</value>
+  </data>
+  <data name="Migration2_RemovalWarningTitle" xml:space="preserve">
+    <value>Mantenha sua configuração</value>
+  </data>
+  <data name="Migration2_RemovalWarning" xml:space="preserve">
+    <value>Não exclua os dados de migração nem execute a limpeza do gateway.</value>
+  </data>
+  <data name="Migration2_ValidationFailed" xml:space="preserve">
+    <value>O OpenClaw não conseguiu concluir a migração com segurança. Não desinstale o aplicativo anterior nem execute a limpeza do gateway. Consulte o log do aplicativo, resolva o problema e tente novamente.</value>
+  </data>
+  <data name="Migration2_UpdateRequired" xml:space="preserve">
+    <value>Primeiro, atualize o aplicativo anterior para uma versão compatível com suporte à migração. Sua configuração não foi alterada. Este aplicativo permanece inativo enquanto o aplicativo anterior estiver instalado.</value>
+  </data>
+  <data name="Migration2_Unsupported" xml:space="preserve">
+    <value>Esta instalação não pode ser migrada com segurança. Apenas a instalação padrão para o mesmo usuário do Windows e com arquitetura correspondente é compatível. Sua configuração não foi alterada. Este aplicativo permanece inativo enquanto o aplicativo anterior estiver instalado.</value>
+  </data>
+  <data name="Migration2_InspectionFailed" xml:space="preserve">
+    <value>O OpenClaw não conseguiu verificar com segurança a instalação ou os registros de migração. Consulte o log do aplicativo antes de tentar novamente. Não exclua os dados de migração nem execute a limpeza do gateway.</value>
+  </data>
+  <data name="Migration2_Recovery" xml:space="preserve">
+    <value>Esta migração precisa de recuperação. Consulte o log do aplicativo. Se o aplicativo anterior ainda estiver instalado, remova-o em Aplicativos instalados e selecione Tentar novamente. Não exclua os dados de migração manualmente nem execute a limpeza do gateway.</value>
+  </data>
+  <data name="Migration2_FinalizationFailed" xml:space="preserve">
+    <value>O OpenClaw não conseguiu finalizar a migração. O recibo de conclusão foi preservado para recuperação. Consulte o log do aplicativo e tente novamente. Não exclua os dados de migração nem execute a limpeza do gateway.</value>
+  </data>
+  <data name="Migration2_InstalledApps" xml:space="preserve">
+    <value>Abrir Aplicativos instalados</value>
+  </data>
+  <data name="Migration2_DiscardRecords" xml:space="preserve">
+    <value>Descartar dados de migração ilegíveis</value>
+  </data>
+  <data name="Migration2_DiscardFailed" xml:space="preserve">
+    <value>O OpenClaw não conseguiu descartar os dados de migração. Se o aplicativo OpenClaw anterior estiver em execução, feche-o e tente novamente. Consulte o log do aplicativo para obter detalhes.</value>
+  </data>
+  <data name="Migration2_LaunchFailed" xml:space="preserve">
+    <value>O Windows não conseguiu abrir a página solicitada. Tente novamente ou abra Configurações do Windows &gt; Aplicativos &gt; Aplicativos instalados manualmente se a migração estiver concluída.</value>
+  </data>
+  <data name="Migration2_InnoRecommendation.Text" xml:space="preserve">
+    <value>Recomendado</value>
+  </data>
+  <data name="Migration2_InnoCardTitle.Text" xml:space="preserve">
+    <value>Mudar para a versão da Microsoft Store</value>
+  </data>
+  <data name="Migration2_InnoCardDescription.Text" xml:space="preserve">
+    <value>Receba futuras atualizações do OpenClaw pela Microsoft Store. Sua configuração atual do OpenClaw será preservada.</value>
+  </data>
+  <data name="Migration2_InnoAction" xml:space="preserve">
+    <value>Instalar a versão da Store e migrar</value>
+  </data>
+  <data name="Migration2_InnoConsentTitle" xml:space="preserve">
+    <value>Mudar para a versão da Store?</value>
+  </data>
+  <data name="Migration2_InnoConsent" xml:space="preserve">
+    <value>A Microsoft Store será aberta para você instalar a versão da Store. Quando você abri-la, ela poderá fechar este aplicativo e concluir a mudança sem pedir autorização novamente.
+
+Suas configurações, gateway, arquivos e modelos permanecem onde estão.</value>
+  </data>
+  <data name="Migration2_InnoGranted" xml:space="preserve">
+    <value>O consentimento para migração foi salvo. Instale e abra a versão da Store para continuar. Mantenha este aplicativo instalado até que a conclusão da migração seja confirmada.</value>
+  </data>
+  <data name="Migration2_InnoFailed" xml:space="preserve">
+    <value>O OpenClaw não conseguiu salvar o consentimento para migração ou abrir a página do aplicativo na Store. Consulte o log do aplicativo e tente novamente. Não desinstale este aplicativo.</value>
+  </data>
+  <data name="Migration2_Close" xml:space="preserve">
+    <value>Fechar</value>
+  </data>
+  <data name="Migration2_Busy" xml:space="preserve">
+    <value>Aguarde a conclusão desta etapa.</value>
   </data>
   <data name="Chat_Code_Copy" xml:space="preserve"><value>Copiar código</value></data>
   <data name="Chat_Code_Label" xml:space="preserve"><value>Bloco de código</value></data>

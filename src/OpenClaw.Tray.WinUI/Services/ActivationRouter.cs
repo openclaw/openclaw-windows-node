@@ -17,6 +17,8 @@ internal sealed class ActivationRouter : IAsyncDisposable
     private static readonly TimeSpan ForwardRetryDelay = TimeSpan.FromMilliseconds(100);
     private readonly string _protocolScheme;
     private readonly string _pipeName;
+    private const string MigrationShutdownMessage = "OpenClaw.Migration.Shutdown.v1";
+    private readonly Action? _migrationShutdown;
     private readonly object _lifecycleGate = new();
     private readonly object _dispatchGate = new();
     private readonly HashSet<DispatchOperation> _pendingDispatches = new();
@@ -32,10 +34,11 @@ internal sealed class ActivationRouter : IAsyncDisposable
         public Task<bool>? Task { get; set; }
     }
 
-    public ActivationRouter(string protocolScheme, string pipeName)
+    public ActivationRouter(string protocolScheme, string pipeName, Action? migrationShutdown = null)
     {
         _protocolScheme = protocolScheme;
         _pipeName = pipeName;
+        _migrationShutdown = migrationShutdown;
     }
 
     public ActivationPlan PlanLaunch(LaunchActivationInput input)
@@ -210,6 +213,16 @@ internal sealed class ActivationRouter : IAsyncDisposable
                     outBufferSize: 0);
                 await pipe.WaitForConnectionAsync(token);
                 var uri = await ReadIpcPayloadAsync(pipe, token);
+                if (uri == MigrationShutdownMessage)
+                {
+                    // This is not a URI route. Only the preview Inno host supplies a
+                    // callback, which revalidates protected consent before graceful exit.
+                    if (_migrationShutdown is null)
+                        Logger.Warn("Migration shutdown is not enabled for this host.");
+                    else
+                        _migrationShutdown();
+                    continue;
+                }
                 if (!string.IsNullOrEmpty(uri))
                 {
                     Logger.Info($"Received deep link via IPC: {DeepLinkSecurityPolicy.RedactForLog(uri)}");
@@ -268,6 +281,28 @@ internal sealed class ActivationRouter : IAsyncDisposable
         catch (Exception ex)
         {
             Logger.Error($"ActivationRouter: forwarded activation dispatch failed: {ex.Message}");
+        }
+    }
+
+    [SupportedOSPlatform("windows")]
+    public async Task<bool> RequestMigrationShutdownAsync(CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(2));
+        try
+        {
+            using var pipe = new NamedPipeClientStream(".", _pipeName, PipeDirection.Out,
+                PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+            await pipe.ConnectAsync(timeout.Token).ConfigureAwait(false);
+            await pipe.WriteAsync(Encoding.UTF8.GetBytes(MigrationShutdownMessage), timeout.Token).ConfigureAwait(false);
+            await pipe.FlushAsync(timeout.Token).ConfigureAwait(false);
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or OperationCanceledException)
+        {
+            Logger.Warn($"Migration shutdown request unavailable: {exception.Message}");
+            cancellationToken.ThrowIfCancellationRequested();
+            return false;
         }
     }
 

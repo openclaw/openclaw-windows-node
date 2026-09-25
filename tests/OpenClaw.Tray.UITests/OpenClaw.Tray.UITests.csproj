@@ -57,4 +57,19 @@
     <ProjectReference Include="..\OpenClaw.GatewayFixtureHost\OpenClaw.GatewayFixtureHost.csproj" />
   </ItemGroup>
 
+  <!-- A WinExe ProjectReference copies its named PRI but not its compiled
+       window payload. The unpackaged testhost also needs a default PRI name. -->
+  <Target Name="CopyStoreMigrationWindowTestResources" AfterTargets="Build">
+    <ItemGroup>
+      <_TrayTestResourceRoot Include="@(ReferenceCopyLocalPaths)"
+                            Condition="'%(Filename)' == 'OpenClaw.Tray.WinUI' and '%(Extension)' == '.dll'" />
+    </ItemGroup>
+    <Error Condition="'@(_TrayTestResourceRoot)' == ''"
+           Text="The production tray reference is required for mounted migration window tests." />
+    <Copy SourceFiles="@(_TrayTestResourceRoot->'%(RootDir)%(Directory)Windows\StoreMigrationWindow.xbf')"
+          DestinationFolder="$(TargetDir)Windows" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_TrayTestResourceRoot->'%(RootDir)%(Directory)OpenClaw.Tray.WinUI.pri')"
+          DestinationFiles="$(TargetDir)resources.pri" SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>
