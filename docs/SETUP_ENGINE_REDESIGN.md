@@ -343,6 +343,17 @@ Structured JSONL logger. Records sanitized entries for:
 
 Log path defaults to `%APPDATA%\OpenClawTray\Logs\Setup\setup-engine-<yyyyMMdd-HHmmss>.jsonl` for setup and `uninstall-engine-<yyyyMMdd-HHmmss>.jsonl` for uninstall.
 
+### Uninstall onboarding reset
+
+The Inno uninstaller invokes `scripts\Uninstall-LocalGateway.ps1` directly,
+not the C# uninstall engine. Both onboarding reset paths remove `GatewayUrl`
+and legacy `Token` / `BootstrapToken` properties from `settings.json`, even
+when node mode and autostart settings are preserved for remaining gateways.
+Other preferences and external gateway records are preserved. The focused
+`UninstallOnboardingSettingsTests` execute only the production PowerShell
+reset and its JSON/logging helpers under Windows PowerShell 5.1 with temporary
+files; they do not prove the full signed-installer uninstall path.
+
 ---
 
 ## UI Flow

@@ -46,6 +46,11 @@ public class SettingsManager
     public int? BrowserControlPort { get => _data.BrowserControlPort; set => _data = _data with { BrowserControlPort = value }; }
     public string? LegacyToken { get; private set; }
     public string? LegacyBootstrapToken { get; private set; }
+    /// <summary>
+    /// True when settings.json stored a non-empty GatewayUrl. The in-memory
+    /// default URL is not a saved gateway and must not receive legacy secrets.
+    /// </summary>
+    public bool HasPersistedGatewayUrl { get; private set; }
     public bool HasLegacyGatewayCredentials =>
         !string.IsNullOrWhiteSpace(LegacyToken) ||
         !string.IsNullOrWhiteSpace(LegacyBootstrapToken);
@@ -215,6 +220,7 @@ public class SettingsManager
     {
         LegacyToken = null;
         LegacyBootstrapToken = null;
+        HasPersistedGatewayUrl = false;
         _data = CreateDefaultData();
 
         try
@@ -235,6 +241,7 @@ public class SettingsManager
             Logger.Warn($"Failed to load settings: {ex.Message}");
             LegacyToken = null;
             LegacyBootstrapToken = null;
+            HasPersistedGatewayUrl = false;
         }
     }
 
@@ -389,10 +396,16 @@ public class SettingsManager
     {
         LegacyToken = null;
         LegacyBootstrapToken = null;
+        HasPersistedGatewayUrl = false;
 
         try
         {
             using var document = JsonDocument.Parse(json);
+            HasPersistedGatewayUrl = !string.IsNullOrWhiteSpace(
+                ReadLegacyString(document.RootElement, "GatewayUrl"));
+            if (!HasPersistedGatewayUrl)
+                return;
+
             LegacyToken = ReadLegacyString(document.RootElement, "Token");
             LegacyBootstrapToken = ReadLegacyString(document.RootElement, "BootstrapToken");
         }

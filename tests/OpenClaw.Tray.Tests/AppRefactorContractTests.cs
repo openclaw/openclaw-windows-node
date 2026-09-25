@@ -442,6 +442,7 @@ public sealed class AppRefactorContractTests
         var method = ExtractMethod(source, "TryMigrateLegacyGatewaySettings");
 
         Assert.Contains("_gatewayRegistry.MigrateFromSettings", method);
+        Assert.DoesNotContain("!_settings.HasPersistedGatewayUrl", method);
         Assert.Contains("_settings.LegacyToken", method);
         Assert.Contains("_settings.LegacyBootstrapToken", method);
         Assert.Contains("SettingsManager.SettingsDirectoryPath", method);

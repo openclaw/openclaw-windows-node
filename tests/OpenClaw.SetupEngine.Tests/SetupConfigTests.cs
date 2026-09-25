@@ -686,6 +686,40 @@ public class SetupConfigTests : IDisposable
     }
 
     [Fact]
+    [SupportedOSPlatform("windows")]
+    public void TrayArtifactCleanup_ResetOnboardingSettings_RemovesLegacyGatewayTokens()
+    {
+        var settingsPath = Path.Combine(_tempDir, "settings.json");
+        File.WriteAllText(
+            settingsPath,
+            """
+            {"GatewayUrl":"ws://127.0.0.1:18789","Token":"leftover-shared","BootstrapToken":"leftover-bootstrap","EnableNodeMode":true,"NotifyHealth":false}
+            """);
+
+        TrayArtifactCleanup.ResetOnboardingSettings(_tempDir, new SetupLogger(filePath: null), preserveNodeSettings: false);
+
+        using var result = JsonDocument.Parse(File.ReadAllText(settingsPath));
+        Assert.False(result.RootElement.TryGetProperty("GatewayUrl", out _));
+        Assert.False(result.RootElement.TryGetProperty("Token", out _));
+        Assert.False(result.RootElement.TryGetProperty("BootstrapToken", out _));
+        Assert.False(result.RootElement.GetProperty("EnableNodeMode").GetBoolean());
+        Assert.False(result.RootElement.GetProperty("NotifyHealth").GetBoolean());
+
+        File.WriteAllText(
+            settingsPath,
+            """
+            {"Token":"leftover-shared","BootstrapToken":"leftover-bootstrap","NotifyHealth":false}
+            """);
+
+        TrayArtifactCleanup.ResetOnboardingSettings(_tempDir, new SetupLogger(filePath: null), preserveNodeSettings: true);
+
+        using var leftover = JsonDocument.Parse(File.ReadAllText(settingsPath));
+        Assert.False(leftover.RootElement.TryGetProperty("Token", out _));
+        Assert.False(leftover.RootElement.TryGetProperty("BootstrapToken", out _));
+        Assert.False(leftover.RootElement.GetProperty("NotifyHealth").GetBoolean());
+    }
+
+    [Fact]
     public void WslConfig_Defaults()
     {
         var wsl = new WslConfig();

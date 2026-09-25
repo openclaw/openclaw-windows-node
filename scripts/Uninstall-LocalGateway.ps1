@@ -439,9 +439,11 @@ function Resolve-AppDataDir {
         }
 
         $changed = $false
-        if ($settings.PSObject.Properties['GatewayUrl']) {
-            $settings.PSObject.Properties.Remove('GatewayUrl')
-            $changed = $true
+        foreach ($propertyName in @('GatewayUrl', 'Token', 'BootstrapToken')) {
+            if ($settings.PSObject.Properties[$propertyName]) {
+                $settings.PSObject.Properties.Remove($propertyName)
+                $changed = $true
+            }
         }
 
         if (-not $PreserveNodeSettings -and $settings.PSObject.Properties['EnableNodeMode']) {
@@ -461,7 +463,7 @@ function Resolve-AppDataDir {
 
         try {
             Write-JsonFileAtomic -Path $settingsPath -Value $settings
-            Write-GatewayLog 'Reset onboarding settings.'
+            Write-GatewayLog 'Reset onboarding settings; legacy gateway fields are absent.'
         } catch {
             Add-CleanupWarning "Failed to reset onboarding settings: $($_.Exception.Message)"
         }
