@@ -48,6 +48,36 @@ public static class LocalInferenceEligibility
         LocalInferenceRunProfile profile) =>
         LocalInferenceQualificationPolicy.GetRequiredMemoryBytes(model, profile);
 
+    /// <summary>
+    /// Device eligibility for deciding whether Local AI stays available, given the model
+    /// already configured on this machine.
+    /// </summary>
+    /// <remarks>
+    /// A SKU with no recommended default is a statement about what to install by default,
+    /// not about what the device can run. Gating availability purely on the default pick
+    /// would switch Local AI off on a setup rerun for a machine that already has a working
+    /// configured model, so once a model is configured this reports on that model: a
+    /// selection that still passes the full capacity fit-test is retained, and one that does
+    /// not carries its own failure (unknown model, or the model name with its required and
+    /// detected memory) rather than the SKU's generic no-recommendation reason. With no model
+    /// configured, the device result stands and fresh setup is unchanged.
+    /// </remarks>
+    public static LocalInferenceEligibilityResult EvaluateForConfiguredAvailability(
+        HostHardwareInfo hardware,
+        string? configuredModelId)
+    {
+        ArgumentNullException.ThrowIfNull(hardware);
+        LocalInferenceEligibilityResult device = Evaluate(hardware);
+        if (device.CanInstall ||
+            device.SelectionFailureCode != LocalInferenceSelectionFailureCode.NotRecommendedForSku ||
+            string.IsNullOrWhiteSpace(configuredModelId))
+        {
+            return device;
+        }
+
+        return Evaluate(hardware, configuredModelId);
+    }
+
     public static LocalInferenceEligibilityResult Evaluate(
         HostHardwareInfo hardware,
         string? requestedModelId = null)
@@ -64,7 +94,14 @@ public static class LocalInferenceEligibility
 
         LocalInferencePlan plan = selection.Plan;
         long requiredMemoryBytes = GetRequiredMemoryBytes(plan.Model, plan.Profile);
-        CandidateAssessment? selected = hardware.NvidiaGpus
+        // A plan bound to one adapter (an RTX Spark SKU recipe) must be assessed only
+        // against that adapter. Ranking every NVIDIA GPU here would let the recipe
+        // chosen for the Spark be reported against, and then launched on, a different
+        // GPU on a mixed host.
+        IEnumerable<GpuInfo> candidateGpus = plan.BoundGpuStableId is { Length: > 0 } boundId
+            ? hardware.NvidiaGpus.Where(gpu => string.Equals(gpu.StableId, boundId, StringComparison.Ordinal))
+            : hardware.NvidiaGpus;
+        CandidateAssessment? selected = candidateGpus
             .Select(gpu => Assess(gpu, plan.Runtime, requiredMemoryBytes))
             .OrderBy(candidate => StatusRank(candidate.Status))
             .ThenBy(candidate => DefinitivenessRank(candidate.FailureCode))

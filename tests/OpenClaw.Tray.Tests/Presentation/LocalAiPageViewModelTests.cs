@@ -737,6 +737,185 @@ public sealed class LocalAiPageViewModelTests
         }
     }
 
+    /// <summary>
+    /// A 32 GB RTX Spark. The fixed SKU table gives this device no recommended default, which
+    /// is a statement about fresh installs rather than about what the device can run.
+    /// </summary>
+    private static HostHardwareInfo Create32GbSparkHardware() =>
+        new(
+            Architecture.Arm64,
+            TotalPhysicalMemoryBytes: 128_000_000_000,
+            AvailablePhysicalMemoryBytes: 96_000_000_000,
+            Gpus:
+            [
+                new GpuInfo(
+                    GpuVendor.Nvidia,
+                    "NVIDIA RTX Spark N1X",
+                    GpuVisibleMemoryBytes: 30L * 1024 * 1024 * 1024,
+                    FreeGpuVisibleMemoryBytes: 30L * 1024 * 1024 * 1024,
+                    DriverVersion: "620.0",
+                    CudaMajorVersion: 13,
+                    StableId: "GPU-spark32"),
+            ],
+            VulkanAvailable: false);
+
+    private static LocalAiPageViewModel CreateViewModel(
+        LocalAiRuntimeSnapshot snapshot,
+        HostHardwareInfo hardware,
+        out FakeAppCommands commands,
+        out PermissionsPageRuntimeSource gatewaySource)
+    {
+        var runtime = new FakeLocalAiRuntime(snapshot);
+        var runtimeHost = new FakePermissionsPageRuntimeHost
+        {
+            ConnectionSnapshot = GatewayConnectionSnapshot.Idle with
+            {
+                OperatorState = RoleConnectionState.Idle,
+            },
+        };
+        gatewaySource = new PermissionsPageRuntimeSource(runtimeHost);
+        commands = new FakeAppCommands();
+        return new LocalAiPageViewModel(
+            runtime,
+            gatewaySource,
+            commands,
+            new RecordingUiDispatcher(),
+            new FixedHardwareProbe(hardware));
+    }
+
+    /// <summary>
+    /// A 32 GB Spark whose managed receipt names a model this hardware still runs keeps the
+    /// Local AI entry point available, so a broken or unverified runtime can reach Retry Setup
+    /// and an installed model can still be changed.
+    /// </summary>
+    [Fact]
+    public async Task Spark32Gb_WithValidManagedReceipt_KeepsRetrySetupReachable()
+    {
+        LocalAiRuntimeSnapshot snapshot = CreateInstalledSnapshot() with
+        {
+            ModelId = LocalModelCatalog.Qwen38_27BModelId,
+            State = LocalAiRuntimeState.Failed,
+            ModelEvidence = new LocalAiModelEvidence(
+                LocalAiModelAvailabilityState.Unknown,
+                DateTimeOffset.UtcNow),
+        };
+        using var viewModel = CreateViewModel(
+            snapshot, Create32GbSparkHardware(), out _, out PermissionsPageRuntimeSource source);
+        using (source)
+        {
+            await ActivateAndWaitForAvailabilityAsync(viewModel);
+
+            Assert.True(viewModel.IsAvailabilityKnown);
+            Assert.True(viewModel.IsLocalAiAvailable);
+            Assert.True(viewModel.IsSetupAvailable);
+            Assert.True(viewModel.CanRetrySetup);
+        }
+    }
+
+    /// <summary>
+    /// The same 32 GB Spark with no managed installation still receives no default, so Local AI
+    /// stays unavailable for a fresh setup on that SKU.
+    /// </summary>
+    [Fact]
+    public async Task Spark32Gb_WithNoManagedReceipt_StaysUnavailable()
+    {
+        LocalAiRuntimeSnapshot snapshot = CreateInstalledSnapshot() with
+        {
+            ModelId = null,
+            State = LocalAiRuntimeState.NotInstalled,
+            Ownership = LocalAiOwnership.None,
+            ModelEvidence = new LocalAiModelEvidence(
+                LocalAiModelAvailabilityState.Unknown,
+                DateTimeOffset.UtcNow),
+        };
+        using var viewModel = CreateViewModel(
+            snapshot, Create32GbSparkHardware(), out _, out PermissionsPageRuntimeSource source);
+        using (source)
+        {
+            await ActivateAndWaitForAvailabilityAsync(viewModel);
+
+            Assert.True(viewModel.IsAvailabilityKnown);
+            Assert.False(viewModel.IsLocalAiAvailable);
+            Assert.False(viewModel.IsSetupAvailable);
+            Assert.False(viewModel.CanRetrySetup);
+            Assert.False(viewModel.CanChangeModel);
+            // NotRecommendedForSku has no dedicated reason kind, so this currently surfaces the
+            // generic Unknown copy. Asserted so the behavior is recorded rather than assumed.
+            Assert.Equal(
+                LocalInferenceUnavailableReasonKind.Unknown,
+                viewModel.LocalAiUnavailableReason?.Kind);
+        }
+    }
+
+    /// <summary>
+    /// The runtime refresh can publish the managed receipt after the availability probe has
+    /// already read the earlier snapshot. Availability must be recomputed when that happens,
+    /// otherwise a first visit leaves a 32 GB Spark fixed at NotRecommendedForSku with Retry
+    /// Setup and Change Model disabled and Recheck unavailable, until the page is reopened.
+    /// </summary>
+    [Fact]
+    public async Task Spark32Gb_WhenReceiptArrivesAfterAvailability_RecomputesAndKeepsRetrySetupReachable()
+    {
+        LocalAiRuntimeSnapshot pending = CreateInstalledSnapshot() with
+        {
+            ModelId = null,
+            State = LocalAiRuntimeState.Failed,
+            ModelEvidence = new LocalAiModelEvidence(
+                LocalAiModelAvailabilityState.Unknown,
+                DateTimeOffset.UtcNow),
+        };
+        var refreshGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var runtime = new FakeLocalAiRuntime(pending)
+        {
+            RefreshDelay = refreshGate.Task,
+            RefreshResult = pending with { ModelId = LocalModelCatalog.Qwen38_27BModelId },
+        };
+        using var gatewaySource = new PermissionsPageRuntimeSource(new FakePermissionsPageRuntimeHost());
+        using var viewModel = new LocalAiPageViewModel(
+            runtime,
+            gatewaySource,
+            new FakeAppCommands(),
+            new RecordingUiDispatcher(),
+            new FixedHardwareProbe(Create32GbSparkHardware()));
+
+        await ActivateAndWaitForAvailabilityAsync(viewModel);
+
+        // The receipt has not been published yet, so the SKU alone leaves the entry point closed.
+        Assert.False(viewModel.IsLocalAiAvailable);
+        Assert.False(viewModel.CanRetrySetup);
+
+        refreshGate.TrySetResult();
+        await WaitForAsync(viewModel, () => viewModel.IsLocalAiAvailable);
+
+        Assert.True(viewModel.IsSetupAvailable);
+        Assert.True(viewModel.CanRetrySetup);
+    }
+
+    /// <summary>
+    /// A receipt naming a model this catalog no longer knows reports that model's own failure,
+    /// so the page explains what to fix instead of showing the SKU's generic message.
+    /// </summary>
+    [Fact]
+    public async Task Spark32Gb_WithUnknownReceiptModel_ReportsThatModelsReason()
+    {
+        LocalAiRuntimeSnapshot snapshot = CreateInstalledSnapshot() with
+        {
+            ModelId = "no-such-model-id",
+        };
+        using var viewModel = CreateViewModel(
+            snapshot, Create32GbSparkHardware(), out _, out PermissionsPageRuntimeSource source);
+        using (source)
+        {
+            await ActivateAndWaitForAvailabilityAsync(viewModel);
+
+            Assert.True(viewModel.IsAvailabilityKnown);
+            Assert.False(viewModel.IsLocalAiAvailable);
+            Assert.Equal(
+                LocalInferenceUnavailableReasonKind.UnknownModel,
+                viewModel.LocalAiUnavailableReason?.Kind);
+        }
+    }
+
     private static HostHardwareInfo CreateQualifiedHardware() =>
         new(
             Architecture.X64,
@@ -954,8 +1133,21 @@ public sealed class LocalAiPageViewModelTests
             return Task.FromResult(Snapshot);
         }
 
-        public Task<LocalAiRuntimeSnapshot> RefreshAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult(Snapshot);
+        /// <summary>Snapshot the refresh publishes, letting a test model a receipt that the runtime
+        /// only resolves after construction.</summary>
+        public LocalAiRuntimeSnapshot? RefreshResult { get; init; }
+
+        /// <summary>Holds the refresh open until this completes, so a test can land the refresh
+        /// after the availability probe has already read the earlier snapshot.</summary>
+        public Task? RefreshDelay { get; init; }
+
+        public async Task<LocalAiRuntimeSnapshot> RefreshAsync(CancellationToken cancellationToken = default)
+        {
+            if (RefreshDelay is { } delay)
+                await delay.ConfigureAwait(false);
+            Snapshot = RefreshResult ?? Snapshot;
+            return Snapshot;
+        }
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
