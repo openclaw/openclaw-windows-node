@@ -938,6 +938,11 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             return;
 
         var decision = NormalizeApprovalAction(action);
+        if (!_state.CanRespondToPermission(threadId, requestId, decision))
+        {
+            Logger.Warn("[Approval] response blocked: no matching pending approval permits this decision");
+            return;
+        }
         // Use the operator-approvals gateway RPC (``exec.approval.resolve``)
         // rather than the ``/approve <id> <decision>`` chat slash command.
         //

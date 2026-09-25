@@ -14116,6 +14116,35 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task RespondToPermissionAsync_UnreviewableCommandBlocksDirectAllowButPermitsDeny()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        bridge.RaiseAgent(MakeAgentEvent("approval", JsonSerializer.Serialize(new
+        {
+            phase = "requested",
+            approvalId = "appr-unsafe-1",
+            command = new string('x', 20 * 1024),
+        })));
+
+        var pending = snapshots[^1].Timelines["main"].PendingPermission;
+        Assert.NotNull(pending);
+        Assert.Equal([ChatPermissionActionKeys.Deny], pending.Actions);
+
+        await provider.RespondToPermissionAsync("main", "appr-unsafe-1", allow: true);
+        await provider.RespondToPermissionAsync("main", "appr-unsafe-1", ChatPermissionActionKeys.AllowAlways);
+
+        Assert.Empty(bridge.ResolvedApprovals);
+        Assert.Equal("appr-unsafe-1", snapshots[^1].Timelines["main"].PendingPermission?.RequestId);
+
+        await provider.RespondToPermissionAsync("main", "appr-unsafe-1", allow: false);
+
+        Assert.Single(bridge.ResolvedApprovals);
+        Assert.Equal(ChatPermissionActionKeys.Deny, bridge.ResolvedApprovals[0].Decision);
+        Assert.Null(snapshots[^1].Timelines["main"].PendingPermission);
+    }
+
+    [Fact]
     public async Task RespondToPermissionAsync_RpcThrows_BannerPreservedForRetry()
     {
         // Critical contract: if ResolveExecApprovalAsync throws (e.g. gateway

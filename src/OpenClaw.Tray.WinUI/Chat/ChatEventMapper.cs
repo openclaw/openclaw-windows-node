@@ -1,6 +1,7 @@
 using System.Text.Json;
 using OpenClaw.Chat;
 using OpenClaw.Shared;
+using OpenClaw.Shared.ExecApprovals;
 
 namespace OpenClawTray.Chat;
 
@@ -462,18 +463,30 @@ internal static class ChatEventMapper
             return new(null);
 
         var host = StringProperty(evt.Data, "host");
-        var command = StringProperty(evt.Data, "command");
+        var commandStatus = ExecApprovalCommandDisplaySanitizer.SanitizeWithStatus(StringProperty(evt.Data, "command"));
         var title = StringProperty(evt.Data, "title");
-        var message = StringProperty(evt.Data, "message");
-        var detail = string.IsNullOrEmpty(message)
-            ? command
-            : string.IsNullOrEmpty(command) ? message : message + "\n\n" + command;
+        var messageStatus = ExecApprovalCommandDisplaySanitizer.SanitizeWithStatus(StringProperty(evt.Data, "message"));
+        var detail = string.IsNullOrEmpty(messageStatus.Text)
+            ? commandStatus.Text
+            : string.IsNullOrEmpty(commandStatus.Text)
+                ? messageStatus.Text
+                : messageStatus.Text + "\n\n" + commandStatus.Text;
+        if (string.IsNullOrWhiteSpace(commandStatus.Text))
+        {
+            const string missingCommand =
+                "No command was included with this approval, so only Deny is available.";
+            detail = string.IsNullOrEmpty(detail) ? missingCommand : detail + "\n\n" + missingCommand;
+        }
+
+        var canReviewInFull = !string.IsNullOrWhiteSpace(commandStatus.Text)
+            && !commandStatus.Truncated && !commandStatus.Oversized && !commandStatus.UnsafeConcealment
+            && !messageStatus.Truncated && !messageStatus.Oversized && !messageStatus.UnsafeConcealment;
         var mapped = new ChatPermissionRequestEvent(
             requestId,
             !string.IsNullOrEmpty(title) ? title : "Exec approval",
             !string.IsNullOrEmpty(host) ? host : "node",
             detail,
-            ChatPermissionActionKeys.ExecApprovalDefaults);
+            canReviewInFull ? ChatPermissionActionKeys.ExecApprovalDefaults : [ChatPermissionActionKeys.Deny]);
         var alternateId = !string.IsNullOrEmpty(slug) ? approvalId : slug;
         return new(mapped, new ChatApprovalIdentity(requestId, alternateId));
     }
