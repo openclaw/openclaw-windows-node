@@ -60,47 +60,19 @@ public static class InteractiveGatewayCredentialResolver
         var active = registry?.GetActive();
         if (active != null && !string.IsNullOrWhiteSpace(active.Url))
         {
-            // For HTTP surfaces (chat), prefer SharedGatewayToken over DeviceToken.
-            // DeviceToken is for WebSocket auth (auth.deviceToken); SharedGatewayToken
-            // is for HTTP ?token= auth which the chat/dashboard endpoints expect.
-            if (!string.IsNullOrWhiteSpace(active.SharedGatewayToken))
+            if (TryResolveRecord(
+                    active,
+                    registry!.GetIdentityDirectory(active.Id),
+                    identityReader,
+                    authorizeCredential,
+                    out credential,
+                    out var rejected))
             {
-                var sharedCredential = new GatewayCredential(
-                    active.SharedGatewayToken!,
-                    IsBootstrapToken: false,
-                    CredentialResolver.SourceSharedGatewayToken);
-                if (authorizeCredential is not null &&
-                    !authorizeCredential(active, sharedCredential))
-                {
-                    credential = null;
-                    return false;
-                }
-                credential = new InteractiveGatewayCredential(
-                    active.Url,
-                    active.SharedGatewayToken!,
-                    false,
-                    CredentialResolver.SourceSharedGatewayToken);
                 return true;
             }
 
-            // Fall back to standard credential resolution (DeviceToken → Bootstrap)
-            var resolver = new CredentialResolver(identityReader);
-            var resolved = resolver.ResolveOperator(active, registry!.GetIdentityDirectory(active.Id));
-            if (resolved != null)
-            {
-                if (authorizeCredential is not null &&
-                    !authorizeCredential(active, resolved))
-                {
-                    credential = null;
-                    return false;
-                }
-                credential = new InteractiveGatewayCredential(
-                    active.Url,
-                    resolved.Token,
-                    resolved.IsBootstrapToken,
-                    resolved.Source);
-                return true;
-            }
+            if (rejected)
+                return false;
 
             if (!string.Equals(active.Url, effectiveGatewayUrl, StringComparison.OrdinalIgnoreCase))
             {
@@ -143,6 +115,76 @@ public static class InteractiveGatewayCredentialResolver
             legacyCredential.Token,
             legacyCredential.IsBootstrapToken,
             legacyCredential.Source);
+        return true;
+    }
+
+    /// <summary>
+    /// Resolves HTTP credentials for one gateway record.
+    /// Shared token wins for dashboard/chat URLs when it is present and allowed.
+    /// Otherwise the operator resolver order applies: device token, then bootstrap.
+    /// </summary>
+    public static bool TryResolveRecord(
+        GatewayRecord record,
+        string identityDirectory,
+        IDeviceIdentityReader identityReader,
+        Func<GatewayRecord, GatewayCredential, bool>? authorizeCredential,
+        out InteractiveGatewayCredential? credential,
+        out bool rejected)
+    {
+        ArgumentNullException.ThrowIfNull(record);
+        ArgumentException.ThrowIfNullOrWhiteSpace(identityDirectory);
+        ArgumentNullException.ThrowIfNull(identityReader);
+
+        rejected = false;
+        if (string.IsNullOrWhiteSpace(record.Url))
+        {
+            credential = null;
+            return false;
+        }
+
+        // HTTP surfaces prefer the shared token. DeviceToken is WebSocket auth.
+        if (!string.IsNullOrWhiteSpace(record.SharedGatewayToken))
+        {
+            var sharedCredential = new GatewayCredential(
+                record.SharedGatewayToken!,
+                IsBootstrapToken: false,
+                CredentialResolver.SourceSharedGatewayToken);
+            if (authorizeCredential is not null &&
+                !authorizeCredential(record, sharedCredential))
+            {
+                credential = null;
+                rejected = true;
+                return false;
+            }
+
+            credential = new InteractiveGatewayCredential(
+                record.Url,
+                record.SharedGatewayToken!,
+                false,
+                CredentialResolver.SourceSharedGatewayToken);
+            return true;
+        }
+
+        var resolved = new CredentialResolver(identityReader).ResolveOperator(record, identityDirectory);
+        if (resolved == null)
+        {
+            credential = null;
+            return false;
+        }
+
+        if (authorizeCredential is not null &&
+            !authorizeCredential(record, resolved))
+        {
+            credential = null;
+            rejected = true;
+            return false;
+        }
+
+        credential = new InteractiveGatewayCredential(
+            record.Url,
+            resolved.Token,
+            resolved.IsBootstrapToken,
+            resolved.Source);
         return true;
     }
 }

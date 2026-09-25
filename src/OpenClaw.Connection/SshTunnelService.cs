@@ -62,6 +62,7 @@ public sealed class SshTunnelService : ISshTunnelManager
     }
     public string? LocalTunnelUrl => IsActive ? $"ws://localhost:{CurrentLocalPort}" : null;
     public string? CurrentUser { get; private set; }
+    public int CurrentSshPort { get; private set; }
     public string? CurrentHost { get; private set; }
     public int CurrentRemotePort { get; private set; }
     public int CurrentLocalPort { get; private set; }
@@ -85,7 +86,8 @@ public sealed class SshTunnelService : ISshTunnelManager
                 CurrentBrowserProxyLocalPort,
                 StartedAtUtc,
                 LastError,
-                Status);
+                Status,
+                CurrentSshPort);
         }
     }
 
@@ -389,6 +391,7 @@ public sealed class SshTunnelService : ISshTunnelManager
 
                 _processStarted = true;
                 CurrentUser = user;
+                CurrentSshPort = sshPort;
                 CurrentHost = host;
                 CurrentRemotePort = remotePort;
                 CurrentLocalPort = localPort;

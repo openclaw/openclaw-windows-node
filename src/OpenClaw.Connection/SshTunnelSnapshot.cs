@@ -15,4 +15,5 @@ public sealed record SshTunnelSnapshot(
     int CurrentBrowserProxyLocalPort,
     DateTime? StartedAtUtc,
     string? LastError,
-    TunnelStatus Status);
+    TunnelStatus Status,
+    int CurrentSshPort = 22);
