@@ -20,7 +20,7 @@ public sealed class InstallGatewayServiceStep : SetupStep
         var distro = ctx.DistroName!;
 
         var result = await ctx.Commands.RunInWslAsync(
-            distro, $"{ctx.WslPathPrefix} && openclaw gateway install --force", TimeSpan.FromSeconds(60), ct: ct);
+            distro, $"{ctx.WslPathPrefix} && openclaw gateway install --force", TimeSpan.FromSeconds(60), ct: ct, inputViaStdin: true);
 
         if (result.ExitCode != 0)
             return StepResult.Fail($"Service install failed (exit {result.ExitCode}): {result.Stderr}");
@@ -30,6 +30,6 @@ public sealed class InstallGatewayServiceStep : SetupStep
 
     public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
     {
-        await ctx.Commands.RunInWslAsync(ctx.DistroName!, $"{ctx.WslPathPrefix} && openclaw gateway uninstall", TimeSpan.FromSeconds(30), ct: ct);
+        await ctx.Commands.RunInWslAsync(ctx.DistroName!, $"{ctx.WslPathPrefix} && openclaw gateway uninstall", TimeSpan.FromSeconds(30), ct: ct, inputViaStdin: true);
     }
 }

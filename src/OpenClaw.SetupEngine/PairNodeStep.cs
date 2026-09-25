@@ -292,7 +292,7 @@ public sealed class PairNodeStep : SetupStep
             var pending = await ctx.Commands.RunInWslAsync(
                 distro,
                 $"""{ctx.WslPathPrefix} && openclaw nodes list --json""",
-                TimeSpan.FromSeconds(30), env, ct);
+                TimeSpan.FromSeconds(30), env, ct, inputViaStdin: true);
 
             ctx.Logger.Info($"Node pending list: exit={pending.ExitCode}");
 
@@ -323,7 +323,7 @@ public sealed class PairNodeStep : SetupStep
         var approve = await ctx.Commands.RunInWslAsync(
             distro,
             $"""{ctx.WslPathPrefix} && {ApprovalRequestHelper.ApprovalCommand(approvalKind)}""",
-            TimeSpan.FromSeconds(30), approvalEnv, ct);
+            TimeSpan.FromSeconds(30), approvalEnv, ct, inputViaStdin: true);
 
         ctx.Logger.Info($"Node approve result: exit={approve.ExitCode}");
 

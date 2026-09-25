@@ -21,7 +21,7 @@ public sealed class VerifyEndToEndStep : SetupStep
         // Verify gateway is still healthy
         var distro = ctx.DistroName!;
         var status = await ctx.Commands.RunInWslAsync(
-            distro, $"{ctx.WslPathPrefix} && openclaw gateway status --json", TimeSpan.FromSeconds(15), ct: ct);
+            distro, $"{ctx.WslPathPrefix} && openclaw gateway status --json", TimeSpan.FromSeconds(15), ct: ct, inputViaStdin: true);
 
         if (status.ExitCode != 0 || !status.Stdout.Contains("running", StringComparison.OrdinalIgnoreCase))
             return StepResult.Fail("Gateway is not running");
@@ -99,7 +99,7 @@ public sealed class VerifyEndToEndStep : SetupStep
             var preview = await ctx.Commands.RunInWslAsync(
                 distro,
                 $"""{pathPrefix} && openclaw devices approve --latest --json""",
-                TimeSpan.FromSeconds(15), env, ct);
+                TimeSpan.FromSeconds(15), env, ct, inputViaStdin: true);
 
             if (preview.Stdout.Contains("No pending", StringComparison.OrdinalIgnoreCase) ||
                 preview.Stderr.Contains("No pending", StringComparison.OrdinalIgnoreCase))
@@ -115,7 +115,7 @@ public sealed class VerifyEndToEndStep : SetupStep
                 var approve = await ctx.Commands.RunInWslAsync(
                     distro,
                     $"""{pathPrefix} && {ApprovalRequestHelper.ApprovalCommand(ApprovalRequestKind.Device)}""",
-                    TimeSpan.FromSeconds(15), approvalEnv, ct);
+                    TimeSpan.FromSeconds(15), approvalEnv, ct, inputViaStdin: true);
 
                 if (approve.ExitCode != 0)
                     return StepResult.Fail($"Device approval drain failed for {parsed.RequestId} (exit {approve.ExitCode}): {approve.Stdout.Trim()} {approve.Stderr.Trim()}".Trim());
@@ -165,7 +165,7 @@ public sealed class VerifyEndToEndStep : SetupStep
             var nodeList = await ctx.Commands.RunInWslAsync(
                 distro,
                 $"""{pathPrefix} && openclaw nodes list --json""",
-                TimeSpan.FromSeconds(15), env, ct);
+                TimeSpan.FromSeconds(15), env, ct, inputViaStdin: true);
 
             var parsed = ApprovalRequestHelper.TryReadPendingRequestIds(nodeList.Stdout.Trim());
             if (!parsed.Success)
@@ -186,7 +186,7 @@ public sealed class VerifyEndToEndStep : SetupStep
                 var approve = await ctx.Commands.RunInWslAsync(
                     distro,
                     $"""{pathPrefix} && {ApprovalRequestHelper.ApprovalCommand(ApprovalRequestKind.Node)}""",
-                    TimeSpan.FromSeconds(15), approvalEnv, ct);
+                    TimeSpan.FromSeconds(15), approvalEnv, ct, inputViaStdin: true);
 
                 if (approve.ExitCode != 0)
                     return StepResult.Fail($"Node approval drain failed for {requestId} (exit {approve.ExitCode}): {approve.Stdout.Trim()} {approve.Stderr.Trim()}".Trim());

@@ -30,7 +30,7 @@ public sealed class MintBootstrapTokenStep : SetupStep
         };
 
         var mint = await ctx.Commands.RunInWslAsync(
-            distro, $"{ctx.WslPathPrefix} && openclaw qr --json", TimeSpan.FromSeconds(30), env, ct);
+            distro, $"{ctx.WslPathPrefix} && openclaw qr --json", TimeSpan.FromSeconds(30), env, ct, inputViaStdin: true);
 
         if (mint.ExitCode == 0 && !string.IsNullOrWhiteSpace(mint.Stdout))
         {

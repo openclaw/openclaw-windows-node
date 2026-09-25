@@ -5306,6 +5306,62 @@ public class SetupStepsTests : IDisposable
     // in docs/ARCHITECTURE.md).
 
     [Fact]
+    public async Task WslPathPrefixScripts_UseStdinSoWslExeDoesNotExpandPath()
+    {
+        var latestApprovals = 0;
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) =>
+            {
+                if (command.Contains("openclaw qr --json", StringComparison.Ordinal))
+                    return Ok("""{"bootstrapToken":"boot-token"}""");
+                if (command.Contains("devices approve --latest", StringComparison.Ordinal))
+                {
+                    latestApprovals++;
+                    return latestApprovals == 1
+                        ? Ok("""{"selected":{"requestId":"device-req-1"}}""")
+                        : Ok("No pending device approvals");
+                }
+                if (command.Contains("nodes list --json", StringComparison.Ordinal))
+                    return Ok("""{"pending":[{"requestId":"node-req-1"}]}""");
+                if (command.Contains("GATEWAY_CONFIGURED", StringComparison.Ordinal))
+                    return Ok("GATEWAY_CONFIGURED");
+                if (command.Contains("curl -s", StringComparison.Ordinal))
+                    return Ok("200");
+                return Ok("""{"requestId":"device-req-1"}""");
+            });
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        ctx.SharedGatewayToken = "shared-token";
+        ctx.Config.Gateway.ReloadMode = "hybrid";
+
+        Assert.True((await new InstallGatewayServiceStep().ExecuteAsync(ctx, CancellationToken.None)).IsSuccess);
+        await new InstallGatewayServiceStep().RollbackAsync(ctx, CancellationToken.None);
+        Assert.True((await new MintBootstrapTokenStep().ExecuteAsync(ctx, CancellationToken.None)).IsSuccess, "mint");
+        Assert.True((await PairOperatorStep.AutoApprovePairing(ctx, CancellationToken.None)).IsSuccess, "operator approve");
+        Assert.True((await PairNodeStep.AutoApproveNodePairing(ctx, requestId: null, CancellationToken.None)).IsSuccess, "node approve");
+        Assert.True((await StartGatewayStep.RestartAndWaitForHealthAsync(ctx, CancellationToken.None)).IsSuccess, "restart");
+        Assert.True((await VerifyEndToEndStep.DrainPendingDeviceApprovalsAsync(ctx, CancellationToken.None)).IsSuccess, "drain");
+        Assert.True((await new ConfigureGatewayStep().ExecuteAsync(ctx, CancellationToken.None)).IsSuccess, "configure");
+        TrustManagedEndpoint(ctx);
+        Assert.True((await new SetupWizardRunner(ctx).SuspendReloadModeAsync()).IsSuccess, "suspend reload");
+        Assert.True((await new SetupWizardRunner(ctx).RestoreReloadModeAsync()).IsSuccess, "restore reload");
+
+        var pathScripts = commands.WslCalls.Where(call => call.Command.Contains("$PATH", StringComparison.Ordinal)).ToList();
+        Assert.Contains(pathScripts, call => call.Command.Contains("gateway install --force", StringComparison.Ordinal));
+        Assert.Contains(pathScripts, call => call.Command.Contains("gateway uninstall", StringComparison.Ordinal));
+        Assert.Contains(pathScripts, call => call.Command.Contains("openclaw qr --json", StringComparison.Ordinal));
+        Assert.Contains(pathScripts, call => call.Command.Contains("devices approve", StringComparison.Ordinal));
+        Assert.Contains(pathScripts, call => call.Command.Contains("nodes list --json", StringComparison.Ordinal));
+        Assert.Contains(pathScripts, call => call.Command.Contains("nodes approve", StringComparison.Ordinal));
+        Assert.Contains(pathScripts, call => call.Command.Contains("gateway restart", StringComparison.Ordinal));
+        Assert.Contains(pathScripts, call => call.Command.Contains("GATEWAY_CONFIGURED", StringComparison.Ordinal));
+        Assert.Contains(pathScripts, call => call.Command.Contains("gateway.reload.mode off", StringComparison.Ordinal));
+        Assert.Contains(pathScripts, call => call.Command.Contains("gateway.reload.mode 'hybrid'", StringComparison.Ordinal));
+        Assert.All(pathScripts, call => Assert.True(call.InputViaStdin, call.Command));
+    }
+
+    [Fact]
     public async Task AutoApprovePairing_ReturnsTerminalForDevicePairPluginNotFound()
     {
         var ctx = CreatePairingContext(DevicePairPluginNotFoundOutput);

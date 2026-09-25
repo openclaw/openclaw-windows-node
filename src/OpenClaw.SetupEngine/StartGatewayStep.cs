@@ -95,7 +95,7 @@ public sealed class StartGatewayStep : SetupStep
         }
 
         var start = await ctx.Commands.RunInWslAsync(
-            distro, $"{pathCmd} && openclaw gateway {action}", TimeSpan.FromSeconds(30), ct: ct);
+            distro, $"{pathCmd} && openclaw gateway {action}", TimeSpan.FromSeconds(30), ct: ct, inputViaStdin: true);
 
         if (start.ExitCode != 0)
         {
@@ -113,7 +113,8 @@ public sealed class StartGatewayStep : SetupStep
                     distro,
                     $"{pathCmd} && openclaw gateway {action}",
                     TimeSpan.FromSeconds(30),
-                    ct: ct);
+                    ct: ct,
+                    inputViaStdin: true);
                 if (start.ExitCode != 0)
                     return StepResult.Fail($"Gateway {action} failed after reset: {start.Stderr}");
             }

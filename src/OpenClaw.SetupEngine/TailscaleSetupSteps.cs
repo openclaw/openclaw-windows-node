@@ -566,7 +566,8 @@ public sealed class FinalizeTailscaleServeStep : SetupStep
             ctx.DistroName!,
             $"{ctx.WslPathPrefix} && openclaw config set {ConfigureGatewayStep.DevicePairPublicUrlKey} {WslShellQuoting.QuotePosixSingleQuote(devicePairPublicUrl)} && openclaw config set {ConfigureGatewayStep.DevicePairEnabledKey} true",
             TimeSpan.FromSeconds(45),
-            ct: ct);
+            ct: ct,
+            inputViaStdin: true);
         if (configurePairUrl.ExitCode != 0)
             return StepResult.Fail($"Could not configure the Tailscale device-pair URL: {configurePairUrl.Stderr}");
 

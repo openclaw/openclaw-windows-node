@@ -108,12 +108,14 @@ public sealed class SetupWizardRunner
     {
         try
         {
+            // PATH prefix references $PATH. Pipe the script so wsl.exe cannot expand it on argv.
             var result = await _ctx.Commands.RunInWslAsync(
                 _ctx.DistroName!,
                 $"{_ctx.WslPathPrefix} && openclaw config set gateway.reload.mode off",
                 TimeSpan.FromSeconds(15),
                 // This bounded handoff must finish so we know whether restoration is required.
-                ct: CancellationToken.None);
+                ct: CancellationToken.None,
+                inputViaStdin: true);
             if (result.ExitCode != 0)
             {
                 return StepResult.Fail(
@@ -671,6 +673,7 @@ public sealed class SetupWizardRunner
             if (lastResult is not null && remaining < MinimumReloadRestorationCommandTimeout)
                 return lastResult;
 
+            // PATH prefix references $PATH. Pipe the script so wsl.exe cannot expand it on argv.
             var result = await _ctx.Commands.RunInWslAsync(
                 _ctx.DistroName!,
                 command,
