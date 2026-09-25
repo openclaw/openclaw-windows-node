@@ -351,7 +351,10 @@ public sealed class ManagedLocalGatewayPortProvenanceService
             return false;
         }
 
-        return _platform.IsExpectedWslGatewayListening(managedDistroName, uri.Port);
+        if (!_platform.IsExpectedWslGatewayListening(managedDistroName, uri.Port))
+            return false;
+
+        return ListenerSnapshotStillCurrent(current, uri);
     }
 
     private GatewayEndpointProvenance InspectCore(GatewayRecord record)
