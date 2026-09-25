@@ -64,7 +64,7 @@ public sealed class ChatTimelinePresentationTests
             "ReactorItemsViewScrollController.cs"));
 
         Assert.Contains("itemsView.Loaded += OnLoaded", binding);
-        Assert.Contains("itemsView.LayoutUpdated += OnLayoutUpdated", binding);
+        Assert.DoesNotContain("LayoutUpdated", binding);
         Assert.Contains("itemsView.DispatcherQueue.TryEnqueue", binding);
         Assert.Contains("itemsView.StartBringItemIntoView(", binding);
         Assert.Contains("VerticalAlignmentRatio = 1.0", binding);
@@ -79,7 +79,7 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("TailNavigationPolicy.CanExecute(", binding);
         Assert.Contains("itemsView.Unloaded += OnUnloaded", binding);
         Assert.Contains("itemsView.Loaded -= OnLoaded", binding);
-        Assert.Contains("itemsView.LayoutUpdated -= OnLayoutUpdated", binding);
+        Assert.Contains("scrollView.Loaded -= OnScrollViewLoaded", binding);
         Assert.DoesNotContain("ChangeView", binding);
         Assert.DoesNotContain("UpdateLayout", binding);
         Assert.DoesNotContain("TailSettle", binding);
@@ -96,6 +96,43 @@ public sealed class ChatTimelinePresentationTests
         var viewChanged = binding[viewChangedStart..tailRequestStart];
         Assert.DoesNotContain("VerticalAnchorRatio", viewChanged);
         Assert.DoesNotContain("StartBringItemIntoView", viewChanged);
+    }
+
+    [Fact]
+    public void ReactorTimeline_InitialTailWaitsForLoadWithoutLayoutSubscription()
+    {
+        var binding = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Chat",
+            "ReactorItemsViewScrollController.cs"));
+
+        var requestStart = binding.IndexOf("public void Request(", StringComparison.Ordinal);
+        var updateStart = binding.IndexOf("public void UpdateTail(", requestStart, StringComparison.Ordinal);
+        Assert.Contains("TryPositionInitialTail();", binding[requestStart..updateStart]);
+
+        var loadStart = binding.IndexOf("private void OnLoaded(", StringComparison.Ordinal);
+        var attachStart = binding.IndexOf("private void AttachScrollView(", loadStart, StringComparison.Ordinal);
+        var initialPositioning = binding[loadStart..attachStart];
+        Assert.Contains("_disposed || !_valid || !itemsView.IsLoaded", initialPositioning);
+        Assert.Contains("if (!scrollView.IsLoaded)", initialPositioning);
+        Assert.Contains("!ReferenceEquals(_awaitingScrollView, scrollView)", initialPositioning);
+        Assert.Contains("scrollView.Loaded += OnScrollViewLoaded", initialPositioning);
+        Assert.Contains("StopWaitingForScrollView();", initialPositioning);
+        Assert.Contains("AttachScrollView();", initialPositioning);
+        Assert.Contains("TailNavigationPolicy.TryCapture(", initialPositioning);
+        Assert.Contains("StartTailRequest(request);", initialPositioning);
+        Assert.Contains("itemsView.DispatcherQueue.TryEnqueue", initialPositioning);
+        Assert.Contains("var version = _version;", initialPositioning);
+        Assert.Contains("_disposed || !_valid || version != _version", initialPositioning);
+        Assert.DoesNotContain("AwaitLayout", binding);
+
+        var unloadStart = binding.IndexOf("private void OnUnloaded(", StringComparison.Ordinal);
+        var stopWaitingStart = binding.IndexOf("private void StopWaitingForScrollView(", unloadStart, StringComparison.Ordinal);
+        Assert.Contains("StopWaitingForScrollView();", binding[unloadStart..stopWaitingStart]);
+        var disposeStart = binding.IndexOf("public void Dispose()", StringComparison.Ordinal);
+        Assert.Contains("StopWaitingForScrollView();", binding[disposeStart..]);
     }
 
     [Fact]
