@@ -354,37 +354,38 @@ internal sealed class ChatConversationState
         {
             if (_disposed)
                 return new(BuildSnapshotLocked(context), []);
-            var previousUsage = _presentation.SnapshotUsage();
             _presentation.ReplaceSessions(sessions);
             var currentSessions = _presentation.SessionSnapshot();
             _history.SeedSessionIds(currentSessions);
             EnsureTimelinesForSessionsLocked();
             _presentation.RememberLastSessionState(context);
-            foreach (var session in currentSessions)
-            {
-                if (string.IsNullOrEmpty(session.Key))
-                    continue;
-                var usage = new ChatUsageSnapshot(
-                    session.InputTokens,
-                    session.OutputTokens,
-                    session.TotalTokens,
-                    session.ContextTokens);
-                var timelineKey = _presentation.ResolveTimelineKey(session, _timelines);
-                if (!previousUsage.TryGetValue(session.Key, out var previous) ||
-                    previous != usage ||
-                    LatestAssistantHasUsageContributionLocked(timelineKey))
-                {
-                    SnapshotLatestAssistantUsageLocked(
-                        session,
-                        timelineKey,
-                        authoritative: true);
-                }
-            }
             return new(
                 BuildSnapshotLocked(context),
                 _status == ConnectionStatus.Connected
                     ? _queue.ThreadsWithMessages()
                     : []);
+        }
+    }
+
+    internal ChatDataSnapshot? ApplyAuthoritativeSessionUsage(
+        SessionInfo[] sessions,
+        ChatProjectionContext context)
+    {
+        lock (_gate)
+        {
+            if (_disposed)
+                return null;
+            var changed = false;
+            foreach (var session in sessions)
+            {
+                if (string.IsNullOrEmpty(session.Key))
+                    continue;
+                changed |= SnapshotLatestAssistantUsageLocked(
+                    session,
+                    _presentation.ResolveTimelineKey(session, _timelines),
+                    authoritative: true);
+            }
+            return changed ? BuildSnapshotLocked(context) : null;
         }
     }
 
@@ -541,7 +542,7 @@ internal sealed class ChatConversationState
             {
                 contextPercent = null;
             }
-            var usageContributionTokens = authoritative ? null : existing?.UsageContributionTokens;
+            var usageContributionTokens = existing?.UsageContributionTokens;
             if (existing is not null &&
                 existing.ResponseTokens == usageTokens &&
                 existing.ContextTokens == contextTokens &&
@@ -561,25 +562,6 @@ internal sealed class ChatConversationState
                 UsageContributionTokens = usageContributionTokens,
             };
             return true;
-        }
-        return false;
-    }
-
-    private bool LatestAssistantHasUsageContributionLocked(string threadId)
-    {
-        if (string.IsNullOrEmpty(threadId) ||
-            !_timelines.TryGetValue(threadId, out var timeline) ||
-            !_entryMeta.TryGetValue(threadId, out var metadata))
-        {
-            return false;
-        }
-        for (var i = timeline.Entries.Count - 1; i >= 0; i--)
-        {
-            var entry = timeline.Entries[i];
-            if (entry.Kind != ChatTimelineItemKind.Assistant)
-                continue;
-            return metadata.TryGetValue(entry.Id, out var entryMetadata) &&
-                   entryMetadata.UsageContributionTokens is > 0;
         }
         return false;
     }
@@ -2280,6 +2262,9 @@ internal sealed class ChatConversationState
                 continue;
             var threadMetadata = GetOrCreateThreadMetaLocked(threadId);
             threadMetadata.TryGetValue(entry.Id, out var existing);
+            if (existing?.UsageContributionTokens == currentUsage &&
+                existing.ResponseTokens != currentUsage)
+                return false;
             var usageSnapshot = currentUsage.Value;
             var contextPercent = metadata.ContextPercent;
             if (contextPercent is null &&

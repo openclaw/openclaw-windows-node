@@ -769,6 +769,11 @@ public class ToolMetaCacheTests
         public Task ResolveExecApprovalAsync(string approvalId, string decision) => Task.CompletedTask;
         public event EventHandler<ConnectionStatus>? StatusChanged;
         public event EventHandler<SessionInfo[]>? SessionsUpdated;
+        public event EventHandler<SessionInfo[]>? SessionUsageSnapshotUpdated
+        {
+            add { }
+            remove { }
+        }
         public event EventHandler<SessionCommandResult>? SessionCommandCompleted;
         public event EventHandler<ChatMessageInfo>? ChatMessageReceived;
         public event EventHandler<AgentEventInfo>? AgentEventReceived;
