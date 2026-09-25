@@ -104,6 +104,16 @@ public sealed class SetupWizardRunner
 
     internal void MarkReloadSuspended() => _reloadSuspended = true;
 
+    internal static bool ShouldReplaceOperatorDeviceId(
+        bool usingWizardIdentity,
+        string? currentOperatorDeviceId)
+    {
+        if (usingWizardIdentity)
+            return true;
+
+        return string.IsNullOrWhiteSpace(currentOperatorDeviceId);
+    }
+
     internal async Task<StepResult> SuspendReloadModeAsync()
     {
         try
@@ -175,9 +185,10 @@ public sealed class SetupWizardRunner
         _ctx.SharedGatewayToken ??= record.SharedGatewayToken;
         _ctx.BootstrapToken ??= record.BootstrapToken;
 
-        if (string.IsNullOrWhiteSpace(storedDeviceToken)
+        var usingWizardIdentity = string.IsNullOrWhiteSpace(storedDeviceToken)
             && !string.IsNullOrWhiteSpace(record.SharedGatewayToken)
-            && string.Equals(credential, record.SharedGatewayToken, StringComparison.Ordinal))
+            && string.Equals(credential, record.SharedGatewayToken, StringComparison.Ordinal);
+        if (usingWizardIdentity)
             identityPath = Path.Combine(identityPath, "setup-wizard");
 
         var wsLogger = new SetupOpenClawLogger(_ctx.Logger);
@@ -203,10 +214,25 @@ public sealed class SetupWizardRunner
             if (connection == PairOperatorStep.ConnectionOutcome.PairingRequired && _ctx.Config.AutoApprovePairing)
             {
                 _ctx.Logger.Info("Wizard operator pairing required — auto-approving");
+                var requestId = client.PairingRequiredRequestId;
+                if (ShouldReplaceOperatorDeviceId(usingWizardIdentity, _ctx.OperatorDeviceId))
+                {
+                    try
+                    {
+                        var identity = new DeviceIdentity(identityPath);
+                        identity.Initialize();
+                        _ctx.OperatorDeviceId = identity.DeviceId;
+                    }
+                    catch (DeviceIdentityLoadException ex)
+                    {
+                        return SetupIdentityFailure.Terminal(_ctx, "wizard operator pairing", ex);
+                    }
+                }
+
                 await client.DisconnectAsync();
                 client.Dispose();
 
-                var approval = await PairOperatorStep.AutoApprovePairing(_ctx, ct);
+                var approval = await PairOperatorStep.AutoApprovePairing(_ctx, requestId, ct);
                 if (!approval.IsSuccess)
                     return approval;
 

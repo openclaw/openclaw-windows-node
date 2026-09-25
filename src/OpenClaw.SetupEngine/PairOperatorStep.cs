@@ -344,18 +344,28 @@ public sealed class PairOperatorStep : SetupStep
 
         if (string.IsNullOrWhiteSpace(requestId))
         {
-            var preview = await ctx.Commands.RunInWslAsync(
+            var pending = await ctx.Commands.RunInWslAsync(
                 distro,
-                $"""{ctx.WslPathPrefix} && openclaw devices approve --latest --json""",
+                $"""{ctx.WslPathPrefix} && openclaw devices list --json""",
                 TimeSpan.FromSeconds(30), env, ct);
 
-            ctx.Logger.Info($"Approve preview: exit={preview.ExitCode}");
+            ctx.Logger.Info($"Device pending list: exit={pending.ExitCode}");
 
-            var parsed = ApprovalRequestHelper.TryReadSelectedRequestId(preview.Stdout.Trim());
+            if (pending.ExitCode != 0)
+            {
+                var pendingOutput = pending.Stdout.Trim();
+                if (ApprovalRequestHelper.IsPluginNotFoundError(pendingOutput))
+                    return StepResult.Terminal(ApprovalRequestHelper.PluginNotFoundMessage);
+                return StepResult.Fail($"Could not list pending pairing requests (exit {pending.ExitCode}): {pendingOutput}");
+            }
+
+            var parsed = ApprovalRequestHelper.TrySelectPendingRequestForDevice(
+                pending.Stdout.Trim(),
+                ctx.OperatorDeviceId);
             if (!parsed.Success)
             {
                 ctx.Logger.Warn($"Could not select pairing request: {parsed.Error}");
-                return StepResult.Fail("Could not find a safe pending pairing request to approve");
+                return StepResult.Fail(parsed.Error ?? "Could not find a safe pending pairing request to approve");
             }
 
             requestId = parsed.RequestId;

@@ -228,6 +228,12 @@ name such as `node` or `openclaw` alone is insufficient. Conflicts retain the
 port-in-use error and include owning process names when available. Missing
 listener ownership or a failed listener inspection does not bypass the check.
 
+Setup operator and node sockets share the gateway record's full device identity.
+If the node socket omits a pairing request ID, setup selects exactly one pending
+node request matching that full identity, not the shortened display ID or the
+only request in the queue. Missing identity, no match, or multiple matches fail
+closed. A socket-provided request ID still uses the exact device-approval path.
+
 ### Local AI GPU admission
 
 Local AI uses the CUDA driver's `cuMemGetInfo` total and free memory directly
