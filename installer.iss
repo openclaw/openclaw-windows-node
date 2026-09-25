@@ -143,6 +143,7 @@ var
   LocalGatewayCleanupChoiceInitialized: Boolean;
   LocalGatewayCleanupRequested: Boolean;
   LocalGatewayCleanupSucceeded: Boolean;
+  LocalGatewayCleanupScriptPath: String;
   MigrationOperationHandle: THandle;
   MigrationOperationLocked: Boolean;
   MigrationOperationUnavailable: Boolean;
@@ -499,6 +500,8 @@ begin
     Exit;
   end;
 
+  LocalGatewayCleanupScriptPath := TempScriptPath;
+
   Params :=
     '-NoProfile -ExecutionPolicy Bypass -File ' + AddQuotes(TempScriptPath) +
     ' -AppRoot ' + AddQuotes(ExpandConstant('{app}')) +
@@ -586,15 +589,87 @@ begin
   Log('User continued uninstall after local gateway cleanup failed; generated state will be preserved.');
 end;
 
+procedure DeleteGeneratedChild(const ChildName: String);
+var
+  ChildPath: String;
+begin
+  ChildPath := AddBackslash(ExpandConstant('{app}')) + ChildName;
+  if DirExists(ChildPath) then
+  begin
+    if not DelTree(ChildPath, True, True, True) then
+      Log('Generated directory could not be deleted: ' + ChildName);
+  end
+  else if FileExists(ChildPath) then
+  begin
+    if not DeleteFile(ChildPath) then
+      Log('Generated file could not be deleted: ' + ChildName);
+  end;
+end;
+
+procedure DeleteConfirmedDistroChild;
+var
+  ResultCode: Integer;
+  Started: Boolean;
+  Params: String;
+begin
+  if (LocalGatewayCleanupScriptPath = '') or (not FileExists(LocalGatewayCleanupScriptPath)) then
+  begin
+    Log('Ownership uncertain: local gateway cleanup script is unavailable; leaving WSL distro children in place.');
+    Exit;
+  end;
+
+  Params :=
+    '-NoProfile -ExecutionPolicy Bypass -File ' + AddQuotes(LocalGatewayCleanupScriptPath) +
+    ' -RemoveConfirmedDistroChild' +
+    ' -AppRoot ' + AddQuotes(ExpandConstant('{tmp}')) +
+    ' -DataDirectoryName ' + AddQuotes('{#MyInstallDir}') +
+    ' -DistroName ' + AddQuotes('{#MyDistroName}');
+
+  Log('Deleting only the confirmed {#MyDistroName} child under the generated-data root.');
+  Started :=
+    Exec(
+      ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+      Params,
+      '',
+      SW_HIDE,
+      ewWaitUntilTerminated,
+      ResultCode);
+  if (not Started) or (ResultCode <> 0) then
+    Log('Confirmed distro child cleanup did not finish; leaving uncertain WSL children in place. Exit code: ' + IntToStr(ResultCode) + '.');
+end;
+
 procedure DeleteGeneratedAppState;
+var
+  AppDir: String;
+  GeneratedRoot: String;
 begin
   if not LocalGatewayCleanupSucceeded then
     Exit;
 
-  if DelTree(ExpandConstant('{app}'), True, True, True) then
-    Log('Deleted generated app state from {app}.')
-  else
-    Log('Generated app state in {app} could not be fully deleted; continuing uninstall.');
+  DeleteConfirmedDistroChild;
+
+  AppDir := RemoveBackslashUnlessRoot(ExpandConstant('{app}'));
+  GeneratedRoot := RemoveBackslashUnlessRoot(ExpandConstant('{localappdata}\{#MyInstallDir}'));
+  if CompareText(AppDir, GeneratedRoot) <> 0 then
+  begin
+    Log('Ownership uncertain: {app} is not the generated-data root; leaving generated children in place.');
+    Exit;
+  end;
+
+  DeleteGeneratedChild('Logs');
+  DeleteGeneratedChild('wsl-keepalive');
+  DeleteGeneratedChild('WebView2');
+  DeleteGeneratedChild('canvas');
+  DeleteGeneratedChild('native-cli');
+  DeleteGeneratedChild('setup-state.json');
+  DeleteGeneratedChild('run.marker');
+  DeleteGeneratedChild('exec-approvals.json');
+  DeleteGeneratedChild('exec-policy.json');
+  DeleteGeneratedChild('openclaw-tray.log');
+  DeleteGeneratedChild('uninstall-gateway-result.json');
+  DeleteGeneratedChild('uninstall-gateway-error.log');
+  DeleteGeneratedChild('uninstall-gateway-wsl.log');
+  Log('Deleted generated app state children from {app}.');
 end;
 
 procedure RemoveAppAutoStart;

@@ -21,7 +21,8 @@ param(
     # Deliberately longer than the checker's own watchdog so the inner bound
     # fires first and we do not orphan a child that is about to answer.
     [int]$MigrationCheckTimeoutSeconds = 120,
-    [int]$WslTimeoutSeconds = 120
+    [int]$WslTimeoutSeconds = 120,
+    [switch]$RemoveConfirmedDistroChild
 )
 
 $ErrorActionPreference = 'Stop'
@@ -692,18 +693,150 @@ function Enter-DestructivePhase {
     $script:MigrationAdmissionPhase = $false
 }
 
+function Test-SameFullPath {
+    param(
+        [string]$Left,
+        [string]$Right
+    )
+
+    try {
+        $leftFull = [System.IO.Path]::GetFullPath($Left).TrimEnd('\')
+        $rightFull = [System.IO.Path]::GetFullPath($Right).TrimEnd('\')
+        return [string]::Equals($leftFull, $rightFull, [System.StringComparison]::OrdinalIgnoreCase)
+    } catch {
+        return $false
+    }
+}
+
+function Get-ReparsePointInPath {
+    param([string]$Path)
+
+    $current = [System.IO.Path]::GetFullPath($Path).TrimEnd('\')
+    while (-not [string]::IsNullOrEmpty($current)) {
+        try {
+            if (([System.IO.File]::GetAttributes($current) -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                return $current
+            }
+        } catch [System.IO.FileNotFoundException] {
+        } catch [System.IO.DirectoryNotFoundException] {
+        }
+
+        $parent = [System.IO.Path]::GetDirectoryName($current)
+        if ([string]::IsNullOrEmpty($parent) -or (Test-SameFullPath $parent $current)) {
+            break
+        }
+        $current = $parent
+    }
+
+    return $null
+}
+
+function Remove-ConfirmedDistroChild {
+    $localDataDir = Resolve-LocalDataDir
+    if ([string]::IsNullOrWhiteSpace($localDataDir)) {
+        Write-GatewayLog 'Ownership uncertain: generated-data root could not be resolved; leaving WSL children in place.'
+        return
+    }
+
+    try {
+        $generatedRoot = [System.IO.Path]::GetFullPath($localDataDir).TrimEnd('\')
+    } catch {
+        Write-GatewayLog "Ownership uncertain: generated-data root '$localDataDir' is not a usable path; leaving WSL children in place."
+        return
+    }
+
+    $rootName = [System.IO.Path]::GetFileName($generatedRoot)
+    if (-not [string]::Equals($rootName, $DataDirectoryName, [System.StringComparison]::OrdinalIgnoreCase)) {
+        Write-GatewayLog "Ownership uncertain: generated-data root '$generatedRoot' is not '$DataDirectoryName'; leaving WSL children in place."
+        return
+    }
+
+    $redirectedPath = Get-ReparsePointInPath -Path $generatedRoot
+    if ($redirectedPath) {
+        Write-GatewayLog "Ownership uncertain: generated-data path traverses reparse point '$redirectedPath'; leaving WSL children in place."
+        return
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($AppRoot)) {
+        try {
+            $appRootFull = [System.IO.Path]::GetFullPath($AppRoot).TrimEnd('\')
+            $appRootName = [System.IO.Path]::GetFileName($appRootFull)
+            if ([string]::Equals($appRootName, $DataDirectoryName, [System.StringComparison]::OrdinalIgnoreCase) -and
+                -not (Test-SameFullPath $appRootFull $generatedRoot)) {
+                Write-GatewayLog "Ownership uncertain: '$appRootFull' matches the data-directory basename but is not the generated-data root '$generatedRoot'; leaving it in place."
+            }
+        } catch {
+            Write-GatewayLog "Ownership uncertain: AppRoot '$AppRoot' is not a usable path; leaving it in place."
+        }
+    }
+
+    $wslRoot = Join-Path $generatedRoot 'wsl'
+    if (-not (Test-Path -LiteralPath $wslRoot -PathType Container)) {
+        Write-GatewayLog "No wsl directory under generated-data root '$generatedRoot'."
+        return
+    }
+
+    $wslItem = Get-Item -LiteralPath $wslRoot -Force -ErrorAction Stop
+    if (($wslItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+        Write-GatewayLog "Ownership uncertain: '$wslRoot' is a reparse point; leaving it in place."
+        return
+    }
+
+    try {
+        $confirmed = [System.IO.Path]::GetFullPath((Join-Path $wslRoot $DistroName)).TrimEnd('\')
+    } catch {
+        Write-GatewayLog "Ownership uncertain: configured distro path under '$wslRoot' is not usable; leaving WSL children in place."
+        return
+    }
+
+    $confirmedParent = [System.IO.Path]::GetDirectoryName($confirmed)
+    if (-not (Test-SameFullPath $confirmedParent $wslRoot)) {
+        Write-GatewayLog "Ownership uncertain: '$confirmed' is not an immediate child of '$wslRoot'; leaving WSL children in place."
+        return
+    }
+
+    foreach ($child in @(Get-ChildItem -LiteralPath $wslRoot -Force)) {
+        $isReparse = ($child.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0
+        $isConfirmed =
+            $child.PSIsContainer -and
+            -not $isReparse -and
+            [string]::Equals($child.Name, $DistroName, [System.StringComparison]::OrdinalIgnoreCase) -and
+            (Test-SameFullPath $child.FullName $confirmed)
+
+        if ($isConfirmed) {
+            Remove-Item -LiteralPath $child.FullName -Recurse -Force -ErrorAction Stop
+            Write-GatewayLog "Deleted confirmed distro child '$($child.FullName)'."
+            continue
+        }
+
+        Write-GatewayLog "Ownership uncertain; leaving leftover '$($child.FullName)'."
+    }
+}
+
 function Remove-GatewayDirectory {
     Enter-DestructivePhase
-    $gatewayDirectory = Join-Path $AppRoot "wsl\$DistroName"
+    $generatedRoot = Resolve-LocalDataDir
+    if (-not (Test-SameFullPath $AppRoot $generatedRoot)) {
+        Add-CleanupWarning "Ownership uncertain: AppRoot '$AppRoot' is not the generated-data root '$generatedRoot'; skipping filesystem cleanup there."
+        return
+    }
+
+    $wslRoot = Join-Path $AppRoot 'wsl'
+    $gatewayDirectory = [System.IO.Path]::GetFullPath((Join-Path $wslRoot $DistroName)).TrimEnd('\')
+    if (-not (Test-SameFullPath ([System.IO.Path]::GetDirectoryName($gatewayDirectory)) $wslRoot)) {
+        throw "Refusing to delete '$gatewayDirectory': it is not an immediate child of '$wslRoot'."
+    }
+
+    foreach ($path in @($AppRoot, $wslRoot, $gatewayDirectory)) {
+        $redirectedPath = Get-ReparsePointInPath -Path $path
+        if ($redirectedPath) {
+            throw "Refusing to recursively delete reparse point '$redirectedPath'."
+        }
+    }
 
     if (-not (Test-Path -LiteralPath $gatewayDirectory)) {
         Write-GatewayLog "Gateway directory does not exist: $gatewayDirectory"
         return
-    }
-
-    $gatewayItem = Get-Item -LiteralPath $gatewayDirectory -Force -ErrorAction Stop
-    if (($gatewayItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
-        throw "Refusing to recursively delete reparse point '$gatewayDirectory'."
     }
 
     $lastError = $null
@@ -732,6 +865,14 @@ $migrationOperationLock = $null
 # (locating wsl.exe, listing distros) stays inside the admission phase.
 $script:MigrationAdmissionPhase = $true
 try {
+    if ($RemoveConfirmedDistroChild) {
+        Enter-DestructivePhase
+        Ensure-AppRoot
+        Write-GatewayLog "Removing only the confirmed distro child '$DistroName' under the generated-data root."
+        Remove-ConfirmedDistroChild
+        exit 0
+    }
+
     if ($DataDirectoryName -eq 'OpenClawTray') {
         $lockDirectory = Join-Path (Resolve-AppDataDir) 'store-migration'
         $lockPath = Join-Path $lockDirectory 'prepare.lock'
