@@ -15,6 +15,12 @@ internal static class GatewayWizardRestartRecoveryPolicy
     /// </summary>
     public const string HostedWizardTerminationError =
         "Error: TUI exited from signal SIGTERM";
+    public const string RestartIntentCoordinatorContentionError =
+        "StateDatabaseCoordinatorContentionError: another OpenClaw process owns state-lifecycle";
+    public const string RestartIntentRecordingRefusal =
+        "GATEWAY_RESTART_PREPARATION_REFUSED: Cannot record restart intent for the serving Gateway. Gateway was not signaled.";
+    public static readonly TimeSpan RestartIntentContentionRetryDelay =
+        TimeSpan.FromMilliseconds(500);
 
     public static bool IsTerminalRestartCandidate(
         string? gatewayVersion,
@@ -92,6 +98,14 @@ internal static class GatewayWizardRestartRecoveryPolicy
 
     public static bool IsRetryableGatewayStartupDisconnect(int? closeStatusCode) =>
         closeStatusCode == 1013;
+
+    public static bool IsRestartIntentCoordinatorContention(string? message) =>
+        message?.Contains(
+            RestartIntentCoordinatorContentionError,
+            StringComparison.Ordinal) == true &&
+        message.Contains(
+            RestartIntentRecordingRefusal,
+            StringComparison.Ordinal);
 
     public static async Task<GatewayEndpointProvenance> WaitForExpectedManagedGatewayAsync(
         Func<CancellationToken, Task<GatewayEndpointProvenance>> inspectAsync,

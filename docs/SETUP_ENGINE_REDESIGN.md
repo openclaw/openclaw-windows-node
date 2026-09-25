@@ -18,15 +18,16 @@ timing explanation, not an established cause of every refusal. Observed service
 states differ: local diagnostics captured `activating/auto-restart` with no
 MainPID, while hosted generic refusals captured an `active/running` unit and a
 live PID. Neither snapshot establishes the admission-time owner-lease predicate.
-`SetupWizardRunner` recognizes only the exact
-serving-owner refusal, waits for verified managed endpoint ownership using the
-existing bounded provenance probe, and retries the normal CLI restart once.
+`SetupWizardRunner` recognizes only the exact serving-owner refusal or the
+combination of typed state-database coordinator contention and the exact
+restart-intent-recording refusal. It waits for verified managed endpoint
+ownership using the existing bounded provenance probe, then retries the normal
+guarded CLI restart once.
 The probe allows up to 30 one-second retry delays, plus probe duration, for
 `NoListener` and `UnknownListener` tagged `ListenerSnapshotChanged`. Other
 unknown/conflicting listeners, other restart errors, and a repeated refusal still
 fail setup. Listener provenance does not prove owner-lease or coordinator
-readiness; the retried CLI command retains those guards. Restart-intent recording
-contention is a separate failure and is not retried here. There is no direct
+readiness; the retried CLI command retains those guards. There is no direct
 systemd restart fallback or ownership bypass.
 
 > **Status note (2026-07-06):** Current default setup includes `WindowsNodeBootstrapContextStep`, which injects Windows-node context into the WSL workspace `AGENTS.md` after onboarding.
