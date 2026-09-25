@@ -485,10 +485,19 @@ public sealed partial class CanvasWindow : WindowEx
         if (string.IsNullOrEmpty(trustedOrigin) || string.IsNullOrEmpty(token))
             return;
 
-        if (IsUriForOrigin(args.Request.Uri, trustedOrigin))
+        var initiator = RequestHeader(args, "Referer");
+        if (CanvasGatewayAuth.ShouldAttachGatewayBearer(sender.Source, args.Request.Uri, trustedOrigin, initiator))
         {
             args.Request.Headers.SetHeader("Authorization", $"Bearer {token}");
         }
+    }
+
+    private static string? RequestHeader(CoreWebView2WebResourceRequestedEventArgs args, string name)
+    {
+        if (!args.Request.Headers.Contains(name))
+            return null;
+
+        return args.Request.Headers.GetHeader(name);
     }
     
     private void OnNavigationCompleted(CoreWebView2 sender, CoreWebView2NavigationCompletedEventArgs args)
@@ -788,15 +797,6 @@ public sealed partial class CanvasWindow : WindowEx
         return uri.AbsolutePath.StartsWith("/__openclaw__/a2ui/", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool IsUriForOrigin(string uri, string origin)
-    {
-        return uri.StartsWith(origin, StringComparison.OrdinalIgnoreCase) &&
-            (uri.Length == origin.Length ||
-             uri[origin.Length] == '/' ||
-             uri[origin.Length] == '?' ||
-             uri[origin.Length] == '#');
-    }
-    
     private Task EnsureWebViewReadyAsync()
     {
         return _isWebViewInitialized ? Task.CompletedTask : _webViewReadyTcs.Task;
