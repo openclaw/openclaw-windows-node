@@ -157,6 +157,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\UpdateCheckPipeline.cs" Link="Services\UpdateCheckPipeline.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SpeechSetupReadiness.cs" Link="Services\SpeechSetupReadiness.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\CanvasGatewayUrlRewriter.cs" Link="Helpers\CanvasGatewayUrlRewriter.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Windows\CanvasNavigationPolicy.cs" Link="Windows\CanvasNavigationPolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\DiagnosticsGate.cs" Link="Helpers\DiagnosticsGate.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\TrayTooltipFormatter.cs" Link="Helpers\TrayTooltipFormatter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\GatewayDashboardUrlBuilder.cs" Link="Helpers\GatewayDashboardUrlBuilder.cs" />

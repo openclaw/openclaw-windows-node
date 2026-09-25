@@ -72,73 +72,11 @@ public sealed partial class CanvasWindow : WindowEx
         @"<\s*(iframe|object|embed|applet)\b[^>]*/?\s*>",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    // URL validation - block dangerous schemes and private networks (IPv4 + IPv6)
-    private static readonly Regex DangerousUrlPattern = new(
-        @"^(file|javascript|data|vbscript):|" +                           // Dangerous schemes
-        @"^https?://(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|169\.254\.)|" + // Private IPv4
-        @"^https?://\[(::1|0:0:0:0:0:0:0:1|::)\]",                        // IPv6 localhost
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    
     /// <summary>
     /// Validates a URL for security - returns true if URL is safe
     /// </summary>
-    private bool IsUrlSafe(string url)
-    {
-        if (url.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
-        {
-            return IsSafeDataUrl(url);
-        }
-        // Allow URLs from the canvas virtual host
-        if (url.StartsWith("https://openclaw-canvas.local/", StringComparison.OrdinalIgnoreCase) ||
-            url.Equals("https://openclaw-canvas.local", StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-        // Allow URLs from the trusted gateway origin with strict boundary check
-        if (!string.IsNullOrEmpty(_trustedGatewayOrigin) &&
-            url.StartsWith(_trustedGatewayOrigin, StringComparison.OrdinalIgnoreCase) &&
-            (url.Length == _trustedGatewayOrigin.Length ||
-             url[_trustedGatewayOrigin.Length] == '/' ||
-             url[_trustedGatewayOrigin.Length] == '?' ||
-             url[_trustedGatewayOrigin.Length] == '#'))
-        {
-            return true;
-        }
-        // Host-normalizing private/loopback guard. The DangerousUrlPattern regex only blocks the
-        // literal dotted-decimal spelling, so encoded IPv4 (2130706433 / 0x7f000001 / 0177.0.0.1),
-        // IPv6 (::1, ::ffff:127.0.0.1, fd00::/fe80::), 0.0.0.0, and CGNAT/Tailscale (100.64/10)
-        // slip through — this is the load-bearing SSRF check for canvas.present, which reaches the
-        // WebView through IsUrlSafe without the navigate command's HttpUrlRiskEvaluator.
-        if (Uri.TryCreate(url, UriKind.Absolute, out var parsedUri) &&
-            OpenClaw.Shared.CanvasUrlSafety.IsPrivateOrLoopbackHost(parsedUri.Host))
-        {
-            return false;
-        }
-        return !DangerousUrlPattern.IsMatch(url);
-    }
-    
-    private static bool IsSafeDataUrl(string url)
-    {
-        // Allow only text/html and text/plain data URLs
-        var commaIndex = url.IndexOf(',');
-        if (commaIndex < 0) return false;
-        
-        var header = url.Substring(5, commaIndex - 5);
-        if (string.IsNullOrWhiteSpace(header))
-        {
-            // Defaults to text/plain;charset=US-ASCII per RFC 2397
-            return true;
-        }
-        
-        var mediaType = header.Split(';', StringSplitOptions.RemoveEmptyEntries)[0].Trim();
-        if (string.IsNullOrEmpty(mediaType))
-        {
-            return true;
-        }
-        
-        return mediaType.Equals("text/html", StringComparison.OrdinalIgnoreCase) ||
-               mediaType.Equals("text/plain", StringComparison.OrdinalIgnoreCase);
-    }
+    private bool IsUrlSafe(string url) =>
+        CanvasNavigationPolicy.IsNavigationTargetAllowed(url, _trustedGatewayOrigin);
     
     public bool IsClosed { get; private set; }
     private string? _trustedGatewayOrigin;
@@ -378,6 +316,8 @@ public sealed partial class CanvasWindow : WindowEx
             ConfigureGatewayAuthHeaderInjection();
 
             // Handle navigation events
+            CanvasWebView.CoreWebView2.NavigationStarting += OnNavigationStarting;
+            CanvasWebView.CoreWebView2.NewWindowRequested += OnNewWindowRequested;
             CanvasWebView.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
             
             _isWebViewInitialized = true;
@@ -491,6 +431,19 @@ public sealed partial class CanvasWindow : WindowEx
         }
     }
     
+    private void OnNavigationStarting(CoreWebView2 sender, CoreWebView2NavigationStartingEventArgs args)
+    {
+        if (args.Uri is not string uri || !IsUrlSafe(uri))
+            args.Cancel = true;
+    }
+
+    // Canvas popups are out of scope. window.open and target=_blank stay cancelled
+    // instead of inheriting the gateway bearer or the navigation allowlist.
+    private void OnNewWindowRequested(CoreWebView2 sender, CoreWebView2NewWindowRequestedEventArgs args)
+    {
+        args.Handled = true;
+    }
+
     private void OnNavigationCompleted(CoreWebView2 sender, CoreWebView2NavigationCompletedEventArgs args)
     {
         if (_navigationTcs != null)
@@ -552,6 +505,8 @@ public sealed partial class CanvasWindow : WindowEx
                 _webMessageReceivedHandler = null;
             }
             RemoveGatewayAuthHeaderInjection(CanvasWebView.CoreWebView2);
+            CanvasWebView.CoreWebView2.NavigationStarting -= OnNavigationStarting;
+            CanvasWebView.CoreWebView2.NewWindowRequested -= OnNewWindowRequested;
             CanvasWebView.CoreWebView2.NavigationCompleted -= OnNavigationCompleted;
         }
 
