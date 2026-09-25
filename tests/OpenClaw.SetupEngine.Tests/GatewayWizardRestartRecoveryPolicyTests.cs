@@ -83,6 +83,27 @@ public class GatewayWizardRestartRecoveryPolicyTests
                 closeStatusCode));
     }
 
+    [Fact]
+    public void RestartIntentCoordinatorContention_RequiresBothExactMarkers()
+    {
+        var contention =
+            $"{GatewayWizardRestartRecoveryPolicy.RestartIntentCoordinatorContentionError}. " +
+            GatewayWizardRestartRecoveryPolicy.RestartIntentRecordingRefusal;
+
+        Assert.True(
+            GatewayWizardRestartRecoveryPolicy.IsRestartIntentCoordinatorContention(
+                contention));
+        Assert.False(
+            GatewayWizardRestartRecoveryPolicy.IsRestartIntentCoordinatorContention(
+                GatewayWizardRestartRecoveryPolicy.RestartIntentCoordinatorContentionError));
+        Assert.False(
+            GatewayWizardRestartRecoveryPolicy.IsRestartIntentCoordinatorContention(
+                GatewayWizardRestartRecoveryPolicy.RestartIntentRecordingRefusal));
+        Assert.False(
+            GatewayWizardRestartRecoveryPolicy.IsRestartIntentCoordinatorContention(
+                "another process owns state-lifecycle"));
+    }
+
     [Theory]
     [InlineData("done")]
     [InlineData("Done")]

@@ -616,13 +616,30 @@ public sealed class SetupWizardRunner
                 await StartGatewayStep.RestartAndWaitForHealthAsync(
                     _ctx,
                     CancellationToken.None);
-            if (!restartResult.IsSuccess &&
-                restartResult.Message?.Contains(RestartServingOwnerDiagnostic, StringComparison.Ordinal) == true)
+            var servingOwnerUnavailable =
+                !restartResult.IsSuccess &&
+                restartResult.Message?.Contains(
+                    RestartServingOwnerDiagnostic,
+                    StringComparison.Ordinal) == true;
+            var restartIntentContention =
+                !restartResult.IsSuccess &&
+                GatewayWizardRestartRecoveryPolicy.IsRestartIntentCoordinatorContention(
+                    restartResult.Message);
+            if (servingOwnerUnavailable || restartIntentContention)
             {
-                // Restoring hybrid reload can initiate a supervisor restart before the CLI
-                // records its intent. Never bypass that CLI ownership gate or adopt a listener.
                 _ctx.Logger.Warn(
-                    "Gateway restart owner was unavailable after restoring reload. Rechecking managed ownership before one restart retry.");
+                    restartIntentContention
+                        ? "Gateway restart intent was refused by coordinator contention after restoring reload. Rechecking managed ownership before one guarded restart retry."
+                        : "Gateway restart owner was unavailable after restoring reload. Rechecking managed ownership before one guarded restart retry.");
+                if (restartIntentContention)
+                {
+                    await _restorationDelayAsync(
+                        GatewayWizardRestartRecoveryPolicy.RestartIntentContentionRetryDelay,
+                        CancellationToken.None);
+                }
+
+                // Endpoint provenance rejects a foreign listener before retry. The retried
+                // Gateway CLI command remains responsible for coordinator and owner admission.
                 var retryOwnership = await VerifyExpectedManagedGatewayAsync(
                     "before retrying gateway restart");
                 if (!retryOwnership.IsSuccess)

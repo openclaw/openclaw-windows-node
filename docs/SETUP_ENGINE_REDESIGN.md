@@ -18,15 +18,16 @@ timing explanation, not an established cause of every refusal. Observed service
 states differ: local diagnostics captured `activating/auto-restart` with no
 MainPID, while hosted generic refusals captured an `active/running` unit and a
 live PID. Neither snapshot establishes the admission-time owner-lease predicate.
-`SetupWizardRunner` recognizes only the exact
-serving-owner refusal, waits for verified managed endpoint ownership using the
-existing bounded provenance probe, and retries the normal CLI restart once.
+`SetupWizardRunner` recognizes only the exact serving-owner refusal or the
+combination of typed state-database coordinator contention and the exact
+restart-intent-recording refusal. It waits for verified managed endpoint
+ownership using the existing bounded provenance probe, then retries the normal
+guarded CLI restart once.
 The probe allows up to 30 one-second retry delays, plus probe duration, for
 `NoListener` and `UnknownListener` tagged `ListenerSnapshotChanged`. Other
 unknown/conflicting listeners, other restart errors, and a repeated refusal still
 fail setup. Listener provenance does not prove owner-lease or coordinator
-readiness; the retried CLI command retains those guards. Restart-intent recording
-contention is a separate failure and is not retried here. There is no direct
+readiness; the retried CLI command retains those guards. There is no direct
 systemd restart fallback or ownership bypass.
 
 > **Status note (2026-07-06):** Current default setup includes `WindowsNodeBootstrapContextStep`, which injects Windows-node context into the WSL workspace `AGENTS.md` after onboarding.
@@ -297,6 +298,25 @@ public abstract class SetupStep
 ```csharp
 public sealed record StepResult(StepOutcome Outcome, string? Message = null, Exception? Exception = null);
 ```
+
+### Headless E2E guarded-restart diagnostics
+
+The disposable `E2ESetupFixture` runs the same CLI entry point with an internal
+failure observer. If the wizard step fails specifically at the guarded
+post-wizard Gateway restart, the observer awaits a fixed, read-only
+`systemctl --user show` probe **before** the normal owned-fixture rollback.
+The resulting `gateway-restart-diagnostic.json` contains only an allowlisted
+refusal category and coarse unit/state/PID-presence/start-identity-availability
+facts, plus allowlisted service result and bounded exit code/status. Failed or
+timed-out probes produce an explicit probe status, not raw
+command output. The original setup failure and rollback are unchanged.
+
+The public Gateway CLI does not expose the rejected owner-lease predicate,
+so `ownerPredicate=not_exposed_by_gateway_cli` is intentional. An
+`unverified` serving owner must not be interpreted as coordinator contention
+without the separately observed typed contention error. This fixture-only
+diagnostic neither retries the guarded restart nor preserves the distro after
+rollback.
 
 ---
 

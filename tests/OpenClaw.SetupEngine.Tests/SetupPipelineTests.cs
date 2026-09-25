@@ -78,6 +78,50 @@ public class SetupPipelineTests
     }
 
     [Fact]
+    public async Task RunAsync_FailureDiagnosticRunsBeforeRollback_WithoutChangingFailure()
+    {
+        var order = new List<string>();
+        var pipeline = new SetupPipeline(
+            [new MockStep(
+                "wizard",
+                (_, _) => Task.FromResult(StepResult.Fail("original failure")),
+                (_, _) => { order.Add("failed-step-rollback"); return Task.CompletedTask; })],
+            rollbackOnFailureOverride: true,
+            (_, stepId, result) =>
+            {
+                Assert.Equal("wizard", stepId);
+                Assert.Equal("original failure", result.Message);
+                order.Add("diagnostic");
+                return Task.CompletedTask;
+            });
+
+        var result = await pipeline.RunAsync(CreateContext());
+
+        Assert.Equal(["diagnostic", "failed-step-rollback"], order);
+        Assert.Equal(PipelineOutcome.Failed, result.Outcome);
+        Assert.Equal("original failure", result.Message);
+    }
+
+    [Fact]
+    public async Task RunAsync_FailingDiagnosticStillRollsBackAndPreservesOriginalFailure()
+    {
+        var rolledBack = false;
+        var pipeline = new SetupPipeline(
+            [new MockStep(
+                "wizard",
+                (_, _) => Task.FromResult(StepResult.Fail("original failure")),
+                (_, _) => { rolledBack = true; return Task.CompletedTask; })],
+            rollbackOnFailureOverride: true,
+            (_, _, _) => throw new InvalidOperationException("diagnostic failure"));
+
+        var result = await pipeline.RunAsync(CreateContext());
+
+        Assert.True(rolledBack);
+        Assert.Equal(PipelineOutcome.Failed, result.Outcome);
+        Assert.Equal("original failure", result.Message);
+    }
+
+    [Fact]
     public async Task RunAsync_RestartRequired_PreservesTypedTerminalReason()
     {
         var pipeline = new SetupPipeline([

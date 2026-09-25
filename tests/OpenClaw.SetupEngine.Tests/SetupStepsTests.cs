@@ -4309,6 +4309,92 @@ public class SetupStepsTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task SetupWizard_RestartIntentContentionReverifiesOwnershipBeforeOneRetry()
+    {
+        var restarts = 0;
+        var inspections = 0;
+        var delays = new List<(TimeSpan Delay, CancellationToken CancellationToken)>();
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command switch
+            {
+                var value when value.Contains("config set gateway.reload.mode") => Ok(),
+                var value when value.Contains("openclaw gateway restart") => Restart(),
+                var value when value.Contains("curl -s") => Ok("200"),
+                _ => Fail($"Unexpected command: {command}"),
+            });
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        ctx.EndpointProvenanceProbe = (_, _) =>
+        {
+            inspections++;
+            return Task.FromResult(new GatewayEndpointProvenance(
+                GatewayEndpointProvenanceKind.ExpectedManagedGateway,
+                ctx.Config.GatewayPort));
+        };
+
+        var runner = new SetupWizardRunner(
+            ctx,
+            (delay, cancellationToken) =>
+            {
+                delays.Add((delay, cancellationToken));
+                return Task.CompletedTask;
+            });
+
+        var result = await runner.RestoreReloadModeAsync();
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Equal(2, restarts);
+        Assert.Equal(2, inspections);
+        var retryDelay = Assert.Single(delays);
+        Assert.Equal(
+            GatewayWizardRestartRecoveryPolicy.RestartIntentContentionRetryDelay,
+            retryDelay.Delay);
+        Assert.False(retryDelay.CancellationToken.CanBeCanceled);
+        Assert.DoesNotContain(commands.WslCalls, call => call.Command.Contains("systemctl"));
+        return;
+
+        CommandResult Restart()
+        {
+            if (++restarts == 1)
+            {
+                return Fail(
+                    $"{GatewayWizardRestartRecoveryPolicy.RestartIntentCoordinatorContentionError}. " +
+                    GatewayWizardRestartRecoveryPolicy.RestartIntentRecordingRefusal);
+            }
+
+            Assert.Equal(1, inspections);
+            return Ok();
+        }
+    }
+
+    [Theory]
+    [InlineData(GatewayEndpointProvenanceKind.UnknownListener)]
+    [InlineData(GatewayEndpointProvenanceKind.ConflictingOpenClawGateway)]
+    public async Task SetupWizard_RestartIntentContentionDoesNotRetryAnUntrustedListener(
+        GatewayEndpointProvenanceKind kind)
+    {
+        var restartFailure =
+            $"{GatewayWizardRestartRecoveryPolicy.RestartIntentCoordinatorContentionError}. " +
+            GatewayWizardRestartRecoveryPolicy.RestartIntentRecordingRefusal;
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command.Contains("config set gateway.reload.mode")
+                ? Ok()
+                : Fail(restartFailure));
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        ctx.EndpointProvenanceProbe = (_, _) => Task.FromResult(
+            new GatewayEndpointProvenance(kind, ctx.Config.GatewayPort));
+
+        var result = await new SetupWizardRunner(ctx).RestoreReloadModeAsync();
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("ownership verification failed", result.Message);
+        Assert.Single(commands.WslCalls, call => call.Command.Contains("openclaw gateway restart"));
+    }
+
     [Theory]
     [InlineData(GatewayEndpointProvenanceKind.UnknownListener)]
     [InlineData(GatewayEndpointProvenanceKind.ConflictingOpenClawGateway)]
@@ -4335,7 +4421,7 @@ public class SetupStepsTests : IDisposable
     [Theory]
     [InlineData(SetupWizardRunner.RestartServingOwnerDiagnostic, 2)]
     [InlineData("GATEWAY_RESTART_PREPARATION_REFUSED: Cannot verify the selected service command.", 1)]
-    [InlineData("StateDatabaseCoordinatorContentionError: another OpenClaw process owns state-lifecycle. GATEWAY_RESTART_PREPARATION_REFUSED: Cannot record restart intent for the serving Gateway. Gateway was not signaled.", 1)]
+    [InlineData("StateDatabaseCoordinatorContentionError: another OpenClaw process owns state-lifecycle. GATEWAY_RESTART_PREPARATION_REFUSED: Cannot record restart intent for the serving Gateway. Gateway was not signaled.", 2)]
     [InlineData("Unrelated restart failure", 1)]
     public async Task SetupWizard_RestartRetryRemainsBoundedAndSpecific(string error, int expectedRestarts)
     {
