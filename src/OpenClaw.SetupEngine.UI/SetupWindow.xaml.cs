@@ -18,6 +18,7 @@ public sealed partial class SetupWindow : Window
     private SetupRunLock? _setupLock;
     private readonly CancellationTokenSource _lifetimeCts = new();
     private Task<StepResult>? _contextApplyTask;
+    private Task? _progressPipelineTask;
     private readonly TaskCompletionSource<bool> _initialContentReady =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<bool> _cleanupCompleted =
@@ -82,8 +83,9 @@ public sealed partial class SetupWindow : Window
             try
             {
                 _lifetimeCts.Cancel();
-                if (_contextApplyTask is { } contextApplyTask)
-                    await contextApplyTask;
+                if (RootFrame.Content is ProgressPage progressPage)
+                    progressPage.CancelPipeline();
+                await SetupCloseCleanup.WaitForRunningWorkAsync(_contextApplyTask, _progressPipelineTask);
             }
             catch (OperationCanceledException)
             {
@@ -314,6 +316,12 @@ public sealed partial class SetupWindow : Window
 
         NavigateTo(typeof(WizardPage), _config, back);
         return true;
+    }
+
+    internal void AttachProgressPipeline(Task progressPipelineTask)
+    {
+        ArgumentNullException.ThrowIfNull(progressPipelineTask);
+        _progressPipelineTask = progressPipelineTask;
     }
 
     internal async Task<StepResult> ApplyWindowsNodeContextAsync()
