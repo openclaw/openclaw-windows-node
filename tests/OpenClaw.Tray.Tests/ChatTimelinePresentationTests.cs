@@ -66,8 +66,11 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("itemsView.Loaded += OnLoaded", binding);
         Assert.Contains("itemsView.LayoutUpdated += OnLayoutUpdated", binding);
         Assert.Contains("itemsView.DispatcherQueue.TryEnqueue", binding);
-        Assert.Contains("itemsView.StartBringItemIntoView(", binding);
-        Assert.Contains("VerticalAlignmentRatio = 1.0", binding);
+        Assert.Contains("scrollView.ScrollTo(", binding);
+        Assert.Contains("scrollView.HorizontalOffset,", binding);
+        Assert.Contains("scrollView.ScrollableHeight,", binding);
+        Assert.Contains("ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore", binding);
+        Assert.DoesNotContain("StartBringItemIntoView", binding);
         Assert.Contains("!string.Equals(_displayedTailKey, displayedTailKey, StringComparison.Ordinal)", binding);
         Assert.Contains("_following = IsNearBottom(sender)", binding);
         Assert.Contains("_scrollView.VerticalAnchorRatio = 1.0", binding);
@@ -83,7 +86,6 @@ public sealed class ChatTimelinePresentationTests
         Assert.DoesNotContain("ChangeView", binding);
         Assert.DoesNotContain("UpdateLayout", binding);
         Assert.DoesNotContain("TailSettle", binding);
-        Assert.DoesNotContain("ScrollTo(", binding);
         Assert.DoesNotContain("ScrollCompleted", binding);
         Assert.DoesNotContain("DispatcherTimer", binding);
         Assert.DoesNotContain("TextLength != current.TextLength", binding);
@@ -96,6 +98,7 @@ public sealed class ChatTimelinePresentationTests
         var viewChanged = binding[viewChangedStart..tailRequestStart];
         Assert.DoesNotContain("VerticalAnchorRatio", viewChanged);
         Assert.DoesNotContain("StartBringItemIntoView", viewChanged);
+        Assert.DoesNotContain("ScrollTo(", viewChanged);
     }
 
     [Fact]
