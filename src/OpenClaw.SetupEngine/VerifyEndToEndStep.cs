@@ -103,27 +103,6 @@ public sealed class VerifyEndToEndStep : SetupStep
             ct);
     }
 
-    internal static async Task<StepResult> DrainPendingNodeApprovalsAsync(SetupContext ctx, CancellationToken ct)
-    {
-        var distro = ctx.DistroName!;
-        if (string.IsNullOrWhiteSpace(ctx.SharedGatewayToken ?? ctx.BootstrapToken))
-            return StepResult.Fail("No gateway token available to drain pending approvals");
-
-        var env = new Dictionary<string, string>
-        {
-            ["OPENCLAW_GATEWAY_TOKEN"] = ctx.SharedGatewayToken ?? ctx.BootstrapToken!
-        };
-        return await DrainPendingRequestsForSetupDeviceAsync(
-            ctx,
-            distro,
-            ctx.WslPathPrefix,
-            env,
-            listCommand: "openclaw nodes list --json",
-            kind: ApprovalRequestKind.Node,
-            matchNodeId: true,
-            ct);
-    }
-
     private static async Task<StepResult> DrainPendingRequestsForSetupDeviceAsync(
         SetupContext ctx,
         string distro,
@@ -187,13 +166,64 @@ public sealed class VerifyEndToEndStep : SetupStep
             : "Pending device approvals drained");
     }
 
-    private static async Task<StepResult> DrainPendingApprovalsAsync(SetupContext ctx, CancellationToken ct)
+    internal static async Task<StepResult> DrainPendingApprovalsAsync(SetupContext ctx, CancellationToken ct)
     {
         var deviceDrainResult = await DrainPendingDeviceApprovalsAsync(ctx, ct);
         if (!deviceDrainResult.IsSuccess)
             return deviceDrainResult;
 
-        return await DrainPendingNodeApprovalsAsync(ctx, ct);
+        var distro = ctx.DistroName!;
+        var token = ctx.SharedGatewayToken ?? ctx.BootstrapToken;
+        if (string.IsNullOrWhiteSpace(token))
+            return StepResult.Fail("No gateway token available to drain pending approvals");
+
+        var pathPrefix = ctx.WslPathPrefix;
+        var env = new Dictionary<string, string> { ["OPENCLAW_GATEWAY_TOKEN"] = token };
+        const int maxDrainIterations = 10;
+
+        for (var i = 0; i < maxDrainIterations; i++)
+        {
+            var nodeList = await ctx.Commands.RunInWslAsync(
+                distro,
+                $"""{pathPrefix} && openclaw nodes list --json""",
+                TimeSpan.FromSeconds(15), env, ct);
+
+            if (nodeList.Stdout.Contains("No pending", StringComparison.OrdinalIgnoreCase) ||
+                nodeList.Stderr.Contains("No pending", StringComparison.OrdinalIgnoreCase))
+            {
+                break;
+            }
+
+            if (nodeList.ExitCode != 0)
+                return StepResult.Fail($"Could not list pending node approvals (exit {nodeList.ExitCode}): {nodeList.Stdout.Trim()} {nodeList.Stderr.Trim()}".Trim());
+
+            var parsed = ApprovalRequestHelper.TrySelectPendingRequestForDevice(
+                nodeList.Stdout.Trim(),
+                ctx.OperatorDeviceId,
+                matchNodeId: true);
+            if (!parsed.Success)
+            {
+                if (ApprovalRequestHelper.IsNothingToDrain(parsed))
+                    break;
+
+                return StepResult.Fail($"Could not select pending node approval for drain: {parsed.Error}");
+            }
+
+            ctx.Logger.Info($"Draining pending node approval: {parsed.RequestId}");
+            var approvalEnv = ApprovalRequestHelper.AddRequestIdEnvironment(env, parsed.RequestId!);
+            var approve = await ctx.Commands.RunInWslAsync(
+                distro,
+                $"""{pathPrefix} && {ApprovalRequestHelper.ApprovalCommand(ApprovalRequestKind.Node)}""",
+                TimeSpan.FromSeconds(15), approvalEnv, ct);
+
+            if (approve.ExitCode != 0)
+                return StepResult.Fail($"Node approval drain failed for {parsed.RequestId} (exit {approve.ExitCode}): {approve.Stdout.Trim()} {approve.Stderr.Trim()}".Trim());
+
+            if (i == maxDrainIterations - 1)
+                return StepResult.Fail("Node approval drain reached its iteration limit; pending approvals may remain");
+        }
+
+        return StepResult.Ok("Pending approvals drained");
     }
 
     internal static void WriteSettingsJson(SetupContext ctx)
