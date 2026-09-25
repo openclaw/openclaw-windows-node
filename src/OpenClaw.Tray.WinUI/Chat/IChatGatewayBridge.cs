@@ -95,6 +95,7 @@ public interface IChatGatewayBridge : IDisposable
 
     event EventHandler<ConnectionStatus>? StatusChanged;
     event EventHandler<SessionInfo[]>? SessionsUpdated;
+    event EventHandler<SessionInfo[]>? SessionUsageSnapshotUpdated;
     event EventHandler<SessionCommandResult>? SessionCommandCompleted;
     event EventHandler<ChatMessageInfo>? ChatMessageReceived;
     event EventHandler<AgentEventInfo>? AgentEventReceived;
@@ -109,6 +110,7 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
     private readonly OpenClawGatewayClient _client;
     private readonly EventHandler<ConnectionStatus> _statusChangedHandler;
     private readonly EventHandler<SessionInfo[]> _sessionsUpdatedHandler;
+    private readonly EventHandler<SessionInfo[]> _sessionUsageSnapshotUpdatedHandler;
     private readonly EventHandler<SessionCommandResult> _sessionCommandCompletedHandler;
     private readonly EventHandler<ChatMessageInfo> _chatMessageReceivedHandler;
     private readonly EventHandler<AgentEventInfo> _agentEventReceivedHandler;
@@ -145,6 +147,8 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
             }
         };
         _sessionsUpdatedHandler = (s, e) => SessionsUpdated?.Invoke(s, e);
+        _sessionUsageSnapshotUpdatedHandler = (s, e) =>
+            SessionUsageSnapshotUpdated?.Invoke(s, e);
         _sessionCommandCompletedHandler = (s, e) => SessionCommandCompleted?.Invoke(s, e);
         _chatMessageReceivedHandler = (s, e) => ChatMessageReceived?.Invoke(s, e);
         _agentEventReceivedHandler = (s, e) => AgentEventReceived?.Invoke(s, e);
@@ -169,6 +173,7 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
         // ``IsConnectedToGateway``. ``volatile`` covers atomic reads.
         _client.StatusChanged += _statusChangedHandler;
         _client.SessionsUpdated += _sessionsUpdatedHandler;
+        _client.SessionUsageSnapshotUpdated += _sessionUsageSnapshotUpdatedHandler;
         _client.SessionCommandCompleted += _sessionCommandCompletedHandler;
         _client.ChatMessageReceived += _chatMessageReceivedHandler;
         _client.AgentEventReceived += _agentEventReceivedHandler;
@@ -266,6 +271,7 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
 
     public event EventHandler<ConnectionStatus>? StatusChanged;
     public event EventHandler<SessionInfo[]>? SessionsUpdated;
+    public event EventHandler<SessionInfo[]>? SessionUsageSnapshotUpdated;
     public event EventHandler<SessionCommandResult>? SessionCommandCompleted;
     public event EventHandler<ChatMessageInfo>? ChatMessageReceived;
     public event EventHandler<AgentEventInfo>? AgentEventReceived;
@@ -278,6 +284,7 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
 
         _client.StatusChanged -= _statusChangedHandler;
         _client.SessionsUpdated -= _sessionsUpdatedHandler;
+        _client.SessionUsageSnapshotUpdated -= _sessionUsageSnapshotUpdatedHandler;
         _client.SessionCommandCompleted -= _sessionCommandCompletedHandler;
         _client.ChatMessageReceived -= _chatMessageReceivedHandler;
         _client.AgentEventReceived -= _agentEventReceivedHandler;
@@ -285,6 +292,7 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
 
         StatusChanged = null;
         SessionsUpdated = null;
+        SessionUsageSnapshotUpdated = null;
         SessionCommandCompleted = null;
         ChatMessageReceived = null;
         AgentEventReceived = null;

@@ -238,6 +238,11 @@ internal static class AccessibilityHistoryCollisionFixture
             add { }
             remove { }
         }
+        public event EventHandler<SessionInfo[]>? SessionUsageSnapshotUpdated
+        {
+            add { }
+            remove { }
+        }
 
         public event EventHandler<SessionCommandResult>?
             SessionCommandCompleted
