@@ -98,6 +98,15 @@ absent or unregister succeeds. To replace such a legacy distro, uninstall it
 first, using `--uninstall --confirm-destructive` and the same distro name, then
 rerun setup with a supported new name.
 
+The Inno uninstall helper also binds its primary filesystem cleanup to the exact
+generated local-data root, not the user-selected install folder or its basename.
+After WSL reports the configured distro absent or unregister succeeds, an
+uncertain custom install folder is preserved with an `artifactWarnings` entry in
+`uninstall-gateway-result.json` and a warning in `uninstall-gateway-wsl.log` under
+that folder. Reparse points at the app root, WSL root, or configured child stop
+primary deletion. These helper checks do not establish ownership of other WSL
+children or replace the signed-installer and native-WSL proof gates.
+
 ```json
 {
   "DistroName": "OpenClawGateway",
