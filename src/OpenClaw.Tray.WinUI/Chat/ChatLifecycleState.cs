@@ -15,8 +15,14 @@ internal sealed class ChatLifecycleState
     private readonly Dictionary<string, int> _pendingAbortCounts = new();
     private readonly HashSet<string> _abortedRunIds = new();
     private readonly HashSet<string> _abortedThreads = new();
-    private readonly Dictionary<string, List<string>> _terminalRunIdsByThread =
+    private readonly Dictionary<string, List<TerminalRun>> _terminalRunIdsByThread =
         new();
+
+    private sealed record TerminalRun(
+        string RunId,
+        bool SuppressOutput,
+        bool AssistantFinalReceived,
+        bool RetryableError);
 
     private long _lifecycleStartSequence;
 
@@ -81,8 +87,71 @@ internal sealed class ChatLifecycleState
     internal bool IsThreadSuppressed(string threadId) =>
         _abortedThreads.Contains(threadId);
 
+    internal bool ShouldSuppressChatMessage(
+        string threadId,
+        string? runId,
+        bool isFinal,
+        IReadOnlyCollection<string> queuedRunIds,
+        bool turnActive)
+    {
+        if (ShouldSuppress(threadId, runId))
+            return true;
+        // Older gateways omit runId. Keep their existing thread-level behavior.
+        if (string.IsNullOrWhiteSpace(runId))
+            return false;
+        if (_activeRunIds.TryGetValue(threadId, out var activeRunId) &&
+            !string.Equals(activeRunId, runId, StringComparison.Ordinal))
+        {
+            return true;
+        }
+        if (_terminalRunIdsByThread.TryGetValue(threadId, out var terminalRuns) &&
+            terminalRuns.Find(run => run.RunId == runId) is { } terminal)
+        {
+            // A lifecycle end can precede the final text. Only the most recent,
+            // non-aborted run may finish that text, before another turn starts.
+            return !isFinal || terminal.SuppressOutput || terminal.AssistantFinalReceived ||
+                   turnActive || terminal != terminalRuns.FindLast(run => !run.SuppressOutput);
+        }
+        return !_activeRunIds.ContainsKey(threadId) &&
+               turnActive &&
+               queuedRunIds.Count > 0 &&
+               !queuedRunIds.Contains(runId, StringComparer.Ordinal);
+    }
+
     internal bool IsRunAborted(string? runId) =>
         !string.IsNullOrWhiteSpace(runId) && _abortedRunIds.Contains(runId);
+
+    internal bool IsCompletedRun(string threadId, string? runId) =>
+        !string.IsNullOrWhiteSpace(runId) &&
+        _terminalRunIdsByThread.TryGetValue(threadId, out var runs) &&
+        runs.Exists(run => run.RunId == runId);
+
+    internal bool TryRestartFailedRun(string threadId, string? runId)
+    {
+        if (string.IsNullOrWhiteSpace(runId) || HasActiveRun(threadId) ||
+            !_terminalRunIdsByThread.TryGetValue(threadId, out var runs) ||
+            runs.FindLast(run => !run.SuppressOutput) is not { RetryableError: true, AssistantFinalReceived: false } failed ||
+            !string.Equals(failed.RunId, runId, StringComparison.Ordinal) ||
+            IsRunAborted(runId))
+        {
+            return false;
+        }
+        return runs.Remove(failed);
+    }
+
+    internal bool ShouldSuppressCompletedAgentEvent(
+        string threadId,
+        AgentEventInfo evt,
+        bool canReconcile = false)
+    {
+        if (string.IsNullOrWhiteSpace(evt.RunId) ||
+            !_terminalRunIdsByThread.TryGetValue(threadId, out var terminalRuns) ||
+            terminalRuns.Find(run => run.RunId == evt.RunId) is not { } terminal)
+        {
+            return false;
+        }
+        return terminal.SuppressOutput || !canReconcile;
+    }
 
     internal bool HasPendingAbort(string threadId) =>
         _pendingAbortCounts.ContainsKey(threadId);
@@ -96,6 +165,7 @@ internal sealed class ChatLifecycleState
 
     internal long StartRun(string threadId, string runId)
     {
+        ClearRetryEligibility(threadId);
         _activeRunIds[threadId] = runId;
         var sequence = ++_lifecycleStartSequence;
         _activeRunStartSequences[threadId] = sequence;
@@ -117,12 +187,14 @@ internal sealed class ChatLifecycleState
     internal void ClearThreadSuppression(string threadId) =>
         _abortedThreads.Remove(threadId);
 
-    internal string? CompleteAssistantFinal(string threadId)
+    internal string? CompleteAssistantFinal(string threadId, string? runId = null)
     {
-        _activeRunIds.Remove(threadId, out var completedRunId);
+        ClearRetryEligibility(threadId);
+        _activeRunIds.Remove(threadId, out var activeRunId);
+        var completedRunId = string.IsNullOrWhiteSpace(runId) ? activeRunId : runId;
         if (!string.IsNullOrEmpty(completedRunId))
         {
-            RememberTerminalRun(threadId, completedRunId);
+            RememberTerminalRun(threadId, completedRunId, assistantFinalReceived: true);
             _abortedRunIds.Remove(completedRunId);
         }
         _activeRunStartSequences.Remove(threadId);
@@ -136,12 +208,27 @@ internal sealed class ChatLifecycleState
         _activeRunStartSequences.Remove(threadId);
     }
 
+    internal void RememberSuppressedTerminal(string threadId, string runId) =>
+        RememberTerminalRun(threadId, runId, suppressOutput: true);
+
+    internal void ClearRetryEligibility(string threadId)
+    {
+        if (!_terminalRunIdsByThread.TryGetValue(threadId, out var runs))
+            return;
+        for (var i = 0; i < runs.Count; i++)
+        {
+            if (runs[i].RetryableError)
+                runs[i] = runs[i] with { RetryableError = false };
+        }
+    }
+
     internal bool ShouldDropTerminal(
         string threadId,
         string runId,
         IReadOnlyCollection<string> queuedRunIds,
         bool turnActive,
-        out ChatTerminalEventDropReason? droppedReason)
+        out ChatTerminalEventDropReason? droppedReason,
+        bool retryableError = false)
     {
         droppedReason = null;
         if (string.IsNullOrWhiteSpace(runId))
@@ -150,7 +237,7 @@ internal sealed class ChatLifecycleState
             return true;
         }
         if (_terminalRunIdsByThread.TryGetValue(threadId, out var terminalRunIds) &&
-            terminalRunIds.Contains(runId, StringComparer.Ordinal))
+            terminalRunIds.Exists(run => run.RunId == runId))
         {
             return true;
         }
@@ -168,7 +255,7 @@ internal sealed class ChatLifecycleState
             droppedReason = ChatTerminalEventDropReason.MismatchedRunId;
             return true;
         }
-        RememberTerminalRun(threadId, runId);
+        RememberTerminalRun(threadId, runId, retryableError: retryableError);
         return false;
     }
 
@@ -201,16 +288,29 @@ internal sealed class ChatLifecycleState
             RemoveActiveRun(threadId);
     }
 
-    private void RememberTerminalRun(string threadId, string runId)
+    private void RememberTerminalRun(
+        string threadId,
+        string runId,
+        bool assistantFinalReceived = false,
+        bool suppressOutput = false,
+        bool retryableError = false)
     {
         if (!_terminalRunIdsByThread.TryGetValue(threadId, out var runIds))
         {
             runIds = [];
             _terminalRunIdsByThread[threadId] = runIds;
         }
-        runIds.Remove(runId);
-        runIds.Add(runId);
-        if (runIds.Count > TerminalRunCapacity)
-            runIds.RemoveRange(0, runIds.Count - TerminalRunCapacity);
+        var previous = runIds.Find(run => run.RunId == runId);
+        runIds.RemoveAll(run => run.RunId == runId);
+        if (runIds.Count >= TerminalRunCapacity)
+            runIds.RemoveAt(0);
+        var terminal = new TerminalRun(
+            runId,
+            suppressOutput || _abortedRunIds.Contains(runId) || previous?.SuppressOutput == true,
+            assistantFinalReceived || previous?.AssistantFinalReceived == true,
+            retryableError);
+        // Retention follows arrival order. Trailing-final eligibility separately
+        // ignores suppressed terminals, including ones learned from abort state.
+        runIds.Add(terminal);
     }
 }

@@ -1240,9 +1240,13 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private void OnChatMessageReceived(object? sender, ChatMessageInfo message)
     {
         if (message is null || _state.IsDisposed)
+        {
+            message?.SuppressNotification();
             return;
+        }
         if (string.IsNullOrEmpty(message.SessionKey))
         {
+            message.SuppressNotification();
             Logger.Warn($"[ChatProvider] Dropping chat message with empty sessionKey (role={message.Role})");
             RaiseKeylessEventDiagnosticOnce();
             return;
@@ -1265,11 +1269,13 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             gate.RuntimeGeneration);
         if (gate.Suppressed)
         {
-            Logger.Debug($"[ABORT] Suppressed ChatMessage for threadId='{threadId}' (role={message.Role})");
+            message.SuppressNotification();
+            Logger.Debug($"[ChatProvider] Suppressed aborted or stale chat message for threadId='{threadId}' (role={message.Role})");
             return;
         }
         if (gate.Drop)
         {
+            message.SuppressNotification();
             if (gate.Snapshot is not null)
                 Publish(gate.Snapshot);
             if (gate.RequestRemoteBackfill)
@@ -1382,6 +1388,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             ChatMessageInfo.IsSilentAssistantDirective(role, message.Text) ||
             (string.IsNullOrEmpty(message.Text) && assistantContent is null))
         {
+            message.SuppressNotification();
             return;
         }
 
@@ -1395,9 +1402,13 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         if (preparation.PromotionSnapshot is not null)
             Publish(preparation.PromotionSnapshot);
         if (preparation.Disposition != AssistantQueueFrameDisposition.Render)
+        {
+            message.SuppressNotification();
             return;
+        }
         if (!message.IsFinal && _state.IsLateNonFinalAssistantFrame(threadId))
         {
+            message.SuppressNotification();
             Logger.Warn($"[ChatProvider] Dropping late non-final assistant frame after completed turn for threadId='{threadId}' len={traceText.Length}");
             return;
         }
@@ -1429,7 +1440,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
         if (!message.IsFinal)
             return;
-        var completedRunId = _state.CompleteAssistantFinal(threadId);
+        var completedRunId = _state.CompleteAssistantFinal(threadId, message.RunId);
         var completion = completedRunId is null
             ? null
             : _telemetry.PrepareFinishByRunId(

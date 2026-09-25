@@ -569,6 +569,7 @@ internal sealed class ChatConversationState
 
             _lifecycle.ClearThreadSuppression(threadId);
             _lifecycle.TakePendingAbortCount(threadId);
+            _lifecycle.ClearRetryEligibility(threadId);
             var request = new ChatQueuedSendRequest(
                 messageId,
                 Guid.NewGuid().ToString(),
@@ -1327,6 +1328,22 @@ internal sealed class ChatConversationState
         var hasMediaEnvelope = projection?.HasMediaEnvelope ?? false;
         lock (_gate)
         {
+            if (role is "assistant" or "toolresult" or "tool_result" &&
+                _lifecycle.ShouldSuppressChatMessage(
+                    threadId,
+                    message.RunId,
+                    message.IsFinal,
+                    _queue.RunIdsForThread(threadId),
+                    _timelines.TryGetValue(threadId, out var timeline) && timeline.TurnActive))
+            {
+                return new(
+                    Drop: false,
+                    Suppressed: true,
+                    RequestRemoteBackfill: false,
+                    Snapshot: null,
+                    OpenedLifecycle: null,
+                    CurrentRuntimeGenerationLocked(threadId));
+            }
             _lifecycle.TryGetActiveRun(
                 threadId,
                 out var activeRunId);
@@ -1340,7 +1357,8 @@ internal sealed class ChatConversationState
                         text,
                         attachmentCorrelationSignature,
                         hasMediaEnvelope),
-                    activeRunId);
+                    activeRunId,
+                    message.RunId);
             var openedLifecycle =
                 ApplyBufferedLifecycleOpenLocked(
                     threadId,
@@ -1692,11 +1710,11 @@ internal sealed class ChatConversationState
         }
     }
 
-    internal string? CompleteAssistantFinal(string threadId)
+    internal string? CompleteAssistantFinal(string threadId, string? runId = null)
     {
         lock (_gate)
         {
-            var completedRunId = _lifecycle.CompleteAssistantFinal(threadId);
+            var completedRunId = _lifecycle.CompleteAssistantFinal(threadId, runId);
             _reset.CompleteRun(threadId, completedRunId);
             if (!_queue.HasSendingMessages(threadId))
                 _queue.ClearLocallyInitiated(threadId);
@@ -1745,6 +1763,11 @@ internal sealed class ChatConversationState
             {
                 var mapping = ChatEventMapper.Map(evt);
                 mapped = mapping.Event;
+                if (mapped is ChatToolPresentationEvent presentation &&
+                    _lifecycle.IsCompletedRun(threadId, evt.RunId))
+                {
+                    mapped = presentation with { ActivatesTurn = false };
+                }
                 if (mapping.Approval is { } approval &&
                     !_approval.MarkSeen(approval.RequestId, approval.AlternateId))
                 {
@@ -1914,11 +1937,34 @@ internal sealed class ChatConversationState
         }
         if (resetGate.Drop)
         {
+            // Reset consumes an ignored terminal to request history reconciliation.
+            // Retain its identity for chat finals that can arrive after that terminal.
+            if (resetGate.ReloadHistory && !string.IsNullOrWhiteSpace(evt.RunId))
+                _lifecycle.RememberSuppressedTerminal(threadId, evt.RunId);
             return new(
                 false,
                 resetGate.ReloadHistory,
                 null,
                 openedLifecycle);
+        }
+        if (ChatEventMapper.IsLifecycleStart(evt) && _lifecycle.IsRunAborted(evt.RunId))
+        {
+            Logger.Debug($"[ChatProvider] Dropping aborted-run lifecycle start for threadId='{threadId}'");
+            return new(false, false, null, openedLifecycle);
+        }
+        if (ChatEventMapper.IsLifecycleStart(evt) &&
+            (!_timelines.TryGetValue(threadId, out var currentTimeline) || !currentTimeline.TurnActive) &&
+            _lifecycle.TryRestartFailedRun(threadId, evt.RunId))
+        {
+            Logger.Debug($"[ChatProvider] Admitting same-run lifecycle retry for threadId='{threadId}'");
+        }
+        if (!ChatEventMapper.IsTerminalRunEvent(evt) &&
+            _lifecycle.IsCompletedRun(threadId, evt.RunId) &&
+            _lifecycle.ShouldSuppressCompletedAgentEvent(
+                threadId, evt, CanReconcileCompletedAgentEventLocked(threadId, evt)))
+        {
+            Logger.Debug($"[ChatProvider] Dropping completed-run agent event for threadId='{threadId}' stream='{evt.Stream}'");
+            return new(false, false, null, openedLifecycle);
         }
         if (ShouldDropTerminalAgentEventLocked(
                 evt,
@@ -2036,6 +2082,18 @@ internal sealed class ChatConversationState
             allowRemoteTurn,
             wasAborted,
             snapshot);
+    }
+
+    private bool CanReconcileCompletedAgentEventLocked(string threadId, AgentEventInfo evt)
+    {
+        if (!_timelines.TryGetValue(threadId, out var timeline))
+            return false;
+        if (ChatEventMapper.CanReconcileToolAfterRunEnd(evt, timeline))
+            return true;
+        var approval = ChatEventMapper.MapTerminalApproval(evt);
+        return approval is not null &&
+               timeline.PendingPermission is { } pending &&
+               _approval.Matches(pending.RequestId, approval.ApprovalSlug, approval.ApprovalId);
     }
 
     private bool TryResolveTerminalApprovalLocked(
@@ -2156,7 +2214,8 @@ internal sealed class ChatConversationState
             _queue.RunIdsForThread(threadId),
             _timelines.TryGetValue(threadId, out var timeline) &&
             timeline.TurnActive,
-            out droppedReason);
+            out droppedReason,
+            retryableError: ChatEventMapper.IsRetryableLifecycleError(evt));
     }
 
     private static bool TryGetTerminalAgentRunId(
