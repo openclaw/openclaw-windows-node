@@ -1265,15 +1265,30 @@ public sealed class AppRefactorContractTests
         var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "SetupWindow.xaml.cs"));
         var method = ExtractMethod(source, "RequestSetupCompleted");
 
-        Assert.Contains("if (_persistStartupPreferenceOnComplete)", method);
+        Assert.Contains("if (_persistStartupPreferenceOnComplete && !preserveStartupPreference)", method);
+        Assert.Contains("bool preserveStartupPreference = false", method);
         Assert.Contains("_config.Settings.AutoStart = enableAutoStart", method);
         Assert.Contains("TraySettingsConfig.UpdateAutoStartInSettingsFile", method);
         AssertInOrder(
             method,
-            "if (_persistStartupPreferenceOnComplete)",
+            "if (_persistStartupPreferenceOnComplete && !preserveStartupPreference)",
             "_config.Settings.AutoStart = enableAutoStart",
             "TraySettingsConfig.UpdateAutoStartInSettingsFile",
             "handler.Invoke");
+    }
+
+    [Fact]
+    public void SetupCompletion_PreservesStartupRegistrationWhenRequested()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
+        Assert.Contains("RestartAfterSetupAsync(e.EnableAutoStart, e.PreserveStartupPreference)", source);
+        var restart = ExtractMethod(source, "RestartAfterSetupAsync");
+        AssertInOrder(
+            restart,
+            "if (enableAutoStart && !preserveStartupPreference)",
+            "AutoStartManager.SetAutoStartAsync(true)",
+            "Process.Start(psi)");
     }
 
     [Fact]
@@ -1847,7 +1862,7 @@ public sealed class AppRefactorContractTests
         XNamespace names = "http://schemas.microsoft.com/winfx/2006/xaml";
         var choices = Assert.Single(page.Descendants(xaml + "ListView"),
             element => (string?)element.Attribute(names + "Name") == "GatewayChoiceSelector");
-        var viewport = choices.Parent!;
+        var viewport = choices.Ancestors(xaml + "ScrollViewer").Single();
 
         Assert.Equal(xaml + "ScrollViewer", viewport.Name);
         Assert.Equal("560", (string?)viewport.Attribute("MaxWidth"));
@@ -1884,10 +1899,10 @@ public sealed class AppRefactorContractTests
         AssertInOrder(xaml, "<ScrollViewer Grid.Row=\"1\"", "</ScrollViewer>", "<Grid Grid.Row=\"2\"");
         Assert.DoesNotContain("GatewayChoiceSelector.SelectedIndex = 0;", welcomePage);
         Assert.Contains("_suppressSelectionWrite = true", welcomePage);
-        Assert.Contains("SetupWindow.Active?.IsWelcomeInstallSelected ?? true", welcomePage);
-        Assert.Contains("SetupWindow.Active?.SetWelcomeInstallSelected(installSelected)", welcomePage);
-        Assert.Contains("private bool _isWelcomeInstallSelected = true", setupWindow);
-        Assert.Contains("public bool IsWelcomeInstallSelected => _isWelcomeInstallSelected", setupWindow);
+        Assert.Contains("SetupWindow.Active?.WelcomeGatewayChoice", welcomePage);
+        Assert.Contains("window.WelcomeGatewayChoice = choice", welcomePage);
+        Assert.Contains("internal GatewaySetupChoice? WelcomeGatewayChoice { get; set; }", setupWindow);
+        Assert.Contains("NativeGatewaySetupEligibility.ResolveSelection", welcomePage);
     }
 
     [Fact]

@@ -11,7 +11,7 @@
             <Image Source="ms-appx:///OpenClaw.SetupEngine.UI/Assets/Setup/OpenClawMascot.png"
                    Width="44" Height="44" HorizontalAlignment="Center"
                    AutomationProperties.AccessibilityView="Raw" />
-            <TextBlock Text="Set up the WSL gateway"
+            <TextBlock x:Name="GatewayTitle" Text="Set up the WSL gateway"
                        Style="{StaticResource TitleTextBlockStyle}" HorizontalAlignment="Center" />
         </StackPanel>
 
@@ -73,7 +73,7 @@
                                     </RadioButton>
                                 </RadioButtons>
 
-                                <TextBlock Text="Local AI setup is independent of this choice and does not require Full access."
+                                <TextBlock x:Name="LocalAiProfileNote" Text="Local AI setup is independent of this choice and does not require Full access."
                                            Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                            TextWrapping="Wrap" />
@@ -104,6 +104,16 @@
                             </StackPanel>
 
                             <StackPanel x:Name="Step3Content" Spacing="4" Visibility="Collapsed">
+                                <StackPanel x:Name="NativeReviewContent" Spacing="12" Visibility="Collapsed">
+                                    <TextBlock x:Uid="Onboarding_Native_Review"
+                                               TextWrapping="Wrap"
+                                               Text="Companion will check the Gateway package, open its Microsoft Store listing if needed, prepare a dedicated profile, and open Gateway setup. Store installation and provider sign-in stay interactive. This path does not install WSL, Local AI, or Tailscale." />
+                                    <TextBlock x:Uid="Onboarding_Native_FeaturesNote"
+                                               TextWrapping="Wrap"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               Text="These Windows capabilities become usable after Node Mode connects and pairs with the Gateway. Windows permissions and command approvals still apply." />
+                                </StackPanel>
+                                <StackPanel x:Name="WslReviewContent" Spacing="4">
                                 <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="4" Padding="14,12">
                                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
                                         <FontIcon Grid.Column="0" Glyph="&#xE756;" FontSize="18" VerticalAlignment="Center" />
@@ -271,6 +281,7 @@
                                     <TextBlock x:Name="ExactCommandsText" FontFamily="Cascadia Mono, Consolas" FontSize="12" TextWrapping="Wrap"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="0,4,0,4" />
                                 </Expander>
+                                </StackPanel>
                             </StackPanel>
                         </StackPanel>
                     </Border>

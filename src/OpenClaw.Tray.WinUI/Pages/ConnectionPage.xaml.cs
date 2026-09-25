@@ -2580,7 +2580,7 @@ public sealed partial class ConnectionPage : Page
                     rec.SharedGatewayToken!,
                     IsBootstrapToken: false,
                     CredentialResolver.SourceSharedGatewayToken);
-                if (!provenanceService.IsStrongCredentialAllowed(rec, candidate))
+                if (CurrentApp.InteractiveEndpointAuthorizer?.IsCredentialAllowed(rec, candidate) != true)
                 {
                     CurrentApp.ShowTransientConnectionError(
                         "Dashboard blocked because the saved gateway address is not owned by the verified managed gateway.");

@@ -7254,4 +7254,40 @@ Escolha {1} para sair desta prévia sem iniciar a migração e continuar usando 
   <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>Esforço</value></data>
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Mais rápido</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Mais detalhado</value></data>
+  <data name="Onboarding_Native_Title.Text" xml:space="preserve"><value>Instalar um Gateway nativo local</value></data>
+  <data name="Onboarding_Native_Description.Text" xml:space="preserve"><value>Instalar um Gateway OpenClaw local, contido pelo MXC</value></data>
+  <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>Instalar um Gateway WSL local</value></data>
+  <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>Verificando o suporte ao Gateway nativo...</value></data>
+  <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>O suporte ao Gateway nativo está disponível neste dispositivo.</value></data>
+  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>O suporte ao Gateway nativo não está disponível. Instale a compilação {0} do Windows Insider ou uma compilação mais recente compatível pelo Windows Update e reabra esta página. A disponibilidade do recurso pode variar conforme o dispositivo.</value></data>
+  <data name="Onboarding_Native_SupportCheckFailed" xml:space="preserve"><value>Não foi possível verificar o suporte ao Gateway nativo. Reabra esta página para tentar novamente. Se a verificação continuar falhando, atualize ou repare o Companion.</value></data>
+  <data name="Onboarding_Native_UnsupportedPlatform" xml:space="preserve"><value>A configuração do Gateway nativo requer uma versão cliente do Windows compatível. O Windows Server não é compatível.</value></data>
+  <data name="Onboarding_Native_WindowsUpdate.Content" xml:space="preserve"><value>Abrir Windows Update</value></data>
+  <data name="Onboarding_Native_Recommended.Text" xml:space="preserve"><value>Recomendado</value></data>
+  <data name="Onboarding_Native_Alternatives.Header" xml:space="preserve"><value>Outras opções de Gateway</value></data>
+  <data name="Onboarding_Native_UpdateLaunchFailed" xml:space="preserve"><value>Não foi possível abrir o Windows Update. Abra as Configurações do Windows e depois o Windows Update.</value></data>
+  <data name="Onboarding_Native_Lifecycle.Text" xml:space="preserve"><value>Continue com o mesmo assistente Gateway usado para WSL, aqui no Companion. A configuração e a integridade são verificadas antes da conexão. Os Gateways WSL existentes e seu perfil OpenClaw padrão não são substituídos.</value></data>
+  <data name="Onboarding_Native_Acquisition.Text" xml:space="preserve"><value>Se o Gateway não estiver instalado, a configuração abrirá sua página na Microsoft Store. Conclua a instalação lá; o Companion continuará automaticamente após verificar o pacote.</value></data>
+  <data name="Onboarding_Native_InstallerOpened" xml:space="preserve"><value>Conclua a instalação pela Microsoft Store. O Companion continuará automaticamente quando o pacote estiver pronto. Cancelar a configuração aqui não cancela a instalação pela Store.</value></data>
+  <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>O Companion preparará seu Gateway e abrirá o assistente de configuração automaticamente.</value></data>
+  <data name="Onboarding_Native_StepSupport" xml:space="preserve"><value>Verificar o suporte do dispositivo</value></data>
+  <data name="Onboarding_Native_StepPackage" xml:space="preserve"><value>Instalar ou verificar o pacote Gateway</value></data>
+  <data name="Onboarding_Native_StepPrepare" xml:space="preserve"><value>Preparar seu perfil do Gateway</value></data>
+  <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>Iniciar e verificar o Gateway</value></data>
+  <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>Tentar configurar novamente</value></data>
+  <data name="Onboarding_Native_Preview" xml:space="preserve"><value>Somente visualização. Nenhum pacote será instalado e nenhum Gateway será iniciado.</value></data>
+  <data name="Onboarding_Native_Review.Text" xml:space="preserve"><value>O Companion verificará o pacote Gateway, abrirá sua página na Microsoft Store se necessário, preparará um perfil dedicado e abrirá a configuração do Gateway. A instalação pela Store e a entrada no provedor permanecem interativas. Este caminho não instala WSL, IA local nem Tailscale.</value></data>
+  <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>Esses recursos do Windows ficam disponíveis após o Modo Nó se conectar e emparelhar com o Gateway. As permissões do Windows e as aprovações de comandos continuam sendo aplicáveis.</value></data>
+  <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>Gateway nativo configurado</value></data>
+  <data name="Onboarding_Native_CapabilitySummary" xml:space="preserve"><value>{0}. Você pode alterar essas escolhas nas configurações do Companion.</value></data>
+  <data name="Onboarding_Native_ReviewTitle" xml:space="preserve"><value>Pronto para configurar seu Gateway nativo</value></data>
+  <data name="Onboarding_Native_Start.Content" xml:space="preserve"><value>Configurar Gateway</value></data>
+  <data name="Onboarding_Native_Cancel.Content" xml:space="preserve"><value>Cancelar configuração</value></data>
+  <data name="Onboarding_Native_Back.Content" xml:space="preserve"><value>Voltar</value></data>
+  <data name="Onboarding_Native_Open.Content" xml:space="preserve"><value>Abrir Companion para conectar</value></data>
+  <data name="Onboarding_Native_Checking" xml:space="preserve"><value>Verificando o pacote Gateway instalado e seus aliases de execução...</value></data>
+  <data name="Onboarding_Native_Available" xml:space="preserve"><value>O pacote Gateway {0} está instalado.</value></data>
+  <data name="Onboarding_Native_InProgress" xml:space="preserve"><value>Preparando o Gateway nativo para o assistente compartilhado. As perguntas sobre provedor e modelo aparecerão aqui no Companion.</value></data>
+  <data name="Onboarding_Native_Cancelled" xml:space="preserve"><value>Configuração cancelada. Os dados já inseridos são mantidos no perfil nativo dedicado. Nenhum pacote Gateway foi removido.</value></data>
+  <data name="Onboarding_Native_Configured" xml:space="preserve"><value>Configuração e integridade autenticada verificadas em {0}. Abra o Companion para iniciar o Gateway e concluir o pareamento nas configurações de conexão. Os recursos do Windows que você selecionou foram salvos.</value></data>
 </root>

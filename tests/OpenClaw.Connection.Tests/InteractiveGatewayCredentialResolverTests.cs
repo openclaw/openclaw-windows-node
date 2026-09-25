@@ -81,6 +81,40 @@ public class InteractiveGatewayCredentialResolverTests : IDisposable
     }
 
     [Fact]
+    public void TryResolve_NativeGatewayWithoutAuthorizationDoesNotReturnCredential()
+    {
+        var record = new GatewayRecord
+        {
+            Id = "native", Url = "ws://127.0.0.1:18789",
+            NativePackageFamilyName = "OpenClaw.Gateway_test",
+            SharedGatewayToken = "shared",
+        };
+        _registry.AddOrUpdate(record);
+        _registry.SetActive(record.Id);
+
+        Assert.False(InteractiveGatewayCredentialResolver.TryResolve(
+            _registry, _tempDir, _identityReader, record.Url, null, null, out var credential));
+        Assert.Null(credential);
+    }
+
+    [Fact]
+    public void TryResolve_NativeGatewayDoesNotFallBackToUnmarkedLegacyRecord()
+    {
+        var record = new GatewayRecord
+        {
+            Id = "native", Url = "ws://127.0.0.1:18789",
+            NativePackageFamilyName = "OpenClaw.Gateway_test",
+        };
+        _registry.AddOrUpdate(record);
+        _registry.SetActive(record.Id);
+
+        Assert.False(InteractiveGatewayCredentialResolver.TryResolve(
+            _registry, _tempDir, _identityReader, record.Url, "legacy", null,
+            (_, _) => true, out var credential));
+        Assert.Null(credential);
+    }
+
+    [Fact]
     public void TryResolve_LegacyLoopbackUnknownOwner_DoesNotReturnTokenBearingCredential()
     {
         var resolved = InteractiveGatewayCredentialResolver.TryResolve(

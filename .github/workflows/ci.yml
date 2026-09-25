@@ -534,6 +534,7 @@ jobs:
         -Runtime win-x64
 
     - name: Run Tray UI Tests
+      timeout-minutes: 15
       run: >
         ./scripts/Invoke-CiTest.ps1
         -Project tests/OpenClaw.Tray.UITests
@@ -541,6 +542,7 @@ jobs:
         -TrxFileName OpenClaw.Tray.UITests.trx
         -Runtime win-x64
         -Filter Category!=Accessibility
+        -HangTimeoutSeconds 300
 
     # Accessibility Insights CI pass: scans each page in the real app process.
     - name: Run Accessibility Tests (Axe.Windows)

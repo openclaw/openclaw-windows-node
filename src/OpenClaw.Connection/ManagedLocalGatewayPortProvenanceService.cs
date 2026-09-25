@@ -285,6 +285,11 @@ public sealed class ManagedLocalGatewayPortProvenanceService
 
     public GatewayEndpointProvenance Inspect(GatewayRecord record)
     {
+        if (record.NativePackageFamilyName is not null)
+        {
+            return new(GatewayEndpointProvenanceKind.UnknownListener, 0,
+                Detail: "Native Gateway ownership must be verified by its Companion runtime, not WSL.");
+        }
         var result = InspectCore(record);
         _lastProvenance[new ProvenanceCacheKey(record.Id, record.Url)] = result;
         return result;
@@ -292,6 +297,8 @@ public sealed class ManagedLocalGatewayPortProvenanceService
 
     public bool IsStrongCredentialAllowed(GatewayRecord record, GatewayCredential credential)
     {
+        if (record.NativePackageFamilyName is not null)
+            return false;
         var isStrong =
             credential.IsBootstrapToken ||
             string.Equals(credential.Source, CredentialResolver.SourceSharedGatewayToken, StringComparison.Ordinal) ||

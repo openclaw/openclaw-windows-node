@@ -9,7 +9,8 @@ param(
     [Parameter(Mandatory)][string]$ResultsDirectory,
     [Parameter(Mandatory)][string]$TrxFileName,
     [string]$Runtime,
-    [string]$Filter
+    [string]$Filter,
+    [ValidateRange(0, 3600)][int]$HangTimeoutSeconds = 0
 )
 
 Set-StrictMode -Version Latest
@@ -41,6 +42,17 @@ if (-not [string]::IsNullOrWhiteSpace($Runtime)) {
 if (-not [string]::IsNullOrWhiteSpace($Filter)) {
     $testArguments.Add("--filter")
     $testArguments.Add($Filter)
+}
+
+if ($HangTimeoutSeconds -gt 0) {
+    # Keep the interrupted test sequence, not a potentially secret-bearing memory dump.
+    @(
+        "--blame-hang",
+        "--blame-hang-timeout",
+        "${HangTimeoutSeconds}s",
+        "--blame-hang-dump-type",
+        "none"
+    ) | ForEach-Object { $testArguments.Add($_) }
 }
 
 $collectCoverage = $env:OPENCLAW_CI_COLLECT_COVERAGE -eq "true"
