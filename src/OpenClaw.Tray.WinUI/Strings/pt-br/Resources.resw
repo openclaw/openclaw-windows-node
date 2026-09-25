@@ -6365,6 +6365,9 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="ConfigPage_StatusSaveFailedTitle" xml:space="preserve">
     <value>Falha ao salvar</value>
   </data>
+  <data name="ConfigPage_StatusSaveBlockedSentinelFormat" xml:space="preserve">
+    <value>Salvamento bloqueado. Um marcador oculto ainda está presente em {0}. O valor não foi enviado.</value>
+  </data>
   <data name="ConfigPage_StatusSaveRejectedMessage" xml:space="preserve">
     <value>O Gateway rejeitou a atualização de configuração. Suas alterações foram preservadas.</value>
   </data>

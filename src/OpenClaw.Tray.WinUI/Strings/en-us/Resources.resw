@@ -6394,6 +6394,9 @@ Make sure the gateway is running.</value>
   <data name="ConfigPage_StatusSaveRejectedMessage" xml:space="preserve">
     <value>The gateway rejected the config update. Your changes are preserved.</value>
   </data>
+  <data name="ConfigPage_StatusSaveBlockedSentinelFormat" xml:space="preserve">
+    <value>Save blocked. A redacted placeholder is still present at {0}. The value was not sent.</value>
+  </data>
   <data name="ConfigPage_StatusSaveExceptionMessageFormat" xml:space="preserve">
     <value>{0} Your changes are preserved.</value>
   </data>

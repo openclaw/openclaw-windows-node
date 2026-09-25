@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using OpenClaw.Shared;
 
 namespace OpenClawTray.Services;
 
@@ -113,6 +114,48 @@ internal static class ConfigEditorModel
         }
 
         return value;
+    }
+
+    public static string? FindUneditedRedactionSentinel(
+        JsonElement document,
+        IEnumerable<string> editedPaths)
+    {
+        _ = editedPaths;
+        return FindUneditedRedactionSentinel(document, "");
+    }
+
+    private static string? FindUneditedRedactionSentinel(
+        JsonElement element,
+        string path)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                var childPath = string.IsNullOrEmpty(path) ? property.Name : $"{path}.{property.Name}";
+                var hit = FindUneditedRedactionSentinel(property.Value, childPath);
+                if (hit != null)
+                    return hit;
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.Array)
+        {
+            var index = 0;
+            foreach (var item in element.EnumerateArray())
+            {
+                var childPath = $"{path}[{index++}]";
+                var hit = FindUneditedRedactionSentinel(item, childPath);
+                if (hit != null)
+                    return hit;
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.String &&
+                 ChannelConfigPatchBuilder.IsRedactionSentinel(element.GetString()))
+        {
+            return path;
+        }
+
+        return null;
     }
 
     private static void SetPath(JsonNode node, string dotPath, JsonNode? value)

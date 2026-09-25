@@ -60,6 +60,9 @@ public static class ChannelConfigPatchBuilder
         "********",
     };
 
+    public static bool IsRedactionSentinel(string? value) =>
+        value != null && RedactionSentinels.Contains(value.Trim());
+
     /// <summary>
     /// Build a patched full-config from the cached config and a list of
     /// per-field updates for one channel.
@@ -179,8 +182,7 @@ public static class ChannelConfigPatchBuilder
         }
         else if (el.ValueKind == JsonValueKind.String)
         {
-            var v = el.GetString();
-            if (v != null && RedactionSentinels.Contains(v.Trim()))
+            if (IsRedactionSentinel(el.GetString()))
                 return path;
         }
         return null;
