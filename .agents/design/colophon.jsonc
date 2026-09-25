@@ -1,0 +1,60 @@
+{
+  "$schema": "https://raw.githubusercontent.com/karkarl/colophon/main/extensions/colophon/colophon.schema.json",
+  "schemaVersion": 1,
+  "extends": "colophon/default",
+  "brand": {
+    "name": "Windows Fluent UI for OpenClaw",
+    "tagline": "A calm native Windows companion for your AI assistant."
+  },
+  "theme": {
+    "light": {
+      "colors": {
+        "canvas": { "$token": "paper" },
+        "sidebar": { "$token": "surface" },
+        "foreground": { "$token": "ink" },
+        "muted": { "$token": "muted" },
+        "border": { "$token": "line" },
+        "accent": { "$token": "accent" },
+        "accentForeground": { "$token": "accentInk" }
+      },
+      "typography": {
+        "body": { "$token": "body" },
+        "heading": { "$token": "display" },
+        "mono": { "$token": "mono" }
+      },
+      "shape": {
+        "control": { "$token": "sm" },
+        "panel": { "$token": "lg" }
+      }
+    },
+    "dark": {
+      "colors": {
+        "canvas": { "$token": "paper", "mode": "dark" },
+        "sidebar": { "$token": "surface", "mode": "dark" },
+        "foreground": { "$token": "ink", "mode": "dark" },
+        "muted": { "$token": "muted", "mode": "dark" },
+        "border": { "$token": "line", "mode": "dark" },
+        "accent": { "$token": "accent", "mode": "dark" },
+        "accentForeground": { "$token": "accentInk", "mode": "dark" }
+      }
+    }
+  },
+  "navigation": {
+    "sections": [
+      { "id": "brand", "label": "Brand", "target": "brand" },
+      { "id": "components", "label": "Components", "target": "components" }
+    ],
+    "components": {
+      "presentation": "flat-list",
+      "searchable": true
+    }
+  },
+  "templates": {
+    "components": {
+      "tabs": ["spec", "usage", "demo"],
+      "layout": "stack",
+      "tableOfContents": false,
+      "modeComparison": "light-dark"
+    }
+  }
+}
