@@ -643,13 +643,7 @@ public sealed partial class SchemaConfigEditor : UserControl
         return result;
     }
 
-    private static bool IsSensitive(string path)
-    {
-        var normalizedPath = path.ToLowerInvariant();
-        return normalizedPath.Contains("token") || normalizedPath.Contains("secret")
-            || normalizedPath.Contains("password") || normalizedPath.Contains("apikey")
-            || normalizedPath.Contains("api_key");
-    }
+    private static bool IsSensitive(string path) => ConfigPathSensitivity.IsSensitive(path);
 
     private static bool IsRequired(JsonElement parentSchema, string propName)
     {
