@@ -41,6 +41,9 @@ public sealed class GatewayRestartFailureDiagnosticTests
             process_start_available=true
             service_start_available=true
             restart_count=2
+            service_result=exit-code
+            exit_code=1
+            exit_status=78
             """;
         var snapshot = GatewayRestartFailureDiagnostic.Parse(Result(raw));
         Assert.Equal("ok", snapshot.Probe);
@@ -49,7 +52,41 @@ public sealed class GatewayRestartFailureDiagnosticTests
         Assert.True(snapshot.PidLive);
         Assert.False(snapshot.PidEqual);
         Assert.Equal(2, snapshot.RestartCount);
+        Assert.Equal("exit-code", snapshot.ServiceResult);
+        Assert.Equal(1, snapshot.ExecMainCode);
+        Assert.Equal(78, snapshot.ExecMainStatus);
         Assert.DoesNotContain("home", JsonSerializer.Serialize(snapshot));
+    }
+
+    [Theory]
+    [InlineData("service_result=private-path")]
+    [InlineData("exit_code=4")]
+    [InlineData("exit_status=256")]
+    public void RejectsOutOfRangeServiceExitFacts(string replacement)
+    {
+        const string raw = """
+            probe=ok
+            scope=user
+            unit_equal=true
+            active=activating
+            sub=auto-restart
+            pid_present=false
+            pid_live=false
+            pid_equal=unknown
+            process_start_available=false
+            service_start_available=true
+            restart_count=0
+            service_result=unknown
+            exit_code=unknown
+            exit_status=unknown
+            """;
+        var fieldName = replacement.Split('=')[0];
+        var output = raw.Replace($"{fieldName}=unknown", replacement, StringComparison.Ordinal);
+
+        var snapshot = GatewayRestartFailureDiagnostic.Parse(Result(output));
+
+        Assert.Equal("invalid_output", snapshot.Probe);
+        Assert.DoesNotContain(replacement, JsonSerializer.Serialize(snapshot));
     }
 
     [Fact]
@@ -68,6 +105,7 @@ public sealed class GatewayRestartFailureDiagnosticTests
     {
         var script = GatewayRestartFailureDiagnostic.ProbeScript;
         Assert.Contains("systemctl --user show", script);
+        Assert.Contains("-p ExecMainStatus", script);
         Assert.Contains("read -r key value", script);
         Assert.DoesNotContain("printf '%s\\n' \"$properties\"", script);
         Assert.DoesNotContain("openclaw gateway restart", script);

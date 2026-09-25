@@ -8,11 +8,11 @@ internal static class GatewayRestartFailureDiagnostic
 {
     internal const string ProbeScript = """
         unit=openclaw-gateway.service
-        if ! properties=$(systemctl --user show "$unit" -p Id -p ActiveState -p SubState -p MainPID -p ExecMainPID -p ExecMainStartTimestampMonotonic -p NRestarts 2>/dev/null); then
+        if ! properties=$(systemctl --user show "$unit" -p Id -p ActiveState -p SubState -p MainPID -p ExecMainPID -p ExecMainStartTimestampMonotonic -p NRestarts -p Result -p ExecMainCode -p ExecMainStatus 2>/dev/null); then
           printf 'probe=unavailable\n'
           exit 0
         fi
-        id= active= sub= pid= exec_pid= started= restarts=
+        id= active= sub= pid= exec_pid= started= restarts= service_result= exit_code= exit_status=
         while IFS='=' read -r key value; do
           case "$key" in
             Id) id=$value ;;
@@ -22,6 +22,9 @@ internal static class GatewayRestartFailureDiagnostic
             ExecMainPID) exec_pid=$value ;;
             ExecMainStartTimestampMonotonic) started=$value ;;
             NRestarts) restarts=$value ;;
+            Result) service_result=$value ;;
+            ExecMainCode) exit_code=$value ;;
+            ExecMainStatus) exit_status=$value ;;
           esac
         done <<< "$properties"
         printf 'probe=ok\nscope=user\n'
@@ -44,6 +47,9 @@ internal static class GatewayRestartFailureDiagnostic
         fi
         if [[ "$started" =~ ^[1-9][0-9]*$ ]]; then printf 'service_start_available=true\n'; else printf 'service_start_available=false\n'; fi
         if [[ "$restarts" =~ ^[0-9]{1,6}$ ]]; then printf 'restart_count=%s\n' "$restarts"; else printf 'restart_count=unknown\n'; fi
+        case "$service_result" in success|exit-code|signal|core-dump|timeout|watchdog|start-limit-hit|resources|protocol|oom-kill) printf 'service_result=%s\n' "$service_result" ;; *) printf 'service_result=unknown\n' ;; esac
+        if [[ "$exit_code" =~ ^[0-3]$ ]]; then printf 'exit_code=%s\n' "$exit_code"; else printf 'exit_code=unknown\n'; fi
+        if [[ "$exit_status" =~ ^(0|[1-9][0-9]{0,2})$ ]] && ((exit_status <= 255)); then printf 'exit_status=%s\n' "$exit_status"; else printf 'exit_status=unknown\n'; fi
         """;
 
     internal static string RefusalCategory(string? message)
@@ -92,7 +98,10 @@ internal static class GatewayRestartFailureDiagnostic
             snapshot.PidEqual,
             snapshot.ProcessStartAvailable,
             snapshot.ServiceStartAvailable,
-            snapshot.RestartCount
+            snapshot.RestartCount,
+            snapshot.ServiceResult,
+            snapshot.ExecMainCode,
+            snapshot.ExecMainStatus
         };
         await File.WriteAllTextAsync(artifactPath, JsonSerializer.Serialize(artifact));
         ctx.Logger.Info($"Pre-rollback gateway restart diagnostic: {JsonSerializer.Serialize(artifact)}");
@@ -109,7 +118,10 @@ internal static class GatewayRestartFailureDiagnostic
         bool? PidEqual = null,
         bool? ProcessStartAvailable = null,
         bool? ServiceStartAvailable = null,
-        int? RestartCount = null);
+        int? RestartCount = null,
+        string? ServiceResult = null,
+        int? ExecMainCode = null,
+        int? ExecMainStatus = null);
 
     internal static Snapshot Parse(CommandResult result)
     {
@@ -128,7 +140,7 @@ internal static class GatewayRestartFailureDiagnostic
 
         if (fields.Count == 1 && fields.GetValueOrDefault("probe") == "unavailable")
             return new("unavailable");
-        if (fields.Count != 11 || fields.GetValueOrDefault("probe") != "ok" ||
+        if (fields.Count != 14 || fields.GetValueOrDefault("probe") != "ok" ||
             fields.GetValueOrDefault("scope") != "user" ||
             !TryBoolean(fields, "unit_equal", out var unitEqual) ||
             !TryBoolean(fields, "pid_present", out var pidPresent) ||
@@ -143,14 +155,27 @@ internal static class GatewayRestartFailureDiagnostic
             sub is not ("running" or "exited" or "dead" or "failed" or "start-pre" or "start-post" or "auto-restart" or "stop-sigterm" or "stop-post" or "unknown") ||
             !fields.TryGetValue("restart_count", out var restartCountText) ||
             !(restartCountText == "unknown" ||
-              int.TryParse(restartCountText, out var count) && count is >= 0 and <= 999999))
+              int.TryParse(restartCountText, out var count) && count is >= 0 and <= 999999) ||
+            !fields.TryGetValue("service_result", out var serviceResult) ||
+            serviceResult is not ("success" or "exit-code" or "signal" or "core-dump" or
+                "timeout" or "watchdog" or "start-limit-hit" or "resources" or
+                "protocol" or "oom-kill" or "unknown") ||
+            !fields.TryGetValue("exit_code", out var exitCodeText) ||
+            !(exitCodeText == "unknown" ||
+              int.TryParse(exitCodeText, out var exitCode) && exitCode is >= 0 and <= 3) ||
+            !fields.TryGetValue("exit_status", out var exitStatusText) ||
+            !(exitStatusText == "unknown" ||
+              int.TryParse(exitStatusText, out var exitStatus) && exitStatus is >= 0 and <= 255))
             return new("invalid_output");
 
         return new Snapshot(
             "ok", "user", unitEqual, active, sub, pidPresent, pidLive,
             pidEqualText == "unknown" ? null : pidEqualText == "true",
             processStart, serviceStart,
-            restartCountText == "unknown" ? null : int.Parse(restartCountText));
+            restartCountText == "unknown" ? null : int.Parse(restartCountText),
+            serviceResult,
+            exitCodeText == "unknown" ? null : int.Parse(exitCodeText),
+            exitStatusText == "unknown" ? null : int.Parse(exitStatusText));
     }
 
     private static bool TryBoolean(Dictionary<string, string> fields, string name, out bool value)

@@ -306,7 +306,8 @@ post-wizard Gateway restart, the observer awaits a fixed, read-only
 `systemctl --user show` probe **before** the normal owned-fixture rollback.
 The resulting `gateway-restart-diagnostic.json` contains only an allowlisted
 refusal category and coarse unit/state/PID-presence/start-identity-availability
-facts. Failed or timed-out probes produce an explicit probe status, not raw
+facts, plus allowlisted service result and bounded exit code/status. Failed or
+timed-out probes produce an explicit probe status, not raw
 command output. The original setup failure and rollback are unchanged.
 
 The public Gateway CLI does not expose the rejected owner-lease predicate,
