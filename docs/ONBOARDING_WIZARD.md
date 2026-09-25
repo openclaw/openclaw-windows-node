@@ -65,8 +65,10 @@ It does not suppress that exception or repair the upstream full-wizard finalizer
 See the [implementation results and limitations](GATEWAY_SETUP_RESPONSIBILITIES.md#package-aware-implementation-results)
 for launch, shutdown, verification details and the pre-assignment crash window.
 
-**Install a local native gateway** is the first Welcome choice and is recommended after
-the native capability check succeeds. By the 2026-09-18 product decision, this
+**Install a local native gateway** is the first Welcome choice and retains its
+**Recommended** badge even while disabled, with WinUI disabled brushes for the
+title, description, badge and icon instead of active accent colors. Only a successful native capability
+check enables it. By the 2026-09-18 product decision, this
 continues to run the existing Gateway MSIX with the signed-in Windows user's
 access. The separate isolation warning and acknowledgment checkbox are removed;
 the general security notice and provider/onboarding consent remain explicit.
@@ -248,7 +250,9 @@ Retry selects a new port without replacing the profile, credentials or identity.
 Unexpected launch/cleanup failures show an explicit failure and Retry action;
 Companion never takes over or stops the conflicting process.
 The WSL title is **Install a local WSL gateway**. Checking, unavailable and error
-messages remain outside the disabled card so retry/update actions stay usable.
+messages appear in a compact, bordered support card below the gateway choices,
+outside the disabled native option so the Windows Update action stays usable.
+The support card is hidden when native capability is available.
 
 When capability is unavailable, **Open Windows Update** opens
 `ms-settings:windowsupdate`. Guidance names Insider build **26340.9212**, the

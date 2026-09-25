@@ -127,6 +127,46 @@ public sealed class NativeGatewaySetupUxContractTests
     }
 
     [Fact]
+    public void Welcome_DisabledNativeKeepsRecommendationAndSeparateSupportCard()
+    {
+        var pages = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.SetupEngine.UI", "Pages");
+        var document = XDocument.Load(Path.Combine(pages, "WelcomePage.xaml"));
+        XNamespace names = "http://schemas.microsoft.com/winfx/2006/xaml";
+        XElement Named(string name) => document.Descendants().Single(
+            element => (string?)element.Attribute(names + "Name") == name);
+        var native = Named("NativeChoice");
+        var badge = Named("NativeRecommendedBadge");
+        Assert.Equal("False", (string?)native.Attribute("IsEnabled"));
+        Assert.Contains(native, badge.Ancestors());
+        Assert.Null(badge.Attribute("Visibility"));
+        Assert.Equal("{ThemeResource TextFillColorDisabledBrush}", (string?)badge.Attribute("BorderBrush"));
+        foreach (var name in new[] { "NativeTitle", "NativeDescription", "NativeRecommendedText" })
+            Assert.Equal("{ThemeResource TextFillColorDisabledBrush}", (string?)Named(name).Attribute("Foreground"));
+        Assert.Equal("{ThemeResource AccentFillColorDisabledBrush}", (string?)Named("NativeIconBackground").Attribute("Background"));
+        Assert.Equal("{ThemeResource TextOnAccentFillColorDisabledBrush}", (string?)Named("NativeIcon").Attribute("Foreground"));
+        var enabledSetters = Named("NativeEnabled").Descendants().Where(element => element.Name.LocalName == "Setter").ToArray();
+        Assert.Equal(6, enabledSetters.Length);
+        Assert.Contains(enabledSetters, setter =>
+            (string?)setter.Attribute("Target") == "NativeRecommendedText.Foreground" &&
+            (string?)setter.Attribute("Value") == "{ThemeResource AccentTextFillColorPrimaryBrush}");
+        var card = Named("NativeSupportCard");
+        var selector = Named("GatewayChoiceSelector");
+        Assert.Contains(card, selector.ElementsAfterSelf());
+        Assert.Equal("{ThemeResource CardBackgroundFillColorDefaultBrush}", (string?)card.Attribute("Background"));
+        Assert.Equal("1", (string?)card.Attribute("BorderThickness"));
+        Assert.Contains(card, Named("NativeSupportStatus").Ancestors());
+        Assert.Contains(card, Named("WindowsUpdateButton").Ancestors());
+        Assert.DoesNotContain(native, card.Ancestors());
+        var source = File.ReadAllText(Path.Combine(pages, "WelcomePage.xaml.cs"));
+        Assert.DoesNotContain("NativeRecommendedBadge.Visibility", source);
+        Assert.Contains("NativeChoice.IsEnabled = available", source);
+        Assert.Contains("VisualStateManager.GoToState(this, \"NativeDisabled\", false)", source);
+        Assert.Contains("VisualStateManager.GoToState(this, available ? \"NativeEnabled\" : \"NativeDisabled\", false)", source);
+        Assert.Contains("NativeSupportCard.Visibility = available ? Visibility.Collapsed : Visibility.Visible", source);
+        Assert.Contains("\", \" + SetupLocalization.GetString(\"Onboarding_Native_Recommended.Text\")", source);
+    }
+
+    [Fact]
     public void Welcome_GatewayLabelsMatchEnglishResourcesAndAccessibleNames()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();

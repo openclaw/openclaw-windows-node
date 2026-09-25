@@ -6,6 +6,21 @@
     NavigationCacheMode="Disabled">
 
     <Grid Padding="48,28,48,24" RowDefinitions="Auto,*,Auto">
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:Name="NativeAvailabilityStates">
+                <VisualState x:Name="NativeDisabled" />
+                <VisualState x:Name="NativeEnabled">
+                    <VisualState.Setters>
+                        <Setter Target="NativeIconBackground.Background" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+                        <Setter Target="NativeIcon.Foreground" Value="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                        <Setter Target="NativeTitle.Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                        <Setter Target="NativeDescription.Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <Setter Target="NativeRecommendedBadge.BorderBrush" Value="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                        <Setter Target="NativeRecommendedText.Foreground" Value="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
 
         <StackPanel Grid.Row="0" HorizontalAlignment="Center" Spacing="12">
             <Image x:Name="MascotHero"
@@ -45,29 +60,30 @@
                                     HorizontalContentAlignment="Stretch"
                                     IsEnabled="False" Padding="16,12">
                           <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
-                              <Border Width="44" Height="44" CornerRadius="6"
-                                      Background="{ThemeResource AccentFillColorDefaultBrush}" VerticalAlignment="Center">
-                                  <FontIcon Glyph="&#xE770;" FontSize="20" IsTextScaleFactorEnabled="False"
-                                            Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                              <Border x:Name="NativeIconBackground" Width="44" Height="44" CornerRadius="6"
+                                      Background="{ThemeResource AccentFillColorDisabledBrush}" VerticalAlignment="Center">
+                                  <FontIcon x:Name="NativeIcon" Glyph="&#xE770;" FontSize="20" IsTextScaleFactorEnabled="False"
+                                            Foreground="{ThemeResource TextOnAccentFillColorDisabledBrush}" />
                               </Border>
                               <StackPanel Grid.Column="1" Spacing="3">
                                   <Grid x:Name="NativeHeading" ColumnDefinitions="*,Auto" ColumnSpacing="8"
                                         HorizontalAlignment="Left">
-                                      <TextBlock x:Uid="Onboarding_Native_Title" Text="Install a local native gateway"
+                                      <TextBlock x:Name="NativeTitle" x:Uid="Onboarding_Native_Title" Text="Install a local native gateway"
                                                  VerticalAlignment="Center" TextWrapping="Wrap"
+                                                 Foreground="{ThemeResource TextFillColorDisabledBrush}"
                                                  Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                      <Border x:Name="NativeRecommendedBadge" Grid.Column="1" Visibility="Collapsed"
+                                      <Border x:Name="NativeRecommendedBadge" Grid.Column="1"
                                               VerticalAlignment="Center" CornerRadius="4" Padding="7,1"
-                                              BorderBrush="{ThemeResource AccentTextFillColorPrimaryBrush}" BorderThickness="1">
-                                          <TextBlock x:Uid="Onboarding_Native_Recommended" Text="Recommended"
+                                              BorderBrush="{ThemeResource TextFillColorDisabledBrush}" BorderThickness="1">
+                                          <TextBlock x:Name="NativeRecommendedText" x:Uid="Onboarding_Native_Recommended" Text="Recommended"
                                                      Style="{StaticResource CaptionTextBlockStyle}"
-                                                     Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                                     Foreground="{ThemeResource TextFillColorDisabledBrush}" />
                                       </Border>
                                   </Grid>
-                                  <TextBlock x:Uid="Onboarding_Native_Description"
+                                  <TextBlock x:Name="NativeDescription" x:Uid="Onboarding_Native_Description"
                                              Text="Install a local, MXC contained OpenClaw gateway"
                                              TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
-                                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                             Foreground="{ThemeResource TextFillColorDisabledBrush}" />
                                   <Grid x:Name="NativeSupportAvailablePanel" Visibility="Collapsed"
                                         ColumnDefinitions="Auto,*" ColumnSpacing="6" Margin="0,5,0,0">
                                       <FontIcon Glyph="&#xE73E;" FontSize="11" IsTextScaleFactorEnabled="False"
@@ -156,7 +172,11 @@
                           </Grid>
                       </ListViewItem>
             </ListView>
-            <StackPanel Spacing="8" Margin="16,0">
+            <Border x:Name="NativeSupportCard" Padding="14,12" CornerRadius="4"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                    AutomationProperties.AutomationId="WelcomeNativeSupportCard">
+                <StackPanel Spacing="8">
                       <StackPanel x:Name="NativeSupportStatusPanel" Orientation="Horizontal" Spacing="8">
                           <ProgressRing x:Name="NativeCheckProgress" Width="16" Height="16"
                                         IsActive="True" AutomationProperties.Name="Checking native gateway support" />
@@ -169,7 +189,8 @@
                               Content="Open Windows Update" Visibility="Collapsed"
                               AutomationProperties.AutomationId="WelcomeWindowsUpdate"
                               Style="{StaticResource AccentButtonStyle}" Click="WindowsUpdate_Click" />
-            </StackPanel>
+                </StackPanel>
+            </Border>
             </StackPanel>
         </ScrollViewer>
 

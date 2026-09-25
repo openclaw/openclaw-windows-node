@@ -27,6 +27,9 @@ public sealed partial class WelcomePage : Page
     public WelcomePage()
     {
         InitializeComponent();
+        AutomationProperties.SetName(NativeChoice,
+            SetupLocalization.GetString("Onboarding_Native_Title.Text") +
+            ", " + SetupLocalization.GetString("Onboarding_Native_Recommended.Text"));
         AutomationProperties.SetName(InstallChoice, SetupLocalization.GetString("Onboarding_Wsl_Title.Text"));
         Loaded += OnLoaded;
         Unloaded += (_, _) => ++_probeGeneration;
@@ -60,8 +63,9 @@ public sealed partial class WelcomePage : Page
         var generation = ++_probeGeneration;
         _nativeEligibility = null;
         NativeChoice.IsEnabled = false;
-        NativeRecommendedBadge.Visibility = Visibility.Collapsed;
+        VisualStateManager.GoToState(this, "NativeDisabled", false);
         NativeSupportAvailablePanel.Visibility = Visibility.Collapsed;
+        NativeSupportCard.Visibility = Visibility.Visible;
         NativeSupportStatusPanel.Visibility = Visibility.Visible;
         WindowsUpdateButton.Visibility = Visibility.Collapsed;
         NativeCheckProgress.IsActive = true;
@@ -86,16 +90,14 @@ public sealed partial class WelcomePage : Page
         _nativeEligibility = eligibility;
         var available = eligibility == NativeGatewayEligibility.Available;
         NativeChoice.IsEnabled = available;
-        NativeRecommendedBadge.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
+        VisualStateManager.GoToState(this, available ? "NativeEnabled" : "NativeDisabled", false);
+        NativeSupportCard.Visibility = available ? Visibility.Collapsed : Visibility.Visible;
         NativeSupportAvailablePanel.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
         NativeSupportStatusPanel.Visibility = available ? Visibility.Collapsed : Visibility.Visible;
         WindowsUpdateButton.Visibility = eligibility == NativeGatewayEligibility.CapabilityUnavailable
             ? Visibility.Visible : Visibility.Collapsed;
         var supportText = available ? NativeSupportAvailableText : NativeSupportStatus;
         supportText.Text = NativeGatewayEligibilityText.Get(eligibility);
-        AutomationProperties.SetName(NativeChoice,
-            SetupLocalization.GetString("Onboarding_Native_Title.Text") +
-            (available ? ", " + SetupLocalization.GetString("Onboarding_Native_Recommended.Text") : ""));
         NativeCheckProgress.IsActive = false;
         NativeCheckProgress.Visibility = Visibility.Collapsed;
         SetChoice(NativeGatewaySetupEligibility.ResolveSelection(_selectedChoice, eligibility));
@@ -126,6 +128,7 @@ public sealed partial class WelcomePage : Page
         Trace.TraceWarning("Windows Update could not be opened from native Gateway setup.");
         if (IsLoaded)
         {
+            NativeSupportCard.Visibility = Visibility.Visible;
             NativeSupportStatusPanel.Visibility = Visibility.Visible;
             NativeSupportStatus.Text = SetupLocalization.GetString("Onboarding_Native_UpdateLaunchFailed");
         }
