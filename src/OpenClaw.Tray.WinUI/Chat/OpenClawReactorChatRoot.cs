@@ -134,9 +134,12 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 string.Equals(thread.Id, fallbackId, StringComparison.Ordinal));
         }
 
+        // A synthetic compose-only thread does not acknowledge session materialization.
+        _pendingSelectedThreadId = ChatLifecycleSelectionPolicy.RetainPendingForSelection(
+            _pendingSelectedThreadId,
+            selectedId,
+            selectedMaterializedThread is not null);
         var effectiveThread = selectedMaterializedThread ?? CreateComposeOnlyThread(props.Provider, snapshot);
-        if (effectiveThread is { } selected && string.Equals(_pendingSelectedThreadId, selected.Id, StringComparison.Ordinal))
-            _pendingSelectedThreadId = null;
 
         var connectionState = ToConnectionState(snapshot.ConnectionStatus);
         var isGatewayConnected = string.Equals(connectionState, "connected", StringComparison.Ordinal);
@@ -188,7 +191,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
         var welcomeEligible = isEmptyConversation
             && isGatewayConnected
             && (
-                (isComposeOnly && !hasRealThreads)
+                (isComposeOnly && ChatLifecycleSelectionPolicy.IsComposeOnlyWelcomeEligible(
+                    effectiveThread?.Id, _pendingSelectedThreadId, hasRealThreads))
                 || (!isComposeOnly && timeline.HistoryLoaded));
         var welcomeEligibilityKey = welcomeEligible
             ? $"{effectiveThread?.Id}|{isComposeOnly}|{timeline.HistoryLoaded}|{hasRealThreads}"

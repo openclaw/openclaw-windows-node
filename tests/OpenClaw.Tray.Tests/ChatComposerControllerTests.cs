@@ -273,6 +273,38 @@ public sealed class ChatComposerControllerTests
     }
 
     [Fact]
+    public async Task SendAsync_AfterNew_FirstMessageTargetsPendingComposeOnlySession()
+    {
+        var (vm, controller, port, _) = MakeController();
+        vm.SetDraft("/new");
+        port.ExecuteLifecycleGate = new TaskCompletionSource<ChatLifecycleCommandResult>();
+        port.ExecuteLifecycleGate.SetResult(new ChatLifecycleCommandResult(
+            ChatLifecycleCommandKind.New, Succeeded: true, NewSessionKey: "new-session-key"));
+        string? selected = null;
+        controller.BindSelectionHandoff(key => selected = key);
+        Assert.True(await controller.SendAsync());
+        Assert.Equal("new-session-key", selected);
+
+        string? pending = selected;
+        for (var render = 0; render < 3; render++)
+        {
+            pending = ChatLifecycleSelectionPolicy.RetainPendingForSelection(
+                pending, selected, selectedMaterialized: false);
+            Assert.Equal(selected, pending);
+            Assert.False(ChatLifecycleSelectionPolicy.ShouldFallback(selected!, pending, "session-1"));
+            // The root projects its effective compose-only thread into inputs
+            // while the provider's real thread list still contains only Main.
+            vm.ApplyInputs(MakeInputs(revision: render + 2, thread: MakeThread(pending!)));
+        }
+
+        vm.SetDraft("first message");
+        Assert.True(await controller.SendAsync());
+        Assert.Equal(1, port.SendMessageCallCount);
+        Assert.Equal("new-session-key", port.LastSendMessageCall!.Value.ThreadId);
+        Assert.Equal("first message", port.LastSendMessageCall.Value.Message);
+    }
+
+    [Fact]
     public async Task SendAsync_Compact_UsesQueuePathNotLifecycleExecute()
     {
         var (vm, controller, port, _) = MakeController();
