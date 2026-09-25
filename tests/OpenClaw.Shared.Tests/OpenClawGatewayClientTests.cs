@@ -3418,6 +3418,28 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void SessionUsageSnapshotUpdated_ExcludesTrackedActivityRepublishes()
+    {
+        var helper = new GatewayClientTestHelper();
+        using var client = helper.Client;
+        var sessionUpdates = 0;
+        var usageSnapshots = 0;
+        client.SessionsUpdated += (_, _) => sessionUpdates++;
+        client.SessionUsageSnapshotUpdated += (_, _) => usageSnapshots++;
+
+        helper.ParseSessionsPayload(
+            """[{"key":"agent:main:main","totalTokens":1000}]""");
+        var update = typeof(OpenClawGatewayClient).GetMethod(
+            "UpdateTrackedSession",
+            System.Reflection.BindingFlags.NonPublic |
+            System.Reflection.BindingFlags.Instance)!;
+        update.Invoke(client, ["agent:main:main", true, "working"]);
+
+        Assert.Equal(2, sessionUpdates);
+        Assert.Equal(1, usageSnapshots);
+    }
+
+    [Fact]
     public void ParseSessions_LegacyStatusOnlyEntryDoesNotPretendToClearThinkingMetadata()
     {
         var helper = new GatewayClientTestHelper();

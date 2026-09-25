@@ -238,6 +238,12 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     public event EventHandler<AgentActivity>? ActivityChanged;
     public event EventHandler<ChannelHealth[]>? ChannelHealthUpdated;
     public event EventHandler<SessionInfo[]>? SessionsUpdated;
+    /// <summary>
+    /// Raised only for fresh <c>sessions.list</c> responses. Unlike
+    /// <see cref="SessionsUpdated"/>, this event is not raised when a tool or
+    /// job activity update republishes the cached session collection.
+    /// </summary>
+    public event EventHandler<SessionInfo[]>? SessionUsageSnapshotUpdated;
     public event EventHandler<GatewayUsageInfo>? UsageUpdated;
     public event EventHandler<GatewayUsageStatusInfo>? UsageStatusUpdated;
     public event EventHandler<GatewayCostUsageInfo>? UsageCostUpdated;
@@ -4452,6 +4458,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             }
 
             SessionsUpdated?.Invoke(this, snapshot);
+            SessionUsageSnapshotUpdated?.Invoke(this, snapshot);
         }
         catch (Exception ex)
         {

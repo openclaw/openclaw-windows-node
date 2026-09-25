@@ -354,34 +354,38 @@ internal sealed class ChatConversationState
         {
             if (_disposed)
                 return new(BuildSnapshotLocked(context), []);
-            var previousUsage = _presentation.SnapshotUsage();
             _presentation.ReplaceSessions(sessions);
             var currentSessions = _presentation.SessionSnapshot();
             _history.SeedSessionIds(currentSessions);
             EnsureTimelinesForSessionsLocked();
             _presentation.RememberLastSessionState(context);
-            foreach (var session in currentSessions)
-            {
-                if (string.IsNullOrEmpty(session.Key))
-                    continue;
-                var usage = new ChatUsageSnapshot(
-                    session.InputTokens,
-                    session.OutputTokens,
-                    session.TotalTokens,
-                    session.ContextTokens);
-                if (!previousUsage.TryGetValue(session.Key, out var previous) ||
-                    previous != usage)
-                {
-                    SnapshotLatestAssistantUsageLocked(
-                        session,
-                        _presentation.ResolveTimelineKey(session, _timelines));
-                }
-            }
             return new(
                 BuildSnapshotLocked(context),
                 _status == ConnectionStatus.Connected
                     ? _queue.ThreadsWithMessages()
                     : []);
+        }
+    }
+
+    internal ChatDataSnapshot? ApplyAuthoritativeSessionUsage(
+        SessionInfo[] sessions,
+        ChatProjectionContext context)
+    {
+        lock (_gate)
+        {
+            if (_disposed)
+                return null;
+            var changed = false;
+            foreach (var session in sessions)
+            {
+                if (string.IsNullOrEmpty(session.Key))
+                    continue;
+                changed |= SnapshotLatestAssistantUsageLocked(
+                    session,
+                    _presentation.ResolveTimelineKey(session, _timelines),
+                    authoritative: true);
+            }
+            return changed ? BuildSnapshotLocked(context) : null;
         }
     }
 
@@ -489,7 +493,8 @@ internal sealed class ChatConversationState
 
     private bool SnapshotLatestAssistantUsageLocked(
         SessionInfo session,
-        string threadId)
+        string threadId,
+        bool authoritative)
     {
         if (string.IsNullOrEmpty(session.Key))
             return false;
@@ -508,16 +513,41 @@ internal sealed class ChatConversationState
                 continue;
             var metadata = GetOrCreateThreadMetaLocked(threadId);
             metadata.TryGetValue(timeline.Entries[i].Id, out var existing);
-            var usageSnapshot = Math.Max(
-                usedTokens,
-                existing?.ResponseTokens ?? 0);
+            if (!authoritative &&
+                existing?.UsageContributionTokens is > 0)
+            {
+                var contributionContextTokens = session.ContextTokens > 0
+                    ? session.ContextTokens
+                    : existing.ContextTokens;
+                if (existing.ContextTokens == contributionContextTokens)
+                    return false;
+                metadata[timeline.Entries[i].Id] = existing with
+                {
+                    ContextTokens = contributionContextTokens,
+                    ContextPercent = null,
+                };
+                return true;
+            }
+            var usageSnapshot = authoritative
+                ? usedTokens
+                : Math.Max(usedTokens, existing?.ResponseTokens ?? 0);
             var usageTokens = ToIntIfPositive(usageSnapshot);
             var contextTokens = session.ContextTokens > 0
                 ? session.ContextTokens
                 : existing?.ContextTokens;
+            var contextPercent = existing?.ContextPercent;
+            if (authoritative ||
+                existing?.ResponseTokens != usageTokens ||
+                existing?.ContextTokens != contextTokens)
+            {
+                contextPercent = null;
+            }
+            var usageContributionTokens = existing?.UsageContributionTokens;
             if (existing is not null &&
                 existing.ResponseTokens == usageTokens &&
-                existing.ContextTokens == contextTokens)
+                existing.ContextTokens == contextTokens &&
+                existing.ContextPercent == contextPercent &&
+                existing.UsageContributionTokens == usageContributionTokens)
             {
                 return false;
             }
@@ -528,8 +558,8 @@ internal sealed class ChatConversationState
                 OutputTokens = ToIntIfPositive(session.OutputTokens),
                 ResponseTokens = usageTokens,
                 ContextTokens = contextTokens,
-                ContextPercent = existing?.ContextPercent,
-                UsageContributionTokens = existing?.UsageContributionTokens,
+                ContextPercent = contextPercent,
+                UsageContributionTokens = usageContributionTokens,
             };
             return true;
         }
@@ -2193,7 +2223,7 @@ internal sealed class ChatConversationState
                 threadId,
                 context.MainSessionKey);
             return session is not null &&
-                   SnapshotLatestAssistantUsageLocked(session, threadId)
+                   SnapshotLatestAssistantUsageLocked(session, threadId, authoritative: false)
                 ? BuildSnapshotLocked(context)
                 : null;
         }
@@ -2232,14 +2262,18 @@ internal sealed class ChatConversationState
                 continue;
             var threadMetadata = GetOrCreateThreadMetaLocked(threadId);
             threadMetadata.TryGetValue(entry.Id, out var existing);
-            var previousUsage = LatestAssistantUsageBeforeLocked(
-                timeline,
-                threadMetadata,
-                i);
-            var cumulative = Math.Max(
-                (previousUsage ?? 0) + currentUsage.Value,
-                existing?.ResponseTokens ?? 0);
-            if (existing?.ResponseTokens == cumulative &&
+            if (existing?.UsageContributionTokens == currentUsage &&
+                existing.ResponseTokens != currentUsage)
+                return false;
+            var usageSnapshot = currentUsage.Value;
+            var contextPercent = metadata.ContextPercent;
+            if (contextPercent is null &&
+                existing?.ResponseTokens == usageSnapshot &&
+                existing.ContextTokens == contextTokens)
+            {
+                contextPercent = existing.ContextPercent;
+            }
+            if (existing?.ResponseTokens == usageSnapshot &&
                 existing.UsageContributionTokens == currentUsage &&
                 existing.ContextTokens == contextTokens)
             {
@@ -2249,34 +2283,14 @@ internal sealed class ChatConversationState
             {
                 InputTokens = metadata.InputTokens ?? existing?.InputTokens,
                 OutputTokens = metadata.OutputTokens ?? existing?.OutputTokens,
-                ResponseTokens = cumulative,
-                ContextPercent = metadata.ContextPercent ?? existing?.ContextPercent,
+                ResponseTokens = usageSnapshot,
+                ContextPercent = contextPercent,
                 ContextTokens = contextTokens ?? existing?.ContextTokens,
                 UsageContributionTokens = currentUsage,
             };
             return true;
         }
         return false;
-    }
-
-    private static int? LatestAssistantUsageBeforeLocked(
-        ChatTimelineState timeline,
-        IReadOnlyDictionary<string, ChatEntryMetadata> metadata,
-        int beforeIndex)
-    {
-        for (var i = beforeIndex - 1; i >= 0; i--)
-        {
-            var entry = timeline.Entries[i];
-            if (entry.Kind != ChatTimelineItemKind.Assistant ||
-                !metadata.TryGetValue(entry.Id, out var entryMetadata))
-            {
-                continue;
-            }
-            var value = UsageValue(entryMetadata);
-            if (value is > 0)
-                return value;
-        }
-        return null;
     }
 
     private static int? UsageValue(ChatEntryMetadata metadata) =>

@@ -170,6 +170,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
         _bridge.StatusChanged += OnStatusChanged;
         _bridge.SessionsUpdated += OnSessionsUpdated;
+        _bridge.SessionUsageSnapshotUpdated += OnSessionUsageSnapshotUpdated;
         _bridge.SessionCommandCompleted += OnSessionCommandCompleted;
         _bridge.ChatMessageReceived += OnChatMessageReceived;
         _bridge.AgentEventReceived += OnAgentEventReceived;
@@ -1073,6 +1074,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             _persistence.Dispose();
             _bridge.StatusChanged -= OnStatusChanged;
             _bridge.SessionsUpdated -= OnSessionsUpdated;
+            _bridge.SessionUsageSnapshotUpdated -= OnSessionUsageSnapshotUpdated;
             _bridge.SessionCommandCompleted -= OnSessionCommandCompleted;
             _bridge.ChatMessageReceived -= OnChatMessageReceived;
             _bridge.AgentEventReceived -= OnAgentEventReceived;
@@ -1143,6 +1145,18 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         foreach (var threadId in transition.QueuedThreadsToDrain)
         {
             TryDispatchNextQueuedSend(threadId);
+        }
+    }
+
+    private void OnSessionUsageSnapshotUpdated(object? sender, SessionInfo[] sessions)
+    {
+        if (_state.IsDisposed)
+            return;
+        if (_state.ApplyAuthoritativeSessionUsage(
+                sessions ?? [],
+                ProjectionContext()) is { } snapshot)
+        {
+            Publish(snapshot);
         }
     }
 
