@@ -98,6 +98,14 @@ absent or unregister succeeds. To replace such a legacy distro, uninstall it
 first, using `--uninstall --confirm-destructive` and the same distro name, then
 rerun setup with a supported new name.
 
+Automatic rollback of the WSL-create step has cleanup authority only after that
+execution starts creating the distro. If creation refuses pre-existing state,
+rollback preserves the distro, install directory, ownership marker, and empty
+parent directory. A reused step starts with no authority from an earlier attempt.
+Once creation starts, the existing live-registration ownership and
+unregister-failure preservation gates still apply. Explicit uninstall remains a
+separate, destructive-consent path.
+
 ```json
 {
   "DistroName": "OpenClawGateway",
