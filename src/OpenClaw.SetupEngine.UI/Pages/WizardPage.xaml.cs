@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using OpenClaw.Connection;
+using OpenClaw.SetupEngine;
 using OpenClaw.Shared;
 using OpenClaw.SetupEngine.UI;
 using Windows.ApplicationModel.DataTransfer;
@@ -33,6 +34,10 @@ public sealed partial class WizardPage : Page
     private int _wizardStepCount;
     private int _progressPolls;
     private int _totalProgressPolls;
+    private int _stepIndex;
+    private int _totalSteps;
+    private bool _stepHasOptions;
+    private readonly WizardFinalStepTracker _finalStepTracker = new WizardFinalStepTracker();
     private readonly Dictionary<string, int> _stepVisits = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<WizardOptionValue> _options = [];
     private volatile bool _expectedTerminalRestart;
@@ -126,6 +131,7 @@ public sealed partial class WizardPage : Page
             _totalProgressPolls = 0;
             _lastProgressStepId = "";
             _stepVisits.Clear();
+            _finalStepTracker.ResetForNewSession();
             SetBusy("Connecting to gateway...");
             var client = await ConnectClientAsync();
             if (generation != _operationGeneration)
@@ -284,10 +290,17 @@ public sealed partial class WizardPage : Page
             if (payload.TryGetProperty("done", out var done) && done.ValueKind == JsonValueKind.True)
             {
                 var error = payload.TryGetProperty("error", out var err) ? err.ToString() : "";
-                if (!string.IsNullOrWhiteSpace(error) && !error.Contains("this.prompt is not a function", StringComparison.OrdinalIgnoreCase))
+                if (!string.IsNullOrWhiteSpace(error))
                 {
-                    ShowError(error);
-                    return;
+                    var decision = SetupWizardRunner.DecideTerminalWizardError(
+                        payloadIsTerminal: true,
+                        error,
+                        _finalStepTracker.AnsweredFinalStep);
+                    if (!decision.MarksWizardCompleted)
+                    {
+                        ShowError(error);
+                        return;
+                    }
                 }
 
                 await DisconnectAsync();
@@ -308,11 +321,14 @@ public sealed partial class WizardPage : Page
             var rawType = step.TryGetProperty("type", out var type) ? type.ToString() : "note";
             _stepType = string.IsNullOrWhiteSpace(rawType) ? "note" : rawType.Trim().ToLowerInvariant();
             var stepIndex = payload.TryGetProperty("stepIndex", out var indexProperty) && indexProperty.TryGetInt32(out var index) ? index : 0;
+            _stepIndex = stepIndex;
+            _totalSteps = payload.TryGetProperty("totalSteps", out var totalProperty) && totalProperty.TryGetInt32(out var total) ? total : 0;
             _sensitive = step.TryGetProperty("sensitive", out var sensitive) && sensitive.ValueKind == JsonValueKind.True;
             var title = step.TryGetProperty("title", out var titleProp) ? titleProp.ToString() : "";
             var message = WizardPayloadHelpers.ExtractStepMessage(step);
             var initial = step.TryGetProperty("initialValue", out var initialProp) ? initialProp : default;
             var hasOptions = StepHasOptions(step);
+            _stepHasOptions = hasOptions;
             _stepCategory = WizardStepClassifier.Categorize(_stepType, hasOptions);
 
             if (_stepCategory == WizardStepCategory.RequiresAnswer
@@ -359,6 +375,7 @@ public sealed partial class WizardPage : Page
                 if (generation != _operationGeneration || _errorState || _client == null)
                     return;
 
+                _finalStepTracker.RecordProgressAcknowledgement();
                 payload = await _client.SendWizardRequestAsync(
                     "wizard.next",
                     WizardNextPayload.Acknowledge(_sessionId, _stepId),
@@ -703,6 +720,13 @@ public sealed partial class WizardPage : Page
             SetBusy("Loading...");
             ClearConsoleBanner();
             var parameters = new { sessionId = _sessionId, answer = new { stepId = _stepId, value } };
+            _finalStepTracker.RecordAnsweredStep(
+                _stepType,
+                _stepId,
+                _currentTitle,
+                _stepHasOptions,
+                _stepIndex,
+                _totalSteps);
             var payload = await _client.SendWizardRequestAsync("wizard.next", parameters, timeoutMs: TimeoutForCurrentStep());
             if (generation != _operationGeneration) return;
             await ApplyPayloadAsync(payload);
@@ -723,6 +747,13 @@ public sealed partial class WizardPage : Page
         try
         {
             var parameters = new { sessionId = _sessionId, answer = new { stepId = _stepId, value = moreValue } };
+            _finalStepTracker.RecordAnsweredStep(
+                _stepType,
+                _stepId,
+                _currentTitle,
+                _stepHasOptions,
+                _stepIndex,
+                _totalSteps);
             var payload = await _client.SendWizardRequestAsync("wizard.next", parameters, timeoutMs: TimeoutForCurrentStep());
             if (generation != _operationGeneration) return;
 
@@ -839,6 +870,13 @@ public sealed partial class WizardPage : Page
                 parameters = new { sessionId = _sessionId, answer = new { stepId = _stepId, value = answerValue } };
             }
 
+            _finalStepTracker.RecordAnsweredStep(
+                _stepType,
+                _stepId,
+                _currentTitle,
+                _stepHasOptions,
+                _stepIndex,
+                _totalSteps);
             _expectedTerminalRestart =
                 !skip &&
                 _hostAccessPlan.CanControlWslGateway &&

@@ -33,6 +33,34 @@ public sealed class SetupWizardTerminalCompletionContractTests
     }
 
     [Fact]
+    public void WinUiDonePayload_UsesDecideTerminalWizardError()
+    {
+        var source = WizardPageSource();
+        var apply = ExtractMethod(source, "ApplyPayloadAsync");
+        var start = ExtractMethod(source, "StartWizardAsync");
+        var sendAnswer = ExtractMethod(source, "SendCurrentAnswerAsync");
+        var sendOption = ExtractMethod(source, "SendOptionValueAsync");
+        var expandMore = ExtractMethod(source, "ExpandMoreOptionsAsync");
+
+        Assert.Contains("new WizardFinalStepTracker()", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "SetupWizardRunner.DecideTerminalWizardError(",
+            apply,
+            StringComparison.Ordinal);
+        Assert.Contains("_finalStepTracker.AnsweredFinalStep", apply, StringComparison.Ordinal);
+        Assert.Contains("decision.MarksWizardCompleted", apply, StringComparison.Ordinal);
+        Assert.DoesNotContain("this.prompt is not a function", apply, StringComparison.Ordinal);
+        AssertInOrder(
+            apply,
+            "_finalStepTracker.RecordProgressAcknowledgement();",
+            "SendWizardRequestAsync(");
+        Assert.Contains("_finalStepTracker.ResetForNewSession();", start, StringComparison.Ordinal);
+        AssertRecordsAnswerBeforeNext(sendAnswer);
+        AssertRecordsAnswerBeforeNext(sendOption);
+        AssertRecordsAnswerBeforeNext(expandMore);
+    }
+
+    [Fact]
     public void FinalStepTracking_IsOwnedByTheTrackerSeam()
     {
         var source = RunnerSource();
@@ -55,6 +83,57 @@ public sealed class SetupWizardTerminalCompletionContractTests
             source,
             StringComparison.Ordinal);
     }
+
+    private static void AssertRecordsAnswerBeforeNext(string method)
+    {
+        AssertInOrder(
+            method,
+            "_finalStepTracker.RecordAnsweredStep(",
+            "SendWizardRequestAsync(");
+    }
+
+    private static void AssertInOrder(string source, params string[] markers)
+    {
+        var current = -1;
+        foreach (var marker in markers)
+        {
+            var next = source.IndexOf(marker, current + 1, StringComparison.Ordinal);
+            Assert.True(next >= 0, $"Could not find marker after index {current}: {marker}");
+            current = next;
+        }
+    }
+
+    private static string ExtractMethod(string source, string methodName)
+    {
+        var signature = source.IndexOf($"async Task {methodName}(", StringComparison.Ordinal);
+        Assert.True(signature >= 0, $"Could not find method {methodName}.");
+        var brace = source.IndexOf('{', signature);
+        Assert.True(brace >= 0, $"Could not find body for method {methodName}.");
+
+        var depth = 0;
+        for (var index = brace; index < source.Length; index++)
+        {
+            if (source[index] == '{')
+                depth++;
+            else if (source[index] == '}')
+            {
+                depth--;
+                if (depth == 0)
+                    return source.Substring(signature, index - signature + 1);
+            }
+        }
+
+        throw new InvalidOperationException($"Could not extract method {methodName}.");
+    }
+
+    private static string WizardPageSource() =>
+        File.ReadAllText(
+            Path.Combine(
+                RepositoryRoot(),
+                "src",
+                "OpenClaw.SetupEngine.UI",
+                "Pages",
+                "WizardPage.xaml.cs"));
 
     private static int CountOccurrences(string source, string value)
     {
