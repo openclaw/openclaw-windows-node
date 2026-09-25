@@ -10,6 +10,21 @@ The Setup Engine is a **config-driven system** for provisioning an OpenClaw WSL 
 
 The bundled `default-config.json` ships with the tray executable and provides secure defaults (loopback bind, WSL isolation, systemd enabled). Defaults can be overridden via config file or environment variables.
 
+WSL wizard completion restores `gateway.reload.mode` before explicitly restarting
+the Gateway. With Gateway 2026.9.6, restoring hybrid reload can initiate a systemd
+restart for accumulated wizard changes before the explicit restart records its
+owner intent. During that gap the live-owner lease is absent, so the CLI correctly
+refuses to signal a process. `SetupWizardRunner` recognizes only that exact
+serving-owner refusal, waits for verified managed endpoint ownership using the
+existing bounded provenance probe, and retries the normal CLI restart once.
+The probe allows up to 30 one-second retry delays, plus probe duration, for
+`NoListener` and `UnknownListener` tagged `ListenerSnapshotChanged`. Other
+unknown/conflicting listeners, other restart errors, and a repeated refusal still
+fail setup. Listener provenance does not prove owner-lease or coordinator
+readiness; the retried CLI command retains those guards. Restart-intent recording
+contention is a separate failure and is not retried here. There is no direct
+systemd restart fallback or ownership bypass.
+
 > **Status note (2026-07-06):** Current default setup includes `WindowsNodeBootstrapContextStep`, which injects Windows-node context into the WSL workspace `AGENTS.md` after onboarding.
 
 ---
