@@ -90,6 +90,7 @@ public sealed class PairOperatorStep : SetupStep
             ApprovalRequestKind.Device,
             ct);
         ctx.SetupDeviceApprovalBaseline = requestBaseline;
+        ctx.CurrentDeviceApprovalBaseline = requestBaseline;
 
         try
         {
@@ -117,7 +118,7 @@ public sealed class PairOperatorStep : SetupStep
                 client = null;
 
                 // Auto-approve the pending pairing request
-                var approveResult = await AutoApprovePairing(ctx, requestId, requestBaseline, ct);
+                var approveResult = await AutoApprovePairing(ctx, requestId, ct);
                 if (!approveResult.IsSuccess)
                     return approveResult;
 
@@ -284,6 +285,7 @@ public sealed class PairOperatorStep : SetupStep
             ctx,
             ApprovalRequestKind.Device,
             ct);
+        ctx.CurrentDeviceApprovalBaseline = requestBaseline;
 
         // Connect exactly as the tray would: pass deviceToken as the credential
         var finalClient = new OpenClawGatewayClient(gatewayUrl, deviceToken, logger: wsLogger, identityPath: identityPath);
@@ -309,7 +311,7 @@ public sealed class PairOperatorStep : SetupStep
                 finalClient = null;
 
                 // Approve the metadata-upgrade
-                var approveResult = await AutoApprovePairing(ctx, requestId, requestBaseline, ct);
+                var approveResult = await AutoApprovePairing(ctx, requestId, ct);
                 if (!approveResult.IsSuccess)
                     return StepResult.Fail($"Finalization approval failed: {approveResult.Message}");
 
@@ -343,13 +345,6 @@ public sealed class PairOperatorStep : SetupStep
     }
 
     internal static async Task<StepResult> AutoApprovePairing(SetupContext ctx, string? requestId, CancellationToken ct)
-        => await AutoApprovePairing(ctx, requestId, requestBaseline: null, ct);
-
-    internal static async Task<StepResult> AutoApprovePairing(
-        SetupContext ctx,
-        string? requestId,
-        PendingRequestBaseline? requestBaseline,
-        CancellationToken ct)
     {
         var distro = ctx.DistroName!;
         var token = ctx.SharedGatewayToken ?? ctx.BootstrapToken ?? throw new InvalidOperationException("No gateway token available for auto-approve");
@@ -358,6 +353,7 @@ public sealed class PairOperatorStep : SetupStep
 
         if (string.IsNullOrWhiteSpace(requestId))
         {
+            var requestBaseline = ctx.CurrentDeviceApprovalBaseline;
             if (requestBaseline is null || !requestBaseline.Success)
             {
                 if (requestBaseline?.PluginNotFound == true)

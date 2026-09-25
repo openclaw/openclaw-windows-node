@@ -53,6 +53,7 @@ public sealed class PairNodeStep : SetupStep
             ApprovalRequestKind.Node,
             ct);
         ctx.SetupNodeApprovalBaseline = requestBaseline;
+        ctx.CurrentNodeApprovalBaseline = requestBaseline;
 
         try
         {
@@ -83,7 +84,7 @@ public sealed class PairNodeStep : SetupStep
                 client.Dispose();
                 client = null;
 
-                var approveResult = await AutoApproveNodePairing(ctx, outcome.RequestId, requestBaseline, ct);
+                var approveResult = await AutoApproveNodePairing(ctx, outcome.RequestId, ct);
                 if (!approveResult.IsSuccess)
                     return approveResult;
 
@@ -178,6 +179,7 @@ public sealed class PairNodeStep : SetupStep
             ctx,
             ApprovalRequestKind.Node,
             ct);
+        ctx.CurrentNodeApprovalBaseline = requestBaseline;
         var finalClient = new WindowsNodeClient(gatewayUrl, nodeToken, identityPath, logger: wsLogger);
         PairOperatorStep.ApplyReconnectAuthorization(finalClient, ctx);
         finalClient.UseV2Signature = true;
@@ -199,7 +201,7 @@ public sealed class PairNodeStep : SetupStep
                 finalClient.Dispose();
                 finalClient = null;
 
-                var approveResult = await AutoApproveNodePairing(ctx, result.RequestId, requestBaseline, ct);
+                var approveResult = await AutoApproveNodePairing(ctx, result.RequestId, ct);
                 if (!approveResult.IsSuccess)
                     return StepResult.Fail($"Node finalization approval failed: {approveResult.Message}");
 
@@ -288,13 +290,6 @@ public sealed class PairNodeStep : SetupStep
     }
 
     internal static async Task<StepResult> AutoApproveNodePairing(SetupContext ctx, string? requestId, CancellationToken ct)
-        => await AutoApproveNodePairing(ctx, requestId, requestBaseline: null, ct);
-
-    internal static async Task<StepResult> AutoApproveNodePairing(
-        SetupContext ctx,
-        string? requestId,
-        PendingRequestBaseline? requestBaseline,
-        CancellationToken ct)
     {
         var distro = ctx.DistroName!;
         var token = ctx.SharedGatewayToken ?? ctx.BootstrapToken ?? throw new InvalidOperationException("No gateway token available for auto-approve");
@@ -304,6 +299,7 @@ public sealed class PairNodeStep : SetupStep
 
         if (string.IsNullOrWhiteSpace(requestId))
         {
+            var requestBaseline = ctx.CurrentNodeApprovalBaseline;
             if (requestBaseline is null || !requestBaseline.Success)
             {
                 if (requestBaseline?.PluginNotFound == true)

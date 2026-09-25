@@ -304,6 +304,7 @@ public sealed class VerifyEndToEndStep : SetupStep
             ctx,
             ApprovalRequestKind.Device,
             ct);
+        ctx.CurrentDeviceApprovalBaseline = requestBaseline;
         var client = new OpenClawGatewayClient(gatewayUrl, deviceToken, logger: wsLogger, identityPath: identityPath);
         PairOperatorStep.ApplyReconnectAuthorization(client, ctx);
         client.UseV2Signature = true;
@@ -327,11 +328,7 @@ public sealed class VerifyEndToEndStep : SetupStep
                 client.Dispose();
                 client = null;
 
-                var approveResult = await PairOperatorStep.AutoApprovePairing(
-                    ctx,
-                    requestId,
-                    requestBaseline,
-                    ct);
+                var approveResult = await PairOperatorStep.AutoApprovePairing(ctx, requestId, ct);
                 if (!approveResult.IsSuccess)
                     return StepResult.Fail($"Operator finalization approval failed: {approveResult.Message}");
 

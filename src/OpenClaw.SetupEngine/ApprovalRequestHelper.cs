@@ -18,11 +18,11 @@ internal static partial class ApprovalRequestHelper
         ApprovalRequestKind kind,
         CancellationToken ct)
     {
-        var token = ctx.SharedGatewayToken ?? ctx.BootstrapToken;
-        if (string.IsNullOrWhiteSpace(token))
+        var authorization = ctx.SharedGatewayToken ?? ctx.BootstrapToken;
+        if (string.IsNullOrWhiteSpace(authorization))
             return PendingRequestBaseline.Fail("No gateway token is available to capture the pending approval baseline.");
 
-        var env = new Dictionary<string, string> { ["OPENCLAW_GATEWAY_TOKEN"] = token };
+        var env = new Dictionary<string, string> { ["OPENCLAW_GATEWAY_TOKEN"] = authorization };
         var noun = Noun(kind);
         var pending = await ctx.Commands.RunInWslAsync(
             ctx.DistroName!,

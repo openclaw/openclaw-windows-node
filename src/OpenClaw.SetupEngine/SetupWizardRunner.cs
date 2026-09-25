@@ -208,6 +208,7 @@ public sealed class SetupWizardRunner
                 _ctx,
                 ApprovalRequestKind.Device,
                 ct);
+            _ctx.CurrentDeviceApprovalBaseline = requestBaseline;
             client = CreateWizardClient(credential, identityPath, wsLogger);
             var connection = await PairOperatorStep.WaitForConnectionOrPairing(
                 client,
@@ -236,11 +237,7 @@ public sealed class SetupWizardRunner
                 await client.DisconnectAsync();
                 client.Dispose();
 
-                var approval = await PairOperatorStep.AutoApprovePairing(
-                    _ctx,
-                    requestId,
-                    requestBaseline,
-                    ct);
+                var approval = await PairOperatorStep.AutoApprovePairing(_ctx, requestId, ct);
                 if (!approval.IsSuccess)
                     return approval;
 

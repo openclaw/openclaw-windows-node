@@ -503,6 +503,8 @@ public sealed class SetupContext
     public string? NodeDeviceId { get; set; }
     internal PendingRequestBaseline? SetupDeviceApprovalBaseline { get; set; }
     internal PendingRequestBaseline? SetupNodeApprovalBaseline { get; set; }
+    internal PendingRequestBaseline? CurrentDeviceApprovalBaseline { get; set; }
+    internal PendingRequestBaseline? CurrentNodeApprovalBaseline { get; set; }
     public GatewaySelfInfo? ObservedGatewaySelf { get; set; }
     public GatewayCompatibilityException? GatewayCompatibilityFailure { get; set; }
     public string? WindowsTailnetDnsSuffix { get; set; }

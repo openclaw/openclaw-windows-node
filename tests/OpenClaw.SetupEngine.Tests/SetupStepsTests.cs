@@ -5343,12 +5343,9 @@ public class SetupStepsTests : IDisposable
         ctx.SharedGatewayToken = "test-auth-token";
         ctx.OperatorDeviceId = socketDeviceId;
         var requestBaseline = PendingRequestBaseline.SuccessResult([staleRequestId]);
+        ctx.CurrentDeviceApprovalBaseline = requestBaseline;
 
-        var result = await PairOperatorStep.AutoApprovePairing(
-            ctx,
-            requestId: null,
-            requestBaseline,
-            CancellationToken.None);
+        var result = await PairOperatorStep.AutoApprovePairing(ctx, requestId: null, CancellationToken.None);
 
         Assert.True(result.IsSuccess, result.Message);
         Assert.Contains(socketRequestId, result.Message);
@@ -5512,12 +5509,9 @@ public class SetupStepsTests : IDisposable
             """);
         var ctx = CreateNodePairingContext(commands);
         ctx.NodeDeviceId = foreignDeviceId[..16];
+        ctx.CurrentNodeApprovalBaseline = PendingRequestBaseline.SuccessResult([]);
 
-        var result = await PairNodeStep.AutoApproveNodePairing(
-            ctx,
-            requestId: null,
-            PendingRequestBaseline.SuccessResult([]),
-            CancellationToken.None);
+        var result = await PairNodeStep.AutoApproveNodePairing(ctx, requestId: null, CancellationToken.None);
 
         Assert.Equal(StepOutcome.Failed, result.Outcome);
         Assert.Contains("No new pending approval request matched", result.Message);
@@ -5540,12 +5534,9 @@ public class SetupStepsTests : IDisposable
             """);
         var ctx = CreateNodePairingContext(commands);
         ctx.NodeDeviceId = "bbbbbbbbbbbbbbbb";
+        ctx.CurrentNodeApprovalBaseline = PendingRequestBaseline.SuccessResult([]);
 
-        var result = await PairNodeStep.AutoApproveNodePairing(
-            ctx,
-            requestId: null,
-            PendingRequestBaseline.SuccessResult([]),
-            CancellationToken.None);
+        var result = await PairNodeStep.AutoApproveNodePairing(ctx, requestId: null, CancellationToken.None);
 
         Assert.True(result.IsSuccess, result.Message);
         Assert.Equal(2, commands.WslCalls.Count);
@@ -5565,12 +5556,9 @@ public class SetupStepsTests : IDisposable
         var ctx = CreateNodePairingContext(commands);
         ctx.OperatorDeviceId = deviceId;
         ctx.NodeDeviceId = PairingSocketDeviceId[..16];
+        ctx.CurrentNodeApprovalBaseline = PendingRequestBaseline.SuccessResult([]);
 
-        var result = await PairNodeStep.AutoApproveNodePairing(
-            ctx,
-            requestId: null,
-            PendingRequestBaseline.SuccessResult([]),
-            CancellationToken.None);
+        var result = await PairNodeStep.AutoApproveNodePairing(ctx, requestId: null, CancellationToken.None);
 
         Assert.Equal(StepOutcome.Failed, result.Outcome);
         Assert.Contains("device ID is missing", result.Message);
@@ -5587,12 +5575,9 @@ public class SetupStepsTests : IDisposable
     {
         var commands = NodePairingCommands(pendingJson);
         var ctx = CreateNodePairingContext(commands);
+        ctx.CurrentNodeApprovalBaseline = PendingRequestBaseline.SuccessResult([]);
 
-        var result = await PairNodeStep.AutoApproveNodePairing(
-            ctx,
-            requestId: null,
-            PendingRequestBaseline.SuccessResult([]),
-            CancellationToken.None);
+        var result = await PairNodeStep.AutoApproveNodePairing(ctx, requestId: null, CancellationToken.None);
 
         Assert.Equal(StepOutcome.Failed, result.Outcome);
         Assert.Contains(expectedError, result.Message);
@@ -5652,12 +5637,9 @@ public class SetupStepsTests : IDisposable
             ctx,
             ApprovalRequestKind.Node,
             CancellationToken.None);
+        ctx.CurrentNodeApprovalBaseline = requestBaseline;
 
-        var result = await PairNodeStep.AutoApproveNodePairing(
-            ctx,
-            requestId: null,
-            requestBaseline,
-            CancellationToken.None);
+        var result = await PairNodeStep.AutoApproveNodePairing(ctx, requestId: null, CancellationToken.None);
 
         Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
         Assert.Equal(ApprovalRequestHelper.PluginNotFoundMessage, result.Message);
@@ -5671,12 +5653,9 @@ public class SetupStepsTests : IDisposable
             ctx,
             ApprovalRequestKind.Node,
             CancellationToken.None);
+        ctx.CurrentNodeApprovalBaseline = requestBaseline;
 
-        var result = await PairNodeStep.AutoApproveNodePairing(
-            ctx,
-            requestId: null,
-            requestBaseline,
-            CancellationToken.None);
+        var result = await PairNodeStep.AutoApproveNodePairing(ctx, requestId: null, CancellationToken.None);
 
         Assert.Equal(StepOutcome.Failed, result.Outcome);
         Assert.Contains("Could not capture pending nodes", result.Message);
