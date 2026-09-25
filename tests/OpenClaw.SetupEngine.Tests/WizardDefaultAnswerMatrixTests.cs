@@ -24,14 +24,15 @@ public class WizardDefaultAnswerMatrixTests
     ];
 
     [Fact]
-    public void DefaultConfig_CoversProviderChannelAndSearchWizardSteps()
+    public void DefaultConfig_CoversProviderAndChannelWithoutOverridingManagedChoices()
     {
         var answers = LoadDefaultWizardAnswers();
 
         AssertConfiguredSelect(answers, "model-auth-provider", ProviderOptions);
         AssertConfiguredSelect(answers, "default-model", ["__keep__", "gpt-5.5", "gpt-5.4", "claude-sonnet-4.6"]);
         AssertConfiguredMultiselect(answers, "select-channel-quickstart", ChannelOptions);
-        AssertConfiguredSelect(answers, "search-provider", ["__skip__", "tavily", "brave", "bing"]);
+        Assert.False(answers.ContainsKey("search-provider"));
+        Assert.False(answers.ContainsKey("setup-mode"));
 
         Assert.True(answers.TryGetValue("configure-skills-now-recommended", out var configureSkills));
         Assert.False((bool)WizardAnswerBuilder.BuildWireValue("confirm", configureSkills, []));

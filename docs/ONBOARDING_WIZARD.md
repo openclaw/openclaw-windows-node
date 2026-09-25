@@ -35,6 +35,31 @@ random step IDs or option positions. Unknown/localized prompts and missing skip
 options stay visible (or require a headless answer) rather than receiving guessed
 answers. Configured channels/search are deferred, not intentionally disabled.
 
+#### Headless answers and Companion-managed steps
+
+The shortened experience is product policy, not merely a set of overridable
+headless defaults. `WizardAnswers` still supplies and validates answers for
+unmanaged prompts. For each encountered Companion-managed choice, an absent
+answer uses the policy; an explicit answer must produce the same protocol value.
+Equivalent encodings, such as `FALSE` and `false` for a confirmation, are accepted.
+A conflicting or invalid answer fails setup before answering that step, rather
+than silently overriding the caller or restoring an intentionally omitted screen.
+The error identifies the step and asks the caller to remove the conflicting entry
+and configure optional features after setup. It does not echo the configured value.
+
+Managed informational notes accept an absent answer or an explicit `true`
+acknowledgment. This also applies to the Optional apps handoff: a contradictory
+answer fails before the handoff begins. Security and other unmanaged prompts
+retain their existing answer handling. Only encountered steps are checked;
+entries for steps beyond the deliberately cancelled optional tail are not executed
+or validated.
+
+Recovery templates list encountered unmanaged prompts that the caller can act
+on, not overrides for managed/deferred steps. On a policy conflict, remove the
+entry from the original configuration; the generated template does not reproduce
+that entry or its value. The bundled configuration leaves setup mode and search
+provider unspecified so policy can choose among the actual offered values.
+
 ### Native Gateway MSIX (not isolated)
 
 **Package-aware verification (2026-09-16, package 0.0.0.1 ARM64):** the original

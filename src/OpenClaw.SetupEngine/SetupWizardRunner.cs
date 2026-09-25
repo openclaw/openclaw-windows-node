@@ -472,6 +472,13 @@ public sealed class SetupWizardRunner
                 }
 
                 var onboarding = WizardOnboardingPolicy.Evaluate(payload.GetProperty("step"));
+                RecordActionableTemplateStep(discoveredSteps, parsed, onboarding);
+                var answerResult = ResolveOnboardingAnswer(parsed, onboarding, _ctx.Config.WizardAnswers);
+                if (!answerResult.Success)
+                {
+                    var templatePath = WriteAnswerTemplate(discoveredSteps, parsed);
+                    return StepResult.Fail($"{answerResult.Error} A wizard answer template was written to: {templatePath}");
+                }
                 if (onboarding.Action == WizardOnboardingAction.Finish)
                 {
                     await WizardOptionalSetupHandoff.CompleteAsync(
@@ -479,19 +486,6 @@ public sealed class SetupWizardRunner
                     sessionId = "";
                     _ctx.Logger.Info("Optional Gateway setup deferred; saved configuration and authenticated health verified.");
                     return StepResult.Ok("Gateway setup verified; optional features can be configured later");
-                }
-                if (onboarding.Action == WizardOnboardingAction.Show)
-                    discoveredSteps.Add(WizardTemplateStep.From(parsed));
-                var answerResult = onboarding.Action switch
-                {
-                    WizardOnboardingAction.Answer => AnswerResolution.Ok(onboarding.Answer!),
-                    WizardOnboardingAction.Acknowledge => AnswerResolution.Continue(),
-                    _ => ResolveAnswer(parsed, _ctx.Config.WizardAnswers),
-                };
-                if (!answerResult.Success)
-                {
-                    var templatePath = WriteAnswerTemplate(discoveredSteps, parsed);
-                    return StepResult.Fail($"{answerResult.Error} A wizard answer template was written to: {templatePath}");
                 }
 
                 _ctx.Logger.Info(answerResult.HasAnswer
@@ -754,7 +748,14 @@ public sealed class SetupWizardRunner
             _ => new AggregateException(first!, second!),
         };
 
-    private string WriteAnswerTemplate(IReadOnlyList<WizardTemplateStep> discoveredSteps, WizardPayload? missingStep)
+    internal static void RecordActionableTemplateStep(
+        List<WizardTemplateStep> discoveredSteps, WizardPayload step, WizardOnboardingDecision policy)
+    {
+        if (policy.Action == WizardOnboardingAction.Show)
+            discoveredSteps.Add(WizardTemplateStep.From(step));
+    }
+
+    internal string WriteAnswerTemplate(IReadOnlyList<WizardTemplateStep> discoveredSteps, WizardPayload? missingStep)
     {
         var logPath = _ctx.Config.LogPath;
         var basePath = !string.IsNullOrWhiteSpace(logPath)
@@ -777,7 +778,9 @@ public sealed class SetupWizardRunner
 
         var template = new
         {
-            _instructions = "Copy WizardAnswers into your setup config, fill required values, then rerun setup.",
+            _instructions = "Copy WizardAnswers into your setup config, fill required values, then rerun setup. " +
+                "Companion-managed or deferred steps are not editable answers in this template. " +
+                "If setup reported a policy conflict, remove that entry from your original configuration.",
             WizardAnswers = answers,
             Steps = discoveredSteps
         };
@@ -786,6 +789,31 @@ public sealed class SetupWizardRunner
         AtomicFile.WriteAllText(basePath, json);
         _ctx.Logger.Info($"Wizard answer template written: {basePath}");
         return basePath;
+    }
+
+    internal static AnswerResolution ResolveOnboardingAnswer(
+        WizardPayload step, WizardOnboardingDecision policy, Dictionary<string, string>? configuredAnswers)
+    {
+        if (policy.Action == WizardOnboardingAction.Show)
+            return ResolveAnswer(step, configuredAnswers);
+
+        if (TryGetConfiguredAnswer(step, configuredAnswers, out var configured))
+        {
+            // Compare protocol values, not spelling: false/FALSE and skip/["skip"] can be equivalent.
+            var matches = policy.Action == WizardOnboardingAction.Answer
+                ? JsonElement.DeepEquals(
+                    JsonSerializer.SerializeToElement(AnswerValueForWire(step, configured)),
+                    JsonSerializer.SerializeToElement(AnswerValueForWire(step, policy.Answer!)))
+                : bool.TryParse(configured, out var acknowledged) && acknowledged;
+            if (!matches)
+                return AnswerResolution.Fail(
+                    $"WizardAnswers entry for '{StableAnswerKey(step.Title, step.Message, step.StepId)}' conflicts with Companion onboarding policy. " +
+                    "This step is managed or deferred by Companion. Remove the conflicting entry and configure optional features after setup.");
+        }
+
+        return policy.Action == WizardOnboardingAction.Answer
+            ? AnswerResolution.Ok(policy.Answer!)
+            : AnswerResolution.Continue();
     }
 
     private static AnswerResolution ResolveAnswer(WizardPayload step, Dictionary<string, string>? configuredAnswers)
@@ -1017,7 +1045,7 @@ public sealed class SetupWizardRunner
         return s_normalizeKeyRegex.Replace(value.Trim().ToLowerInvariant(), "-").Trim('-');
     }
 
-    private sealed record AnswerResolution(bool Success, bool HasAnswer, string Answer, string? Error)
+    internal sealed record AnswerResolution(bool Success, bool HasAnswer, string Answer, string? Error)
     {
         public static AnswerResolution Ok(string answer) => new(true, true, answer, null);
         public static AnswerResolution Fail(string error) => new(false, false, "", error);
@@ -1027,7 +1055,7 @@ public sealed class SetupWizardRunner
 
     private sealed class WizardFatalException(string message) : Exception(message);
 
-    private sealed record WizardPayload(
+    internal sealed record WizardPayload(
         bool IsDone,
         string? SessionId,
         string StepId,
@@ -1088,7 +1116,7 @@ public sealed class SetupWizardRunner
         private static WizardPayload ErrorPayload(string error) => new(false, null, "", "", "", "", "", false, 0, 0, [], error);
     }
 
-    private sealed record WizardTemplateStep(
+    internal sealed record WizardTemplateStep(
         string StepId,
         string Type,
         string Title,
