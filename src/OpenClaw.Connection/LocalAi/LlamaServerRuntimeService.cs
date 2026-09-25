@@ -118,6 +118,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
     private LocalAiRuntimeSnapshot _snapshot;
     private ILocalAiManagedProcess? _managedProcess;
     private LocalAiVerifiedModelLease? _verifiedModel;
+    private readonly List<LocalAiVerifiedModelLease> _verifiedAdditionalAssets = [];
     private string? _runtimeModelPath;
     private LocalAiResolvedInstall? _install;
     private long _generation;
@@ -378,6 +379,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                 _options.Paths,
                 install,
                 GetRuntimeModelPath(install),
+                GetRuntimeDraftModelPath(),
                 requestedPort);
             await WritePresetAtomicallyAsync(launchPlan, cancellationToken).ConfigureAwait(false);
         }
@@ -862,7 +864,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         DisposeVerifiedModelHandle();
         ValidateInstalledFilesForStatus(install);
 
-        if (install.Manifest.SchemaVersion != LocalAiInstallManifest.HubCacheReceiptSchemaVersion)
+        if (!install.Manifest.UsesHubCache)
         {
             _runtimeModelPath = install.ModelPath;
             return;
@@ -883,6 +885,33 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                 "The shared Hugging Face cache model is unsafe or no longer matches its receipt.");
         }
 
+        // Schema-5 extra assets (a DFlash draft checkpoint) are loaded natively
+        // by llama-server exactly like the primary weights, and they
+        // live in the same shared, user-writable hub cache. Rehash them here and hold
+        // the handles for the process lifetime, so a file swapped after setup cannot
+        // reach the loader with only a structural path check behind it.
+        foreach ((LocalAiAssetReceipt receipt, string cachedPath) in
+                 install.Manifest.AdditionalModelAssetsOrEmpty
+                     .Zip(install.Manifest.AdditionalModelPathsOrEmpty))
+        {
+            LocalAiVerifiedModelLease? verifiedAsset =
+                await _modelFileVerifier.TryOpenAsync(
+                        install.Manifest.ModelCacheRoot!,
+                        cachedPath,
+                        receipt.SizeBytes,
+                        new Sha256Digest(receipt.Sha256),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            if (verifiedAsset is null)
+            {
+                DisposeVerifiedModelHandle();
+                throw new InvalidDataException(
+                    $"The shared Hugging Face cache asset '{receipt.FileName}' is unsafe or no longer matches its receipt.");
+            }
+
+            _verifiedAdditionalAssets.Add(verifiedAsset);
+        }
+
         _runtimeModelPath = _verifiedModel.ResolvedPath;
     }
 
@@ -890,7 +919,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
     {
         if (!File.Exists(install.ExecutablePath))
             throw new InvalidDataException("The managed llama-server executable is missing.");
-        if (install.Manifest.SchemaVersion == LocalAiInstallManifest.HubCacheReceiptSchemaVersion)
+        if (install.Manifest.UsesHubCache)
         {
             if (!File.Exists(install.ModelPath))
                 throw new InvalidDataException("The managed GGUF model is missing.");
@@ -1666,14 +1695,26 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
     {
         _verifiedModel?.Dispose();
         _verifiedModel = null;
+        foreach (LocalAiVerifiedModelLease lease in _verifiedAdditionalAssets)
+            lease.Dispose();
+        _verifiedAdditionalAssets.Clear();
         _runtimeModelPath = null;
     }
+
+    /// <summary>
+    /// The handle-resolved path of the draft checkpoint this process verified and still
+    /// holds open, or null when the recipe has no additional assets. Additional assets are
+    /// verified in catalog order and the draft checkpoint is always last, matching
+    /// <see cref="LocalModelCatalog.AdditionalArtifacts"/>.
+    /// </summary>
+    private string? GetRuntimeDraftModelPath() =>
+        _verifiedAdditionalAssets.Count == 0 ? null : _verifiedAdditionalAssets[^1].ResolvedPath;
 
     private string GetRuntimeModelPath(LocalAiResolvedInstall install)
     {
         if (_runtimeModelPath is not null)
             return _runtimeModelPath;
-        if (install.Manifest.SchemaVersion == LocalAiInstallManifest.HubCacheReceiptSchemaVersion)
+        if (install.Manifest.UsesHubCache)
             throw new InvalidOperationException("The verified shared-cache model identity is unavailable.");
         return install.ModelPath;
     }

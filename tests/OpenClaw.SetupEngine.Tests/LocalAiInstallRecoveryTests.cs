@@ -967,6 +967,11 @@ public sealed class LocalAiInstallRecoveryTests
     public async Task Reconciler_ReusesOnlyMatchingManifestWithoutMutation()
     {
         using var temp = new TempDirectory();
+        // Pin the hub cache to an empty directory. This asserts that a matching receipt is
+        // reused untouched; with the ambient user cache it would instead depend on whether
+        // that cache happens to already hold the default model, which legitimately triggers
+        // the schema-3 to schema-4 migration and rewrites the receipt.
+        using var environment = new EnvironmentScope("HF_HUB_CACHE", CacheRoot(temp.Path));
         LocalInferencePlan plan = CatalogPlan();
         const string gpuId = "GPU-0";
         LocalAiInstallManifest manifest = CreateManifest(temp.Path, plan, gpuId);
@@ -1143,6 +1148,152 @@ public sealed class LocalAiInstallRecoveryTests
         Assert.NotNull(result.OriginalInstall);
         Assert.NotNull(result.RuntimeInstall);
         Assert.Null(result.ModelInstall);
+    }
+
+    [Fact]
+    public async Task Reconciler_RecoveryWithValidModelStillPopulatesAdditionalAssetInstalls()
+    {
+        // Regression: recovery for a broken runtime (model + additional assets
+        // still verified valid) must give the caller everything it needs to
+        // persist a schema-5 manifest without re-downloading the already-
+        // verified draft checkpoint -- AcquireLocalAiModelStep's "reuse the
+        // verified model" skip only re-populates SetupContext from the
+        // reconcile result, it never re-runs acquisition itself.
+        using var temp = new TempDirectory();
+        byte[] primaryBytes = "verified-dflash-primary"u8.ToArray();
+        byte[] draftBytes = "verified-dflash-draft"u8.ToArray();
+        var draftSource = new HuggingFaceRevisionSource("owner/draft-repo", new string('c', 40));
+        var draftWeights = new PinnedArtifact(
+            "test-model-dflash-draft",
+            ArtifactRole.ModelWeights,
+            draftSource,
+            "draft.gguf",
+            draftBytes.Length,
+            new Sha256Digest(Sha256(draftBytes)));
+        LocalModelInfo model = CreateModelWithDraft(primaryBytes, draftWeights);
+        LlamaRuntimeVariant runtime = CreateRuntime(
+            CreateZip(("llama-server.exe", "server"u8.ToArray())),
+            CreateZip(("dependency.dll", "dependency"u8.ToArray())));
+        var plan = new LocalInferencePlan(
+            runtime,
+            model,
+            new LocalInferenceRunProfile(
+                "test-profile",
+                128,
+                KvCachePrecision.F16,
+                KvCachePrecision.F16,
+                KvCachePrecision.F16,
+                KvCachePrecision.F16,
+                runtimeWorkspaceBytes: 1),
+            LocalInferenceModelSelectionOrigin.Default);
+        var paths = new LocalAiPaths(temp.Path);
+        string cacheRoot = CacheRoot(temp.Path);
+        var primarySource = Assert.IsType<HuggingFaceRevisionSource>(model.Weights.Source);
+        Assert.True(HuggingFaceHubCache.TryGetSnapshotPaths(
+            cacheRoot,
+            primarySource.RepositoryId,
+            primarySource.RevisionSha,
+            model.Weights.RelativePath,
+            out string cachedModelPath,
+            out _,
+            out string error), error);
+        Directory.CreateDirectory(Path.GetDirectoryName(cachedModelPath)!);
+        await File.WriteAllBytesAsync(cachedModelPath, primaryBytes);
+        Assert.True(HuggingFaceHubCache.TryGetSnapshotPaths(
+            cacheRoot,
+            draftSource.RepositoryId,
+            draftSource.RevisionSha,
+            draftWeights.RelativePath,
+            out string cachedDraftPath,
+            out _,
+            out error), error);
+        Directory.CreateDirectory(Path.GetDirectoryName(cachedDraftPath)!);
+        await File.WriteAllBytesAsync(cachedDraftPath, draftBytes);
+
+        LocalAiInstallManifest manifest = CreateManifest(temp.Path, plan, "GPU-0") with
+        {
+            SchemaVersion = LocalAiInstallManifest.AdditionalAssetsSchemaVersion,
+            ModelCacheRoot = cacheRoot,
+            CachedModelPath = cachedModelPath,
+            AdditionalModelAssets = ImmutableArray.Create(new LocalAiAssetReceipt
+            {
+                FileName = "draft.gguf",
+                SourceUrl = draftWeights.DownloadUri.AbsoluteUri,
+                SizeBytes = draftWeights.SizeBytes,
+                Sha256 = draftWeights.Sha256.Value,
+            }),
+            AdditionalModelPaths = ImmutableArray.Create(cachedDraftPath),
+        };
+        await new LocalAiManifestStore(paths, () => cacheRoot).SaveAsync(manifest);
+
+        LocalAiReconcileResult result = await new LocalAiInstallReconciler(
+                new InvalidRuntimeInspector(),
+                new AcceptingModelVerifier(),
+                () => cacheRoot)
+            .ReconcileAsync(
+                temp.Path,
+                plan,
+                "GPU-0",
+                CancellationToken.None,
+                allowIncompleteInstallation: true);
+
+        Assert.False(result.Reused);
+        Assert.Null(result.RuntimeInstall);
+        Assert.NotNull(result.ModelInstall);
+        ImmutableArray<HuggingFaceAdditionalAssetInstallResult> additionalInstalls =
+            result.AdditionalModelInstalls ?? ImmutableArray<HuggingFaceAdditionalAssetInstallResult>.Empty;
+        HuggingFaceAdditionalAssetInstallResult draftInstall = Assert.Single(additionalInstalls);
+        Assert.Equal(cachedDraftPath, draftInstall.ModelPath);
+        Assert.False(draftInstall.CreatedThisRun);
+    }
+
+    [Fact]
+    public async Task Reconciler_UpgradesRetiredRuntimeReceiptInsteadOfFailingSetup()
+    {
+        // An install recorded before the runtime bump must upgrade, not end setup with an
+        // uninstall instruction. The runtime is dropped so the acquirer installs the new
+        // pin; the verified model is kept so an upgrade does not re-download it.
+        using var temp = new TempDirectory();
+        LocalInferencePlan plan = CatalogPlan();
+        const string gpuId = "GPU-0";
+        var paths = new LocalAiPaths(temp.Path);
+        LlamaRuntimeVariant retired = LlamaRuntimeCatalog.FindInstalled("b10655-cuda13-x64")!;
+        Assert.True(LocalAiPathPolicy.TryResolve(
+            temp.Path,
+            LlamaRuntimeInstaller.Component(retired),
+            out LocalAiSetupPaths retiredPaths,
+            out string retiredError), retiredError);
+        LocalAiInstallManifest manifest = CreateManifest(temp.Path, plan, gpuId) with
+        {
+            EngineVersion = retired.ReleaseTag,
+            RuntimeId = retired.Id,
+            ExecutablePath = Path.GetRelativePath(
+                paths.RootDirectory,
+                Path.Combine(retiredPaths.InstallDirectory, LlamaRuntimeCatalog.ServerExecutableName)),
+            RuntimeAssets = retired.Artifacts.Select(artifact => new LocalAiAssetReceipt
+            {
+                FileName = Path.GetFileName(artifact.RelativePath),
+                SourceUrl = artifact.DownloadUri.AbsoluteUri,
+                SizeBytes = artifact.SizeBytes,
+                Sha256 = artifact.Sha256.Value,
+            }).ToImmutableArray(),
+        };
+        await new LocalAiManifestStore(paths).SaveAsync(manifest);
+        var reconciler = new LocalAiInstallReconciler(
+            new ValidRuntimeInspector(),
+            new AcceptingModelVerifier());
+
+        LocalAiReconcileResult result = await reconciler.ReconcileAsync(
+            temp.Path,
+            plan,
+            gpuId,
+            CancellationToken.None);
+
+        Assert.False(result.Reused);
+        Assert.Null(result.RuntimeInstall);
+        Assert.NotNull(result.ModelInstall);
+        Assert.NotNull(result.OriginalInstall);
+        Assert.Equal(retired.ReleaseTag, result.OriginalInstall!.Manifest.EngineVersion);
     }
 
     [Fact]
@@ -1511,6 +1662,40 @@ public sealed class LocalAiInstallRecoveryTests
             SupportsVision: false);
     }
 
+    private static LocalModelInfo CreateModelWithDraft(byte[] primaryBytes, PinnedArtifact draftWeights)
+    {
+        var source = new HuggingFaceRevisionSource("owner/repo", new string('a', 40));
+        var artifact = new PinnedArtifact(
+            "test-model-dflash",
+            ArtifactRole.ModelWeights,
+            source,
+            "model.gguf",
+            primaryBytes.Length,
+            new Sha256Digest(Sha256(primaryBytes)));
+        return new LocalModelInfo(
+            "test-model-dflash",
+            "Test model (DFlash)",
+            "Test",
+            "Q4",
+            artifact,
+            new LocalModelRunRecipe(
+                128,
+                128,
+                1,
+                1,
+                1,
+                128,
+                true,
+                true,
+                SpeculativeDecodingMode.DraftDFlash,
+                1,
+                new ModelSamplingPreset(0.6, 20, 0.95, 0, 1, 0),
+                draftWeights),
+            IsDefault: true,
+            IsExplicitAlternative: false,
+            SupportsVision: false);
+    }
+
     private static LlamaRuntimeVariant CreateRuntime(byte[] binaryZip, byte[] dependencyZip)
     {
         var source = new GitHubReleaseSource("owner/repo", "v1", new string('b', 40));
@@ -1731,6 +1916,14 @@ public sealed class LocalAiInstallRecoveryTests
             Task.FromResult(new LlamaRuntimeInspection(true, "valid", null));
     }
 
+    private sealed class InvalidRuntimeInspector : ILlamaRuntimeInspector
+    {
+        public Task<LlamaRuntimeInspection> InspectAsync(
+            string installDirectory,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(new LlamaRuntimeInspection(false, "invalid", "simulated corrupted runtime"));
+    }
+
     private sealed class AcceptingModelVerifier : ILocalAiModelFileVerifier
     {
         public Task<bool> VerifyActiveAsync(
@@ -1741,6 +1934,12 @@ public sealed class LocalAiInstallRecoveryTests
         public Task<bool> VerifyLegacyCompatibilityAsync(
             LocalAiResolvedInstall install,
             LocalAiPaths paths,
+            PinnedArtifact artifact,
+            CancellationToken cancellationToken) => Task.FromResult(true);
+
+        public Task<bool> VerifyAdditionalAssetAsync(
+            LocalAiResolvedInstall install,
+            string cachedAssetPath,
             PinnedArtifact artifact,
             CancellationToken cancellationToken) => Task.FromResult(true);
     }
@@ -1755,6 +1954,12 @@ public sealed class LocalAiInstallRecoveryTests
         public Task<bool> VerifyLegacyCompatibilityAsync(
             LocalAiResolvedInstall install,
             LocalAiPaths paths,
+            PinnedArtifact artifact,
+            CancellationToken cancellationToken) => Task.FromResult(false);
+
+        public Task<bool> VerifyAdditionalAssetAsync(
+            LocalAiResolvedInstall install,
+            string cachedAssetPath,
             PinnedArtifact artifact,
             CancellationToken cancellationToken) => Task.FromResult(false);
     }

@@ -283,6 +283,9 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
         // dispatched callback runs) would make a queued-but-not-yet-run callback's own
         // IsCurrentAvailabilityProbe guard fail against itself, silently dropping a real
         // asynchronous DispatcherQueue completion.
+        // Captured before the probe so the managed-install receipt is read on the caller's
+        // thread rather than on whatever thread resumes after the awaited probe.
+        string? installedModelId = _runtimeSnapshot.ModelId;
         try
         {
             HostHardwareInfo hardware = await Task.Run(
@@ -292,7 +295,16 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
             // not the currently selected/installed model. A selection-specific failure (unknown,
             // deprecated, or oversized model) must not report the device itself as unavailable
             // and block retry-setup from switching to a compatible catalog model.
-            LocalInferenceEligibilityResult eligibility = LocalInferenceEligibility.Evaluate(hardware);
+            //
+            // The one exception is a SKU that has no recommended default at all (RTX Spark
+            // 32 GB). That says nothing about whether this device can run what is already
+            // installed, so the managed-install receipt is taken into account: an installed
+            // model that still qualifies keeps this entry point available, which is what lets
+            // Retry Setup reach the manifest-aware recovery path and Change Model stay enabled.
+            // A machine with no managed receipt still reports unavailable, and a receipt whose
+            // model is unknown or no longer fits reports that model's own reason.
+            LocalInferenceEligibilityResult eligibility =
+                LocalInferenceEligibility.EvaluateForConfiguredAvailability(hardware, installedModelId);
             if (eligibility.FailureCode == LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete)
             {
                 // Incomplete facts (a CUDA read that came back partial or transient) are
@@ -520,8 +532,16 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
 
     private void ApplyRuntimeSnapshot(LocalAiRuntimeSnapshot snapshot)
     {
+        string? previousModelId = _runtimeSnapshot.ModelId;
         _runtimeSnapshot = snapshot;
         OnPropertyChanged(null);
+        // Availability reads the managed-install receipt (see RefreshAvailabilityAsync), which the
+        // runtime refresh may only publish after that read has already happened. Recomputing when
+        // the model id changes is what keeps a first visit correct: otherwise a 32 GB Spark whose
+        // receipt arrives late stays pinned at NotRecommendedForSku, with Retry Setup and Change
+        // Model disabled and Recheck unavailable, until the page is left and reopened.
+        if (IsActive && !string.Equals(previousModelId, snapshot.ModelId, StringComparison.Ordinal))
+            StartAvailabilityRefresh();
     }
     private void ApplyGatewaySnapshot(GatewayConnectionSnapshot snapshot)
     {

@@ -2546,6 +2546,127 @@ public sealed class LocalAiPortLifecycleTests
         };
     }
 
+    /// <summary>
+    /// A managed install recorded before the llama-server runtime bump must keep
+    /// launching against its own pinned receipt. Updating the app must not strand an
+    /// installed model until a separate setup repair runs.
+    /// </summary>
+    [Fact]
+    public async Task Router_LaunchesRetiredRuntimeInstallAfterVersionBump()
+    {
+        using var temp = new TempDirectory("local-ai-legacy-runtime-");
+        var paths = new LocalAiPaths(temp.Path);
+        LlamaRuntimeVariant retired = LlamaRuntimeCatalog.FindInstalled("b10655-cuda13-arm64")!;
+        LocalAiInstallManifest manifest = ValidManifest() with
+        {
+            EngineVersion = retired.ReleaseTag,
+            RuntimeId = retired.Id,
+            ExecutablePath = Path.Combine(
+                "engines",
+                $"llama-{retired.ReleaseTag}",
+                LlamaRuntimeCatalog.ServerExecutableName),
+            RuntimeAssets = retired.Artifacts.Select(artifact => new LocalAiAssetReceipt
+            {
+                FileName = Path.GetFileName(artifact.RelativePath),
+                SourceUrl = artifact.DownloadUri.AbsoluteUri,
+                SizeBytes = artifact.SizeBytes,
+                Sha256 = artifact.Sha256.Value,
+            }).ToImmutableArray(),
+        };
+        var store = new LocalAiManifestStore(paths);
+        await store.SaveAsync(manifest);
+
+        LocalAiResolvedInstall saved = (await store.LoadAsync())!;
+        LlamaServerRouterLaunchPlan launch = LlamaServerRouterConfiguration.Build(paths, saved);
+
+        Assert.NotEqual(LlamaRuntimeCatalog.ReleaseTag, retired.ReleaseTag);
+        Assert.Equal("qwen3.6-35b-a3b-mtp-q4-k-m", launch.ModelAlias);
+    }
+
+    /// <summary>
+    /// Schema-5 extra assets are loaded natively by llama-server from the shared,
+    /// user-writable hub cache. One that no longer matches its pinned digest must
+    /// stop startup, exactly like a tampered primary model does.
+    /// </summary>
+    [Fact]
+    public async Task Startup_FailsWhenAnAdditionalModelAssetNoLongerMatchesItsReceipt()
+    {
+        using var temp = new TempDirectory("local-ai-tampered-asset-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var store = new LocalAiManifestStore(paths);
+        LocalAiResolvedInstall installed = (await store.LoadAsync())!;
+        string cacheRoot = temp.Combine("hf-cache");
+        const string draftRepo = "z-lab/Qwen3.8-27B-DFlash2-GGUF";
+        string draftRevision = new('c', 40);
+        Assert.True(HuggingFaceHubCache.TryGetSnapshotPaths(
+            cacheRoot, draftRepo, draftRevision, "draft.gguf",
+            out string draftPath, out _, out string error), error);
+        // The primary model's cached path must be the real hub-cache snapshot path
+        // for its own repository and revision, or the receipt fails validation
+        // before the additional-asset check under test is ever reached.
+        Assert.True(HuggingFaceHubCache.TryGetSnapshotPaths(
+            cacheRoot,
+            "unsloth/Qwen3.6-35B-A3B-MTP-GGUF",
+            "5bc3e238d916f48a861bac2f8a1990a0e9b7e98d",
+            "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+            out string cachedPrimaryPath, out _, out error), error);
+        Directory.CreateDirectory(Path.GetDirectoryName(cachedPrimaryPath)!);
+        await File.WriteAllTextAsync(cachedPrimaryPath, "primary");
+        Directory.CreateDirectory(Path.GetDirectoryName(draftPath)!);
+        await File.WriteAllTextAsync(draftPath, "draft");
+        LocalAiInstallManifest schemaFive = installed.Manifest with
+        {
+            SchemaVersion = LocalAiInstallManifest.AdditionalAssetsSchemaVersion,
+            ModelCacheRoot = cacheRoot,
+            CachedModelPath = cachedPrimaryPath,
+            AdditionalModelAssets = ImmutableArray.Create(new LocalAiAssetReceipt
+            {
+                FileName = "draft.gguf",
+                SourceUrl = $"https://huggingface.co/{draftRepo}/resolve/{draftRevision}/draft.gguf?download=true",
+                SizeBytes = 1_143_006_816,
+                Sha256 = new string('d', 64),
+            }),
+            AdditionalModelPaths = ImmutableArray.Create(draftPath),
+        };
+
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        await using var runtime = CreateRuntime(
+            paths,
+            new FakeProcessHost(platform, events, selectedPort: 28_771),
+            platform,
+            new FakeClient(events),
+            new FakeLifecycle(events),
+            modelFileVerifier: new SelectiveModelFileVerifier(
+                cachedPrimaryPath,
+                rejectPath: draftPath));
+        await store.SaveAsync(schemaFive);
+
+        LocalAiRuntimeSnapshot snapshot = await runtime.EnsureStartedAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Failed, snapshot.State);
+        Assert.Contains("draft.gguf", snapshot.Detail ?? string.Empty, StringComparison.Ordinal);
+    }
+
+    /// <summary>Verifies the primary model but rejects one named additional asset.</summary>
+    private sealed class SelectiveModelFileVerifier(string resolvedPath, string rejectPath)
+        : ILocalAiModelFileVerifier
+    {
+        public Task<LocalAiVerifiedModelLease?> TryOpenAsync(
+            string cacheRoot,
+            string candidatePath,
+            long expectedSizeBytes,
+            Sha256Digest expectedSha256,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (string.Equals(candidatePath, rejectPath, StringComparison.OrdinalIgnoreCase))
+                return Task.FromResult<LocalAiVerifiedModelLease?>(null);
+            return Task.FromResult<LocalAiVerifiedModelLease?>(
+                new LocalAiVerifiedModelLease(new MemoryStream(), resolvedPath));
+        }
+    }
+
     private static LocalAiInstallManifest ValidManifest()
     {
         LlamaRuntimeVariant runtime = LlamaRuntimeCatalog.Find(

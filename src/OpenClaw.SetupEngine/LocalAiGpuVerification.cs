@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text.RegularExpressions;
 using OpenClaw.Connection.LocalAi;
 using OpenClaw.Shared.Inference;
+using OpenClaw.Shared.Inference.Catalog;
 
 namespace OpenClaw.SetupEngine;
 
@@ -297,7 +298,9 @@ public sealed class VerifyLocalAiGpuLoadStep : SetupStep
                 throw new InvalidDataException(
                     "llama-server loaded CUDA from outside the managed runtime directory.");
             }
-            long minimumDelta = Math.Max(512L * 1024 * 1024, plan.Model.Weights.SizeBytes / 2);
+            long minimumDelta = Math.Max(
+                512L * 1024 * 1024,
+                LocalModelCatalog.TotalDownloadSizeBytes(plan.Model) / 2);
             if (!HasRequiredGpuLoadEvidence(evidence, minimumDelta))
             {
                 throw new InvalidDataException(

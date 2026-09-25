@@ -249,13 +249,17 @@ public sealed class LocalAiSetupUxContractTests
     }
 
     /// <summary>
-    /// The "is Local AI unavailable" gate and the recommended/selected model must be decided
-    /// from device-level eligibility (the best catalog model this hardware can run), not from
-    /// the currently configured SelectedModelId. A stale/removed model, or one that exists but
-    /// this hardware cannot run at all, must be reconciled to a valid one instead of making an
-    /// otherwise-capable device look unavailable or leaving setup on a known-incompatible model.
-    /// A merely busy GPU (EligibleButBusy) is not reconciled away: CanInstall covers that case
+    /// The recommended model must be decided from device-level eligibility (the best catalog
+    /// model this hardware can run), not from the currently configured SelectedModelId. A
+    /// stale/removed model, or one that exists but this hardware cannot run at all, must be
+    /// reconciled to a valid one instead of leaving setup on a known-incompatible model. A
+    /// merely busy GPU (EligibleButBusy) is not reconciled away: CanInstall covers that case
     /// and the same model would still work once the GPU frees up.
+    ///
+    /// The "is Local AI unavailable" gate additionally honours an already configured model.
+    /// A SKU with no recommended default (RTX Spark 32 GB) is a statement about what to
+    /// install by default, not about what the device can run, so a configured selection that
+    /// still passes the capacity fit-test keeps Local AI available on a setup rerun.
     /// </summary>
     [Fact]
     public void CapabilitiesReview_GatesOnDeviceEligibilityAndReconcilesStaleSelectedModel()
@@ -272,15 +276,18 @@ public sealed class LocalAiSetupUxContractTests
         AssertInOrder(
             method,
             "LocalInferenceEligibilityResult deviceEligibility = LocalInferenceEligibility.Evaluate(_localAiHardware);",
-            "if (!deviceEligibility.CanInstall || deviceEligibility.Plan is null || deviceEligibility.SelectedGpu is null)",
-            "hardwareReason = DescribeLocalAiUnavailable(deviceEligibility);",
+            "_localAiRecommendedModelId = deviceEligibility.CanInstall",
+            "LocalInferenceEligibility.EvaluateForConfiguredAvailability(",
+            "_config!.LocalAi.SelectedModelId);",
+            "if (!availability.CanInstall || availability.Plan is null || availability.SelectedGpu is null)",
+            "hardwareReason = DescribeLocalAiUnavailable(availability);",
             "LocalInferenceEligibilityResult selectedEligibility =",
             "LocalInferenceEligibility.Evaluate(_localAiHardware, selectedModelId);",
             "if (_localAiRecoveryModelPinned)",
             "eligibility = selectedEligibility;",
             "else if (!selectedEligibility.CanInstall)",
             "_config.LocalAi.SelectedModelId = null;",
-            "_config.LocalAi.SelectedModelId ??= _localAiRecommendedModelId ?? deviceEligibility.Plan.Model.Id;",
+            "_config.LocalAi.SelectedModelId ??= _localAiRecommendedModelId ?? availability.Plan.Model.Id;",
             "eligibility ??= LocalInferenceEligibility.Evaluate(",
             "_config.LocalAi.SelectedModelId);");
     }

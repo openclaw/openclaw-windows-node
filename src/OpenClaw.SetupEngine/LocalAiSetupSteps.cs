@@ -287,8 +287,15 @@ public sealed class ReconcileLocalAiInstallationStep : SetupStep
             }
             if (!result.Reused)
             {
+                // A retained baseline receipt (gateway recovery, or a pending runtime
+                // upgrade) is what lets the manifest step replace the existing receipt
+                // instead of refusing because one is already present.
+                if (result.OriginalInstall is { } retainedReceipt)
+                    ctx.LocalAiRecoveryOriginalInstall ??= retainedReceipt;
                 ctx.LocalAiRuntimeInstall = result.RuntimeInstall;
                 ctx.LocalAiModelInstall = result.ModelInstall;
+                ctx.LocalAiAdditionalModelInstalls = result.AdditionalModelInstalls
+                    ?? ImmutableArray<HuggingFaceAdditionalAssetInstallResult>.Empty;
                 return StepResult.Skip(result.OriginalInstall is null
                     ? "No completed managed Local AI installation was found."
                     : "The existing Local AI receipt was retained while incomplete assets are repaired.");
@@ -297,6 +304,8 @@ public sealed class ReconcileLocalAiInstallationStep : SetupStep
             ctx.LocalAiResolvedInstall = result.ResolvedInstall;
             ctx.LocalAiRuntimeInstall = result.RuntimeInstall;
             ctx.LocalAiModelInstall = result.ModelInstall;
+            ctx.LocalAiAdditionalModelInstalls = result.AdditionalModelInstalls
+                ?? ImmutableArray<HuggingFaceAdditionalAssetInstallResult>.Empty;
             ctx.LocalAiPort = result.ResolvedInstall!.Manifest.RequestedPort;
             return StepResult.Ok("Reused the verified managed Local AI installation.");
         }
@@ -437,6 +446,16 @@ public sealed class AcquireLocalAiModelStep : SetupStep
     internal AcquireLocalAiModelStep(IHuggingFaceModelAcquirer acquirer) =>
         _acquirer = acquirer ?? throw new ArgumentNullException(nameof(acquirer));
 
+    /// <summary>
+    /// Additional artifacts a recipe needs beyond its primary weights, in the
+    /// fixed catalog order <see cref="LocalModelCatalog.AdditionalArtifacts"/>
+    /// defines. <see cref="LlamaServerRouterConfiguration"/> relies on that same
+    /// ordering to tell the draft checkpoint apart from a shard without a
+    /// separate "kind" tag on the receipt.
+    /// </summary>
+    internal static ImmutableArray<PinnedArtifact> AdditionalArtifacts(LocalModelInfo model) =>
+        LocalModelCatalog.AdditionalArtifacts(model);
+
     public override string Id => "acquire-local-ai-model";
     public override string DisplayName => "Downloading Local AI model from Hugging Face";
     public override bool CanRetry => false;
@@ -476,6 +495,29 @@ public sealed class AcquireLocalAiModelStep : SetupStep
                 progress,
                 linked.Token);
             ctx.LocalAiModelInstall = install;
+
+            ImmutableArray<PinnedArtifact> additionalArtifacts = AdditionalArtifacts(plan.Model);
+            var additionalInstalls = ImmutableArray.CreateBuilder<HuggingFaceAdditionalAssetInstallResult>(
+                additionalArtifacts.Length);
+            foreach (PinnedArtifact artifact in additionalArtifacts)
+            {
+                var artifactProgress = new SynchronousProgress<HuggingFaceModelInstallProgress>(value =>
+                    ctx.DetailProgress?.Report(new SetupDetailProgressEvent(
+                        Id,
+                        value.Phase == HuggingFaceModelInstallPhase.Verifying
+                            ? $"Verifying {artifact.RelativePath}"
+                            : $"Downloading {artifact.RelativePath}",
+                        value.CompletedBytes,
+                        value.TotalBytes,
+                        SetupDetailProgressUnit.Bytes)));
+                additionalInstalls.Add(await _acquirer.InstallAdditionalAssetAsync(
+                    ctx.LocalDataDir,
+                    artifact,
+                    artifactProgress,
+                    linked.Token));
+            }
+            ctx.LocalAiAdditionalModelInstalls = additionalInstalls.MoveToImmutable();
+
             string action = install.Disposition == HuggingFaceModelInstallDisposition.ReusedVerified
                 ? "Verified existing"
                 : "Downloaded";
@@ -508,6 +550,9 @@ public sealed class AcquireLocalAiModelStep : SetupStep
             _acquirer.RemoveInstalledModel(ctx.LocalDataDir, install);
             ctx.LocalAiModelInstall = null;
         }
+        // Additional assets have no legacy app-owned copy to remove; their hub-cache
+        // artifacts survive rollback the same way the primary weights' do.
+        ctx.LocalAiAdditionalModelInstalls = ImmutableArray<HuggingFaceAdditionalAssetInstallResult>.Empty;
         if (ctx.LocalAiEligibility?.Plan is { } plan)
         {
             _acquirer.RemovePartialModel(
@@ -598,9 +643,33 @@ public sealed class PersistLocalAiManifestStep : SetupStep
             return StepResult.Terminal(ex.Message, ex);
         }
 
+        ImmutableArray<PinnedArtifact> additionalArtifacts = AcquireLocalAiModelStep.AdditionalArtifacts(plan.Model);
+        if (additionalArtifacts.Length != ctx.LocalAiAdditionalModelInstalls.Length)
+        {
+            return StepResult.Terminal(
+                "The Local AI installation receipt requires a completed additional-asset acquisition step.");
+        }
+
+        var additionalModelAssets = ImmutableArray.CreateBuilder<LocalAiAssetReceipt>(additionalArtifacts.Length);
+        var additionalModelPaths = ImmutableArray.CreateBuilder<string>(additionalArtifacts.Length);
+        for (int i = 0; i < additionalArtifacts.Length; i++)
+        {
+            PinnedArtifact artifact = additionalArtifacts[i];
+            additionalModelAssets.Add(new LocalAiAssetReceipt
+            {
+                FileName = Path.GetFileName(artifact.RelativePath),
+                SourceUrl = artifact.DownloadUri.AbsoluteUri,
+                SizeBytes = artifact.SizeBytes,
+                Sha256 = artifact.Sha256.Value,
+            });
+            additionalModelPaths.Add(ctx.LocalAiAdditionalModelInstalls[i].ModelPath);
+        }
+
         LocalAiInstallManifest manifest = new()
         {
-            SchemaVersion = LocalAiInstallManifest.HubCacheReceiptSchemaVersion,
+            SchemaVersion = additionalArtifacts.IsEmpty
+                ? LocalAiInstallManifest.HubCacheReceiptSchemaVersion
+                : LocalAiInstallManifest.AdditionalAssetsSchemaVersion,
             EngineVersion = LlamaRuntimeCatalog.ReleaseTag,
             Architecture = plan.Runtime.Architecture switch
             {
@@ -625,6 +694,11 @@ public sealed class PersistLocalAiManifestStep : SetupStep
                 SizeBytes = plan.Model.Weights.SizeBytes,
                 Sha256 = plan.Model.Weights.Sha256.Value,
             },
+            // Leave these at their unset default (not an explicitly-built empty
+            // array) when there is nothing to add, so schema-4 manifests omit
+            // them from JSON entirely -- see the properties' remarks.
+            AdditionalModelAssets = additionalArtifacts.IsEmpty ? default : additionalModelAssets.MoveToImmutable(),
+            AdditionalModelPaths = additionalArtifacts.IsEmpty ? default : additionalModelPaths.MoveToImmutable(),
             RequestedPort = requestedPort,
             Endpoint = null,
             ContextLength = plan.Profile.ContextTokens,
@@ -651,6 +725,8 @@ public sealed class PersistLocalAiManifestStep : SetupStep
                 ModelId = manifest.ModelId,
                 ModelAlias = manifest.ModelAlias,
                 ModelAsset = manifest.ModelAsset,
+                AdditionalModelAssets = manifest.AdditionalModelAssets,
+                AdditionalModelPaths = manifest.AdditionalModelPaths,
                 RequestedPort = manifest.RequestedPort,
                 Endpoint = null,
                 ContextLength = manifest.ContextLength,
