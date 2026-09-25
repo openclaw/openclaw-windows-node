@@ -707,9 +707,10 @@ public sealed class AppRefactorContractTests
 
         Assert.Contains("ResolveStartupNodeCredential(record, resolver, identityDir)", connectMethod);
         Assert.Contains("_connectionManager.ConnectNodeOnlyAsync(record.Id)", connectMethod);
-        Assert.Contains("resolver.ResolveNodeDetailed(record, SettingsManager.SettingsDirectoryPath)", nodeCredentialMethod);
+        Assert.Contains("LegacyStartupDeviceToken.Prefer(", nodeCredentialMethod);
+        Assert.Contains("ResolveNodeDetailed(record, dir)", nodeCredentialMethod);
+        Assert.Contains("SettingsManager.SettingsDirectoryPath", nodeCredentialMethod);
         Assert.Contains("ResolveStartupCredentialOrThrow", nodeCredentialMethod);
-        Assert.Contains("TryCopyLegacyIdentityToGateway(record.Id, identityDir)", nodeCredentialMethod);
     }
 
     [Fact]
