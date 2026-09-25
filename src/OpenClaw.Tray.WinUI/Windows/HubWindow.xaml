@@ -27,7 +27,6 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <!-- Lobster logo doubles as the nav pane toggle; hovering reveals the panel-left glyph (GitHub Copilot style) -->
             <Button x:Uid="NavPaneToggleButton" x:Name="NavPaneToggleButton"
                     Grid.Column="0"
                     AutomationProperties.Name="Toggle navigation pane"
@@ -38,26 +37,17 @@
                     BorderBrush="Transparent"
                     BorderThickness="0"
                     ToolTipService.ToolTip="Toggle navigation pane"
-                    PointerEntered="OnBrandTogglePointerEntered"
-                    PointerExited="OnBrandTogglePointerExited"
                     Click="OnNavPaneToggleButtonClick">
                 <Button.Resources>
                     <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="{ThemeResource SubtleFillColorSecondary}"/>
                     <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="{ThemeResource SubtleFillColorTertiary}"/>
                 </Button.Resources>
-                <Grid Width="18" Height="18">
-                    <controls:BrandMark x:Name="BrandToggleMark"
-                                        MarkSize="18"
-                                        VerticalAlignment="Center"
-                                        HorizontalAlignment="Center"/>
-                    <FontIcon x:Name="BrandToggleGlyph"
+                    <FontIcon
                               Glyph="&#xE90C;"
                               FontFamily="{ThemeResource SymbolThemeFontFamily}"
                               FontSize="16"
-                              Opacity="0"
                               VerticalAlignment="Center"
                               HorizontalAlignment="Center"/>
-                </Grid>
             </Button>
 
             <TextBlock x:Uid="TitleText" Grid.Column="1" x:Name="TitleText" Text="OpenClaw Windows Companion"
@@ -415,11 +405,6 @@
             </NavigationView.Resources>
 
             <NavigationView.MenuItems>
-                <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_82" x:Name="NavChat" Tag="chat" Content="Chat">
-                    <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Chat_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItemSeparator/>
-
             <NavigationViewItemHeader x:Uid="HubWindow_NavigationViewItemHeader_87" x:Name="NavGatewayHeader" Content="Gateway"/>
             <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_88" Tag="connection" Content="Connection">
                 <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Connection_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>

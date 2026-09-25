@@ -4,6 +4,77 @@ This document describes the gateway connection system - how the tray app discove
 
 ## Project structure
 
+### Workspace and Settings companion
+
+The normal foreground entry point is `WorkspaceWindow`, a native WinUI 3 shell
+with Reactor chat, assistant selection, pinned pages, sessions, and an Owner
+menu. Notifications is an independent footer action immediately beside Owner.
+There is no Settings item in the Workspace rail.
+The rail is the same native `NavigationView` as the companion, using its existing
+colourful sidebar SVG assets via direct `ImageIcon` controls. Native menu items
+own selection and keyboard behavior; assistant, sessions, and footer controls
+use the pane's header and footer slots. Sessions follow the page items in the
+same native scrolling menu with a matching section header. Owner stays fixed
+in the footer. Native WinUI `TitleBar` owns title/icon layout and typography.
+`NavigationView.PaneHeader` puts the pane-collapse button and sidebar-right
+Back/Forward in one row, with the assistant selector below. Its final dropdown
+option invokes the existing New conversation workflow and restores the selected
+agent rather than persisting the action as an agent. It remains disabled while
+disconnected or creating a session. The native ComboBox uses transparent/subtle
+chrome. Sessions retains its independent subtle Add button.
+In compact mode, a native first menu item reopens the pane and Notifications
+remains available as an icon-only footer menu item. Both share native navigation
+icon alignment; there is no floating control over the destination items.
+The pane toggle retains a 40 DIP target and 16 DIP glyph in both states. Compact
+action items present native buttons without navigation icon scaling. All footer
+buttons use native `SubtleButtonStyle` state brushes, and Owner uses the native
+`PersonPicture` avatar rather than a font glyph.
+
+`WindowManager` owns Workspace and `HubWindow` independently. The latter is the
+Settings companion and reuses the existing native Settings pages, excluding
+Chat. Owner's Settings, Usage, Pair device, and About links open or focus that
+companion at `settings`, `usage`, `channels`, and `about` respectively. Closing
+the companion does not close Workspace or discard an unsent chat draft.
+Generic Workspace refocus preserves the current page; explicit page/session
+links still navigate. `agent:<id>:workspace` retains its original agent-files
+meaning and is not the main Workspace route.
+
+`WorkspaceNavigation` owns all 22 approved content routes and their section
+identity. `WorkspaceNavigationHistory` owns Back/Forward history, retaining item
+identity and clearing forward entries only on a different destination. Existing
+Sessions, Skills, Usage, Notifications, and Cron pages keep
+their gateway workflows. `WorkspaceProjection` uses real gateway agent/session
+identities. `WorkspacePageRenderer` constructs native controls using theme
+resources; no exported prototype HTML or reference screenshots are shipped.
+
+| Workspace surface | Backed behavior and unavailable data |
+| --- | --- |
+| Home and Agents | Existing Reactor chat, real agent inventory, session creation/history, agent configuration and files. Disconnected state directs users to Connection. |
+| Dashboards and detail | Existing gateway dashboard, Usage, and Activity links. No native dashboard catalog or project/task metrics API is available, so these sections explicitly say unavailable instead of showing prototype fixtures. |
+| Systems and detail | Real local machine/OS, gateway connection status, and reported nodes. Permissions, pairing, and device links reuse companion pages. Unreported utilization metrics are not invented. |
+| Automations and detail | Existing Cron list/editor and Add/Update submissions. Save is gated on connection and transport acceptance; it does not claim persistence before gateway confirmation. |
+| Plugins | Installed/Discover native tabs explain unavailable plugin inventory/catalog/mutation APIs. Install is visibly disabled with a reason; Config, Skills, and documentation remain usable. |
+| More and other routes | Existing setup, command search, tray, notifications, usage, sessions, skills, activity, companion, and portal owners. Tasks/Meetings explicitly report the absence of a native workflow. |
+
+The connection event timeline remains an independent `ConnectionStatusWindow`.
+Its initial position is aligned to the right of the active main window's monitor
+work area; subsequent activation reuses it without resetting a user's position.
+It reads the same connection manager diagnostics, not a parallel client.
+
+An argument-free user launch opens Workspace. New autostart registrations pass
+`--background` to remain quiet. The installer migrates only exact, argument-free
+Run/task entries for its own executable and preserves customized entries and
+task enablement. A portable/manual binary replacement bypasses that migration;
+re-enable **Start with Windows** once in Settings to refresh a legacy entry.
+Explicit protocol and post-setup restart behavior is unchanged.
+
+New Workspace resource keys exist in every supported locale. Non-English copy
+is explicitly deferred English pending translation; resource-key parity is
+still enforced. Native Light/Dark disconnected proof and synthetic composer
+regressions are distinct from connected gateway proof. In-process captures do
+not include the native window frame or Mica; system high contrast requires its
+own approved host/session and must not be inferred from Dark mode.
+
 Connection management lives in three layers:
 
 ```

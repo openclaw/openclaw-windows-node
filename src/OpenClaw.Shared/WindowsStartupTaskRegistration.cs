@@ -148,7 +148,7 @@ public static class WindowsStartupTaskRegistration
         return CreateStartInfo(
             "/Create",
             "/TN", taskName,
-            "/TR", Quote(fullPath),
+            "/TR", Quote(fullPath) + " --background",
             "/SC", "ONLOGON",
             "/F");
     }

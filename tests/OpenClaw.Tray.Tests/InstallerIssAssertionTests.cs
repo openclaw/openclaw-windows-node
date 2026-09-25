@@ -60,12 +60,30 @@ public sealed class InstallerIssAssertionTests
             @"Name: ""{group}\OpenClaw Chat""; Filename: ""{app}\{#MyAppExeName}""; Parameters: ""{#MyProtocol}://chat""; IconFilename: ""{app}\{#MyAppExeName}""; AppUserModelID: ""{#MyAppAumid}""",
             @"Name: ""{group}\Check for Updates""; Filename: ""{app}\{#MyAppExeName}""; Parameters: ""{#MyProtocol}://check-updates""; IconFilename: ""{app}\{#MyAppExeName}""; AppUserModelID: ""{#MyAppAumid}""",
             @"Name: ""{autodesktop}\{#MyAppName}""; Filename: ""{app}\{#MyAppExeName}""; Tasks: desktopicon; AppUserModelID: ""{#MyAppAumid}""",
-            @"Name: ""{userstartup}\{#MyAppName}""; Filename: ""{app}\{#MyAppExeName}""; Tasks: startupicon; AppUserModelID: ""{#MyAppAumid}"""
+            @"Name: ""{userstartup}\{#MyAppName}""; Filename: ""{app}\{#MyAppExeName}""; Parameters: ""--background""; Tasks: startupicon; AppUserModelID: ""{#MyAppAumid}"""
         })
         {
             Assert.Contains(iconEntry, iss);
         }
         Assert.DoesNotContain("AppUserModelID: \"OpenClaw.Tray.WinUI\"", iss);
+    }
+
+    [Fact]
+    public void Installer_MigratesOnlyOwnedArgumentFreeAutostartWithoutEnablingTasks()
+    {
+        var iss = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "installer.iss"));
+        var start = iss.IndexOf("procedure MigrateLegacyBackgroundLaunch;", StringComparison.Ordinal);
+        var end = iss.IndexOf("procedure EnsureLocalGatewayCleanupChoice;", start, StringComparison.Ordinal);
+        var migration = iss[start..end];
+        Assert.Contains("CompareText(RemoveQuotes(RunCommand), ExecutablePath) = 0", migration);
+        Assert.Contains("Task.Definition.Actions.Count <> 1", migration);
+        Assert.Contains("CompareText(RemoveQuotes(ActionPath), ExecutablePath) <> 0", migration);
+        Assert.Contains("(Trim(ActionArguments) <> '')", migration);
+        Assert.Contains("'/Change /TN '", migration);
+        Assert.Contains("--background", migration);
+        Assert.DoesNotContain("/Create", migration);
+        Assert.DoesNotContain("/ENABLE", migration);
+        Assert.Contains("CurStep = ssPostInstall", migration);
     }
 
     [Fact]

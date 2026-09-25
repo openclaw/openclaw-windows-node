@@ -56,6 +56,7 @@
     <ProjectReference Include="..\..\src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj" />
     <ProjectReference Include="..\..\src\OpenClaw.Shared\OpenClaw.Shared.csproj" />
     <ProjectReference Include="..\OpenClaw.GatewayFixtureHost\OpenClaw.GatewayFixtureHost.csproj" />
+    <ProjectReference Include="..\OpenClaw.TestSupport\OpenClaw.TestSupport.csproj" />
   </ItemGroup>
 
   <!-- A WinExe ProjectReference copies its named PRI but not its compiled

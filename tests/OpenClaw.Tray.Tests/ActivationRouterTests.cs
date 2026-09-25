@@ -182,10 +182,20 @@ public class ActivationRouterTests
     }
 
     [Fact]
-    public void PlanLaunch_ReturnsIgnore_WhenNoCandidatePresent()
+    public void PlanLaunch_OpensWorkspace_WhenNoCandidatePresent()
     {
         var router = CreateRouter();
         var plan = router.PlanLaunch(Input());
+        var dispatch = Assert.IsType<ActivationPlan.Dispatch>(plan);
+        Assert.IsType<ActivationRoute.OpenHub>(dispatch.Route);
+    }
+
+    [Theory]
+    [InlineData("--background")]
+    [InlineData("--post-setup-restart")]
+    public void PlanLaunch_BackgroundAndRestartRemainQuiet(string argument)
+    {
+        var plan = CreateRouter().PlanLaunch(Input(args: new[] { "app.exe", argument }));
         Assert.IsType<ActivationPlan.Ignore>(plan);
     }
 

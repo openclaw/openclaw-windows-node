@@ -566,20 +566,6 @@ public sealed partial class HubWindow : WindowEx
         NavView.IsPaneOpen = !NavView.IsPaneOpen;
     }
 
-    // The top-left brand mark doubles as the nav pane toggle. Hovering swaps the
-    // lobster logo for the toggle glyph, matching the GitHub Copilot app.
-    private void OnBrandTogglePointerEntered(object sender, PointerRoutedEventArgs e)
-    {
-        BrandToggleMark.Opacity = 0;
-        BrandToggleGlyph.Opacity = 1;
-    }
-
-    private void OnBrandTogglePointerExited(object sender, PointerRoutedEventArgs e)
-    {
-        BrandToggleMark.Opacity = 1;
-        BrandToggleGlyph.Opacity = 0;
-    }
-
     // ── Back navigation (title-bar back button + Alt+Left) ──────────────────
     //
     // We host a single native-style back button in the custom title bar and
@@ -649,8 +635,17 @@ public sealed partial class HubWindow : WindowEx
     /// Cross-page links and the rail both flow through here; the resulting
     /// <see cref="ContentFrame"/> back-stack entry powers the title-bar back button.
     /// </summary>
-    public void NavigateTo(string tag) =>
+    public void NavigateTo(string tag)
+    {
+        if (tag == "chat" || tag.StartsWith("workspace:", StringComparison.Ordinal))
+        {
+            CurrentApp.ShowHub(tag);
+            return;
+        }
         NavigateInternal(HubPageRegistry.NormalizeTag(tag, _currentAgentId));
+        if (tag is "about" or "info" && CurrentPage is SettingsPage settingsPage)
+            settingsPage.ShowAbout();
+    }
 
     internal void NavigateTo(SetupNativeNavigationRequest request) =>
         NavigateInternal(request.PageTag, request);
@@ -882,7 +877,6 @@ public sealed partial class HubWindow : WindowEx
             var keepCurrentGatewayPageVisible = !connected &&
                 HubPageRegistry.ShouldKeepCurrentPageVisibleDuringDisconnect(currentTag);
 
-            NavChat.Visibility = vis;
             NavSessions.Visibility = vis;
             NavSkills.Visibility = vis;
             NavChannels.Visibility = vis;
@@ -1191,6 +1185,19 @@ public sealed partial class HubWindow : WindowEx
     }
 
     private ImmutableArray<HubCommand>? _cachedCommands;
+
+    internal void OpenCommandCenter()
+    {
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (IsClosed) return;
+            _cachedCommands = BuildCommandList();
+            TitleSearchBox.Text = string.Empty;
+            TitleSearchBox.ItemsSource = HubPageRegistry.SearchCommands(_cachedCommands.Value, string.Empty);
+            TitleSearchBox.Focus(FocusState.Programmatic);
+            TitleSearchBox.IsSuggestionListOpen = true;
+        });
+    }
 
     private void OnSearchTextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
     {

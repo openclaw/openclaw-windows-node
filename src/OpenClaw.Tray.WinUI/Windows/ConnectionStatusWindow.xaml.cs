@@ -56,6 +56,8 @@ public sealed partial class ConnectionStatusWindow : WindowEx
 
         ExtendsContentIntoTitleBar = true;
         this.SetIcon("Assets\\openclaw.ico");
+        if (Content is FrameworkElement root)
+            root.Loaded += (_, _) => { _ = VisualTestCapture.CaptureAsync(root, $"ConnectionTimeline-{root.ActualTheme}"); };
 
         // Load existing events (oldest first)
         foreach (var evt in _diagnostics.GetAll())

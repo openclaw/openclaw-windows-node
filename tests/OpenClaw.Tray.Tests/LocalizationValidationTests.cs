@@ -628,6 +628,9 @@ public class LocalizationValidationTests
         || key.StartsWith("ChannelsPage_", StringComparison.Ordinal)
         || key.StartsWith("DiagnosticsPage_", StringComparison.Ordinal)
         || key.StartsWith("SettingsRow_", StringComparison.Ordinal)
+        // Approved Workspace copy is seeded consistently in English while
+        // locale review is pending, matching the existing deferred-copy policy.
+        || key.StartsWith("WorkspaceShell_", StringComparison.Ordinal)
         // Title-bar status pill + notifications bell flyout strings. Seeded
         // English-only across all five .resw files using the deferred-translation
         // pattern; translations land in a follow-up.

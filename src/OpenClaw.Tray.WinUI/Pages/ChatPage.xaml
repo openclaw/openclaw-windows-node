@@ -83,7 +83,7 @@
         <StackPanel x:Name="WaitingPanel" Grid.Row="2"
                     Visibility="Collapsed"
                     VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
-            <TextBlock Text="💬" FontSize="48" HorizontalAlignment="Center"/>
+            <FontIcon Glyph="&#xE8F2;" FontSize="48" HorizontalAlignment="Center"/>
             <TextBlock x:Uid="ChatPage_WaitingTitle"
                        Text="Waiting for chat to start…"
                        Style="{StaticResource SubtitleTextBlockStyle}"
@@ -100,10 +100,12 @@
         <!-- Disconnected placeholder (shown when no provider yet). -->
         <StackPanel x:Name="PlaceholderPanel" Grid.Row="2"
                     VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
-            <TextBlock Text="💬" FontSize="48" HorizontalAlignment="Center"/>
+            <FontIcon Glyph="&#xE8F2;" FontSize="48" HorizontalAlignment="Center"/>
             <TextBlock x:Uid="ChatPage_TextBlock_53" Text="Connect to gateway to start chatting"
                        Style="{StaticResource SubtitleTextBlockStyle}"
                        HorizontalAlignment="Center"/>
+            <Button x:Uid="WorkspaceShell_OpenConnection" Content="Open Connection"
+                    Click="OnWorkspaceOpenConnection" HorizontalAlignment="Center"/>
         </StackPanel>
 
         <!-- WebView2 navigation error panel. -->

@@ -1,7 +1,7 @@
 ---
 version: alpha
 name: Windows Fluent UI for OpenClaw
-description: Windows Fluent UI for OpenClaw is the design system for OpenClaw's native Windows companion suite — a WinUI 3 system-tray app that connects your PC to OpenClaw, the AI-powered personal assistant. The app pairs your PC to an OpenClaw gateway, exposes allowlisted Windows node capabilities over MCP, and guides first-run pairing through a setup wizard. Its interface follows Windows Fluent design conventions — Mica surfaces, the user's system accent, and Segoe UI Variable type — so it feels like a quiet, native extension of the OS rather than a bolted-on dashboard.
+description: Windows Fluent UI for OpenClaw is the design system for OpenClaw's native Windows companion suite, a WinUI 3 system-tray app that connects your PC to OpenClaw, the AI-powered personal assistant. The app pairs your PC to an OpenClaw gateway, exposes allowlisted Windows node capabilities over MCP, and guides first-run pairing through a setup wizard. Its interface follows Windows Fluent design conventions (Mica surfaces, the user's system accent, and Segoe UI Variable type) so it feels like a quiet, native extension of the OS rather than a bolted-on dashboard.
 colors:
   ink: "#1b1b1b"
   paper: "#f3f3f3"
@@ -72,7 +72,7 @@ x-colophon:
     meta:
       version: 1
       updatedBy: xaml+manual
-      note: These tokens are the source of truth for DESIGN (brand, color, type, spacing, principles) and are framework-agnostic — components.jsx shows design intent for the canvas preview, not shipping code. They were captured by manual inspection of the repo's WinUI 3 / XAML and C# surfaces (the CSS/JSX scanner finds no files in a XAML repo) and map to Windows Fluent system resources (SystemAccentColor, Mica, Segoe UI Variable). To ship, port the design into native code via the port targets in `authority`. Edit in the Design System canvas or directly.
+      note: These tokens are the source of truth for DESIGN (brand, color, type, spacing, principles) and are framework-agnostic. components.jsx shows design intent for the canvas preview, not shipping code. They were captured by manual inspection of the repo's WinUI 3 / XAML and C# surfaces (the CSS/JSX scanner finds no files in a XAML repo) and map to Windows Fluent system resources (SystemAccentColor, Mica, Segoe UI Variable). To ship, port the design into native code via the port targets in `authority`. Edit in the Design System canvas or directly.
     authority:
       designSource: self
       owner: OpenClaw Windows (openclaw/openclaw-windows-node)
@@ -95,7 +95,7 @@ x-colophon:
           authoritySource: Reactor (Microsoft.UI.Reactor)
           syncSource: https://github.com/microsoft/microsoft-ui-reactor
           toolingSource: https://github.com/microsoft/WinAppCli
-          helperAgent: ""
+          helperAgent: https://github.com/microsoft/WinAppCli
     shadows:
       - name: sm
         value: 0 1px 2px rgba(0,0,0,0.10)
@@ -106,7 +106,7 @@ x-colophon:
     principles:
       - Defer to Windows. Theme off SystemAccentColor and Fluent resources so the app follows the user's accent, light/dark, and high-contrast choices.
       - One accent, and it means "act here". Selection, focus, and primary actions share the system accent; don't spend it on decoration.
-      - Hierarchy over decoration — size, weight, and space do the work before color does.
+      - Hierarchy over decoration. Size, weight, and space do the work before color does.
       - "State must be legible: connected, pairing, and error states read clearly via positive/warning/critical, never color alone."
       - No hard-coded hex in UI. Use tokens/theme resources so dark and high-contrast modes stay correct.
       - "Motion is a cue, not a garnish: 120-200ms ease-out, no bounce."
@@ -203,19 +203,19 @@ x-colophon:
         themes:
           dark: "#2d2d2d"
           highContrast: "#000000"
-        usage: Fill for input/entry controls — combo boxes, text fields, the chat composer. Fluent ControlFillColorDefault (distinct from the Card surface used for cards/flyouts).
+        usage: Fill for input/entry controls (combo boxes, text fields, the chat composer). Fluent ControlFillColorDefault (distinct from the Card surface used for cards/flyouts).
       controlLine:
         resource: ControlStrokeColorDefaultBrush
         themes:
           dark: "#353535"
           highContrast: "#ffffff"
-        usage: Border for input/entry controls — combo boxes, text fields, composer, avatars. Fluent ControlStrokeColorDefault (distinct from the Card/divider stroke used for cards).
+        usage: Border for input/entry controls (combo boxes, text fields, composer, avatars). Fluent ControlStrokeColorDefault (distinct from the Card/divider stroke used for cards).
       accentSubtle:
         resource: AccentFillColorSecondaryBrush
         themes:
           dark: "#47b6ef"
           highContrast: "#ffff00"
-        usage: Softer accent fill for the user's own chat bubble. Fluent AccentFillColorSecondary (SystemAccent at ~90%) — quieter than the full accent reserved for primary actions.
+        usage: Softer accent fill for the user's own chat bubble. Fluent AccentFillColorSecondary (SystemAccent at ~90%), quieter than the full accent reserved for primary actions.
     typography:
       display:
         weights:
@@ -325,6 +325,40 @@ Use the named shadows in `x-colophon.tokens.shadows` when elevation is needed. K
 Use the `rounded` tokens for corner radii: `sm` for buttons and inputs, `md` for cards and flyouts, `lg` for grouped panels, `bubble` for chat messages (intentionally friendlier), and `pill` for status badges and toggles.
 
 ## Components
+
+Workspace navigation uses the same native WinUI `NavigationView` and direct
+`ImageIcon`/`SvgImageSource` sidebar artwork as the Settings companion, per the
+approved production refinement. Reuse the existing colourful `Assets/SidebarIcons`
+assets for destination identity (22 DIP icon boxes); their multicolour artwork
+is not a new set of UI brush tokens. Selection, focus, labels, backgrounds, and
+hover states still use the native theme resources and system accent.
+Keep the assistant selector in `PaneHeader`, destination items followed immediately
+by Sessions in `MenuItems`, and Owner plus the independent Notifications action
+in `PaneFooter`. Pages and Sessions use native `NavigationViewItemHeader`
+typography. Use the native WinUI `TitleBar` title and icon presentation with the
+shared OpenClaw artwork, not a custom title label. The navigation section has a
+first-row toolbar in `NavigationView.PaneHeader`: pane-collapse glyph on the left
+and Back/Forward at the right edge of the sidebar, not the content area.
+The assistant selector occupies the second row. Its final dropdown option is
+the existing New conversation action with an Add glyph; it is not agent creation.
+Sessions retains its separate Add button. In compact mode, the first native
+`NavigationViewItem` reopens the sidebar, aligned with the destination icons.
+Notifications becomes an icon-only native `FooterMenuItems` entry; the expanded
+Owner/Notifications footer remains unchanged. Do not overlay the compact rail
+with a separate floating reopen button.
+The expanded and compact pane controls both use a native subtle button with a
+40 DIP target and a 16 DIP glyph. Compact action items only present their native
+buttons, avoiding the navigation icon Viewbox's resizing of destination icons.
+Owner and Notifications use the built-in `SubtleButtonStyle`, including its
+native hover and pressed states, not a rest-only override of `DefaultButtonStyle`.
+The compact notification button uses the same subtle style. The Owner avatar is
+a 24 DIP native `PersonPicture` with its default silhouette.
+The selector keeps the native ComboBox template and keyboard behavior with a
+transparent, borderless rest state and subtle hover/pressed resource brushes,
+matching the quiet Owner footer treatment. Add buttons
+use the built-in WinUI `SubtleButtonStyle` with a standard 16 DIP Add glyph.
+The pane-collapse button controls `IsPaneOpen`; do not replace
+the pane with a custom list or imitate its selection/keyboard behavior.
 
 Reuse [component patterns](.agents/design/components.jsonc); these describe design intent, not shipping code.
 Optional click-through flows live in `.agents/design/prototypes.jsonc`.

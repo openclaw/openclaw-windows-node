@@ -696,7 +696,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                     _autoStartMutationGate, enabled,
                     () => _settings?.AutoStart ?? throw new InvalidOperationException("Settings are unavailable."),
                     AutoStartManager.ApplySetupPreferenceAsync, ct),
-                GetSettingsStore: () => SettingsStore));
+                GetSettingsStore: () => SettingsStore,
+                ShowTrayMenu: () => _trayController?.ShowMenu()));
         _updateCoordinator = new UpdateCoordinator(
             AppUpdater,
             _appState,

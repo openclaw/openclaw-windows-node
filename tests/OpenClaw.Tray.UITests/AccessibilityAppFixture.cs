@@ -30,12 +30,13 @@ public sealed class AccessibilityAppFixture : IDisposable
     private readonly string _dataDirectory;
     private readonly string _executablePath;
     private readonly string? _chatFixture;
+    private readonly bool _syntheticData;
     private readonly string? _nativeChatProofSignalPath;
     private readonly string? _nativeChatProofVisualDirectory;
     private readonly string _navigationSignalPath;
     private readonly Process _process;
 
-    public IntPtr HubWindowHandle { get; }
+    public IntPtr HubWindowHandle { get; private set; }
 
     public AccessibilityAppFixture()
         : this(initializeAxe: true)
@@ -44,9 +45,13 @@ public sealed class AccessibilityAppFixture : IDisposable
 
     internal AccessibilityAppFixture(
         bool initializeAxe,
-        string? chatFixture = null)
+        string? chatFixture = null,
+        string theme = "System",
+        bool syntheticData = true,
+        string? initialRoute = "connection")
     {
         _chatFixture = chatFixture;
+        _syntheticData = syntheticData;
         _executablePath = Path.Combine(AppContext.BaseDirectory, "OpenClaw.Tray.WinUI.exe");
         if (!File.Exists(_executablePath))
         {
@@ -80,11 +85,13 @@ public sealed class AccessibilityAppFixture : IDisposable
               "SettingsSchemaVersion": 1,
               "EnableMcpServer": true,
               "GlobalHotkeyEnabled": false,
-              "AutoStart": false
+              "AutoStart": false,
+              "EnableNodeMode": false,
+              "AppTheme": "THEME"
             }
-            """);
+            """.Replace("THEME", theme, StringComparison.Ordinal));
 
-        _process = StartProcess($"{OpenClawTray.AppIdentity.ProtocolScheme}://hub/connection");
+        _process = StartProcess(initialRoute is null ? null : $"{OpenClawTray.AppIdentity.ProtocolScheme}://hub/{initialRoute}");
         HubWindowHandle = WaitForHubWindow();
         if (initializeAxe)
             AxeHelper.Initialize(_process.Id);
@@ -345,9 +352,20 @@ public sealed class AccessibilityAppFixture : IDisposable
         while (stopwatch.Elapsed < NavigationTimeout)
         {
             EnsureTargetIsAlive();
-            var hub = AutomationElement.FromHandle(HubWindowHandle);
-            if (hub.FindFirst(TreeScope.Descendants, condition) != null)
-                return;
+            var workspaceRoute = pageTag == "chat" || pageTag.StartsWith("workspace:", StringComparison.Ordinal);
+            var windows = AutomationElement.RootElement.FindAll(TreeScope.Children,
+                new PropertyCondition(AutomationElement.ProcessIdProperty, _process.Id));
+            foreach (AutomationElement window in windows)
+            {
+                var isWorkspace = window.FindFirst(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.AutomationIdProperty, "WorkspaceNavigation")) is not null;
+                if (isWorkspace != workspaceRoute) continue;
+                if (window.FindFirst(TreeScope.Descendants, condition) is not null)
+                {
+                    HubWindowHandle = new IntPtr(window.Current.NativeWindowHandle);
+                    return;
+                }
+            }
 
             await Task.Delay(100);
         }
@@ -357,20 +375,27 @@ public sealed class AccessibilityAppFixture : IDisposable
             $"within {NavigationTimeout.TotalSeconds:0} seconds.");
     }
 
-    private Process StartProcess(string deepLink)
+    internal async Task RefocusWorkspaceAsync()
+    {
+        await ForwardDeepLinkAsync("hub");
+        await WaitForPageMarkerAsync("chat", "WorkspaceNavigation");
+    }
+
+    private Process StartProcess(string? deepLink)
     {
         var startInfo = new ProcessStartInfo(_executablePath)
         {
             UseShellExecute = false,
             WorkingDirectory = AppContext.BaseDirectory,
         };
-        startInfo.ArgumentList.Add(deepLink);
+        if (deepLink is not null)
+            startInfo.ArgumentList.Add(deepLink);
         startInfo.Environment["OPENCLAW_TRAY_DATA_DIR"] = _dataDirectory;
         startInfo.Environment["OPENCLAW_SKIP_UPDATE_CHECK"] = "1";
         startInfo.Environment["OPENCLAW_FORCE_ONBOARDING"] = "0";
         startInfo.Environment["OPENCLAW_LANGUAGE"] = "en-US";
-        startInfo.Environment["OPENCLAW_ACCESSIBILITY_TEST_CHAT"] = "1";
-        startInfo.Environment["OPENCLAW_ACCESSIBILITY_TEST_SESSIONS"] = "1";
+        startInfo.Environment["OPENCLAW_ACCESSIBILITY_TEST_CHAT"] = _syntheticData ? "1" : "0";
+        startInfo.Environment["OPENCLAW_ACCESSIBILITY_TEST_SESSIONS"] = _syntheticData ? "1" : "0";
         if (!string.IsNullOrWhiteSpace(_chatFixture))
         {
             startInfo.Environment[

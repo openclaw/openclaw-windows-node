@@ -181,7 +181,8 @@ public sealed class WindowManagerTests
         Assert.Contains("_callbacks.ApplyTheme(_setupWindow)", manager);
         Assert.Contains("_hubWindow is { IsClosed: false } hub", manager);
         Assert.Contains("(hub.Content as FrameworkElement)?.XamlRoot", manager);
-        Assert.Contains("WinRT.Interop.WindowNative.GetWindowHandle(_hubWindow)", manager);
+        Assert.Contains("ActiveHubWindow is { } window", manager);
+        Assert.Contains("WinRT.Interop.WindowNative.GetWindowHandle(window)", manager);
         Assert.Contains("WinRT.Interop.WindowNative.GetWindowHandle(_setupWindow)", manager);
     }
 

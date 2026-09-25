@@ -47,6 +47,8 @@ internal sealed class ActivationRouter : IAsyncDisposable
             return new ActivationPlan.Ignore();
 
         var candidate = ResolveExplicitLaunchCandidate(input);
+        if (candidate == null && IsNoArgumentLaunch(input))
+            candidate = $"{_protocolScheme}://hub";
         return candidate == null ? new ActivationPlan.Ignore() : PlanFromUri(candidate);
     }
 

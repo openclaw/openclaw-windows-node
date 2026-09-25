@@ -30,6 +30,9 @@ public sealed partial class ChatPage : Page
 {
     private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private HubWindow? _hub;
+    private Window? _ownerWindow;
+    private string? _pendingSessionKey;
+    private readonly PendingVoiceActivation _pendingVoice = new();
     private MountedReactorChat? _reactorHost;
     private IChatDataProvider? _mountedProvider;
     private IChatDataProvider? _accessibilityTestProvider;
@@ -86,6 +89,7 @@ public sealed partial class ChatPage : Page
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         _pageActive = false;
+        _pendingVoice.Cancel();
         UpdateNativeChatSurfaceActive();
 
         // Don't tear down the native chat host — preserve it across page
@@ -120,36 +124,29 @@ public sealed partial class ChatPage : Page
     /// <summary>Trigger voice recording programmatically (e.g. from V hotkey).</summary>
     public void TriggerAutoStartVoice()
     {
-        if (_reactorHost?.HasVoiceTrigger == true)
-        {
-            _reactorHost.TriggerVoiceRecording();
-            return;
-        }
-        // Composer may not have rendered yet — retry until trigger is registered
-        RetryTriggerVoice(retries: 15, delayMs: 100);
+        _pendingVoice.Request(nativeSurface: !_webViewMode);
+        ConsumePendingVoice();
     }
 
-    private void RetryTriggerVoice(int retries, int delayMs)
+    private void ConsumePendingVoice()
     {
-        if (retries <= 0) return;
-        DispatcherQueue?.TryEnqueue(async () =>
+        if (_hub?.PendingAutoStartVoice == true)
         {
-            await Task.Delay(delayMs);
-            if (_reactorHost?.HasVoiceTrigger == true)
-            {
-                _reactorHost.TriggerVoiceRecording();
-            }
-            else
-            {
-                RetryTriggerVoice(retries - 1, delayMs);
-            }
-        });
+            _hub.PendingAutoStartVoice = false;
+            _pendingVoice.Request(nativeSurface: !_webViewMode);
+        }
+        if (_reactorHost is { HasVoiceTrigger: true } host &&
+            _pendingVoice.TryConsume(_pageActive, composerReady: true))
+            host.TriggerVoiceRecording();
     }
 
-    public void Initialize()
+    public void Initialize() => Initialize(CurrentApp.ActiveHubWindow);
+
+    internal void Initialize(Window? ownerWindow)
     {
         _pageActive = true;
-        _hub = CurrentApp.ActiveHubWindow as HubWindow;
+        _ownerWindow = ownerWindow;
+        _hub = ownerWindow as HubWindow;
         if (_nativeSetupRequest is { } native && _hub is not null)
         {
             _hub.PendingChatSessionKey = native.Completion.Target.SessionKey;
@@ -187,6 +184,14 @@ public sealed partial class ChatPage : Page
         ApplyChatSurface();
     }
 
+    internal void CloseSurface()
+    {
+        OnUnloaded(this, new RoutedEventArgs());
+        DisposeReactorHost();
+        _ownerWindow = null;
+        _hub = null;
+    }
+
     private void OnSettingsSaved(object? sender, EventArgs e) => ApplyChatSurface();
 
     private void OnDebugOverrideChanged(object? sender, EventArgs e) => ApplyChatSurface();
@@ -213,11 +218,17 @@ public sealed partial class ChatPage : Page
         if (string.IsNullOrWhiteSpace(sessionKey))
             return;
 
+        _pendingSessionKey = sessionKey;
         if (_hub is not null)
             _hub.PendingChatSessionKey = sessionKey;
         CurrentApp.PendingChatSessionKey = sessionKey;
         ApplyChatSurface();
     }
+
+    internal void QueueSession(string? sessionKey) => _pendingSessionKey = sessionKey;
+
+    private void OnWorkspaceOpenConnection(object sender, RoutedEventArgs e) =>
+        ((IAppCommands)CurrentApp).Navigate("connection");
 
     private void ApplyChatSurface()
     {
@@ -307,10 +318,11 @@ public sealed partial class ChatPage : Page
         // Any pending key forces a remount — _mountedThreadId only records what
         // we asked for, not what the user later picked inside the composer's
         // dropdown, so we cannot use it to detect "already on the right thread".
-        var pendingSessionKey = _hub?.PendingChatSessionKey
+        var pendingSessionKey = _pendingSessionKey ?? _hub?.PendingChatSessionKey
             ?? (App.Current as App)?.PendingChatSessionKey;
         if (!string.IsNullOrEmpty(pendingSessionKey))
         {
+            _pendingSessionKey = null;
             if (_hub is not null) _hub.PendingChatSessionKey = null;
             if (App.Current is App currentApp) currentApp.PendingChatSessionKey = null;
         }
@@ -325,11 +337,7 @@ public sealed partial class ChatPage : Page
             ChatHost.Visibility = Visibility.Visible;
             UpdateNativeChatSurfaceActive();
             // Check for pending auto-start voice even when already mounted
-            if (_hub?.PendingAutoStartVoice == true)
-            {
-                _hub.PendingAutoStartVoice = false;
-                _reactorHost.TriggerVoiceRecording();
-            }
+            ConsumePendingVoice();
             return;
         }
 
@@ -337,6 +345,7 @@ public sealed partial class ChatPage : Page
 
         if (provider is null || composerFactory is null)
         {
+            _pendingSessionKey = threadIdToMount;
             // If we already have a mounted chat, keep it visible rather than
             // flashing the disconnected placeholder. The ChatProviderChanged
             // event will remount when the provider becomes available again.
@@ -357,10 +366,10 @@ public sealed partial class ChatPage : Page
             provider,
             onVoiceRequest: VoiceTranscribeAsync,
             onAttachClick: OnAttachClicked,
-            onSettingsClick: () => _hub?.NavigateTo("voice"),
+            onSettingsClick: NavigateToVoiceSettings,
             onSpeakerMuteChanged: muted => _ = OnSpeakerMuteChangedAsync(muted),
             initialMuted: ShouldStartSpeakerMuted(CurrentApp.Settings));
-        _reactorHost = CurrentApp.ActiveHubWindow!.MountReactorChat(
+        _reactorHost = (_ownerWindow ?? throw new InvalidOperationException("Chat requires an owning window.")).MountReactorChat(
             ChatHost,
             provider,
             composerSession,
@@ -372,17 +381,7 @@ public sealed partial class ChatPage : Page
         _mountedThreadId = threadIdToMount;
         UpdateNativeChatSurfaceActive();
 
-        // If the V hotkey (or another caller) requested auto-start voice,
-        // trigger it after the UI thread processes the mount (composer needs
-        // to render first so TriggerVoiceRecording is registered).
-        if (_hub?.PendingAutoStartVoice == true)
-        {
-            _hub.PendingAutoStartVoice = false;
-            DispatcherQueue?.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
-            {
-                _reactorHost?.TriggerVoiceRecording();
-            });
-        }
+        ConsumePendingVoice();
     }
 
     private void OpenSessionCheckpoints(string sessionKey) =>
@@ -620,11 +619,13 @@ public sealed partial class ChatPage : Page
 
     private void ShowWebViewSurface(bool forceNavigate = false)
     {
+        _pendingVoice.Cancel();
         // Consume pending session key for WebView mode.
-        var pendingSessionKey = _hub?.PendingChatSessionKey
+        var pendingSessionKey = _pendingSessionKey ?? _hub?.PendingChatSessionKey
             ?? (App.Current as App)?.PendingChatSessionKey;
         if (!string.IsNullOrEmpty(pendingSessionKey))
         {
+            _pendingSessionKey = null;
             if (_hub is not null) _hub.PendingChatSessionKey = null;
             if (App.Current is App currentApp) currentApp.PendingChatSessionKey = null;
             _pendingWebViewSessionKey = pendingSessionKey;
@@ -1034,7 +1035,7 @@ public sealed partial class ChatPage : Page
             return null;
         }
 
-        var voiceService = _hub?.VoiceServiceInstance;
+        var voiceService = _hub?.VoiceServiceInstance ?? CurrentApp.VoiceServiceInstance;
         var host = _reactorHost;
         if (voiceService is null)
         {
@@ -1239,13 +1240,12 @@ public sealed partial class ChatPage : Page
     {
         try
         {
-            if (_hub is null)
+            if (_ownerWindow is null)
             {
-                Logger.Warn("[ChatPage] PickAndAttachFileAsync: _hub is null, cannot open picker");
-                return;
+                throw new InvalidOperationException("Chat has no owning window for the attachment picker.");
             }
 
-            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle((Window)_hub!);
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(_ownerWindow);
             var paths = await Win32FilePickerHelper.PickMultipleFilesAsync(hwnd, LocalizationHelper.GetString("ChatPage_AttachFile"));
 
             if (paths.Count == 0)

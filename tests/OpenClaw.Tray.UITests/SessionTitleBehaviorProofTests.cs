@@ -137,10 +137,14 @@ public sealed class SessionTitleBehaviorProofTests
             AutomationElement.ControlTypeProperty, ControlType.Button);
 
         string? selectedRouteTitle = null;
+        var processId = AutomationElement.FromHandle(_app.HubWindowHandle).Current.ProcessId;
         WaitUntil(() =>
         {
-            var hub = AutomationElement.FromHandle(_app.HubWindowHandle);
-            if (hub.FindFirst(TreeScope.Descendants, composerCondition) is null)
+            var windows = AutomationElement.RootElement.FindAll(TreeScope.Children,
+                new PropertyCondition(AutomationElement.ProcessIdProperty, processId));
+            var hub = windows.Cast<AutomationElement>().FirstOrDefault(window =>
+                window.FindFirst(TreeScope.Descendants, composerCondition) is not null);
+            if (hub is null)
                 return false;
 
             var buttons = hub.FindAll(TreeScope.Descendants, buttonCondition);

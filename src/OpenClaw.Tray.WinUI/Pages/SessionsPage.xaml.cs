@@ -644,11 +644,13 @@ public sealed partial class SessionsPage : Page
 
     private IntPtr ResolveHostHwnd()
     {
-        var window = CurrentApp.ActiveHubWindow;
+        var window = HostWindow ?? CurrentApp.ActiveHubWindow;
         if (window == null) return IntPtr.Zero;
         try { return WinRT.Interop.WindowNative.GetWindowHandle(window); }
         catch { return IntPtr.Zero; }
     }
+
+    internal Window? HostWindow { get; set; }
 
     private void OnSessionCommandCompleted(object? sender, SessionCommandResult result)
     {
