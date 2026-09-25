@@ -220,6 +220,73 @@ public sealed class InstallerIssAssertionTests
             Assert.Contains(Path.GetDirectoryName(siblingVhdx)!, log, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("Ownership uncertain", log, StringComparison.OrdinalIgnoreCase);
             Assert.Contains(lookalike, log, StringComparison.OrdinalIgnoreCase);
+
+            var redirectedLocalAppData = Path.Combine(temp.FullName, "redirected-local");
+            var redirectedRoot = Path.Combine(redirectedLocalAppData, "OpenClawTray");
+            var redirectedTarget = Path.Combine(temp.FullName, "redirected-target");
+            var redirectedVhdx = Path.Combine(redirectedTarget, "wsl", "OpenClawGateway", "ext4.vhdx");
+            Directory.CreateDirectory(Path.GetDirectoryName(redirectedVhdx)!);
+            Directory.CreateDirectory(redirectedLocalAppData);
+            File.WriteAllText(redirectedVhdx, "redirected");
+
+            var junctionScript = Path.Combine(temp.FullName, "create-junction.ps1");
+            File.WriteAllText(junctionScript, """
+                param([string]$Link, [string]$Target)
+                New-Item -ItemType Junction -Path $Link -Target $Target -ErrorAction Stop | Out-Null
+                """);
+            var junctionStartInfo = new ProcessStartInfo(powershell)
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            foreach (var argument in new[]
+            {
+                "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", junctionScript,
+                "-Link", redirectedRoot, "-Target", redirectedTarget,
+            })
+            {
+                junctionStartInfo.ArgumentList.Add(argument);
+            }
+
+            using (var junctionProcess = Process.Start(junctionStartInfo))
+            {
+                Assert.NotNull(junctionProcess);
+                var junctionOutput = junctionProcess.StandardOutput.ReadToEndAsync();
+                var junctionError = junctionProcess.StandardError.ReadToEndAsync();
+                await junctionProcess.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(30));
+                Assert.True(
+                    junctionProcess.ExitCode == 0,
+                    $"Junction setup failed with exit code {junctionProcess.ExitCode}.{Environment.NewLine}{await junctionOutput}{Environment.NewLine}{await junctionError}");
+            }
+
+            startInfo.Environment["OPENCLAW_TRAY_LOCALAPPDATA_DIR"] = redirectedLocalAppData;
+            using (var redirectedProcess = Process.Start(startInfo))
+            {
+                Assert.NotNull(redirectedProcess);
+                var redirectedOutput = redirectedProcess.StandardOutput.ReadToEndAsync();
+                var redirectedError = redirectedProcess.StandardError.ReadToEndAsync();
+                await redirectedProcess.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(30));
+                Assert.True(
+                    redirectedProcess.ExitCode == 0,
+                    $"Redirected cleanup failed with exit code {redirectedProcess.ExitCode}.{Environment.NewLine}{await redirectedOutput}{Environment.NewLine}{await redirectedError}");
+            }
+
+            try
+            {
+                Assert.True(File.Exists(redirectedVhdx));
+                log = File.ReadAllText(logPath);
+                Assert.Contains("generated-data path traverses reparse point", log, StringComparison.OrdinalIgnoreCase);
+                Assert.Contains(redirectedRoot, log, StringComparison.OrdinalIgnoreCase);
+            }
+            finally
+            {
+                if (Directory.Exists(redirectedRoot))
+                {
+                    Directory.Delete(redirectedRoot);
+                }
+            }
         }
         finally
         {
@@ -253,7 +320,7 @@ public sealed class InstallerIssAssertionTests
     {
         using var temp = new TempDirectory("openclaw-uninstall-primary-");
         var localAppData = temp.Combine("local");
-        var generatedRoot = Path.Combine(localAppData, "OpenClawTray");
+        var generatedRoot = Path.Combine(localAppData, "OpenClawTray-Dev");
         var appRoot = layout switch
         {
             "custom" => temp.Combine("custom"),
@@ -289,7 +356,7 @@ public sealed class InstallerIssAssertionTests
         File.WriteAllText(harnessPath, """
             param([string]$SourceScript, [string]$AppRoot, [string]$Scenario, [string]$Layout, [string]$JunctionTarget)
             $ErrorActionPreference = 'Stop'
-            $DataDirectoryName = 'OpenClawTray'
+            $DataDirectoryName = 'OpenClawTray-Dev'
             $DistroName = 'ChosenGateway'
             $RemoveConfirmedDistroChild = $false
             $tokens = $null
@@ -302,8 +369,8 @@ public sealed class InstallerIssAssertionTests
             }
             foreach ($name in @(
                 'Ensure-AppRoot', 'Write-GatewayLog', 'Add-CleanupWarning', 'Write-GatewayResult',
-                'Resolve-LocalDataDir', 'Test-SameFullPath', 'Remove-GatewayDirectory',
-                'Test-DistroListed', 'Test-DistroNotFound', 'Complete-GatewayCleanup'
+                'Resolve-LocalDataDir', 'Test-SameFullPath', 'Get-ReparsePointInPath', 'Remove-GatewayDirectory',
+                'Test-DistroListed', 'Test-DistroNotFound', 'Enter-DestructivePhase', 'Complete-GatewayCleanup'
             )) {
                 $definition = @($ast.EndBlock.Statements | Where-Object {
                     $_ -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $_.Name -eq $name

@@ -708,6 +708,29 @@ function Test-SameFullPath {
     }
 }
 
+function Get-ReparsePointInPath {
+    param([string]$Path)
+
+    $current = [System.IO.Path]::GetFullPath($Path).TrimEnd('\')
+    while (-not [string]::IsNullOrEmpty($current)) {
+        try {
+            if (([System.IO.File]::GetAttributes($current) -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                return $current
+            }
+        } catch [System.IO.FileNotFoundException] {
+        } catch [System.IO.DirectoryNotFoundException] {
+        }
+
+        $parent = [System.IO.Path]::GetDirectoryName($current)
+        if ([string]::IsNullOrEmpty($parent) -or (Test-SameFullPath $parent $current)) {
+            break
+        }
+        $current = $parent
+    }
+
+    return $null
+}
+
 function Remove-ConfirmedDistroChild {
     $localDataDir = Resolve-LocalDataDir
     if ([string]::IsNullOrWhiteSpace($localDataDir)) {
@@ -725,6 +748,12 @@ function Remove-ConfirmedDistroChild {
     $rootName = [System.IO.Path]::GetFileName($generatedRoot)
     if (-not [string]::Equals($rootName, $DataDirectoryName, [System.StringComparison]::OrdinalIgnoreCase)) {
         Write-GatewayLog "Ownership uncertain: generated-data root '$generatedRoot' is not '$DataDirectoryName'; leaving WSL children in place."
+        return
+    }
+
+    $redirectedPath = Get-ReparsePointInPath -Path $generatedRoot
+    if ($redirectedPath) {
+        Write-GatewayLog "Ownership uncertain: generated-data path traverses reparse point '$redirectedPath'; leaving WSL children in place."
         return
     }
 
@@ -799,10 +828,9 @@ function Remove-GatewayDirectory {
     }
 
     foreach ($path in @($AppRoot, $wslRoot, $gatewayDirectory)) {
-        if (-not (Test-Path -LiteralPath $path)) { continue }
-        $item = Get-Item -LiteralPath $path -Force -ErrorAction Stop
-        if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
-            throw "Refusing to recursively delete reparse point '$path'."
+        $redirectedPath = Get-ReparsePointInPath -Path $path
+        if ($redirectedPath) {
+            throw "Refusing to recursively delete reparse point '$redirectedPath'."
         }
     }
 
@@ -837,6 +865,14 @@ $migrationOperationLock = $null
 # (locating wsl.exe, listing distros) stays inside the admission phase.
 $script:MigrationAdmissionPhase = $true
 try {
+    if ($RemoveConfirmedDistroChild) {
+        Enter-DestructivePhase
+        Ensure-AppRoot
+        Write-GatewayLog "Removing only the confirmed distro child '$DistroName' under the generated-data root."
+        Remove-ConfirmedDistroChild
+        exit 0
+    }
+
     if ($DataDirectoryName -eq 'OpenClawTray') {
         $lockDirectory = Join-Path (Resolve-AppDataDir) 'store-migration'
         $lockPath = Join-Path $lockDirectory 'prepare.lock'
@@ -897,12 +933,6 @@ try {
         }
     }
     Ensure-AppRoot
-    if ($RemoveConfirmedDistroChild) {
-        Write-GatewayLog "Removing only the confirmed distro child '$DistroName' under the generated-data root."
-        Remove-ConfirmedDistroChild
-        exit 0
-    }
-
     Write-GatewayLog "Starting local gateway cleanup for $DistroName."
 
     $script:WslPath = Get-WslExePath
