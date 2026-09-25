@@ -13,6 +13,42 @@ internal static partial class ApprovalRequestHelper
 {
     internal const string RequestIdEnvironmentVariable = "OPENCLAW_APPROVAL_REQUEST_ID";
 
+    internal static async Task<PendingRequestBaseline> CapturePendingRequestBaselineAsync(
+        SetupContext ctx,
+        ApprovalRequestKind kind,
+        CancellationToken ct)
+    {
+        var token = ctx.SharedGatewayToken ?? ctx.BootstrapToken;
+        if (string.IsNullOrWhiteSpace(token))
+            return PendingRequestBaseline.Fail("No gateway token is available to capture the pending approval baseline.");
+
+        var env = new Dictionary<string, string> { ["OPENCLAW_GATEWAY_TOKEN"] = token };
+        var noun = Noun(kind);
+        var pending = await ctx.Commands.RunInWslAsync(
+            ctx.DistroName!,
+            $"""{ctx.WslPathPrefix} && openclaw {noun} list --json""",
+            TimeSpan.FromSeconds(30),
+            env,
+            ct);
+
+        var output = $"{pending.Stdout.Trim()} {pending.Stderr.Trim()}".Trim();
+        if (output.Contains("No pending", StringComparison.OrdinalIgnoreCase))
+            return PendingRequestBaseline.SuccessResult([]);
+
+        if (pending.ExitCode != 0)
+        {
+            return PendingRequestBaseline.Fail(
+                $"Could not capture pending {noun} before opening the setup socket (exit {pending.ExitCode}): {output}",
+                IsPluginNotFoundError(output));
+        }
+
+        var parsed = TryReadPendingRequestIds(pending.Stdout.Trim());
+        return parsed.Success
+            ? PendingRequestBaseline.SuccessResult(parsed.RequestIds)
+            : PendingRequestBaseline.Fail(
+                $"Could not capture pending {noun} before opening the setup socket: {parsed.Error}");
+    }
+
     internal static bool IsSafeRequestId(string? requestId)
         => !string.IsNullOrWhiteSpace(requestId)
             && SafeRequestIdPattern().IsMatch(requestId.Trim());
@@ -83,12 +119,10 @@ internal static partial class ApprovalRequestHelper
         }
     }
 
-    internal static RequestIdParseResult TrySelectPendingRequestForDevice(string json, string? deviceId)
-        => TrySelectPendingRequestForDevice(json, deviceId, matchNodeId: false);
-
     internal static RequestIdParseResult TrySelectPendingRequestForDevice(
         string json,
         string? deviceId,
+        IReadOnlySet<string> requestIdsBeforeConnect,
         bool matchNodeId)
     {
         if (string.IsNullOrWhiteSpace(deviceId))
@@ -123,14 +157,17 @@ internal static partial class ApprovalRequestHelper
                 if (!parsed.Success)
                     return RequestIdParseResult.NotFound(parsed.Error ?? "Pending approval request did not include a safe request ID.");
 
+                if (requestIdsBeforeConnect.Contains(parsed.RequestId!))
+                    continue;
+
                 if (match is not null)
-                    return RequestIdParseResult.NotFound("Multiple pending approval requests match the socket setup opened; refusing to auto-approve an ambiguous request.");
+                    return RequestIdParseResult.NotFound("Multiple new pending approval requests match the socket setup opened; refusing to auto-approve an ambiguous request.");
 
                 match = parsed.RequestId;
             }
 
             return match is null
-                ? RequestIdParseResult.NotFound("No pending approval request matched the socket setup opened.")
+                ? RequestIdParseResult.NotFound("No new pending approval request matched the socket setup opened.")
                 : RequestIdParseResult.Found(match);
         }
         catch (JsonException ex)
@@ -145,7 +182,7 @@ internal static partial class ApprovalRequestHelper
             return false;
 
         return parsed.Error.Contains("No pending approval request was found.", StringComparison.Ordinal)
-            || parsed.Error.Contains("No pending approval request matched the socket setup opened.", StringComparison.Ordinal)
+            || parsed.Error.Contains("No new pending approval request matched the socket setup opened.", StringComparison.Ordinal)
             || parsed.Error.Contains("Operator device ID is missing", StringComparison.Ordinal);
     }
 
@@ -272,4 +309,17 @@ internal sealed record PendingRequestIdsParseResult(bool Success, IReadOnlyList<
 {
     public static PendingRequestIdsParseResult SuccessResult(IReadOnlyList<string> requestIds) => new(true, requestIds, null);
     public static PendingRequestIdsParseResult Fail(string error) => new(false, [], error);
+}
+
+internal sealed record PendingRequestBaseline(
+    bool Success,
+    IReadOnlySet<string> RequestIds,
+    string? Error,
+    bool PluginNotFound)
+{
+    public static PendingRequestBaseline SuccessResult(IEnumerable<string> requestIds) =>
+        new(true, new HashSet<string>(requestIds, StringComparer.Ordinal), null, false);
+
+    public static PendingRequestBaseline Fail(string error, bool pluginNotFound = false) =>
+        new(false, new HashSet<string>(StringComparer.Ordinal), error, pluginNotFound);
 }

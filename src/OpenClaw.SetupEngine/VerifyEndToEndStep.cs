@@ -100,6 +100,7 @@ public sealed class VerifyEndToEndStep : SetupStep
             listCommand: "openclaw devices list --json",
             kind: ApprovalRequestKind.Device,
             matchNodeId: false,
+            requestBaseline: ctx.SetupDeviceApprovalBaseline,
             ct);
     }
 
@@ -111,10 +112,17 @@ public sealed class VerifyEndToEndStep : SetupStep
         string listCommand,
         ApprovalRequestKind kind,
         bool matchNodeId,
+        PendingRequestBaseline? requestBaseline,
         CancellationToken ct)
     {
         const int maxDrainIterations = 10;
         var label = kind == ApprovalRequestKind.Node ? "Node" : "Device";
+        if (requestBaseline is null || !requestBaseline.Success)
+        {
+            ctx.Logger.Warn(
+                $"Skipping pending {label.ToLowerInvariant()} approval drain because setup did not capture a pre-connect request baseline");
+            return StepResult.Ok($"Pending {label.ToLowerInvariant()} approval drain skipped");
+        }
 
         for (var i = 0; i < maxDrainIterations; i++)
         {
@@ -138,6 +146,7 @@ public sealed class VerifyEndToEndStep : SetupStep
             var parsed = ApprovalRequestHelper.TrySelectPendingRequestForDevice(
                 pending.Stdout.Trim(),
                 ctx.OperatorDeviceId,
+                requestBaseline.RequestIds,
                 matchNodeId);
             if (!parsed.Success)
             {
@@ -180,6 +189,13 @@ public sealed class VerifyEndToEndStep : SetupStep
         var pathPrefix = ctx.WslPathPrefix;
         var env = new Dictionary<string, string> { ["OPENCLAW_GATEWAY_TOKEN"] = token };
         const int maxDrainIterations = 10;
+        var requestBaseline = ctx.SetupNodeApprovalBaseline;
+        if (requestBaseline is null || !requestBaseline.Success)
+        {
+            ctx.Logger.Warn(
+                "Skipping pending node approval drain because setup did not capture a pre-connect request baseline");
+            return StepResult.Ok("Pending node approval drain skipped");
+        }
 
         for (var i = 0; i < maxDrainIterations; i++)
         {
@@ -200,6 +216,7 @@ public sealed class VerifyEndToEndStep : SetupStep
             var parsed = ApprovalRequestHelper.TrySelectPendingRequestForDevice(
                 nodeList.Stdout.Trim(),
                 ctx.OperatorDeviceId,
+                requestBaseline.RequestIds,
                 matchNodeId: true);
             if (!parsed.Success)
             {
@@ -283,6 +300,10 @@ public sealed class VerifyEndToEndStep : SetupStep
         ctx.Logger.Info("Waiting for grace period before final operator handshake...");
         await Task.Delay(TimeSpan.FromSeconds(5), ct);
 
+        var requestBaseline = await ApprovalRequestHelper.CapturePendingRequestBaselineAsync(
+            ctx,
+            ApprovalRequestKind.Device,
+            ct);
         var client = new OpenClawGatewayClient(gatewayUrl, deviceToken, logger: wsLogger, identityPath: identityPath);
         PairOperatorStep.ApplyReconnectAuthorization(client, ctx);
         client.UseV2Signature = true;
@@ -306,7 +327,11 @@ public sealed class VerifyEndToEndStep : SetupStep
                 client.Dispose();
                 client = null;
 
-                var approveResult = await PairOperatorStep.AutoApprovePairing(ctx, requestId, ct);
+                var approveResult = await PairOperatorStep.AutoApprovePairing(
+                    ctx,
+                    requestId,
+                    requestBaseline,
+                    ct);
                 if (!approveResult.IsSuccess)
                     return StepResult.Fail($"Operator finalization approval failed: {approveResult.Message}");
 

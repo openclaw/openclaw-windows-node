@@ -5307,10 +5307,11 @@ public class SetupStepsTests : IDisposable
     // in docs/ARCHITECTURE.md).
 
     [Fact]
-    public async Task AutoApprovePairing_WithoutRequestId_ApprovesOnlyTheRequestForTheOpenedSocket()
+    public async Task AutoApprovePairing_WithoutRequestId_ApprovesOnlyNewRequestForOpenedSocket()
     {
         const string socketDeviceId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
         const string otherDeviceId = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        const string staleRequestId = "stale-socket-req";
         const string socketRequestId = "setup-socket-req";
         const string newerRequestId = "attacker-latest-req";
         var commands = new FakeCommandRunner(
@@ -5321,6 +5322,7 @@ public class SetupStepsTests : IDisposable
                 {
                     return Ok(
                         "{\"pending\":[" +
+                        "{\"requestId\":\"" + staleRequestId + "\",\"deviceId\":\"" + socketDeviceId + "\",\"role\":\"operator\",\"ts\":0}," +
                         "{\"requestId\":\"" + socketRequestId + "\",\"deviceId\":\"" + socketDeviceId + "\",\"role\":\"operator\",\"ts\":1}," +
                         "{\"requestId\":\"" + newerRequestId + "\",\"deviceId\":\"" + otherDeviceId + "\",\"role\":\"operator\",\"ts\":2}" +
                         "]}");
@@ -5340,12 +5342,18 @@ public class SetupStepsTests : IDisposable
         ctx.DistroName = "test-distro";
         ctx.SharedGatewayToken = "test-auth-token";
         ctx.OperatorDeviceId = socketDeviceId;
+        var requestBaseline = PendingRequestBaseline.SuccessResult([staleRequestId]);
 
-        var result = await PairOperatorStep.AutoApprovePairing(ctx, CancellationToken.None);
+        var result = await PairOperatorStep.AutoApprovePairing(
+            ctx,
+            requestId: null,
+            requestBaseline,
+            CancellationToken.None);
 
         Assert.True(result.IsSuccess, result.Message);
         Assert.Contains(socketRequestId, result.Message);
         Assert.DoesNotContain(newerRequestId, result.Message);
+        Assert.DoesNotContain(staleRequestId, result.Message);
         Assert.DoesNotContain(
             commands.WslCalls,
             call => call.Command.Contains("approve --latest", StringComparison.Ordinal));
@@ -5358,13 +5366,35 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public async Task AutoApprovePairing_WithoutRequestIdOrBaseline_FailsWithoutListing()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, _, _) => Ok("""{"pending":[{"requestId":"unowned-request"}]}"""));
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        ctx.SharedGatewayToken = "test-auth-token";
+
+        var result = await PairOperatorStep.AutoApprovePairing(
+            ctx,
+            requestId: null,
+            CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("no pre-connect approval baseline", result.Message);
+        Assert.Empty(commands.WslCalls);
+    }
+
+    [Fact]
     public async Task LaterDrain_DoesNotApproveADifferentPendingRequest()
     {
         const string socketDeviceId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
         const string otherDeviceId = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
         const string socketRequestId = "setup-socket-req";
+        const string staleSocketRequestId = "stale-setup-socket-req";
         const string otherRequestId = "attacker-latest-req";
         const string socketNodeRequestId = "setup-node-req";
+        const string staleSocketNodeRequestId = "stale-setup-node-req";
         const string otherNodeRequestId = "attacker-node-req";
         var deviceLists = 0;
         var nodeLists = 0;
@@ -5377,10 +5407,14 @@ public class SetupStepsTests : IDisposable
                     deviceLists++;
                     var pending = deviceLists == 1
                         ? "{\"pending\":[" +
+                          "{\"requestId\":\"" + staleSocketRequestId + "\",\"deviceId\":\"" + socketDeviceId + "\",\"role\":\"operator\"}," +
                           "{\"requestId\":\"" + socketRequestId + "\",\"deviceId\":\"" + socketDeviceId + "\",\"role\":\"operator\"}," +
                           "{\"requestId\":\"" + otherRequestId + "\",\"deviceId\":\"" + otherDeviceId + "\",\"role\":\"operator\"}" +
                           "]}"
-                        : "{\"pending\":[{\"requestId\":\"" + otherRequestId + "\",\"deviceId\":\"" + otherDeviceId + "\",\"role\":\"operator\"}]}";
+                        : "{\"pending\":[" +
+                          "{\"requestId\":\"" + staleSocketRequestId + "\",\"deviceId\":\"" + socketDeviceId + "\",\"role\":\"operator\"}," +
+                          "{\"requestId\":\"" + otherRequestId + "\",\"deviceId\":\"" + otherDeviceId + "\",\"role\":\"operator\"}" +
+                          "]}";
                     return Ok(pending);
                 }
 
@@ -5389,10 +5423,14 @@ public class SetupStepsTests : IDisposable
                     nodeLists++;
                     var pending = nodeLists == 1
                         ? "{\"pending\":[" +
+                          "{\"requestId\":\"" + staleSocketNodeRequestId + "\",\"nodeId\":\"" + socketDeviceId + "\",\"role\":\"node\"}," +
                           "{\"requestId\":\"" + socketNodeRequestId + "\",\"nodeId\":\"" + socketDeviceId + "\",\"role\":\"node\"}," +
                           "{\"requestId\":\"" + otherNodeRequestId + "\",\"nodeId\":\"" + otherDeviceId + "\",\"role\":\"node\"}" +
                           "]}"
-                        : "{\"pending\":[{\"requestId\":\"" + otherNodeRequestId + "\",\"nodeId\":\"" + otherDeviceId + "\",\"role\":\"node\"}]}";
+                        : "{\"pending\":[" +
+                          "{\"requestId\":\"" + staleSocketNodeRequestId + "\",\"nodeId\":\"" + socketDeviceId + "\",\"role\":\"node\"}," +
+                          "{\"requestId\":\"" + otherNodeRequestId + "\",\"nodeId\":\"" + otherDeviceId + "\",\"role\":\"node\"}" +
+                          "]}";
                     return Ok(pending);
                 }
 
@@ -5411,6 +5449,8 @@ public class SetupStepsTests : IDisposable
         ctx.DistroName = "test-distro";
         ctx.SharedGatewayToken = "test-auth-token";
         ctx.OperatorDeviceId = socketDeviceId;
+        ctx.SetupDeviceApprovalBaseline = PendingRequestBaseline.SuccessResult([staleSocketRequestId]);
+        ctx.SetupNodeApprovalBaseline = PendingRequestBaseline.SuccessResult([staleSocketNodeRequestId]);
 
         var result = await VerifyEndToEndStep.DrainPendingApprovalsAsync(ctx, CancellationToken.None);
 
@@ -5424,7 +5464,10 @@ public class SetupStepsTests : IDisposable
             commands.WslEnvironments,
             env => env is not null &&
                 env.TryGetValue(ApprovalRequestHelper.RequestIdEnvironmentVariable, out var requestId) &&
-                (requestId == otherRequestId || requestId == otherNodeRequestId));
+                (requestId == staleSocketRequestId ||
+                 requestId == staleSocketNodeRequestId ||
+                 requestId == otherRequestId ||
+                 requestId == otherNodeRequestId));
     }
 
     private static void AssertApprovedRequest(FakeCommandRunner commands, string commandText, string requestId)
@@ -5470,10 +5513,14 @@ public class SetupStepsTests : IDisposable
         var ctx = CreateNodePairingContext(commands);
         ctx.NodeDeviceId = foreignDeviceId[..16];
 
-        var result = await PairNodeStep.AutoApproveNodePairing(ctx, null, CancellationToken.None);
+        var result = await PairNodeStep.AutoApproveNodePairing(
+            ctx,
+            requestId: null,
+            PendingRequestBaseline.SuccessResult([]),
+            CancellationToken.None);
 
         Assert.Equal(StepOutcome.Failed, result.Outcome);
-        Assert.Contains("No pending approval request matched", result.Message);
+        Assert.Contains("No new pending approval request matched", result.Message);
         Assert.Single(commands.WslCalls);
     }
 
@@ -5494,7 +5541,11 @@ public class SetupStepsTests : IDisposable
         var ctx = CreateNodePairingContext(commands);
         ctx.NodeDeviceId = "bbbbbbbbbbbbbbbb";
 
-        var result = await PairNodeStep.AutoApproveNodePairing(ctx, null, CancellationToken.None);
+        var result = await PairNodeStep.AutoApproveNodePairing(
+            ctx,
+            requestId: null,
+            PendingRequestBaseline.SuccessResult([]),
+            CancellationToken.None);
 
         Assert.True(result.IsSuccess, result.Message);
         Assert.Equal(2, commands.WslCalls.Count);
@@ -5515,7 +5566,11 @@ public class SetupStepsTests : IDisposable
         ctx.OperatorDeviceId = deviceId;
         ctx.NodeDeviceId = PairingSocketDeviceId[..16];
 
-        var result = await PairNodeStep.AutoApproveNodePairing(ctx, null, CancellationToken.None);
+        var result = await PairNodeStep.AutoApproveNodePairing(
+            ctx,
+            requestId: null,
+            PendingRequestBaseline.SuccessResult([]),
+            CancellationToken.None);
 
         Assert.Equal(StepOutcome.Failed, result.Outcome);
         Assert.Contains("device ID is missing", result.Message);
@@ -5523,9 +5578,9 @@ public class SetupStepsTests : IDisposable
     }
 
     [Theory]
-    [InlineData("""{"pending":[{"requestId":"short-id-request","nodeId":"aaaaaaaaaaaaaaaa"}]}""", "No pending approval request matched")]
-    [InlineData("""{"pending":[{"requestId":"missing-id-request"}]}""", "No pending approval request matched")]
-    [InlineData("""{"pending":[{"requestId":"one","nodeId":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},{"requestId":"two","nodeId":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}""", "Multiple pending approval requests match")]
+    [InlineData("""{"pending":[{"requestId":"short-id-request","nodeId":"aaaaaaaaaaaaaaaa"}]}""", "No new pending approval request matched")]
+    [InlineData("""{"pending":[{"requestId":"missing-id-request"}]}""", "No new pending approval request matched")]
+    [InlineData("""{"pending":[{"requestId":"one","nodeId":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},{"requestId":"two","nodeId":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}""", "Multiple new pending approval requests match")]
     [InlineData("""{"pending":[{"requestId":"unsafe;request","nodeId":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}""", "unsafe characters")]
     public async Task AutoApproveNodePairing_WithoutRequestId_RejectsUnboundOrAmbiguousRequest(
         string pendingJson, string expectedError)
@@ -5533,7 +5588,11 @@ public class SetupStepsTests : IDisposable
         var commands = NodePairingCommands(pendingJson);
         var ctx = CreateNodePairingContext(commands);
 
-        var result = await PairNodeStep.AutoApproveNodePairing(ctx, null, CancellationToken.None);
+        var result = await PairNodeStep.AutoApproveNodePairing(
+            ctx,
+            requestId: null,
+            PendingRequestBaseline.SuccessResult([]),
+            CancellationToken.None);
 
         Assert.Equal(StepOutcome.Failed, result.Outcome);
         Assert.Contains(expectedError, result.Message);
@@ -5589,8 +5648,16 @@ public class SetupStepsTests : IDisposable
     public async Task AutoApproveNodePairing_ReturnsTerminalWhenPendingListReportsDevicePairPluginNotFound()
     {
         var ctx = CreatePairingContext(DevicePairPluginNotFoundOutput);
+        var requestBaseline = await ApprovalRequestHelper.CapturePendingRequestBaselineAsync(
+            ctx,
+            ApprovalRequestKind.Node,
+            CancellationToken.None);
 
-        var result = await PairNodeStep.AutoApproveNodePairing(ctx, requestId: null, CancellationToken.None);
+        var result = await PairNodeStep.AutoApproveNodePairing(
+            ctx,
+            requestId: null,
+            requestBaseline,
+            CancellationToken.None);
 
         Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
         Assert.Equal(ApprovalRequestHelper.PluginNotFoundMessage, result.Message);
@@ -5600,11 +5667,19 @@ public class SetupStepsTests : IDisposable
     public async Task AutoApproveNodePairing_KeepsOtherPendingListMissingPluginRetriable()
     {
         var ctx = CreatePairingContext(OtherPluginNotFoundOutput);
+        var requestBaseline = await ApprovalRequestHelper.CapturePendingRequestBaselineAsync(
+            ctx,
+            ApprovalRequestKind.Node,
+            CancellationToken.None);
 
-        var result = await PairNodeStep.AutoApproveNodePairing(ctx, requestId: null, CancellationToken.None);
+        var result = await PairNodeStep.AutoApproveNodePairing(
+            ctx,
+            requestId: null,
+            requestBaseline,
+            CancellationToken.None);
 
         Assert.Equal(StepOutcome.Failed, result.Outcome);
-        Assert.Contains("Could not list pending node pairing requests", result.Message);
+        Assert.Contains("Could not capture pending nodes", result.Message);
         Assert.DoesNotContain(ApprovalRequestHelper.PluginNotFoundMessage, result.Message);
     }
 

@@ -204,6 +204,10 @@ public sealed class SetupWizardRunner
             var provenanceCheck = await PairOperatorStep.EnsurePairingEndpointTrustedAsync(_ctx, ct);
             if (provenanceCheck is not null)
                 return provenanceCheck;
+            var requestBaseline = await ApprovalRequestHelper.CapturePendingRequestBaselineAsync(
+                _ctx,
+                ApprovalRequestKind.Device,
+                ct);
             client = CreateWizardClient(credential, identityPath, wsLogger);
             var connection = await PairOperatorStep.WaitForConnectionOrPairing(
                 client,
@@ -232,7 +236,11 @@ public sealed class SetupWizardRunner
                 await client.DisconnectAsync();
                 client.Dispose();
 
-                var approval = await PairOperatorStep.AutoApprovePairing(_ctx, requestId, ct);
+                var approval = await PairOperatorStep.AutoApprovePairing(
+                    _ctx,
+                    requestId,
+                    requestBaseline,
+                    ct);
                 if (!approval.IsSuccess)
                     return approval;
 

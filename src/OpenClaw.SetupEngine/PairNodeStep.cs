@@ -48,6 +48,11 @@ public sealed class PairNodeStep : SetupStep
 
         var wsLogger = new SetupOpenClawLogger(ctx.Logger);
         WindowsNodeClient? client = null;
+        var requestBaseline = await ApprovalRequestHelper.CapturePendingRequestBaselineAsync(
+            ctx,
+            ApprovalRequestKind.Node,
+            ct);
+        ctx.SetupNodeApprovalBaseline = requestBaseline;
 
         try
         {
@@ -78,7 +83,7 @@ public sealed class PairNodeStep : SetupStep
                 client.Dispose();
                 client = null;
 
-                var approveResult = await AutoApproveNodePairing(ctx, outcome.RequestId, ct);
+                var approveResult = await AutoApproveNodePairing(ctx, outcome.RequestId, requestBaseline, ct);
                 if (!approveResult.IsSuccess)
                     return approveResult;
 
@@ -169,6 +174,10 @@ public sealed class PairNodeStep : SetupStep
         ctx.Logger.Info("Waiting for gateway grace period before node finalization...");
         await Task.Delay(TimeSpan.FromSeconds(5), ct);
 
+        var requestBaseline = await ApprovalRequestHelper.CapturePendingRequestBaselineAsync(
+            ctx,
+            ApprovalRequestKind.Node,
+            ct);
         var finalClient = new WindowsNodeClient(gatewayUrl, nodeToken, identityPath, logger: wsLogger);
         PairOperatorStep.ApplyReconnectAuthorization(finalClient, ctx);
         finalClient.UseV2Signature = true;
@@ -190,7 +199,7 @@ public sealed class PairNodeStep : SetupStep
                 finalClient.Dispose();
                 finalClient = null;
 
-                var approveResult = await AutoApproveNodePairing(ctx, result.RequestId, ct);
+                var approveResult = await AutoApproveNodePairing(ctx, result.RequestId, requestBaseline, ct);
                 if (!approveResult.IsSuccess)
                     return StepResult.Fail($"Node finalization approval failed: {approveResult.Message}");
 
@@ -279,6 +288,13 @@ public sealed class PairNodeStep : SetupStep
     }
 
     internal static async Task<StepResult> AutoApproveNodePairing(SetupContext ctx, string? requestId, CancellationToken ct)
+        => await AutoApproveNodePairing(ctx, requestId, requestBaseline: null, ct);
+
+    internal static async Task<StepResult> AutoApproveNodePairing(
+        SetupContext ctx,
+        string? requestId,
+        PendingRequestBaseline? requestBaseline,
+        CancellationToken ct)
     {
         var distro = ctx.DistroName!;
         var token = ctx.SharedGatewayToken ?? ctx.BootstrapToken ?? throw new InvalidOperationException("No gateway token available for auto-approve");
@@ -288,6 +304,16 @@ public sealed class PairNodeStep : SetupStep
 
         if (string.IsNullOrWhiteSpace(requestId))
         {
+            if (requestBaseline is null || !requestBaseline.Success)
+            {
+                if (requestBaseline?.PluginNotFound == true)
+                    return StepResult.Terminal(ApprovalRequestHelper.PluginNotFoundMessage);
+
+                return StepResult.Fail(
+                    requestBaseline?.Error ??
+                    "The setup socket did not provide a node pairing request ID, and no pre-connect approval baseline is available.");
+            }
+
             approvalKind = ApprovalRequestKind.Node;
             var pending = await ctx.Commands.RunInWslAsync(
                 distro,
@@ -308,6 +334,7 @@ public sealed class PairNodeStep : SetupStep
             var parsed = ApprovalRequestHelper.TrySelectPendingRequestForDevice(
                 pending.Stdout.Trim(),
                 ctx.OperatorDeviceId,
+                requestBaseline.RequestIds,
                 matchNodeId: true);
             if (!parsed.Success)
             {

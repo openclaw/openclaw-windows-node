@@ -85,6 +85,11 @@ public sealed class PairOperatorStep : SetupStep
         // Connect operator WebSocket — handle pairing-required flow
         var wsLogger = new SetupOpenClawLogger(ctx.Logger);
         OpenClawGatewayClient? client = null;
+        var requestBaseline = await ApprovalRequestHelper.CapturePendingRequestBaselineAsync(
+            ctx,
+            ApprovalRequestKind.Device,
+            ct);
+        ctx.SetupDeviceApprovalBaseline = requestBaseline;
 
         try
         {
@@ -112,7 +117,7 @@ public sealed class PairOperatorStep : SetupStep
                 client = null;
 
                 // Auto-approve the pending pairing request
-                var approveResult = await AutoApprovePairing(ctx, requestId, ct);
+                var approveResult = await AutoApprovePairing(ctx, requestId, requestBaseline, ct);
                 if (!approveResult.IsSuccess)
                     return approveResult;
 
@@ -275,6 +280,11 @@ public sealed class PairOperatorStep : SetupStep
         ctx.Logger.Info("Waiting for gateway grace period to expire before finalization...");
         await Task.Delay(TimeSpan.FromSeconds(5), ct);
 
+        var requestBaseline = await ApprovalRequestHelper.CapturePendingRequestBaselineAsync(
+            ctx,
+            ApprovalRequestKind.Device,
+            ct);
+
         // Connect exactly as the tray would: pass deviceToken as the credential
         var finalClient = new OpenClawGatewayClient(gatewayUrl, deviceToken, logger: wsLogger, identityPath: identityPath);
         ApplyReconnectAuthorization(finalClient, ctx);
@@ -299,7 +309,7 @@ public sealed class PairOperatorStep : SetupStep
                 finalClient = null;
 
                 // Approve the metadata-upgrade
-                var approveResult = await AutoApprovePairing(ctx, requestId, ct);
+                var approveResult = await AutoApprovePairing(ctx, requestId, requestBaseline, ct);
                 if (!approveResult.IsSuccess)
                     return StepResult.Fail($"Finalization approval failed: {approveResult.Message}");
 
@@ -332,10 +342,14 @@ public sealed class PairOperatorStep : SetupStep
         }
     }
 
-    internal static async Task<StepResult> AutoApprovePairing(SetupContext ctx, CancellationToken ct)
-        => await AutoApprovePairing(ctx, requestId: null, ct);
-
     internal static async Task<StepResult> AutoApprovePairing(SetupContext ctx, string? requestId, CancellationToken ct)
+        => await AutoApprovePairing(ctx, requestId, requestBaseline: null, ct);
+
+    internal static async Task<StepResult> AutoApprovePairing(
+        SetupContext ctx,
+        string? requestId,
+        PendingRequestBaseline? requestBaseline,
+        CancellationToken ct)
     {
         var distro = ctx.DistroName!;
         var token = ctx.SharedGatewayToken ?? ctx.BootstrapToken ?? throw new InvalidOperationException("No gateway token available for auto-approve");
@@ -344,6 +358,16 @@ public sealed class PairOperatorStep : SetupStep
 
         if (string.IsNullOrWhiteSpace(requestId))
         {
+            if (requestBaseline is null || !requestBaseline.Success)
+            {
+                if (requestBaseline?.PluginNotFound == true)
+                    return StepResult.Terminal(ApprovalRequestHelper.PluginNotFoundMessage);
+
+                return StepResult.Fail(
+                    requestBaseline?.Error ??
+                    "The setup socket did not provide a pairing request ID, and no pre-connect approval baseline is available.");
+            }
+
             var pending = await ctx.Commands.RunInWslAsync(
                 distro,
                 $"""{ctx.WslPathPrefix} && openclaw devices list --json""",
@@ -361,7 +385,9 @@ public sealed class PairOperatorStep : SetupStep
 
             var parsed = ApprovalRequestHelper.TrySelectPendingRequestForDevice(
                 pending.Stdout.Trim(),
-                ctx.OperatorDeviceId);
+                ctx.OperatorDeviceId,
+                requestBaseline.RequestIds,
+                matchNodeId: false);
             if (!parsed.Success)
             {
                 ctx.Logger.Warn($"Could not select pairing request: {parsed.Error}");

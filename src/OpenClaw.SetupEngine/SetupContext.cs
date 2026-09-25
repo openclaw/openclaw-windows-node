@@ -501,6 +501,8 @@ public sealed class SetupContext
     public string? GatewayRecordId { get; set; }
     public string? OperatorDeviceId { get; set; }
     public string? NodeDeviceId { get; set; }
+    internal PendingRequestBaseline? SetupDeviceApprovalBaseline { get; set; }
+    internal PendingRequestBaseline? SetupNodeApprovalBaseline { get; set; }
     public GatewaySelfInfo? ObservedGatewaySelf { get; set; }
     public GatewayCompatibilityException? GatewayCompatibilityFailure { get; set; }
     public string? WindowsTailnetDnsSuffix { get; set; }
