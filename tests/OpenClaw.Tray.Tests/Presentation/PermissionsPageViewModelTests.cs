@@ -923,6 +923,259 @@ public sealed class PermissionsPageViewModelTests
         Assert.Equal(PermissionsExecApprovalsStatus.ExternalInvalid, harness.ViewModel.ExecApprovalsStatus);
     }
 
+    [Fact]
+    public void ExecSnapshot_WildcardSecurityAndAllowlist_DisplayWhenMainSecurityUnset()
+    {
+        var file = new ExecApprovalsFile
+        {
+            Version = 1,
+            Agents = new Dictionary<string, ExecApprovalsAgent>(StringComparer.Ordinal)
+            {
+                ["main"] = new ExecApprovalsAgent(),
+                ["*"] = new ExecApprovalsAgent
+                {
+                    Security = ExecSecurity.Full,
+                    Allowlist =
+                    [
+                        new ExecAllowlistEntry { Pattern = "  " },
+                        new ExecAllowlistEntry { Pattern = @"C:\tools\*" },
+                    ],
+                },
+            },
+        };
+
+        using var harness = PermissionsHarness.CreateWithRecordingStore(BuildSnapshot("wildcard-only", file));
+        harness.ViewModel.Activate(null);
+
+        Assert.Equal("allow", harness.ViewModel.DefaultExecActionTag);
+        Assert.Equal(@"C:\tools\*", Assert.Single(harness.ViewModel.ExecApprovalRules).Pattern);
+    }
+
+    [Fact]
+    public void ExecSnapshot_MainSecurityWins_AndBothAllowlistsStayVisible()
+    {
+        var file = new ExecApprovalsFile
+        {
+            Version = 1,
+            Agents = new Dictionary<string, ExecApprovalsAgent>(StringComparer.Ordinal)
+            {
+                ["main"] = new ExecApprovalsAgent
+                {
+                    Security = ExecSecurity.Deny,
+                    Allowlist = [new ExecAllowlistEntry { Pattern = @"C:\main\*" }],
+                },
+                ["*"] = new ExecApprovalsAgent
+                {
+                    Security = ExecSecurity.Full,
+                    Allowlist = [new ExecAllowlistEntry { Pattern = @"C:\tools\*" }],
+                },
+            },
+        };
+
+        using var harness = PermissionsHarness.CreateWithRecordingStore(BuildSnapshot("main-over-wildcard", file));
+        harness.ViewModel.Activate(null);
+
+        Assert.Equal("deny", harness.ViewModel.DefaultExecActionTag);
+        Assert.Equal(
+            new[] { @"C:\tools\*", @"C:\main\*" },
+            harness.ViewModel.ExecApprovalRules.Select(rule => rule.Pattern).ToArray());
+    }
+
+    [Theory]
+    [InlineData("*", false)]
+    [InlineData("*", true)]
+    [InlineData("main", false)]
+    [InlineData("main", true)]
+    public async Task RemoveDisplayedRule_PreservesOtherBucketAndArgumentVariants(string agentId, bool idless)
+    {
+        Guid? ruleId = idless ? null : Guid.NewGuid();
+        var file = BuildFile("prompt", otherAgentPath: "**/rg.exe");
+        foreach (var bucket in new[] { "*", "main" })
+        {
+            file.Agents![bucket] = new ExecApprovalsAgent
+            {
+                Security = ExecSecurity.Full,
+                Ask = ExecAsk.Always,
+                AskFallback = ExecSecurity.Deny,
+                AutoAllowSkills = true,
+                Allowlist =
+                [
+                    new ExecAllowlistEntry { Pattern = "**/git.exe" },
+                    new ExecAllowlistEntry
+                    {
+                        Id = ruleId,
+                        Pattern = "**/git.exe",
+                        ArgPattern = "^status$",
+                        CommandText = "git.exe status",
+                        Source = "allow-always",
+                        LastUsedAt = 123,
+                        LastResolvedPath = @"C:\tools\git.exe",
+                        LastUsedCommand = "git.exe status",
+                    },
+                ],
+            };
+        }
+
+        using var harness = PermissionsHarness.CreateWithRecordingStore(BuildSnapshot("base", file));
+        harness.ViewModel.Activate(null);
+        var displayed = harness.ViewModel.ExecApprovalRules.Where(rule => rule.ArgPattern == "^status$").ToArray();
+        var selected = displayed[agentId == "*" ? 0 : 1];
+
+        Assert.True(await harness.ViewModel.RemoveExecApprovalRuleAsync(selected));
+
+        file.Agents![agentId].Allowlist!.RemoveAt(1);
+        Assert.Equal(JsonSerializer.Serialize(file),
+            JsonSerializer.Serialize(harness.RecordingExecStore!.CurrentSnapshot.File));
+        Assert.Equal(3, harness.ViewModel.ExecApprovalRules.Count);
+        Assert.Equal(PermissionsExecApprovalsStatus.Saved, harness.ViewModel.ExecApprovalsStatus);
+    }
+
+    [Theory]
+    [InlineData("*", false)]
+    [InlineData("*", true)]
+    [InlineData("main", false)]
+    [InlineData("main", true)]
+    public async Task RemoveDisplayedRule_CasRetry_PreservesConcurrentReplacement(string agentId, bool idless)
+    {
+        var file = BuildFile("prompt", otherAgentPath: "**/rg.exe");
+        file.Agents![agentId] = new ExecApprovalsAgent
+        {
+            Allowlist = [new ExecAllowlistEntry { Id = idless ? null : Guid.NewGuid(), Pattern = "**/git.exe" }],
+        };
+        using var harness = PermissionsHarness.CreateWithRecordingStore(BuildSnapshot("base", file));
+        harness.ViewModel.Activate(null);
+        var selected = Assert.Single(harness.ViewModel.ExecApprovalRules);
+        file.Agents[agentId].Allowlist![0].Id = Guid.NewGuid();
+        file.Agents["other"].Ask = ExecAsk.Always;
+        harness.RecordingExecStore!.OnReplace = call =>
+        {
+            if (call.Attempt == 1)
+            {
+                harness.RecordingExecStore.ReplaceCurrentSnapshot(BuildSnapshot("fresh", file));
+                return null;
+            }
+
+            return harness.RecordingExecStore.Commit(call.Replacement, "saved");
+        };
+
+        Assert.True(await harness.ViewModel.RemoveExecApprovalRuleAsync(selected));
+
+        Assert.Equal(JsonSerializer.Serialize(file),
+            JsonSerializer.Serialize(harness.RecordingExecStore.CurrentSnapshot.File));
+        Assert.Equal(new[] { "base", "fresh" },
+            harness.RecordingExecStore.ReplaceCalls.Select(call => call.BaseHash));
+    }
+
+    [Theory]
+    [InlineData(ExecSecurity.Full, ExecAsk.Off)]
+    [InlineData(ExecSecurity.Full, ExecAsk.Always)]
+    [InlineData(ExecSecurity.Allowlist, ExecAsk.OnMiss)]
+    [InlineData(ExecSecurity.Allowlist, ExecAsk.Always)]
+    public async Task AddRule_PreservesInheritedWildcardPolicy(ExecSecurity security, ExecAsk ask)
+    {
+        var file = BuildFile("deny", otherAgentPath: "**/rg.exe");
+        file.Defaults!.Security = ExecSecurity.Deny;
+        file.Agents!["main"] = new ExecApprovalsAgent();
+        file.Agents["*"] = new ExecApprovalsAgent
+        {
+            Security = security,
+            Ask = ask,
+            AskFallback = ExecSecurity.Deny,
+            AutoAllowSkills = true,
+            Allowlist = [new ExecAllowlistEntry { Pattern = "**/existing.exe" }],
+        };
+        using var harness = PermissionsHarness.CreateWithRecordingStore(BuildSnapshot("base", file));
+        harness.ViewModel.Activate(null);
+        var displayedAction = harness.ViewModel.DefaultExecActionTag;
+
+        Assert.True(await harness.ViewModel.TryAddExecApprovalRuleAsync("**/git.exe"));
+
+        var saved = harness.RecordingExecStore!.CurrentSnapshot.File;
+        var added = Assert.Single(saved.Agents!["main"].Allowlist!);
+        Assert.Equal("**/git.exe", added.Pattern);
+        Assert.NotNull(added.Id);
+        file.Agents["main"].Allowlist = [added];
+        Assert.Equal(JsonSerializer.Serialize(file), JsonSerializer.Serialize(saved));
+        Assert.Equal(displayedAction, harness.ViewModel.DefaultExecActionTag);
+    }
+
+    [Fact]
+    public async Task RemoveWildcardRule_DoesNotCreateMainOrDefaults()
+    {
+        var file = new ExecApprovalsFile
+        {
+            Version = 1,
+            Agents = new Dictionary<string, ExecApprovalsAgent>
+            {
+                ["*"] = new() { Allowlist = [new() { Pattern = "**/git.exe" }] },
+            },
+        };
+        using var harness = PermissionsHarness.CreateWithRecordingStore(BuildSnapshot("base", file));
+        harness.ViewModel.Activate(null);
+
+        Assert.True(await harness.ViewModel.RemoveExecApprovalRuleAsync(
+            Assert.Single(harness.ViewModel.ExecApprovalRules)));
+
+        file.Agents["*"].Allowlist!.Clear();
+        Assert.Equal(JsonSerializer.Serialize(file),
+            JsonSerializer.Serialize(harness.RecordingExecStore!.CurrentSnapshot.File));
+    }
+
+    [Fact]
+    public async Task AddRule_FromInheritedWildcardDeny_EnablesOnlyMainAllowlist()
+    {
+        var file = BuildFile("allow", otherAgentPath: "**/rg.exe");
+        file.Agents!["main"] = new ExecApprovalsAgent();
+        file.Agents["*"] = new ExecApprovalsAgent { Security = ExecSecurity.Deny, Ask = ExecAsk.Always };
+        using var harness = PermissionsHarness.CreateWithRecordingStore(BuildSnapshot("base", file));
+        harness.ViewModel.Activate(null);
+
+        Assert.True(await harness.ViewModel.TryAddExecApprovalRuleAsync("**/git.exe"));
+
+        var saved = harness.RecordingExecStore!.CurrentSnapshot.File;
+        Assert.Equal(ExecSecurity.Allowlist, saved.Agents!["main"].Security);
+        Assert.Equal(ExecAsk.Always, saved.Agents["main"].Ask);
+        Assert.Equal(ExecSecurity.Deny, saved.Agents["main"].AskFallback);
+        Assert.Equal(ExecSecurity.Full, saved.Defaults!.Security);
+        Assert.Equal(ExecSecurity.Deny, saved.Agents["*"].Security);
+        Assert.Equal(ExecAsk.Always, saved.Agents["*"].Ask);
+    }
+
+    [Fact]
+    public async Task RemoveDisplayedRules_RealStore_PersistsOnlySelectedBucketRemoval()
+    {
+        var file = BuildFile("prompt",
+            allowlist: [new ExecAllowlistEntry { Pattern = "**/git.exe", ArgPattern = "^status$" }],
+            otherAgentPath: "**/rg.exe");
+        file.Agents!["*"] = new ExecApprovalsAgent
+        {
+            Security = ExecSecurity.Full,
+            Ask = ExecAsk.Always,
+            Allowlist = [new ExecAllowlistEntry { Pattern = "**/git.exe", ArgPattern = "^status$" }],
+        };
+        using var harness = PermissionsHarness.CreateReal();
+        harness.ViewModel.Activate(null);
+        var initial = await harness.RealExecStore!.GetSnapshotReadOnlyAsync();
+        Assert.NotNull(await harness.RealExecStore.ReplaceAsync(initial.Snapshot!.Hash, file, origin: null));
+        var wildcard = Assert.Single(harness.ViewModel.ExecApprovalRules, rule => rule.IsWildcard);
+        Assert.Equal(2, harness.RealExecStore.ResolveReadOnly("other").Allowlist.Count);
+
+        Assert.True(await harness.ViewModel.RemoveExecApprovalRuleAsync(wildcard));
+
+        using var reopened = new ExecApprovalsStore(harness.Temp.Path, NullLogger.Instance);
+        var saved = (await reopened.GetSnapshotReadOnlyAsync()).Snapshot!.File;
+        Assert.Null(saved.Agents!["*"].Allowlist);
+        Assert.Single(saved.Agents["main"].Allowlist!);
+        Assert.Single(reopened.ResolveReadOnly("main").Allowlist);
+        Assert.Equal(ExecSecurity.Full, saved.Agents["*"].Security);
+        Assert.Equal(ExecAsk.Always, saved.Agents["*"].Ask);
+        Assert.Equal("**/rg.exe", Assert.Single(saved.Agents["other"].Allowlist!).Pattern);
+        Assert.Equal("**/rg.exe", Assert.Single(reopened.ResolveReadOnly("other").Allowlist).Pattern);
+        Assert.True(await harness.ViewModel.RemoveExecApprovalRuleAsync(
+            Assert.Single(harness.ViewModel.ExecApprovalRules)));
+        Assert.Empty(reopened.ResolveReadOnly("main").Allowlist);
+    }
+
     private static ExecApprovalsSnapshot BuildSnapshot(string hash, ExecApprovalsFile file) =>
         new("D:\\exec-approvals.json", true, hash, file);
 

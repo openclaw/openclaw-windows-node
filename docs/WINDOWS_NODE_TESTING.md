@@ -66,6 +66,21 @@ owns the package upgrade and removal gates.
 
 Every new Windows node call must be exposed through local MCP and `winnode`: register the capability, update `McpToolBridge.CommandDescriptions`, update `.agents/skills/winnode/SKILL.md`, add focused tests, and prove discovery/invocation with `winnode` or raw MCP JSON-RPC.
 
+### Permissions exec policy editor
+
+The Permissions page shows the `main`, wildcard (`*`), then defaults cascade
+and lists both wildcard and main allowlist entries. Removing a displayed entry
+edits its original bucket, not every matching pattern. A duplicate in the other
+bucket remains effective until it is removed separately. Adding a rule writes
+to `main` and preserves inherited wildcard security and ask settings, except
+for the existing transition from effective Deny to a main allowlist.
+
+Use an isolated profile for visual proof: seed distinguishable wildcard and
+main rules, remove the wildcard row, then reopen the page and confirm only
+that entry is gone from its original bucket. Also check equal patterns in both
+buckets and adding a main rule while inheriting wildcard Full. These editor
+checks do not require executing a command and are not MXC containment proof.
+
 ### 1. Settings Toggle
 - Verify the toggle appears in Settings under "ADVANCED"
 - Verify it saves and persists across app restarts
