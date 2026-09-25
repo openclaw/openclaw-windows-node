@@ -106,11 +106,13 @@ public sealed class VerifyEndToEndStep : SetupStep
     internal static async Task<StepResult> DrainPendingNodeApprovalsAsync(SetupContext ctx, CancellationToken ct)
     {
         var distro = ctx.DistroName!;
-        var token = ctx.SharedGatewayToken ?? ctx.BootstrapToken;
-        if (string.IsNullOrWhiteSpace(token))
+        if (string.IsNullOrWhiteSpace(ctx.SharedGatewayToken ?? ctx.BootstrapToken))
             return StepResult.Fail("No gateway token available to drain pending approvals");
 
-        var env = new Dictionary<string, string> { ["OPENCLAW_GATEWAY_TOKEN"] = token };
+        var env = new Dictionary<string, string>
+        {
+            ["OPENCLAW_GATEWAY_TOKEN"] = ctx.SharedGatewayToken ?? ctx.BootstrapToken!
+        };
         return await DrainPendingRequestsForSetupDeviceAsync(
             ctx,
             distro,
