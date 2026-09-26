@@ -131,12 +131,6 @@ public sealed class VerifyEndToEndStep : SetupStep
                 $"""{pathPrefix} && {listCommand}""",
                 TimeSpan.FromSeconds(15), env, ct);
 
-            if (pending.Stdout.Contains("No pending", StringComparison.OrdinalIgnoreCase) ||
-                pending.Stderr.Contains("No pending", StringComparison.OrdinalIgnoreCase))
-            {
-                break;
-            }
-
             if (pending.ExitCode != 0)
             {
                 var pendingOutput = $"{pending.Stdout.Trim()} {pending.Stderr.Trim()}".Trim();
@@ -150,8 +144,11 @@ public sealed class VerifyEndToEndStep : SetupStep
                 matchNodeId);
             if (!parsed.Success)
             {
-                if (ApprovalRequestHelper.IsNothingToDrain(parsed))
+                if (ApprovalRequestHelper.IsNothingToDrain(parsed) ||
+                    ApprovalRequestHelper.IsExplicitNoPendingMessage(pending.Stdout))
+                {
                     break;
+                }
 
                 return StepResult.Fail($"Could not select pending {label.ToLowerInvariant()} approval for drain: {parsed.Error}");
             }
@@ -204,12 +201,6 @@ public sealed class VerifyEndToEndStep : SetupStep
                 $"""{pathPrefix} && openclaw nodes list --json""",
                 TimeSpan.FromSeconds(15), env, ct);
 
-            if (nodeList.Stdout.Contains("No pending", StringComparison.OrdinalIgnoreCase) ||
-                nodeList.Stderr.Contains("No pending", StringComparison.OrdinalIgnoreCase))
-            {
-                break;
-            }
-
             if (nodeList.ExitCode != 0)
                 return StepResult.Fail($"Could not list pending node approvals (exit {nodeList.ExitCode}): {nodeList.Stdout.Trim()} {nodeList.Stderr.Trim()}".Trim());
 
@@ -220,8 +211,11 @@ public sealed class VerifyEndToEndStep : SetupStep
                 matchNodeId: true);
             if (!parsed.Success)
             {
-                if (ApprovalRequestHelper.IsNothingToDrain(parsed))
+                if (ApprovalRequestHelper.IsNothingToDrain(parsed) ||
+                    ApprovalRequestHelper.IsExplicitNoPendingMessage(nodeList.Stdout))
+                {
                     break;
+                }
 
                 return StepResult.Fail($"Could not select pending node approval for drain: {parsed.Error}");
             }

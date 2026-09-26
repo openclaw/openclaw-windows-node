@@ -296,7 +296,7 @@ internal static partial class ApprovalRequestHelper
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
         };
 
-    private static bool IsExplicitNoPendingMessage(string output)
+    internal static bool IsExplicitNoPendingMessage(string output)
     {
         var message = output.Trim().TrimEnd('.');
         return string.Equals(message, "No pending device approvals", StringComparison.OrdinalIgnoreCase)

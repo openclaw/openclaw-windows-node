@@ -5407,11 +5407,11 @@ public class SetupStepsTests : IDisposable
                           "{\"requestId\":\"" + staleSocketRequestId + "\",\"deviceId\":\"" + socketDeviceId + "\",\"role\":\"operator\"}," +
                           "{\"requestId\":\"" + socketRequestId + "\",\"deviceId\":\"" + socketDeviceId + "\",\"role\":\"operator\"}," +
                           "{\"requestId\":\"" + otherRequestId + "\",\"deviceId\":\"" + otherDeviceId + "\",\"role\":\"operator\"}" +
-                          "]}"
+                          "],\"paired\":[{\"displayName\":\"No pending device approvals\"}]}"
                         : "{\"pending\":[" +
                           "{\"requestId\":\"" + staleSocketRequestId + "\",\"deviceId\":\"" + socketDeviceId + "\",\"role\":\"operator\"}," +
                           "{\"requestId\":\"" + otherRequestId + "\",\"deviceId\":\"" + otherDeviceId + "\",\"role\":\"operator\"}" +
-                          "]}";
+                          "],\"paired\":[{\"displayName\":\"No pending device approvals\"}]}";
                     return Ok(pending);
                 }
 
@@ -5423,11 +5423,11 @@ public class SetupStepsTests : IDisposable
                           "{\"requestId\":\"" + staleSocketNodeRequestId + "\",\"nodeId\":\"" + socketDeviceId + "\",\"role\":\"node\"}," +
                           "{\"requestId\":\"" + socketNodeRequestId + "\",\"nodeId\":\"" + socketDeviceId + "\",\"role\":\"node\"}," +
                           "{\"requestId\":\"" + otherNodeRequestId + "\",\"nodeId\":\"" + otherDeviceId + "\",\"role\":\"node\"}" +
-                          "]}"
+                          "],\"paired\":[{\"displayName\":\"No pending node approvals\"}]}"
                         : "{\"pending\":[" +
                           "{\"requestId\":\"" + staleSocketNodeRequestId + "\",\"nodeId\":\"" + socketDeviceId + "\",\"role\":\"node\"}," +
                           "{\"requestId\":\"" + otherNodeRequestId + "\",\"nodeId\":\"" + otherDeviceId + "\",\"role\":\"node\"}" +
-                          "]}";
+                          "],\"paired\":[{\"displayName\":\"No pending node approvals\"}]}";
                     return Ok(pending);
                 }
 
@@ -5465,6 +5465,54 @@ public class SetupStepsTests : IDisposable
                  requestId == staleSocketNodeRequestId ||
                  requestId == otherRequestId ||
                  requestId == otherNodeRequestId));
+    }
+
+    [Fact]
+    public async Task LaterDrain_DoesNotIgnoreNoPendingTextFromFailedDeviceList()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command.Contains("devices list", StringComparison.Ordinal)
+                ? new CommandResult(1, "No pending device approvals", "gateway unavailable", TimeSpan.Zero, TimedOut: false)
+                : Fail($"unexpected wsl command: {command}"));
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        ctx.SharedGatewayToken = "test-auth-token";
+        ctx.OperatorDeviceId = PairingSocketDeviceId;
+        ctx.SetupDeviceApprovalBaseline = PendingRequestBaseline.SuccessResult([]);
+        ctx.SetupNodeApprovalBaseline = PendingRequestBaseline.SuccessResult([]);
+
+        var result = await VerifyEndToEndStep.DrainPendingApprovalsAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("Could not list pending device approvals (exit 1)", result.Message);
+    }
+
+    [Fact]
+    public async Task LaterDrain_DoesNotIgnoreNoPendingTextFromFailedNodeList()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) =>
+            {
+                if (command.Contains("devices list", StringComparison.Ordinal))
+                    return Ok("""{"pending":[]}""");
+
+                return command.Contains("nodes list", StringComparison.Ordinal)
+                    ? new CommandResult(1, "No pending node approvals", "gateway unavailable", TimeSpan.Zero, TimedOut: false)
+                    : Fail($"unexpected wsl command: {command}");
+            });
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        ctx.SharedGatewayToken = "test-auth-token";
+        ctx.OperatorDeviceId = PairingSocketDeviceId;
+        ctx.SetupDeviceApprovalBaseline = PendingRequestBaseline.SuccessResult([]);
+        ctx.SetupNodeApprovalBaseline = PendingRequestBaseline.SuccessResult([]);
+
+        var result = await VerifyEndToEndStep.DrainPendingApprovalsAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("Could not list pending node approvals (exit 1)", result.Message);
     }
 
     private static void AssertApprovedRequest(FakeCommandRunner commands, string commandText, string requestId)
