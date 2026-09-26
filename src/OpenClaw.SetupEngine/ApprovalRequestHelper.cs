@@ -32,9 +32,6 @@ internal static partial class ApprovalRequestHelper
             ct);
 
         var output = $"{pending.Stdout.Trim()} {pending.Stderr.Trim()}".Trim();
-        if (output.Contains("No pending", StringComparison.OrdinalIgnoreCase))
-            return PendingRequestBaseline.SuccessResult([]);
-
         if (pending.ExitCode != 0)
         {
             return PendingRequestBaseline.Fail(
@@ -43,10 +40,14 @@ internal static partial class ApprovalRequestHelper
         }
 
         var parsed = TryReadPendingRequestIds(pending.Stdout.Trim());
-        return parsed.Success
-            ? PendingRequestBaseline.SuccessResult(parsed.RequestIds)
-            : PendingRequestBaseline.Fail(
-                $"Could not capture pending {noun} before opening the setup socket: {parsed.Error}");
+        if (parsed.Success)
+            return PendingRequestBaseline.SuccessResult(parsed.RequestIds);
+
+        if (IsExplicitNoPendingMessage(pending.Stdout))
+            return PendingRequestBaseline.SuccessResult([]);
+
+        return PendingRequestBaseline.Fail(
+            $"Could not capture pending {noun} before opening the setup socket: {parsed.Error}");
     }
 
     internal static bool IsSafeRequestId(string? requestId)
@@ -294,6 +295,13 @@ internal static partial class ApprovalRequestHelper
             ApprovalRequestKind.Node => "nodes",
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
         };
+
+    private static bool IsExplicitNoPendingMessage(string output)
+    {
+        var message = output.Trim().TrimEnd('.');
+        return string.Equals(message, "No pending device approvals", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(message, "No pending node approvals", StringComparison.OrdinalIgnoreCase);
+    }
 
     [GeneratedRegex("^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$", RegexOptions.Compiled)]
     private static partial Regex SafeRequestIdPattern();

@@ -5663,6 +5663,46 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public async Task CapturePendingRequestBaseline_ParsesJsonBeforeCheckingNoPendingMetadata()
+    {
+        const string requestId = "stale-request";
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, _, _) => Ok("""
+                {
+                  "pending": [{ "requestId": "stale-request" }],
+                  "paired": [{ "displayName": "No pending device approvals" }]
+                }
+                """));
+        var ctx = CreateNodePairingContext(commands);
+
+        var baseline = await ApprovalRequestHelper.CapturePendingRequestBaselineAsync(
+            ctx,
+            ApprovalRequestKind.Node,
+            CancellationToken.None);
+
+        Assert.True(baseline.Success, baseline.Error);
+        Assert.Contains(requestId, baseline.RequestIds);
+    }
+
+    [Fact]
+    public async Task CapturePendingRequestBaseline_DoesNotTreatFailedNoPendingOutputAsSuccess()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, _, _) => new CommandResult(1, "No pending node approvals", "gateway unavailable", TimeSpan.Zero, TimedOut: false));
+        var ctx = CreateNodePairingContext(commands);
+
+        var baseline = await ApprovalRequestHelper.CapturePendingRequestBaselineAsync(
+            ctx,
+            ApprovalRequestKind.Node,
+            CancellationToken.None);
+
+        Assert.False(baseline.Success);
+        Assert.Contains("exit 1", baseline.Error);
+    }
+
+    [Fact]
     public async Task AutoApproveNodePairing_ReturnsTerminalWhenApproveReportsDevicePairPluginNotFound()
     {
         var ctx = CreatePairingContext(DevicePairPluginNotFoundOutput);
