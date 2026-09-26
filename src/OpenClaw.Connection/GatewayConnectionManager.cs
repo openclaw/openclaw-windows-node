@@ -1685,6 +1685,66 @@ public sealed class GatewayConnectionManager :
         return new SetupCodeResult(SetupCodeOutcome.Success, GatewayUrl: gatewayUrl);
     }
 
+    private async Task WaitForDeferredSharedTokenRejectionAsync(long generation, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            if (_stateMachine.Current.OperatorState != RoleConnectionState.Connecting)
+                return;
+            if (Interlocked.Read(ref _generation) != generation)
+                return;
+            await Task.Delay(50).ConfigureAwait(false);
+        }
+    }
+
+    private async Task<string?> RestoreRejectedSharedTokenSideEffectsAsync(
+        GatewayRecord previousRecord,
+        string? previousActiveId,
+        bool previousOperatorWasLive,
+        Func<GatewayRecord, CancellationToken, Task>? onGatewayCommitted)
+    {
+        string? settingsError = null;
+        if (onGatewayCommitted is not null)
+        {
+            try
+            {
+                await onGatewayCommitted(previousRecord, CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                settingsError = $"Saved settings rollback failed: {ex.Message}";
+            }
+        }
+
+        if (!previousOperatorWasLive)
+            return settingsError;
+
+        var restoreId = previousActiveId ?? previousRecord.Id;
+        string? connectionError = null;
+        try
+        {
+            await ConnectCoreAsync(restoreId).ConfigureAwait(false);
+            if (_stateMachine.Current.OperatorState == RoleConnectionState.Error)
+            {
+                connectionError =
+                    "Failed to restore the previous gateway connection: " +
+                    (_stateMachine.Current.OperatorError ?? "Gateway connection failed.");
+            }
+        }
+        catch (Exception ex)
+        {
+            connectionError = $"Failed to restore the previous gateway connection: {ex.Message}";
+        }
+
+        if (settingsError is null)
+            return connectionError;
+        if (connectionError is null)
+            return settingsError;
+        return $"{settingsError} {connectionError}";
+    }
+
     public Task<SetupCodeResult> ConnectWithSharedTokenAsync(
         string gatewayUrl,
         string token,
@@ -1699,7 +1759,8 @@ public sealed class GatewayConnectionManager :
         string gatewayUrl,
         string token,
         SshTunnelConfig? sshTunnel,
-        Func<GatewayRecord, CancellationToken, Task>? onGatewayCommitted)
+        Func<GatewayRecord, CancellationToken, Task>? onGatewayCommitted,
+        Func<CancellationToken, Task>? onTransactionStarted = null)
     {
         ThrowIfDisposed();
 
@@ -1714,14 +1775,21 @@ public sealed class GatewayConnectionManager :
         {
             using var lifecycleLease = await BeginManualGatewayLifecycleOperationAsync();
             await _transitionSemaphore.WaitAsync();
+            var transitionLockHeld = true;
             try
             {
+                if (onTransactionStarted is not null)
+                    await onTransactionStarted(CancellationToken.None).ConfigureAwait(false);
+
                 var existing = _registry.FindByUrl(gatewayUrl);
                 var recordId = existing?.Id ?? Guid.NewGuid().ToString();
                 var identityDir = _registry.GetIdentityDirectory(recordId);
                 var hasDurableTokens =
                     DeviceIdentity.HasStoredDeviceTokenForRole(identityDir, "operator", _logger) ||
                     DeviceIdentity.HasStoredDeviceTokenForRole(identityDir, "node", _logger);
+                var hasSetupCredential =
+                    existing != null &&
+                    (!string.IsNullOrWhiteSpace(existing.BootstrapToken) || existing.SshTunnel is not null);
 
                 if (existing != null && hasDurableTokens)
                 {
@@ -1860,6 +1928,8 @@ public sealed class GatewayConnectionManager :
                 SetGatewayConnectionIntent(recordId, shouldBeConnected: true);
 
                 // Disconnect current gateway only after replacement credentials have been validated and persisted.
+                var previousOperatorWasLive =
+                    _stateMachine.Current.OperatorState == RoleConnectionState.Connected;
                 await DisconnectCoreAsync();
 
                 // The replacement shared token was validated above. Preserve durable device tokens;
@@ -1869,11 +1939,135 @@ public sealed class GatewayConnectionManager :
 
                 // Connect to the gateway
                 await ConnectCoreAsync(recordId);
-                if (_stateMachine.Current.OperatorState == RoleConnectionState.Error)
+                long? observedGeneration = null;
+                if (hasSetupCredential && !hasDurableTokens && previousRecord is not null &&
+                    _stateMachine.Current.OperatorState == RoleConnectionState.Connecting)
                 {
+                    // The status handler needs this lock before it can record auth failure.
+                    observedGeneration = Interlocked.Read(ref _generation);
+                    _transitionSemaphore.Release();
+                    transitionLockHeld = false;
+                    try
+                    {
+                        await WaitForDeferredSharedTokenRejectionAsync(
+                            observedGeneration.Value,
+                            TimeSpan.FromSeconds(15)).ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        await _transitionSemaphore.WaitAsync().ConfigureAwait(false);
+                        transitionLockHeld = true;
+                    }
+                }
+
+                if (observedGeneration is long generation &&
+                    Interlocked.Read(ref _generation) != generation)
+                {
+                    var stillOurs = string.Equals(
+                        _registry.ActiveGatewayId,
+                        recordId,
+                        StringComparison.Ordinal);
                     return new SetupCodeResult(
                         SetupCodeOutcome.ConnectionFailed,
-                        _stateMachine.Current.OperatorError ?? "Gateway connection failed.",
+                        "The shared-token connection was superseded by a newer gateway connection.",
+                        GatewayUrl: gatewayUrl,
+                        GatewayCommitted: stillOurs);
+                }
+
+                var handshakeUnfinished =
+                    observedGeneration is long ownedGeneration &&
+                    Interlocked.Read(ref _generation) == ownedGeneration &&
+                    _stateMachine.Current.OperatorState == RoleConnectionState.Connecting;
+                if (_stateMachine.Current.OperatorState == RoleConnectionState.Error || handshakeUnfinished)
+                {
+                    var operatorError = handshakeUnfinished
+                        ? "The shared-token connection did not finish."
+                        : _stateMachine.Current.OperatorError ?? "Gateway connection failed.";
+                    if (hasSetupCredential && !hasDurableTokens && previousRecord is not null)
+                    {
+                        if (handshakeUnfinished)
+                            await DisconnectCoreAsync().ConfigureAwait(false);
+
+                        _registry.AddOrUpdate(previousRecord);
+                        _registry.SetActive(previousActiveId);
+                        try
+                        {
+                            _registry.Save();
+                            gatewayCommitted = false;
+                        }
+                        catch (Exception rollbackException)
+                        {
+                            _registry.AddOrUpdate(record);
+                            _registry.SetActive(recordId);
+                            gatewayCommitted = true;
+                            return new SetupCodeResult(
+                                SetupCodeOutcome.ConnectionFailed,
+                                $"{operatorError} Registry rollback failed; the new gateway remains active: {rollbackException.Message}",
+                                GatewayUrl: gatewayUrl,
+                                GatewayCommitted: true);
+                        }
+
+                        var settingsRecord = previousRecord;
+                        if (previousActiveId is not null &&
+                            !string.Equals(previousActiveId, previousRecord.Id, StringComparison.Ordinal))
+                        {
+                            settingsRecord = _registry.GetById(previousActiveId) ?? previousRecord;
+                        }
+
+                        var restoreError = await RestoreRejectedSharedTokenSideEffectsAsync(
+                            settingsRecord,
+                            previousActiveId,
+                            previousOperatorWasLive,
+                            onGatewayCommitted).ConfigureAwait(false);
+                        if (previousOperatorWasLive &&
+                            _stateMachine.Current.OperatorState == RoleConnectionState.Connecting)
+                        {
+                            var restoreGeneration = Interlocked.Read(ref _generation);
+                            _transitionSemaphore.Release();
+                            transitionLockHeld = false;
+                            try
+                            {
+                                await WaitForDeferredSharedTokenRejectionAsync(
+                                    restoreGeneration,
+                                    TimeSpan.FromSeconds(15)).ConfigureAwait(false);
+                            }
+                            finally
+                            {
+                                await _transitionSemaphore.WaitAsync().ConfigureAwait(false);
+                                transitionLockHeld = true;
+                            }
+
+                            if (_stateMachine.Current.OperatorState == RoleConnectionState.Error)
+                            {
+                                var connectionError =
+                                    "Failed to restore the previous gateway connection: " +
+                                    (_stateMachine.Current.OperatorError ?? "Gateway connection failed.");
+                                restoreError = string.IsNullOrWhiteSpace(restoreError)
+                                    ? connectionError
+                                    : $"{restoreError} {connectionError}";
+                            }
+                            else if (_stateMachine.Current.OperatorState == RoleConnectionState.Connecting)
+                            {
+                                const string connectionError =
+                                    "The previous gateway connection did not finish.";
+                                restoreError = string.IsNullOrWhiteSpace(restoreError)
+                                    ? connectionError
+                                    : $"{restoreError} {connectionError}";
+                            }
+                        }
+
+                        return new SetupCodeResult(
+                            SetupCodeOutcome.ConnectionFailed,
+                            string.IsNullOrWhiteSpace(restoreError)
+                                ? operatorError
+                                : $"{operatorError} {restoreError}",
+                            GatewayUrl: gatewayUrl,
+                            GatewayCommitted: false);
+                    }
+
+                    return new SetupCodeResult(
+                        SetupCodeOutcome.ConnectionFailed,
+                        operatorError,
                         GatewayUrl: gatewayUrl,
                         GatewayCommitted: true);
                 }
@@ -1883,7 +2077,8 @@ public sealed class GatewayConnectionManager :
                 if (isolatedValidationTunnel is not null)
                     await StopAndDisposeValidationTunnelAsync(isolatedValidationTunnel).ConfigureAwait(false);
 
-                _transitionSemaphore.Release();
+                if (transitionLockHeld)
+                    _transitionSemaphore.Release();
             }
             return new SetupCodeResult(
                 SetupCodeOutcome.Success,
