@@ -64,6 +64,41 @@ public class ApprovalRequestHelperTests
     }
 
     [Fact]
+    public void TrySelectPendingRequestForDevice_SelectsOnlyRequestCreatedAfterConnect()
+    {
+        const string deviceId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        var result = ApprovalRequestHelper.TrySelectPendingRequestForDevice(
+            $$"""
+            {"pending":[
+              {"requestId":"stale-request","deviceId":"{{deviceId}}","role":"operator"},
+              {"requestId":"current-request","deviceId":"{{deviceId}}","role":"operator"}
+            ]}
+            """,
+            deviceId,
+            new HashSet<string>(["stale-request"], StringComparer.Ordinal),
+            matchNodeId: false);
+
+        Assert.True(result.Success, result.Error);
+        Assert.Equal("current-request", result.RequestId);
+    }
+
+    [Fact]
+    public void TrySelectPendingRequestForDevice_RejectsStaleSameIdentityRequest()
+    {
+        const string deviceId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        var result = ApprovalRequestHelper.TrySelectPendingRequestForDevice(
+            $$"""
+            {"pending":[{"requestId":"stale-request","deviceId":"{{deviceId}}","role":"operator"}]}
+            """,
+            deviceId,
+            new HashSet<string>(["stale-request"], StringComparer.Ordinal),
+            matchNodeId: false);
+
+        Assert.False(result.Success);
+        Assert.Contains("No new pending approval request matched", result.Error);
+    }
+
+    [Fact]
     public void TryReadSelectedRequestId_ReadsRequestWhenCliRequiresExplicitAuthFlags()
     {
         var result = ApprovalRequestHelper.TryReadSelectedRequestId("""

@@ -85,6 +85,12 @@ public sealed class PairOperatorStep : SetupStep
         // Connect operator WebSocket — handle pairing-required flow
         var wsLogger = new SetupOpenClawLogger(ctx.Logger);
         OpenClawGatewayClient? client = null;
+        var requestBaseline = await ApprovalRequestHelper.CapturePendingRequestBaselineAsync(
+            ctx,
+            ApprovalRequestKind.Device,
+            ct);
+        ctx.SetupDeviceApprovalBaseline = requestBaseline;
+        ctx.CurrentDeviceApprovalBaseline = requestBaseline;
 
         try
         {
@@ -275,6 +281,12 @@ public sealed class PairOperatorStep : SetupStep
         ctx.Logger.Info("Waiting for gateway grace period to expire before finalization...");
         await Task.Delay(TimeSpan.FromSeconds(5), ct);
 
+        var requestBaseline = await ApprovalRequestHelper.CapturePendingRequestBaselineAsync(
+            ctx,
+            ApprovalRequestKind.Device,
+            ct);
+        ctx.CurrentDeviceApprovalBaseline = requestBaseline;
+
         // Connect exactly as the tray would: pass deviceToken as the credential
         var finalClient = new OpenClawGatewayClient(gatewayUrl, deviceToken, logger: wsLogger, identityPath: identityPath);
         ApplyReconnectAuthorization(finalClient, ctx);
@@ -332,9 +344,6 @@ public sealed class PairOperatorStep : SetupStep
         }
     }
 
-    internal static async Task<StepResult> AutoApprovePairing(SetupContext ctx, CancellationToken ct)
-        => await AutoApprovePairing(ctx, requestId: null, ct);
-
     internal static async Task<StepResult> AutoApprovePairing(SetupContext ctx, string? requestId, CancellationToken ct)
     {
         var distro = ctx.DistroName!;
@@ -344,18 +353,41 @@ public sealed class PairOperatorStep : SetupStep
 
         if (string.IsNullOrWhiteSpace(requestId))
         {
-            var preview = await ctx.Commands.RunInWslAsync(
+            var requestBaseline = ctx.CurrentDeviceApprovalBaseline;
+            if (requestBaseline is null || !requestBaseline.Success)
+            {
+                if (requestBaseline?.PluginNotFound == true)
+                    return StepResult.Terminal(ApprovalRequestHelper.PluginNotFoundMessage);
+
+                return StepResult.Fail(
+                    requestBaseline?.Error ??
+                    "The setup socket did not provide a pairing request ID, and no pre-connect approval baseline is available.");
+            }
+
+            var pending = await ctx.Commands.RunInWslAsync(
                 distro,
-                $"""{ctx.WslPathPrefix} && openclaw devices approve --latest --json""",
+                $"""{ctx.WslPathPrefix} && openclaw devices list --json""",
                 TimeSpan.FromSeconds(30), env, ct);
 
-            ctx.Logger.Info($"Approve preview: exit={preview.ExitCode}");
+            ctx.Logger.Info($"Device pending list: exit={pending.ExitCode}");
 
-            var parsed = ApprovalRequestHelper.TryReadSelectedRequestId(preview.Stdout.Trim());
+            if (pending.ExitCode != 0)
+            {
+                var pendingOutput = pending.Stdout.Trim();
+                if (ApprovalRequestHelper.IsPluginNotFoundError(pendingOutput))
+                    return StepResult.Terminal(ApprovalRequestHelper.PluginNotFoundMessage);
+                return StepResult.Fail($"Could not list pending pairing requests (exit {pending.ExitCode}): {pendingOutput}");
+            }
+
+            var parsed = ApprovalRequestHelper.TrySelectPendingRequestForDevice(
+                pending.Stdout.Trim(),
+                ctx.OperatorDeviceId,
+                requestBaseline.RequestIds,
+                matchNodeId: false);
             if (!parsed.Success)
             {
                 ctx.Logger.Warn($"Could not select pairing request: {parsed.Error}");
-                return StepResult.Fail("Could not find a safe pending pairing request to approve");
+                return StepResult.Fail(parsed.Error ?? "Could not find a safe pending pairing request to approve");
             }
 
             requestId = parsed.RequestId;

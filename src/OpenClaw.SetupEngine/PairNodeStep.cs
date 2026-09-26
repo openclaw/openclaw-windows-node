@@ -48,6 +48,12 @@ public sealed class PairNodeStep : SetupStep
 
         var wsLogger = new SetupOpenClawLogger(ctx.Logger);
         WindowsNodeClient? client = null;
+        var requestBaseline = await ApprovalRequestHelper.CapturePendingRequestBaselineAsync(
+            ctx,
+            ApprovalRequestKind.Node,
+            ct);
+        ctx.SetupNodeApprovalBaseline = requestBaseline;
+        ctx.CurrentNodeApprovalBaseline = requestBaseline;
 
         try
         {
@@ -169,6 +175,11 @@ public sealed class PairNodeStep : SetupStep
         ctx.Logger.Info("Waiting for gateway grace period before node finalization...");
         await Task.Delay(TimeSpan.FromSeconds(5), ct);
 
+        var requestBaseline = await ApprovalRequestHelper.CapturePendingRequestBaselineAsync(
+            ctx,
+            ApprovalRequestKind.Node,
+            ct);
+        ctx.CurrentNodeApprovalBaseline = requestBaseline;
         var finalClient = new WindowsNodeClient(gatewayUrl, nodeToken, identityPath, logger: wsLogger);
         PairOperatorStep.ApplyReconnectAuthorization(finalClient, ctx);
         finalClient.UseV2Signature = true;
@@ -288,6 +299,17 @@ public sealed class PairNodeStep : SetupStep
 
         if (string.IsNullOrWhiteSpace(requestId))
         {
+            var requestBaseline = ctx.CurrentNodeApprovalBaseline;
+            if (requestBaseline is null || !requestBaseline.Success)
+            {
+                if (requestBaseline?.PluginNotFound == true)
+                    return StepResult.Terminal(ApprovalRequestHelper.PluginNotFoundMessage);
+
+                return StepResult.Fail(
+                    requestBaseline?.Error ??
+                    "The setup socket did not provide a node pairing request ID, and no pre-connect approval baseline is available.");
+            }
+
             approvalKind = ApprovalRequestKind.Node;
             var pending = await ctx.Commands.RunInWslAsync(
                 distro,
@@ -304,7 +326,12 @@ public sealed class PairNodeStep : SetupStep
                 return StepResult.Fail($"Could not list pending node pairing requests (exit {pending.ExitCode}): {pendingOutput}");
             }
 
-            var parsed = ApprovalRequestHelper.TryReadSinglePendingRequestId(pending.Stdout.Trim());
+            // Both setup sockets use the same per-gateway identity. NodeDeviceId is display-only.
+            var parsed = ApprovalRequestHelper.TrySelectPendingRequestForDevice(
+                pending.Stdout.Trim(),
+                ctx.OperatorDeviceId,
+                requestBaseline.RequestIds,
+                matchNodeId: true);
             if (!parsed.Success)
             {
                 ctx.Logger.Warn($"Could not select node pairing request: {parsed.Error}");
