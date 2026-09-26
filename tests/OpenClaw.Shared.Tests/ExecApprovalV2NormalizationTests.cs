@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.IO;
 using Xunit;
 using OpenClaw.Shared.ExecApprovals;
 
@@ -40,6 +41,86 @@ public class ExecApprovalV2NormalizationTests
     [Fact] public void Normalizer_PowerShellCapital()  => AssertWrapper(["powershell",     "-Command", "Get-Date"], "Get-Date");
     [Fact] public void Normalizer_PwshLowerC()         => AssertWrapper(["pwsh",           "-c",       "Get-Date"], "Get-Date");
     [Fact] public void Normalizer_PowerShellExeLower() => AssertWrapper(["powershell.exe", "-command", "Get-Date"], "Get-Date");
+    [Fact] public void Normalizer_PowerShellExeSlashC() => AssertWrapper(["powershell.exe", "/c", "Get-Date"], "Get-Date");
+    [Fact] public void Normalizer_PwshSlashCommand() => AssertWrapper(["pwsh", "/command", "Get-Date"], "Get-Date");
+    [Fact] public void Normalizer_PowerShellColonCommand() => AssertWrapper(["powershell", "-c:Get-Date"], "Get-Date");
+    [Fact] public void Normalizer_PwshSlashColonCommand() => AssertWrapper(["pwsh", "/c:Get-Date"], "Get-Date");
+    [Fact] public void Normalizer_PowerShellCommandColon() => AssertWrapper(["powershell.exe", "-command:Get-Date"], "Get-Date");
+    [Fact] public void Normalizer_PwshSlashCommandColon() => AssertWrapper(["pwsh.exe", "/command:Get-Date"], "Get-Date");
+    [Fact] public void Normalizer_BashLoginInlineCommand() => AssertWrapper(["bash", "-l", "-c", "echo hello"], "echo hello");
+
+    [Fact]
+    public void Normalizer_BashScript_IsNotWrapper()
+    {
+        Assert.False(ExecShellWrapperNormalizer.Extract(["bash", "script.sh"]).IsWrapper);
+        Assert.False(ExecShellWrapperNormalizer.Extract(["bash", "-l", "script.sh"]).IsWrapper);
+        Assert.False(ExecShellWrapperNormalizer.Extract(["bash", "script.sh", "-c", "value"]).IsWrapper);
+        Assert.False(ExecShellWrapperNormalizer.Extract(["bash", "-l", "script.sh", "-c", "value"]).IsWrapper);
+    }
+
+    [Fact]
+    public void Normalizer_PowerShellFileArgument_IsNotWrapper()
+    {
+        Assert.False(ExecShellWrapperNormalizer.Extract(
+            ["pwsh", "-File", "script.ps1", "/c", "value"]).IsWrapper);
+        Assert.False(ExecShellWrapperNormalizer.Extract(
+            ["powershell", "-File:script.ps1", "/command:value"]).IsWrapper);
+        var bound = ExecReusableCommandBinder.TryBind(
+            ["pwsh", "-File", "script.ps1", "/c", "value"],
+            cwd: null,
+            env: null,
+            out var failure);
+        Assert.Equal(ExecReusableCommandBinder.BindFailure.None, failure);
+        Assert.NotNull(bound);
+    }
+
+    [Fact]
+    public void Normalizer_EmptyInlinePayload_IsNotWrapper()
+    {
+        Assert.False(ExecShellWrapperNormalizer.Extract(["powershell.exe", "/c"]).IsWrapper);
+        Assert.False(ExecShellWrapperNormalizer.Extract(["pwsh", "/command"]).IsWrapper);
+        Assert.False(ExecShellWrapperNormalizer.Extract(["powershell", "-c:"]).IsWrapper);
+        Assert.False(ExecShellWrapperNormalizer.Extract(["pwsh", "/c:"]).IsWrapper);
+        Assert.False(ExecShellWrapperNormalizer.Extract(["powershell", "-command:"]).IsWrapper);
+        Assert.False(ExecShellWrapperNormalizer.Extract(["pwsh", "/command:"]).IsWrapper);
+        Assert.False(ExecShellWrapperNormalizer.Extract(["bash", "-l", "-c"]).IsWrapper);
+    }
+
+    [Theory]
+    [InlineData("powershell.exe", "/c", "Get-Date")]
+    [InlineData("pwsh", "/command", "Get-Date")]
+    [InlineData("powershell", "-c:Get-Date")]
+    [InlineData("pwsh", "/c:Get-Date")]
+    [InlineData("powershell.exe", "-command:Get-Date")]
+    [InlineData("pwsh.exe", "/command:Get-Date")]
+    [InlineData("bash", "-l", "-c", "echo hello")]
+    public void TryBind_InlineShell_IsNotReusable(params string[] argv)
+    {
+        Assert.Null(ExecReusableCommandBinder.TryBind(argv, cwd: null, env: null, out var failure));
+        Assert.Equal(ExecReusableCommandBinder.BindFailure.ShellWrapper, failure);
+    }
+
+    [Fact]
+    public void TryBind_DirectToolArg_StaysBindable()
+    {
+        var directory = Directory.CreateTempSubdirectory("exec-direct-tool");
+        try
+        {
+            var tool = Path.Combine(directory.FullName, "tool.exe");
+            File.WriteAllBytes(tool, [0x4D, 0x5A]);
+            var bound = ExecReusableCommandBinder.TryBind(
+                [tool, "arg"],
+                cwd: null,
+                env: null,
+                out var failure);
+            Assert.Equal(ExecReusableCommandBinder.BindFailure.None, failure);
+            Assert.NotNull(bound);
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
+    }
 
     private static void AssertWrapper(string[] argv, string expectedPayload)
     {
