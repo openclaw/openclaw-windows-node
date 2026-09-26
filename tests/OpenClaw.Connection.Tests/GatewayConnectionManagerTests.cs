@@ -2176,6 +2176,41 @@ public class GatewayConnectionManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task ConnectWithSharedTokenAsync_SecondTransactionStartsAfterTheFirstHoldsTheLock()
+    {
+        var order = new List<string>();
+        var firstHolding = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var firstEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var first = _manager.ConnectWithSharedTokenAsync(
+            "ws://127.0.0.1:9",
+            "rejected-shared-token",
+            sshTunnel: null,
+            onGatewayCommitted: null,
+            onTransactionStarted: async _ =>
+            {
+                order.Add("first");
+                firstEntered.TrySetResult();
+                await firstHolding.Task;
+            });
+        await firstEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var second = _manager.ConnectWithSharedTokenAsync(
+            "ws://127.0.0.1:9",
+            "rejected-shared-token",
+            sshTunnel: null,
+            onGatewayCommitted: null,
+            onTransactionStarted: _ =>
+            {
+                order.Add("second");
+                return Task.CompletedTask;
+            });
+        await Task.Delay(100);
+        Assert.Equal(new[] { "first" }, order);
+        firstHolding.TrySetResult();
+        await Task.WhenAll(first, second);
+        Assert.Equal(new[] { "first", "second" }, order);
+    }
+
+    [Fact]
     public async Task ConnectWithSharedTokenAsync_PostCommitConnectionFailureReportsCommittedGateway()
     {
         SetupGateway("gw-1", "wss://test1");

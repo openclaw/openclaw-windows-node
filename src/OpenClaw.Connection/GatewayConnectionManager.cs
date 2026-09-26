@@ -1759,7 +1759,8 @@ public sealed class GatewayConnectionManager :
         string gatewayUrl,
         string token,
         SshTunnelConfig? sshTunnel,
-        Func<GatewayRecord, CancellationToken, Task>? onGatewayCommitted)
+        Func<GatewayRecord, CancellationToken, Task>? onGatewayCommitted,
+        Func<CancellationToken, Task>? onTransactionStarted = null)
     {
         ThrowIfDisposed();
 
@@ -1777,6 +1778,9 @@ public sealed class GatewayConnectionManager :
             var transitionLockHeld = true;
             try
             {
+                if (onTransactionStarted is not null)
+                    await onTransactionStarted(CancellationToken.None).ConfigureAwait(false);
+
                 var existing = _registry.FindByUrl(gatewayUrl);
                 var recordId = existing?.Id ?? Guid.NewGuid().ToString();
                 var identityDir = _registry.GetIdentityDirectory(recordId);

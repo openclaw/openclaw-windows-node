@@ -247,7 +247,7 @@ public sealed class AppRefactorContractTests
         Assert.Contains("BeginTransactionalTokenClear", directConnectService);
         Assert.Contains("CaptureSharedTokenSettingsAttempt()", capabilityHandlers);
         Assert.Contains(
-            "_gatewayDirectConnectService.SynchronizeSettingsWithCommittedGateway(record, settingsAttempt)",
+            "_gatewayDirectConnectService.SynchronizeSettingsWithCommittedGateway(record, settingsAttempt!)",
             capabilityHandlers);
         Assert.DoesNotContain("if (result.GatewayCommitted)", capabilityHandlers);
     }
