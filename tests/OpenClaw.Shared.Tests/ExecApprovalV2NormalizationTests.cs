@@ -54,6 +54,24 @@ public class ExecApprovalV2NormalizationTests
     {
         Assert.False(ExecShellWrapperNormalizer.Extract(["bash", "script.sh"]).IsWrapper);
         Assert.False(ExecShellWrapperNormalizer.Extract(["bash", "-l", "script.sh"]).IsWrapper);
+        Assert.False(ExecShellWrapperNormalizer.Extract(["bash", "script.sh", "-c", "value"]).IsWrapper);
+        Assert.False(ExecShellWrapperNormalizer.Extract(["bash", "-l", "script.sh", "-c", "value"]).IsWrapper);
+    }
+
+    [Fact]
+    public void Normalizer_PowerShellFileArgument_IsNotWrapper()
+    {
+        Assert.False(ExecShellWrapperNormalizer.Extract(
+            ["pwsh", "-File", "script.ps1", "/c", "value"]).IsWrapper);
+        Assert.False(ExecShellWrapperNormalizer.Extract(
+            ["powershell", "-File:script.ps1", "/command:value"]).IsWrapper);
+        var bound = ExecReusableCommandBinder.TryBind(
+            ["pwsh", "-File", "script.ps1", "/c", "value"],
+            cwd: null,
+            env: null,
+            out var failure);
+        Assert.Equal(ExecReusableCommandBinder.BindFailure.None, failure);
+        Assert.NotNull(bound);
     }
 
     [Fact]

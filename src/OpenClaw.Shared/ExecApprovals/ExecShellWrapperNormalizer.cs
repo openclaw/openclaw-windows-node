@@ -82,11 +82,16 @@ internal static class ExecShellWrapperNormalizer
         {
             var flag = command[i].Trim();
             if (flag.Length == 0) continue;
-            if (flag == "--") break;
-            if (!s_posixInlineFlags.Contains(flag)) continue;
-            if (i + 1 >= command.Count) return null;
-            var payload = command[i + 1].Trim();
-            return payload.Length == 0 ? null : payload;
+            if (flag == "--") return null;
+            if (s_posixInlineFlags.Contains(flag))
+            {
+                if (i + 1 >= command.Count) return null;
+                var payload = command[i + 1].Trim();
+                return payload.Length == 0 ? null : payload;
+            }
+
+            if (!flag.StartsWith('-'))
+                return null;
         }
         return null;
     }
@@ -110,7 +115,9 @@ internal static class ExecShellWrapperNormalizer
         {
             var t = command[i].Trim();
             if (t.Length == 0) continue;
-            if (t == "--") break;
+            if (t == "--") return null;
+            if (IsPowerShellFileSwitch(t))
+                return null;
             if (TryReadPowerShellColonPayload(t, out var inline))
                 return inline.Length == 0 ? null : inline;
             if (s_powerShellInlineFlags.Contains(t))
@@ -121,6 +128,18 @@ internal static class ExecShellWrapperNormalizer
             }
         }
         return null;
+    }
+
+    private static bool IsPowerShellFileSwitch(string token)
+    {
+        var name = token;
+        var colon = token.IndexOf(':');
+        if (colon > 0)
+            name = token[..colon];
+        return name.Equals("-File", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("-f", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("/File", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("/f", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool TryReadPowerShellColonPayload(string token, out string payload)
