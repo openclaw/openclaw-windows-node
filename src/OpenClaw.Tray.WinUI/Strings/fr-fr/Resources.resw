@@ -7116,6 +7116,76 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   <data name="LocalAiPage_UnavailableProbeTitle" xml:space="preserve"><value>La disponibilité de l'IA locale n'a pas pu être vérifiée</value></data>
   <data name="LocalAiPage_CheckingTitle" xml:space="preserve"><value>Vérification de la disponibilité de l'IA locale</value></data>
   <data name="LocalAiPage_CheckingMessage" xml:space="preserve"><value>OpenClaw vérifie si cet appareil peut exécuter l'IA locale. Cela ne prend qu'un instant.</value></data>
+  <data name="Migration_InnoCompleted" xml:space="preserve">
+    <value>Votre configuration OpenClaw a été migrée vers la version du Store. Fermez ce message pour quitter cette application. Désinstallez ensuite l'ancienne application OpenClaw Companion dans Paramètres Windows &gt; Applications &gt; Applications installées, puis ouvrez la version du Store. Votre configuration migrée et votre passerelle seront conservées.</value>
+  </data>
+  <data name="Migration_InnoCheckFailed" xml:space="preserve">
+    <value>OpenClaw n'a pas pu vérifier si la migration vers la version du Store est terminée. Cette copie ne peut pas démarrer en toute sécurité. Fermez les autres processus OpenClaw et réessayez. Ne supprimez pas les données de migration et ne lancez pas le nettoyage de la passerelle.</value>
+  </data>
+  <data name="Migration_StorePreviewTitle" xml:space="preserve">
+    <value>Aperçu de la migration OpenClaw</value>
+  </data>
+  <data name="Migration_StorePreviewReady" xml:space="preserve">
+    <value>Une installation précédente compatible a été trouvée. Le démarrage normal est suspendu. Vous pouvez démarrer la migration ou choisir Pas maintenant pour continuer à utiliser l'application précédente.</value>
+  </data>
+  <data name="Migration_StoreConsent" xml:space="preserve">
+    <value>Une installation précédente compatible a été trouvée. Démarrez la migration uniquement lorsque vous êtes prêt.
+
+Choisir {0} valide votre configuration et enregistre des données de migration protégées. Si la validation réussit, l'application précédente ne pourra plus démarrer normalement. Vous devrez alors désinstaller l'application précédente via Paramètres Windows &gt; Applications &gt; Applications installées, puis rouvrir l'application du Store pour terminer la migration. Votre configuration et votre passerelle seront préservées ; rien n'est désinstallé automatiquement.
+
+Choisissez {1} pour quitter cet aperçu sans démarrer la migration et continuer à utiliser l'application précédente.</value>
+  </data>
+  <data name="Migration_StoreMigrate" xml:space="preserve">
+    <value>Migrer</value>
+  </data>
+  <data name="Migration_StoreNotNow" xml:space="preserve">
+    <value>Pas maintenant</value>
+  </data>
+  <data name="Migration_StoreCloseInno" xml:space="preserve">
+    <value>Fermez l'application OpenClaw Companion précédente, puis choisissez {0} pour réessayer. Choisissez {1} pour quitter cet aperçu. Ne forcez pas l'application précédente à se fermer et ne la désinstallez pas encore. Désinstallez-la uniquement lorsque cet aperçu vous indique que la fin de la migration a été enregistrée.</value>
+  </data>
+  <data name="Migration_StoreRetry" xml:space="preserve">
+    <value>Réessayer</value>
+  </data>
+  <data name="Migration_StoreAdoptionPending" xml:space="preserve">
+    <value>L'application précédente est fermée et la migration pourrait continuer. Cette version de test n'adopte pas encore votre configuration. Fermez cet aperçu. Ne désinstallez pas l'application précédente, ne supprimez pas les données de migration et ne lancez pas le nettoyage de la passerelle.</value>
+  </data>
+  <data name="Migration_StorePrepared" xml:space="preserve">
+    <value>L'application précédente est fermée. OpenClaw a validé votre configuration actuelle et enregistré des données de préparation de migration protégées. Cette version de test n'adopte pas encore votre configuration. Fermez cet aperçu. Ne désinstallez pas l'application précédente, ne supprimez pas les données de migration et ne lancez pas le nettoyage de la passerelle.</value>
+  </data>
+  <data name="Migration_StoreValidationFailed" xml:space="preserve">
+    <value>OpenClaw n'a pas pu valider en toute sécurité la configuration précédente pour la migration. Aucune finalisation n'a été enregistrée et l'application précédente n'a pas été modifiée. Fermez cet aperçu et réessayez plus tard. Ne désinstallez pas l'application précédente, ne supprimez pas les données de migration et ne lancez pas le nettoyage de la passerelle.</value>
+  </data>
+  <data name="Migration_StoreCredentialUnavailable" xml:space="preserve">
+    <value>OpenClaw n'a pas pu résoudre un identifiant pour la passerelle active. Aucune finalisation n'a été enregistrée et l'application précédente n'a pas été modifiée. Fermez cet aperçu et restaurez la configuration de la passerelle active avant de réessayer. Ne désinstallez pas l'application précédente, ne supprimez pas les données de migration et ne lancez pas le nettoyage de la passerelle.</value>
+  </data>
+  <data name="Migration_StoreAwaitingInnoRemoval" xml:space="preserve">
+    <value>OpenClaw a enregistré la fin de la migration et préservé votre configuration. Fermez cet aperçu, désinstallez l'application OpenClaw Companion précédente dans les paramètres Windows, puis ouvrez la version du Store. Ne supprimez pas les données de migration et ne lancez pas le nettoyage de la passerelle.</value>
+  </data>
+  <data name="Migration_StoreYes" xml:space="preserve">
+    <value>Oui</value>
+  </data>
+  <data name="Migration_StoreNo" xml:space="preserve">
+    <value>Non</value>
+  </data>
+  <data name="Migration_StoreUpdateRequired" xml:space="preserve">
+    <value>L'application précédente est antérieure à la version source requise par cet aperçu. La migration et le démarrage normal de la version du Store sont bloqués. Utilisez une version Inno vérifiée prenant en charge la migration avant de la tester. Votre configuration n'a pas été modifiée.</value>
+  </data>
+  <data name="Migration_StoreUnsupported" xml:space="preserve">
+    <value>Cette disposition d'installation, cette architecture ou cette configuration de package n'est pas prise en charge par l'aperçu de migration. Seule l'installation par utilisateur à l'emplacement par défaut avec une architecture correspondante est prise en charge. Votre configuration n'a pas été modifiée.</value>
+  </data>
+  <data name="Migration_StoreInspectionFailed" xml:space="preserve">
+    <value>L'aperçu de migration n'a pas pu vérifier en toute sécurité l'installation précédente ou les enregistrements de migration. Le démarrage normal est bloqué. Fermez cet aperçu et consultez le journal de l'application avant de réessayer. Ne supprimez pas les données de migration et ne lancez pas le nettoyage de la passerelle.</value>
+  </data>
+  <data name="Migration_StoreFinalizationFailed" xml:space="preserve">
+    <value>OpenClaw n'a pas pu terminer la migration en toute sécurité. Le démarrage normal est bloqué et le reçu de migration a été conservé pour récupération. Fermez cet aperçu et réessayez plus tard. Ne supprimez pas les données de migration et ne lancez pas le nettoyage de la passerelle.</value>
+  </data>
+  <data name="Migration_StoreStartupRefused" xml:space="preserve">
+    <value>OpenClaw a terminé la migration, mais Windows n'a pas autorisé le démarrage d'OpenClaw Companion à l'ouverture de session. Vos données et vos paramètres ont été migrés. Pour démarrer OpenClaw automatiquement, activez OpenClaw Companion dans Paramètres > Applications > Démarrage, ou contactez votre administrateur si le démarrage est géré par une stratégie.</value>
+  </data>
+  <data name="Migration_StorePending" xml:space="preserve">
+    <value>Une migration précédente nécessite une récupération ou une finalisation. Cette version de test ne peut ni la poursuivre ni démarrer normalement. Fermez cet aperçu. Ne désinstallez pas l'application précédente, ne supprimez pas les données de migration et ne lancez pas le nettoyage de la passerelle.</value>
+  </data>
   <data name="Chat_Code_Copy" xml:space="preserve"><value>Copier le code</value></data>
   <data name="Chat_Code_Label" xml:space="preserve"><value>Bloc de code</value></data>
   <data name="Chat_Model_Current" xml:space="preserve"><value>Modèle actuel</value></data>

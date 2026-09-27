@@ -240,12 +240,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
 
         try
         {
-            var exitCode = await Program.Main([
-                "--config", _configPath,
-                "--uninstall",
-                "--confirm-destructive",
-                "--log-path", uninstallLogPath
-            ]);
+            var exitCode = await Program.Main(BuildUninstallArguments(_configPath, _distroName, uninstallLogPath));
             Log($"Uninstall completed with exit code {exitCode}.");
         }
 
@@ -265,6 +260,18 @@ public sealed class E2ESetupFixture : IAsyncLifetime
 
         Log("Teardown complete.");
     }
+
+    internal static string[] BuildUninstallArguments(string configPath, string distroName, string logPath) =>
+    [
+        "--config", configPath,
+        "--uninstall",
+        "--confirm-destructive",
+        // AutoStart=false does not suppress full uninstall's host startup cleanup.
+        // Reuse the fixture's unique distro identity, never the installed app's names.
+        "--autostart-name", $"{distroName}-Tray",
+        "--startup-task-name", $"{distroName}-Startup",
+        "--log-path", logPath
+    ];
 
     public void SetTrayEnvironmentVariable(string name, string value)
     {

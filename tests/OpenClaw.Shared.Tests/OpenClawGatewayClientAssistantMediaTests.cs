@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using OpenClaw.TestSupport;
@@ -19,7 +20,7 @@ public sealed class OpenClawGatewayClientAssistantMediaTests
             "test-token",
             identityPath: identity.Path);
         await client.ConnectAsync();
-        CompleteHandshakeForTest(client);
+        MarkHandshakeReady(client);
 
         var resolution = client.ResolveAssistantMediaAsync(
             "main",
@@ -81,7 +82,7 @@ public sealed class OpenClawGatewayClientAssistantMediaTests
             assistantMediaAuthToken: "shared-http-token",
             assistantMediaHandler: handler);
         await client.ConnectAsync();
-        CompleteHandshakeForTest(client);
+        MarkHandshakeReady(client);
 
         var media = new ChatMediaContentInfo
         {
@@ -123,7 +124,7 @@ public sealed class OpenClawGatewayClientAssistantMediaTests
             identityPath: identity.Path,
             assistantMediaHandler: handler);
         await client.ConnectAsync();
-        CompleteHandshakeForTest(client);
+        MarkHandshakeReady(client);
 
         var result = await client.ResolveAssistantMediaAsync(
             "main",
@@ -158,7 +159,7 @@ public sealed class OpenClawGatewayClientAssistantMediaTests
             assistantMediaAuthToken: "shared-token-1",
             assistantMediaHandler: handler);
         await client.ConnectAsync();
-        CompleteHandshakeForTest(client);
+        MarkHandshakeReady(client);
         var media = new ChatMediaContentInfo
         {
             Kind = ChatMediaContentKind.Image,
@@ -246,11 +247,7 @@ public sealed class OpenClawGatewayClientAssistantMediaTests
     /// </summary>
     private static void CompleteHandshakeForTest(OpenClawGatewayClient client)
     {
-        var field = typeof(OpenClawGatewayClient).GetField(
-            "_hasHandshakeSnapshot",
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-        Assert.NotNull(field);
-        field!.SetValue(client, true);
+        MarkHandshakeReady(client);
     }
 
     private static HttpResponseMessage JsonResponse(string json) =>
@@ -267,6 +264,26 @@ public sealed class OpenClawGatewayClientAssistantMediaTests
         };
         response.Content.Headers.ContentType = new MediaTypeHeaderValue(mimeType);
         return response;
+    }
+
+    private static void MarkHandshakeReady(OpenClawGatewayClient client)
+    {
+        var generationProperty = typeof(WebSocketClientBase).GetProperty(
+            "CurrentConnectionGeneration",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        var generation = (long)generationProperty!.GetValue(client)!;
+        SetPrivateField(client, "_mainSessionKeyIsCanonical", true);
+        SetPrivateField(client, "_mainSessionKey", "agent:main:main");
+        SetPrivateField(client, "_handshakeConnectionGeneration", generation);
+        SetPrivateField(client, "_hasHandshakeSnapshot", true);
+    }
+
+    private static void SetPrivateField(OpenClawGatewayClient client, string fieldName, object? value)
+    {
+        var field = typeof(OpenClawGatewayClient).GetField(
+            fieldName,
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        field!.SetValue(client, value);
     }
 
     private sealed class SequentialMediaHandler(params HttpResponseMessage[] responses)

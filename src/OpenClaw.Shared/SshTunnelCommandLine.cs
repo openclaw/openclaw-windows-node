@@ -18,6 +18,19 @@ public static class SshTunnelCommandLine
         "-o TCPKeepAlive=yes " +
         "-N ";
 
+    // Open Terminal passes user@host as one ssh.exe argument. Reject the same
+    // charset as the tunnel, and a leading '-', before that argument is built.
+    public static void ValidateUserAndHost(string user, string host)
+    {
+        user = user.Trim();
+        host = host.Trim();
+
+        if (user.StartsWith('-') || !s_validSshUser.IsMatch(user))
+            throw new ArgumentException($"SSH user contains invalid characters: '{user}'", nameof(user));
+        if (host.StartsWith('-') || !s_validSshHost.IsMatch(host))
+            throw new ArgumentException($"SSH host contains invalid characters: '{host}'", nameof(host));
+    }
+
     public static string BuildArguments(string user, string host, int remotePort, int localPort)
         => BuildArguments(user, host, remotePort, localPort, includeBrowserProxyForward: false);
 

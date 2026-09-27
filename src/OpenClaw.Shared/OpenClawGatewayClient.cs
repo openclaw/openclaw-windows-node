@@ -53,6 +53,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private string? _mainSessionKey;
     private bool _mainSessionKeyIsCanonical;
     private bool _hasHandshakeSnapshot;
+    private long _handshakeConnectionGeneration;
 
     /// <summary>
     /// The gateway's resolved main session key as published in the hello-ok
@@ -187,6 +188,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             }
         }
         _handshakeChallengeGate.Reset(CurrentConnectionGeneration);
+        Volatile.Write(ref _handshakeConnectionGeneration, 0);
+        Volatile.Write(ref _hasHandshakeSnapshot, false);
         _pendingRequests.OpenConnection();
         ResetUnsupportedMethodFlags();
         RaiseTransportConnected();
@@ -211,6 +214,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         // HasHandshakeSnapshot would lie about the offline state to callers.
         Volatile.Write(ref _mainSessionKey, null);
         Volatile.Write(ref _mainSessionKeyIsCanonical, false);
+        Volatile.Write(ref _handshakeConnectionGeneration, 0);
         Volatile.Write(ref _hasHandshakeSnapshot, false);
         _pendingRequests.Drain(
             new GatewayConnectionLostException(
@@ -295,19 +299,39 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     public string? OperatorDeviceId => _operatorDeviceId;
     public IReadOnlyList<string> GrantedOperatorScopes => _grantedOperatorScopes;
-
     /// <summary>
     /// Readiness gate for the operator session: the WebSocket transport is open
-    /// AND the hello-ok handshake has completed. The gateway closes the socket
-    /// with 1008 PolicyViolation ("first request must be connect") when any
-    /// non-connect frame escapes before hello-ok (#1418), so callers must gate
-    /// application RPCs and "connected" UI state on this property, not on the
-    /// transport-only socket state. Protocol frames are exempt by design: the
-    /// handshake drives them over the dedicated SendConnectMessageAsync path,
-    /// never through the tracked/wizard application-send paths.
+    /// and the hello-ok handshake has completed on the current socket generation.
+    /// The gateway closes the socket with 1008 PolicyViolation ("first request
+    /// must be connect") when any non-connect frame escapes before hello-ok
+    /// (#1418), so callers must gate application RPCs and "connected" UI state
+    /// here, not on the transport-only socket state. Protocol frames are exempt
+    /// by design: the handshake drives them over the dedicated
+    /// SendConnectMessageAsync path, never through the tracked/wizard
+    /// application-send paths.
     /// </summary>
-    public virtual bool IsConnectedToGateway => IsConnected && HasHandshakeSnapshot;
+    public virtual bool IsConnectedToGateway => TryGetReadyConnectionGeneration(out _);
     public int? LastRemoteCloseStatusCode => RemoteCloseStatusCode;
+
+    private bool TryGetReadyConnectionGeneration(out long connectionGeneration)
+    {
+        connectionGeneration = CurrentConnectionGeneration;
+        return IsConnected &&
+            HasHandshakeSnapshot &&
+            Volatile.Read(ref _handshakeConnectionGeneration) == connectionGeneration &&
+            IsCurrentConnectionGeneration(connectionGeneration);
+    }
+
+    private long GetReadyConnectionGeneration(string method)
+    {
+        if (!IsConnected)
+            throw new InvalidOperationException("Gateway connection is not open");
+
+        if (!TryGetReadyConnectionGeneration(out var connectionGeneration))
+            throw new InvalidOperationException($"{HandshakePendingError}; refusing to send '{method}'");
+
+        return connectionGeneration;
+    }
 
     protected override void OnConnectionException(Exception exception)
     {
@@ -390,6 +414,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             return;
         }
 
+        if (!TryGetReadyConnectionGeneration(out var connectionGeneration))
+            return;
+
         try
         {
             var req = new
@@ -399,7 +426,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 method = "health",
                 @params = new { deep = true }
             };
-            await SendRawAsync(JsonSerializer.Serialize(req));
+            await SendRawAsync(JsonSerializer.Serialize(req), connectionGeneration, CancellationToken);
         }
         catch (Exception ex)
         {
@@ -464,7 +491,14 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         try
         {
-            await SendRawAsync(JsonSerializer.Serialize(req));
+            var connectionGeneration = GetReadyConnectionGeneration("chat.send");
+            var sent = await SendRawAsync(
+                    JsonSerializer.Serialize(req),
+                    connectionGeneration,
+                    CancellationToken)
+                .ConfigureAwait(false);
+            if (!sent)
+                throw new InvalidOperationException("Gateway connection changed before chat.send could be sent.");
             var result = await WaitForGatewayResponseAsync(
                 pending.Task,
                 TimeSpan.FromSeconds(5),
@@ -548,6 +582,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         if (!IsConnected)
             throw new InvalidOperationException("Cannot resolve exec approval: gateway is not connected.");
 
+        var connectionGeneration = GetReadyConnectionGeneration("exec.approval.resolve");
+
         var requestId = Guid.NewGuid().ToString();
         var pending = _pendingRequests.RegisterApproval(
             requestId,
@@ -558,7 +594,13 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         // preserve the approval UI and surface a retryable error.
         try
         {
-            await SendRawAsync(SerializeRequest(requestId, "exec.approval.resolve", new { id = approvalId, decision }));
+            var sent = await SendRawAsync(
+                    SerializeRequest(requestId, "exec.approval.resolve", new { id = approvalId, decision }),
+                    connectionGeneration,
+                    CancellationToken)
+                .ConfigureAwait(false);
+            if (!sent)
+                throw new InvalidOperationException("Gateway connection changed before exec.approval.resolve could be sent.");
         }
         catch
         {
@@ -1222,8 +1264,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     public async Task<JsonElement> SendWizardRequestAsync(string method, object? parameters = null, int timeoutMs = 30000)
     {
-        if (!IsConnected)
-            throw new InvalidOperationException("Gateway connection is not open");
+        var connectionGeneration = GetReadyConnectionGeneration(method);
 
         // #1418: wizard requests are application RPCs (models.list,
         // device.pair.list, pairing approvals, update.status, chat.abort,
@@ -1241,7 +1282,13 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         try
         {
-            await SendRawAsync(SerializeRequest(requestId, method, parameters));
+            var sent = await SendRawAsync(
+                    SerializeRequest(requestId, method, parameters),
+                    connectionGeneration,
+                    CancellationToken)
+                .ConfigureAwait(false);
+            if (!sent)
+                throw new InvalidOperationException($"Gateway connection changed before {method} could be sent.");
             return await pending.Task.WaitAsync(TimeSpan.FromMilliseconds(timeoutMs), CancellationToken);
         }
         catch (TimeoutException ex)
@@ -1918,7 +1965,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// </summary>
     public async Task<GatewayUpdateStatus?> GetUpdateStatusAsync(int timeoutMs = 5000)
     {
-        if (!IsConnected || !HasHandshakeSnapshot)
+        if (!IsConnectedToGateway)
             return null;
 
         var response = await SendWizardRequestAsync("update.status", new { }, timeoutMs);
@@ -2153,15 +2200,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// </summary>
     private async Task<bool> SendTrackedRequestAsync(string method, object? parameters = null)
     {
-        if (!IsConnected) return false;
-
-        if (!HasHandshakeSnapshot)
+        if (!TryGetReadyConnectionGeneration(out var connectionGeneration))
         {
-            // #1418: the gateway 1008-closes the socket when an application RPC
-            // escapes before hello-ok. Withhold the frame and report not-sent:
-            // mutations must not report a successful submission, and read-style
-            // callers tolerate the withheld refresh (the post-handshake burst
-            // re-requests the state).
             _logger.Debug($"[GatewayClient] {method} suppressed before handshake");
             return false;
         }
@@ -2170,7 +2210,17 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         var pending = _pendingRequests.RegisterTracked(requestId, method);
         try
         {
-            await SendRawAsync(SerializeRequest(requestId, method, parameters));
+            var sent = await SendRawAsync(
+                    SerializeRequest(requestId, method, parameters),
+                    connectionGeneration,
+                    CancellationToken)
+                .ConfigureAwait(false);
+            if (!sent)
+            {
+                _pendingRequests.TryRemove(pending);
+                return false;
+            }
+
             return true;
         }
         catch
@@ -2409,6 +2459,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             Volatile.Write(
                 ref _mainSessionKey,
                 hasCanonicalMainSessionKey ? canonicalMainSessionKey : TryGetHandshakeMainSessionKey(payload));
+            Volatile.Write(ref _handshakeConnectionGeneration, sourceConnectionGeneration);
             Volatile.Write(ref _hasHandshakeSnapshot, true);
             _logger.Info($"[HANDSHAKE] deviceId={_operatorDeviceId}, scopes=[{string.Join(", ", _grantedOperatorScopes)}], mainSession={_mainSessionKey ?? "(unset)"}");
             PublishGatewaySelf(GatewaySelfInfo.FromHelloOk(payload));

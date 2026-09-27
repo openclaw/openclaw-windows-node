@@ -7170,6 +7170,76 @@ O binário wxc-exec não pôde ser localizado. {1} Se esta for uma build de dese
   <data name="VoiceSettingsPage_MiniMaxVoiceIdBox.Header" xml:space="preserve"><value>ID da voz</value></data>
   <data name="VoiceSettingsPage_MiniMaxVoiceIdBox.PlaceholderText" xml:space="preserve"><value>por exemplo, male-qn-qingse</value></data>
   <data name="VoiceSettingsPage_TtsMiniMax.Content" xml:space="preserve"><value>MiniMax (nuvem, requer chave da API)</value></data>
+  <data name="Migration_InnoCompleted" xml:space="preserve">
+    <value>Sua configuração do OpenClaw foi migrada para a versão da Store. Feche esta mensagem para sair deste aplicativo. Depois, desinstale o aplicativo OpenClaw Companion anterior em Configurações do Windows &gt; Aplicativos &gt; Aplicativos instalados e abra a versão da Store. Sua configuração migrada e seu gateway serão preservados.</value>
+  </data>
+  <data name="Migration_InnoCheckFailed" xml:space="preserve">
+    <value>O OpenClaw não conseguiu verificar se a migração para a versão da Store foi concluída. Esta cópia não pode iniciar com segurança. Feche os outros processos do OpenClaw e tente novamente. Não exclua os dados de migração nem execute a limpeza do gateway.</value>
+  </data>
+  <data name="Migration_StorePreviewTitle" xml:space="preserve">
+    <value>Prévia da migração do OpenClaw</value>
+  </data>
+  <data name="Migration_StorePreviewReady" xml:space="preserve">
+    <value>Uma instalação anterior compatível foi encontrada. A inicialização normal está pausada. Você pode iniciar a migração ou escolher Agora não para continuar usando o aplicativo anterior.</value>
+  </data>
+  <data name="Migration_StoreConsent" xml:space="preserve">
+    <value>Uma instalação anterior compatível foi encontrada. Inicie a migração apenas quando estiver pronto.
+
+Escolher {0} valida sua configuração e salva registros de migração protegidos. Se a validação for bem-sucedida, o aplicativo anterior não poderá mais iniciar normalmente. Você deverá então desinstalar o aplicativo anterior em Configurações do Windows &gt; Aplicativos &gt; Aplicativos instalados e reabrir o aplicativo da Store para concluir a migração. Sua configuração e seu gateway serão preservados; nada será desinstalado automaticamente.
+
+Escolha {1} para sair desta prévia sem iniciar a migração e continuar usando o aplicativo anterior.</value>
+  </data>
+  <data name="Migration_StoreMigrate" xml:space="preserve">
+    <value>Migrar</value>
+  </data>
+  <data name="Migration_StoreNotNow" xml:space="preserve">
+    <value>Agora não</value>
+  </data>
+  <data name="Migration_StoreCloseInno" xml:space="preserve">
+    <value>Feche o aplicativo OpenClaw Companion anterior e escolha {0} para tentar novamente. Escolha {1} para sair desta prévia. Não force o encerramento do aplicativo anterior nem o desinstale ainda. Desinstale somente depois que esta prévia informar que a conclusão da migração foi registrada.</value>
+  </data>
+  <data name="Migration_StoreRetry" xml:space="preserve">
+    <value>Tentar novamente</value>
+  </data>
+  <data name="Migration_StoreAdoptionPending" xml:space="preserve">
+    <value>O aplicativo anterior foi fechado e a migração poderia continuar. Esta versão de teste ainda não adota sua configuração. Feche esta prévia. Não desinstale o aplicativo anterior, não exclua os dados de migração nem execute a limpeza do gateway.</value>
+  </data>
+  <data name="Migration_StorePrepared" xml:space="preserve">
+    <value>O aplicativo anterior foi fechado. O OpenClaw validou sua configuração atual e salvou dados protegidos de preparação da migração. Esta versão de teste ainda não adota sua configuração. Feche esta prévia. Não desinstale o aplicativo anterior, não exclua os dados de migração nem execute a limpeza do gateway.</value>
+  </data>
+  <data name="Migration_StoreValidationFailed" xml:space="preserve">
+    <value>O OpenClaw não pôde validar com segurança a configuração anterior para a migração. Nenhuma conclusão foi registrada e o aplicativo anterior não foi alterado. Feche esta prévia e tente novamente mais tarde. Não desinstale o aplicativo anterior, não exclua os dados de migração nem execute a limpeza do gateway.</value>
+  </data>
+  <data name="Migration_StoreCredentialUnavailable" xml:space="preserve">
+    <value>O OpenClaw não conseguiu resolver uma credencial para o gateway ativo. Nenhuma conclusão foi registrada e o aplicativo anterior não foi alterado. Feche esta prévia e restaure a configuração do gateway ativo antes de tentar novamente. Não desinstale o aplicativo anterior, não exclua os dados de migração nem execute a limpeza do gateway.</value>
+  </data>
+  <data name="Migration_StoreAwaitingInnoRemoval" xml:space="preserve">
+    <value>O OpenClaw registrou a conclusão da migração e preservou sua configuração. Feche esta prévia, desinstale o aplicativo OpenClaw Companion anterior nas Configurações do Windows e abra a versão da Store. Não exclua os dados de migração nem execute a limpeza do gateway.</value>
+  </data>
+  <data name="Migration_StoreYes" xml:space="preserve">
+    <value>Sim</value>
+  </data>
+  <data name="Migration_StoreNo" xml:space="preserve">
+    <value>Não</value>
+  </data>
+  <data name="Migration_StoreUpdateRequired" xml:space="preserve">
+    <value>O aplicativo anterior é mais antigo que a versão de origem exigida por esta prévia. A migração e a inicialização normal da versão da Store estão bloqueadas. Use uma versão Inno verificada com suporte à migração antes de testá-la. Sua configuração não foi alterada.</value>
+  </data>
+  <data name="Migration_StoreUnsupported" xml:space="preserve">
+    <value>Este local de instalação, arquitetura ou configuração de pacote não é compatível com a prévia da migração. Apenas a instalação padrão por usuário com arquitetura correspondente é compatível. Sua configuração não foi alterada.</value>
+  </data>
+  <data name="Migration_StoreInspectionFailed" xml:space="preserve">
+    <value>A prévia da migração não conseguiu verificar com segurança a instalação anterior ou os registros de migração. A inicialização normal está bloqueada. Feche esta prévia e consulte o log do aplicativo antes de tentar novamente. Não exclua os dados de migração nem execute a limpeza do gateway.</value>
+  </data>
+  <data name="Migration_StoreFinalizationFailed" xml:space="preserve">
+    <value>O OpenClaw não conseguiu concluir a migração com segurança. A inicialização normal está bloqueada e o recibo de migração foi preservado para recuperação. Feche esta prévia e tente novamente mais tarde. Não exclua os dados de migração nem execute a limpeza do gateway.</value>
+  </data>
+  <data name="Migration_StoreStartupRefused" xml:space="preserve">
+    <value>O OpenClaw concluiu a migração, mas o Windows não permitiu iniciar o OpenClaw Companion ao entrar. Seus dados e configurações foram migrados. Para iniciar o OpenClaw automaticamente, ative o OpenClaw Companion em Configurações > Aplicativos > Inicializar ou fale com seu administrador se a inicialização for gerenciada por política.</value>
+  </data>
+  <data name="Migration_StorePending" xml:space="preserve">
+    <value>Uma migração anterior precisa de recuperação ou finalização. Esta versão de teste não pode continuá-la nem iniciar normalmente. Feche esta prévia. Não desinstale o aplicativo anterior, não exclua os dados de migração nem execute a limpeza do gateway.</value>
+  </data>
   <data name="Chat_Code_Copy" xml:space="preserve"><value>Copiar código</value></data>
   <data name="Chat_Code_Label" xml:space="preserve"><value>Bloco de código</value></data>
   <data name="Chat_Model_Current" xml:space="preserve"><value>Modelo atual</value></data>

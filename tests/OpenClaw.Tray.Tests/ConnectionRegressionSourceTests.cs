@@ -74,7 +74,7 @@ public sealed class ConnectionRegressionSourceTests
         var pageSource = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "ConnectionPage.xaml.cs");
 
         Assert.Contains("private void ClearAddGatewaySshFields()", pageSource);
-        Assert.Contains("ClearAddGatewaySshFields();\r\n        ShowAddPane(\"setup\");", pageSource);
+        Assert.Contains("ClearAddGatewaySshFields();\n        ShowAddPane(\"setup\");", pageSource.Replace("\r\n", "\n"));
         Assert.Contains("AddSshExpander.IsExpanded = false;", pageSource);
         Assert.Contains("AddSshUserBox.Text = \"\";", pageSource);
         Assert.Contains("AddSshHostBox.Text = \"\";", pageSource);

@@ -7180,6 +7180,76 @@ Make sure the gateway is running.</value>
   <data name="LocalAiPage_UnavailableProbeTitle" xml:space="preserve"><value>Local AI availability could not be verified</value></data>
   <data name="LocalAiPage_CheckingTitle" xml:space="preserve"><value>Checking Local AI availability</value></data>
   <data name="LocalAiPage_CheckingMessage" xml:space="preserve"><value>OpenClaw is verifying whether this device can run Local AI. This only takes a moment.</value></data>
+  <data name="Migration_InnoCompleted" xml:space="preserve">
+    <value>Your OpenClaw setup was migrated to the Store version. Close this message to exit this app. Then uninstall the previous OpenClaw Companion app through Windows Settings &gt; Apps &gt; Installed apps and open the Store version. Your migrated setup and gateway will be preserved.</value>
+  </data>
+  <data name="Migration_InnoCheckFailed" xml:space="preserve">
+    <value>OpenClaw could not check whether migration to the Store version has completed. This copy cannot start safely. Close other OpenClaw processes and try again. Do not delete migration data or run gateway cleanup.</value>
+  </data>
+  <data name="Migration_StorePreviewTitle" xml:space="preserve">
+    <value>OpenClaw migration preview</value>
+  </data>
+  <data name="Migration_StorePreviewReady" xml:space="preserve">
+    <value>A supported previous installation was found. Normal startup is paused. You can start migration, or choose Not now to continue using the previous app.</value>
+  </data>
+  <data name="Migration_StoreConsent" xml:space="preserve">
+    <value>A supported previous installation was found. Start migration only when you are ready.
+
+Choosing {0} validates your setup and saves protected migration records. If validation succeeds, the previous app will be blocked from starting normally. You must then uninstall the previous app through Windows Settings &gt; Apps &gt; Installed apps and reopen the Store app to finish migration. Your setup and gateway will be preserved; nothing is uninstalled automatically.
+
+Choose {1} to exit this preview without starting migration and continue using the previous app.</value>
+  </data>
+  <data name="Migration_StoreMigrate" xml:space="preserve">
+    <value>Migrate</value>
+  </data>
+  <data name="Migration_StoreNotNow" xml:space="preserve">
+    <value>Not now</value>
+  </data>
+  <data name="Migration_StoreCloseInno" xml:space="preserve">
+    <value>Close the previous OpenClaw Companion app, then choose {0} to retry. Choose {1} to exit this preview. Do not force-close the previous app or uninstall it yet. Uninstall only after this preview tells you migration completion has been recorded.</value>
+  </data>
+  <data name="Migration_StoreRetry" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="Migration_StoreAdoptionPending" xml:space="preserve">
+    <value>The previous app is closed and migration could proceed. This test build does not adopt your setup yet. Close this preview. Do not uninstall the previous app, delete migration data, or run gateway cleanup.</value>
+  </data>
+  <data name="Migration_StorePrepared" xml:space="preserve">
+    <value>The previous app is closed. OpenClaw validated your current setup and saved protected migration preparation data. This test build does not adopt your setup yet. Close this preview. Do not uninstall the previous app, delete migration data, or run gateway cleanup.</value>
+  </data>
+  <data name="Migration_StoreValidationFailed" xml:space="preserve">
+    <value>OpenClaw could not safely validate the previous setup for migration. No completion was recorded and the previous app was not changed. Close this preview and try again later. Do not uninstall the previous app, delete migration data, or run gateway cleanup.</value>
+  </data>
+  <data name="Migration_StoreCredentialUnavailable" xml:space="preserve">
+    <value>OpenClaw could not resolve a credential for the active gateway. No completion was recorded and the previous app was not changed. Close this preview and restore the active gateway configuration before retrying. Do not uninstall the previous app, delete migration data, or run gateway cleanup.</value>
+  </data>
+  <data name="Migration_StoreAwaitingInnoRemoval" xml:space="preserve">
+    <value>OpenClaw recorded migration completion and preserved your setup. Close this preview, uninstall the previous OpenClaw Companion app through Windows Settings, then open the Store version. Do not delete migration data or run gateway cleanup.</value>
+  </data>
+  <data name="Migration_StoreYes" xml:space="preserve">
+    <value>Yes</value>
+  </data>
+  <data name="Migration_StoreNo" xml:space="preserve">
+    <value>No</value>
+  </data>
+  <data name="Migration_StoreUpdateRequired" xml:space="preserve">
+    <value>The previous app is older than this preview's required source version. Migration and normal Store startup are blocked. Use a verified migration-capable Inno release before testing migration. Your setup has not been changed.</value>
+  </data>
+  <data name="Migration_StoreUnsupported" xml:space="preserve">
+    <value>This installation layout, architecture, or package configuration is not supported by the migration preview. Only the default per-user installation with a matching architecture is supported. Your setup has not been changed.</value>
+  </data>
+  <data name="Migration_StoreInspectionFailed" xml:space="preserve">
+    <value>The migration preview could not safely inspect the previous installation or migration records. Normal startup is blocked. Close this preview and check the app log before retrying. Do not delete migration data or run gateway cleanup.</value>
+  </data>
+  <data name="Migration_StoreFinalizationFailed" xml:space="preserve">
+    <value>OpenClaw could not safely finish the completed migration. Normal startup is blocked and the migration receipt was kept for recovery. Close this preview and try again later. Do not delete migration data or run gateway cleanup.</value>
+  </data>
+  <data name="Migration_StoreStartupRefused" xml:space="preserve">
+    <value>OpenClaw finished the migration, but Windows would not enable OpenClaw Companion at sign-in. Your data and settings were migrated. To start OpenClaw automatically, enable OpenClaw Companion in Settings > Apps > Startup, or contact your administrator if startup is managed by policy.</value>
+  </data>
+  <data name="Migration_StorePending" xml:space="preserve">
+    <value>A previous migration needs recovery or finalization. This test build cannot continue it or start normally. Close this preview. Do not uninstall the previous app, delete migration data, or run gateway cleanup.</value>
+  </data>
   <data name="Chat_Code_Copy" xml:space="preserve"><value>Copy code</value></data>
   <data name="Chat_Code_Label" xml:space="preserve"><value>Code block</value></data>
   <data name="Chat_Model_Current" xml:space="preserve"><value>Current model</value></data>
