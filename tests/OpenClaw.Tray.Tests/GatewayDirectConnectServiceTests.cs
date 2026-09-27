@@ -185,6 +185,78 @@ public sealed class GatewayDirectConnectServiceTests : IDisposable
     }
 
     [Fact]
+    public void BuildCandidate_UnchangedSharedToken_KeepsStoredBootstrapToken()
+    {
+        var existing = new GatewayRecord
+        {
+            Id = "gw-paired",
+            Url = "wss://previous.example",
+            FriendlyName = "Previous",
+            SharedGatewayToken = "existing-token",
+            BootstrapToken = "bootstrap-token",
+        };
+        var request = new GatewayDirectConnectRequest(
+            existing.Url,
+            SharedToken: null,
+            FriendlyName: "Renamed",
+            SshTunnel: null,
+            EditingGatewayId: existing.Id,
+            PreserveExistingSharedTokenWhenMissing: true);
+
+        var candidate = GatewayDirectConnectService.BuildCandidate(
+            request,
+            existing,
+            existing.Id,
+            preserveExistingSharedToken: true);
+
+        Assert.Equal("existing-token", candidate.SharedGatewayToken);
+        Assert.Equal("bootstrap-token", candidate.BootstrapToken);
+        Assert.Equal("Renamed", candidate.FriendlyName);
+        Assert.Equal(existing.Id, candidate.Id);
+    }
+
+    [Fact]
+    public async Task Connect_UnchangedSharedToken_KeepsDeviceTokensAndBootstrap()
+    {
+        var previous = AddPreviousGateway();
+        _registry.AddOrUpdate(previous with
+        {
+            SharedGatewayToken = "existing-token",
+            BootstrapToken = "bootstrap-token",
+        });
+        _registry.Save();
+        var identity = CreateIdentity(previous.Id);
+        identity.StoreDeviceTokenForRole("operator", "operator-token");
+        identity.StoreDeviceTokenForRole("node", "node-token");
+        _manager.NextSnapshot = Connected(previous.Id);
+        var service = CreateService();
+
+        var result = await service.ConnectAsync(new GatewayDirectConnectRequest(
+            previous.Url,
+            SharedToken: null,
+            FriendlyName: previous.FriendlyName,
+            SshTunnel: null,
+            EditingGatewayId: previous.Id,
+            PreserveExistingSharedTokenWhenMissing: true));
+
+        Assert.Equal(GatewayDirectConnectOutcome.Connected, result.Outcome);
+        var saved = Assert.IsType<GatewayRecord>(_registry.GetById(previous.Id));
+        Assert.Equal(previous.Id, saved.Id);
+        Assert.Equal("existing-token", saved.SharedGatewayToken);
+        Assert.Equal("bootstrap-token", saved.BootstrapToken);
+        Assert.Equal(
+            "operator-token",
+            DeviceIdentity.TryReadStoredDeviceTokenForRole(
+                _registry.GetIdentityDirectory(previous.Id),
+                "operator"));
+        Assert.Equal(
+            "node-token",
+            DeviceIdentity.TryReadStoredDeviceTokenForRole(
+                _registry.GetIdentityDirectory(previous.Id),
+                "node"));
+    }
+
+    [Fact]
     public async Task Connect_TokenlessDiagnosticsRequestPreservesSameRealmSharedToken()
     {
         var previous = AddPreviousGateway();
@@ -228,6 +300,38 @@ public sealed class GatewayDirectConnectServiceTests : IDisposable
         Assert.Equal(GatewayDirectConnectOutcome.Connected, result.Outcome);
         Assert.Null(_registry.GetActive()?.SharedGatewayToken);
         Assert.NotEqual(previous.Id, _registry.ActiveGatewayId);
+    }
+
+    [Fact]
+    public void ShouldPreserveUnchangedSharedToken_RequiresSameCredentialRealm()
+    {
+        var ssh = new SshTunnelConfig("user", "bastion.example", 18789, 45678, SshPort: 22);
+        var previous = AddPreviousGateway() with
+        {
+            SharedGatewayToken = "existing-token",
+            SshTunnel = ssh,
+        };
+        _registry.AddOrUpdate(previous);
+        _registry.Save();
+
+        Assert.False(GatewayDirectConnectService.ShouldPreserveUnchangedSharedToken(
+            previous,
+            "existing-token",
+            "wss://updated.example",
+            ssh,
+            _registry));
+        Assert.False(GatewayDirectConnectService.ShouldPreserveUnchangedSharedToken(
+            previous,
+            "existing-token",
+            previous.Url,
+            ssh with { SshPort = 2222 },
+            _registry));
+        Assert.True(GatewayDirectConnectService.ShouldPreserveUnchangedSharedToken(
+            previous,
+            "existing-token",
+            previous.Url,
+            ssh,
+            _registry));
     }
 
     [Fact]

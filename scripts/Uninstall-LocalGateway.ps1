@@ -15,7 +15,13 @@ param(
     [string]$DataDirectoryName = 'OpenClawTray',
     [string]$AutoStartName = 'OpenClawTray',
     [string]$StartupTaskName = 'OpenClaw Companion',
-    [string]$DistroName = 'OpenClawGateway'
+    [string]$DistroName = 'OpenClawGateway',
+    [ValidateSet('x64', 'arm64')]
+    [string]$Architecture = $(if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'x64' }),
+    # Deliberately longer than the checker's own watchdog so the inner bound
+    # fires first and we do not orphan a child that is about to answer.
+    [int]$MigrationCheckTimeoutSeconds = 120,
+    [int]$WslTimeoutSeconds = 120
 )
 
 $ErrorActionPreference = 'Stop'
@@ -30,6 +36,73 @@ if ($DataDirectoryName -notmatch '^[A-Za-z0-9._-]+$') {
 }
 if ($DistroName -notmatch '^[A-Za-z0-9._-]+$') {
     throw "Invalid WSL distro name '$DistroName'."
+}
+
+function ConvertTo-ProcessArgument {
+    param([string]$Value)
+
+    # wsl.exe matches its control flags against the raw command line without
+    # stripping quotes, so a quoted "--unregister" is not recognized as a flag
+    # and is executed as a command inside the distro instead. Quoting every
+    # argument therefore broke every wsl.exe call with /bin/sh: --list: not
+    # found and exit 127. Quote only values that actually need it.
+    if ([string]::IsNullOrEmpty($Value)) {
+        return '""'
+    }
+    if ($Value -notmatch '[\s"]') {
+        return $Value
+    }
+
+    # Double any trailing backslashes so the closing quote is not escaped.
+    $escaped = $Value -replace '(\\+)$', '$1$1'
+    return '"' + ($escaped -replace '"', '\"') + '"'
+}
+
+function ConvertTo-CleanProcessOutput {
+    param([string]$Value)
+
+    if ([string]::IsNullOrEmpty($Value)) {
+        return ''
+    }
+
+    # wsl.exe emits UTF-16LE on many Windows builds while the redirected stream
+    # is decoded as 8-bit, which interleaves a NUL between every character and
+    # silently defeats all output matching. Dropping NUL normalizes both the
+    # UTF-16 and UTF-8 variants without pinning an encoding that varies by
+    # Windows version.
+    return ($Value -replace "`0", '')
+}
+
+function Start-BoundedProcess {
+    param([string]$FilePath, [string]$Arguments, [int]$TimeoutMilliseconds)
+
+    # Start-Process -PassThru does not reliably expose ExitCode once output is
+    # redirected, so drive the process directly instead.
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $FilePath
+    $psi.Arguments = $Arguments
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
+
+    $process = [System.Diagnostics.Process]::Start($psi)
+    # Begin both reads before waiting so a full pipe buffer cannot deadlock us.
+    $stdout = $process.StandardOutput.ReadToEndAsync()
+    $stderr = $process.StandardError.ReadToEndAsync()
+
+    if (-not $process.WaitForExit($TimeoutMilliseconds)) {
+        try { $process.Kill() } catch {}
+        return [pscustomobject]@{ TimedOut = $true; ExitCode = $null; Output = '' }
+    }
+
+    # The parameterless wait lets the redirected streams finish flushing.
+    $process.WaitForExit()
+    $output = (@(
+        (ConvertTo-CleanProcessOutput $stdout.Result),
+        (ConvertTo-CleanProcessOutput $stderr.Result)
+    ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join [Environment]::NewLine
+    return [pscustomobject]@{ TimedOut = $false; ExitCode = [int]$process.ExitCode; Output = $output }
 }
 
 function Ensure-AppRoot {
@@ -564,31 +637,22 @@ function Format-Arguments {
 function Invoke-Wsl {
     param([string[]]$Arguments)
 
-    $stdoutPath = [System.IO.Path]::GetTempFileName()
-    $stderrPath = [System.IO.Path]::GetTempFileName()
+    $result = Start-BoundedProcess `
+        -FilePath $script:WslPath `
+        -Arguments (($Arguments | ForEach-Object { ConvertTo-ProcessArgument $_ }) -join ' ') `
+        -TimeoutMilliseconds ($WslTimeoutSeconds * 1000)
 
-    try {
-        $process = Start-Process `
-            -FilePath $script:WslPath `
-            -ArgumentList $Arguments `
-            -WindowStyle Hidden `
-            -Wait `
-            -PassThru `
-            -RedirectStandardOutput $stdoutPath `
-            -RedirectStandardError $stderrPath
+    # A stuck wsl.exe must not hang uninstall forever. A timed-out operation is
+    # indeterminate, never success: the caller must not treat it as removed.
+    if ($result.TimedOut) {
+        throw "wsl.exe $(Format-Arguments $Arguments) did not finish within $WslTimeoutSeconds seconds. The outcome is unknown."
+    }
 
-        $stdout = if (Test-Path -LiteralPath $stdoutPath) { Get-Content -LiteralPath $stdoutPath -Raw -ErrorAction SilentlyContinue } else { '' }
-        $stderr = if (Test-Path -LiteralPath $stderrPath) { Get-Content -LiteralPath $stderrPath -Raw -ErrorAction SilentlyContinue } else { '' }
-        $output = (($stdout, $stderr) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join [Environment]::NewLine
+    Write-GatewayLog ("wsl.exe {0} exited {1}.{2}{3}" -f (Format-Arguments $Arguments), $result.ExitCode, [Environment]::NewLine, $result.Output)
 
-        Write-GatewayLog ("wsl.exe {0} exited {1}.{2}{3}" -f (Format-Arguments $Arguments), $process.ExitCode, [Environment]::NewLine, $output)
-
-        return [pscustomobject]@{
-            ExitCode = [int]$process.ExitCode
-            Output = $output
-        }
-    } finally {
-        Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
+    return [pscustomobject]@{
+        ExitCode = $result.ExitCode
+        Output = $result.Output
     }
 }
 
@@ -600,9 +664,16 @@ function Test-DistroNotFound {
     }
 
     return $Output -match 'WSL_E_DISTRO_NOT_FOUND' -or
+        $Output -match 'WSL_E_DEFAULT_DISTRO_NOT_FOUND' -or
         $Output -match 'There is no distribution with the supplied name' -or
         $Output -match 'The specified distribution.*(could not be found|not found)' -or
-        $Output -match 'distribution.*not.*found'
+        $Output -match 'distribution.*not.*found' -or
+        # A host with no WSL, or with WSL but no distributions at all, cannot be
+        # holding our gateway. There is nothing to remove, so this is success and
+        # not the alarming "could not remove the local WSL gateway" failure.
+        $Output -match 'Windows Subsystem for Linux is not installed' -or
+        $Output -match 'Windows Subsystem for Linux has no installed distributions' -or
+        $Output -match 'no installed distributions'
 }
 
 function Test-DistroListed {
@@ -616,7 +687,13 @@ function Test-DistroListed {
     return $distros -contains $DistroName
 }
 
+function Enter-DestructivePhase {
+    # Past this point a failure means "cleanup ran and failed", not "unknown".
+    $script:MigrationAdmissionPhase = $false
+}
+
 function Remove-GatewayDirectory {
+    Enter-DestructivePhase
     $gatewayDirectory = Join-Path $AppRoot "wsl\$DistroName"
 
     if (-not (Test-Path -LiteralPath $gatewayDirectory)) {
@@ -648,7 +725,72 @@ function Remove-GatewayDirectory {
     throw "Failed to remove gateway directory '$gatewayDirectory': $lastError"
 }
 
+$migrationOperationLock = $null
+# Everything before the first destructive step is an admission decision. Failing
+# there means "unknown", which is reported as exit 2 so the caller can tell it
+# apart from a cleanup that actually ran and failed. Read-only discovery
+# (locating wsl.exe, listing distros) stays inside the admission phase.
+$script:MigrationAdmissionPhase = $true
 try {
+    if ($DataDirectoryName -eq 'OpenClawTray') {
+        $lockDirectory = Join-Path (Resolve-AppDataDir) 'store-migration'
+        $lockPath = Join-Path $lockDirectory 'prepare.lock'
+        $current = [IO.Path]::GetFullPath($lockPath)
+        while (-not [string]::IsNullOrEmpty($current)) {
+            try {
+                if (([IO.File]::GetAttributes($current) -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                    throw 'Migration lock paths must not contain reparse points.'
+                }
+            } catch [IO.FileNotFoundException] {
+            } catch [IO.DirectoryNotFoundException] {
+            }
+            $current = [IO.Path]::GetDirectoryName($current)
+        }
+        $null = [IO.Directory]::CreateDirectory($lockDirectory)
+        # Join the Inno parent's read lock, or protect a standalone cleanup.
+        # Store preparation/completion/finalization require an exclusive handle.
+        $migrationOperationLock = [IO.FileStream]::new(
+            $lockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+        $checker = Join-Path $AppRoot 'Test-InnoMigration.ps1'
+        if (-not (Test-Path -LiteralPath $checker -PathType Leaf)) {
+            throw 'Migration preservation checker is missing. Gateway cleanup was not started.'
+        }
+        $checkerArguments = @(
+            '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+            '-File', (ConvertTo-ProcessArgument $checker),
+            '-AppRoot', (ConvertTo-ProcessArgument $AppRoot),
+            '-DataDirectoryName', (ConvertTo-ProcessArgument $DataDirectoryName),
+            '-Architecture', $Architecture,
+            '-RoamingDirectory', (ConvertTo-ProcessArgument (Resolve-AppDataDir)),
+            '-LocalDirectory', (ConvertTo-ProcessArgument (Resolve-LocalDataDir))) -join ' '
+        $checkerResult = Start-BoundedProcess `
+            -FilePath (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') `
+            -Arguments $checkerArguments `
+            -TimeoutMilliseconds ($MigrationCheckTimeoutSeconds * 1000)
+        if ($checkerResult.TimedOut) {
+            throw "Migration preservation check did not finish within $MigrationCheckTimeoutSeconds seconds. Gateway cleanup was not started."
+        }
+        $migrationResult = $checkerResult.ExitCode
+        # The checker's diagnostics are the only way to tell DPAPI failure from
+        # schema drift from binding mismatch. Never discard them.
+        if (-not [string]::IsNullOrWhiteSpace($checkerResult.Output)) {
+            Write-GatewayLog ("Migration preservation check output:{0}{1}" -f [Environment]::NewLine, $checkerResult.Output.Trim())
+        }
+        Write-GatewayLog "Migration preservation check exited $migrationResult."
+        if ($migrationResult -eq 10) {
+            Write-GatewayLog 'Completed Store migration: preserving gateway and generated state.'
+            exit 10
+        }
+        if ($migrationResult -eq 11) {
+            # Not a failure, so do not log it as one. The Store app is registered and is the
+            # likely owner of this gateway; the caller surfaces its own instructions.
+            Write-GatewayLog 'Store app is registered without a migration receipt: preserving gateway and generated state.'
+            exit 11
+        }
+        if ($migrationResult -ne 0) {
+            throw "Migration preservation check failed (exit $migrationResult). Gateway cleanup was not started."
+        }
+    }
     Ensure-AppRoot
     Write-GatewayLog "Starting local gateway cleanup for $DistroName."
 
@@ -673,6 +815,7 @@ try {
 
     Start-Sleep -Seconds 2
 
+    Enter-DestructivePhase
     $unregisterResult = Invoke-Wsl -Arguments @('--unregister', $DistroName)
     if ($unregisterResult.ExitCode -ne 0 -and -not (Test-DistroNotFound $unregisterResult.Output)) {
         Write-GatewayResult `
@@ -694,7 +837,12 @@ try {
     $message = $_.Exception.Message
     Write-GatewayLog "Local gateway cleanup failed: $message"
     try { "[$(Get-Date -Format 'o')] $message" | Out-File -LiteralPath $errorPath -Encoding UTF8 -Force } catch {}
-    Write-GatewayResult -Succeeded $false -ExitCode 1 -Message $message
+    $failureExitCode = if ($script:MigrationAdmissionPhase) { 2 } else { 1 }
+    Write-GatewayResult -Succeeded $false -ExitCode $failureExitCode -Message $message
     Write-Warning $message
-    exit 1
+    exit $failureExitCode
+} finally {
+    if ($null -ne $migrationOperationLock) {
+        $migrationOperationLock.Dispose()
+    }
 }

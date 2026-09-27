@@ -19,6 +19,8 @@ public sealed class SetupWizardRunner
         TimeSpan.FromMilliseconds(500);
     internal const string StartupMigrationLeaseDiagnostic =
         "OpenClaw startup migrations are already running for this state directory;";
+    internal const string RestartServingOwnerDiagnostic =
+        "GATEWAY_RESTART_PREPARATION_REFUSED: Cannot verify a live serving Gateway owner for the selected service. Gateway was not signaled.";
     private static readonly Regex s_normalizeKeyRegex = new("[^a-z0-9]+", RegexOptions.Compiled);
 
     // Progress steps can repeat while background work runs; keep bounded caps
@@ -614,6 +616,22 @@ public sealed class SetupWizardRunner
                 await StartGatewayStep.RestartAndWaitForHealthAsync(
                     _ctx,
                     CancellationToken.None);
+            if (!restartResult.IsSuccess &&
+                restartResult.Message?.Contains(RestartServingOwnerDiagnostic, StringComparison.Ordinal) == true)
+            {
+                // Restoring hybrid reload can initiate a supervisor restart before the CLI
+                // records its intent. Never bypass that CLI ownership gate or adopt a listener.
+                _ctx.Logger.Warn(
+                    "Gateway restart owner was unavailable after restoring reload. Rechecking managed ownership before one restart retry.");
+                var retryOwnership = await VerifyExpectedManagedGatewayAsync(
+                    "before retrying gateway restart");
+                if (!retryOwnership.IsSuccess)
+                    return retryOwnership;
+
+                restartResult = await StartGatewayStep.RestartAndWaitForHealthAsync(
+                    _ctx,
+                    CancellationToken.None);
+            }
             if (!restartResult.IsSuccess)
             {
                 return StepResult.Fail(
@@ -657,7 +675,8 @@ public sealed class SetupWizardRunner
                 _ctx.DistroName!,
                 command,
                 remaining,
-                ct: CancellationToken.None);
+                ct: CancellationToken.None,
+                inputViaStdin: true);
             lastResult = result;
             if (result.ExitCode == 0
                 || !IsStartupMigrationLeaseContention(result))

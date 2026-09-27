@@ -245,7 +245,7 @@ internal sealed class GatewayDirectConnectService
         }
     }
 
-    private static GatewayRecord BuildCandidate(
+    internal static GatewayRecord BuildCandidate(
         GatewayDirectConnectRequest request,
         GatewayRecord? existing,
         string recordId,
@@ -262,10 +262,40 @@ internal sealed class GatewayDirectConnectService
                     ? existing?.SharedGatewayToken
                     : null
                 : request.SharedToken,
-            BootstrapToken = null,
+            BootstrapToken = string.IsNullOrWhiteSpace(request.SharedToken) && preserveExistingSharedToken
+                ? existing?.BootstrapToken
+                : null,
             SshTunnel = request.SshTunnel,
             LastConnected = existing?.LastConnected,
         }.PreserveAdvancedFields(existing);
+
+    /// <summary>
+    /// True only when an edit keeps the same shared token inside the same credential realm.
+    /// </summary>
+    internal static bool ShouldPreserveUnchangedSharedToken(
+        GatewayRecord? editing,
+        string? submittedToken,
+        string normalizedGatewayUrl,
+        SshTunnelConfig? sshTunnel,
+        GatewayRegistry registry)
+    {
+        if (editing is null)
+            return false;
+
+        var storedSharedToken = string.IsNullOrWhiteSpace(editing.SharedGatewayToken)
+            ? null
+            : editing.SharedGatewayToken.Trim();
+        if (!string.Equals(submittedToken, storedSharedToken, StringComparison.Ordinal))
+            return false;
+
+        var request = new GatewayDirectConnectRequest(
+            normalizedGatewayUrl,
+            submittedToken,
+            FriendlyName: null,
+            sshTunnel,
+            editing.Id);
+        return IsSameCredentialRealm(editing, request, registry);
+    }
 
     private static bool IsSameCredentialRealm(
         GatewayRecord existing,

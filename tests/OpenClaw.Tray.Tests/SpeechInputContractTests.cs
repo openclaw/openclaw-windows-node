@@ -76,7 +76,7 @@ public sealed class SpeechInputContractTests
         Assert.Contains("IsChatTtsPlaybackReady", chatPage);
         Assert.Contains("_speakerMuteGate.WaitAsync(0)", chatPage);
         Assert.Contains("_voiceSettingsDialogOpen", chatPage);
-        Assert.Contains("_reactorHost?.SetSpeakerMuted(true);\r\n            await ShowTtsUnavailableDialogAsync();", chatPage);
+        Assert.Contains("_reactorHost?.SetSpeakerMuted(true);\n            await ShowTtsUnavailableDialogAsync();", chatPage.Replace("\r\n", "\n"));
         Assert.Contains("ChatVoiceDialog_OutputOffTitle", chatPage);
         Assert.Contains("ChatVoiceDialog_OutputOffMessage", chatPage);
         Assert.Contains("NavigateToPermissionsSettings", chatPage);
@@ -90,7 +90,7 @@ public sealed class SpeechInputContractTests
         Assert.Contains("IsChatTtsPlaybackReady", chatWindow);
         Assert.Contains("_speakerMuteGate.WaitAsync(0)", chatWindow);
         Assert.Contains("_voiceSettingsDialogOpen", chatWindow);
-        Assert.Contains("_reactorHost?.SetSpeakerMuted(true);\r\n            await ShowTtsUnavailableDialogAsync();", chatWindow);
+        Assert.Contains("_reactorHost?.SetSpeakerMuted(true);\n            await ShowTtsUnavailableDialogAsync();", chatWindow.Replace("\r\n", "\n"));
         Assert.Contains("ChatVoiceDialog_OutputOffTitle", chatWindow);
         Assert.Contains("ChatVoiceDialog_OutputOffMessage", chatWindow);
         Assert.Contains("ShowHub(\"permissions\")", chatWindow);

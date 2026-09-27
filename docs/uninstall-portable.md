@@ -69,3 +69,29 @@ Remove-ItemProperty -Path "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" 
     -Name "OpenClawTray" -ErrorAction SilentlyContinue
 Remove-Item "$env:LOCALAPPDATA\OpenClawTray\wsl\OpenClawGateway" -Recurse -Force -ErrorAction SilentlyContinue
 ```
+
+---
+
+## Installer Uninstall Preserved the Local Gateway
+
+The installer's uninstaller can report that it could not confirm whether your
+data was migrated to the Store app, and that it left the local WSL gateway in
+place. That is deliberate. When migration state cannot be validated, the
+uninstaller preserves the gateway rather than risk destroying data that a
+completed migration still depends on. No override is offered, because at that
+point nothing on the machine can tell a broken check apart from a real
+migration.
+
+The app is still uninstalled. Only the WSL distro and its generated state are
+kept.
+
+To remove them:
+
+- **Before uninstalling**, open the tray and choose
+  **Settings -> Local Gateway -> Remove Local Gateway**.
+- **After uninstalling**, run the manual cleanup above. The distro is
+  `OpenClawGateway` and its VHD parent directory is
+  `%LOCALAPPDATA%\OpenClawTray\wsl\OpenClawGateway`.
+
+Silent uninstalls (`/VERYSILENT`) skip the message. The same outcome is written
+to the Inno uninstall log, naming the distro and the preserved directory.

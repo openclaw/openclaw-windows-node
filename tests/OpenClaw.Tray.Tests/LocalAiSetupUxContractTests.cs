@@ -192,10 +192,10 @@ public sealed class LocalAiSetupUxContractTests
         Assert.DoesNotContain("config.LocalAi.WslMirroredNetworkingConsent = config.LocalAi.Enabled", source);
         Assert.DoesNotContain("config.LocalAi.WslMirroredNetworkingConsent = true", source);
         Assert.Contains(
-            "config.LocalAi.WslMirroredNetworkingConsent =\r\n            config.LocalAi.Enabled &&\r\n" +
-            "            _localAiNetworkingConsentRequired &&\r\n" +
+            "config.LocalAi.WslMirroredNetworkingConsent =\n            config.LocalAi.Enabled &&\n" +
+            "            _localAiNetworkingConsentRequired &&\n" +
             "            LocalAiNetworkingConsentCheckBox.IsChecked == true;",
-            source);
+            source.Replace("\r\n", "\n"));
         Assert.Contains("bytes / (1024d * 1024d * 1024d)", source);
         Assert.Contains("GiB", source);
         Assert.Contains("loads on first request", source);
@@ -617,8 +617,8 @@ public sealed class LocalAiSetupUxContractTests
             "(!_localAiRecoveryOnly && LocalAiToggle.IsOn != true) ||",
             primaryButtonMethod);
         Assert.Contains(
-            "(LocalAiToggle.IsOn == true &&\r\n             _localAiSelectionEligible &&\r\n             (!_localAiNetworkingConsentRequired || LocalAiNetworkingConsentCheckBox.IsChecked == true));",
-            primaryButtonMethod);
+            "(LocalAiToggle.IsOn == true &&\n             _localAiSelectionEligible &&\n             (!_localAiNetworkingConsentRequired || LocalAiNetworkingConsentCheckBox.IsChecked == true));",
+            primaryButtonMethod.Replace("\r\n", "\n"));
     }
 
     /// <summary>
