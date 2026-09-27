@@ -14426,6 +14426,27 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task RespondToPermissionAsync_SupersededRequestBlocksStaleAllow()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        bridge.RaiseAgent(MakeApprovalRequestedEvent("appr-stale-1"));
+        bridge.RaiseAgent(MakeApprovalRequestedEvent("appr-current-2"));
+
+        await provider.RespondToPermissionAsync("main", "appr-stale-1", allow: true);
+
+        Assert.Empty(bridge.ResolvedApprovals);
+        Assert.Equal("appr-current-2", snapshots[^1].Timelines["main"].PendingPermission?.RequestId);
+
+        await provider.RespondToPermissionAsync("main", "appr-current-2", allow: true);
+
+        var resolved = Assert.Single(bridge.ResolvedApprovals);
+        Assert.Equal("appr-current-2", resolved.Id);
+        Assert.Equal(ChatPermissionActionKeys.AllowOnce, resolved.Decision);
+        Assert.Null(snapshots[^1].Timelines["main"].PendingPermission);
+    }
+
+    [Fact]
     public async Task RuntimeGolden_ResetAtomicallyClearsQueueAndAdvancesGeneration()
     {
         var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);

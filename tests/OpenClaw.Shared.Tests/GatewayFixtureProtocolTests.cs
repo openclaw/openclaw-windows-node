@@ -241,7 +241,6 @@ public sealed class GatewayFixtureProtocolTests
     [InlineData("config.patch")]
     [InlineData("config.apply")]
     [InlineData("node.invoke")]
-    [InlineData("exec.approval.resolve")]
     public async Task RealClient_WritesAreRejectedWithoutChangingScenario(string method)
     {
         var token = CreateToken();
@@ -256,6 +255,42 @@ public sealed class GatewayFixtureProtocolTests
         var after = await connected.Client.SendWizardRequestAsync("config.get");
         Assert.Equal(before.GetRawText(), after.GetRawText());
         Assert.Contains(server.Requests, r => r.Method == method && r.Outcome == "error:FIXTURE_READ_ONLY");
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
+    [Fact]
+    public async Task RealClient_ApprovalResolveGetsSyntheticAckAndRecordsSafeCorrelation()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+
+        await connected.Client.ResolveExecApprovalAsync("fixture-approval-1", "allow-once");
+
+        var request = Assert.Single(server.Requests, request => request.Method == "exec.approval.resolve");
+        Assert.Equal("fixture-approval-1", request.ApprovalId);
+        Assert.Equal("allow-once", request.Decision);
+        Assert.Equal("ok", request.Outcome);
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
+    [Fact]
+    public async Task RealClient_ApprovalResolveRejectsUnsupportedDecisionWithoutRecordingPayload()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            connected.Client.SendWizardRequestAsync(
+                "exec.approval.resolve",
+                new { id = "not-fixture-owned", decision = "approve" }));
+
+        Assert.Contains("Unsupported approval decision", error.Message);
+        var request = Assert.Single(server.Requests, request => request.Method == "exec.approval.resolve");
+        Assert.Equal("<unknown>", request.ApprovalId);
+        Assert.Equal("<unknown>", request.Decision);
+        Assert.Equal("error:INVALID_PARAMS", request.Outcome);
         Assert.Empty(server.UnexpectedRequests);
     }
 
