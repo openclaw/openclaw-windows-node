@@ -7117,6 +7117,76 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   <data name="LocalAiPage_UnavailableProbeTitle" xml:space="preserve"><value>Beschikbaarheid van lokale AI kon niet worden geverifieerd</value></data>
   <data name="LocalAiPage_CheckingTitle" xml:space="preserve"><value>Beschikbaarheid van lokale AI controleren</value></data>
   <data name="LocalAiPage_CheckingMessage" xml:space="preserve"><value>OpenClaw controleert of dit apparaat lokale AI kan uitvoeren. Dit duurt slechts een moment.</value></data>
+  <data name="Migration_InnoCompleted" xml:space="preserve">
+    <value>Uw OpenClaw-configuratie is gemigreerd naar de Store-versie. Sluit dit bericht om deze app af te sluiten. Verwijder daarna de vorige OpenClaw Companion-app via Windows-instellingen &gt; Apps &gt; Geïnstalleerde apps en open de Store-versie. Uw gemigreerde configuratie en gateway blijven behouden.</value>
+  </data>
+  <data name="Migration_InnoCheckFailed" xml:space="preserve">
+    <value>OpenClaw kon niet controleren of de migratie naar de Store-versie is voltooid. Deze versie kan niet veilig starten. Sluit andere OpenClaw-processen en probeer het opnieuw. Verwijder geen migratiegegevens en voer geen gatewayopruiming uit.</value>
+  </data>
+  <data name="Migration_StorePreviewTitle" xml:space="preserve">
+    <value>OpenClaw-migratievoorbeeld</value>
+  </data>
+  <data name="Migration_StorePreviewReady" xml:space="preserve">
+    <value>Er is een ondersteunde vorige installatie gevonden. Normaal opstarten is gepauzeerd. U kunt de migratie starten of Nu niet kiezen om de vorige app te blijven gebruiken.</value>
+  </data>
+  <data name="Migration_StoreConsent" xml:space="preserve">
+    <value>Er is een ondersteunde vorige installatie gevonden. Start de migratie alleen wanneer u klaar bent.
+
+Als u {0} kiest, wordt uw configuratie gecontroleerd en worden beveiligde migratiegegevens opgeslagen. Als de controle slaagt, zal de vorige app niet meer normaal kunnen starten. U moet dan de vorige app verwijderen via Windows-instellingen &gt; Apps &gt; Geïnstalleerde apps en de Store-app opnieuw openen om de migratie af te ronden. Uw configuratie en gateway blijven behouden; er wordt niets automatisch verwijderd.
+
+Kies {1} om dit voorbeeld te sluiten zonder de migratie te starten en de vorige app te blijven gebruiken.</value>
+  </data>
+  <data name="Migration_StoreMigrate" xml:space="preserve">
+    <value>Migreren</value>
+  </data>
+  <data name="Migration_StoreNotNow" xml:space="preserve">
+    <value>Nu niet</value>
+  </data>
+  <data name="Migration_StoreCloseInno" xml:space="preserve">
+    <value>Sluit de vorige OpenClaw Companion-app en kies daarna {0} om het opnieuw te proberen. Kies {1} om dit voorbeeld te sluiten. Forceer niet dat de vorige app stopt en verwijder deze nog niet. Verwijder de app pas nadat dit voorbeeld meldt dat de voltooiing van de migratie is vastgelegd.</value>
+  </data>
+  <data name="Migration_StoreRetry" xml:space="preserve">
+    <value>Opnieuw proberen</value>
+  </data>
+  <data name="Migration_StoreAdoptionPending" xml:space="preserve">
+    <value>De vorige app is gesloten en de migratie kan doorgaan. Deze testversie neemt uw configuratie nog niet over. Sluit dit voorbeeld. Verwijder de vorige app of migratiegegevens niet en voer geen gatewayopruiming uit.</value>
+  </data>
+  <data name="Migration_StorePrepared" xml:space="preserve">
+    <value>De vorige app is gesloten. OpenClaw heeft uw huidige configuratie gevalideerd en beveiligde voorbereidingsgegevens voor de migratie opgeslagen. Deze testversie neemt uw configuratie nog niet over. Sluit dit voorbeeld. Verwijder de vorige app of migratiegegevens niet en voer geen gatewayopruiming uit.</value>
+  </data>
+  <data name="Migration_StoreValidationFailed" xml:space="preserve">
+    <value>OpenClaw kon de vorige configuratie niet veilig valideren voor migratie. Er is geen voltooiing vastgelegd en de vorige app is niet gewijzigd. Sluit dit voorbeeld en probeer het later opnieuw. Verwijder de vorige app of migratiegegevens niet en voer geen gatewayopruiming uit.</value>
+  </data>
+  <data name="Migration_StoreCredentialUnavailable" xml:space="preserve">
+    <value>OpenClaw kon geen referentie voor de actieve gateway oplossen. Er is geen voltooiing vastgelegd en de vorige app is niet gewijzigd. Sluit dit voorbeeld en herstel de configuratie van de actieve gateway voordat u het opnieuw probeert. Verwijder de vorige app of migratiegegevens niet en voer geen gatewayopruiming uit.</value>
+  </data>
+  <data name="Migration_StoreAwaitingInnoRemoval" xml:space="preserve">
+    <value>OpenClaw heeft de voltooiing van de migratie vastgelegd en uw configuratie behouden. Sluit dit voorbeeld, verwijder de vorige OpenClaw Companion-app via Windows-instellingen en open daarna de Store-versie. Verwijder geen migratiegegevens en voer geen gatewayopruiming uit.</value>
+  </data>
+  <data name="Migration_StoreYes" xml:space="preserve">
+    <value>Ja</value>
+  </data>
+  <data name="Migration_StoreNo" xml:space="preserve">
+    <value>Nee</value>
+  </data>
+  <data name="Migration_StoreUpdateRequired" xml:space="preserve">
+    <value>De vorige app is ouder dan de bronversie die dit voorbeeld vereist. Migratie en normaal opstarten van de Store-versie zijn geblokkeerd. Gebruik een geverifieerde Inno-versie met migratieondersteuning voordat u migratie test. Uw configuratie is niet gewijzigd.</value>
+  </data>
+  <data name="Migration_StoreUnsupported" xml:space="preserve">
+    <value>Deze installatielocatie, architectuur of pakketconfiguratie wordt niet ondersteund door het migratievoorbeeld. Alleen de standaardinstallatie per gebruiker met een overeenkomende architectuur wordt ondersteund. Uw configuratie is niet gewijzigd.</value>
+  </data>
+  <data name="Migration_StoreInspectionFailed" xml:space="preserve">
+    <value>Het migratievoorbeeld kon de vorige installatie of migratierecords niet veilig controleren. Normaal opstarten is geblokkeerd. Sluit dit voorbeeld en bekijk het applogboek voordat u het opnieuw probeert. Verwijder geen migratiegegevens en voer geen gatewayopruiming uit.</value>
+  </data>
+  <data name="Migration_StoreFinalizationFailed" xml:space="preserve">
+    <value>OpenClaw kon de voltooide migratie niet veilig afronden. Normaal opstarten is geblokkeerd en het migratiebewijs is voor herstel bewaard. Sluit dit voorbeeld en probeer het later opnieuw. Verwijder geen migratiegegevens en voer geen gatewayopruiming uit.</value>
+  </data>
+  <data name="Migration_StoreStartupRefused" xml:space="preserve">
+    <value>OpenClaw heeft de migratie voltooid, maar Windows heeft OpenClaw Companion niet bij het aanmelden ingeschakeld. Uw gegevens en instellingen zijn gemigreerd. Als u OpenClaw automatisch wilt starten, schakelt u OpenClaw Companion in via Instellingen > Apps > Opstarten, of neem contact op met uw beheerder als opstarten door beleid wordt beheerd.</value>
+  </data>
+  <data name="Migration_StorePending" xml:space="preserve">
+    <value>Een vorige migratie moet worden hersteld of afgerond. Deze testversie kan die migratie niet voortzetten of normaal starten. Sluit dit voorbeeld. Verwijder de vorige app of migratiegegevens niet en voer geen gatewayopruiming uit.</value>
+  </data>
   <data name="Chat_Code_Copy" xml:space="preserve"><value>Code kopiëren</value></data>
   <data name="Chat_Code_Label" xml:space="preserve"><value>Codeblok</value></data>
   <data name="Chat_Model_Current" xml:space="preserve"><value>Huidig model</value></data>

@@ -204,6 +204,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private readonly SshTunnelRecoveryBudget _sshTunnelRecoveryBudget = new();
     private GlobalHotkeyService? _globalHotkey;
     private Mutex? _mutex;
+    // Do not release during managed shutdown: a failed service disposal may leave state
+    // writers running. Windows closes this handle only when the process terminates.
+    private IDisposable? _innoMigrationLease;
     private Microsoft.UI.Dispatching.DispatcherQueue? _dispatcherQueue;
     private AppState? _appState;
     internal AppState? AppState => _appState;
@@ -538,6 +541,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             return; // Environment.Exit called inside; defensive return
         }
 
+        if (StoreMigrationStartupGuard.ShouldStopLaunch())
+        {
+            Exit();
+            return;
+        }
+
         // Check for protocol activation (MSIX packaged apps receive deep links this way)
         string? protocolUri = GetProtocolActivationUri();
 
@@ -574,6 +583,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 Logger.Warn("Post-setup restart acquired abandoned tray mutex.");
                 ownsMutex = true;
             }
+        }
+
+        // Keep Inno's AppMutex held while finish-migration guidance is visible.
+        if (ownsMutex && InnoMigrationStartupGuard.ShouldStopLaunch(out _innoMigrationLease))
+        {
+            Exit();
+            return;
         }
 
         _activationRouter = new ActivationRouter(AppIdentity.ProtocolScheme, DeepLinkPipeName);

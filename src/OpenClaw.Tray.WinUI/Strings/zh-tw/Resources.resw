@@ -7116,6 +7116,76 @@
   <data name="LocalAiPage_UnavailableProbeTitle" xml:space="preserve"><value>無法驗證本機 AI 可用性</value></data>
   <data name="LocalAiPage_CheckingTitle" xml:space="preserve"><value>正在檢查本機 AI 可用性</value></data>
   <data name="LocalAiPage_CheckingMessage" xml:space="preserve"><value>OpenClaw 正在檢查此裝置是否可以執行本機 AI。這只需要片刻。</value></data>
+  <data name="Migration_InnoCompleted" xml:space="preserve">
+    <value>您的 OpenClaw 設定已移轉至 Store 版本。請關閉此訊息以結束此應用程式，然後透過 Windows 設定 &gt; 應用程式 &gt; 已安裝的應用程式解除安裝舊版 OpenClaw Companion，再開啟 Store 版本。已移轉的設定和閘道將會保留。</value>
+  </data>
+  <data name="Migration_InnoCheckFailed" xml:space="preserve">
+    <value>OpenClaw 無法檢查是否已完成移轉至 Store 版本。此副本無法安全啟動。請關閉其他 OpenClaw 處理程序後再試一次。請勿刪除移轉資料或執行閘道清理。</value>
+  </data>
+  <data name="Migration_StorePreviewTitle" xml:space="preserve">
+    <value>OpenClaw 移轉預覽</value>
+  </data>
+  <data name="Migration_StorePreviewReady" xml:space="preserve">
+    <value>已找到支援的舊版安裝。正常啟動已暫停。您可以開始移轉，或選擇「現在不要」以繼續使用舊版應用程式。</value>
+  </data>
+  <data name="Migration_StoreConsent" xml:space="preserve">
+    <value>已找到支援的舊版安裝。請僅在準備好時開始移轉。
+
+選取「{0}」會驗證您的設定並儲存受保護的移轉記錄。如果驗證成功，舊版應用程式將無法正常啟動。您必須接著透過 Windows 設定 &gt; 應用程式 &gt; 已安裝的應用程式解除安裝舊版應用程式，然後重新開啟 Store 應用程式以完成移轉。您的設定和閘道將會保留；不會自動解除安裝任何內容。
+
+選取「{1}」可結束此預覽而不開始移轉，並繼續使用舊版應用程式。</value>
+  </data>
+  <data name="Migration_StoreMigrate" xml:space="preserve">
+    <value>移轉</value>
+  </data>
+  <data name="Migration_StoreNotNow" xml:space="preserve">
+    <value>現在不要</value>
+  </data>
+  <data name="Migration_StoreCloseInno" xml:space="preserve">
+    <value>關閉舊版 OpenClaw Companion 應用程式，然後選取「{0}」以重試。選取「{1}」可結束此預覽。請勿強制關閉舊版應用程式，也請暫時不要解除安裝。只有在此預覽提示已記錄移轉完成後，才可解除安裝舊版應用程式。</value>
+  </data>
+  <data name="Migration_StoreRetry" xml:space="preserve">
+    <value>重試</value>
+  </data>
+  <data name="Migration_StoreAdoptionPending" xml:space="preserve">
+    <value>舊版應用程式已關閉，可以繼續移轉。此測試版本尚不會採用您的設定。請關閉此預覽。請勿解除安裝舊版應用程式、刪除移轉資料或執行閘道清理。</value>
+  </data>
+  <data name="Migration_StorePrepared" xml:space="preserve">
+    <value>舊版應用程式已關閉。OpenClaw 已驗證您目前的設定，並儲存了受保護的移轉準備資料。此測試版本尚不會採用您的設定。請關閉此預覽。請勿解除安裝舊版應用程式、刪除移轉資料或執行閘道清理。</value>
+  </data>
+  <data name="Migration_StoreValidationFailed" xml:space="preserve">
+    <value>OpenClaw 無法安全驗證舊版設定是否可移轉。未記錄完成狀態，舊版應用程式也未被變更。請關閉此預覽，稍後再試。請勿解除安裝舊版應用程式、刪除移轉資料或執行閘道清理。</value>
+  </data>
+  <data name="Migration_StoreCredentialUnavailable" xml:space="preserve">
+    <value>OpenClaw 無法解析作用中閘道的認證。未記錄完成狀態，舊版應用程式也未被變更。請關閉此預覽，還原作用中閘道設定後再試。請勿解除安裝舊版應用程式、刪除移轉資料或執行閘道清理。</value>
+  </data>
+  <data name="Migration_StoreAwaitingInnoRemoval" xml:space="preserve">
+    <value>OpenClaw 已記錄移轉完成並保留您的設定。請關閉此預覽，透過 Windows 設定解除安裝舊版 OpenClaw Companion 應用程式，然後開啟 Store 版本。請勿刪除移轉資料或執行閘道清理。</value>
+  </data>
+  <data name="Migration_StoreYes" xml:space="preserve">
+    <value>是</value>
+  </data>
+  <data name="Migration_StoreNo" xml:space="preserve">
+    <value>否</value>
+  </data>
+  <data name="Migration_StoreUpdateRequired" xml:space="preserve">
+    <value>舊版應用程式低於此預覽要求的來源版本。移轉及 Store 版本的正常啟動已遭封鎖。請先使用經過驗證且支援移轉的 Inno 版本，再測試移轉。您的設定未被變更。</value>
+  </data>
+  <data name="Migration_StoreUnsupported" xml:space="preserve">
+    <value>移轉預覽不支援此安裝位置、架構或套件設定。僅支援架構相符的預設個別使用者安裝。您的設定未被變更。</value>
+  </data>
+  <data name="Migration_StoreInspectionFailed" xml:space="preserve">
+    <value>移轉預覽無法安全檢查舊版安裝或移轉記錄。正常啟動已遭封鎖。請關閉此預覽並查看應用程式記錄後重試。請勿刪除移轉資料或執行閘道清理。</value>
+  </data>
+  <data name="Migration_StoreFinalizationFailed" xml:space="preserve">
+    <value>OpenClaw 無法安全完成移轉。正常啟動已遭封鎖，移轉收據已保留以供復原。請關閉此預覽，稍後再試。請勿刪除移轉資料或執行閘道清理。</value>
+  </data>
+  <data name="Migration_StoreStartupRefused" xml:space="preserve">
+    <value>OpenClaw 已完成移轉，但 Windows 未允許在登入時啟動 OpenClaw Companion。您的資料與設定皆已移轉。若要自動啟動 OpenClaw，請在 設定 > 應用程式 > 啟動 中啟用 OpenClaw Companion；如果啟動由原則管理，請聯絡系統管理員。</value>
+  </data>
+  <data name="Migration_StorePending" xml:space="preserve">
+    <value>先前的移轉需要復原或完成。此測試版本無法繼續該移轉或正常啟動。請關閉此預覽。請勿解除安裝舊版應用程式、刪除移轉資料或執行閘道清理。</value>
+  </data>
   <data name="Chat_Code_Copy" xml:space="preserve"><value>複製程式碼</value></data>
   <data name="Chat_Code_Label" xml:space="preserve"><value>程式碼區塊</value></data>
   <data name="Chat_Model_Current" xml:space="preserve"><value>目前的模型</value></data>
