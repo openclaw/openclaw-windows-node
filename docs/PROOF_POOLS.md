@@ -20,6 +20,17 @@ hosts or imply that a pool ran.
 | `windows-wsl-gateway-e2e` | Product WSL setup, bootstrap, operator and node pairing, recovery, and Gateway invocation |
 | `windows-winui-interactive` | Current-head visual, accessibility, permission, and diagnostic proof in the isolated WinUI app |
 
+Onboarding compositor captures, full galleries, and native keyboard selection
+are tagged `Category=NativeOnboardingProof` in `OpenClaw.Tray.UITests`. They belong
+to `windows-winui-interactive`, not the hosted framework UI shard. Run that
+category on an authorized interactive desktop with all three isolated tray roots,
+`OPENCLAW_REPO_ROOT`, `OPENCLAW_UI_PROOF_DIR`, and the reviewed source/build freeze
+(`OPENCLAW_UI_PROOF_FREEZE_DIR`, `OPENCLAW_UI_PROOF_MANIFEST_SHA256`). Missing
+foreground, capture, or freeze prerequisites still fail; exclusion from hosted CI
+does not fulfill the proof pool. Framework onboarding behavior remains in CI
+and invokes the XAML-wired action boundary without claiming native input or
+compositor proof. Button controls retain their automation Invoke coverage.
+
 Every pool is `maintainer-scheduled`, requires approval, and is
 `capacity-dependent`. A scheduler must match every `requiredCapabilities`
 entry. It must not weaken a command, convert a skip into a pass, or substitute a

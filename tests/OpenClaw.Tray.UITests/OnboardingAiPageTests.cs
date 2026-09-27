@@ -19,9 +19,12 @@ namespace OpenClaw.Tray.UITests;
 [Collection(UICollection.Name)]
 public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper output)
 {
+    private bool _nativeProof;
+
     [Theory]
     [InlineData(ElementTheme.Light)]
     [InlineData(ElementTheme.Dark)]
+    [Trait("Category", "NativeOnboardingProof")]
     public async Task FocusedAi_DefaultSetupWindowKeepsCenteredHeaderAndScrollableActions(ElementTheme theme)
     {
         OnboardingNativeProof.AssertIsolatedRoots();
@@ -115,6 +118,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
     }
 
     [Fact]
+    [Trait("Category", "NativeOnboardingProof")]
     public async Task FocusedAi_RequiredNotesAndConfirmationStayInOneDialogThroughVerification()
     {
         await WithPageAsync(async (page, transport, completed) =>
@@ -205,7 +209,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
     {
         await WithPageAsync(async (page, transport, completed) =>
         {
-            await OnboardingNativeProof.InvokeSettingsCardAsync(ui.TestWindow, Find<SettingsCard>(page, "ApiKeysButton"));
+            await InvokeCardAsync(Find<SettingsCard>(page, "ApiKeysButton"));
             await WaitAsync(() => Find<StackPanel>(page, "ApiKeyForm").Visibility == Visibility.Visible);
             Assert.Equal(Visibility.Visible, Find<StackPanel>(page, "ApiKeyForm").Visibility);
             Assert.Equal(-1, Find<ComboBox>(page, "ApiProviderPicker").SelectedIndex);
@@ -267,14 +271,19 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
         });
     }
 
-    [Fact]
-    public async Task ProviderPopup_PreservesBackdropSelectionScrollAndRestoresFocusAfterConfirmedCancel()
+    [Theory]
+    [InlineData(ElementTheme.Light, 720)]
+    [InlineData(ElementTheme.Dark, 720)]
+    [InlineData(ElementTheme.Light, 600)]
+    [InlineData(ElementTheme.Dark, 600)]
+    public async Task ProviderPopup_PreservesBackdropSelectionScrollAndRestoresFocusAfterConfirmedCancel(
+        ElementTheme theme, double width)
     {
         await WithPageAsync(async (page, transport, completed) =>
         {
             var more = Find<SettingsExpander>(page, "MoreExpander");
             more.IsExpanded = true;
-            await OnboardingNativeProof.InvokeSettingsCardAsync(ui.TestWindow, Find<SettingsCard>(page, "ApiKeysButton"));
+            await InvokeCardAsync(Find<SettingsCard>(page, "ApiKeysButton"));
             await WaitAsync(() => Find<StackPanel>(page, "ApiKeyForm").Visibility == Visibility.Visible);
             var picker = Find<ComboBox>(page, "ApiProviderPicker");
             picker.SelectedIndex = 0;
@@ -283,7 +292,10 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             input.Password = "synthetic-popup-test-key";
             input.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
             await OnboardingNativeProof.NextCompositionAsync();
+            await WaitAsync(() => Find<Button>(page, "ApiKeyConnectButton").IsEnabled);
             var scroll = Find<ScrollViewer>(page, "ChoicesScroller");
+            var viewportSettled = true;
+            scroll.ViewChanged += (_, e) => viewportSettled = !e.IsIntermediate;
             var offset = scroll.VerticalOffset;
             var candidates = Find<ItemsControl>(page, "CandidateChoices").ItemsSource;
             var subtitle = Find<TextBlock>(page, "StatusText").Text;
@@ -299,13 +311,18 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             transport.CancelStatus = "cancelled";
             Invoke(cancel);
             await WaitAsync(() => Find<Button>(page, "RefreshButton").IsEnabled &&
-                ReferenceEquals(Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(page.XamlRoot), input));
+                ReferenceEquals(Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(page.XamlRoot), input) &&
+                viewportSettled && Math.Abs(scroll.VerticalOffset - offset) <= 1);
             Assert.InRange(Math.Abs(scroll.VerticalOffset - offset), 0, 1);
             Assert.Same(selected, picker.SelectedItem);
             Assert.Empty(input.Password);
             Assert.Equal(1, transport.MethodCalls.Count(method => method == "openclaw.setup.activate.start"));
             Assert.Equal(2, transport.MethodCalls.Count(method => method == "wizard.cancel"));
             Assert.Equal(0, completed());
+            Assert.True(Find<Button>(page, "RefreshButton").Focus(FocusState.Programmatic));
+            await WaitAsync(() => scroll.BringIntoViewOnFocusChange);
+            scroll.ChangeView(null, offset > 1 ? 0 : scroll.ScrollableHeight, null, disableAnimation: true);
+            await WaitAsync(() => viewportSettled && Math.Abs(scroll.VerticalOffset - offset) > 1);
 
             void AssertBackdrop()
             {
@@ -323,7 +340,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                 Assert.False(Find<Button>(page, "ApiKeyConnectButton").IsEnabled);
                 Assert.Same(dialog, GetDialog(page));
             }
-        }, configure: transport =>
+        }, theme: theme, width: width, configure: transport =>
         {
             transport.IncludeDensityChoices = true;
             transport.CancelStatus = "running";
@@ -394,11 +411,53 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
     }
 
     [Fact]
+    public async Task RepeatedChoiceCards_BindTheirTemplateNameAndRejectAnotherTemplatesHandler()
+    {
+        await WithPageAsync(async (page, transport, completed) =>
+        {
+            var choices = Find<ItemsControl>(page, "CandidateChoices");
+            await TestSupport.WaitForRenderedConditionAsync(
+                () => TestSupport.FindDescendants<SettingsCard>(choices).Count(card => card.IsLoaded) == 2,
+                "repeated choice template instances");
+            var cards = TestSupport.FindDescendants<SettingsCard>(choices).ToArray();
+            Assert.Equal(2, cards.Length);
+            Assert.NotSame(cards[0], cards[1]);
+            Assert.NotSame(cards[0].Tag, cards[1].Tag);
+            Assert.Null(page.FindName("ChoiceActionCard"));
+            var recommendedTemplate = Find<ItemsControl>(page, "RecommendedInstalls").ItemTemplate;
+            var recommended = Assert.IsType<SettingsCard>(recommendedTemplate.LoadContent());
+            var anotherRecommended = Assert.IsType<SettingsCard>(recommendedTemplate.LoadContent());
+            Assert.Equal("RecommendedInstallCard", recommended.Name);
+            Assert.Equal(recommended.Name, anotherRecommended.Name);
+            Assert.NotSame(recommended, anotherRecommended);
+            Assert.Null(page.FindName("RecommendedInstallCard"));
+            foreach (var card in cards)
+            {
+                Assert.Equal("ChoiceActionCard", card.Name);
+                Assert.ThrowsAny<Xunit.Sdk.XunitException>(() =>
+                    TestSupport.InvokeSettingsCardAction(page, card, "RecommendedInstall_Click"));
+            }
+            cards[0].Name = "";
+            try
+            {
+                Assert.ThrowsAny<Xunit.Sdk.XunitException>(() =>
+                    TestSupport.InvokeSettingsCardAction(page, cards[0], "ChoiceAction_Click"));
+                Assert.Throws<InvalidOperationException>(() => { _ = InvokeCardAsync(cards[0]); });
+            }
+            finally { cards[0].Name = "ChoiceActionCard"; }
+            Assert.Equal(["openclaw.setup.detect"], transport.MethodCalls);
+            Assert.Equal(0, completed());
+        }, configure: transport => transport.IncludeAdditionalCandidate = true);
+    }
+
+    [Fact]
     public async Task OpeningApiKeys_DoesNotSubmitAnyCandidate()
     {
         await WithPageAsync(async (page, transport, completed) =>
         {
-            await OnboardingNativeProof.InvokeSettingsCardAsync(ui.TestWindow, Find<SettingsCard>(page, "ApiKeysButton"));
+            Assert.ThrowsAny<Xunit.Sdk.XunitException>(() =>
+                TestSupport.InvokeSettingsCardAction(page, Find<SettingsCard>(page, "ApiKeysButton"), "LocalAi_Click"));
+            await InvokeCardAsync(Find<SettingsCard>(page, "ApiKeysButton"));
             await WaitAsync(() => Find<StackPanel>(page, "ApiKeyForm").Visibility == Visibility.Visible);
             Assert.Equal(-1, Find<ComboBox>(page, "ApiProviderPicker").SelectedIndex);
             Assert.Null(page.FindName("ContinueButton"));
@@ -413,7 +472,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
     {
         await WithPageAsync(async (page, transport, completed) =>
         {
-            await OnboardingNativeProof.InvokeSettingsCardAsync(ui.TestWindow, Find<SettingsCard>(page, "ApiKeysButton"));
+            await InvokeCardAsync(Find<SettingsCard>(page, "ApiKeysButton"));
             await WaitAsync(() => Find<StackPanel>(page, "ApiKeyForm").Visibility == Visibility.Visible);
             Assert.Equal(Visibility.Visible, Find<StackPanel>(page, "ApiKeyForm").Visibility);
             Assert.Equal(-1, Find<ComboBox>(page, "ApiProviderPicker").SelectedIndex);
@@ -425,6 +484,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             ui.Container.UpdateLayout();
             await ui.YieldToRenderAsync();
             input.Password = "synthetic-key";
+            await WaitAsync(() => connect.IsEnabled);
             Assert.True(connect.IsEnabled);
             Assert.False(Find<CheckBox>(page, "CatalogPreference").IsChecked);
             Assert.Single(transport.MethodCalls);
@@ -531,7 +591,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
     {
         await WithPageAsync(async (page, transport, completed) =>
         {
-            await OnboardingNativeProof.InvokeSettingsCardAsync(ui.TestWindow, Find<SettingsCard>(page, "ApiKeysButton"));
+            await InvokeCardAsync(Find<SettingsCard>(page, "ApiKeysButton"));
             await WaitAsync(() => Find<StackPanel>(page, "ApiKeyForm").Visibility == Visibility.Visible);
             Find<ComboBox>(page, "ApiProviderPicker").SelectedIndex = 0;
             var input = Find<PasswordBox>(page, "ApiKeyInput");
@@ -809,6 +869,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
     [InlineData(LocalAiOnboardingState.SetUp, ElementTheme.Dark)]
     [InlineData(LocalAiOnboardingState.Use, ElementTheme.Light)]
     [InlineData(LocalAiOnboardingState.Use, ElementTheme.Dark)]
+    [Trait("Category", "NativeOnboardingProof")]
     public async Task LocalAi_FullWindowCentersHeadingAndShowsStateGroupsAndFooter(
         LocalAiOnboardingState state, ElementTheme theme)
     {
@@ -920,6 +981,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             Assert.Single(choices.Items);
             Assert.Empty(TestSupport.FindDescendants<ListViewItem>(choices));
             var card = Assert.Single(TestSupport.FindDescendants<SettingsCard>(choices));
+            await TestSupport.WaitForRenderedConditionAsync(() => card.IsLoaded, "expanded provider card Loaded");
             Assert.True(card.IsClickEnabled && card.IsLoaded);
             Assert.False(string.IsNullOrWhiteSpace(AutomationProperties.GetName(card)));
             Assert.Contains(TestSupport.FindDescendants<TextBlock>(card), text => text.Text == "Sign in");
@@ -1034,7 +1096,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             choices.UpdateLayout();
             await ui.YieldToRenderAsync();
             var candidate = Assert.Single(TestSupport.FindDescendants<SettingsCard>(choices));
-            await OnboardingNativeProof.InvokeSettingsCardAsync(ui.TestWindow, candidate);
+            await InvokeCardAsync(candidate);
             await WaitAsync(() => completed() == 1);
             Assert.Equal(1, transport.MethodCalls.Count(method => method == "openclaw.setup.activate.start"));
             Assert.Equal(1, transport.MethodCalls.Count(method => method == "openclaw.setup.verify"));
@@ -1164,12 +1226,14 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
         ISetupLocalAiHost? localAiHost = null,
         Func<LocalAiOnboardingSnapshot, Task>? reviewLocalAi = null,
         PageTransport? reconnectTransport = null,
-        string? expectedGatewayId = null, bool nativeProof = false, ElementTheme theme = ElementTheme.Light)
+        string? expectedGatewayId = null, bool nativeProof = false, ElementTheme theme = ElementTheme.Light,
+        double width = 720)
     {
         await ui.ResetContainerAsync();
         await ui.RunOnUIAsync(async () =>
         {
             var transport = new PageTransport(focusedSupported);
+            _nativeProof = nativeProof;
             configure?.Invoke(transport);
             var completions = 0;
             var connects = 0;
@@ -1207,7 +1271,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                     ExpectedConfiguredModelRef: expectedModelRef,
                     TransportFactory: () => connects++ == 0 ? transport : reconnectTransport ?? transport,
                     LocalAiHost: localAiHost, ReviewLocalAi: reviewLocalAi, ExpectedGatewayId: expectedGatewayId);
-                frame = nativeProof ? new Frame() : new Frame { Width = 720, Height = 820 };
+                frame = nativeProof ? new Frame() : new Frame { Width = width, Height = 820 };
                 navigation = OnboardingNativeProof.TrackNavigation(frame);
                 ui.Container.Children.Add(frame);
                 frame.Navigate(typeof(AiSetupPage), args);
@@ -1239,6 +1303,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                     else ui.Container.SetValue(Panel.BackgroundProperty, originalBackground);
                     ui.TestWindow.AppWindow.Resize(originalSize);
                     if (nativeProof) ui.TestWindow.AppWindow.Move(originalPosition);
+                    _nativeProof = false;
                     await ui.YieldToRenderAsync();
                 }
             }
@@ -1251,7 +1316,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
         choices.UpdateLayout();
         await ui.YieldToRenderAsync();
         var card = TestSupport.FindDescendants<SettingsCard>(choices).ElementAt(index);
-        await OnboardingNativeProof.InvokeSettingsCardAsync(ui.TestWindow, card);
+        await InvokeCardAsync(card);
     }
 
     private async Task WaitAsync(Func<bool> predicate)
@@ -1283,7 +1348,24 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
     }
 
     private Task InvokeLocalAiAsync(AiSetupPage page) =>
-        OnboardingNativeProof.InvokeSettingsCardAsync(ui.TestWindow, Find<SettingsCard>(page, "LocalAiCard"));
+        InvokeCardAsync(Find<SettingsCard>(page, "LocalAiCard"));
+
+    private Task InvokeCardAsync(SettingsCard card)
+    {
+        if (_nativeProof)
+            return OnboardingNativeProof.InvokeSettingsCardAsync(ui.TestWindow, card);
+        var page = Assert.Single(TestSupport.FindDescendants<AiSetupPage>(ui.Container));
+        var handler = card.Name switch
+        {
+            "ApiKeysButton" => "ApiKeys_Click",
+            "LocalAiCard" => "LocalAi_Click",
+            "ChoiceActionCard" => "ChoiceAction_Click",
+            "RecommendedInstallCard" => "RecommendedInstall_Click",
+            _ => throw new InvalidOperationException($"Unsupported AI setup card: {card.Name}")
+        };
+        TestSupport.InvokeSettingsCardAction(page, card, handler);
+        return ui.YieldToRenderAsync();
+    }
 
     private sealed class PageTransport(bool focusedSupported) : IGatewayAiSetupTransport
     {

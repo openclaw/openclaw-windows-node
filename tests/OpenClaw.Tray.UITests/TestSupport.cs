@@ -23,6 +23,46 @@ namespace OpenClaw.Tray.UITests;
 /// </summary>
 public static class TestSupport
 {
+    /// <summary>Exercise the XAML-wired action boundary, not the toolkit's native input provider.</summary>
+    public static void InvokeSettingsCardAction(Page page, SettingsCard card, string handler)
+    {
+        Assert.True(card.IsLoaded && card.IsEnabled && card.IsClickEnabled);
+        Assert.Same(page.XamlRoot, card.XamlRoot);
+        // The toolkit advertises Invoke but its managed and native providers reject it.
+        // Keep actual keyboard/pointer coverage in NativeOnboardingProof, never synthesize OS input here.
+        var root = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT")
+            ?? throw new InvalidOperationException("Set OPENCLAW_REPO_ROOT for framework UI tests.");
+        var xaml = System.Xml.Linq.XDocument.Load(System.IO.Path.Combine(root,
+            "src", "OpenClaw.SetupEngine.UI", "Pages", page.GetType().Name + ".xaml"));
+        var declarations = xaml.Descendants().Where(element => element.Name.LocalName == "SettingsCard").ToArray();
+        if (!string.IsNullOrEmpty(card.Name))
+        {
+            System.Xml.Linq.XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+            var declaration = Assert.Single(declarations, element => (string?)element.Attribute(x + "Name") == card.Name);
+            Assert.Equal(handler, (string?)declaration.Attribute("Click"));
+        }
+        else if (page is OpenClaw.SetupEngine.UI.Pages.AdvancedSetupPage)
+        {
+            // This page has exactly four flat siblings, unlike repeated AI DataTemplate rows.
+            var parent = Assert.IsType<StackPanel>(VisualTreeHelper.GetParent(card));
+            var siblings = parent.Children.OfType<SettingsCard>().ToArray();
+            Assert.Equal(4, siblings.Length);
+            Assert.Equal(siblings.Length, declarations.Length);
+            Assert.All(declarations, element => Assert.Same(declarations[0].Parent, element.Parent));
+            var index = Array.IndexOf(siblings, card);
+            Assert.InRange(index, 0, declarations.Length - 1);
+            Assert.Equal(handler, (string?)declarations[index].Attribute("Click"));
+        }
+        else
+        {
+            Assert.Fail("Unsupported unnamed SettingsCard. Use a template-scoped name or the Advanced Setup sibling contract.");
+        }
+        var action = page.GetType().GetMethod(handler,
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(action);
+        action.Invoke(page, [card, new RoutedEventArgs()]);
+    }
+
     public static async Task WaitForRenderedConditionAsync(Func<bool> predicate, string operation)
     {
         var settled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

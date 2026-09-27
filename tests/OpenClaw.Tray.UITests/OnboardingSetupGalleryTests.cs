@@ -89,6 +89,7 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
     }
 
     [Fact]
+    [Trait("Category", "NativeOnboardingProof")]
     public async Task ApprovedMock_FivePagesAndProviderPopup_LightAndDark()
     {
         OnboardingNativeProof.AssertIsolatedRoots();
@@ -140,6 +141,7 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
     }
 
     [Fact]
+    [Trait("Category", "NativeOnboardingProof")]
     public async Task OwnedWindows_KeepProductDpiAcrossSharedCaptureAndAsyncGalleryCreation()
     {
         OnboardingNativeProof.AssertIsolatedRoots();
@@ -210,6 +212,7 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
     }
 
     [Fact]
+    [Trait("Category", "NativeOnboardingProof")]
     public async Task OwnedWindowDpi_PreflightCapturesActualWelcomeWithoutVirtualization()
     {
         OnboardingNativeProof.AssertIsolatedRoots();
@@ -225,6 +228,7 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
     }
 
     [Fact]
+    [Trait("Category", "NativeOnboardingProof")]
     public async Task CompleteNativeGallery_AllRequiredScenesAndScrollViewports_LightAndDark()
     {
         OnboardingNativeProof.AssertIsolatedRoots();

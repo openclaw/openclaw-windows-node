@@ -98,7 +98,8 @@ public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHel
                 Assert.True(Assert.IsType<Button>(page.FindName("RecoveryButton")).IsEnabled);
                 Assert.All(choices.Children, item => Assert.True(Assert.IsAssignableFrom<Control>(item).IsEnabled));
                 Assert.False(File.Exists(Path.Combine(data, "settings.json")));
-                OnboardingNativeProof.AssertSourceUnchanged();
+                if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENCLAW_UI_PROOF_DIR")))
+                    OnboardingNativeProof.AssertSourceUnchanged();
             }
             finally
             {

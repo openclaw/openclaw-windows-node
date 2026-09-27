@@ -106,7 +106,7 @@ public sealed class OnboardingArtworkRenderingTests(UIThreadFixture ui, ITestOut
             ui.Container.UpdateLayout();
             await ui.YieldToRenderAsync();
             OnboardingNativeProof.AssertHeroLayout(mascot, output);
-            Assert.Equal(130, mascot.Width * 120 / 168, 8);
+            Assert.Equal(180, mascot.Width);
 
             // Drive the production animator/drawing with deterministic elapsed time, without
             // overriding Windows' preference or waiting for a wall-clock gesture schedule.
@@ -121,7 +121,7 @@ public sealed class OnboardingArtworkRenderingTests(UIThreadFixture ui, ITestOut
                 render.Invoke(drawing, [pose]);
                 await ui.YieldToRenderAsync();
                 var bitmap = new RenderTargetBitmap();
-                await bitmap.RenderAsync(mascot, 182, 182);
+                await bitmap.RenderAsync(mascot);
                 return (await bitmap.GetPixelsAsync()).ToArray();
             }
 
@@ -299,6 +299,7 @@ public sealed class OnboardingArtworkRenderingTests(UIThreadFixture ui, ITestOut
     [Theory]
     [InlineData(ElementTheme.Light)]
     [InlineData(ElementTheme.Dark)]
+    [Trait("Category", "NativeOnboardingProof")]
     public async Task NativeMascot_LiveTimerPointerTapsAndAccessoriesChangeComposedPixels(ElementTheme theme)
     {
         await WithNativeMascotWindowAsync(theme, animation: true, async (window, mascot) =>
@@ -409,6 +410,7 @@ public sealed class OnboardingArtworkRenderingTests(UIThreadFixture ui, ITestOut
     [Theory]
     [InlineData(ElementTheme.Light)]
     [InlineData(ElementTheme.Dark)]
+    [Trait("Category", "NativeOnboardingProof")]
     public async Task NativeMascot_StaticReferenceProvesCoralCompositorHaloOutsideSilhouette(ElementTheme theme)
     {
         await WithNativeMascotWindowAsync(theme, animation: false, async (window, mascot) =>

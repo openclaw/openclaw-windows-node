@@ -58,6 +58,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
     [Theory]
     [InlineData(ElementTheme.Light)]
     [InlineData(ElementTheme.Dark)]
+    [Trait("Category", "NativeOnboardingProof")]
     public async Task HeroViewport_FineTuneKeepsHeadingFooterAndNativeTogglesVisible(ElementTheme theme)
     {
         await WithWindowAsync(async (window, frame, _) =>
@@ -143,6 +144,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
     [Theory]
     [InlineData(ElementTheme.Light)]
     [InlineData(ElementTheme.Dark)]
+    [Trait("Category", "NativeOnboardingProof")]
     public async Task HeroViewport_ReplacementSummaryAndExactDistroConsentScrollWithoutClipping(ElementTheme theme)
     {
         await WithWindowAsync(async (window, frame, _) =>
@@ -195,6 +197,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
     }
 
     [Fact]
+    [Trait("Category", "NativeOnboardingProof")]
     public async Task ProfileRows_AreNativeFullWidthSingleSelectionAndKeyboardAccessible()
     {
         await WithWindowAsync(async (window, frame, _) =>
@@ -641,6 +644,25 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
     }
 
     [Theory]
+    [InlineData(0, "Remote_Click")]
+    [InlineData(1, "Mcp_Click")]
+    [InlineData(2, "Deferred_Click")]
+    [InlineData(3, "Existing_Click")]
+    public async Task AdvancedRouteCards_RejectAnotherSiblingsHandler(int index, string wrongHandler)
+    {
+        await WithWindowAsync(async (window, frame, _) =>
+        {
+            window.NavigateToAdvancedSetup();
+            var page = await MountedPageAsync<AdvancedSetupPage>(window, frame);
+            var cards = TestSupport.FindDescendants<SettingsCard>(page).ToArray();
+            Assert.Equal(4, cards.Length);
+            Assert.ThrowsAny<Xunit.Sdk.XunitException>(() =>
+                TestSupport.InvokeSettingsCardAction(page, cards[index], wrongHandler));
+            Assert.Same(page, frame.Content);
+        }, new FailingNativeHost());
+    }
+
+    [Theory]
     [InlineData(SetupGatewayRoute.McpOnly, 2, false, true)]
     [InlineData(SetupGatewayRoute.Deferred, 3, true, false)]
     public async Task GatewayFreeRoutes_CompleteWithoutWslOrAiAndPreserveUnrelatedSettings(
@@ -662,7 +684,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
             var choices = await MountedPageAsync<AdvancedSetupPage>(window, frame);
             var cards = TestSupport.FindDescendants<SettingsCard>(choices).ToArray();
             Assert.Equal(4, cards.Length);
-            Invoke(cards[choiceIndex]);
+            await InvokeCardAsync(window, choices, cards[choiceIndex], route + "_Click");
             var capabilities = await MountedPageAsync<CapabilitiesPage>(window, frame);
             Assert.Equal(route, window.AccessDraft.Route);
             Assert.False(window.AccessDraft.GatewayAvailable);
@@ -742,7 +764,8 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
         {
             window.NavigateToAdvancedSetup();
             var choices = await MountedPageAsync<AdvancedSetupPage>(window, frame);
-            Invoke(TestSupport.FindDescendants<SettingsCard>(choices).ElementAt(choiceIndex));
+            await InvokeCardAsync(window, choices,
+                TestSupport.FindDescendants<SettingsCard>(choices).ElementAt(choiceIndex), route + "_Click");
             var editor = await MountedPageAsync<SetupNativeConnectionPage>(window, frame);
             Assert.Equal(route, window.AccessDraft.Route);
             AssertProgress(editor, stageCount: 5, current: 1);
@@ -1064,19 +1087,17 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
     private static void Invoke(FrameworkElement element)
     {
         Assert.True(Assert.IsAssignableFrom<Control>(element).IsEnabled);
-        if (element is SettingsCard card)
-        {
-            Assert.True(card.IsClickEnabled);
-            // Toolkit's SettingsCard peer advertises Invoke without implementing IInvokeProvider.
-            // Exercise the native keyboard path, only while this test owns foreground and focus.
-            var window = Assert.IsType<SetupWindow>(SetupWindow.Active);
-            FocusOwnedControl(window, card);
-            SendKey(0x20);
-            return;
-        }
         var peer = FrameworkElementAutomationPeer.FromElement(element)
             ?? FrameworkElementAutomationPeer.CreatePeerForElement(element);
         Assert.IsAssignableFrom<IInvokeProvider>(peer.GetPattern(PatternInterface.Invoke)).Invoke();
+    }
+
+    private static Task InvokeCardAsync(SetupWindow window, Page page, SettingsCard card, string handler)
+    {
+        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENCLAW_UI_PROOF_DIR")))
+            return OnboardingNativeProof.InvokeSettingsCardAsync(window, card);
+        TestSupport.InvokeSettingsCardAction(page, card, handler == "McpOnly_Click" ? "Mcp_Click" : handler);
+        return Task.CompletedTask;
     }
 
     private static void FocusOwnedControl(SetupWindow window, Control control)

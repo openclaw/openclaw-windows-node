@@ -317,6 +317,49 @@ public sealed class ProviderArtworkTests
     }
 
     [Fact]
+    public async Task PageDisposal_DrainsAdmittedRequestsBeforeDisposingTransport()
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var active = 0;
+        var cancellations = 0;
+        using var handler = new Handler(async (_, ct) =>
+        {
+            using var registration = ct.Register(() => Interlocked.Increment(ref cancellations));
+            if (Interlocked.Increment(ref active) == ProviderArtworkLoader.MaxConcurrentRequests)
+                entered.SetResult();
+            await release.Task;
+            // Simulate a response already arriving while cancellation is draining.
+            return ImageResponse(Png());
+        });
+        using var loader = new ProviderArtworkLoader(handler);
+        var pending = Enumerable.Range(0, 8).Select(i => loader.LoadAsync(IconUri(i), default)).ToArray();
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            loader.Dispose();
+            loader.Dispose();
+            Assert.Equal(ProviderArtworkLoader.MaxConcurrentRequests, cancellations);
+            Assert.Equal(0, handler.Disposals);
+            await Assert.ThrowsAsync<ObjectDisposedException>(() => loader.LoadAsync(IconUri(9), default));
+        }
+        finally { release.TrySetResult(); }
+        foreach (var task in pending)
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => task);
+        Assert.Equal(ProviderArtworkLoader.MaxConcurrentRequests, handler.Calls);
+        Assert.Equal(1, handler.Disposals);
+        Assert.Equal((0, 0), loader.CacheSize);
+    }
+
+    [Fact]
+    public async Task UnexpectedTransportDisposal_IsNotReportedAsCancellation()
+    {
+        using var handler = new Handler((_, _) => throw new ObjectDisposedException("external transport"));
+        using var loader = new ProviderArtworkLoader(handler);
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => loader.LoadAsync(IconUri(), default));
+    }
+
+    [Fact]
     public async Task NetworkFailures_OnlyReturnCoarseCategories()
     {
         using var handler = new Handler((_, _) => throw new HttpRequestException("https://sensitive.example/logo?secret=123"));
@@ -429,6 +472,12 @@ public sealed class ProviderArtworkTests
     private sealed class Handler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send) : HttpMessageHandler
     {
         internal int Calls;
+        internal int Disposals;
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) Interlocked.Increment(ref Disposals);
+            base.Dispose(disposing);
+        }
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             Interlocked.Increment(ref Calls);

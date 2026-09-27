@@ -28,6 +28,7 @@ internal sealed class ProviderArtworkLoader : IDisposable
     private int _pending;
     private int _cacheBytes;
     private bool _disposed;
+    private bool _cancellationComplete;
     private sealed record CacheEntry(ProviderArtworkData Data, DateTimeOffset Expires);
 
     internal ProviderArtworkLoader(HttpMessageHandler? handler = null, TimeSpan? timeout = null)
@@ -43,25 +44,29 @@ internal sealed class ProviderArtworkLoader : IDisposable
 
     internal async Task<ProviderArtworkResult> LoadAsync(Uri uri, CancellationToken ct)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        ct.ThrowIfCancellationRequested();
-        if (!ProviderArtworkNetworkPolicy.TryGetUri(uri.OriginalString, out var validated))
-            return new(ProviderArtworkStatus.Blocked);
-        var key = validated.AbsoluteUri;
-        if (TryGetCached(key) is { } cached)
-            return new(ProviderArtworkStatus.Loaded, cached);
-        if (Interlocked.Increment(ref _pending) > MaxPendingRequests)
+        Uri validated;
+        string key;
+        lock (_cacheLock)
         {
-            Interlocked.Decrement(ref _pending);
-            return new(ProviderArtworkStatus.Busy);
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            ct.ThrowIfCancellationRequested();
+            if (!ProviderArtworkNetworkPolicy.TryGetUri(uri.OriginalString, out validated))
+                return new(ProviderArtworkStatus.Blocked);
+            key = validated.AbsoluteUri;
+            if (TryGetCached(key) is { } cached)
+                return new(ProviderArtworkStatus.Loaded, cached);
+            if (_pending >= MaxPendingRequests)
+                return new(ProviderArtworkStatus.Busy);
+            ++_pending;
         }
-        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct, _lifetime.Token);
-        deadline.CancelAfter(_timeout);
         var acquired = false;
         try
         {
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct, _lifetime.Token);
+            deadline.CancelAfter(_timeout);
             await _requests.WaitAsync(deadline.Token).ConfigureAwait(false);
             acquired = true;
+            deadline.Token.ThrowIfCancellationRequested();
             if (TryGetCached(key) is { } afterWait)
                 return new(ProviderArtworkStatus.Loaded, afterWait);
             var result = await FetchAsync(validated, deadline.Token).ConfigureAwait(false);
@@ -84,7 +89,11 @@ internal sealed class ProviderArtworkLoader : IDisposable
         {
             if (acquired)
                 _requests.Release();
-            Interlocked.Decrement(ref _pending);
+            bool releaseHttp;
+            lock (_cacheLock)
+                releaseHttp = --_pending == 0 && _disposed && _cancellationComplete;
+            if (releaseHttp)
+                _http.Dispose();
         }
     }
 
@@ -161,8 +170,19 @@ internal sealed class ProviderArtworkLoader : IDisposable
             _cache.Clear();
             _cacheBytes = 0;
         }
-        _lifetime.Cancel();
-        _http.Dispose();
+        try { _lifetime.Cancel(); }
+        finally
+        {
+            bool releaseHttp;
+            lock (_cacheLock)
+            {
+                _cancellationComplete = true;
+                releaseHttp = _pending == 0;
+            }
+            // The last admitted load owns transport disposal if cancellation has not drained yet.
+            if (releaseHttp)
+                _http.Dispose();
+        }
         // In-flight work still owns linked registrations and releases the semaphore.
         // These managed gates are deliberately not disposed underneath it.
     }

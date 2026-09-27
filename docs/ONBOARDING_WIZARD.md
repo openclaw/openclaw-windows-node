@@ -670,6 +670,13 @@ public HTTPS metadata logos and native Fluent fallbacks supply their visual
 identity without changing authentication. Metadata action labels are preserved.
 See [Provider artwork](PROVIDER_ARTWORK.md) for trust boundaries and format differences.
 
+Returning from a provider dialog preserves the selected provider, chooser scroll
+offset and original focus target. Restoration remains bound to its page
+generation and captured operation. Deferred focus/caret bring-into-view requests
+are intercepted inside the chooser before the outer scroll viewer handles them.
+That restoration scope ends on new pointer/keyboard input, focus departure,
+another provider operation or page close, so subsequent user scrolling is normal.
+
 The grouped screen uses native WinUI `SettingsCard` commands and
 `SettingsExpander` controls. Only this task page uses a compact, centered header
 band with an 80-DIP mascot beside the wrapping title/status; earlier setup

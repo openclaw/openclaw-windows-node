@@ -93,7 +93,8 @@ public sealed class OnboardingFeedbackTests(UIThreadFixture ui)
     [InlineData(true)]
     public async Task Tailscale_ReadinessRequiresMagicDnsAndRetainsExplicitAuthChoices(bool magicDns)
     {
-        await ui.RunOnUIAsync(() =>
+        await ui.ResetContainerAsync();
+        await ui.RunOnUIAsync(async () =>
         {
             var json = """{"BackendState":"Running","Self":{"DNSName":"pc.test.ts.net"},"CurrentTailnet":{"MagicDNSEnabled":MAGIC}}"""
                 .Replace("MAGIC", magicDns ? "true" : "false", StringComparison.Ordinal);
@@ -103,14 +104,19 @@ public sealed class OnboardingFeedbackTests(UIThreadFixture ui)
             try
             {
                 control.Initialize(draft);
+                await TestSupport.WaitForRenderedConditionAsync(() => control.IsLoaded, "Tailscale control Loaded");
                 Assert.IsType<ToggleSwitch>(control.FindName("TailscaleToggle")).IsOn = true;
                 Assert.Equal(magicDns, draft.TailscaleReady);
                 Assert.Equal(magicDns ? "test.ts.net" : null, draft.Config.Tailscale.TailnetDnsSuffix);
                 Assert.False(draft.Config.Tailscale.TrustTailscaleAuth);
                 Assert.IsType<RadioButtons>(control.FindName("TailscaleAuthModeSelector")).SelectedIndex = 1;
                 var key = Assert.IsType<PasswordBox>(control.FindName("TailscaleAuthKeyBox"));
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => key.Visibility == Visibility.Visible, "Tailscale auth selection");
                 Assert.Equal(Visibility.Visible, key.Visibility);
                 key.Password = "synthetic-test-key";
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => draft.Config.Tailscale.AuthKey == "synthetic-test-key", "Tailscale auth key change");
                 Assert.Equal(TailscaleAuthMode.AuthKey, draft.Config.Tailscale.AuthMode);
                 Assert.Equal("synthetic-test-key", draft.Config.Tailscale.AuthKey);
                 control.Deactivate();

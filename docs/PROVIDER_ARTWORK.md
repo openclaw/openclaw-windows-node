@@ -54,6 +54,11 @@ finishes, even after a caller's deadline. A timeout does not falsely imply nativ
 work was forcibly terminated. Rebind, unload and page closure cancel and fence
 old completions; unload and closure immediately release displayed image references.
 The page owns and disposes its finite encoded cache.
+Loader disposal atomically closes admission and clears that cache, then cancels
+active and queued requests. The final admitted request disposes the HTTP
+transport after cancellation has unwound; disposal never removes the transport
+under a request that still owns it. Already admitted work observes cancellation,
+while a new load after disposal still throws `ObjectDisposedException`.
 
 Failures use a local tooltip with a finite category: blocked, network, HTTP,
 oversized, unsupported, invalid image, timeout or busy. No URL, query, image,

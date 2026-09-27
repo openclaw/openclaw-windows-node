@@ -42,6 +42,32 @@ public sealed class OnboardingMascotAssetTests
     }
 
     [Fact]
+    public async Task ProviderArtwork_CheckoutFilterPreservesPinnedBytesWithWindowsAutoCrlf()
+    {
+        var root = Path.GetDirectoryName(OnboardingMascotSourceContractTests.RepoPath(".gitattributes"))!;
+        foreach (var asset in UpstreamAssets)
+        {
+            var path = $"src/OpenClaw.Tray.WinUI/Assets/Setup/ProviderIcons/{asset[0]}";
+            var start = new System.Diagnostics.ProcessStartInfo("git")
+            {
+                WorkingDirectory = root,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false
+            };
+            foreach (var argument in new[] { "-c", "core.autocrlf=true", "cat-file", "--filters", $"HEAD:{path}" })
+                start.ArgumentList.Add(argument);
+            using var process = System.Diagnostics.Process.Start(start)!;
+            using var bytes = new MemoryStream();
+            var errors = process.StandardError.ReadToEndAsync();
+            await process.StandardOutput.BaseStream.CopyToAsync(bytes);
+            await process.WaitForExitAsync();
+            Assert.True(process.ExitCode == 0, await errors);
+            Assert.Equal(asset[1], Convert.ToHexString(SHA256.HashData(bytes.ToArray())));
+        }
+    }
+
+    [Fact]
     public void MascotNotice_PreservesLicenseAndPinnedSourceProvenance()
     {
         var source = File.ReadAllText(OnboardingMascotSourceContractTests.RepoPath(

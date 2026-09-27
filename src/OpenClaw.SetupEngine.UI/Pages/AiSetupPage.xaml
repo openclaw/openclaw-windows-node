@@ -15,7 +15,7 @@
             <Setter Property="BorderThickness" Value="0,0,0,1" />
         </Style>
         <DataTemplate x:Key="ChoiceTemplate">
-            <tk:SettingsCard IsClickEnabled="True" Click="ChoiceAction_Click" Tag="{Binding}"
+            <tk:SettingsCard x:Name="ChoiceActionCard" IsClickEnabled="True" Click="ChoiceAction_Click" Tag="{Binding}"
                              Style="{StaticResource CompactChoice}"
                              AutomationProperties.Name="{Binding Label}">
                 <tk:SettingsCard.Header>
@@ -144,7 +144,7 @@
                                 <ItemsControl x:Name="RecommendedInstalls">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
-                                            <tk:SettingsCard IsClickEnabled="True" Click="RecommendedInstall_Click" Tag="{Binding Website}">
+                                            <tk:SettingsCard x:Name="RecommendedInstallCard" IsClickEnabled="True" Click="RecommendedInstall_Click" Tag="{Binding Website}">
                                                 <tk:SettingsCard.Header>
                                                     <Grid ColumnDefinitions="Auto,*">
                                                         <Viewbox Width="32" Height="32" Margin="0,0,12,0">

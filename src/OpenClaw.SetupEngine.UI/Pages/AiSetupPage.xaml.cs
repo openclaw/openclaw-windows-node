@@ -43,6 +43,9 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
     private string? _operationTitle;
     private sealed record ProviderBackdrop(Control? FocusTarget, double VerticalOffset, int Version);
     private ProviderBackdrop? _providerBackdrop;
+    private Control? _providerRestoreFocus;
+    private bool _providerRestoreBringOnFocus;
+    private double _providerRestoreOffset;
     private GatewayAiSetupDetection? _deferredDetection;
     private string? _providerError;
     private int _backdropVersion;
@@ -98,6 +101,27 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         _providerDialog.RefreshRequested += ProviderRefreshRequested;
         _providerDialog.CancelRequested += ProviderCancelRequested;
         _providerDialog.ExternalLinkRequested += ProviderExternalLinkRequested;
+        ChoicesScroller.AddHandler(UIElement.PointerPressedEvent,
+            new Microsoft.UI.Xaml.Input.PointerEventHandler((_, _) => CancelProviderViewportRestore()), true);
+        ChoicesScroller.AddHandler(UIElement.PointerWheelChangedEvent,
+            new Microsoft.UI.Xaml.Input.PointerEventHandler((_, _) => CancelProviderViewportRestore()), true);
+        ChoicesScroller.AddHandler(UIElement.KeyDownEvent,
+            new Microsoft.UI.Xaml.Input.KeyEventHandler((_, _) => CancelProviderViewportRestore()), true);
+        ChoicesScroller.LosingFocus += (_, _) => CancelProviderViewportRestore();
+        ChoicesScroller.ViewChanged += (_, e) =>
+        {
+            // A bring request admitted before focus restoration may settle afterwards.
+            if (!e.IsIntermediate && _providerRestoreFocus is not null &&
+                Math.Abs(ChoicesScroller.VerticalOffset - _providerRestoreOffset) > 0.5)
+                ChoicesScroller.ChangeView(null, _providerRestoreOffset, null, disableAnimation: true);
+        };
+        ChoicePanel.BringIntoViewRequested += (_, e) =>
+        {
+            // Intercept the restored control's deferred caret request before the outer
+            // ScrollViewer handles it. New input/focus/operations end this ownership scope.
+            if (_providerRestoreFocus is not null)
+                e.Handled = true;
+        };
         Unloaded += Page_Unloaded;
     }
 
@@ -132,6 +156,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _closeTask = completion.Task;
         _closed = true;
+        CancelProviderViewportRestore();
         _providerBackdrop = null;
         _deferredDetection = null;
         ++_generation;
@@ -302,6 +327,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
     {
         if (_closed || _busy || _localActionBusy || BackdropLocked)
             return;
+        CancelProviderViewportRestore();
         _apiKeyFormRequested = true;
         ApiKeyForm.Visibility = Visibility.Visible;
         ApiKeyForm.StartBringIntoView();
@@ -601,6 +627,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
     {
         if (_closed || _busy)
             return Task.CompletedTask;
+        CancelProviderViewportRestore();
         return _activeRequest = RunCoreAsync(action);
     }
 
@@ -759,6 +786,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
 
     private void CaptureProviderBackdrop(Control? returnFocus = null)
     {
+        CancelProviderViewportRestore();
         _providerBackdrop ??= new(returnFocus ??
             (XamlRoot is { } root ? Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(root) as Control : null),
             ChoicesScroller.VerticalOffset, ++_backdropVersion);
@@ -787,12 +815,36 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                 ChoicesScroller.UpdateLayout();
                 var focus = Client?.Phase == GatewayAiSetupPhase.Rejected &&
                     Client.Selection?.Kind == GatewayAiSetupChoiceKind.ManualProvider ? ApiKeyInput : backdrop.FocusTarget;
-                if (focus is not { IsLoaded: true, IsEnabled: true } || !focus.Focus(FocusState.Programmatic))
-                    RefreshButton.Focus(FocusState.Programmatic);
-                ChoicesScroller.ChangeView(null, backdrop.VerticalOffset, null, disableAnimation: true);
+                CancelProviderViewportRestore();
+                var bringOnFocus = ChoicesScroller.BringIntoViewOnFocusChange;
+                ChoicesScroller.BringIntoViewOnFocusChange = false;
+                try
+                {
+                    if (focus is not { IsLoaded: true, IsEnabled: true } || !focus.Focus(FocusState.Programmatic))
+                    {
+                        focus = RefreshButton;
+                        RefreshButton.Focus(FocusState.Programmatic);
+                    }
+                    _providerRestoreFocus = focus;
+                    _providerRestoreBringOnFocus = bringOnFocus;
+                    _providerRestoreOffset = backdrop.VerticalOffset;
+                    ChoicesScroller.ChangeView(null, backdrop.VerticalOffset, null, disableAnimation: true);
+                }
+                finally
+                {
+                    if (_providerRestoreFocus is null)
+                        ChoicesScroller.BringIntoViewOnFocusChange = bringOnFocus;
+                }
             }))
                 Trace.TraceWarning("AI setup could not restore the provider chooser after dialog close.");
         }, onError: ReportFailure);
+    }
+
+    private void CancelProviderViewportRestore()
+    {
+        if (_providerRestoreFocus is null) return;
+        _providerRestoreFocus = null;
+        ChoicesScroller.BringIntoViewOnFocusChange = _providerRestoreBringOnFocus;
     }
 
     private void RenderLocalAi(GatewayAiSetupPhase phase)

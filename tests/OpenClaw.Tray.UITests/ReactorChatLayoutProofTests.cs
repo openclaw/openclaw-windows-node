@@ -380,9 +380,8 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
             {
                 var picker = FindControl<Button>(surface, "ChatComposerModelPicker");
                 Assert.Contains("custom/private-model", AutomationProperties.GetName(picker), StringComparison.Ordinal);
-                Assert.IsType<Flyout>(picker.Flyout).ShowAt(picker);
             });
-            await SettleAsync();
+            await ChangeModelFlyoutAsync(surface, open: true);
             await ui.RunOnUIAsync(() =>
             {
                 var popup = ModelPopup(surface);
@@ -398,23 +397,18 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Assert.Equal(2, FindControl<ListView>(popup, "ChatModelList").Items.Count);
                 Assert.Equal(2, FindDescendants<ListViewItem>(popup).Count(button =>
                     AutomationProperties.GetAutomationId(button).StartsWith("ChatModelChoice_", StringComparison.Ordinal)));
-                Invoke(FindControl<ListViewItem>(popup, "ChatModelChoice_second/shared-model"));
             });
-            await SettleAsync();
+            await ChangeModelFlyoutAsync(surface, open: false, () =>
+                Invoke(FindControl<ListViewItem>(ModelPopup(surface), "ChatModelChoice_second/shared-model")));
             Assert.Equal("second/shared-model", provider.SelectedModel);
 
-            await ui.RunOnUIAsync(() =>
-            {
-                var picker = FindControl<Button>(surface, "ChatComposerModelPicker");
-                picker.Flyout.ShowAt(picker);
-            });
-            await SettleAsync();
+            await ChangeModelFlyoutAsync(surface, open: true);
             await ui.RunOnUIAsync(() =>
             {
                 Assert.DoesNotContain(FindDescendants<ListViewItem>(ModelPopup(surface)), button =>
                     AutomationProperties.GetAutomationId(button) == "ChatModelChoice_default");
-                FindControl<Button>(surface, "ChatComposerModelPicker").Flyout.Hide();
             });
+            await ChangeModelFlyoutAsync(surface, open: false);
             Assert.Equal(0, provider.ClearModelCalls);
             Assert.Equal("second/shared-model", provider.SelectedModel);
         });
@@ -505,12 +499,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         {
             ListView? originalList = null;
             AutoSuggestBox? originalSearch = null;
-            await ui.RunOnUIAsync(() =>
-            {
-                var button = FindControl<Button>(surface, "ChatComposerModelPicker");
-                button.Flyout.ShowAt(button);
-            });
-            await SettleAsync();
+            await ChangeModelFlyoutAsync(surface, open: true);
             await ui.RunOnUIAsync(() =>
             {
                 var popup = ModelPopup(surface);
@@ -555,22 +544,16 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Assert.Same(originalSearch, FindControl<AutoSuggestBox>(popup, "ChatModelSearch"));
                 Assert.Equal("github-copilot/claude-opus-4.8",
                     Assert.IsType<ChatModelPickerRow>(originalList!.SelectedItem).Choice.SelectionId);
-                FindControl<Button>(surface, "ChatComposerModelPicker").Flyout.Hide();
             });
-            await SettleAsync();
-            await ui.RunOnUIAsync(() =>
-            {
-                var button = FindControl<Button>(surface, "ChatComposerModelPicker");
-                button.Flyout.ShowAt(button);
-            });
-            await SettleAsync();
+            await ChangeModelFlyoutAsync(surface, open: false);
+            await ChangeModelFlyoutAsync(surface, open: true);
             await ui.RunOnUIAsync(() =>
             {
                 Assert.Equal("github-copilot/claude-opus-4.7",
                     Assert.IsType<ChatModelPickerRow>(originalList!.SelectedItem).Choice.SelectionId);
-                Invoke(FindControl<ListViewItem>(ModelPopup(surface), "ChatModelChoice_github-copilot/claude-opus-4.8"));
             });
-            await SettleAsync();
+            await ChangeModelFlyoutAsync(surface, open: false, () =>
+                Invoke(FindControl<ListViewItem>(ModelPopup(surface), "ChatModelChoice_github-copilot/claude-opus-4.8")));
             Assert.Equal("github-copilot/claude-opus-4.8", provider.SelectedModel);
             Assert.Equal(1, provider.SetModelCalls);
             Assert.Equal(0, provider.ClearModelCalls);
@@ -1465,6 +1448,40 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Application.Current.UnhandledException -= reportException;
             });
             await provider.DisposeAsync();
+        }
+    }
+
+    private async Task ChangeModelFlyoutAsync(Border surface, bool open, Action? transition = null)
+    {
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Flyout? flyout = null;
+        void Changed(object? sender, object args) => completed.TrySetResult();
+        try
+        {
+            await ui.RunOnUIAsync(() =>
+            {
+                var button = FindControl<Button>(surface, "ChatComposerModelPicker");
+                flyout = Assert.IsType<Flyout>(button.Flyout);
+                if (open) flyout.Opened += Changed;
+                else flyout.Closed += Changed;
+                if (transition is not null) transition();
+                else if (open) flyout.ShowAt(button);
+                else flyout.Hide();
+            });
+            await completed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            if (open)
+                await ui.RunOnUIAsync(() => TestSupport.WaitForRenderedConditionAsync(
+                    () => FindControl<ListView>(ModelPopup(surface), "ChatModelList").IsLoaded,
+                    "opened model picker list"));
+        }
+        finally
+        {
+            await ui.RunOnUIAsync(() =>
+            {
+                if (flyout is null) return;
+                flyout.Opened -= Changed;
+                flyout.Closed -= Changed;
+            });
         }
     }
 
