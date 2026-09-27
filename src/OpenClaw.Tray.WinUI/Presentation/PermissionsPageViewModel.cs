@@ -674,11 +674,11 @@ internal sealed class PermissionsPageViewModel : INavigationAware, IDisposable, 
         if (mutation.Kind == ExecApprovalsMutationKind.AddRule)
         {
             var displayed = ResolveDisplayedExecPolicy(file);
-            var inheritedDenyWithDormantWildcardRules = main.Security is null
+            var inheritedDenyWithDormantRules = main.Security is null
                 && displayed.Security == ExecSecurity.Deny
                 && displayed.Ask != ExecAsk.Always
-                && displayed.Allowlist.Any(rule => rule.IsWildcard);
-            if (displayed.Security == ExecSecurity.Deny && !inheritedDenyWithDormantWildcardRules)
+                && displayed.Allowlist.Count > 0;
+            if (displayed.Security == ExecSecurity.Deny && !inheritedDenyWithDormantRules)
             {
                 main.Security = ExecSecurity.Allowlist;
                 main.Ask = displayed.Ask;
@@ -801,7 +801,7 @@ internal sealed class PermissionsPageViewModel : INavigationAware, IDisposable, 
         }
 
         return new DisplayedExecPolicy(
-            main?.Security ?? wildcard?.Security ?? file.Defaults?.Security ?? ExecSecurity.Deny,
+            main?.Security ?? wildcard?.Security ?? file.Defaults?.Security ?? ExecSecurity.Allowlist,
             main?.Ask ?? wildcard?.Ask ?? file.Defaults?.Ask ?? ExecAsk.OnMiss,
             allowlist);
     }

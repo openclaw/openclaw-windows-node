@@ -981,6 +981,29 @@ public sealed class PermissionsPageViewModelTests
             harness.ViewModel.ExecApprovalRules.Select(rule => rule.Pattern).ToArray());
     }
 
+    [Fact]
+    public void ExecSnapshot_UnsetSecurityUsesRuntimeAllowlistFallback()
+    {
+        var file = new ExecApprovalsFile
+        {
+            Version = 1,
+            Agents = new Dictionary<string, ExecApprovalsAgent>(StringComparer.Ordinal)
+            {
+                ["main"] = new ExecApprovalsAgent
+                {
+                    Allowlist = [new ExecAllowlistEntry { Pattern = "**/git.exe" }],
+                },
+            },
+        };
+
+        using var harness = PermissionsHarness.CreateWithRecordingStore(BuildSnapshot("runtime-fallback", file));
+        harness.ViewModel.Activate(null);
+
+        Assert.Equal("prompt", harness.ViewModel.DefaultExecActionTag);
+        Assert.True(harness.ViewModel.ExecApprovalRulesActive);
+        Assert.Equal("**/git.exe", Assert.Single(harness.ViewModel.ExecApprovalRules).Pattern);
+    }
+
     [Theory]
     [InlineData("*", false)]
     [InlineData("*", true)]
@@ -1122,17 +1145,28 @@ public sealed class PermissionsPageViewModelTests
     }
 
     [Theory]
-    [InlineData(ExecAsk.Off)]
-    [InlineData(ExecAsk.OnMiss)]
-    public async Task AddRule_FromInheritedWildcardDeny_DoesNotActivateDormantAllowlist(ExecAsk wildcardAsk)
+    [InlineData(ExecAsk.Off, true)]
+    [InlineData(ExecAsk.Off, false)]
+    [InlineData(ExecAsk.OnMiss, true)]
+    [InlineData(ExecAsk.OnMiss, false)]
+    public async Task AddRule_FromInheritedWildcardDeny_DoesNotActivateDormantAllowlist(
+        ExecAsk wildcardAsk,
+        bool existingRuleIsWildcard)
     {
         var file = BuildFile("allow", otherAgentPath: "**/rg.exe");
-        file.Agents!["main"] = new ExecApprovalsAgent();
+        file.Agents!["main"] = new ExecApprovalsAgent
+        {
+            Allowlist = existingRuleIsWildcard
+                ? null
+                : [new ExecAllowlistEntry { Pattern = "**/other.exe" }],
+        };
         file.Agents["*"] = new ExecApprovalsAgent
         {
             Security = ExecSecurity.Deny,
             Ask = wildcardAsk,
-            Allowlist = [new ExecAllowlistEntry { Pattern = "**/other.exe" }],
+            Allowlist = existingRuleIsWildcard
+                ? [new ExecAllowlistEntry { Pattern = "**/other.exe" }]
+                : null,
         };
         using var harness = PermissionsHarness.CreateWithRecordingStore(BuildSnapshot("base", file));
         harness.ViewModel.Activate(null);
@@ -1145,24 +1179,37 @@ public sealed class PermissionsPageViewModelTests
         Assert.Equal(ExecSecurity.Deny, saved.Agents["*"].Security);
         Assert.Equal(wildcardAsk, saved.Agents["*"].Ask);
         Assert.Contains(saved.Agents["main"].Allowlist!, entry => entry.Pattern == "**/git.exe");
-        Assert.Contains(harness.ViewModel.ExecApprovalRules, rule => rule.IsWildcard && rule.Pattern == "**/other.exe");
+        Assert.Contains(
+            harness.ViewModel.ExecApprovalRules,
+            rule => rule.IsWildcard == existingRuleIsWildcard && rule.Pattern == "**/other.exe");
         Assert.Contains(harness.ViewModel.ExecApprovalRules, rule => !rule.IsWildcard && rule.Pattern == "**/git.exe");
         Assert.Equal("deny", harness.ViewModel.DefaultExecActionTag);
         Assert.False(harness.ViewModel.ExecApprovalRulesActive);
     }
 
     [Theory]
-    [InlineData(ExecAsk.Off)]
-    [InlineData(ExecAsk.OnMiss)]
-    public async Task AddRule_FromInheritedWildcardDeny_RealStoreRemainsDenied(ExecAsk wildcardAsk)
+    [InlineData(ExecAsk.Off, true)]
+    [InlineData(ExecAsk.Off, false)]
+    [InlineData(ExecAsk.OnMiss, true)]
+    [InlineData(ExecAsk.OnMiss, false)]
+    public async Task AddRule_FromInheritedWildcardDeny_RealStoreRemainsDenied(
+        ExecAsk wildcardAsk,
+        bool existingRuleIsWildcard)
     {
         var file = BuildFile("allow");
-        file.Agents!["main"] = new ExecApprovalsAgent();
+        file.Agents!["main"] = new ExecApprovalsAgent
+        {
+            Allowlist = existingRuleIsWildcard
+                ? null
+                : [new ExecAllowlistEntry { Pattern = "**/other.exe" }],
+        };
         file.Agents["*"] = new ExecApprovalsAgent
         {
             Security = ExecSecurity.Deny,
             Ask = wildcardAsk,
-            Allowlist = [new ExecAllowlistEntry { Pattern = "**/other.exe" }],
+            Allowlist = existingRuleIsWildcard
+                ? [new ExecAllowlistEntry { Pattern = "**/other.exe" }]
+                : null,
         };
         using var harness = PermissionsHarness.CreateReal();
         harness.ViewModel.Activate(null);
