@@ -386,6 +386,11 @@ public sealed partial class PermissionsPage : Page
         SelectComboBoxTag(DefaultActionCombo, _viewModel.DefaultExecActionTag);
         _suppressDefaultActionChange = false;
 
+        var inactiveAction = LocalizationHelper.GetString("PermissionsPage_ExecRuleAction_Inactive");
+        var action = _viewModel.ExecApprovalRulesActive ? "allow" : inactiveAction;
+        var actionBrushKey = _viewModel.ExecApprovalRulesActive
+            ? "SystemFillColorSuccessBrush"
+            : "SystemFillColorNeutralBrush";
         PolicyRulesList.ItemsSource = _viewModel.ExecApprovalRules.Select((rule, index) =>
         {
             var scopeLabel = LocalizationHelper.GetString(
@@ -402,8 +407,8 @@ public sealed partial class PermissionsPage : Page
                     scopeLabel,
                     rule.Pattern),
                 RemoveRuleAutomationId = $"RemoveExecPolicyRuleButton_{index}",
-                Action = "allow",
-                ActionBrush = (Brush)Application.Current.Resources["SystemFillColorSuccessBrush"],
+                Action = action,
+                ActionBrush = (Brush)Application.Current.Resources[actionBrushKey],
             };
         }).ToList();
 

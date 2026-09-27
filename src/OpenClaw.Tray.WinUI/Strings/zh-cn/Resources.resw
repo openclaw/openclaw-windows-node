@@ -3472,6 +3472,9 @@
   <data name="PermissionsPage_RemoveRuleAutomationNameFormat" xml:space="preserve">
     <value>移除{0}的允许列表条目 {1}</value>
   </data>
+  <data name="PermissionsPage_ExecRuleAction_Inactive" xml:space="preserve">
+    <value>未启用</value>
+  </data>
   <data name="PermissionsPage_Allowlist_NoConfig" xml:space="preserve">
     <value>No allowlist data available. Connect to a gateway first.</value>
   </data>

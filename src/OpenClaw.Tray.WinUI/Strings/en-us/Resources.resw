@@ -3519,6 +3519,9 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
   <data name="PermissionsPage_RemoveRuleAutomationNameFormat" xml:space="preserve">
     <value>Remove {0} allowlist entry {1}</value>
   </data>
+  <data name="PermissionsPage_ExecRuleAction_Inactive" xml:space="preserve">
+    <value>inactive</value>
+  </data>
   <data name="PermissionsPage_Allowlist_NoConfig" xml:space="preserve">
     <value>No allowlist data available. Connect to a gateway first.</value>
   </data>

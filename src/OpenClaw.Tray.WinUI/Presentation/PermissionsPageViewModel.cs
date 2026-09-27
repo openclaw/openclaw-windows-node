@@ -57,6 +57,7 @@ internal sealed class PermissionsPageViewModel : INavigationAware, IDisposable, 
     private PermissionsGatewayAllowlistState _gatewayAllowlistState;
     private string _defaultExecActionTag = "deny";
     private IReadOnlyList<PermissionsExecApprovalRule> _execApprovalRules = Array.Empty<PermissionsExecApprovalRule>();
+    private bool _execApprovalRulesActive;
     private ExecApprovalsSnapshotFailure? _execApprovalsFailure;
     private PermissionsExecApprovalsStatus _execApprovalsStatus;
     private long _execApprovalsStatusVersion;
@@ -136,6 +137,7 @@ internal sealed class PermissionsPageViewModel : INavigationAware, IDisposable, 
     public string DefaultExecActionTag => _defaultExecActionTag;
 
     public IReadOnlyList<PermissionsExecApprovalRule> ExecApprovalRules => _execApprovalRules;
+    public bool ExecApprovalRulesActive => _execApprovalRulesActive;
     public ExecApprovalsSnapshotFailure? ExecApprovalsFailure => _execApprovalsFailure;
     public PermissionsExecApprovalsStatus ExecApprovalsStatus => _execApprovalsStatus;
     public long ExecApprovalsStatusVersion => _execApprovalsStatusVersion;
@@ -672,10 +674,11 @@ internal sealed class PermissionsPageViewModel : INavigationAware, IDisposable, 
         if (mutation.Kind == ExecApprovalsMutationKind.AddRule)
         {
             var displayed = ResolveDisplayedExecPolicy(file);
-            var inheritedDenyOff = main.Security is null
+            var inheritedDenyWithDormantWildcardRules = main.Security is null
                 && displayed.Security == ExecSecurity.Deny
-                && displayed.Ask == ExecAsk.Off;
-            if (displayed.Security == ExecSecurity.Deny && !inheritedDenyOff)
+                && displayed.Ask != ExecAsk.Always
+                && displayed.Allowlist.Any(rule => rule.IsWildcard);
+            if (displayed.Security == ExecSecurity.Deny && !inheritedDenyWithDormantWildcardRules)
             {
                 main.Security = ExecSecurity.Allowlist;
                 main.Ask = displayed.Ask;
@@ -715,6 +718,7 @@ internal sealed class PermissionsPageViewModel : INavigationAware, IDisposable, 
             _execApprovalsBaseHash = result.Failure?.Hash;
             SetField(ref _defaultExecActionTag, "deny", nameof(DefaultExecActionTag));
             SetField(ref _execApprovalRules, Array.Empty<PermissionsExecApprovalRule>(), nameof(ExecApprovalRules));
+            SetField(ref _execApprovalRulesActive, false, nameof(ExecApprovalRulesActive));
             SetExecApprovalsFailure(result.Failure, PermissionsExecApprovalsStatus.None, bumpVersion: false);
         }
     }
@@ -724,6 +728,10 @@ internal sealed class PermissionsPageViewModel : INavigationAware, IDisposable, 
         _execApprovalsBaseHash = snapshot.Hash;
         var displayed = ResolveDisplayedExecPolicy(snapshot.File);
         SetField(ref _defaultExecActionTag, MapDefaultAction(displayed), nameof(DefaultExecActionTag));
+        SetField(
+            ref _execApprovalRulesActive,
+            displayed.Security != ExecSecurity.Deny,
+            nameof(ExecApprovalRulesActive));
         var rules = displayed.Allowlist
             .Where(rule => !string.IsNullOrWhiteSpace(rule.Entry.Pattern))
             .Select(rule => new PermissionsExecApprovalRule(
