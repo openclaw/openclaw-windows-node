@@ -111,6 +111,9 @@ public sealed record LocalAiRuntimeSnapshot(
     KvCachePrecision? DraftKeyCachePrecision = null,
     KvCachePrecision? DraftValueCachePrecision = null)
 {
+    /// <summary>False only when the runtime confirmed publication or terminal route cleanup.</summary>
+    public bool GatewayRouteRequiresResolution { get; init; } = true;
+
     public static LocalAiRuntimeSnapshot Initial(Uri endpoint, DateTimeOffset now) =>
         new(
             LocalAiRuntimeState.Stopped,

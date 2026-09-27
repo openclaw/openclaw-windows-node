@@ -34,6 +34,11 @@ public sealed record DeviceTokenRestoreResult(
     DeviceTokenRestoreOutcome Outcome,
     string? Error = null);
 
+public sealed record DeviceIdentityReplacementTransaction(
+    string IdentityPath,
+    string? OriginalJson,
+    string AppliedContentHash);
+
 /// <summary>
 /// Manages device identity (keypair) for node authentication using Ed25519
 /// </summary>
@@ -270,6 +275,79 @@ public class DeviceIdentity
         RestoreClearedDeviceTokens(transaction, logger).Outcome ==
             DeviceTokenRestoreOutcome.Restored;
 
+    /// <summary>Atomically promotes a validated identity snapshot without changing an existing key.</summary>
+    public static DeviceIdentityReplacementTransaction ReplaceValidatedIdentity(
+        string dataPath, string? expectedOriginalJson, string replacementJson)
+    {
+        var path = Path.Combine(dataPath, "device-key-ed25519.json");
+        return WithIdentityFileLock(path, () =>
+        {
+            var original = File.Exists(path) ? File.ReadAllText(path) : null;
+            if (!string.Equals(original, expectedOriginalJson, StringComparison.Ordinal))
+                throw new InvalidOperationException("Stored gateway credentials changed during the connection check. Go back and reopen the connection editor to reload them.");
+            var replacement = ValidateAndReconstruct(
+                JsonSerializer.Deserialize<DeviceKeyData>(replacementJson)
+                ?? throw new InvalidDataException("The validated identity is empty."));
+            if (original is not null)
+            {
+                var previous = ValidateAndReconstruct(
+                    JsonSerializer.Deserialize<DeviceKeyData>(original)
+                    ?? throw new InvalidDataException("The saved identity is empty."));
+                if (previous.DeviceId != replacement.DeviceId)
+                    throw new InvalidOperationException("A same-gateway transaction cannot replace its device key.");
+            }
+            var transaction = new DeviceIdentityReplacementTransaction(path, original, ComputeContentHash(replacementJson));
+            AtomicWriteKeyFileRawCore(path, replacementJson);
+            return transaction;
+        });
+    }
+
+    /// <summary>Removes only an unchanged newly created identity. Caller must hold registry admission while invoking this.</summary>
+    public static bool RemoveCreatedIdentity(DeviceIdentityReplacementTransaction creation)
+    {
+        if (creation.OriginalJson is not null)
+            throw new ArgumentException("Cleanup requires a newly created identity.", nameof(creation));
+        return WithIdentityFileLock(creation.IdentityPath, () =>
+        {
+            var key = Path.GetFullPath(creation.IdentityPath);
+            var directory = Path.GetDirectoryName(key)!;
+            if (!Directory.Exists(directory)) return true;
+            var parent = Path.GetDirectoryName(directory);
+            if (Path.GetFileName(key) != "device-key-ed25519.json" ||
+                parent is not null && File.GetAttributes(parent).HasFlag(FileAttributes.ReparsePoint) ||
+                File.GetAttributes(directory).HasFlag(FileAttributes.ReparsePoint) ||
+                !File.Exists(key) || File.GetAttributes(key).HasFlag(FileAttributes.ReparsePoint) ||
+                Directory.EnumerateFileSystemEntries(directory).Any(path => path != key))
+                return false;
+            if (ComputeContentHash(File.ReadAllText(key)) != creation.AppliedContentHash) return false;
+            File.Delete(key);
+            Directory.Delete(directory, recursive: false);
+            return true;
+        });
+    }
+
+    public static DeviceTokenRestoreResult RestoreValidatedIdentity(DeviceIdentityReplacementTransaction transaction)
+    {
+        try
+        {
+            return WithIdentityFileLock(transaction.IdentityPath, () =>
+            {
+                if (!File.Exists(transaction.IdentityPath) ||
+                    ComputeContentHash(File.ReadAllText(transaction.IdentityPath)) != transaction.AppliedContentHash)
+                    return new DeviceTokenRestoreResult(DeviceTokenRestoreOutcome.Superseded);
+                if (transaction.OriginalJson is null)
+                    File.Delete(transaction.IdentityPath);
+                else
+                    AtomicWriteKeyFileRawCore(transaction.IdentityPath, transaction.OriginalJson);
+                return new DeviceTokenRestoreResult(DeviceTokenRestoreOutcome.Restored);
+            });
+        }
+        catch (Exception ex)
+        {
+            return new DeviceTokenRestoreResult(DeviceTokenRestoreOutcome.Failed, ex.Message);
+        }
+    }
+
     public static DeviceTokenRestoreResult RestoreClearedDeviceTokens(
         DeviceTokenClearTransaction transaction,
         IOpenClawLogger? logger = null)
@@ -429,7 +507,8 @@ public class DeviceIdentity
         GenerateNewOrLoadWinner();
     }
 
-    private void LoadExisting()
+    /// <summary>Validates and loads an existing identity without creating or rewriting it.</summary>
+    public void LoadExisting()
     {
         try
         {

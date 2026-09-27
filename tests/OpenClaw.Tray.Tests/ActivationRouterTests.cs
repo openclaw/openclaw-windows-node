@@ -162,6 +162,25 @@ public class ActivationRouterTests
         Assert.Equal("chat", route.Page);
     }
 
+    [Theory]
+    [InlineData("settings", "settings")]
+    [InlineData("SETTINGS", "settings")]
+    [InlineData("connection", "connection")]
+    [InlineData("CONNECTION", "connection")]
+    public void PlanLaunch_PostSetupWithoutGateway_OpensSettings(string target, string page)
+    {
+        var plan = CreateRouter().PlanLaunch(Input(postSetupLaunch: target));
+        var dispatch = Assert.IsType<ActivationPlan.Dispatch>(plan);
+        Assert.Equal(page, Assert.IsType<ActivationRoute.OpenHub>(dispatch.Route).Page);
+    }
+
+    [Fact]
+    public void PlanLaunch_UnknownPostSetupTarget_IsNotAnActivation()
+    {
+        Assert.IsType<ActivationPlan.Ignore>(
+            CreateRouter().PlanLaunch(Input(postSetupLaunch: "browser")));
+    }
+
     [Fact]
     public void PlanLaunch_ReturnsIgnore_WhenNoCandidatePresent()
     {

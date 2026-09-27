@@ -19,6 +19,8 @@ internal sealed record WindowManagerCallbacks(
     Func<GatewayConnectionManager?> GetConnectionManager,
     Func<GatewayRegistry?> GetGatewayRegistry,
     Func<SettingsManager?> GetSettings,
+    Func<GatewayDirectConnectService?> GetGatewayDirectConnectService,
+    Func<ILocalAiRuntime?> GetLocalAiRuntime,
     Func<NodeService?> GetNodeService,
     Func<VoiceService?> GetVoiceService,
     Func<IPageActivator?> GetPageActivator,
@@ -30,7 +32,10 @@ internal sealed record WindowManagerCallbacks(
     EventHandler SettingsSaved,
     EventHandler AdvancedSetupRequested,
     EventHandler<SetupCompletedEventArgs> SetupCompleted,
-    Action<Window?> ApplyTheme);
+    Action<Window?> ApplyTheme,
+    Func<SetupNativeCompletion, CancellationToken, Task>? PublishNativeCompletion = null,
+    Func<bool, CancellationToken, Task>? ApplyNativeStartup = null,
+    Func<ISettingsStore?>? GetSettingsStore = null);
 
 internal sealed class WindowManager : IWindowManager
 {
@@ -43,6 +48,7 @@ internal sealed class WindowManager : IWindowManager
     private SetupWindow? _setupWindow;
     private bool _isShuttingDown;
     private Task? _closeForShutdownTask;
+    private bool _nativeSetupFailureVisible;
 
     internal WindowManager(
         DispatcherQueue dispatcherQueue,
@@ -103,6 +109,51 @@ internal sealed class WindowManager : IWindowManager
     }
 
     public void BeginShutdown() => _isShuttingDown = true;
+
+    private bool _dashboardFailureVisible;
+
+    public async Task ShowDashboardLaunchFailureAsync(Action? retry)
+    {
+        if (_isShuttingDown || _dashboardFailureVisible)
+            return;
+        var message = LocalizationHelper.GetString("Onboarding_DashboardLaunchFailed");
+        _callbacks.GetAppNotificationService()?.Show(new AppNotification
+        {
+            Id = GatewayDashboardLauncher.FailureNotificationId,
+            Title = LocalizationHelper.GetString("ChatDashboardButton.Content"),
+            Message = message,
+            Source = "connection",
+            Severity = AppNotificationSeverity.Error,
+            DedupeKey = GatewayDashboardLauncher.FailureNotificationId,
+            ActionLabel = LocalizationHelper.GetString("HubWindow_NavigationViewItem_88.Content"),
+            ActionRoute = "connection",
+        });
+        ShowHub("connection");
+        _dashboardFailureVisible = true;
+        for (var attempt = 0; DialogXamlRoot is null && !_isShuttingDown && attempt < 10; attempt++)
+            await Task.Delay(50);
+        if (DialogXamlRoot is not { } root)
+        {
+            _dashboardFailureVisible = false;
+            return;
+        }
+        var retryRequested = false;
+        try
+        {
+            var dialog = new ContentDialog
+            {
+                XamlRoot = root,
+                Title = LocalizationHelper.GetString("ChatDashboardButton.Content"),
+                Content = message,
+                PrimaryButtonText = retry is null ? "" : LocalizationHelper.GetString("Onboarding_Retry"),
+                CloseButtonText = LocalizationHelper.GetString("ActivityCloseButton.Content"),
+            };
+            retryRequested = await dialog.ShowAsync() == ContentDialogResult.Primary;
+        }
+        finally { _dashboardFailureVisible = false; }
+        if (retryRequested && !_isShuttingDown)
+            retry?.Invoke();
+    }
 
     public void PrewarmChat(ChatWindowRequest request)
     {
@@ -176,6 +227,82 @@ internal sealed class WindowManager : IWindowManager
     }
 
     public void ShowHub(string? navigateTo = null, bool activate = true)
+        => ShowHubCore(navigateTo, activate);
+
+    public async Task ShowNativeSetupAsync(SetupNativeCompletion completion, CancellationToken ct)
+    {
+        var request = new SetupNativeNavigationRequest(completion);
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+            var active = _callbacks.GetGatewayRegistry()?.GetActive();
+            if (active is null || active.Id != completion.Verification.GatewayId ||
+                GatewayDashboardBinding.Capture(active) != completion.Verification.EndpointBinding)
+                throw new SetupNativeOwnershipException();
+            var manager = _callbacks.GetConnectionManager();
+            var client = manager?.OperatorClient;
+            if (client?.IsConnectedToGateway == true &&
+                manager?.CurrentSnapshot.OperatorState == RoleConnectionState.Connected)
+            {
+                request.GetConnectedClient(_callbacks.GetGatewayRegistry(), manager);
+                break;
+            }
+            await Task.Delay(100, ct);
+        }
+        ShowHubCore(request.PageTag, activate: false, request);
+        if (_hubWindow is not { } hub) throw new InvalidOperationException("The native window is unavailable.");
+        await hub.WaitForNativeSetupAsync(request, ct);
+        request.GetConnectedClient(_callbacks.GetGatewayRegistry(), _callbacks.GetConnectionManager());
+        if (SetupDashboardLiveFacts.Capture(_callbacks.GetConnectionManager()) is { } facts &&
+            !facts.Matches(completion.Verification))
+            throw new SetupNativeOwnershipException();
+        if (_isShuttingDown || hub.IsClosed) throw new InvalidOperationException("The native window closed.");
+        hub.Activate();
+    }
+
+    public async Task ShowNativeSetupFailureAsync(SetupNativeLaunchFailure failure, Action? retry)
+    {
+        var title = LocalizationHelper.GetString("Onboarding_Ready_LaunchFailedTitle");
+        var message = LocalizationHelper.GetString("Onboarding_Ready_Launch" + failure);
+        _callbacks.GetAppNotificationService()?.Show(new AppNotification
+        {
+            Id = SetupNativeHandoffLauncher.FailureNotificationId,
+            Title = title,
+            Message = message,
+            Severity = AppNotificationSeverity.Error,
+            Source = "setup",
+            DedupeKey = SetupNativeHandoffLauncher.FailureNotificationId,
+            ActionRoute = "connection",
+        });
+        if (_nativeSetupFailureVisible) return;
+        _nativeSetupFailureVisible = true;
+        var retryRequested = false;
+        try
+        {
+            ShowHub("connection");
+            for (var attempt = 0; DialogXamlRoot is null && !_isShuttingDown && attempt < 10; attempt++)
+                await Task.Delay(50);
+            if (DialogXamlRoot is not { } root)
+            {
+                Logger.Error("Native setup destination failed; the persistent notification is available in Connection.");
+                return;
+            }
+            var dialog = new ContentDialog
+            {
+                XamlRoot = root,
+                Title = title,
+                Content = message,
+                CloseButtonText = LocalizationHelper.GetString("Onboarding_Ready_Close"),
+                PrimaryButtonText = failure == SetupNativeLaunchFailure.Unavailable && retry is not null
+                    ? LocalizationHelper.GetString("Onboarding_Ready_Retry") : "",
+            };
+            retryRequested = await dialog.ShowAsync() == ContentDialogResult.Primary;
+        }
+        finally { _nativeSetupFailureVisible = false; }
+        if (retryRequested && !_isShuttingDown) retry?.Invoke();
+    }
+
+    private void ShowHubCore(string? navigateTo, bool activate, SetupNativeNavigationRequest? nativeRequest = null)
     {
         if (_isShuttingDown)
         {
@@ -224,10 +351,14 @@ internal sealed class WindowManager : IWindowManager
             _hubWindow.PendingChatSessionKey = _callbacks.GetPendingChatSessionKey();
             _hubWindow.Closed += OnHubClosed;
             _hubWindow.BindToAppState();
-            _hubWindow.NavigateToDefault();
+            if (nativeRequest is null) _hubWindow.NavigateToDefault();
         }
 
-        if (navigateTo is not null)
+        if (nativeRequest is not null)
+        {
+            _hubWindow.NavigateTo(nativeRequest);
+        }
+        else if (navigateTo is not null)
         {
             _hubWindow.NavigateTo(navigateTo);
         }
@@ -380,39 +511,64 @@ internal sealed class WindowManager : IWindowManager
 
     private async Task<LocalAiSetupResolution> ResolveLocalAiSetupRouteAsync()
     {
-        var registry = _callbacks.GetGatewayRegistry();
-        if (registry is null)
-            return new(LocalAiSetupRoute.Blocked);
-
         try
         {
-            var owners = LocalAiGatewayDistroResolver.FindOwners(registry.GetAll());
-            var distroName = owners.Count == 1
-                ? GatewayRecordEditing.ResolveManagedDistroName(owners[0])!.Trim()
-                : AppIdentity.SetupDistroName;
-            var existing = await Task.Run(() => ExistingConfigDetector.Detect(
-                AppIdentity.ResolveRoamingDataDirectory(),
-                distroName,
-                AppIdentity.ResolveSetupLocalDataDirectory(),
-                owners.Count == 1 ? owners[0].Id : null));
-            LocalAiResolvedInstall? install = await new LocalAiManifestStore(
-                    new LocalAiPaths(AppIdentity.ResolveSetupLocalDataDirectory()))
-                .LoadAsync();
-            return LocalAiSetupRoutePolicy.Decide(
-                owners,
-                existing.HasLocalGateway,
-                existing.LocalGatewayId,
-                existing.HasDistro,
-                existing.HasDistroDataDirectory,
-                existing.DistroIsAppOwned,
-                install?.Manifest.ModelCatalogId,
-                install?.Manifest.RequestedPort);
+            return await new LocalAiSetupRouteResolver(_callbacks.GetGatewayRegistry,
+                AppIdentity.ResolveRoamingDataDirectory(), AppIdentity.ResolveSetupLocalDataDirectory(),
+                AppIdentity.SetupDistroName).ResolveAsync();
         }
         catch (Exception ex)
         {
             Logger.Warn($"Local AI recovery gateway inspection failed: {ex.Message}");
             return new(LocalAiSetupRoute.Blocked);
         }
+    }
+
+    private ISetupLocalAiHost CreateLocalAiSetupHost() => new SetupLocalAiHost(
+        ResolveLocalAiSetupRouteAsync, _callbacks.GetGatewayRegistry, _callbacks.GetLocalAiRuntime,
+        ct => new LocalAiManifestStore(new(AppIdentity.ResolveSetupLocalDataDirectory())).LoadAsync(ct),
+        LocalAiInstallationObservation.InspectAsync,
+        ct => Task.Run(() => new OpenClaw.Shared.Inference.CudaHostHardwareProbe().Probe(), ct).WaitAsync(ct),
+        () => new LocalAiGatewayProviderCoordinator(new WslExeCommandRunner(new AppLogger()),
+            new LocalAiGatewayDistroResolver(_callbacks.GetGatewayRegistry()), new AppLogger()),
+          ReconcileSetupConnectionAsync, NotifySetupRegistryRecovery);
+
+    private async Task ReconcileSetupConnectionAsync(GatewayRecord? before, GatewayRecord? after)
+    {
+        var manager = _callbacks.GetConnectionManager();
+        if (manager is null) return;
+        var snapshot = manager.CurrentSnapshot;
+        var currentRegistry = _callbacks.GetGatewayRegistry();
+        var currentActive = currentRegistry?.GetActive();
+        if (snapshot.GatewayId is null || before is null ||
+            snapshot.GatewayId != before.Id || snapshot.GatewayUrl != before.Url ||
+            (currentActive is null) != (after is null) ||
+            currentActive is not null && after is not null &&
+            (currentActive with { LastConnected = null }) != (after with { LastConnected = null }))
+            return;
+        var reset = after is null ||
+            (before with { LastConnected = null }) != (after with { LastConnected = null }) ||
+            snapshot.GatewayId != after.Id;
+        if (!reset && after is not null && manager.OperatorClient?.AuthenticatedSigningDeviceId is { } signing &&
+            currentRegistry is { } registry)
+        {
+            var path = registry.GetIdentityDirectory(after.Id);
+            try { SetupCompletionAuthority.RequirePersistedIdentity(path, SetupCompletionAuthority.CaptureIdentity(path, signing)); }
+            catch (SetupNativeOwnershipException) { reset = true; }
+        }
+        if (reset) await manager.DisconnectIfCurrentAsync(snapshot);
+    }
+
+    private void NotifySetupRegistryRecovery()
+    {
+        Logger.Error("Setup registry settlement needs attention. Reopen the app to reload saved gateways; unsaved changes were not committed.");
+        _dispatcherQueue.TryEnqueue(() => _callbacks.GetAppNotificationService()?.Show(new AppNotification
+        {
+            Id = "setup-registry-recovery",
+            Title = LocalizationHelper.GetString("Onboarding_RegistryRecovery_Title"),
+            Message = LocalizationHelper.GetString("Onboarding_RegistryRecovery_Message"),
+            Severity = AppNotificationSeverity.Error, Source = "setup", ActionRoute = "connection",
+        }));
     }
 
     private async Task ShowLocalAiSetupRecoveryAsync(LocalAiRecoveryTarget target)
@@ -442,6 +598,25 @@ internal sealed class WindowManager : IWindowManager
                 Logger.Info("Setup window already open; leaving current setup page visible to avoid interrupting active setup");
             }
         }
+    }
+
+    private void NotifyIncompleteNativeConnection()
+    {
+        if (!_dispatcherQueue.TryEnqueue(() =>
+        {
+            _callbacks.GetAppNotificationService()?.Show(new AppNotification
+            {
+                Title = LocalizationHelper.GetString("Onboarding_Native_Title"),
+                Message = LocalizationHelper.GetString("Onboarding_Native_Failed"),
+                Severity = AppNotificationSeverity.Error,
+                Source = "connection",
+                DedupeKey = "native-setup-incomplete-commit",
+                Persistence = AppNotificationPersistence.Persistent
+            });
+            if (!_isShuttingDown)
+                ShowHub("connection");
+        }))
+            Logger.Error("Native setup connection needs attention, but its notification could not be dispatched.");
     }
 
     private async Task<(SetupWindow? Window, bool Created)> EnsureSetupWindowAsync(
@@ -491,6 +666,8 @@ internal sealed class WindowManager : IWindowManager
         SetupWindow? setupWindow = null;
         try
         {
+            var settingsWriter = new SetupSettingsWriter(_callbacks.GetSettingsStore?.Invoke()
+                ?? throw new InvalidOperationException("The settings owner is unavailable. Reopen the app before setup."));
             setupWindow = new SetupWindow(
                 startAtGatewayInstalledMilestone: startAtGatewayInstalledMilestone,
                 startAtLocalAiRecoveryReview: localAiRecoveryTarget is not null,
@@ -503,6 +680,15 @@ internal sealed class WindowManager : IWindowManager
                 localAiRecoveryGatewayPort: localAiRecoveryTarget?.GatewayPort,
                 localAiRecoveryModelId: localAiRecoveryTarget?.ModelCatalogId,
                 localAiRecoveryRequestedPort: localAiRecoveryTarget?.RequestedLocalAiPort,
+                localAiHost: CreateLocalAiSetupHost(),
+                publishNativeCompletion: _callbacks.PublishNativeCompletion,
+                applyNativeStartup: _callbacks.ApplyNativeStartup,
+                startupRegistrationAllowed: !AppIdentity.IsIsolated,
+                persistChoices: (config, startup, onlyStartup) => settingsWriter.Apply(config.CreatePatch(startup, onlyStartup)),
+                nativeConnectionHost: _callbacks.GetGatewayDirectConnectService() is { } directConnect &&
+                    _callbacks.GetGatewayRegistry() is { } registry
+                    ? new SetupNativeConnectionHost(directConnect, registry, new AppLogger(), NotifyIncompleteNativeConnection)
+                    : null,
                 commandLineArgs: SetupWindowArgumentProjection.Project(
                     _callbacks.GetStartupArgs(),
                     _callbacks.IsDeepLinkArg,

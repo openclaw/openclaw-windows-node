@@ -205,72 +205,10 @@ public sealed partial class WizardPage : Page
             return await ConnectNativeClientAsync(native);
 
         var dataDir = SetupWindow.Active?.DataDir ?? SetupContext.ResolveDataDir();
-        var registry = new GatewayRegistry(dataDir);
-        registry.Load();
-        var record = registry.GetActive() ?? throw new InvalidOperationException("No active gateway record found.");
-        if (record.NativePackageFamilyName is not null)
-            throw new InvalidOperationException("Native onboarding requires its setup-owned runtime. Return to native Gateway setup.");
-        _hostAccessPlan = GatewayHostAccessClassifier.Classify(record);
-        var identityPath = registry.GetIdentityDirectory(record.Id);
-        var deviceToken = DeviceIdentity.TryReadStoredDeviceToken(identityPath);
-        var token = deviceToken
-            ?? record.SharedGatewayToken
-            ?? record.BootstrapToken
-            ?? throw new InvalidOperationException("No gateway credential found.");
-
-        // The active record owns the endpoint as well as the credential identity. Resolve
-        // tunnel-backed records to their Windows-side local forward instead of bypassing SSH.
-        var gatewayUrl = GatewayClientEndpointResolver.Resolve(record);
-        var provenanceService = new ManagedLocalGatewayPortProvenanceService(NullLogger.Instance);
-        if (deviceToken is null &&
-            record.SshTunnel is null &&
-            GatewayRecordEditing.ResolveManagedDistroName(record) is not null &&
-            GatewayRecordEditing.IsLoopbackEndpoint(record.Url))
-        {
-            var provenance = await provenanceService.InspectAsync(record);
-            if (provenance.Kind != GatewayEndpointProvenanceKind.ExpectedManagedGateway)
-            {
-                throw new InvalidOperationException(
-                    "The managed gateway address is not owned by the verified WSL gateway; no credential was sent.");
-            }
-        }
-        var client = new OpenClawGatewayClient(gatewayUrl, token, logger: NullLogger.Instance, identityPath: identityPath)
-        {
-            UseV2Signature = true
-        };
-        client.ReconnectAuthorizationAsync = async cancellationToken =>
-        {
-            if (record.SshTunnel is not null ||
-                GatewayRecordEditing.ResolveManagedDistroName(record) is null ||
-                !GatewayRecordEditing.IsLoopbackEndpoint(record.Url))
-            {
-                return ReconnectAuthorizationResult.AllowedResult;
-            }
-            var provenance = _expectedTerminalRestart
-                ? await GatewayWizardRestartRecoveryPolicy.WaitForExpectedManagedGatewayAsync(
-                    cancellationToken => provenanceService.InspectAsync(
-                        record,
-                        cancellationToken),
-                    noListenerRetryCount: 30,
-                    retryDelay: TimeSpan.FromSeconds(1),
-                    cancellationToken)
-                : await provenanceService.InspectAsync(record, cancellationToken);
-            return provenance.Kind == GatewayEndpointProvenanceKind.ExpectedManagedGateway
-                ? ReconnectAuthorizationResult.AllowedResult
-                : new ReconnectAuthorizationResult(
-                    false,
-                    GatewayErrorKind.LocalPortConflict,
-                    provenance.Detail);
-        };
-
-        var outcome = await WaitForConnectAsync(client, TimeSpan.FromSeconds(20));
-        if (!outcome)
-        {
-            client.Dispose();
-            throw new InvalidOperationException("Could not connect to the gateway.");
-        }
-
-        return client;
+        var session = await SetupGatewaySession.ConnectAsync(dataDir,
+            () => _expectedTerminalRestart, rejectNativeGateway: true);
+        _hostAccessPlan = session.HostAccessPlan;
+        return session.Client;
     }
 
     private async Task<OpenClawGatewayClient> ConnectNativeClientAsync(NativeGatewaySetupSession native)

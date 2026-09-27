@@ -136,6 +136,9 @@ public partial class App : IActivationPlanSink
             case ActivationRoute.OpenDashboard r:
                 OpenDashboard(r.Path);
                 break;
+            case ActivationRoute.CompleteAiSetup r:
+                OpenNativeSetupCompletion(r.Handle ?? "invalid");
+                break;
             case ActivationRoute.OpenChat r:
                 ShowWebChat(r.SessionKey);
                 break;

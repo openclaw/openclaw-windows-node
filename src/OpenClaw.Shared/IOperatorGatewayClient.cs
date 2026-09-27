@@ -39,6 +39,7 @@ public interface IOperatorGatewayClient
 
     // ─── Query ───
     string? OperatorDeviceId { get; }
+    string? AuthenticatedSigningDeviceId => null;
     IReadOnlyList<string> GrantedOperatorScopes { get; }
     bool IsConnectedToGateway { get; }
     /// <summary>Canonical main session key resolved from hello-ok; <c>null</c> until handshake.</summary>

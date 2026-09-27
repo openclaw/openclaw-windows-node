@@ -271,21 +271,213 @@ The implemented path must actually run the Gateway in the package's recorded
 isolated session. Do not relabel the historical ordinary-process proof as MXC,
 or recommend any MSIX as isolated based only on its registration.
 
+The onboarding wizard installs a new app-owned local WSL gateway on Windows,
+connects an AI provider, and opens a selected native app page after live
+primary-model verification. It uses focused Gateway-hosted AI setup when
+supported and retains the classic OpenClaw onboard wizard for older gateways.
+
 ## Overview
+
+### Native presentation
+
+Setup uses a 720-by-820 window with a scrolling body, centered vector mascot
+and wrapping heading. The 180-DIP mascot frame includes its motion/glow gutter;
+the title-bar mark is 24 DIPs. Theme-aware Mica/Fluent surfaces retain solid
+background and high-contrast fallbacks.
+
+Capabilities, installation review and AI provider setup use native controls.
+The [screen details](#screen-details) below own their behavior and consent rules;
+the [artwork section](#artwork-and-motion) covers motion and asset packaging.
+
+### Verified native completion
+
+`AiReadyPage` is mounted only through the setup window's current verified
+completion coordinator. Its celebrating mascot and "Your AI is ready" heading
+follow real primary-model verification, not discovery or browser sign-in.
+Showing the page creates no pending handoff and performs no finalization.
+
+The final screen has exactly three choices: **Talk to my agent**, with a visible
+Recommended badge, opens Chat; **Connect channels** opens Channels (WhatsApp,
+Telegram, and more); **Explore skills** opens Skills for the verified agent.
+There are no bottom Return or Skip buttons; the progress dots remain. Selecting
+a card is the final action, with no extra Finish button. These are navigation
+choices, never automatic sign-in, channel configuration, or skill installation.
+Legacy WhatsApp/Telegram receipt destinations retain their numeric mappings and
+channel focus behavior, but are not separate choices on this screen.
+
+Each explicit choice drains the prior AI page, rechecks the same Gateway,
+endpoint, agent, model and main session through a bounded read-only verification,
+then finalizes Windows choices once. Failures stay on the chooser with retry or
+return-to-AI guidance. **Back to AI setup** is available only inside the error
+message, so changed verification has an actionable recovery without a permanent
+footer escape. Returning invalidates its admission and requires another
+verification. MCP-only/deferred routes do not claim verified AI.
+
+The original verification retains the exact main session and a SHA256 binding
+over the normalized identity directory and the local device ID that signed the
+accepted connect request. A current-generation authenticated signing snapshot,
+not an optional server device-ID echo, supplies that identity. The standard
+Gateway hello schema does not declare such an echo. Current disk identity is
+validated only to detect rotation, never to relabel an already connected client;
+verified reconnects cannot generate a missing identity.
+Receipts contain the hash, not the identity path or credentials. Fresh clients
+must match those stable fields before model verification and finalization;
+their independent connection-generation counters need not match. Missing
+authority fields in earlier development receipts fail closed and require new
+verification. The persisted endpoint binding includes the effective SSH local
+forwarding endpoint, which is checked before a fresh connection is attempted.
+
+The Skills handoff ignores unscoped cached status, loads a response-bound
+`skills.status` for the verified agent, and rechecks the same connected client
+before presentation. Its agent filter stays bound to that agent. An unavailable
+or changed Gateway does not consume the receipt as a successful page launch.
+
+Isolated app hosts do not offer Windows startup registration. The host passes
+that availability into setup, which hides the startup preference, keeps it off
+even if an old isolated setting was true, and saves `AutoStart=false` before
+native completion. Isolated and recovery completion do not invoke OS startup
+registration. An ordinary explicit choice applies both enable and disable;
+recovery preserves the saved preference. Registration failures remain visible
+and retryable rather than being swallowed. `AutoStartManager`'s isolation refusal
+remains unchanged.
+
+Native completion uses strict startup application: task removal must succeed
+when the task exists, unknown task state is an error, and Run-key failures are
+not swallowed. Existing best-effort callers retain their prior API. Classic
+completion instead acknowledges a startup-specific warning and continues the
+established restart path, so an optional startup failure cannot strand durable
+setup or masquerade as a failed application restart.
+
+Strict task registration distinguishes acknowledged success, a request that
+did not start, and uncertain completion. An uncertain result cannot create a
+Run-key fallback. It may complete only if Task Scheduler confirms the exact
+enabled executable/action, principal, task path and logon trigger. A definite
+rejection with confirmed absence retains the legitimate Run-key fallback.
+
+The trusted profile-local handoff retains exclusive leasing, five-minute expiry,
+consumption on successful native presentation and explicit failure retry. New
+`ai-v3:` opaque handles carry a typed native destination and exact verified
+session in the protected record, not in public activation JSON. The experimental
+`ai-v2:` browser-completion path is removed; those handles fail visibly and are
+never reinterpreted as native receipts or ordinary Dashboard requests. The public
+`setup-dashboard` activation route and profile-local storage name remain stable
+for current native receipts. Ordinary Dashboard actions and headless setup are unchanged.
+
+Failures after acquiring a receipt are settled before reporting: changed or
+unreadable identity consumes it as Changed; an unavailable verification API or
+malformed verification response retains explicit retry. Malformed stored
+receipts, including oversized files rejected before acquisition, remain Invalid.
+
+A startup activation with a well-formed native handle bypasses the ordinary
+update prompt for that launch. Receipt validation still runs normally; handle
+shape is not verification authority. This prevents an unattended update prompt
+or accepted installer from expiring or skipping the selected destination.
+
+Native post-setup children never forward to the shutting-down parent. They
+acquire the instance mutex synchronously on the same thread, with a 60-second
+wait per attempt followed by visible Retry/Cancel recovery. The unadmitted
+handle is retained in a protected, profile-local `setup-dashboard-handoff/restart.json`
+file, not logs or UI text. A newly owned ordinary launch can resume it; ordinary
+secondary forwarding is unchanged. Admission clears the matching recovery
+record. Retention does not extend receipt expiry or replace normal verification.
+
+An invalid regular `restart.json` is rechecked and removed under its writer lease
+before reporting the error once. A newer valid handle, other handoff files and
+reparse paths are never removed by this recovery cleanup.
+
+After restart, native launch re-verifies ownership before mounting Chat,
+Channels or Skills. Legacy targeted Channels uses a fresh response from the bound Gateway,
+never generic fallback rows as evidence of support. Missing authoritative
+metadata produces an unconfirmed/retry state; an offered-channel list that
+omits the target produces an unavailable state. Native Chat selects the verified
+session without changing the user's persistent chat-surface preference.
 
 On first launch, the wizard appears only when there is no usable saved gateway connection. Users with existing gateways manage connections from the tray app's Connections tab. The local WSL setup affordance in Connections is shown only when setup has not already created an app-owned WSL gateway on this device.
 
 The setup flow walks users through:
 
-1. **Security notice** - Device-trust warning before setup choices
-2. **Welcome / Advanced** - Capability-gated native Gateway recommendation, optional WSL fallback, or connect existing gateway from Settings
-3. **Capabilities** - Recommended profile, inline Windows permission status, and install review
-4. **Local setup progress** - Fresh app-owned `OpenClawGateway` WSL installation
-5. **Gateway installed** - Explicit handoff from infrastructure setup to OpenClaw onboard
-6. **OpenClaw onboard** - Gateway-driven provider/model/key configuration
-7. **All set** - Feature summary, startup preference, and completion
+1. **Welcome and trust** - Three feature rows and an inline device-trust notice
+2. **Gateway** - Capability-gated native Gateway recommendation (with WSL fallback), existing, remote, local MCP only, or deferred setup
+3. **PC capabilities** - Strict, Balanced (Recommended), Open, and inline Fine-tune; Node mode, local MCP and Ollama sharing stay independent. No Windows-access advisory panel or probe runs here.
+4. **Gateway setup** - Managed WSL reviews installation and replacement consent; native Gateway checks its package and prepares a dedicated profile without WSL or Local AI installation.
+5. **AI setup** - Native Gateway uses its hosted classic wizard; WSL and existing/remote gateways use focused AI setup and live model verification.
+6. **Completion** - The verified focused AI flow opens Chat, Channels or Skills; the native Gateway wizard retains its setup-complete and connection handoff.
 
-The setup flow no longer configures remote/manual gateways inline. The Welcome page's **Connect to an existing gateway** option routes through `AdvancedSetupPage`, closes setup, and opens the tray app's Connections tab.
+`SetupWindow` owns one `SetupAccessDraft` over the same `SetupConfig` for the
+entire flow. The native connection contract separates verify-only **Check** from
+**Next**, which revalidates and commits that same editor request. A successful
+Next is the commit boundary: later Back/close preserves that committed choice;
+cancelling before successful commit restores the prior active connection.
+Existing/Remote then review capabilities and enter focused AI setup
+using the committed registry. They never run WSL workspace finalization.
+MCP-only/Deferred persist reviewed settings/startup and complete without AI or
+WSL. MCP-only opens Companion Settings; deferred setup opens Connection settings.
+Verified focused AI routes use the native chooser. `AdvancedSetupRequested` is only the explicit classic Settings fallback,
+not the normal native route. Connection verification, credentials and commit
+remain native host responsibilities. Progress indicators
+come from `OnboardingFlowPolicy`, not a fixed six-page count. Local AI recovery
+does not replay the introductory pages.
+
+The injected `ISetupNativeConnectionHost` owns connection checks and commits.
+The editor draft is not serialized into `SetupConfig`; see
+[native connection checks and cancellation](#native-connection-checks-and-cancellation)
+for the identity, drain and rollback contracts.
+
+The legacy milestone and completion pages remain available for resume, classic
+wizard compatibility and errors. They are not gates in the new successful path.
+
+After the install pipeline saves its Gateway, the typed Local AI host reconciles
+that exact active record into the canonical registry before AI discovery. This
+read-only handoff compares disk against the expected snapshot produced by the
+owning cleanup/pairing/bootstrap-clear writes. It refuses intervening authority
+edits, unrelated record changes, or invalid saved data instead of adopting a
+freshly reread, unbound record.
+The expected recovery reconnect may update `LastConnected`; newer canonical
+timestamps are retained without rewriting the registry file or emitting events.
+The runtime's initially unbound owner can bind once to this canonical record; an
+already bound owner cannot switch to another Gateway.
+
+Local AI use retains the selected Gateway ID with its model across reconnects
+and recovery returns. A different active Gateway is rejected before credential
+lookup, and again before verification/completion. Closing cancels and drains the
+actual runtime mutation and rollback before releasing the setup lock; only
+observations and transport cleanup have bounded deadlines. A failed start with
+confirmed terminal cleanup restores provider choices and Local AI repair. An
+uncertain publication retains exact-target verification only, without replaying
+the mutation.
+
+### Verification provenance
+
+`GatewayAiSetupClient` records intent from the explicit activation kind, never
+from `setupComplete`. This provenance remains in the verification record;
+the user's native destination choice, not that intent, determines the app page.
+
+Only successful exact-model, main-role verification on the same authority and
+connection generation produces a `GatewayAiSetupCompletion`. `SetupWindow`
+checks the saved Gateway binding before and after workspace finalization.
+`SetupDashboardHandoffStore` writes one atomic, credential-free pending record in
+the current profile's data directory after verified completion. Restart and
+activation carry only a random opaque handle, not serialized verification JSON.
+The pending record binds the run, Gateway, endpoint, agent, model and intent.
+A new completion supersedes the previous pending run. Only native `ai-v3:`
+receipts can be issued or consumed.
+
+`SetupGatewaySessionBinding` captures the exact record and resolved endpoint
+before the temporary client is constructed. Registry revalidation before
+credentials/connect, at handshake/reconnect, after connect and at request/route
+boundaries can reject a changed Gateway, but cannot relabel the existing socket.
+`LastConnected` bookkeeping does not change this binding; changes to Gateway ID,
+endpoint or SSH intent do.
+
+`WindowManager.ShowNativeSetupAsync` rechecks current Gateway, agent and
+provider-qualified model observations after page readiness. A bare display model
+ID is not treated as an exact provider route.
+
+Ordinary Dashboard actions still use `GatewayDashboardLauncher` and the normal
+credential resolver, with no completion receipt or automatic onboarding query.
+Device/bootstrap tokens are never exported to browser URLs. Explicit error-dialog
+retry remains available. Legacy `chat`, `settings` and `connection` restart
+arguments remain supported.
 
 ### Store migration preview
 
@@ -363,10 +555,17 @@ feature-policy changes are automatic.
 The single-selection list always shows native first, WSL second and
 **Connect to an existing gateway** third. WSL is visible and selectable while
 native capability is being checked, when it succeeds, and when it fails or is
-unavailable. There is no **Other gateway options** expander. Page load starts the
-existing WSL/Local AI discovery; choosing WSL retains the fresh readiness gate
-and destructive-replacement confirmation before Capabilities. Native package
-setup independently rechecks capability before configuration.
+unavailable. There is no **Other gateway options** expander. Page load starts
+WSL/Local AI discovery; choosing WSL retains the fresh readiness gate before
+Capabilities, then reviews replacement consent on the WSL setup page. Native
+package setup independently rechecks capability before configuration.
+
+Choosing local Gateway setup runs read-only WSL viability and existing-config
+inspection before PC capabilities. Failures appear inline with a fresh-inspection
+retry, not a modal. Fresh installation has no redundant confirmation. A detected
+replacement is reviewed on the WSL setup page before Install; explicit
+consent is bound to the exact distro name, and unproven ownership still requires
+the engine's destructive confirmation. External saved Gateways stay untouched.
 
 The gateway-choice scroll viewport owns the 560-DIP maximum width and stretches
 its list content. Keep the width constraint on the viewport, not on the nested
@@ -374,15 +573,300 @@ ListView, so the choices share the header's center line as the window resizes.
 Back, Next, and the step indicator remain outside the scrolling area.
 
 ### Local setup progress
+`SetupInstallationProgress` maps real pipeline events to prepare, install and
+connect/check phases. Local AI recovery uses its own install label. Counts include
+completed and skipped steps, not estimated percentages; only a running phase
+spins. Unknown step IDs require an explicit phase mapping and test coverage.
+Detailed activity is collapsed by default; actionable authorization and real
+download progress remain visible outside it.
+
 Installs and connects a new app-owned `OpenClawGateway` WSL instance from a clean WSL baseline. If the WSL platform is missing or its optional component is not initialized, setup requests administrator approval to install it, re-inspects readiness, and reports when a Windows restart is required. Setup does not export from or mutate an existing user Ubuntu distro; if WSL cannot create the named app-owned distro directly, setup fails with an actionable update message. Cleanup automatically unregisters a distro only when durable OpenClaw evidence is paired with exactly one readable current-user WSL registration whose canonical base path matches the expected managed install path. Automatic orphan-directory cleanup requires a marker bound to that exact path. An unproven same-named distro or leftover data directory is preserved unless the user explicitly confirms its permanent replacement in the setup UI or passes `--confirm-destructive`. When replacing an app-owned local gateway, the removal step is shown as part of progress and can be retried on failure.
 
 The managed distro is locked down and is not intended to be a normal interactive Ubuntu profile. For editing `openclaw.json` as the `openclaw` user and using root for protected-file administration, see [Managing the locked-down WSL gateway](WSL_GATEWAY_ADMIN.md).
 
-### Capabilities and Windows permissions
+### Capabilities and access presets
 
-The Capabilities page applies the selected profile to both setup config and runtime `Node*` settings. Inline Windows permission rows are shown only for capabilities that need OS-level state (camera, microphone, location, screen capture). Notifications are always shown as an app-level permission. Screen capture is passive: Windows asks what to share each capture through the Graphics Capture picker.
+The draft updates setup capability flags and runtime `Node*` values in memory
+only. Its exact profile order is System, Canvas, Screen, Camera, Location,
+Browser, Tts, Stt. Strict (`ReadOnly`) enables Canvas and Screen; Balanced
+(`Standard`) adds System, Tts and Stt; Open (`Full`) enables all eight. Only an
+implicit bundled all-on placeholder defaults to Balanced at draft creation.
+Explicit Open and custom choices survive
+navigation. Device information is fixed, not a toggle. System controls
+`system.run` and `system.run.prepare`, not file/clipboard access.
 
-### OpenClaw onboard
+Profiles use vertical, full-width native single-selection rows with the system
+selection indicator, selected background and keyboard behavior. A visible
+**Choose what your agent can do** heading introduces Strict, Balanced (Recommended)
+and Open. The adjacent **Fine-tune** expander shows the selected-capability summary.
+Opening it only inspects existing flags; it does not select Custom. Editing any
+flag shows a **Custom capabilities** badge with no preset falsely selected, even
+if the flags later match a preset. Imported arbitrary flags have no invented base.
+Explicit Custom intent and `FineTuneExpanded` live only in `SetupAccessDraft` and
+survive page recreation. Selecting a preset reapplies exactly its eight flags
+without changing disclosure state. The Toolkit `SettingsExpander.Items` contain
+eight real `SettingsCard` rows; explanatory notes use `ItemsFooter`. Browser
+prerequisites remain in the Browser row description.
+
+Node mode, local MCP and Ollama sharing are independent of profiles. When both
+transports are off, profile/capability controls are disabled and dimmed without
+clearing choices; Fine-tune remains inspectable, with an explanation to enable
+either transport. Custom never
+bypasses these gates. Browser requires Node mode and a genuinely available Gateway,
+not the default loopback URL; a pending selection remains visible.
+
+Onboarding does not probe Windows privacy settings or grant OS access.
+Remembered capture consent, execution approvals, sandbox grants, MCP tokens
+and voice configuration remain in native Companion Settings. Runtime screen
+capture uses monitor capture, not a guaranteed picker on each request.
+
+Next routes directly to WSL review (managed), AI setup (committed existing/remote),
+or asynchronous completion (MCP-only/deferred). Review Back returns to capabilities.
+There is no ordinary permissions page or progress dot: the standard managed route
+has seven stages, existing/remote five, MCP-only/deferred three. Headless
+`SkipPermissions` is unchanged. The obsolete Windows-access preview and its
+dedicated probing code have been removed; the inert gallery covers current
+capabilities without probing Windows or opening Settings.
+
+Local AI uses the existing managed Windows llama-server eligibility coordinator.
+Unknown readiness and unsupported pinned recovery block installation only when
+Local AI is required. Users may turn it off outside recovery. Model selection,
+networking consent and the original wizard-skip preference survive Back/Next.
+Consent authorizes installation to change global `.wslconfig` and stop all WSL
+distributions once; the review itself never performs those actions.
+Selected Tailscale requires a successful bounded Windows signed-in/MagicDNS
+probe. WSL browser/auth-key sign-in is distinct from Windows sign-in and from the
+separate, default-off identity-trust toggle. Auth keys remain session-only.
+Serve is private tailnet access, not Funnel.
+
+The WSL review shows its current installation blocker directly below the
+centered heading, before optional choices. `SetupAccessDraft.GetInstallRequirements`
+is the shared source for both `CanInstall` and this presentation, including
+incomplete or stale inspection, exact-target replacement consent, Local AI,
+networking consent and Tailscale readiness. When replacement is required, the
+same page shows the full inspected consequences and an exact-distro checkbox near
+the bottom, above the fixed footer. It starts unchecked and never installs or
+navigates when changed. **Install** stays disabled while consent is outstanding.
+Checking it enables Install only when all requirements are satisfied; other
+requirements keep their specific recovery actions. Fresh installs and Local AI
+recovery do not show replacement consent. The host rechecks `CanInstall` before progress.
+A changed draft cannot turn a click on an already displayed review action into
+installation. Users who want to keep an existing setup are directed back to the
+existing-Gateway route, not encouraged to approve replacement.
+
+Networking review returns to its caller: review to networking to review, or
+Local AI to networking to Local AI. Recovery mode, pinned model and explicit
+networking consent remain intact. Reviewing a requirement performs no WSL
+changes; installation remains the separate mutation boundary.
+
+### Connect your AI
+
+The focused client negotiates authenticated gateway method advertisements.
+`openclaw.setup.detect` only presents available choices. Selecting a candidate,
+provider login, local-provider preparation or manual key starts the corresponding
+`openclaw.setup.*` operation. Detection never silently chooses or tests another
+provider. Provider choices come from the gateway. Bundled brand aliases, bounded
+public HTTPS metadata logos and native Fluent fallbacks supply their visual
+identity without changing authentication. Metadata action labels are preserved.
+See [Provider artwork](PROVIDER_ARTWORK.md) for trust boundaries and format differences.
+
+The grouped screen uses native WinUI `SettingsCard` commands and
+`SettingsExpander` controls. Only this task page uses a compact, centered header
+band with an 80-DIP mascot beside the wrapping title/status; earlier setup
+pages retain their large centered heroes. Each provider has one native command
+surface, not a selectable ListViewItem wrapped around another clickable card.
+The page-local compact row style does not alter global Toolkit resources.
+
+1. **Local AI on this PC** is a concise native choice row beside the detected
+   Gateway choices, with actual GPU/model facts and its trailing action. It has
+   no separate introductory heading or always-visible technical paragraph.
+   Accessible help distinguishes managed Windows Local AI from NVIDIA's hosted API.
+2. **Available on your Gateway** presents server-returned candidates, recommended
+   website links when needed, and unavailable discoveries.
+3. **Set up a local model** presents Gateway preparation choices before providers.
+   The catalog and action labels come from Gateway metadata, not a Windows list
+   of installed services. The fallback action is **Connect / Set up**.
+4. **Connect an AI provider** retains featured sign-in, a full **API Keys** row
+   and auth-only **More sign-in options**. Auth kind determines the fallback
+   **Pair**, **Set up…**, **Configure…** or **Sign in** action; metadata wins.
+5. **Connect with an API key or token** is the separate expanded form. The
+   API Keys command uses `FluentIconCatalog.Key` and opens the form without
+   selecting or activating a provider. Its picker, PasswordBox and inline
+   **Connect** are horizontal when the actual form width and current text scale
+   allow, and stack otherwise. Empty keys cannot submit. The selected provider
+   is revalidated at the explicit Connect boundary; secrets clear on submission
+   and close. There is no duplicate page-footer Continue.
+
+`AiSetupPresentationModel` suppresses a managed-local duplicate only when the
+exact model reference and Gateway identity both match. Native card actions are
+explicit; discovery and keyboard focus alone never start a provider. Enter/Space
+use that same command, carrying its exact kind, identifier and model reference.
+The inline API form is already visible when there are
+no Gateway candidates or visible Local AI choice, without selecting its provider. Website links do not run
+installers. **Check again** repeats discovery explicitly; a failed scan is not
+an empty catalog. Native-conversation discovery is a visible, default-off opt-in
+when the Gateway requests it. The current Boolean is sent only with an explicit
+provider action; unchecked means false, never automatic permission. When the
+Gateway does not request a preference, the parameter remains absent. Refreshing
+presentation retains the user's current checkbox value.
+
+#### One provider operation, one dialog
+
+The existing page-owned `ProviderSetupDialog` opens in a provider-specific
+Starting state before waiting for the start response. A page-owned operation
+lifetime keeps it visible across credential submission, server steps,
+preparation, activation and exact verification. The client still owns protocol
+state; the dialog never acquires another Gateway client or persistence store.
+Confirmed rejection returns to the same cleared key field; confirmed cancellation
+returns to usable choices. An uncertain outcome stays available for reconciliation
+and is never replayed as another activation.
+
+Server-owned client notes/actions still require **Continue**, typed inputs use
+**Submit**, and a client-owned device-code acknowledgment uses **I've signed in**.
+Gateway-owned progress has no answer button and is polled without an answer.
+Device codes remain selectable and have an explicit Copy action. Structured
+device-code prompts show the formatted code card, instructions and expiry instead
+of also repeating the Gateway's plain-text prompt. Prompts without structured
+device codes retain their messages, and errors remain visible separately. The fresh HTTPS
+URL from a user-started provider operation may open once; discovery, rerenders,
+reconnects and uncertain reconciliation never auto-open tabs. The manual sign-in
+link remains available, and opening a browser never counts as successful login.
+
+`GatewayAiSetupController` retains the explicit preparation choice and catalog
+preference, then automatically activates only its authoritative
+`preparedModelRef` on the unchanged Gateway connection. The dialog does not
+dismiss for an extra page-level Activate button. Server download, plugin review
+and promotion confirmations remain mandatory. Missing receipts, changed
+connections or unsupported activation fail visibly without choosing another
+model. If an uncertain preparation is later reconciled to an authoritative
+prepared receipt, automatic continuation stays disarmed; an explicit
+**Activate model** action in the same dialog can use that exact receipt without
+replaying preparation. It cannot bypass a changed Gateway or generation.
+This Gateway preparation path does not auto-install managed NVIDIA Local
+AI or bypass its separate review/consent. A restart-required activation waits
+up to 30 seconds for the existing connection's fresh same-authority handshake
+before exact verification; timeout offers reconciliation without mutation replay.
+
+This interaction comparison is pinned to
+`openclaw/openclaw@d69a5e74895cf64109eca0d3a172c17b74ddbe7b`,
+`OnboardingAISetup.swift:1181-1212,1474-1506` and
+`OnboardingAISetupSheet.swift:52-57,127-137,183-212`.
+The compact Windows header and continuous dialog are intentional density/lifetime
+improvements, not claims that Mac has identical geometry or never internally
+reopens its sheet.
+
+#### Managed Local AI in the same setup window
+
+`LocalAiOnboardingObservation` observes independently of Gateway discovery and
+fences cancellation, refresh and late results. `SetupLocalAiHost` reuses the
+eligibility policy, canonical receipt/file inspection, runtime snapshot and
+`LocalAiSetupRouteResolver`. Observation never calls runtime `RefreshAsync`:
+that runtime API may publish or withdraw a Gateway route. Observation does not
+install, migrate receipts, start inference, select a default or grant consent.
+
+The row distinguishes checking, eligible but absent (**Set up Local AI**),
+installed/stopped (**Start and use**), healthy (**Use this model**), damaged
+(**Repair Local AI**), busy GPU, unknown facts, unsupported hardware and an
+unsupported Gateway. A loaded managed model's own GPU allocation is not treated
+as another workload. Installed, healthy, reachable and Gateway-verified are
+separate facts.
+
+`LocalAiOnboardingSnapshot.ShowLocalChoice` hides only a confirmed unsupported
+fresh device: no NVIDIA GPU, insufficient total GPU memory, or CUDA capability
+below the runtime requirement. It uses the existing eligibility failure code,
+not another hardware probe or a production test override. Unknown/checking
+facts, busy GPUs, old drivers, missing runtime/catalog entries and unknown
+models stay visible. Receipt or damaged-receipt evidence, a pinned installation
+or retained runtime attention also keeps the row visible, without promoting its
+action or changing repair/admission rules. Unsupported remote Gateway attention
+is unchanged. Hiding the local row collapses its empty container, not independently
+detected Gateway choices.
+
+The layout comparison is pinned to
+[`OnboardingAISetupView.swift` at `fef6b1290e412761888865da5b61ee1c0ce29586`](https://github.com/openclaw/openclaw/blob/fef6b1290e412761888865da5b61ee1c0ce29586/apps/macos/Sources/OpenClaw/OnboardingAISetupView.swift#L191-L674):
+results at 191-254, candidate rows at 313-350, preparation at 440-480,
+API Keys at 543-571, auth at 574-613 and manual entry at 616-674. Windows keeps
+its managed local primary-model lifecycle and explicit consent, not Mac credential
+reuse or utility-model semantics.
+
+The inert native gallery now inventories 93 scenes in both themes (186 scene/theme
+states), including a distinct fresh-unsupported-hidden variant, installed
+unsupported attention, preparation before providers and the expanded manual form.
+The native proof inventory adds two mounted tests and the Working readiness case
+to the previous 108-case selection (111 expected when the same selection is used).
+These are source inventory counts, not claims of current rendered captures.
+Existing source-immutability, owned-input, DPI and capture guards remain required.
+
+Set up and Repair enter the existing `LocalAiSetupControl` and networking review
+inside this `SetupWindow`. **Install and use** is a separate consent boundary.
+The host rechecks the same active, uniquely app-managed local Gateway and receipt
+before selecting `BuildLocalAiRecoverySteps`, including on a first installation
+with no receipt. These steps do not create/delete a distro, reinstall the Gateway,
+mint tokens or pair devices. The existing global mirrored-networking warning
+and explicit consent remain required. Back restores the prior configuration
+draft; capabilities, route and startup preference are retained.
+
+Start and Use recheck ownership, receipt/model identity, eligibility and canonical
+provider publication admission before calling the existing runtime. A Gateway
+switch during the read-only admission check is a rejected selection, restoring
+choices without starting the runtime. A target change after startup/publication
+remains uncertain and retains the exact-target reconciliation boundary. Publication
+preserves the recorded fallback and fails closed if the primary model or managed
+provider drifted outside that contract; health alone cannot overwrite a newer
+Gateway choice. A fresh setup-owned connection then verifies the exact returned
+model. An uncertain local action retries verification, not a hidden activation.
+Provider sessions must settle or confirm cancellation before local review.
+Closing drains page observations and the recovery pipeline before releasing the
+setup lock. Settings and headless entry points retain their existing contracts.
+
+#### Setup and utility metadata compatibility
+
+The pinned upstream contract is
+[`openclaw/openclaw@fef6b1290e412761888865da5b61ee1c0ce29586`](https://github.com/openclaw/openclaw/tree/fef6b1290e412761888865da5b61ee1c0ce29586).
+The same setup schema blob (`dbd8461f87f034b675b874313d2f401ac7c682c9`)
+is present in release `v2026.9.6` at
+`eb377ac59e6c9fd6c7705028034812becf00271b`.
+
+- [Schema lines 255-374](https://github.com/openclaw/openclaw/blob/fef6b1290e412761888865da5b61ee1c0ce29586/packages/gateway-protocol/src/schema/openclaw.ts#L255-L374):
+  optional `modelTarget: "utility"` decorates the same choice kinds;
+  `setupModel` and `utilityModel` are preserved alongside `configuredModel`.
+- [Role validation](https://github.com/openclaw/openclaw/blob/fef6b1290e412761888865da5b61ee1c0ce29586/src/system-agent/setup-inference-core.ts#L583-L594)
+  (blob `6b8cc6e07ee6fb5367c7fd050fc4a53fd63bfc5b`) requires exact role matching.
+  [Provider staging](https://github.com/openclaw/openclaw/blob/fef6b1290e412761888865da5b61ee1c0ce29586/src/system-agent/setup-inference-credentials.ts#L376-L396)
+  (blob `9d93a352ed2342a695d9d189c4d1a8eefe7e016f`) enforces it too.
+- [Existing-model activation](https://github.com/openclaw/openclaw/blob/fef6b1290e412761888865da5b61ee1c0ce29586/src/system-agent/setup-inference-activate.ts#L121-L148)
+  (blob `b3abbf8dbf42b8a84d8fb06702eaba027edb2aca`) checks exact model and role.
+- [Utility route selection](https://github.com/openclaw/openclaw/blob/fef6b1290e412761888865da5b61ee1c0ce29586/src/agents/utility-model.ts#L17-L50)
+  (blob `666784e3cd5e8a689fbc287e692f5f13628b36ba`) can use a utility route when
+  no primary exists.
+- [Verification result](https://github.com/openclaw/openclaw/blob/fef6b1290e412761888865da5b61ee1c0ce29586/src/system-agent/setup-inference-turn.ts#L582-L694)
+  (blob `1ce3a7737950f89798e655c7167e29bb72dbe535`) includes that role.
+
+Windows hides utility-only choices from the main-assistant list with a visible
+explanation, rejects utility-marked activation/verification as main-assistant
+success, and preserves absent-field behavior for older Gateways. Verify requests
+send only the existing optional `agentId`, not `modelRef` or an invented
+`"primary"` role. Full utility onboarding and a Gateway protocol upgrade are not
+part of this change.
+
+Interactive authentication and activation retain the shared `wizard.next` and
+`wizard.cancel` contract, including sensitive fields, device codes, browser
+actions and gateway-executed progress. A generic terminal wizard result or a
+prepared model is not proof of working inference. Activation receipts, exact
+model verification and restart reconciliation remain distinct.
+
+An explicitly selected Local AI installation passes its resolved gateway model
+reference to verification after the installation pipeline succeeds. The UI does
+not guess that reference from a catalog ID. Cancellation or an uncertain reply
+does not replay a mutation. Insufficient operator scopes remain an explicit
+error, not a reason to fall back or use node credentials.
+
+After verification, the native chooser finalizes Windows-node workspace guidance
+and the reviewed startup preference before restart. Native Chat and the flyout
+retain their independent Dashboard action. Windows capability consent remains
+in native Permissions, not in the web dashboard.
+
+### Classic OpenClaw onboard (compatibility)
 
 After OpenClaw onboard completes-or when the user explicitly skips it-local setup runs the installed gateway CLI's non-interactive baseline initializer against the final runtime workspace, then writes fixed Windows-node guidance into a setup-owned managed section of that workspace's `AGENTS.md`. The section is replaced idempotently between markers, preserves user-authored `AGENTS.md` content and file permissions outside those markers, and does not modify OpenClaw source files. This helps the initial companion-app OpenClaw session know to use the Windows node / `nodes` tool for Windows desktop, files, screenshots, camera, notifications, browser proxy, and Windows command tasks.
 
@@ -405,10 +889,55 @@ The headless setup engine also treats one terminal wizard payload as completion 
 
 When the gateway config wizard surfaces an error and the active gateway is an app-managed WSL distro, the error state also offers **Open terminal** and **Restart gateway**. The wizard does not parse or classify the gateway's error text; it leaves the message visible and selectable so the user can copy any command the gateway reports. The buttons reuse the shared `GatewayTerminalLauncher` and `WslGatewayController` (in `OpenClaw.Connection`, also used by the Connections tab). Restart re-enters the gateway config wizard (the provider/model onboarding step - not the whole V2 onboarding, and without re-installing the WSL distro) so fixes such as newly-installed tools are picked up on `PATH`. Because the gateway restart clears its wizard session, this resumes at the first config question rather than the exact step that failed. Detection is gated on `GatewayRecord.SetupManagedDistroName`, so it never appears for remote/SSH gateways.
 
-### All set
-Displays a completion summary, a Launch at startup toggle, and a Finish button that saves the startup preference before restarting the tray. Launch at startup defaults on so OpenClaw is ready after reboot.
+### Completion and recovery
+Focused setup finishes through the three-choice native page. Startup is reviewed
+before completion and defaults on for a fresh, non-isolated setup. Recovery
+preserves that preference; isolated hosts keep it off. The classic completion
+page retains its summary and Open chat action. Errors retain diagnostics and
+recovery instead of showing success.
+
+### Artwork and motion
+
+Onboarding uses the native vector `OnboardingMascot` control, adapted from
+OpenClaw's Mac character at upstream commit
+`9afae26e080602bf1e330bfd88fcbd39a2bf22c0`. Idle, curious, thinking, working,
+happy, sad and celebrating poses reflect the current task. Working includes the
+hard hat and hammer animation. Windows animation preferences select static
+poses, and hidden/unloaded controls stop ticking. Navigation also respects the
+Windows animation setting. Motion never adds a completion delay.
+
+Provider artwork is bundled under `Assets/Setup/ProviderIcons` with its upstream
+notices. Keep asset identity separate from the gateway-provided provider catalog.
+Check light, dark and high-contrast rendering and the actual published
+library-qualified paths, not only loose development assets.
 
 ## Security
+
+### Native connection checks and cancellation
+
+The tray-hosted native connection editor is a main-window page. It supports a
+gateway address, a setup code or shared token, and optional SSH host, user and
+ports. SSH uses existing OpenSSH keys/configuration, not a separate key store.
+The browser-only profile route is not implemented through native credentials.
+
+The connection editor shows the Gateway-stage progress indicator above a
+separate row of wrapping Back, Cancel, Check and Next actions.
+
+Check connection authenticates with an isolated identity copy and optional
+temporary owned SSH listener, without saving a gateway or changing the active
+connection. Editing invalidates the displayed check result. Next checks the
+current draft again and transactionally commits before the PC capabilities page.
+Failed checks, editor cancellation and cancellation during
+Next leave or restore the previously active gateway. If rollback cannot be
+confirmed, setup shows an error and does not advance. After Next has succeeded,
+closing setup retains that explicitly committed gateway. Pairing-pending is not
+shown as a successful operator connection or as permission to enter AI setup.
+
+The editor retains a temporary key for the same draft while gateway approval is
+pending. Successful bootstrap handoff tokens remain in memory until Next, allowing
+revalidation without reusing a consumed bootstrap code. Draft changes and editor
+close discard this staging state. No received token is written into the temporary
+key file during Check.
 
 The onboarding wizard follows these security practices:
 
@@ -424,7 +953,7 @@ Gateway credentials are registry-backed. Setup codes and QR payloads create or u
 
 ## Localization
 
-All user-visible strings use `LocalizationHelper.GetString()` with the `Onboarding_*` key namespace. Supported languages are discovered from the `Strings/<locale>/Resources.resw` directories; the current locales are English, French, Dutch, Chinese Simplified, and Chinese Traditional.
+All user-visible strings use localization helpers with the `Onboarding_*` key namespace. Setup library pages use `SetupLocalization`; tray surfaces use `LocalizationHelper`. Supported languages are discovered from the `Strings/<locale>/Resources.resw` directories; the current locales are English, French, Dutch, Brazilian Portuguese, Chinese Simplified, and Chinese Traditional.
 
 Translations are AI-generated following the repo convention. Technical terms (Gateway, Token, Node Mode) are kept in English across all locales.
 
@@ -438,13 +967,30 @@ See [DEVELOPMENT.md](../DEVELOPMENT.md#developing--testing-the-onboarding-wizard
 
 Use a temp settings directory for tests that construct `SettingsManager`, or set `OPENCLAW_TRAY_DATA_DIR` before the test process starts.
 
+Real tray and setup proof launches must set all three isolation variables:
+`OPENCLAW_TRAY_DATA_DIR` is the direct data folder;
+`OPENCLAW_TRAY_APPDATA_DIR` and `OPENCLAW_TRAY_LOCALAPPDATA_DIR` are separate
+roaming and local roots. The product may append `OpenClawTray` to those roots.
+`OPENCLAW_TRAY_LOCAL_DATA_DIR` is a legacy direct-folder override, not a
+replacement for the canonical local root.
+
+Data directories alone do not isolate Windows registration. When the direct
+data override is present, `AppIdentity.IsIsolated` suppresses Toolkit toast
+activation subscription/unsubscription, toast display, and URI registration.
+Startup mutations are explicitly refused. WSL keepalive lifecycle actions
+require an explicitly managed gateway record, rather than adopting the normal
+user's default distro. These guards do not authorize using an existing real
+gateway or profile in a test. Use only owned disposable resources and compare
+protected profile metadata and notification/COM, URI, and startup registration
+fingerprints before and after native runs.
+
 ### Setup image packaging
 
 Setup images use `ms-appx:///OpenClaw.SetupEngine.UI/Assets/Setup/...` URIs.
 Published installer and portable ZIP payloads must include that library-qualified
 directory, not just the tray's loose `Assets/Setup` copies. The tray publish target
 preserves both layouts; `SetupAssetPublishTests` executes that target against a
-clean directory and checks every setup PNG, including nested assets.
+clean directory and checks every setup asset, including nested SVGs and notices.
 
 ### Key Files
 
@@ -452,14 +998,46 @@ clean directory and checks every setup PNG, including nested assets.
 |------|---------|
 | `src/OpenClaw.SetupEngine.UI/SetupWindow.xaml(.cs)` | Tray-hosted setup shell, run lock, preview routing, and page navigation |
 | `src/OpenClaw.SetupEngine.UI/Pages/SecurityNoticePage.xaml(.cs)` | First-run device-trust warning before setup choices |
-| `src/OpenClaw.SetupEngine.UI/Pages/WelcomePage.xaml(.cs)` | Install-new-WSL vs connect-existing choice and existing-gateway replacement prompt |
+| `src/OpenClaw.SetupEngine.UI/Pages/WelcomePage.xaml(.cs)` | Native Gateway, WSL, and connect-existing choice with capability/readiness checks |
 | `src/OpenClaw.SetupEngine.UI/Pages/AdvancedSetupPage.xaml(.cs)` | Connect-existing handoff to Connection settings |
-| `src/OpenClaw.SetupEngine.UI/Pages/CapabilitiesPage.xaml(.cs)` | Capability profile, inline Windows permission status, and install review |
+| `src/OpenClaw.SetupEngine.UI/Pages/CapabilitiesPage.xaml(.cs)` | Shared capability profile and transport settings draft |
 | `src/OpenClaw.SetupEngine.UI/Pages/ProgressPage.xaml(.cs)` | WSL gateway install progress and gateway-installed handoff |
 | `src/OpenClaw.SetupEngine.UI/Pages/WizardPage.xaml(.cs)` | OpenClaw onboard provider/model/key wizard driven by gateway `wizard.*` frames |
+| `src/OpenClaw.SetupEngine.UI/Pages/AiSetupPage.xaml(.cs)` | Focused provider choices, authentication, verification and bounded page-owned cleanup |
+| `src/OpenClaw.SetupEngine/OnboardingFlowPolicy.cs` | Interactive stage list and installation subset; preserves the headless pipeline |
+| `src/OpenClaw.SetupEngine/GatewayAiSetupClient.cs` | Typed route-bound discovery, explicit selection, activation and reconciliation |
+| `src/OpenClaw.SetupEngine/GatewayAiSetupController.cs` | Bounded gateway-executed wizard progress polling |
+| `src/OpenClaw.SetupEngine/SetupGatewaySession.cs` | Shared temporary setup operator session with registry identity and endpoint provenance |
+| `src/OpenClaw.SetupEngine.UI/Controls/OnboardingMascot.cs` | Native vector control, animation preferences, theme updates and unload lifetime |
 | `src/OpenClaw.SetupEngine/GatewayWizardRestartRecoveryPolicy.cs` | Exact terminal-restart classification and bounded restart provenance/reconnect retry policy |
 | `src/OpenClaw.SetupEngine.UI/Pages/CompletePage.xaml(.cs)` | Success, failure, log/help, and startup preference summary |
-| `src/OpenClaw.SetupEngine.UI/Pages/SetupPermissionHelper.cs` | Passive Windows permission checks and inline permission rows |
 | `src/OpenClaw.Connection/GatewayRegistry.cs` | Persistent gateway records and migration target |
 | `src/OpenClaw.Connection/GatewayConnectionManager.cs` | Operator/node connection lifecycle used by onboarding |
 | `src/OpenClaw.Tray.WinUI/Services/SetupExistingGatewayClassifier.cs` | Existing gateway classification for Welcome and startup gating |
+
+### Focused validation
+
+Run the repository-required build, Shared and Tray suites, plus
+`OpenClaw.SetupEngine.Tests` for the flow and AI protocol contracts.
+`AiReadyPageRenderingTests` covers the three destinations and isolated startup.
+`ApprovedMock_FivePagesAndProviderPopup_LightAndDark` provides an opt-in native
+comparison without installation. Building fixtures alone is not rendered proof;
+high contrast and Windows text scaling need authorized visible validation.
+`OnboardingAiPageTests` mounts the production page with a scoped transport
+double and checks explicit selection, masked input, conversation-discovery
+consent, exact-model retry, uncertain replies, and cancellation before handoff.
+`OnboardingArtworkRenderingTests` decodes the bundled SVGs through WinUI,
+checks library-qualified URIs, and renders all static mascot moods in light and
+dark themes. Set `OPENCLAW_UI_PROOF_DIR` to an isolated artifact directory to
+save the current rendered scenes.
+
+Mounted tests are not real-provider or gateway-to-node proof. Keep those
+claims separate, run the required WSL/MXC validation path for setup/connect
+changes, and report unavailable desktop or provider dependencies explicitly.
+The real setup fixture uses separate data, roaming-root and local-root paths.
+Its uninstall passes run-specific startup registry/task identities so teardown
+cannot remove the normal Companion's startup registration.
+The real Gateway proof also calls `openclaw.setup.detect` through the production
+focused client, asserting advertised support, operator scope and typed discovery
+without selecting a provider or starting a wizard. Provider-specific sign-in and
+billing-dependent inference remain separate from that read-only contract proof.

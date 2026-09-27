@@ -271,6 +271,18 @@ internal sealed class LocalAiInstallReconciler
             AdditionalModelInstalls: CreateAdditionalModelInstalls(install));
     }
 
+    /// <summary>Read-only inspection for onboarding; unlike reconciliation, never migrates or saves receipts.</summary>
+    public async Task<bool> InspectAsync(LocalAiResolvedInstall install, CancellationToken ct)
+    {
+        var model = LocalModelCatalog.FindInstalled(install.Manifest.ModelCatalogId);
+        if (model is null)
+            return false;
+        var runtime = await _runtimeInspector.InspectAsync(
+            Path.GetDirectoryName(install.ExecutablePath)!, ct).ConfigureAwait(false);
+        return runtime.IsValid &&
+            await _modelVerifier.VerifyActiveAsync(install, model.Weights, ct).ConfigureAwait(false);
+    }
+
     private static LlamaRuntimeInstallResult CreateRuntimeInstall(LocalAiResolvedInstall install) =>
         new(
             Path.GetDirectoryName(install.ExecutablePath)!,

@@ -4,6 +4,23 @@ namespace OpenClaw.Tray.Tests;
 
 public sealed class GatewayDashboardUrlBuilderTests
 {
+    [Theory]
+    [InlineData("wss://gateway.example/mount/", "https://gateway.example/mount/custodian?onboarding=1#token=synthetic")]
+    [InlineData("wss://gateway.example/mount/#token=synthetic", "https://gateway.example/mount/custodian?onboarding=1#token=synthetic")]
+    public void Build_CustodianPreservesMountAndAuthFragment(string gateway, string expected)
+    {
+        Assert.Equal(expected, GatewayDashboardUrlBuilder.Build(
+            gateway, "custodian?onboarding=1", gateway.Contains('#') ? null : "synthetic", true));
+    }
+
+    [Fact]
+    public void Build_RotatedSharedTokenReplacesOldFragmentTokenWithoutQueryExport()
+    {
+        Assert.Equal("https://gateway.example/mount/custodian?onboarding=1#view=compact&token=current",
+            GatewayDashboardUrlBuilder.Build("wss://gateway.example/mount/#token=old&view=compact",
+                "custodian?onboarding=1", "current", true));
+    }
+
     [Fact]
     public void Build_AppendsSharedTokenToDashboardRoot()
     {

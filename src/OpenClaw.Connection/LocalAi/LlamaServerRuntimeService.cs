@@ -1598,7 +1598,10 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
             _install?.Manifest.KeyCachePrecision,
             _install?.Manifest.ValueCachePrecision,
             _install?.Manifest.DraftKeyCachePrecision,
-            _install?.Manifest.DraftValueCachePrecision);
+            _install?.Manifest.DraftValueCachePrecision)
+        {
+            GatewayRouteRequiresResolution = _gatewayRouteRequiresResolution,
+        };
         lock (_snapshotGate)
             _snapshot = value;
 

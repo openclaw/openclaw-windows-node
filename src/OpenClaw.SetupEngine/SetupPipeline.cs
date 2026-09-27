@@ -133,6 +133,14 @@ public static class SetupStepFactory
 
 public sealed class SetupPipeline
 {
+    public static async Task<PipelineResult> RunWithSettlementAsync(
+        Func<Task<PipelineResult>> run, Func<PipelineResult?, Task> settle)
+    {
+        PipelineResult? result = null;
+        try { result = await run(); return result; }
+        finally { await settle(result); }
+    }
+
     private readonly List<SetupStep> _steps;
     private readonly List<SetupStep> _completedSteps = new();
     private readonly bool? _rollbackOnFailureOverride;

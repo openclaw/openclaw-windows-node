@@ -11,6 +11,47 @@ namespace OpenClaw.Connection.Tests;
 
 public class GatewayConnectionManagerTests : IDisposable
 {
+    [Fact]
+    public async Task RegistrySettlementCannotDisconnectANewerConnectionSnapshot()
+    {
+        var before = _manager.CurrentSnapshot;
+        SetupGateway("settlement-new", "wss://new.example");
+        _resolver.OperatorCredential = new GatewayCredential("token", false, "test");
+        await _manager.ConnectAsync("settlement-new");
+        var current = _manager.CurrentSnapshot;
+        Assert.False(await _manager.DisconnectIfCurrentAsync(before));
+        Assert.Same(current, _manager.CurrentSnapshot);
+        Assert.True(await _manager.DisconnectIfCurrentAsync(current));
+    }
+
+    [Fact]
+    public async Task NativeRecovery_ProductionAuthorizerDoesNotDowngradeAtUnownedManualLoopback()
+    {
+        var path = Path.Combine(_tempDir, "saved-native");
+        var saved = new DeviceIdentity(path);
+        saved.Initialize();
+        saved.StoreDeviceTokenForRole("operator", "revoked");
+        using var copy = new GatewayValidationIdentity(path);
+        var record = new GatewayRecord { Id = "manual", Url = "ws://127.0.0.1:18789", SharedGatewayToken = "fallback" };
+        var explicitCheck = await _manager.AuthorizeValidationCredentialHandshakeAsync(record,
+            new("fallback", false, CredentialResolver.SourceSharedGatewayToken), null, null, null, CancellationToken.None);
+        Assert.True(explicitCheck.Allowed);
+        var attempts = 0;
+        var validator = new GatewayConnectionValidator(new CredentialResolver(DeviceIdentityFileReader.Instance),
+            () => throw new InvalidOperationException("No SSH"),
+            _manager.AuthorizeValidationCredentialHandshakeAsync, NullLogger.Instance,
+            (_, _) =>
+            {
+                attempts++;
+                return Task.FromResult(GatewayConnectionValidator.AuthenticationFailure("AUTH_DEVICE_TOKEN_MISMATCH"));
+            });
+        Assert.Equal(SetupCodeOutcome.ConnectionFailed,
+            (await validator.ValidateAsync(record, copy, new HashSet<int>(), CancellationToken.None)).Outcome);
+        Assert.Equal(1, attempts);
+        Assert.Equal("revoked", DeviceIdentity.TryReadStoredDeviceToken(copy.DirectoryPath));
+        Assert.Equal("revoked", DeviceIdentity.TryReadStoredDeviceToken(path));
+    }
+
     private readonly string _tempDir;
     private readonly GatewayRegistry _registry;
     private readonly MockCredentialResolver _resolver;

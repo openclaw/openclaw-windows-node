@@ -652,7 +652,25 @@ public sealed partial class HubWindow : WindowEx
     public void NavigateTo(string tag) =>
         NavigateInternal(HubPageRegistry.NormalizeTag(tag, _currentAgentId));
 
-    private void NavigateInternal(string tag)
+    internal void NavigateTo(SetupNativeNavigationRequest request) =>
+        NavigateInternal(request.PageTag, request);
+
+    internal async Task WaitForNativeSetupAsync(SetupNativeNavigationRequest request, CancellationToken ct)
+    {
+        await WaitForCurrentContentReadyAsync().WaitAsync(ct);
+        while (ContentFrame.Content is not FrameworkElement { IsLoaded: true })
+            await Task.Delay(50, ct);
+        if (ContentFrame.Content is ChatPage chat && request.PageTag == "chat")
+            await chat.WaitForNativeSetupAsync(request, ct);
+        else if (ContentFrame.Content is ChannelsPage channels && request.PageTag == "channels")
+            await channels.WaitForNativeSetupAsync(request, ct);
+        else if (ContentFrame.Content is SkillsPage skills && request.PageTag == "skills")
+            await skills.WaitForNativeSetupAsync(request, ct);
+        else
+            throw new InvalidOperationException("The selected setup destination changed.");
+    }
+
+    private void NavigateInternal(string tag, SetupNativeNavigationRequest? nativeRequest = null)
     {
         if (tag == "debug" && !DiagnosticsGate.IsVisible)
             tag = "settings";
@@ -665,7 +683,7 @@ public sealed partial class HubWindow : WindowEx
         // that share a Page (e.g. agent switching on WorkspacePage), and
         // would also push duplicate back-stack entries when the user
         // re-invokes the current page.
-        if (ContentFrame.SourcePageType == pageType && _currentNavTag == tag)
+        if (nativeRequest is null && ContentFrame.SourcePageType == pageType && _currentNavTag == tag)
         {
             _contentReady = CreateCompletedContentReady();
             AccessibilityNavigationSignal.WritePageReady(pageType.Name);
@@ -679,7 +697,7 @@ public sealed partial class HubWindow : WindowEx
         // can recover the canonical destination on Back/Forward.
         var ready = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         _contentReady = ready;
-        if (!ContentFrame.Navigate(pageType, tag))
+        if (!ContentFrame.Navigate(pageType, (object?)nativeRequest ?? tag))
             CompleteContentReady(ready, pageName: null);
     }
 
@@ -973,8 +991,14 @@ public sealed partial class HubWindow : WindowEx
     /// </summary>
     private void OnContentFrameNavigated(object sender, Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
     {
-        var tag = e.Parameter as string;
+        var nativeRequest = e.Parameter as SetupNativeNavigationRequest;
+        var tag = nativeRequest?.PageTag ?? e.Parameter as string;
         _currentNavTag = tag;
+        if (nativeRequest is not null)
+        {
+            _currentAgentId = nativeRequest.Completion.Verification.AgentId!;
+            _cachedCommands = null;
+        }
 
         // Keep _currentAgentId aligned with the page that's now visible.
         if (tag != null && tag.StartsWith("agent:"))

@@ -30,6 +30,12 @@ internal sealed class ToastService : IToastNotificationPublisher
         if (GatewayFixtureIsolation.IsEnabled)
             return;
 
+        if (AppIdentity.IsIsolated)
+        {
+            Logger.Info("Windows toast suppressed for an isolated app instance.");
+            return;
+        }
+
         if (!ShouldShowToast(toastTag, deviceId))
             return;
 

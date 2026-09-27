@@ -120,6 +120,44 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
         }
 
         GatewayCapture current = await CaptureGatewayAsync(cancellationToken).ConfigureAwait(false);
+        LocalAiEndpointLifecycleResult admission = CheckPublication(current, install);
+        if (!admission.Success || current.ProviderExists)
+            return admission;
+
+        RoutedCommandResult applied = await ApplyBatchAsync(batch, cancellationToken).ConfigureAwait(false);
+        if (!applied.Routed)
+            return Failed(applied.Detail!);
+        if (!applied.Result!.Success)
+        {
+            LocalAiEndpointLifecycleResult cleanup = await QuiesceAsync(install, LocalAiQuiesceReason.Teardown, cancellationToken)
+                .ConfigureAwait(false);
+            return PublicationFailed(
+                "The verified Local AI route could not be published to the app-owned gateway.",
+                cleanup);
+        }
+
+        string managedPrimary = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install);
+        GatewayCapture verified = await CaptureGatewayAsync(cancellationToken).ConfigureAwait(false);
+        if (!verified.Success || !verified.ProviderExists ||
+            !LocalAiGatewayProviderDefinition.MatchesProviderJson(verified.ProviderJson!, install) ||
+            !verified.PrimaryExists ||
+            !string.Equals(verified.PrimaryModel, managedPrimary, StringComparison.Ordinal))
+        {
+            LocalAiEndpointLifecycleResult cleanup = await QuiesceAsync(install, LocalAiQuiesceReason.Teardown, cancellationToken)
+                .ConfigureAwait(false);
+            return PublicationFailed(
+                "The app-owned gateway did not retain the verified Local AI route.",
+                cleanup);
+        }
+        return LocalAiEndpointLifecycleResult.Ok();
+    }
+
+    public async Task<LocalAiEndpointLifecycleResult> ValidatePublicationAsync(
+        LocalAiResolvedInstall install, CancellationToken ct = default) =>
+        CheckPublication(await CaptureGatewayAsync(ct).ConfigureAwait(false), install);
+
+    private LocalAiEndpointLifecycleResult CheckPublication(GatewayCapture current, LocalAiResolvedInstall install)
+    {
         if (!current.Success)
             return Failed(current.Detail ?? "The managed Local AI gateway route could not be inspected.");
         string managedPrimary = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install);
@@ -143,30 +181,6 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
             return Failed("The gateway primary model changed while Local AI was stopped; preserving it instead of overwriting it.");
         }
 
-        RoutedCommandResult applied = await ApplyBatchAsync(batch, cancellationToken).ConfigureAwait(false);
-        if (!applied.Routed)
-            return Failed(applied.Detail!);
-        if (!applied.Result!.Success)
-        {
-            LocalAiEndpointLifecycleResult cleanup = await QuiesceAsync(install, LocalAiQuiesceReason.Teardown, cancellationToken)
-                .ConfigureAwait(false);
-            return PublicationFailed(
-                "The verified Local AI route could not be published to the app-owned gateway.",
-                cleanup);
-        }
-
-        GatewayCapture verified = await CaptureGatewayAsync(cancellationToken).ConfigureAwait(false);
-        if (!verified.Success || !verified.ProviderExists ||
-            !LocalAiGatewayProviderDefinition.MatchesProviderJson(verified.ProviderJson!, install) ||
-            !verified.PrimaryExists ||
-            !string.Equals(verified.PrimaryModel, managedPrimary, StringComparison.Ordinal))
-        {
-            LocalAiEndpointLifecycleResult cleanup = await QuiesceAsync(install, LocalAiQuiesceReason.Teardown, cancellationToken)
-                .ConfigureAwait(false);
-            return PublicationFailed(
-                "The app-owned gateway did not retain the verified Local AI route.",
-                cleanup);
-        }
         return LocalAiEndpointLifecycleResult.Ok();
     }
 

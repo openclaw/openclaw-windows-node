@@ -217,16 +217,18 @@ public sealed class GatewayConnectionManager :
 
     // ─── Lifecycle ───
 
-    public async Task ConnectAsync(string? gatewayId = null)
+    public Task ConnectAsync(string? gatewayId = null) => ConnectAsync(gatewayId, CancellationToken.None);
+
+    public async Task ConnectAsync(string? gatewayId, CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
-        await _transitionSemaphore.WaitAsync();
+        await _transitionSemaphore.WaitAsync(cancellationToken);
         try
         {
             var targetId = gatewayId ?? _registry.ActiveGatewayId;
             if (targetId is not null)
                 SetGatewayConnectionIntent(targetId, shouldBeConnected: true);
-            await ConnectCoreAsync(gatewayId, "connect");
+            await ConnectCoreAsync(gatewayId, "connect", cancellationToken);
         }
         finally
         {
@@ -1048,6 +1050,19 @@ public sealed class GatewayConnectionManager :
             _logger.Warn($"[ConnMgr] Tunnel stop failed after {operation}: {ex.Message}");
             _diagnostics.Record("tunnel", $"SSH tunnel stop failed after {operation}", ex.Message);
         }
+    }
+
+    public async Task<bool> DisconnectIfCurrentAsync(GatewayConnectionSnapshot expected)
+    {
+        ThrowIfDisposed();
+        await _transitionSemaphore.WaitAsync();
+        try
+        {
+            if (!ReferenceEquals(CurrentSnapshot, expected)) return false;
+            await DisconnectCoreAsync();
+            return true;
+        }
+        finally { _transitionSemaphore.Release(); }
     }
 
     public async Task DisconnectAsync()
@@ -1980,6 +1995,24 @@ public sealed class GatewayConnectionManager :
         }
     }
 
+    public Task<SetupCodeResult> ValidateConnectionAsync(
+        GatewayRecord candidate, GatewayValidationIdentity identity,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        var excludedPorts = new HashSet<int>();
+        if (_tunnelManager?.ActiveConfig is { } active)
+        {
+            excludedPorts.Add(active.LocalPort);
+            if (active.IncludeBrowserProxyForward)
+                excludedPorts.Add(active.LocalPort + 2);
+        }
+        return new GatewayConnectionValidator(
+            _credentialResolver, _validationTunnelFactory,
+            AuthorizeValidationCredentialHandshakeAsync, _logger)
+            .ValidateAsync(candidate, identity, excludedPorts, cancellationToken);
+    }
+
     internal OpenClawGatewayClient CreateSharedTokenValidationClient(
         string gatewayUrl,
         string token,
@@ -1991,39 +2024,12 @@ public sealed class GatewayConnectionManager :
     {
         var diagLogger = new DiagnosticTeeLogger(_logger, _diagnostics);
         expectedTunnelOwnershipGeneration ??= validationTunnel?.OwnershipGeneration;
-        var client = new OpenClawGatewayClient(
-            gatewayUrl,
-            token,
-            diagLogger,
-            tokenIsBootstrapToken: false,
-            bootstrapPairAsNode: false,
-            identityPath: identityDir,
-            ignoreStoredDeviceToken: true,
-            persistHandshakeDeviceTokens: false)
-        {
-            UseV2Signature =
-                validationRecord.IsLocal || validationRecord.RequiresV2Signature
-        };
-        // This is a one-shot validation client. A reconnect would reuse the strong shared token after
-        // ownership may have changed; fail the validation instead and let the caller retry from a new
-        // provenance preflight.
-        client.ReconnectAuthorizationAsync = _ => Task.FromResult(
-            new ReconnectAuthorizationResult(
-                false,
-                GatewayErrorKind.Auth,
-                "Shared-token validation is one-shot."));
-        client.HandshakeAuthorizationAsync = cancellationToken =>
-            AuthorizeValidationCredentialHandshakeAsync(
-                validationRecord,
-                new GatewayCredential(
-                    token,
-                    IsBootstrapToken: false,
-                    CredentialResolver.SourceSharedGatewayToken),
-                validationTunnel,
-                validationTunnelConfig,
-                expectedTunnelOwnershipGeneration,
-                cancellationToken);
-        return client;
+        var credential = new GatewayCredential(token, false, CredentialResolver.SourceSharedGatewayToken);
+        return GatewayConnectionValidator.CreateClient(
+            gatewayUrl, credential, identityDir, validationRecord, diagLogger,
+            cancellationToken => AuthorizeValidationCredentialHandshakeAsync(
+                validationRecord, credential, validationTunnel, validationTunnelConfig,
+                expectedTunnelOwnershipGeneration, cancellationToken));
     }
 
     internal static async Task<ReconnectAuthorizationResult> AuthorizeValidationTunnelHandshakeAsync(
@@ -2377,6 +2383,8 @@ public sealed class GatewayConnectionManager :
                 (await _nativeGatewayRuntime.InspectAsync(record, cancellationToken).ConfigureAwait(false)).Kind ==
                     GatewayEndpointProvenanceKind.ExpectedManagedGateway;
         }
+        if (!GatewayCredentialRecoveryPolicy.IsTransportSafe(record, allowUnmanagedLoopback: true))
+            return false;
         if (GatewayRecordEditing.IsLoopbackEndpoint(record.Url))
         {
             if (record.IsLocal || GatewayRecordEditing.ResolveManagedDistroName(record) is not null)
@@ -2398,11 +2406,7 @@ public sealed class GatewayConnectionManager :
                         cancellationToken)
                     .ConfigureAwait(false);
         }
-        if (string.IsNullOrWhiteSpace(record.Url))
-            return false;
-        return Uri.TryCreate(record.Url, UriKind.Absolute, out var uri) &&
-            (string.Equals(uri.Scheme, "wss", StringComparison.OrdinalIgnoreCase) ||
-             string.Equals(uri.Scheme, "https", StringComparison.OrdinalIgnoreCase));
+        return true;
     }
 
     private async Task<EndpointCredentialAuthorization> AuthorizeCredentialForEndpointAsync(

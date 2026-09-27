@@ -14,7 +14,12 @@ namespace OpenClawTray.Helpers;
 /// a semantic match was ambiguous the closest available glyph is used and
 /// noted in a comment.
 /// </summary>
-public static class FluentIconCatalog
+#if OPENCLAW_SETUP_UI
+internal
+#else
+public
+#endif
+static class FluentIconCatalog
 {
     // ── Status / state ─────────────────────────────────────────────
     public const string StatusOk = "\uE73E";       // CheckMark
@@ -55,6 +60,7 @@ public static class FluentIconCatalog
     public const string Back = "\uE72B";           // Back — leading chevron on Back hyperlink
     public const string Sync = "\uE895";           // Sync — Connecting / Disconnecting transient
     public const string Lock = "\uE192";           // Lock — Setup code / pairing waiting
+    public const string Key = "\uE8D7";            // Permissions — API key / token entry
     public const string Plug = "\uE839";           // Plug/PC1 — Direct connection tile (alias of System; same glyph)
     public const string Inference = "\uE839";      // PC1 (alias of System/Plug) — Ollama local inference runs on this PC
     public const string MoreOverflow = "\uE712";   // More — saved-row overflow ⋯ button

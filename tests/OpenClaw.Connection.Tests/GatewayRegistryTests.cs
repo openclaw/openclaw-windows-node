@@ -23,6 +23,47 @@ public class GatewayRegistryTests : IDisposable
     }
 
     [Fact]
+    public void CapturePersistedSnapshot_AcceptsOnlyPendingConnectionBookkeeping()
+    {
+        var original = MakeRecord("gw-1", "wss://test1");
+        _registry.AddOrUpdate(original);
+        _registry.SetActive(original.Id);
+        _registry.Save();
+        var connected = original with { LastConnected = DateTime.UtcNow };
+        _registry.Update(original.Id, _ => connected);
+        var snapshot = _registry.CapturePersistedSnapshot();
+        Assert.Equal(connected, Assert.Single(snapshot.Records));
+        _registry.Update(original.Id, _ => connected with { SharedGatewayToken = "new-authority" });
+        Assert.Throws<InvalidOperationException>(() => _registry.CapturePersistedSnapshot());
+    }
+
+    [Fact]
+    public void CapturePersistedSnapshot_StillRejectsAuthorityActiveAndOtherEdits()
+    {
+        var record = MakeRecord("gw-1", "wss://test1");
+        _registry.AddOrUpdate(record);
+        _registry.SetActive(record.Id);
+        _registry.Save();
+        foreach (var edited in new[]
+        {
+            record with { Url = "wss://other" },
+            record with { SharedGatewayToken = "changed" },
+            record with { BootstrapToken = "changed" },
+            record with { SshTunnel = new("user", "host", 18789, 19001) },
+            record with { FriendlyName = "changed" },
+        })
+        {
+            _registry.Update(record.Id, _ => edited);
+            Assert.Throws<InvalidOperationException>(() => _registry.CapturePersistedSnapshot());
+            _registry.Update(record.Id, _ => record);
+        }
+        _registry.AddOrUpdate(MakeRecord("gw-2", "wss://test2"));
+        _registry.Save();
+        _registry.SetActive("gw-2");
+        Assert.Throws<InvalidOperationException>(() => _registry.CapturePersistedSnapshot());
+    }
+
+    [Fact]
     public void InitialState_IsEmpty()
     {
         Assert.Empty(_registry.GetAll());

@@ -41,6 +41,75 @@ orchestration. Three narrower owners sit behind it:
 interfaces/DTOs/enums remain separate. This project has zero WinUI dependencies
 and is independently testable.
 
+Native Check/Next keeps device-token precedence. Only a typed
+`AUTH_DEVICE_TOKEN_MISMATCH` may trigger one recovery in the disposable
+`GatewayValidationIdentity`: recheck trusted transport and owned-listener
+provenance, clear its rejected operator token, then resolve shared before
+bootstrap. The saved identity, keypair and original compare-and-swap baseline
+are not changed by Check. Successful bootstrap authentication retains its
+replacement operator token in memory for Next instead of replaying bootstrap.
+Wrong shared tokens, plain remote WebSocket endpoints, ambiguous listeners and
+repeated mismatch cannot cause additional credential fallback.
+Native automatic recovery also rejects unowned manual-loopback listeners.
+Explicit manual-loopback connection is unchanged; the existing non-native
+recovery owner retains its prior admission policy through the shared policy's
+explicit legacy allowance. Disposable identity copies use the product's
+sensitive-file ACL writer, not inherited copy permissions.
+
+Canceling a Check, or a Next with confirmed rollback, retains the same draft's
+staged keypair and authenticated replacement token. Draft edits and close discard
+it; completed or uncertain commits also discard it. No ambiguous transaction
+result can be reused as a validated draft.
+
+Setup's persisted-registry snapshot comparison ignores only `LastConnected`,
+which can differ briefly between a connection's Update and Save. The snapshot
+retains canonical in-memory records; active gateway, credentials, endpoint and
+other configuration differences still reject admission.
+Reconciliation additionally requires the operation-produced expected output
+snapshot. The pipeline checks its prior expected state before reading/writing
+registry changes and carries its own resulting snapshot to the UI; it does not
+derive authority by rereading disk immediately before adoption.
+
+Pipeline settlement runs after execution and rollback on success, failure,
+cancellation, and window close. It adopts only the operation's known final
+registry output against its admitted baseline, refreshes the persistence
+baseline, and publishes changes outside locks. Stale live connections are
+disconnected conditionally against their captured connection snapshot; a newer
+connection is not canceled. External conflicts preserve live edits and provide
+an explicit reopen/reload recovery message instead of weakening save CAS.
+
+Direct-connect commit and rollback use admitted registry snapshots. If rollback
+loses a CAS race, it observes the actual persisted active selection and
+reconciles only that selection, never reasserting the stale candidate. Unreadable
+state remains unknown with attention required, no guessed settings or old
+connection restore. Identity preparation failures before transaction admission
+remain retryable and cannot be reported as committed.
+
+After a failed initial commit, cleanup removes a newly copied candidate identity
+only when no live or persisted record adopted its ID and its sole key file still
+matches this operation's copy. The registry lease spans that final absence check
+and removal. Copy publication returns an exact-content creation transaction:
+the absence check, baseline calculation and write share the existing identity
+mutex. Cleanup acquires that same identity mutex inside the registry lease for
+comparison and deletion. No unlocked post-copy read can adopt a newer writer's
+bytes as the cleanup baseline. Existing identities, changed files, reparse paths
+and unknown persisted state are preserved.
+
+`PersistenceFileLease` serializes cooperating settings/registry writers by
+normalized path across instances and local processes. Registry Load/Save,
+UpdateAndSave, setup's expected-output Save and reconciliation share that lease.
+The final persisted-snapshot comparison and atomic replacement happen within
+one lease. A stale writer must reload after a conflict; it cannot overwrite a
+new endpoint, credential, active selection or record addition. LastConnected
+alone merges monotonically for unchanged authorities.
+
+Hosted setup applies only its owned fields through `ISettingsStore`, including
+the background pipeline settings save. It rejects conflicting same-field edits
+while preserving unrelated `app.settings.set` changes. Standalone setup uses the
+same path lease for read/merge/replace. `SettingsManager` additionally checks its
+last loaded/saved JSON before replacing the file, rolls back failed store edits,
+and publishes notifications after releasing the file lease.
+
 **OpenClaw.Tray.WinUI** consumes the connection layer through interfaces. It never creates gateway clients directly - `GatewayConnectionManager` owns that entirely.
 
 ## Consumer API
@@ -188,6 +257,61 @@ Many gateway records may be saved, but only `ActiveId` in `gateways.json` is the
 `GatewayDirectConnectService` is the single transaction owner for direct-connect UI surfaces. It commits the registry and active id, applies identity changes, persists `SettingsManager`, waits for a terminal manager state, and rolls back ordinary asynchronous connection failures as well as thrown failures. When the operation replaced a live operator connection, successful rollback reconnects that previous gateway before returning the failure. The Connection page and Connection Status window only validate controls and render the result. MCP shared-token replacement keeps its device-token-preserving validation semantics, then asks this service to synchronize the committed active gateway into settings and the runtime tunnel.
 
 ## Credential precedence
+
+### Native onboarding connection boundary
+
+`SetupNativeConnectionPage` retains an immutable `SetupNativeConnectionRequest`.
+Its `ISetupNativeConnectionHost` is composed by `WindowManager`, using the same
+`GatewayDirectConnectService` instance as the existing Connection surfaces.
+It does not create a second connection manager or write settings itself.
+
+**Check connection** uses `GatewayConnectionValidator` with a disposable identity
+copy, no handshake-token persistence and no reconnect. SSH checks use a separate
+owned tunnel on an isolated port, with generation checks again at authentication.
+Exact bootstrap-scope and signature compatibility fallbacks use at most two
+additional fresh clients with endpoint authorization repeated, not unrestricted
+transport reconnect.
+Managed-local strong credentials still require the connection manager's
+provenance authorization. Setup-code addresses must match an explicitly edited
+address; bootstrap tokens never become shared tokens.
+
+The setup host retains that temporary key for the same immutable draft across
+Check, approval retry and Next. Successful handshake credentials are retained
+only in setup-owned memory, so a consumed bootstrap code is upgraded to explicit
+device-token authentication for revalidation. They are not written into the
+temporary identity file. A draft change or editor close discards the temporary
+key and in-memory credentials; a successful Next writes them only into the
+transaction's candidate identity. Temporary key files do exist during editing,
+but the previous saved identity remains untouched.
+
+**Next** always repeats validation against the current draft before mutating
+saved or active state. For the same credential realm, it retains the logical
+gateway ID, Local AI ownership and all ID-keyed state. The validated identity is
+promoted using the canonical identity lock and atomic writer, with a snapshot and
+compare-and-swap rollback. Paired device credentials retain precedence over shared
+and bootstrap tokens. A newer identity writer is preserved and reported as an
+incomplete rollback, not silently overwritten.
+
+A changed address or SSH endpoint never inherits the old credentials. Native
+onboarding adds that realm as a separate gateway and retains the prior saved
+gateway and identity. The existing Direct editor's replacement semantics are
+unchanged. Failed or cancelled connection attempts restore the old record,
+settings and live connection, and discard the candidate identity when newly
+created. Rollback errors remain failures even if a candidate remains
+committed. Incomplete rollback or cleanup also reaches a persistent host
+notification and Connection settings, even if the editor has already closed.
+Operator pairing-pending is not AI-ready.
+
+When the editor has no saved gateway ID, native Check, identity staging and Next
+share one lookup by logical URL and SSH credential endpoint before the ordinary
+URL fallback. This reuses the correct saved identity when several SSH gateways
+have the same public or loopback URL. Direct editing keeps its existing lookup.
+
+Next is the explicit commit boundary. After it succeeds, later setup cancellation
+may retain the chosen gateway. Setup config receives only the effective endpoint;
+the existing `SetupGatewaySession` reads credentials from the active registry.
+No browser-profile credentials are accepted by this port, and it does not change
+Node mode, local MCP, capability settings, or install WSL.
 
 Credential resolution order is intentionally strict:
 

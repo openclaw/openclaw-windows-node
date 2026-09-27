@@ -54,11 +54,14 @@ public sealed class WindowManagerTests
         var manager = ReadManager();
 
         Assert.Contains("public async Task ShowLocalAiSetupAsync()", manager);
-        Assert.Contains("LocalAiGatewayDistroResolver.FindOwners(", manager);
-        Assert.Contains("ExistingConfigDetector.Detect(", manager);
-        Assert.Contains("new LocalAiManifestStore(", manager);
-        Assert.Contains("install?.Manifest.ModelCatalogId", manager);
-        Assert.Contains("LocalAiSetupRoutePolicy.Decide(", manager);
+        var resolver = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src",
+            "OpenClaw.Tray.WinUI", "Services", "LocalAiSetupRouteResolver.cs"));
+        Assert.Contains("new LocalAiSetupRouteResolver(", manager);
+        Assert.Contains("LocalAiGatewayDistroResolver.FindOwners(", resolver);
+        Assert.Contains("ExistingConfigDetector.Detect(", resolver);
+        Assert.Contains("new LocalAiManifestStore(", resolver);
+        Assert.Contains("install?.Manifest.ModelCatalogId", resolver);
+        Assert.Contains("LocalAiSetupRoutePolicy.Decide(", resolver);
         AssertInOrder(
             manager,
             "if (resolution.Route == LocalAiSetupRoute.Provision)",
@@ -109,17 +112,28 @@ public sealed class WindowManagerTests
         AssertInOrder(
             capabilities,
             "private void Back_Click(object sender, RoutedEventArgs e)",
-            "if (_localAiRecoveryOnly)",
-            "SetupWindow.Active?.NavigateToWelcome(back: true);",
-            "return;");
+            "SetupWindow.Active?.NavigateToWelcome(back: true);");
+        AssertInOrder(setupWindow,
+            "else if (startAtLocalAiRecoveryReview)",
+            "NavigateToLocalAiSetup();");
+        Assert.Contains(
+            "new GatewaySetupDetailArgs(AccessDraft, detail, _startAtLocalAiRecoveryReview, _pinLocalAiRecoveryModel, returnToReview)",
+            setupWindow);
+        var gatewayReview = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.SetupEngine.UI",
+            "Pages", "GatewaySetupPage.xaml.cs"));
+        Assert.Contains("if (_window?.IsLocalAiRecovery == true) _window.NavigateToWelcome(back: true);", gatewayReview);
+        var localAi = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.SetupEngine.UI",
+            "Controls", "LocalAiSetupControl.xaml.cs"));
         Assert.Contains(
             "LocalAiModelSelector.IsEnabled = isAvailable && !_localAiRecoveryModelPinned;",
-            capabilities);
+            localAi);
         Assert.Contains(
             "LocalAiToggle.IsEnabled = isAvailable && !_localAiRecoveryOnly;",
-            capabilities);
+            localAi);
         AssertInOrder(
-            capabilities,
+            localAi,
             "if (_localAiRecoveryModelPinned)",
             "eligibility = selectedEligibility;",
             "else if (!selectedEligibility.CanInstall)",

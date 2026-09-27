@@ -9,6 +9,75 @@ namespace OpenClaw.Tray.Tests.Presentation;
 /// </summary>
 public sealed class SettingsStoreTests
 {
+    [Fact]
+    public async Task HostedSetupSerializesWithBackgroundSettingsMutationWithoutLosingUnrelatedFields()
+    {
+        using var store = NewStore(out var settings, out _, out var temp);
+        using (temp)
+        using (var entered = new ManualResetEventSlim())
+        using (var release = new ManualResetEventSlim())
+        {
+            var path = Path.Combine(temp.Path, "settings.json");
+            File.WriteAllText(path, """{"UnrelatedSentinel":"keep"}""");
+            settings.Load();
+            var setup = new SetupSettingsWriter(store);
+            var background = Task.Run(() => store.Update(null, editor =>
+            {
+                editor.NotificationSound = "background";
+                entered.Set();
+                if (!release.Wait(TimeSpan.FromSeconds(5))) throw new TimeoutException();
+            }));
+            Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
+            var writing = Task.Run(() => setup.Apply(new Dictionary<string, bool> { ["NodeCameraEnabled"] = false }));
+            try { Assert.NotSame(writing, await Task.WhenAny(writing, Task.Delay(150))); }
+            finally { release.Set(); }
+            await Task.WhenAll(background, writing);
+            var saved = new SettingsManager(temp.Path);
+            Assert.Equal("background", saved.NotificationSound);
+            Assert.False(saved.NodeCameraEnabled);
+            using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
+            Assert.Equal("keep", json.RootElement.GetProperty("UnrelatedSentinel").GetString());
+        }
+    }
+
+    [Fact]
+    public void HostedSetupRejectsSameFieldConflictBeforeMutatingOtherFields()
+    {
+        using var store = NewStore(out var settings, out _, out var temp);
+        using (temp)
+        {
+            var setup = new SetupSettingsWriter(store);
+            store.Update(null, editor => editor.NodeCameraEnabled = false);
+            var before = File.ReadAllBytes(Path.Combine(temp.Path, "settings.json"));
+            Assert.Throws<InvalidOperationException>(() => setup.Apply(new Dictionary<string, bool>
+            { ["EnableNodeMode"] = true, ["NodeCameraEnabled"] = true }));
+            Assert.False(settings.EnableNodeMode);
+            Assert.False(settings.NodeCameraEnabled);
+            Assert.Equal(before, File.ReadAllBytes(Path.Combine(temp.Path, "settings.json")));
+        }
+    }
+
+    [Fact]
+    public void StaleSettingsInstanceCannotOverwriteAnotherWriterAndFailedUpdateRollsBack()
+    {
+        using var store = NewStore(out var settings, out _, out var temp);
+        using (temp)
+        {
+            store.Update(null, editor => editor.GlobalHotkeyEnabled = true);
+            var other = new SettingsManager(temp.Path);
+            other.NotificationSound = "other-writer";
+            other.SaveOrThrow();
+            var before = File.ReadAllBytes(Path.Combine(temp.Path, "settings.json"));
+            Assert.Throws<InvalidOperationException>(() => store.Update(null, editor => editor.GlobalHotkeyEnabled = false));
+            Assert.True(settings.GlobalHotkeyEnabled);
+            Assert.Equal(before, File.ReadAllBytes(Path.Combine(temp.Path, "settings.json")));
+            settings.Load();
+            store.Update(null, editor => editor.GlobalHotkeyEnabled = false);
+            Assert.Equal("other-writer", settings.NotificationSound);
+            Assert.False(settings.GlobalHotkeyEnabled);
+        }
+    }
+
     private static SettingsStore NewStore(out SettingsManager settings, out RecordingUiDispatcher dispatcher, out TempDir temp)
     {
         temp = new TempDir();

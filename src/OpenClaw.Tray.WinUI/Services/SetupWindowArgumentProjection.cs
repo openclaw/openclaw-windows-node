@@ -68,9 +68,7 @@ internal static class SetupWindowArgumentProjection
                    pid != currentProcessId;
         }
 
-        return string.Equals(
-            value,
-            "chat",
-            StringComparison.OrdinalIgnoreCase);
+        return ActivationRouter.GetPostSetupLaunchPath(value) is not null ||
+            SetupDashboardHandoff.ParseHandle(value) is not null;
     }
 }

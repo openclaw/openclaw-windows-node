@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using CommunityToolkit.WinUI.Controls;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -22,6 +23,45 @@ namespace OpenClaw.Tray.UITests;
 /// </summary>
 public static class TestSupport
 {
+    public static async Task WaitForRenderedConditionAsync(Func<bool> predicate, string operation)
+    {
+        var settled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Check(object? sender, object args)
+        {
+            if (predicate()) settled.TrySetResult();
+        }
+        CompositionTarget.Rendering += Check;
+        try
+        {
+            Check(null, EventArgs.Empty);
+            await settled.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        catch (TimeoutException)
+        {
+            Assert.Fail($"Timed out waiting for {operation}.");
+        }
+        finally
+        {
+            CompositionTarget.Rendering -= Check;
+        }
+    }
+
+    public static async Task WaitForSettingsExpanderSettledAsync(
+        UIThreadFixture ui, SettingsExpander expander, bool expanded)
+    {
+        Assert.Equal(expanded, expander.IsExpanded);
+        expander.UpdateLayout();
+        await ui.YieldToRenderAsync();
+        var content = Assert.Single(FindDescendants<Border>(expander), border => border.Name == "ExpanderContent");
+        var transform = Assert.IsType<CompositeTransform>(content.RenderTransform);
+        // Toolkit changes IsExpanded before its visibility/translation transition finishes.
+        await WaitForRenderedConditionAsync(
+            () => content.Visibility == (expanded ? Visibility.Visible : Visibility.Collapsed) &&
+                (!expanded || transform.TranslateY == 0), "SettingsExpander transition");
+        expander.UpdateLayout();
+        await ui.YieldToRenderAsync();
+    }
+
     /// <summary>Build a fresh router/registry/datamodel/sink stack for one test.</summary>
     public static TestHarness BuildHarness(UIThreadFixture ui)
     {

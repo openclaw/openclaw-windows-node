@@ -92,7 +92,6 @@ public sealed partial class CompletePage : Page
                     HelpLink.Visibility = Visibility.Collapsed;
                     FallbackButton.Visibility = Visibility.Collapsed;
                     LaunchButton.Visibility = Visibility.Collapsed;
-                    StepIndicator.Visibility = Visibility.Collapsed;
                     RestartLaterButton.Visibility = Visibility.Visible;
                     RestartNowButton.Visibility = Visibility.Visible;
                     return;

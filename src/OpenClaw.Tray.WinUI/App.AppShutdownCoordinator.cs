@@ -41,7 +41,7 @@ public partial class App
         {
             // Even removing an unregistered handler triggers the toolkit's static
             // initializer, which writes installed notification registration.
-            if (!GatewayFixtureIsolation.IsEnabled)
+            if (!GatewayFixtureIsolation.IsEnabled && !AppIdentity.IsIsolated)
                 ToastNotificationManagerCompat.OnActivated -= OnToastActivated;
             if (ReferenceEquals(_activationRouter, activationRouter))
                 _activationRouter = null;

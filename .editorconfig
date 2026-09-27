@@ -166,6 +166,9 @@ dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
 [src/OpenClaw.Tray.WinUI/Services/UpdateCoordinator.cs]
 dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
 
+[src/OpenClaw.Tray.WinUI/Services/WindowManager.cs]
+dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
+
 [src/OpenClaw.Tray.WinUI/Windows/**/*.cs]
 dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
 

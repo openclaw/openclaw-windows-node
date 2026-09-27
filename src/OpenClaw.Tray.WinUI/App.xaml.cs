@@ -208,6 +208,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     // Do not release during managed shutdown: a failed service disposal may leave state
     // writers running. Windows closes this handle only when the process terminates.
     private IDisposable? _innoMigrationLease;
+    private NativeRestartRecoveryStore? _nativeRestartRecovery;
     private Microsoft.UI.Dispatching.DispatcherQueue? _dispatcherQueue;
     private AppState? _appState;
     internal AppState? AppState => _appState;
@@ -572,7 +573,32 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         }
         _mutex = new Mutex(true, mutexName, out bool createdNew);
         var ownsMutex = createdNew;
-        if (!ownsMutex && _isPostSetupRestart)
+        _nativeRestartRecovery = new NativeRestartRecoveryStore(AppIdentity.ResolveRoamingDataDirectory());
+        if (ownsMutex && string.IsNullOrEmpty(protocolUri) && _startupArgs.Length == 1 && string.IsNullOrEmpty(_postSetupLaunch))
+        {
+            try
+            {
+                _postSetupLaunch = _nativeRestartRecovery.Read();
+                _isPostSetupRestart |= _postSetupLaunch is not null;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+            {
+                Logger.Error("Saved setup restart could not be read. Reopen setup to select a destination.");
+                NativeRestartAdmission.Notify(LocalizationHelper.GetString("Onboarding_RestartRecovery_Invalid"),
+                    LocalizationHelper.GetString("Onboarding_RestartRecovery_Title"));
+            }
+        }
+        var nativeRestart = _isPostSetupRestart && SetupDashboardHandoff.ParseHandle(_postSetupLaunch) is not null;
+        if (nativeRestart)
+        {
+            ownsMutex = NativeRestartAdmission.Acquire(_postSetupLaunch!, _nativeRestartRecovery.Save,
+                timeout => ownsMutex || _mutex.WaitOne(timeout),
+                failure => NativeRestartAdmission.PromptRetry(
+                    LocalizationHelper.GetString(failure == NativeRestartWaitFailure.PreviousInstance
+                        ? "Onboarding_RestartRecovery_Waiting" : "Onboarding_RestartRecovery_Storage"),
+                    LocalizationHelper.GetString("Onboarding_RestartRecovery_Title")));
+        }
+        else if (!ownsMutex && _isPostSetupRestart)
         {
             try
             {
@@ -598,6 +624,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
         if (!ownsMutex)
         {
+            if (nativeRestart) { Exit(); return; }
             await _activationRouter.ForwardLaunchToPrimaryAsync(new LaunchActivationInput(
                 protocolUri,
                 _startupArgs,
@@ -644,6 +671,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 GetConnectionManager: () => _connectionManager,
                 GetGatewayRegistry: () => _gatewayRegistry,
                 GetSettings: () => _settings,
+                GetGatewayDirectConnectService: () => GatewayDirectConnectService,
+                GetLocalAiRuntime: () => _localAiRuntime,
                 GetNodeService: () => _nodeService,
                 GetVoiceService: () => _nodeService?.VoiceService ?? _standaloneVoiceService,
                 GetPageActivator: () => PageActivator,
@@ -659,7 +688,14 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 SettingsSaved: OnSettingsSaved,
                 AdvancedSetupRequested: OnSetupAdvancedSetupRequested,
                 SetupCompleted: OnSetupCompleted,
-                ApplyTheme: ApplyThemePreference));
+                ApplyTheme: ApplyThemePreference,
+                PublishNativeCompletion: (choice, ct) => RestartAfterSetupAsync(null, "chat",
+                    choice, ct),
+                ApplyNativeStartup: (enabled, ct) => AutoStartSettingsApplier.ApplyExplicitAsync(
+                    _autoStartMutationGate, enabled,
+                    () => _settings?.AutoStart ?? throw new InvalidOperationException("Settings are unavailable."),
+                    AutoStartManager.ApplySetupPreferenceAsync, ct),
+                GetSettingsStore: () => SettingsStore));
         _updateCoordinator = new UpdateCoordinator(
             AppUpdater,
             _appState,
@@ -724,8 +760,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         DispatcherShutdownMode = DispatcherShutdownMode.OnExplicitShutdown;
 
         // Touching the toolkit initializes installed COM/AUMID registration, even
-        // when notification display is disabled in this profile.
-        if (!GatewayFixtureIsolation.IsEnabled)
+        // when notification display is disabled. Data overrides cannot redirect it.
+        if (!GatewayFixtureIsolation.IsEnabled && !AppIdentity.IsIsolated)
             ToastNotificationManagerCompat.OnActivated += OnToastActivated;
 
         _sshTunnelService = new SshTunnelService(new AppLogger());
@@ -964,7 +1000,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         if (DataDirOverride is null &&
             Environment.GetEnvironmentVariable("OPENCLAW_SKIP_UPDATE_CHECK") != "1")
         {
-            var shouldLaunch = await _updateCoordinator.CheckForUpdatesAsync();
+            var shouldLaunch = await _activationRouter.CheckOrdinaryStartupUpdateAsync(
+                new LaunchActivationInput(_pendingProtocolUri, _startupArgs, _postSetupLaunch, setupShownDuringStartup),
+                () => _updateCoordinator.CheckForUpdatesAsync());
             if (!shouldLaunch)
             {
                 Exit();
@@ -3763,33 +3801,42 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
     private void OnSetupCompleted(object? sender, SetupCompletedEventArgs e) =>
         AsyncEventHandlerGuard.Run(
-            () => RestartAfterSetupAsync(e.EnableAutoStart, e.PreserveStartupPreference),
+            () => RestartAfterSetupAsync(
+                e.ApplyStartupPreference ? e.EnableAutoStart : null,
+                OpenClaw.SetupEngine.OnboardingFlowPolicy.GetCompletionLaunchTarget(e.Route)),
             new AppLogger(),
             nameof(OnSetupCompleted));
 
-    private async Task RestartAfterSetupAsync(bool enableAutoStart, bool preserveStartupPreference)
+    private async Task RestartAfterSetupAsync(bool? enableAutoStart, string launchTarget,
+        OpenClaw.SetupEngine.SetupNativeCompletion? nativeCompletion = null, CancellationToken ct = default)
     {
         var exePath = ResolveCurrentExecutablePath();
         if (string.IsNullOrWhiteSpace(exePath) || !File.Exists(exePath))
         {
+            if (nativeCompletion is not null) throw new InvalidOperationException("The tray executable is unavailable.");
             await ShowSetupRestartErrorAsync("OpenClaw setup finished, but the tray executable could not be found for restart.");
             return;
         }
 
+        if (nativeCompletion is null)
+            await SetupStartupPolicy.ApplyClassicPreferenceAsync(enableAutoStart,
+                enabled => AutoStartSettingsApplier.ApplyExplicitAsync(_autoStartMutationGate, enabled,
+                    () => _settings?.AutoStart ?? throw new InvalidOperationException("Settings are unavailable."),
+                    AutoStartManager.ApplySetupPreferenceAsync, ct),
+                () => ShowSetupRestartErrorAsync(
+                    LocalizationHelper.GetString("Onboarding_StartupWarning_Message"),
+                    LocalizationHelper.GetString("Onboarding_StartupWarning_Title")));
+
         try
         {
-            if (enableAutoStart && !preserveStartupPreference)
+            ct.ThrowIfCancellationRequested();
+            if (nativeCompletion is not null)
             {
-                try
-                {
-                    await AutoStartManager.SetAutoStartAsync(true);
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error($"Failed to enable autostart after setup: {ex}");
-                }
+                OpenClaw.SetupEngine.SetupGatewaySession.RequireCompletionGateway(
+                    AppIdentity.ResolveRoamingDataDirectory(), nativeCompletion.Verification);
+                var store = new SetupDashboardHandoffStore(AppIdentity.ResolveRoamingDataDirectory());
+                launchTarget = store.Issue(nativeCompletion);
             }
-
             var psi = new ProcessStartInfo(exePath)
             {
                 UseShellExecute = false,
@@ -3798,7 +3845,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             psi.ArgumentList.Add("--wait-for-pid");
             psi.ArgumentList.Add(Environment.ProcessId.ToString(CultureInfo.InvariantCulture));
             psi.ArgumentList.Add("--post-setup-launch");
-            psi.ArgumentList.Add("chat");
+            psi.ArgumentList.Add(launchTarget);
 
             var restarted = Process.Start(psi);
             if (restarted == null)
@@ -3806,17 +3853,30 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             restarted.Dispose();
 
             Logger.Info("Started post-setup tray restart process");
+            if (nativeCompletion is not null)
+            {
+                // Let the chooser's publication await finish before shutdown drains that same page.
+                if (!_dispatcherQueue!.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+                    AsyncEventHandlerGuard.Run(async () =>
+                    {
+                        _windowManager?.CloseSetup();
+                        await ExitApplicationAsync();
+                    }, new AppLogger(), "Native setup restart shutdown")))
+                    throw new InvalidOperationException("The app could not schedule setup shutdown.");
+                return;
+            }
             _windowManager?.CloseSetup();
             await ExitApplicationAsync();
         }
         catch (Exception ex)
         {
+            if (nativeCompletion is not null) throw;
             Logger.Error($"Failed to restart tray after setup: {ex}");
             await ShowSetupRestartErrorAsync("OpenClaw setup finished, but restarting the tray failed. The current tray will keep running; please exit and reopen OpenClaw.");
         }
     }
 
-    private async Task ShowSetupRestartErrorAsync(string message)
+    private async Task ShowSetupRestartErrorAsync(string message, string title = "Restart OpenClaw")
     {
         var xamlRoot = _windowManager?.SetupXamlRoot;
         if (xamlRoot is null)
@@ -3827,7 +3887,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
         var dialog = new ContentDialog
         {
-            Title = "Restart OpenClaw",
+            Title = title,
             Content = message,
             CloseButtonText = "OK",
             XamlRoot = xamlRoot,
@@ -3913,39 +3973,47 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
     #region Actions
 
+    private void OpenNativeSetupCompletion(string handle, bool explicitRetry = false)
+    {
+        AsyncEventHandlerGuard.Run(async () =>
+        {
+            try { _nativeRestartRecovery?.Clear(handle); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+            {
+                Logger.Warn("The admitted setup restart recovery record could not be removed.");
+            }
+            var launcher = new SetupNativeHandoffLauncher(
+                () => _gatewayRegistry?.GetActive(),
+                (proof, ct) => OpenClaw.SetupEngine.SetupNativeCompletionVerifier.VerifyAsync(
+                    AppIdentity.ResolveRoamingDataDirectory(), proof, ct),
+                (choice, ct) => _windowManager?.ShowNativeSetupAsync(choice, ct)
+                    ?? Task.FromException(new InvalidOperationException("The native window host is unavailable.")),
+                failure => AsyncEventHandlerGuard.Run(
+                    () => _windowManager?.ShowNativeSetupFailureAsync(failure,
+                        () => OpenNativeSetupCompletion(handle, explicitRetry: true)) ?? Task.CompletedTask,
+                    new AppLogger(), "Native setup launch error"));
+            if (await launcher.OpenAsync(new SetupDashboardHandoffStore(AppIdentity.ResolveRoamingDataDirectory()),
+                handle, explicitRetry))
+                _appNotificationService?.Dismiss(SetupNativeHandoffLauncher.FailureNotificationId);
+        }, new AppLogger(), nameof(OpenNativeSetupCompletion));
+    }
+
     private void OpenDashboard(string? path = null)
     {
-        if (_settings == null) return;
-        if (!EnsureSshTunnelConfigured())
+        AsyncEventHandlerGuard.Run(async () =>
         {
-            _toastService?.ShowToast(new ToastContentBuilder()
-                .AddText("SSH tunnel")
-                .AddText(_sshTunnelService?.LastError ?? "Check SSH tunnel settings and logs."));
-            return;
-        }
-
-        if (!TryResolveChatCredentials(out var gatewayUrl, out var token, out var credentialSource, out var isBootstrapToken))
-        {
-            ShowConnectionSettingsForPairingIssue(
-                "Dashboard",
-                "Gateway URL or credential is not configured");
-            return;
-        }
-
-        var url = GatewayDashboardUrlBuilder.Build(
-            gatewayUrl,
-            path,
-            token,
-            !isBootstrapToken && credentialSource == CredentialResolver.SourceSharedGatewayToken);
-
-        try
-        {
-            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
-        }
-        catch (Exception ex)
-        {
-            Logger.Error($"Failed to open dashboard: {ex.Message}");
-        }
+            var launcher = new GatewayDashboardLauncher(
+                EnsureSshTunnelConfigured,
+                () => TryResolveChatCredentials(out var url, out var token, out var source, out var bootstrap)
+                    ? new InteractiveGatewayCredential(url, token, bootstrap, source) : null,
+                async url => await global::Windows.System.Launcher.LaunchUriAsync(new Uri(url)),
+                () => AsyncEventHandlerGuard.Run(
+                    () => _windowManager?.ShowDashboardLaunchFailureAsync(
+                        () => OpenDashboard(path))
+                        ?? Task.CompletedTask, new AppLogger(), "Dashboard launch error"),
+                () => _appNotificationService?.Dismiss(GatewayDashboardLauncher.FailureNotificationId));
+            await launcher.OpenAsync(path);
+        }, new AppLogger(), nameof(OpenDashboard));
     }
 
     // ── IAppCommands implementation ─────────────────────────────────────

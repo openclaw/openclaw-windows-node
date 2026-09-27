@@ -34,7 +34,9 @@ internal sealed record LocalAiRecoveryConfigurationBaseline(
     bool SkipWizard,
     string DistroName,
     int GatewayPort,
-    string? GatewayUrl)
+    string? GatewayUrl,
+    string? SelectedProfileId,
+    bool NetworkingConsent)
 {
     public static LocalAiRecoveryConfigurationBaseline Capture(SetupConfig config) =>
         new(
@@ -45,7 +47,9 @@ internal sealed record LocalAiRecoveryConfigurationBaseline(
             config.SkipWizard,
             config.DistroName,
             config.GatewayPort,
-            config.GatewayUrl);
+            config.GatewayUrl,
+            config.LocalAi.SelectedProfileId,
+            config.LocalAi.WslMirroredNetworkingConsent);
 
     public void Restore(SetupConfig config)
     {
@@ -57,6 +61,8 @@ internal sealed record LocalAiRecoveryConfigurationBaseline(
         config.DistroName = DistroName;
         config.GatewayPort = GatewayPort;
         config.GatewayUrl = GatewayUrl;
+        config.LocalAi.SelectedProfileId = SelectedProfileId;
+        config.LocalAi.WslMirroredNetworkingConsent = NetworkingConsent;
     }
 }
 

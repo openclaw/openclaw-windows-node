@@ -27,6 +27,17 @@ public class LocalizationValidationTests
 
     private static readonly HashSet<string> InvariantOrDeferredResourceKeys = new(StringComparer.Ordinal)
     {
+        // Canonical setup product/transport names, not untranslated prose.
+        "Onboarding_V2_NodeMode.Header",
+        "Onboarding_V2_NodeModeToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
+        "Onboarding_V2_CliCard.Header",
+        "Onboarding_V2_LocalAiReview.Header",
+        "Onboarding_V2_LocalAiCard.Header",
+        "Onboarding_V2_DetailLocalAi",
+        "Onboarding_V2_TailscaleReview.Header",
+        "Onboarding_V4_TailscaleDisclosure.Header",
+        "Onboarding_V2_TailscaleCard.Header",
+        "Onboarding_V2_DetailTailscale",
         "CanvasWindow_TextBlock_31.Text",
         "CanvasWindow_winexWindowEx_2.Title",
         "ChatWindow_winexWindowEx_2.Title",
@@ -44,6 +55,8 @@ public class LocalizationValidationTests
         "VoiceOverlayWindow_winexWindowEx_2.Title",
         // Brand name — identical across all locales.
         "ConnectionPage_TopologyTailscale",
+        // Canonical product surface name, shared with the existing Dashboard action.
+        "ChatDashboardButton.Content",
         // Native engine executable/product name. Keep the exact llama-server
         // spelling in every locale so it matches diagnostics and process names.
         "LocalAiPage_EngineHeading.Text",
@@ -359,6 +372,7 @@ public class LocalizationValidationTests
 
     private static readonly string[] RequiredLocalizedAccessibilityKeys =
     [
+        "Onboarding_Ready_Chat.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
         "SandboxPage_UnavailablePrimaryButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
         "SandboxPage_PresetLockedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
         "SandboxPage_PresetBalancedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
@@ -1028,6 +1042,20 @@ public class LocalizationValidationTests
 
             if (identicalLocales.Count != localeResw.Count)
             {
+                // These ordinary words are spelled identically in these languages.
+                string[] naturalLoanwordLocales = key switch
+                {
+                    "Onboarding_V2_LocalAiModel.Header" => ["nl-nl"],
+                    "Onboarding_V2_ProfileReadOnlyTitle.Text" => ["fr-fr"],
+                    "Onboarding_V2_ProfileFullTitle.Text" => ["nl-nl"],
+                    "Onboarding_V2_Microphone" or "Onboarding_V2_Notifications" => ["fr-fr"],
+                    "Onboarding_V2_Tokens" => ["nl-nl", "pt-br"],
+                    _ => [],
+                };
+                if (naturalLoanwordLocales.Length > 0 &&
+                    identicalLocales.Order().SequenceEqual(naturalLoanwordLocales.Order()))
+                    continue;
+
                 // Allow Latin-script loanwords (e.g. "OK") to be identical
                 // across en-us/fr-fr/nl-nl while still being translated for
                 // non-Latin-script locales (zh-CN, zh-TW).

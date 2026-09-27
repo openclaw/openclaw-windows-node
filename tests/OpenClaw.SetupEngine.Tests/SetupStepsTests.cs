@@ -16,8 +16,10 @@ public class SetupStepsTests : IDisposable
 {
     private readonly string _tempDir;
     private readonly string _localTempDir;
+    private readonly string _localTempRoot;
     private readonly string? _prevDataDir;
     private readonly string? _prevLocalDataDir;
+    private readonly string? _prevLocalAppDataRoot;
     private readonly ITestOutputHelper _output;
     private const string DevicePairPluginNotFoundOutput = "plugins.entries.device-pair: plugin not found: device-pair";
     private const string OtherPluginNotFoundOutput = "plugins.entries.other-plugin: plugin not found: other-plugin";
@@ -27,23 +29,27 @@ public class SetupStepsTests : IDisposable
     {
         _output = output;
         _tempDir = Path.Combine(Path.GetTempPath(), $"steps-test-{Guid.NewGuid():N}");
-        _localTempDir = Path.Combine(Path.GetTempPath(), $"steps-local-test-{Guid.NewGuid():N}");
+        _localTempRoot = Path.Combine(Path.GetTempPath(), $"steps-local-test-{Guid.NewGuid():N}");
+        _localTempDir = Path.Combine(_localTempRoot, "OpenClawTray");
         Directory.CreateDirectory(_tempDir);
         Directory.CreateDirectory(_localTempDir);
         _prevDataDir = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR");
         _prevLocalDataDir = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR");
+        _prevLocalAppDataRoot = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR");
         Environment.SetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR", _tempDir);
         Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR", _localTempDir);
+        Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR", _localTempRoot);
     }
 
     public void Dispose()
     {
         Environment.SetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR", _prevDataDir);
         Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR", _prevLocalDataDir);
+        Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR", _prevLocalAppDataRoot);
         // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         try { Directory.Delete(_tempDir, recursive: true); } catch { }
         // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
-        try { Directory.Delete(_localTempDir, recursive: true); } catch { }
+        try { Directory.Delete(_localTempRoot, recursive: true); } catch { }
     }
 
     private SetupContext CreateContext(SetupConfig? config = null, ICommandRunner? commands = null)

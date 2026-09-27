@@ -100,6 +100,13 @@ internal static class AppIdentity
     public static bool IsDev => false;
 #endif
 
+    /// <summary>
+    /// Data-isolated processes must not claim this build's persistent Windows
+    /// integrations, which are shared by all processes running as this user.
+    /// </summary>
+    public static bool IsIsolated =>
+        Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR") is { Length: > 0 };
+
     public static string ResolveLocalDataDirectory()
         => Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR") is { Length: > 0 } overrideDir
             ? overrideDir

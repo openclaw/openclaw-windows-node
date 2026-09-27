@@ -9,6 +9,8 @@ using OpenClawTray.Chat;
 using OpenClawTray.Dialogs;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
+using OpenClawTray.Presentation;
+using OpenClaw.SetupEngine;
 using OpenClawTray.Windows;
 using OpenClaw.Connection;
 using System;
@@ -36,6 +38,31 @@ public sealed partial class ChatPage : Page
     private bool _webViewInitialized;
     private bool _webViewMode;
     private bool _pageActive;
+    private SetupNativeNavigationRequest? _nativeSetupRequest;
+
+    protected override void OnNavigatedTo(Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
+    {
+        _nativeSetupRequest = e.Parameter as SetupNativeNavigationRequest;
+        base.OnNavigatedTo(e);
+    }
+
+    private void RequireNativeSetupOwner()
+    {
+        _nativeSetupRequest?.GetConnectedClient(CurrentApp.Registry, CurrentApp.ConnectionManager);
+    }
+
+    internal async Task WaitForNativeSetupAsync(SetupNativeNavigationRequest request, CancellationToken ct)
+    {
+        while (_reactorHost is null || !_pageActive || !IsLoaded)
+        {
+            RequireNativeSetupOwner();
+            if (!ReferenceEquals(_nativeSetupRequest, request)) throw new SetupNativeOwnershipException();
+            await Task.Delay(50, ct);
+        }
+        RequireNativeSetupOwner();
+        if (_webViewMode || _mountedThreadId != request.Completion.Target.SessionKey)
+            throw new SetupNativeOwnershipException();
+    }
     private readonly SemaphoreSlim _speakerMuteGate = new(1, 1);
     private int _voiceSettingsDialogOpen;
     private bool _navigationStarted;
@@ -52,6 +79,9 @@ public sealed partial class ChatPage : Page
         InitializeComponent();
         Unloaded += OnUnloaded;
     }
+
+    private void OnOpenDashboard(object sender, RoutedEventArgs e) =>
+        ((IAppCommands)CurrentApp).OpenDashboard();
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
@@ -120,6 +150,11 @@ public sealed partial class ChatPage : Page
     {
         _pageActive = true;
         _hub = CurrentApp.ActiveHubWindow as HubWindow;
+        if (_nativeSetupRequest is { } native && _hub is not null)
+        {
+            _hub.PendingChatSessionKey = native.Completion.Target.SessionKey;
+            _hub.PendingAutoStartVoice = false;
+        }
 
         // Compute a "open in browser" URL once so the toolbar button works
         // even when the gateway isn't fully reachable yet.
@@ -187,6 +222,25 @@ public sealed partial class ChatPage : Page
     private void ApplyChatSurface()
     {
         if (CurrentApp.Settings is null) return;
+        if (_nativeSetupRequest is not null)
+        {
+            try
+            {
+                RequireNativeSetupOwner();
+                NativeSetupError.IsOpen = false;
+                NativeSetupError.Visibility = Visibility.Collapsed;
+                ShowReactorSurface();
+            }
+            catch (InvalidOperationException)
+            {
+                DisposeReactorHost();
+                ChatHost.Visibility = WebView.Visibility = PlaceholderPanel.Visibility = Visibility.Collapsed;
+                NativeSetupError.Message = LocalizationHelper.GetString("Onboarding_Ready_LaunchChanged");
+                NativeSetupError.Visibility = Visibility.Visible;
+                NativeSetupError.IsOpen = true;
+            }
+            return;
+        }
 
         var decision = ChatSurfaceResolver.Resolve(
             ChatSurfaceTarget.HubChat,

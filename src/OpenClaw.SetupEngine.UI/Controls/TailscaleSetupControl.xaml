@@ -1,0 +1,42 @@
+<UserControl
+    x:Class="OpenClaw.SetupEngine.UI.Controls.TailscaleSetupControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:tk="using:CommunityToolkit.WinUI.Controls">
+    <UserControl.Resources>
+        <DataTemplate x:Key="WrappedChoiceTemplate">
+            <TextBlock Text="{Binding}" TextWrapping="Wrap" MaxWidth="480" Style="{StaticResource BodyTextBlockStyle}" />
+        </DataTemplate>
+    </UserControl.Resources>
+    <StackPanel Spacing="12">
+        <tk:SettingsCard x:Uid="Onboarding_V2_TailscaleCard" Header="Tailscale Serve"
+                         Description="Private tailnet access, not public Funnel access. Optional and off by default.">
+            <ToggleSwitch x:Name="TailscaleToggle" x:Uid="Onboarding_V2_TailscaleToggle"
+                          AutomationProperties.Name="Set up Tailscale Serve"
+                          OnContent="" OffContent="" MinWidth="0" Toggled="TailscaleToggle_Toggled" />
+        </tk:SettingsCard>
+        <StackPanel x:Name="TailscaleOptions" Spacing="12" Visibility="Collapsed">
+            <TextBlock x:Uid="Onboarding_V2_TailscalePrerequisite" TextWrapping="Wrap"
+                       Style="{StaticResource BodyTextBlockStyle}"
+                       Text="First install and sign in to Tailscale on Windows with MagicDNS enabled. The WSL Gateway signs in separately." />
+            <TextBlock x:Name="TailscaleStatusText" TextWrapping="Wrap"
+                       AutomationProperties.LiveSetting="Polite" Style="{StaticResource CaptionTextBlockStyle}" />
+            <Button x:Uid="Onboarding_LocalAi_RecheckAvailabilityButton" Content="Recheck" Click="Recheck_Click" />
+            <RadioButtons x:Name="TailscaleAuthModeSelector" x:Uid="Onboarding_V2_TailscaleAuthMode"
+                          Header="Sign in to the WSL Gateway" MaxColumns="1" SelectionChanged="TailscaleAuthMode_SelectionChanged">
+                <RadioButton x:Uid="Onboarding_V2_TailscaleBrowser" ContentTemplate="{StaticResource WrappedChoiceTemplate}" Content="Sign in with a browser during installation" />
+                <RadioButton x:Uid="Onboarding_V2_TailscaleKey" ContentTemplate="{StaticResource WrappedChoiceTemplate}" Content="Use a one-off auth key" />
+            </RadioButtons>
+            <PasswordBox x:Name="TailscaleAuthKeyBox" x:Uid="Onboarding_V2_TailscaleKeyInput"
+                         Header="Tailscale auth key" Visibility="Collapsed"
+                         PlaceholderText="Kept only for this setup session" PasswordChanged="AuthKey_Changed" />
+            <tk:SettingsCard x:Uid="Onboarding_V2_TailscaleTrust"
+                             Header="Trust Tailscale identities for Gateway authentication"
+                             Description="Off by default. Enable only if your tailnet ACLs should participate in Gateway access control.">
+                <ToggleSwitch x:Name="TailscaleTrustAuthToggle" x:Uid="Onboarding_V2_TailscaleTrustToggle"
+                              AutomationProperties.Name="Trust Tailscale identities"
+                              OnContent="" OffContent="" MinWidth="0" Toggled="TailscaleTrustAuthToggle_Toggled" />
+            </tk:SettingsCard>
+        </StackPanel>
+    </StackPanel>
+</UserControl>

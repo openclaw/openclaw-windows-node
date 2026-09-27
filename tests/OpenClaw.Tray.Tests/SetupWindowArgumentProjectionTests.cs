@@ -5,6 +5,18 @@ namespace OpenClaw.Tray.Tests;
 public sealed class SetupWindowArgumentProjectionTests
 {
     [Fact]
+    public void Project_StripsNativeRestartHandleButPreservesConfig()
+    {
+        var handle = "ai-v3:" + new string('a', 64);
+        Assert.Equal(["--config", "custom.json"], SetupWindowArgumentProjection.Project(
+            ["app.exe", "--post-setup-restart", "--post-setup-launch", handle, "--config", "custom.json"],
+            _ => false, 1000));
+        Assert.Equal(["--post-setup-launch", "ai-v3:invalid", "--config", "custom.json"],
+            SetupWindowArgumentProjection.Project(
+                ["app.exe", "--post-setup-launch", "ai-v3:invalid", "--config", "custom.json"], _ => false, 1000));
+    }
+
+    [Fact]
     public void Project_RemovesHostArgumentsAndPreservesSetupAndUnknownTokens()
     {
         var projected = SetupWindowArgumentProjection.Project(
@@ -112,7 +124,7 @@ public sealed class SetupWindowArgumentProjectionTests
     }
 
     [Theory]
-    [InlineData("settings")]
+    [InlineData("permissions")]
     [InlineData("browser")]
     public void Project_PreservesUnknownPostSetupLaunchTargets(string value)
     {
@@ -142,6 +154,10 @@ public sealed class SetupWindowArgumentProjectionTests
     [Theory]
     [InlineData("chat")]
     [InlineData("CHAT")]
+    [InlineData("settings")]
+    [InlineData("SETTINGS")]
+    [InlineData("connection")]
+    [InlineData("CONNECTION")]
     public void Project_RemovesRecognizedPostSetupLaunchTargets(string value)
     {
         var projected = SetupWindowArgumentProjection.Project(

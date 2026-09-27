@@ -1,9 +1,7 @@
-using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Navigation;
 using OpenClaw.SetupEngine;
 using OpenClaw.SetupEngine.UI;
@@ -23,6 +21,8 @@ public sealed partial class WelcomePage : Page
     private bool _installInProgress;
     private bool _suppressSelectionWrite;
     private string? _installChoiceBaseAutomationName;
+    private readonly LocalAiSetupAvailabilityCoordinator _availability = new();
+    private CancellationTokenSource? _availabilityCancellation;
 
     public WelcomePage()
     {
@@ -32,19 +32,46 @@ public sealed partial class WelcomePage : Page
             ", " + SetupLocalization.GetString("Onboarding_Native_Recommended.Text"));
         AutomationProperties.SetName(InstallChoice, SetupLocalization.GetString("Onboarding_Wsl_Title.Text"));
         Loaded += OnLoaded;
-        Unloaded += (_, _) => ++_probeGeneration;
+        Unloaded += (_, _) =>
+        {
+            ++_probeGeneration;
+            CancelAvailability();
+        };
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
+        CancelAvailability();
         _config = e.Parameter as SetupConfig ?? new SetupConfig();
         _selectedChoice = SetupWindow.Active?.WelcomeGatewayChoice;
         ApplySelection();
     }
 
+    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    {
+        CancelAvailability();
+        base.OnNavigatedFrom(e);
+    }
+
+    private void ClearAvailabilityBadge()
+    {
+        _installChoiceBaseAutomationName ??= AutomationProperties.GetName(InstallChoice);
+        LocalAiAvailabilityPanel.Visibility = Visibility.Collapsed;
+        LocalAiAvailabilityText.Text = "";
+        AutomationProperties.SetName(InstallChoice, _installChoiceBaseAutomationName);
+    }
+
+    private void CancelAvailability()
+    {
+        _availability.CancelCurrent();
+        var cancellation = _availabilityCancellation;
+        _availabilityCancellation = null;
+        cancellation?.Cancel();
+        ClearAvailabilityBadge();
+    }
+
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        StartMascotBreatheAnimation();
         AsyncEventHandlerGuard.Run(
             CheckNativeSupportAsync,
             NullLogger.Instance,
@@ -63,8 +90,8 @@ public sealed partial class WelcomePage : Page
         var generation = ++_probeGeneration;
         _nativeEligibility = null;
         NativeChoice.IsEnabled = false;
-        VisualStateManager.GoToState(this, "NativeDisabled", false);
         NativeSupportAvailablePanel.Visibility = Visibility.Collapsed;
+        WslRecommendedBadge.Visibility = Visibility.Visible;
         NativeSupportCard.Visibility = Visibility.Visible;
         NativeSupportStatusPanel.Visibility = Visibility.Visible;
         WindowsUpdateButton.Visibility = Visibility.Collapsed;
@@ -90,7 +117,7 @@ public sealed partial class WelcomePage : Page
         _nativeEligibility = eligibility;
         var available = eligibility == NativeGatewayEligibility.Available;
         NativeChoice.IsEnabled = available;
-        VisualStateManager.GoToState(this, available ? "NativeEnabled" : "NativeDisabled", false);
+        WslRecommendedBadge.Visibility = available ? Visibility.Collapsed : Visibility.Visible;
         NativeSupportCard.Visibility = available ? Visibility.Collapsed : Visibility.Visible;
         NativeSupportAvailablePanel.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
         NativeSupportStatusPanel.Visibility = available ? Visibility.Collapsed : Visibility.Visible;
@@ -136,62 +163,61 @@ public sealed partial class WelcomePage : Page
 
     private async Task DetectLocalAiAvailabilityAsync()
     {
+        CancelAvailability();
         SetupWindow? setupWindow = SetupWindow.Active;
         SetupConfig? config = _config;
-        if (setupWindow is null || config is null)
+        if (setupWindow is null || config is null || setupWindow.IsClosed)
             return;
 
-        WslViabilityResult wslViability = await setupWindow.GetWslViabilityAsync();
-        if (!IsLoaded || !ReferenceEquals(SetupWindow.Active, setupWindow))
-            return;
-        if (wslViability.BlocksSetup)
-            return;
-
-        var hardware = await setupWindow.GetLocalAiHardwareAsync();
-        if (!IsLoaded || !ReferenceEquals(SetupWindow.Active, setupWindow))
-            return;
-
-        LocalInferenceEligibilityResult eligibility = LocalInferenceEligibility.Evaluate(hardware);
-        if (!eligibility.CanInstall || eligibility.SelectedGpu is null)
-            return;
-
-        LocalAiAvailabilityText.Text = SetupLocalization.Format(
-            "Onboarding_Welcome_LocalAiAvailabilityDetail",
-            eligibility.SelectedGpu.Name);
-        LocalAiAvailabilityPanel.Visibility = Visibility.Visible;
-        // Capture the control's base accessible name once, so repeated detections (e.g. the
-        // page is re-loaded after navigating back) rebuild the announcement from the same
-        // starting point instead of appending the availability suffix again on every call.
-        _installChoiceBaseAutomationName ??= AutomationProperties.GetName(InstallChoice);
-        AutomationProperties.SetName(
-            InstallChoice,
-            $"{_installChoiceBaseAutomationName}, " +
-            $"{SetupLocalization.GetString("Onboarding_Welcome_LocalAiAvailableBadge.Text")}");
-        // FromElement returns null until a screen reader (or other AT client) has already
-        // queried this element for a peer. This probe can complete before that happens, so the
-        // live-region announcement would otherwise be silently skipped; force peer creation so
-        // the event always has somewhere to go.
-        AutomationPeer automationPeer = FrameworkElementAutomationPeer.FromElement(InstallChoice)
-            ?? FrameworkElementAutomationPeer.CreatePeerForElement(InstallChoice);
-        automationPeer.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
-    }
-
-    private void StartMascotBreatheAnimation()
-    {
-        var visual = ElementCompositionPreview.GetElementVisual(MascotHero);
-        var compositor = visual.Compositor;
-        var centerX = MascotHero.ActualWidth > 0 ? MascotHero.ActualWidth / 2 : MascotHero.Width / 2;
-        var centerY = MascotHero.ActualHeight > 0 ? MascotHero.ActualHeight / 2 : MascotHero.Height / 2;
-        visual.CenterPoint = new Vector3((float)centerX, (float)centerY, 0f);
-
-        var pulse = compositor.CreateVector3KeyFrameAnimation();
-        pulse.InsertKeyFrame(0f, new Vector3(1f, 1f, 1f));
-        pulse.InsertKeyFrame(0.5f, new Vector3(1.025f, 1.025f, 1f));
-        pulse.InsertKeyFrame(1f, new Vector3(1f, 1f, 1f));
-        pulse.Duration = TimeSpan.FromMilliseconds(4200);
-        pulse.IterationBehavior = AnimationIterationBehavior.Forever;
-
-        visual.StartAnimation("Scale", pulse);
+        var generation = _availability.StartProbe().Generation;
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        _availabilityCancellation = cancellation;
+        bool CanApply() => !cancellation.IsCancellationRequested && _availability.IsCurrent(generation) &&
+            IsLoaded && !setupWindow.IsClosed && ReferenceEquals(SetupWindow.Active, setupWindow) &&
+            ReferenceEquals(_config, config);
+        try
+        {
+            WslViabilityResult wslViability = await setupWindow.GetWslViabilityAsync().WaitAsync(cancellation.Token);
+            if (!CanApply() || wslViability.BlocksSetup) return;
+            var hardware = await setupWindow.GetLocalAiHardwareAsync().WaitAsync(cancellation.Token);
+            if (!CanApply()) return;
+            LocalInferenceEligibilityResult eligibility = LocalInferenceEligibility.Evaluate(hardware);
+            if (!eligibility.CanInstall || eligibility.SelectedGpu is null) return;
+            if (!_availability.TryApplyAvailable(generation, out _)) return;
+            LocalAiAvailabilityText.Text = SetupLocalization.Format(
+                "Onboarding_Welcome_LocalAiAvailabilityDetail",
+                eligibility.SelectedGpu.Name);
+            LocalAiAvailabilityPanel.Visibility = Visibility.Visible;
+            AutomationProperties.SetName(
+                InstallChoice,
+                $"{_installChoiceBaseAutomationName}, " +
+                $"{SetupLocalization.GetString("Onboarding_Welcome_LocalAiAvailableBadge.Text")}");
+            // Create the peer when an AT client has not queried this row yet.
+            AutomationPeer automationPeer = FrameworkElementAutomationPeer.FromElement(InstallChoice)
+                ?? FrameworkElementAutomationPeer.CreatePeerForElement(InstallChoice);
+            automationPeer.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            if (_availability.IsCurrent(generation))
+            {
+                _availability.TryApplyProbeFailure(generation, "timeout", out _);
+                System.Diagnostics.Trace.TraceWarning("Welcome Local AI availability observation timed out.");
+            }
+        }
+        catch (Exception error)
+        {
+            if (_availability.IsCurrent(generation))
+            {
+                _availability.TryApplyProbeFailure(generation, error.GetType().Name, out _);
+                System.Diagnostics.Trace.TraceWarning("Welcome Local AI availability is unknown ({0}).", error.GetType().Name);
+            }
+        }
+        finally
+        {
+            if (ReferenceEquals(_availabilityCancellation, cancellation))
+                _availabilityCancellation = null;
+        }
     }
 
     private void GatewayChoice_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -245,7 +271,8 @@ public sealed partial class WelcomePage : Page
     {
         if (_selectedChoice == GatewaySetupChoice.Native && _nativeEligibility == NativeGatewayEligibility.Available)
         {
-            SetupWindow.Active?.NavigateToNativeCapabilities();
+            SetupWindow.Active?.SelectGatewayRoute(SetupGatewayRoute.Native);
+            SetupWindow.Active?.NavigateToCapabilities();
         }
         else if (_selectedChoice == GatewaySetupChoice.Wsl)
         {
@@ -256,139 +283,63 @@ public sealed partial class WelcomePage : Page
         }
         else if (_selectedChoice == GatewaySetupChoice.Existing)
         {
-            SetupWindow.Active?.NavigateToAdvancedSetup();
+            SetupWindow.Active?.SelectGatewayRoute(SetupGatewayRoute.Existing);
+            SetupWindow.Active?.NavigateToNativeConnection(SetupGatewayRoute.Existing);
         }
     }
 
     private async Task StartInstallAsync()
     {
+        CancelAvailability();
         var config = _config ?? throw new InvalidOperationException("Setup configuration has not been loaded.");
         var setupWindow = SetupWindow.Active;
-        if (setupWindow is null)
-            return;
-
-        var dataDir = setupWindow.DataDir;
-
-        // The progress ring carries the checking state (its automation name is
-        // "Checking existing WSL setup"). Leave the option title alone: replacing it
-        // hides which option is being acted on for as long as the check runs.
+        if (setupWindow is null) return;
         NextButton.IsEnabled = false;
         _installInProgress = true;
         GatewayChoiceSelector.IsEnabled = false;
+        ReadinessError.IsOpen = false;
+        MascotHero.Mood = OnboardingMascotMood.Thinking;
         InstallCheckProgress.IsActive = true;
         InstallCheckProgress.Visibility = Visibility.Visible;
-        var navigating = false;
         try
         {
-            while (true)
+            var viability = await setupWindow.GetWslViabilityAsync(refresh: true);
+            if (!IsLoaded || setupWindow.IsClosed) return;
+            if (viability.BlocksSetup)
             {
-                WslViabilityResult wslViability =
-                    await setupWindow.GetWslViabilityAsync(refresh: true);
-                if (wslViability.BlocksSetup)
-                {
-                    var readinessRoot = XamlRoot;
-                    if (setupWindow.IsClosed || readinessRoot is null)
-                        return;
-
-                    var retry = await new ContentDialog
-                    {
-                        Title = "WSL2 is not ready",
-                        Content = wslViability.Description,
-                        PrimaryButtonText = "Try again",
-                        CloseButtonText = "Cancel",
-                        DefaultButton = ContentDialogButton.Primary,
-                        XamlRoot = readinessRoot,
-                    }.ShowAsync();
-
-                    if (retry != ContentDialogResult.Primary)
-                        return;
-                    continue;
-                }
-
-                break;
-            }
-
-            ExistingConfigDetector.ExistingConfig existing;
-            while (true)
-            {
-                try
-                {
-                    existing = await Task.Run(() => ExistingConfigDetector.Detect(
-                        dataDir,
-                        config.DistroName,
-                        setupWindow.LocalDataDir));
-                    break;
-                }
-                catch (InvalidOperationException ex)
-                {
-                    var errorRoot = XamlRoot;
-                    if (setupWindow.IsClosed || errorRoot is null)
-                        return;
-
-                    // Inspection failure is usually transient, so offer a way forward
-                    // instead of ending the flow on the recommended option.
-                    var retry = await new ContentDialog
-                    {
-                        Title = "Could not inspect WSL",
-                        Content = ex.Message,
-                        PrimaryButtonText = "Try again",
-                        CloseButtonText = "Cancel",
-                        DefaultButton = ContentDialogButton.Primary,
-                        XamlRoot = errorRoot,
-                    }.ShowAsync();
-
-                    if (retry != ContentDialogResult.Primary)
-                        return;
-                }
-            }
-
-            var xamlRoot = XamlRoot;
-            if (setupWindow.IsClosed || xamlRoot is null)
+                ReadinessError.Title = SetupLocalization.GetString("Onboarding_V2_WslNotReady");
+                ReadinessError.Message = viability.Description;
+                ReadinessError.IsOpen = true;
                 return;
-
-            InstallCheckProgress.IsActive = false;
-            InstallCheckProgress.Visibility = Visibility.Collapsed;
-            var summary = ExistingConfigDetector.BuildReplacementSummary(existing);
-            var requiresDestructiveConfirmation =
-                ExistingConfigDetector.RequiresDestructiveConfirmation(existing);
-
-            var dialog = new ContentDialog
-            {
-                Title = requiresDestructiveConfirmation
-                    ? $"Permanently delete WSL distro '{config.DistroName}'?"
-                    : existing.HasLocalGateway || existing.HasDistro || existing.HasDistroDataDirectory
-                        ? "Replace existing WSL gateway?"
-                        : "Install a new WSL gateway?",
-                Content = summary,
-                PrimaryButtonText = requiresDestructiveConfirmation
-                    ? "Delete and replace"
-                    : "Continue",
-                CloseButtonText = "Cancel",
-                DefaultButton = ContentDialogButton.Close,
-                XamlRoot = xamlRoot,
-            };
-
-            var result = await dialog.ShowAsync();
-            if (result != ContentDialogResult.Primary)
-                return;
-
-            config.ConfirmedDestructiveDistroName = requiresDestructiveConfirmation
-                ? config.DistroName
-                : null;
-
-            navigating = true;
+            }
+            var existing = await Task.Run(() => ExistingConfigDetector.Detect(
+                setupWindow.DataDir, config.DistroName, setupWindow.LocalDataDir));
+            if (!IsLoaded || setupWindow.IsClosed) return;
+            setupWindow.AccessDraft.RecordWslInspection(existing);
+            setupWindow.SelectGatewayRoute(SetupGatewayRoute.ManagedWsl);
             setupWindow.NavigateToCapabilities();
+        }
+        catch (InvalidOperationException ex)
+        {
+            if (!IsLoaded || setupWindow.IsClosed) return;
+            ReadinessError.Title = SetupLocalization.GetString("Onboarding_V2_WslInspectFailure");
+            ReadinessError.Message = ex.Message;
+            ReadinessError.IsOpen = true;
         }
         finally
         {
             _installInProgress = false;
-            if (!navigating && !setupWindow.IsClosed)
+            if (!setupWindow.IsClosed)
             {
-                GatewayChoiceSelector.IsEnabled = true;
+                MascotHero.Mood = ReadinessError.IsOpen ? OnboardingMascotMood.Sad : OnboardingMascotMood.Happy;
                 InstallCheckProgress.IsActive = false;
                 InstallCheckProgress.Visibility = Visibility.Collapsed;
-                NextButton.IsEnabled = true;
+                GatewayChoiceSelector.IsEnabled = true;
+                ApplySelection();
             }
         }
     }
+
+    private void Alternatives_Click(object sender, RoutedEventArgs e) =>
+        SetupWindow.Active?.NavigateToAdvancedSetup();
 }

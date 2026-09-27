@@ -1278,6 +1278,7 @@ public sealed class LocalAiPortLifecycleTests
         Assert.Equal(LocalAiOwnership.None, failed.Ownership);
         Assert.Null(failed.ProcessId);
         Assert.Contains("could not be safely disabled", failed.Detail, StringComparison.Ordinal);
+        Assert.True(failed.GatewayRouteRequiresResolution);
         Assert.Equal(
             ["quiesce:EndpointCycle", "start", "quiesce:Teardown", "stop"],
             events);
@@ -1323,6 +1324,7 @@ public sealed class LocalAiPortLifecycleTests
         Assert.Equal(LocalAiRuntimeState.Failed, runtime.Snapshot.State);
         Assert.Equal(LocalAiOwnership.None, runtime.Snapshot.Ownership);
         Assert.Contains("could not be safely disabled", runtime.Snapshot.Detail, StringComparison.Ordinal);
+        Assert.True(runtime.Snapshot.GatewayRouteRequiresResolution);
         Assert.Equal(
             ["quiesce:EndpointCycle", "start", "quiesce:Teardown", "stop"],
             events);
@@ -1354,6 +1356,7 @@ public sealed class LocalAiPortLifecycleTests
         Assert.Equal(LocalAiRuntimeState.Failed, failed.State);
         Assert.Equal(LocalAiOwnership.None, failed.Ownership);
         Assert.Equal("endpoint-cycle withdrawal failed", failed.Detail);
+        Assert.False(failed.GatewayRouteRequiresResolution);
         Assert.Equal(["quiesce:EndpointCycle", "quiesce:Teardown"], events);
     }
 
@@ -1381,6 +1384,7 @@ public sealed class LocalAiPortLifecycleTests
         Assert.Equal(
             [null, new Uri("http://127.0.0.1:28785/v1")],
             lifecycle.QuiescedEndpoints);
+        Assert.False(failed.GatewayRouteRequiresResolution);
         Assert.Equal(
             ["quiesce:EndpointCycle", "start", "probe:28785", "publish:28785", "quiesce:Teardown", "stop"],
             events);

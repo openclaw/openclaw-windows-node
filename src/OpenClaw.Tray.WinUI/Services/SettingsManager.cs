@@ -17,6 +17,7 @@ public class SettingsManager
     // instance can run alongside the user's real tray without clobbering settings.
     private readonly string _settingsDirectory;
     private readonly string _settingsFilePath;
+    private string? _persistedJson;
     private const string ProtectedSecretPrefix = "dpapi:";
     private const int CurrentSettingsSchemaVersion = 1;
     private static readonly byte[] ProtectedSecretEntropy = Encoding.UTF8.GetBytes("OpenClawTray.Settings.v1");
@@ -213,6 +214,10 @@ public class SettingsManager
 
     public void Load()
     {
+        lock (_saveLock)
+        {
+        using var lease = PersistenceFileLease.Acquire(_settingsFilePath);
+        _persistedJson = null;
         LegacyToken = null;
         LegacyBootstrapToken = null;
         _data = CreateDefaultData();
@@ -222,6 +227,7 @@ public class SettingsManager
             if (File.Exists(_settingsFilePath))
             {
                 var json = File.ReadAllText(_settingsFilePath);
+                _persistedJson = json;
                 LoadLegacyGatewayCredentials(json);
                 var loaded = SettingsData.FromJson(json);
                 if (loaded != null)
@@ -235,6 +241,7 @@ public class SettingsManager
             Logger.Warn($"Failed to load settings: {ex.Message}");
             LegacyToken = null;
             LegacyBootstrapToken = null;
+        }
         }
     }
 
@@ -478,6 +485,11 @@ public class SettingsManager
     {
         lock (_saveLock)
         {
+            using (PersistenceFileLease.Acquire(_settingsFilePath))
+            {
+            var current = File.Exists(_settingsFilePath) ? File.ReadAllText(_settingsFilePath) : null;
+            if (current != _persistedJson)
+                throw new InvalidOperationException("Settings changed in another writer. Reload before saving.");
             Directory.CreateDirectory(_settingsDirectory);
             // Lock the tray data dir to current user + SYSTEM + Administrators —
             // it co-locates the MCP bearer token, settings.json (which embeds
@@ -491,7 +503,31 @@ public class SettingsManager
             data.TtsMiniMaxApiKey = ProtectSettingSecret(data.TtsMiniMaxApiKey);
 
             var json = data.ToJson();
-            File.WriteAllText(_settingsFilePath, json);
+            if (current is not null)
+            {
+                using var existing = JsonDocument.Parse(current);
+                var known = JsonSerializer.SerializeToElement(data).EnumerateObject()
+                    .Select(property => property.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                var output = System.Text.Json.Nodes.JsonNode.Parse(json)!.AsObject();
+                foreach (var property in existing.RootElement.EnumerateObject())
+                    if (!known.Contains(property.Name) &&
+                        !property.Name.Equals("Token", StringComparison.OrdinalIgnoreCase) &&
+                        !property.Name.Equals("BootstrapToken", StringComparison.OrdinalIgnoreCase))
+                        output[property.Name] = System.Text.Json.Nodes.JsonNode.Parse(property.Value.GetRawText());
+                json = output.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+            }
+            var temp = _settingsFilePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                File.WriteAllText(temp, json);
+                File.Move(temp, _settingsFilePath, overwrite: true);
+                _persistedJson = json;
+            }
+            finally
+            {
+                if (File.Exists(temp)) File.Delete(temp);
+            }
+            }
 
             Logger.Info("Settings saved");
             try
@@ -502,6 +538,17 @@ public class SettingsManager
             {
                 Logger.Warn($"Settings saved, but a notification subscriber failed: {ex.Message}");
             }
+        }
+
+    }
+
+    internal void UpdateAndSave(Action edit)
+    {
+        lock (_saveLock)
+        {
+            var before = ToSettingsData();
+            try { edit(); SaveOrThrow(); }
+            catch { _data = before; throw; }
         }
     }
 

@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
@@ -3468,18 +3468,6 @@
   </data>
   <data name="PermissionsPage_RulesCount_ManyFormat" xml:space="preserve">
     <value>{0} 个条目</value>
-  </data>
-  <data name="PermissionsPage_ExecRuleScope_Main" xml:space="preserve">
-    <value>此代理</value>
-  </data>
-  <data name="PermissionsPage_ExecRuleScope_Wildcard" xml:space="preserve">
-    <value>所有代理</value>
-  </data>
-  <data name="PermissionsPage_RemoveRuleAutomationNameFormat" xml:space="preserve">
-    <value>移除{0}的允许列表条目 {1}</value>
-  </data>
-  <data name="PermissionsPage_ExecRuleAction_Inactive" xml:space="preserve">
-    <value>未启用</value>
   </data>
   <data name="PermissionsPage_Allowlist_NoConfig" xml:space="preserve">
     <value>No allowlist data available. Connect to a gateway first.</value>
@@ -7128,12 +7116,374 @@
   <data name="LocalAi_Reason_UnknownDriverVersion" xml:space="preserve"><value>未知</value></data>
   <data name="LocalAi_Reason_UnknownMemoryAmount" xml:space="preserve"><value>未知数量</value></data>
   <data name="LocalAi_Reason_GigabytesFormat" xml:space="preserve"><value>{0:0.#} GiB</value></data>
-  <data name="Onboarding_Welcome_LocalAiAvailableBadge.Text" xml:space="preserve"><value>支持本地 AI</value></data>
-  <data name="Onboarding_Welcome_LocalAiAvailabilityDetail" xml:space="preserve"><value>您的 {0} 可在此电脑上运行本地 AI。</value></data>
+  <data name="Onboarding_Welcome_LocalAiAvailableBadge.Text" xml:space="preserve"><value>你的电脑支持本地 AI</value></data>
+  <data name="Onboarding_Welcome_LocalAiAvailabilityDetail" xml:space="preserve"><value>使用你的 {0} 在本地运行模型。</value></data>
   <data name="Onboarding_LocalAi_WslConfigReadFailureReason" xml:space="preserve"><value>OpenClaw 无法安全读取全局 .wslconfig 文件。请检查该文件是否有效且可读,然后重试安装。</value></data>
   <data name="LocalAiPage_UnavailableProbeTitle" xml:space="preserve"><value>无法验证本地 AI 可用性</value></data>
   <data name="LocalAiPage_CheckingTitle" xml:space="preserve"><value>正在检查本地 AI 可用性</value></data>
   <data name="LocalAiPage_CheckingMessage" xml:space="preserve"><value>OpenClaw 正在检查此设备是否可以运行本地 AI。这只需要片刻。</value></data>
+  <data name="Chat_Code_Copy" xml:space="preserve"><value>复制代码</value></data>
+  <data name="Chat_Code_Label" xml:space="preserve"><value>代码块</value></data>
+  <data name="Chat_Model_Current" xml:space="preserve"><value>当前模型</value></data>
+  <data name="Chat_Model_Other" xml:space="preserve"><value>其他模型</value></data>
+  <data name="Chat_Model_NoMatches" xml:space="preserve"><value>没有匹配的模型</value></data>
+  <data name="Chat_Model_Search" xml:space="preserve"><value>搜索模型</value></data>
+  <data name="Chat_Attachment_Remove" xml:space="preserve"><value>移除附件</value></data>
+  <data name="Chat_Timeline_Loading" xml:space="preserve"><value>正在加载消息...</value></data>
+  <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 条排队消息</value></data>
+  <data name="Chat_Copy_Copied" xml:space="preserve"><value>已复制</value></data>
+  <data name="Chat_Copy_Failed" xml:space="preserve"><value>复制失败</value></data>
+  <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>推理强度</value></data>
+  <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>更快</value></data>
+  <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>更深入</value></data>
+  <data name="Onboarding_Flow_Position" xml:space="preserve"><value>第 {0} 步，共 {1} 步</value></data>
+  <data name="Onboarding_Flow_CompletionUnavailable" xml:space="preserve"><value>设置无法打开 Chat。请关闭设置并重新打开 OpenClaw。</value></data>
+  <data name="Onboarding_Flow_AiNavigationFailed" xml:space="preserve"><value>网关已安装，但无法打开 AI 设置。请重新打开设置以继续，无需重新安装。</value></data>
+  <data name="Onboarding_Flow_AccessTitle" xml:space="preserve"><value>你的电脑，你的权限</value></data>
+  <data name="Onboarding_Flow_InstallAction" xml:space="preserve"><value>安装并设置</value></data>
+  <data name="Onboarding_Flow_Permissions.Header" xml:space="preserve"><value>Windows 权限</value></data>
+  <data name="Onboarding_Flow_InstallReview.Text" xml:space="preserve"><value>将安装的内容</value></data>
+  <data name="Onboarding_Flow_AutoStart.Text" xml:space="preserve"><value>登录时启动 OpenClaw</value></data>
+  <data name="Onboarding_Flow_AutoStartToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>登录时启动 OpenClaw</value></data>
+  <data name="ChatDashboardButton.Content" xml:space="preserve"><value>Dashboard</value></data>
+  <data name="ChatDashboardHint.Text" xml:space="preserve"><value>频道、集成和网关设置</value></data>
+  <data name="Onboarding_Flow_WelcomeDescription.Text" xml:space="preserve"><value>OpenClaw 是帮助你在电脑上完成任务的 AI 助手。</value></data>
+  <data name="Onboarding_AiSetup_Title.Text" xml:space="preserve"><value>连接你的 AI</value></data>
+  <data name="Onboarding_AiSetup_CatalogOptIn" xml:space="preserve"><value>发现现有提供商对话（可选）</value></data>
+  <data name="Onboarding_AiSetup_Starting" xml:space="preserve"><value>正在启动提供商设置…</value></data>
+  <data name="Onboarding_AiSetup_WorkingProvider" xml:space="preserve"><value>正在等待提供商…</value></data>
+  <data name="Onboarding_AiSetup_Reconnecting" xml:space="preserve"><value>正在等待 Gateway 重新连接，然后验证此模型…</value></data>
+  <data name="Onboarding_AiSetup_PreparedChanged" xml:space="preserve"><value>模型已准备但尚未激活。Gateway 连接已更改或无法激活此模型。取消以返回选项。</value></data>
+  <data name="Onboarding_AiSetup_Submit" xml:space="preserve"><value>提交</value></data>
+  <data name="Onboarding_AiSetup_SignedIn" xml:space="preserve"><value>我已登录</value></data>
+  <data name="Onboarding_AiSetup_CopyCode" xml:space="preserve"><value>复制代码</value></data>
+  <data name="Onboarding_AiSetup_CopyFailed" xml:space="preserve"><value>无法复制代码。请选择并手动复制。</value></data>
+  <data name="Onboarding_AiSetup_Recheck" xml:space="preserve"><value>重新检查</value></data>
+  <data name="Onboarding_AiSetup_More.Header" xml:space="preserve"><value>更多登录选项</value></data>
+  <data name="Onboarding_AiSetup_Candidates" xml:space="preserve"><value>检测到的 AI 访问</value></data>
+  <data name="Onboarding_AiSetup_Recommended" xml:space="preserve"><value>推荐安装</value></data>
+  <data name="Onboarding_AiSetup_RecommendedDetail" xml:space="preserve"><value>打开提供商网站进行安装或登录，然后重新检查。此页面不会安装任何内容。</value></data>
+  <data name="Onboarding_AiSetup_Unavailable" xml:space="preserve"><value>已检测到，但尚不能测试</value></data>
+  <data name="Onboarding_AiSetup_Prepare" xml:space="preserve"><value>准备本地模型</value></data>
+  <data name="Onboarding_AiSetup_SignIn" xml:space="preserve"><value>登录提供商</value></data>
+  <data name="Onboarding_AiSetup_ApiKeys" xml:space="preserve"><value>API 密钥</value></data>
+  <data name="Onboarding_AiSetup_ManualHeading" xml:space="preserve"><value>使用 API 密钥或令牌连接</value></data>
+  <data name="Onboarding_AiSetup_ManualConnect" xml:space="preserve"><value>连接</value></data>
+  <data name="Onboarding_AiSetup_ManualHelp" xml:space="preserve"><value>选择提供商并输入其 API 密钥或令牌。点击连接会将凭据发送到您的 Gateway，以配置并验证该提供商。</value></data>
+  <data name="Onboarding_AiSetup_ApiProvider" xml:space="preserve"><value>API 密钥提供商</value></data>
+  <data name="Onboarding_AiSetup_CheckAgain" xml:space="preserve"><value>重新检查</value></data>
+  <data name="Onboarding_AiSetup_NoUsableCandidates" xml:space="preserve"><value>未检测到可用的 AI 访问。请选择登录方式或在下方输入 API 密钥。</value></data>
+  <data name="Onboarding_AiSetup_DiscoveryFailed" xml:space="preserve"><value>AI 检测失败。请检查网关连接，然后重试。</value></data>
+  <data name="Onboarding_AiSetup_Cancelling" xml:space="preserve"><value>正在等待网关确认取消。已保存的提供商凭据可能会保留。</value></data>
+  <data name="Onboarding_AiSetup_ApiKey.Header" xml:space="preserve"><value>API 密钥或令牌</value></data>
+  <data name="Onboarding_AiSetup_Catalog.Header" xml:space="preserve"><value>查找提供商的现有对话？</value></data>
+  <data name="Onboarding_AiSetup_CatalogYes.Content" xml:space="preserve"><value>是，查找对话</value></data>
+  <data name="Onboarding_AiSetup_CatalogNo.Content" xml:space="preserve"><value>否，保持对话独立</value></data>
+  <data name="Onboarding_AiSetup_OpenLink.Content" xml:space="preserve"><value>打开登录页面</value></data>
+  <data name="Onboarding_AiSetup_Confirm.Content" xml:space="preserve"><value>是</value></data>
+  <data name="Onboarding_AiSetup_Refresh.Content" xml:space="preserve"><value>刷新</value></data>
+  <data name="Onboarding_AiSetup_Cancel.Content" xml:space="preserve"><value>取消</value></data>
+  <data name="Onboarding_AiSetup_Legacy.Content" xml:space="preserve"><value>使用经典设置</value></data>
+  <data name="Onboarding_AiSetup_Continue.Content" xml:space="preserve"><value>继续</value></data>
+  <data name="Onboarding_AiSetup_Connecting" xml:space="preserve"><value>正在连接你的 Gateway...</value></data>
+  <data name="Onboarding_AiSetup_Choose" xml:space="preserve"><value>选择模型或连接 AI 提供商。</value></data>
+  <data name="Onboarding_AiSetup_Running" xml:space="preserve"><value>按照提供商的步骤完成设置。</value></data>
+  <data name="Onboarding_AiSetup_Verifying" xml:space="preserve"><value>模型已保存。正在验证当前 Gateway 连接。</value></data>
+  <data name="Onboarding_AiSetup_Verified" xml:space="preserve"><value>AI 已就绪。正在打开 Chat...</value></data>
+  <data name="Onboarding_AiSetup_Prepared" xml:space="preserve"><value>模型已准备好，但尚未激活。激活以测试此确切模型。</value></data>
+  <data name="Onboarding_AiSetup_ActivatePrepared" xml:space="preserve"><value>激活模型</value></data>
+  <data name="Onboarding_AiSetup_Cancelled" xml:space="preserve"><value>设置已取消。请刷新以重新选择。已保存的提供商凭据可能会保留。</value></data>
+  <data name="Onboarding_AiSetup_Rejected" xml:space="preserve"><value>提供商无法激活此模型。请刷新以重新选择。</value></data>
+  <data name="Onboarding_AiSetup_Unsupported" xml:space="preserve"><value>此 Gateway 不支持此 AI 设置流程。请使用经典设置。</value></data>
+  <data name="Onboarding_AiSetup_Uncertain" xml:space="preserve"><value>设置结果尚未确认。请在 Gateway 重新连接后刷新，或取消当前会话。不会启动另一次激活。</value></data>
+  <data name="Onboarding_AiSetup_AdminRequired" xml:space="preserve"><value>AI 设置需要具有管理员权限的已连接操作员。请完成配对后刷新。</value></data>
+  <data name="Onboarding_AiSetup_Failed" xml:space="preserve"><value>AI 设置无法继续。请检查 Gateway 连接后刷新。</value></data>
+  <data name="Onboarding_AiSetup_VerificationFailed" xml:space="preserve"><value>所选模型未通过验证。设置尚未完成。</value></data>
+  <data name="Onboarding_AiSetup_NavigationFailed" xml:space="preserve"><value>无法打开经典设置。请保持此窗口打开并重试。</value></data>
+  <data name="Onboarding_AiSetup_InvalidLink" xml:space="preserve"><value>无法打开提供商链接。仅支持 HTTP 或 HTTPS 登录链接。</value></data>
+  <data name="Onboarding_AiSetup_NoChoices" xml:space="preserve"><value>Gateway 未返回支持的 AI 设置选项。请检查其提供商配置并刷新。</value></data>
+  <data name="Onboarding_AiSetup_Value" xml:space="preserve"><value>输入值</value></data>
+  <data name="Onboarding_AiSetup_CodeExpiry" xml:space="preserve"><value>此代码将在 {0} 分钟后过期。</value></data>
+  <data name="Onboarding_AiSetup_InvalidInput" xml:space="preserve"><value>提供商未接受此答案。请检查当前步骤并重试。</value></data>
+  <data name="Onboarding_Native_Title" xml:space="preserve"><value>连接到 Gateway</value></data>
+  <data name="Onboarding_Native_Description" xml:space="preserve"><value>检查连接而不保存。下一步会再次检查并保存此 Gateway，然后查看此电脑的访问权限。</value></data>
+  <data name="Onboarding_Native_Address" xml:space="preserve"><value>Gateway 地址</value></data>
+  <data name="Onboarding_Native_Code" xml:space="preserve"><value>设置代码</value></data>
+  <data name="Onboarding_Native_Token" xml:space="preserve"><value>共享 Token（代替设置代码）</value></data>
+  <data name="Onboarding_Native_Ssh" xml:space="preserve"><value>SSH 隧道</value></data>
+  <data name="Onboarding_Native_SshDescription" xml:space="preserve"><value>可选。使用现有的 OpenSSH 密钥和配置。保留已保存连接或设置代码中的 Gateway 地址。远程 Gateway 端口将从 SSH 主机转发。</value></data>
+  <data name="Onboarding_Native_SshEnabled" xml:space="preserve"><value>使用 SSH 隧道</value></data>
+  <data name="Onboarding_Native_SshHost" xml:space="preserve"><value>SSH 主机</value></data>
+  <data name="Onboarding_Native_SshUser" xml:space="preserve"><value>SSH 用户</value></data>
+  <data name="Onboarding_Native_SshPort" xml:space="preserve"><value>SSH 端口</value></data>
+  <data name="Onboarding_Native_RemotePort" xml:space="preserve"><value>远程 Gateway 端口</value></data>
+  <data name="Onboarding_Native_LocalPort" xml:space="preserve"><value>本地隧道端口</value></data>
+  <data name="Onboarding_Native_Back" xml:space="preserve"><value>返回</value></data>
+  <data name="Onboarding_Native_Check" xml:space="preserve"><value>检查连接</value></data>
+  <data name="Onboarding_Native_Next" xml:space="preserve"><value>下一步</value></data>
+  <data name="Onboarding_Native_Cancel" xml:space="preserve"><value>取消</value></data>
+  <data name="Onboarding_Native_Checking" xml:space="preserve"><value>正在检查已安装的 Gateway 包及其执行别名...</value></data>
+  <data name="Onboarding_Native_Checked" xml:space="preserve"><value>连接已检查，未保存任何内容。下一步将再次检查并保存此 Gateway。</value></data>
+  <data name="Onboarding_Native_Cancelled" xml:space="preserve"><value>设置已取消。已输入的配置保留在专用原生配置目录中。未删除任何 Gateway 包。</value></data>
+  <data name="Onboarding_Native_Failed" xml:space="preserve"><value>无法确认连接结果。请先在 Companion Settings 中查看当前 Gateway，然后继续。</value></data>
+  <data name="Onboarding_V2_AlternativesTitle.Text" xml:space="preserve"><value>选择其他设置路径</value></data>
+  <data name="Onboarding_V2_ExistingRoute.Header" xml:space="preserve"><value>现有 Gateway</value></data>
+  <data name="Onboarding_V2_ExistingRoute.Description" xml:space="preserve"><value>使用已保存或现有连接。不安装 WSL。</value></data>
+  <data name="Onboarding_V2_RemoteRoute.Header" xml:space="preserve"><value>远程 Gateway</value></data>
+  <data name="Onboarding_V2_RemoteRoute.Description" xml:space="preserve"><value>使用原生地址、设置代码或 SSH 连接编辑器。</value></data>
+  <data name="Onboarding_V2_McpRoute.Header" xml:space="preserve"><value>仅本地 MCP</value></data>
+  <data name="Onboarding_V2_McpRoute.Description" xml:space="preserve"><value>无需 Gateway 即可启用本地 MCP。接下来检查电脑功能。</value></data>
+  <data name="Onboarding_V2_DeferredRoute.Header" xml:space="preserve"><value>稍后设置 Gateway</value></data>
+  <data name="Onboarding_V2_DeferredRoute.Description" xml:space="preserve"><value>检查选择，不安装 WSL，也不更改已保存的 Gateway。</value></data>
+  <data name="Onboarding_V2_HostUnavailable.Title" xml:space="preserve"><value>此设置主机中无法使用连接编辑器</value></data>
+  <data name="Onboarding_V2_HostUnavailable.Message" xml:space="preserve"><value>从 Companion 应用打开设置以使用原生连接编辑器。</value></data>
+  <data name="Onboarding_V2_Back.Content" xml:space="preserve"><value>返回</value></data>
+  <data name="Onboarding_V2_CapabilitiesTitle.Text" xml:space="preserve"><value>电脑功能</value></data>
+  <data name="Onboarding_V2_CapabilitiesIntro.Text" xml:space="preserve"><value>选择代理可在此电脑上使用的功能。这些选择不会授予 Windows 隐私访问权限或执行批准。</value></data>
+  <data name="Onboarding_V2_NodeMode.Header" xml:space="preserve"><value>Node mode</value></data>
+  <data name="Onboarding_V2_NodeMode.Description" xml:space="preserve"><value>通过已连接的 Gateway 提供此电脑的功能。</value></data>
+  <data name="Onboarding_V2_NodeModeToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Node mode</value></data>
+  <data name="Onboarding_V2_Mcp.Header" xml:space="preserve"><value>本地 MCP 服务器</value></data>
+  <data name="Onboarding_V2_Mcp.Description" xml:space="preserve"><value>使用本地 MCP 客户端，无需 Gateway。</value></data>
+  <data name="Onboarding_V2_McpToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>本地 MCP 服务器</value></data>
+  <data name="Onboarding_V2_ReadOnly.Content" xml:space="preserve"><value>严格：Canvas 和屏幕捕获。命令执行已关闭。</value></data>
+  <data name="Onboarding_V2_Standard.Content" xml:space="preserve"><value>均衡（推荐）：命令、Canvas、屏幕捕获和语音。</value></data>
+  <data name="Onboarding_V2_Full.Content" xml:space="preserve"><value>开放：全部八项能力，包括相机、位置和浏览器控制。</value></data>
+  <data name="Onboarding_V2_Custom.Text" xml:space="preserve"><value>自定义功能</value></data>
+  <data name="Onboarding_V2_BrowserRequired.Title" xml:space="preserve"><value>浏览器控制需要 Node mode 和 Gateway</value></data>
+  <data name="Onboarding_V2_BrowserRequired.Message" xml:space="preserve"><value>浏览器控制选择已保留。Gateway 连接就绪后即可使用。</value></data>
+  <data name="Onboarding_V2_DeviceFixed.Text" xml:space="preserve"><value>节点服务运行时，基本设备信息和状态始终可用。它们不属于配置文件开关。</value></data>
+  <data name="Onboarding_V2_Ollama.Header" xml:space="preserve"><value>Ollama 共享</value></data>
+  <data name="Onboarding_V2_Ollama.Description" xml:space="preserve"><value>共享现有的 Windows Ollama 服务。不会安装 Local AI 或更改功能配置文件。</value></data>
+  <data name="Onboarding_V2_OllamaToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Ollama 共享</value></data>
+  <data name="Onboarding_V2_NativeSettings.Text" xml:space="preserve"><value>执行批准、沙盒授权、记住的捕获同意、MCP 令牌和语音配置仍在 Companion Settings 中管理。</value></data>
+  <data name="Onboarding_V2_Next.Content" xml:space="preserve"><value>下一步</value></data>
+  <data name="Onboarding_V2_NetworkExplanation.Text" xml:space="preserve"><value>Local AI 需要 WSL 镜像网络。安装将更新全局 .wslconfig，并一次性停止所有正在运行的 WSL 发行版。不会删除任何发行版。请先保存 WSL 中的工作。</value></data>
+  <data name="Onboarding_V2_NetworkConsent.Content" xml:space="preserve"><value>我允许此全局网络更改和一次性 WSL 关闭。</value></data>
+  <data name="Onboarding_V2_ReplacementWarning.Title" xml:space="preserve"><value>此替换可能永久删除 WSL 数据</value></data>
+  <data name="Onboarding_V2_ReplacementWarning.Message" xml:space="preserve"><value>仅替换指定名称的 WSL 安装。其他已保存的 Gateway 连接仍然可用。</value></data>
+  <data name="Onboarding_V2_ReturnToReview.Content" xml:space="preserve"><value>返回检查</value></data>
+  <data name="Onboarding_V2_ReviewTitle.Text" xml:space="preserve"><value>WSL Gateway 设置</value></data>
+  <data name="Onboarding_V2_ReviewIntro.Text" xml:space="preserve"><value>在安装开始前检查将发生的更改。</value></data>
+  <data name="Onboarding_V2_CliCard.Header" xml:space="preserve"><value>OpenClaw CLI</value></data>
+  <data name="Onboarding_V2_GatewayCard.Header" xml:space="preserve"><value>本地 Gateway 服务</value></data>
+  <data name="Onboarding_V2_LocalAiReview.Header" xml:space="preserve"><value>Local AI</value></data>
+  <data name="Onboarding_V2_TailscaleReview.Header" xml:space="preserve"><value>Tailscale Serve</value></data>
+  <data name="Onboarding_V2_ReplacementCard.Header" xml:space="preserve"><value>检查 WSL 替换</value></data>
+  <data name="Onboarding_V2_StartupCard.Header" xml:space="preserve"><value>登录时启动 OpenClaw</value></data>
+  <data name="Onboarding_V2_ExactCommands.Header" xml:space="preserve"><value>具体命令和文件</value></data>
+  <data name="Onboarding_V2_ReviewRequired.Title" xml:space="preserve"><value>检查必需选项</value></data>
+  <data name="Onboarding_V2_ReviewRequired.Message" xml:space="preserve"><value>安装前请检查所选 Local AI 和 Tailscale 的先决条件，并确认任何 WSL 替换。</value></data>
+  <data name="Onboarding_V2_Install.Content" xml:space="preserve"><value>安装</value></data>
+  <data name="Onboarding_V2_WelcomeTitle.Text" xml:space="preserve"><value>欢迎使用 OpenClaw</value></data>
+  <data name="Onboarding_V2_WelcomeChat.Header" xml:space="preserve"><value>与您的 AI 聊天</value></data>
+  <data name="Onboarding_V2_WelcomeChat.Description" xml:space="preserve"><value>在原生 Chat 中使用您选择的 AI 提供商。</value></data>
+  <data name="Onboarding_V2_WelcomePc.Header" xml:space="preserve"><value>让代理在此电脑上提供帮助</value></data>
+  <data name="Onboarding_V2_WelcomePc.Description" xml:space="preserve"><value>选择要启用的电脑能力。Windows 权限和执行审批仍然独立管理。</value></data>
+  <data name="Onboarding_V2_WelcomeGateway.Header" xml:space="preserve"><value>让 Gateway 始终由您掌控</value></data>
+  <data name="Onboarding_V2_WelcomeGateway.Description" xml:space="preserve"><value>在此运行私有 WSL Gateway，或连接到现有 Gateway。</value></data>
+  <data name="Onboarding_V2_WelcomeTrust.Title" xml:space="preserve"><value>开始之前</value></data>
+  <data name="Onboarding_V2_WelcomeTrust.Message" xml:space="preserve"><value>AI 智能体功能强大，授予其电脑访问权限也存在风险。它们可能犯错、更改或删除文件，或泄露私人信息。&#x0a;&#x0a;你可以控制并限制 OpenClaw 对电脑的访问。</value></data>
+  <data name="Onboarding_V2_Continue.Content" xml:space="preserve"><value>继续</value></data>
+  <data name="Onboarding_V2_Retry.Content" xml:space="preserve"><value>重试</value></data>
+  <data name="Onboarding_V2_AlternativeRoutes.Content" xml:space="preserve"><value>远程、本地 MCP 或稍后设置</value></data>
+  <data name="Onboarding_V2_LocalAiCard.Header" xml:space="preserve"><value>Local AI</value></data>
+  <data name="Onboarding_V2_LocalAiCard.Description" xml:space="preserve"><value>可选的托管 Windows llama-server。与 Ollama 共享相互独立。</value></data>
+  <data name="Onboarding_V2_LocalAiToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>设置 Local AI</value></data>
+  <data name="Onboarding_V2_LocalAiModel.Header" xml:space="preserve"><value>模型</value></data>
+  <data name="Onboarding_V2_LocalAiModel.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Local AI 模型</value></data>
+  <data name="Onboarding_V2_NetworkRequired.Title" xml:space="preserve"><value>需要更改 WSL 网络</value></data>
+  <data name="Onboarding_V2_TailscaleCard.Header" xml:space="preserve"><value>Tailscale Serve</value></data>
+  <data name="Onboarding_V2_TailscaleCard.Description" xml:space="preserve"><value>私有 tailnet 访问，不是公开 Funnel 访问。可选且默认关闭。</value></data>
+  <data name="Onboarding_V2_TailscaleToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>设置 Tailscale Serve</value></data>
+  <data name="Onboarding_V2_TailscalePrerequisite.Text" xml:space="preserve"><value>先在 Windows 上安装并登录 Tailscale，启用 MagicDNS。WSL Gateway 将单独登录。</value></data>
+  <data name="Onboarding_V2_TailscaleAuthMode.Header" xml:space="preserve"><value>登录 WSL Gateway</value></data>
+  <data name="Onboarding_V2_TailscaleBrowser.Content" xml:space="preserve"><value>在安装期间使用浏览器登录</value></data>
+  <data name="Onboarding_V2_TailscaleKey.Content" xml:space="preserve"><value>使用一次性身份验证密钥</value></data>
+  <data name="Onboarding_V2_TailscaleKeyInput.Header" xml:space="preserve"><value>Tailscale 身份验证密钥</value></data>
+  <data name="Onboarding_V2_TailscaleKeyInput.PlaceholderText" xml:space="preserve"><value>仅在此设置会话中保留</value></data>
+  <data name="Onboarding_V2_TailscaleTrust.Header" xml:space="preserve"><value>信任 Tailscale 身份进行 Gateway 身份验证</value></data>
+  <data name="Onboarding_V2_TailscaleTrust.Description" xml:space="preserve"><value>默认关闭。仅在 tailnet ACL 应参与 Gateway 访问控制时启用。</value></data>
+  <data name="Onboarding_V2_TailscaleTrustToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>信任 Tailscale 身份</value></data>
+  <data name="Onboarding_V2_WindowTitle.Text" xml:space="preserve"><value>OpenClaw 设置</value></data>
+  <data name="Onboarding_V2_NetworkConsentRecorded" xml:space="preserve"><value>已记录 WSL 网络同意</value></data>
+  <data name="Onboarding_V2_ReviewNetworking" xml:space="preserve"><value>检查 WSL 网络更改</value></data>
+  <data name="Onboarding_V2_TailscaleChecking" xml:space="preserve"><value>正在检查 Windows Tailscale...</value></data>
+  <data name="Onboarding_V2_TailscaleConnected" xml:space="preserve"><value>Windows Tailscale 已以 {0} 身份连接。</value></data>
+  <data name="Onboarding_V2_TailscaleRequired" xml:space="preserve"><value>必须安装并登录 Windows Tailscale，并启用 MagicDNS。</value></data>
+  <data name="Onboarding_V2_SelectedReview" xml:space="preserve"><value>已选择。请检查详情和先决条件。</value></data>
+  <data name="Onboarding_V2_OptionalOff" xml:space="preserve"><value>可选。已关闭。</value></data>
+  <data name="Onboarding_V2_ConsentRecorded" xml:space="preserve"><value>已记录此 WSL 安装的确认。</value></data>
+  <data name="Onboarding_V2_ConsentRequired" xml:space="preserve"><value>替换前需要明确确认。</value></data>
+  <data name="Onboarding_V2_DetailLocalAi" xml:space="preserve"><value>Local AI</value></data>
+  <data name="Onboarding_V2_DetailTailscale" xml:space="preserve"><value>Tailscale Serve</value></data>
+  <data name="Onboarding_V2_DetailNetworking" xml:space="preserve"><value>WSL 网络同意</value></data>
+  <data name="Onboarding_V2_DetailReplacement" xml:space="preserve"><value>替换 WSL Gateway</value></data>
+  <data name="Onboarding_V2_ReplaceDistro" xml:space="preserve"><value>我确认替换 WSL 安装“{0}”，并了解其数据可能被永久删除。</value></data>
+  <data name="Onboarding_V2_WslNotReady" xml:space="preserve"><value>WSL2 尚未就绪</value></data>
+  <data name="Onboarding_V2_WslInspectFailure" xml:space="preserve"><value>无法检查 WSL</value></data>
+  <data name="Onboarding_V2_Recommended" xml:space="preserve"><value>推荐</value></data>
+  <data name="Onboarding_V2_ModelNotQualified" xml:space="preserve"><value>此模型不适用于检测到的硬件。</value></data>
+  <data name="Onboarding_V2_HardwareMemory" xml:space="preserve"><value>需要 {0}。{2} 上 CUDA 可见内存为 {1}。</value></data>
+  <data name="Onboarding_V2_EngineDownload" xml:space="preserve"><value>Windows llama-server。{0} 已验证下载。首次请求时加载。</value></data>
+  <data name="Onboarding_V2_ModelDownload" xml:space="preserve"><value>{0}，从 Hugging Face 下载 {1}</value></data>
+  <data name="Onboarding_V2_Tokens" xml:space="preserve"><value>{0:N0} 个令牌</value></data>
+  <data name="Onboarding_V2_ClassicSettings.Content" xml:space="preserve"><value>打开经典连接设置</value></data>
+  <data name="Onboarding_V2_SaveChoicesFailed" xml:space="preserve"><value>无法保存您的设置选项。请查看错误并重试：{0}</value></data>
+  <data name="Onboarding_V2_ProfileSelector.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>能力配置</value></data>
+  <data name="Onboarding_V2_ProfileReadOnly.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>严格：Canvas 和屏幕捕获。命令执行已关闭。</value></data>
+  <data name="Onboarding_V2_ProfileStandard.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>均衡（推荐）：命令、Canvas、屏幕捕获和语音。</value></data>
+  <data name="Onboarding_V2_ProfileFull.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>开放：全部八项能力，包括相机、位置和浏览器控制。</value></data>
+  <data name="Onboarding_V2_ProfileReadOnlyTitle.Text" xml:space="preserve"><value>严格</value></data>
+  <data name="Onboarding_V2_ProfileReadOnlyDescription.Text" xml:space="preserve"><value>Canvas 和屏幕捕获。命令执行已关闭。</value></data>
+  <data name="Onboarding_V2_ProfileStandardTitle.Text" xml:space="preserve"><value>均衡（推荐）</value></data>
+  <data name="Onboarding_V2_ProfileStandardDescription.Text" xml:space="preserve"><value>命令、Canvas、屏幕捕获和语音。</value></data>
+  <data name="Onboarding_V2_ProfileFullTitle.Text" xml:space="preserve"><value>开放</value></data>
+  <data name="Onboarding_V2_ProfileFullDescription.Text" xml:space="preserve"><value>全部八项能力，包括相机、位置和浏览器控制。</value></data>
+  <data name="Onboarding_V2_CustomizeCapabilities.Header" xml:space="preserve"><value>自定义能力</value></data>
+  <data name="Onboarding_V2_NoCapabilities" xml:space="preserve"><value>未选择任何可选能力。</value></data>
+  <data name="Onboarding_V2_BrowserPrerequisite" xml:space="preserve"><value>需要 Node mode 和已就绪的 Gateway。您的选择会保留。</value></data>
+  <data name="Onboarding_V2_BlockerManagedWslRoute" xml:space="preserve"><value>选择 Gateway 方式</value></data>
+  <data name="Onboarding_V2_BlockerWslInspection" xml:space="preserve"><value>WSL 检查尚未完成</value></data>
+  <data name="Onboarding_V2_BlockerReplacement" xml:space="preserve"><value>替换需要您的确认</value></data>
+  <data name="Onboarding_V2_BlockerLocalAi" xml:space="preserve"><value>本地 AI 尚未就绪</value></data>
+  <data name="Onboarding_V2_BlockerNetworkingConsent" xml:space="preserve"><value>本地 AI 需要网络更改授权</value></data>
+  <data name="Onboarding_V2_BlockerTailscale" xml:space="preserve"><value>Tailscale 前提条件尚未满足</value></data>
+  <data name="Onboarding_V2_RequirementManagedWslRoute" xml:space="preserve"><value>此审核用于安装受管理的 WSL Gateway。若只想连接而不替换任何内容，请选择现有 Gateway。</value></data>
+  <data name="Onboarding_V2_RequirementWslInspection" xml:space="preserve"><value>请完成或重试 {0} 的 Gateway 检查。只有针对此确切目标的检查成功后才能安装。</value></data>
+  <data name="Onboarding_V2_RequirementReplacement" xml:space="preserve"><value>安装将替换 {0} 的现有配置。请查看后果并勾选下方的同意框。若要保留现有配置，请返回并选择现有 Gateway。</value></data>
+  <data name="Onboarding_V2_RequirementLocalAi" xml:space="preserve"><value>请检查本地 AI 可用性和所选模型。非恢复模式下可关闭本地 AI；恢复模式要求本地 AI 就绪。</value></data>
+  <data name="Onboarding_V2_RequirementNetworkingConsent" xml:space="preserve"><value>请审核全局 .wslconfig 更改和一次性关闭所有 WSL 发行版的操作。只有在您明确同意并开始安装后才会进行更改。</value></data>
+  <data name="Onboarding_V2_RequirementTailscale" xml:space="preserve"><value>请检查 Windows 登录状态、MagicDNS 和所选身份验证方式，或关闭 Tailscale。</value></data>
+  <data name="Onboarding_V2_ActionManagedWslRoute" xml:space="preserve"><value>选择 Gateway</value></data>
+  <data name="Onboarding_V2_ActionWslInspection" xml:space="preserve"><value>检查 Gateway</value></data>
+  <data name="Onboarding_V2_ActionReplacement" xml:space="preserve"><value>审核替换</value></data>
+  <data name="Onboarding_V2_ActionLocalAi" xml:space="preserve"><value>审核本地 AI</value></data>
+  <data name="Onboarding_V2_ActionNetworkingConsent" xml:space="preserve"><value>审核网络</value></data>
+  <data name="Onboarding_V2_ActionTailscale" xml:space="preserve"><value>审核 Tailscale</value></data>
+  <data name="Onboarding_AiSetup_ArtworkAction_Pair" xml:space="preserve"><value>配对</value></data>
+  <data name="Onboarding_AiSetup_ArtworkAction_Setup" xml:space="preserve"><value>设置…</value></data>
+  <data name="Onboarding_AiSetup_ArtworkAction_Configure" xml:space="preserve"><value>配置…</value></data>
+  <data name="Onboarding_AiSetup_ArtworkAction_Connect" xml:space="preserve"><value>连接</value></data>
+  <data name="Onboarding_AiSetup_ArtworkAction_SignIn" xml:space="preserve"><value>登录</value></data>
+  <data name="Onboarding_AiSetup_ArtworkAction_Prepare" xml:space="preserve"><value>连接 / 设置</value></data>
+  <data name="Onboarding_AiSetup_ArtworkUnavailable" xml:space="preserve"><value>提供商徽标不可用（{0}）。仍可设置提供商。</value></data>
+  <data name="Onboarding_V3_ProfileHeading.Text" xml:space="preserve"><value>您的代理可以做什么</value></data>
+  <data name="Onboarding_V3_ProfileHelp.Text" xml:space="preserve"><value>选择预设。展开“微调”可查看或更改各项能力。</value></data>
+  <data name="Onboarding_V3_FineTune.Text" xml:space="preserve"><value>微调</value></data>
+  <data name="Onboarding_V3_TransportRequired.Title" xml:space="preserve"><value>能力不可用</value></data>
+  <data name="Onboarding_V3_TransportRequired.Message" xml:space="preserve"><value>开启 Node mode 或 Local MCP Server 即可使用这些能力。您的选择会保留。</value></data>
+  <data name="Onboarding_V3_ProfileCustom.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>自定义：逐项选择能力</value></data>
+  <data name="Onboarding_V3_ProfileCustomTitle.Text" xml:space="preserve"><value>自定义</value></data>
+  <data name="Onboarding_V3_ProfileCustomDescription.Text" xml:space="preserve"><value>保留当前选择，并在下方进行调整。</value></data>
+  <data name="Onboarding_AiSetup_OnThisPc" xml:space="preserve"><value>在此电脑上</value></data>
+  <data name="Onboarding_AiSetup_LocalTitle" xml:space="preserve"><value>此电脑上的本地 AI</value></data>
+  <data name="Onboarding_AiSetup_LocalExplanation" xml:space="preserve"><value>托管的 Windows llama-server 使用此电脑的 GPU。这与 NVIDIA 的云端 API 不同。</value></data>
+  <data name="Onboarding_AiSetup_GatewayModels" xml:space="preserve"><value>Gateway 上可用的模型</value></data>
+  <data name="Onboarding_AiSetup_ConnectProvider" xml:space="preserve"><value>连接 AI 提供商</value></data>
+  <data name="Onboarding_AiSetup_OtherLocal" xml:space="preserve"><value>设置本地模型</value></data>
+  <data name="Onboarding_AiSetup_OtherLocalDetail" xml:space="preserve"><value>通过 Gateway 设置并使用模型。继续前请查看下载或权限请求。</value></data>
+  <data name="Onboarding_AiSetup_UtilityNotice" xml:space="preserve"><value>Gateway 还提供设置或辅助任务模型。此页面仅连接主助手，因此不显示仅供辅助任务使用的选项。</value></data>
+  <data name="Onboarding_AiSetup_LocalSetUp" xml:space="preserve"><value>设置本地 AI</value></data>
+  <data name="Onboarding_AiSetup_LocalStartAndUse" xml:space="preserve"><value>启动并使用</value></data>
+  <data name="Onboarding_AiSetup_LocalUse" xml:space="preserve"><value>使用此模型</value></data>
+  <data name="Onboarding_AiSetup_LocalRepair" xml:space="preserve"><value>修复本地 AI</value></data>
+  <data name="Onboarding_AiSetup_LocalInstall" xml:space="preserve"><value>安装并使用</value></data>
+  <data name="Onboarding_AiSetup_LocalChanged" xml:space="preserve"><value>Gateway 或本地 AI 的就绪状态已更改。请返回连接 AI 页面并重新检查，然后再安装。</value></data>
+  <data name="Onboarding_AiSetup_LocalStartFailed" xml:space="preserve"><value>本地 AI 无法启动。清理已完成。请修复本地 AI 或选择其他提供商。</value></data>
+  <data name="Onboarding_AiSetup_LocalState_Checking" xml:space="preserve"><value>正在检查此电脑。你仍可选择 AI 提供商。</value></data>
+  <data name="Onboarding_AiSetup_LocalState_SetUp" xml:space="preserve"><value>电脑兼容。安装前请查看设置。</value></data>
+  <data name="Onboarding_AiSetup_LocalState_StartAndUse" xml:space="preserve"><value>已安装，未运行</value></data>
+  <data name="Onboarding_AiSetup_LocalState_Use" xml:space="preserve"><value>正在此电脑上运行</value></data>
+  <data name="Onboarding_AiSetup_LocalState_Repair" xml:space="preserve"><value>托管安装需要处理。查看修复选项，无需重新安装 Gateway。</value></data>
+  <data name="Onboarding_AiSetup_LocalState_BusyGpu" xml:space="preserve"><value>GPU 兼容，但当前可用显存不足。请关闭其他 GPU 工作负载并重新检查。</value></data>
+  <data name="Onboarding_AiSetup_LocalState_Unsupported" xml:space="preserve"><value>此电脑不符合托管本地 AI 的要求。你仍可连接 AI 提供商。</value></data>
+  <data name="Onboarding_AiSetup_LocalState_Unknown" xml:space="preserve"><value>无法确认本地 AI 是否就绪。请重新检查或选择其他 AI 提供商。</value></data>
+  <data name="Onboarding_AiSetup_LocalState_UnsupportedGateway" xml:space="preserve"><value>托管本地 AI 要求在此电脑上选定唯一由应用管理的本地 Gateway。不支持远程或归属不明确的 Gateway。</value></data>
+  <data name="Onboarding_AiSetup_LocalState_Working" xml:space="preserve"><value>本地 AI 正在启动或停止。请在操作完成后重新检查。</value></data>
+  <data name="Onboarding_DashboardLaunchFailed" xml:space="preserve"><value>无法打开仪表板。请检查已验证网关的连接，然后重试。</value></data>
+  <data name="Onboarding_V4_ProfileHeading.Text" xml:space="preserve"><value>选择代理可以执行的操作</value></data>
+  <data name="Onboarding_V4_ConnectionOptions.Text" xml:space="preserve"><value>连接选项</value></data>
+  <data name="Onboarding_V4_OllamaDisclosure.Header" xml:space="preserve"><value>Ollama 共享</value></data>
+  <data name="Onboarding_V4_OllamaDisclosure.Description" xml:space="preserve"><value>可选</value></data>
+  <data name="Onboarding_V4_TailscaleDisclosure.Header" xml:space="preserve"><value>Tailscale</value></data>
+  <data name="Onboarding_V4_TailscaleDisclosure.Description" xml:space="preserve"><value>可选</value></data>
+  <data name="Onboarding_V4_DetectedAi.Text" xml:space="preserve"><value>检测到的 AI 选项</value></data>
+  <data name="Onboarding_V4_PhasePrepare.Header" xml:space="preserve"><value>准备你的电脑</value></data>
+  <data name="Onboarding_V4_PhaseInstall.Header" xml:space="preserve"><value>安装 Gateway</value></data>
+  <data name="Onboarding_V4_PhaseConnect.Header" xml:space="preserve"><value>启动并检查连接</value></data>
+  <data name="Onboarding_V4_DetailedActivity.Header" xml:space="preserve"><value>详细活动</value></data>
+  <data name="Onboarding_V4_InstallationTitle" xml:space="preserve"><value>为你的智能体做好准备</value></data>
+  <data name="Onboarding_V4_InstallationSubtitle" xml:space="preserve"><value>一步一步进行。你可以在下方查看详情。</value></data>
+  <data name="Onboarding_V4_RecoveryTitle" xml:space="preserve"><value>正在恢复本地 AI</value></data>
+  <data name="Onboarding_V4_RecoveryInstall" xml:space="preserve"><value>准备并检查本地 AI</value></data>
+  <data name="Onboarding_V4_StatusPending" xml:space="preserve"><value>等待中</value></data>
+  <data name="Onboarding_V4_StatusRunning" xml:space="preserve"><value>进行中</value></data>
+  <data name="Onboarding_V4_StatusComplete" xml:space="preserve"><value>已完成</value></data>
+  <data name="Onboarding_V4_StatusSkipped" xml:space="preserve"><value>无需执行</value></data>
+  <data name="Onboarding_V4_StatusFailed" xml:space="preserve"><value>需要处理</value></data>
+  <data name="Onboarding_V4_StepCount" xml:space="preserve"><value>已完成 {0} 步，共 {1} 步</value></data>
+  <data name="Onboarding_V4_StatusCancelled" xml:space="preserve"><value>已取消</value></data>
+  <data name="Onboarding_V5_DownloadMeasurement" xml:space="preserve"><value>{0}，共 {1}</value></data>
+  <data name="Onboarding_Ready_Heading.Text" xml:space="preserve"><value>你的 AI 已就绪</value></data>
+  <data name="Onboarding_Ready_Prompt.Text" xml:space="preserve"><value>你想先做什么？</value></data>
+  <data name="Onboarding_Ready_Chat.Header" xml:space="preserve"><value>与我的智能体聊天</value></data>
+  <data name="Onboarding_Ready_Chat.Description" xml:space="preserve"><value>打开 Chat，与智能体聊天。</value></data>
+  <data name="Onboarding_Ready_Chat.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>与我的智能体聊天，推荐</value></data>
+  <data name="Onboarding_Ready_Skills.Header" xml:space="preserve"><value>探索技能</value></data>
+  <data name="Onboarding_Ready_Skills.Description" xml:space="preserve"><value>浏览智能体的技能。不会自动安装任何内容。</value></data>
+  <data name="Onboarding_Ready_Channels.Header" xml:space="preserve"><value>连接渠道</value></data>
+  <data name="Onboarding_Ready_Channels.Description" xml:space="preserve"><value>WhatsApp、Telegram 等。由您选择何时登录。</value></data>
+  <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>返回 AI 设置</value></data>
+  <data name="Onboarding_Ready_Model" xml:space="preserve"><value>已验证的模型：{0}</value></data>
+  <data name="Onboarding_Ready_Verifying" xml:space="preserve"><value>正在重新验证同一 Gateway、智能体和模型...</value></data>
+  <data name="Onboarding_Ready_Finalizing" xml:space="preserve"><value>正在完成你的 Windows 设置选项...</value></data>
+  <data name="Onboarding_Ready_Opening" xml:space="preserve"><value>正在打开你选择的应用页面...</value></data>
+  <data name="Onboarding_Ready_OwnershipChanged" xml:space="preserve"><value>无法验证 Gateway、智能体或主模型。请返回 AI 设置并重新验证。</value></data>
+  <data name="Onboarding_Ready_Timeout" xml:space="preserve"><value>验证超时或已取消。请再次选择以重试，或返回 AI 设置。</value></data>
+  <data name="Onboarding_Ready_VerifyingFailed" xml:space="preserve"><value>暂时无法验证 AI。请检查 Gateway 连接及模型是否就绪，然后重试或返回 AI 设置。</value></data>
+  <data name="Onboarding_Ready_FinalizingFailed" xml:space="preserve"><value>Windows 设置未能完成。所选目标尚未打开。请重试或返回 AI 设置。</value></data>
+  <data name="Onboarding_Ready_OpeningFailed" xml:space="preserve"><value>应用无法打开所选目标。请再次选择以重试。未启动任何渠道登录。</value></data>
+  <data name="Onboarding_Ready_LaunchFailedTitle" xml:space="preserve"><value>无法打开所选设置目标</value></data>
+  <data name="Onboarding_Ready_LaunchInvalid" xml:space="preserve"><value>此设置交接已过期、已使用或不可用。请重新打开设置并验证 AI。</value></data>
+  <data name="Onboarding_Ready_LaunchChanged" xml:space="preserve"><value>已验证的 Gateway 或智能体发生变化。请返回原 Gateway 并重新打开 AI 设置。未打开其他账户。</value></data>
+  <data name="Onboarding_Ready_LaunchUnavailable" xml:space="preserve"><value>已验证的 Gateway 或应用页面尚未就绪。请检查 Connection，然后手动重试。</value></data>
+  <data name="Onboarding_Ready_Retry" xml:space="preserve"><value>重试</value></data>
+  <data name="Onboarding_Ready_Close" xml:space="preserve"><value>关闭</value></data>
+  <data name="Onboarding_Ready_ChannelUnavailable" xml:space="preserve"><value>此 Gateway 未提供所选渠道。请查看可用渠道，或更新 Gateway 后刷新。</value></data>
+  <data name="Onboarding_Ready_ChannelUnconfirmed" xml:space="preserve"><value>无法确认渠道是否可用。请刷新以重试。未启动任何渠道登录或配置。</value></data>
+  <data name="Onboarding_Copy_SafetyLink.Content" xml:space="preserve"><value>详细了解风险与安全</value></data>
+  <data name="Onboarding_Copy_GatewayTitle.Text" xml:space="preserve"><value>设置 OpenClaw</value></data>
+  <data name="Onboarding_Copy_GatewayIntro.Text" xml:space="preserve"><value>Gateway 将你的 AI 助手连接到应用和工具。请选择其运行位置，你可以稍后更改。</value></data>
+  <data name="Onboarding_Copy_GatewaySelector.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Gateway 设置方式</value></data>
+  <data name="Onboarding_Copy_GatewaySelector.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve"><value>选择一种 Gateway 设置方式。</value></data>
+  <data name="Onboarding_Copy_GatewayLocalChoice.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>安装本地 Gateway (WSL)，推荐</value></data>
+  <data name="Onboarding_Copy_GatewayLocalTitle.Text" xml:space="preserve"><value>安装本地 Gateway (WSL)</value></data>
+  <data name="Onboarding_Copy_GatewayLocalDescription.Text" xml:space="preserve"><value>在 WSL 中安装专用 OpenClaw Gateway。</value></data>
+  <data name="Onboarding_Copy_Recommended.Text" xml:space="preserve"><value>推荐</value></data>
+  <data name="Onboarding_Copy_GatewayExistingChoice.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>连接到现有 Gateway</value></data>
+  <data name="Onboarding_Copy_GatewayExistingTitle.Text" xml:space="preserve"><value>连接到现有 Gateway</value></data>
+  <data name="Onboarding_Copy_GatewayExistingDescription.Text" xml:space="preserve"><value>无需在此电脑上安装 Gateway 或本地 AI 即可连接。</value></data>
+  <data name="Onboarding_StartupWarning_Title" xml:space="preserve"><value>Windows 启动</value></data>
+  <data name="Onboarding_StartupWarning_Message" xml:space="preserve"><value>设置已完成，但 Windows 启动首选项未能完全应用。OpenClaw 将完成重启。您可以在 Companion Settings 中重试此首选项。</value></data>
+  <data name="Onboarding_RegistryRecovery_Title" xml:space="preserve"><value>Gateway 恢复需要处理</value></data>
+  <data name="Onboarding_RegistryRecovery_Message" xml:space="preserve"><value>设置无法协调已保存的 Gateway 更改。未保存的编辑未被提交。请关闭并重新打开 OpenClaw，重新加载已保存的 Gateway 后再重试。</value></data>
+  <data name="Onboarding_RestartRecovery_Title" xml:space="preserve"><value>完成打开 OpenClaw</value></data>
+  <data name="Onboarding_RestartRecovery_Waiting" xml:space="preserve"><value>另一个 OpenClaw 实例仍在完成设置。重试会等待它释放控制权。所选页面已保留。取消后可关闭另一个实例并重新打开 OpenClaw 以继续。</value></data>
+  <data name="Onboarding_RestartRecovery_Storage" xml:space="preserve"><value>OpenClaw 无法安全保留所选设置页面。请重试。取消会停止此次启动；您可能需要重新打开设置并再次选择。</value></data>
+  <data name="Onboarding_RestartRecovery_Invalid" xml:space="preserve"><value>无法读取保存的设置启动信息。OpenClaw 将正常打开。请重新打开设置以选择目标页面。</value></data>
+  <data name="PermissionsPage_ExecRuleScope_Main" xml:space="preserve">
+    <value>此代理</value>
+  </data>
+  <data name="PermissionsPage_ExecRuleScope_Wildcard" xml:space="preserve">
+    <value>所有代理</value>
+  </data>
+  <data name="PermissionsPage_RemoveRuleAutomationNameFormat" xml:space="preserve">
+    <value>移除{0}的允许列表条目 {1}</value>
+  </data>
+  <data name="PermissionsPage_ExecRuleAction_Inactive" xml:space="preserve">
+    <value>未启用</value>
+  </data>
   <data name="Migration_InnoCompleted" xml:space="preserve">
     <value>您的 OpenClaw 配置已迁移到 Store 版本。请关闭此消息以退出此应用，然后通过 Windows 设置 &gt; 应用 &gt; 已安装的应用卸载旧版 OpenClaw Companion，再打开 Store 版本。已迁移的配置和网关将予以保留。</value>
   </data>
@@ -7384,7 +7734,6 @@
   <data name="Onboarding_Native_Cancel.Content" xml:space="preserve"><value>取消设置</value></data>
   <data name="Onboarding_Native_Back.Content" xml:space="preserve"><value>返回</value></data>
   <data name="Onboarding_Native_Open.Content" xml:space="preserve"><value>打开 Companion 进行连接</value></data>
-  <data name="Onboarding_Native_Checking" xml:space="preserve"><value>正在检查已安装的 Gateway 包及其执行别名...</value></data>
   <data name="Onboarding_Native_Available" xml:space="preserve"><value>已安装 Gateway 包 {0}。</value></data>
   <data name="Onboarding_Native_InProgress" xml:space="preserve"><value>正在为共享设置向导准备原生 Gateway。提供商和模型问题将在 Companion 中显示。</value></data>
   <data name="Onboarding_Native_Cancelled" xml:space="preserve"><value>设置已取消。WinGet 请求已取消，但 Windows 仍可能完成部署。已输入的配置保留在专用原生配置目录中。未删除任何 Gateway 包。</value></data>
