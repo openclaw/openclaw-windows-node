@@ -386,17 +386,25 @@ public sealed partial class PermissionsPage : Page
         SelectComboBoxTag(DefaultActionCombo, _viewModel.DefaultExecActionTag);
         _suppressDefaultActionChange = false;
 
-        PolicyRulesList.ItemsSource = _viewModel.ExecApprovalRules.Select((rule, index) => new
+        PolicyRulesList.ItemsSource = _viewModel.ExecApprovalRules.Select((rule, index) =>
         {
-            Rule = rule,
-            rule.Pattern,
-            DisplayText = rule.IsWildcard ? $"{rule.Pattern} (wildcard)" : $"{rule.Pattern} (main)",
-            RemoveRuleAutomationName = rule.IsWildcard
-                ? $"Remove wildcard allowlist entry {rule.Pattern}"
-                : $"Remove main allowlist entry {rule.Pattern}",
-            RemoveRuleAutomationId = $"RemoveExecPolicyRuleButton_{index}",
-            Action = "allow",
-            ActionBrush = (Brush)Application.Current.Resources["SystemFillColorSuccessBrush"],
+            var scopeLabel = LocalizationHelper.GetString(
+                rule.IsWildcard
+                    ? "PermissionsPage_ExecRuleScope_Wildcard"
+                    : "PermissionsPage_ExecRuleScope_Main");
+            return new
+            {
+                Rule = rule,
+                rule.Pattern,
+                DisplayText = $"{rule.Pattern} ({scopeLabel})",
+                RemoveRuleAutomationName = LocalizationHelper.Format(
+                    "PermissionsPage_RemoveRuleAutomationNameFormat",
+                    scopeLabel,
+                    rule.Pattern),
+                RemoveRuleAutomationId = $"RemoveExecPolicyRuleButton_{index}",
+                Action = "allow",
+                ActionBrush = (Brush)Application.Current.Resources["SystemFillColorSuccessBrush"],
+            };
         }).ToList();
 
         var count = _viewModel.ExecApprovalRules.Count;

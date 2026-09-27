@@ -1145,6 +1145,33 @@ public sealed class PermissionsPageViewModelTests
         Assert.Contains(saved.Agents["main"].Allowlist!, entry => entry.Pattern == "**/git.exe");
         Assert.Contains(harness.ViewModel.ExecApprovalRules, rule => rule.IsWildcard && rule.Pattern == "**/other.exe");
         Assert.Contains(harness.ViewModel.ExecApprovalRules, rule => !rule.IsWildcard && rule.Pattern == "**/git.exe");
+        Assert.Equal("deny", harness.ViewModel.DefaultExecActionTag);
+    }
+
+    [Fact]
+    public async Task AddRule_FromInheritedWildcardDenyOff_RealStoreRemainsDenied()
+    {
+        var file = BuildFile("allow");
+        file.Agents!["main"] = new ExecApprovalsAgent();
+        file.Agents["*"] = new ExecApprovalsAgent
+        {
+            Security = ExecSecurity.Deny,
+            Ask = ExecAsk.Off,
+            Allowlist = [new ExecAllowlistEntry { Pattern = "**/other.exe" }],
+        };
+        using var harness = PermissionsHarness.CreateReal();
+        harness.ViewModel.Activate(null);
+        var initial = await harness.RealExecStore!.GetSnapshotReadOnlyAsync();
+        Assert.NotNull(await harness.RealExecStore.ReplaceAsync(initial.Snapshot!.Hash, file, origin: null));
+
+        Assert.True(await harness.ViewModel.TryAddExecApprovalRuleAsync("**/git.exe"));
+
+        using var reopened = new ExecApprovalsStore(harness.Temp.Path, NullLogger.Instance);
+        var resolved = reopened.ResolveReadOnly("main");
+        Assert.Equal(ExecSecurity.Deny, resolved.Defaults.Security);
+        Assert.Equal(ExecAsk.Off, resolved.Defaults.Ask);
+        Assert.Contains(resolved.Allowlist, entry => entry.Pattern == "**/other.exe");
+        Assert.Contains(resolved.Allowlist, entry => entry.Pattern == "**/git.exe");
     }
 
     [Fact]
