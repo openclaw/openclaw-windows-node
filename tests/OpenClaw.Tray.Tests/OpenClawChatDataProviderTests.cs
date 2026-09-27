@@ -1,10 +1,12 @@
 using OpenClaw.Chat;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Telemetry;
+using OpenClaw.TestSupport.Gateway;
 using OpenClawTray.Chat;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace OpenClaw.Tray.Tests;
@@ -14444,6 +14446,76 @@ public class OpenClawChatDataProviderTests
         Assert.Equal("appr-current-2", resolved.Id);
         Assert.Equal(ChatPermissionActionKeys.AllowOnce, resolved.Decision);
         Assert.Null(snapshots[^1].Timelines["main"].PendingPermission);
+    }
+
+    [Fact]
+    public async Task RespondToPermissionAsync_StaleAllowStopsBeforeProductionWebSocketIo()
+    {
+        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
+        using var identity = new OpenClaw.TestSupport.TempDirectory();
+        using var client = new OpenClawGatewayClient(
+            server.Endpoint.AbsoluteUri,
+            token,
+            NullLogger.Instance,
+            identityPath: identity.Path,
+            ignoreStoredDeviceToken: true,
+            persistHandshakeDeviceTokens: false);
+        var handshake = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.HandshakeSucceeded += (_, _) => handshake.TrySetResult();
+        await client.ConnectAsync();
+        await handshake.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        using var bridge = new GatewayClientChatBridge(client);
+        var snapshots = new List<ChatDataSnapshot>();
+        await using var provider = new OpenClawChatDataProvider(bridge);
+        provider.Changed += (_, args) => snapshots.Add(args.Snapshot);
+        await provider.LoadAsync();
+        string? PendingPermissionId() =>
+            snapshots.LastOrDefault() is { } snapshot
+            && snapshot.Timelines.TryGetValue(GatewayScenario.MainSessionKey, out var timeline)
+                ? timeline.PendingPermission?.RequestId
+                : null;
+
+        await server.PublishAgentEventAsync(GatewayScenario.MainSessionKey, new
+        {
+            phase = "requested",
+            approvalId = "fixture-stale-provider",
+            command = "echo stale",
+        });
+        await WaitForConditionAsync(() => PendingPermissionId() == "fixture-stale-provider");
+        await server.PublishAgentEventAsync(GatewayScenario.MainSessionKey, new
+        {
+            phase = "requested",
+            approvalId = "fixture-current-provider",
+            command = "echo current",
+        });
+        await WaitForConditionAsync(() => PendingPermissionId() == "fixture-current-provider");
+
+        await provider.RespondToPermissionAsync(
+            GatewayScenario.MainSessionKey,
+            "fixture-stale-provider",
+            allow: true);
+        await Task.Delay(100);
+
+        Assert.DoesNotContain(
+            server.Requests,
+            request => request.Method == "exec.approval.resolve"
+                && request.ApprovalId == "fixture-stale-provider");
+        Assert.Equal(
+            "fixture-current-provider",
+            PendingPermissionId());
+
+        await provider.RespondToPermissionAsync(
+            GatewayScenario.MainSessionKey,
+            "fixture-current-provider",
+            allow: true);
+        var resolved = await server.WaitForCompletedRequestAsync("exec.approval.resolve");
+
+        Assert.Equal("fixture-current-provider", resolved.ApprovalId);
+        Assert.Equal("allow-once", resolved.Decision);
+        Assert.Equal("ok", resolved.Outcome);
+        await client.DisconnectAsync();
     }
 
     [Fact]

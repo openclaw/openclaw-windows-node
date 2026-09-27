@@ -281,7 +281,7 @@ public sealed class GatewayFixtureProtocolTests
     }
 
     [Fact]
-    public async Task RealClient_ApprovalResolveRejectsUnsupportedDecisionWithoutRecordingPayload()
+    public async Task RealClient_ApprovalResolveInvalidDecisionDoesNotConsumeIssuedId()
     {
         var token = CreateToken();
         await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
@@ -297,12 +297,26 @@ public sealed class GatewayFixtureProtocolTests
             connected.Client.SendWizardRequestAsync(
                 "exec.approval.resolve",
                 new { id = "fixture-approval-invalid", decision = "approve" }));
+        await connected.Client.ResolveExecApprovalAsync("fixture-approval-invalid", "allow-once");
 
         Assert.Contains("Unsupported approval decision", error.Message);
-        var request = Assert.Single(server.Requests, request => request.Method == "exec.approval.resolve");
-        Assert.Equal("fixture-approval-invalid", request.ApprovalId);
-        Assert.Equal("<unknown>", request.Decision);
-        Assert.Equal("error:INVALID_PARAMS", request.Outcome);
+        var requests = server.Requests
+            .Where(request => request.Method == "exec.approval.resolve")
+            .ToArray();
+        Assert.Collection(
+            requests,
+            request =>
+            {
+                Assert.Equal("fixture-approval-invalid", request.ApprovalId);
+                Assert.Equal("<unknown>", request.Decision);
+                Assert.Equal("error:INVALID_PARAMS", request.Outcome);
+            },
+            request =>
+            {
+                Assert.Equal("fixture-approval-invalid", request.ApprovalId);
+                Assert.Equal("allow-once", request.Decision);
+                Assert.Equal("ok", request.Outcome);
+            });
         Assert.Empty(server.UnexpectedRequests);
     }
 

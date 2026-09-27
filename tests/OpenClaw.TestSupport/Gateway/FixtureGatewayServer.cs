@@ -390,13 +390,24 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                     var approvalId = ReadString(parameters, "id");
                     lock (_sync)
                     {
-                        if (approvalId is null || !_issuedApprovalIds.Remove(approvalId))
+                        if (approvalId is null || !_issuedApprovalIds.Contains(approvalId))
                             throw new FixtureRequestException(
                                 "INVALID_PARAMS",
                                 "Approval ID was not issued by the fixture.");
                     }
                 }
                 payload = _scenario.Respond(method, parameters);
+                if (method == "exec.approval.resolve")
+                {
+                    var approvalId = ReadString(parameters, "id");
+                    lock (_sync)
+                    {
+                        if (approvalId is null || !_issuedApprovalIds.Remove(approvalId))
+                            throw new FixtureRequestException(
+                                "INVALID_PARAMS",
+                                "Approval ID was already consumed by the fixture.");
+                    }
+                }
             }
             catch (FixtureRequestException ex)
             {
