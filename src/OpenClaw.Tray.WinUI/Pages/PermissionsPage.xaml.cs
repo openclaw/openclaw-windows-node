@@ -390,7 +390,10 @@ public sealed partial class PermissionsPage : Page
         {
             Rule = rule,
             rule.Pattern,
-            RemoveRuleAutomationName = $"Remove allowlist entry {rule.Pattern}",
+            DisplayText = rule.IsWildcard ? $"{rule.Pattern} (wildcard)" : $"{rule.Pattern} (main)",
+            RemoveRuleAutomationName = rule.IsWildcard
+                ? $"Remove wildcard allowlist entry {rule.Pattern}"
+                : $"Remove main allowlist entry {rule.Pattern}",
             RemoveRuleAutomationId = $"RemoveExecPolicyRuleButton_{index}",
             Action = "allow",
             ActionBrush = (Brush)Application.Current.Resources["SystemFillColorSuccessBrush"],

@@ -1122,6 +1122,32 @@ public sealed class PermissionsPageViewModelTests
     }
 
     [Fact]
+    public async Task AddRule_FromInheritedWildcardDenyOff_DoesNotActivateAllowlist()
+    {
+        var file = BuildFile("allow", otherAgentPath: "**/rg.exe");
+        file.Agents!["main"] = new ExecApprovalsAgent();
+        file.Agents["*"] = new ExecApprovalsAgent
+        {
+            Security = ExecSecurity.Deny,
+            Ask = ExecAsk.Off,
+            Allowlist = [new ExecAllowlistEntry { Pattern = "**/other.exe" }],
+        };
+        using var harness = PermissionsHarness.CreateWithRecordingStore(BuildSnapshot("base", file));
+        harness.ViewModel.Activate(null);
+
+        Assert.True(await harness.ViewModel.TryAddExecApprovalRuleAsync("**/git.exe"));
+
+        var saved = harness.RecordingExecStore!.CurrentSnapshot.File;
+        Assert.Null(saved.Agents!["main"].Security);
+        Assert.Null(saved.Agents["main"].Ask);
+        Assert.Equal(ExecSecurity.Deny, saved.Agents["*"].Security);
+        Assert.Equal(ExecAsk.Off, saved.Agents["*"].Ask);
+        Assert.Contains(saved.Agents["main"].Allowlist!, entry => entry.Pattern == "**/git.exe");
+        Assert.Contains(harness.ViewModel.ExecApprovalRules, rule => rule.IsWildcard && rule.Pattern == "**/other.exe");
+        Assert.Contains(harness.ViewModel.ExecApprovalRules, rule => !rule.IsWildcard && rule.Pattern == "**/git.exe");
+    }
+
+    [Fact]
     public async Task AddRule_FromInheritedWildcardDeny_EnablesOnlyMainAllowlist()
     {
         var file = BuildFile("allow", otherAgentPath: "**/rg.exe");

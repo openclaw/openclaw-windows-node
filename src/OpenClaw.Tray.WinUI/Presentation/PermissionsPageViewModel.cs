@@ -672,7 +672,10 @@ internal sealed class PermissionsPageViewModel : INavigationAware, IDisposable, 
         if (mutation.Kind == ExecApprovalsMutationKind.AddRule)
         {
             var displayed = ResolveDisplayedExecPolicy(file);
-            if (displayed.Security == ExecSecurity.Deny)
+            var inheritedDenyOff = main.Security is null
+                && displayed.Security == ExecSecurity.Deny
+                && displayed.Ask == ExecAsk.Off;
+            if (displayed.Security == ExecSecurity.Deny && !inheritedDenyOff)
             {
                 main.Security = ExecSecurity.Allowlist;
                 main.Ask = displayed.Ask;
