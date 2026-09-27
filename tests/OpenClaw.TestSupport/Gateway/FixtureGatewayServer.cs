@@ -135,6 +135,33 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         }
     }
 
+    public async Task<GatewayFixtureRequest> WaitForCompletedRequestAsync(
+        string method,
+        string? sessionKey = null,
+        int occurrence = 1,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(occurrence);
+        using var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
+        while (true)
+        {
+            Task changed;
+            lock (_sync)
+            {
+                var request = _requests
+                    .Where(request => request.Method == method
+                        && (sessionKey is null || request.SessionKey == sessionKey)
+                        && request.Outcome != "pending")
+                    .Skip(occurrence - 1)
+                    .FirstOrDefault();
+                if (request is not null)
+                    return request;
+                changed = _requestChanged.Task;
+            }
+            await changed.WaitAsync(wait.Token);
+        }
+    }
+
     public async Task PublishAgentEventAsync(
         string sessionKey,
         object data,
@@ -363,7 +390,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                     var approvalId = ReadString(parameters, "id");
                     lock (_sync)
                     {
-                        if (approvalId is null || !_issuedApprovalIds.Contains(approvalId))
+                        if (approvalId is null || !_issuedApprovalIds.Remove(approvalId))
                             throw new FixtureRequestException(
                                 "INVALID_PARAMS",
                                 "Approval ID was not issued by the fixture.");
@@ -383,15 +410,6 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                 await gate.WaitAsync(cancellationToken);
             await SendAsync(socket, sendLock, new { type = "res", id, ok = true, payload }, cancellationToken);
             Complete(requestIndex, "ok");
-            if (method == "exec.approval.resolve")
-            {
-                var approvalId = ReadString(parameters, "id");
-                if (approvalId is not null)
-                {
-                    lock (_sync)
-                        _issuedApprovalIds.Remove(approvalId);
-                }
-            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

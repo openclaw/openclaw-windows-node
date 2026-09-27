@@ -273,7 +273,7 @@ public sealed class GatewayFixtureProtocolTests
 
         await connected.Client.ResolveExecApprovalAsync("fixture-approval-1", "allow-once");
 
-        var request = Assert.Single(server.Requests, request => request.Method == "exec.approval.resolve");
+        var request = await server.WaitForCompletedRequestAsync("exec.approval.resolve");
         Assert.Equal("fixture-approval-1", request.ApprovalId);
         Assert.Equal("allow-once", request.Decision);
         Assert.Equal("ok", request.Outcome);
@@ -321,6 +321,42 @@ public sealed class GatewayFixtureProtocolTests
         Assert.Equal("fixture-never-issued", request.ApprovalId);
         Assert.Equal("deny", request.Decision);
         Assert.Equal("error:INVALID_PARAMS", request.Outcome);
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
+    [Fact]
+    public async Task RealClient_ApprovalResolveAcknowledgesIssuedIdOnlyOnce()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        await server.PublishAgentEventAsync(GatewayScenario.MainSessionKey, new
+        {
+            phase = "requested",
+            approvalId = "fixture-one-shot",
+            command = "echo fixture",
+        });
+
+        var attempts = await Task.WhenAll(Enumerable.Range(0, 2).Select(async _ =>
+        {
+            try
+            {
+                await connected.Client.ResolveExecApprovalAsync("fixture-one-shot", "allow-once");
+                return "ok";
+            }
+            catch (InvalidOperationException ex)
+            {
+                Assert.Contains("not issued by the fixture", ex.Message);
+                return "rejected";
+            }
+        }));
+
+        Assert.Equal(1, attempts.Count(result => result == "ok"));
+        Assert.Equal(1, attempts.Count(result => result == "rejected"));
+        Assert.Contains(server.Requests, request =>
+            request.Method == "exec.approval.resolve" && request.Outcome == "ok");
+        Assert.Contains(server.Requests, request =>
+            request.Method == "exec.approval.resolve" && request.Outcome == "error:INVALID_PARAMS");
         Assert.Empty(server.UnexpectedRequests);
     }
 
