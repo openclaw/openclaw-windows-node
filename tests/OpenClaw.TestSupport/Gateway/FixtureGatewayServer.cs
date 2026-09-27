@@ -30,6 +30,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private readonly List<GatewayFixtureRequest> _requests = [];
     private readonly List<int> _unexpectedIndices = [];
     private readonly HashSet<int> _subscriptions = [];
+    private readonly HashSet<string> _issuedApprovalIds = new(StringComparer.Ordinal);
     private readonly Dictionary<int, ActiveConnection> _authenticatedConnections = [];
     private readonly Dictionary<string, TaskCompletionSource> _historyGates = new(StringComparer.Ordinal);
     private readonly TaskCompletionSource _handshake = NewSignal();
@@ -151,6 +152,16 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         if (targets.Length == 0)
             throw new InvalidOperationException("No authenticated fixture connection is available.");
 
+        var eventData = JsonSerializer.SerializeToElement(data);
+        var approvalId = ReadString(eventData, "approvalId");
+        if (ReadString(eventData, "phase") == "requested"
+            && approvalId is { Length: <= 64 }
+            && approvalId.StartsWith("fixture-", StringComparison.Ordinal))
+        {
+            lock (_sync)
+                _issuedApprovalIds.Add(approvalId);
+        }
+
         var message = new
         {
             type = "event",
@@ -162,7 +173,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                 stream = "approval",
                 ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                 sessionKey,
-                data,
+                data = eventData,
             },
         };
         foreach (var target in targets)
@@ -347,6 +358,17 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             {
                 if (parameters.ValueKind != JsonValueKind.Object)
                     throw new FixtureRequestException("INVALID_PARAMS", "params must be an object.");
+                if (method == "exec.approval.resolve")
+                {
+                    var approvalId = ReadString(parameters, "id");
+                    lock (_sync)
+                    {
+                        if (approvalId is null || !_issuedApprovalIds.Contains(approvalId))
+                            throw new FixtureRequestException(
+                                "INVALID_PARAMS",
+                                "Approval ID was not issued by the fixture.");
+                    }
+                }
                 payload = _scenario.Respond(method, parameters);
             }
             catch (FixtureRequestException ex)
@@ -361,6 +383,15 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                 await gate.WaitAsync(cancellationToken);
             await SendAsync(socket, sendLock, new { type = "res", id, ok = true, payload }, cancellationToken);
             Complete(requestIndex, "ok");
+            if (method == "exec.approval.resolve")
+            {
+                var approvalId = ReadString(parameters, "id");
+                if (approvalId is not null)
+                {
+                    lock (_sync)
+                        _issuedApprovalIds.Remove(approvalId);
+                }
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

@@ -264,6 +264,12 @@ public sealed class GatewayFixtureProtocolTests
         var token = CreateToken();
         await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
         await using var connected = await ConnectedClient.OpenAsync(server, token);
+        await server.PublishAgentEventAsync(GatewayScenario.MainSessionKey, new
+        {
+            phase = "requested",
+            approvalId = "fixture-approval-1",
+            command = "echo fixture",
+        });
 
         await connected.Client.ResolveExecApprovalAsync("fixture-approval-1", "allow-once");
 
@@ -280,16 +286,40 @@ public sealed class GatewayFixtureProtocolTests
         var token = CreateToken();
         await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
         await using var connected = await ConnectedClient.OpenAsync(server, token);
+        await server.PublishAgentEventAsync(GatewayScenario.MainSessionKey, new
+        {
+            phase = "requested",
+            approvalId = "fixture-approval-invalid",
+            command = "echo fixture",
+        });
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             connected.Client.SendWizardRequestAsync(
                 "exec.approval.resolve",
-                new { id = "not-fixture-owned", decision = "approve" }));
+                new { id = "fixture-approval-invalid", decision = "approve" }));
 
         Assert.Contains("Unsupported approval decision", error.Message);
         var request = Assert.Single(server.Requests, request => request.Method == "exec.approval.resolve");
-        Assert.Equal("<unknown>", request.ApprovalId);
+        Assert.Equal("fixture-approval-invalid", request.ApprovalId);
         Assert.Equal("<unknown>", request.Decision);
+        Assert.Equal("error:INVALID_PARAMS", request.Outcome);
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
+    [Fact]
+    public async Task RealClient_ApprovalResolveRejectsUnissuedFixtureId()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            connected.Client.ResolveExecApprovalAsync("fixture-never-issued", "deny"));
+
+        Assert.Contains("not issued by the fixture", error.Message);
+        var request = Assert.Single(server.Requests, request => request.Method == "exec.approval.resolve");
+        Assert.Equal("fixture-never-issued", request.ApprovalId);
+        Assert.Equal("deny", request.Decision);
         Assert.Equal("error:INVALID_PARAMS", request.Outcome);
         Assert.Empty(server.UnexpectedRequests);
     }
