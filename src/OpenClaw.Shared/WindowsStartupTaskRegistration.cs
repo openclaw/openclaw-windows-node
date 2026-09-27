@@ -75,7 +75,9 @@ public static class WindowsStartupTaskRegistration
             ((dynamic)service).Connect();
             folder = ((dynamic)service).GetFolder("\\");
             try { task = ((dynamic)folder).GetTask(taskName); }
-            catch (System.Runtime.InteropServices.COMException error) when (error.HResult == unchecked((int)0x80070002))
+            catch (Exception error) when (
+                error is System.Runtime.InteropServices.COMException or FileNotFoundException &&
+                error.HResult == unchecked((int)0x80070002))
             {
                 return StartupTaskInspection.Absent;
             }

@@ -2,6 +2,17 @@ namespace OpenClaw.Shared.Tests;
 
 public sealed class StartupTaskInspectionTests
 {
+    [Fact]
+    public void MissingTaskIsAbsentWithClrProjectedNotFoundError()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var taskName = "OpenClaw-absent-test-" + Guid.NewGuid().ToString("N");
+        Assert.Equal(StartupTaskInspection.Absent,
+            WindowsStartupTaskRegistration.InspectStrict(taskName, null));
+    }
+
     [Theory]
     [InlineData("expected", true)]
     [InlineData("disabled", false)]
