@@ -118,13 +118,10 @@ public sealed class GatewayRestartFailureDiagnosticTests
         var script = GatewayRestartFailureDiagnostic.ProbeScript;
 
         Assert.Contains(
-            """if [[ -r "/proc/$pid/stat" ]] && read -r stat < "/proc/$pid/stat" 2>/dev/null; then""",
+            """if [[ -r "/proc/$pid/stat" ]] && read -r stat 2>/dev/null < "/proc/$pid/stat"; then""",
             script);
         Assert.DoesNotContain(
-            """
-            read -r stat < "/proc/$pid/stat"
-            read -r -a fields
-            """,
+            """read -r stat < "/proc/$pid/stat" 2>/dev/null""",
             script);
     }
 

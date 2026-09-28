@@ -35,7 +35,8 @@ internal static class GatewayRestartFailureDiagnostic
           printf 'pid_present=true\n'
           if kill -0 "$pid" 2>/dev/null; then printf 'pid_live=true\n'; else printf 'pid_live=false\n'; fi
           if [[ "$exec_pid" == "$pid" ]]; then printf 'pid_equal=true\n'; else printf 'pid_equal=false\n'; fi
-          if [[ -r "/proc/$pid/stat" ]] && read -r stat < "/proc/$pid/stat" 2>/dev/null; then
+          # Redirection order is intentional: silence stderr before opening the racy proc path.
+          if [[ -r "/proc/$pid/stat" ]] && read -r stat 2>/dev/null < "/proc/$pid/stat"; then
             read -r -a fields <<< "${stat##*) }"
             if [[ "${fields[19]:-}" =~ ^[1-9][0-9]*$ ]]; then printf 'process_start_available=true\n'; else printf 'process_start_available=false\n'; fi
           else
