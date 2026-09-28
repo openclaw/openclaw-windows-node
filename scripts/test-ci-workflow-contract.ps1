@@ -509,7 +509,6 @@ foreach ($token in @(
 $uiJob = Get-JobBlock "ui-tests"
 foreach ($token in @(
         "Install WindowsAppRuntime",
-        "-Filter Category!=Accessibility",
         "--filter Category=Accessibility",
         "Verify DevBuild identity marker"
     )) {
@@ -517,6 +516,8 @@ foreach ($token in @(
 }
 
 $trayUiStep = Get-StepBlock -Text $uiJob -Name "Run Tray UI Tests"
+Assert-Contains -Text $trayUiStep -Expected '-Filter "Category!=Accessibility&Category!=NativeOnboardingProof"' `
+    -Message "Tray UI tests must exclude accessibility and native-onboarding proof cases."
 Assert-Contains -Text $trayUiStep -Expected "timeout-minutes: 15" `
     -Message "Tray UI tests must have an outer timeout rather than consuming the six-hour job limit."
 Assert-Contains -Text $trayUiStep -Expected "-HangTimeoutSeconds 300" `
