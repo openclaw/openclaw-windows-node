@@ -232,7 +232,7 @@ public sealed partial class ChatWindow : WindowEx
 
         ErrorPanel.Visibility = Visibility.Collapsed;
         WebView.Visibility = Visibility.Visible;
-        WebView.CoreWebView2.Navigate(_chatUrl);
+        GatewayChatHelper.NavigatePairedChat(WebView, _chatUrl);
         return true;
     }
 
@@ -252,6 +252,7 @@ public sealed partial class ChatWindow : WindowEx
         try
         {
             WebView.CoreWebView2?.Stop();
+            GatewayChatHelper.ResetPairedChat(WebView);
             WebView.CoreWebView2?.Navigate("about:blank");
         }
         catch (Exception ex)
@@ -271,9 +272,11 @@ public sealed partial class ChatWindow : WindowEx
         gatewayUrl ??= string.Empty;
         token ??= string.Empty;
 
+        var previousChatUrl = _chatUrl;
         _gatewayUrl = gatewayUrl;
         _token = token;
         _chatUrl = ChatSurfaceResolver.BuildChatUrl(_gatewayUrl, _token);
+        if (string.Equals(previousChatUrl, _chatUrl, StringComparison.Ordinal)) return;
 
         // HIGH 4: never log the full chat URL — its query string contains the
         // auth token. Strip the query before logging.
@@ -302,7 +305,7 @@ public sealed partial class ChatWindow : WindowEx
                 WebView.Visibility = Visibility.Visible;
                 LoadingRing.IsActive = true;
                 LoadingRing.Visibility = Visibility.Visible;
-                WebView.CoreWebView2.Navigate(_chatUrl);
+                GatewayChatHelper.NavigatePairedChat(WebView, _chatUrl);
             }
             catch (Exception ex)
             {
@@ -369,7 +372,7 @@ public sealed partial class ChatWindow : WindowEx
 
             WebView.Visibility = Visibility.Visible;
             if (!string.IsNullOrEmpty(_chatUrl))
-                WebView.CoreWebView2.Navigate(_chatUrl);
+                GatewayChatHelper.NavigatePairedChat(WebView, _chatUrl);
         }
         catch (Exception ex)
         {
@@ -384,7 +387,7 @@ public sealed partial class ChatWindow : WindowEx
     private void OnHome(object sender, RoutedEventArgs e)
     {
         if (_webViewInitialized && !string.IsNullOrEmpty(_chatUrl))
-            WebView.CoreWebView2?.Navigate(_chatUrl);
+            GatewayChatHelper.NavigatePairedChat(WebView, _chatUrl, force: true);
     }
 
     private void OnRefresh(object sender, RoutedEventArgs e)
@@ -399,7 +402,7 @@ public sealed partial class ChatWindow : WindowEx
         LoadingRing.IsActive = true;
         LoadingRing.Visibility = Visibility.Visible;
         WebView.Visibility = Visibility.Visible;
-        WebView.CoreWebView2?.Navigate(_chatUrl);
+        GatewayChatHelper.NavigatePairedChat(WebView, _chatUrl, force: true);
     }
 
     private void TryMountReactorChat()

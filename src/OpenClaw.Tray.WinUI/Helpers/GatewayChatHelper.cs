@@ -15,6 +15,27 @@ public static class GatewayChatHelper
     private static readonly string s_userDataFolder = Path.Combine(
         AppIdentity.ResolveLocalDataDirectory(), "WebView2");
 
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<WebView2, PairedChatNavigation> s_navigation = new();
+    // Optional one-time host-issued browser handoff. Never persist a shared password.
+    private static string? s_browserHandoff = Environment.GetEnvironmentVariable("OPENCLAW_WEBCHAT_HANDOFF_URL");
+
+    public static void NavigatePairedChat(WebView2 webView, string? url, bool force = false)
+    {
+        if (webView.CoreWebView2 is null || string.IsNullOrEmpty(url)) return;
+        var state = s_navigation.GetOrCreateValue(webView);
+        if (!state.ShouldNavigate(url, force)) return;
+        var target = PairedChatNavigation.ResolveHandoff(url, s_browserHandoff);
+        if (target != url)
+        {
+            s_browserHandoff = null;
+            Environment.SetEnvironmentVariable("OPENCLAW_WEBCHAT_HANDOFF_URL", null);
+        }
+        webView.CoreWebView2.Navigate(target);
+        state.RecordNavigation(url);
+    }
+
+    public static void ResetPairedChat(WebView2 webView) => s_navigation.Remove(webView);
+
     /// <summary>
     /// Build the HTTP(S) chat URL from a WebSocket gateway URL.
     /// Delegates to <see cref="GatewayChatUrlBuilder"/>; kept here so the

@@ -34,7 +34,7 @@ public static class ChatSurfaceResolver
         gatewayUrl ??= string.Empty;
         token ??= string.Empty;
 
-        return GatewayChatUrlBuilder.TryBuildChatUrl(gatewayUrl, token, out var url, out _)
+        return GatewayChatUrlBuilder.TryBuildChatUrl(gatewayUrl, string.Empty, out var url, out _)
             ? url
             : null;
     }

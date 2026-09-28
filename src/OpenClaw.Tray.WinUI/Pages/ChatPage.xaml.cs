@@ -635,7 +635,7 @@ public sealed partial class ChatPage : Page
 
         ErrorPanel.Visibility = Visibility.Collapsed;
         WebView.Visibility = Visibility.Visible;
-        WebView.CoreWebView2.Navigate(url);
+        GatewayChatHelper.NavigatePairedChat(WebView, url);
         return true;
     }
 
@@ -655,6 +655,7 @@ public sealed partial class ChatPage : Page
         try
         {
             WebView.CoreWebView2?.Stop();
+            GatewayChatHelper.ResetPairedChat(WebView);
             WebView.CoreWebView2?.Navigate("about:blank");
         }
         catch (Exception ex)
@@ -711,7 +712,7 @@ public sealed partial class ChatPage : Page
                 return;
             }
 
-            if (!GatewayChatHelper.TryBuildChatUrl(credential.GatewayUrl, credential.Token, out var chatUrl, out var errorMessage))
+            if (!GatewayChatHelper.TryBuildChatUrl(credential.GatewayUrl, string.Empty, out var chatUrl, out var errorMessage))
             {
                 PlaceholderPanel.Visibility = Visibility.Collapsed;
                 ErrorPanel.Visibility = Visibility.Visible;
@@ -936,7 +937,7 @@ public sealed partial class ChatPage : Page
     private void OnHome(object sender, RoutedEventArgs e)
     {
         if (_webViewMode && _webViewInitialized && !string.IsNullOrEmpty(_chatUrl))
-            WebView.CoreWebView2?.Navigate(_chatUrl);
+            GatewayChatHelper.NavigatePairedChat(WebView, _chatUrl, force: true);
     }
 
     private void OnRefresh(object sender, RoutedEventArgs e)

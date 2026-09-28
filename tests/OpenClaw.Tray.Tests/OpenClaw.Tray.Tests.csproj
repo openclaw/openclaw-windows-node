@@ -221,4 +221,5 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppServiceRegistration.cs" Link="Presentation\AppServiceRegistration.cs" />
   </ItemGroup>
 
+  <ItemGroup><Compile Include="../../src/OpenClaw.Tray.WinUI/Helpers/PairedChatNavigation.cs" Link="Imported/PairedChatNavigation.cs" /></ItemGroup>
 </Project>

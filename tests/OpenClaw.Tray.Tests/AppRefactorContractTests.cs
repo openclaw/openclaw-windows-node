@@ -796,8 +796,8 @@ public sealed class AppRefactorContractTests
         var init = ExtractMethod(source, "InitializeWebViewAsync");
         var readiness = ExtractMethod(source, "NavigateWhenChatReadyAsync");
 
-        Assert.Contains("GatewayChatHelper.TryBuildChatUrl(credential.GatewayUrl, credential.Token, out var chatUrl, out var errorMessage)", init);
-        Assert.DoesNotContain("GatewayChatHelper.TryBuildChatUrl(credential.GatewayUrl, credential.Token, out var chatUrl, out var errorMessage, _pendingWebViewSessionKey)", init);
+        Assert.Contains("GatewayChatHelper.TryBuildChatUrl(credential.GatewayUrl, string.Empty, out var chatUrl, out var errorMessage)", init);
+        Assert.DoesNotContain("GatewayChatHelper.TryBuildChatUrl(credential.GatewayUrl, string.Empty, out var chatUrl, out var errorMessage, _pendingWebViewSessionKey)", init);
         Assert.Contains("_chatUrl = chatUrl;", init);
         Assert.DoesNotContain("_pendingWebViewSessionKey = null;", init);
         Assert.Contains("NavigateWebViewToCurrentChatUrl()", readiness);

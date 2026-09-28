@@ -46,10 +46,10 @@ public static class GatewayChatUrlBuilder
         };
 
         var baseUrl = builder.Uri.GetLeftPart(UriPartial.Authority);
-        url = $"{baseUrl}?token={Uri.EscapeDataString(token)}";
+        url = string.IsNullOrEmpty(token) ? baseUrl : $"{baseUrl}?token={Uri.EscapeDataString(token)}";
 
         if (!string.IsNullOrEmpty(sessionKey))
-            url += $"&session={Uri.EscapeDataString(sessionKey)}";
+            url += $"{(url.Contains('?') ? "&" : "?")}session={Uri.EscapeDataString(sessionKey)}";
 
         return true;
     }
