@@ -13,10 +13,13 @@ public sealed class LocalAiSetupUxContractTests
         string svg = File.ReadAllText(Path.Combine(tray, "Assets", "SidebarIcons", "LocalAi.svg"));
 
         Assert.Contains("x:Key=\"LocalAi_Icon\" UriSource=\"ms-appx:///Assets/SidebarIcons/LocalAi.svg\"", xaml);
-        Assert.Contains(
-            "Tag=\"local-ai\" Content=\"Local AI\">\n" +
-            "                <NavigationViewItem.Icon><ImageIcon Source=\"{StaticResource LocalAi_Icon}\" AutomationProperties.AccessibilityView=\"Raw\"/>",
-            xaml.Replace("\r\n", "\n"));
+        System.Xml.Linq.XNamespace ui = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+        var item = System.Xml.Linq.XDocument.Parse(xaml).Descendants(ui + "NavigationViewItem")
+            .Single(element => (string?)element.Attribute("Tag") == "local-ai");
+        Assert.Equal("Local AI", (string?)item.Attribute("Content"));
+        var icon = Assert.Single(item.Descendants(ui + "ImageIcon"));
+        Assert.Equal("{StaticResource LocalAi_Icon}", (string?)icon.Attribute("Source"));
+        Assert.Equal("Raw", (string?)icon.Attribute("AutomationProperties.AccessibilityView"));
         Assert.Contains("viewBox=\"0 0 24 24\"", svg);
         Assert.Contains("<rect x=\"5\" y=\"5\" width=\"14\" height=\"14\" rx=\"3.75\" fill=\"url(#body)\"/>", svg);
         Assert.DoesNotContain("<circle", svg);
