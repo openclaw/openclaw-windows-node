@@ -429,8 +429,13 @@ public sealed class MigrationRecordTests
         })
             start.ArgumentList.Add(argument);
         using var process = Process.Start(start)!;
+        // The lock-contention cases decide and exit in well under a second, so this budget is
+        // not sized for the script's work. It absorbs the runner stalling on the small log and
+        // result files the failure path creates, which has timed out a correct exit-2 run at
+        // the default deadline.
         await AssertScriptExitAsync(process, expectedExit,
-            Path.Combine(record.Binding.InstallDirectory, "uninstall-gateway-wsl.log"));
+            Path.Combine(record.Binding.InstallDirectory, "uninstall-gateway-wsl.log"),
+            TimeSpan.FromSeconds(120));
         Assert.Equal("{\"testSentinel\":true}", File.ReadAllText(sentinel));
         Assert.DoesNotContain("Starting local gateway cleanup", File.ReadAllText(
             Path.Combine(record.Binding.InstallDirectory, "uninstall-gateway-wsl.log")));
@@ -517,7 +522,10 @@ public sealed class MigrationRecordTests
     {
         var stdout = process.StandardOutput.ReadToEndAsync();
         var stderr = process.StandardError.ReadToEndAsync();
+        // Keep the default short so a genuine regression fails fast. Callers that are exposed
+        // to runner stalls raise it themselves.
         var limit = deadline ?? TimeSpan.FromSeconds(30);
+        var pid = process.Id;
         using var timeout = new CancellationTokenSource(limit);
         try
         {
@@ -526,18 +534,31 @@ public sealed class MigrationRecordTests
         catch (OperationCanceledException exception) when (timeout.IsCancellationRequested)
         {
             // Stop cleanup before the caller releases its lock or deletes the fixture.
-            var cleanup = "Root process exit confirmed.";
+            // Record whether the process was still alive first. A timeout caused by a hung
+            // script and one caused by a missed exit need different investigations, and
+            // killing it first would erase the distinction.
+            var exitedBeforeKill = process.HasExited;
+            var cleanup = exitedBeforeKill
+                ? $"Root process had already exited with code {process.ExitCode}."
+                // Killing discards whatever PowerShell still held in its block-buffered stdout,
+                // so an empty standard output section below is not evidence the script was silent.
+                : "Root process was still running at the deadline and was killed;"
+                    + " buffered standard output may have been discarded.";
             try
             {
-                if (!process.HasExited)
+                if (!exitedBeforeKill)
                     process.Kill(entireProcessTree: true);
                 await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
             }
             catch (Exception error) when (error is System.ComponentModel.Win32Exception or
                 InvalidOperationException or TimeoutException)
             {
-                cleanup = $"Process cleanup failed: {error.GetType().Name}: {error.Message}";
+                // Append rather than replace. A kill that races the process exiting on its own
+                // is the case where knowing which state we observed first matters most.
+                cleanup += $" Process cleanup failed: {error.GetType().Name}: {error.Message}";
             }
+            if (!exitedBeforeKill && process.HasExited)
+                cleanup += $" Final exit code {process.ExitCode}.";
             var output = await Task.WhenAll(
                 ReadTimeoutOutputAsync(stdout), ReadTimeoutOutputAsync(stderr));
             var log = "(no script log was requested)";
@@ -550,7 +571,7 @@ public sealed class MigrationRecordTests
                 }
             }
             throw new TimeoutException(
-                $"Migration script PID {process.Id} exceeded {limit.TotalSeconds:g} seconds.\n" +
+                $"Migration script PID {pid} exceeded {limit.TotalSeconds:g} seconds.\n" +
                 $"{cleanup}\nStandard output:\n{output[0]}\nStandard error:\n{output[1]}\nScript log:\n{log}",
                 exception);
         }
