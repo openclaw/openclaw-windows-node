@@ -410,6 +410,62 @@ public sealed class A2UIControlMatrixTests
             Assert.Empty(FindLogical<TextBox>(root));
         });
 
+    /// <summary>
+    /// An obscured TextField registers its path for <c>canvas.a2ui.dump</c>.
+    /// Removing the field must not drop that registration: <c>/pwd</c> is not
+    /// on the denylist, and the typed value stays in the data model.
+    /// </summary>
+    [Fact]
+    public async Task TextField_Obscured_RemovedField_SnapshotStillRedactsPath()
+    {
+        await _ui.PauseAsync("obscured TextField path stays secret after removal");
+        await _ui.ResetContainerAsync();
+        await _ui.RunOnUIAsync(() =>
+        {
+            var harness = BuildHarness(_ui);
+            harness.Router.Push(Surface("s", "col", new[]
+            {
+                Component("col", "Column", new() { ["children"] = Children("tf", "note") }),
+                Component("tf", "TextField", new()
+                {
+                    ["textFieldType"] = "obscured",
+                    ["label"] = Lit("Code"),
+                    ["text"] = Path("/pwd"),
+                }),
+                Component("note", "Text", new() { ["text"] = Path("/note") }),
+            }));
+            harness.Router.Push(DataUpdate("s",
+                ("pwd", System.Text.Json.Nodes.JsonValue.Create("s3cret-value")),
+                ("note", System.Text.Json.Nodes.JsonValue.Create("visible"))));
+
+            Assert.NotNull(harness.LastSurface);
+            Assert.Single(FindLogical<PasswordBox>(harness.LastSurface!.RootElement));
+
+            var before = harness.LastSurface.GetSnapshot();
+            var beforeModel = Assert.IsType<System.Text.Json.Nodes.JsonObject>(before["dataModel"]);
+            Assert.Equal("[REDACTED]", (string?)beforeModel["pwd"]);
+            Assert.Equal("visible", (string?)beforeModel["note"]);
+
+            harness.Router.Push(Surface("s", "col", new[]
+            {
+                Component("col", "Column", new() { ["children"] = Children("note") }),
+                Component("note", "Text", new() { ["text"] = Path("/note") }),
+            }));
+
+            Assert.Empty(FindLogical<PasswordBox>(harness.LastSurface.RootElement));
+
+            var after = harness.LastSurface.GetSnapshot();
+            var afterModel = Assert.IsType<System.Text.Json.Nodes.JsonObject>(after["dataModel"]);
+            Assert.Equal("[REDACTED]", (string?)afterModel["pwd"]);
+            Assert.Equal("visible", (string?)afterModel["note"]);
+
+            var stored = harness.DataModel.Read("s", "/pwd") as System.Text.Json.Nodes.JsonValue;
+            Assert.NotNull(stored);
+            Assert.True(stored!.TryGetValue<string>(out var raw) && raw == "s3cret-value");
+        });
+        await _ui.PauseAsync();
+    }
+
     [Fact]
     public Task DateTimeInput_DateAndTime_RendersBothPickers() => RunAsync(
         "DateTimeInput date+time",

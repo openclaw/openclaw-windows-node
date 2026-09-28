@@ -575,6 +575,35 @@ try {
         Add-Step "secondary-hook-check" "Warning" "Cannot perform secondary check: uninstall log not found."
     }
 
+    # The uninstaller only runs the cleanup hook when it has decided the gateway is
+    # unowned. Since the Inno-to-Store migration gate landed, a machine with the Store
+    # app registered (every developer box, and any self-hosted runner that has ever
+    # installed it) makes that decision "preserve", so the hook is skipped by design and
+    # the ordering this test exists to check never happens. Read the decision back out of
+    # the log and report SKIP, because reporting FAIL would be a false alarm that trains
+    # people to ignore this suite.
+    #
+    # Only the two known-preserve verdicts qualify. Exit 2 means the check itself could not
+    # be established, which is exactly the kind of breakage this suite should still fail on.
+    #
+    # The verdict is authoritative on its own and is deliberately not gated on
+    # $hookConfirmed: Inno logs the deletion of Uninstall-LocalGateway.ps1 during every
+    # uninstall, so the secondary name scan above can report the hook as "confirmed" on a
+    # machine where it never ran.
+    $preserveVerdict = $null
+    if ($ordering.log_found) {
+        $rawLogForGate = Get-Content -LiteralPath $uninstallLog -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
+        # Take the last verdict, not the first. The uninstaller can log this line more than
+        # once (the cleanup script re-runs the check), and only the final one describes the
+        # decision that actually governed this run.
+        $verdictMatches = [regex]::Matches(
+            [string]$rawLogForGate, 'Migration preservation check returned\s+(\d+)')
+        if ($verdictMatches.Count -gt 0) {
+            $code = [int]$verdictMatches[$verdictMatches.Count - 1].Groups[1].Value
+            if ($code -ne 0) { $preserveVerdict = $code }
+        }
+    }
+
     # Determine pass/fail/skip
     if (-not $ordering.log_found) {
         # No log = can't confirm ordering; FAIL with guidance
@@ -586,6 +615,19 @@ try {
         $finalVerdict = "PASS"
         $notes        = $ordering.notes
         $exitCode     = $EXIT_PASS
+    }
+    elseif ($preserveVerdict -eq 10 -or $preserveVerdict -eq 11) {
+        $reason = if ($preserveVerdict -eq 10) {
+            "a completed Store migration receipt was found"
+        } else {
+            "the Store app is registered on this machine"
+        }
+        $finalVerdict = "SKIP"
+        $notes        = "Gateway cleanup was intentionally skipped because $reason " +
+                        "(migration check exit $preserveVerdict), so the [UninstallRun] ordering " +
+                        "could not be exercised.  Run this test on a machine with no OpenClaw Store " +
+                        "package and no migration receipt to get a conclusive result."
+        $exitCode     = $EXIT_SKIP
     }
     elseif (-not $hookConfirmed) {
         $finalVerdict = "FAIL"

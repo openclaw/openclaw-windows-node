@@ -42,7 +42,9 @@ public sealed class PermissionsPageContractTests
 
         Assert.Equal(new[] { "deny", "allow", "prompt" }, combos["DefaultActionCombo"]);
         Assert.DoesNotContain("NewRuleAction", combos.Keys);
-        Assert.Contains("Action = \"allow\"", ReadPermissionsCodeBehind());
+        var codeBehind = ReadPermissionsCodeBehind();
+        Assert.Contains("_viewModel.ExecApprovalRulesActive ? \"allow\" : inactiveAction", codeBehind);
+        Assert.Contains("\"PermissionsPage_ExecRuleAction_Inactive\"", codeBehind);
     }
 
     [Fact]

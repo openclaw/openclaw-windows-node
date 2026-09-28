@@ -6,6 +6,21 @@ namespace OpenClaw.Tray.Tests;
 public sealed class AppRefactorContractTests
 {
     [Fact]
+    public void E2ESetupTeardown_UsesFixtureOwnedUninstallArguments()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(
+            root, "tests", "OpenClaw.E2ETests", "Setup", "E2ESetupFixture.cs"));
+        var teardown = ExtractMethod(source, "DisposeEnabledAsync");
+
+        // Retire when teardown can be invoked without starting real WSL/tray cleanup.
+        // Behavioral argument coverage lives in SetupAndConnectTestsUninstallIsolation.
+        Assert.Contains(
+            "Program.Main(BuildUninstallArguments(_configPath, _distroName, uninstallLogPath))",
+            teardown);
+    }
+
+    [Fact]
     public void Startup_UsesConnectionManagerAsOnlyGatewayClientOwner()
     {
         var source = ReadAppSources();
@@ -976,7 +991,12 @@ public sealed class AppRefactorContractTests
 
         Assert.Contains("AutomationProperties.Name=\"{Binding RemoveRuleAutomationName}\"", xaml);
         Assert.Contains("AutomationProperties.AutomationId=\"{Binding RemoveRuleAutomationId}\"", xaml);
-        Assert.Contains("RemoveRuleAutomationName = $\"Remove allowlist entry {rule.Pattern}\"", codeBehind);
+        Assert.Contains("\"PermissionsPage_ExecRuleScope_Wildcard\"", codeBehind);
+        Assert.Contains("\"PermissionsPage_ExecRuleScope_Main\"", codeBehind);
+        Assert.Contains("DisplayText = $\"{rule.Pattern} ({scopeLabel})\"", codeBehind);
+        Assert.Contains("\"PermissionsPage_RemoveRuleAutomationNameFormat\"", codeBehind);
+        Assert.Contains("\"PermissionsPage_ExecRuleAction_Inactive\"", codeBehind);
+        Assert.Contains("\"SystemFillColorNeutralBrush\"", codeBehind);
         Assert.Contains("RemoveRuleAutomationId = $\"RemoveExecPolicyRuleButton_{index}\"", codeBehind);
     }
 

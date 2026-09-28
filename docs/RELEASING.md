@@ -17,6 +17,185 @@ that MSIX job to succeed. Every tag release also attaches the unsigned Store
 MSIX bundle, standalone packages, and metadata for manual Partner Center
 submission. Dev-signed packages stay in Actions.
 
+## Inno-to-Store migration foundation
+
+Issue #1374's foundation does not advertise or initiate migration. No Store
+action, MSIX importer, or completion writer is enabled by this change.
+
+`MigrationPreparation.Prepare` is a non-UI API for a future explicitly consented
+Inno action. It inventories existing state without moving the WSL gateway or
+Local AI payload. Its protected intent is stored under
+`%APPDATA%\OpenClawTray\store-migration\intent.dpapi`. Repeating preparation with
+unchanged state reuses the unexpired intent. Intent expires after 30 days; only
+new consent may renew it. Corrupt records require explicit recovery rather than
+silent replacement. Preparation is serialized and writes via a flushed sibling
+temporary file followed by atomic rename.
+
+`completed.dpapi` is a separate receipt, written only after exclusive source
+ownership, a fresh strict inventory matching the protected intent, and canonical
+operator credential resolution for the active saved gateway. No active gateway
+or unresolved credential fails closed without a receipt. The atomic writer never
+replaces an existing receipt. Completed-receipt reads are independent of the
+current wall clock: neither delayed removal nor a backward clock correction may
+re-enable destructive cleanup. New records still reject future creation times,
+and intent expiry and renewal checks remain unchanged. Cryptographic, identity,
+path, and structural validation still apply to every read. Finalization after verified
+Inno removal owns receipt and intent cleanup. A Store preview finalizer rechecks
+the exact source registration and then verifies the canonical source executable,
+uninstaller, process image, and mutex have disappeared. It observes the mutex
+without acquiring it. Process inspection uses limited-query image access across
+all sessions; unrelated paths, proven other-user candidates without an image,
+and exited processes do not block. Unresolved possible source processes still
+fail closed. The finalizer serializes with `prepare.lock`, rereads the
+DPAPI completion receipt under that lock, and recaptures the bounded migration
+inventory before applying the receipt's saved auto-start preference through the
+packaged startup API. It deletes intent followed by the same validated completion
+receipt, so a crash after intent deletion retries from the retained receipt. It
+fails closed on source inspection, receipt, inventory, startup-preference, or
+cleanup failure and leaves the receipt for restart recovery. It never starts
+runtime services or invokes uninstall.
+
+Records use a versioned binary envelope protected by current-user DPAPI. They
+bind the migration ID, source version, architecture, Windows SID, canonical
+install/roaming/local directories, target Store identity, state fingerprint,
+startup preference, timestamps, and record kind. Intent contains inventory
+metadata; completion additionally requires the validated target version.
+The migration directory has a protected ACL for the current user, SYSTEM, and
+Administrators. This is a same-user boundary, not an authenticity guarantee
+against a malicious process already running as that user.
+
+`MigrationRecordCodec.cs` is deliberately C# 5/.NET Framework compatible:
+the same parser and validation policy runs in the app and in Windows PowerShell
+5.1 during uninstall. Inno ships the source and `Test-InnoMigration.ps1`, waits
+for the read-only check to exit, and does not load the tray executable for
+uninstall. The check returns 10 for validated completion, 0 only when no receipt
+is present, and 2 when a receipt exists but cannot be validated or the check
+could not run. A present-but-unverifiable receipt (DPAPI failure, schema drift
+from the frozen codec, or binding mismatch) preserves state rather than
+guessing, so it never authorizes destructive cleanup. The check also bounds
+itself with a watchdog so a stalled `Add-Type` cannot hang uninstall.
+
+With valid completion, normal Inno startup shows finish-migration guidance
+instead of starting services. The guidance keeps Inno's installer mutex held;
+dismissing it exits the app before the user uninstalls. Interactive and silent Inno uninstall skip gateway
+cleanup and generated-state deletion, removing only the Inno payload and its
+registrations. `Uninstall-LocalGateway.ps1` independently rechecks completion
+before destructive work and propagates preservation as exit 10, not cleanup
+success. Without valid completion, the existing interactive/silent choices
+remain unchanged. Explicit `--uninstall --confirm-destructive` remains a
+complete-removal operation and intentionally does not honor migration receipts.
+
+Inno acquires a read-only, read-shared handle on `store-migration\prepare.lock`
+before its normal startup receipt check and retains it until process exit, including
+failed startup or shutdown. The handle is deliberately not released by managed
+shutdown because a failed service disposal could leave state writers alive.
+Dev, packaged, and validated browse-only fixture runs do not take this Inno
+runtime lease; other isolated profiles use their resolved data directory.
+Uninstall also acquires a read-only, read-shared handle before effects and retains
+it through payload/registration removal.
+The cleanup script joins that lock (and also locks when invoked independently)
+before checking the receipt, retaining its handle until cleanup exits. These
+handles exclude Store's exclusive preparation/completion/finalization handle.
+Only a lock held by an in-progress migration stops uninstall before effects. Any
+other unavailable lock means migration state is merely unreadable, so uninstall
+continues and suppresses destructive gateway cleanup rather than trapping the user
+in an app they cannot remove. Neither path permits an unlocked fallback that would
+allow destructive cleanup. Completion re-detects the exact source only after
+acquiring the lock,
+so an uninstall-first run cannot authorize a receipt from stale source evidence.
+Preparation likewise re-detects source evidence under the exclusive file lock.
+Both preparation and completion inspect the exact source image across all Windows
+sessions under that lock, using the same fail-closed process policy as finalization.
+Running sources and busy locks return the close-Inno/Retry decision; uncertain
+process inspection blocks migration without publishing a record.
+
+The file handle, not the session-local single-instance mutex, provides continuous
+cross-session exclusion for participating Inno releases. Process inspection is a
+compatibility backstop for already-running older sources, not a lease preventing
+an older binary from starting after the scan. Production's minimum source version
+must therefore identify a verified release containing the lifetime-lock safeguard.
+Do not enable migration for older nonparticipating releases.
+
+Before rollout, prove exact signed x64 and ARM64 packages, storage/DPAPI access,
+restart recovery, current-head guidance, and manual uninstall preservation.
+Passing unit or PowerShell contract tests is not signed-package migration proof.
+
+### Store migration consent preview
+
+The Store-side preview adds installation detection, startup admission, and an
+explicit consent/close-Inno retry flow, and it writes protected intent and
+completion records. It is not the full migration journey: runtime state adoption,
+source-version enablement, and the recovery/finalization journey remain out of
+scope. **Ordinary
+builds remain unchanged.** There is no
+production minimum source version, runtime toggle, or environment-variable
+bypass. Do not enable migration by choosing the current app version as a
+placeholder for a verified safeguard-containing Inno release.
+
+An explicit test build may set `StoreMigrationPreview=true` and
+`StoreMigrationPreviewMinimumSourceVersion` to a three- or four-part numeric
+test source version. This is accepted only for **Debug MSIX builds with the
+production identity**; Release, unpackaged, and Dev-identity preview builds
+fail the build. Sign and run these experimental packages only in a disposable
+Windows VM. They must not be distributed.
+
+```powershell
+dotnet publish .\src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj `
+  -c Debug -r win-x64 --self-contained -m:1 `
+  -p:PackageMsix=true -p:DevBuild=false -p:AppxPackageSigningEnabled=false `
+  -p:StoreMigrationPreview=true `
+  -p:StoreMigrationPreviewMinimumSourceVersion=<verified-test-source-version>
+```
+
+The preview:
+
+- Reads only the exact production Inno uninstall registration, not display-name
+  matches. Only the default current-user installation at
+  `%LOCALAPPDATA%\OpenClawTray` is supported. Custom, machine-wide, ambiguous,
+  inconsistent, or unreadable installations block admission.
+- Requires coherent source version and executable architecture evidence.
+  Prerelease/informational versions do not satisfy the stable version gate.
+- Reads existing intent/completion records through the shared DPAPI codec.
+  Invalid or inaccessible records block startup. An orphan intent requires
+  recovery; completion without Inno requires finalization, not fresh startup.
+- Stops before production instance forwarding, settings, gateway/node/MCP
+  services, updates, or startup-task reconciliation when migration is needed.
+  All normal launch, protocol, and startup-task activations use this gate.
+- Shows a localized consent decision through native **Yes / No** buttons.
+  The body refers directly to those buttons, without a separate action legend.
+  A valid Inno intent does not replace that Store-side consent.
+  Before acceptance, every locale discloses protected migration records, the
+  normal Inno startup block after successful validation, and the required manual
+  uninstall followed by reopening Store. It explains preservation, no automatic
+  uninstall, and the option to leave without starting migration. Retry guidance
+  permits uninstall only after the preview reports recorded completion.
+- After consent, checks the production Inno mutex. While Inno is running, the
+  preview instructs the user to close it, choose **Yes** to retry, or choose
+  **No** to exit the preview. It never force-closes the source process.
+- When Inno is closed, the preview acquires exclusive migration ownership,
+  rechecks exact source evidence, and writes a protected, DPAPI-bound inventory
+  intent. It then captures the inventory again, requires its fingerprint to
+  match the intent, and requires canonical operator credential resolution for
+  the active saved gateway before atomically writing a protected completion
+  receipt. This is not state adoption. It does not start gateway, node, or MCP
+  services; provision or repair gateways; delete source state; invoke uninstall;
+  or finalize migration. The receipt blocks normal Store startup and tells the
+  user to uninstall Inno manually. On a later Store start, only an exact
+  `NotInstalled` result plus absent canonical source payload/process/mutex
+  evidence permits finalization. The finalizer does not acquire the Inno-visible
+  mutex, serializes on `prepare.lock`, rereads and matches the durable completion
+  receipt, recaptures the inventory fingerprint, applies the saved auto-start
+  preference through the tray adapter, and clears records only after that call
+  succeeds.
+- Preserves normal fresh-install behavior when there is no exact Inno
+  registration and no pending migration record.
+
+This admission result is not an authorization to uninstall. The consent workflow
+reacquires exclusive ownership, revalidates source state, and writes completion
+only after its active-gateway credential check succeeds. Runtime state adoption,
+source-version enablement, and the complete recovery/finalization journey remain
+release gates.
+
 ## Release checklist
 
 1. Start clean on current `main`.

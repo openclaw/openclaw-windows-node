@@ -162,6 +162,82 @@ public sealed class GatewayFixtureUiTests(ITestOutputHelper output)
         });
     }
 
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    public async Task ApprovalCardsGateAllowAndResolveThroughGateway()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            await WaitUiAsync(run, () => FindById(run, "ChatComposerInput") is not null, "native chat composer");
+            await WaitHistoryAsync(run, GatewayScenario.MainSessionKey);
+
+            await run.Gateway.PublishAgentEventAsync(GatewayScenario.MainSessionKey, new
+            {
+                phase = "requested",
+                approvalId = "fixture-safe-approval",
+                command = "echo fixture-safe",
+                title = "Command approval requested",
+            });
+            await WaitUiAsync(run, () => FindButton(run, "Allow once") is not null, "reviewable Allow button");
+            Assert.NotNull(FindButton(run, "Always allow"));
+            Assert.NotNull(FindButton(run, "Deny once"));
+            Invoke(FindButton(run, "Allow once")!);
+            await run.WaitForAsync(() => Task.FromResult(run.Gateway.Requests.Any(request =>
+                request.Method == "exec.approval.resolve"
+                && request.Decision == "allow-once"
+                && request.Outcome == "ok")), "reviewable Allow RPC");
+            var allowed = run.Gateway.Requests.Single(request =>
+                request.Method == "exec.approval.resolve" && request.Decision == "allow-once");
+            Assert.Equal("fixture-safe-approval", allowed.ApprovalId);
+            Assert.Equal("allow-once", allowed.Decision);
+            Assert.Equal("ok", allowed.Outcome);
+
+            await run.Gateway.PublishAgentEventAsync(GatewayScenario.MainSessionKey, new
+            {
+                phase = "requested",
+                approvalId = "fixture-unreviewable-approval",
+                command = "",
+                message = "Please approve this request.",
+                title = "Command approval requested",
+            });
+            await WaitUiAsync(run, () => FindButton(run, "Deny once") is not null
+                && FindText(run, "only Deny is available") is not null, "Deny-only approval");
+            Assert.Null(FindButton(run, "Allow once"));
+            Assert.Null(FindButton(run, "Always allow"));
+            await CaptureIfRequestedAsync(run, "approval-deny-only.png");
+            Invoke(FindButton(run, "Deny once")!);
+            await run.WaitForAsync(() => Task.FromResult(run.Gateway.Requests.Any(request =>
+                request.Method == "exec.approval.resolve"
+                && request.Decision == "deny"
+                && request.Outcome == "ok")), "Deny-only RPC");
+            var denied = run.Gateway.Requests.Single(request =>
+                request.Method == "exec.approval.resolve" && request.Decision == "deny");
+            Assert.Equal("fixture-unreviewable-approval", denied.ApprovalId);
+            Assert.Equal("deny", denied.Decision);
+            Assert.Equal("ok", denied.Outcome);
+
+            await run.Gateway.PublishAgentEventAsync(GatewayScenario.MainSessionKey, new
+            {
+                phase = "requested",
+                approvalId = "fixture-superseded-approval",
+                command = "echo superseded",
+                title = "Command approval requested",
+            });
+            await WaitUiAsync(run, () => FindButton(run, "Allow once") is not null, "superseded Allow button");
+            await run.Gateway.PublishAgentEventAsync(GatewayScenario.MainSessionKey, new
+            {
+                phase = "resolved",
+                approvalId = "fixture-superseded-approval",
+                decision = "deny",
+            });
+            await WaitUiAsync(run, () => FindButton(run, "Allow once") is null
+                && FindButton(run, "Always allow") is null, "superseded actions removed");
+            await Task.Delay(200);
+            Assert.Equal(2, run.Gateway.Requests.Count(request => request.Method == "exec.approval.resolve"));
+        });
+    }
+
     private async Task WithAppAsync(Func<GatewayFixtureRun, Task> test)
     {
         var appPath = Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_APP")
@@ -248,6 +324,11 @@ public sealed class GatewayFixtureUiTests(ITestOutputHelper output)
 
     private static AutomationElement? FindById(GatewayFixtureRun run, string id) =>
         FindInApp(run, new PropertyCondition(AutomationElement.AutomationIdProperty, id));
+
+    private static AutomationElement? FindButton(GatewayFixtureRun run, string name) =>
+        FindInApp(run, new AndCondition(
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
+            new PropertyCondition(AutomationElement.NameProperty, name)));
 
     private static AutomationElement? FindText(GatewayFixtureRun run, string text)
     {

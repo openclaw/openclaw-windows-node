@@ -34,6 +34,9 @@ writes receive protocol errors, not simulated success. Local preferences such
 as chat tool visibility can be saved inside the disposable profile. This is
 not a fixture for the legacy WebView Gateway dashboard, installation,
 uninstallation, host management, or node command execution.
+The one write-shaped exception is `exec.approval.resolve`: the fixture validates
+the fixture-owned approval ID and decision, records only that safe correlation,
+and returns a synthetic acknowledgement without executing a command.
 
 The host is `tests\OpenClaw.GatewayFixtureHost`, a plain .NET console app, not a
 test container. The request-driven server and scenario live in
