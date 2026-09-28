@@ -200,7 +200,11 @@ public sealed partial class ProgressPage : Page
             _pipeline = new SetupPipeline(steps);
             _pipeline.StepProgress += OnStepProgress;
 
-            var result = await Task.Run(() => _pipeline.RunAsync(ctx), cts.Token);
+            // Do not pass the setup token to Task.Run. Cancel must not complete this
+            // task before RunAsync finishes its CancellationToken.None rollback.
+            var pipelineTask = Task.Run(() => _pipeline.RunAsync(ctx));
+            SetupWindow.Active?.AttachProgressPipeline(pipelineTask);
+            var result = await pipelineTask;
             sw.Stop();
             _pipelineFinished = true;
 
@@ -265,7 +269,7 @@ public sealed partial class ProgressPage : Page
         }
     }
 
-    private void CancelPipeline()
+    internal void CancelPipeline()
     {
         if (!_pipelineFinished)
             _runCts?.Cancel();
