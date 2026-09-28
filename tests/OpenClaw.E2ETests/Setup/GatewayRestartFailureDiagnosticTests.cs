@@ -112,6 +112,22 @@ public sealed class GatewayRestartFailureDiagnosticTests
         Assert.DoesNotContain("ps ", script);
     }
 
+    [Fact]
+    public void ProbeSuppressesFailedProcReadBeforeCommandLogging()
+    {
+        var script = GatewayRestartFailureDiagnostic.ProbeScript;
+
+        Assert.Contains(
+            """if [[ -r "/proc/$pid/stat" ]] && read -r stat < "/proc/$pid/stat" 2>/dev/null; then""",
+            script);
+        Assert.DoesNotContain(
+            """
+            read -r stat < "/proc/$pid/stat"
+            read -r -a fields
+            """,
+            script);
+    }
+
     private static CommandResult Result(string stdout, int exitCode = 0, bool timedOut = false) =>
         new(exitCode, stdout, "", TimeSpan.Zero, timedOut);
 }
