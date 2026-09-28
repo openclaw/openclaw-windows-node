@@ -470,11 +470,54 @@ public sealed class AppRefactorContractTests
     public void Dashboard_SurfacesSshTunnelConfigurationFailure()
     {
         var source = ReadAppSources();
-        var method = ExtractMethod(source, "OpenDashboard");
+        var method = ExtractMethod(source, "OpenDashboardAsync");
 
+        Assert.Contains("IsDashboardListenerOwnedAsync", method);
+        Assert.Contains("DashboardPinStillMatches", method);
         Assert.Contains("if (!EnsureSshTunnelConfigured())", method);
         Assert.Contains("_toastService?.ShowToast", method);
         Assert.Contains("Check SSH tunnel settings and logs.", method);
+    }
+
+    [Fact]
+    public void Dashboard_PinnedCredentialUsesHttpResolverBetweenPinChecks()
+    {
+        var method = ExtractMethod(ReadAppSources(), "TryResolvePinnedDashboardCredential");
+
+        // Retire when the WinUI adapter can be invoked directly by a unit test.
+        AssertInOrder(method,
+            "DashboardPinStillMatches(pinned)",
+            "_gatewayRegistry.GetIdentityDirectory(pinned.Id)",
+            "InteractiveGatewayCredentialResolver.TryResolveRecord(",
+            "DeviceIdentityFileReader.Instance",
+            "IsStrongCredentialAllowed(record, candidate)",
+            "DashboardPinStillMatches(pinned)",
+            "token = credential.Token");
+        Assert.DoesNotContain("ResolveOperator(", method);
+        Assert.DoesNotContain("TryResolveChatCredentials(", method);
+    }
+
+    [Theory]
+    [InlineData("App.xaml.cs", "OpenDashboardAsync")]
+    [InlineData("Pages\\ConnectionPage.xaml.cs", "OnSavedRowOpenDashboardAsync")]
+    [InlineData("App.CapabilityHandlers.cs", "app.DashboardUrlHandler =")]
+    public void Dashboard_AllSshCallersKeepPinnedCredentialAndEndpointGates(string file, string methodName)
+    {
+        var source = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI",
+            file.Replace('\\', Path.DirectorySeparatorChar)));
+        var method = file == "App.CapabilityHandlers.cs"
+            ? source[source.IndexOf(methodName, StringComparison.Ordinal)..
+                source.IndexOf("app.ChatSnapshotHandler =", StringComparison.Ordinal)]
+            : ExtractMethod(source, methodName);
+
+        Assert.Contains("IsDashboardListenerOwnedAsync(ssh)", method);
+        Assert.Contains("TryResolvePinnedDashboardCredential(", method);
+        Assert.Contains("GatewayClientEndpointResolver.TryResolveDashboardEndpoint(", method);
+        AssertInOrder(method, "TryResolvePinnedDashboardCredential(",
+            "DashboardCredentialGate.Decide(", "DashboardPinStillMatches(pinned)",
+            "pinned.SharedGatewayToken", "GatewayDashboardUrlBuilder.Build(");
+        Assert.Contains("CredentialResolver.SourceSharedGatewayToken", method);
     }
 
     [Fact]
