@@ -7206,8 +7206,8 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   <data name="Onboarding_AiSetup_Value" xml:space="preserve"><value>Voer een waarde in</value></data>
   <data name="Onboarding_AiSetup_CodeExpiry" xml:space="preserve"><value>Deze code verloopt over {0} minuten.</value></data>
   <data name="Onboarding_AiSetup_InvalidInput" xml:space="preserve"><value>De provider heeft dit antwoord niet geaccepteerd. Controleer de huidige stap en probeer opnieuw.</value></data>
-  <data name="Onboarding_Native_Title" xml:space="preserve"><value>Verbinding maken met een Gateway</value></data>
-  <data name="Onboarding_Native_Description" xml:space="preserve"><value>Controleer de verbinding zonder op te slaan. Volgende controleert opnieuw en slaat deze Gateway op voordat u de toegang van deze pc bekijkt.</value></data>
+  <data name="Onboarding_NativeConnection_Title" xml:space="preserve"><value>Verbinding maken met een Gateway</value></data>
+  <data name="Onboarding_NativeConnection_Description" xml:space="preserve"><value>Controleer de verbinding zonder op te slaan. Volgende controleert opnieuw en slaat deze Gateway op voordat u de toegang van deze pc bekijkt.</value></data>
   <data name="Onboarding_Native_Address" xml:space="preserve"><value>Gateway-adres</value></data>
   <data name="Onboarding_Native_Code" xml:space="preserve"><value>Installatiecode</value></data>
   <data name="Onboarding_Native_Token" xml:space="preserve"><value>Gedeeld Token (in plaats van een installatiecode)</value></data>
@@ -7219,10 +7219,10 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   <data name="Onboarding_Native_SshPort" xml:space="preserve"><value>SSH-poort</value></data>
   <data name="Onboarding_Native_RemotePort" xml:space="preserve"><value>Externe Gateway-poort</value></data>
   <data name="Onboarding_Native_LocalPort" xml:space="preserve"><value>Lokale tunnelpoort</value></data>
-  <data name="Onboarding_Native_Back" xml:space="preserve"><value>Terug</value></data>
+  <data name="Onboarding_NativeConnection_Back" xml:space="preserve"><value>Terug</value></data>
   <data name="Onboarding_Native_Check" xml:space="preserve"><value>Verbinding controleren</value></data>
   <data name="Onboarding_Native_Next" xml:space="preserve"><value>Volgende</value></data>
-  <data name="Onboarding_Native_Cancel" xml:space="preserve"><value>Annuleren</value></data>
+  <data name="Onboarding_NativeConnection_Cancel" xml:space="preserve"><value>Annuleren</value></data>
   <data name="Onboarding_Native_Checking" xml:space="preserve"><value>Het geïnstalleerde Gateway-pakket en de uitvoeringsaliassen controleren...</value></data>
   <data name="Onboarding_Native_Checked" xml:space="preserve"><value>Verbinding gecontroleerd. Er is niets opgeslagen. Volgende controleert opnieuw en slaat deze Gateway op.</value></data>
   <data name="Onboarding_Native_Cancelled" xml:space="preserve"><value>Instelling geannuleerd. Ingevoerde configuratie blijft bewaard in het aparte native profiel. Er is geen Gateway-pakket verwijderd.</value></data>

@@ -59,7 +59,17 @@ public sealed class NativeRestartAdmissionTests
         var target = temp.Combine("outside.json");
         File.WriteAllText(target, "{");
         var file = Path.Combine(directory, "restart.json");
-        File.CreateSymbolicLink(file, target);
+        try
+        {
+            File.CreateSymbolicLink(file, target);
+        }
+        catch (IOException ex) when (OperatingSystem.IsWindows() &&
+            (uint)ex.HResult == 0x80070522)
+        {
+            System.Diagnostics.Trace.TraceWarning(
+                "Creating a symlink requires Developer Mode or SeCreateSymbolicLinkPrivilege.");
+            return;
+        }
         try
         {
             var store = new NativeRestartRecoveryStore(temp.Path);

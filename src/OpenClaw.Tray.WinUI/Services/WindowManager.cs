@@ -606,7 +606,7 @@ internal sealed class WindowManager : IWindowManager
         {
             _callbacks.GetAppNotificationService()?.Show(new AppNotification
             {
-                Title = LocalizationHelper.GetString("Onboarding_Native_Title"),
+                Title = LocalizationHelper.GetString("Onboarding_NativeConnection_Title"),
                 Message = LocalizationHelper.GetString("Onboarding_Native_Failed"),
                 Severity = AppNotificationSeverity.Error,
                 Source = "connection",

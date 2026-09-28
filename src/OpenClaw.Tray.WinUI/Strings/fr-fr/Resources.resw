@@ -7205,8 +7205,8 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   <data name="Onboarding_AiSetup_Value" xml:space="preserve"><value>Saisir une valeur</value></data>
   <data name="Onboarding_AiSetup_CodeExpiry" xml:space="preserve"><value>Ce code expire dans {0} minutes.</value></data>
   <data name="Onboarding_AiSetup_InvalidInput" xml:space="preserve"><value>Le fournisseur n'a pas accepté cette réponse. Vérifiez l'étape actuelle et réessayez.</value></data>
-  <data name="Onboarding_Native_Title" xml:space="preserve"><value>Se connecter à un Gateway</value></data>
-  <data name="Onboarding_Native_Description" xml:space="preserve"><value>Vérifiez la connexion sans l'enregistrer. Suivant vérifie à nouveau et enregistre ce Gateway avant de revoir les accès de ce PC.</value></data>
+  <data name="Onboarding_NativeConnection_Title" xml:space="preserve"><value>Se connecter à un Gateway</value></data>
+  <data name="Onboarding_NativeConnection_Description" xml:space="preserve"><value>Vérifiez la connexion sans l'enregistrer. Suivant vérifie à nouveau et enregistre ce Gateway avant de revoir les accès de ce PC.</value></data>
   <data name="Onboarding_Native_Address" xml:space="preserve"><value>Adresse du Gateway</value></data>
   <data name="Onboarding_Native_Code" xml:space="preserve"><value>Code de configuration</value></data>
   <data name="Onboarding_Native_Token" xml:space="preserve"><value>Token partagé (à la place du code)</value></data>
@@ -7218,10 +7218,10 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   <data name="Onboarding_Native_SshPort" xml:space="preserve"><value>Port SSH</value></data>
   <data name="Onboarding_Native_RemotePort" xml:space="preserve"><value>Port distant du Gateway</value></data>
   <data name="Onboarding_Native_LocalPort" xml:space="preserve"><value>Port local du tunnel</value></data>
-  <data name="Onboarding_Native_Back" xml:space="preserve"><value>Retour</value></data>
+  <data name="Onboarding_NativeConnection_Back" xml:space="preserve"><value>Retour</value></data>
   <data name="Onboarding_Native_Check" xml:space="preserve"><value>Vérifier la connexion</value></data>
   <data name="Onboarding_Native_Next" xml:space="preserve"><value>Suivant</value></data>
-  <data name="Onboarding_Native_Cancel" xml:space="preserve"><value>Annuler</value></data>
+  <data name="Onboarding_NativeConnection_Cancel" xml:space="preserve"><value>Annuler</value></data>
   <data name="Onboarding_Native_Checking" xml:space="preserve"><value>Vérification du package Gateway installé et de ses alias d'exécution...</value></data>
   <data name="Onboarding_Native_Checked" xml:space="preserve"><value>Connexion vérifiée. Rien n'a été enregistré. Suivant vérifiera à nouveau et enregistrera ce Gateway.</value></data>
   <data name="Onboarding_Native_Cancelled" xml:space="preserve"><value>Configuration annulée. Les paramètres déjà saisis sont conservés dans le profil natif dédié. Aucun package Gateway n'a été supprimé.</value></data>

@@ -7269,8 +7269,8 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_AiSetup_Value" xml:space="preserve"><value>Enter a value</value></data>
   <data name="Onboarding_AiSetup_CodeExpiry" xml:space="preserve"><value>This code expires in {0} minutes.</value></data>
   <data name="Onboarding_AiSetup_InvalidInput" xml:space="preserve"><value>The provider did not accept this answer. Review the current step and try again.</value></data>
-  <data name="Onboarding_Native_Title" xml:space="preserve"><value>Connect to a gateway</value></data>
-  <data name="Onboarding_Native_Description" xml:space="preserve"><value>Check the connection without saving it. Next checks again and saves this gateway before you review this PC's access.</value></data>
+  <data name="Onboarding_NativeConnection_Title" xml:space="preserve"><value>Connect to a gateway</value></data>
+  <data name="Onboarding_NativeConnection_Description" xml:space="preserve"><value>Check the connection without saving it. Next checks again and saves this gateway before you review this PC's access.</value></data>
   <data name="Onboarding_Native_Address" xml:space="preserve"><value>Gateway address</value></data>
   <data name="Onboarding_Native_Code" xml:space="preserve"><value>Setup code</value></data>
   <data name="Onboarding_Native_Token" xml:space="preserve"><value>Shared token (instead of a setup code)</value></data>
@@ -7282,10 +7282,10 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_Native_SshPort" xml:space="preserve"><value>SSH port</value></data>
   <data name="Onboarding_Native_RemotePort" xml:space="preserve"><value>Remote gateway port</value></data>
   <data name="Onboarding_Native_LocalPort" xml:space="preserve"><value>Local tunnel port</value></data>
-  <data name="Onboarding_Native_Back" xml:space="preserve"><value>Back</value></data>
+  <data name="Onboarding_NativeConnection_Back" xml:space="preserve"><value>Back</value></data>
   <data name="Onboarding_Native_Check" xml:space="preserve"><value>Check connection</value></data>
   <data name="Onboarding_Native_Next" xml:space="preserve"><value>Next</value></data>
-  <data name="Onboarding_Native_Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="Onboarding_NativeConnection_Cancel" xml:space="preserve"><value>Cancel</value></data>
   <data name="Onboarding_Native_Checking" xml:space="preserve"><value>Checking the installed Gateway package and its execution aliases...</value></data>
   <data name="Onboarding_Native_Checked" xml:space="preserve"><value>Connection checked. Nothing was saved. Next will check again and save this gateway.</value></data>
   <data name="Onboarding_Native_Cancelled" xml:space="preserve"><value>Setup cancelled. Any configuration already entered is retained in the dedicated native profile. No Gateway package was removed.</value></data>

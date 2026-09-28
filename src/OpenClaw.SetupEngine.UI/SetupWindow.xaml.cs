@@ -142,17 +142,26 @@ public sealed partial class SetupWindow : Window
             try
             {
                 _lifetimeCts.Cancel();
-                if (RootFrame.Content is NativeGatewaySetupPage nativePage)
-                    await nativePage.CancelAndWaitAsync();
-                if (RootFrame.Content is WizardPage wizardPage)
-                    await wizardPage.CancelAndWaitAsync();
+                var nativeCleanup = RootFrame.Content switch
+                {
+                    NativeGatewaySetupPage nativePage => nativePage.CancelAndWaitAsync(),
+                    WizardPage wizardPage => wizardPage.CancelAndWaitAsync(),
+                    _ => Task.CompletedTask,
+                };
                 var pageCleanup = RootFrame.Content is IAsyncDisposable pageLifetime
                     ? pageLifetime.DisposeAsync().AsTask()
                     : Task.CompletedTask;
                 try
                 {
-                    if (_contextApplyTask is { } contextApplyTask)
-                        await contextApplyTask;
+                    try
+                    {
+                        await nativeCleanup;
+                    }
+                    finally
+                    {
+                        if (_contextApplyTask is { } contextApplyTask)
+                            await contextApplyTask;
+                    }
                 }
                 finally
                 {

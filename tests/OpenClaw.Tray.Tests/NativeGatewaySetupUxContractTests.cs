@@ -281,9 +281,13 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.Contains("NativeSetupSession = session;", window);
         Assert.Contains("NavigateTo(typeof(WizardPage), _config)", window);
         Assert.Contains("ApplyStartupPreference: _startupRegistrationAllowed && _persistStartupPreferenceOnComplete", window);
-        Assert.Contains("await wizardPage.CancelAndWaitAsync()", window);
+        Assert.Contains("WizardPage wizardPage => wizardPage.CancelAndWaitAsync()", window);
+        Assert.Contains("await nativeCleanup", window);
         Assert.Contains("await ReleaseNativeSetupAsync()", window);
         Assert.Contains("await native.PrepareWizardAsync(native.LifetimeToken)", wizard);
+        Assert.Contains("rejectNativeGateway: true", wizard);
+        var gatewaySession = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine", "SetupGatewaySession.cs"));
+        Assert.Contains("if (rejectNativeGateway && record.NativePackageFamilyName is not null)", gatewaySession);
         Assert.Contains("await native.AuthorizeAsync(cancellationToken)", wizard);
         Assert.Contains("reportNativePairing: true", wizard);
         Assert.Contains("NativeGatewaySetupSession.GetPairingGuidance(requestId)", wizard);
@@ -376,6 +380,7 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.Contains("SetupWindow.Active?.AccessDraft", source);
         Assert.Contains("_draft.SetCapability(capability, toggle.IsOn)", source);
         Assert.DoesNotContain("TailscaleToggle", source);
+        Assert.Contains("SetupGatewayRoute.ManagedWsl or SetupGatewayRoute.Native", source);
         Assert.Contains("OnboardingAccessDestination.NativeGatewaySetup", window);
         Assert.Contains("NavigateToNativeGatewaySetup()", window);
         Assert.Contains("SetupGatewayRoute.Native => OnboardingAccessDestination.NativeGatewaySetup", policy);

@@ -107,7 +107,9 @@ public sealed class OnboardingCopyRefinementTests
         Assert.Contains("ReferenceEquals(_config, config)", code);
         Assert.Contains("!eligibility.CanInstall || eligibility.SelectedGpu is null", code);
         Assert.Contains("GetLocalAiHardwareAsync().WaitAsync(cancellation.Token)", code);
-        Assert.Contains("Unloaded += (_, _) => CancelAvailability()", code);
+        Assert.Contains("Unloaded += (_, _) =>", code);
+        Assert.Contains("++_probeGeneration;", code);
+        Assert.Contains("CancelAvailability();", code);
         Assert.DoesNotContain("config.LocalAi.Enabled =", code);
         Assert.DoesNotContain("new CudaHostHardwareProbe", code);
     }

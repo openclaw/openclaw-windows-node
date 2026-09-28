@@ -18,6 +18,7 @@ public class OnboardingFlowPolicyTests
     [InlineData(SetupGatewayRoute.Remote, "chat")]
     [InlineData(SetupGatewayRoute.McpOnly, "settings")]
     [InlineData(SetupGatewayRoute.Deferred, "connection")]
+    [InlineData(SetupGatewayRoute.Native, "connection")]
     public void CompletionLaunchTarget_UsesTheSelectedSetupRoute(SetupGatewayRoute route, string target)
     {
         Assert.Equal(target, OnboardingFlowPolicy.GetCompletionLaunchTarget(route));
@@ -29,6 +30,7 @@ public class OnboardingFlowPolicyTests
     [InlineData(SetupGatewayRoute.Remote, OnboardingAccessDestination.AiSetup, false)]
     [InlineData(SetupGatewayRoute.McpOnly, OnboardingAccessDestination.CompleteWithoutGateway, false)]
     [InlineData(SetupGatewayRoute.Deferred, OnboardingAccessDestination.CompleteWithoutGateway, false)]
+    [InlineData(SetupGatewayRoute.Native, OnboardingAccessDestination.NativeGatewaySetup, false)]
     public void BranchDestination_SeparatesNativeAiFromWslAndGatewayFreeCompletion(
         SetupGatewayRoute route, OnboardingAccessDestination destination, bool usesWsl)
     {
@@ -66,6 +68,19 @@ public class OnboardingFlowPolicyTests
     }
 
     [Fact]
+    public void NativePackageSetup_UsesSharedAccessBeforeItsDistinctHostedWizard()
+    {
+        var config = new SetupConfig();
+        Assert.False(OnboardingFlowPolicy.RequiresAiSetup(SetupGatewayRoute.Native, config));
+        Assert.Equal(
+            [OnboardingStage.Welcome, OnboardingStage.Gateway, OnboardingStage.Capabilities,
+                OnboardingStage.Install, OnboardingStage.AiSetup],
+            OnboardingFlowPolicy.GetStages(SetupGatewayRoute.Native, config));
+        Assert.DoesNotContain(OnboardingStage.GatewayReview,
+            OnboardingFlowPolicy.GetStages(SetupGatewayRoute.Native, config));
+    }
+
+    [Fact]
     public void FreshSetup_HasCombinedAccessAndAnExplicitVerifiedDestinationStage()
     {
         Assert.Equal(
@@ -80,6 +95,7 @@ public class OnboardingFlowPolicyTests
     [InlineData(SetupGatewayRoute.Remote, 5)]
     [InlineData(SetupGatewayRoute.McpOnly, 3)]
     [InlineData(SetupGatewayRoute.Deferred, 3)]
+    [InlineData(SetupGatewayRoute.Native, 5)]
     public void CombinedAccess_IsOneStageRegardlessOfHeadlessSkipPermissions(SetupGatewayRoute route, int count)
     {
         foreach (var skip in new[] { false, true })

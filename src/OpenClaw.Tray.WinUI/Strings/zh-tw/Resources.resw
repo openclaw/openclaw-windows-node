@@ -7205,8 +7205,8 @@
   <data name="Onboarding_AiSetup_Value" xml:space="preserve"><value>輸入值</value></data>
   <data name="Onboarding_AiSetup_CodeExpiry" xml:space="preserve"><value>此代碼將在 {0} 分鐘後到期。</value></data>
   <data name="Onboarding_AiSetup_InvalidInput" xml:space="preserve"><value>提供者未接受此答案。請檢查目前步驟並重試。</value></data>
-  <data name="Onboarding_Native_Title" xml:space="preserve"><value>連線至 Gateway</value></data>
-  <data name="Onboarding_Native_Description" xml:space="preserve"><value>檢查連線而不儲存。下一步會再次檢查並儲存此 Gateway，然後檢視此電腦的存取權限。</value></data>
+  <data name="Onboarding_NativeConnection_Title" xml:space="preserve"><value>連線至 Gateway</value></data>
+  <data name="Onboarding_NativeConnection_Description" xml:space="preserve"><value>檢查連線而不儲存。下一步會再次檢查並儲存此 Gateway，然後檢視此電腦的存取權限。</value></data>
   <data name="Onboarding_Native_Address" xml:space="preserve"><value>Gateway 位址</value></data>
   <data name="Onboarding_Native_Code" xml:space="preserve"><value>設定代碼</value></data>
   <data name="Onboarding_Native_Token" xml:space="preserve"><value>共用 Token（代替設定代碼）</value></data>
@@ -7218,10 +7218,10 @@
   <data name="Onboarding_Native_SshPort" xml:space="preserve"><value>SSH 連接埠</value></data>
   <data name="Onboarding_Native_RemotePort" xml:space="preserve"><value>遠端 Gateway 連接埠</value></data>
   <data name="Onboarding_Native_LocalPort" xml:space="preserve"><value>本機通道連接埠</value></data>
-  <data name="Onboarding_Native_Back" xml:space="preserve"><value>返回</value></data>
+  <data name="Onboarding_NativeConnection_Back" xml:space="preserve"><value>返回</value></data>
   <data name="Onboarding_Native_Check" xml:space="preserve"><value>檢查連線</value></data>
   <data name="Onboarding_Native_Next" xml:space="preserve"><value>下一步</value></data>
-  <data name="Onboarding_Native_Cancel" xml:space="preserve"><value>取消</value></data>
+  <data name="Onboarding_NativeConnection_Cancel" xml:space="preserve"><value>取消</value></data>
   <data name="Onboarding_Native_Checking" xml:space="preserve"><value>正在檢查已安裝的 Gateway 套件及其執行別名...</value></data>
   <data name="Onboarding_Native_Checked" xml:space="preserve"><value>連線已檢查，未儲存任何內容。下一步將再次檢查並儲存此 Gateway。</value></data>
   <data name="Onboarding_Native_Cancelled" xml:space="preserve"><value>設定已取消。已輸入的設定保留在專用原生設定目錄中。未移除任何 Gateway 套件。</value></data>
