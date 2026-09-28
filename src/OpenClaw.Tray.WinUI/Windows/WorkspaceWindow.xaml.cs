@@ -2,7 +2,9 @@ using System.ComponentModel;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using OpenClaw.Connection;
 using OpenClaw.Shared;
+using OpenClawTray.Controls;
 using OpenClawTray.Helpers;
 using OpenClawTray.Pages;
 using OpenClawTray.Presentation;
@@ -20,6 +22,10 @@ public sealed partial class WorkspaceWindow : WindowEx
     private readonly AppNotificationService _notifications;
     private readonly WorkspaceNavigationHistory _navigation = new();
     private readonly ChatPage _chat = new();
+    private readonly GatewayStatusContent _gatewayStatusContent = new();
+    private readonly Flyout _gatewayStatusFlyout = new() { Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.TopEdgeAlignedLeft };
+    private readonly MenuFlyoutItem _connectionStatusItem = new();
+    private readonly FontIcon _connectionStatusIcon = new();
     private bool _updating;
     private bool _creatingSession;
     private IOperatorGatewayClient? _refreshingClient;
@@ -40,6 +46,11 @@ public sealed partial class WorkspaceWindow : WindowEx
         _notifications = notifications;
         _openCompanion = openCompanion;
         _openTimeline = openTimeline;
+        _gatewayStatusFlyout.Content = _gatewayStatusContent;
+        _gatewayStatusFlyout.Opening += (_, _) => _gatewayStatusContent.Initialize(
+            () => _gatewayStatusFlyout.Hide(),
+            () => OpenCompanion(CompanionPageId.Connection),
+            () => ((IAppCommands)CurrentApp).Reconnect());
         Title = Text("Title");
         this.SetWindowSize(1280, 860);
         ExtendsContentIntoTitleBar = true;
@@ -57,6 +68,8 @@ public sealed partial class WorkspaceWindow : WindowEx
         AutomationProperties.SetName(HomeItem, Text("Home"));
         BuildOwnerMenu();
         _state.PropertyChanged += OnStateChanged;
+        _notifications.Changed += OnNotificationsChanged;
+        UpdateNotificationsBadge();
         _chat.Loaded += (_, _) => _chat.Initialize(this);
         Closed += OnClosed;
         Root.Loaded += OnLoaded;
@@ -185,12 +198,21 @@ public sealed partial class WorkspaceWindow : WindowEx
     {
         _updating = true;
         var agents = WorkspaceProjection.Agents(_state.AgentsList, _state.Sessions);
+        var previousItems = AssistantSelector.Items.OfType<ComboBoxItem>()
+            .Where(item => item.Tag is WorkspaceAgent)
+            .ToDictionary(item => ((WorkspaceAgent)item.Tag).Id, StringComparer.Ordinal);
         AssistantSelector.Items.Clear();
         foreach (var agent in agents)
-            AssistantSelector.Items.Add(new ComboBoxItem { Content = agent.Name, Tag = agent });
+        {
+            var item = previousItems.GetValueOrDefault(agent.Id) ?? new ComboBoxItem { Content = new AgentIdentityBadge() };
+            ((AgentIdentityBadge)item.Content).Initialize(agent);
+            item.Tag = agent;
+            AutomationProperties.SetName(item, $"{agent.Name}, {agent.Id}");
+            AutomationProperties.SetAutomationId(item, $"WorkspaceAgent:{agent.Id}");
+            AssistantSelector.Items.Add(item);
+        }
         AssistantSelector.Items.Add(NewConversationOption);
-        if (_agentId is not null && agents.Count > 0 && agents.All(agent => agent.Id != _agentId))
-            _agentId = null;
+        _agentId = WorkspaceProjection.SelectedAgentId(_state.AgentsList, agents, _agentId);
         RestoreAssistantSelection();
         AssistantSelector.PlaceholderText = Text(agents.Count == 0 ? "NoAgents" : "SelectAssistant");
         var sessions = WorkspaceProjection.Sessions(_state.Sessions, _agentId);
@@ -301,6 +323,18 @@ public sealed partial class WorkspaceWindow : WindowEx
             RefreshSidebar();
         if (e.PropertyName == nameof(AppState.Status) && _state.Status == ConnectionStatus.Connected)
             _ = RefreshAsync();
+        if (e.PropertyName == nameof(AppState.Status))
+            UpdateConnectionStatus(CurrentApp.ConnectionManager?.CurrentSnapshot, _state.Status);
+    }
+
+    internal void UpdateConnectionStatus(GatewayConnectionSnapshot? snapshot, ConnectionStatus status)
+    {
+        var (labelKey, accent) = ConnectionStatusPresenter.Pill(snapshot?.OverallState, status);
+        var label = LocalizationHelper.GetString(labelKey);
+        _connectionStatusItem.Text = label;
+        _connectionStatusIcon.Style = (Style)Root.Resources[$"ConnectionBadge{accent}"];
+        AutomationProperties.SetName(_connectionStatusItem,
+            $"{LocalizationHelper.GetString("ConnectionStatusWindow.Title")}: {label}");
     }
 
     private void OnAssistantChanged(object sender, SelectionChangedEventArgs e)
@@ -338,7 +372,28 @@ public sealed partial class WorkspaceWindow : WindowEx
 
     private void OnNewConversation(object sender, RoutedEventArgs e) =>
         AsyncEventHandlerGuard.Run(NewSessionAsync, new AppLogger(), nameof(OnNewConversation));
-    private void OnNotifications(object sender, RoutedEventArgs e) => Navigate(new(WorkspacePageId.Notifications));
+    private void OnNotificationsOpening(object sender, object e) =>
+        NotificationContent.Initialize(_notifications, () =>
+        {
+            NotificationsFlyout.Hide();
+            Navigate(new(WorkspacePageId.Notifications));
+        });
+
+    private void OnNotificationsClosed(object sender, object e) => NotificationContent.Unbind();
+
+    private void OnNotificationsChanged(object? sender, AppNotificationChangedEventArgs e) =>
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!IsClosed) UpdateNotificationsBadge();
+        });
+
+    private void UpdateNotificationsBadge()
+    {
+        var count = _notifications.Snapshot.ActiveNotifications.Count;
+        NotificationsBadge.Value = count;
+        NotificationsBadge.Visibility = count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        AutomationProperties.SetHelpText(NotificationsButton, LocalizationHelper.Format("NotificationsFlyout_ActiveCountFormat", count));
+    }
     private void OnBack(object sender, RoutedEventArgs e) => NavigateBack();
     private void OnForward(object sender, RoutedEventArgs e) => NavigateForward();
     private void OnTogglePane(object sender, RoutedEventArgs e)
@@ -409,6 +464,19 @@ public sealed partial class WorkspaceWindow : WindowEx
         Add("Settings", () => OpenCompanion(CompanionPageId.Settings), FluentIconCatalog.Settings);
         Add("Usage", () => OpenCompanion(CompanionPageId.Usage), FluentIconCatalog.Money);
         Add("PairDevice", () => OpenCompanion(CompanionPageId.Channels), FluentIconCatalog.Devices);
+        var showConnectionStatus = false;
+        _connectionStatusItem.Icon = _connectionStatusIcon;
+        AutomationProperties.SetAutomationId(_connectionStatusItem, "WorkspaceOwnerConnectionStatus");
+        _connectionStatusItem.Click += (_, _) => showConnectionStatus = true;
+        menu.Opening += (_, _) => UpdateConnectionStatus(CurrentApp.ConnectionManager?.CurrentSnapshot, _state.Status);
+        UpdateConnectionStatus(CurrentApp.ConnectionManager?.CurrentSnapshot, _state.Status);
+        menu.Closed += (_, _) =>
+        {
+            if (!showConnectionStatus || IsClosed) return;
+            showConnectionStatus = false;
+            _gatewayStatusFlyout.ShowAt(OwnerButton);
+        };
+        menu.Items.Add(_connectionStatusItem);
         Add("GetApps", () => _ = OpenLinkAsync("https://docs.openclaw.ai/platforms"), FluentIconCatalog.OpenInBrowser);
         Add("ConnectionTimeline", OpenTimeline, FluentIconCatalog.AgentEvents);
         menu.Items.Add(new MenuFlyoutSeparator());
@@ -450,6 +518,10 @@ public sealed partial class WorkspaceWindow : WindowEx
     {
         IsClosed = true;
         _state.PropertyChanged -= OnStateChanged;
+        _notifications.Changed -= OnNotificationsChanged;
+        NotificationsFlyout.Hide();
+        NotificationContent.Unbind();
+        _gatewayStatusFlyout.Hide();
         ContentHost.Children.Clear();
         _chat.CloseSurface();
     }

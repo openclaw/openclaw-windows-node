@@ -520,7 +520,7 @@ public sealed class DiagnosticsPageContractTests
         Assert.Equal(new[] { "debug", "settings" }, footer.Elements().Skip(1).Select(element => (string?)element.Attribute("Tag")));
         var header = footer.Elements().First();
         Assert.Equal("True", (string?)header.Attribute("IsEnabled"));
-        foreach (var name in new[] { "StatusPillButton", "NotificationsBellButton" })
+        foreach (var name in new[] { "StatusPillButton" })
         {
             var button = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == name);
             Assert.Contains(header, button.Ancestors());
@@ -529,6 +529,27 @@ public sealed class DiagnosticsPageContractTests
             Assert.DoesNotContain(button.Ancestors(), element => element.Name.LocalName == "TitleBar");
             Assert.Single(button.Descendants(), element => element.Name.LocalName == "Flyout");
         }
+        Assert.DoesNotContain(document.Descendants(), element => (string?)element.Attribute(x + "Name") == "NotificationsBellButton");
+    }
+
+    [Fact]
+    public void ShellFlyoutContent_HasFocusedOwners()
+    {
+        var hub = Read("src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs");
+        var workspace = Read("src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml.cs");
+        foreach (var shell in new[] { hub, workspace })
+        {
+            Assert.DoesNotContain("SyncBellItems(", shell);
+            Assert.DoesNotContain("GatewayRowDetail.Text", shell);
+            Assert.DoesNotContain("CountEnabledCapabilities(", shell);
+        }
+        Assert.Contains("SyncBellItems(", Read("src", "OpenClaw.Tray.WinUI", "Controls", "NotificationFlyoutContent.xaml.cs"));
+        Assert.Contains("ConnectionStatusPresenter.NodeRow(", Read("src", "OpenClaw.Tray.WinUI", "Controls", "GatewayStatusContent.xaml.cs"));
+        var xaml = Read("src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml");
+        Assert.Contains("Opening=\"OnNotificationsOpening\"", xaml);
+        Assert.DoesNotContain("Click=\"OnNotifications\"", xaml);
+        Assert.Contains("_notifications.Changed -= OnNotificationsChanged;", workspace);
+        Assert.Contains("NotificationContent.Unbind();", workspace);
     }
 
     [Fact]

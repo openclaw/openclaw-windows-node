@@ -898,6 +898,7 @@ internal sealed class WindowManager : IWindowManager
         if (!_isShuttingDown)
         {
             _hubWindow?.UpdateTitleBarStatus(snapshot, status);
+            _workspaceWindow?.UpdateConnectionStatus(snapshot, status);
         }
     }
 

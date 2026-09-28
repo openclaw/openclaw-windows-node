@@ -379,7 +379,14 @@ capabilities remain in the separate Settings companion. Use the native WinUI
 shared OpenClaw artwork, not a custom title label. The navigation section has a
 first-row toolbar in `NavigationView.PaneHeader`: pane-collapse glyph on the left
 and Back/Forward at the right edge of the sidebar, not the content area.
-The assistant selector occupies the second row. Its final dropdown option is
+The assistant selector occupies the second row. Each real agent uses a 32 DIP
+native `PersonPicture`, configured display name, and a secondary agent ID such
+as `main`. Both the selected item and dropdown use the same identity presentation.
+Use the existing `agents.list` identity (`name`, `emoji`, resolved `avatarUrl`),
+not guessed local workspace paths. A configured emoji or native initials is the
+fallback when there is no usable picture. The secondary value is the gateway
+agent ID, not an inferred Git branch. Respect the gateway's default agent and
+explicit-selection requirement. Its final dropdown option is
 the existing New conversation action with an Add glyph; it is not agent creation.
 Sessions retains its separate Add button. Collapsing the pane hides it completely:
 no compact rail, destination icons, footer controls, or reserved sidebar width.
@@ -398,10 +405,18 @@ The separate Settings companion uses the same native TitleBar and claw artwork,
 with the localized title "OpenClaw Settings". Below it, the pane toolbar has a
 40 DIP subtle toggle at left and Search, Back, Forward at right. Search opens
 the existing command catalog in a native flyout and retains Ctrl+E/K/F.
-History uses the existing Frame stacks. Connection status and notifications share
-a subtle sidebar footer bar immediately above Diagnostics and Settings, not the
-titlebar. In compact mode, stack their 40 DIP icon targets and retain accessible
-names, status tooltips, notification badges, and the existing native flyouts.
+History uses the existing Frame stacks. Connection status occupies a subtle
+sidebar footer bar immediately above Diagnostics and Settings, not the titlebar.
+In compact mode, retain its 40 DIP target and accessible status.
+Settings has no notification bell. Workspace's independent notification button
+opens the existing compact native flyout without changing the conversation,
+selection, draft, or navigation history. Its explicit Open notifications link
+still opens the full notification page. Owner's connection entry shows the live
+localized state and a small status-coloured dot, not a static Connection Status
+label. The colour uses the native status resources, with text for accessibility.
+It opens the same gateway/operator/node status content as the Settings status button.
+Keep those flyouts backed by the existing notification service and connection
+manager, with native light dismissal and keyboard behavior.
 The compact pane retains its toggle.
 The selector keeps the native ComboBox template and keyboard behavior with a
 transparent, borderless rest state and subtle hover/pressed resource brushes,

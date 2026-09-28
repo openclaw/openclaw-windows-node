@@ -302,7 +302,10 @@ public sealed class WorkspaceNavigationTests
         var bell = doc.Descendants().Single(node => (string?)node.Attribute(x + "Name") == "NotificationsButton");
         Assert.Same(owner.Parent, bell.Parent);
         Assert.Equal("1", (string?)bell.Attribute("Grid.Column"));
-        Assert.Equal("OnNotifications", (string?)bell.Attribute("Click"));
+        Assert.Null(bell.Attribute("Click"));
+        var flyout = Assert.Single(bell.Descendants(), element => element.Name.LocalName == "Flyout");
+        Assert.Equal("OnNotificationsOpening", (string?)flyout.Attribute("Opening"));
+        Assert.Equal("OnNotificationsClosed", (string?)flyout.Attribute("Closed"));
         Assert.Single(doc.Descendants(), node => (string?)node.Attribute(x + "Name") == "NotificationsButton");
         Assert.Equal("{StaticResource SubtleButtonStyle}", (string?)owner.Attribute("Style"));
         Assert.Equal("{StaticResource SubtleButtonStyle}", (string?)bell.Attribute("Style"));
@@ -391,6 +394,67 @@ public sealed class WorkspaceNavigationTests
         var visible = Assert.Single(WorkspaceProjection.Sessions([session], "custom"));
         Assert.Equal("real-key", visible.Key);
         Assert.Empty(WorkspaceProjection.Sessions([session], "different"));
+    }
+
+    [Fact]
+    public void Projection_UsesConfiguredIdentityAndResolvedAvatar_NotGatewayFilePaths()
+    {
+        using var json = JsonDocument.Parse("""
+            {"defaultId":"main","agents":[
+              {"id":"main","name":"Roster alias","identity":{"name":"Configured assistant","emoji":"C","avatar":"avatars/main.png","avatarUrl":"data:image/png;base64,AQID"}},
+              {"id":"other","name":"Other assistant","identity":{"name":" ","avatar":"https://images.example/avatar.png"}},
+              {"id":"plain","identity":42},
+              {"id":" "}
+            ]}
+            """);
+        var agents = WorkspaceProjection.Agents(json.RootElement, []);
+        Assert.Equal(3, agents.Count);
+        Assert.Equal("Configured assistant", agents[0].Name);
+        Assert.Equal("C", agents[0].Emoji);
+        Assert.Equal("data:image/png;base64,AQID", agents[0].AvatarUrl);
+        Assert.Equal("Other assistant", agents[1].Name);
+        Assert.Equal("https://images.example/avatar.png", agents[1].AvatarUrl);
+        Assert.Equal("plain", agents[2].Name);
+        Assert.Null(agents[2].AvatarUrl);
+        Assert.Equal("main", WorkspaceProjection.SelectedAgentId(json.RootElement, agents, null));
+        Assert.Equal("other", WorkspaceProjection.SelectedAgentId(json.RootElement, agents, "other"));
+        Assert.Equal("main", WorkspaceProjection.SelectedAgentId(json.RootElement, agents, "removed"));
+    }
+
+    [Fact]
+    public void Projection_RespectsExplicitAgentSelection_AndDoesNotGuessMain()
+    {
+        using var json = JsonDocument.Parse("""{"defaultId":"custom","selectionRequired":true,"agents":[{"id":"custom"},{"id":"other"}]}""");
+        var agents = WorkspaceProjection.Agents(json.RootElement, []);
+        Assert.Null(WorkspaceProjection.SelectedAgentId(json.RootElement, agents, null));
+        Assert.Equal("other", WorkspaceProjection.SelectedAgentId(json.RootElement, agents, "other"));
+        using var legacy = JsonDocument.Parse("""{"agents":[{"id":"custom"}]}""");
+        Assert.Equal("custom", WorkspaceProjection.SelectedAgentId(legacy.RootElement, WorkspaceProjection.Agents(legacy.RootElement, []), null));
+    }
+
+    [Fact]
+    public void OwnerStatusAndAgentBadge_UseNativeControlsAndLiveSources()
+    {
+        var document = XDocument.Load(Source("Windows", "WorkspaceWindow.xaml"));
+        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        foreach (var accent in new[] { "Neutral", "Success", "Caution", "Critical" })
+        {
+            var style = document.Descendants().Single(element => (string?)element.Attribute(x + "Key") == $"ConnectionBadge{accent}");
+            Assert.Equal($"{{ThemeResource SystemFillColor{accent}Brush}}",
+                (string?)Assert.Single(style.Elements()).Attribute("Value"));
+        }
+        var badge = XDocument.Load(Source("Controls", "AgentIdentityBadge.xaml"));
+        Assert.Single(badge.Descendants(), element => element.Name.LocalName == "PersonPicture");
+        var code = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
+        Assert.Contains("ConnectionStatusPresenter.Pill(snapshot?.OverallState, status)", code);
+        Assert.Contains("menu.Opening +=", code);
+        Assert.Contains("_workspaceWindow?.UpdateConnectionStatus(snapshot, status)",
+            File.ReadAllText(Source("Services", "WindowManager.cs")));
+        var avatar = File.ReadAllText(Source("Controls", "AgentIdentityBadge.xaml.cs"));
+        Assert.Contains("new MediaResolver(", avatar);
+        Assert.Contains("Picture.Initials = agent.Emoji", avatar);
+        Assert.Contains("cancellation.IsCancellationRequested", avatar);
+        Assert.DoesNotContain("File.Read", avatar);
     }
 
     [Fact]

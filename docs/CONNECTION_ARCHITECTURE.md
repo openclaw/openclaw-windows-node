@@ -41,9 +41,31 @@ moves to the surviving toggle. Pane changes do not remount chat or reset drafts.
 The companion uses a native TitleBar titled OpenClaw Settings with shared claw
 artwork. Search, Back, and Forward live beside the toggle in its stable sidebar
 toolbar. The native pane reserves 56 DIP above its items, including in compact mode.
-Connection status and notifications share a footer bar above Diagnostics and
-Settings. They reuse the same status projection, badge, flyouts, and actions;
-compact mode stacks their icon-only targets instead of hiding either action.
+Connection status occupies the footer bar above Diagnostics and Settings;
+compact mode retains its icon-only target. Settings has no notification button.
+Workspace's bell opens `NotificationFlyoutContent` using the existing
+`AppNotificationService`, without replacing chat or changing history. Its
+explicit Open notifications link and existing deep links retain the full page.
+Owner's connection entry shows the same `ConnectionStatusPresenter` label/accent
+as Settings, refreshed both on menu opening and every manager snapshot through
+`WindowManager`, including richer changes that keep the same legacy status.
+It opens `GatewayStatusContent`, shared with Settings,
+using the current manager snapshot and existing reconnect/Connection actions.
+The flyout contents own named-control application; windows own popup lifetime
+and route side effects. Notification subscriptions detach when the flyout closes.
+
+The assistant selector projects the gateway's existing `agents.list` response:
+`identity.name` (then roster name/ID), `identity.emoji`, and `identity.avatarUrl`
+(then configured `identity.avatar`). The gateway resolves workspace-local avatar
+files to data URLs for native clients. Windows never reads those paths locally.
+`AgentIdentityBadge` uses native `PersonPicture` and the existing bounded
+`MediaResolver` for image data and public HTTPS sources; blocked/failed images
+are logged and retain emoji/initials. The secondary `main`-style label is the
+agent ID, not a Git branch; this RPC has no branch-name field. Selection honors
+`defaultId` and `selectionRequired`, without sending a chat or creating a session
+when metadata refreshes. Existing item identities/pictures survive roster refresh.
+Contract reference: `openclaw/openclaw` gateway `agents-list.ts`,
+`session-utils-store.ts`, and `packages/gateway-protocol/src/schema/agents-models-skills.ts`.
 Search retains the existing catalog and keyboard shortcuts through a native
 flyout. Both Frame history stacks prune unavailable gateway/diagnostics routes.
 All footer

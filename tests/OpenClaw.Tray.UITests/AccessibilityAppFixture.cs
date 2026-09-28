@@ -31,6 +31,7 @@ public sealed class AccessibilityAppFixture : IDisposable
     private readonly string _executablePath;
     private readonly string? _chatFixture;
     private readonly bool _syntheticData;
+    private readonly bool _agentIdentities;
     private readonly string? _nativeChatProofSignalPath;
     private readonly string? _nativeChatProofVisualDirectory;
     private readonly string _navigationSignalPath;
@@ -48,10 +49,12 @@ public sealed class AccessibilityAppFixture : IDisposable
         string? chatFixture = null,
         string theme = "System",
         bool syntheticData = true,
-        string? initialRoute = "connection")
+        string? initialRoute = "connection",
+        bool agentIdentities = false)
     {
         _chatFixture = chatFixture;
         _syntheticData = syntheticData;
+        _agentIdentities = agentIdentities;
         _executablePath = Path.Combine(AppContext.BaseDirectory, "OpenClaw.Tray.WinUI.exe");
         if (!File.Exists(_executablePath))
         {
@@ -396,6 +399,7 @@ public sealed class AccessibilityAppFixture : IDisposable
         startInfo.Environment["OPENCLAW_LANGUAGE"] = "en-US";
         startInfo.Environment["OPENCLAW_ACCESSIBILITY_TEST_CHAT"] = _syntheticData ? "1" : "0";
         startInfo.Environment["OPENCLAW_ACCESSIBILITY_TEST_SESSIONS"] = _syntheticData ? "1" : "0";
+        startInfo.Environment["OPENCLAW_ACCESSIBILITY_TEST_AGENT_IDENTITIES"] = _agentIdentities ? "1" : "0";
         if (!string.IsNullOrWhiteSpace(_chatFixture))
         {
             startInfo.Environment[
