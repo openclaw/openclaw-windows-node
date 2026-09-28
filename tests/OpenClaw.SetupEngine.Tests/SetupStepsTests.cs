@@ -3898,6 +3898,7 @@ public class SetupStepsTests : IDisposable
     [InlineData("BadUser")]
     [InlineData("bad user")]
     [InlineData("bad$user")]
+    [InlineData("openclaw\n")]
     public async Task ConfigureWsl_RejectsInvalidLinuxUserName(string user)
     {
         var ctx = CreateContext();
@@ -4245,6 +4246,35 @@ public class SetupStepsTests : IDisposable
             "config set gateway.reload.mode off",
             commands.WslCalls[0].Command);
         Assert.Contains("curl -s", commands.WslCalls[1].Command);
+        Assert.True(commands.WslCalls[0].InputViaStdin);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("bad\"user")]
+    [InlineData("bad$(id)")]
+    [InlineData("openclaw\n")]
+    public async Task SetupWizard_RejectsInvalidLinuxUserBeforeAnyWslCommand(string? user)
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, _, _) => Fail("WSL must not run for an invalid Linux user"));
+        var ctx = CreateContext(
+            new SetupConfig { Wsl = new WslConfig { User = user! } },
+            commands);
+        ctx.DistroName = "test-distro";
+
+        var suspend = await new SetupWizardRunner(ctx).SuspendReloadModeAsync();
+        var restore = await new SetupWizardRunner(ctx).RestoreReloadModeAsync();
+        var run = await new SetupWizardRunner(ctx).RunAsync(CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, suspend.Outcome);
+        Assert.Equal(StepOutcome.FailedTerminal, restore.Outcome);
+        Assert.Equal(StepOutcome.FailedTerminal, run.Outcome);
+        Assert.Contains("Invalid WSL user", run.Message);
+        Assert.Contains("Invalid WSL user", suspend.Message);
+        Assert.Contains("Invalid WSL user", restore.Message);
+        Assert.Empty(commands.WslCalls);
     }
 
     [Fact]
@@ -6355,7 +6385,8 @@ public class SetupStepsTests : IDisposable
     {
         Assert.Contains(
             commands.WslCalls,
-            call => call.Command.Contains("config set gateway.reload.mode 'hybrid'"));
+            call => call.Command.Contains("config set gateway.reload.mode 'hybrid'")
+                && call.InputViaStdin);
         Assert.Contains(
             commands.WslCalls,
             call => call.Command.Contains("openclaw gateway restart"));

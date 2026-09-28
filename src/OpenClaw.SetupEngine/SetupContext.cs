@@ -158,7 +158,7 @@ public sealed class LocalAiConfig
 public sealed class WslConfig
 {
     private static readonly System.Text.RegularExpressions.Regex s_linuxUserNamePattern =
-        new("^[a-z_][a-z0-9_-]{0,31}$", System.Text.RegularExpressions.RegexOptions.Compiled);
+        new(@"\A[a-z_][a-z0-9_-]{0,31}\z", System.Text.RegularExpressions.RegexOptions.Compiled);
 
     public string User { get; set; } = "openclaw";
     public bool Systemd { get; set; } = true;
@@ -170,8 +170,9 @@ public sealed class WslConfig
     public string? Memory { get; set; }
     public string? Swap { get; set; }
 
-    public static bool IsValidLinuxUserName(string value)
-        => s_linuxUserNamePattern.IsMatch(value);
+    public static bool IsValidLinuxUserName(string? value)
+        => !string.IsNullOrWhiteSpace(value)
+            && s_linuxUserNamePattern.IsMatch(value);
 }
 
 // ─── Gateway Configuration ───
