@@ -1,6 +1,243 @@
 # Onboarding Wizard
 
-The onboarding wizard installs a new app-owned local WSL gateway on Windows and then runs OpenClaw onboard.
+The onboarding wizard can install an app-owned WSL gateway, acquire a native
+Gateway MSIX through Microsoft Store and configure it, or connect to an existing gateway.
+
+### Shortened local onboarding (native and WSL)
+
+The shared `WizardOnboardingPolicy` removes optional setup cards from both WinUI
+paths and the headless WSL runner. Security consent, telemetry opt-in, agent name,
+AI provider/authentication/model selection, permissions and actionable errors
+remain explicit.
+
+- Existing config detected, QuickStart, Model check, How channels work, Web
+  search, Skills status and Gateway notes are acknowledged without rendering.
+- Setup mode chooses the offered keep-existing-model mode, otherwise QuickStart.
+  Config handling keeps current values. Channel and search selectors choose the
+  offered skip value. Skill configuration/dependency installation is deferred.
+- Gateway service prompts are not part of onboarding. `wizard.start` requests
+  `installDaemon: false`; Companion's existing WSL service installation and native
+  runtime ownership remain unchanged. Older WSL gateways can use the existing
+  parameter-compatibility fallback.
+- Before acknowledging Optional apps, setup explicitly cancels the optional tail.
+  It requires a confirmed `cancelled` result, valid saved configuration from
+  `config.get`, and authenticated `health` success. This is a deliberate handoff,
+  not a claim that the upstream wizard completed. Arbitrary errors never qualify.
+
+Native setup then restores reload and performs its own final config, listener
+ownership and health checks before publishing the staged record. WSL setup
+continues its existing Windows-node context step; the headless runner restores
+reload through its existing completion/cleanup wrapper. A user's Cancel remains
+an abort, not this validated handoff.
+
+Defaults match audited English prompt kinds, labels and raw option values, never
+random step IDs or option positions. Unknown/localized prompts and missing skip
+options stay visible (or require a headless answer) rather than receiving guessed
+answers. Configured channels/search are deferred, not intentionally disabled.
+
+#### Headless answers and Companion-managed steps
+
+The shortened experience is product policy, not merely a set of overridable
+headless defaults. `WizardAnswers` still supplies and validates answers for
+unmanaged prompts. For each encountered Companion-managed choice, an absent
+answer uses the policy; an explicit answer must produce the same protocol value.
+Equivalent encodings, such as `FALSE` and `false` for a confirmation, are accepted.
+A conflicting or invalid answer fails setup before answering that step, rather
+than silently overriding the caller or restoring an intentionally omitted screen.
+The error identifies the step and asks the caller to remove the conflicting entry
+and configure optional features after setup. It does not echo the configured value.
+
+Managed informational notes accept an absent answer or an explicit `true`
+acknowledgment. This also applies to the Optional apps handoff: a contradictory
+answer fails before the handoff begins. Security and other unmanaged prompts
+retain their existing answer handling. Only encountered steps are checked;
+entries for steps beyond the deliberately cancelled optional tail are not executed
+or validated.
+
+Recovery templates list encountered unmanaged prompts that the caller can act
+on, not overrides for managed/deferred steps. On a policy conflict, remove the
+entry from the original configuration; the generated template does not reproduce
+that entry or its value. The bundled configuration leaves setup mode and search
+provider unspecified so policy can choose among the actual offered values.
+
+### Native Gateway MSIX (not isolated)
+
+**Package-aware verification (2026-09-16, package 0.0.0.1 ARM64):** the original
+listener-job mismatch is resolved. Companion creates the launcher suspended,
+assigns its lifecycle job, retains its process handle and resumes it. A listener
+may belong to that job or be a verified live, same-user descendant of the
+package-identified launcher. Every ancestor handle is retained during inspection,
+creation times must be ordered, and TCP ownership is checked again before
+credential handoff. This is local process supervision, not MXC isolation or a
+defense against malicious code with the same user's process-access rights.
+
+The disposable-profile proof reached authenticated `hello-ok`, received the
+initial `wizard.start` note and cancelled without publishing a Gateway record.
+It used production setup code to automatically approve only its own test device
+through the package CLI, not security or provider prompts. For a fresh Companion
+identity, setup verifies that the handshake request matches its device ID and
+public key, approves that exact request in the dedicated profile, then reconnects
+once. Listener ownership and local-profile configuration are checked before both
+CLI calls. The token stays in the process environment, not command-line arguments.
+There is no `--latest` approval or remote-record exemption. The profile-specific
+terminal remains a recovery option, not a required onboarding step.
+Pairing CLI calls have a two-minute total budget for packaged runtime startup and
+the request. A failed terminal wizard response displays the Gateway's error detail
+before its status. The installed Gateway's full optional tail previously failed
+with `PreparedModelCatalogConfigReplacedError` after Optional apps. Shortened
+setup deliberately ends before that tail and uses the validated handoff above.
+It does not suppress that exception or repair the upstream full-wizard finalizer.
+See the [implementation results and limitations](GATEWAY_SETUP_RESPONSIBILITIES.md#package-aware-implementation-results)
+for launch, shutdown, verification details and the pre-assignment crash window.
+
+**Install a local native gateway** is the first Welcome choice and retains its
+**Recommended** badge even while disabled, with WinUI disabled brushes for the
+title, description, badge and icon instead of active accent colors. Only a successful native capability
+check enables it. By the 2026-09-18 product decision, this
+continues to run the existing Gateway MSIX with the signed-in Windows user's
+access. The separate isolation warning and acknowledgment checkbox are removed;
+the general security notice and provider/onboarding consent remain explicit.
+This UI gate does not provision an MXC session or change the runtime identity.
+Native and WSL use the **same WinUI `WizardPage`**, not separate provider/model
+wizards. WSL is always shown as the second Welcome choice after native,
+followed by **Connect to an existing gateway**.
+
+Companion checks current-user registration for the Store package
+`OpenClawFoundation.OpenClawGateway` and publisher
+`CN=4BA40A7A-B719-4C40-BF91-84AF4F1136FC`, package health, and the package-qualified
+`clawctl.exe` and `openclaw.exe` aliases. It does not resolve an npm installation
+from `PATH`. Native setup uses the same Windows capabilities and permission
+selection as WSL, followed by a native-specific review without WSL, Local AI or
+Tailscale provisioning. After confirming the review, progress runs automatically.
+A missing package opens the
+[OpenClaw Gateway Microsoft Store listing](https://apps.microsoft.com/detail/9nv70lv3d6xc?hl=en-US&gl=US);
+unhealthy registration or unavailable aliases show an explicit repair error.
+No local MSIX path or environment-variable configuration is required.
+The original `OpenClaw.Gateway` / OpenClaw Foundation development publisher pair
+is still accepted for existing installations. If both identities are installed,
+new setup reports duplicate registrations instead of guessing which to use. Existing
+profiles resolve their original package family even when both packages are installed;
+there is no implicit migration.
+
+Microsoft Store owns architecture/package selection, signature validation, user
+consent, and deployment. Opening the listing is not reported as a successful install:
+Companion waits for actual package registration and verified aliases, then
+automatically prepares the profile and opens the shared Gateway wizard.
+The wait is cancellable and limited to five minutes. Cancelling in Companion does
+not cancel Windows installation. Errors/timeouts offer **Retry setup**; the normal
+path has no separate install, availability-check or wizard-launch buttons.
+An already installed healthy package skips this handoff.
+Companion never downloads a package or changes certificate trust.
+
+Progress reuses the WSL spinner/checkmark rows. Completion lists the configured
+native Gateway and saved Windows capability choices, with a reminder that node
+pairing, Windows permissions and command approvals still apply. It does not
+claim the stopped setup runtime or a not-yet-paired Windows node is running.
+
+The native path:
+
+1. Creates a dedicated configuration and workspace under
+   `gateways\<gateway-id>\native-gateway` in the Companion data directory.
+   `OPENCLAW_STATE_DIR` and `OPENCLAW_CONFIG_PATH` keep this separate from the
+   user's default `.openclaw` profile. A different profile is not a security
+   sandbox.
+2. Runs the installed package's `clawctl setup` with captured progress/errors in
+   Companion, without opening a TUI. The current package may extract its bundled Node runtime.
+   Older proof packages require a separately installed compatible Node runtime
+   (the supplied `0.0.0.0` proof rejects Node 22.19.0). Companion does not install
+   missing prerequisites.
+3. Validates the dedicated configuration, suspends config reload, and starts the
+   Gateway through the native runtime owner. Before every credential handoff,
+   including reconnects with a saved device identity, setup verifies package-owned
+   listener provenance. The staged record is **not** made active in the registry.
+4. Automatically pairs the setup's own Companion identity if required, then
+   opens the shared `WizardPage` using `wizard.start` with `mode: "local"` and
+   `installDaemon: false`. The same `wizard.next` transport and cards render the
+   upstream security acknowledgement, provider, authentication, and model steps.
+   No consent or provider answer is supplied automatically. Native console output
+   is tailed from the dedicated profile, never through WSL.
+5. Error-free wizard completion or the validated optional-tail handoff permits
+   finalization. Setup stops its
+   runtime, restores the original reload setting, checks the selected
+   local/loopback/token configuration, runs `config validate --json`, restarts
+   with owned-listener proof and runs authenticated `gateway health --json`.
+   A failed gate remains retryable and does not publish the staged record.
+6. Stops the setup-owned runtime before reloading and updating the registry.
+   **Open Companion to connect** restarts Companion into the existing
+   connection flow with the paired operator identity. This does not approve the
+   separate Windows node role. Current Windows node permissions are preserved.
+
+Companion owns the native gateway process lifetime after this handoff. It starts
+the selected native gateway when connecting, can start it again after an exit,
+and stops its owned process when disconnecting, switching away, or shutting down.
+The MSIX package itself owns updates. Companion does not install an OS service
+or call `openclaw gateway install`.
+
+Cancelling setup, returning from the wizard, or closing setup stops only its own
+recovery terminal/runtime and restores reload. Cancel is not successful setup.
+**Restart gateway** controls the native owner; **Open terminal** opens a shell
+scoped to the dedicated profile and package aliases, not a second onboarding TUI.
+Its lifetime ends with setup or a restart. Configuration
+already entered is retained in the dedicated native profile so it is not lost
+on retry, including after returning to Welcome or reopening Companion. A
+credential-free draft descriptor under `gateways\native-setup-draft.json`
+resumes the same profile until successful publication.
+The credential-free reload backup survives an interrupted process so a retry
+does not mistake the temporary `off` mode for the user's preference.
+Existing WSL distributions, remote gateways, and the default native
+OpenClaw profile are not replaced. The native path does not enter the WSL
+cleanup, Local AI installation, or WSL repair pipelines.
+
+This integration targets the packaging contract at
+[`9a8cd4a`](https://github.com/openclaw/openclaw-windows-packaging/tree/9a8cd4af139513c21d290a01a8a1f2be19b602bc).
+Its README explicitly reserves isolated agent sessions for future work. A future
+MXC option needs a real session provisioning, eligibility, and lifecycle contract;
+MSIX registration or the presence of `IsolationProxy.exe` is not sufficient.
+
+### Planned MXC native Gateway recommendation policy
+
+The lifecycle/session-provisioning requirements below were recorded on 2026-09-16
+and remain future work. The 2026-09-18 UI decision implements capability-first
+recommendation and Windows-update guidance for the existing signed-in-user native
+Gateway without claiming session isolation. See [Welcome](#welcome) for the
+implemented recommendation behavior.
+
+- **Lifecycle owner:** Companion provisions and supervises the MXC session,
+  delegates preparation to packaging and onboarding to upstream OpenClaw, and
+  runs both inside the isolated agent identity. Preserve that identity and its
+  configuration across Companion restarts; stop on exit and deprovision only
+  on explicit removal. Do not re-provision or re-onboard on restart. See the
+  [verified MXC 0.8 contract and blockers](GATEWAY_SETUP_RESPONSIBILITIES.md#verified-mxc-08-contract-and-implementation-blockers).
+- **Distribution:** Gateway packages are available as x64 MSIX, ARM64 MSIX,
+  and an MSIX bundle. The future Store DLO is expected to point to the bundle,
+  subject to confirmation when the link is available. Let Windows select the
+  matching architecture from the bundle. The configured ARM64 development file
+  is not a product-wide architecture restriction.
+- **Primary eligibility check:** Windows version and enabled OS session
+  capabilities determine MXC native Gateway eligibility, not GPU or Local AI
+  eligibility. Evaluate this before recommending a local gateway path.
+  The shipped MXC 0.8 `wxc-exec --probe` exposes
+  `probes.isolationSessionAvailable`; the read-only local probe returned `true`.
+  A `false` result conflates native API errors with lack of support, so a richer
+  diagnostic contract is still needed. Read the OS build/revision separately if the probe
+  does not expose them. A process-containment tier alone is not session support:
+  require the session-specific capability result, not merely a high build
+  number or the presence of `IsolationProxy.exe`.
+- **Recommendation order:** Recommend the MXC native Gateway when the OS
+  supports sessions and the Gateway session integration is available. If the
+  OS is unsupported, first recommend updating Windows to a supported version,
+  with a capability recheck after updating. Present WSL as the secondary
+  fallback, not the initial recommendation. Do not automatically change the
+  Windows update channel or enable preview features.
+- **Actionable failures:** Distinguish an unsupported OS from a failed probe,
+  disabled/unavailable session features, and a missing Gateway package/runtime.
+  A probe error offers retry and diagnostics rather than asserting that an OS
+  update is required. Meeting a version floor does not guarantee that a
+  feature-gated OS API is enabled.
+
+The final MXC path must actually provision and run the Gateway inside an
+isolated session. Do not relabel the current ordinary-process MSIX path as MXC,
+or recommend it as isolated based only on a successful eligibility check.
 
 ## Overview
 
@@ -9,7 +246,7 @@ On first launch, the wizard appears only when there is no usable saved gateway c
 The setup flow walks users through:
 
 1. **Security notice** - Device-trust warning before setup choices
-2. **Welcome / Advanced** - Install app-owned WSL gateway or connect existing gateway from Settings
+2. **Welcome / Advanced** - Capability-gated native Gateway recommendation, optional WSL fallback, or connect existing gateway from Settings
 3. **Capabilities** - Recommended profile, inline Windows permission status, and install review
 4. **Local setup progress** - Fresh app-owned `OpenClawGateway` WSL installation
 5. **Gateway installed** - Explicit handoff from infrastructure setup to OpenClaw onboard
@@ -21,7 +258,44 @@ The setup flow no longer configures remote/manual gateways inline. The Welcome p
 ## Screen Details
 
 ### Welcome
-Displays the OpenClaw icon, app title, and a brief description. Choosing local gateway setup runs the read-only WSL readiness gate before the Capabilities page or its Local AI decision UI can open. WSL2 environment failures, including disabled hardware virtualization, are shown as WSL readiness failures and block both Local AI and non-Local-AI local gateway setup. The readiness dialog can retry with a fresh inspection after the user resolves the reported problem. If an app-owned local WSL gateway already exists, the primary CTA reads **Install new WSL Gateway** and confirmation warns that the current OpenClaw WSL gateway and distro will be deleted. If only an external gateway exists, the CTA remains **Set up locally** and confirmation explains that the external connection remains available in Connections.
+The page checks `wxc-exec --probe` asynchronously before recommending the first
+**Install a local native gateway** card. It requires the reported
+`probes.isolationSessionAvailable` boolean, not a process sandbox tier, build
+comparison or `IsolationProxy.exe` file. On success the native card is enabled,
+selected with the accent highlight and marked **Recommended**. An explicit
+WSL or existing-gateway selection is not overridden by a late probe result.
+Back navigation preserves those explicit choices even when native is supported.
+The badge sits to the right of the title. Successful capability status appears
+inside the card below its description, with a decorative green checkmark and a
+screen-reader announcement. The requested description is **Install a local,
+MXC contained OpenClaw gateway**; this copy change does not implement MXC
+session containment, which remains outstanding for the current signed-in-user runtime.
+If a resumed native setup profile's port has been taken by another process,
+Retry selects a new port without replacing the profile, credentials or identity.
+Unexpected launch/cleanup failures show an explicit failure and Retry action;
+Companion never takes over or stops the conflicting process.
+The WSL title is **Install a local WSL gateway**. Checking, unavailable and error
+messages appear in a compact, bordered support card below the gateway choices,
+outside the disabled native option so the Windows Update action stays usable.
+The support card is hidden when native capability is available.
+
+When capability is unavailable, **Open Windows Update** opens
+`ms-settings:windowsupdate`. Guidance names Insider build **26340.9212**, the
+baseline documented by the pinned MXC SDK, or a newer supported build. Reopening
+the page reruns the check; the Welcome page has no **Check again** button.
+Feature rollout varies; a negative native API result is not proof
+that the build alone is the cause. Probe failures or missing/invalid metadata
+offer retry/Companion repair rather than misleading update advice. Windows Server
+remains unsupported without invoking the native probe. No update-channel or
+feature-policy changes are automatic.
+
+The single-selection list always shows native first, WSL second and
+**Connect to an existing gateway** third. WSL is visible and selectable while
+native capability is being checked, when it succeeds, and when it fails or is
+unavailable. There is no **Other gateway options** expander. Page load starts the
+existing WSL/Local AI discovery; choosing WSL retains the fresh readiness gate
+and destructive-replacement confirmation before Capabilities. Native package
+setup independently rechecks capability before configuration.
 
 The gateway-choice scroll viewport owns the 560-DIP maximum width and stretches
 its list content. Keep the width constraint on the viewport, not on the nested

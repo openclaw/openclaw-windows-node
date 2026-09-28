@@ -136,13 +136,23 @@ public sealed class SetupPipeline
     private readonly List<SetupStep> _steps;
     private readonly List<SetupStep> _completedSteps = new();
     private readonly bool? _rollbackOnFailureOverride;
+    private readonly Func<SetupContext, string, StepResult, Task>? _beforeFailureRollback;
 
     public event EventHandler<StepProgressEvent>? StepProgress;
 
     public SetupPipeline(IEnumerable<SetupStep> steps, bool? rollbackOnFailureOverride = null)
+        : this(steps, rollbackOnFailureOverride, null)
+    {
+    }
+
+    internal SetupPipeline(
+        IEnumerable<SetupStep> steps,
+        bool? rollbackOnFailureOverride,
+        Func<SetupContext, string, StepResult, Task>? beforeFailureRollback)
     {
         _steps = steps.ToList();
         _rollbackOnFailureOverride = rollbackOnFailureOverride;
+        _beforeFailureRollback = beforeFailureRollback;
     }
 
     internal static bool ShouldRunTrayArtifactCleanup(PipelineResult result, bool dryRun)
@@ -244,6 +254,19 @@ public sealed class SetupPipeline
                 ctx.Logger.Error($"SetupPipeline: Step '{step.Id}' failed: {result.Message}");
             else
                 ctx.Logger.Warn($"SetupPipeline: Step '{step.Id}' failed: {result.Message}");
+
+            if (_beforeFailureRollback is not null)
+            {
+                try
+                {
+                    await _beforeFailureRollback(ctx, step.Id, result);
+                }
+                catch (Exception ex)
+                {
+                    // A diagnostic must not replace the original failure or prevent owned-resource rollback.
+                    ctx.Logger.Warn($"Pre-rollback diagnostic failed ({ex.GetType().Name}); continuing rollback");
+                }
+            }
 
             if (_rollbackOnFailureOverride ?? ctx.Config.RollbackOnFailure)
             {

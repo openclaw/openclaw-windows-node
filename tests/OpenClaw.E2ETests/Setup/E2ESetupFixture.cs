@@ -165,7 +165,10 @@ public sealed class E2ESetupFixture : IAsyncLifetime
             setupArguments.Add(candidatePackage);
         }
 
-        var exitCode = await Program.Main([.. setupArguments]);
+        var exitCode = await Program.RunWithFailureDiagnosticAsync(
+            [.. setupArguments],
+            (ctx, stepId, result) => GatewayRestartFailureDiagnostic.CaptureAsync(
+                ctx, stepId, result, Path.Combine(ArtifactDir, "gateway-restart-diagnostic.json")));
 
         if (exitCode != 0)
         {
@@ -361,14 +364,12 @@ public sealed class E2ESetupFixture : IAsyncLifetime
                 ["openclaw-setup"] = "true",
                 ["security-disclaimer"] = "true",
                 ["i-understand-this-is-personal-by-default-and-shared-multi-user-use-requires-lock-down-continue"] = "true",
-                ["setup-mode"] = "quickstart",
                 ["existing-config-detected"] = "true",
                 ["config-handling"] = "keep",
                 ["quickstart"] = "true",
                 ["model-auth-provider"] = "skip",
                 ["default-model"] = "__keep__",
                 ["select-channel-quickstart"] = "__skip__",
-                ["search-provider"] = "__skip__",
                 ["configure-skills-now-recommended"] = "false",
             },
             Settings = new

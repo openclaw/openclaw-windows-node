@@ -216,8 +216,8 @@ public sealed partial class ChatPage : Page
             settings.LegacyToken,
             settings.LegacyBootstrapToken,
             (record, candidate) =>
-                (App.Current as App)?.ManagedLocalPortProvenance
-                    ?.IsStrongCredentialAllowed(record, candidate) == true,
+                (App.Current as App)?.InteractiveEndpointAuthorizer
+                    ?.IsCredentialAllowed(record, candidate) == true,
             out var credential) &&
             credential is { IsBootstrapToken: false }
             ? ChatSurfaceResolver.BuildChatUrl(credential.GatewayUrl, credential.Token)
@@ -692,8 +692,8 @@ public sealed partial class ChatPage : Page
                 settings.LegacyToken,
                 settings.LegacyBootstrapToken,
                 (record, candidate) =>
-                    CurrentApp.ManagedLocalPortProvenance
-                        ?.IsStrongCredentialAllowed(record, candidate) == true,
+                    CurrentApp.InteractiveEndpointAuthorizer
+                        ?.IsCredentialAllowed(record, candidate) == true,
                 out var credential) ||
                 credential == null)
             {

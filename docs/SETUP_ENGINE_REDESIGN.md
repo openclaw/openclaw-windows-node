@@ -18,16 +18,75 @@ timing explanation, not an established cause of every refusal. Observed service
 states differ: local diagnostics captured `activating/auto-restart` with no
 MainPID, while hosted generic refusals captured an `active/running` unit and a
 live PID. Neither snapshot establishes the admission-time owner-lease predicate.
-`SetupWizardRunner` recognizes only the exact
-serving-owner refusal, waits for verified managed endpoint ownership using the
-existing bounded provenance probe, and retries the normal CLI restart once.
+`SetupWizardRunner` recognizes only the exact serving-owner refusal or the
+combination of typed state-database coordinator contention and the exact
+restart-intent-recording refusal. It waits for verified managed endpoint
+ownership using the existing bounded provenance probe, then retries the normal
+guarded CLI restart once.
 The probe allows up to 30 one-second retry delays, plus probe duration, for
 `NoListener` and `UnknownListener` tagged `ListenerSnapshotChanged`. Other
 unknown/conflicting listeners, other restart errors, and a repeated refusal still
 fail setup. Listener provenance does not prove owner-lease or coordinator
-readiness; the retried CLI command retains those guards. Restart-intent recording
-contention is a separate failure and is not retried here. There is no direct
+readiness; the retried CLI command retains those guards. There is no direct
 systemd restart fallback or ownership bypass.
+
+The separate **native Gateway MSIX** Welcome path does not use
+`SetupStepFactory.BuildDefaultSteps()`. `NativeGatewaySetupService` owns its
+dedicated-profile and package preparation. `NativeGatewaySetupSession` owns
+staged-record runtime authorization, reload suspension/restoration, retry/cancel,
+authenticated health/config gates, and final registry publication.
+`WizardPage` is the single hosted WinUI wizard for both WSL and native:
+`wizard.start/next/cancel` transport, upstream prompts, and provider/model cards
+are not duplicated. Native uses the upstream `installDaemon: false` contract.
+`NativeGatewayPackageResolver`
+checks Windows package registration and package-qualified aliases.
+`NativeGatewayMsixInstaller` opens the
+[OpenClaw Gateway Microsoft Store listing](https://apps.microsoft.com/detail/9nv70lv3d6xc?hl=en-US&gl=US)
+when a package is not installed. Microsoft Store owns architecture selection,
+installation consent and deployment; no local MSIX path is required.
+`NativeGatewayPackageIdentity` pins the exact Store name/publisher pair and retains
+the original development identity for existing installations. Multiple matching
+registrations fail explicitly for new setup. Existing runtime profiles resolve only
+their saved family, allowing both packages to coexist without an implicit migration.
+`NativeGatewayPackageAcquisition` automatically opens it once only for missing
+registration, then waits up to five minutes for verified package readiness.
+Cancellation stops the wait, not Windows deployment. Repair errors and timeouts
+stay visible, with explicit retry rather than repeated installer launches.
+Native setup shares the capability profiles and Windows permissions page with
+WSL but skips WSL/Local AI/Tailscale installation review and probes. The native
+progress page uses shared spinner/checkmark rows and automatically enters the
+Gateway wizard after preparing its runtime. Finalization applies the selected
+Gateway command allowlist before config/health gates, then persists only the
+Companion node/capability settings. Completion does not claim node pairing.
+`NativeGatewaySetupHost` runs captured `clawctl setup`, config validation, and
+health commands, plus an explicitly requested profile-scoped recovery terminal.
+It never launches `openclaw onboard` or WSL.
+`NativeGatewayRuntime` in the Connection project owns the gateway process.
+This path is non-isolated and UI-only. Companion never downloads an MSIX itself
+or bypasses Microsoft Store installation.
+Existing headless setup arguments continue to select the WSL pipeline.
+See [Native Gateway MSIX](ONBOARDING_WIZARD.md#native-gateway-msix-not-isolated)
+for consent, lifecycle, retry, and acquisition boundaries.
+
+See [Gateway setup responsibilities](GATEWAY_SETUP_RESPONSIBILITIES.md) for the
+Gateway packaging responsibility matrix, its comparison with WSL provisioning,
+and the decided Companion-owned MXC lifecycle. The required isolated path
+preserves identity/configuration across restarts, stops on exit, and deprovisions
+only on explicit removal. Its package activation and listener-provenance contracts
+remain blocked pending integration proof; the non-isolated runtime is not a
+substitute.
+
+The [Welcome recommendation policy](ONBOARDING_WIZARD.md#welcome) now checks
+`wxc-exec --probe` session capability before recommending the existing native
+Gateway. `NativeGatewaySetupEligibility` owns admission and selection policy.
+Unavailable capability offers Windows Update with the pinned SDK's Insider
+baseline (26340.9212); failed probes offer retry/repair instead. WSL is always
+visible as the second option after native, with existing-gateway connection third.
+Explicit WSL and existing-gateway choices survive late native probe results. Welcome has no
+manual recheck button; reopening the page checks again. The separate isolation warning/checkbox is removed by the
+2026-09-18 product decision; general security consent remains. This is not
+session provisioning. Gateway distribution includes x64, ARM64 and MSIX bundle
+artifacts, but the temporary development installer remains ARM64-only.
 
 > **Status note (2026-07-06):** Current default setup includes `WindowsNodeBootstrapContextStep`, which injects Windows-node context into the WSL workspace `AGENTS.md` after onboarding.
 
@@ -112,14 +171,12 @@ rerun setup with a supported new name.
     "openclaw-setup": "true",
     "security-disclaimer": "true",
     "i-understand-this-is-personal-by-default-and-shared-multi-user-use-requires-lock-down-continue": "true",
-    "setup-mode": "quickstart",
     "existing-config-detected": "true",
     "config-handling": "keep",
     "quickstart": "true",
     "model-auth-provider": "skip",
     "default-model": "__keep__",
     "select-channel-quickstart": "__skip__",
-    "search-provider": "__skip__",
     "configure-skills-now-recommended": "false"
   },
   "LogLevel": "trace",
@@ -298,6 +355,25 @@ public abstract class SetupStep
 public sealed record StepResult(StepOutcome Outcome, string? Message = null, Exception? Exception = null);
 ```
 
+### Headless E2E guarded-restart diagnostics
+
+The disposable `E2ESetupFixture` runs the same CLI entry point with an internal
+failure observer. If the wizard step fails specifically at the guarded
+post-wizard Gateway restart, the observer awaits a fixed, read-only
+`systemctl --user show` probe **before** the normal owned-fixture rollback.
+The resulting `gateway-restart-diagnostic.json` contains only an allowlisted
+refusal category and coarse unit/state/PID-presence/start-identity-availability
+facts, plus allowlisted service result and bounded exit code/status. Failed or
+timed-out probes produce an explicit probe status, not raw
+command output. The original setup failure and rollback are unchanged.
+
+The public Gateway CLI does not expose the rejected owner-lease predicate,
+so `ownerPredicate=not_exposed_by_gateway_cli` is intentional. An
+`unverified` serving owner must not be interpreted as coordinator contention
+without the separately observed typed contention error. This fixture-only
+diagnostic neither retries the guarded restart nor preserves the distro after
+rollback.
+
 ---
 
 ## Key Components
@@ -356,7 +432,8 @@ The WinUI app is a **thin shell** - no business logic, just rendering pipeline s
 
 **WelcomePage**
 - OpenClaw icon + "OpenClaw Setup" title bar
-- Install app-owned WSL gateway (recommended) or connect to existing gateway
+- Capability-checked native Gateway first and recommended; Windows Update/retry guidance when unavailable
+- Collapsed WSL alternative or visible connection to an existing gateway
 - Replacement prompt when an app-owned WSL gateway already exists
 
 **CapabilitiesPage**

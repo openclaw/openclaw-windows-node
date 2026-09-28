@@ -26,6 +26,7 @@ public sealed partial class CapabilitiesPage : Page
     private bool _suppressLocalAiSelection;
     private bool _suppressLocalAiConsent;
     private bool _skipPermissions;
+    private bool _nativeGateway;
     private bool _skipWizardWithoutLocalAi;
     private bool _localAiSelectionEligible;
     private bool _localAiNetworkingConsentRequired;
@@ -78,6 +79,7 @@ public sealed partial class CapabilitiesPage : Page
     {
         var args = e.Parameter as CapabilitiesPageArgs;
         _config = args?.Config ?? e.Parameter as SetupConfig ?? new SetupConfig();
+        _nativeGateway = args?.NativeGateway == true;
         // The tray always registers device.info/status with Node Mode. Keep the
         // setup declaration and gateway allowlist aligned with that runtime contract.
         _config.Capabilities.Device = true;
@@ -103,6 +105,15 @@ public sealed partial class CapabilitiesPage : Page
         _setupWindow = SetupWindow.Active;
         if (_setupWindow is not null)
             _setupWindow.Activated += SetupWindow_Activated;
+        if (_nativeGateway)
+        {
+            GatewayTitle.Text = SetupLocalization.GetString("Onboarding_Native_Title.Text");
+            LocalAiProfileNote.Visibility = Visibility.Collapsed;
+            WslReviewContent.Visibility = Visibility.Collapsed;
+            NativeReviewContent.Visibility = Visibility.Visible;
+            GoToStep(1);
+            return;
+        }
         TailscaleToggle.IsOn = _config.Tailscale.Enabled;
         TailscaleTrustAuthToggle.IsOn = _config.Tailscale.TrustTailscaleAuth;
         TailscaleAuthModeSelector.SelectedIndex = _config.Tailscale.AuthMode == TailscaleAuthMode.AuthKey ? 1 : 0;
@@ -173,9 +184,13 @@ public sealed partial class CapabilitiesPage : Page
         {
             1 => "What should your agent be able to do?",
             2 => "Windows permissions",
-            _ => "What setup will install on this PC",
+            _ => _nativeGateway
+                ? SetupLocalization.GetString("Onboarding_Native_ReviewTitle")
+                : "What setup will install on this PC",
         };
-        PrimaryButton.Content = step == 3 ? "Install & set up" : "Next";
+        PrimaryButton.Content = step == 3
+            ? _nativeGateway ? SetupLocalization.GetString("Onboarding_Native_Start.Content") : "Install & set up"
+            : "Next";
         // Back is always available — from step 1 it returns to the Welcome screen.
         BackButton.Visibility = Visibility.Visible;
         UpdatePrimaryButtonState();
@@ -214,7 +229,10 @@ public sealed partial class CapabilitiesPage : Page
                 break;
             default:
                 WriteCapabilities();
-                SetupWindow.Active?.NavigateToProgress();
+                if (_nativeGateway)
+                    SetupWindow.Active?.NavigateToNativeGatewaySetup();
+                else
+                    SetupWindow.Active?.NavigateToProgress();
                 break;
         }
     }
@@ -253,6 +271,11 @@ public sealed partial class CapabilitiesPage : Page
             }
         }
         config.Settings.ApplyCapabilities(caps);
+        if (_nativeGateway)
+        {
+            config.Settings.EnableNodeMode = true;
+            return;
+        }
         config.Tailscale.Enabled = TailscaleToggle.IsOn == true;
         config.Tailscale.TrustTailscaleAuth = TailscaleTrustAuthToggle.IsOn == true;
         config.Tailscale.AuthMode = TailscaleAuthModeSelector.SelectedIndex == 1
@@ -271,6 +294,8 @@ public sealed partial class CapabilitiesPage : Page
 
     private void ApplySetupReviewSummary(SetupConfig config)
     {
+        if (_nativeGateway)
+            return;
         var summary = SetupReviewSummaryBuilder.Build(
             config,
             SetupWindow.Active?.DataDir,
@@ -800,7 +825,7 @@ public sealed partial class CapabilitiesPage : Page
         // has a way out: turning Local AI off satisfies the LocalAiToggle.IsOn != true branch
         // below immediately, without needing Continue to advance on incomplete information.
         PrimaryButton.IsEnabled =
-            _step != 3 ||
+            _nativeGateway || _step != 3 ||
             (!_localAiRecoveryOnly && LocalAiToggle.IsOn != true) ||
             (LocalAiToggle.IsOn == true &&
              _localAiSelectionEligible &&
@@ -967,6 +992,12 @@ public sealed partial class CapabilitiesPage : Page
         var n = _toggles.Values.Count(t => t.IsOn);
         return $"{n} of {Capabilities.Length} capabilities";
     }
+
+    internal static string DescribeCapabilities(CapabilitiesConfig capabilities) =>
+        string.Join(", ", Capabilities
+            .Where(capability => typeof(CapabilitiesConfig).GetProperty(capability.Key)?.GetValue(capabilities) is true)
+            .Select(capability => capability.Name)
+            .Append("Device info and status"));
 
     private string PermissionSummary()
     {

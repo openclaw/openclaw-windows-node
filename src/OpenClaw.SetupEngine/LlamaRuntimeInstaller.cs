@@ -1,4 +1,5 @@
 using OpenClaw.Shared.Inference.Catalog;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
@@ -245,9 +246,7 @@ internal sealed class WindowsLlamaRuntimeInspector : ILlamaRuntimeInspector
         using var process = new Process { StartInfo = startInfo };
         try
         {
-            if (!process.Start())
-                return new LlamaRuntimeInspection(false, null, "llama-server --version did not start.");
-
+            process.Start();
             Task<string> stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
             Task<string> stderr = process.StandardError.ReadToEndAsync(cancellationToken);
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
@@ -269,7 +268,7 @@ internal sealed class WindowsLlamaRuntimeInspector : ILlamaRuntimeInspector
             KillProcessTree(process);
             return new LlamaRuntimeInspection(false, null, "llama-server --version timed out.");
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException or Win32Exception)
         {
             return new LlamaRuntimeInspection(false, null, $"llama-server --version failed: {exception.Message}");
         }

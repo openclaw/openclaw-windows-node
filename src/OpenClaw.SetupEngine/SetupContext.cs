@@ -263,6 +263,41 @@ public sealed class TraySettingsConfig
     /// </summary>
     public void MergeIntoSettingsFile(string settingsPath)
     {
+        MergeSettingsFile(settingsPath, settings =>
+        {
+            ApplyCapabilitySettings(settings);
+            settings["AutoStart"] = AutoStart;
+
+            const string autoRepairKey = "EnableManagedLocalGatewayAutoRepair";
+            if (EnableManagedLocalGatewayAutoRepair is { } configuredAutoRepair)
+                settings[autoRepairKey] = configuredAutoRepair;
+            else if (!settings.ContainsKey(autoRepairKey))
+                settings[autoRepairKey] = true;
+        });
+    }
+
+    /// <summary>
+    /// Atomically merges only node mode and capability selections, preserving all
+    /// other settings without introducing WSL setup defaults or gateway credentials.
+    /// </summary>
+    public void MergeCapabilitiesIntoSettingsFile(string settingsPath)
+        => MergeSettingsFile(settingsPath, ApplyCapabilitySettings);
+
+    private void ApplyCapabilitySettings(Dictionary<string, object> settings)
+    {
+        settings["EnableNodeMode"] = EnableNodeMode;
+        settings["NodeSystemRunEnabled"] = NodeSystemRunEnabled;
+        settings["NodeCanvasEnabled"] = NodeCanvasEnabled;
+        settings["NodeScreenEnabled"] = NodeScreenEnabled;
+        settings["NodeCameraEnabled"] = NodeCameraEnabled;
+        settings["NodeLocationEnabled"] = NodeLocationEnabled;
+        settings["NodeBrowserProxyEnabled"] = NodeBrowserProxyEnabled;
+        settings["NodeTtsEnabled"] = NodeTtsEnabled;
+        settings["NodeSttEnabled"] = NodeSttEnabled;
+    }
+
+    private static void MergeSettingsFile(string settingsPath, Action<Dictionary<string, object>> applySettings)
+    {
         Dictionary<string, JsonElement>? existing = null;
 
         if (File.Exists(settingsPath))
@@ -278,20 +313,6 @@ public sealed class TraySettingsConfig
             }
         }
 
-        var setupOwnedSettings = new Dictionary<string, object>
-        {
-            ["EnableNodeMode"] = EnableNodeMode,
-            ["AutoStart"] = AutoStart,
-            ["NodeSystemRunEnabled"] = NodeSystemRunEnabled,
-            ["NodeCanvasEnabled"] = NodeCanvasEnabled,
-            ["NodeScreenEnabled"] = NodeScreenEnabled,
-            ["NodeCameraEnabled"] = NodeCameraEnabled,
-            ["NodeLocationEnabled"] = NodeLocationEnabled,
-            ["NodeBrowserProxyEnabled"] = NodeBrowserProxyEnabled,
-            ["NodeTtsEnabled"] = NodeTtsEnabled,
-            ["NodeSttEnabled"] = NodeSttEnabled
-        };
-
         var settings = new Dictionary<string, object>();
         if (existing != null)
         {
@@ -299,14 +320,7 @@ public sealed class TraySettingsConfig
                 settings[kvp.Key] = kvp.Value;
         }
 
-        foreach (var kvp in setupOwnedSettings)
-            settings[kvp.Key] = kvp.Value;
-
-        const string autoRepairKey = "EnableManagedLocalGatewayAutoRepair";
-        if (EnableManagedLocalGatewayAutoRepair is { } configuredAutoRepair)
-            settings[autoRepairKey] = configuredAutoRepair;
-        else if (!settings.ContainsKey(autoRepairKey))
-            settings[autoRepairKey] = true;
+        applySettings(settings);
 
         Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
         var json = JsonSerializer.Serialize(settings, SetupConfig.JsonWriteOptions);

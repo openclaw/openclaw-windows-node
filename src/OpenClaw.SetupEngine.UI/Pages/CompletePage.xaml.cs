@@ -52,6 +52,23 @@ public sealed partial class CompletePage : Page
                     SubtitleText.Text = "OpenClaw and Local AI are ready";
                     LaunchButton.Content = "Open chat";
                 }
+                if (args.NativeGatewayUrl is { } nativeUrl)
+                {
+                    // The normal connection manager starts the runtime and pairs the node
+                    // after this handoff. Completed setup is not a live node connection.
+                    GatewaySummaryTitle.Text = SetupLocalization.GetString("Onboarding_Native_ConfiguredTitle");
+                    GatewaySummaryText.Text = nativeUrl;
+                    DevicePairedSummaryCard.Visibility = Visibility.Collapsed;
+                    LocalAiSummaryCard.Visibility = Visibility.Collapsed;
+                    CapabilitySummaryText.Text = SetupLocalization.Format(
+                        "Onboarding_Native_CapabilitySummary", args.NativeCapabilitySummary);
+                    NativeFeaturesNote.Visibility = Visibility.Visible;
+                    NodeModeBanner.Visibility = Visibility.Collapsed;
+                    SubtitleText.Text = SetupLocalization.Format("Onboarding_Native_Configured", nativeUrl);
+                    SubtitleText.TextWrapping = TextWrapping.Wrap;
+                    SubtitleText.TextAlignment = TextAlignment.Center;
+                    LaunchButton.Content = SetupLocalization.GetString("Onboarding_Native_Open.Content");
+                }
             }
             else
             {

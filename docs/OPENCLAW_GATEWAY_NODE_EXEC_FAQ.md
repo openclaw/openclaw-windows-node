@@ -566,6 +566,16 @@ direct-argv executable rather than silently adding a shell after approval.
 **Evidence:** direct-argv launch and batch-file rejection are in
 [`LocalCommandRunner.cs`](https://github.com/openclaw/openclaw-windows-node/blob/d7d153ca5d409487e06ef584b1de1184520e90e6/src/OpenClaw.Shared/LocalCommandRunner.cs#L190-L235).
 
+## How does local command output finish draining?
+
+`LocalCommandRunner` observes process exit separately from stdout/stderr EOF.
+After exit, it awaits both reader EOF signals without blocking a thread-pool
+worker. This avoids competing with the output callbacks during concurrent runs.
+The existing 500 ms drain deadline still bounds commands whose background
+children inherit the pipes. If EOF has not arrived by that deadline, the runner
+logs a warning and returns the output captured so far; descendant output after
+the deadline is not guaranteed.
+
 ## Can OpenClaw use `execve` or direct process execution?
 
 The low-level execution layer can execute argv directly. The user-facing

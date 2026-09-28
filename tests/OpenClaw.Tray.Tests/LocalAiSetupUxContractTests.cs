@@ -112,7 +112,7 @@ public sealed class LocalAiSetupUxContractTests
         string root = TestRepositoryPaths.GetRepositoryRoot();
         string source = File.ReadAllText(Path.Combine(
             root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WelcomePage.xaml.cs"));
-        string method = ExtractMethod(source, "DetectLocalAiAvailabilityAsync");
+        string method = ExtractMethod(source, "private async Task DetectLocalAiAvailabilityAsync");
 
         Assert.Contains("LocalInferenceEligibility.Evaluate(hardware);", method);
         Assert.DoesNotContain("config.LocalAi.SelectedModelId", method);
