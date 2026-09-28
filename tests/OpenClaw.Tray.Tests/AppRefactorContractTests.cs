@@ -991,7 +991,12 @@ public sealed class AppRefactorContractTests
 
         Assert.Contains("AutomationProperties.Name=\"{Binding RemoveRuleAutomationName}\"", xaml);
         Assert.Contains("AutomationProperties.AutomationId=\"{Binding RemoveRuleAutomationId}\"", xaml);
-        Assert.Contains("RemoveRuleAutomationName = $\"Remove allowlist entry {rule.Pattern}\"", codeBehind);
+        Assert.Contains("\"PermissionsPage_ExecRuleScope_Wildcard\"", codeBehind);
+        Assert.Contains("\"PermissionsPage_ExecRuleScope_Main\"", codeBehind);
+        Assert.Contains("DisplayText = $\"{rule.Pattern} ({scopeLabel})\"", codeBehind);
+        Assert.Contains("\"PermissionsPage_RemoveRuleAutomationNameFormat\"", codeBehind);
+        Assert.Contains("\"PermissionsPage_ExecRuleAction_Inactive\"", codeBehind);
+        Assert.Contains("\"SystemFillColorNeutralBrush\"", codeBehind);
         Assert.Contains("RemoveRuleAutomationId = $\"RemoveExecPolicyRuleButton_{index}\"", codeBehind);
     }
 

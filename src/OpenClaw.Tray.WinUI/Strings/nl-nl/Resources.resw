@@ -3464,6 +3464,18 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
   <data name="PermissionsPage_RulesCount_ManyFormat" xml:space="preserve">
     <value>{0} vermeldingen</value>
   </data>
+  <data name="PermissionsPage_ExecRuleScope_Main" xml:space="preserve">
+    <value>deze agent</value>
+  </data>
+  <data name="PermissionsPage_ExecRuleScope_Wildcard" xml:space="preserve">
+    <value>alle agents</value>
+  </data>
+  <data name="PermissionsPage_RemoveRuleAutomationNameFormat" xml:space="preserve">
+    <value>Vermelding {1} uit de toestaanlijst voor {0} verwijderen</value>
+  </data>
+  <data name="PermissionsPage_ExecRuleAction_Inactive" xml:space="preserve">
+    <value>inactief</value>
+  </data>
   <data name="PermissionsPage_Allowlist_NoConfig" xml:space="preserve">
     <value>No allowlist data available. Connect to a gateway first.</value>
   </data>

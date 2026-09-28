@@ -790,6 +790,24 @@ public class MxcConfigBuilderTests
         Assert.Contains("canonical argv", error.Message, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("/R", "echo hi")]
+    [InlineData("/r", "prog", "hello&calc")]
+    [InlineData("/Recho hi")]
+    [InlineData("/rcommand")]
+    [InlineData("/d/s/recho hi")]
+    public void Build_DirectArgv_CmdSlashRCommandMode_FailsClosed(params string[] tail)
+    {
+        string[] argv = [ExpectedSystemCmdExe(), .. tail];
+        using var argsDoc = JsonDocument.Parse(JsonSerializer.Serialize(new { argv }));
+        var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+        var error = Assert.Throws<NotSupportedException>(
+            () => BuildConfig(request, pathEnvVar: ""));
+
+        Assert.Contains("canonical argv", error.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void Build_CmdBootstrapRefsWithDelayedExpansionSyntax_FailsClosed()
     {

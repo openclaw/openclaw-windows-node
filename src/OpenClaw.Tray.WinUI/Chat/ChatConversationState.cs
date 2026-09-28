@@ -481,6 +481,18 @@ internal sealed class ChatConversationState
             return GetOrCreateTimelineLocked(threadId).PendingPermission?.RequestId;
     }
 
+    internal bool CanRespondToPermission(string threadId, string requestId, string action)
+    {
+        lock (_gate)
+        {
+            var pending = GetOrCreateTimelineLocked(threadId).PendingPermission;
+            return pending is not null
+                && string.Equals(pending.RequestId, requestId, StringComparison.Ordinal)
+                && ChatPermissionActionKeys.NormalizeActions(pending.Actions)
+                    .Contains(action, StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
     internal void ActivateHistoryGeneration(long generation)
     {
         lock (_gate)

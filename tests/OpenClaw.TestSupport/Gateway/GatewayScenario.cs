@@ -206,7 +206,7 @@ public sealed class GatewayScenario
         type = GatewayProtocolContract.HelloOkType,
         protocol = ProtocolVersion,
         server = new { version = "fixture-1", connId = connectionId },
-        features = new { methods = ReadMethods, events = new[] { "connect.challenge", "sessions.changed" } },
+        features = new { methods = ReadMethods, events = new[] { "connect.challenge", "sessions.changed", "agent" } },
         snapshot = new
         {
             presence = Array.Empty<object>(), health = _reads["health"],
@@ -220,6 +220,8 @@ public sealed class GatewayScenario
 
     internal object Respond(string method, JsonElement parameters)
     {
+        if (method == "exec.approval.resolve")
+            return ResolveApproval(parameters);
         if (IsWrite(method))
             throw new FixtureRequestException("FIXTURE_READ_ONLY", "Fixture Gateway is read-only. This operation is not executed.");
         return method switch
@@ -233,6 +235,16 @@ public sealed class GatewayScenario
             _ when _reads.ContainsKey(method) => Read(method, parameters),
             _ => throw new FixtureRequestException("METHOD_NOT_FOUND", "Unknown fixture Gateway method.", unexpected: true)
         };
+    }
+
+    private static object ResolveApproval(JsonElement p)
+    {
+        ValidateProperties(p, "id", "decision");
+        _ = RequiredString(p, "id");
+        var decision = RequiredString(p, "decision");
+        if (decision is not ("allow-once" or "allow-always" or "deny"))
+            throw new FixtureRequestException("INVALID_PARAMS", "Unsupported approval decision.");
+        return new { ok = true, decision };
     }
 
     private object ListSessions(JsonElement p)

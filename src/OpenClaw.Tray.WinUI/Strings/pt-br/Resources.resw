@@ -3482,6 +3482,18 @@ Os comandos são bloqueados enquanto o sandboxing está indisponível porque o b
   <data name="PermissionsPage_RulesCount_ManyFormat" xml:space="preserve">
     <value>{0} entradas</value>
   </data>
+  <data name="PermissionsPage_ExecRuleScope_Main" xml:space="preserve">
+    <value>este agente</value>
+  </data>
+  <data name="PermissionsPage_ExecRuleScope_Wildcard" xml:space="preserve">
+    <value>todos os agentes</value>
+  </data>
+  <data name="PermissionsPage_RemoveRuleAutomationNameFormat" xml:space="preserve">
+    <value>Remover a entrada {1} da lista de permissões de {0}</value>
+  </data>
+  <data name="PermissionsPage_ExecRuleAction_Inactive" xml:space="preserve">
+    <value>inativa</value>
+  </data>
   <data name="PermissionsPage_Allowlist_NoConfig" xml:space="preserve">
     <value>No allowlist data available. Connect to a gateway first.</value>
   </data>
