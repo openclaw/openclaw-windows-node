@@ -7,14 +7,19 @@ This document describes the gateway connection system - how the tray app discove
 ### Workspace and Settings companion
 
 The normal foreground entry point is `WorkspaceWindow`, a native WinUI 3 shell
-with Reactor chat, assistant selection, pinned pages, sessions, and an Owner
+with Reactor chat, assistant selection, Home, sessions, and an Owner
 menu. Notifications is an independent footer action immediately beside Owner.
 There is no Settings item in the Workspace rail.
 The rail is the same native `NavigationView` as the companion, using its existing
 colourful sidebar SVG assets via direct `ImageIcon` controls. Native menu items
+retain their icon-column sizing; the pane uses the expanded theme background
+without a second acrylic fill. Session-row selection is retained by original
+session key across list refresh, pane toggling, and companion refocus.
+Home explicitly selects Home without discarding the current chat draft.
+Native menu items
 own selection and keyboard behavior; assistant, sessions, and footer controls
-use the pane's header and footer slots. Sessions follow the page items in the
-same native scrolling menu with a matching section header. Owner stays fixed
+use the pane's header and footer slots. Sessions follow Home in the
+same native scrolling menu with a native section header. Owner stays fixed
 in the footer. Native WinUI `TitleBar` owns title/icon layout and typography.
 `NavigationView.PaneHeader` puts the pane-collapse button and sidebar-right
 Back/Forward in one row, with the assistant selector below. Its final dropdown
@@ -22,11 +27,26 @@ option invokes the existing New conversation workflow and restores the selected
 agent rather than persisting the action as an agent. It remains disabled while
 disconnected or creating a session. The native ComboBox uses transparent/subtle
 chrome. Sessions retains its independent subtle Add button.
-In compact mode, a native first menu item reopens the pane and Notifications
-remains available as an icon-only footer menu item. Both share native navigation
-icon alignment; there is no floating control over the destination items.
-The pane toggle retains a 40 DIP target and 16 DIP glyph in both states. Compact
-action items present native buttons without navigation icon scaling. All footer
+NavigationView has zero compact width. Home's icon is inline native content
+so it is not clipped by WinUI's zero-width icon column. The mode stays `Left`. Home,
+sessions, and the entire footer disappear, and content fills the vacated width.
+The native 160ms slide goes directly to zero width; `PaneClosed` hides offscreen
+controls without a second layout step. Native motion preferences still apply.
+Both toggle states share a stable overlay position outside the animated pane,
+so native focus restoration and intermediate layout cannot move the target.
+A floating-style subtle reopen button reserves a dedicated 56 DIP row at
+the content's top-left below the titlebar, never covering hosted hit targets.
+The pane toggle retains a 40 DIP target and 16 DIP glyph in both states; focus
+moves to the surviving toggle. Pane changes do not remount chat or reset drafts.
+The companion uses a native TitleBar titled OpenClaw Settings with shared claw
+artwork. Search, Back, and Forward live beside the toggle in its stable sidebar
+toolbar. The native pane reserves 56 DIP above its items, including in compact mode.
+Connection status and notifications share a footer bar above Diagnostics and
+Settings. They reuse the same status projection, badge, flyouts, and actions;
+compact mode stacks their icon-only targets instead of hiding either action.
+Search retains the existing catalog and keyboard shortcuts through a native
+flyout. Both Frame history stacks prune unavailable gateway/diagnostics routes.
+All footer
 buttons use native `SubtleButtonStyle` state brushes, and Owner uses the native
 `PersonPicture` avatar rather than a font glyph.
 
@@ -39,22 +59,27 @@ Generic Workspace refocus preserves the current page; explicit page/session
 links still navigate. `agent:<id>:workspace` retains its original agent-files
 meaning and is not the main Workspace route.
 
-`WorkspaceNavigation` owns all 22 approved content routes and their section
-identity. `WorkspaceNavigationHistory` owns Back/Forward history, retaining item
-identity and clearing forward entries only on a different destination. Existing
-Sessions, Skills, Usage, Notifications, and Cron pages keep
-their gateway workflows. `WorkspaceProjection` uses real gateway agent/session
-identities. `WorkspacePageRenderer` constructs native controls using theme
-resources; no exported prototype HTML or reference screenshots are shipped.
+`WorkspaceNavigation` owns only Home and the footer Notifications destination.
+The Home/Sessions-only user correction supersedes the expanded prototype.
+`WorkspaceNavigationHistory` owns Back/Forward history and clears forward
+entries only on a different destination. All 20 deprecated `workspace:` links
+(including agents, dashboards, systems, automations, plugins, detail pages,
+sessions, and more) explicitly return Home without creating obsolete history
+entries. Unknown Workspace routes are not accepted as compatibility aliases.
+Unprefixed companion routes, including `cron`, `sessions`, `skills`, `usage`,
+and `agent:<id>:workspace`, are unchanged.
 
-| Workspace surface | Backed behavior and unavailable data |
-| --- | --- |
-| Home and Agents | Existing Reactor chat, real agent inventory, session creation/history, agent configuration and files. Disconnected state directs users to Connection. |
-| Dashboards and detail | Existing gateway dashboard, Usage, and Activity links. No native dashboard catalog or project/task metrics API is available, so these sections explicitly say unavailable instead of showing prototype fixtures. |
-| Systems and detail | Real local machine/OS, gateway connection status, and reported nodes. Permissions, pairing, and device links reuse companion pages. Unreported utilization metrics are not invented. |
-| Automations and detail | Existing Cron list/editor and Add/Update submissions. Save is gated on connection and transport acceptance; it does not claim persistence before gateway confirmation. |
-| Plugins | Installed/Discover native tabs explain unavailable plugin inventory/catalog/mutation APIs. Install is visibly disabled with a reason; Config, Skills, and documentation remain usable. |
-| More and other routes | Existing setup, command search, tray, notifications, usage, sessions, skills, activity, companion, and portal owners. Tasks/Meetings explicitly report the absence of a native workflow. |
+The removed `WorkspaceContentPage` and `WorkspacePageRenderer` no longer host
+placeholder management pages. Native Cron keeps its existing companion
+list/editor and gateway submissions, without a Workspace-specific layout.
+`WorkspaceProjection` still supplies real assistant and conversation identities.
+Home uses the existing Reactor chat and session creation/history; disconnected
+state directs users to Connection. Notifications uses the existing notification
+service. Owner Settings provides access to the full companion catalog, while
+Owner Usage and Pair device keep their deep links. Owner Get apps opens the
+existing platforms documentation directly, without a placeholder Apps page.
+No underlying management
+APIs, companion pages, or capabilities were removed.
 
 The connection event timeline remains an independent `ConnectionStatusWindow`.
 Its initial position is aligned to the right of the active main window's monitor

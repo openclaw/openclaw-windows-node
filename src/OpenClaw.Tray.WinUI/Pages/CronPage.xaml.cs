@@ -34,28 +34,11 @@ public sealed partial class CronPage : Page
     private string? _lastHistoryRenderSignature = null;
     private CancellationTokenSource? _infoDismissCts = null; // auto-dismiss timer for InfoBar
     private readonly AsyncListLoadingState _cronLoading = new();
-    private Action<string?>? _openWorkspaceEditor;
-    private Action? _closeWorkspaceEditor;
-    private bool _workspaceDetail;
-    private bool _workspaceEditorPending;
-    private string? _workspaceJobId;
     private bool _submittingJob;
-
-    internal void UseWorkspaceLayout(bool detail, string? jobId, Action<string?> openEditor, Action closeEditor)
-    {
-        _openWorkspaceEditor = openEditor;
-        _closeWorkspaceEditor = closeEditor;
-        _workspaceDetail = detail;
-        _workspaceEditorPending = detail;
-        _workspaceJobId = jobId;
-        PageHeading.Text = WorkspaceWindow.Text(detail ? "AutomationDetail" : "Automations");
-        NewJobButton.Visibility = detail ? Visibility.Collapsed : Visibility.Visible;
-    }
 
     public CronPage()
     {
         InitializeComponent();
-        Loaded += (_, _) => OpenPendingWorkspaceEditor();
         Unloaded += (_, _) =>
         {
             if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
@@ -132,9 +115,6 @@ public sealed partial class CronPage : Page
     {
         switch (e.PropertyName)
         {
-            case nameof(AppState.Status) when _openWorkspaceEditor is not null:
-                Initialize();
-                break;
             case nameof(AppState.CronList):
                 if (_appState!.CronList.HasValue) UpdateFromGateway(_appState.CronList.Value);
                 break;
@@ -318,11 +298,6 @@ public sealed partial class CronPage : Page
     {
         if (!_cronLoading.CanEdit) return;
         if (CurrentApp.GatewayClient == null) { ShowDisconnected(); return; }
-        if (_openWorkspaceEditor is not null && !_workspaceDetail)
-        {
-            _openWorkspaceEditor(null);
-            return;
-        }
         _editingJobId = null;
         RestoreFormFromInline(); // ensure form is back in its home position
         ResetForm();
@@ -339,11 +314,6 @@ public sealed partial class CronPage : Page
         if (CurrentApp.GatewayClient == null) { ShowDisconnected(); return; }
         var vm = _jobs.Find(j => j.Id == jobId);
         if (vm == null || _runningJobIds.Contains(jobId)) return;
-        if (_openWorkspaceEditor is not null && !_workspaceDetail)
-        {
-            _openWorkspaceEditor(jobId);
-            return;
-        }
 
         _editingJobId = jobId;
         FormTitle.Text = LocalizationHelper.GetString("CronPage_EditJob");
@@ -404,7 +374,6 @@ public sealed partial class CronPage : Page
         RestoreFormFromInline();
         JobFormPanel.Visibility = Visibility.Collapsed;
         _editingJobId = null;
-        if (_workspaceDetail) _closeWorkspaceEditor?.Invoke();
     }
 
     private void OnFormSaveClick(object sender, RoutedEventArgs e) =>
@@ -551,14 +520,14 @@ public sealed partial class CronPage : Page
         {
             if (!await submit())
             {
-                ShowFormError(WorkspaceWindow.Text("AutomationSendFailed"));
+                ShowFormError(LocalizationHelper.GetString("WorkspaceShell_AutomationSendFailed"));
                 return;
             }
             if (!IsLoaded) return;
             RestoreFormFromInline();
             JobFormPanel.Visibility = Visibility.Collapsed;
             _editingJobId = null;
-            JobCompletedInfoBar.Message = WorkspaceWindow.Text("AutomationSubmitted");
+            JobCompletedInfoBar.Message = LocalizationHelper.GetString("WorkspaceShell_AutomationSubmitted");
             JobCompletedInfoBar.Severity = InfoBarSeverity.Informational;
             JobCompletedInfoBar.IsOpen = true;
         }
@@ -1053,24 +1022,7 @@ public sealed partial class CronPage : Page
             }
 
             UpdateCronLoadingVisuals();
-            OpenPendingWorkspaceEditor();
         });
-    }
-
-    private void OpenPendingWorkspaceEditor()
-    {
-        if (!_workspaceEditorPending || !IsLoaded || !_cronLoading.CanEdit) return;
-        _workspaceEditorPending = false;
-        if (_workspaceJobId is null)
-            OnNewJobClick(NewJobButton, new RoutedEventArgs());
-        else if (_jobs.Any(job => job.Id == _workspaceJobId))
-            OnEditJobClick(new Button { Tag = _workspaceJobId }, new RoutedEventArgs());
-        else
-        {
-            JobCompletedInfoBar.Message = WorkspaceWindow.Text("AutomationMissing");
-            JobCompletedInfoBar.Severity = InfoBarSeverity.Warning;
-            JobCompletedInfoBar.IsOpen = true;
-        }
     }
 
     private void ParseCronStatus(JsonElement payload)
@@ -1376,46 +1328,8 @@ public sealed partial class CronPage : Page
 
         _historyJobId = historyToRestore;
         JobsListPanel.Children.Clear();
-        foreach (var vm in _jobs.Where(job => !_workspaceDetail || job.Id == _workspaceJobId))
-            JobsListPanel.Children.Add(_openWorkspaceEditor is not null && !_workspaceDetail
-                ? BuildWorkspaceJobRow(vm) : BuildJobCard(vm));
-    }
-
-    private Border BuildWorkspaceJobRow(CronJobViewModel vm)
-    {
-        var grid = new Grid { ColumnSpacing = 16, RowSpacing = 8 };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        var title = new StackPanel { Spacing = 4 };
-        title.Children.Add(new TextBlock { Text = vm.Name, TextWrapping = TextWrapping.Wrap,
-            Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] });
-        title.Children.Add(new TextBlock { Text = vm.Schedule, TextWrapping = TextWrapping.Wrap });
-        title.Children.Add(new TextBlock { Text = vm.SummaryLine, TextWrapping = TextWrapping.Wrap });
-        grid.Children.Add(title);
-        var enabled = new ToggleSwitch { Tag = vm.Id, IsOn = vm.IsEnabled,
-            OnContent = string.Empty, OffContent = string.Empty, MinWidth = 0,
-            IsEnabled = _cronLoading.CanEdit && !vm.IsCompletedOneShot && !_runningJobIds.Contains(vm.Id) };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(enabled, vm.Name);
-        enabled.Toggled += OnEnabledToggleChanged;
-        Grid.SetColumn(enabled, 1);
-        grid.Children.Add(enabled);
-        var edit = MakeActionButton("\uE70F", WorkspaceWindow.Text("Details"), vm.Id, OnEditJobClick, "Edit");
-        edit.IsEnabled = _cronLoading.CanEdit && !_runningJobIds.Contains(vm.Id);
-        Grid.SetColumn(edit, 2);
-        grid.Children.Add(edit);
-        // Keep the workflow's tagged history/run controls under the same card owner.
-        var detail = BuildDetailPanel(vm);
-        Grid.SetRow(detail, 2);
-        Grid.SetColumnSpan(detail, 3);
-        grid.Children.Add(detail);
-        return new Border { Tag = vm.Id, Child = grid, Padding = new Thickness(16),
-            CornerRadius = new CornerRadius(8), BorderThickness = new Thickness(1),
-            Background = (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"],
-            BorderBrush = (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"] };
+        foreach (var vm in _jobs)
+            JobsListPanel.Children.Add(BuildJobCard(vm));
     }
 
     private Border BuildJobCard(CronJobViewModel vm)

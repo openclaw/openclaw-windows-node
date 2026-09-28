@@ -2443,7 +2443,7 @@ Utilisez l'une de ces options :
     <value>Tapez une commande...</value>
   </data>
   <data name="HubWindow_winexWindowEx_2.Title" xml:space="preserve">
-    <value>OpenClaw</value>
+    <value>Paramètres OpenClaw</value>
   </data>
   <data name="TitleSearchBox.PlaceholderText" xml:space="preserve">
     <value>Rechercher… (Ctrl+E)</value>

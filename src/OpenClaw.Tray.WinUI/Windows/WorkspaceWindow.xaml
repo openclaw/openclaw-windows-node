@@ -15,44 +15,26 @@
         <Grid x:Name="NavigationSection" Grid.Row="1">
         <NavigationView x:Name="NavView"
                         AutomationProperties.AutomationId="WorkspaceNavigation"
-                        PaneDisplayMode="Left" OpenPaneLength="256"
+                        PaneDisplayMode="Left" OpenPaneLength="256" CompactPaneLength="0"
                         IsBackButtonVisible="Collapsed" IsSettingsVisible="False"
                         IsPaneToggleButtonVisible="False" IsPaneOpen="True"
-                        SelectionChanged="OnNavigationChanged" ItemInvoked="OnNavigationInvoked">
+                        PaneClosed="OnPaneClosed"
+                        SelectionChanged="OnNavigationChanged">
             <NavigationView.Resources>
-                <Style x:Key="WorkspaceCompactAction" TargetType="NavigationViewItem">
-                    <Setter Property="IsTabStop" Value="False"/>
-                    <Setter Property="SelectsOnInvoked" Value="False"/>
-                    <Setter Property="AutomationProperties.AccessibilityView" Value="Raw"/>
-                    <Setter Property="Template">
-                        <Setter.Value>
-                            <ControlTemplate TargetType="NavigationViewItem">
-                                <ContentPresenter Content="{TemplateBinding Content}"
-                                                  HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            </ControlTemplate>
-                        </Setter.Value>
-                    </Setter>
-                </Style>
+                <x:String x:Key="SplitViewPaneAnimationOpenDuration">00:00:00.16</x:String>
+                <x:String x:Key="SplitViewPaneAnimationOpenPreDuration">00:00:00.15999</x:String>
+                <x:String x:Key="SplitViewPaneAnimationCloseDuration">00:00:00.16</x:String>
+                <StaticResource x:Key="NavigationViewDefaultPaneBackground" ResourceKey="NavigationViewExpandedPaneBackground"/>
+                <Thickness x:Key="NavigationViewBorderThickness">0</Thickness>
+                <Thickness x:Key="NavigationViewPaneContentGridMargin">0</Thickness>
                 <x:Double x:Key="NavigationViewItemOnLeftIconBoxHeight">22</x:Double>
                 <Thickness x:Key="NavigationViewItemSeparatorMargin">0,2,0,2</Thickness>
                 <SvgImageSource x:Key="Chat_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Chat.svg"/>
-                <SvgImageSource x:Key="Agents_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Agents.svg"/>
-                <SvgImageSource x:Key="Dashboards_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Activity.svg"/>
-                <SvgImageSource x:Key="Systems_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Instances.svg"/>
-                <SvgImageSource x:Key="Automations_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Cron.svg"/>
-                <SvgImageSource x:Key="Plugins_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Skills.svg"/>
-                <SvgImageSource x:Key="More_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Advanced.svg"/>
                 <SvgImageSource x:Key="Notifications_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Notifications.svg"/>
             </NavigationView.Resources>
             <NavigationView.PaneHeader>
                 <StackPanel Margin="4,8,12,8" Spacing="8">
-                    <Grid x:Name="NavigationToolbar">
-                        <Button x:Uid="WorkspaceShell_TogglePane" Click="OnTogglePane"
-                                AutomationProperties.AutomationId="WorkspaceTogglePane"
-                                Width="40" Height="40"
-                                HorizontalAlignment="Left" Style="{StaticResource SubtleButtonStyle}">
-                            <FontIcon Glyph="&#xE90C;" FontSize="16"/>
-                        </Button>
+                    <Grid x:Name="NavigationToolbar" Height="40">
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
                             <Button x:Name="BackButton" x:Uid="NavBackButton" Click="OnBack"
                                     Height="40"
@@ -90,35 +72,12 @@
                 </StackPanel>
             </NavigationView.PaneHeader>
             <NavigationView.MenuItems>
-                <NavigationViewItem x:Name="CompactPaneItem" Visibility="Collapsed"
-                                    Style="{StaticResource WorkspaceCompactAction}">
-                    <Button x:Uid="WorkspaceShell_TogglePane" Click="OnTogglePane"
-                            AutomationProperties.AutomationId="WorkspaceReopenPane"
-                            Width="40" Height="40" Style="{StaticResource SubtleButtonStyle}">
-                        <FontIcon Glyph="&#xE90C;" FontSize="16"/>
-                    </Button>
-                </NavigationViewItem>
-                <NavigationViewItemHeader x:Name="PagesHeader"/>
                 <NavigationViewItem x:Name="HomeItem" Tag="home" AutomationProperties.AutomationId="WorkspaceNavHome">
-                    <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Chat_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem x:Name="AgentsItem" Tag="agents" AutomationProperties.AutomationId="WorkspaceNavAgents">
-                    <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Agents_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem x:Name="DashboardsItem" Tag="dashboards" AutomationProperties.AutomationId="WorkspaceNavDashboards">
-                    <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Dashboards_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem x:Name="SystemsItem" Tag="systems" AutomationProperties.AutomationId="WorkspaceNavSystems">
-                    <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Systems_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem x:Name="AutomationsItem" Tag="automations" AutomationProperties.AutomationId="WorkspaceNavAutomations">
-                    <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Automations_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem x:Name="PluginsItem" Tag="plugins" AutomationProperties.AutomationId="WorkspaceNavPlugins">
-                    <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Plugins_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem x:Name="MoreItem" Tag="more" AutomationProperties.AutomationId="WorkspaceMore">
-                    <NavigationViewItem.Icon><ImageIcon Source="{StaticResource More_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
+                    <StackPanel Orientation="Horizontal" Spacing="12" Margin="8,0">
+                        <ImageIcon x:Name="HomeIcon" Source="{StaticResource Chat_Icon}" Width="22" Height="22"
+                                   AutomationProperties.AccessibilityView="Raw"/>
+                        <TextBlock x:Name="HomeLabel" VerticalAlignment="Center"/>
+                    </StackPanel>
                 </NavigationViewItem>
                 <NavigationViewItemHeader x:Name="SessionsHeader" IsEnabled="True">
                     <NavigationViewItemHeader.Template>
@@ -151,17 +110,6 @@
                 </NavigationViewItemHeader>
                 <NavigationViewItemHeader x:Name="SessionsEmpty" FontWeight="Normal"/>
             </NavigationView.MenuItems>
-            <NavigationView.FooterMenuItems>
-                <NavigationViewItem x:Name="CompactNotificationsItem" Visibility="Collapsed"
-                                    Style="{StaticResource WorkspaceCompactAction}">
-                    <Button x:Uid="WorkspaceShell_NotificationsButton" Click="OnNotifications"
-                            AutomationProperties.AutomationId="WorkspaceCompactNotifications"
-                            Width="40" Height="40" Style="{StaticResource SubtleButtonStyle}">
-                        <ImageIcon Source="{StaticResource Notifications_Icon}" Width="20" Height="20"
-                                   AutomationProperties.AccessibilityView="Raw"/>
-                    </Button>
-                </NavigationViewItem>
-            </NavigationView.FooterMenuItems>
             <NavigationView.PaneFooter>
                 <Grid x:Name="ExpandedFooter" ColumnSpacing="4" Margin="8">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
@@ -185,12 +133,29 @@
                     </Button>
                 </Grid>
             </NavigationView.PaneFooter>
-            <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" CornerRadius="8" Margin="0,0,8,8">
-                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-                <InfoBar x:Name="OperationInfo" IsOpen="False" IsClosable="True" Severity="Error"/>
-                <Grid x:Name="ContentHost" Grid.Row="1" AutomationProperties.AutomationId="WorkspaceContent"/>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <Grid x:Name="ReopenPaneSlot" Height="56" Visibility="Collapsed"/>
+                <InfoBar x:Name="OperationInfo" Grid.Row="1" IsOpen="False" IsClosable="True" Severity="Error"/>
+                <Grid x:Name="ContentHost" Grid.Row="2" AutomationProperties.AutomationId="WorkspaceContent"/>
             </Grid>
         </NavigationView>
+        <Button x:Name="CollapsePaneButton" x:Uid="WorkspaceShell_TogglePane" Click="OnTogglePane"
+                AutomationProperties.AutomationId="WorkspaceTogglePane"
+                HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,8,0,0"
+                Width="40" Height="40" Style="{StaticResource SubtleButtonStyle}">
+            <FontIcon Glyph="&#xE90C;" FontSize="16"/>
+        </Button>
+        <Button x:Name="ReopenPaneButton" x:Uid="WorkspaceShell_TogglePane" Click="OnTogglePane"
+                AutomationProperties.AutomationId="WorkspaceReopenPane"
+                Visibility="Collapsed" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,8,0,0"
+                Width="40" Height="40" Style="{StaticResource SubtleButtonStyle}">
+            <FontIcon Glyph="&#xE90C;" FontSize="16"/>
+        </Button>
         </Grid>
     </Grid>
 </winex:WindowEx>

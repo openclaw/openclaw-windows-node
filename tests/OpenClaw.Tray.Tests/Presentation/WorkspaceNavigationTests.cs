@@ -8,16 +8,10 @@ namespace OpenClaw.Tray.Tests.Presentation;
 public sealed class WorkspaceNavigationTests
 {
     [Fact]
-    public void ApprovedScene_AllContentRoutesHaveTypedDestinations()
+    public void Workspace_OnlyHomeAndFooterNotificationsHaveTypedDestinations()
     {
-        using var scene = ReadScene();
-        var routes = Objects(scene.RootElement)
-            .Where(node => node.TryGetProperty("dashboardPage", out var value) && value.ValueKind == JsonValueKind.String)
-            .Select(node => node.GetProperty("dashboardPage").GetString()!)
-            .Where(value => !value.Contains('{'))
-            .ToHashSet(StringComparer.Ordinal);
-        Assert.Equal(22, WorkspaceNavigation.Routes.Count);
-        Assert.Subset(WorkspaceNavigation.Routes.Keys.ToHashSet(), routes);
+        Assert.Equal(new[] { WorkspacePageId.Home, WorkspacePageId.Notifications }, Enum.GetValues<WorkspacePageId>());
+        Assert.Equal(new[] { "home", "notifications" }, WorkspaceNavigation.Routes.Keys);
         foreach (var (tag, page) in WorkspaceNavigation.Routes)
         {
             Assert.True(WorkspaceNavigation.TryResolveWorkspace($"workspace:{tag}", out var destination));
@@ -25,37 +19,37 @@ public sealed class WorkspaceNavigationTests
         }
     }
 
-    [Fact]
-    public void ApprovedScene_All21CompanionLinksKeepExactDestination()
+    public static IEnumerable<object[]> RemovedRoutes() =>
+        new[] { "agents", "agent-detail", "writer-detail", "dashboards", "dashboard-detail", "canvas",
+            "systems", "system-detail", "automations", "automation-detail", "plugins", "skills",
+            "sessions", "usage", "activity", "tasks", "meetings", "apps", "portals", "more" }
+        .Select(route => new object[] { route });
+
+    [Theory]
+    [MemberData(nameof(RemovedRoutes))]
+    public void DeprecatedWorkspaceLinks_ReturnHomeAndCannotResurrectRemovedPages(string route)
     {
-        using var scene = ReadScene();
-        var expected = new Dictionary<string, string>
-        {
-            ["colleague-agent-settings"] = "agents",
-            ["refresh-button-71"] = "permissions", ["refresh-button-116"] = "permissions",
-            ["colleague-system-connection"] = "connection", ["colleague-this-computer"] = "permissions",
-            ["colleague-manage-gateway"] = "connection", ["colleague-system-permissions"] = "permissions",
-            ["colleague-system-devices"] = "instances", ["refresh-button-199"] = "permissions",
-            ["refresh-button-315"] = "permissions", ["refresh-button-483"] = "settings",
-            ["footer-open-settings"] = "settings", ["footer-open-usage"] = "usage",
-            ["footer-pair-device"] = "channels", ["footer-build-hash"] = "about",
-            ["refresh-button-912"] = "settings", ["refresh-button-983"] = "connection",
-            ["refresh-button-988"] = "permissions", ["refresh-button-993"] = "debug",
-            ["refresh-button-1019"] = "connection", ["refresh-button-1029"] = "settings"
-        };
-        var links = Objects(scene.RootElement).Where(node =>
-            node.TryGetProperty("on", out var on) && on.TryGetProperty("tap", out var tap) &&
-            tap.ValueKind == JsonValueKind.Object &&
-            tap.TryGetProperty("navigate", out var navigate) && navigate.GetString() == "settings").ToArray();
-        Assert.Equal(21, links.Length);
-        foreach (var link in links)
-        {
-            var id = link.GetProperty("id").GetString()!;
-            var tab = link.GetProperty("on").GetProperty("tap").GetProperty("setState").GetProperty("settingsTab").GetString();
-            Assert.Equal(expected[id], tab);
-            Assert.True(Enum.TryParse<CompanionPageId>(tab, true, out var page));
+        Assert.True(WorkspaceNavigation.TryResolveWorkspace($"workspace:{route}", out var destination));
+        Assert.Equal(WorkspacePageId.Home, destination.Page);
+        var history = new WorkspaceNavigationHistory();
+        history.Navigate(new(WorkspacePageId.Notifications));
+        history.Navigate(destination);
+        Assert.True(history.GoBack());
+        Assert.Equal(WorkspacePageId.Notifications, history.Current.Page);
+        Assert.True(history.GoForward());
+        Assert.Equal(WorkspacePageId.Home, history.Current.Page);
+        Assert.False(history.CanGoForward);
+    }
+
+    [Fact]
+    public void CompanionCatalog_RemainsSeparateAndComplete()
+    {
+        foreach (var page in Enum.GetValues<CompanionPageId>())
             Assert.False(WorkspaceNavigation.TryResolveWorkspace(WorkspaceNavigation.CompanionTag(page), out _));
-        }
+        Assert.Equal("cron", WorkspaceNavigation.CompanionTag(CompanionPageId.Cron));
+        Assert.Equal("agent:custom", WorkspaceNavigation.CompanionTag(CompanionPageId.Agents, "custom"));
+        Assert.False(WorkspaceNavigation.TryResolveWorkspace("workspace:unknown", out _));
+        Assert.False(WorkspaceNavigation.TryResolveWorkspace("workspace:agents:unknown", out _));
     }
 
     [Theory]
@@ -80,26 +74,23 @@ public sealed class WorkspaceNavigationTests
     public void CompanionRoutes_DoNotReplaceWorkspace(string route)
     {
         var history = new WorkspaceNavigationHistory();
-        history.Navigate(new(WorkspacePageId.Agents));
-        history.Navigate(new(WorkspacePageId.AgentDetail, "real-agent"));
+        history.Navigate(new(WorkspacePageId.Notifications));
         Assert.False(WorkspaceNavigation.TryResolveWorkspace(route, out _));
-        Assert.Equal(new(WorkspacePageId.AgentDetail, "real-agent"), history.Current);
+        Assert.Equal(new(WorkspacePageId.Notifications), history.Current);
         Assert.True(history.GoBack());
-        Assert.Equal(WorkspacePageId.Agents, history.Current.Page);
+        Assert.Equal(WorkspacePageId.Home, history.Current.Page);
     }
 
     [Fact]
-    public void RepeatedDestinations_DoNotGrowBackStack_AndItemIdentityIsPreserved()
+    public void RepeatedDestinations_DoNotGrowBackStack()
     {
         var history = new WorkspaceNavigationHistory();
         Assert.False(history.Navigate(new(WorkspacePageId.Home)));
         Assert.False(history.CanGoBack);
-        history.Navigate(new(WorkspacePageId.AgentDetail, "first"));
-        Assert.False(history.Navigate(new(WorkspacePageId.AgentDetail, "first")));
-        Assert.True(history.Navigate(new(WorkspacePageId.AgentDetail, "second")));
+        history.Navigate(new(WorkspacePageId.Notifications));
+        Assert.False(history.Navigate(new(WorkspacePageId.Notifications)));
         history.GoBack();
-        Assert.Equal("first", history.Current.ItemId);
-        history.GoBack();
+        Assert.Equal(WorkspacePageId.Home, history.Current.Page);
         Assert.False(history.CanGoBack);
     }
 
@@ -109,8 +100,8 @@ public sealed class WorkspaceNavigationTests
         var history = new WorkspaceNavigationHistory();
         Assert.False(history.GoBack());
         Assert.False(history.GoForward());
-        var first = new WorkspaceDestination(WorkspacePageId.AgentDetail, "first");
-        var second = new WorkspaceDestination(WorkspacePageId.AgentDetail, "second");
+        var first = new WorkspaceDestination(WorkspacePageId.Notifications);
+        var second = new WorkspaceDestination(WorkspacePageId.Home);
         history.Navigate(first);
         history.Navigate(second);
         Assert.True(history.GoBack());
@@ -126,7 +117,7 @@ public sealed class WorkspaceNavigationTests
         Assert.False(history.CanGoBack);
         Assert.True(history.GoForward());
         Assert.Equal(first, history.Current);
-        Assert.True(history.Navigate(new(WorkspacePageId.Systems)));
+        Assert.True(history.Navigate(new(WorkspacePageId.Home)));
         Assert.False(history.CanGoForward);
         Assert.False(history.GoForward());
     }
@@ -140,7 +131,7 @@ public sealed class WorkspaceNavigationTests
         Assert.Equal("Left", (string?)navigation.Attribute("PaneDisplayMode"));
         Assert.Equal("False", (string?)navigation.Attribute("IsSettingsVisible"));
         var items = navigation.Descendants().Where(element => element.Name.LocalName == "NavigationViewItem" && element.Attribute("Tag") is not null).ToArray();
-        Assert.Equal(WorkspaceNavigation.PinnedPages.Count + 1, items.Length);
+        Assert.Equal("home", (string?)Assert.Single(items).Attribute("Tag"));
         foreach (var item in items)
         {
             Assert.Contains(item.Descendants(), element => element.Name.LocalName == "ImageIcon");
@@ -164,30 +155,65 @@ public sealed class WorkspaceNavigationTests
         }
         Assert.DoesNotContain(document.Descendants(), element => (string?)element.Attribute(x + "Name") == "PinnedList");
         Assert.Equal("False", (string?)navigation.Attribute("IsPaneToggleButtonVisible"));
-        Assert.Contains("NavView.IsPaneOpen = !NavView.IsPaneOpen", File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs")));
+        Assert.Contains("var open = !NavView.IsPaneOpen", File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs")));
     }
 
     [Fact]
-    public void CompactPaneActions_AreNativeMenuItems_NotFloatingOverlays()
+    public void HiddenPane_UsesZeroWidthAndReopenRowWithoutCoveringContent()
     {
         var document = XDocument.Load(Source("Windows", "WorkspaceWindow.xaml"));
         XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
-        var reopen = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "CompactPaneItem");
-        Assert.Equal("NavigationViewItem", reopen.Name.LocalName);
-        Assert.Equal("NavigationView.MenuItems", reopen.Parent!.Name.LocalName);
-        Assert.Same(reopen, reopen.Parent.Elements().First());
-        Assert.Equal("{StaticResource WorkspaceCompactAction}", (string?)reopen.Attribute("Style"));
-        var notifications = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "CompactNotificationsItem");
-        Assert.Equal("NavigationViewItem", notifications.Name.LocalName);
-        Assert.Equal("NavigationView.FooterMenuItems", notifications.Parent!.Name.LocalName);
-        Assert.Equal("{StaticResource WorkspaceCompactAction}", (string?)notifications.Attribute("Style"));
-        foreach (var item in new[] { reopen, notifications })
-        {
-            var button = Assert.Single(item.Elements());
-            Assert.Equal("Button", button.Name.LocalName);
-            Assert.Equal("{StaticResource SubtleButtonStyle}", (string?)button.Attribute("Style"));
-        }
-        Assert.DoesNotContain(document.Descendants(), element => (string?)element.Attribute(x + "Name") == "ReopenPaneButton");
+        var navigation = document.Descendants().Single(element => element.Name.LocalName == "NavigationView");
+        Assert.Equal("0", (string?)navigation.Attribute("CompactPaneLength"));
+        var reopen = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "ReopenPaneButton");
+        Assert.Equal("Button", reopen.Name.LocalName);
+        Assert.Equal("{StaticResource SubtleButtonStyle}", (string?)reopen.Attribute("Style"));
+        Assert.Equal("Collapsed", (string?)reopen.Attribute("Visibility"));
+        var content = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "ContentHost");
+        var slot = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "ReopenPaneSlot");
+        Assert.Same(slot.Parent, content.Parent);
+        Assert.Equal("56", (string?)slot.Attribute("Height"));
+        var collapse = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "CollapsePaneButton");
+        Assert.Same(reopen.Parent, collapse.Parent);
+        Assert.Same(reopen.Parent, navigation.Parent);
+        Assert.Equal((string?)collapse.Attribute("Margin"), (string?)reopen.Attribute("Margin"));
+        Assert.Equal("2", (string?)content.Attribute("Grid.Row"));
+        Assert.DoesNotContain(document.Descendants(), element => element.Name.LocalName == "NavigationView.FooterMenuItems");
+        var code = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
+        Assert.Equal("OnPaneClosed", (string?)navigation.Attribute("PaneClosed"));
+        var duration = document.Descendants().Single(element =>
+            (string?)element.Attribute(x + "Key") == "SplitViewPaneAnimationOpenDuration");
+        Assert.Equal("00:00:00.16", duration.Value);
+        Assert.DoesNotContain("DispatcherQueueTimer", code);
+        Assert.Contains("NavView.IsPaneVisible = false", code);
+        Assert.DoesNotContain("NavigationViewPaneDisplayMode.LeftMinimal", code);
+        Assert.DoesNotContain("NavView.CompactPaneLength =", code);
+        Assert.Contains("CollapsePaneButton : ReopenPaneButton).Focus(FocusState.Programmatic)", code);
+        var toggle = code[code.IndexOf("private void OnTogglePane", StringComparison.Ordinal)..
+            code.IndexOf("private void UpdatePanePresentation", StringComparison.Ordinal)];
+        Assert.DoesNotContain("IsPaneVisible = false", toggle);
+        Assert.DoesNotContain("LeftMinimal", toggle);
+    }
+
+    [Fact]
+    public void Sidebar_UsesNativePaneFillAndPreservesSessionSelection()
+    {
+        var document = XDocument.Load(Source("Windows", "WorkspaceWindow.xaml"));
+        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var background = document.Descendants().Single(element =>
+            (string?)element.Attribute(x + "Key") == "NavigationViewDefaultPaneBackground");
+        Assert.Equal("NavigationViewExpandedPaneBackground", (string?)background.Attribute("ResourceKey"));
+        Assert.Equal("0", document.Descendants().Single(element =>
+            (string?)element.Attribute(x + "Key") == "NavigationViewBorderThickness").Value);
+        var home = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "HomeItem");
+        Assert.Equal("{StaticResource Chat_Icon}", (string?)Assert.Single(home.Descendants(),
+            element => element.Name.LocalName == "ImageIcon").Attribute("Source"));
+        Assert.DoesNotContain(home.Descendants(), element => element.Name.LocalName == "NavigationViewItem.Icon");
+        Assert.Contains(home.Descendants(), element => (string?)element.Attribute(x + "Name") == "HomeLabel");
+        var code = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
+        Assert.Contains("session.Key == _selectedSessionKey", code);
+        Assert.DoesNotContain("SelectsOnInvoked = false", code);
+        Assert.DoesNotContain("OnNavigationInvoked", code);
     }
 
     [Fact]
@@ -207,7 +233,7 @@ public sealed class WorkspaceNavigationTests
         }
         var toolbar = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "NavigationToolbar");
         Assert.Contains(toolbar.Ancestors(), element => element.Name.LocalName == "NavigationView.PaneHeader");
-        var toggle = toolbar.Descendants().Single(element => (string?)element.Attribute("Click") == "OnTogglePane");
+        var toggle = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "CollapsePaneButton");
         Assert.Equal("Left", (string?)toggle.Attribute("HorizontalAlignment"));
         Assert.Contains(toggle.Descendants(), element => (string?)element.Attribute("Glyph") == "\uE90C");
         var assistant = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "AssistantSelector");
@@ -218,9 +244,9 @@ public sealed class WorkspaceNavigationTests
         Assert.Contains(assistant.Descendants(), element => (string?)element.Attribute("ResourceKey") == "SubtleFillColorSecondaryBrush");
         Assert.Contains(assistant.Descendants(), element => (string?)element.Attribute("ResourceKey") == "SubtleFillColorTertiaryBrush");
         var headers = document.Descendants().Where(element => element.Name.LocalName == "NavigationViewItemHeader").ToArray();
-        Assert.Contains(headers, element => (string?)element.Attribute(x + "Name") == "PagesHeader");
+        Assert.DoesNotContain(headers, element => (string?)element.Attribute(x + "Name") == "PagesHeader");
         var sessions = headers.Single(element => (string?)element.Attribute(x + "Name") == "SessionsHeader");
-        Assert.Equal("more", (string?)sessions.ElementsBeforeSelf().Last().Attribute("Tag"));
+        Assert.Equal("home", (string?)sessions.ElementsBeforeSelf().Last().Attribute("Tag"));
         Assert.Equal("True", (string?)sessions.Attribute("IsEnabled"));
         Assert.Contains(sessions.Descendants(), element => element.Name.LocalName == "ContentPresenter"
             && (string?)element.Attribute("Content") == "{TemplateBinding Content}");
@@ -244,6 +270,30 @@ public sealed class WorkspaceNavigationTests
     }
 
     [Fact]
+    public void WorkspaceContentSurface_IsOwnedByNativeNavigationTemplate()
+    {
+        var doc = XDocument.Load(Source("Windows", "WorkspaceWindow.xaml"));
+        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        Assert.Single(doc.Descendants(), element => element.Name.LocalName == "MicaBackdrop");
+        var host = doc.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "ContentHost");
+        var layout = host.Parent!;
+        Assert.Equal("Grid", layout.Name.LocalName);
+        Assert.Equal("NavigationView", layout.Parent!.Name.LocalName);
+        foreach (var element in host.AncestorsAndSelf())
+            Assert.Null(element.Attribute("Background"));
+        Assert.Null(layout.Attribute("CornerRadius"));
+        Assert.Null(layout.Attribute("Margin"));
+        var titleBar = doc.Descendants().Single(element => element.Name.LocalName == "TitleBar");
+        Assert.Null(titleBar.Attribute("Background"));
+        Assert.DoesNotContain(doc.Descendants(), element =>
+            (string?)element.Attribute(x + "Key") == "NavigationViewContentBackground");
+
+        Assert.False(File.Exists(Source("Pages", "WorkspaceContentPage.xaml")));
+        Assert.False(File.Exists(Source("Pages", "WorkspaceContentPage.xaml.cs")));
+        Assert.False(File.Exists(Source("Controls", "WorkspacePageRenderer.cs")));
+    }
+
+    [Fact]
     public void NativeFooter_NotificationsAreIndependentAndRightOfOwner()
     {
         var doc = XDocument.Load(Source("Windows", "WorkspaceWindow.xaml"));
@@ -264,6 +314,9 @@ public sealed class WorkspaceNavigationTests
         Assert.Contains("OpenCompanion(CompanionPageId.Usage)", code);
         Assert.Contains("OpenCompanion(CompanionPageId.Channels)", code);
         Assert.Contains("OpenCompanion(CompanionPageId.About)", code);
+        Assert.Contains("Add(\"GetApps\", () => _ = OpenLinkAsync(\"https://docs.openclaw.ai/platforms\")", code);
+        Assert.Contains("OpenLinkAsync(\"https://github.com/openclaw/openclaw-windows-node\")", code);
+        Assert.Contains("help.Items.Add(github)", code);
         Assert.DoesNotContain("WebView", File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml")));
     }
 
@@ -335,7 +388,6 @@ public sealed class WorkspaceNavigationTests
         Assert.Equal("custom", agent.Id);
         Assert.Equal("Actual agent", agent.Name);
         Assert.Equal("real-key", agent.LatestSessionKey);
-        Assert.Equal(1, agent.SessionCount);
         var visible = Assert.Single(WorkspaceProjection.Sessions([session], "custom"));
         Assert.Equal("real-key", visible.Key);
         Assert.Empty(WorkspaceProjection.Sessions([session], "different"));
@@ -351,26 +403,8 @@ public sealed class WorkspaceNavigationTests
             new SessionInfo { Key = "visible", AgentId = "custom", DisplayName = "Conversation" }
         };
         var agent = Assert.Single(WorkspaceProjection.Agents(json.RootElement, sessions));
-        Assert.Equal(1, agent.SessionCount);
         Assert.Equal("visible", agent.LatestSessionKey);
         Assert.Equal("visible", Assert.Single(WorkspaceProjection.Sessions(sessions, "custom")).Key);
-    }
-
-    private static JsonDocument ReadScene() => JsonDocument.Parse(
-        File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), ".agents", "design", "prototypes.jsonc")),
-        new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
-
-    private static IEnumerable<JsonElement> Objects(JsonElement element)
-    {
-        if (element.ValueKind == JsonValueKind.Object)
-        {
-            yield return element;
-            foreach (var property in element.EnumerateObject())
-                foreach (var child in Objects(property.Value)) yield return child;
-        }
-        else if (element.ValueKind == JsonValueKind.Array)
-            foreach (var item in element.EnumerateArray())
-                foreach (var child in Objects(item)) yield return child;
     }
 
     private static string Source(string folder, string file) =>

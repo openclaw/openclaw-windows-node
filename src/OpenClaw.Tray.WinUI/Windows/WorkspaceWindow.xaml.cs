@@ -17,8 +17,6 @@ public sealed partial class WorkspaceWindow : WindowEx
     private readonly AppState _state;
     private readonly Action<string> _openCompanion;
     private readonly Action _openTimeline;
-    private readonly Func<Task> _openSetup;
-    private readonly Action? _openTray;
     private readonly AppNotificationService _notifications;
     private readonly WorkspaceNavigationHistory _navigation = new();
     private readonly ChatPage _chat = new();
@@ -26,28 +24,22 @@ public sealed partial class WorkspaceWindow : WindowEx
     private bool _creatingSession;
     private IOperatorGatewayClient? _refreshingClient;
     private string? _agentId;
-    private WorkspaceContentPage? _workspacePage;
+    private string? _selectedSessionKey;
 
     public bool IsClosed { get; private set; }
     internal WorkspaceDestination Destination => _navigation.Current;
     internal ChatPage ChatPage => _chat;
-    internal string? SelectedAgentId => _agentId;
-    internal AppState State => _state;
-    internal bool IsRefreshing => _refreshingClient is not null;
-    internal event Action? RefreshStateChanged;
     internal bool CanGoBack => _navigation.CanGoBack;
 
     internal WorkspaceWindow(
         AppState state, AppNotificationService notifications, Action<string> openCompanion,
-        Action openTimeline, Func<Task> openSetup, Action? openTray)
+        Action openTimeline)
     {
         InitializeComponent();
         _state = state;
         _notifications = notifications;
         _openCompanion = openCompanion;
         _openTimeline = openTimeline;
-        _openSetup = openSetup;
-        _openTray = openTray;
         Title = Text("Title");
         this.SetWindowSize(1280, 860);
         ExtendsContentIntoTitleBar = true;
@@ -58,12 +50,11 @@ public sealed partial class WorkspaceWindow : WindowEx
         };
         this.SetIcon("Assets\\openclaw.ico");
         SetTitleBar(WorkspaceTitleBar);
-        PagesHeader.Content = LocalizationHelper.GetString("WorkspaceShell_Pages.Text");
         NewConversationLabel.Text = AutomationProperties.GetName(NewConversationOption);
         NavView.RegisterPropertyChangedCallback(NavigationView.IsPaneOpenProperty, (_, _) => UpdatePanePresentation());
         UpdatePanePresentation();
-        foreach (var item in NavView.MenuItems.OfType<NavigationViewItem>().Where(item => item.Tag is string))
-            item.Content = Text(WorkspaceNavigation.Routes[(string)item.Tag].ToString());
+        HomeLabel.Text = Text("Home");
+        AutomationProperties.SetName(HomeItem, Text("Home"));
         BuildOwnerMenu();
         _state.PropertyChanged += OnStateChanged;
         _chat.Loaded += (_, _) => _chat.Initialize(this);
@@ -94,25 +85,11 @@ public sealed partial class WorkspaceWindow : WindowEx
     internal void OpenCompanion(CompanionPageId page, string? agentId = null) =>
         _openCompanion(WorkspaceNavigation.CompanionTag(page, agentId ?? _agentId ?? "main"));
 
-    internal void OpenAgentFiles(string agentId) => _openCompanion($"agent:{agentId}:workspace");
     internal void OpenTimeline() => _openTimeline();
     internal void OpenCommandCenter() => _openCompanion("command-center");
-    internal void OpenTray()
-    {
-        if (_openTray is null)
-            ShowError(Text("TrayUnavailable"));
-        else
-            _openTray();
-    }
-
-    internal async Task OpenSetupAsync()
-    {
-        try { await _openSetup(); }
-        catch (Exception ex) { ReportError("setup", ex); }
-    }
-
     internal void SelectSession(string sessionKey)
     {
+        _selectedSessionKey = sessionKey;
         var session = _state.Sessions.FirstOrDefault(session => session.Key == sessionKey);
         if (session is not null)
         {
@@ -122,6 +99,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         _chat.QueueSession(sessionKey);
         Navigate(new(WorkspacePageId.Home));
         if (_chat.IsLoaded) _chat.SelectSession(sessionKey);
+        UpdateNavigationSelection();
     }
 
     internal async Task StartAgentChatAsync(WorkspaceAgent agent)
@@ -139,13 +117,12 @@ public sealed partial class WorkspaceWindow : WindowEx
         if (Destination.Page == WorkspacePageId.Home && ContentHost.Children.Contains(_chat))
         {
             _chat.Initialize(this);
+            UpdateNavigationSelection();
             BackButton.IsEnabled = _navigation.CanGoBack;
             ForwardButton.IsEnabled = _navigation.CanGoForward;
             SignalContentReady(_chat);
             return;
         }
-        _workspacePage?.Detach();
-        _workspacePage = null;
         ContentHost.Children.Clear();
         var destination = Destination;
         if (destination.Page == WorkspacePageId.Home)
@@ -154,14 +131,9 @@ public sealed partial class WorkspaceWindow : WindowEx
         }
         else
         {
-            var page = CreateExistingPage(destination.Page);
-            if (page is not null)
-                ContentHost.Children.Add(page);
-            else
-            {
-                _workspacePage = new WorkspaceContentPage(this, destination);
-                ContentHost.Children.Add(_workspacePage);
-            }
+            var notifications = new NotificationsPage();
+            notifications.Initialize(_notifications);
+            ContentHost.Children.Add(notifications);
         }
 
         UpdateNavigationSelection();
@@ -174,8 +146,11 @@ public sealed partial class WorkspaceWindow : WindowEx
     private void UpdateNavigationSelection()
     {
         _updating = true;
-        NavView.SelectedItem = NavView.MenuItems.OfType<NavigationViewItem>()
-            .FirstOrDefault(item => item.Tag is string route && WorkspaceNavigation.Routes[route] == WorkspaceNavigation.Section(Destination.Page));
+        var items = NavView.MenuItems.OfType<NavigationViewItem>();
+        NavView.SelectedItem = Destination.Page == WorkspacePageId.Home
+            ? items.FirstOrDefault(item => item.Tag is WorkspaceSession session && session.Key == _selectedSessionKey)
+                ?? HomeItem
+            : null;
         _updating = false;
     }
 
@@ -188,7 +163,7 @@ public sealed partial class WorkspaceWindow : WindowEx
                 await Task.Delay(400); // Let native entry transitions settle for capture.
             if (!IsClosed && Destination == destination && ContentHost.Children.Contains(content))
             {
-                var paneSuffix = NavView.IsPaneOpen ? "" : "-Compact";
+                var paneSuffix = NavView.IsPaneOpen ? "" : "-Hidden";
                 await VisualTestCapture.CaptureAsync(Root, $"Workspace-{destination.Page}-{Root.ActualTheme}{paneSuffix}");
                 AccessibilityNavigationSignal.WritePageReady(content.GetType().Name);
             }
@@ -203,42 +178,6 @@ public sealed partial class WorkspaceWindow : WindowEx
                 Signal();
             };
             content.Loaded += loaded;
-        }
-    }
-
-    private Page? CreateExistingPage(WorkspacePageId pageId)
-    {
-        // These pages own their gateway workflows and subscriptions. They do not
-        // participate in the companion's single navigation-scoped settings VM.
-        switch (pageId)
-        {
-            case WorkspacePageId.Automations:
-            case WorkspacePageId.AutomationDetail:
-                var cron = new CronPage();
-                cron.UseWorkspaceLayout(Destination.Page == WorkspacePageId.AutomationDetail, Destination.ItemId,
-                    jobId => Navigate(new(WorkspacePageId.AutomationDetail, jobId)),
-                    () => Navigate(new(WorkspacePageId.Automations)));
-                cron.Initialize();
-                return cron;
-            case WorkspacePageId.Sessions:
-                var sessions = new SessionsPage();
-                sessions.HostWindow = this;
-                sessions.Initialize();
-                return sessions;
-            case WorkspacePageId.Skills:
-                var skills = new SkillsPage();
-                skills.Initialize();
-                return skills;
-            case WorkspacePageId.Usage:
-                var usage = new UsagePage();
-                usage.Initialize();
-                return usage;
-            case WorkspacePageId.Notifications:
-                var notifications = new NotificationsPage();
-                notifications.Initialize(_notifications);
-                return notifications;
-            default:
-                return null;
         }
     }
 
@@ -263,10 +202,10 @@ public sealed partial class WorkspaceWindow : WindowEx
             var item = new NavigationViewItem
             {
                 Tag = session,
-                SelectsOnInvoked = false,
                 Content = new TextBlock { Text = session.Title, MaxLines = 1, TextTrimming = TextTrimming.CharacterEllipsis }
             };
             AutomationProperties.SetName(item, session.Title);
+            AutomationProperties.SetAutomationId(item, $"WorkspaceSession:{session.Key}");
             ToolTipService.SetToolTip(item, session.Title);
             NavView.MenuItems.Add(item);
         }
@@ -275,6 +214,9 @@ public sealed partial class WorkspaceWindow : WindowEx
         NewConversationOption.IsEnabled = NewSessionButton.IsEnabled =
             !_creatingSession && _state.Status == ConnectionStatus.Connected;
         _updating = false;
+        // Before layout, NavigationView is still minimal and selecting an item closes its pane.
+        if (Root.IsLoaded)
+            UpdateNavigationSelection();
     }
 
     internal async Task RefreshAsync()
@@ -283,10 +225,9 @@ public sealed partial class WorkspaceWindow : WindowEx
             ReferenceEquals(client, _refreshingClient))
             return;
         _refreshingClient = client;
-        RefreshStateChanged?.Invoke();
         try
         {
-            await Task.WhenAll(client.RequestAgentsListAsync(), client.RequestSessionsAsync(), client.RequestNodesAsync());
+            await Task.WhenAll(client.RequestAgentsListAsync(), client.RequestSessionsAsync());
         }
         catch (Exception ex)
         {
@@ -298,7 +239,6 @@ public sealed partial class WorkspaceWindow : WindowEx
             if (!IsClosed && ReferenceEquals(client, _refreshingClient))
             {
                 _refreshingClient = null;
-                RefreshStateChanged?.Invoke();
             }
         }
     }
@@ -387,25 +327,44 @@ public sealed partial class WorkspaceWindow : WindowEx
     {
         if (_updating) return;
         if (e.SelectedItemContainer?.Tag is string route)
+        {
+            _selectedSessionKey = null;
             Navigate(new(WorkspaceNavigation.Routes[route]));
+            UpdateNavigationSelection();
+        }
+        else if (e.SelectedItemContainer?.Tag is WorkspaceSession session)
+            SelectSession(session.Key);
     }
 
     private void OnNewConversation(object sender, RoutedEventArgs e) =>
         AsyncEventHandlerGuard.Run(NewSessionAsync, new AppLogger(), nameof(OnNewConversation));
-    private void OnNavigationInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs e)
-    {
-        if (e.InvokedItemContainer?.Tag is WorkspaceSession session) SelectSession(session.Key);
-    }
     private void OnNotifications(object sender, RoutedEventArgs e) => Navigate(new(WorkspacePageId.Notifications));
     private void OnBack(object sender, RoutedEventArgs e) => NavigateBack();
     private void OnForward(object sender, RoutedEventArgs e) => NavigateForward();
-    private void OnTogglePane(object sender, RoutedEventArgs e) => NavView.IsPaneOpen = !NavView.IsPaneOpen;
+    private void OnTogglePane(object sender, RoutedEventArgs e)
+    {
+        var open = !NavView.IsPaneOpen;
+        if (open)
+        {
+            NavView.IsPaneVisible = true;
+        }
+        NavView.IsPaneOpen = open;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!IsClosed)
+                (NavView.IsPaneOpen ? CollapsePaneButton : ReopenPaneButton).Focus(FocusState.Programmatic);
+        });
+    }
     private void UpdatePanePresentation()
     {
-        var visibility = NavView.IsPaneOpen ? Visibility.Collapsed : Visibility.Visible;
-        CompactPaneItem.Visibility = visibility;
-        CompactNotificationsItem.Visibility = visibility;
-        ExpandedFooter.Visibility = visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
+        ReopenPaneButton.Visibility = NavView.IsPaneOpen ? Visibility.Collapsed : Visibility.Visible;
+        ReopenPaneSlot.Visibility = ReopenPaneButton.Visibility;
+        CollapsePaneButton.Visibility = NavView.IsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
+    }
+    private void OnPaneClosed(NavigationView sender, object args)
+    {
+        if (NavView.IsPaneOpen || IsClosed) return;
+        NavView.IsPaneVisible = false;
     }
     internal void NavigateBack()
     {
@@ -450,7 +409,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         Add("Settings", () => OpenCompanion(CompanionPageId.Settings), FluentIconCatalog.Settings);
         Add("Usage", () => OpenCompanion(CompanionPageId.Usage), FluentIconCatalog.Money);
         Add("PairDevice", () => OpenCompanion(CompanionPageId.Channels), FluentIconCatalog.Devices);
-        Add("Apps", () => Navigate(new(WorkspacePageId.Apps)), FluentIconCatalog.OpenInBrowser);
+        Add("GetApps", () => _ = OpenLinkAsync("https://docs.openclaw.ai/platforms"), FluentIconCatalog.OpenInBrowser);
         Add("ConnectionTimeline", OpenTimeline, FluentIconCatalog.AgentEvents);
         menu.Items.Add(new MenuFlyoutSeparator());
         var help = new MenuFlyoutSubItem { Text = Text("Help") };
@@ -466,6 +425,12 @@ public sealed partial class WorkspaceWindow : WindowEx
             item.Click += async (_, _) => await OpenLinkAsync(url);
             help.Items.Add(item);
         }
+        var github = new MenuFlyoutItem
+        {
+            Text = LocalizationHelper.GetString("SettingsPage_AppInfoGitHub.Content")
+        };
+        github.Click += async (_, _) => await OpenLinkAsync("https://github.com/openclaw/openclaw-windows-node");
+        help.Items.Add(github);
         menu.Items.Add(help);
         Add("About", () => OpenCompanion(CompanionPageId.About), FluentIconCatalog.About);
         OwnerButton.Flyout = menu;
@@ -485,7 +450,6 @@ public sealed partial class WorkspaceWindow : WindowEx
     {
         IsClosed = true;
         _state.PropertyChanged -= OnStateChanged;
-        _workspacePage?.Detach();
         ContentHost.Children.Clear();
         _chat.CloseSurface();
     }

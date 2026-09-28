@@ -5,6 +5,7 @@ description: Windows Fluent UI for OpenClaw is the design system for OpenClaw's 
 colors:
   ink: "#1b1b1b"
   paper: "#f3f3f3"
+  content: rgba(255,255,255,0.502)
   surface: "#fbfbfb"
   muted: "#5d5d5d"
   line: "#e5e5e5"
@@ -137,7 +138,13 @@ x-colophon:
         themes:
           dark: "#202020"
           highContrast: "#000000"
-        usage: App / page background. Mica base / ApplicationPageBackground (light).
+        usage: Opaque fallback/base swatch, not the navigation content layer or a replacement for Mica.
+      content:
+        resource: NavigationViewContentBackground
+        themes:
+          dark: rgba(58,58,58,0.298)
+          highContrast: "#000000"
+        usage: Native NavigationView content surface. LayerFillColorDefaultBrush in Light/Dark; SystemColorWindowColor in high contrast. The native template owns this fill, border, and corners.
       surface:
         resource: CardBackgroundFillColorDefaultBrush
         themes:
@@ -277,7 +284,8 @@ Personality: native, trustworthy, calm, precise.
 ## Colors
 
 - **ink** {colors.ink}: Primary text, headings. Fluent TextFillColorPrimary on light.
-- **paper** {colors.paper}: App / page background. Mica base / ApplicationPageBackground (light).
+- **paper** {colors.paper}: Opaque fallback/base swatch, not the navigation content layer or a replacement for Mica.
+- **content** {colors.content}: Native NavigationView content layer, mapped through `NavigationViewContentBackground`.
 - **surface** {colors.surface}: Cards, flyouts, inputs. Fluent CardBackgroundFillColorDefault.
 - **muted** {colors.muted}: Secondary text, captions. Fluent TextFillColorSecondary/Tertiary.
 - **line** {colors.line}: Borders, dividers. Fluent CardStrokeColorDefault / DividerStroke.
@@ -309,6 +317,16 @@ Use Segoe UI Variable for text and Cascadia Mono (`x-colophon.tokens.typography.
 
 Use the named spacing tokens rather than ad-hoc values. Prefer the `5` and `6` steps between groups so content can breathe. One subject per screen: decide what the screen is for, and let that element win.
 
+Workspace uses `MicaBackdrop` with transparent window/titlebar content, and lets
+the native `NavigationView` template draw the main content surface through
+`NavigationViewContentBackground`. WinUI maps that resource to
+`LayerFillColorDefaultBrush` in Light/Dark and `SystemColorWindowColor` in high
+contrast. Keep hosted page layouts transparent instead of painting a second
+opaque page background or a second layer fill. The template also owns the content
+border, corners, and outer spacing. Cards inside that layer continue to use
+`CardBackgroundFillColorDefaultBrush`; input controls keep their control fills.
+The alpha swatches above describe a layer over Mica, not fixed final colors.
+
 ## Information hierarchy
 
 1. **One subject per screen.** Decide what the screen is for and let that element win.
@@ -332,27 +350,59 @@ approved production refinement. Reuse the existing colourful `Assets/SidebarIcon
 assets for destination identity (22 DIP icon boxes); their multicolour artwork
 is not a new set of UI brush tokens. Selection, focus, labels, backgrounds, and
 hover states still use the native theme resources and system accent.
-Keep the assistant selector in `PaneHeader`, destination items followed immediately
-by Sessions in `MenuItems`, and Owner plus the independent Notifications action
-in `PaneFooter`. Pages and Sessions use native `NavigationViewItemHeader`
-typography. Use the native WinUI `TitleBar` title and icon presentation with the
+The pane uses `NavigationViewExpandedPaneBackground` in all display states:
+transparent over Mica in Light/Dark, with the native system-window fill in high
+contrast. Set the pane-only `NavigationViewBorderThickness` to zero so there is
+no extra outlined panel behind navigation; keep the native content border and
+selection/focus indicators. Do not add an acrylic panel behind the sidebar.
+Use zero `CompactPaneLength` so no intermediate rail remains. Home's existing
+22 DIP chat artwork and label share a native horizontal content panel instead
+of the icon slot, which WinUI clips when compact width is zero. The native 160ms
+slide then closes directly to zero width, with no intermediate compact rail.
+`PaneClosed` hides remaining offscreen controls but no longer changes layout.
+Keep the display mode stable; use native transitions and Windows reduced motion,
+not a timer racing the template's completion.
+Both toggle states share the same non-scrolling overlay position at spacing
+steps `1` (left) and `2` (top), keeping the same baseline throughout the slide.
+The pane toolbar and the hidden-pane content row reserve space for that target,
+so the overlay never covers another control.
+Selecting a conversation highlights its native navigation row by session key,
+including after sidebar refresh or companion-window refocus.
+Keep the assistant selector in `PaneHeader`, Home followed immediately by
+Sessions and the real conversation list in `MenuItems`, and Owner plus the
+independent Notifications action in `PaneFooter`. Sessions uses native
+`NavigationViewItemHeader` typography. The current user correction supersedes
+the earlier expanded Workspace prototype: do not show Agents, Dashboards,
+Systems, Automations, Plugins, More, or a Pages heading in this rail. Management
+capabilities remain in the separate Settings companion. Use the native WinUI
+`TitleBar` title and icon presentation with the
 shared OpenClaw artwork, not a custom title label. The navigation section has a
 first-row toolbar in `NavigationView.PaneHeader`: pane-collapse glyph on the left
 and Back/Forward at the right edge of the sidebar, not the content area.
 The assistant selector occupies the second row. Its final dropdown option is
 the existing New conversation action with an Add glyph; it is not agent creation.
-Sessions retains its separate Add button. In compact mode, the first native
-`NavigationViewItem` reopens the sidebar, aligned with the destination icons.
-Notifications becomes an icon-only native `FooterMenuItems` entry; the expanded
-Owner/Notifications footer remains unchanged. Do not overlay the compact rail
-with a separate floating reopen button.
-The expanded and compact pane controls both use a native subtle button with a
-40 DIP target and a 16 DIP glyph. Compact action items only present their native
-buttons, avoiding the navigation icon Viewbox's resizing of destination icons.
+Sessions retains its separate Add button. Collapsing the pane hides it completely:
+no compact rail, destination icons, footer controls, or reserved sidebar width.
+The content fills the vacated width. A floating-style native subtle reopen button
+sits at the content's top-left below the titlebar with a reserved 56 DIP row
+(40 DIP target plus spacing step `2` above and below).
+The expanded collapse and floating reopen controls both use a 40 DIP target and
+a 16 DIP glyph. Focus moves to the surviving toggle when the pane changes state.
+Reopening restores the existing assistant/session/footer without remounting chat.
 Owner and Notifications use the built-in `SubtleButtonStyle`, including its
 native hover and pressed states, not a rest-only override of `DefaultButtonStyle`.
-The compact notification button uses the same subtle style. The Owner avatar is
+The Owner avatar is
 a 24 DIP native `PersonPicture` with its default silhouette.
+Owner's Help submenu includes GitHub, linking to the Windows companion repository.
+The separate Settings companion uses the same native TitleBar and claw artwork,
+with the localized title "OpenClaw Settings". Below it, the pane toolbar has a
+40 DIP subtle toggle at left and Search, Back, Forward at right. Search opens
+the existing command catalog in a native flyout and retains Ctrl+E/K/F.
+History uses the existing Frame stacks. Connection status and notifications share
+a subtle sidebar footer bar immediately above Diagnostics and Settings, not the
+titlebar. In compact mode, stack their 40 DIP icon targets and retain accessible
+names, status tooltips, notification badges, and the existing native flyouts.
+The compact pane retains its toggle.
 The selector keeps the native ComboBox template and keyboard behavior with a
 transparent, borderless rest state and subtle hover/pressed resource brushes,
 matching the quiet Owner footer treatment. Add buttons

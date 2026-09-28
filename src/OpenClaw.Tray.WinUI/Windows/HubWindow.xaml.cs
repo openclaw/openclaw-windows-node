@@ -1,5 +1,6 @@
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Input;
@@ -99,7 +100,18 @@ public sealed partial class HubWindow : WindowEx
     public HubWindow()
     {
         InitializeComponent();
-        Title = AppIdentity.DisplayName;
+        Title = LocalizationHelper.GetString("HubWindow_winexWindowEx_2.Title");
+        AppTitleBar.Title = Title;
+        AppTitleBar.IconSource = new BitmapIconSource
+        {
+            UriSource = new Uri(BrandAssets.RedBotMarkUri),
+            ShowAsMonochrome = false
+        };
+        var searchLabel = LocalizationHelper.GetString("TitleSearchBox.PlaceholderText");
+        AutomationProperties.SetName(SettingsSearchButton, searchLabel);
+        ToolTipService.SetToolTip(SettingsSearchButton, searchLabel);
+        NavView.RegisterPropertyChangedCallback(NavigationView.IsPaneOpenProperty, (_, _) => UpdatePaneChrome());
+        UpdatePaneChrome();
         RefreshDiagnosticsNavVisibility();
         ApplyHighContrastFallbackIfNeeded();
         ExtendsContentIntoTitleBar = true;
@@ -566,14 +578,24 @@ public sealed partial class HubWindow : WindowEx
         NavView.IsPaneOpen = !NavView.IsPaneOpen;
     }
 
+    private void UpdatePaneChrome()
+    {
+        SettingsNavigationActions.Visibility = NavView.IsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
+        StatusPillText.Visibility = SettingsNavigationActions.Visibility;
+        StatusPillChevron.Visibility = SettingsNavigationActions.Visibility;
+        StatusPillContent.ColumnSpacing = NavView.IsPaneOpen ? 8 : 0;
+        StatusPillButton.Width = NavView.IsPaneOpen ? double.NaN : 40;
+        StatusPillButton.HorizontalContentAlignment = NavView.IsPaneOpen ? HorizontalAlignment.Stretch : HorizontalAlignment.Center;
+        Grid.SetColumn(NotificationsBellButton, NavView.IsPaneOpen ? 1 : 0);
+        Grid.SetRow(NotificationsBellButton, NavView.IsPaneOpen ? 0 : 1);
+    }
+
     // ── Back navigation (title-bar back button + Alt+Left) ──────────────────
     //
-    // We host a single native-style back button in the custom title bar and
-    // drive it off ContentFrame's real back stack. NavigationView's own back
-    // button is collapsed because its chrome is hoisted into the custom title
-    // bar; this button is the equivalent affordance.
+    // Sidebar history uses ContentFrame's real stacks in both directions.
 
     private void OnBackRequested(object sender, RoutedEventArgs e) => GoBack();
+    private void OnForwardRequested(object sender, RoutedEventArgs e) => GoForward();
 
     /// <summary>True when the content frame's back-stack can navigate back.</summary>
     public bool CanGoBack => ContentFrame?.CanGoBack ?? false;
@@ -594,15 +616,20 @@ public sealed partial class HubWindow : WindowEx
         ContentFrame.GoBack();
     }
 
-    /// <summary>
-    /// Enable/disable the title-bar back button to mirror ContentFrame's back
-    /// stack (greyed out at the root, exactly like NavigationView's native
-    /// back button). Called after every navigation.
-    /// </summary>
+    private void GoForward()
+    {
+        RemoveUnavailableGatewayBackStackEntries();
+        if (ContentFrame.CanGoForward)
+            ContentFrame.GoForward();
+        else
+            UpdateBackButton();
+    }
+
     private void UpdateBackButton()
     {
         RemoveUnavailableGatewayBackStackEntries();
         NavBackButton.IsEnabled = ContentFrame.CanGoBack;
+        NavForwardButton.IsEnabled = ContentFrame.CanGoForward;
     }
 
     /// <summary>
@@ -761,6 +788,7 @@ public sealed partial class HubWindow : WindowEx
         var (text, accent) = ComputePillState(status, snapshot);
         StatusPillText.Text = text;
         StatusPillDot.Fill = AccentBrush(accent);
+        AutomationProperties.SetHelpText(StatusPillButton, text);
         ApplyWindowStatusIcon(accent);
     }
 
@@ -769,6 +797,7 @@ public sealed partial class HubWindow : WindowEx
         var (text, accent) = ComputePillState(status, snapshot);
         StatusPillText.Text = text;
         StatusPillDot.Fill = AccentBrush(accent);
+        AutomationProperties.SetHelpText(StatusPillButton, text);
         ApplyWindowStatusIcon(accent);
     }
 
@@ -929,6 +958,13 @@ public sealed partial class HubWindow : WindowEx
             if (ContentFrame.BackStack[i].Parameter is string tag && shouldRemove(tag))
                 ContentFrame.BackStack.RemoveAt(i);
         }
+        for (var i = ContentFrame.ForwardStack.Count - 1; i >= 0; i--)
+        {
+            if (ContentFrame.ForwardStack[i].Parameter is string tag && shouldRemove(tag))
+                ContentFrame.ForwardStack.RemoveAt(i);
+        }
+        NavBackButton.IsEnabled = ContentFrame.CanGoBack;
+        NavForwardButton.IsEnabled = ContentFrame.CanGoForward;
     }
 
     public GatewaySelfInfo? LastGatewaySelf => AppModel?.GatewaySelf;
@@ -1155,7 +1191,7 @@ public sealed partial class HubWindow : WindowEx
         _ = filter;
     }
 
-    // ── Command Search (Ctrl+E / Ctrl+K / Ctrl+F) — title bar AutoSuggestBox ──
+    // Command search retains its catalog and shortcuts in the sidebar flyout.
 
     private void OnRootPreviewKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
     {
@@ -1167,8 +1203,7 @@ public sealed partial class HubWindow : WindowEx
                      e.Key == global::Windows.System.VirtualKey.F))
         {
             e.Handled = true;
-            TitleSearchBox.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
-            TitleSearchBox.Text = "";
+            OpenCommandCenter();
             return;
         }
 
@@ -1182,21 +1217,39 @@ public sealed partial class HubWindow : WindowEx
             e.Handled = true;
             GoBack();
         }
+        else if (alt && e.Key == global::Windows.System.VirtualKey.Right && ContentFrame.CanGoForward)
+        {
+            e.Handled = true;
+            GoForward();
+        }
     }
 
     private ImmutableArray<HubCommand>? _cachedCommands;
 
     internal void OpenCommandCenter()
     {
-        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
-        {
-            if (IsClosed) return;
-            _cachedCommands = BuildCommandList();
-            TitleSearchBox.Text = string.Empty;
-            TitleSearchBox.ItemsSource = HubPageRegistry.SearchCommands(_cachedCommands.Value, string.Empty);
-            TitleSearchBox.Focus(FocusState.Programmatic);
-            TitleSearchBox.IsSuggestionListOpen = true;
-        });
+        CommandSearchFlyout.ShowAt(NavView.IsPaneOpen ? SettingsSearchButton : NavPaneToggleButton);
+    }
+
+    private void OnCommandSearchOpening(object sender, object e)
+    {
+        _cachedCommands = BuildCommandList();
+        TitleSearchBox.Text = string.Empty;
+        TitleSearchBox.ItemsSource = HubPageRegistry.SearchCommands(_cachedCommands.Value, string.Empty);
+    }
+
+    private void OnCommandSearchOpened(object sender, object e)
+    {
+        TitleSearchBox.Focus(FocusState.Programmatic);
+        TitleSearchBox.IsSuggestionListOpen = true;
+    }
+
+    private void OnCommandSearchKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != global::Windows.System.VirtualKey.Escape) return;
+        e.Handled = true;
+        TitleSearchBox.IsSuggestionListOpen = false;
+        CommandSearchFlyout.Hide();
     }
 
     private void OnSearchTextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
@@ -1209,27 +1262,24 @@ public sealed partial class HubWindow : WindowEx
     private void OnSearchSuggestionChosen(AutoSuggestBox sender, AutoSuggestBoxSuggestionChosenEventArgs args)
     {
         if (args.SelectedItem is HubCommand cmd)
-        {
-            sender.Text = "";
-            sender.ItemsSource = null;
-            _cachedCommands = null;
-            ExecuteCommand(cmd);
-        }
+            sender.Text = cmd.Title;
     }
 
     private void OnSearchQuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
     {
         if (args.ChosenSuggestion is HubCommand cmd)
         {
+            CommandSearchFlyout.Hide();
             sender.Text = "";
             sender.ItemsSource = null;
             _cachedCommands = null;
             ExecuteCommand(cmd);
         }
-        else if (sender.ItemsSource is IEnumerable<HubCommand> items &&
-            items.FirstOrDefault() is { } first)
+        else if (HubPageRegistry.SearchCommands(_cachedCommands ?? BuildCommandList(), args.QueryText)
+            .FirstOrDefault() is { } first)
         {
             // Enter pressed without selecting — execute first match
+            CommandSearchFlyout.Hide();
             sender.Text = "";
             sender.ItemsSource = null;
             _cachedCommands = null;

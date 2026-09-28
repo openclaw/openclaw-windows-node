@@ -4,7 +4,7 @@ using OpenClawTray.Services;
 
 namespace OpenClawTray.Presentation;
 
-internal sealed record WorkspaceAgent(string Id, string Name, string Workspace, int SessionCount, string? LatestSessionKey);
+internal sealed record WorkspaceAgent(string Id, string Name, string? LatestSessionKey);
 internal sealed record WorkspaceSession(string Key, string Title, string? AgentId);
 
 internal static class WorkspaceProjection
@@ -22,9 +22,7 @@ internal static class WorkspaceProjection
                 var id = ReadString(agent, "id") ?? string.Empty;
                 var related = Sessions(sessions, id);
                 return new WorkspaceAgent(
-                    id, ReadString(agent, "name") ?? id,
-                    ReadString(agent, "workspace") ?? string.Empty,
-                    related.Count, related.FirstOrDefault()?.Key);
+                    id, ReadString(agent, "name") ?? id, related.FirstOrDefault()?.Key);
             })
             .Where(agent => !string.IsNullOrWhiteSpace(agent.Id))
             .DistinctBy(agent => agent.Id)

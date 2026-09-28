@@ -2,9 +2,7 @@ namespace OpenClawTray.Presentation;
 
 internal enum WorkspacePageId
 {
-    Home, Agents, AgentDetail, WriterDetail, Dashboards, DashboardDetail, Canvas,
-    Systems, SystemDetail, Automations, AutomationDetail, Plugins, Skills,
-    Sessions, Usage, Activity, Tasks, Meetings, Apps, Portals, Notifications, More
+    Home, Notifications
 }
 
 internal enum CompanionPageId
@@ -13,7 +11,7 @@ internal enum CompanionPageId
     Bindings, Config, Usage, LocalAi, Voice, Permissions, Sandbox, Debug, Settings, About
 }
 
-internal sealed record WorkspaceDestination(WorkspacePageId Page, string? ItemId = null);
+internal sealed record WorkspaceDestination(WorkspacePageId Page);
 
 /// <summary>
 /// Window boundary and route identity for the approved Workspace. Agent file
@@ -25,34 +23,15 @@ internal static class WorkspaceNavigation
         new Dictionary<string, WorkspacePageId>(StringComparer.Ordinal)
         {
             ["home"] = WorkspacePageId.Home,
-            ["agents"] = WorkspacePageId.Agents,
-            ["agent-detail"] = WorkspacePageId.AgentDetail,
-            ["writer-detail"] = WorkspacePageId.WriterDetail,
-            ["dashboards"] = WorkspacePageId.Dashboards,
-            ["dashboard-detail"] = WorkspacePageId.DashboardDetail,
-            ["canvas"] = WorkspacePageId.Canvas,
-            ["systems"] = WorkspacePageId.Systems,
-            ["system-detail"] = WorkspacePageId.SystemDetail,
-            ["automations"] = WorkspacePageId.Automations,
-            ["automation-detail"] = WorkspacePageId.AutomationDetail,
-            ["plugins"] = WorkspacePageId.Plugins,
-            ["skills"] = WorkspacePageId.Skills,
-            ["sessions"] = WorkspacePageId.Sessions,
-            ["usage"] = WorkspacePageId.Usage,
-            ["activity"] = WorkspacePageId.Activity,
-            ["tasks"] = WorkspacePageId.Tasks,
-            ["meetings"] = WorkspacePageId.Meetings,
-            ["apps"] = WorkspacePageId.Apps,
-            ["portals"] = WorkspacePageId.Portals,
             ["notifications"] = WorkspacePageId.Notifications,
-            ["more"] = WorkspacePageId.More,
         };
 
-    public static IReadOnlyList<WorkspacePageId> PinnedPages { get; } =
-    [
-        WorkspacePageId.Home, WorkspacePageId.Agents, WorkspacePageId.Dashboards,
-        WorkspacePageId.Systems, WorkspacePageId.Automations, WorkspacePageId.Plugins
-    ];
+    private static readonly HashSet<string> DeprecatedRoutes = new(StringComparer.Ordinal)
+    {
+        "agents", "agent-detail", "writer-detail", "dashboards", "dashboard-detail", "canvas",
+        "systems", "system-detail", "automations", "automation-detail", "plugins", "skills",
+        "sessions", "usage", "activity", "tasks", "meetings", "apps", "portals", "more"
+    };
 
     public static bool TryResolveWorkspace(string? tag, out WorkspaceDestination destination)
     {
@@ -60,15 +39,17 @@ internal static class WorkspaceNavigation
         if (tag is null or "hub" or "home" or "workspace" or "chat")
             return true;
 
-        return tag.StartsWith("workspace:", StringComparison.Ordinal)
-            && Routes.TryGetValue(tag["workspace:".Length..], out var page)
-            && Assign(page, out destination);
-    }
-
-    private static bool Assign(WorkspacePageId page, out WorkspaceDestination destination)
-    {
-        destination = new(page);
-        return true;
+        if (!tag.StartsWith("workspace:", StringComparison.Ordinal))
+            return false;
+        var route = tag["workspace:".Length..];
+        if (Routes.TryGetValue(route, out var page))
+        {
+            destination = new(page);
+            return true;
+        }
+        // Old prototype links return to chat, never adding removed surfaces to history.
+        // Unprefixed companion routes retain their existing settings-page meaning.
+        return DeprecatedRoutes.Contains(route);
     }
 
     public static string CompanionTag(CompanionPageId page, string agentId = "main") => page switch
@@ -79,16 +60,6 @@ internal static class WorkspaceNavigation
         _ => page.ToString().ToLowerInvariant()
     };
 
-    public static WorkspacePageId Section(WorkspacePageId page) => page switch
-    {
-        WorkspacePageId.AgentDetail or WorkspacePageId.WriterDetail => WorkspacePageId.Agents,
-        WorkspacePageId.DashboardDetail or WorkspacePageId.Canvas => WorkspacePageId.Dashboards,
-        WorkspacePageId.SystemDetail => WorkspacePageId.Systems,
-        WorkspacePageId.AutomationDetail => WorkspacePageId.Automations,
-        WorkspacePageId.Skills => WorkspacePageId.Plugins,
-        _ when PinnedPages.Contains(page) => page,
-        _ => WorkspacePageId.More
-    };
 }
 
 internal sealed class WorkspaceNavigationHistory

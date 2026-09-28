@@ -66,7 +66,8 @@ public sealed partial class SessionsPage : Page
         if (Environment.GetEnvironmentVariable("OPENCLAW_ACCESSIBILITY_TEST_SESSIONS") == "1"
             && Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR") is { Length: > 0 })
         {
-            UpdateSessions(
+            // Use the same test-only snapshot for the companion and Workspace sidebar.
+            _appState.Sessions =
             [
                 new SessionInfo
                 {
@@ -123,7 +124,7 @@ public sealed partial class SessionsPage : Page
                     DisplayName = "Completed cleanup",
                     UpdatedAt = DateTime.UtcNow.AddMinutes(-8),
                 },
-            ]);
+            ];
             return;
         }
 

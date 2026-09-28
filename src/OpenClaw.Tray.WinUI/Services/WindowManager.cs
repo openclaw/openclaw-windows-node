@@ -425,8 +425,7 @@ internal sealed class WindowManager : IWindowManager
             }
 
             _workspaceWindow = new WorkspaceWindow(state, notifications,
-                tag => ShowHub(tag), ShowConnectionStatus, () => ShowOnboardingAsync(),
-                _callbacks.ShowTrayMenu);
+                tag => ShowHub(tag), ShowConnectionStatus);
             _callbacks.ApplyTheme(_workspaceWindow);
             _workspaceWindow.Closed += OnWorkspaceClosed;
             _workspaceWindow.Activated += OnMainWindowActivated;

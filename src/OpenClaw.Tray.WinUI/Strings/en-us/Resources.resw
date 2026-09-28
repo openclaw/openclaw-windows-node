@@ -2490,7 +2490,7 @@ Use one of these options:
     <value>Type a command...</value>
   </data>
   <data name="HubWindow_winexWindowEx_2.Title" xml:space="preserve">
-    <value>OpenClaw</value>
+    <value>OpenClaw Settings</value>
   </data>
   <data name="TitleSearchBox.PlaceholderText" xml:space="preserve">
     <value>Search… (Ctrl+E)</value>

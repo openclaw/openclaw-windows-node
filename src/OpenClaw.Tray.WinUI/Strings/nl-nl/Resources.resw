@@ -2444,7 +2444,7 @@ Gebruik een van deze opties:
     <value>Typ een opdracht...</value>
   </data>
   <data name="HubWindow_winexWindowEx_2.Title" xml:space="preserve">
-    <value>OpenClaw</value>
+    <value>OpenClaw-instellingen</value>
   </data>
   <data name="TitleSearchBox.PlaceholderText" xml:space="preserve">
     <value>Zoeken… (Ctrl+E)</value>
