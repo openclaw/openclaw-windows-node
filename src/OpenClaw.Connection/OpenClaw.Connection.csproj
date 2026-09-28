@@ -10,12 +10,17 @@
   <ItemGroup>
     <InternalsVisibleTo Include="OpenClaw.SetupEngine" />
     <InternalsVisibleTo Include="OpenClaw.Connection.Tests" />
+    <InternalsVisibleTo Include="OpenClaw.E2ETests" />
     <InternalsVisibleTo Include="OpenClaw.Tray.Tests" />
     <InternalsVisibleTo Include="OpenClaw.SetupEngine.Tests" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\OpenClaw.Shared\OpenClaw.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="BrowserBootstrapWslBroker.cjs" />
   </ItemGroup>
 
   <ItemGroup>

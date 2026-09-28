@@ -492,6 +492,7 @@ public sealed class MigrationRecordTests
             await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
             Assert.True(child.HasExited);
             Assert.IsAssignableFrom<OperationCanceledException>(error.InnerException);
+            Assert.Contains("Before cleanup: rootExited=False", error.Message);
             Assert.Contains("timeout stdout", error.Message);
             Assert.Contains("timeout stderr", error.Message);
             Assert.Contains(lockLog ? "Script log unavailable: IOException" : "cleanup checkpoint", error.Message);
@@ -525,11 +526,17 @@ public sealed class MigrationRecordTests
         }
         catch (OperationCanceledException exception) when (timeout.IsCancellationRequested)
         {
+            // Capture before killing: joined cleanup alone cannot distinguish a live
+            // PowerShell stall from a process-exit/drain notification race in the harness.
+            bool? rootExitedBeforeCleanup = null;
+            var stdoutCompletedBeforeCleanup = stdout.IsCompleted;
+            var stderrCompletedBeforeCleanup = stderr.IsCompleted;
             // Stop cleanup before the caller releases its lock or deletes the fixture.
             var cleanup = "Root process exit confirmed.";
             try
             {
-                if (!process.HasExited)
+                rootExitedBeforeCleanup = process.HasExited;
+                if (!rootExitedBeforeCleanup.Value)
                     process.Kill(entireProcessTree: true);
                 await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
             }
@@ -551,6 +558,8 @@ public sealed class MigrationRecordTests
             }
             throw new TimeoutException(
                 $"Migration script PID {process.Id} exceeded {limit.TotalSeconds:g} seconds.\n" +
+                $"Before cleanup: rootExited={rootExitedBeforeCleanup?.ToString() ?? "unknown"}; " +
+                $"stdoutCompleted={stdoutCompletedBeforeCleanup}; stderrCompleted={stderrCompletedBeforeCleanup}.\n" +
                 $"{cleanup}\nStandard output:\n{output[0]}\nStandard error:\n{output[1]}\nScript log:\n{log}",
                 exception);
         }

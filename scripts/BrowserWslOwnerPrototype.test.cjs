@@ -1,0 +1,9 @@
+'use strict';
+const {test}=require('node:test');const assert=require('node:assert/strict');const {PassThrough}=require('node:stream');
+const {parse,frame,Reader,cliPayload}=require('./BrowserWslOwnerPrototype.cjs');
+const permit={v:1,type:'permit',requestId:'a'.repeat(32),invocationId:'b'.repeat(32),challenge:'c'.repeat(32)};
+test('canonical control and fragmented framing',()=>{const s=new PassThrough(),seen=[];new Reader(s,x=>seen.push(x),()=>{});const f=frame(permit);s.write(f.subarray(0,2));s.write(f.subarray(2,5));s.write(f.subarray(5));assert.deepEqual(seen,[permit]);});
+test('duplicate unknown noncanonical and malformed controls rejected',()=>{const text=JSON.stringify(permit);for(const raw of [text.replace('{','{"v":1,'),text.replace('}',',"extra":true}'),' '+text,text.replace('"v":1','"v":1.0'),'{',text.replace('a'.repeat(32),'bad')])assert.throws(()=>parse(Buffer.from(raw)));});
+test('invalid UTF8 and BOM controls rejected',()=>{assert.throws(()=>parse(Buffer.from([0xff])));assert.throws(()=>parse(Buffer.concat([Buffer.from([0xef,0xbb,0xbf]),Buffer.from(JSON.stringify(permit))])));});
+test('overbound and partial frames revoke',()=>{for(const mode of ['large','partial']){const s=new PassThrough();let gone=false;new Reader(s,()=>assert.fail(),()=>gone=true);const h=Buffer.alloc(4);h.writeUInt32LE(mode==='large'?1000000:20);s.write(h);if(mode==='large')assert.equal(gone,true);else{s.emit('end');assert.equal(gone,true);}}});
+test('legacy 16384 UTF16 capacity is not reduced by framing',()=>{for(const text of ['x'.repeat(16384),'界'.repeat(16384),'😀'.repeat(8192)]){const bytes=Buffer.from(text);const payload=cliPayload(bytes);const message={v:1,type:'result',requestId:permit.requestId,invocationId:permit.invocationId,payload};const encoded=frame(message);assert.equal(Buffer.from(parse(encoded.subarray(4)).payload,'base64').toString(),text);assert.ok(encoded.length<90004);}assert.throws(()=>cliPayload(Buffer.from('x'.repeat(16385))));});

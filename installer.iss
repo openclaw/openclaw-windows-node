@@ -64,6 +64,7 @@ Compression={#MyCompression}
 SolidCompression={#MySolidCompression}
 WizardStyle=modern
 PrivilegesRequired=lowest
+UsePreviousTasks=yes
 SetupIconFile=src\OpenClaw.Tray.WinUI\Assets\openclaw.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 ; Round 2 (Scott #5): block install/uninstall while the tray is running.
@@ -101,6 +102,9 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 #endif
 
 [Tasks]
+#ifndef DevBuild
+Name: "chromeextension"; Description: "Add the OpenClaw Chrome extension (Chrome approval required)"; GroupDescription: "Browser integration:"
+#endif
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 Name: "startupicon"; Description: "Start {#MyAppName} when Windows starts"; GroupDescription: "Startup:"; Flags: unchecked
 
@@ -235,6 +239,8 @@ begin
     MigrationOperationLocked := False;
   end;
 end;
+
+#include "scripts\BrowserBootstrapManagement.iss"
 
 #if vcRedist != ""
 procedure InstallVCRuntime;
@@ -591,6 +597,13 @@ begin
   if not LocalGatewayCleanupSucceeded then
     Exit;
 
+  { Native generations may retain foreign files or orphan Store references. They are not installer garbage. }
+  if DirExists(ExpandConstant('{localappdata}\OpenClawTray\browser-native')) then
+  begin
+    Log('Retained native generations require ownership-aware cleanup; preserving generated app state.');
+    Exit;
+  end;
+
   if DelTree(ExpandConstant('{app}'), True, True, True) then
     Log('Deleted generated app state from {app}.')
   else
@@ -624,10 +637,36 @@ begin
     Log('{#MyStartupTaskName} startup task already absent or unavailable.');
 end;
 
+procedure RegisterBrowserIntegration;
+var
+  StoreAction: String;
+begin
+#ifndef DevBuild
+  StoreAction := 'preserve';
+  if WizardIsTaskSelected('chromeextension') then StoreAction := 'request';
+  if not RunBrowserManagement('install', StoreAction) then
+    Log('Browser setup was refused or its outcome is uncertain. Existing registrations and pairing are preserved.');
+#endif
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then RegisterBrowserIntegration;
+end;
+
+procedure UnregisterBrowserNativeHost;
+begin
+#ifndef DevBuild
+  if not RunBrowserManagement('uninstall', 'remove') then
+    Log('Browser cleanup was refused or its outcome is uncertain. Retained generations must not be deleted.');
+#endif
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then
   begin
+    UnregisterBrowserNativeHost;
     RemoveAppAutoStart;
     EnsureLocalGatewayCleanupChoice;
     RunLocalGatewayCleanup;

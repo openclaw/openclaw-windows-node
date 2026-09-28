@@ -299,6 +299,9 @@ public sealed class InnoMigrationContractTests
         "      LocalGatewayCleanupSucceeded := True;\n    end;\n\n    if Started and (ResultCode = 0) then")]
     [InlineData("if Started and (ResultCode = 0) then", "if ResultCode = 0 then")]
     [InlineData("  if not LocalGatewayCleanupSucceeded then\n    Exit;", "")]
+    [InlineData("if DirExists(ExpandConstant('{localappdata}\\OpenClawTray\\browser-native')) then", "if False then")]
+    [InlineData("Log('Retained native generations require ownership-aware cleanup; preserving generated app state.');\n    Exit;",
+        "Log('Retained native generations require ownership-aware cleanup; preserving generated app state.');")]
     public void Installer_PreservationContractsRejectUnsafeMutations(string original, string replacement)
     {
         var installer = Read("installer.iss").ReplaceLineEndings("\n");
@@ -356,6 +359,9 @@ public sealed class InnoMigrationContractTests
         Assert.Matches(
             @"procedure DeleteGeneratedAppState;\s+begin\s+" +
             @"if not LocalGatewayCleanupSucceeded then\s+Exit;\s+" +
+            @"(?:\{[^}]*\}\s+)?" +
+            @"if DirExists\(ExpandConstant\('\{localappdata\}\\OpenClawTray\\browser-native'\)\) then\s+begin\s+" +
+            @"Log\('[^']*'\);\s+Exit;\s+end;\s+" +
             @"if DelTree\(ExpandConstant\('\{app\}'\), True, True, True\) then",
             installer);
     }
