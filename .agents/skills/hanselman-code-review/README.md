@@ -22,4 +22,4 @@ Source-review agreement does not replace runtime evidence.
 
 ## License
 
-[MIT](LICENSE), copyright Scott Hanselman.
+[MIT](LICENSE.md), copyright Scott Hanselman.
