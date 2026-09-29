@@ -11,7 +11,7 @@ internal enum CompanionPageId
     Bindings, Config, Usage, LocalAi, Voice, Permissions, Sandbox, Debug, Settings, About
 }
 
-internal sealed record WorkspaceDestination(WorkspacePageId Page);
+internal sealed record WorkspaceDestination(WorkspacePageId Page, string? SessionKey = null);
 
 /// <summary>
 /// Window boundary and route identity for the approved Workspace. Agent file
@@ -67,6 +67,7 @@ internal sealed class WorkspaceNavigationHistory
     private readonly Stack<WorkspaceDestination> _back = new();
     private readonly Stack<WorkspaceDestination> _forward = new();
     public WorkspaceDestination Current { get; private set; } = new(WorkspacePageId.Home);
+    public WorkspaceDestination ChatDestination { get; private set; } = new(WorkspacePageId.Home);
     public bool CanGoBack => _back.Count > 0;
     public bool CanGoForward => _forward.Count > 0;
 
@@ -76,7 +77,7 @@ internal sealed class WorkspaceNavigationHistory
             return false;
         _back.Push(Current);
         _forward.Clear();
-        Current = destination;
+        SetCurrent(destination);
         return true;
     }
 
@@ -85,7 +86,7 @@ internal sealed class WorkspaceNavigationHistory
         if (!_back.TryPop(out var previous))
             return false;
         _forward.Push(Current);
-        Current = previous;
+        SetCurrent(previous);
         return true;
     }
 
@@ -94,7 +95,14 @@ internal sealed class WorkspaceNavigationHistory
         if (!_forward.TryPop(out var next))
             return false;
         _back.Push(Current);
-        Current = next;
+        SetCurrent(next);
         return true;
+    }
+
+    private void SetCurrent(WorkspaceDestination destination)
+    {
+        Current = destination;
+        if (destination.Page == WorkspacePageId.Home)
+            ChatDestination = destination;
     }
 }

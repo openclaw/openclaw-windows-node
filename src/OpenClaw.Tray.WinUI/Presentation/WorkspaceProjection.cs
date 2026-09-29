@@ -52,6 +52,11 @@ internal static class WorkspaceProjection
             ?? (agents.Count == 1 ? agents[0].Id : null);
     }
 
+    public static bool RequiresAgentSelection(JsonElement? data, IReadOnlyList<WorkspaceAgent> agents, string? selectedId) =>
+        data is { ValueKind: JsonValueKind.Object } root &&
+        root.TryGetProperty("selectionRequired", out var required) && required.ValueKind == JsonValueKind.True &&
+        SelectedAgentId(data, agents, selectedId) is null;
+
     public static IReadOnlyList<WorkspaceSession> Sessions(IEnumerable<SessionInfo> source, string? agentId)
     {
         // A completed run leaves a reusable conversation, not a finished sidebar item.

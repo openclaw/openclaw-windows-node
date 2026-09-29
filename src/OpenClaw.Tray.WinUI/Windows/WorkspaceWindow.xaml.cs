@@ -21,6 +21,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     private readonly Action<string> _openCompanion;
     private readonly Action _openTimeline;
     private readonly AppNotificationService _notifications;
+    private readonly WorkspaceIdentitySource _identity;
     private readonly WorkspaceNavigationHistory _navigation = new();
     private readonly ChatPage _chat = new();
     private readonly GatewayStatusContent _gatewayStatusContent = new();
@@ -32,7 +33,6 @@ public sealed partial class WorkspaceWindow : WindowEx
     private bool _showingAgentCreation;
     private IOperatorGatewayClient? _refreshingClient;
     private string? _agentId;
-    private string? _selectedSessionKey;
 
     public bool IsClosed { get; private set; }
     internal string? SelectedAgentId => _agentId;
@@ -49,6 +49,8 @@ public sealed partial class WorkspaceWindow : WindowEx
         _notifications = notifications;
         _openCompanion = openCompanion;
         _openTimeline = openTimeline;
+        _identity = new WorkspaceIdentitySource(UpdateOwnerIdentity,
+            category => Logger.Warn($"[Workspace] users.self unavailable ({category}); using owner fallback."));
         _gatewayStatusFlyout.Content = _gatewayStatusContent;
         _gatewayStatusFlyout.Opening += (_, _) => _gatewayStatusContent.Initialize(
             () => _gatewayStatusFlyout.Hide(),
@@ -73,8 +75,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         UpdatePanePresentation();
         HomeLabel.Text = Text("Home");
         AutomationProperties.SetName(HomeItem, Text("Home"));
-        AutomationProperties.SetName(OwnerButton, Text("Owner.Text"));
-        AutomationProperties.SetHelpText(OwnerButton, Text("PersonalWorkspace.Text"));
+        UpdateOwnerIdentity();
         BuildOwnerMenu();
         _state.PropertyChanged += OnStateChanged;
         _notifications.Changed += OnNotificationsChanged;
@@ -93,8 +94,10 @@ public sealed partial class WorkspaceWindow : WindowEx
         _ = RefreshAsync();
     }
 
-    internal void Navigate(WorkspaceDestination destination)
+    internal void Navigate(WorkspaceDestination destination, bool preserveConversation = true)
     {
+        if (preserveConversation && destination is { Page: WorkspacePageId.Home, SessionKey: null })
+            destination = _navigation.ChatDestination;
         if (!_navigation.Navigate(destination) && ContentHost.Children.FirstOrDefault() is FrameworkElement current)
         {
             SignalContentReady(current);
@@ -109,20 +112,8 @@ public sealed partial class WorkspaceWindow : WindowEx
 
     internal void OpenTimeline() => _openTimeline();
     internal void OpenCommandCenter() => _openCompanion("command-center");
-    internal void SelectSession(string sessionKey)
-    {
-        _selectedSessionKey = sessionKey;
-        var session = _state.Sessions.FirstOrDefault(session => session.Key == sessionKey);
-        if (session is not null)
-        {
-            _agentId = SessionDisplayResolver.Resolve(session).AgentId;
-            RefreshSidebar();
-        }
-        _chat.QueueSession(sessionKey);
-        Navigate(new(WorkspacePageId.Home));
-        if (_chat.IsLoaded) _chat.SelectSession(sessionKey);
-        UpdateNavigationSelection();
-    }
+    internal void SelectSession(string sessionKey) =>
+        Navigate(new(WorkspacePageId.Home, sessionKey));
 
     internal async Task StartAgentChatAsync(WorkspaceAgent agent)
     {
@@ -136,6 +127,15 @@ public sealed partial class WorkspaceWindow : WindowEx
 
     private void RenderDestination()
     {
+        if (Destination.Page == WorkspacePageId.Home && Destination.SessionKey is { } sessionKey)
+        {
+            var session = _state.Sessions.FirstOrDefault(session => session.Key == sessionKey)
+                ?? new SessionInfo { Key = sessionKey };
+            _agentId = SessionDisplayResolver.Resolve(session).AgentId;
+            RefreshSidebar();
+            // Queue before initialization so history restores the existing chat host's session.
+            _chat.QueueSession(sessionKey);
+        }
         if (Destination.Page == WorkspacePageId.Home && ContentHost.Children.Contains(_chat))
         {
             _chat.Initialize(this);
@@ -170,7 +170,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         _updating = true;
         var items = NavView.MenuItems.OfType<NavigationViewItem>();
         NavView.SelectedItem = Destination.Page == WorkspacePageId.Home
-            ? items.FirstOrDefault(item => item.Tag is WorkspaceSession session && session.Key == _selectedSessionKey)
+            ? items.FirstOrDefault(item => item.Tag is WorkspaceSession session && session.Key == Destination.SessionKey)
                 ?? HomeItem
             : null;
         _updating = false;
@@ -260,8 +260,11 @@ public sealed partial class WorkspaceWindow : WindowEx
         SessionsEmpty.Content = Text("NoSessions");
         SessionsEmpty.Visibility = sessions.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         NewAgentOption.IsEnabled = !_showingAgentCreation;
+        var selectionRequired = WorkspaceProjection.RequiresAgentSelection(_state.AgentsList, agents, _agentId);
         NewSessionButton.IsEnabled =
-            !_creatingSession && _state.Status == ConnectionStatus.Connected;
+            !_creatingSession && _state.Status == ConnectionStatus.Connected && !selectionRequired;
+        AutomationProperties.SetHelpText(NewSessionButton, selectionRequired ? Text("SelectAssistant") : string.Empty);
+        ToolTipService.SetToolTip(NewSessionButton, selectionRequired ? Text("SelectAssistant") : null);
         _updating = false;
         // Before layout, NavigationView is still minimal and selecting an item closes its pane.
         if (Root.IsLoaded)
@@ -300,6 +303,15 @@ public sealed partial class WorkspaceWindow : WindowEx
         {
             ShowError(Text("ConnectionRequired"));
             OpenCompanion(CompanionPageId.Connection);
+            return;
+        }
+
+        RefreshSidebar();
+        if (WorkspaceProjection.RequiresAgentSelection(
+            _state.AgentsList, WorkspaceProjection.Agents(_state.AgentsList, _state.Sessions), _agentId))
+        {
+            ShowError(Text("SelectAssistant"));
+            AssistantSelector.Focus(FocusState.Programmatic);
             return;
         }
 
@@ -346,6 +358,8 @@ public sealed partial class WorkspaceWindow : WindowEx
 
     private void OnStateChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName is nameof(AppState.Status) or nameof(AppState.Presence) or nameof(AppState.SelfProfileRevision))
+            RefreshOwnerIdentity(e.PropertyName == nameof(AppState.SelfProfileRevision));
         if (e.PropertyName is nameof(AppState.AgentsList) or nameof(AppState.Sessions) or nameof(AppState.Status))
             RefreshSidebar();
         if (e.PropertyName == nameof(AppState.Status) && _state.Status == ConnectionStatus.Connected)
@@ -356,12 +370,30 @@ public sealed partial class WorkspaceWindow : WindowEx
 
     internal void UpdateConnectionStatus(GatewayConnectionSnapshot? snapshot, ConnectionStatus status)
     {
+        if (_identity.SetConnection(CurrentApp.GatewayClient, status))
+            _ = _identity.RefreshAsync();
         var (labelKey, accent) = ConnectionStatusPresenter.Pill(snapshot?.OverallState, status);
         var label = LocalizationHelper.GetString(labelKey);
+        OwnerDetail.Text = label;
+        AutomationProperties.SetHelpText(OwnerButton, label);
         _connectionStatusItem.Text = label;
         _connectionStatusIcon.Style = (Style)Root.Resources[$"ConnectionBadge{accent}"];
         AutomationProperties.SetName(_connectionStatusItem,
             $"{LocalizationHelper.GetString("ConnectionStatusWindow.Title")}: {label}");
+    }
+
+    private void RefreshOwnerIdentity(bool invalidate = false)
+    {
+        _identity.SetConnection(CurrentApp.GatewayClient, _state.Status);
+        _ = _identity.RefreshAsync(invalidate);
+    }
+
+    private void UpdateOwnerIdentity()
+    {
+        OwnerName.Text = _identity.DisplayName ?? Text("Owner.Text");
+        OwnerPicture.DisplayName = _identity.DisplayName ?? "";
+        AutomationProperties.SetName(OwnerButton,
+            string.IsNullOrWhiteSpace(OwnerName.Text) ? Text("Owner.Text") : OwnerName.Text);
     }
 
     private void OnAssistantChanged(object sender, SelectionChangedEventArgs e)
@@ -407,8 +439,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         if (_updating) return;
         if (e.SelectedItemContainer?.Tag is string route)
         {
-            _selectedSessionKey = null;
-            Navigate(new(WorkspaceNavigation.Routes[route]));
+            Navigate(new(WorkspaceNavigation.Routes[route]), preserveConversation: false);
             UpdateNavigationSelection();
         }
         else if (e.SelectedItemContainer?.Tag is WorkspaceSession session)
@@ -562,6 +593,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     private void OnClosed(object sender, WindowEventArgs args)
     {
         IsClosed = true;
+        _identity.SetConnection(null, ConnectionStatus.Disconnected);
         _state.PropertyChanged -= OnStateChanged;
         _notifications.Changed -= OnNotificationsChanged;
         NotificationsFlyout.Hide();

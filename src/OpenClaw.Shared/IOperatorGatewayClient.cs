@@ -32,6 +32,8 @@ public interface IOperatorGatewayClient
     event EventHandler<DevicePairingListInfo>? DevicePairListUpdated;
     event EventHandler<ModelsListInfo>? ModelsListUpdated;
     event EventHandler<PresenceEntry[]>? PresenceUpdated;
+    /// <summary>The authenticated profile changed; consumers should reload users.self.</summary>
+    event EventHandler? SelfProfileChanged { add { } remove { } }
     event EventHandler<JsonElement>? AgentsListUpdated;
     event EventHandler<JsonElement>? AgentFilesListUpdated;
     event EventHandler<JsonElement>? AgentFileContentUpdated;

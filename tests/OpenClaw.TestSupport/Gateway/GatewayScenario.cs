@@ -90,7 +90,7 @@ public sealed class GatewayScenario
         return new(browse._sessions, browse._reads, responder, advertiseSetup);
     }
 
-    public static GatewayScenario CreateBrowse(bool allowAgentCreation = false)
+    public static GatewayScenario CreateBrowse(bool allowAgentCreation = false, bool requireAgentSelection = false)
     {
         Session[] sessions =
         [
@@ -169,6 +169,10 @@ public sealed class GatewayScenario
         var configHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(config.GetRawText()))).ToLowerInvariant();
         var reads = new Dictionary<string, JsonElement>(StringComparer.Ordinal)
         {
+            ["users.self"] = JsonSerializer.SerializeToElement(new
+            {
+                profile = new { id = "fixture-owner", displayName = "Fixture Owner", emails = new[] { "owner@example.test" } }
+            }),
             ["health"] = JsonSerializer.SerializeToElement(new
             {
                 ok = true, ts = Epoch.ToUnixTimeMilliseconds(), durationMs = 0,
@@ -179,6 +183,7 @@ public sealed class GatewayScenario
             ["agents.list"] = JsonSerializer.SerializeToElement(new
             {
                 defaultId = "main", mainKey = "main", scope = "per-sender",
+                selectionRequired = requireAgentSelection,
                 agents = new[]
                 {
                     new { id = "main", name = "Fixture Main", identity = new { name = "Fixture Main" } },
@@ -261,6 +266,7 @@ public sealed class GatewayScenario
                 return new
                 {
                     defaultId = "main", mainKey = "main", scope = "per-sender",
+                    selectionRequired = _reads["agents.list"].GetProperty("selectionRequired").GetBoolean(),
                     agents = _reads["agents.list"].GetProperty("agents").EnumerateArray().Cast<object>()
                         .Concat(_createdAgents).ToArray()
                 };

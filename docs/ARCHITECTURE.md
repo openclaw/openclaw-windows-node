@@ -48,6 +48,22 @@ multi-PR refactor plan for the reasoning behind each boundary.
 
 These are the canonical homes. Do not reintroduce private copies elsewhere.
 
+The tray icon's primary activation always opens or focuses Workspace chat,
+including while disconnected. `TrayController` invokes its chat callback and
+`App` composes that callback with the `WindowManager` chat route. Explicit
+Connection menu actions retain their settings route; opening Workspace does
+not bypass chat authorization or pairing requirements.
+
+Workspace footer text follows the macOS-hosted Control UI at
+[`bda22f8`](https://github.com/openclaw/openclaw/blob/bda22f818d967ffa3551b3a729d5bc43863844c7/ui/src/components/app-sidebar-render.ts):
+the current user's name, then email, then localized Owner; the second line is
+connection status. `WorkspaceIdentitySource` reads `users.self` profile fields
+(`displayName`, first `emails` entry), never an agent identity or Windows account.
+`sessions.changed` with reason `profile-identity` invalidates the profile through
+`GatewayService`/`AppState`; ordinary session updates do not trigger profile RPCs.
+The window owns the display source lifetime, and stale results cannot survive
+disconnect, replacement, or close. This cache is not used for authorization.
+
 | Concern | Canonical owner | Status |
 | --- | --- | --- |
 | Test temp directories | `OpenClaw.TestSupport.TempDirectory` | authoritative |
@@ -61,6 +77,7 @@ These are the canonical homes. Do not reintroduce private copies elsewhere.
 | Passive fixture chat-render acknowledgement | `GatewayFixtureRenderObservation` (pure metadata) + `ReactorChatComposer` (UI applicator) | authoritative |
 | External chat session selection without remounting | `MountedReactorChat` forwards to `ChatComposerController`'s existing root selection handoff; `ChatPage` retains initial-mount fallback for an unready or replaced provider | authoritative |
 | Workspace agent creation | `AgentCreationDialog` owns inputs and feedback; `AgentCreationService` owns permission checks and response-aware gateway creation | authoritative |
+| Workspace owner display identity | `WorkspaceIdentitySource` reads the current operator's `users.self` profile; `WorkspaceWindow` applies name/email/Owner fallback and live connection status | authoritative |
 | Shared native command-catalog inputs | `HubCommandCatalog` adapts app state/settings/localization for `HubPageRegistry`; HubWindow and MCP search share it without requiring a companion window | authoritative |
 | Companion-only command-catalog input adaptation | Closed in `HubWindow`; delegate to `HubCommandCatalog` so Workspace-first MCP searches use the same inputs | closed |
 | Gateway record test data | `OpenClaw.Connection.Tests.GatewayRecordBuilder` | authoritative |
@@ -144,8 +161,8 @@ These are the canonical homes. Do not reintroduce private copies elsewhere.
 | Permissions page state, settings commands, and exec-approvals presentation | `PermissionsPageViewModel` | authoritative |
 | Permissions runtime status projection | `PermissionsPageRuntimeSource` | authoritative |
 | Hub navigation tags, page mapping, command catalog/search, and gateway-page classification | `HubPageRegistry` | authoritative |
-| Workspace Home/Notifications identity, deprecated-link fallback, back/forward history, and companion boundaries | `WorkspaceNavigation` + `WorkspaceNavigationHistory` | authoritative |
-| Workspace agent/session identity and background-session filtering | `WorkspaceProjection` | authoritative |
+| Workspace Home/Notifications and exact session-key identity, deprecated-link fallback, back/forward history, and companion boundaries | `WorkspaceNavigation` + `WorkspaceNavigationHistory`; `WorkspaceWindow` restores the selected agent/session on the retained chat host; `WindowManager` routes pending session links directly without an intermediate Home entry | authoritative |
+| Workspace agent/session identity, background-session filtering, and explicit assistant-selection readiness for conversation creation | `WorkspaceProjection`; `WorkspaceWindow` applies readiness to Sessions + and guards the mutation | authoritative |
 | Native Workspace pane visibility, non-overlapping reopen row, and toggle focus handoff | `WorkspaceWindow` | authoritative |
 | Speculative Workspace management cards and responsive grids | removed with Home/Sessions-only navigation | closed |
 | Foreground Workspace and separate Settings companion lifetime | `WindowManager` | authoritative |

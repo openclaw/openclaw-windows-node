@@ -1083,10 +1083,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         _trayController = new TrayController(new TrayControllerCallbacks(
             CaptureMenuSnapshot: CaptureTrayMenuSnapshot,
             CaptureIconSnapshot: CaptureTraySnapshot,
-            IsOperatorConnected: () =>
-                _connectionManager?.CurrentSnapshot.OperatorState == RoleConnectionState.Connected,
-            ShowChat: ShowChatWindow,
-            ShowConnection: () => ShowHub("connection"),
+            ShowChat: () => ShowHub("chat"),
             DispatchMenuAction: action => OnTrayMenuItemClicked(null, action),
             ApplyTheme: ApplyThemePreference,
             IsDispatcherAvailable: () => _dispatcherQueue != null,

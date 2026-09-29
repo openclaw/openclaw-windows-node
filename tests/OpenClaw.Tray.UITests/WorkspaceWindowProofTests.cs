@@ -13,6 +13,41 @@ public sealed class WorkspaceWindowProofTests
     [Theory]
     [InlineData("Light")]
     [InlineData("Dark")]
+    public async Task SidebarActionBackplates_AlignWithNavigationItems(string theme)
+    {
+        using var app = new AccessibilityAppFixture(initializeAxe: false, theme: theme,
+            initialRoute: "sessions", agentIdentities: true);
+        await app.NavigateAsync("chat", "ChatPage", "ChatComposerInput");
+        var root = AutomationElement.FromHandle(app.HubWindowHandle);
+        var scale = Find(root, "WorkspaceTogglePane").Current.BoundingRectangle.Width / 40;
+        var home = Find(root, "WorkspaceNavHome").Current.BoundingRectangle;
+        var assistant = Find(root, "WorkspaceAssistantSelector").Current.BoundingRectangle;
+        // Native ComboBox automation bounds extend 4 DIP outside its Background.
+        // NavigationViewItem automation bounds already match its inset LayoutRoot.
+        Assert.InRange(assistant.Left + 4 * scale - home.Left, -1, 1);
+        Assert.InRange(assistant.Right - 4 * scale - home.Right, -1, 1);
+        foreach (var id in new[] { "WorkspaceSessionsAdd", "WorkspaceNotifications" })
+        {
+            var bounds = Find(root, id).Current.BoundingRectangle;
+            Assert.InRange(bounds.Right - home.Right, -1, 1);
+        }
+        Capture(app, theme, "sidebar-backplates");
+        if (!string.IsNullOrEmpty(ProofDirectory))
+        {
+            foreach (var id in new[] { "WorkspaceAssistantSelector", "WorkspaceNotifications" })
+            {
+                var bounds = Find(root, id).Current.BoundingRectangle;
+                System.Windows.Forms.Cursor.Position = new System.Drawing.Point(
+                    (int)(bounds.Left + bounds.Width / 2), (int)(bounds.Top + bounds.Height / 2));
+                await Task.Delay(250);
+                Capture(app, theme, $"{id}-hover");
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
     public async Task AgentSelector_UsesConfiguredIdentityPictureNameAndId(string theme)
     {
         using var app = new AccessibilityAppFixture(initializeAxe: false, theme: theme,
@@ -103,7 +138,7 @@ public sealed class WorkspaceWindowProofTests
         Capture(app, theme, "sidebar-composer");
         Invoke(Find(root, "WorkspaceOwner"));
         Assert.Equal("Owner", Find(root, "WorkspaceOwner").Current.Name);
-        Assert.Equal("Personal workspace", Find(root, "WorkspaceOwner").Current.HelpText);
+        Assert.Equal("Disconnected", Find(root, "WorkspaceOwner").Current.HelpText);
         await WaitUntilAsync(() => FindPopup(root, "WorkspaceOwnerConnectionStatus") is not null);
         Assert.Equal("Connection Status: Disconnected", FindPopup(root, "WorkspaceOwnerConnectionStatus")!.Current.Name);
         CaptureFlyout(root, theme, "owner-live-status");

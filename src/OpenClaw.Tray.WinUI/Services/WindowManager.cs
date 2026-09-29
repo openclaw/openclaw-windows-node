@@ -432,10 +432,11 @@ internal sealed class WindowManager : IWindowManager
 
         if (!preserveCurrent)
         {
-            _workspaceWindow.Navigate(destination);
             if (destination.Page == WorkspacePageId.Home &&
                 _callbacks.GetPendingChatSessionKey() is { Length: > 0 } sessionKey)
                 _workspaceWindow.SelectSession(sessionKey);
+            else
+                _workspaceWindow.Navigate(destination);
         }
         if (_workspaceWindow.AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter &&
             presenter.State == Microsoft.UI.Windowing.OverlappedPresenterState.Minimized)

@@ -55,7 +55,7 @@
                 <SvgImageSource x:Key="Notifications_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Notifications.svg"/>
             </NavigationView.Resources>
             <NavigationView.PaneHeader>
-                <StackPanel Margin="4,8,12,8" Spacing="8">
+                <StackPanel Margin="4,8,4,8" Spacing="8">
                     <Grid x:Name="NavigationToolbar" Height="40">
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
                             <Button x:Name="BackButton" x:Uid="NavBackButton" Click="OnBack"
@@ -75,7 +75,7 @@
                     <ComboBox x:Name="AssistantSelector" x:Uid="WorkspaceShell_Assistant"
                               Padding="4,8,28,8"
                               HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" SelectionChanged="OnAssistantChanged"
-                              Background="Transparent" BorderThickness="0"
+                              Background="Transparent" BorderThickness="0" CornerRadius="{ThemeResource ControlCornerRadius}"
                               AutomationProperties.AutomationId="WorkspaceAssistantSelector">
                         <ComboBox.Resources>
                             <SolidColorBrush x:Key="ComboBoxBackground" Color="Transparent"/>
@@ -108,6 +108,9 @@
                     </StackPanel>
                 </NavigationViewItem>
                 <NavigationViewItemHeader x:Name="SessionsHeader" IsEnabled="True">
+                    <NavigationViewItemHeader.Resources>
+                        <Thickness x:Key="NavigationViewItemInnerHeaderMargin">16,0,4,0</Thickness>
+                    </NavigationViewItemHeader.Resources>
                     <NavigationViewItemHeader.Template>
                         <ControlTemplate TargetType="NavigationViewItemHeader">
                             <Grid>
@@ -122,7 +125,8 @@
                                     </VisualStateGroup>
                                 </VisualStateManager.VisualStateGroups>
                                 <ContentPresenter x:Name="HeaderContent" Content="{TemplateBinding Content}"
-                                                  Height="40" Margin="{ThemeResource NavigationViewItemInnerHeaderMargin}"/>
+                                                  Height="40" HorizontalContentAlignment="Stretch"
+                                                  Margin="{ThemeResource NavigationViewItemInnerHeaderMargin}"/>
                             </Grid>
                         </ControlTemplate>
                     </NavigationViewItemHeader.Template>
@@ -131,6 +135,8 @@
                         <TextBlock x:Uid="WorkspaceShell_SessionsLabel" Text="Sessions" VerticalAlignment="Center"
                                    Style="{StaticResource NavigationViewItemHeaderTextStyle}"/>
                         <Button x:Name="NewSessionButton" x:Uid="WorkspaceShell_NewConversation" Grid.Column="1" Click="OnNewConversation"
+                                Width="40" Height="{ThemeResource NavigationViewItemOnLeftMinHeight}"
+                                CornerRadius="{ThemeResource ControlCornerRadius}"
                                 Style="{StaticResource SubtleButtonStyle}" AutomationProperties.AutomationId="WorkspaceSessionsAdd">
                             <FontIcon Glyph="&#xE710;" FontSize="16"/>
                         </Button>
@@ -139,21 +145,24 @@
                 <NavigationViewItemHeader x:Name="SessionsEmpty" FontWeight="Normal"/>
             </NavigationView.MenuItems>
             <NavigationView.PaneFooter>
-                <Grid x:Name="ExpandedFooter" ColumnSpacing="4" Margin="4,8,8,8">
+                <Grid x:Name="ExpandedFooter" ColumnSpacing="4" Margin="4,8,4,8">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                     <Button x:Name="OwnerButton" Style="{StaticResource SubtleButtonStyle}" Padding="8" HorizontalAlignment="Stretch"
-                            HorizontalContentAlignment="Left" AutomationProperties.AutomationId="WorkspaceOwner">
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <PersonPicture Width="24" Height="24" VerticalAlignment="Center"
+                            HorizontalContentAlignment="Stretch" AutomationProperties.AutomationId="WorkspaceOwner">
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="24"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <PersonPicture x:Name="OwnerPicture" Width="24" Height="24" VerticalAlignment="Center"
                                            IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw"/>
-                            <StackPanel>
-                                <TextBlock x:Uid="WorkspaceShell_Owner" Text="Owner"/>
-                                <TextBlock x:Uid="WorkspaceShell_PersonalWorkspace" Text="Personal workspace"
+                            <StackPanel Grid.Column="1">
+                                <TextBlock x:Name="OwnerName" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock x:Name="OwnerDetail" TextTrimming="CharacterEllipsis"
                                            Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                             </StackPanel>
-                        </StackPanel>
+                        </Grid>
                     </Button>
                     <Button x:Name="NotificationsButton" x:Uid="WorkspaceShell_NotificationsButton" Grid.Column="1"
+                            Width="40" Height="{ThemeResource NavigationViewItemOnLeftMinHeight}"
+                            CornerRadius="{ThemeResource ControlCornerRadius}"
                             Style="{StaticResource SubtleButtonStyle}" Padding="8" VerticalAlignment="Center"
                             AutomationProperties.AutomationId="WorkspaceNotifications">
                         <Grid>

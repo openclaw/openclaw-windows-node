@@ -259,6 +259,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     public event EventHandler<SessionsPreviewPayloadInfo>? SessionPreviewUpdated;
     public event EventHandler<SessionCommandResult>? SessionCommandCompleted;
     public event EventHandler<GatewaySelfInfo>? GatewaySelfUpdated;
+    public event EventHandler? SelfProfileChanged;
     public event EventHandler<JsonElement>? CronListUpdated;
     public event EventHandler<JsonElement>? CronStatusUpdated;
     public event EventHandler<JsonElement>? CronRunsUpdated;
@@ -3512,6 +3513,12 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                     TryParsePresenceFromBroadcast(presPayload);
                 break;
             case "sessions.changed":
+                if (root.TryGetProperty("payload", out var sessionChange) &&
+                    sessionChange.ValueKind == JsonValueKind.Object &&
+                    sessionChange.TryGetProperty("reason", out var changeReason) &&
+                    changeReason.ValueKind == JsonValueKind.String &&
+                    changeReason.GetString() == "profile-identity")
+                    SelfProfileChanged?.Invoke(this, EventArgs.Empty);
                 // Gateway broadcasts this after session mutations (patch, send, etc.).
                 // Re-request the full sessions list so we pick up model/thinking changes.
                 _logger.Info("[EVENT] sessions.changed received — refreshing sessions list");

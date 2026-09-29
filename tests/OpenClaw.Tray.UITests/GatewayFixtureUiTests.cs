@@ -25,6 +25,81 @@ public sealed class GatewayFixtureUiTests(ITestOutputHelper output)
 {
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
+    public async Task OwnerFooterUsesAuthenticatedProfileAndLiveConnectionStatus()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceOwner")?.Current.Name == "Fixture Owner",
+                "authenticated profile in footer");
+            var owner = FindById(run, "WorkspaceOwner")!;
+            Assert.Contains("Connected", owner.Current.HelpText, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Personal workspace", owner.Current.HelpText);
+            Assert.Contains(run.Gateway.Requests, request => request.Method == "users.self" && request.Outcome == "ok");
+            await CaptureIfRequestedAsync(run, "owner-profile.png");
+        });
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    public async Task SessionHistoryRestoresSelectionTranscriptAndDraftAcrossAgents()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            await SelectSessionAsync(run, GatewayScenario.LongSessionTitle, GatewayScenario.LongSessionKey);
+            var home = FindById(run, "WorkspaceNavHome")!.Current.BoundingRectangle;
+            var add = FindById(run, "WorkspaceSessionsAdd")!;
+            Assert.True(add.Current.IsEnabled);
+            Assert.InRange(add.Current.BoundingRectangle.Right - home.Right, -1, 1);
+            const string draft = "Keep draft through back and forward";
+            ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).SetValue(draft);
+            await SelectSessionAsync(run, GatewayScenario.OtherSessionTitle, GatewayScenario.OtherSessionKey);
+            Assert.True(FindById(run, "WorkspaceBack")!.Current.IsEnabled);
+            Invoke(FindById(run, "WorkspaceBack")!);
+            await WaitUiAsync(run, () => SessionSelected(run, GatewayScenario.LongSessionTitle)
+                && IsVisibleInTimeline(run, GatewayScenario.LongHistoryFinalMarker), "back to original session and transcript");
+            Assert.Equal(draft, ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+            Assert.True(FindById(run, "WorkspaceForward")!.Current.IsEnabled);
+            Invoke(FindById(run, "WorkspaceForward")!);
+            await WaitUiAsync(run, () => SessionSelected(run, GatewayScenario.OtherSessionTitle)
+                && IsVisibleInTimeline(run, GatewayScenario.OtherHistoryMarker), "forward across agents");
+            Assert.False(FindById(run, "WorkspaceForward")!.Current.IsEnabled);
+            await run.InvokeAsync("app.navigate", new { page = "workspace:notifications" });
+            Invoke(FindById(run, "WorkspaceBack")!);
+            await WaitUiAsync(run, () => SessionSelected(run, GatewayScenario.OtherSessionTitle), "back from notifications");
+            Invoke(FindById(run, "WorkspaceBack")!);
+            await WaitUiAsync(run, () => SessionSelected(run, GatewayScenario.LongSessionTitle), "back to first conversation");
+            await SelectSessionAsync(run, GatewayScenario.EmptyTitle, GatewayScenario.EmptySessionKey);
+            Assert.False(FindById(run, "WorkspaceForward")!.Current.IsEnabled);
+            Invoke(FindById(run, "WorkspaceBack")!);
+            await WaitUiAsync(run, () => SessionSelected(run, GatewayScenario.LongSessionTitle), "back after branching history");
+            Assert.Equal(draft, ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+        });
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    public async Task SessionsAddRequiresExplicitAssistantSelection()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceSessionsAdd") is { } add &&
+                !add.Current.IsEnabled && add.Current.HelpText == "Select assistant", "required assistant selection");
+            Assert.DoesNotContain(run.Gateway.Requests, request => request.Method == "sessions.create");
+            await CaptureIfRequestedAsync(run, "assistant-selection-required.png");
+            await SelectSessionAsync(run, GatewayScenario.LongSessionTitle, GatewayScenario.LongSessionKey);
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceSessionsAdd")?.Current.IsEnabled == true,
+                "conversation creation enabled after assistant selection");
+            Assert.Equal(string.Empty, FindById(run, "WorkspaceSessionsAdd")!.Current.HelpText);
+            Assert.DoesNotContain(run.Gateway.Requests, request => request.Method == "sessions.create");
+            await CaptureIfRequestedAsync(run, "assistant-selection-ready.png");
+        }, requireAgentSelection: true);
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
     public async Task NewAgentUsesGatewayCreationAndRefreshesWithoutReplacingConversation()
     {
         await WithAppAsync(async run =>
@@ -276,12 +351,14 @@ public sealed class GatewayFixtureUiTests(ITestOutputHelper output)
         });
     }
 
-    private async Task WithAppAsync(Func<GatewayFixtureRun, Task> test, bool allowAgentCreation = false)
+    private async Task WithAppAsync(Func<GatewayFixtureRun, Task> test, bool allowAgentCreation = false,
+        bool requireAgentSelection = false)
     {
         var appPath = Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_APP")
             ?? throw new InvalidOperationException("Set OPENCLAW_GATEWAY_FIXTURE_APP to the freshly built app. No installed-app fallback is allowed.");
         await using var run = await GatewayFixtureRun.StartAsync(appPath,
-            Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS"), allowAgentCreation: allowAgentCreation);
+            Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS"),
+            allowAgentCreation: allowAgentCreation, requireAgentSelection: requireAgentSelection);
         output.WriteLine($"Fixture run {run.Profile.RunId}, PID {run.AppProcessId}, artifacts: {run.ArtifactsDirectory}");
         try
         {

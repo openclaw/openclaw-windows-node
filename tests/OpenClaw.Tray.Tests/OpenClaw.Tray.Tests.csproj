@@ -242,6 +242,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\HubPageRegistry.cs" Link="Presentation\HubPageRegistry.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceNavigation.cs" Link="Presentation\WorkspaceNavigation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceProjection.cs" Link="Presentation\WorkspaceProjection.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\WorkspaceIdentitySource.cs" Link="Services\WorkspaceIdentitySource.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppNotificationInfoBarPresenter.cs" Link="Presentation\AppNotificationInfoBarPresenter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppServiceContext.cs" Link="Presentation\AppServiceContext.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppServiceRegistration.cs" Link="Presentation\AppServiceRegistration.cs" />

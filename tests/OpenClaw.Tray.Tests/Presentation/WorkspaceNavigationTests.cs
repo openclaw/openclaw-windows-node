@@ -123,6 +123,55 @@ public sealed class WorkspaceNavigationTests
     }
 
     [Fact]
+    public void SessionHistory_RestoresExactKeysAndClearsForwardOnlyForNewDestinations()
+    {
+        var history = new WorkspaceNavigationHistory();
+        var first = new WorkspaceDestination(WorkspacePageId.Home, "agent:main:first");
+        var second = new WorkspaceDestination(WorkspacePageId.Home, "agent:research:second");
+        Assert.True(history.Navigate(first));
+        Assert.True(history.Navigate(second));
+        Assert.False(history.Navigate(second));
+        Assert.True(history.GoBack());
+        Assert.Equal(first, history.Current);
+        Assert.False(history.Navigate(first));
+        Assert.True(history.CanGoForward);
+        Assert.True(history.GoForward());
+        Assert.Equal(second, history.Current);
+        Assert.True(history.Navigate(new(WorkspacePageId.Notifications)));
+        Assert.Equal(second, history.ChatDestination);
+        Assert.True(history.GoBack());
+        Assert.Equal(second, history.Current);
+        Assert.True(history.GoBack());
+        Assert.Equal(first, history.Current);
+        Assert.Equal(first, history.ChatDestination);
+        Assert.True(history.Navigate(new(WorkspacePageId.Home, "agent:main:third")));
+        Assert.False(history.CanGoForward);
+        Assert.True(history.GoBack());
+        Assert.Equal(first, history.Current);
+        Assert.True(history.GoBack());
+        Assert.Equal(new(WorkspacePageId.Home), history.Current);
+        Assert.False(history.CanGoBack);
+    }
+
+    [Fact]
+    public void SessionHistory_IsAppliedBeforeChatInitializationWithoutIntermediateHomeRoute()
+    {
+        var source = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
+        Assert.Contains("Navigate(new(WorkspacePageId.Home, sessionKey))", source);
+        var render = source[source.IndexOf("private void RenderDestination()", StringComparison.Ordinal)..
+            source.IndexOf("private void UpdateNavigationSelection()", StringComparison.Ordinal)];
+        Assert.Contains("_chat.QueueSession(sessionKey)", render);
+        Assert.True(render.IndexOf("_chat.QueueSession(sessionKey)", StringComparison.Ordinal) <
+            render.IndexOf("_chat.Initialize(this)", StringComparison.Ordinal));
+        Assert.DoesNotContain("_selectedSessionKey", source);
+        Assert.Contains("destination = _navigation.ChatDestination;", source);
+        Assert.Contains("preserveConversation: false", source);
+        var manager = File.ReadAllText(Source("Services", "WindowManager.cs"));
+        Assert.Contains("_workspaceWindow.SelectSession(sessionKey);\n            else\n                _workspaceWindow.Navigate(destination);",
+            manager.Replace("\r\n", "\n"));
+    }
+
+    [Fact]
     public void WorkspaceNavigation_UsesCompanionNativeControlAndExistingColourfulAssets()
     {
         var document = XDocument.Load(Source("Windows", "WorkspaceWindow.xaml"));
@@ -211,7 +260,7 @@ public sealed class WorkspaceNavigationTests
         Assert.DoesNotContain(home.Descendants(), element => element.Name.LocalName == "NavigationViewItem.Icon");
         Assert.Contains(home.Descendants(), element => (string?)element.Attribute(x + "Name") == "HomeLabel");
         var code = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
-        Assert.Contains("session.Key == _selectedSessionKey", code);
+        Assert.Contains("session.Key == Destination.SessionKey", code);
         Assert.DoesNotContain("SelectsOnInvoked = false", code);
         Assert.DoesNotContain("OnNavigationInvoked", code);
     }
@@ -269,6 +318,31 @@ public sealed class WorkspaceNavigationTests
         {
             var button = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == name);
             Assert.Equal("{StaticResource SubtleButtonStyle}", (string?)button.Attribute("Style"));
+        }
+    }
+
+    [Fact]
+    public void SidebarActionBackplates_AlignWithNativeNavigationInsetsAndCorners()
+    {
+        var document = XDocument.Load(Source("Windows", "WorkspaceWindow.xaml"));
+        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var assistant = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "AssistantSelector");
+        Assert.Equal("4,8,4,8", (string?)assistant.Parent!.Attribute("Margin"));
+        var footer = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "ExpandedFooter");
+        Assert.Equal("4,8,4,8", (string?)footer.Attribute("Margin"));
+        var header = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "SessionsHeader");
+        Assert.Contains(header.Descendants(), element =>
+            (string?)element.Attribute(x + "Key") == "NavigationViewItemInnerHeaderMargin" && element.Value == "16,0,4,0");
+        foreach (var name in new[] { "AssistantSelector", "NewSessionButton", "NotificationsButton" })
+        {
+            var control = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == name);
+            Assert.Equal("{ThemeResource ControlCornerRadius}", (string?)control.Attribute("CornerRadius"));
+            if (name != "AssistantSelector")
+            {
+                Assert.Equal("40", (string?)control.Attribute("Width"));
+                Assert.Equal("{ThemeResource NavigationViewItemOnLeftMinHeight}", (string?)control.Attribute("Height"));
+                Assert.Equal("{StaticResource SubtleButtonStyle}", (string?)control.Attribute("Style"));
+            }
         }
     }
 
@@ -433,6 +507,47 @@ public sealed class WorkspaceNavigationTests
         Assert.Equal("other", WorkspaceProjection.SelectedAgentId(json.RootElement, agents, "other"));
         using var legacy = JsonDocument.Parse("""{"agents":[{"id":"custom"}]}""");
         Assert.Equal("custom", WorkspaceProjection.SelectedAgentId(legacy.RootElement, WorkspaceProjection.Agents(legacy.RootElement, []), null));
+    }
+
+    [Theory]
+    [InlineData(true, null, true)]
+    [InlineData(true, "removed", true)]
+    [InlineData(true, "main", false)]
+    [InlineData(true, "other", false)]
+    [InlineData(false, null, false)]
+    [InlineData(false, "removed", false)]
+    public void SessionCreation_RequiresValidExplicitSelection(bool required, string? selectedId, bool expected)
+    {
+        using var json = JsonDocument.Parse(
+            $$"""{"defaultId":"main","selectionRequired":{{required.ToString().ToLowerInvariant()}},"agents":[{"id":"main"},{"id":"other"}]}""");
+        var agents = WorkspaceProjection.Agents(json.RootElement, []);
+        Assert.Equal(expected, WorkspaceProjection.RequiresAgentSelection(json.RootElement, agents, selectedId));
+    }
+
+    [Theory]
+    [InlineData("""{"agents":[{"id":"main"}]}""", false)]
+    [InlineData("""{"agents":[]}""", false)]
+    [InlineData("""{"selectionRequired":true,"agents":[]}""", true)]
+    [InlineData("null", false)]
+    public void SessionCreation_PreservesLegacyPolicyAndHandlesEmptyRoster(string payload, bool expected)
+    {
+        using var json = JsonDocument.Parse(payload);
+        Assert.Equal(expected, WorkspaceProjection.RequiresAgentSelection(
+            json.RootElement, WorkspaceProjection.Agents(json.RootElement, []), null));
+        Assert.False(WorkspaceProjection.RequiresAgentSelection(null, [], null));
+    }
+
+    [Fact]
+    public void SessionCreation_GuardsMutationAndExplainsDisabledAction()
+    {
+        var source = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
+        var handler = source[source.IndexOf("private async Task NewSessionAsync()", StringComparison.Ordinal)..
+            source.IndexOf("internal void ShowError", StringComparison.Ordinal)];
+        Assert.True(handler.IndexOf("WorkspaceProjection.RequiresAgentSelection", StringComparison.Ordinal) <
+            handler.IndexOf("client.CreateSessionAsync", StringComparison.Ordinal));
+        Assert.Contains("ShowError(Text(\"SelectAssistant\"))", handler);
+        Assert.Contains("&& !selectionRequired", source);
+        Assert.Contains("AutomationProperties.SetHelpText(NewSessionButton", source);
     }
 
     [Fact]
