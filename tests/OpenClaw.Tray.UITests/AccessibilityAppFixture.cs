@@ -355,7 +355,8 @@ public sealed class AccessibilityAppFixture : IDisposable
         while (stopwatch.Elapsed < NavigationTimeout)
         {
             EnsureTargetIsAlive();
-            var workspaceRoute = pageTag == "chat" || pageTag.StartsWith("workspace:", StringComparison.Ordinal);
+            var workspaceRoute = pageTag is "chat" or "workspace" or "home" or "hub"
+                || pageTag.StartsWith("workspace:", StringComparison.Ordinal);
             var windows = AutomationElement.RootElement.FindAll(TreeScope.Children,
                 new PropertyCondition(AutomationElement.ProcessIdProperty, _process.Id));
             foreach (AutomationElement window in windows)

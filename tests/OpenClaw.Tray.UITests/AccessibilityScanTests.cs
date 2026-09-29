@@ -56,6 +56,7 @@ public sealed class AccessibilityScanTests
         yield return ["UsagePage", "usage", "UsagePageMarker"];
         yield return ["VoiceSettingsPage", "voice", "VoiceSettingsPageMarker"];
         yield return ["ChatPage", "workspace", "ChatComposerInput"];
+        yield return ["WorkspacePage", "agent:main:workspace", "WorkspacePageMarker"];
     }
 
     [Theory]

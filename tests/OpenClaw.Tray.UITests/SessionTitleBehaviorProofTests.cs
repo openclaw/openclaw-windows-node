@@ -143,8 +143,8 @@ public sealed class SessionTitleBehaviorProofTests
                 return false;
 
             var session = hub.FindFirst(TreeScope.Descendants, sessionCondition);
-            if (session is null || !((SelectionItemPattern)session.GetCurrentPattern(
-                    SelectionItemPattern.Pattern)).Current.IsSelected)
+            if (session is null || !session.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var pattern)
+                || !((SelectionItemPattern)pattern).Current.IsSelected)
                 return false;
             selectedRouteTitle = session.Current.Name;
             return true;
