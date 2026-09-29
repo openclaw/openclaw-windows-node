@@ -78,14 +78,12 @@
                               Background="Transparent" BorderThickness="0"
                               AutomationProperties.AutomationId="WorkspaceAssistantSelector">
                         <ComboBox.Resources>
-                            <!-- The native item template adds 5 DIPs outside its content padding. -->
-                            <Thickness x:Key="ComboBoxDropdownContentMargin">-5,4,0,4</Thickness>
                             <SolidColorBrush x:Key="ComboBoxBackground" Color="Transparent"/>
                             <SolidColorBrush x:Key="ComboBoxBackgroundUnfocused" Color="Transparent"/>
                             <StaticResource x:Key="ComboBoxBackgroundPointerOver" ResourceKey="SubtleFillColorSecondaryBrush"/>
                             <StaticResource x:Key="ComboBoxBackgroundPressed" ResourceKey="SubtleFillColorTertiaryBrush"/>
                         </ComboBox.Resources>
-                        <ComboBoxItem x:Name="NewAgentOption" Padding="2,8,12,8"
+                        <ComboBoxItem x:Name="NewAgentOption" Padding="2,8,12,8" Margin="-5,0,0,0"
                                       AutomationProperties.AutomationId="WorkspaceNewAgent">
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <FontIcon Glyph="&#xE710;" FontSize="16"/>

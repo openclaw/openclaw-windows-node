@@ -45,7 +45,8 @@ public sealed class WorkspaceWindowProofTests
         Assert.Equal(homeBounds, Find(root, "WorkspaceNavHome").Current.BoundingRectangle);
         CaptureFlyout(root, theme, "agent-identities");
         AssertIconCenter(FindPopup(root, "WorkspaceAgent:main")!.Current.BoundingRectangle, center,
-            color => color.R < 20 && color.G is > 110 and < 145 && color.B is > 110 and < 145);
+            color => color.R < 20 && color.G is > 110 and < 145 && color.B is > 110 and < 145,
+            expectedWidth: toggle.Width * 32 / 40);
         ((ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Collapse();
         await WaitUntilAsync(() => IsVisible(root, "ChatComposerInput"));
         Assert.Equal(selectorBounds, selector.Current.BoundingRectangle);
@@ -98,7 +99,8 @@ public sealed class WorkspaceWindowProofTests
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
     }
 
-    private static void AssertIconCenter(System.Windows.Rect bounds, double expected, Func<System.Drawing.Color, bool> isIcon)
+    private static void AssertIconCenter(System.Windows.Rect bounds, double expected,
+        Func<System.Drawing.Color, bool> isIcon, double? expectedWidth = null)
     {
         // Native ComboBox does not expose its selected presentation's decorative image through UIA.
         using var bitmap = new System.Drawing.Bitmap((int)bounds.Width, (int)bounds.Height);
@@ -124,6 +126,8 @@ public sealed class WorkspaceWindowProofTests
             }
         }
         Assert.True(right >= left, "Expected the rendered fixture avatar or Home artwork.");
+        if (expectedWidth is { } width)
+            Assert.InRange(right - left + 1, width - 2, width + 2);
         var actual = (int)bounds.Left + (left + right) / 2d;
         Assert.True(Math.Abs(actual - expected) <= 2,
             $"Rendered icon center {actual} must align with pane toggle center {expected}. Bounds={bounds}; span={left}..{right}.");
@@ -470,6 +474,7 @@ public sealed class WorkspaceWindowProofTests
             ("About OpenClaw", "about", "SettingsPage", "SettingsPageMarker")
         })
         {
+            await app.RefocusWorkspaceAsync();
             Invoke(Find(AutomationElement.FromHandle(workspace), "WorkspaceOwner"));
             Assert.True(WaitForMenuItem(pid, "Get apps").Current.IsEnabled);
             Invoke(WaitForMenuItem(pid, label));
@@ -508,6 +513,7 @@ public sealed class WorkspaceWindowProofTests
         Assert.InRange(timelineBounds.Right, workArea.Right - 32, workArea.Right);
         Assert.True(timelineBounds.Left >= workArea.Left,
             $"Right-aligned timeline must fit the display: {timelineBounds}, work area {workArea}.");
+        await app.RefocusWorkspaceAsync();
         Invoke(Find(workspaceElement, "WorkspaceOwner"));
         Invoke(WaitForMenuItem(pid, "Connection event timeline"));
         Assert.Equal(timelineHandle, new IntPtr((await WaitForMarkerAsync(pid, "ConnectionTimelineHeading", workspace)).Current.NativeWindowHandle));

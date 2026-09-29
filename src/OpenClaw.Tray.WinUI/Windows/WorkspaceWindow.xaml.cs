@@ -208,21 +208,34 @@ public sealed partial class WorkspaceWindow : WindowEx
         var previousItems = AssistantSelector.Items.OfType<ComboBoxItem>()
             .Where(item => item.Tag is WorkspaceAgent)
             .ToDictionary(item => ((WorkspaceAgent)item.Tag).Id, StringComparer.Ordinal);
-        AssistantSelector.Items.Clear();
+        var desiredItems = new List<ComboBoxItem>();
         foreach (var agent in agents)
         {
             var item = previousItems.GetValueOrDefault(agent.Id) ?? new ComboBoxItem
             {
                 ContentTemplate = (DataTemplate)Root.Resources["AgentIdentityTemplate"],
-                Padding = new Thickness(2, 8, 12, 8)
+                Padding = new Thickness(2, 8, 12, 8),
+                // Compensate the native item's leading template margin, not the popup's scroll extent.
+                Margin = new Thickness(-5, 0, 0, 0)
             };
             item.Content = agent;
             item.Tag = agent;
             AutomationProperties.SetName(item, $"{agent.Name}, {agent.Id}");
             AutomationProperties.SetAutomationId(item, $"WorkspaceAgent:{agent.Id}");
-            AssistantSelector.Items.Add(item);
+            desiredItems.Add(item);
         }
-        AssistantSelector.Items.Add(NewAgentOption);
+        desiredItems.Add(NewAgentOption);
+        // Keep the open popup and selected container alive across independent roster/session responses.
+        for (var index = 0; index < desiredItems.Count; index++)
+        {
+            var item = desiredItems[index];
+            if (index < AssistantSelector.Items.Count && ReferenceEquals(AssistantSelector.Items[index], item))
+                continue;
+            AssistantSelector.Items.Remove(item);
+            AssistantSelector.Items.Insert(index, item);
+        }
+        while (AssistantSelector.Items.Count > desiredItems.Count)
+            AssistantSelector.Items.RemoveAt(AssistantSelector.Items.Count - 1);
         _agentId = WorkspaceProjection.SelectedAgentId(_state.AgentsList, agents, _agentId);
         RestoreAssistantSelection();
         AssistantSelector.PlaceholderText = Text(agents.Count == 0 ? "NoAgents" : "SelectAssistant");

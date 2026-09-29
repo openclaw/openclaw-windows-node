@@ -259,7 +259,8 @@ public sealed class WorkspaceNavigationTests
         Assert.Equal("ComboBoxItem", newAgent.Name.LocalName);
         Assert.DoesNotContain(document.Descendants(), element => (string?)element.Attribute(x + "Name") == "NewConversationButton");
         var code = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
-        Assert.Contains("AssistantSelector.Items.Add(NewAgentOption)", code);
+        Assert.Contains("desiredItems.Add(NewAgentOption)", code);
+        Assert.DoesNotContain("AssistantSelector.Items.Clear()", code);
         Assert.Contains("RestoreAssistantSelection();", code);
         Assert.Contains("ReferenceEquals(AssistantSelector.SelectedItem, NewAgentOption)", code);
         Assert.Contains("AsyncEventHandlerGuard.Run(NewAgentAsync", code);
