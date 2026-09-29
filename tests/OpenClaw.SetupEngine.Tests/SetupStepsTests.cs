@@ -4351,7 +4351,7 @@ public class SetupStepsTests : IDisposable
         Assert.Equal(
             GatewayWizardRestartRecoveryPolicy.RestartIntentContentionRetryDelay,
             retryDelay.Delay);
-        Assert.False(retryDelay.CancellationToken.CanBeCanceled);
+        Assert.True(retryDelay.CancellationToken.CanBeCanceled);
         Assert.DoesNotContain(commands.WslCalls, call => call.Command.Contains("systemctl"));
         return;
 

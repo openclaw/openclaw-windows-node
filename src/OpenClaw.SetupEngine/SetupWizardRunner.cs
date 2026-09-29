@@ -81,9 +81,11 @@ public sealed class SetupWizardRunner
         {
             if (wizardException is null && wizardResult?.IsSuccess == false)
             {
-                return StepResult.Fail(
-                    $"{restoreResult.Message} The wizard also failed: {wizardResult.Message}",
-                    CombineErrors(restoreResult.Error, wizardResult.Error));
+                return restoreResult with
+                {
+                    Message = $"{restoreResult.Message} The wizard also failed: {wizardResult.Message}",
+                    Error = CombineErrors(restoreResult.Error, wizardResult.Error),
+                };
             }
 
             if (wizardException is null)
@@ -91,9 +93,11 @@ public sealed class SetupWizardRunner
 
             var restorationException =
                 new InvalidOperationException(restoreResult.Message, restoreResult.Error);
-            return StepResult.Fail(
-                $"{restoreResult.Message} The wizard also exited with {wizardException.GetType().Name}.",
-                new AggregateException(restorationException, wizardException));
+            return restoreResult with
+            {
+                Message = $"{restoreResult.Message} The wizard also exited with {wizardException.GetType().Name}.",
+                Error = new AggregateException(restorationException, wizardException),
+            };
         }
 
         if (wizardException is not null)
@@ -615,6 +619,10 @@ public sealed class SetupWizardRunner
         {
             var result = await RunReloadModeRestorationCommandAsync(reloadMode);
 
+            if (result.TimedOut)
+                return StepResult.Terminal(
+                    $"Failed to restore gateway.reload.mode after wizard: CLI timed out " +
+                    $"after {result.Elapsed.TotalSeconds:F1}s. Configuration state is unknown; no automatic retry.");
             if (result.ExitCode != 0)
             {
                 return StepResult.Fail(
@@ -623,21 +631,58 @@ public sealed class SetupWizardRunner
 
             _ctx.Logger.Info(
                 $"Restored gateway.reload.mode to {reloadMode} after wizard; restarting gateway to apply wizard configuration");
+            return await RestartAfterReloadAsync(reloadMode);
+        }
+        catch (Exception ex)
+        {
+            return StepResult.Fail(
+                $"Failed to restore gateway.reload.mode after wizard: {ex.Message}",
+                ex);
+        }
+    }
+
+    private async Task<StepResult> RestartAfterReloadAsync(string reloadMode)
+    {
+        // Cleanup is independent of wizard cancellation, but not unbounded. The
+        // first attempt, recovery, reset-failed path, HTTP probe and final ownership
+        // check all share this deadline rather than receiving fresh budgets.
+        var budget = StartGatewayStep.RestartCommandTimeout +
+            TimeSpan.FromSeconds(_ctx.Config.Gateway.HealthTimeoutSeconds + 60);
+        var startedAt = _timeProvider.GetTimestamp();
+        using var deadline = new CancellationTokenSource(budget, _timeProvider);
+        var phase = "CLI restart / HTTP reachability";
+        StepResult? previousFailure = null;
+        TimeSpan RemainingCommandTimeout()
+        {
+            deadline.Token.ThrowIfCancellationRequested();
+            var remaining = budget - _timeProvider.GetElapsedTime(startedAt);
+            if (remaining <= TimeSpan.Zero)
+                throw new TimeoutException("Post-wizard restart budget exhausted.");
+            return remaining < StartGatewayStep.RestartCommandTimeout
+                ? remaining : StartGatewayStep.RestartCommandTimeout;
+        }
+
+        try
+        {
             var restartResult =
                 await StartGatewayStep.RestartAndWaitForHealthAsync(
                     _ctx,
-                    CancellationToken.None);
+                    RemainingCommandTimeout(),
+                    deadline.Token);
             var servingOwnerUnavailable =
-                !restartResult.IsSuccess &&
+                restartResult.Outcome == StepOutcome.Failed &&
                 restartResult.Message?.Contains(
                     RestartServingOwnerDiagnostic,
                     StringComparison.Ordinal) == true;
             var restartIntentContention =
-                !restartResult.IsSuccess &&
+                restartResult.Outcome == StepOutcome.Failed &&
                 GatewayWizardRestartRecoveryPolicy.IsRestartIntentCoordinatorContention(
                     restartResult.Message);
             if (servingOwnerUnavailable || restartIntentContention)
             {
+                previousFailure = restartResult;
+                phase = "guarded retry ownership verification";
+                _ = RemainingCommandTimeout();
                 _ctx.Logger.Warn(
                     restartIntentContention
                         ? "Gateway restart intent was refused by coordinator contention after restoring reload. Rechecking managed ownership before one guarded restart retry."
@@ -646,40 +691,53 @@ public sealed class SetupWizardRunner
                 {
                     await _restorationDelayAsync(
                         GatewayWizardRestartRecoveryPolicy.RestartIntentContentionRetryDelay,
-                        CancellationToken.None);
+                        deadline.Token);
                 }
 
                 // Endpoint provenance rejects a foreign listener before retry. The retried
                 // Gateway CLI command remains responsible for coordinator and owner admission.
                 var retryOwnership = await VerifyExpectedManagedGatewayAsync(
-                    "before retrying gateway restart");
+                    "before retrying gateway restart", deadline.Token);
                 if (!retryOwnership.IsSuccess)
-                    return retryOwnership;
+                    return StepResult.Fail(
+                        $"Gateway restart after wizard failed: {restartResult.Message}. {retryOwnership.Message}",
+                        retryOwnership.Error);
 
+                phase = "guarded CLI restart retry / HTTP reachability";
                 restartResult = await StartGatewayStep.RestartAndWaitForHealthAsync(
                     _ctx,
-                    CancellationToken.None);
+                    RemainingCommandTimeout(),
+                    deadline.Token);
             }
             if (!restartResult.IsSuccess)
             {
-                return StepResult.Fail(
-                    $"Gateway restart after wizard failed: {restartResult.Message}",
-                    restartResult.Error);
+                return restartResult with
+                {
+                    Message = $"Gateway restart after wizard failed: {restartResult.Message}",
+                };
             }
 
+            phase = "final ownership verification";
+            _ = RemainingCommandTimeout();
             var ownershipResult = await VerifyExpectedManagedGatewayAsync(
-                "after restoring gateway reload");
+                "after restoring gateway reload", deadline.Token);
             if (!ownershipResult.IsSuccess)
-                return ownershipResult;
+                return ownershipResult with
+                {
+                    Message = $"Gateway restart after wizard failed: {ownershipResult.Message}. {previousFailure?.Message}",
+                };
+            _ = RemainingCommandTimeout();
 
             return StepResult.Ok(
                 $"Restored gateway.reload.mode to {reloadMode} and restarted gateway");
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is TimeoutException ||
+            ex is OperationCanceledException && deadline.IsCancellationRequested)
         {
-            return StepResult.Fail(
-                $"Failed to restore gateway.reload.mode after wizard: {ex.Message}",
-                ex);
+            return StepResult.Terminal(
+                $"Gateway restart after wizard failed: lifecycle deadline exhausted during {phase} " +
+                $"(elapsed={_timeProvider.GetElapsedTime(startedAt).TotalSeconds:F1}s, limit={budget.TotalSeconds:F1}s). " +
+                $"Gateway state is unknown; no automatic retry. {previousFailure?.Message}", ex);
         }
     }
 
@@ -732,7 +790,7 @@ public sealed class SetupWizardRunner
     }
 
     internal static bool IsStartupMigrationLeaseContention(CommandResult result) =>
-        result.ExitCode != 0
+        !result.TimedOut && result.ExitCode != 0
         && (result.Stdout.Contains(StartupMigrationLeaseDiagnostic, StringComparison.Ordinal)
             || result.Stderr.Contains(StartupMigrationLeaseDiagnostic, StringComparison.Ordinal));
 
@@ -744,12 +802,13 @@ public sealed class SetupWizardRunner
         return output.Length > 0 ? output : "no output";
     }
 
-    private async Task<StepResult> VerifyExpectedManagedGatewayAsync(string phase)
+    private async Task<StepResult> VerifyExpectedManagedGatewayAsync(
+        string phase, CancellationToken ct = default)
     {
         var provenanceResult =
             await PairOperatorStep.EnsurePairingEndpointTrustedAsync(
                 _ctx,
-                CancellationToken.None,
+                ct,
                 noListenerRetryCount: 30,
                 noListenerRetryDelay: TimeSpan.FromSeconds(1));
         return provenanceResult is null

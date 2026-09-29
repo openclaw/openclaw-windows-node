@@ -30,6 +30,65 @@ fail setup. Listener provenance does not prove owner-lease or coordinator
 readiness; the retried CLI command retains those guards. There is no direct
 systemd restart fallback or ownership bypass.
 
+### WSL start/restart deadlines and evidence
+
+`StartGatewayStep` gives `gateway start` 90 seconds and `gateway restart`
+420 seconds. The latter covers the pinned Gateway 2026.9.6 service-stop
+allowance (330 seconds), replacement-health window (60 seconds), and 30 seconds
+of CLI preparation margin. This is a bounded Companion allowance, not a
+guarantee that an overloaded Gateway will finish. Increasing only the later
+HTTP timeout cannot extend the CLI deadline.
+
+After reload restoration, `SetupWizardRunner` applies one shared deadline of
+`420 + Gateway.HealthTimeoutSeconds + 60` seconds (570 seconds by default).
+It includes the initial CLI attempt, any start-limit recovery, the single
+exact-marker guarded retry, contention delay, provenance probes, HTTP
+reachability and final provenance check. The second CLI attempt gets at most
+the remaining budget, never a fresh lifecycle allowance. The preceding reload
+write retains its separate 15-second bound. Cleanup still runs independently
+of wizard cancellation; the deadline cancels its owned commands/probes, not
+the user's Gateway service directly.
+This is a cooperative execution deadline; OS process teardown and scheduling
+can add wall-clock overhead. Standalone start/restart steps retain their
+existing finite pipeline retry policy for non-timeout failures; the shared
+lifecycle deadline described here is specific to post-wizard restoration.
+
+A CLI timeout is a terminal unknown outcome, even if captured output also
+contains a retry marker. It does not trigger reset-failed, a guarded restart
+retry, or an enclosing pipeline retry. Failures retain CLI phase, exit code,
+timeout flag, elapsed time, limit, and both output streams, each sanitized
+before truncation to 2,048 characters. A provenance refusal during recovery
+also retains the original restart failure. Output truncated before a refusal
+marker fails closed rather than broadening recovery.
+
+HTTP 200/401/403 still means only endpoint reachability. Neither this HTTP
+probe nor listener provenance establishes an authenticated ready Gateway.
+Authentication and pairing retain their existing owners and gates.
+
+**Why the order is unchanged:** at upstream commit
+[`eb377ac59e6c9fd6c7705028034812becf00271b`](https://github.com/openclaw/openclaw/tree/eb377ac59e6c9fd6c7705028034812becf00271b),
+[`config-reload.ts`](https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/src/gateway/config-reload.ts)
+commits the comparison baseline with `runtimeApplied: false` when the next
+mode is `off`.
+[`config-reload-plan.ts`](https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/src/gateway/config-reload-plan.ts)
+classifies `gateway.reload` as `none`. Restoring `hybrid` alone is therefore
+not proof that earlier wizard settings were applied. A coalesced observation
+can include other changes, so it is also not a synchronization barrier against
+automatic restart. Restarting before restoration would leave a subsequent
+write to reconcile with the replacement runtime and does not provide a
+documented ownership/coordinator-readiness handshake. No new public Gateway
+API, sleep, direct systemd restart, or sequencing assumption is introduced.
+The timing constants come from
+[`gateway-shutdown-budget.mjs`](https://github.com/openclaw/openclaw/blob/eb377ac59e6c9fd6c7705028034812becf00271b/gateway-shutdown-budget.mjs).
+
+`GatewayRestartLifecycleTests` reproduces the Companion command-boundary
+transition with injected serving-owner and typed-contention refusals, slow CLI
+completion, timeout output, and virtual deadline exhaustion/cancellation.
+These are deterministic orchestration tests, not execution of the upstream
+watcher or proof of the cause of a live owner-lease refusal. Companion-only
+reordering is not established safe by this evidence; real WSL Gateway/MXC
+validation remains required.
+
 The separate **native Gateway MSIX** Welcome path does not use
 `SetupStepFactory.BuildDefaultSteps()`. `NativeGatewaySetupService` owns its
 dedicated-profile and package preparation. `NativeGatewaySetupSession` owns
