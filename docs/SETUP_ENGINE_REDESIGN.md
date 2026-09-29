@@ -272,6 +272,17 @@ hub-cache snapshot as the active model path, while preserving the legacy
 compatibility path and the prior gateway fallback, install time, and rollback
 metadata.
 
+Runtime upgrades validate the installed executable against its recorded runtime
+release, not the current catalog release. A verified schema-3 model is migrated
+to the hub cache before reuse by the new runtime, without downloading it again.
+Normal setup keeps the pre-upgrade receipt separate from gateway recovery state.
+If a later step fails, receipt persistence restores that baseline before runtime
+acquisition removes the newly installed runtime. Reconciliation also restores
+the baseline when setup fails after migration but before receipt persistence.
+The old runtime, compatibility model, and verified shared-cache copy are retained.
+Superseded runtime directories remain until explicit uninstall; upgrades do not
+prune the rollback baseline.
+
 Completed cache files and pre-existing resumable partials are shared state.
 Setup rollback and uninstall do not delete them. Unsafe links, reparse points,
 hard-linked partials, destination conflicts, receipt mismatches, and concurrent

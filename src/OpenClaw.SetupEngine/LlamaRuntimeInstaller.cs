@@ -130,7 +130,7 @@ internal sealed class LlamaRuntimeInstaller : ILlamaRuntimeAcquirer
     internal static LocalAiComponentIdentity Component(LlamaRuntimeVariant runtime) =>
         new(
             "llama-server",
-            LlamaRuntimeCatalog.ReleaseTag,
+            runtime.ReleaseTag,
             runtime.Architecture switch
             {
                 Architecture.X64 => "win-x64",

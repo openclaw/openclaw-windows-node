@@ -287,11 +287,11 @@ public sealed class ReconcileLocalAiInstallationStep : SetupStep
             }
             if (!result.Reused)
             {
-                // A retained baseline receipt (gateway recovery, or a pending runtime
-                // upgrade) is what lets the manifest step replace the existing receipt
-                // instead of refusing because one is already present.
-                if (result.OriginalInstall is { } retainedReceipt)
-                    ctx.LocalAiRecoveryOriginalInstall ??= retainedReceipt;
+                // Normal upgrades restore their receipt independently of the gateway
+                // recovery pipeline's endpoint-health and provider rollback guards.
+                if (ctx.LocalAiRecoveryOriginalInstall is null &&
+                    result.OriginalInstall is { } retainedReceipt)
+                    ctx.LocalAiUpgradeOriginalInstall ??= retainedReceipt;
                 ctx.LocalAiRuntimeInstall = result.RuntimeInstall;
                 ctx.LocalAiModelInstall = result.ModelInstall;
                 ctx.LocalAiAdditionalModelInstalls = result.AdditionalModelInstalls
@@ -321,6 +321,11 @@ public sealed class ReconcileLocalAiInstallationStep : SetupStep
                 ex);
         }
     }
+
+    public override Task RollbackAsync(SetupContext ctx, CancellationToken ct) =>
+        ctx.IsUninstalling
+            ? Task.CompletedTask
+            : PersistLocalAiManifestStep.RestoreUpgradeReceiptAsync(ctx, ct);
 }
 
 /// <summary>Installs the two pinned llama.cpp runtime archives as one atomic component.</summary>
@@ -391,7 +396,7 @@ public sealed class AcquireLocalAiRuntimeStep : SetupStep
                 progress,
                 linked.Token);
             ctx.LocalAiRuntimeInstall = install;
-            return StepResult.Ok($"Installed llama-server {LlamaRuntimeCatalog.ReleaseTag}.");
+            return StepResult.Ok($"Installed llama-server {plan.Runtime.ReleaseTag}.");
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -599,10 +604,12 @@ public sealed class PersistLocalAiManifestStep : SetupStep
             return StepResult.Terminal(portError ?? "The requested Local AI port is invalid.");
 
         var paths = new LocalAiPaths(ctx.LocalDataDir);
-        bool replacesRecoveryReceipt =
-            ctx.LocalAiRecoveryOriginalInstall is not null &&
+        LocalAiResolvedInstall? originalInstall =
+            ctx.LocalAiRecoveryOriginalInstall ?? ctx.LocalAiUpgradeOriginalInstall;
+        bool replacesExistingReceipt =
+            originalInstall is not null &&
             File.Exists(paths.ManifestPath);
-        if (File.Exists(paths.ManifestPath) && !replacesRecoveryReceipt)
+        if (File.Exists(paths.ManifestPath) && !replacesExistingReceipt)
             return StepResult.Terminal("A managed Local AI installation receipt already exists.");
         LocalAiComponentIdentity component = LlamaRuntimeInstaller.Component(plan.Runtime);
         if (!LocalAiPathPolicy.TryResolve(
@@ -670,7 +677,7 @@ public sealed class PersistLocalAiManifestStep : SetupStep
             SchemaVersion = additionalArtifacts.IsEmpty
                 ? LocalAiInstallManifest.HubCacheReceiptSchemaVersion
                 : LocalAiInstallManifest.AdditionalAssetsSchemaVersion,
-            EngineVersion = LlamaRuntimeCatalog.ReleaseTag,
+            EngineVersion = plan.Runtime.ReleaseTag,
             Architecture = plan.Runtime.Architecture switch
             {
                 Architecture.X64 => "x64",
@@ -707,7 +714,7 @@ public sealed class PersistLocalAiManifestStep : SetupStep
             DraftKeyCachePrecision = plan.Profile.DraftKeyCachePrecision,
             DraftValueCachePrecision = plan.Profile.DraftValueCachePrecision,
         };
-        if (ctx.LocalAiRecoveryOriginalInstall is { } originalInstall)
+        if (originalInstall is not null)
         {
             manifest = originalInstall.Manifest with
             {
@@ -742,7 +749,7 @@ public sealed class PersistLocalAiManifestStep : SetupStep
         {
             await store.SaveAsync(manifest, ct);
             ctx.LocalAiResolvedInstall = store.ResolveAndValidate(manifest);
-            ctx.LocalAiManifestCreatedThisRun = !replacesRecoveryReceipt;
+            ctx.LocalAiManifestCreatedThisRun = !replacesExistingReceipt;
             return StepResult.Ok("Recorded the verified llama-server and Hugging Face installation.");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
@@ -771,7 +778,14 @@ public sealed class PersistLocalAiManifestStep : SetupStep
             ctx.LocalAiRuntimeInstall = null;
             ctx.LocalAiModelInstall = null;
             ctx.LocalAiResolvedInstall = null;
+            ctx.LocalAiUpgradeOriginalInstall = null;
             ctx.LocalAiManifestCreatedThisRun = false;
+            return;
+        }
+
+        if (ctx.LocalAiUpgradeOriginalInstall is not null)
+        {
+            await RestoreUpgradeReceiptAsync(ctx, ct);
             return;
         }
 
@@ -784,6 +798,20 @@ public sealed class PersistLocalAiManifestStep : SetupStep
         File.Delete(paths.RouterPresetPath);
         ctx.LocalAiResolvedInstall = null;
         ctx.LocalAiManifestCreatedThisRun = false;
+    }
+
+    internal static async Task RestoreUpgradeReceiptAsync(SetupContext ctx, CancellationToken ct)
+    {
+        if (ctx.LocalAiUpgradeOriginalInstall is not { } originalInstall)
+            return;
+
+        var paths = new LocalAiPaths(ctx.LocalDataDir);
+        var store = new LocalAiManifestStore(paths);
+        await store.SaveAsync(originalInstall.Manifest, ct);
+        File.Delete(paths.RouterPresetPath);
+        ctx.LocalAiResolvedInstall = store.ResolveAndValidate(originalInstall.Manifest);
+        ctx.LocalAiManifestCreatedThisRun = false;
+        ctx.LocalAiUpgradeOriginalInstall = null;
     }
 
     private static ImmutableArray<LocalAiAssetReceipt> BuildRuntimeReceipts(

@@ -185,6 +185,19 @@ internal sealed class LocalAiInstallReconciler
         bool modelIsValid = activeModelIsValid && legacyModelIsValid && additionalAssetsAreValid;
         if (runtimeUpgradePending)
         {
+            if (modelIsValid)
+            {
+                install = await MigrateLegacyModelAsync(
+                        install,
+                        paths,
+                        localDataDirectory,
+                        plan,
+                        selectedGpuId,
+                        migrationProgress,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
             // The catalog moved to a newer pinned runtime. Drop only the runtime so the
             // acquirer installs the new one, and keep the verified model and its extra
             // assets so an upgrade does not re-download tens of GB. OriginalInstall lets

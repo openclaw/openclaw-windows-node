@@ -525,6 +525,7 @@ public sealed class SetupContext
         ImmutableArray<HuggingFaceAdditionalAssetInstallResult>.Empty;
     internal LocalAiResolvedInstall? LocalAiResolvedInstall { get; set; }
     internal LocalAiResolvedInstall? LocalAiRecoveryOriginalInstall { get; set; }
+    internal LocalAiResolvedInstall? LocalAiUpgradeOriginalInstall { get; set; }
     internal bool LocalAiRecoveryProviderTransition { get; set; }
     internal bool LocalAiRecoveryReceiptRollbackAllowed { get; set; }
     internal bool LocalAiManifestCreatedThisRun { get; set; }
