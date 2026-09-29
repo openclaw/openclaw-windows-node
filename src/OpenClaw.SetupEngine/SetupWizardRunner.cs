@@ -672,13 +672,10 @@ public sealed class SetupWizardRunner
                     deadline.Token);
             var servingOwnerUnavailable =
                 restartResult.Outcome == StepOutcome.Failed &&
-                restartResult.Message?.Contains(
-                    RestartServingOwnerDiagnostic,
-                    StringComparison.Ordinal) == true;
+                restartResult.GatewayRestartServingOwnerUnavailable;
             var restartIntentContention =
                 restartResult.Outcome == StepOutcome.Failed &&
-                GatewayWizardRestartRecoveryPolicy.IsRestartIntentCoordinatorContention(
-                    restartResult.Message);
+                restartResult.GatewayRestartIntentContention;
             if (servingOwnerUnavailable || restartIntentContention)
             {
                 previousFailure = restartResult;

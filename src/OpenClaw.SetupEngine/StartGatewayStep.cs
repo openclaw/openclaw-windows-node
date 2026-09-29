@@ -146,6 +146,12 @@ public sealed class StartGatewayStep : SetupStep
     private static StepResult CommandFailure(
         string action, CommandResult result, TimeSpan timeout, bool afterReset = false)
     {
+        // Recovery facts must not depend on the diagnostic display limit.
+        var output = $"{result.Stdout}\n{result.Stderr}";
+        var servingOwnerUnavailable = output.Contains(
+            SetupWizardRunner.RestartServingOwnerDiagnostic, StringComparison.Ordinal);
+        var restartIntentContention =
+            GatewayWizardRestartRecoveryPolicy.IsRestartIntentCoordinatorContention(output);
         var message = $"Gateway {action} failed{(afterReset ? " after reset" : "")} " +
             $"(phase=CLI, exit {result.ExitCode}, timedOut={result.TimedOut}, " +
             $"elapsed={result.Elapsed.TotalSeconds:F1}s, limit={timeout.TotalSeconds:F1}s). " +
@@ -154,7 +160,11 @@ public sealed class StartGatewayStep : SetupStep
         // nor a reachable port makes another restart safe, including pipeline retries.
         return result.TimedOut
             ? StepResult.Terminal($"{message}. Gateway state is unknown; no automatic retry.")
-            : StepResult.Fail(message);
+            : StepResult.Fail(message) with
+            {
+                GatewayRestartServingOwnerUnavailable = action == "restart" && servingOwnerUnavailable,
+                GatewayRestartIntentContention = action == "restart" && restartIntentContention,
+            };
     }
 
     private static string BoundedOutput(string output)

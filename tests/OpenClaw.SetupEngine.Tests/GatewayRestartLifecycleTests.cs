@@ -111,6 +111,7 @@ public class GatewayRestartLifecycleTests
                 clock.Advance(410);
                 return Refusal();
             }
+
             Assert.Equal(TimeSpan.FromSeconds(95), timeout);
             return Ok();
         });
@@ -127,6 +128,78 @@ public class GatewayRestartLifecycleTests
 
         Assert.True(result.IsSuccess, result.Message);
         Assert.Equal(2, restarts);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task LongOutput_PreservesExactGuardedRecovery(bool contention, bool stderr)
+    {
+        var restarts = 0;
+        var commands = new Commands((command, _) =>
+        {
+            if (!command.Contains("gateway restart") || ++restarts != 1)
+                return Ok();
+            var refusal = Refusal(contention);
+            var output = new string('!', 3000) + refusal.Stdout + "\n" + refusal.Stderr;
+            return refusal with { Stdout = stderr ? "" : output, Stderr = stderr ? output : "" };
+        });
+
+        var result = await Runner(Context(commands)).RestoreReloadModeAsync();
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Equal(2, restarts);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task LongOutput_TimeoutNeverAuthorizesRecovery(bool contention, bool stderr)
+    {
+        var commands = new Commands((command, _) =>
+        {
+            if (!command.Contains("gateway restart"))
+                return Ok();
+            var refusal = Refusal(contention);
+            var output = new string('!', 3000) + refusal.Stdout + "\n" + refusal.Stderr;
+            return refusal with
+            {
+                Stdout = stderr ? "" : output,
+                Stderr = stderr ? output : "",
+                TimedOut = true,
+            };
+        });
+
+        var result = await Runner(Context(commands)).RestoreReloadModeAsync();
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.False(result.GatewayRestartServingOwnerUnavailable);
+        Assert.False(result.GatewayRestartIntentContention);
+        Assert.Single(commands.Calls, c => c.Command.Contains("gateway restart"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LongOutput_ContentionRequiresBothExactMarkers(bool typedErrorOnly)
+    {
+        var commands = new Commands((command, _) => !command.Contains("gateway restart")
+            ? Ok()
+            : new CommandResult(1, new string('!', 3000) +
+                (typedErrorOnly
+                    ? GatewayWizardRestartRecoveryPolicy.RestartIntentCoordinatorContentionError
+                    : GatewayWizardRestartRecoveryPolicy.RestartIntentRecordingRefusal),
+                "", TimeSpan.Zero, false));
+
+        var result = await Runner(Context(commands)).RestoreReloadModeAsync();
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.False(result.GatewayRestartIntentContention);
+        Assert.Single(commands.Calls, c => c.Command.Contains("gateway restart"));
     }
 
     [Fact]

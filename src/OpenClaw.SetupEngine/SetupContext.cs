@@ -484,6 +484,8 @@ public sealed record StepResult(
     LocalAiFailureDetail? Detail = null)
 {
     public bool RequiresRestart { get; init; }
+    internal bool GatewayRestartServingOwnerUnavailable { get; init; }
+    internal bool GatewayRestartIntentContention { get; init; }
 
     public static StepResult Ok(string? message = null) => new(StepOutcome.Success, message);
     public static StepResult Skip(string reason) => new(StepOutcome.Skipped, reason);

@@ -52,14 +52,21 @@ This is a cooperative execution deadline; OS process teardown and scheduling
 can add wall-clock overhead. Standalone start/restart steps retain their
 existing finite pipeline retry policy for non-timeout failures; the shared
 lifecycle deadline described here is specific to post-wizard restoration.
+Retaining that standalone policy is an intentional operator wait-time tradeoff:
+three completed non-timeout restart failures can consume nearly 1,260 seconds
+of CLI time, or 2,520 seconds if each attempt also takes the existing start-limit
+reset/retry path, plus reset, health and backoff time. A timed-out CLI remains
+terminal on the first timeout. This change does not add a standalone shared budget.
 
 A CLI timeout is a terminal unknown outcome, even if captured output also
 contains a retry marker. It does not trigger reset-failed, a guarded restart
 retry, or an enclosing pipeline retry. Failures retain CLI phase, exit code,
 timeout flag, elapsed time, limit, and both output streams, each sanitized
 before truncation to 2,048 characters. A provenance refusal during recovery
-also retains the original restart failure. Output truncated before a refusal
-marker fails closed rather than broadening recovery.
+also retains the original restart failure. Internal `StepResult` recovery facts
+are classified from complete command streams using the exact markers before
+display truncation, so long diagnostic prefixes cannot suppress guarded recovery.
+These facts carry no raw output and never authorize recovery after a timeout.
 
 If the guarded retry fails, its outcome and diagnostics retain the initial
 restart refusal as context. If the deadline expires during final ownership
