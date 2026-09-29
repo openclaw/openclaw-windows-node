@@ -78,6 +78,26 @@ public sealed class SettingsStoreTests
         }
     }
 
+    [Theory]
+    [InlineData("{")]
+    [InlineData("null")]
+    [InlineData("[]")]
+    public void UnchangedInvalidSettingsJsonCanBeReplaced(string invalidJson)
+    {
+        using var temp = new TempDir();
+        var path = Path.Combine(temp.Path, "settings.json");
+        File.WriteAllText(path, invalidJson);
+        var settings = new SettingsManager(temp.Path)
+        {
+            NotificationSound = "recovered"
+        };
+
+        settings.SaveOrThrow();
+
+        var reloaded = new SettingsManager(temp.Path);
+        Assert.Equal("recovered", reloaded.NotificationSound);
+    }
+
     private static SettingsStore NewStore(out SettingsManager settings, out RecordingUiDispatcher dispatcher, out TempDir temp)
     {
         temp = new TempDir();

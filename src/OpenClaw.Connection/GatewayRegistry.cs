@@ -19,6 +19,7 @@ public sealed class GatewayRegistry
     private List<GatewayRecord> _records = [];
     private string? _activeId;
     private GatewayRegistrySnapshot _persisted = new([], null);
+    private string? _persistedInvalidJson;
 
     private static readonly JsonSerializerOptions s_jsonOptions = new()
     {
@@ -310,10 +311,21 @@ public sealed class GatewayRegistry
     private void SaveLocked(GatewayRegistrySnapshot? expected = null)
     {
         using var lease = PersistenceFileLease.Acquire(_filePath);
-        var disk = _fs.FileExists(_filePath)
-            ? JsonSerializer.Deserialize<RegistryData>(_fs.ReadAllText(_filePath), s_jsonOptions)
-                ?? throw new InvalidDataException("The saved Gateway registry is invalid.")
-            : new RegistryData();
+        var diskJson = _fs.FileExists(_filePath) ? _fs.ReadAllText(_filePath) : null;
+        RegistryData disk;
+        try
+        {
+            disk = diskJson is null
+                ? new RegistryData()
+                : JsonSerializer.Deserialize<RegistryData>(diskJson, s_jsonOptions)
+                    ?? throw new InvalidDataException("The saved Gateway registry is invalid.");
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidDataException &&
+            _persistedInvalidJson is not null &&
+            string.Equals(diskJson, _persistedInvalidJson, StringComparison.Ordinal))
+        {
+            disk = new RegistryData();
+        }
         var diskSnapshot = new GatewayRegistrySnapshot(disk.Gateways ?? [], disk.ActiveId);
         if (!HasSameSetupAuthority(diskSnapshot, _persisted) ||
             expected is not null && !HasSameSetupAuthority(diskSnapshot, expected))
@@ -340,6 +352,7 @@ public sealed class GatewayRegistry
             _fs.MoveFile(tempPath, _filePath, overwrite: true);
             _records = records;
             _persisted = new(records.ToArray(), _activeId);
+            _persistedInvalidJson = null;
         }
         catch
         {
@@ -371,21 +384,26 @@ public sealed class GatewayRegistry
                 _records = [];
                 _activeId = null;
                 _persisted = new([], null);
+                _persistedInvalidJson = null;
                 return;
             }
+            string? json = null;
             try
             {
-                var json = _fs.ReadAllText(_filePath);
-                var data = JsonSerializer.Deserialize<RegistryData>(json, s_jsonOptions);
-                if (data != null)
-                {
-                    _records = data.Gateways ?? [];
-                    _activeId = data.ActiveId;
-                    _persisted = new(_records.ToArray(), _activeId);
-                }
+                json = _fs.ReadAllText(_filePath);
+                var data = JsonSerializer.Deserialize<RegistryData>(json, s_jsonOptions)
+                    ?? throw new InvalidDataException("The saved Gateway registry is invalid.");
+                _records = data.Gateways ?? [];
+                _activeId = data.ActiveId;
+                _persisted = new(_records.ToArray(), _activeId);
+                _persistedInvalidJson = null;
             }
-            catch (JsonException ex)
+            catch (Exception ex) when (ex is JsonException or InvalidDataException)
             {
+                _records = [];
+                _activeId = null;
+                _persisted = new([], null);
+                _persistedInvalidJson = json;
                 _logger.Warn($"Gateway registry file '{_filePath}' is not valid JSON; starting with an empty registry. {ex.Message}");
             }
         }

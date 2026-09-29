@@ -1,3 +1,4 @@
+using System.Text.Json;
 using OpenClaw.Shared;
 using OpenClaw.TestSupport;
 
@@ -88,6 +89,32 @@ public sealed class GatewayRegistryPersistenceTests
         Assert.Equal(newer, second.GetById("a")!.LastConnected);
         first.Load();
         Assert.Equal(newer, first.GetById("a")!.LastConnected);
+    }
+
+    [Theory]
+    [InlineData("{")]
+    [InlineData("null")]
+    [InlineData("[]")]
+    public void UnchangedInvalidJsonCanBeReplacedButAChangedInvalidFileCannot(string invalidJson)
+    {
+        using var temp = new TempDirectory();
+        var path = Path.Combine(temp.Path, "gateways.json");
+        File.WriteAllText(path, invalidJson);
+        var registry = new GatewayRegistry(temp.Path);
+        registry.Load();
+        registry.AddOrUpdate(new() { Id = "a", Url = "wss://a.example" });
+        registry.SetActive("a");
+        registry.Save();
+        var reloaded = new GatewayRegistry(temp.Path);
+        reloaded.Load();
+        Assert.Equal("a", reloaded.GetActive()?.Id);
+
+        File.WriteAllText(path, invalidJson);
+        registry.Load();
+        registry.AddOrUpdate(new() { Id = "b", Url = "wss://b.example" });
+        File.WriteAllText(path, "[");
+        Assert.Throws<JsonException>(() => registry.Save());
+        Assert.Equal("[", File.ReadAllText(path));
     }
 
     private sealed class HeldWriteFileSystem(ManualResetEventSlim entered, ManualResetEventSlim release) : IFileSystem

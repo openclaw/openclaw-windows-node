@@ -505,16 +505,25 @@ public class SettingsManager
             var json = data.ToJson();
             if (current is not null)
             {
-                using var existing = JsonDocument.Parse(current);
-                var known = JsonSerializer.SerializeToElement(data).EnumerateObject()
-                    .Select(property => property.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
-                var output = System.Text.Json.Nodes.JsonNode.Parse(json)!.AsObject();
-                foreach (var property in existing.RootElement.EnumerateObject())
-                    if (!known.Contains(property.Name) &&
-                        !property.Name.Equals("Token", StringComparison.OrdinalIgnoreCase) &&
-                        !property.Name.Equals("BootstrapToken", StringComparison.OrdinalIgnoreCase))
-                        output[property.Name] = System.Text.Json.Nodes.JsonNode.Parse(property.Value.GetRawText());
-                json = output.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+                try
+                {
+                    using var existing = JsonDocument.Parse(current);
+                    if (existing.RootElement.ValueKind != JsonValueKind.Object)
+                        throw new JsonException("The saved settings root must be an object.");
+                    var known = JsonSerializer.SerializeToElement(data).EnumerateObject()
+                        .Select(property => property.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    var output = System.Text.Json.Nodes.JsonNode.Parse(json)!.AsObject();
+                    foreach (var property in existing.RootElement.EnumerateObject())
+                        if (!known.Contains(property.Name) &&
+                            !property.Name.Equals("Token", StringComparison.OrdinalIgnoreCase) &&
+                            !property.Name.Equals("BootstrapToken", StringComparison.OrdinalIgnoreCase))
+                            output[property.Name] = System.Text.Json.Nodes.JsonNode.Parse(property.Value.GetRawText());
+                    json = output.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+                }
+                catch (JsonException)
+                {
+                    Logger.Warn("Replacing unchanged invalid settings JSON with current settings.");
+                }
             }
             var temp = _settingsFilePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
             try

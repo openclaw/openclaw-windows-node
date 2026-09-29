@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using OpenClaw.Shared;
 
 namespace OpenClaw.Connection;
@@ -83,7 +84,14 @@ public sealed class GatewayValidationIdentity : IDisposable
     public void Dispose()
     {
         _tokens.Clear();
-        if (Directory.Exists(DirectoryPath))
-            Directory.Delete(DirectoryPath, recursive: true);
+        try
+        {
+            if (Directory.Exists(DirectoryPath))
+                Directory.Delete(DirectoryPath, recursive: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Trace.TraceWarning($"Temporary gateway validation identity cleanup failed: {ex.GetType().Name}");
+        }
     }
 }

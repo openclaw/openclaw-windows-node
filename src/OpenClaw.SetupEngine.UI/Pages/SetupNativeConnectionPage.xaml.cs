@@ -150,17 +150,10 @@ public sealed partial class SetupNativeConnectionPage : Page, IAsyncDisposable
                 : await args.Host.CheckAsync(request, operation.Token);
             if (!result.Success && (result.GatewayCommitted || result.RequiresAttention))
                 _incompleteCommitError = result.Error ?? S("Failed");
-            if (_closed || generation != _generation)
-                return;
-            if (!result.Success)
+            if (connect && result.Success && result.GatewayCommitted)
             {
-                _blocked = result.GatewayCommitted || result.RequiresAttention;
-                Show(result.Error ?? S("Failed"), InfoBarSeverity.Error);
-                return;
-            }
-            if (connect && result.GatewayCommitted)
-            {
-                // A completed Next is durable even if the window closes immediately afterwards.
+                // The commit boundary is durable even if this page closes or is replaced
+                // before the host returns. Settle setup state before gating presentation.
                 _draft = request with
                 {
                     GatewayUrl = SetupNativeConnectionInputResolver.Resolve(request).GatewayUrl,
@@ -171,7 +164,15 @@ public sealed partial class SetupNativeConnectionPage : Page, IAsyncDisposable
                 args.DraftChanged(_draft);
                 args.Connected(result);
             }
-            else if (!operation.IsCancellationRequested)
+            if (_closed || generation != _generation)
+                return;
+            if (!result.Success)
+            {
+                _blocked = result.GatewayCommitted || result.RequiresAttention;
+                Show(result.Error ?? S("Failed"), InfoBarSeverity.Error);
+                return;
+            }
+            if (!connect && !operation.IsCancellationRequested)
                 Show(S("Checked"), InfoBarSeverity.Success);
         }
         catch (OperationCanceledException)

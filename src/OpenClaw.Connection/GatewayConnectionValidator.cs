@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using OpenClaw.Shared;
@@ -64,8 +65,8 @@ internal sealed class GatewayConnectionValidator(
                     token => authorize(record, credential, tunnel, config, generation, token),
                     identity.OperatorCredential, boundedScopes);
                 var v2Signature = client.UseV2Signature;
-                var receivedTokens = new List<DeviceTokenReceivedEventArgs>();
-                client.DeviceTokenReceived += (_, token) => receivedTokens.Add(token);
+                var receivedTokens = new ConcurrentQueue<DeviceTokenReceivedEventArgs>();
+                client.DeviceTokenReceived += (_, token) => receivedTokens.Enqueue(token);
                 void CaptureAuthenticatedTokens()
                 {
                     foreach (var token in receivedTokens)

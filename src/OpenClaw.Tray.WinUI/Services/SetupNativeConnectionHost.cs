@@ -107,7 +107,16 @@ internal sealed class SetupNativeConnectionHost(
         var identity = _identity;
         _identity = null;
         _preparedRequest = null;
-        identity?.Dispose();
+        if (identity is null)
+            return;
+        try
+        {
+            identity.Dispose();
+        }
+        catch (Exception ex)
+        {
+            logger.Warn($"Temporary native connection identity cleanup failed: {ex.GetType().Name}");
+        }
     }
 
     private static GatewayDirectConnectRequest BuildRequest(SetupNativeConnectionRequest request)

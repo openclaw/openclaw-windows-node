@@ -434,9 +434,10 @@ public sealed partial class SetupWindow : Window
             },
             result =>
             {
+                var accepted = AccessDraft.TryAcceptNativeConnection(route, result);
                 if (_isClosed || generation != _nativeNavigationGeneration)
                     return;
-                if (!AccessDraft.TryAcceptNativeConnection(route, result))
+                if (!accepted)
                 {
                     NavigateToComplete(false, TimeSpan.Zero, _config.LogPath,
                         result.Error ?? SetupLocalization.GetString("Onboarding_Native_Failed"));
