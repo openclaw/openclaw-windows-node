@@ -43,9 +43,9 @@ public sealed class WorkspaceWindowProofTests
         await Task.Delay(500);
         Assert.Equal(selectorBounds, selector.Current.BoundingRectangle);
         Assert.Equal(homeBounds, Find(root, "WorkspaceNavHome").Current.BoundingRectangle);
+        CaptureFlyout(root, theme, "agent-identities");
         AssertIconCenter(FindPopup(root, "WorkspaceAgent:main")!.Current.BoundingRectangle, center,
             color => color.R < 20 && color.G is > 110 and < 145 && color.B is > 110 and < 145);
-        CaptureFlyout(root, theme, "agent-identities");
         ((ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Collapse();
         await WaitUntilAsync(() => IsVisible(root, "ChatComposerInput"));
         Assert.Equal(selectorBounds, selector.Current.BoundingRectangle);
@@ -345,7 +345,8 @@ public sealed class WorkspaceWindowProofTests
             .GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected);
         Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
         var composerId = Find(root, "ChatComposerInput").GetRuntimeId();
-        Invoke(Find(root, "WorkspaceTogglePane"));
+        Find(root, "WorkspaceTogglePane").SetFocus();
+        System.Windows.Forms.SendKeys.SendWait(" ");
         await WaitUntilAsync(() => IsVisible(root, "WorkspaceReopenPane"));
         await app.NavigateAsync("chat", "ChatPage", "ChatComposerInput");
         Assert.Equal(composerId, Find(root, "ChatComposerInput").GetRuntimeId());
