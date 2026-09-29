@@ -89,7 +89,8 @@ public sealed class ConfigureGatewayStep : SetupStep
             """;
 
         var timeout = ComputeConfigurationTimeout(configCommands);
-        var result = await ctx.Commands.RunInWslAsync(distro, script, timeout, env, ct);
+        // PATH prefix references $PATH. Pipe the script so wsl.exe cannot expand it on argv.
+        var result = await ctx.Commands.RunInWslAsync(distro, script, timeout, env, ct, inputViaStdin: true);
 
         if (result.ExitCode != 0 || !result.Stdout.Contains("GATEWAY_CONFIGURED"))
         {

@@ -347,7 +347,7 @@ public sealed class PairOperatorStep : SetupStep
             var preview = await ctx.Commands.RunInWslAsync(
                 distro,
                 $"""{ctx.WslPathPrefix} && openclaw devices approve --latest --json""",
-                TimeSpan.FromSeconds(30), env, ct);
+                TimeSpan.FromSeconds(30), env, ct, inputViaStdin: true);
 
             ctx.Logger.Info($"Approve preview: exit={preview.ExitCode}");
 
@@ -373,7 +373,7 @@ public sealed class PairOperatorStep : SetupStep
         var approve = await ctx.Commands.RunInWslAsync(
             distro,
             $"""{ctx.WslPathPrefix} && {ApprovalRequestHelper.ApprovalCommand(ApprovalRequestKind.Device)}""",
-            TimeSpan.FromSeconds(30), approvalEnv, ct);
+            TimeSpan.FromSeconds(30), approvalEnv, ct, inputViaStdin: true);
 
         ctx.Logger.Info($"Approve result: exit={approve.ExitCode}");
 
