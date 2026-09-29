@@ -4,7 +4,7 @@ namespace OpenClaw.SetupEngine;
 /// Opens the Gateway Microsoft Store listing. Store owns package selection, signature
 /// validation, installation consent and deployment; opening the listing is not readiness.
 /// The Store app product page is launched directly; the web listing is only a fallback
-/// for hosts where the <c>ms-windows-store:</c> protocol has no handler.
+/// when Windows reports that the Store-app URI was not launched.
 /// </summary>
 public sealed class NativeGatewayMsixInstaller
 {

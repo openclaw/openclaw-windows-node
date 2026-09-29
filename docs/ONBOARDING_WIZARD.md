@@ -112,7 +112,7 @@ Tailscale provisioning. After confirming the review, progress runs automatically
 A missing package opens the OpenClaw Gateway product page directly in the
 Microsoft Store app (the
 [web listing](https://apps.microsoft.com/detail/9nv70lv3d6xc?hl=en-US&gl=US)
-is only a fallback when the Store protocol is unavailable);
+is a fallback when Windows reports that the Store-app URI was not launched);
 unhealthy registration or unavailable aliases show an explicit repair error.
 No local MSIX path or environment-variable configuration is required.
 The original `OpenClaw.Gateway` / OpenClaw Foundation development publisher pair

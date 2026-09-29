@@ -117,7 +117,7 @@ checks Windows package registration and package-qualified aliases.
 the Microsoft Store app (`ms-windows-store://pdp/?ProductId=9NV70LV3D6XC`) when a
 package is not installed, falling back to the
 [web listing](https://apps.microsoft.com/detail/9nv70lv3d6xc?hl=en-US&gl=US)
-only when the Store protocol has no handler. Microsoft Store owns architecture selection,
+when Windows reports that the Store-app URI was not launched. Microsoft Store owns architecture selection,
 installation consent and deployment; no local MSIX path is required.
 `NativeGatewayPackageIdentity` pins the exact Store name/publisher pair and retains
 the original development identity for existing installations. Multiple matching

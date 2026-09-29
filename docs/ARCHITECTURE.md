@@ -145,7 +145,7 @@ OpenClaw Gateway product page directly in the Microsoft Store app
 (`ms-windows-store://pdp/?ProductId=9NV70LV3D6XC`) with `Launcher.LaunchUriAsync`,
 falling back to the
 [web Store listing](https://apps.microsoft.com/detail/9nv70lv3d6xc?hl=en-US&gl=US)
-only when the Store protocol has no handler. Microsoft Store owns architecture/package selection,
+when Windows reports that the Store-app URI was not launched. Microsoft Store owns architecture/package selection,
 signature validation, deployment and installation consent. Opening the listing
 does not mean installation succeeded. There is no local source path, environment
 override, direct download, or ARM64-only installer gate.
