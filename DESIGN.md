@@ -382,12 +382,21 @@ and Back/Forward at the right edge of the sidebar, not the content area.
 The assistant selector occupies the second row. Each real agent uses a 32 DIP
 native `PersonPicture`, configured display name, and a secondary agent ID such
 as `main`. Both the selected item and dropdown use the same identity presentation.
+Use a native data template for each presentation and retain the measured selector
+height while its popup is open. WinUI temporarily removes the selected
+presentation during expansion; opening and closing must not move Home or Sessions.
+Centre the 32 DIP avatar and Home artwork on the same vertical axis as the native
+claw and 40 DIP pane-toggle target. Home uses a 24 DIP artwork slot alongside the
+native iconless presenter's 8 DIP leading column, with no extra content padding.
 Use the existing `agents.list` identity (`name`, `emoji`, resolved `avatarUrl`),
 not guessed local workspace paths. A configured emoji or native initials is the
 fallback when there is no usable picture. The secondary value is the gateway
 agent ID, not an inferred Git branch. Respect the gateway's default agent and
 explicit-selection requirement. Its final dropdown option is
 the existing New conversation action with an Add glyph; it is not agent creation.
+Workspace chat does not repeat session navigation in its composer. The sidebar
+owns session selection; standalone compact chat retains its session picker.
+Model, reasoning, attachments, voice and send remain in the composer.
 Sessions retains its separate Add button. Collapsing the pane hides it completely:
 no compact rail, destination icons, footer controls, or reserved sidebar width.
 The content fills the vacated width. A floating-style native subtle reopen button

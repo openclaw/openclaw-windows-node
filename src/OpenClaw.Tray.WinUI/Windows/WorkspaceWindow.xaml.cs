@@ -62,6 +62,9 @@ public sealed partial class WorkspaceWindow : WindowEx
         this.SetIcon("Assets\\openclaw.ico");
         SetTitleBar(WorkspaceTitleBar);
         NewConversationLabel.Text = AutomationProperties.GetName(NewConversationOption);
+        // ComboBox temporarily removes its selected presentation while the popup is open.
+        AssistantSelector.DropDownOpened += (_, _) => AssistantSelector.MinHeight = AssistantSelector.ActualHeight;
+        AssistantSelector.DropDownClosed += (_, _) => AssistantSelector.ClearValue(FrameworkElement.MinHeightProperty);
         NavView.RegisterPropertyChangedCallback(NavigationView.IsPaneOpenProperty, (_, _) => UpdatePanePresentation());
         UpdatePanePresentation();
         HomeLabel.Text = Text("Home");
@@ -106,7 +109,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         var session = _state.Sessions.FirstOrDefault(session => session.Key == sessionKey);
         if (session is not null)
         {
-            _agentId = session.AgentId;
+            _agentId = SessionDisplayResolver.Resolve(session).AgentId;
             RefreshSidebar();
         }
         _chat.QueueSession(sessionKey);
@@ -204,8 +207,11 @@ public sealed partial class WorkspaceWindow : WindowEx
         AssistantSelector.Items.Clear();
         foreach (var agent in agents)
         {
-            var item = previousItems.GetValueOrDefault(agent.Id) ?? new ComboBoxItem { Content = new AgentIdentityBadge() };
-            ((AgentIdentityBadge)item.Content).Initialize(agent);
+            var item = previousItems.GetValueOrDefault(agent.Id) ?? new ComboBoxItem
+            {
+                ContentTemplate = (DataTemplate)Root.Resources["AgentIdentityTemplate"]
+            };
+            item.Content = agent;
             item.Tag = agent;
             AutomationProperties.SetName(item, $"{agent.Name}, {agent.Id}");
             AutomationProperties.SetAutomationId(item, $"WorkspaceAgent:{agent.Id}");

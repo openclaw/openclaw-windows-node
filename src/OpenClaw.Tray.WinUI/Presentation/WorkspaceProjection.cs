@@ -56,10 +56,11 @@ internal static class WorkspaceProjection
     {
         var sessions = SessionVisibilityFilter.VisibleSessions(source, showCompleted: false)
             .Where(session => session.IsBackground != true &&
-                (agentId is null || string.Equals(session.AgentId, agentId, StringComparison.Ordinal)))
+                (agentId is null || string.Equals(SessionDisplayResolver.Resolve(session).AgentId, agentId, StringComparison.Ordinal)))
             .OrderByDescending(session => session.UpdatedAt)
             .ToArray();
         var titles = SessionTitleFormatter.FormatUnique(sessions);
-        return sessions.Select((session, index) => new WorkspaceSession(session.Key, titles[index], session.AgentId)).ToArray();
+        return sessions.Select((session, index) => new WorkspaceSession(
+            session.Key, titles[index], SessionDisplayResolver.Resolve(session).AgentId)).ToArray();
     }
 }

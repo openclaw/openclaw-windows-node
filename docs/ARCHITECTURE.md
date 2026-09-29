@@ -59,6 +59,7 @@ These are the canonical homes. Do not reintroduce private copies elsewhere.
 | Fixture-backed app profile/process lifetime | `OpenClaw.GatewayFixtureHost.GatewayFixtureProfile` + `GatewayFixtureRun` | authoritative |
 | Explicit fixture context and host-effect isolation gate | `OpenClaw.Shared.GatewayFixtureIsolation` | authoritative |
 | Passive fixture chat-render acknowledgement | `GatewayFixtureRenderObservation` (pure metadata) + `ReactorChatComposer` (UI applicator) | authoritative |
+| External chat session selection without remounting | `MountedReactorChat` forwards to `ChatComposerController`'s existing root selection handoff; `ChatPage` retains initial-mount fallback for an unready or replaced provider | authoritative |
 | Gateway record test data | `OpenClaw.Connection.Tests.GatewayRecordBuilder` | authoritative |
 | Settings test data | `OpenClaw.TestSupport.SettingsDataBuilder` | authoritative |
 | JSON `JsonElement` coercion (non-nullable fallback family) | `JsonReadHelpers` | authoritative |

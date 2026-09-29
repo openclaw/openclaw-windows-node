@@ -90,7 +90,6 @@ public sealed class AccessibilityScanTests
         {
             "ChatComposerInput",
             "ChatComposerAttach",
-            "ChatComposerSessionPicker",
             "ChatComposerModelPicker",
             "ChatComposerReasoningPicker",
             "ChatComposerVoice",
@@ -102,6 +101,8 @@ public sealed class AccessibilityScanTests
             Assert.True(element.Current.BoundingRectangle.Width > 0);
             Assert.True(element.Current.BoundingRectangle.Height > 0);
         }
+        Assert.Null(hub.FindFirst(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.AutomationIdProperty, "ChatComposerSessionPicker")));
     }
 
     private static async Task<AutomationElement> WaitForOnscreenLayoutAsync(

@@ -313,11 +313,8 @@ public sealed partial class ChatPage : Page
             : null;
         Func<string, Task>? readAloud = app is null ? null : ReadChatTextAloudAsync;
 
-        // Consume a pending session-key hand-off from SessionsPage or a
-        // notification toast so the chat root mounts with that thread selected.
-        // Any pending key forces a remount — _mountedThreadId only records what
-        // we asked for, not what the user later picked inside the composer's
-        // dropdown, so we cannot use it to detect "already on the right thread".
+        // Route sidebar and deep-link selection through the same controller as
+        // the compact picker. Remount only when the provider or root is not ready.
         var pendingSessionKey = _pendingSessionKey ?? _hub?.PendingChatSessionKey
             ?? (App.Current as App)?.PendingChatSessionKey;
         if (!string.IsNullOrEmpty(pendingSessionKey))
@@ -328,6 +325,13 @@ public sealed partial class ChatPage : Page
         }
         var threadIdToMount = pendingSessionKey ?? _mountedThreadId;
         var forceRemount = !string.IsNullOrEmpty(pendingSessionKey);
+        if (forceRemount && _reactorHost is not null
+            && ReferenceEquals(_mountedProvider, provider)
+            && _reactorHost.TrySelectSession(pendingSessionKey!))
+        {
+            _mountedThreadId = pendingSessionKey;
+            forceRemount = false;
+        }
 
         if (_reactorHost is not null
             && ReferenceEquals(_mountedProvider, provider)
@@ -376,7 +380,8 @@ public sealed partial class ChatPage : Page
             initialThreadId: threadIdToMount,
             onReadAloud: readAloud,
             onStopSpeaking: () => app?.StopChatSpeaking(),
-            onOpenCheckpoints: OpenSessionCheckpoints);
+            onOpenCheckpoints: OpenSessionCheckpoints,
+            showSessionPicker: _ownerWindow is not WorkspaceWindow);
         _mountedProvider = provider;
         _mountedThreadId = threadIdToMount;
         UpdateNativeChatSurfaceActive();

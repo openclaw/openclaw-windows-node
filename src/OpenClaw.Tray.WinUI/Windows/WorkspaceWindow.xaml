@@ -9,6 +9,9 @@
     <Window.SystemBackdrop><MicaBackdrop/></Window.SystemBackdrop>
     <Grid x:Name="Root" PreviewKeyDown="OnKeyDown">
         <Grid.Resources>
+            <DataTemplate x:Key="AgentIdentityTemplate">
+                <controls:AgentIdentityBadge/>
+            </DataTemplate>
             <Style x:Key="ConnectionBadgeIcon" TargetType="FontIcon">
                 <Setter Property="Glyph" Value="&#xE91F;"/>
                 <Setter Property="FontSize" Value="10"/>
@@ -70,8 +73,8 @@
                         </StackPanel>
                     </Grid>
                     <ComboBox x:Name="AssistantSelector" x:Uid="WorkspaceShell_Assistant"
-                              Margin="8,0,0,0"
-                              HorizontalAlignment="Stretch" SelectionChanged="OnAssistantChanged"
+                              Padding="4,8,28,8"
+                              HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" SelectionChanged="OnAssistantChanged"
                               Background="Transparent" BorderThickness="0"
                               AutomationProperties.AutomationId="WorkspaceAssistantSelector">
                         <ComboBox.Resources>
@@ -91,10 +94,16 @@
                 </StackPanel>
             </NavigationView.PaneHeader>
             <NavigationView.MenuItems>
-                <NavigationViewItem x:Name="HomeItem" Tag="home" AutomationProperties.AutomationId="WorkspaceNavHome">
-                    <StackPanel Orientation="Horizontal" Spacing="12" Margin="8,0">
-                        <ImageIcon x:Name="HomeIcon" Source="{StaticResource Chat_Icon}" Width="22" Height="22"
-                                   AutomationProperties.AccessibilityView="Raw"/>
+                <NavigationViewItem x:Name="HomeItem" Tag="home" Padding="0" AutomationProperties.AutomationId="WorkspaceNavHome">
+                    <NavigationViewItem.Resources>
+                        <Thickness x:Key="NavigationViewItemContentPresenterMargin">0,-1,8,-1</Thickness>
+                    </NavigationViewItem.Resources>
+                    <!-- The native iconless presenter already reserves an 8-DIP leading column. -->
+                    <StackPanel Orientation="Horizontal" Spacing="16">
+                        <Grid Width="24">
+                            <ImageIcon x:Name="HomeIcon" Source="{StaticResource Chat_Icon}" Width="22" Height="22"
+                                       AutomationProperties.AccessibilityView="Raw"/>
+                        </Grid>
                         <TextBlock x:Name="HomeLabel" VerticalAlignment="Center"/>
                     </StackPanel>
                 </NavigationViewItem>
@@ -130,7 +139,7 @@
                 <NavigationViewItemHeader x:Name="SessionsEmpty" FontWeight="Normal"/>
             </NavigationView.MenuItems>
             <NavigationView.PaneFooter>
-                <Grid x:Name="ExpandedFooter" ColumnSpacing="4" Margin="8">
+                <Grid x:Name="ExpandedFooter" ColumnSpacing="4" Margin="4,8,8,8">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                     <Button x:Name="OwnerButton" Style="{StaticResource SubtleButtonStyle}" Padding="8" HorizontalAlignment="Stretch"
                             HorizontalContentAlignment="Left" AutomationProperties.AutomationId="WorkspaceOwner">

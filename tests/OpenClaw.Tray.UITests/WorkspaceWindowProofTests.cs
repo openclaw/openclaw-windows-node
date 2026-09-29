@@ -19,6 +19,8 @@ public sealed class WorkspaceWindowProofTests
             initialRoute: "sessions", agentIdentities: true);
         await app.NavigateAsync("chat", "ChatPage", "ChatComposerInput");
         var root = AutomationElement.FromHandle(app.HubWindowHandle);
+        Assert.Null(root.FindFirst(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.AutomationIdProperty, "ChatComposerSessionPicker")));
         var selector = Find(root, "WorkspaceAssistantSelector");
         var selection = (SelectionPattern)selector.GetCurrentPattern(SelectionPattern.Pattern);
         Assert.Contains(selection.Current.GetSelection(), item => item.Current.Name == "Configured assistant, main");
@@ -26,6 +28,12 @@ public sealed class WorkspaceWindowProofTests
         const string draft = "Retain draft while browsing agent identities";
         ((ValuePattern)composer.GetCurrentPattern(ValuePattern.Pattern)).SetValue(draft);
         Capture(app, theme, "agent-selected");
+        var selectorBounds = selector.Current.BoundingRectangle;
+        var homeBounds = Find(root, "WorkspaceNavHome").Current.BoundingRectangle;
+        var toggle = Find(root, "WorkspaceTogglePane").Current.BoundingRectangle;
+        var center = (toggle.Left + toggle.Right) / 2;
+        AssertIconCenter(selectorBounds, center, color => color.R < 20 && color.G is > 110 and < 145 && color.B is > 110 and < 145);
+        AssertIconCenter(homeBounds, center, color => color.B > color.R + 70 && color.B > color.G + 50);
         ((ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
         await WaitUntilAsync(() => FindPopup(root, "WorkspaceAgent:research") is not null);
         Assert.Equal("Configured assistant, main", FindPopup(root, "WorkspaceAgent:main")!.Current.Name);
@@ -33,15 +41,65 @@ public sealed class WorkspaceWindowProofTests
         Assert.Equal("No configured icon, fallback", FindPopup(root, "WorkspaceAgent:fallback")!.Current.Name);
         Assert.NotNull(FindPopup(root, "WorkspaceNewConversation"));
         await Task.Delay(500);
+        Assert.Equal(selectorBounds, selector.Current.BoundingRectangle);
+        Assert.Equal(homeBounds, Find(root, "WorkspaceNavHome").Current.BoundingRectangle);
         CaptureFlyout(root, theme, "agent-identities");
         ((ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Collapse();
         await WaitUntilAsync(() => IsVisible(root, "ChatComposerInput"));
+        Assert.Equal(selectorBounds, selector.Current.BoundingRectangle);
+        Assert.Equal(homeBounds, Find(root, "WorkspaceNavHome").Current.BoundingRectangle);
         Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+        ((WindowPattern)root.GetCurrentPattern(WindowPattern.Pattern)).SetWindowVisualState(WindowVisualState.Normal);
+        foreach (var width in new[] { 1000, 1350 })
+        {
+            ((TransformPattern)root.GetCurrentPattern(TransformPattern.Pattern)).Resize(width, 800);
+            await Task.Delay(350);
+            selectorBounds = selector.Current.BoundingRectangle;
+            homeBounds = Find(root, "WorkspaceNavHome").Current.BoundingRectangle;
+            selector.SetFocus();
+            System.Windows.Forms.SendKeys.SendWait("%{DOWN}");
+            await WaitUntilAsync(() => FindPopup(root, "WorkspaceAgent:research") is not null);
+            await Task.Delay(350);
+            Assert.Equal(selectorBounds, selector.Current.BoundingRectangle);
+            Assert.Equal(homeBounds, Find(root, "WorkspaceNavHome").Current.BoundingRectangle);
+            System.Windows.Forms.SendKeys.SendWait("{ESC}");
+            await Task.Delay(350);
+            Assert.Equal(selectorBounds, selector.Current.BoundingRectangle);
+            Assert.Equal(homeBounds, Find(root, "WorkspaceNavHome").Current.BoundingRectangle);
+        }
+        Invoke(Find(root, "WorkspaceTogglePane"));
+        await WaitUntilAsync(() => IsVisible(root, "WorkspaceReopenPane") && !IsVisible(root, "WorkspaceAssistantSelector"));
+        Assert.Null(root.FindFirst(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.AutomationIdProperty, "ChatComposerSessionPicker")));
+        Invoke(Find(root, "WorkspaceReopenPane"));
+        await WaitUntilAsync(() => IsVisible(root, "WorkspaceAssistantSelector"));
+        Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+        Capture(app, theme, "sidebar-composer");
         Invoke(Find(root, "WorkspaceOwner"));
         await WaitUntilAsync(() => FindPopup(root, "WorkspaceOwnerConnectionStatus") is not null);
         Assert.Equal("Connection Status: Disconnected", FindPopup(root, "WorkspaceOwnerConnectionStatus")!.Current.Name);
         CaptureFlyout(root, theme, "owner-live-status");
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
+    }
+
+    private static void AssertIconCenter(System.Windows.Rect bounds, double expected, Func<System.Drawing.Color, bool> isIcon)
+    {
+        // Native ComboBox does not expose its selected presentation's decorative image through UIA.
+        using var bitmap = new System.Drawing.Bitmap((int)bounds.Width, (int)bounds.Height);
+        using (var graphics = System.Drawing.Graphics.FromImage(bitmap))
+            graphics.CopyFromScreen((int)bounds.Left, (int)bounds.Top, 0, 0, bitmap.Size);
+        var left = bitmap.Width;
+        var right = -1;
+        for (var x = (int)(bitmap.Width * 0.05); x < bitmap.Width; x++)
+        for (var y = 0; y < bitmap.Height; y++)
+            if (isIcon(bitmap.GetPixel(x, y)))
+            {
+                left = Math.Min(left, x);
+                right = Math.Max(right, x);
+            }
+        Assert.True(right >= left, "Expected the rendered fixture avatar or Home artwork.");
+        var actual = (int)bounds.Left + (left + right) / 2d;
+        Assert.True(Math.Abs(actual - expected) <= 2, $"Rendered icon center {actual} must align with pane toggle center {expected}.");
     }
 
     [Theory]
@@ -211,14 +269,15 @@ public sealed class WorkspaceWindowProofTests
         await app.NavigateAsync("chat", "ChatPage", "ChatComposerInput");
         var workspace = app.HubWindowHandle;
         var root = AutomationElement.FromHandle(workspace);
+        var composerIdentity = Find(root, "ChatComposerInput").GetRuntimeId();
         foreach (var key in new[] { "agent:main:main", "agent:main:fork" })
         {
             var item = Find(root, $"WorkspaceSession:{key}");
             Assert.False(item.Current.IsOffscreen);
             ((SelectionItemPattern)item.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
-            await WaitUntilAsync(() => root.FindAll(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button))
-                .Cast<AutomationElement>().Any(button => button.Current.Name.Contains($"Route target: {key}", StringComparison.Ordinal)));
+            await WaitUntilAsync(() => ((SelectionItemPattern)Find(root, $"WorkspaceSession:{key}")
+                .GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected);
+            Assert.Equal(composerIdentity, Find(root, "ChatComposerInput").GetRuntimeId());
             Assert.True(((SelectionItemPattern)Find(root, $"WorkspaceSession:{key}")
                 .GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected);
             Assert.False(((SelectionItemPattern)Find(root, "WorkspaceNavHome")

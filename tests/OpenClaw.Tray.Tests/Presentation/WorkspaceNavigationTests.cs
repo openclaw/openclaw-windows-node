@@ -458,6 +458,42 @@ public sealed class WorkspaceNavigationTests
     }
 
     [Fact]
+    public void Sidebar_ResolvesAgentFromSessionKeyWhenGatewayOmitsAgentId()
+    {
+        var sessions = WorkspaceProjection.Sessions([
+            new SessionInfo { Key = "agent:main:main", IsMain = true },
+            new SessionInfo { Key = "agent:research:main", IsMain = true },
+            new SessionInfo { Key = "agent:main:subagent:worker", IsBackground = true }
+        ], "main");
+        var session = Assert.Single(sessions);
+        Assert.Equal("agent:main:main", session.Key);
+        Assert.Equal("main", session.AgentId);
+    }
+
+    [Fact]
+    public void Sidebar_PrefersExplicitAgentMetadataOverSessionKey()
+    {
+        var sessions = new[] { new SessionInfo { Key = "agent:research:main", AgentId = "main" } };
+        Assert.Equal("main", Assert.Single(WorkspaceProjection.Sessions(sessions, "main")).AgentId);
+        Assert.Empty(WorkspaceProjection.Sessions(sessions, "research"));
+    }
+
+    [Fact]
+    public void Workspace_UsesSeparateAgentTemplatesAndSidebarSessionNavigation()
+    {
+        var document = XDocument.Load(Source("Windows", "WorkspaceWindow.xaml"));
+        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var template = document.Descendants().Single(element => (string?)element.Attribute(x + "Key") == "AgentIdentityTemplate");
+        Assert.Equal("DataTemplate", template.Name.LocalName);
+        Assert.Equal("AgentIdentityBadge", Assert.Single(template.Elements()).Name.LocalName);
+        var code = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
+        Assert.Contains("item.Content = agent", code);
+        Assert.DoesNotContain("Content = new AgentIdentityBadge", code);
+        Assert.Contains("showSessionPicker: _ownerWindow is not WorkspaceWindow", File.ReadAllText(Source("Pages", "ChatPage.xaml.cs")));
+        Assert.Contains("props.ShowSessionPicker ? Grid(", File.ReadAllText(Source("Chat", "ReactorChatComposer.cs")));
+    }
+
+    [Fact]
     public void Projection_DoesNotSelectBackgroundSessionsForAssistantChat()
     {
         using var json = JsonDocument.Parse("""{"agents":[{"id":"custom","name":"Actual agent"}]}""");

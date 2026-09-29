@@ -15,6 +15,10 @@ public sealed partial class AgentIdentityBadge : UserControl
     public AgentIdentityBadge()
     {
         InitializeComponent();
+        DataContextChanged += (_, _) =>
+        {
+            if (DataContext is WorkspaceAgent agent) Initialize(agent);
+        };
         Loaded += (_, _) => _ = LoadPictureAsync();
         Unloaded += (_, _) => CancelLoad();
     }
