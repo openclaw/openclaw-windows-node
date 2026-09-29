@@ -21,6 +21,21 @@ public sealed partial class ProviderSetupDialog : ContentDialog
     public event Action? RefreshRequested;
     public event Action? CancelRequested;
     public event Action<string?>? ExternalLinkRequested;
+    public event Action<NativeSetupRecoveryAction>? NativeRecoveryRequested;
+
+    public void UpdateNativeRecovery(bool available, string output)
+    {
+        NativeRecovery.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
+        if (!available) NativeRecovery.IsExpanded = false;
+        NativeOutput.Text = available ? output : "";
+    }
+
+    private void NativeRecovery_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_closed && sender is FrameworkElement { Tag: string tag } &&
+            Enum.TryParse<NativeSetupRecoveryAction>(tag, out var action))
+            NativeRecoveryRequested?.Invoke(action);
+    }
 
     public ProviderSetupDialog()
     {

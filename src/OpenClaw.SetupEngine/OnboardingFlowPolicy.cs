@@ -29,7 +29,7 @@ public static class OnboardingFlowPolicy
         SetupGatewayRoute.ManagedWsl => RequiresAiSetup(config),
         SetupGatewayRoute.Existing or SetupGatewayRoute.Remote => true,
         SetupGatewayRoute.McpOnly or SetupGatewayRoute.Deferred => false,
-        SetupGatewayRoute.Native => false,
+        SetupGatewayRoute.Native => true,
         _ => throw new ArgumentOutOfRangeException(nameof(route)),
     };
 
@@ -48,7 +48,7 @@ public static class OnboardingFlowPolicy
     public static string GetCompletionLaunchTarget(SetupGatewayRoute route) => route switch
     {
         SetupGatewayRoute.ManagedWsl or SetupGatewayRoute.Existing or SetupGatewayRoute.Remote => "chat",
-        SetupGatewayRoute.Native => "connection",
+        SetupGatewayRoute.Native => "chat",
         SetupGatewayRoute.McpOnly => "settings",
         SetupGatewayRoute.Deferred => "connection",
         _ => throw new ArgumentOutOfRangeException(nameof(route)),
@@ -82,7 +82,6 @@ public static class OnboardingFlowPolicy
         else if (route == SetupGatewayRoute.Native)
         {
             stages.Add(OnboardingStage.Install);
-            stages.Add(OnboardingStage.AiSetup);
         }
         if (RequiresAiSetup(route, config))
         {

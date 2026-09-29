@@ -5,7 +5,12 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:OpenClaw.SetupEngine.UI.Controls"
     NavigationCacheMode="Disabled">
-
+    <Page.Resources>
+        <DataTemplate x:Key="WrappedFooterAction">
+            <TextBlock Text="{Binding}" TextWrapping="Wrap" TextAlignment="Center"
+                       Style="{StaticResource BodyTextBlockStyle}" />
+        </DataTemplate>
+    </Page.Resources>
     <Grid RowDefinitions="Auto,*,Auto" Padding="40,4,40,24">
         <StackPanel Grid.Row="0" Spacing="4" HorizontalAlignment="Stretch">
             <controls:OnboardingMascot x:Name="MascotHero" Mood="Thinking"
@@ -88,45 +93,42 @@
             </StackPanel>
         </ScrollViewer>
 
-        <Grid Grid.Row="2" ColumnDefinitions="*,Auto">
-            <controls:SetupProgressIndicator x:Name="FlowProgress" Grid.ColumnSpan="2"
+        <Grid x:Name="NavigationFooter" Grid.Row="2" RowDefinitions="Auto,Auto"
+              ColumnDefinitions="*,*,*" ColumnSpacing="8" RowSpacing="12">
+            <controls:SetupProgressIndicator x:Name="FlowProgress" Grid.ColumnSpan="3"
                                             HorizontalAlignment="Center" VerticalAlignment="Center" />
-            <StackPanel Grid.Column="0" Orientation="Horizontal" HorizontalAlignment="Left" Spacing="8">
-                <DropDownButton x:Name="MoreOptionsButton"
-                                Content="More options"
-                                MinWidth="100"
-                                Background="Transparent"
-                                BorderBrush="Transparent"
-                                Visibility="Collapsed"
-                                AutomationProperties.Name="More onboarding options">
-                    <DropDownButton.Flyout>
-                        <MenuFlyout Placement="Top">
-                            <MenuFlyoutItem Text="Restart onboard" Click="StartOver_Click">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xE72C;" IsTextScaleFactorEnabled="False" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
-                            <MenuFlyoutItem x:Name="SkipWizardMenuItem" Text="Skip &amp; exit" Click="SkipWizard_Click">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xE72A;" IsTextScaleFactorEnabled="False" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
-                        </MenuFlyout>
-                    </DropDownButton.Flyout>
-                </DropDownButton>
-            </StackPanel>
-            <StackPanel Grid.Column="1"
-                        Orientation="Horizontal"
-                        HorizontalAlignment="Right"
-                        Spacing="12">
-                <Button x:Name="SecondaryButton" Content="Skip"
-                        MinWidth="100"
-                        Click="Secondary_Click" IsEnabled="False" />
-                <Button x:Name="PrimaryButton" Content="Continue"
-                        MinWidth="100"
-                        Style="{StaticResource AccentButtonStyle}"
-                        Click="Primary_Click" IsEnabled="False" />
-            </StackPanel>
+            <DropDownButton x:Name="MoreOptionsButton" Grid.Row="1"
+                            Content="More options"
+                            MinWidth="0" HorizontalAlignment="Stretch"
+                            ContentTemplate="{StaticResource WrappedFooterAction}"
+                            Background="Transparent"
+                            BorderBrush="Transparent"
+                            Visibility="Collapsed"
+                            AutomationProperties.Name="More onboarding options">
+                <DropDownButton.Flyout>
+                    <MenuFlyout Placement="Top">
+                        <MenuFlyoutItem Text="Restart onboard" Click="StartOver_Click">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE72C;" IsTextScaleFactorEnabled="False" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                        <MenuFlyoutItem x:Name="SkipWizardMenuItem" Text="Skip &amp; exit" Click="SkipWizard_Click">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE72A;" IsTextScaleFactorEnabled="False" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                    </MenuFlyout>
+                </DropDownButton.Flyout>
+            </DropDownButton>
+            <Button x:Name="SecondaryButton" Grid.Row="1" Grid.Column="1" Content="Skip"
+                    MinWidth="0" HorizontalAlignment="Stretch"
+                    ContentTemplate="{StaticResource WrappedFooterAction}"
+                    Click="Secondary_Click" IsEnabled="False" />
+            <Button x:Name="PrimaryButton" Grid.Row="1" Grid.Column="2" Content="Continue"
+                    MinWidth="0" HorizontalAlignment="Stretch"
+                    ContentTemplate="{StaticResource WrappedFooterAction}"
+                    Style="{StaticResource AccentButtonStyle}"
+                    Click="Primary_Click" IsEnabled="False" />
         </Grid>
     </Grid>
 </Page>

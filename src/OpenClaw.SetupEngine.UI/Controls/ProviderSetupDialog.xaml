@@ -44,6 +44,19 @@
             </StackPanel>
             <ProgressBar x:Name="DialogProgress" IsIndeterminate="True" Visibility="Collapsed" />
             <Button x:Name="CancelButton" Click="Cancel_Click" />
+            <Expander x:Name="NativeRecovery" x:Uid="Onboarding_Native_Recovery" Header="Gateway recovery"
+                      Visibility="Collapsed" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                <StackPanel Spacing="8">
+                    <Button x:Uid="Onboarding_Native_Terminal" Content="Open terminal" Tag="OpenTerminal" Click="NativeRecovery_Click" />
+                    <Button x:Uid="Onboarding_Native_Restart" Content="Restart Gateway" Tag="RestartGateway" Click="NativeRecovery_Click" />
+                    <Button x:Uid="Onboarding_Native_RetryAi" Content="Start AI setup again" Tag="RestartAi" Click="NativeRecovery_Click" />
+                    <Button x:Uid="Onboarding_Native_Cancel" Content="Cancel setup" Tag="CancelSetup" Click="NativeRecovery_Click" />
+                    <ScrollViewer MaxHeight="160" HorizontalScrollBarVisibility="Disabled">
+                        <TextBlock x:Name="NativeOutput" TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                                   Style="{StaticResource CaptionTextBlockStyle}" />
+                    </ScrollViewer>
+                </StackPanel>
+            </Expander>
         </StackPanel>
     </ScrollViewer>
 </ContentDialog>

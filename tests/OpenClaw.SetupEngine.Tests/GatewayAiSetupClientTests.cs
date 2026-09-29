@@ -78,6 +78,29 @@ public sealed class GatewayAiSetupClientTests
     }
 
     [Theory]
+    [InlineData("unknown method: openclaw.setup.detect", true)]
+    [InlineData("missing scope: operator.admin", false)]
+    [InlineData("unknown method: another.method", false)]
+    [InlineData("timeout: unknown method: openclaw.setup.detect", false)]
+    public async Task DiscoveryFallback_RequiresExactUnsupportedMethod(string message, bool unsupported)
+    {
+        var transport = new FakeTransport { Failure = new InvalidOperationException(message) };
+        var client = new GatewayAiSetupClient(transport);
+        if (unsupported)
+        {
+            Assert.Null(await client.DetectAsync());
+            Assert.Equal(GatewayAiSetupPhase.ClassicWizardRequired, client.Phase);
+        }
+        else
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() => client.DetectAsync());
+            Assert.NotEqual(GatewayAiSetupPhase.ClassicWizardRequired, client.Phase);
+        }
+        Assert.Single(transport.Calls);
+        Assert.Throws<InvalidOperationException>(() => client.GetVerifiedCompletion());
+    }
+
+    [Theory]
     [InlineData(GatewayAiSetupChoiceKind.Candidate, "openclaw.setup.activate.start")]
     [InlineData(GatewayAiSetupChoiceKind.ManualProvider, "openclaw.setup.activate.start")]
     [InlineData(GatewayAiSetupChoiceKind.Auth, "openclaw.setup.auth.start")]

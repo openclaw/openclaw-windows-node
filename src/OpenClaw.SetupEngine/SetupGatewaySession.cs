@@ -48,13 +48,12 @@ public sealed class SetupGatewaySession : IAsyncDisposable
 
     public static async Task<SetupGatewaySession> ConnectAsync(
         string dataDir, Func<bool>? expectedRestart = null, CancellationToken ct = default,
-        string? expectedGatewayId = null, GatewayAiSetupCompletion? expectedCompletion = null,
-        bool rejectNativeGateway = false)
+        string? expectedGatewayId = null, GatewayAiSetupCompletion? expectedCompletion = null)
     {
         var registry = new GatewayRegistry(dataDir);
         registry.Load();
         var record = registry.GetActive() ?? throw new InvalidOperationException("No active gateway record found.");
-        if (rejectNativeGateway && record.NativePackageFamilyName is not null)
+        if (record.NativePackageFamilyName is not null)
             throw new InvalidOperationException(
                 "Native onboarding requires its setup-owned runtime. Return to native Gateway setup.");
         var binding = new SetupGatewaySessionBinding(record);

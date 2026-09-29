@@ -52,12 +52,16 @@ internal sealed class WizardConsoleTail : IDisposable
 
     internal static Func<long?, CancellationToken, Task<JsonElement>> CreateGatewayLogReader(
         Func<string, object?, int, Task<JsonElement>> send) =>
+        CreateGatewayLogReader((method, parameters, timeout, ct) => send(method, parameters, timeout).WaitAsync(ct));
+
+    internal static Func<long?, CancellationToken, Task<JsonElement>> CreateGatewayLogReader(
+        Func<string, object?, int, CancellationToken, Task<JsonElement>> send) =>
         (cursor, cancellationToken) =>
         {
             object parameters = cursor is long position
                 ? new { cursor = position, limit = 128, maxBytes = 64 * 1024 }
                 : new { limit = 1, maxBytes = 1 };
-            return send("logs.tail", parameters, 10_000).WaitAsync(cancellationToken);
+            return send("logs.tail", parameters, 10_000, cancellationToken);
         };
 
     /// <summary>

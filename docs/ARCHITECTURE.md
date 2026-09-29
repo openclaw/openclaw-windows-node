@@ -81,9 +81,14 @@ These are the canonical homes. Do not reintroduce private copies elsewhere.
 | Shared Windows capability and permission selection, with runtime-specific install review | `CapabilitiesPage` | authoritative |
 | Native profile draft creation and canonical state/config launch paths | `NativeGatewaySetupService` + `NativeGatewayPaths` | authoritative |
 | Native onboarding capability admission and default/remembered gateway choice policy | `NativeGatewaySetupEligibility`, consuming `MxcAvailability` session probe metadata | authoritative |
-| Installed native MSIX Gateway process/job lifetime and owned-listener verification | `NativeGatewayRuntime` | authoritative |
+| Package-contract runtime selection and lifetime | `NativeGatewayRuntimeRouter` selects `IsolatedGatewayRuntime` or the recognized legacy `NativeGatewayRuntime` | authoritative |
+| Isolated package control and listener/process-sequence verification | `NativeGatewayPackageClient`, `IsolatedGatewayRuntime` and `WindowsProcessSequenceSnapshot` | authoritative |
 | Retained package-launcher identity, live same-user ancestry and lifetime attribution | `WindowsPackagedProcessAncestry`, anchored by `WindowsNativeGatewayProcessHost` | authoritative |
-| Native setup staged-record runtime, reload restoration, config/health gates and publication | `NativeGatewaySetupSession` | authoritative |
+| Native setup staged-record runtime, reload restoration, config/health and exact-AI gates, publication | `NativeGatewaySetupSession` | authoritative |
+| Staged native setup operator connection, pairing, per-handshake/request provenance and bound AI transport | `NativeGatewaySetupConnection` borrowing the runtime from `NativeGatewaySetupSession` | authoritative |
+| Setup completion authority across native runtime contracts | `GatewayDashboardBinding` includes the package family and non-null runtime contract; `NativeGatewaySetupSession` rechecks agent configuration without reading a host config for isolated sessions | authoritative |
+| Native operator connection construction inside the classic wizard page | `WizardPage.ConnectNativeClientAsync` delegates to `NativeGatewaySetupConnection` | closed |
+| Published native AI transport and restart verification | `GatewayAiSetupTransport.BorrowNativeAsync` + `GatewayConnectionManager.RequireNativeSetupClientAsync` + `SetupNativeCompletionVerifier` | authoritative |
 | Hosted Gateway onboarding RPC and provider/auth/model rendering for WSL and native | `WizardPage` | authoritative |
 | Audited optional onboarding defaults shared by native, WSL and headless setup | `WizardOnboardingPolicy` | authoritative |
 | Optional-tail cancellation acknowledgement and saved-config/authenticated-health gates | `WizardOptionalSetupHandoff` | authoritative |
@@ -107,6 +112,7 @@ These are the canonical homes. Do not reintroduce private copies elsewhere.
 | Native verified destination choice and selection-time read-only verification | `SetupNativeCompletionCoordinator` + `SetupNativeCompletionVerifier`; `AiReadyPage` renders, `SetupWindow` composes finalization | authoritative |
 | Native pending launch and bound Chat/Channels/Skills entry | `SetupNativeHandoffLauncher` + `SetupNativeNavigationRequest`; `SetupNativeSkills` owns response-bound read-only skills loading; `WindowManager` and pages apply the selected route | authoritative |
 | Setup startup availability | `WindowManager` supplies app identity availability; `SetupWindow` gates presentation and persisted preference | authoritative |
+| Setup HWND sizing and DPI-aware minimum | `SetupWindow` applies `OverlappedPresenter` constraints; `SetupWindowSizing` projects DIP dimensions to physical pixels | authoritative |
 | Verified setup authority across fresh clients | `OpenClawGatewayClient.AuthenticatedSigningDeviceId` + `SetupCompletionAuthority` + `SetupGatewaySessionBinding`; accepted signing identity and exact session survive completion, disk reads only detect drift | authoritative |
 | Native startup versus ordinary update prompt | `ActivationRouter.CheckOrdinaryStartupUpdateAsync`; App retains startup composition and receipt dispatch | authoritative |
 | Credential-recovery transport admission | `GatewayCredentialRecoveryPolicy`; normal connection recovery and disposable native validation retain their endpoint-provenance checks | authoritative |
@@ -238,26 +244,43 @@ Cancellation reaches `CommandRunner`, which stops its WinGet process tree;
 Windows may still finish an already submitted deployment. No installed package
 is removed, and retry starts by resolving registration again.
 
-The page reuses WSL's `StepRow` presentation for support, package readiness,
+The page uses the shared `OnboardingMascot`, native `SettingsCard` rows with
+`SetupPhaseStatus`, and `SetupProgressIndicator` for support, package readiness,
 profile preparation and verified runtime startup. Completed rows get checkmarks.
-It automatically transfers the staged session to `WizardPage`; no separate
+Its Install stage leads to the same focused AI and Ready stages as WSL, with six
+native stages (WSL has an additional installation review). Progress sits above wrapping navigation actions on
+both pages so narrow windows do not overlay buttons on the indicator.
+It automatically transfers the staged session to `AiSetupPage`; no separate
 Install, Check again or Open Gateway setup actions remain. Retry is error/cancel
 recovery only. Preview never installs or starts a Gateway.
 
-Native and WSL use the same `CapabilitiesPage` profiles, toggles and Windows
-permission checks. Native entry branches before Local AI/Tailscale probes and
-uses its own review instead of advertising or invoking WSL provisioning. Cancelling
-the native wizard returns to this review flow, not automatic runtime restart.
+Native and WSL use the same `CapabilitiesPage` profiles and toggles. Native
+installation consent stays on that page, without a separate review or
+WSL/Local AI/Tailscale probes. Cancelling returns to capabilities without
+automatically restarting a runtime.
 On finalization, the session applies selected command IDs to the Gateway's
 `gateway.nodes.commands.allow` through the upstream CLI before config/health
 verification. The isolated path applies this inside the agent account, not
-under Companion's Windows profile.
-`TraySettingsConfig.MergeCapabilitiesIntoSettingsFile` then saves only node-mode
-and capability flags, preserving startup, MCP and unrelated settings. Settings
-write failure stays retryable before releasing the session. Completion shows the
-configured Gateway and saved capability choices, not a running or paired Windows
-node. The normal connection owner still performs node connection/pairing; Windows
+under Companion's Windows profile; legacy profiles retain the local writer.
+Focused completion explicitly restarts through the selected runtime owner and
+reverifies the exact model before publication. The isolated runtime preserves
+whether a pre-existing service should be left running on detach.
+The shared setup settings owner then saves the reviewed capability, transport
+and startup choices without overwriting unrelated settings. Settings write
+failure stays retryable before releasing the session. Completion shows the
+verified model and three destinations, not a running or paired Windows node.
+The normal connection owner still performs node connection/pairing; Windows
 permission and exec-approval gates are unchanged.
+
+Native package setup uses the shared `AiSetupPage` and `AiReadyPage` flow.
+Only an explicit unsupported-method result offers `WizardPage` compatibility
+setup. Authentication failures, timeouts and uncertain writes do not enter that
+fallback. Healthy native and WSL AI/Ready screens use the same presentation:
+providers, verified model and the three destination choices, without a native-only
+summary. Gateway and permission details remain in Connection and Permissions.
+Native recovery actions and output appear only for actionable errors or uncertain
+outcomes on the AI page/provider dialog, and hide again during normal progress or
+after recovery. Their native ownership and cancellation guards are unchanged.
 
 ### Capability recommendation and Windows Update
 
@@ -429,6 +452,19 @@ cleanup applies after assignment, and no launcher code has resumed before then.
 
 ### RPC handoff to the existing wizard
 
+This section describes the explicit compatibility path only. The normal native
+path uses the same detected providers, activation, exact-model verification and
+Chat/Channels/Skills chooser as WSL. `NativeGatewaySetupConnection` owns the
+temporary operator socket in both paths; it never owns or replaces the native
+runtime. `SetupWindow` retains `NativeGatewaySetupSession` across AI/Ready navigation.
+
+The compatibility page retains the native wrapper with its exact client binding.
+All wizard RPCs, including progress, cancellation and the optional-policy
+config/health checks, pass through the generation-fenced request helper and native
+per-request authorization. Replaced bindings cannot send through a newer client.
+Page teardown cancels/drains requests and disposes the captured socket wrapper;
+only the window releases the native session/runtime after page cleanup.
+
 `NativeGatewaySetupPage` prepares the session and passes it to the shared
 `WizardPage`. The page owns RPC/rendering; the session owns the profile/runtime.
 There is no second provider UI or normal terminal-based onboarding path.
@@ -471,6 +507,22 @@ separate.
 
 ### Finalization and transfer to normal connection management
 
+The focused path admits only `GatewayAiSetupCompletion` bound to the same
+Gateway endpoint/package family, persisted signing identity, agent, canonical
+session and verified primary model. Showing the chooser publishes nothing.
+Each destination freshly verifies through the staged native owner, then
+`CompleteVerifiedAsync` stops the setup runtime, restores reload, applies selected
+capabilities, validates configuration and health, and performs another exact-model
+verification on the restarted runtime before publishing the record. It does not
+set the classic wizard-completed flag. Publication reloads unrelated Gateway edits
+and uses an expected registry snapshot; an already occupied draft ID is rejected.
+
+After Companion restarts, verification borrows the normal connection manager's
+native-authorized operator connection. It rechecks provenance on every request
+and never starts a parallel native runtime or disposes that borrowed connection.
+The generic `SetupGatewaySession` rejects native records. Windows-node WSL
+workspace finalization never runs for this route.
+
 At the Optional apps checkpoint, `WizardOptionalSetupHandoff` explicitly cancels
 the remaining optional wizard tail, requires cancellation acknowledgement, and
 checks `config.get` validity and authenticated `health`. The native session records
@@ -508,9 +560,11 @@ configuration, credentials, workspace and conversation state before destructive
 cleanup. The broader Companion/WSL uninstall flow is not a native-Gateway-only
 uninstaller.
 
-Gateway health does not prove AI-provider authentication, required model-runtime
-availability or a usable default chat. Those first-chat readiness gaps remain
-follow-up work, as do Store delivery and MXC isolation. See
+Gateway health alone does not prove AI-provider authentication, required
+model-runtime availability or a usable default chat. The focused native path
+requires live exact-model verification as well; the compatibility wizard retains
+its narrower configuration/health summary. Real-package/provider E2E proof and
+MXC isolation remain separate gates. See
 [Gateway setup responsibilities](GATEWAY_SETUP_RESPONSIBILITIES.md) for the
 investigation, production-backed proof and local-only recovery workarounds, and
 [onboarding wizard](ONBOARDING_WIZARD.md) for the user flow. Regression coverage
@@ -719,6 +773,10 @@ leading and trailing pipe. Columns, in order:
 | setup-local-ai-host-boundary | closed | src/OpenClaw.SetupEngine.UI/Pages/AiSetupPage.xaml.cs | opening a second setup window or constructing a parallel Local AI runtime and provider-registration owner | ISetupLocalAiHost + SetupWindow | explicit review callback, cancellation and exact-model verification | Local AI review stays under the existing setup lock, preserves access/startup choices and verifies the exact model before completion | LocalAiOnboardingOwnershipTests.AiPage_UsesTypedSameWindowHostAndNeverOwnsRuntimeOrGatewayRegistration | source-shape | when mounted same-window Local AI navigation tests replace source guards |
 | setup-ai-completion-intent | authoritative | src/OpenClaw.SetupEngine.UI/Pages/AiSetupPage.xaml.cs | implicit destination from discovery or authentication success | GatewayAiSetupClient + GatewayAiSetupCompletion | page forwards a current verified receipt; intent remains activation provenance, not the native destination | only exact main-model verification yields a completion; native destinations require explicit choice and cannot fall back to browser completion | GatewayAiSetupClientTests.Completion_UsesExplicitActivationKind_NotSetupComplete | behavioral | - |
 | setup-native-final-choice | authoritative | src/OpenClaw.SetupEngine.UI/SetupWindow.xaml.cs | automatic finalization and web launch on modern AI verification | SetupNativeCompletionCoordinator + SetupNativeCompletionVerifier | window owns page mounting, existing finalization hooks and prior page drain; AiReadyPage only renders and forwards choices | showing the chooser issues no nonce and performs no finalization; every explicit choice freshly verifies the same primary-model ownership before once-only finalization and publication | SetupNativeCompletionCoordinatorTests.ShowingChooserDoesNothing_ExplicitChoiceVerifiesThenFinalizesAndPublishes | behavioral | - |
+| setup-native-operator-connection | authoritative | src/OpenClaw.SetupEngine.UI/Pages/WizardPage.xaml.cs | native operator construction, exact pairing retry and credential handoff authorization | NativeGatewaySetupConnection + NativeGatewaySetupSession | pages drain their operator socket; the window retains the staged runtime and profile | focused and compatibility setup share per-handshake/request provenance, pinned signing identity and canonical agent/session; lost identities cannot be recreated mid-flow | NativeGatewaySetupConnectionTests.EveryRequestAndReconnect_RechecksNativeOwnership | behavioral | - |
+| setup-native-page-client-closed | closed | src/OpenClaw.SetupEngine.UI/Pages/WizardPage.xaml.cs | native client construction and parallel handshake policy | NativeGatewaySetupConnection | classic wizard retains only compatibility RPC/rendering | pages cannot bypass the native owner with a generic loopback session or duplicate pairing policy | NativeGatewaySetupUxContractTests.NativeWizard_UsesSharedPageAndRpc_WithFailClosedStagedAuthorization | source-shape | when compatibility onboarding is removed |
+| setup-native-ai-finalization | authoritative | src/OpenClaw.SetupEngine/NativeGatewaySetupSession.cs | classic-wizard-only admission to registry publication | CompleteVerifiedAsync + SetupNativeCompletionCoordinator | classic completion stays separate; focused completion requires real verification without marking the wizard complete | exact model/agent/session/identity is checked after the owned runtime restart and before registry publication; unrelated records survive, occupied draft IDs fail | NativeGatewaySetupConnectionTests.FocusedAi_AllDestinationsReverifyAfterNativeRestartBeforePublication | behavioral | - |
+| setup-native-restart-verification | authoritative | src/OpenClaw.SetupEngine/SetupNativeCompletionVerifier.cs | generic native loopback verification after restart | GatewayAiSetupTransport.BorrowNativeAsync + GatewayConnectionManager.RequireNativeSetupClientAsync | App only supplies the manager; verifier never disposes the borrowed client or owns a runtime | native provenance is inspected for every request and receipt drift is rejected before navigation | NativeGatewaySetupConnectionTests.PostRestartVerification_BorrowsNormalOwnerAndRejectsUnownedOrReplacedAuthority | behavioral | - |
 | setup-native-pending-launch | authoritative | src/OpenClaw.Tray.WinUI/App.xaml.cs | implicit browser destination for new verified onboarding | SetupNativeHandoffLauncher + SetupNativeNavigationRequest + SetupDashboardHandoffStore | App supplies composition callbacks; WindowManager mounts typed native pages; page-level metadata loading remains in ChannelsPage | native versioned records retain exact Gateway/agent/model/session and exclusive lease; failed opens require explicit retry; successful opens consume | SetupNativeHandoffTests.NativeOpenVerifiesBeforeNavigationAndKeepsFailedLaunchForExplicitRetryOnly | behavioral | - |
 | dashboard-launch-owner | authoritative | src/OpenClaw.Tray.WinUI/App.xaml.cs | ordinary Dashboard endpoint construction, credential export policy and browser result handling | GatewayDashboardLauncher + GatewayDashboardUrlBuilder | App supplies credential, tunnel, browser and failure delegates; WindowManager owns visible error/retry lifetime | only shared credentials enter fragment auth; browser failure is visible and never automatically replayed; setup completion cannot enter this path | SetupDashboardHandoffTests.DeviceAndBootstrapTokens_NeverEnterBrowserUrl | behavioral | - |
 | app-dashboard-launch-closed | closed | src/OpenClaw.Tray.WinUI/App.xaml.cs | inline Dashboard URL construction and silent Process.Start failure handling | GatewayDashboardLauncher | composition delegates and normal Dashboard entry forwarding only | App does not regain a parallel Dashboard URL or credential policy; explicit retries keep the requested path | AppRefactorContractTests.Dashboard_SurfacesSshTunnelConfigurationFailure | source-shape | when the WinUI Dashboard adapter has injected mounted lifecycle coverage |

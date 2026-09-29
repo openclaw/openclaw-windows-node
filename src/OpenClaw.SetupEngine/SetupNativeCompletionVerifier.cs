@@ -1,9 +1,12 @@
+using OpenClaw.Connection;
+
 namespace OpenClaw.SetupEngine;
 
 public static class SetupNativeCompletionVerifier
 {
     public static async Task<SetupVerifiedNativeRoute> VerifyAsync(
-        string dataDir, GatewayAiSetupCompletion expected, CancellationToken ct)
+        string dataDir, GatewayAiSetupCompletion expected, CancellationToken ct,
+        GatewayConnectionManager? connectionManager = null)
     {
         void RequireOwner()
         {
@@ -11,6 +14,21 @@ public static class SetupNativeCompletionVerifier
             catch (InvalidOperationException) { throw new SetupNativeOwnershipException(); }
         }
         RequireOwner();
+        var registry = new GatewayRegistry(dataDir);
+        registry.Load();
+        if (registry.GetActive() is { NativePackageFamilyName: not null } native)
+        {
+            if (connectionManager is null)
+                throw new InvalidOperationException("The native Gateway connection owner is unavailable.");
+            var transport = await GatewayAiSetupTransport.BorrowNativeAsync(dataDir, connectionManager, native.Id, ct);
+            SetupNativeVerification.RequireRoute(expected, transport.Route);
+            var nativeClient = new GatewayAiSetupClient(transport, expected.ModelRef, expected.Intent);
+            var current = new SetupVerifiedNativeRoute(
+                await VerifyModelAsync(nativeClient, expected.ModelRef, ct), transport.Route.SessionKey ?? "");
+            SetupNativeVerification.RequireSame(expected, current);
+            RequireOwner();
+            return current;
+        }
         await using var session = await SetupGatewaySession.ConnectAsync(dataDir, ct: ct,
             expectedGatewayId: expected.GatewayId, expectedCompletion: expected);
         var route = session.GetRoute();

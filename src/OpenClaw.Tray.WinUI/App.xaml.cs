@@ -3985,7 +3985,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             var launcher = new SetupNativeHandoffLauncher(
                 () => _gatewayRegistry?.GetActive(),
                 (proof, ct) => OpenClaw.SetupEngine.SetupNativeCompletionVerifier.VerifyAsync(
-                    AppIdentity.ResolveRoamingDataDirectory(), proof, ct),
+                    AppIdentity.ResolveRoamingDataDirectory(), proof, ct, _connectionManager),
                 (choice, ct) => _windowManager?.ShowNativeSetupAsync(choice, ct)
                     ?? Task.FromException(new InvalidOperationException("The native window host is unavailable.")),
                 failure => AsyncEventHandlerGuard.Run(

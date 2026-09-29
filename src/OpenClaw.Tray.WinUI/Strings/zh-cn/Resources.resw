@@ -7718,7 +7718,11 @@
   <data name="Onboarding_Native_Acquisition.Text" xml:space="preserve"><value>如果尚未安装 Gateway，设置程序将使用 WinGet 从 Microsoft Store 安装，并在验证包后自动继续。</value></data>
   <data name="Onboarding_Native_InstallingPackage" xml:space="preserve"><value>正在使用 WinGet 从 Microsoft Store 安装 Gateway...</value></data>
   <data name="Onboarding_Native_VerifyingPackage" xml:space="preserve"><value>WinGet 已完成。正在验证 Gateway 注册和执行别名，然后继续...</value></data>
-  <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>Companion 将准备您的 Gateway 并自动打开其设置向导。</value></data>
+  <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>Companion 将准备您的 Gateway，然后帮助您连接 AI。</value></data>
+  <data name="Onboarding_Native_Recovery.Header" xml:space="preserve"><value>Gateway 恢复</value></data>
+  <data name="Onboarding_Native_Terminal.Content" xml:space="preserve"><value>打开终端</value></data>
+  <data name="Onboarding_Native_Restart.Content" xml:space="preserve"><value>重启 Gateway</value></data>
+  <data name="Onboarding_Native_RetryAi.Content" xml:space="preserve"><value>重新开始 AI 设置</value></data>
   <data name="Onboarding_Native_StepSupport" xml:space="preserve"><value>检查设备支持情况</value></data>
   <data name="Onboarding_Native_StepPackage" xml:space="preserve"><value>安装或验证 Gateway 包</value></data>
   <data name="Onboarding_Native_StepPrepare" xml:space="preserve"><value>准备您的 Gateway 配置文件</value></data>
@@ -7735,7 +7739,7 @@
   <data name="Onboarding_Native_Back.Content" xml:space="preserve"><value>返回</value></data>
   <data name="Onboarding_Native_Open.Content" xml:space="preserve"><value>打开 Companion 进行连接</value></data>
   <data name="Onboarding_Native_Available" xml:space="preserve"><value>已安装 Gateway 包 {0}。</value></data>
-  <data name="Onboarding_Native_InProgress" xml:space="preserve"><value>正在为共享设置向导准备原生 Gateway。提供商和模型问题将在 Companion 中显示。</value></data>
+  <data name="Onboarding_Native_InProgress" xml:space="preserve"><value>正在准备原生 Gateway。接下来请在 Companion 中连接 AI。</value></data>
   <data name="Onboarding_Native_Cancelled" xml:space="preserve"><value>设置已取消。WinGet 请求已取消，但 Windows 仍可能完成部署。已输入的配置保留在专用原生配置目录中。未删除任何 Gateway 包。</value></data>
   <data name="Onboarding_Native_Configured" xml:space="preserve"><value>已在 {0} 验证 Gateway 配置和经过身份验证的健康状态。打开 Companion 启动 Gateway，并在连接设置中完成设备配对。您选择的 Windows 功能已保存。</value></data>
   <data name="Onboarding_Native_ReplaceDraftTitle" xml:space="preserve"><value>替换未完成的 Gateway 设置？</value></data>

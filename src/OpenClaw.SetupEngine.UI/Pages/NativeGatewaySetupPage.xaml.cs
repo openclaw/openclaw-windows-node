@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using CommunityToolkit.WinUI.Controls;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -29,14 +30,11 @@ public sealed partial class NativeGatewaySetupPage : Page
         {
             var status = new SetupPhaseStatus();
             status.Apply(SetupInstallationStatus.Pending);
-            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
-            row.Children.Add(new TextBlock
+            var row = new SettingsCard
             {
-                Text = SetupLocalization.GetString($"Onboarding_Native_{key}"),
-                Width = 280,
-                TextWrapping = TextWrapping.Wrap,
-            });
-            row.Children.Add(status);
+                Header = SetupLocalization.GetString($"Onboarding_Native_{key}"),
+                Content = status,
+            };
             AutomationProperties.SetAutomationId(row, $"NativeGateway{key}");
             _rows.Add(status);
             StepsPanel.Children.Add(row);
@@ -184,7 +182,7 @@ public sealed partial class NativeGatewaySetupPage : Page
         }
         SetCurrentStep(3);
         _rows[3].Apply(SetupInstallationStatus.Complete);
-        window.NavigateToNativeWizard(session);
+        window.NavigateToNativeAiSetup(session);
     }
 
     private async Task InstallAsync(CancellationToken cancellationToken)

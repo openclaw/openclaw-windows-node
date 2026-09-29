@@ -108,8 +108,10 @@ remain removed; the general security notice and provider/onboarding consent
 remain explicit. With an isolated-session Gateway package, the package provisions
 and runs the agent account; the known legacy proof package retains its original
 same-user runtime. The UI capability gate alone never proves isolation.
-Native and WSL use the **same WinUI `WizardPage`**, not separate provider/model
-wizards. WSL is always shown as the second Welcome choice after native,
+Native and WSL use the **same focused `AiSetupPage` and three-choice `AiReadyPage`**,
+not separate normal provider/model wizards. The classic `WizardPage` is an explicit
+compatibility option only when the required setup methods are unavailable.
+WSL is always shown as the second Welcome choice after native,
 followed by **Connect to an existing gateway**.
 
 Companion checks current-user registration for the Store package
@@ -117,8 +119,9 @@ Companion checks current-user registration for the Store package
 `CN=4BA40A7A-B719-4C40-BF91-84AF4F1136FC`, package health, and the package-qualified
 `clawctl.exe` and `openclaw.exe` aliases. It does not resolve an npm installation
 from `PATH`. Native setup uses the same Windows capabilities and permission
-selection as WSL, followed by a native-specific review without WSL, Local AI or
-Tailscale provisioning. After confirming the review, progress runs automatically.
+selection as WSL, with native package installation consent on that same page.
+Selecting **Set up gateway** starts native progress without WSL, Local AI or
+Tailscale provisioning and without an additional review page.
 A missing package is installed automatically using
 `winget install --id 9NV70LV3D6XC --source msstore --silent --accept-package-agreements --accept-source-agreements --disable-interactivity --no-upgrade`;
 unhealthy registration or unavailable aliases show an explicit repair error.
@@ -136,12 +139,12 @@ Windows lacks process-sequence support, Gateway lifecycle remains available
 but Companion will not send credentials. Update to Windows 11 build 26100.4770
 or later before retrying; `clawctl setup` cannot add the missing OS API.
 
-The review explains that **Set up gateway** authorizes WinGet installation and
+The capabilities-page disclosure explains that **Set up gateway** authorizes WinGet installation and
 accepts the package and Store source agreements. Provider sign-in remains interactive.
 Microsoft Store owns architecture/package selection, signature validation and
 deployment. WinGet runs through the signed-in user's App Installer execution alias,
 without a shell or elevation. Companion verifies actual package registration and aliases, then
-automatically prepares the profile and opens the shared Gateway wizard.
+automatically prepares the profile and opens **Connect your AI**.
 Installation and verification share a cancellable five-minute deadline. Cancellation
 stops the WinGet request, but Windows may still finish an in-progress deployment.
 Missing WinGet, Store policy/source failures, nonzero exit codes and timeouts show
@@ -151,10 +154,11 @@ An already installed healthy package skips installation. Retry checks registrati
 again before invoking WinGet. Companion does not download packages directly,
 change certificate trust, or uninstall packages on cancellation.
 
-Progress reuses the WSL spinner/checkmark rows. Completion lists the configured
-native Gateway and saved Windows capability choices, with a reminder that node
-pairing, Windows permissions and command approvals still apply. It does not
-claim the stopped setup runtime or a not-yet-paired Windows node is running.
+Progress reuses the WSL spinner/checkmark rows. Normal completion uses the same
+verified-model heading and three destination choices as WSL, without a native-only
+Gateway/capabilities summary. Gateway details and Windows permissions remain in
+their existing Connection and Permissions settings. AI readiness does not imply
+that a Windows node is paired or that command approvals have been granted.
 
 The native path:
 
@@ -172,9 +176,9 @@ The native path:
    against fresh Windows snapshots. The staged record is **not** made active
    in the registry.
 3. Automatically pairs the setup's own Companion identity if required, then
-   opens the shared `WizardPage` using `wizard.start` with `mode: "local"` and
-   `installDaemon: false`. The same `wizard.next` transport and cards render the
-   upstream security acknowledgement, provider, authentication, and model steps.
+   opens the shared focused AI page. Authenticated method advertisements gate
+   discovery, provider authentication and model activation. Provider prompts stay
+   explicit; confirmed activation must pass exact primary-model verification.
    The isolated path uses package-qualified `openclaw devices list` and
    `openclaw devices approve <request-id>`, which run as the agent user and read
    its config. Before each command, Companion checks that the effective port
@@ -184,19 +188,34 @@ The native path:
    output is tailed from its dedicated profile. The isolated path uses
    upstream's authenticated `logs.tail` RPC after verifying the Gateway
    listener, then displays only root-logger `console.log` messages. It anchors
-   at the current log size before `wizard.start`, polls bounded redacted
+   at the current log size before provider setup (or classic `wizard.start`), polls bounded redacted
    batches, and reports skipped output or RPC failure with recovery-terminal
    guidance. It never tails WSL or a host profile for agent-side messages.
-4. Error-free wizard completion or the validated optional-tail handoff permits
-   finalization. Setup stops a Gateway it started, restores the legacy reload
+   Native console output and scoped terminal/restart/cancel recovery appear only
+   for errors, skipped/unavailable console output or uncertain outcomes in the
+   shared page/provider dialog. Healthy provider selection has no extra native controls.
+4. The verified chooser offers **Talk to my agent**, **Connect channels**, and
+   **Explore skills**. Choosing a destination rechecks the same Gateway, package
+   family and runtime contract, signing identity, agent, session and primary model.
+   Setup stops a Gateway it started, restores only the legacy reload
    setting, checks the selected
    local/loopback/token configuration, runs `config validate --json`, restarts
    with owned-listener proof and runs authenticated `gateway health --json`.
-   A failed gate remains retryable and does not publish the staged record.
-5. Stops a Gateway started by this setup before reloading and updating the registry.
-   **Open Companion to connect** restarts Companion into the existing
-   connection flow with the paired operator identity. This does not approve the
-   separate Windows node role. Current Windows node permissions are preserved.
+   It also verifies the exact primary model on the restarted runtime. A failed
+   gate remains retryable and does not publish the staged record.
+5. Stops the setup-owned runtime before reloading and updating the registry.
+   The isolated runtime leaves a pre-existing service running on detach.
+   The selected destination uses the same protected restart receipt as WSL.
+   The normal connection manager owns the native runtime after restart and
+   supplies the authorized connection for another fresh verification before
+   opening the selected page. This does not approve the separate Windows node
+   role. Current Windows node permissions are preserved.
+
+If the required AI setup methods are absent, the page explains the unsupported
+contract and offers classic setup explicitly. That compatibility path retains
+`wizard.start` with `mode: "local"` and `installDaemon: false`, its validated
+optional-tail handoff and native configured-Gateway summary. It is not entered
+for authentication errors, malformed responses or uncertain provider writes.
 
 For the isolated package, `clawctl gateway-service` owns the Gateway process,
 sign-in recovery and isolated session. Companion starts it through the package
@@ -279,6 +298,19 @@ supported and retains the classic OpenClaw onboard wizard for older gateways.
 ## Overview
 
 ### Native presentation
+
+The shared Setup window starts at 720 x 820 DIPs and has a native presenter
+minimum of 720 x 560 DIPs. `SetupWindowSizing` rounds those dimensions up to
+physical pixels using the actual HWND DPI. `SetupWindow` reapplies the minimum
+when its XamlRoot, monitor position or presenter changes and detaches the
+subscriptions on close. DPI updates do not call Resize or reset the user's size.
+The window remains movable, resizable and maximizable; page content scrolls
+between its fixed header/footer at the minimum. This is a window constraint,
+not a root-Grid minimum that would merely clip a smaller HWND.
+
+The preferred minimum is not silently weakened for a smaller monitor. At 100%
+it is 720 x 560 physical pixels; at 150% it is 1080 x 840; at 200% it is
+1440 x 1120. Actual monitor/work-area constraints remain Windows-owned.
 
 Setup uses a 720-by-820 window with a scrolling body, centered vector mascot
 and wrapping heading. The 180-DIP mascot frame includes its motion/glow gutter;
@@ -400,8 +432,8 @@ The setup flow walks users through:
 2. **Gateway** - Capability-gated native Gateway recommendation (with WSL fallback), existing, remote, local MCP only, or deferred setup
 3. **PC capabilities** - Strict, Balanced (Recommended), Open, and inline Fine-tune; Node mode, local MCP and Ollama sharing stay independent. No Windows-access advisory panel or probe runs here.
 4. **Gateway setup** - Managed WSL reviews installation and replacement consent; native Gateway checks its package and prepares a dedicated profile without WSL or Local AI installation.
-5. **AI setup** - Native Gateway uses its hosted classic wizard; WSL and existing/remote gateways use focused AI setup and live model verification.
-6. **Completion** - The verified focused AI flow opens Chat, Channels or Skills; the native Gateway wizard retains its setup-complete and connection handoff.
+5. **AI setup** - Native Gateway, WSL and existing/remote gateways use focused AI setup and live model verification, followed by the same three destination choices. Native uses its setup-owned runtime until finalization; WSL workspace integration remains WSL-only.
+6. **Completion** - Both verified focused AI flows open Chat, Channels or Skills. Only the explicit classic compatibility fallback retains its setup-complete and connection handoff.
 
 `SetupWindow` owns one `SetupAccessDraft` over the same `SetupConfig` for the
 entire flow. The native connection contract separates verify-only **Check** from

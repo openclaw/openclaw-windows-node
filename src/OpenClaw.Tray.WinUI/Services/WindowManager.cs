@@ -681,6 +681,7 @@ internal sealed class WindowManager : IWindowManager
                 localAiRecoveryModelId: localAiRecoveryTarget?.ModelCatalogId,
                 localAiRecoveryRequestedPort: localAiRecoveryTarget?.RequestedLocalAiPort,
                 localAiHost: CreateLocalAiSetupHost(),
+                connectionManager: _callbacks.GetConnectionManager(),
                 publishNativeCompletion: _callbacks.PublishNativeCompletion,
                 applyNativeStartup: _callbacks.ApplyNativeStartup,
                 startupRegistrationAllowed: !AppIdentity.IsIsolated,

@@ -82,7 +82,17 @@ public sealed class GatewayAiSetupClient(
             Phase = GatewayAiSetupPhase.ClassicWizardRequired;
             return null;
         }
-        var detection = await ExecuteAsync<GatewayAiSetupDetection>("openclaw.setup.detect", RouteParams(), 40_000, ct);
+        GatewayAiSetupDetection detection;
+        try
+        {
+            detection = await ExecuteAsync<GatewayAiSetupDetection>("openclaw.setup.detect", RouteParams(), 40_000, ct);
+        }
+        catch (InvalidOperationException error) when (
+            error.Message.Equals("unknown method: openclaw.setup.detect", StringComparison.OrdinalIgnoreCase))
+        {
+            Phase = GatewayAiSetupPhase.ClassicWizardRequired;
+            return null;
+        }
         ValidateDetection(detection);
         Detection = detection;
         _detectionGeneration = transport.Generation;

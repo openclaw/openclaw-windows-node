@@ -34,6 +34,15 @@ public sealed class SetupNativeOwnershipException : InvalidOperationException
 
 public static class SetupNativeVerification
 {
+    public static void RequireRoute(GatewayAiSetupCompletion expected, GatewayAiSetupRoute current)
+    {
+        if (current.GatewayId != expected.GatewayId || current.EndpointBinding != expected.EndpointBinding ||
+            current.AgentId != expected.AgentId || current.IdentityBinding != expected.IdentityBinding ||
+            current.SessionKey != expected.SessionKey ||
+            !SetupCompletionAuthority.IsValid(current.IdentityBinding, current.SessionKey, current.AgentId))
+            throw new SetupNativeOwnershipException();
+    }
+
     public static void RequireSame(GatewayAiSetupCompletion expected, SetupVerifiedNativeRoute current)
     {
         var proof = current.Verification;

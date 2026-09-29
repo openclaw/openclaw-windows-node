@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using OpenClaw.Connection.LocalAi;
+using OpenClaw.Connection;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Inference;
 using OpenClaw.SetupEngine.UI.Pages;
@@ -32,6 +33,7 @@ public sealed partial class SetupWindow : Window
     private readonly TaskCompletionSource<bool> _cleanupCompleted =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private bool _isClosed;
+    private XamlRoot? _minimumSizeRoot;
     private bool _persistStartupPreferenceOnComplete = true;
     private bool _showStartupPreferenceOnComplete = true;
     private readonly bool _startupRegistrationAllowed;
@@ -41,6 +43,7 @@ public sealed partial class SetupWindow : Window
     private readonly LocalAiHardwareProbeCache _localAiHardwareProbe = new(() => new CudaHostHardwareProbe().Probe());
     private readonly ISetupNativeConnectionHost? _nativeConnectionHost;
     private readonly ISetupLocalAiHost? _localAiHost;
+    private readonly GatewayConnectionManager? _connectionManager;
     private LocalAiOnboardingSnapshot? _localAiReviewSelection;
     private Task _aiPageCleanupTask = Task.CompletedTask;
     private SetupNativeCompletionCoordinator? _readyChoice;
@@ -110,13 +113,15 @@ public sealed partial class SetupWindow : Window
         Func<SetupNativeCompletion, CancellationToken, Task>? publishNativeCompletion = null,
         Func<bool, CancellationToken, Task>? applyNativeStartup = null,
         bool startupRegistrationAllowed = true,
-        Action<TraySettingsConfig, bool?, bool>? persistChoices = null)
+        Action<TraySettingsConfig, bool?, bool>? persistChoices = null,
+        GatewayConnectionManager? connectionManager = null)
     {
         _startupRegistrationAllowed = startupRegistrationAllowed;
         _dataDir = dataDir ?? SetupContext.ResolveDataDir();
         _localDataDir = localDataDir ?? SetupContext.ResolveLocalDataDir();
         _nativeConnectionHost = nativeConnectionHost;
         _localAiHost = localAiHost;
+        _connectionManager = connectionManager;
         _publishNativeCompletion = publishNativeCompletion;
         _applyNativeStartup = applyNativeStartup;
         _persistChoices = persistChoices;
@@ -138,6 +143,11 @@ public sealed partial class SetupWindow : Window
         Closed += async (_, _) =>
         {
             _isClosed = true;
+            RootFrame.Loaded -= AttachMinimumSizeRoot;
+            AppWindow.Changed -= MinimumSizeWindowChanged;
+            if (_minimumSizeRoot is { } sizingRoot)
+                sizingRoot.Changed -= MinimumSizeRootChanged;
+            _minimumSizeRoot = null;
             _initialContentReady.TrySetResult(true);
             try
             {
@@ -204,11 +214,14 @@ public sealed partial class SetupWindow : Window
             }
         };
 
-        // Size window accounting for DPI
+        RootFrame.Loaded += AttachMinimumSizeRoot;
+        AppWindow.Changed += MinimumSizeWindowChanged;
+        ApplyMinimumWindowSize();
+
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var dpi = GetDpiForWindow(hwnd);
-        var scale = dpi / 96.0;
-        AppWindow.Resize(new Windows.Graphics.SizeInt32((int)(720 * scale), (int)(820 * scale)));
+        var initialSize = SetupWindowSizing.InitialPixels(dpi);
+        AppWindow.Resize(new Windows.Graphics.SizeInt32(initialSize.Width, initialSize.Height));
 
         // Extend into title bar for modern look
         ExtendsContentIntoTitleBar = true;
@@ -335,6 +348,41 @@ public sealed partial class SetupWindow : Window
     }
 
     public void NavigateToSecurityNotice(bool back = false) => NavigateTo(typeof(SecurityNoticePage), _config, back);
+
+    private void AttachMinimumSizeRoot(object sender, RoutedEventArgs args)
+    {
+        if (_isClosed) return;
+        var root = RootFrame.XamlRoot;
+        if (!ReferenceEquals(root, _minimumSizeRoot))
+        {
+            if (_minimumSizeRoot is { } previous)
+                previous.Changed -= MinimumSizeRootChanged;
+            _minimumSizeRoot = root;
+            if (root is not null)
+                root.Changed += MinimumSizeRootChanged;
+        }
+        ApplyMinimumWindowSize();
+    }
+
+    private void MinimumSizeRootChanged(XamlRoot sender, XamlRootChangedEventArgs args) => ApplyMinimumWindowSize();
+
+    private void MinimumSizeWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
+    {
+        if (args.DidPositionChange || args.DidPresenterChange)
+            ApplyMinimumWindowSize();
+    }
+
+    private void ApplyMinimumWindowSize()
+    {
+        if (_isClosed || AppWindow.Presenter is not OverlappedPresenter presenter) return;
+        var dpi = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this));
+        var minimum = SetupWindowSizing.MinimumPixels(dpi);
+        if (presenter.PreferredMinimumWidth != minimum.Width)
+            presenter.PreferredMinimumWidth = minimum.Width;
+        if (presenter.PreferredMinimumHeight != minimum.Height)
+            presenter.PreferredMinimumHeight = minimum.Height;
+    }
+
     public void NavigateToWelcome(bool back = false)
     {
         ResetLocalAiRecoveryMode();
@@ -348,10 +396,19 @@ public sealed partial class SetupWindow : Window
     internal void NavigateToNativeGatewaySetup() => NavigateTo(typeof(NativeGatewaySetupPage), _config);
     internal void NavigateToNativeCapabilities() =>
         NavigateToCapabilities(back: true);
-    internal void NavigateToNativeWizard(NativeGatewaySetupSession session)
+    internal void NavigateToNativeAiSetup(NativeGatewaySetupSession session)
     {
         NativeSetupSession = session;
-        NavigateTo(typeof(WizardPage), _config);
+        NavigateTo(typeof(AiSetupPage), CreateAiSetupArgs());
+    }
+
+    internal async Task CancelNativeAiSetupAsync()
+    {
+        if (RootFrame.Content is AiSetupPage page)
+            await page.CloseAsync();
+        await ReleaseNativeSetupAsync();
+        if (!_isClosed)
+            NavigateToNativeCapabilities();
     }
 
     internal async Task ReleaseNativeSetupAsync()
@@ -605,17 +662,20 @@ public sealed partial class SetupWindow : Window
         if (!CanNavigateToWizard)
             return false;
 
-        NavigateTo(
-            typeof(AiSetupPage),
-            new AiSetupPageArgs(_config, _dataDir, _localDataDir,
-                TryNavigateToLegacyWizard, CompleteSetupAsync, _expectedConfiguredModelRef,
-                LocalAiHost: _localAiHost, ReviewLocalAi: ReviewLocalAiAsync,
-                ExpectedGatewayId: _expectedConfiguredModelRef is null ? null : _expectedConfiguredGatewayId,
-                ConfiguredCompletionIntent: _configuredCompletionIntent,
-                CompleteVerifiedSetup: CompleteVerifiedAiSetupAsync),
-            back);
+        NavigateTo(typeof(AiSetupPage), CreateAiSetupArgs(), back);
         return true;
     }
+
+    private AiSetupPageArgs CreateAiSetupArgs() =>
+        new AiSetupPageArgs(_config, _dataDir, _localDataDir,
+                TryNavigateToLegacyWizard, CompleteSetupAsync, _expectedConfiguredModelRef,
+                LocalAiHost: NativeSetupSession is null ? _localAiHost : null, ReviewLocalAi: ReviewLocalAiAsync,
+                ExpectedGatewayId: NativeSetupSession?.Record.Id ??
+                    (_expectedConfiguredModelRef is null ? null : _expectedConfiguredGatewayId),
+                ConfiguredCompletionIntent: _configuredCompletionIntent,
+                CompleteVerifiedSetup: CompleteVerifiedAiSetupAsync, NativeSession: NativeSetupSession,
+                CancelNativeSetup: NativeSetupSession is null ? null : CancelNativeAiSetupAsync,
+                ConnectionManager: _connectionManager);
 
     public bool TryNavigateToLegacyWizard()
     {
@@ -635,7 +695,9 @@ public sealed partial class SetupWindow : Window
         _readyChoice?.Dispose();
         _readyChoice = new(completion,
             ct => _aiPageCleanupTask.WaitAsync(ct),
-            (proof, ct) => SetupNativeCompletionVerifier.VerifyAsync(_dataDir, proof, ct),
+            (proof, ct) => NativeSetupSession is { } native
+                ? native.VerifyAsync(proof, ct)
+                : SetupNativeCompletionVerifier.VerifyAsync(_dataDir, proof, ct, _connectionManager),
             FinalizeNativeChoiceAsync,
             async (choice, ct) =>
             {
@@ -659,17 +721,16 @@ public sealed partial class SetupWindow : Window
         owner.Dispose();
         _readyChoice = null;
         _nativeContextFinalized = _nativeSettingsSaved = _nativeStartupApplied = false;
-        NavigateTo(typeof(AiSetupPage), new AiSetupPageArgs(_config, _dataDir, _localDataDir,
-            TryNavigateToLegacyWizard, CompleteSetupAsync, _expectedConfiguredModelRef,
-            LocalAiHost: _localAiHost, ReviewLocalAi: ReviewLocalAiAsync,
-            ExpectedGatewayId: _expectedConfiguredGatewayId, ConfiguredCompletionIntent: _configuredCompletionIntent,
-            CompleteVerifiedSetup: CompleteVerifiedAiSetupAsync), back: true);
+        NavigateTo(typeof(AiSetupPage), CreateAiSetupArgs() with { ExpectedGatewayId = _expectedConfiguredGatewayId }, back: true);
     }
 
     private void RequireVerifiedGateway(GatewayAiSetupCompletion completion)
     {
         if (_isClosed) throw new OperationCanceledException(_lifetimeCts.Token);
-        SetupGatewaySession.RequireCompletionGateway(_dataDir, completion);
+        if (NativeSetupSession is { } native)
+            native.RequireCompletion(completion);
+        else
+            SetupGatewaySession.RequireCompletionGateway(_dataDir, completion);
     }
 
     private async Task FinalizeNativeChoiceAsync(GatewayAiSetupCompletion proof, CancellationToken ct)
@@ -679,9 +740,14 @@ public sealed partial class SetupWindow : Window
         RequireVerifiedGateway(proof);
         if (!_nativeContextFinalized)
         {
-            var result = await ApplyWindowsNodeContextAsync();
+            if (NativeSetupSession is { } native)
+                await native.CompleteVerifiedAsync(proof, _config.Capabilities, ct);
+            else
+            {
+                var result = await ApplyWindowsNodeContextAsync();
+                if (!result.IsSuccess) throw new InvalidOperationException(result.Message);
+            }
             ct.ThrowIfCancellationRequested();
-            if (!result.IsSuccess) throw new InvalidOperationException(result.Message);
             _nativeContextFinalized = true;
         }
         RequireVerifiedGateway(proof);

@@ -2,6 +2,20 @@ namespace OpenClaw.SetupEngine.Tests;
 
 public sealed class AiSetupPresentationModelTests
 {
+    [Fact]
+    public void NativeRecovery_IsErrorOnlyAndNeverNormalProgressOrVerified()
+    {
+        foreach (var phase in Enum.GetValues<GatewayAiSetupPhase>())
+        {
+            Assert.Equal(phase is GatewayAiSetupPhase.Uncertain or GatewayAiSetupPhase.Rejected,
+                GatewayAiSetupPresentation.ShowNativeRecovery(phase, isBusy: false, hasError: false));
+            Assert.Equal(phase != GatewayAiSetupPhase.Verified,
+                GatewayAiSetupPresentation.ShowNativeRecovery(phase, isBusy: false, hasError: true));
+            Assert.False(GatewayAiSetupPresentation.ShowNativeRecovery(phase, isBusy: true, hasError: false));
+            Assert.False(GatewayAiSetupPresentation.ShowNativeRecovery(phase, isBusy: true, hasError: true));
+        }
+    }
+
     private static readonly IReadOnlySet<GatewayAiSetupChoiceKind> AllChoices =
         Enum.GetValues<GatewayAiSetupChoiceKind>().ToHashSet();
 

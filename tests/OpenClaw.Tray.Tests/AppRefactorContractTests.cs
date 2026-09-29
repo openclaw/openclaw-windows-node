@@ -1576,9 +1576,9 @@ public sealed class AppRefactorContractTests
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
         var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WizardPage.xaml.cs"));
-        var start = ExtractMethod(source, "StartWizardAsync");
+        var start = ExtractMethod(source, "StartWizardCoreAsync");
         var startOver = ExtractMethod(source, "StartOverAsync");
-        var disposeStaleClient = ExtractMethod(source, "DisconnectAndDisposeClientAsync");
+        var disposeStaleClient = ExtractMethod(source, "DisconnectCoreAsync");
 
         Assert.DoesNotContain("HideRecoveryActions()", start);
         AssertInOrder(
@@ -1587,11 +1587,11 @@ public sealed class AppRefactorContractTests
             "ShowRecoveryActions();",
             "await CancelCurrentSessionAsync();",
             "if (generation != _operationGeneration)",
-            "var client = await ConnectClientAsync();",
+            "var connection = await ConnectClientAsync();",
             "if (generation != _operationGeneration)",
-            "await DisconnectAndDisposeClientAsync(client);",
-            "_client = client;",
-            "SendWizardRequestAsync(\"wizard.start\"");
+            "await DisconnectAsync(connection);",
+            "_connection = connection;",
+            "SendWizardRequestAsync(connection, generation, \"wizard.start\"");
         AssertInOrder(
             startOver,
             "var generation = AdvanceOperationGeneration();",
@@ -1599,7 +1599,10 @@ public sealed class AppRefactorContractTests
             "if (generation != _operationGeneration)",
             "await StartWizardAsync();");
         Assert.Contains("finally", disposeStaleClient);
-        Assert.Contains("client.Dispose()", disposeStaleClient);
+        Assert.Contains("connection.Client.Dispose()", disposeStaleClient);
+        Assert.Contains("await native.DisposeAsync()", disposeStaleClient);
+        Assert.Contains("Interlocked.CompareExchange(ref _connection, null, connection)", disposeStaleClient);
+        Assert.Contains("await Task.WhenAll(pending)", disposeStaleClient);
     }
 
     [Fact]

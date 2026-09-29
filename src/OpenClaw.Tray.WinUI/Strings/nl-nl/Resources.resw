@@ -7719,7 +7719,11 @@ Uw instellingen, gateway, bestanden en modellen blijven op hun plaats.</value>
   <data name="Onboarding_Native_Acquisition.Text" xml:space="preserve"><value>Als de Gateway niet is geïnstalleerd, installeert de instelling deze vanuit Microsoft Store met WinGet en controleert het pakket voordat automatisch wordt doorgegaan.</value></data>
   <data name="Onboarding_Native_InstallingPackage" xml:space="preserve"><value>De Gateway installeren vanuit Microsoft Store met WinGet...</value></data>
   <data name="Onboarding_Native_VerifyingPackage" xml:space="preserve"><value>WinGet is klaar. Gateway-registratie en uitvoeringsaliassen controleren voordat wordt doorgegaan...</value></data>
-  <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>Companion bereidt uw Gateway voor en opent automatisch de installatiewizard.</value></data>
+  <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>Companion bereidt uw Gateway voor en helpt u daarna uw AI te verbinden.</value></data>
+  <data name="Onboarding_Native_Recovery.Header" xml:space="preserve"><value>Gateway herstellen</value></data>
+  <data name="Onboarding_Native_Terminal.Content" xml:space="preserve"><value>Terminal openen</value></data>
+  <data name="Onboarding_Native_Restart.Content" xml:space="preserve"><value>Gateway opnieuw starten</value></data>
+  <data name="Onboarding_Native_RetryAi.Content" xml:space="preserve"><value>AI-configuratie opnieuw starten</value></data>
   <data name="Onboarding_Native_StepSupport" xml:space="preserve"><value>Apparaatondersteuning controleren</value></data>
   <data name="Onboarding_Native_StepPackage" xml:space="preserve"><value>Gateway-pakket installeren of controleren</value></data>
   <data name="Onboarding_Native_StepPrepare" xml:space="preserve"><value>Uw Gateway-profiel voorbereiden</value></data>
@@ -7736,7 +7740,7 @@ Uw instellingen, gateway, bestanden en modellen blijven op hun plaats.</value>
   <data name="Onboarding_Native_Back.Content" xml:space="preserve"><value>Terug</value></data>
   <data name="Onboarding_Native_Open.Content" xml:space="preserve"><value>Companion openen om te verbinden</value></data>
   <data name="Onboarding_Native_Available" xml:space="preserve"><value>Gateway-pakket {0} is geïnstalleerd.</value></data>
-  <data name="Onboarding_Native_InProgress" xml:space="preserve"><value>De native Gateway wordt voorbereid voor de gedeelde wizard. Vragen over de provider en het model verschijnen hier in Companion.</value></data>
+  <data name="Onboarding_Native_InProgress" xml:space="preserve"><value>De native Gateway wordt voorbereid. Verbind daarna uw AI in Companion.</value></data>
   <data name="Onboarding_Native_Cancelled" xml:space="preserve"><value>Instelling geannuleerd. Het WinGet-verzoek is geannuleerd, maar Windows kan de implementatie nog voltooien. Ingevoerde configuratie blijft bewaard in het aparte native profiel. Er is geen Gateway-pakket verwijderd.</value></data>
   <data name="Onboarding_Native_Configured" xml:space="preserve"><value>Gateway-configuratie en geauthenticeerde gezondheid gecontroleerd op {0}. Open Companion om de Gateway te starten en het apparaat te koppelen in de verbindingsinstellingen. Uw geselecteerde Windows-functies zijn opgeslagen.</value></data>
   <data name="Onboarding_Native_ReplaceDraftTitle" xml:space="preserve"><value>Onvoltooide Gateway-instelling vervangen?</value></data>

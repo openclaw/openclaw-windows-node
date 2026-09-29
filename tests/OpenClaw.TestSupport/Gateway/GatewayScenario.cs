@@ -38,8 +38,15 @@ public sealed class GatewayScenario
     private static readonly DateTimeOffset Epoch = new(2026, 8, 20, 12, 0, 0, TimeSpan.Zero);
     private readonly Session[] _sessions;
     private readonly IReadOnlyDictionary<string, JsonElement> _reads;
+    private readonly Func<string, JsonElement, object>? _setup;
+    private static readonly string[] SetupMethods =
+    [
+        "openclaw.setup.detect", "openclaw.setup.verify", "openclaw.setup.activate.start",
+        "openclaw.setup.auth.start", "openclaw.setup.prepare.start", "wizard.start", "wizard.next", "wizard.cancel",
+        "logs.tail",
+    ];
 
-    public string Name => BrowseName;
+    public string Name => _setup is null ? BrowseName : "native-setup";
     public int Version => 1;
     public int ProtocolVersion => GatewayProtocolContract.CurrentVersion;
     public string ContractProvenance =>
@@ -48,16 +55,19 @@ public sealed class GatewayScenario
     public IReadOnlyList<string> SessionKeys { get; }
     public IReadOnlyList<string> ReadMethods { get; }
 
-    private GatewayScenario(Session[] sessions, IReadOnlyDictionary<string, JsonElement> reads)
+    private GatewayScenario(Session[] sessions, IReadOnlyDictionary<string, JsonElement> reads,
+        Func<string, JsonElement, object>? setup = null, bool advertiseSetup = true)
     {
         _sessions = sessions;
         _reads = reads;
+        _setup = setup;
         SessionKeys = Array.AsReadOnly(sessions.Select(s => s.Key).ToArray());
         ReadMethods = Array.AsReadOnly(new[]
         {
             "sessions.list", "sessions.subscribe", "sessions.preview", "chat.history",
             "models.list", "usage.cost"
-        }.Concat(reads.Keys).Order(StringComparer.Ordinal).ToArray());
+        }.Concat(reads.Keys).Concat(setup is null ? [] : advertiseSetup
+            ? SetupMethods : ["wizard.start", "wizard.next", "wizard.cancel", "logs.tail"]).Order(StringComparer.Ordinal).ToArray());
         var source = JsonSerializer.Serialize(new
         {
             Name, Version, ProtocolVersion, ContractProvenance,
@@ -68,6 +78,13 @@ public sealed class GatewayScenario
 
     public static GatewayScenario LoadBuiltin(string name) =>
         name == BrowseName ? CreateBrowse() : throw new ArgumentException("Unknown fixture scenario.", nameof(name));
+
+    /// <summary>Explicit synthetic setup replies only. The host never executes provider or package operations.</summary>
+    public static GatewayScenario CreateNativeSetup(Func<string, JsonElement, object> responder, bool advertiseSetup = true)
+    {
+        var browse = CreateBrowse();
+        return new(browse._sessions, browse._reads, responder, advertiseSetup);
+    }
 
     public static GatewayScenario CreateBrowse()
     {
@@ -212,7 +229,7 @@ public sealed class GatewayScenario
             presence = Array.Empty<object>(), health = _reads["health"],
             sessionDefaults = new { defaultAgentId = "main", mainKey = "main", mainSessionKey = MainSessionKey, scope = "per-sender" }
         },
-        auth = new { role = "operator", scopes = new[] { "operator.read" } },
+        auth = new { role = "operator", scopes = new[] { _setup is null ? "operator.read" : "operator.admin" } },
         policy = new { maxPayload = 1_048_576, maxBufferedBytes = 1_048_576, tickIntervalMs = 30_000 }
     };
 
@@ -220,6 +237,8 @@ public sealed class GatewayScenario
 
     internal object Respond(string method, JsonElement parameters)
     {
+        if (_setup is not null && SetupMethods.Contains(method, StringComparer.Ordinal))
+            return _setup(method, parameters);
         if (method == "exec.approval.resolve")
             return ResolveApproval(parameters);
         if (IsWrite(method))

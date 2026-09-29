@@ -776,6 +776,49 @@ public sealed class NativeGatewaySetupTests
         Assert.Equal(session.Record.Id, reloaded.ActiveGatewayId);
     }
 
+    [Fact]
+    public async Task Publication_DoesNotOverwriteAConcurrentlyPublishedDraftId()
+    {
+        using var fixture = new Fixture();
+        await using var session = await fixture.PrepareAsync();
+        var other = new GatewayRegistry(fixture.Temp.Path);
+        other.AddOrUpdate(new GatewayRecord { Id = session.Record.Id, Url = "wss://other.example" });
+        other.Save();
+        session.MarkWizardCompleted();
+        await Assert.ThrowsAsync<SetupNativeOwnershipException>(() => session.CompleteAsync(default));
+        other.Load();
+        Assert.Equal("wss://other.example", other.GetById(session.Record.Id)!.Url);
+    }
+
+    [Fact]
+    public async Task Cancel_DrainsOwnedRuntimeBeforeRestoringReloadAndRetainsPairedIdentity()
+    {
+        using var fixture = new Fixture();
+        var draftPath = NativeGatewaySetupService.GetDraftPath(fixture.Registry);
+        Directory.CreateDirectory(Path.GetDirectoryName(draftPath)!);
+        var draftJson = JsonSerializer.Serialize(fixture.Draft);
+        File.WriteAllText(draftPath, draftJson);
+        var session = await fixture.PrepareAsync();
+        var identity = new DeviceIdentity(session.IdentityDirectory);
+        identity.Initialize();
+        identity.StoreDeviceTokenForRole("node", "retained-node-token");
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finish = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Runtime.DisposeRuntime = () => { entered.SetResult(); return finish.Task; };
+        var closing = session.DisposeAsync().AsTask();
+        await entered.Task;
+        Assert.False(closing.IsCompleted);
+        Assert.Equal("off", fixture.Config()["gateway"]!["reload"]!["mode"]!.GetValue<string>());
+        finish.SetResult();
+        await closing;
+        identity.LoadExisting();
+        Assert.Equal("retained-node-token", identity.NodeDeviceToken);
+        Assert.False(File.Exists(fixture.ConfigPath + ".setup-reload.json"));
+        Assert.Equal(draftJson, File.ReadAllText(draftPath));
+        Assert.True(File.Exists(fixture.ConfigPath));
+        Assert.Empty(fixture.Registry.GetAll());
+    }
+
     [Theory]
     [InlineData("{not json", "contains invalid JSON")]
     [InlineData("null", "must be a JSON object")]
@@ -967,10 +1010,10 @@ public sealed class NativeGatewaySetupTests
 
         fixture.Events.Clear();
         await session.RestartAsync(default);
-        Assert.Equal(["validate", "restart", "start", "inspect"], fixture.Events);
+        Assert.Equal(["validate", "restart", "agent-check", "start", "inspect"], fixture.Events);
     }
 
-    private sealed class Fixture : IDisposable
+    internal sealed class Fixture : IDisposable
     {
         public TempDirectory Temp { get; } = new();
         public List<string> Events { get; } = [];
@@ -979,13 +1022,14 @@ public sealed class NativeGatewaySetupTests
         public Host Host { get; }
         public Runtime Runtime { get; }
         public NativeGatewaySetupService Service { get; }
-        public NativeGatewaySetupDraft Draft { get; } = new("0123456789abcdef", 18789, Family);
+        public NativeGatewaySetupDraft Draft { get; }
         public string ConfigPath => NativeGatewayPaths.GetConfigPath(Registry, Draft.GatewayId);
         public JsonObject Config() => JsonNode.Parse(File.ReadAllText(ConfigPath))!.AsObject();
-        public Fixture()
+        public Fixture(int port = 18789, NativeGatewayContract contract = NativeGatewayContract.Legacy)
         {
+            Draft = new("0123456789abcdef", port, Family) { Contract = contract };
             Registry = new GatewayRegistry(Temp.Path);
-            Host = new Host(Events);
+            Host = new Host(Events) { Contract = contract };
             Runtime = new Runtime(Events);
             Service = new NativeGatewaySetupService(Registry, Resolver, Host, () => Runtime);
         }
@@ -993,7 +1037,7 @@ public sealed class NativeGatewaySetupTests
         public void Dispose() => Temp.Dispose();
     }
 
-    private sealed class Resolver : INativeGatewayPackageResolver
+    internal sealed class Resolver : INativeGatewayPackageResolver
     {
         public string FamilyName { get; set; } = Family;
         public Func<string, string> Map { get; set; } = path => path;
@@ -1002,7 +1046,7 @@ public sealed class NativeGatewaySetupTests
         public string ResolveDataPath(string path) => Map(path);
     }
 
-    private sealed class Host(List<string> events) : INativeGatewaySetupHost
+    internal sealed class Host(List<string> events) : INativeGatewaySetupHost
     {
         public NativeGatewayContract Contract { get; set; } = NativeGatewayContract.Legacy;
         public IsolatedGatewayConfiguration IsolatedConfiguration { get; set; } =
@@ -1088,12 +1132,12 @@ public sealed class NativeGatewaySetupTests
         }
     }
 
-    private sealed class Runtime(List<string> events) : INativeGatewayRuntime
+    internal sealed class Runtime(List<string> events) : INativeGatewayRuntime
     {
         public Task RestartAsync(GatewayRecord record, CancellationToken cancellationToken)
         {
             events.Add("restart");
-            return Task.CompletedTask;
+            return StopConnections();
         }
 
         public GatewayEndpointProvenance Inspect(GatewayRecord record) =>
@@ -1101,6 +1145,8 @@ public sealed class NativeGatewaySetupTests
 
         public GatewayEndpointProvenanceKind Provenance { get; set; } = GatewayEndpointProvenanceKind.ExpectedManagedGateway;
         public Action Stop { get; set; } = () => { };
+        public Func<Task> StopConnections { get; set; } = () => Task.CompletedTask;
+        public Func<Task> DisposeRuntime { get; set; } = () => Task.CompletedTask;
         public Task EnsureRunningAsync(GatewayRecord record, CancellationToken cancellationToken)
         {
             events.Add("start");
@@ -1110,7 +1156,7 @@ public sealed class NativeGatewaySetupTests
         {
             events.Add("stop");
             Stop();
-            return Task.CompletedTask;
+            return StopConnections();
         }
         public Task<GatewayEndpointProvenance> InspectAsync(GatewayRecord record, CancellationToken cancellationToken)
         {
@@ -1120,7 +1166,7 @@ public sealed class NativeGatewaySetupTests
         public ValueTask DisposeAsync()
         {
             events.Add("dispose");
-            return ValueTask.CompletedTask;
+            return new(DisposeRuntime());
         }
     }
 }

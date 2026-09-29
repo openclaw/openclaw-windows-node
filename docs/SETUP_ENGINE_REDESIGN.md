@@ -105,12 +105,14 @@ validation remains required.
 
 The separate **native Gateway MSIX** Welcome path does not use
 `SetupStepFactory.BuildDefaultSteps()`. `NativeGatewaySetupService` owns its
-dedicated-profile and package preparation. `NativeGatewaySetupSession` owns
-staged-record runtime authorization, reload suspension/restoration, retry/cancel,
+package-contract and profile preparation. `NativeGatewaySetupSession` owns
+staged-record runtime authorization, legacy-only reload suspension/restoration, retry/cancel,
 authenticated health/config gates, and final registry publication.
-`WizardPage` is the single hosted WinUI wizard for both WSL and native:
-`wizard.start/next/cancel` transport, upstream prompts, and provider/model cards
-are not duplicated. Native uses the upstream `installDaemon: false` contract.
+Both installations use the shared focused `AiSetupPage` and verified
+three-destination `AiReadyPage`. `WizardPage` remains an explicit compatibility
+fallback when focused setup methods are unavailable. Its native requests retain
+the owned `NativeGatewaySetupConnection` authorization and upstream
+`installDaemon: false` contract.
 `NativeGatewayPackageResolver`
 checks Windows package registration and package-qualified aliases.
 `NativeGatewayMsixInstaller` installs the fixed Store product using the current-user
@@ -134,16 +136,22 @@ continue. Repair errors and timeouts stay visible, with explicit retry rather
 than repeated installer launches; retries recheck registration before installing.
 Native setup shares the `SetupAccessDraft` capability profiles with WSL but
 skips WSL/Local AI/Tailscale installation review and probes. The native
-progress page uses `SetupPhaseStatus` rows and automatically enters the Gateway
-wizard after preparing its runtime. Finalization applies the selected Gateway
-command allowlist before config/health gates, then persists reviewed Companion
-settings without overwriting unrelated settings or startup preferences.
+progress page uses `SetupPhaseStatus` rows and automatically enters **Connect
+your AI** after preparing its runtime. Finalization applies the selected Gateway
+command allowlist before config/health gates, verifies the exact primary model
+after the owned runtime restart, then persists reviewed Companion settings
+without overwriting unrelated settings or startup preferences.
 Completion does not claim node pairing.
 `NativeGatewaySetupHost` runs captured `clawctl setup`, config validation, and
 health commands, plus an explicitly requested profile-scoped recovery terminal.
 It never launches `openclaw onboard` or WSL.
-`NativeGatewayRuntime` in the Connection project owns the gateway process.
-This path is non-isolated and UI-only. Companion never downloads an MSIX itself
+`NativeGatewayRuntimeRouter` selects the package-owned `IsolatedGatewayRuntime`
+or the recognized legacy `NativeGatewayRuntime`. Isolated configuration, credentials
+and workspace stay under the agent account; Companion does not read a host-side
+config or forward host profile overrides. Shared AI and classic fallback console
+output use authenticated `logs.tail` for isolated sessions, with per-request
+authorization and explicit gap/failure recovery. Legacy console output retains
+its profile log. This path is UI-only. Companion never downloads an MSIX itself
 or bypasses Microsoft Store installation.
 Existing headless setup arguments continue to select the WSL pipeline.
 See [Native Gateway MSIX](ONBOARDING_WIZARD.md#native-gateway-msix-isolated-or-legacy)

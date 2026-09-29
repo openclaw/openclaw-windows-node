@@ -81,6 +81,22 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         return Task.FromResult(new FixtureGatewayServer(scenario, token, cancellationToken));
     }
 
+    public async Task CloseConnectionsAsync(CancellationToken cancellationToken = default)
+    {
+        ActiveConnection[] connections;
+        lock (_sync) connections = _authenticatedConnections.Values.ToArray();
+        foreach (var connection in connections)
+        {
+            await connection.SendLock.WaitAsync(cancellationToken);
+            try
+            {
+                if (connection.Socket.State == WebSocketState.Open)
+                    await connection.Socket.CloseOutputAsync((WebSocketCloseStatus)1012, "Fixture restart", cancellationToken);
+            }
+            finally { connection.SendLock.Release(); }
+        }
+    }
+
     /// <summary>Holds subsequent reads of this history until ReleaseHistory. Other requests continue normally.</summary>
     public void HoldHistory(string sessionKey)
     {

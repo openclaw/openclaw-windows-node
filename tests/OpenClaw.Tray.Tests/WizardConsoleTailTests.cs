@@ -46,6 +46,23 @@ public class WizardConsoleTailTests
     }
 
     [Fact]
+    public async Task GatewayReaderPassesCancellationToTheAuthorizedTransport()
+    {
+        using var cancellation = new CancellationTokenSource();
+        CancellationToken observed = default;
+        var reader = WizardConsoleTail.CreateGatewayLogReader(async (_, _, _, ct) =>
+        {
+            observed = ct;
+            await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+            return Payload(0, 0);
+        });
+        var pending = reader(null, cancellation.Token);
+        Assert.Equal(cancellation.Token, observed);
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
+    }
+
+    [Fact]
     public async Task IsolatedTailUsesAuthenticatedCursorAndOnlyDisplaysNewPluginConsoleLines()
     {
         string oauth = """{"_meta":{"name":"openclaw","path":{"method":"console.log"}},"message":"Open https://auth.example/authorize?client_id=fixture"}""";

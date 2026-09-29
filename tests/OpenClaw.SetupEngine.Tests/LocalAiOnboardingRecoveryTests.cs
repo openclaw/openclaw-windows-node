@@ -54,6 +54,8 @@ public sealed class LocalAiOnboardingRecoveryTests
             CancellationToken cancellationToken) => throw new InvalidOperationException("No model exists to inspect.");
         public Task<bool> VerifyLegacyCompatibilityAsync(LocalAiResolvedInstall install, LocalAiPaths paths,
             PinnedArtifact artifact, CancellationToken cancellationToken) => throw new InvalidOperationException("No model exists to inspect.");
+        public Task<bool> VerifyAdditionalAssetAsync(LocalAiResolvedInstall install, string cachedAssetPath,
+            PinnedArtifact artifact, CancellationToken cancellationToken) => throw new InvalidOperationException("No model exists to inspect.");
     }
 
     [Theory]

@@ -10,6 +10,10 @@ public sealed record ProviderArtworkDescriptor(
 
 public static class GatewayAiSetupPresentation
 {
+    public static bool ShowNativeRecovery(GatewayAiSetupPhase phase, bool isBusy, bool hasError) =>
+        !isBusy && phase != GatewayAiSetupPhase.Verified &&
+        (hasError || phase is GatewayAiSetupPhase.Uncertain or GatewayAiSetupPhase.Rejected);
+
     public static string? GetPromptAction(GatewayAiSetupWizardStep? step)
     {
         if (step is null || step.Type == "progress" || step.Executor == "gateway")

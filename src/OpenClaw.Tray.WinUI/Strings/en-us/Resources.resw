@@ -7782,7 +7782,11 @@ Your settings, gateway, files, and models stay where they are.</value>
   <data name="Onboarding_Native_Acquisition.Text" xml:space="preserve"><value>If the Gateway is not installed, setup installs it from Microsoft Store using WinGet, then verifies the package before continuing automatically.</value></data>
   <data name="Onboarding_Native_InstallingPackage" xml:space="preserve"><value>Installing the Gateway from Microsoft Store using WinGet...</value></data>
   <data name="Onboarding_Native_VerifyingPackage" xml:space="preserve"><value>WinGet completed. Verifying Gateway registration and execution aliases before continuing...</value></data>
-  <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>Companion will prepare your Gateway and open its setup wizard automatically.</value></data>
+  <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>Companion will prepare your Gateway, then help you connect your AI.</value></data>
+  <data name="Onboarding_Native_Recovery.Header" xml:space="preserve"><value>Gateway recovery</value></data>
+  <data name="Onboarding_Native_Terminal.Content" xml:space="preserve"><value>Open terminal</value></data>
+  <data name="Onboarding_Native_Restart.Content" xml:space="preserve"><value>Restart Gateway</value></data>
+  <data name="Onboarding_Native_RetryAi.Content" xml:space="preserve"><value>Start AI setup again</value></data>
   <data name="Onboarding_Native_StepSupport" xml:space="preserve"><value>Check device support</value></data>
   <data name="Onboarding_Native_StepPackage" xml:space="preserve"><value>Install or verify Gateway package</value></data>
   <data name="Onboarding_Native_StepPrepare" xml:space="preserve"><value>Prepare your Gateway profile</value></data>
@@ -7799,7 +7803,7 @@ Your settings, gateway, files, and models stay where they are.</value>
   <data name="Onboarding_Native_Back.Content" xml:space="preserve"><value>Back</value></data>
   <data name="Onboarding_Native_Open.Content" xml:space="preserve"><value>Open Companion to connect</value></data>
   <data name="Onboarding_Native_Available" xml:space="preserve"><value>Gateway package {0} is installed.</value></data>
-  <data name="Onboarding_Native_InProgress" xml:space="preserve"><value>Preparing the native Gateway for the shared setup wizard. Provider and model questions will appear here in Companion.</value></data>
+  <data name="Onboarding_Native_InProgress" xml:space="preserve"><value>Preparing the native Gateway. Connect your AI next in Companion.</value></data>
   <data name="Onboarding_Native_Cancelled" xml:space="preserve"><value>Setup cancelled. The WinGet request was cancelled, but Windows may still finish deployment. Any configuration already entered is retained in the dedicated native profile. No Gateway package was removed.</value></data>
   <data name="Onboarding_Native_Configured" xml:space="preserve"><value>Gateway configuration and authenticated health verified at {0}. Open Companion to start the gateway and finish device pairing in Connection settings. Your selected Windows capabilities have been saved.</value></data>
   <data name="Onboarding_Native_ReplaceDraftTitle" xml:space="preserve"><value>Replace unfinished Gateway setup?</value></data>

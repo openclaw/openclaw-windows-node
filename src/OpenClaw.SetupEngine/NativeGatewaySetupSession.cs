@@ -25,6 +25,7 @@ public sealed class NativeGatewaySetupSession(
     private bool _optionalSetupDeferred;
     private bool _disposed;
     private bool _published;
+    private string? _identityBinding;
     private IDisposable? _terminal;
     public GatewayRecord Record { get; private set; } = record;
     public bool IsIsolated => draft.Contract == NativeGatewayContract.IsolatedSessionV1;
@@ -50,11 +51,13 @@ public sealed class NativeGatewaySetupSession(
         _terminal = host.OpenRecoveryTerminal(package, environment);
     }
 
-    public async Task PrepareWizardAsync(CancellationToken cancellationToken)
+    public Task PrepareWizardAsync(CancellationToken cancellationToken) => PrepareConnectionAsync(cancellationToken);
+
+    public async Task PrepareConnectionAsync(CancellationToken cancellationToken)
     {
         // A failed final health check restored reload already. Suspend again before
         // starting a new wizard, not when retrying finalization itself.
-        if (!IsIsolated && !File.Exists(ReloadBackupPath))
+        if (!_published && !IsIsolated && !File.Exists(ReloadBackupPath))
             await RestartAsync(cancellationToken);
         await AuthorizeAsync(cancellationToken);
     }
@@ -152,6 +155,8 @@ public sealed class NativeGatewaySetupSession(
 
     private async Task AuthorizeCoreAsync(CancellationToken cancellationToken)
     {
+        RequireCurrentProfile();
+        await RequireIsolatedPairingConfigurationAsync(cancellationToken);
         // Never let loopback or an existing device token bypass package workload inspection.
         host.ReportProgress(NativeGatewaySetupStage.StartingGateway);
         await runtime.EnsureRunningAsync(Record, cancellationToken);
@@ -160,6 +165,70 @@ public sealed class NativeGatewaySetupSession(
         if (provenance.Kind != GatewayEndpointProvenanceKind.ExpectedManagedGateway)
             throw new InvalidOperationException("Native gateway ownership could not be verified. No credential was sent.");
         cancellationToken.ThrowIfCancellationRequested();
+    }
+
+    internal void RequireCurrentProfile()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _lifetime.Token.ThrowIfCancellationRequested();
+        if (!IsIsolated)
+        {
+            var configured = NativeGatewaySetupService.ReadConfiguredRecord(draft, File.ReadAllText(ConfigPath));
+            if (GatewayDashboardBinding.Capture(configured) != GatewayDashboardBinding.Capture(Record) ||
+                configured.SharedGatewayToken != Record.SharedGatewayToken)
+                throw new SetupNativeOwnershipException();
+        }
+        else if (Record.Id != draft.GatewayId || Record.NativePackageFamilyName != draft.PackageFamilyName ||
+            Record.NativeRuntimeContract != NativeGatewayPackageClient.IsolatedContract ||
+            NativeGatewayPaths.ValidateRecord(Record).Port != draft.Port)
+            throw new SetupNativeOwnershipException();
+        if (_identityBinding is { } admitted)
+            SetupCompletionAuthority.RequirePersistedIdentity(IdentityDirectory, admitted);
+    }
+
+    internal void AdmitIdentity(string? identityBinding)
+    {
+        if (string.IsNullOrWhiteSpace(identityBinding))
+            throw new SetupNativeOwnershipException();
+        var admitted = Interlocked.CompareExchange(ref _identityBinding, identityBinding, null);
+        if (admitted is not null && admitted != identityBinding)
+            throw new SetupNativeOwnershipException();
+    }
+
+    public void RequireCompletion(GatewayAiSetupCompletion proof)
+    {
+        RequireCurrentProfile();
+        if (proof.GatewayId != Record.Id || proof.EndpointBinding != GatewayDashboardBinding.Capture(Record) ||
+            proof.ModelTarget is not null || proof.VerifiedGeneration <= 0 ||
+            !SetupCompletionAuthority.IsValid(proof.IdentityBinding, proof.SessionKey, proof.AgentId))
+            throw new SetupNativeOwnershipException();
+        SetupCompletionAuthority.RequirePersistedIdentity(IdentityDirectory, proof.IdentityBinding);
+        if (_published)
+        {
+            registry.Load();
+            var active = registry.GetActive();
+            if (active?.Id != proof.GatewayId || GatewayDashboardBinding.Capture(active) != proof.EndpointBinding)
+                throw new SetupNativeOwnershipException();
+        }
+    }
+
+    public async Task<SetupVerifiedNativeRoute> VerifyAsync(GatewayAiSetupCompletion expected, CancellationToken ct)
+    {
+        RequireCompletion(expected);
+        await using var connection = await NativeGatewaySetupConnection.ConnectAsync(this, ct);
+        return await VerifyConnectionAsync(connection, expected, ct);
+    }
+
+    private static async Task<SetupVerifiedNativeRoute> VerifyConnectionAsync(
+        NativeGatewaySetupConnection connection, GatewayAiSetupCompletion expected, CancellationToken ct)
+    {
+        SetupNativeVerification.RequireRoute(expected, connection.Route);
+        var client = new GatewayAiSetupClient(connection, expected.ModelRef, expected.Intent);
+        var result = new SetupVerifiedNativeRoute(
+            await SetupNativeCompletionVerifier.VerifyModelAsync(client, expected.ModelRef, ct),
+            connection.Route.SessionKey ?? "");
+        SetupNativeVerification.RequireSame(expected, result);
+        return result;
     }
 
     public async Task RestartAsync(CancellationToken cancellationToken)
@@ -198,14 +267,25 @@ public sealed class NativeGatewaySetupSession(
         _optionalSetupDeferred = false;
     }
 
-    public async Task<GatewayRecord> CompleteAsync(
-        CancellationToken cancellationToken, CapabilitiesConfig? capabilities = null)
+    public Task<GatewayRecord> CompleteAsync(
+        CancellationToken cancellationToken, CapabilitiesConfig? capabilities = null) =>
+        CompleteCoreAsync(cancellationToken, capabilities, null);
+
+    public Task<GatewayRecord> CompleteVerifiedAsync(
+        GatewayAiSetupCompletion proof, CapabilitiesConfig capabilities, CancellationToken cancellationToken)
+    {
+        RequireCompletion(proof);
+        return CompleteCoreAsync(cancellationToken, capabilities, proof);
+    }
+
+    private async Task<GatewayRecord> CompleteCoreAsync(
+        CancellationToken cancellationToken, CapabilitiesConfig? capabilities, GatewayAiSetupCompletion? proof)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
         await _gate.WaitAsync(linked.Token);
         try
         {
-            if (!_wizardCompleted && !_optionalSetupDeferred)
+            if (proof is null && !_wizardCompleted && !_optionalSetupDeferred)
                 throw new InvalidOperationException("Finish the Gateway wizard before completing native setup.");
             if (_published)
                 return Record;
@@ -233,14 +313,27 @@ public sealed class NativeGatewaySetupSession(
                 Record = NativeGatewaySetupService.ReadConfiguredRecord(draft, File.ReadAllText(ConfigPath));
             }
             await host.ValidateConfigurationAsync(package, environment, linked.Token);
+            if (IsIsolated && proof is not null)
+                await runtime.RestartAsync(Record, linked.Token);
             await AuthorizeCoreAsync(linked.Token);
             await host.VerifyHealthAsync(package, environment, linked.Token);
+            if (proof is not null)
+            {
+                RequireCompletion(proof);
+                // The owner gate stays held while a fresh connection verifies the restarted runtime.
+                await using var connection = await NativeGatewaySetupConnection.ConnectForFinalizationAsync(
+                    this, AuthorizeCoreAsync, linked.Token);
+                await VerifyConnectionAsync(connection, proof, linked.Token);
+            }
             await runtime.StopAsync(linked.Token);
             linked.Token.ThrowIfCancellationRequested();
             registry.Load();
+            var beforePublication = registry.GetSnapshot();
+            if (registry.GetById(Record.Id) is not null)
+                throw new SetupNativeOwnershipException();
             registry.AddOrUpdate(Record);
             registry.SetActive(Record.Id);
-            registry.Save();
+            registry.Save(beforePublication);
             _published = true;
             // Keep the credential-free draft descriptor. CreateDraftAsync recognizes
             // the published ID and replaces it instead of taking over an active gateway.

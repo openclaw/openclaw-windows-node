@@ -35,6 +35,105 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
     private string? _failure;
     private bool _manualForegroundPending;
 
+    [Theory]
+    [InlineData(false, ElementTheme.Light, 480)]
+    [InlineData(false, ElementTheme.Dark, 480)]
+    [InlineData(false, ElementTheme.Light, 760)]
+    [InlineData(false, ElementTheme.Dark, 760)]
+    [InlineData(true, ElementTheme.Light, 480)]
+    [InlineData(true, ElementTheme.Dark, 480)]
+    [InlineData(true, ElementTheme.Light, 760)]
+    [InlineData(true, ElementTheme.Dark, 760)]
+    public async Task NativePackagePages_KeepSharedHeroProgressAndActionsVisible(
+        bool wizard, ElementTheme theme, int width)
+    {
+        await ui.ResetContainerAsync();
+        await ui.RunOnUIAsync(async () =>
+        {
+            using var preview = new PreviewScope();
+            preview.Set(wizard ? "wizard" : "native");
+            var resources = LoadProgressResources(Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT")!);
+            Application.Current.Resources.MergedDictionaries.Add(resources);
+            var originalSize = ui.TestWindow.AppWindow.Size;
+            var scale = ui.Container.XamlRoot.RasterizationScale;
+            ui.TestWindow.AppWindow.Resize(new((int)((width + 40) * scale), (int)(880 * scale)));
+            var root = new Grid { Width = width, Height = 800 };
+            var frame = new Frame();
+            root.Children.Add(frame);
+            ui.Container.Children.Add(root);
+            try
+            {
+                await OnboardingNativeProof.ApplyThemeSurfaceAsync(root, theme);
+                Assert.True(frame.Navigate(wizard ? typeof(WizardPage) : typeof(NativeGatewaySetupPage),
+                    new SetupConfig()));
+                var page = Assert.IsAssignableFrom<Page>(frame.Content);
+                await WaitAsync(() => page.IsLoaded, "native package preview Loaded");
+                var mascot = Find<OnboardingMascot>(page, wizard ? "MascotHero" : "ProgressMascot");
+                mascot.IsAnimationEnabled = false;
+                var progress = Find<SetupProgressIndicator>(page, "FlowProgress");
+                progress.Update(OnboardingFlowPolicy.GetStages(SetupGatewayRoute.Native, new SetupConfig(), includeReadyChoice: !wizard),
+                    wizard ? OnboardingStage.AiSetup : OnboardingStage.Install);
+                Assert.Equal(wizard ? 5 : 6, progress.Children.Count);
+                Assert.Equal(20, Assert.IsType<Border>(progress.Children[wizard ? 4 : 3]).Width);
+                Assert.False(string.IsNullOrWhiteSpace(AutomationProperties.GetName(progress)));
+                string[] actions;
+                if (wizard)
+                {
+                    Find<DropDownButton>(page, "MoreOptionsButton").Visibility = Visibility.Visible;
+                    Find<Button>(page, "SecondaryButton").Visibility = Visibility.Visible;
+                    actions = ["MoreOptionsButton", "SecondaryButton", "PrimaryButton"];
+                }
+                else
+                {
+                    Assert.Null(typeof(NativeGatewaySetupPage).GetField("_operation",
+                        BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(page));
+                    Assert.Contains("Preview only", Find<TextBlock>(page, "StatusText").Text);
+                    var rows = Find<StackPanel>(page, "StepsPanel").Children;
+                    Assert.Equal(4, rows.Count);
+                    foreach (var row in rows)
+                    {
+                        var card = Assert.IsType<SettingsCard>(row);
+                        Assert.False(card.IsClickEnabled);
+                        Assert.False(string.IsNullOrWhiteSpace(Assert.IsType<string>(card.Header)));
+                        Assert.IsType<SetupPhaseStatus>(card.Content);
+                    }
+                    Find<Button>(page, "RetryButton").Visibility = Visibility.Visible;
+                    actions = ["BackButton", "RetryButton"];
+                }
+                root.UpdateLayout();
+                await ui.YieldToRenderAsync();
+                var footer = Find<Grid>(page, "NavigationFooter");
+                var progressBounds = progress.TransformToVisual(footer).TransformBounds(
+                    new(0, 0, progress.ActualWidth, progress.ActualHeight));
+                Assert.True(progressBounds.Width > 0 && progressBounds.Height > 0);
+                var previousRight = 0d;
+                foreach (var name in actions)
+                {
+                    var action = Assert.IsAssignableFrom<FrameworkElement>(page.FindName(name));
+                    var bounds = action.TransformToVisual(footer).TransformBounds(
+                        new(0, 0, action.ActualWidth, action.ActualHeight));
+                    Assert.True(bounds.Width > 0 && bounds.Height > 0, $"{name}: {bounds}");
+                    Assert.True(bounds.Left >= previousRight - 0.1);
+                    Assert.True(bounds.Right <= footer.ActualWidth + 0.1);
+                    Assert.True(progressBounds.Bottom <= bounds.Top);
+                    previousRight = bounds.Right;
+                }
+                OnboardingNativeProof.AssertFullyVisible(mascot, root);
+                OnboardingNativeProof.AssertFullyVisible(footer, root);
+                await OnboardingArtworkRenderingTests.SaveProofAsync(root,
+                    $"native-package-{(wizard ? "wizard" : "install")}-{theme}-{width}", output);
+            }
+            finally
+            {
+                frame.Navigate(typeof(Page));
+                ui.Container.Children.Clear();
+                await ui.YieldToRenderAsync();
+                ui.TestWindow.AppWindow.Resize(originalSize);
+                Application.Current.Resources.MergedDictionaries.Remove(resources);
+            }
+        });
+    }
+
     [Fact]
     public async Task WelcomeAvailability_ClearsStaleBadgeAndAccessibleSuffixBeforeInjectedRechecks()
     {

@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
 using OpenClaw.SetupEngine.UI.Controls;
 using OpenClaw.Shared;
+using OpenClaw.Connection;
 using OpenClawTray.Helpers;
 
 namespace OpenClaw.SetupEngine.UI.Pages;
@@ -19,13 +20,21 @@ public sealed record AiSetupPageArgs(
     Func<LocalAiOnboardingSnapshot, Task>? ReviewLocalAi = null,
     string? ExpectedGatewayId = null,
     SetupCompletionIntent ConfiguredCompletionIntent = SetupCompletionIntent.Dashboard,
-    Func<GatewayAiSetupCompletion, Task>? CompleteVerifiedSetup = null);
+    Func<GatewayAiSetupCompletion, Task>? CompleteVerifiedSetup = null,
+    NativeGatewaySetupSession? NativeSession = null, Func<Task>? CancelNativeSetup = null,
+    GatewayConnectionManager? ConnectionManager = null);
 
 public sealed partial class AiSetupPage : Page, IAsyncDisposable
 {
     private static readonly TimeSpan CloseTimeout = TimeSpan.FromSeconds(5);
     private AiSetupPageArgs? _args;
     private SetupGatewaySession? _session;
+    private NativeGatewaySetupConnection? _nativeConnection;
+    private WizardConsoleTail? _nativeConsole;
+    private GatewayLogTailIssue? _nativeConsoleIssue;
+    private readonly Queue<string> _nativeOutput = new();
+    private bool _nativeRecoveryBusy;
+    private bool _managedNative;
     private GatewayAiSetupController? _controller;
     private CancellationTokenSource _request = new();
     private Task _activeRequest = Task.CompletedTask;
@@ -129,6 +138,19 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
     {
         _args = e.Parameter as AiSetupPageArgs
             ?? throw new ArgumentException("AI setup requires window-scoped navigation arguments.");
+        _providerDialog.NativeRecoveryRequested += NativeRecoveryRequested;
+        if (_args.NativeSession is { IsIsolated: false } native)
+        {
+            var tail = new WizardConsoleTail(logger: NullLogger.Instance, nativeLogPath: native.ConsoleLogPath);
+            _nativeConsole = tail;
+            tail.Start(message => DispatcherQueue.TryEnqueue(() =>
+            {
+                if (_closed || !ReferenceEquals(_nativeConsole, tail)) return;
+                _nativeOutput.Enqueue(message);
+                while (_nativeOutput.Count > 40) _nativeOutput.Dequeue();
+                UpdateNativeRecovery();
+            }));
+        }
         if (_args.LocalAiHost is { } host && _args.ExpectedConfiguredModelRef is null)
         {
             _localUse = new(host);
@@ -156,6 +178,8 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _closeTask = completion.Task;
         _closed = true;
+        _nativeConsole?.Dispose();
+        _nativeConsole = null;
         CancelProviderViewportRestore();
         _providerBackdrop = null;
         _deferredDetection = null;
@@ -214,6 +238,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             _providerDialog.RefreshRequested -= ProviderRefreshRequested;
             _providerDialog.CancelRequested -= ProviderCancelRequested;
             _providerDialog.ExternalLinkRequested -= ProviderExternalLinkRequested;
+            _providerDialog.NativeRecoveryRequested -= NativeRecoveryRequested;
             _request.Dispose();
             Unloaded -= Page_Unloaded;
         }
@@ -224,21 +249,46 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         IGatewayAiSetupTransport transport;
         if (_args!.TransportFactory is { } factory)
             transport = factory();
-        else
+        else if (_args.NativeSession is { } native)
         {
-            var session = await SetupGatewaySession.ConnectAsync(_args.DataDir,
-                () => Client?.RequiresReconciliation == true, ct, ExpectedGatewayId);
+            var connection = await NativeGatewaySetupConnection.ConnectAsync(native, ct);
             if (_closed || ct.IsCancellationRequested)
             {
-                await session.DisposeAsync();
+                await connection.DisposeAsync();
                 throw new OperationCanceledException(ct);
             }
-            _session = session;
-            transport = new GatewayAiSetupTransport(session.Client, session.GetRoute);
+            _nativeConnection = connection;
+            transport = connection;
+        }
+        else
+        {
+            var registry = new GatewayRegistry(_args.DataDir);
+            registry.Load();
+            if (registry.GetActive() is { NativePackageFamilyName: not null } active)
+            {
+                _managedNative = true;
+                if (_args.ConnectionManager is not { } manager)
+                    throw new InvalidOperationException("The native Gateway connection owner is unavailable.");
+                transport = await GatewayAiSetupTransport.BorrowNativeAsync(_args.DataDir, manager, active.Id, ct);
+            }
+            else
+            {
+                var session = await SetupGatewaySession.ConnectAsync(_args.DataDir,
+                    () => Client?.RequiresReconciliation == true, ct, ExpectedGatewayId);
+                if (_closed || ct.IsCancellationRequested)
+                {
+                    await session.DisposeAsync();
+                    throw new OperationCanceledException(ct);
+                }
+                _session = session;
+                transport = new GatewayAiSetupTransport(session.Client, session.GetRoute);
+            }
         }
         ct.ThrowIfCancellationRequested();
         ObjectDisposedException.ThrowIf(_closed, this);
         LocalAiOnboardingUse.RequireGateway(ExpectedGatewayId, transport.Route.GatewayId);
+        if (_args.NativeSession is { IsIsolated: true } isolated)
+            await StartIsolatedConsoleAsync(transport, isolated.LifetimeToken);
         _controller = new(new GatewayAiSetupClient(transport, _args.ExpectedConfiguredModelRef,
             _localUse?.Expected?.CompletionIntent ?? _args.ConfiguredCompletionIntent));
         if ((_localExpectedModel ?? _args.ExpectedConfiguredModelRef) is { Length: > 0 } modelRef)
@@ -249,6 +299,49 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         }
         else
             await DetectAsync(ct);
+    }
+
+    private async Task StartIsolatedConsoleAsync(IGatewayAiSetupTransport transport, CancellationToken ct)
+    {
+        _nativeConsole?.Dispose();
+        _nativeOutput.Clear();
+        _nativeConsoleIssue = null;
+        var tail = new WizardConsoleTail(logger: NullLogger.Instance,
+            gatewayLogTail: WizardConsoleTail.CreateGatewayLogReader(transport.RequestAsync));
+        _nativeConsole = tail;
+        void AppendMessage(string message) => DispatcherQueue.TryEnqueue(() =>
+        {
+            if (_closed || !ReferenceEquals(_nativeConsole, tail)) return;
+            _nativeOutput.Enqueue(message);
+            while (_nativeOutput.Count > 40) _nativeOutput.Dequeue();
+            UpdateNativeRecovery();
+        });
+        void ReportIssue(GatewayLogTailIssue issue) => DispatcherQueue.TryEnqueue(() =>
+        {
+            if (_closed || !ReferenceEquals(_nativeConsole, tail) ||
+                _nativeConsoleIssue == GatewayLogTailIssue.Skipped) return;
+            _nativeConsoleIssue = issue;
+            var message = SetupLocalization.GetString(issue == GatewayLogTailIssue.Skipped
+                ? "Onboarding_Wizard_GatewayConsoleGap" : "Onboarding_Wizard_GatewayConsoleUnavailable");
+            if (BackdropLocked) _providerError = message;
+            else
+            {
+                ErrorBar.Message = message;
+                ErrorBar.IsOpen = true;
+            }
+            Render();
+        });
+        try { await tail.StartGatewayAsync(AppendMessage, ReportIssue, ct); }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested || _closed) { throw; }
+        catch (Exception error)
+        {
+            Trace.TraceWarning("Isolated setup console could not start ({0}).", error.GetType().Name);
+            if (ReferenceEquals(_nativeConsole, tail))
+            {
+                tail.Stop();
+                ReportIssue(GatewayLogTailIssue.Unavailable);
+            }
+        }
     }
 
     private async Task DetectAsync(CancellationToken ct)
@@ -594,6 +687,52 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             ShowError("NavigationFailed");
     }
 
+    private void NativeRecovery_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string tag } &&
+            Enum.TryParse<NativeSetupRecoveryAction>(tag, out var action))
+            NativeRecoveryRequested(action);
+    }
+
+    private void NativeRecoveryRequested(NativeSetupRecoveryAction action) =>
+        AsyncEventHandlerGuard.Run(() => RecoverNativeAsync(action), onError: ReportFailure);
+
+    private async Task RecoverNativeAsync(NativeSetupRecoveryAction action)
+    {
+        if (_closed || _nativeRecoveryBusy || _args?.NativeSession is not { } native) return;
+        _nativeRecoveryBusy = true;
+        try
+        {
+            if (action == NativeSetupRecoveryAction.OpenTerminal)
+            {
+                native.OpenRecoveryTerminal();
+                return;
+            }
+            if (action == NativeSetupRecoveryAction.CancelSetup)
+            {
+                if (_args.CancelNativeSetup is not { } cancel)
+                    throw new InvalidOperationException("The native setup cancellation owner is unavailable.");
+                await cancel();
+                return;
+            }
+            _controller?.StopAutomaticContinuation();
+            if (Client?.SessionId is not null)
+                await CancelAsync();
+            if (Client is { RequiresReconciliation: true } || Client?.SessionId is not null)
+                throw new InvalidOperationException("The provider operation must settle before restarting setup.");
+            var pending = _activeRequest;
+            _request.Cancel();
+            await pending;
+            _providerDialog.Dismiss();
+            await ReleaseAsync();
+            _controller = null;
+            if (action == NativeSetupRecoveryAction.RestartGateway)
+                await native.RestartAsync(native.LifetimeToken);
+            await RunAsync(InitializeAsync);
+        }
+        finally { _nativeRecoveryBusy = false; }
+    }
+
     private void ProviderContinueRequested() => AsyncEventHandlerGuard.Run(ContinueAsync, onError: ReportFailure);
     private void ProviderRefreshRequested() => AsyncEventHandlerGuard.Run(RefreshAsync, onError: ReportFailure);
     private void ProviderCancelRequested() => AsyncEventHandlerGuard.Run(CancelAsync, onError: ReportFailure);
@@ -647,6 +786,8 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             token.ThrowIfCancellationRequested();
             if (!_closed && generation == _generation && Client?.Phase == GatewayAiSetupPhase.VerificationRequired)
             {
+                if (Client.WaitingForRestart && _nativeConnection is { } native)
+                    await native.RestartAsync(token);
                 await _controller!.WaitForExpectedRestartAsync(Render, token);
                 var verification = await Client.VerifyAsync(token);
                 if (!verification.Ok)
@@ -780,8 +921,23 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             ApiKeyConnectButton.IsEnabled = backgroundEnabled && CanConnectManual();
             if (_providerBackdrop is { } visibleBackdrop)
                 ChoicesScroller.ChangeView(null, visibleBackdrop.VerticalOffset, null, disableAnimation: true);
+            UpdateNativeRecovery();
         }
         finally { _rendering = false; }
+    }
+
+    private void UpdateNativeRecovery()
+    {
+        var hasError = _providerBackdrop is not null
+            ? !string.IsNullOrWhiteSpace(_providerError)
+            : ErrorBar.IsOpen;
+        var visible = !_closed && _args?.NativeSession is not null &&
+            GatewayAiSetupPresentation.ShowNativeRecovery(Client?.Phase ?? GatewayAiSetupPhase.Idle, _busy,
+                hasError || _nativeConsoleIssue is not null);
+        NativeRecovery.Visibility = Visible(visible);
+        if (!visible) NativeRecovery.IsExpanded = false;
+        NativeOutput.Text = visible ? string.Join(Environment.NewLine, _nativeOutput) : "";
+        _providerDialog.UpdateNativeRecovery(visible, NativeOutput.Text);
     }
 
     private void CaptureProviderBackdrop(Control? returnFocus = null)
@@ -849,6 +1005,11 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
 
     private void RenderLocalAi(GatewayAiSetupPhase phase)
     {
+        if (_args?.NativeSession is not null || _managedNative)
+        {
+            LocalAiSection.Visibility = Visibility.Collapsed;
+            return;
+        }
         var snapshot = _localObservation?.Snapshot ?? new(LocalAiOnboardingState.UnsupportedGateway);
         LocalAiSection.Visibility = Visible(_args?.ExpectedConfiguredModelRef is null && _localExpectedModel is null &&
             snapshot.ShowLocalChoice);
@@ -914,9 +1075,16 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
 
     private async Task ReleaseAsync(CancellationToken ct = default)
     {
+        if (_args?.NativeSession?.IsIsolated == true)
+        {
+            _nativeConsole?.Dispose();
+            _nativeConsole = null;
+        }
         var session = _session;
+        var nativeConnection = _nativeConnection;
         var client = Client;
         _session = null;
+        _nativeConnection = null;
         try
         {
             if (client?.SessionId is not null)
@@ -927,6 +1095,8 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         {
             if (session is not null)
                 await session.DisposeAsync();
+            if (nativeConnection is not null)
+                await nativeConnection.DisposeAsync();
         }
     }
 
