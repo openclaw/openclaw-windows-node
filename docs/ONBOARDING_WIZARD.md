@@ -109,8 +109,10 @@ Companion checks current-user registration for the Store package
 from `PATH`. Native setup uses the same Windows capabilities and permission
 selection as WSL, followed by a native-specific review without WSL, Local AI or
 Tailscale provisioning. After confirming the review, progress runs automatically.
-A missing package opens the
-[OpenClaw Gateway Microsoft Store listing](https://apps.microsoft.com/detail/9nv70lv3d6xc?hl=en-US&gl=US);
+A missing package opens the OpenClaw Gateway product page directly in the
+Microsoft Store app (the
+[web listing](https://apps.microsoft.com/detail/9nv70lv3d6xc?hl=en-US&gl=US)
+is only a fallback when the Store protocol is unavailable);
 unhealthy registration or unavailable aliases show an explicit repair error.
 No local MSIX path or environment-variable configuration is required.
 The original `OpenClaw.Gateway` / OpenClaw Foundation development publisher pair

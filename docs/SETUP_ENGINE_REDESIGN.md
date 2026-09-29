@@ -113,9 +113,11 @@ authenticated health/config gates, and final registry publication.
 are not duplicated. Native uses the upstream `installDaemon: false` contract.
 `NativeGatewayPackageResolver`
 checks Windows package registration and package-qualified aliases.
-`NativeGatewayMsixInstaller` opens the
-[OpenClaw Gateway Microsoft Store listing](https://apps.microsoft.com/detail/9nv70lv3d6xc?hl=en-US&gl=US)
-when a package is not installed. Microsoft Store owns architecture selection,
+`NativeGatewayMsixInstaller` opens the OpenClaw Gateway product page directly in
+the Microsoft Store app (`ms-windows-store://pdp/?ProductId=9NV70LV3D6XC`) when a
+package is not installed, falling back to the
+[web listing](https://apps.microsoft.com/detail/9nv70lv3d6xc?hl=en-US&gl=US)
+only when the Store protocol has no handler. Microsoft Store owns architecture selection,
 installation consent and deployment; no local MSIX path is required.
 `NativeGatewayPackageIdentity` pins the exact Store name/publisher pair and retains
 the original development identity for existing installations. Multiple matching

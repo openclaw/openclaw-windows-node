@@ -3,18 +3,34 @@ namespace OpenClaw.SetupEngine.Tests;
 public sealed class NativeGatewayMsixInstallerTests
 {
     [Fact]
-    public async Task Open_HandsTheFixedStoreListingToWindowsExactlyOnce()
+    public async Task Open_LaunchesStoreAppProductPageDirectlyExactlyOnce()
     {
         using var cts = new CancellationTokenSource();
-        var calls = 0;
+        var opened = new List<string>();
         await new NativeGatewayMsixInstaller().OpenAsync((uri, ct) =>
         {
-            Assert.Equal("https://apps.microsoft.com/detail/9nv70lv3d6xc?hl=en-US&gl=US", uri.AbsoluteUri);
             Assert.Equal(cts.Token, ct);
-            calls++;
+            opened.Add(uri.AbsoluteUri);
             return Task.FromResult(true);
         }, cts.Token);
-        Assert.Equal(1, calls);
+        Assert.Equal(["ms-windows-store://pdp/?ProductId=9NV70LV3D6XC"], opened);
+    }
+
+    [Fact]
+    public async Task StoreProtocolUnavailable_FallsBackToWebListing()
+    {
+        var opened = new List<string>();
+        await new NativeGatewayMsixInstaller().OpenAsync((uri, _) =>
+        {
+            opened.Add(uri.AbsoluteUri);
+            return Task.FromResult(uri.Scheme == Uri.UriSchemeHttps);
+        }, CancellationToken.None);
+        Assert.Equal(
+            [
+                "ms-windows-store://pdp/?ProductId=9NV70LV3D6XC",
+                "https://apps.microsoft.com/detail/9nv70lv3d6xc?hl=en-US&gl=US",
+            ],
+            opened);
     }
 
     [Fact]
@@ -22,7 +38,7 @@ public sealed class NativeGatewayMsixInstallerTests
     {
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             new NativeGatewayMsixInstaller().OpenAsync((_, _) => Task.FromResult(false), CancellationToken.None));
-        Assert.Contains(NativeGatewayMsixInstaller.StoreUri.AbsoluteUri, error.Message);
+        Assert.Contains(NativeGatewayMsixInstaller.StoreWebUri.AbsoluteUri, error.Message);
         Assert.Contains("retry native setup", error.Message);
     }
 
