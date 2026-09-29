@@ -73,6 +73,8 @@ public sealed partial class WorkspaceWindow : WindowEx
         UpdatePanePresentation();
         HomeLabel.Text = Text("Home");
         AutomationProperties.SetName(HomeItem, Text("Home"));
+        AutomationProperties.SetName(OwnerButton, Text("Owner.Text"));
+        AutomationProperties.SetHelpText(OwnerButton, Text("PersonalWorkspace.Text"));
         BuildOwnerMenu();
         _state.PropertyChanged += OnStateChanged;
         _notifications.Changed += OnNotificationsChanged;

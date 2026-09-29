@@ -55,7 +55,7 @@ public sealed class AccessibilityScanTests
         yield return ["SkillsPage", "skills", "SkillsPageMarker"];
         yield return ["UsagePage", "usage", "UsagePageMarker"];
         yield return ["VoiceSettingsPage", "voice", "VoiceSettingsPageMarker"];
-        yield return ["WorkspacePage", "workspace", "WorkspacePageMarker"];
+        yield return ["ChatPage", "workspace", "ChatComposerInput"];
     }
 
     [Theory]

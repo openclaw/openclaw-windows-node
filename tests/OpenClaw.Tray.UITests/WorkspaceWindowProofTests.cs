@@ -62,6 +62,15 @@ public sealed class WorkspaceWindowProofTests
         Assert.Contains("operator.admin", string.Join(" ", creation.FindAll(TreeScope.Descendants,
             Condition.TrueCondition).Cast<AutomationElement>().Select(item => item.Current.Name)));
         CaptureFlyout(root, theme, "new-agent");
+        var nameBounds = Find(creation, "AgentCreationName").Current.BoundingRectangle;
+        using (var pixel = new System.Drawing.Bitmap(1, 1))
+        {
+            using var graphics = System.Drawing.Graphics.FromImage(pixel);
+            graphics.CopyFromScreen((int)(nameBounds.Left - toggle.Width * 12 / 40),
+                (int)(nameBounds.Top + nameBounds.Height / 2), 0, 0, pixel.Size);
+            var background = pixel.GetPixel(0, 0);
+            Assert.Equal(theme == "Dark", background.R + background.G + background.B < 384);
+        }
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
         await WaitUntilAsync(() => FindPopup(root, "AgentCreationDialog") is null);
         Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
@@ -93,6 +102,8 @@ public sealed class WorkspaceWindowProofTests
         Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
         Capture(app, theme, "sidebar-composer");
         Invoke(Find(root, "WorkspaceOwner"));
+        Assert.Equal("Owner", Find(root, "WorkspaceOwner").Current.Name);
+        Assert.Equal("Personal workspace", Find(root, "WorkspaceOwner").Current.HelpText);
         await WaitUntilAsync(() => FindPopup(root, "WorkspaceOwnerConnectionStatus") is not null);
         Assert.Equal("Connection Status: Disconnected", FindPopup(root, "WorkspaceOwnerConnectionStatus")!.Current.Name);
         CaptureFlyout(root, theme, "owner-live-status");
@@ -352,6 +363,7 @@ public sealed class WorkspaceWindowProofTests
         Find(root, "WorkspaceTogglePane").SetFocus();
         System.Windows.Forms.SendKeys.SendWait(" ");
         await WaitUntilAsync(() => IsVisible(root, "WorkspaceReopenPane"));
+        Capture(app, theme, "sidebar-hidden");
         await app.NavigateAsync("chat", "ChatPage", "ChatComposerInput");
         Assert.Equal(composerId, Find(root, "ChatComposerInput").GetRuntimeId());
         Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);

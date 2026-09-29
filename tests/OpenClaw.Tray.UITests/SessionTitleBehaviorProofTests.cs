@@ -75,8 +75,8 @@ public sealed class SessionTitleBehaviorProofTests
         ICollection<string> proof)
     {
         InvokeOpenChat(visibleTitle);
-        var routeTitle = $"Route target: {expectedSessionKey}";
-        var selectedRouteTitle = WaitForSelectedSession(routeTitle);
+        var selectedRouteTitle = WaitForSelectedSession(expectedSessionKey);
+        Assert.Equal(visibleTitle, selectedRouteTitle);
         proof.Add(
             $"UIA open-chat title=\"{visibleTitle}\" " +
             $"selectedThread=\"{selectedRouteTitle}\" selectedKey={expectedSessionKey}");
@@ -123,18 +123,13 @@ public sealed class SessionTitleBehaviorProofTests
         Assert.IsType<InvokePattern>(pattern).Invoke();
     }
 
-    private string WaitForSelectedSession(string expectedRouteTitle)
+    private string WaitForSelectedSession(string expectedSessionKey)
     {
         var composerCondition = new PropertyCondition(
             AutomationElement.AutomationIdProperty,
             "ChatComposerInput");
-        // The redesigned session selector is a subtle menu-flyout Button (not a
-        // ComboBox). Its accessible name folds in the current selection as
-        // "Session: <route title>", replacing the legacy ComboBox's
-        // SelectionPattern. Match on the route title so the exact field-label
-        // prefix/separator format stays free to change.
-        var buttonCondition = new PropertyCondition(
-            AutomationElement.ControlTypeProperty, ControlType.Button);
+        var sessionCondition = new PropertyCondition(
+            AutomationElement.AutomationIdProperty, $"WorkspaceSession:{expectedSessionKey}");
 
         string? selectedRouteTitle = null;
         var processId = AutomationElement.FromHandle(_app.HubWindowHandle).Current.ProcessId;
@@ -147,20 +142,13 @@ public sealed class SessionTitleBehaviorProofTests
             if (hub is null)
                 return false;
 
-            var buttons = hub.FindAll(TreeScope.Descendants, buttonCondition);
-            for (var i = 0; i < buttons.Count; i++)
-            {
-                var name = buttons[i].Current.Name;
-                if (!string.IsNullOrEmpty(name)
-                    && name.Contains(expectedRouteTitle, StringComparison.Ordinal))
-                {
-                    selectedRouteTitle = name;
-                    return true;
-                }
-            }
-
-            return false;
-        }, $"chat Session selector to choose '{expectedRouteTitle}'");
+            var session = hub.FindFirst(TreeScope.Descendants, sessionCondition);
+            if (session is null || !((SelectionItemPattern)session.GetCurrentPattern(
+                    SelectionItemPattern.Pattern)).Current.IsSelected)
+                return false;
+            selectedRouteTitle = session.Current.Name;
+            return true;
+        }, $"Workspace navigation to select original session key '{expectedSessionKey}'");
 
         return Assert.IsType<string>(selectedRouteTitle);
     }

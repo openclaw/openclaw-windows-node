@@ -22,6 +22,8 @@ internal sealed class AgentCreationDialog : ContentDialog
     {
         _service = service;
         XamlRoot = root;
+        if (root.Content is FrameworkElement content)
+            RequestedTheme = content.ActualTheme;
         Title = L("Title");
         PrimaryButtonText = L("Create");
         CloseButtonText = LocalizationHelper.GetString("ChatPage_Cancel");
