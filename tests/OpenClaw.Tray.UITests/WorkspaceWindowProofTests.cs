@@ -104,18 +104,29 @@ public sealed class WorkspaceWindowProofTests
         using var bitmap = new System.Drawing.Bitmap((int)bounds.Width, (int)bounds.Height);
         using (var graphics = System.Drawing.Graphics.FromImage(bitmap))
             graphics.CopyFromScreen((int)bounds.Left, (int)bounds.Top, 0, 0, bitmap.Size);
-        var left = bitmap.Width;
+        var columns = new bool[bitmap.Width];
+        for (var x = 0; x < bitmap.Width; x++)
+            for (var y = 0; y < bitmap.Height; y++)
+                columns[x] |= isIcon(bitmap.GetPixel(x, y));
+        var left = 0;
         var right = -1;
-        for (var x = (int)(bitmap.Width * 0.05); x < bitmap.Width; x++)
-        for (var y = 0; y < bitmap.Height; y++)
-            if (isIcon(bitmap.GetPixel(x, y)))
+        // Keep the widest colored span (the icon), not the narrow selection pill.
+        // Cropping a percentage of a wide popup can cut into the avatar itself.
+        for (var x = 0; x < columns.Length; x++)
+        {
+            if (!columns[x]) continue;
+            var start = x;
+            while (x + 1 < columns.Length && columns[x + 1]) x++;
+            if (x - start > right - left)
             {
-                left = Math.Min(left, x);
-                right = Math.Max(right, x);
+                left = start;
+                right = x;
             }
+        }
         Assert.True(right >= left, "Expected the rendered fixture avatar or Home artwork.");
         var actual = (int)bounds.Left + (left + right) / 2d;
-        Assert.True(Math.Abs(actual - expected) <= 2, $"Rendered icon center {actual} must align with pane toggle center {expected}.");
+        Assert.True(Math.Abs(actual - expected) <= 2,
+            $"Rendered icon center {actual} must align with pane toggle center {expected}. Bounds={bounds}; span={left}..{right}.");
     }
 
     [Theory]
@@ -491,7 +502,11 @@ public sealed class WorkspaceWindowProofTests
         var timeline = await WaitForMarkerAsync(pid, "ConnectionTimelineHeading", workspace);
         var timelineHandle = new IntPtr(timeline.Current.NativeWindowHandle);
         Assert.NotEqual(app.HubWindowHandle, timelineHandle);
-        Assert.True(timeline.Current.BoundingRectangle.Left > workspaceElement.Current.BoundingRectangle.Left);
+        var workArea = System.Windows.Forms.Screen.FromHandle(workspace).WorkingArea;
+        var timelineBounds = timeline.Current.BoundingRectangle;
+        Assert.InRange(timelineBounds.Right, workArea.Right - 32, workArea.Right);
+        Assert.True(timelineBounds.Left >= workArea.Left,
+            $"Right-aligned timeline must fit the display: {timelineBounds}, work area {workArea}.");
         Invoke(Find(workspaceElement, "WorkspaceOwner"));
         Invoke(WaitForMenuItem(pid, "Connection event timeline"));
         Assert.Equal(timelineHandle, new IntPtr((await WaitForMarkerAsync(pid, "ConnectionTimelineHeading", workspace)).Current.NativeWindowHandle));
@@ -683,7 +698,7 @@ public sealed class WorkspaceWindowProofTests
 
     private static void CaptureFlyout(AutomationElement root, string theme, string name)
     {
-        var directory = Environment.GetEnvironmentVariable("OPENCLAW_WORKSPACE_PROOF_DIR");
+        var directory = ProofDirectory;
         if (string.IsNullOrEmpty(directory)) return;
         Thread.Sleep(350);
         Assert.Equal(root.Current.ProcessId, AutomationElement.FromHandle(GetForegroundWindow()).Current.ProcessId);
@@ -701,9 +716,17 @@ public sealed class WorkspaceWindowProofTests
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
 
+    private static string? ProofDirectory =>
+        Environment.GetEnvironmentVariable("OPENCLAW_WORKSPACE_PROOF_DIR")
+        ?? (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true"
+            ? Path.Combine(Environment.GetEnvironmentVariable("GITHUB_WORKSPACE")
+                ?? throw new InvalidOperationException("CI proof requires GITHUB_WORKSPACE."),
+                "TestResults", "WorkspaceProof")
+            : null);
+
     private static void Capture(AccessibilityAppFixture app, string theme, string page)
     {
-        var directory = Environment.GetEnvironmentVariable("OPENCLAW_WORKSPACE_PROOF_DIR");
+        var directory = ProofDirectory;
         if (string.IsNullOrEmpty(directory)) return;
         using var environment = new EnvironmentScope("OPENCLAW_UI_SCREENSHOT_PATH", Path.Combine(directory, $"{theme}-{page}.png"));
         app.CaptureHubScreenshotIfRequested();

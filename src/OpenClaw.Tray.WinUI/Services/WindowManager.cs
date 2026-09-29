@@ -549,9 +549,12 @@ internal sealed class WindowManager : IWindowManager
             var area = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(
                 owner.AppWindow.Id, Microsoft.UI.Windowing.DisplayAreaFallback.Nearest).WorkArea;
             var size = _connectionStatusWindow.AppWindow.Size;
-            _connectionStatusWindow.AppWindow.Move(new global::Windows.Graphics.PointInt32(
+            size.Width = Math.Min(size.Width, Math.Max(1, area.Width - 32));
+            size.Height = Math.Min(size.Height, Math.Max(1, area.Height - 32));
+            _connectionStatusWindow.AppWindow.MoveAndResize(new global::Windows.Graphics.RectInt32(
                 Math.Max(area.X, area.X + area.Width - size.Width - 16),
-                Math.Clamp(owner.AppWindow.Position.Y + 48, area.Y, Math.Max(area.Y, area.Y + area.Height - size.Height))));
+                Math.Clamp(owner.AppWindow.Position.Y + 48, area.Y, Math.Max(area.Y, area.Y + area.Height - size.Height)),
+                size.Width, size.Height));
         }
         _connectionStatusWindow.Activate();
     }
