@@ -109,10 +109,8 @@ Companion checks current-user registration for the Store package
 from `PATH`. Native setup uses the same Windows capabilities and permission
 selection as WSL, followed by a native-specific review without WSL, Local AI or
 Tailscale provisioning. After confirming the review, progress runs automatically.
-A missing package opens the OpenClaw Gateway product page directly in the
-Microsoft Store app (the
-[web listing](https://apps.microsoft.com/detail/9nv70lv3d6xc?hl=en-US&gl=US)
-is a fallback when Windows reports that the Store-app URI was not launched);
+A missing package is installed automatically using
+`winget install --id 9NV70LV3D6XC --source msstore --silent --accept-package-agreements --accept-source-agreements --disable-interactivity --no-upgrade`;
 unhealthy registration or unavailable aliases show an explicit repair error.
 No local MSIX path or environment-variable configuration is required.
 The original `OpenClaw.Gateway` / OpenClaw Foundation development publisher pair
@@ -121,15 +119,20 @@ new setup reports duplicate registrations instead of guessing which to use. Exis
 profiles resolve their original package family even when both packages are installed;
 there is no implicit migration.
 
-Microsoft Store owns architecture/package selection, signature validation, user
-consent, and deployment. Opening the listing is not reported as a successful install:
-Companion waits for actual package registration and verified aliases, then
+The review explains that **Set up gateway** authorizes WinGet installation and
+accepts the package and Store source agreements. Provider sign-in remains interactive.
+Microsoft Store owns architecture/package selection, signature validation and
+deployment. WinGet runs through the signed-in user's App Installer execution alias,
+without a shell or elevation. Companion verifies actual package registration and aliases, then
 automatically prepares the profile and opens the shared Gateway wizard.
-The wait is cancellable and limited to five minutes. Cancelling in Companion does
-not cancel Windows installation. Errors/timeouts offer **Retry setup**; the normal
+Installation and verification share a cancellable five-minute deadline. Cancellation
+stops the WinGet request, but Windows may still finish an in-progress deployment.
+Missing WinGet, Store policy/source failures, nonzero exit codes and timeouts show
+explicit repair guidance and **Retry setup**, not a manual Store-page fallback. The normal
 path has no separate install, availability-check or wizard-launch buttons.
-An already installed healthy package skips this handoff.
-Companion never downloads a package or changes certificate trust.
+An already installed healthy package skips installation. Retry checks registration
+again before invoking WinGet. Companion does not download packages directly,
+change certificate trust, or uninstall packages on cancellation.
 
 Progress reuses the WSL spinner/checkmark rows. Completion lists the configured
 native Gateway and saved Windows capability choices, with a reminder that node

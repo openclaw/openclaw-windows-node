@@ -92,7 +92,7 @@ public sealed partial class NativeGatewaySetupPage : Page
         StatusText.Text = SetupLocalization.GetString("Onboarding_Native_Checking");
         await NativeGatewayPackageAcquisition.EnsureAsync(
             _resolver, InstallAsync,
-            () => StatusText.Text = SetupLocalization.GetString("Onboarding_Native_InstallerOpened"),
+            () => StatusText.Text = SetupLocalization.GetString("Onboarding_Native_VerifyingPackage"),
             cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         SetCurrentStep(2);
@@ -136,11 +136,9 @@ public sealed partial class NativeGatewaySetupPage : Page
 
     private async Task InstallAsync(CancellationToken cancellationToken)
     {
-        await _installer.OpenAsync(async (uri, ct) =>
-        {
-            ct.ThrowIfCancellationRequested();
-            return await Windows.System.Launcher.LaunchUriAsync(uri);
-        }, cancellationToken);
+        StatusText.Text = SetupLocalization.GetString("Onboarding_Native_InstallingPackage");
+        using var logger = new SetupLogger(filePath: null);
+        await _installer.InstallAsync(new CommandRunner(logger), cancellationToken);
     }
 
     private void SetCurrentStep(int index)

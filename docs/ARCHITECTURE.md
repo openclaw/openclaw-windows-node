@@ -72,14 +72,14 @@ These are the canonical homes. Do not reintroduce private copies elsewhere.
 | Settings page load/persist view logic | `SettingsPageViewModel` | authoritative |
 | Native tool identity, display arguments, payload extraction, and flattened-history projection | `NativeToolProjector` | authoritative |
 | Managed-local listener provenance and strong-credential authorization | `ManagedLocalGatewayPortProvenanceService` | authoritative |
-| Native Gateway Microsoft Store listing handoff | `NativeGatewayMsixInstaller` | authoritative |
+| Native Gateway fixed-product WinGet installation from Microsoft Store | `NativeGatewayMsixInstaller` | authoritative |
 | Trusted Store and existing development Gateway registration identities | `NativeGatewayPackageIdentity` | authoritative |
 | Current-user Gateway package registration, health and package-qualified alias discovery | `NativeGatewayPackageResolver` | authoritative |
-| Missing-package acquisition, one installer handoff and bounded registration wait | `NativeGatewayPackageAcquisition` | authoritative |
+| Missing-package acquisition, one installation attempt and bounded registration verification | `NativeGatewayPackageAcquisition` | authoritative |
 | Shared Windows capability and permission selection, with runtime-specific install review | `CapabilitiesPage` | authoritative |
 | Native profile draft creation and canonical state/config launch paths | `NativeGatewaySetupService` + `NativeGatewayPaths` | authoritative |
 | Native onboarding capability admission and default/remembered gateway choice policy | `NativeGatewaySetupEligibility`, consuming `MxcAvailability` session probe metadata | authoritative |
-| Manually installed native MSIX Gateway process/job lifetime and owned-listener verification | `NativeGatewayRuntime` | authoritative |
+| Installed native MSIX Gateway process/job lifetime and owned-listener verification | `NativeGatewayRuntime` | authoritative |
 | Retained package-launcher identity, live same-user ancestry and lifetime attribution | `WindowsPackagedProcessAncestry`, anchored by `WindowsNativeGatewayProcessHost` | authoritative |
 | Native setup staged-record runtime, reload restoration, config/health gates and publication | `NativeGatewaySetupSession` | authoritative |
 | Hosted Gateway onboarding RPC and provider/auth/model rendering for WSL and native | `WizardPage` | authoritative |
@@ -140,15 +140,17 @@ move package resolution, process inspection or setup finalization back into it.
 
 ### Package installation and discovery
 
-`NativeGatewayMsixInstaller.OpenAsync` asks Windows to open the fixed
-OpenClaw Gateway product page directly in the Microsoft Store app
-(`ms-windows-store://pdp/?ProductId=9NV70LV3D6XC`) with `Launcher.LaunchUriAsync`,
-falling back to the
-[web Store listing](https://apps.microsoft.com/detail/9nv70lv3d6xc?hl=en-US&gl=US)
-when Windows reports that the Store-app URI was not launched. Microsoft Store owns architecture/package selection,
-signature validation, deployment and installation consent. Opening the listing
-does not mean installation succeeded. There is no local source path, environment
-override, direct download, or ARM64-only installer gate.
+`NativeGatewayMsixInstaller.InstallAsync` invokes the signed-in user's App Installer
+alias (`%LOCALAPPDATA%\Microsoft\WindowsApps\winget.exe`) through the existing
+`CommandRunner`, without a shell or elevation. The fixed command is
+`install --id 9NV70LV3D6XC --source msstore --silent --accept-package-agreements --accept-source-agreements --disable-interactivity --no-upgrade`.
+The native review explains that selecting **Set up gateway** authorizes installation
+and accepts the package and Store source agreements. Microsoft Store still owns
+architecture/package selection, signature validation and deployment. There is no
+automatic Store-page fallback: missing WinGet, policy/source failures and nonzero
+exit codes produce explicit retry/repair guidance with sanitized, bounded output.
+Command success is not package readiness. There is no local source path,
+environment override, direct download, certificate-trust change, or ARM64-only gate.
 
 `NativeGatewayPackageResolver.ResolveAsync` subsequently requires exactly one
 matching current-user package registration, verifies package health, and resolves
@@ -175,11 +177,14 @@ remain mandatory before launching. MXC session provisioning is not implemented.
 After native capability/permission review, `NativeGatewaySetupPage` starts
 automatically. It rechecks device support, then calls
 `NativeGatewayPackageAcquisition.EnsureAsync`. Only the typed
-`NativeGatewayPackageNotInstalledException` opens the Store listing, once per attempt.
+`NativeGatewayPackageNotInstalledException` starts WinGet installation, once per attempt.
 Healthy registration skips installation; duplicate registration, unhealthy packages
 and missing aliases fail explicitly instead of triggering reinstall loops.
-The cancellable acquisition deadline is five minutes, with one-second polling.
-Cancelling Companion setup stops waiting, not Windows deployment.
+The cancellable acquisition deadline is five minutes including installation and
+registration verification, with one-second polling after WinGet completes.
+Cancellation reaches `CommandRunner`, which stops its WinGet process tree;
+Windows may still finish an already submitted deployment. No installed package
+is removed, and retry starts by resolving registration again.
 
 The page reuses WSL's `StepRow` presentation for support, package readiness,
 profile preparation and verified runtime startup. Completed rows get checkmarks.

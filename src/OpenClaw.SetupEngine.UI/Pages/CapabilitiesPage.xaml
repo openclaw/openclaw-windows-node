@@ -107,7 +107,7 @@
                                 <StackPanel x:Name="NativeReviewContent" Spacing="12" Visibility="Collapsed">
                                     <TextBlock x:Uid="Onboarding_Native_Review"
                                                TextWrapping="Wrap"
-                                               Text="Companion will check the Gateway package, open its Microsoft Store listing if needed, prepare a dedicated profile, and open Gateway setup. Store installation and provider sign-in stay interactive. This path does not install WSL, Local AI, or Tailscale." />
+                                               Text="By selecting Set up gateway, you authorize WinGet to install the missing Gateway package from Microsoft Store and accept the package and Store source agreements. Companion then verifies the package, prepares a dedicated profile, and opens Gateway setup. Provider sign-in stays interactive. This path does not install WSL, Local AI, or Tailscale." />
                                     <TextBlock x:Uid="Onboarding_Native_FeaturesNote"
                                                TextWrapping="Wrap"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"

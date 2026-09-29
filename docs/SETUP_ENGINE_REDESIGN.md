@@ -113,20 +113,23 @@ authenticated health/config gates, and final registry publication.
 are not duplicated. Native uses the upstream `installDaemon: false` contract.
 `NativeGatewayPackageResolver`
 checks Windows package registration and package-qualified aliases.
-`NativeGatewayMsixInstaller` opens the OpenClaw Gateway product page directly in
-the Microsoft Store app (`ms-windows-store://pdp/?ProductId=9NV70LV3D6XC`) when a
-package is not installed, falling back to the
-[web listing](https://apps.microsoft.com/detail/9nv70lv3d6xc?hl=en-US&gl=US)
-when Windows reports that the Store-app URI was not launched. Microsoft Store owns architecture selection,
-installation consent and deployment; no local MSIX path is required.
+`NativeGatewayMsixInstaller` installs the fixed Store product using the current-user
+App Installer alias and `CommandRunner`:
+`winget install --id 9NV70LV3D6XC --source msstore --silent --accept-package-agreements --accept-source-agreements --disable-interactivity --no-upgrade`.
+Native review explicitly explains installation and agreement acceptance before
+the user selects **Set up gateway**. Microsoft Store owns architecture selection,
+signature validation and deployment; no local MSIX path is required. Missing
+WinGet, Store access failures and nonzero exit codes surface bounded, sanitized
+diagnostics and retry guidance instead of opening a manual Store page.
 `NativeGatewayPackageIdentity` pins the exact Store name/publisher pair and retains
 the original development identity for existing installations. Multiple matching
 registrations fail explicitly for new setup. Existing runtime profiles resolve only
 their saved family, allowing both packages to coexist without an implicit migration.
-`NativeGatewayPackageAcquisition` automatically opens it once only for missing
-registration, then waits up to five minutes for verified package readiness.
-Cancellation stops the wait, not Windows deployment. Repair errors and timeouts
-stay visible, with explicit retry rather than repeated installer launches.
+`NativeGatewayPackageAcquisition` invokes installation once only for missing
+registration. Installation and verified package readiness share a five-minute
+deadline. Cancellation stops the WinGet request, but Windows deployment may
+continue. Repair errors and timeouts stay visible, with explicit retry rather
+than repeated installer launches; retries recheck registration before installing.
 Native setup shares the capability profiles and Windows permissions page with
 WSL but skips WSL/Local AI/Tailscale installation review and probes. The native
 progress page uses shared spinner/checkmark rows and automatically enters the

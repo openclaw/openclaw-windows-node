@@ -7225,8 +7225,9 @@ Choisissez {1} pour quitter cet aperçu sans démarrer la migration et continuer
   <data name="Onboarding_Native_Alternatives.Header" xml:space="preserve"><value>Autres options de Gateway</value></data>
   <data name="Onboarding_Native_UpdateLaunchFailed" xml:space="preserve"><value>Impossible d'ouvrir Windows Update. Ouvrez les paramètres Windows, puis Windows Update.</value></data>
   <data name="Onboarding_Native_Lifecycle.Text" xml:space="preserve"><value>Continuez avec le même assistant Gateway que pour WSL, dans Companion. La configuration et l'état sont vérifiés avant la connexion. Les Gateways WSL existants et votre profil OpenClaw par défaut ne sont pas remplacés.</value></data>
-  <data name="Onboarding_Native_Acquisition.Text" xml:space="preserve"><value>Si le Gateway n'est pas installé, la configuration ouvre sa fiche Microsoft Store. Terminez l'installation depuis cette fiche ; Companion continuera automatiquement après vérification du package.</value></data>
-  <data name="Onboarding_Native_InstallerOpened" xml:space="preserve"><value>Terminez l'installation depuis Microsoft Store. Companion continuera automatiquement lorsque le package sera prêt. Annuler la configuration ici n'annule pas l'installation depuis le Store.</value></data>
+  <data name="Onboarding_Native_Acquisition.Text" xml:space="preserve"><value>Si le Gateway n'est pas installé, la configuration l'installe depuis Microsoft Store avec WinGet, puis vérifie le package avant de continuer automatiquement.</value></data>
+  <data name="Onboarding_Native_InstallingPackage" xml:space="preserve"><value>Installation du Gateway depuis Microsoft Store avec WinGet...</value></data>
+  <data name="Onboarding_Native_VerifyingPackage" xml:space="preserve"><value>WinGet a terminé. Vérification de l'enregistrement du Gateway et de ses alias d'exécution avant de continuer...</value></data>
   <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>Companion préparera votre Gateway et ouvrira automatiquement son assistant de configuration.</value></data>
   <data name="Onboarding_Native_StepSupport" xml:space="preserve"><value>Vérifier la compatibilité de l'appareil</value></data>
   <data name="Onboarding_Native_StepPackage" xml:space="preserve"><value>Installer ou vérifier le package Gateway</value></data>
@@ -7234,7 +7235,7 @@ Choisissez {1} pour quitter cet aperçu sans démarrer la migration et continuer
   <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>Démarrer et vérifier le Gateway</value></data>
   <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>Réessayer la configuration</value></data>
   <data name="Onboarding_Native_Preview" xml:space="preserve"><value>Aperçu uniquement. Aucun package ne sera installé et aucun Gateway ne sera démarré.</value></data>
-  <data name="Onboarding_Native_Review.Text" xml:space="preserve"><value>Companion vérifiera le package Gateway, ouvrira sa fiche Microsoft Store si nécessaire, préparera un profil dédié et ouvrira la configuration du Gateway. L'installation depuis le Store et la connexion au fournisseur restent interactives. Cette méthode n'installe ni WSL, ni l'IA locale, ni Tailscale.</value></data>
+  <data name="Onboarding_Native_Review.Text" xml:space="preserve"><value>En sélectionnant Configurer le Gateway, vous autorisez WinGet à installer le package Gateway manquant depuis Microsoft Store et acceptez les accords du package et de la source Store. Companion vérifie ensuite le package, prépare un profil dédié et ouvre la configuration du Gateway. La connexion au fournisseur reste interactive. Cette méthode n'installe ni WSL, ni l'IA locale, ni Tailscale.</value></data>
   <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>Ces fonctionnalités Windows deviennent utilisables une fois le mode nœud connecté et associé au Gateway. Les autorisations Windows et les approbations de commandes restent applicables.</value></data>
   <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>Gateway natif configuré</value></data>
   <data name="Onboarding_Native_CapabilitySummary" xml:space="preserve"><value>{0}. Vous pouvez modifier ces choix dans les paramètres de Companion.</value></data>
@@ -7246,6 +7247,6 @@ Choisissez {1} pour quitter cet aperçu sans démarrer la migration et continuer
   <data name="Onboarding_Native_Checking" xml:space="preserve"><value>Vérification du package Gateway installé et de ses alias d'exécution...</value></data>
   <data name="Onboarding_Native_Available" xml:space="preserve"><value>Le package Gateway {0} est installé.</value></data>
   <data name="Onboarding_Native_InProgress" xml:space="preserve"><value>Préparation du Gateway natif pour l'assistant partagé. Les questions sur le fournisseur et le modèle s'afficheront ici dans Companion.</value></data>
-  <data name="Onboarding_Native_Cancelled" xml:space="preserve"><value>Configuration annulée. Les paramètres déjà saisis sont conservés dans le profil natif dédié. Aucun package Gateway n'a été supprimé.</value></data>
+  <data name="Onboarding_Native_Cancelled" xml:space="preserve"><value>Configuration annulée. La demande WinGet a été annulée, mais Windows peut encore terminer le déploiement. Les paramètres déjà saisis sont conservés dans le profil natif dédié. Aucun package Gateway n'a été supprimé.</value></data>
   <data name="Onboarding_Native_Configured" xml:space="preserve"><value>Configuration et état authentifié du Gateway vérifiés à {0}. Ouvrez Companion pour démarrer le Gateway et terminer l'association dans les paramètres de connexion. Les fonctionnalités Windows que vous avez sélectionnées ont été enregistrées.</value></data>
 </root>
