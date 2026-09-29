@@ -196,6 +196,69 @@ public class GatewayRestartLifecycleTests
         Assert.Single(commands.Calls, c => c.Command.Contains("gateway restart"));
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task GuardedRetryFailure_RetainsInitialRefusalAndFinalOutcome(bool contention, bool timedOut)
+    {
+        var restarts = 0;
+        var commands = new Commands((command, _) => !command.Contains("gateway restart")
+            ? Ok()
+            : ++restarts == 1
+                ? Refusal(contention)
+                : new CommandResult(-1, "", "retry failed", TimeSpan.FromSeconds(12), timedOut));
+
+        var result = await Runner(Context(commands)).RestoreReloadModeAsync();
+
+        Assert.Equal(timedOut ? StepOutcome.FailedTerminal : StepOutcome.Failed, result.Outcome);
+        Assert.Contains("retry failed", result.Message);
+        Assert.Contains("Initial restart failure:", result.Message);
+        Assert.Contains(contention
+            ? GatewayWizardRestartRecoveryPolicy.RestartIntentCoordinatorContentionError
+            : SetupWizardRunner.RestartServingOwnerDiagnostic, result.Message);
+        Assert.Equal(2, restarts);
+        Assert.DoesNotContain(commands.Calls, c => c.Command.Contains("curl"));
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task FinalOwnershipDeadline_ReportsCompletedCliAndReachability(bool retry, bool honorCancellation)
+    {
+        var clock = new Clock();
+        var restarts = 0;
+        var commands = new Commands((command, _) => command.Contains("gateway restart") &&
+            ++restarts == 1 && retry ? Refusal() : Ok());
+        var ctx = Context(commands);
+        var inspections = 0;
+        ctx.EndpointProvenanceProbe = async (_, ct) =>
+        {
+            if (retry && ++inspections == 1)
+                return Owned(ctx);
+            var pending = honorCancellation ? Task.Delay(Timeout.InfiniteTimeSpan, ct) : Task.CompletedTask;
+            clock.Advance(571);
+            await pending;
+            return Owned(ctx);
+        };
+
+        var result = await Runner(ctx, clock).RestoreReloadModeAsync();
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Contains("final ownership verification", result.Message);
+        Assert.Contains("CLI restart and HTTP reachability completed", result.Message);
+        Assert.Contains("final ownership verification stage exceeded the deadline", result.Message);
+        Assert.Contains("no automatic retry", result.Message);
+        Assert.DoesNotContain("Gateway state is unknown", result.Message);
+        if (retry)
+            Assert.Contains(SetupWizardRunner.RestartServingOwnerDiagnostic, result.Message);
+        Assert.Equal(retry ? 2 : 1, restarts);
+        Assert.Single(commands.Calls, c => c.Command.Contains("curl"));
+    }
+
     [Fact]
     public async Task FinalOwnershipFailure_RemainsEligibleForRestartDiagnostics()
     {
@@ -243,6 +306,8 @@ public class GatewayRestartLifecycleTests
 
         Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
         Assert.Contains("guarded retry ownership verification", result.Message);
+        Assert.Contains("Gateway state is unknown", result.Message);
+        Assert.DoesNotContain("CLI restart and HTTP reachability completed", result.Message);
         Assert.Single(commands.Calls, c => c.Command.Contains("gateway restart"));
     }
 

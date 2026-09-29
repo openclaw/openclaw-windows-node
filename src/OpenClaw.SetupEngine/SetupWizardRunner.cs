@@ -651,6 +651,7 @@ public sealed class SetupWizardRunner
         var startedAt = _timeProvider.GetTimestamp();
         using var deadline = new CancellationTokenSource(budget, _timeProvider);
         var phase = "CLI restart / HTTP reachability";
+        var restartAndReachabilityCompleted = false;
         StepResult? previousFailure = null;
         TimeSpan RemainingCommandTimeout()
         {
@@ -713,10 +714,12 @@ public sealed class SetupWizardRunner
             {
                 return restartResult with
                 {
-                    Message = $"Gateway restart after wizard failed: {restartResult.Message}",
+                    Message = $"Gateway restart after wizard failed: {restartResult.Message}" +
+                        (previousFailure is null ? "" : $" Initial restart failure: {previousFailure.Message}"),
                 };
             }
 
+            restartAndReachabilityCompleted = true;
             phase = "final ownership verification";
             _ = RemainingCommandTimeout();
             var ownershipResult = await VerifyExpectedManagedGatewayAsync(
@@ -734,10 +737,13 @@ public sealed class SetupWizardRunner
         catch (Exception ex) when (ex is TimeoutException ||
             ex is OperationCanceledException && deadline.IsCancellationRequested)
         {
+            var completionDetail = restartAndReachabilityCompleted
+                ? "CLI restart and HTTP reachability completed, but the final ownership verification stage exceeded the deadline"
+                : "Gateway state is unknown";
             return StepResult.Terminal(
                 $"Gateway restart after wizard failed: lifecycle deadline exhausted during {phase} " +
                 $"(elapsed={_timeProvider.GetElapsedTime(startedAt).TotalSeconds:F1}s, limit={budget.TotalSeconds:F1}s). " +
-                $"Gateway state is unknown; no automatic retry. {previousFailure?.Message}", ex);
+                $"{completionDetail}; no automatic retry. {previousFailure?.Message}", ex);
         }
     }
 

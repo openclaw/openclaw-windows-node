@@ -61,6 +61,13 @@ before truncation to 2,048 characters. A provenance refusal during recovery
 also retains the original restart failure. Output truncated before a refusal
 marker fails closed rather than broadening recovery.
 
+If the guarded retry fails, its outcome and diagnostics retain the initial
+restart refusal as context. If the deadline expires during final ownership
+verification, diagnostics distinguish completed CLI restart and HTTP
+reachability from the final ownership stage exceeding its deadline, even if
+the ownership probe returned success before the final deadline check.
+The result remains terminal and does not authorize another restart.
+
 HTTP 200/401/403 still means only endpoint reachability. Neither this HTTP
 probe nor listener provenance establishes an authenticated ready Gateway.
 Authentication and pairing retain their existing owners and gates.
