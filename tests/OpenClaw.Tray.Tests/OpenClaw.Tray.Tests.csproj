@@ -115,6 +115,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ConfigEditorModel.cs" Link="Services\ConfigEditorModel.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\JsonDiffFormatter.cs" Link="Services\JsonDiffFormatter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AppState.cs" Link="Services\AppState.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AgentCreationService.cs" Link="Services\AgentCreationService.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\Logger.cs" Link="Services\Logger.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DiagnosticsJsonlService.cs" Link="Services\DiagnosticsJsonlService.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DiagnosticsExportSanitizer.cs" Link="Services\DiagnosticsExportSanitizer.cs" />

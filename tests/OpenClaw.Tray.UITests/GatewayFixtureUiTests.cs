@@ -25,6 +25,39 @@ public sealed class GatewayFixtureUiTests(ITestOutputHelper output)
 {
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
+    public async Task NewAgentUsesGatewayCreationAndRefreshesWithoutReplacingConversation()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            await SelectSessionAsync(run, GatewayScenario.LongSessionTitle, GatewayScenario.LongSessionKey);
+            var commands = await run.InvokeAsync("app.search", new { query = "Connection" });
+            Assert.Contains("Connection", commands.GetRawText(), StringComparison.OrdinalIgnoreCase);
+            var draft = "Keep this draft while creating an agent";
+            ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).SetValue(draft);
+            var selector = FindById(run, "WorkspaceAssistantSelector")!;
+            ((ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceNewAgent") is not null, "new agent action");
+            Invoke(FindById(run, "WorkspaceNewAgent")!);
+            await WaitUiAsync(run, () => FindById(run, "AgentCreationName") is not null, "native creation dialog");
+            ((ValuePattern)FindById(run, "AgentCreationName")!.GetCurrentPattern(ValuePattern.Pattern)).SetValue("Fixture Created");
+            ((ValuePattern)FindById(run, "AgentCreationWorkspace")!.GetCurrentPattern(ValuePattern.Pattern)).SetValue("/fixture/new-agent");
+            await WaitUiAsync(run, () => FindButton(run, "Create agent")?.Current.IsEnabled == true, "enabled create action");
+            Invoke(FindButton(run, "Create agent")!);
+            await WaitUiAsync(run, () => FindById(run, "AgentCreationDialog") is null, "confirmed creation");
+            Assert.Single(run.Gateway.Requests, request => request.Method == "agents.create" && request.Outcome == "ok");
+            Assert.DoesNotContain(run.Gateway.Requests, request => request.Method == "sessions.create");
+            Assert.Equal(draft, ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+            Assert.True(SessionSelected(run, GatewayScenario.LongSessionTitle));
+            ((ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceAgent:fixture-created") is not null, "server-returned agent");
+            Assert.Equal("Fixture Created, fixture-created", FindById(run, "WorkspaceAgent:fixture-created")!.Current.Name);
+            ((ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Collapse();
+        }, allowAgentCreation: true);
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
     public async Task SidebarSwitchesRealHistoriesAndShowsMessage240AtBothWidths()
     {
         await WithAppAsync(async run =>
@@ -239,12 +272,12 @@ public sealed class GatewayFixtureUiTests(ITestOutputHelper output)
         });
     }
 
-    private async Task WithAppAsync(Func<GatewayFixtureRun, Task> test)
+    private async Task WithAppAsync(Func<GatewayFixtureRun, Task> test, bool allowAgentCreation = false)
     {
         var appPath = Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_APP")
             ?? throw new InvalidOperationException("Set OPENCLAW_GATEWAY_FIXTURE_APP to the freshly built app. No installed-app fallback is allowed.");
         await using var run = await GatewayFixtureRun.StartAsync(appPath,
-            Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS"));
+            Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS"), allowAgentCreation: allowAgentCreation);
         output.WriteLine($"Fixture run {run.Profile.RunId}, PID {run.AppProcessId}, artifacts: {run.ArtifactsDirectory}");
         try
         {

@@ -38,6 +38,14 @@ The one write-shaped exception is `exec.approval.resolve`: the fixture validates
 the fixture-owned approval ID and decision, records only that safe correlation,
 and returns a synthetic acknowledgement without executing a command.
 
+The native agent-creation UI test explicitly opts into a separate `agent-creation`
+scenario. Only that scenario grants administrator scope and accepts one
+`agents.create` request into an in-memory catalog. It validates name/workspace
+fields, returns a server-assigned ID, and exposes it through subsequent
+`agents.list` responses. It creates no files or real agents; other mutations
+remain rejected. The test verifies the refreshed selector while retaining the
+existing session and unsent draft. Normal interactive browse runs remain read-only.
+
 The host is `tests\OpenClaw.GatewayFixtureHost`, a plain .NET console app, not a
 test container. The request-driven server and scenario live in
 `tests\OpenClaw.TestSupport\Gateway`. Repeated reads and different request

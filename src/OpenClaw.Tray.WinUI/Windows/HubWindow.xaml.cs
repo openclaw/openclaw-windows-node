@@ -1067,28 +1067,7 @@ public sealed partial class HubWindow : WindowEx
 
     internal ImmutableArray<HubCommand> BuildCommandList()
     {
-        var settings = CurrentApp.Settings;
-        var toggles = settings is null
-            ? null
-            : new HubCommandToggleState(
-                settings.EnableNodeMode,
-                settings.NodeCameraEnabled,
-                settings.NodeCanvasEnabled,
-                settings.NodeScreenEnabled,
-                settings.NodeBrowserProxyEnabled);
-        var sessions = AppModel?.Sessions?.Select(session => session.Key).ToImmutableArray()
-            ?? ImmutableArray<string>.Empty;
-        var resources = HubPageRegistry.CommandResourceKeys.ToImmutableDictionary(
-            key => key,
-            LocalizationHelper.GetString,
-            StringComparer.Ordinal);
-
-        return HubPageRegistry.BuildCommands(new HubCommandContext(
-            _currentAgentId,
-            DiagnosticsGate.IsVisible,
-            toggles,
-            sessions,
-            resources));
+        return HubCommandCatalog.Build(AppModel, CurrentApp.Settings, _currentAgentId);
     }
 
     private void ToggleCommandPalettePermission(HubSettingToggle toggle)

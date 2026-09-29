@@ -39,16 +39,32 @@ public sealed class WorkspaceWindowProofTests
         Assert.Equal("Configured assistant, main", FindPopup(root, "WorkspaceAgent:main")!.Current.Name);
         Assert.Equal("Research assistant, research", FindPopup(root, "WorkspaceAgent:research")!.Current.Name);
         Assert.Equal("No configured icon, fallback", FindPopup(root, "WorkspaceAgent:fallback")!.Current.Name);
-        Assert.NotNull(FindPopup(root, "WorkspaceNewConversation"));
+        Assert.NotNull(FindPopup(root, "WorkspaceNewAgent"));
         await Task.Delay(500);
         Assert.Equal(selectorBounds, selector.Current.BoundingRectangle);
         Assert.Equal(homeBounds, Find(root, "WorkspaceNavHome").Current.BoundingRectangle);
+        AssertIconCenter(FindPopup(root, "WorkspaceAgent:main")!.Current.BoundingRectangle, center,
+            color => color.R < 20 && color.G is > 110 and < 145 && color.B is > 110 and < 145);
         CaptureFlyout(root, theme, "agent-identities");
         ((ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Collapse();
         await WaitUntilAsync(() => IsVisible(root, "ChatComposerInput"));
         Assert.Equal(selectorBounds, selector.Current.BoundingRectangle);
         Assert.Equal(homeBounds, Find(root, "WorkspaceNavHome").Current.BoundingRectangle);
         Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+        ((ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
+        await WaitUntilAsync(() => FindPopup(root, "WorkspaceNewAgent") is not null);
+        ((SelectionItemPattern)FindPopup(root, "WorkspaceNewAgent")!.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
+        await WaitUntilAsync(() => FindPopup(root, "AgentCreationDialog") is not null);
+        var creation = FindPopup(root, "AgentCreationDialog")!;
+        Assert.NotNull(creation.FindFirst(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.AutomationIdProperty, "AgentCreationName")));
+        Assert.Contains("operator.admin", string.Join(" ", creation.FindAll(TreeScope.Descendants,
+            Condition.TrueCondition).Cast<AutomationElement>().Select(item => item.Current.Name)));
+        CaptureFlyout(root, theme, "new-agent");
+        System.Windows.Forms.SendKeys.SendWait("{ESC}");
+        await WaitUntilAsync(() => FindPopup(root, "AgentCreationDialog") is null);
+        Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+        Assert.Contains(selection.Current.GetSelection(), item => item.Current.Name == "Configured assistant, main");
         ((WindowPattern)root.GetCurrentPattern(WindowPattern.Pattern)).SetWindowVisualState(WindowVisualState.Normal);
         foreach (var width in new[] { 1000, 1350 })
         {
@@ -412,11 +428,11 @@ public sealed class WorkspaceWindowProofTests
             .GetCurrentPattern(ExpandCollapsePattern.Pattern);
         dropdown.Expand();
         await WaitUntilAsync(() => ProcessWindows(pid).Cast<AutomationElement>().Any(window => window.FindFirst(TreeScope.Descendants,
-            new PropertyCondition(AutomationElement.AutomationIdProperty, "WorkspaceNewConversation")) is not null));
-        var newConversation = ProcessWindows(pid).Cast<AutomationElement>().Select(window => window.FindFirst(TreeScope.Descendants,
-            new PropertyCondition(AutomationElement.AutomationIdProperty, "WorkspaceNewConversation"))).First(item => item is not null)!;
-        Assert.Equal("New conversation", newConversation.Current.Name);
-        Assert.False(newConversation.Current.IsEnabled);
+            new PropertyCondition(AutomationElement.AutomationIdProperty, "WorkspaceNewAgent")) is not null));
+        var newAgent = ProcessWindows(pid).Cast<AutomationElement>().Select(window => window.FindFirst(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.AutomationIdProperty, "WorkspaceNewAgent"))).First(item => item is not null)!;
+        Assert.Equal("New agent", newAgent.Current.Name);
+        Assert.True(newAgent.Current.IsEnabled);
         dropdown.Collapse();
         Capture(app, theme, "workspace");
 

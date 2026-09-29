@@ -527,6 +527,7 @@ public sealed partial class CronPage : Page
             RestoreFormFromInline();
             JobFormPanel.Visibility = Visibility.Collapsed;
             _editingJobId = null;
+            JobCompletedInfoBar.Title = string.Empty;
             JobCompletedInfoBar.Message = LocalizationHelper.GetString("WorkspaceShell_AutomationSubmitted");
             JobCompletedInfoBar.Severity = InfoBarSeverity.Informational;
             JobCompletedInfoBar.IsOpen = true;

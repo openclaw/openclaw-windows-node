@@ -255,13 +255,15 @@ public sealed class WorkspaceNavigationTests
         Assert.Contains(sessions.Descendants(), element => element.Name.LocalName == "Setter"
             && (string?)element.Attribute("Target") == "HeaderContent.Visibility"
             && (string?)element.Attribute("Value") == "Collapsed");
-        var newConversation = assistant.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "NewConversationOption");
-        Assert.Equal("ComboBoxItem", newConversation.Name.LocalName);
+        var newAgent = assistant.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "NewAgentOption");
+        Assert.Equal("ComboBoxItem", newAgent.Name.LocalName);
         Assert.DoesNotContain(document.Descendants(), element => (string?)element.Attribute(x + "Name") == "NewConversationButton");
         var code = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
-        Assert.Contains("AssistantSelector.Items.Add(NewConversationOption)", code);
+        Assert.Contains("AssistantSelector.Items.Add(NewAgentOption)", code);
         Assert.Contains("RestoreAssistantSelection();", code);
-        Assert.Contains("ReferenceEquals(AssistantSelector.SelectedItem, NewConversationOption)", code);
+        Assert.Contains("ReferenceEquals(AssistantSelector.SelectedItem, NewAgentOption)", code);
+        Assert.Contains("AsyncEventHandlerGuard.Run(NewAgentAsync", code);
+        Assert.Contains("new AgentCreationDialog", code);
         foreach (var name in new[] { "NewSessionButton", "BackButton", "ForwardButton" })
         {
             var button = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == name);

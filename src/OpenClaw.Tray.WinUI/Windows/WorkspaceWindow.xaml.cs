@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
 using OpenClawTray.Controls;
+using OpenClawTray.Dialogs;
 using OpenClawTray.Helpers;
 using OpenClawTray.Pages;
 using OpenClawTray.Presentation;
@@ -28,11 +29,13 @@ public sealed partial class WorkspaceWindow : WindowEx
     private readonly FontIcon _connectionStatusIcon = new();
     private bool _updating;
     private bool _creatingSession;
+    private bool _showingAgentCreation;
     private IOperatorGatewayClient? _refreshingClient;
     private string? _agentId;
     private string? _selectedSessionKey;
 
     public bool IsClosed { get; private set; }
+    internal string? SelectedAgentId => _agentId;
     internal WorkspaceDestination Destination => _navigation.Current;
     internal ChatPage ChatPage => _chat;
     internal bool CanGoBack => _navigation.CanGoBack;
@@ -61,7 +64,8 @@ public sealed partial class WorkspaceWindow : WindowEx
         };
         this.SetIcon("Assets\\openclaw.ico");
         SetTitleBar(WorkspaceTitleBar);
-        NewConversationLabel.Text = AutomationProperties.GetName(NewConversationOption);
+        NewAgentLabel.Text = LocalizationHelper.GetString("AgentCreation_Title");
+        AutomationProperties.SetName(NewAgentOption, NewAgentLabel.Text);
         // ComboBox temporarily removes its selected presentation while the popup is open.
         AssistantSelector.DropDownOpened += (_, _) => AssistantSelector.MinHeight = AssistantSelector.ActualHeight;
         AssistantSelector.DropDownClosed += (_, _) => AssistantSelector.ClearValue(FrameworkElement.MinHeightProperty);
@@ -209,7 +213,8 @@ public sealed partial class WorkspaceWindow : WindowEx
         {
             var item = previousItems.GetValueOrDefault(agent.Id) ?? new ComboBoxItem
             {
-                ContentTemplate = (DataTemplate)Root.Resources["AgentIdentityTemplate"]
+                ContentTemplate = (DataTemplate)Root.Resources["AgentIdentityTemplate"],
+                Padding = new Thickness(2, 8, 12, 8)
             };
             item.Content = agent;
             item.Tag = agent;
@@ -217,7 +222,7 @@ public sealed partial class WorkspaceWindow : WindowEx
             AutomationProperties.SetAutomationId(item, $"WorkspaceAgent:{agent.Id}");
             AssistantSelector.Items.Add(item);
         }
-        AssistantSelector.Items.Add(NewConversationOption);
+        AssistantSelector.Items.Add(NewAgentOption);
         _agentId = WorkspaceProjection.SelectedAgentId(_state.AgentsList, agents, _agentId);
         RestoreAssistantSelection();
         AssistantSelector.PlaceholderText = Text(agents.Count == 0 ? "NoAgents" : "SelectAssistant");
@@ -239,7 +244,8 @@ public sealed partial class WorkspaceWindow : WindowEx
         }
         SessionsEmpty.Content = Text("NoSessions");
         SessionsEmpty.Visibility = sessions.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        NewConversationOption.IsEnabled = NewSessionButton.IsEnabled =
+        NewAgentOption.IsEnabled = !_showingAgentCreation;
+        NewSessionButton.IsEnabled =
             !_creatingSession && _state.Status == ConnectionStatus.Connected;
         _updating = false;
         // Before layout, NavigationView is still minimal and selecting an item closes its pane.
@@ -346,13 +352,13 @@ public sealed partial class WorkspaceWindow : WindowEx
     private void OnAssistantChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_updating) return;
-        if (ReferenceEquals(AssistantSelector.SelectedItem, NewConversationOption))
+        if (ReferenceEquals(AssistantSelector.SelectedItem, NewAgentOption))
         {
             _updating = true;
             RestoreAssistantSelection();
             _updating = false;
             AssistantSelector.IsDropDownOpen = false;
-            AsyncEventHandlerGuard.Run(NewSessionAsync, new AppLogger(), nameof(OnAssistantChanged));
+            AsyncEventHandlerGuard.Run(NewAgentAsync, new AppLogger(), nameof(OnAssistantChanged));
             return;
         }
         if (AssistantSelector.SelectedItem is not ComboBoxItem { Tag: WorkspaceAgent agent }) return;
@@ -362,6 +368,24 @@ public sealed partial class WorkspaceWindow : WindowEx
     private void RestoreAssistantSelection() =>
         AssistantSelector.SelectedItem = AssistantSelector.Items.OfType<ComboBoxItem>()
             .FirstOrDefault(item => item.Tag is WorkspaceAgent agent && agent.Id == _agentId);
+
+    private async Task NewAgentAsync()
+    {
+        if (_showingAgentCreation || Root.XamlRoot is null) return;
+        _showingAgentCreation = true;
+        NewAgentOption.IsEnabled = false;
+        try
+        {
+            await new AgentCreationDialog(Root.XamlRoot,
+                new AgentCreationService(() => IsClosed ? null : CurrentApp.GatewayClient)).ShowAsync();
+            await RefreshAsync();
+        }
+        finally
+        {
+            _showingAgentCreation = false;
+            if (!IsClosed) NewAgentOption.IsEnabled = true;
+        }
+    }
 
     private void OnNavigationChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs e)
     {

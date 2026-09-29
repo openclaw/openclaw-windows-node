@@ -83,11 +83,11 @@
                             <StaticResource x:Key="ComboBoxBackgroundPointerOver" ResourceKey="SubtleFillColorSecondaryBrush"/>
                             <StaticResource x:Key="ComboBoxBackgroundPressed" ResourceKey="SubtleFillColorTertiaryBrush"/>
                         </ComboBox.Resources>
-                        <ComboBoxItem x:Name="NewConversationOption" x:Uid="WorkspaceShell_NewConversation"
-                                      AutomationProperties.AutomationId="WorkspaceNewConversation">
+                        <ComboBoxItem x:Name="NewAgentOption" Padding="2,8,12,8"
+                                      AutomationProperties.AutomationId="WorkspaceNewAgent">
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <FontIcon Glyph="&#xE710;" FontSize="16"/>
-                                <TextBlock x:Name="NewConversationLabel"/>
+                                <TextBlock x:Name="NewAgentLabel"/>
                             </StackPanel>
                         </ComboBoxItem>
                     </ComboBox>

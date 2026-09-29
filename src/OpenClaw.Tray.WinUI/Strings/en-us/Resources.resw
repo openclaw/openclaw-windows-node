@@ -7930,4 +7930,12 @@ Your settings, gateway, files, and models stay where they are.</value>
   <data name="WorkspaceShell_AutomationSubmitted" xml:space="preserve">
     <value>Changes sent. The list will update when the gateway confirms them.</value>
   </data>
+  <data name="AgentCreation_Title" xml:space="preserve"><value>New agent</value></data>
+  <data name="AgentCreation_Creating" xml:space="preserve"><value>Creating agent on the gateway. Please wait for confirmation.</value></data>
+  <data name="AgentCreation_Create" xml:space="preserve"><value>Create agent</value></data>
+  <data name="AgentCreation_Name" xml:space="preserve"><value>Name</value></data>
+  <data name="AgentCreation_Workspace" xml:space="preserve"><value>Workspace path on the gateway</value></data>
+  <data name="AgentCreation_Description" xml:space="preserve"><value>Create an agent and its workspace on the connected gateway. This does not create a conversation or change your current chat.</value></data>
+  <data name="AgentCreation_PermissionRequired" xml:space="preserve"><value>Connect to a gateway with operator.admin permission to create an agent.</value></data>
+  <data name="AgentCreation_Failed" xml:space="preserve"><value>Agent creation could not be confirmed. Close this dialog and refresh agents before trying again.</value></data>
 </root>

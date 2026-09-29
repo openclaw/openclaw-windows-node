@@ -35,8 +35,7 @@ internal sealed record WindowManagerCallbacks(
     Action<Window?> ApplyTheme,
     Func<SetupNativeCompletion, CancellationToken, Task>? PublishNativeCompletion = null,
     Func<bool, CancellationToken, Task>? ApplyNativeStartup = null,
-    Func<ISettingsStore?>? GetSettingsStore = null,
-    Action? ShowTrayMenu = null);
+    Func<ISettingsStore?>? GetSettingsStore = null);
 
 internal sealed class WindowManager : IWindowManager
 {

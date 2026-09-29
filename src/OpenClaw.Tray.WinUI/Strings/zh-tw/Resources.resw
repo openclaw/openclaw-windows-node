@@ -7867,4 +7867,12 @@
   <data name="WorkspaceShell_AutomationSubmitted" xml:space="preserve">
     <value>Changes sent. The list will update when the gateway confirms them.</value>
   </data>
+  <data name="AgentCreation_Title" xml:space="preserve"><value>新增代理程式</value></data>
+  <data name="AgentCreation_Creating" xml:space="preserve"><value>正在閘道上建立代理程式。請等待確認。</value></data>
+  <data name="AgentCreation_Create" xml:space="preserve"><value>建立代理程式</value></data>
+  <data name="AgentCreation_Name" xml:space="preserve"><value>名稱</value></data>
+  <data name="AgentCreation_Workspace" xml:space="preserve"><value>閘道上的工作區路徑</value></data>
+  <data name="AgentCreation_Description" xml:space="preserve"><value>在已連線的閘道上建立代理程式及其工作區。此操作不會建立對話或變更目前的聊天。</value></data>
+  <data name="AgentCreation_PermissionRequired" xml:space="preserve"><value>請連線至具有 operator.admin 權限的閘道以建立代理程式。</value></data>
+  <data name="AgentCreation_Failed" xml:space="preserve"><value>無法確認代理程式是否已建立。請關閉此對話方塊並重新整理代理程式清單，然後再試。</value></data>
 </root>
