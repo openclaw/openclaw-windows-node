@@ -368,6 +368,9 @@ The pane toolbar and the hidden-pane content row reserve space for that target,
 so the overlay never covers another control.
 Selecting a conversation highlights its native navigation row by session key,
 including after sidebar refresh or companion-window refocus.
+Keep conversations visible after their latest run completes so users can return
+for another turn. Workspace does not inherit the companion Sessions page's
+completed-run filter; background work and other agents remain excluded.
 Keep the assistant selector in `PaneHeader`, Home followed immediately by
 Sessions and the real conversation list in `MenuItems`, and Owner plus the
 independent Notifications action in `PaneFooter`. Sessions uses native

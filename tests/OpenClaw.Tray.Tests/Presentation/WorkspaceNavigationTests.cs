@@ -478,6 +478,36 @@ public sealed class WorkspaceNavigationTests
         Assert.Empty(WorkspaceProjection.Sessions(sessions, "research"));
     }
 
+    [Theory]
+    [InlineData("done")]
+    [InlineData("completed")]
+    public void Sidebar_RetainsConversationAfterRunCompletes_AndOnNextTurn(string completedStatus)
+    {
+        using var agents = JsonDocument.Parse("""{"agents":[{"id":"main"}]}""");
+        foreach (var (status, working) in new[] { ("running", true), (completedStatus, false), ("running", true) })
+        {
+            var conversation = new SessionInfo
+            {
+                Key = "agent:main:new-conversation",
+                DisplayName = "My conversation",
+                Status = status,
+                HasActiveRun = working,
+                UpdatedAt = DateTime.UtcNow
+            };
+            var sessions = new[]
+            {
+                conversation,
+                new SessionInfo { Key = "agent:main:cron:job", IsBackground = true, Status = completedStatus },
+                new SessionInfo { Key = "agent:other:conversation", Status = completedStatus }
+            };
+            var visible = Assert.Single(WorkspaceProjection.Sessions(sessions, "main"));
+            Assert.Equal(conversation.Key, visible.Key);
+            Assert.Equal("My conversation", visible.Title);
+            Assert.Equal(conversation.Key, Assert.Single(WorkspaceProjection.Agents(agents.RootElement, sessions)).LatestSessionKey);
+            Assert.Equal(status, conversation.Status);
+        }
+    }
+
     [Fact]
     public void Workspace_UsesSeparateAgentTemplatesAndSidebarSessionNavigation()
     {

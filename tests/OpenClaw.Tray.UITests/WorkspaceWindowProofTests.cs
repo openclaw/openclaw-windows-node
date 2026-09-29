@@ -263,6 +263,30 @@ public sealed class WorkspaceWindowProofTests
     [Theory]
     [InlineData("Light")]
     [InlineData("Dark")]
+    public async Task CompletedConversation_RemainsVisibleAfterSidebarRefresh(string theme)
+    {
+        using var app = new AccessibilityAppFixture(initializeAxe: false, theme: theme,
+            syntheticData: true, initialRoute: "sessions");
+        await app.NavigateAsync("chat", "ChatPage", "ChatComposerInput");
+        var root = AutomationElement.FromHandle(app.HubWindowHandle);
+        const string completedId = "WorkspaceSession:agent:main:completed-cleanup";
+        Assert.True(IsVisible(root, completedId));
+        Assert.Equal("Completed cleanup", Find(root, completedId).Current.Name);
+        Assert.False(IsVisible(root, "WorkspaceSession:agent:main:cron:nightly-cleanup"));
+        var input = Find(root, "ChatComposerInput");
+        const string draft = "Continue a conversation after its last run finishes";
+        ((ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern)).SetValue(draft);
+        await app.NavigateAsync("sessions", "SessionsPage", "SessionsPageMarker");
+        await app.RefocusWorkspaceAsync();
+        await WaitUntilAsync(() => IsVisible(root, completedId));
+        Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput")
+            .GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+        Capture(app, theme, "completed-conversations");
+    }
+
+    [Theory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
     public async Task SidebarSessions_SelectOriginalKeys_AndKeepCompanionDraft(string theme)
     {
         using var app = new AccessibilityAppFixture(initializeAxe: false, theme: theme, syntheticData: true, initialRoute: "sessions");

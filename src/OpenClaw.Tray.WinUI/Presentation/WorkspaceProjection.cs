@@ -54,7 +54,8 @@ internal static class WorkspaceProjection
 
     public static IReadOnlyList<WorkspaceSession> Sessions(IEnumerable<SessionInfo> source, string? agentId)
     {
-        var sessions = SessionVisibilityFilter.VisibleSessions(source, showCompleted: false)
+        // A completed run leaves a reusable conversation, not a finished sidebar item.
+        var sessions = source
             .Where(session => session.IsBackground != true &&
                 (agentId is null || string.Equals(SessionDisplayResolver.Resolve(session).AgentId, agentId, StringComparison.Ordinal)))
             .OrderByDescending(session => session.UpdatedAt)
