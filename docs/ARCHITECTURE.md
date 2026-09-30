@@ -105,6 +105,7 @@ These are the canonical homes. Do not reintroduce private copies elsewhere.
 | Native setup editor mounting and committed-result routing | `SetupWindow` through `ISetupNativeConnectionHost` + `SetupNativeConnectionPage` | authoritative |
 | Setup-only Windows privacy preview and probing | Retired; current Permissions settings and runtime consent retain their existing owners | closed |
 | Setup Local AI and Tailscale control lifetimes | `LocalAiSetupControl` in `GatewaySetupDetailPage`; `TailscaleSetupControl` inline in `GatewaySetupPage` with a compatibility detail route | authoritative |
+| Per-setup-window CUDA probe reuse and incomplete/faulted-result refresh | `LocalAiHardwareProbeCache`; `SetupWindow` composes it for Welcome and `LocalAiSetupControl` | authoritative |
 | Temporary setup operator connection, captured identity and endpoint provenance | `SetupGatewaySession` + `SetupGatewaySessionBinding` | authoritative |
 | Expected AI restart admission during missing live handshake | `GatewayAiSetupController` bounds the wait; transports use the existing binding owner to validate persisted authority, then the client requires a fresh exact authenticated route | authoritative |
 | Native setup verify-only connection and isolated validation identity/tunnel | `GatewayConnectionValidator` + `GatewayValidationIdentity` | authoritative |
