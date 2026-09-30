@@ -80,6 +80,8 @@ public sealed class NativeGatewaySetupConnectionTests
                     Assert.False(File.Exists(fixture.ConfigPath));
                     Assert.Equal(NativeGatewayPackageClient.IsolatedContract, owner.Record.NativeRuntimeContract);
                     Assert.Contains("restart", fixture.Events);
+                    Assert.True(fixture.Events.IndexOf("restart") < fixture.Events.IndexOf("stop"),
+                        "An isolated verified restart must retain its original detach/stop ownership.");
                     Assert.Equal(new CapabilitiesConfig { Camera = false }.GetEnabledCommandIds(), fixture.Host.AppliedCommands);
                 }
                 else

@@ -267,7 +267,9 @@ verification. The isolated path applies this inside the agent account, not
 under Companion's Windows profile; legacy profiles retain the local writer.
 Focused completion explicitly restarts through the selected runtime owner and
 reverifies the exact model before publication. The isolated runtime preserves
-whether a pre-existing service should be left running on detach.
+whether a pre-existing service should be left running on detach. Focused setup
+drains its operator before finalization and does not call isolated Stop before
+Restart, which would otherwise discard stop ownership for a setup-started service.
 The shared setup settings owner then saves the reviewed capability, transport
 and startup choices without overwriting unrelated settings. Settings write
 failure stays retryable before releasing the session. Completion shows the

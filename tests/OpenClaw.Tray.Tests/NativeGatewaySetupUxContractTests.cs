@@ -284,7 +284,7 @@ public sealed class NativeGatewaySetupUxContractTests
             (string?)element.Attribute(names + "Uid") == "Onboarding_Native_Recommended");
         var description = heading.ElementsAfterSelf().First();
         Assert.Equal("Onboarding_Native_Description", (string?)description.Attribute(names + "Uid"));
-        Assert.Equal("Install a local, MXC contained OpenClaw gateway", (string?)description.Attribute("Text"));
+        Assert.Equal("Install and set up an OpenClaw gateway on this device", (string?)description.Attribute("Text"));
         var success = description.ElementsAfterSelf().First();
         Assert.Equal("NativeSupportAvailablePanel", (string?)success.Attribute(names + "Name"));
         Assert.Equal("Collapsed", (string?)success.Attribute("Visibility"));

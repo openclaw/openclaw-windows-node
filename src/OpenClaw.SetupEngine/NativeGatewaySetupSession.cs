@@ -290,8 +290,10 @@ public sealed class NativeGatewaySetupSession(
             if (_published)
                 return Record;
 
-            // Stop before touching configuration: the hosted wizard must no longer be writing.
-            await runtime.StopAsync(linked.Token);
+            // Focused setup has drained its operator. Keep isolated stop ownership
+            // through RestartAsync; StopAsync would discard that lifecycle attribution.
+            if (!IsIsolated || proof is null)
+                await runtime.StopAsync(linked.Token);
             linked.Token.ThrowIfCancellationRequested();
             if (IsIsolated)
             {

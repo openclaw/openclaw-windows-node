@@ -197,8 +197,9 @@ The native path:
 4. The verified chooser offers **Talk to my agent**, **Connect channels**, and
    **Explore skills**. Choosing a destination rechecks the same Gateway, package
    family and runtime contract, signing identity, agent, session and primary model.
-   Setup stops a Gateway it started, restores only the legacy reload
-   setting, checks the selected
+   After draining the operator, setup retains isolated stop ownership through
+   the explicit package restart. The legacy path first stops its own runtime
+   and restores its reload setting. Both check the selected
    local/loopback/token configuration, runs `config validate --json`, restarts
    with owned-listener proof and runs authenticated `gateway health --json`.
    It also verifies the exact primary model on the restarted runtime. A failed
