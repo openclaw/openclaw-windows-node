@@ -23,6 +23,9 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetWindowRect(IntPtr hwnd, out NativeRect rect);
 
+    [DllImport("user32.dll")]
+    private static extern int GetSystemMetricsForDpi(int index, uint dpi);
+
     [StructLayout(LayoutKind.Sequential)]
     private struct NativeRect { public int Left, Top, Right, Bottom; }
 
@@ -46,9 +49,15 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
                     dataDir: temp.Combine("data"), localDataDir: temp.Combine("local"), commandLineArgs: [],
                     startupRegistrationAllowed: false));
                 var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
-                var initial = SetupWindowSizing.InitialPixels(GetDpiForWindow(hwnd));
-                Assert.Equal(initial.Width, window.AppWindow.Size.Width);
-                Assert.Equal(initial.Height, window.AppWindow.Size.Height);
+                var dpi = GetDpiForWindow(hwnd);
+                var initial = SetupWindowSizing.InitialPixels(dpi);
+                const int smCxMaxTrack = 59, smCyMaxTrack = 60;
+                var maxWidth = GetSystemMetricsForDpi(smCxMaxTrack, dpi);
+                var maxHeight = GetSystemMetricsForDpi(smCyMaxTrack, dpi);
+                Assert.True(maxWidth > 0 && maxHeight > 0);
+                output.WriteLine($"initial={window.AppWindow.Size}; requested={initial}; maxTrack={maxWidth}x{maxHeight}");
+                Assert.Equal(Math.Min(initial.Width, maxWidth), window.AppWindow.Size.Width);
+                Assert.Equal(Math.Min(initial.Height, maxHeight), window.AppWindow.Size.Height);
                 window.Activate();
                 window.AppWindow.Move(new(-32000, -32000));
                 var root = Assert.IsType<Grid>(window.Content);
@@ -90,15 +99,21 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
     }
 
     [Theory]
-    [InlineData("native-install", ElementTheme.Light)]
-    [InlineData("native-install", ElementTheme.Dark)]
-    [InlineData("capabilities-native", ElementTheme.Light)]
-    [InlineData("capabilities-native", ElementTheme.Dark)]
-    [InlineData("capabilities-wsl", ElementTheme.Light)]
-    [InlineData("capabilities-wsl", ElementTheme.Dark)]
-    public async Task MinimumViewport_KeepsNativeInstallAndCapabilitiesReachable(string scene, ElementTheme theme)
+    [InlineData("native-install", ElementTheme.Light, false)]
+    [InlineData("native-install", ElementTheme.Dark, false)]
+    [InlineData("capabilities-native", ElementTheme.Light, false)]
+    [InlineData("capabilities-native", ElementTheme.Dark, false)]
+    [InlineData("capabilities-wsl", ElementTheme.Light, false)]
+    [InlineData("capabilities-wsl", ElementTheme.Dark, false)]
+    [InlineData("capabilities-native", ElementTheme.Light, true)]
+    [InlineData("capabilities-native", ElementTheme.Dark, true)]
+    [InlineData("capabilities-wsl", ElementTheme.Light, true)]
+    [InlineData("capabilities-wsl", ElementTheme.Dark, true)]
+    public async Task MinimumViewport_KeepsNativeInstallAndCapabilitiesReachable(
+        string scene, ElementTheme theme, bool compactViewport)
     {
         OnboardingNativeProof.AssertIsolatedRoots();
+        var captureName = $"{scene}-{theme}{(compactViewport ? "-compact" : "")}";
         using var temp = new TempDirectory("setup-minimum-pages-");
         var config = temp.Combine("setup.json");
         File.WriteAllText(config, JsonSerializer.Serialize(new SetupConfig()));
@@ -130,7 +145,12 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
                 await OnboardingNativeProof.ApplyThemeSurfaceAsync(root, theme);
                 await TestSupport.WaitForRenderedConditionAsync(() => frame.Content is Page { IsLoaded: true }, scene);
                 var page = Assert.IsAssignableFrom<Page>(frame.Content);
-                await ResizeBelowMinimumAsync(window, ui, output, $"{scene}-{theme}");
+                await ResizeBelowMinimumAsync(window, ui, output, captureName);
+                if (compactViewport)
+                {
+                    page.Width = 704;
+                    Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<ScrollViewer>()).Height = 170;
+                }
                 if (page is NativeGatewaySetupPage)
                 {
                     Assert.Null(typeof(NativeGatewaySetupPage).GetField("_operation", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(page));
@@ -142,6 +162,7 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
                     var fineTune = Assert.IsType<SettingsExpander>(page.FindName("FineTuneExpander"));
                     fineTune.IsExpanded = true;
                     Assert.Equal(8, fineTune.Items.Count);
+                    await TestSupport.WaitForSettingsExpanderSettledAsync(ui, fineTune, true);
                 }
                 root.UpdateLayout();
                 await OnboardingNativeProof.NextCompositionAsync(TimeSpan.FromMilliseconds(400));
@@ -151,9 +172,9 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
                 foreach (var action in TestSupport.FindDescendants<Button>(footer).Where(button => button.Visibility == Visibility.Visible))
                     OnboardingNativeProof.AssertFullyVisible(action, root);
                 if (page is CapabilitiesPage capabilities)
-                    await SaveCapabilitiesAsync(window, capabilities, ui, output, $"setup-minimum-{scene}-{theme}");
+                    await SaveCapabilitiesAsync(window, capabilities, ui, output, $"setup-minimum-{captureName}");
                 else
-                    await SaveViewportsAsync(window, page, ui, output, $"setup-minimum-{scene}-{theme}");
+                    await SaveViewportsAsync(window, page, ui, output, $"setup-minimum-{captureName}");
             }
             finally
             {
@@ -250,14 +271,12 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
         foreach (var target in targets)
         {
             target.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false, VerticalAlignmentRatio = 0.5 });
-            await TestSupport.WaitForRenderedConditionAsync(() =>
-            {
-                var bounds = target.TransformToVisual(scroll).TransformBounds(new(0, 0, target.ActualWidth, target.ActualHeight));
-                return bounds.Width > 0 && bounds.Height > 0 && bounds.Top >= -0.5 &&
-                    bounds.Bottom <= scroll.ViewportHeight + 0.5;
-            }, $"minimum capability control {index}");
             root.UpdateLayout();
             await ui.YieldToRenderAsync();
+            await OnboardingNativeProof.NextCompositionAsync();
+            root.UpdateLayout();
+            var bounds = target.TransformToVisual(scroll).TransformBounds(new(0, 0, target.ActualWidth, target.ActualHeight));
+            output.WriteLine($"control={index}; bounds={bounds}; viewport={scroll.ViewportWidth}x{scroll.ViewportHeight}; offset={scroll.VerticalOffset}; scrollable={scroll.ScrollableHeight}");
             OnboardingNativeProof.AssertFullyVisible(target, scroll);
             output.WriteLine($"reachable={index}; offset={scroll.VerticalOffset}; height={target.ActualHeight}; viewport={scroll.ViewportHeight}");
             if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("OPENCLAW_UI_PROOF_DIR")))
