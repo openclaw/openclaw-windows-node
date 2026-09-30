@@ -31,8 +31,10 @@ public static class WizardMessageFormatting
         @"^((?:Code|code|user_code|USER_CODE|User Code)\s*[:=]\s*)([A-Z0-9]{2,8}(?:-[A-Z0-9]{2,8})+|[A-Z0-9]{4,12})\b",
         RegexOptions.Compiled);
 
+    // Gateway auth notes wrap URLs in angle brackets (e.g. "URL: <https://github.com/login/device>").
+    // '<' and '>' are never valid unescaped URL characters, so they end the match.
     private static readonly Regex s_urlRegex = new(
-        @"https?://[^\s\)\""]+",
+        @"https?://[^\s<>\)\""]+",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     /// <summary>Classifies a line as plain text, URL, or device-code text.</summary>

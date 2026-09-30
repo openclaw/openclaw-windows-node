@@ -29,6 +29,33 @@ public class WizardMessageFormattingTests
     }
 
     [Theory]
+    [InlineData("URL: <https://github.com/login/device>", "https://github.com/login/device")]
+    [InlineData("URL: <https://example.com/device?user_code=ABCD-EFGH>", "https://example.com/device?user_code=ABCD-EFGH")]
+    public void Url_WrappedInAngleBrackets_ExcludesBrackets(string line, string expectedUrl)
+    {
+        var segment = WizardMessageFormatting.ClassifyLine(line);
+        Assert.Equal(WizardLineKind.Url, segment.Kind);
+        Assert.Equal(expectedUrl, segment.Highlight);
+        Assert.Equal("URL: <", segment.Prefix);
+        Assert.Equal(">", segment.Suffix);
+        Assert.True(Uri.TryCreate(segment.Highlight, UriKind.Absolute, out var uri));
+        Assert.Equal(expectedUrl, uri!.AbsoluteUri);
+    }
+
+    [Fact]
+    public void ExtractUrls_GitHubCopilotDeviceNote_ExcludesAngleBrackets()
+    {
+        var message = "Open this URL in your browser and enter the code below.\n"
+            + "URL: <https://github.com/login/device>\n"
+            + "Code: F53E-CEA0\n"
+            + "Code expires in 15 minutes. Never share it.";
+
+        var urls = WizardMessageFormatting.ExtractUrls(message);
+
+        Assert.Equal("https://github.com/login/device", Assert.Single(urls));
+    }
+
+    [Theory]
     [InlineData("Code: ABCD-EFGH", "Code: ", "ABCD-EFGH")]
     [InlineData("user_code = ABC123", "user_code = ", "ABC123")]
     [InlineData("USER_CODE: WDJB-MJHT", "USER_CODE: ", "WDJB-MJHT")]
