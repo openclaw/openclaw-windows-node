@@ -111,8 +111,8 @@ public sealed class NativeGatewaySetupService(
     }
 
     /// <summary>
-    /// Discards an unpublished draft after the user explicitly chooses to replace an
-    /// incompatible runtime. Published profiles and unrelated gateway state are never removed.
+    /// Discards only the setup descriptor after explicit runtime replacement consent.
+    /// A removed registry entry does not prove its profile was never published.
     /// </summary>
     public async Task DiscardIncompatibleDraftAsync(CancellationToken cancellationToken)
     {
@@ -123,13 +123,13 @@ public sealed class NativeGatewaySetupService(
         var saved = JsonSerializer.Deserialize<NativeGatewaySetupDraft>(
             await File.ReadAllTextAsync(draftPath, cancellationToken).ConfigureAwait(false))
             ?? throw new InvalidOperationException("The saved native setup draft is invalid.");
-        var stateDirectory = NativeGatewayPaths.GetStateDirectory(registry, saved.GatewayId);
+        _ = NativeGatewayPaths.GetStateDirectory(registry, saved.GatewayId);
         registry.Load();
         if (registry.GetById(saved.GatewayId) is not null)
             throw new InvalidOperationException("The saved native Gateway profile has already been published and cannot be discarded from setup.");
 
-        if (Directory.Exists(stateDirectory))
-            Directory.Delete(stateDirectory, recursive: true);
+        cancellationToken.ThrowIfCancellationRequested();
+        // As with Store migration recovery, discard intent, never the data it describes.
         File.Delete(draftPath);
     }
 

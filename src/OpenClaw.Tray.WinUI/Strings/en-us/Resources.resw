@@ -7454,7 +7454,7 @@ Your settings, gateway, files, and models stay where they are.</value>
   <data name="Onboarding_Native_Cancelled" xml:space="preserve"><value>Setup cancelled. The WinGet request was cancelled, but Windows may still finish deployment. Any configuration already entered is retained in the dedicated native profile. No Gateway package was removed.</value></data>
   <data name="Onboarding_Native_Configured" xml:space="preserve"><value>Gateway configuration and authenticated health verified at {0}. Open Companion to start the gateway and finish device pairing in Connection settings. Your selected Windows capabilities have been saved.</value></data>
   <data name="Onboarding_Native_ReplaceDraftTitle" xml:space="preserve"><value>Replace unfinished Gateway setup?</value></data>
-  <data name="Onboarding_Native_ReplaceDraftContent" xml:space="preserve"><value>This removes only the unpublished Companion setup draft and its local credentials. It does not change an existing Gateway, WSL setup, or package-managed profile.</value></data>
+  <data name="Onboarding_Native_ReplaceDraftContent" xml:space="preserve"><value>This clears only the Companion setup draft. Existing workspace files, configuration and credentials are kept. New setup uses a new profile and does not import or change the old Gateway data, WSL setup, or package-managed profile.</value></data>
   <data name="Onboarding_Native_ReplaceDraftPrimary" xml:space="preserve"><value>Discard and set up again</value></data>
   <data name="Onboarding_Native_ReplaceDraftClose" xml:space="preserve"><value>Keep draft</value></data>
 </root>

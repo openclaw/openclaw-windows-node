@@ -275,9 +275,13 @@ draft can resume without replacing the agent's credential. Finalization
 checks that the returned port and token still match before publishing.
 
 If an unpublished same-user draft survives an upgrade to an isolated package,
-Companion shows an explicit replacement choice. Discarding removes only that
-unpublished Companion draft and its local credentials, then starts isolated
-setup; it never reuses host configuration as agent configuration. A published
+Companion shows an explicit replacement choice. Discarding removes only the
+Companion draft descriptor, then starts isolated setup with a new identity.
+Existing configuration, credentials and workspace files remain untouched, even
+if a previously published connection was removed from the registry. Like
+`StoreMigrationRecoveryDiscard`, native recovery discards intent, not user data;
+the Inno-specific receipts and installation checks are not shared with native setup.
+It never reuses host configuration as agent configuration. A published
 same-user profile remains blocked and directs the user through Connections to
 remove it and create a new isolated profile. It never adopts a foreign listener
 or session, and it does not modify WSL or other package paths.

@@ -33,9 +33,54 @@ public sealed class NativeGatewaySetupTests
 
         Assert.NotEqual(legacy.GatewayId, isolated.GatewayId);
         Assert.Equal(NativeGatewayContract.IsolatedSessionV1, isolated.Contract);
-        Assert.False(Directory.Exists(stateDirectory));
+        Assert.Equal("legacy-credential", File.ReadAllText(Path.Combine(stateDirectory, "credential-marker.txt")));
         Assert.Equal(isolated, JsonSerializer.Deserialize<NativeGatewaySetupDraft>(
             File.ReadAllText(NativeGatewaySetupService.GetDraftPath(fixture.Registry))));
+        Assert.Empty(fixture.Registry.GetAll());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DraftRecovery_PreservesProfileDataAfterRemovingPublishedRegistration(bool published)
+    {
+        using var fixture = new Fixture();
+        var draft = await fixture.Service.CreateDraftAsync(default);
+        await using (var session = await fixture.Service.PrepareAsync(draft, default))
+        {
+            if (published)
+            {
+                session.MarkWizardCompleted();
+                await session.CompleteAsync(default);
+            }
+        }
+        var identityDirectory = fixture.Registry.GetIdentityDirectory(draft.GatewayId);
+        var configPath = NativeGatewayPaths.GetConfigPath(fixture.Registry, draft.GatewayId);
+        var workspace = JsonNode.Parse(File.ReadAllText(configPath))!["agents"]!["defaults"]!["workspace"]!.GetValue<string>();
+        Directory.CreateDirectory(workspace);
+        File.WriteAllText(Path.Combine(workspace, "user-work.txt"), "retained work");
+        var identity = new DeviceIdentity(identityDirectory);
+        identity.Initialize();
+        var before = Directory.GetFiles(identityDirectory, "*", SearchOption.AllDirectories)
+            .ToDictionary(path => path, File.ReadAllBytes);
+        fixture.Registry.Remove(draft.GatewayId);
+        fixture.Registry.Save();
+
+        // Descriptors written before runtime contracts were introduced omit Contract.
+        File.WriteAllText(NativeGatewaySetupService.GetDraftPath(fixture.Registry),
+            JsonSerializer.Serialize(new { draft.GatewayId, draft.Port, draft.PackageFamilyName }));
+        fixture.Host.Contract = NativeGatewayContract.IsolatedSessionV1;
+        await Assert.ThrowsAsync<NativeGatewaySetupService.NativeGatewayDraftRecoveryRequiredException>(
+            () => fixture.Service.CreateDraftAsync(default));
+
+        await fixture.Service.DiscardIncompatibleDraftAsync(default);
+        var replacement = await fixture.Service.CreateDraftAsync(default);
+
+        Assert.NotEqual(draft.GatewayId, replacement.GatewayId);
+        Assert.Equal(NativeGatewayContract.IsolatedSessionV1, replacement.Contract);
+        Assert.Equal(before.Count, Directory.GetFiles(identityDirectory, "*", SearchOption.AllDirectories).Length);
+        foreach (var (path, bytes) in before)
+            Assert.Equal(bytes, File.ReadAllBytes(path));
         Assert.Empty(fixture.Registry.GetAll());
     }
 
