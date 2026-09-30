@@ -94,6 +94,25 @@ public sealed partial class SetupWindow : Window
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);
 
+    private void ApplyWindowIcon()
+    {
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "openclaw.ico");
+        if (!File.Exists(iconPath))
+        {
+            System.Diagnostics.Debug.WriteLine($"Setup window icon was not found at '{iconPath}'.");
+            return;
+        }
+
+        try
+        {
+            AppWindow.SetIcon(iconPath);
+        }
+        catch (COMException ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Setup window icon could not be applied: {ex}");
+        }
+    }
+
     public SetupWindow(
         string? configPath = null,
         bool startAtGatewayInstalledMilestone = false,
@@ -127,6 +146,7 @@ public sealed partial class SetupWindow : Window
         _persistChoices = persistChoices;
         _startAtLocalAiRecoveryReview = startAtLocalAiRecoveryReview;
         InitializeComponent();
+        ApplyWindowIcon();
         Active = this;
         RootFrame.Navigated += (_, _) => RefreshFlowProgress();
         RootFrame.PointerMoved += (_, args) =>

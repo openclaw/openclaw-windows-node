@@ -1290,6 +1290,23 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void SetupWindow_DesktopPreviewUsesAppIcon()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "SetupWindow.xaml.cs"));
+        var trayProject = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "OpenClaw.Tray.WinUI.csproj"));
+        var iconPath = Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Assets", "openclaw.ico");
+        var applyWindowIcon = ExtractMethod(source, "ApplyWindowIcon");
+
+        Assert.True(File.Exists(iconPath), $"Expected setup window icon at '{iconPath}'.");
+        Assert.Contains("<Content Include=\"Assets\\**\\*\" CopyToOutputDirectory=\"PreserveNewest\" />", trayProject);
+        Assert.Contains("ApplyWindowIcon();", source);
+        Assert.Contains("File.Exists(iconPath)", applyWindowIcon);
+        Assert.Contains("AppWindow.SetIcon(iconPath)", applyWindowIcon);
+        Assert.Contains("catch (COMException ex)", applyWindowIcon);
+    }
+
+    [Fact]
     public void SetupCompletion_PreservesStartupRegistrationWhenRequested()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
