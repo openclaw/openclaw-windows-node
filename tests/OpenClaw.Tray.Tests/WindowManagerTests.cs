@@ -4,6 +4,30 @@ namespace OpenClaw.Tray.Tests;
 
 public sealed class WindowManagerTests
 {
+    [Fact]
+    public void WorkspaceActivation_RefocusesRequiredSetupBeforeCreatingWorkspace()
+    {
+        var manager = ReadManager();
+        AssertInOrder(
+            manager,
+            "if (WorkspaceNavigation.TryResolveWorkspace(navigateTo, out var destination))",
+            "if (_callbacks.RequiresSetup())",
+            "AsyncEventHandlerGuard.Run(",
+            "ShowOnboardingAsync,",
+            "return;",
+            "ShowWorkspace(destination, activate, preserveCurrent:");
+        AssertInOrder(
+            manager,
+            "while (_setupWindow is not null)",
+            "if (!existingSetupWindow.IsClosed)",
+            "existingSetupWindow.BringToFrontForSetupLaunch();",
+            "return (existingSetupWindow, false);");
+
+        var app = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
+        Assert.Contains("RequiresSetup: () => !_isPostSetupRestart && _settings is not null && RequiresSetup(_settings)", app);
+    }
+
     [Theory]
     [InlineData((int)CanvasSurfaceDestination.Capabilities, "capabilities")]
     [InlineData((int)CanvasSurfaceDestination.Connection, "connection")]

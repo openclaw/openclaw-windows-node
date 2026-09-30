@@ -48,11 +48,18 @@ multi-PR refactor plan for the reasoning behind each boundary.
 
 These are the canonical homes. Do not reintroduce private copies elsewhere.
 
-The tray icon's primary activation always opens or focuses Workspace chat,
-including while disconnected. `TrayController` invokes its chat callback and
+The tray icon's primary activation opens or focuses Workspace chat for configured
+profiles, including while disconnected. `TrayController` invokes its chat callback and
 `App` composes that callback with the `WindowManager` chat route. Explicit
 Connection menu actions retain their settings route; opening Workspace does
 not bypass chat authorization or pairing requirements.
+
+`StartupSetupState` owns first-run eligibility from saved gateway configuration
+or local MCP mode, independently of current connectivity and node pairing.
+`WindowManager` applies the same eligibility to Workspace activation, including
+forwarded launches and tray clicks: an unconfigured profile opens or refocuses
+setup instead of creating Workspace behind it. Explicit companion routes remain
+available for advanced connection setup.
 
 Workspace footer text follows the macOS-hosted Control UI at
 [`bda22f8`](https://github.com/openclaw/openclaw/blob/bda22f818d967ffa3551b3a729d5bc43863844c7/ui/src/components/app-sidebar-render.ts):

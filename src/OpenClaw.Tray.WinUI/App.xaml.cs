@@ -680,6 +680,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 GetPendingChatSessionKey: () => PendingChatSessionKey,
                 GetStartupArgs: () => _startupArgs,
                 IsDeepLinkArg: IsDeepLinkArg,
+                RequiresSetup: () => !_isPostSetupRestart && _settings is not null && RequiresSetup(_settings),
                 Connect: ReconnectWithSyncedBrowserProxyForward,
                 Disconnect: () =>
                 {
@@ -906,11 +907,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 await ShowOnboardingAsync();
                 setupShownDuringStartup = true;
             }
-        }
-        catch (DeviceIdentityLoadException ex)
-        {
-            Logger.Error($"Stored device identity load failed during launch setup detection: {ex.InnerException?.Message}");
-            ShowTransientConnectionError(ex.Message);
         }
         catch (Exception ex)
         {
@@ -2433,7 +2429,17 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
     private bool RequiresSetup(SettingsManager settings)
     {
-        return StartupSetupState.RequiresSetup(settings, IdentityDataPath, _gatewayRegistry);
+        try
+        {
+            return StartupSetupState.RequiresSetup(settings, IdentityDataPath, _gatewayRegistry);
+        }
+        catch (DeviceIdentityLoadException ex)
+        {
+            Logger.Error($"Stored device identity load failed during setup detection: {ex.InnerException?.Message}");
+            ShowTransientConnectionError(ex.Message);
+            // Keep connection recovery available; an unreadable identity is not a fresh install.
+            return false;
+        }
     }
 
     private bool ShouldInitializeNodeService()

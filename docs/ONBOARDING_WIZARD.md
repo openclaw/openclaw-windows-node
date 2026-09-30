@@ -125,6 +125,19 @@ Tailscale provisioning and without an additional review page.
 A missing package is installed automatically using
 `winget install --id 9NV70LV3D6XC --source msstore --silent --accept-package-agreements --accept-source-agreements --disable-interactivity --no-upgrade`;
 unhealthy registration or unavailable aliases show an explicit repair error.
+The fixed product is [OpenClaw Gateway in Microsoft Store](https://apps.microsoft.com/detail/9NV70LV3D6XC).
+No MSIX version or download URL is pinned; Store selects the current compatible
+release. Existing healthy installations are not silently upgraded during setup.
+To explicitly refresh one, run
+`winget install --id 9NV70LV3D6XC --source msstore --accept-package-agreements --accept-source-agreements`
+without `--no-upgrade`. WinGet may report that no newer package is available.
+
+An unfinished draft saved against a different package family (for example, the
+older development Gateway) offers **Discard and set up again**, just like a
+runtime-contract change. Keeping the draft changes nothing. Confirming replaces
+only its descriptor with a new profile for the installed package; old workspace
+files, configuration and credentials are preserved. Published profiles cannot
+be discarded through this recovery.
 No local MSIX path or environment-variable configuration is required.
 The original `OpenClaw.Gateway` / OpenClaw Foundation development publisher pair
 is still accepted for existing installations. If both identities are installed,

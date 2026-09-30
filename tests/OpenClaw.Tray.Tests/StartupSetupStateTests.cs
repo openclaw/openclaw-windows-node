@@ -355,7 +355,7 @@ public class StartupSetupStateTests
     }
 
     [Fact]
-    public void RequiresSetup_PreservesNodeModePrecedence_WhenRegistryHasExternalGatewayToken()
+    public void RequiresSetup_ReturnsFalse_WhenNodePairingIsPendingForConfiguredGateway()
     {
         using var temp = TempSettings.Create();
         var settings = new SettingsManager(temp.Path) { EnableNodeMode = true };
@@ -367,7 +367,8 @@ public class StartupSetupStateTests
             SharedGatewayToken = "shared-token"
         });
 
-        Assert.True(StartupSetupState.RequiresSetup(settings, temp.Path, registry));
+        Assert.False(StartupSetupState.RequiresSetup(settings, temp.Path, registry));
+        Assert.False(StartupSetupState.CanStartNodeGateway(settings, temp.Path));
     }
 
     [Fact]
@@ -389,7 +390,7 @@ public class StartupSetupStateTests
     }
 
     [Fact]
-    public void RequiresSetup_ReturnsTrue_WhenNodeModeHasInactiveBootstrapGateway()
+    public void RequiresSetup_ReturnsFalse_WhenNodeModeHasSavedBootstrapGateway()
     {
         using var temp = TempSettings.Create();
         var settings = new SettingsManager(temp.Path) { EnableNodeMode = true };
@@ -401,7 +402,39 @@ public class StartupSetupStateTests
             BootstrapToken = "bootstrap-token"
         });
 
-        Assert.True(StartupSetupState.RequiresSetup(settings, temp.Path, registry));
+        Assert.False(StartupSetupState.RequiresSetup(settings, temp.Path, registry));
+        Assert.False(StartupSetupState.CanStartNodeGateway(settings, temp.Path));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RequiresSetup_ConfiguredOperatorDoesNotNeedSetupAgainWhenNodeModeChanges(bool useRegistry)
+    {
+        using var temp = TempSettings.Create();
+        var settings = new SettingsManager(temp.Path)
+        {
+            EnableNodeMode = true,
+            GatewayUrl = "wss://remote.example.com"
+        };
+        var registry = useRegistry ? new GatewayRegistry(temp.Path) : null;
+        if (registry is not null)
+        {
+            registry.AddOrUpdate(new GatewayRecord
+            {
+                Id = "configured-operator",
+                Url = settings.GatewayUrl
+            });
+            registry.SetActive("configured-operator");
+            StoreDeviceToken(registry.GetIdentityDirectory("configured-operator"));
+        }
+        else
+        {
+            StoreDeviceToken(temp.Path);
+        }
+
+        Assert.False(StartupSetupState.RequiresSetup(settings, temp.Path, registry));
+        Assert.False(StartupSetupState.CanStartNodeGateway(settings, temp.Path));
     }
 
     [Fact]

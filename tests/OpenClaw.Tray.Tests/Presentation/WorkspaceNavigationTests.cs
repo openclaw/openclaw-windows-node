@@ -387,7 +387,8 @@ public sealed class WorkspaceNavigationTests
         Assert.Equal("{StaticResource SubtleButtonStyle}", (string?)owner.Attribute("Style"));
         Assert.Equal("{StaticResource SubtleButtonStyle}", (string?)bell.Attribute("Style"));
         Assert.Single(owner.Descendants(), element => element.Name.LocalName == "PersonPicture");
-        Assert.DoesNotContain(owner.Descendants(), element => element.Name.LocalName == "FontIcon");
+        var statusDot = Assert.Single(owner.Descendants(), element => element.Name.LocalName == "FontIcon");
+        Assert.Equal("OwnerStatusDot", (string?)statusDot.Attribute(x + "Name"));
         Assert.DoesNotContain(doc.Descendants(), element => (string?)element.Attribute(x + "Key") == "WorkspaceSubtleButton");
         var code = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
         Assert.Contains("OwnerButton.Flyout = menu", code);
@@ -398,6 +399,33 @@ public sealed class WorkspaceNavigationTests
         Assert.Contains("OpenLinkAsync(\"https://github.com/openclaw/openclaw-windows-node\")", code);
         Assert.Contains("help.Items.Add(github)", code);
         Assert.DoesNotContain("WebView", File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml")));
+    }
+
+    [Fact]
+    public void OwnerFooterStatusDot_PrecedesTextAndSharesLiveThemeResources()
+    {
+        var doc = XDocument.Load(Source("Windows", "WorkspaceWindow.xaml"));
+        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var dot = doc.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "OwnerStatusDot");
+        var detail = doc.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "OwnerDetail");
+        Assert.Same(dot.Parent, detail.Parent);
+        Assert.Equal("4", (string?)dot.Parent!.Attribute("ColumnSpacing"));
+        Assert.Equal("1", (string?)detail.Attribute("Grid.Column"));
+        Assert.Equal("FontIcon", dot.Name.LocalName);
+        Assert.Equal("Raw", (string?)dot.Attribute("AutomationProperties.AccessibilityView"));
+        Assert.Equal("False", (string?)dot.Attribute("IsHitTestVisible"));
+        Assert.Equal("{StaticResource ConnectionBadgeNeutral}", (string?)dot.Attribute("Style"));
+        Assert.Equal("CharacterEllipsis", (string?)detail.Attribute("TextTrimming"));
+        var code = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
+        Assert.Contains("OwnerStatusDot.Style = (Style)Root.Resources[$\"ConnectionBadge{accent}\"];", code);
+        Assert.Contains("_connectionStatusIcon.Style = (Style)Root.Resources[$\"ConnectionBadge{accent}\"];", code);
+        foreach (var accent in new[] { "Neutral", "Success", "Caution", "Critical" })
+        {
+            var style = doc.Descendants().Single(element => (string?)element.Attribute(x + "Key") == $"ConnectionBadge{accent}");
+            Assert.Contains(style.Elements(), setter =>
+                (string?)setter.Attribute("Property") == "Foreground" &&
+                (string?)setter.Attribute("Value") == $"{{ThemeResource SystemFillColor{accent}Brush}}");
+        }
     }
 
     [Fact]

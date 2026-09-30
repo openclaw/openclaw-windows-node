@@ -375,6 +375,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         var (labelKey, accent) = ConnectionStatusPresenter.Pill(snapshot?.OverallState, status);
         var label = LocalizationHelper.GetString(labelKey);
         OwnerDetail.Text = label;
+        OwnerStatusDot.Style = (Style)Root.Resources[$"ConnectionBadge{accent}"];
         AutomationProperties.SetHelpText(OwnerButton, label);
         _connectionStatusItem.Text = label;
         _connectionStatusIcon.Style = (Style)Root.Resources[$"ConnectionBadge{accent}"];

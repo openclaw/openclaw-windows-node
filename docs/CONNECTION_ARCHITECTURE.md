@@ -108,7 +108,13 @@ Its initial position is aligned to the right of the active main window's monitor
 work area; subsequent activation reuses it without resetting a user's position.
 It reads the same connection manager diagnostics, not a parallel client.
 
-An argument-free user launch opens Workspace. New autostart registrations pass
+An argument-free user launch opens only setup when no gateway is configured
+(unless local MCP mode is enabled). After gateway configuration it opens only
+Workspace, even when disconnected or node pairing is still pending. Repeat
+launches and Workspace tray/deep-link activation refocus required setup instead
+of opening Workspace alongside it. Node pairing and credential checks still
+gate actual connections; this is only foreground-window selection.
+New autostart registrations pass
 `--background` to remain quiet. The installer migrates only exact, argument-free
 Run/task entries for its own executable and preserves customized entries and
 task enablement. A portable/manual binary replacement bypasses that migration;

@@ -155,8 +155,14 @@
                                            IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw"/>
                             <StackPanel Grid.Column="1">
                                 <TextBlock x:Name="OwnerName" TextTrimming="CharacterEllipsis"/>
-                                <TextBlock x:Name="OwnerDetail" TextTrimming="CharacterEllipsis"
-                                           Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                <Grid ColumnSpacing="4">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <FontIcon x:Name="OwnerStatusDot" Style="{StaticResource ConnectionBadgeNeutral}"
+                                              VerticalAlignment="Center" IsHitTestVisible="False"
+                                              AutomationProperties.AccessibilityView="Raw"/>
+                                    <TextBlock x:Name="OwnerDetail" Grid.Column="1" TextTrimming="CharacterEllipsis"
+                                               Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                </Grid>
                             </StackPanel>
                         </Grid>
                     </Button>

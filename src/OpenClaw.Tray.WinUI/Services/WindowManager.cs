@@ -27,6 +27,7 @@ internal sealed record WindowManagerCallbacks(
     Func<string?> GetPendingChatSessionKey,
     Func<string[]?> GetStartupArgs,
     Func<string, bool> IsDeepLinkArg,
+    Func<bool> RequiresSetup,
     Action Connect,
     Action Disconnect,
     EventHandler SettingsSaved,
@@ -326,6 +327,15 @@ internal sealed class WindowManager : IWindowManager
 
         if (WorkspaceNavigation.TryResolveWorkspace(navigateTo, out var destination))
         {
+            if (_callbacks.RequiresSetup())
+            {
+                AsyncEventHandlerGuard.Run(
+                    ShowOnboardingAsync,
+                    new AppLogger(),
+                    nameof(ShowOnboardingAsync));
+                return;
+            }
+
             ShowWorkspace(destination, activate, preserveCurrent: navigateTo is null or "hub");
             return;
         }
