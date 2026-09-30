@@ -429,11 +429,11 @@ In-chat exec approval cards sanitize the gateway's command and message before re
 
 ## Inbound pairing approval (operator)
 
-The approval popup retains its compact lock header and scrollable identity/access
-card. It uses setup's 24 px outer spacing, 16 px card inset and compact 100 px
-minimum text buttons, with Reject and Decide later on the left and Approve on the
-right. Long access descriptions and action labels wrap instead of widening the
-popup. This presentation does not change the approval delay or decision flow.
+The approval popup retains its original compact lock header, spacing, scrollable
+identity/access card and icon actions. Reject and Decide later remain grouped
+on the left, with Approve on the right. Long access descriptions wrap within
+the card instead of overflowing horizontally. This presentation does not change
+the approval delay or decision flow.
 
 When **another** device or node requests pairing, the gateway broadcasts `device.pair.requested` / `node.pair.requested` to operators with pairing scope. `OpenClawGatewayClient` refreshes the pending lists and raises `DevicePairListUpdated` / `NodePairListUpdated`, which `GatewayService` forwards via its `PairListsChanged` event.
 

@@ -83,10 +83,12 @@ public sealed class OnboardingFollowupProofTests(UIThreadFixture ui, ITestOutput
     }
 
     [Theory]
-    [InlineData(ElementTheme.Light)]
-    [InlineData(ElementTheme.Dark)]
+    [InlineData(ElementTheme.Light, false)]
+    [InlineData(ElementTheme.Dark, false)]
+    [InlineData(ElementTheme.Light, true)]
+    [InlineData(ElementTheme.Dark, true)]
     [Trait("Category", "NativeOnboardingProof")]
-    public async Task FollowupProof_PairingCompactHeaderScopesAndArming(ElementTheme theme)
+    public async Task FollowupProof_PairingOriginalLayoutScopesAndArming(ElementTheme theme, bool longScopes)
     {
         OnboardingNativeProof.AssertIsolatedRoots();
         await ui.RunOnUIAsync(async () =>
@@ -99,9 +101,11 @@ public sealed class OnboardingFollowupProofTests(UIThreadFixture ui, ITestOutput
                 Pending = [new DevicePairingRequest
                 {
                     RequestId = "synthetic-request", DeviceId = "synthetic-device",
-                    DisplayName = "Synthetic review device", Platform = "Windows", Role = "operator",
-                    Scopes = ["operator.read", "operator.write", "operator.approvals", "operator.pairing",
-                        "synthetic.long-scope-description-for-visible-wrapping-proof"],
+                    DisplayName = "Review Surface Laptop", Platform = "Windows", Role = "operator",
+                    Scopes = longScopes
+                        ? ["operator.read", "operator.write", "operator.approvals", "operator.pairing",
+                            "synthetic.long-scope-description-for-visible-wrapping-proof"]
+                        : ["operator.admin", "operator.pairing"],
                 }],
             }, null, [], Environment.TickCount64);
             var started = Stopwatch.StartNew();
@@ -124,8 +128,10 @@ public sealed class OnboardingFollowupProofTests(UIThreadFixture ui, ITestOutput
                     scroll.ChangeView(null, atBottom ? scroll.ScrollableHeight : 0, null, true);
                     await OnboardingNativeProof.NextCompositionAsync();
                     using (await OnboardingNativeProof.CaptureAsync(window,
-                        $"followup-pairing-{theme}-{(atBottom ? "bottom" : "top")}", output,
-                        ["Reject", "Decide later", "Approve device"], requiredContent: root)) { }
+                        $"restored-pairing-{(longScopes ? "wrapping" : "normal")}-{theme}-{(atBottom ? "bottom" : "top")}", output,
+                        ["Reject", "Decide later", "Approve device"],
+                        new { syntheticQueue = true, longScopes, theme = theme.ToString(), noDecisionInvoked = true },
+                        requiredContent: root)) { }
                 }
                 Assert.Single(coordinator.Current);
                 OnboardingNativeProof.AssertSourceUnchanged();

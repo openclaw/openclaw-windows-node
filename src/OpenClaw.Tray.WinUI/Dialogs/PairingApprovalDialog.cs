@@ -73,6 +73,7 @@ public sealed class PairingApprovalDialog : WindowEx
         var titleText = new TextBlock
         {
             Text = windowTitle,
+            FontSize = 13,
             VerticalAlignment = VerticalAlignment.Center,
             Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
         };
@@ -87,7 +88,7 @@ public sealed class PairingApprovalDialog : WindowEx
         Grid.SetRow(titleBar, 0);
         outerGrid.Children.Add(titleBar);
 
-        var root = new Grid { Padding = new Thickness(24, 8, 24, 24), RowSpacing = 24 };
+        var root = new Grid { Padding = new Thickness(28, 8, 28, 24), RowSpacing = 14 };
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // header
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // body
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // buttons
@@ -143,27 +144,18 @@ public sealed class PairingApprovalDialog : WindowEx
 
         // Buttons: [Reject] [Decide later] ............ [Approve]
         var buttonGrid = new Grid { ColumnSpacing = 8 };
+        buttonGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        buttonGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         buttonGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        buttonGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        buttonGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        buttonGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        _rejectButton = new Button
-        {
-            Content = BuildButtonContent(LocalizationHelper.GetString("PairingApproval_Reject")),
-            MinWidth = 100,
-            HorizontalAlignment = HorizontalAlignment.Left,
-        };
+        _rejectButton = new Button { Content = BuildButtonContent("\uE711", "SystemFillColorCriticalBrush", LocalizationHelper.GetString("PairingApproval_Reject")) };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_rejectButton, "PairingRejectAction");
         _rejectButton.Click += async (_, _) => await DecideAsync(approve: false);
         Grid.SetColumn(_rejectButton, 0);
         buttonGrid.Children.Add(_rejectButton);
 
-        _laterButton = new Button
-        {
-            Content = BuildButtonContent(LocalizationHelper.GetString("PairingApproval_Later")),
-            MinWidth = 100,
-            HorizontalAlignment = HorizontalAlignment.Left,
-        };
+        _laterButton = new Button { Content = LocalizationHelper.GetString("PairingApproval_Later") };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_laterButton, "PairingLaterAction");
         _laterButton.Click += (_, _) => Close(); // dismiss without deciding; request stays pending
         Grid.SetColumn(_laterButton, 1);
@@ -171,14 +163,12 @@ public sealed class PairingApprovalDialog : WindowEx
 
         _approveButton = new Button
         {
-            Content = BuildButtonContent(LocalizationHelper.GetString("PairingApproval_Approve")),
-            MinWidth = 100,
-            HorizontalAlignment = HorizontalAlignment.Right,
+            Content = BuildButtonContent("\uE73E", null, LocalizationHelper.GetString("PairingApproval_Approve")),
             Style = (Style)Application.Current.Resources["AccentButtonStyle"],
         };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_approveButton, "PairingApproveAction");
         _approveButton.Click += async (_, _) => await DecideAsync(approve: true);
-        Grid.SetColumn(_approveButton, 2);
+        Grid.SetColumn(_approveButton, 3);
         buttonGrid.Children.Add(_approveButton);
 
         Grid.SetRow(buttonGrid, 2);
@@ -258,6 +248,8 @@ public sealed class PairingApprovalDialog : WindowEx
 
         // Kind-aware approve label ("Approve device" / "Approve node") to reinforce intent.
         _approveButton.Content = BuildButtonContent(
+            "\uE73E",
+            null,
             LocalizationHelper.GetString(approval.Kind == PairingApprovalKind.NodePair
                 ? "PairingApproval_ApproveNode"
                 : "PairingApproval_ApproveDevice"));
@@ -282,7 +274,7 @@ public sealed class PairingApprovalDialog : WindowEx
             CornerRadius = new CornerRadius(8),
             Padding = new Thickness(16),
         };
-        var stack = new StackPanel { Spacing = 12 };
+        var stack = new StackPanel { Spacing = 10 };
 
         var name = string.IsNullOrWhiteSpace(approval.DisplayName)
             ? (string.IsNullOrEmpty(approval.DeviceId)
@@ -376,7 +368,7 @@ public sealed class PairingApprovalDialog : WindowEx
                 Foreground = ResolveBrush("TextFillColorTertiaryBrush"),
                 FontFamily = new FontFamily("Consolas"),
                 TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 8, 0, 0),
+                Margin = new Thickness(0, 6, 0, 0),
             });
         }
 
@@ -461,14 +453,16 @@ public sealed class PairingApprovalDialog : WindowEx
         Closed -= OnWindowClosed;
     }
 
-    private static TextBlock BuildButtonContent(string label) => new()
+    private static StackPanel BuildButtonContent(string glyph, string? glyphBrushKey, string label)
     {
-        Text = label,
-        TextWrapping = TextWrapping.Wrap,
-        TextAlignment = TextAlignment.Center,
-        VerticalAlignment = VerticalAlignment.Center,
-        Style = (Style)Application.Current.Resources["BodyTextBlockStyle"],
-    };
+        var stack = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
+        var icon = new FontIcon { Glyph = glyph, FontSize = 14, VerticalAlignment = VerticalAlignment.Center };
+        if (glyphBrushKey != null)
+            icon.Foreground = ResolveBrush(glyphBrushKey);
+        stack.Children.Add(icon);
+        stack.Children.Add(new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center });
+        return stack;
+    }
 
     private static string TruncateId(string id)
     {

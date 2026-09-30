@@ -6,18 +6,18 @@ public sealed class PairingApprovalPresentationTests
         "src", "OpenClaw.Tray.WinUI", "Dialogs", "PairingApprovalDialog.cs"));
 
     [Fact]
-    public void CompactApproval_UsesSetupSpacingAndContentSizedTextActions()
+    public void CompactApproval_PreservesOriginalSpacingAndIconActions()
     {
         var source = Source;
         Assert.Contains("Glyph = \"\\uE72E\"", source);
-        Assert.Contains("Padding = new Thickness(24, 8, 24, 24), RowSpacing = 24", source);
-        Assert.Contains("var stack = new StackPanel { Spacing = 12 }", source);
-        Assert.Equal(3, source.Split("MinWidth = 100").Length - 1);
-        Assert.Equal(2, source.Split("HorizontalAlignment = HorizontalAlignment.Left").Length - 1);
-        Assert.Contains("HorizontalAlignment = HorizontalAlignment.Right", source);
-        Assert.Contains("private static TextBlock BuildButtonContent(string label)", source);
-        Assert.DoesNotContain("HorizontalAlignment = HorizontalAlignment.Stretch", source);
-        Assert.DoesNotContain("BuildButtonContent(string glyph", source);
+        Assert.Contains("Padding = new Thickness(28, 8, 28, 24), RowSpacing = 14", source);
+        Assert.Contains("var stack = new StackPanel { Spacing = 10 }", source);
+        Assert.DoesNotContain("MinWidth = 100", source);
+        Assert.Equal(3, source.Split("buttonGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto })").Length - 1);
+        Assert.Contains("Grid.SetColumn(_approveButton, 3)", source);
+        Assert.Contains("BuildButtonContent(\"\\uE711\", \"SystemFillColorCriticalBrush\"", source);
+        Assert.Contains("BuildButtonContent(\"\\uE73E\", null", source);
+        Assert.Contains("private static StackPanel BuildButtonContent(string glyph, string? glyphBrushKey, string label)", source);
     }
 
     [Fact]
