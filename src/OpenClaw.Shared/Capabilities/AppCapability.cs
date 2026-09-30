@@ -87,6 +87,8 @@ public class AppCapability : NodeCapabilityBase
         if (NavigateHandler == null)
             return Error("Navigate handler not registered");
         var result = await NavigateHandler(page);
+        if (TryGetErrorPayload(result, out var error))
+            return Error(error);
         return Success(result);
     }
 

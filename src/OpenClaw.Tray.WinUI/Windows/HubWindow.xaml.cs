@@ -473,11 +473,11 @@ public sealed partial class HubWindow : WindowEx
     /// </summary>
     public void NavigateTo(string tag)
     {
-        if (tag == "chat" || tag.StartsWith("workspace:", StringComparison.Ordinal))
-        {
-            CurrentApp.ShowHub(tag);
-            return;
-        }
+        WorkspaceNavigation.Dispatch(tag, _ => CurrentApp.ShowHub(tag), NavigateCompanion);
+    }
+
+    private void NavigateCompanion(string tag)
+    {
         NavigateInternal(HubPageRegistry.NormalizeTag(tag, _currentAgentId));
         if (tag is "about" or "info" && CurrentPage is SettingsPage settingsPage)
             settingsPage.ShowAbout();

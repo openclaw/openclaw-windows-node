@@ -449,7 +449,7 @@ public sealed class WorkspaceNavigationTests
     public void WindowManager_OwnsBothWindowsWithoutSharingCompanionNavigationScope()
     {
         var code = File.ReadAllText(Source("Services", "WindowManager.cs"));
-        Assert.Contains("WorkspaceNavigation.TryResolveWorkspace(navigateTo", code);
+        Assert.Contains("WorkspaceNavigation.Dispatch(navigateTo", code);
         Assert.Contains("if (_workspaceWindow is null || _workspaceWindow.IsClosed)", code);
         Assert.Contains("if (_hubWindow is null || _hubWindow.IsClosed)", code);
         Assert.Contains("_hubWindow.NavigateTo(navigateTo)", code);
@@ -681,6 +681,52 @@ public sealed class WorkspaceNavigationTests
         var agent = Assert.Single(WorkspaceProjection.Agents(json.RootElement, sessions));
         Assert.Equal("visible", agent.LatestSessionKey);
         Assert.Equal("visible", Assert.Single(WorkspaceProjection.Sessions(sessions, "custom")).Key);
+    }
+
+    [Theory]
+    [InlineData("agent:main:cron:job", null)]
+    [InlineData("agent:main:subagent:worker", null)]
+    [InlineData("agent:main:acp:worker", null)]
+    [InlineData("agent:main:tui-one:heartbeat", null)]
+    [InlineData("agent:main:hook:run", null)]
+    [InlineData("agent:main:harness:run", null)]
+    [InlineData("agent:main:dreaming-narrative-one", null)]
+    [InlineData("agent:main:boot", null)]
+    [InlineData("agent:main:opaque", "cron")]
+    [InlineData("agent:main:opaque", "subagent")]
+    [InlineData("agent:main:opaque", "system")]
+    public void Projection_OmittedBackgroundFlagUsesCanonicalFallbackAndCannotBecomeLatest(string key, string? classification)
+    {
+        using var agents = JsonDocument.Parse("""{"agents":[{"id":"main"}]}""");
+        var conversation = new SessionInfo { Key = "agent:main:conversation", UpdatedAt = new DateTime(2026, 1, 1) };
+        var background = new SessionInfo
+        {
+            Key = key, Classification = classification, UpdatedAt = conversation.UpdatedAt!.Value.AddHours(1)
+        };
+        Assert.Null(background.IsBackground);
+        var sessions = new[] { conversation, background };
+        Assert.Equal(conversation.Key, Assert.Single(WorkspaceProjection.Sessions(sessions, "main")).Key);
+        Assert.Equal(conversation.Key, Assert.Single(WorkspaceProjection.Agents(agents.RootElement, sessions)).LatestSessionKey);
+    }
+
+    [Theory]
+    [InlineData("agent:main:cron:job", null, false)]
+    [InlineData("agent:main:opaque", "subagent", false)]
+    [InlineData("agent:main:cron:job", "direct", null)]
+    [InlineData("agent:main:main", null, null)]
+    [InlineData("agent:main:dashboard:chat", null, null)]
+    [InlineData("agent:main:voice:call", null, null)]
+    [InlineData("agent:main:telegram:direct:peer", null, null)]
+    public void Projection_PreservesForegroundMetadataAndExplicitFalseOverride(string key, string? classification, bool? background)
+    {
+        using var agents = JsonDocument.Parse("""{"agents":[{"id":"main"}]}""");
+        var sessions = new[]
+        {
+            new SessionInfo { Key = "agent:main:older", UpdatedAt = new DateTime(2026, 1, 1) },
+            new SessionInfo { Key = key, Classification = classification, IsBackground = background, UpdatedAt = new DateTime(2026, 1, 2) }
+        };
+        Assert.Equal(new[] { key, "agent:main:older" }, WorkspaceProjection.Sessions(sessions, "main").Select(s => s.Key));
+        Assert.Equal(key, Assert.Single(WorkspaceProjection.Agents(agents.RootElement, sessions)).LatestSessionKey);
     }
 
     private static string Source(string folder, string file) =>

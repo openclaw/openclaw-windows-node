@@ -88,6 +88,10 @@ entries only on a different destination. All 20 deprecated `workspace:` links
 (including agents, dashboards, systems, automations, plugins, detail pages,
 sessions, and more) explicitly return Home without creating obsolete history
 entries. Unknown Workspace routes are not accepted as compatibility aliases.
+Both native window entry points use `WorkspaceNavigation.Dispatch` to reject
+unknown prefixed routes before creating a companion or forwarding navigation.
+`app.navigate` reports this rejection as an MCP tool error, not a successful
+no-op.
 Unprefixed companion routes, including `cron`, `sessions`, `skills`, `usage`,
 and `agent:<id>:workspace`, are unchanged.
 
@@ -95,6 +99,9 @@ The removed `WorkspaceContentPage` and `WorkspacePageRenderer` no longer host
 placeholder management pages. Native Cron keeps its existing companion
 list/editor and gateway submissions, without a Workspace-specific layout.
 `WorkspaceProjection` still supplies real assistant and conversation identities.
+Its sidebar and latest assistant conversation use
+`SessionDisplayResolver.IsBackground`: explicit `isBackground` wins, otherwise
+gateway classification and legacy session keys determine background status.
 Home uses the existing Reactor chat and session creation/history; disconnected
 state directs users to Connection. Notifications uses the existing notification
 service. Owner Settings provides access to the full companion catalog, while
@@ -120,6 +127,16 @@ Run/task entries for its own executable and preserves customized entries and
 task enablement. A portable/manual binary replacement bypasses that migration;
 re-enable **Start with Windows** once in Settings to refresh a legacy entry.
 Explicit protocol and post-setup restart behavior is unchanged.
+Packaged Windows StartupTask activations retain their activation kind through
+initial launch and secondary-instance forwarding. Unlike a real interactive
+argument-free launch, StartupTask does not implicitly open Workspace. Existing
+first-run setup and restart guards remain in effect.
+
+Chat response notifications are suppressed only while native Workspace is
+visible, not minimized, and showing Home/chat, or the legacy compact chat is
+visible. An existing Settings companion, a hidden/minimized Workspace, or the
+Notifications destination is not evidence that chat is visible. The chat and
+per-type notification settings still apply.
 
 New Workspace resource keys exist in every supported locale. Non-English copy
 is explicitly deferred English pending translation; resource-key parity is

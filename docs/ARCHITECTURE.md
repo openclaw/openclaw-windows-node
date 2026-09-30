@@ -169,10 +169,15 @@ disconnect, replacement, or close. This cache is not used for authorization.
 | Permissions runtime status projection | `PermissionsPageRuntimeSource` | authoritative |
 | Hub navigation tags, page mapping, command catalog/search, and gateway-page classification | `HubPageRegistry` | authoritative |
 | Workspace Home/Notifications and exact session-key identity, deprecated-link fallback, back/forward history, and companion boundaries | `WorkspaceNavigation` + `WorkspaceNavigationHistory`; `WorkspaceWindow` restores the selected agent/session on the retained chat host; `WindowManager` routes pending session links directly without an intermediate Home entry | authoritative |
+| Workspace-versus-companion dispatch and rejection of unknown prefixed routes before window side effects | `WorkspaceNavigation.Dispatch`; `WindowManager` and `HubWindow` supply native window actions; `AppCapability` propagates navigation error payloads as tool errors | authoritative |
+| Unvalidated Workspace-prefix forwarding and companion fallback | Closed in `HubWindow.NavigateTo` and `WindowManager.ShowHub`; delegate boundary dispatch to `WorkspaceNavigation` | closed |
 | Workspace agent/session identity, background-session filtering, and explicit assistant-selection readiness for conversation creation | `WorkspaceProjection`; `WorkspaceWindow` applies readiness to Sessions + and guards the mutation | authoritative |
+| Canonical background-session classification for Workspace sidebar and latest agent session | `SessionDisplayResolver.IsBackground`, consumed by `WorkspaceProjection`; nullable gateway flags must not bypass classification/key fallback | authoritative |
 | Native Workspace pane visibility, non-overlapping reopen row, and toggle focus handoff | `WorkspaceWindow` | authoritative |
 | Speculative Workspace management cards and responsive grids | removed with Home/Sessions-only navigation | closed |
 | Foreground Workspace and separate Settings companion lifetime | `WindowManager` | authoritative |
+| Chat-visible notification suppression | `ChatVisibilityPolicy` owns the pure visibility decision; `WorkspaceWindow` supplies current destination, AppWindow visibility and minimized state; `WindowManager.IsChatVisible` includes compact chat | authoritative |
+| Inferring chat visibility from any existing main window | Closed in `App.ShouldShowNotification`; use `IWindowManager.IsChatVisible`, retaining chat/per-type notification toggles | closed |
 | Readiness-gated, single-use native chat voice launch | `PendingVoiceActivation` | authoritative |
 | Hub notification banner severity and action projection | `AppNotificationInfoBarPresenter` | authoritative |
 | Compact notification list reconciliation and dismissal | `NotificationFlyoutContent` | authoritative |
@@ -181,6 +186,7 @@ disconnect, replacement, or close. This cache is not used for authorization.
 | App-owned non-tray window creation, reuse, focus, theme, and lifetime | `IWindowManager` + `WindowManager` | authoritative |
 | Tray icon, popup coordination, live status, and callback lifetime | `ITrayController` + `TrayController` | authoritative |
 | Deep-link/protocol/toast/forwarded activation normalization, current-user IPC, and semantic activation plans | `ActivationRouter` | authoritative |
+| Packaged activation-kind preservation | `App.GetLaunchActivation` adapts Windows AppLifecycle metadata into `LaunchActivationInput`; `ActivationRouter` shares candidate selection for initial/secondary launches and reserves implicit foreground navigation for interactive Launch | authoritative |
 | Post-save settings change effect ordering, detached snapshot comparison, and concurrent save serialization | `SettingsChangeCoordinator` | authoritative |
 | Exactly-once ordered app shutdown sequencing | `AppShutdownCoordinator` | authoritative |
 | App composition-root startup sequencing | `AppBootstrapper` (planned) | planned |

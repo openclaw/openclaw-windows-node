@@ -35,6 +35,12 @@ public sealed partial class WorkspaceWindow : WindowEx
     private string? _agentId;
 
     public bool IsClosed { get; private set; }
+    internal bool IsChatVisible => !IsClosed && ChatVisibilityPolicy.IsWorkspaceChatVisible(
+        IsClosed,
+        AppWindow.IsVisible,
+        AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter
+            { State: Microsoft.UI.Windowing.OverlappedPresenterState.Minimized },
+        Destination.Page);
     internal string? SelectedAgentId => _agentId;
     internal WorkspaceDestination Destination => _navigation.Current;
     internal ChatPage ChatPage => _chat;

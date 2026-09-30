@@ -43,12 +43,7 @@ internal sealed class ActivationRouter : IAsyncDisposable
 
     public ActivationPlan PlanLaunch(LaunchActivationInput input)
     {
-        if (input.SetupShownDuringStartup)
-            return new ActivationPlan.Ignore();
-
-        var candidate = ResolveExplicitLaunchCandidate(input);
-        if (candidate == null && IsNoArgumentLaunch(input))
-            candidate = $"{_protocolScheme}://hub";
+        var candidate = ResolveLaunchCandidate(input);
         return candidate == null ? new ActivationPlan.Ignore() : PlanFromUri(candidate);
     }
 
@@ -62,9 +57,7 @@ internal sealed class ActivationRouter : IAsyncDisposable
         LaunchActivationInput input,
         CancellationToken cancellationToken)
     {
-        var candidate = ResolveExplicitLaunchCandidate(input);
-        if (candidate == null && IsNoArgumentLaunch(input))
-            candidate = $"{_protocolScheme}://hub";
+        var candidate = ResolveLaunchCandidate(input);
 
         if (candidate == null)
             return false;
@@ -81,8 +74,11 @@ internal sealed class ActivationRouter : IAsyncDisposable
         return false;
     }
 
-    private string? ResolveExplicitLaunchCandidate(LaunchActivationInput input)
+    private string? ResolveLaunchCandidate(LaunchActivationInput input)
     {
+        if (input.SetupShownDuringStartup)
+            return null;
+
         if (!string.IsNullOrEmpty(input.ProtocolUri))
             return input.ProtocolUri;
 
@@ -93,9 +89,10 @@ internal sealed class ActivationRouter : IAsyncDisposable
             return $"{_protocolScheme}://{SetupDashboardHandoff.Route}?handle={Uri.EscapeDataString(
                 SetupDashboardHandoff.ParseHandle(input.PostSetupLaunch) ?? "invalid")}";
 
-        return GetPostSetupLaunchPath(input.PostSetupLaunch) is { } path
-            ? $"{_protocolScheme}://{path}"
-            : null;
+        if (GetPostSetupLaunchPath(input.PostSetupLaunch) is { } path)
+            return $"{_protocolScheme}://{path}";
+
+        return IsNoArgumentLaunch(input) ? $"{_protocolScheme}://hub" : null;
     }
 
     internal static string? GetPostSetupLaunchPath(string? target) => target?.ToLowerInvariant() switch
@@ -107,6 +104,7 @@ internal sealed class ActivationRouter : IAsyncDisposable
     };
 
     private static bool IsNoArgumentLaunch(LaunchActivationInput input) =>
+        input.Kind == LaunchActivationKind.Launch &&
         string.IsNullOrEmpty(input.ProtocolUri) &&
         input.CommandLineArguments.Count <= 1 &&
         string.IsNullOrEmpty(input.PostSetupLaunch);

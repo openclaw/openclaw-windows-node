@@ -71,8 +71,10 @@ internal sealed class WindowManager : IWindowManager
     public bool IsHubOpen => !_isShuttingDown &&
         (_workspaceWindow is { IsClosed: false } || _hubWindow is { IsClosed: false });
 
-    public bool IsChatVisible =>
-        !_isShuttingDown && _chatWindow is { IsClosed: false, Visible: true };
+    public bool IsChatVisible => ChatVisibilityPolicy.IsChatVisible(
+        _isShuttingDown,
+        !_isShuttingDown && _workspaceWindow is { IsChatVisible: true },
+        _chatWindow is { IsClosed: false, Visible: true });
 
     public XamlRoot? DialogXamlRoot =>
         _isShuttingDown
@@ -325,7 +327,7 @@ internal sealed class WindowManager : IWindowManager
             return;
         }
 
-        if (WorkspaceNavigation.TryResolveWorkspace(navigateTo, out var destination))
+        WorkspaceNavigation.Dispatch(navigateTo, destination =>
         {
             if (_callbacks.RequiresSetup())
             {
@@ -337,9 +339,11 @@ internal sealed class WindowManager : IWindowManager
             }
 
             ShowWorkspace(destination, activate, preserveCurrent: navigateTo is null or "hub");
-            return;
-        }
+        }, tag => ShowCompanion(tag, activate));
+    }
 
+    private void ShowCompanion(string navigateTo, bool activate)
+    {
         if (_hubWindow is null || _hubWindow.IsClosed)
         {
             var appState = _callbacks.GetAppState();

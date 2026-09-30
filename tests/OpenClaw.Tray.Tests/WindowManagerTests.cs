@@ -10,7 +10,7 @@ public sealed class WindowManagerTests
         var manager = ReadManager();
         AssertInOrder(
             manager,
-            "if (WorkspaceNavigation.TryResolveWorkspace(navigateTo, out var destination))",
+            "WorkspaceNavigation.Dispatch(navigateTo, destination =>",
             "if (_callbacks.RequiresSetup())",
             "AsyncEventHandlerGuard.Run(",
             "ShowOnboardingAsync,",

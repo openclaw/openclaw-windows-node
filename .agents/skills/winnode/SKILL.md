@@ -400,11 +400,15 @@ Read-only and small write operations targeting the running tray. Used
 by the command palette and by automation that wants to drive the UI.
 
 ### app.navigate
-Navigate the companion app to a specific page.
+Navigate Workspace or the Settings companion to a specific page.
+```json
+{"page": "workspace:home"}
 ```
-{"page": "home|sessions|settings|chat|voice|connection|capabilities|conversations|...""}
-```
-Returns `{ navigated, page }`.
+Returns `{ navigated, page }`. `home` and `chat` open Workspace chat;
+`workspace:notifications` opens Workspace notifications. Unprefixed routes
+such as `sessions`, `settings`, and `connection` open the Settings companion.
+Deprecated Workspace routes return Home. Unknown `workspace:` routes return
+a tool error before any window is opened or navigation is forwarded.
 
 ### app.status
 Current connection / node state.

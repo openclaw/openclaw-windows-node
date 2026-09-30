@@ -14,7 +14,7 @@ public sealed class InnoMigrationContractTests
         var launch = app[app.IndexOf("private async Task OnLaunchedAsync", StringComparison.Ordinal)..];
         var guard = launch.IndexOf("await StoreMigrationStartupGuard.ShouldStopLaunchAsync(DeepLinkPipeName)", StringComparison.Ordinal);
         Assert.True(guard > launch.IndexOf("await CliUninstallHandler.RunAsync", StringComparison.Ordinal));
-        Assert.True(guard < launch.IndexOf("GetProtocolActivationUri()", StringComparison.Ordinal));
+        Assert.True(guard < launch.IndexOf("GetLaunchActivation()", StringComparison.Ordinal));
         Assert.True(guard < launch.IndexOf("_mutex = new Mutex(", StringComparison.Ordinal));
         Assert.True(guard < launch.IndexOf("new ActivationRouter(", StringComparison.Ordinal));
         Assert.True(guard < launch.IndexOf("new SettingsManager()", StringComparison.Ordinal));

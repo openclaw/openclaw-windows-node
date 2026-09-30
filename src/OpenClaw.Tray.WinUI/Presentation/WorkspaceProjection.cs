@@ -61,7 +61,7 @@ internal static class WorkspaceProjection
     {
         // A completed run leaves a reusable conversation, not a finished sidebar item.
         var sessions = source
-            .Where(session => session.IsBackground != true &&
+            .Where(session => !SessionDisplayResolver.IsBackground(session) &&
                 (agentId is null || string.Equals(SessionDisplayResolver.Resolve(session).AgentId, agentId, StringComparison.Ordinal)))
             .OrderByDescending(session => session.UpdatedAt)
             .ToArray();

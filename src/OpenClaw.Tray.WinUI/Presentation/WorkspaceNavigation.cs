@@ -33,6 +33,23 @@ internal static class WorkspaceNavigation
         "sessions", "usage", "activity", "tasks", "meetings", "apps", "portals", "more"
     };
 
+    public static void Dispatch(
+        string? tag,
+        Action<WorkspaceDestination> openWorkspace,
+        Action<string> openCompanion)
+    {
+        if (TryResolveWorkspace(tag, out var destination))
+        {
+            openWorkspace(destination);
+            return;
+        }
+
+        if (tag!.StartsWith("workspace:", StringComparison.Ordinal))
+            throw new ArgumentException("Unknown Workspace route. Use workspace:home or workspace:notifications.", nameof(tag));
+
+        openCompanion(tag);
+    }
+
     public static bool TryResolveWorkspace(string? tag, out WorkspaceDestination destination)
     {
         destination = new(WorkspacePageId.Home);
