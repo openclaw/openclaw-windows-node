@@ -398,6 +398,14 @@ public class RunAsyncTests : IDisposable
     }
 
     [Fact]
+    public void CreateMcpSocketsHandler_disables_proxy_and_redirects()
+    {
+        using var handler = CliRunner.CreateMcpSocketsHandler();
+        Assert.False(handler.UseProxy);
+        Assert.False(handler.AllowAutoRedirect);
+    }
+
+    [Fact]
     public async Task Redirect_3xx_treated_as_error()
     {
         // F-02: HttpClient.AllowAutoRedirect is disabled. Any 3xx surfaces as
