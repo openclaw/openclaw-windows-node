@@ -267,15 +267,36 @@ internal sealed class WindowManager : IWindowManager
             }
             await Task.Delay(100, ct);
         }
-        ShowHubCore(request.PageTag, activate: false, request);
-        if (_hubWindow is not { } hub) throw new InvalidOperationException("The native window is unavailable.");
-        await hub.WaitForNativeSetupAsync(request, ct);
+        ct.ThrowIfCancellationRequested();
+        if (_isShuttingDown)
+            throw new InvalidOperationException("The application is shutting down.");
+        Window window;
+        if (request.WorkspaceDestination is { } destination)
+        {
+            ShowWorkspace(destination, activate: false, preserveCurrent: false, nativeRequest: request);
+            if (_workspaceWindow is not { } workspace)
+                throw new InvalidOperationException("The native window is unavailable.");
+            await workspace.WaitForNativeSetupAsync(request, ct);
+            window = workspace;
+        }
+        else
+        {
+            ShowCompanion(request.PageTag, activate: false, nativeRequest: request);
+            if (_hubWindow is not { } hub)
+                throw new InvalidOperationException("The native window is unavailable.");
+            await hub.WaitForNativeSetupAsync(request, ct);
+            window = hub;
+        }
+        ct.ThrowIfCancellationRequested();
         request.GetConnectedClient(_callbacks.GetGatewayRegistry(), _callbacks.GetConnectionManager());
         if (SetupDashboardLiveFacts.Capture(_callbacks.GetConnectionManager()) is { } facts &&
             !facts.Matches(completion.Verification))
             throw new SetupNativeOwnershipException();
-        if (_isShuttingDown || hub.IsClosed) throw new InvalidOperationException("The native window closed.");
-        hub.Activate();
+        if (_isShuttingDown || window is WorkspaceWindow { IsClosed: true } or HubWindow { IsClosed: true })
+            throw new InvalidOperationException("The native window closed.");
+        ct.ThrowIfCancellationRequested();
+        _lastActiveMainWindow = window;
+        window.Activate();
     }
 
     public async Task ShowNativeSetupFailureAsync(SetupNativeLaunchFailure failure, Action? retry)
@@ -320,7 +341,7 @@ internal sealed class WindowManager : IWindowManager
         if (retryRequested && !_isShuttingDown) retry?.Invoke();
     }
 
-    private void ShowHubCore(string? navigateTo, bool activate, SetupNativeNavigationRequest? nativeRequest = null)
+    private void ShowHubCore(string? navigateTo, bool activate)
     {
         if (_isShuttingDown)
         {
@@ -342,7 +363,7 @@ internal sealed class WindowManager : IWindowManager
         }, tag => ShowCompanion(tag, activate));
     }
 
-    private void ShowCompanion(string navigateTo, bool activate)
+    private void ShowCompanion(string navigateTo, bool activate, SetupNativeNavigationRequest? nativeRequest = null)
     {
         if (_hubWindow is null || _hubWindow.IsClosed)
         {
@@ -426,7 +447,9 @@ internal sealed class WindowManager : IWindowManager
         }
     }
 
-    private void ShowWorkspace(WorkspaceDestination destination, bool activate, bool preserveCurrent)
+    private void ShowWorkspace(
+        WorkspaceDestination destination, bool activate, bool preserveCurrent,
+        SetupNativeNavigationRequest? nativeRequest = null)
     {
         if (_workspaceWindow is null || _workspaceWindow.IsClosed)
         {
@@ -444,7 +467,12 @@ internal sealed class WindowManager : IWindowManager
             _workspaceWindow.Activated += OnMainWindowActivated;
         }
 
-        if (!preserveCurrent)
+        if (nativeRequest is not null)
+        {
+            nativeRequest.RequireWorkspaceDestination(destination);
+            _workspaceWindow.NavigateNativeSetup(nativeRequest);
+        }
+        else if (!preserveCurrent)
         {
             if (destination.Page == WorkspacePageId.Home &&
                 _callbacks.GetPendingChatSessionKey() is { Length: > 0 } sessionKey)

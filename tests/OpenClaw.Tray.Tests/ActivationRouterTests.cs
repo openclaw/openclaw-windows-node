@@ -158,6 +158,30 @@ public class ActivationRouterTests
     }
 
     [Fact]
+    public async Task NativeSetupRestart_UsesTheSameReceiptForInitialAndSecondaryLaunch()
+    {
+        var name = UniquePipeName();
+        await using var listener = new ActivationRouter(Scheme, name);
+        await using var sender = new ActivationRouter(Scheme, name);
+        var handle = "ai-v3:" + new string('a', 64);
+        var input = Input(args: ["app.exe", "--post-setup-restart"], postSetupLaunch: handle,
+            kind: LaunchActivationKind.StartupTask);
+        var initial = Assert.IsType<ActivationRoute.CompleteAiSetup>(
+            Assert.IsType<ActivationPlan.Dispatch>(sender.PlanLaunch(input)).Route);
+        Assert.Equal(handle, initial.Handle);
+        var sink = new FakeSink();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await listener.StartForwardedActivationListenerAsync(sink, timeout.Token);
+        Assert.True(await sender.ForwardLaunchToPrimaryAsync(input, timeout.Token));
+        while (sink.Dispatched.Count == 0)
+            await Task.Delay(10, timeout.Token);
+        Assert.Equal(handle, Assert.IsType<ActivationRoute.CompleteAiSetup>(Assert.Single(sink.Dispatched)).Handle);
+        var setupShown = input with { SetupShownDuringStartup = true };
+        Assert.IsType<ActivationPlan.Ignore>(sender.PlanLaunch(setupShown));
+        Assert.False(await sender.ForwardLaunchToPrimaryAsync(setupShown, timeout.Token));
+    }
+
+    [Fact]
     public void NativeActivationAdapter_PreservesStartupKindForBothEntryPaths()
     {
         // retirement_condition: replace with packaged activation tests when the native adapter is executable here.

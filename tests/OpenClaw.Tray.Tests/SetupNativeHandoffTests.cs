@@ -10,6 +10,121 @@ namespace OpenClaw.Tray.Tests;
 public sealed class SetupNativeHandoffTests
 {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CancelledCallbackReturningSuccess_RetainsReceiptAndRecoveryForExplicitRetry(bool duringVerify)
+    {
+        using var temp = new TempDirectory();
+        var store = new SetupDashboardHandoffStore(temp.Path);
+        var handle = store.Issue(Choice);
+        var recovery = new NativeRestartRecoveryStore(temp.Path);
+        recovery.Save(handle);
+        using var cancellation = new CancellationTokenSource();
+        var failures = new List<SetupNativeLaunchFailure>();
+        var opens = 0;
+        var launcher = new SetupNativeHandoffLauncher(() => Gateway,
+            (_, _) =>
+            {
+                if (duringVerify) cancellation.Cancel();
+                return Task.FromResult(new SetupVerifiedNativeRoute(Proof, Choice.Target.SessionKey));
+            },
+            (_, token) =>
+            {
+                opens++;
+                cancellation.Cancel();
+                Assert.True(token.IsCancellationRequested);
+                return Task.CompletedTask;
+            }, failures.Add);
+
+        Assert.False(await launcher.OpenAsync(store, handle, ct: cancellation.Token, restartRecovery: recovery));
+        Assert.Equal(duringVerify ? 0 : 1, opens);
+        Assert.Equal([SetupNativeLaunchFailure.Unavailable], failures);
+        Assert.Equal(handle, recovery.Read());
+        Assert.Null(store.Acquire(handle).Lease);
+
+        var retry = new SetupNativeHandoffLauncher(() => Gateway,
+            (_, _) => Task.FromResult(new SetupVerifiedNativeRoute(Proof, Choice.Target.SessionKey)),
+            (_, _) => Task.CompletedTask, failures.Add);
+        Assert.True(await retry.OpenAsync(store, handle, explicitRetry: true, restartRecovery: recovery));
+        Assert.Null(recovery.Read());
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle).Status);
+    }
+
+    [Fact]
+    public void ReadyChatBinding_RejectsCancellationAndOldSameSessionRebind()
+    {
+        var request = new SetupNativeNavigationRequest(Choice with
+            { Target = new(SetupNativeDestination.Chat, Proof.SessionKey!) });
+        var binding = new SetupNativeChatBinding();
+        binding.Bind(request);
+        binding.RequireCurrent(request, CancellationToken.None);
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        Assert.Throws<OperationCanceledException>(() => binding.RequireCurrent(request, cancelled.Token));
+
+        var replacement = request with { };
+        Assert.Equal(request, replacement);
+        binding.Bind(replacement);
+        Assert.Throws<SetupNativeOwnershipException>(() => binding.RequireCurrent(request, CancellationToken.None));
+        binding.RequireCurrent(replacement, CancellationToken.None);
+        binding.Invalidate();
+        binding.RetainForDestination(replacement.WorkspaceDestination!);
+        Assert.Throws<SetupNativeOwnershipException>(() => binding.RequireCurrent(replacement, CancellationToken.None));
+        binding.Bind(replacement);
+        binding.RequireCurrent(replacement, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task AdmittedDelayedSessionCreation_InvalidatesReadinessBeforeDestinationChanges()
+    {
+        using var temp = new TempDirectory();
+        var store = new SetupDashboardHandoffStore(temp.Path);
+        var choice = Choice with { Target = new(SetupNativeDestination.Chat, Proof.SessionKey!) };
+        var handle = store.Issue(choice);
+        var recovery = new NativeRestartRecoveryStore(temp.Path);
+        recovery.Save(handle);
+        var binding = new SetupNativeChatBinding();
+        var history = new WorkspaceNavigationHistory();
+        var mounted = new TaskCompletionSource<SetupNativeNavigationRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var checkReadiness = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var created = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var failures = new List<SetupNativeLaunchFailure>();
+        var launcher = new SetupNativeHandoffLauncher(() => Gateway,
+            (_, _) => Task.FromResult(new SetupVerifiedNativeRoute(Proof, choice.Target.SessionKey)),
+            async (completion, ct) =>
+            {
+                var request = new SetupNativeNavigationRequest(completion);
+                binding.Bind(request);
+                history.Navigate(request.WorkspaceDestination!);
+                mounted.SetResult(request);
+                await checkReadiness.Task;
+                binding.RequireCurrent(request, ct);
+            }, failures.Add);
+        var launch = launcher.OpenAsync(store, handle, restartRecovery: recovery);
+        var request = await mounted.Task;
+
+        async Task CreateSessionAsync()
+        {
+            binding.Invalidate();
+            var key = await created.Task;
+            history.Navigate(new(WorkspacePageId.Home, key));
+        }
+
+        var creation = CreateSessionAsync();
+        Assert.False(creation.IsCompleted);
+        Assert.Equal(request.WorkspaceDestination, history.Current);
+        Assert.Throws<SetupNativeOwnershipException>(() => binding.RequireCurrent(request, CancellationToken.None));
+        checkReadiness.SetResult();
+        Assert.False(await launch);
+        Assert.Equal([SetupNativeLaunchFailure.Changed], failures);
+        Assert.Null(recovery.Read());
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle).Status);
+        created.SetResult("agent:primary:new");
+        await creation;
+        Assert.Equal("agent:primary:new", history.Current.SessionKey);
+    }
+
+    [Theory]
     [InlineData("contract", false)]
     [InlineData("response", false)]
     [InlineData("json", false)]
@@ -76,6 +191,18 @@ public sealed class SetupNativeHandoffTests
         var choice = Choice with { Target = Choice.Target with { Destination = destination } };
         Assert.Equal(persistedValue, (int)destination);
         Assert.Equal(page, new SetupNativeNavigationRequest(choice).PageTag);
+        var request = new SetupNativeNavigationRequest(choice);
+        if (destination == SetupNativeDestination.Chat)
+        {
+            Assert.Equal(new WorkspaceDestination(WorkspacePageId.Home, choice.Target.SessionKey), request.WorkspaceDestination);
+            request.RequireWorkspaceDestination(request.WorkspaceDestination!);
+        }
+        else
+        {
+            Assert.Null(request.WorkspaceDestination);
+            Assert.Throws<SetupNativeOwnershipException>(() =>
+                request.RequireWorkspaceDestination(new(WorkspacePageId.Home, choice.Target.SessionKey)));
+        }
         var handle = store.Issue(choice);
         Assert.NotNull(SetupDashboardHandoff.ParseHandle(handle));
         Assert.StartsWith("ai-v3:", handle);
@@ -86,6 +213,24 @@ public sealed class SetupNativeHandoffTests
         Assert.Equal(SetupHandoffAcquisitionStatus.Busy, store.Acquire(handle).Status);
         lease.Dispose();
         Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle).Status);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NativeChatNavigation_RejectsDestinationOrSessionDrift(bool differentSession)
+    {
+        var request = new SetupNativeNavigationRequest(Choice with
+            { Target = new(SetupNativeDestination.Chat, "agent:primary:main") });
+        var history = new WorkspaceNavigationHistory();
+        history.Navigate(request.WorkspaceDestination!);
+        request.RequireWorkspaceDestination(history.Current);
+        history.Navigate(differentSession
+            ? new(WorkspacePageId.Home, "agent:primary:other")
+            : new(WorkspacePageId.Notifications));
+        Assert.Throws<SetupNativeOwnershipException>(() => request.RequireWorkspaceDestination(history.Current));
+        Assert.True(history.GoBack());
+        request.RequireWorkspaceDestination(history.Current);
     }
 
     [Theory]

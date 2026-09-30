@@ -41,30 +41,46 @@ public sealed partial class ChatPage : Page
     private bool _webViewInitialized;
     private bool _webViewMode;
     private bool _pageActive;
-    private SetupNativeNavigationRequest? _nativeSetupRequest;
+    private readonly SetupNativeChatBinding _nativeSetupBinding = new();
 
     protected override void OnNavigatedTo(Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
     {
-        _nativeSetupRequest = e.Parameter as SetupNativeNavigationRequest;
+        _nativeSetupBinding.Bind(e.Parameter as SetupNativeNavigationRequest);
         base.OnNavigatedTo(e);
     }
 
     private void RequireNativeSetupOwner()
     {
-        _nativeSetupRequest?.GetConnectedClient(CurrentApp.Registry, CurrentApp.ConnectionManager);
+        _nativeSetupBinding.Request?.GetConnectedClient(CurrentApp.Registry, CurrentApp.ConnectionManager);
     }
+
+    internal void BindNativeSetupRequest(SetupNativeNavigationRequest request)
+    {
+        request.GetConnectedClient(CurrentApp.Registry, CurrentApp.ConnectionManager);
+        _nativeSetupBinding.Bind(request);
+        _pendingSessionKey = request.Completion.Target.SessionKey;
+        _pendingVoice.Cancel();
+    }
+
+    internal void RetainNativeSetupForDestination(WorkspaceDestination destination) =>
+        _nativeSetupBinding.RetainForDestination(destination);
+
+    internal void InvalidateNativeSetupForNavigation() => _nativeSetupBinding.Invalidate();
 
     internal async Task WaitForNativeSetupAsync(SetupNativeNavigationRequest request, CancellationToken ct)
     {
+        _nativeSetupBinding.RequireCurrent(request, ct);
         while (_reactorHost is null || !_pageActive || !IsLoaded)
         {
+            _nativeSetupBinding.RequireCurrent(request, ct);
             RequireNativeSetupOwner();
-            if (!ReferenceEquals(_nativeSetupRequest, request)) throw new SetupNativeOwnershipException();
             await Task.Delay(50, ct);
         }
+        _nativeSetupBinding.RequireCurrent(request, ct);
         RequireNativeSetupOwner();
         if (_webViewMode || _mountedThreadId != request.Completion.Target.SessionKey)
             throw new SetupNativeOwnershipException();
+        ct.ThrowIfCancellationRequested();
     }
     private readonly SemaphoreSlim _speakerMuteGate = new(1, 1);
     private int _voiceSettingsDialogOpen;
@@ -147,10 +163,11 @@ public sealed partial class ChatPage : Page
         _pageActive = true;
         _ownerWindow = ownerWindow;
         _hub = ownerWindow as HubWindow;
-        if (_nativeSetupRequest is { } native && _hub is not null)
+        if (_nativeSetupBinding.Request is { } native)
         {
-            _hub.PendingChatSessionKey = native.Completion.Target.SessionKey;
-            _hub.PendingAutoStartVoice = false;
+            _pendingSessionKey = native.Completion.Target.SessionKey;
+            if (_hub is not null)
+                _hub.PendingAutoStartVoice = false;
         }
 
         // Compute a "open in browser" URL once so the toolbar button works
@@ -233,7 +250,7 @@ public sealed partial class ChatPage : Page
     private void ApplyChatSurface()
     {
         if (CurrentApp.Settings is null) return;
-        if (_nativeSetupRequest is not null)
+        if (_nativeSetupBinding.Request is not null)
         {
             try
             {

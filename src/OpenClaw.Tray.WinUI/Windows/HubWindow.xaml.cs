@@ -483,17 +483,19 @@ public sealed partial class HubWindow : WindowEx
             settingsPage.ShowAbout();
     }
 
-    internal void NavigateTo(SetupNativeNavigationRequest request) =>
+    internal void NavigateTo(SetupNativeNavigationRequest request)
+    {
+        if (request.WorkspaceDestination is not null)
+            throw new InvalidOperationException("Native setup chat belongs to Workspace.");
         NavigateInternal(request.PageTag, request);
+    }
 
     internal async Task WaitForNativeSetupAsync(SetupNativeNavigationRequest request, CancellationToken ct)
     {
         await WaitForCurrentContentReadyAsync().WaitAsync(ct);
         while (ContentFrame.Content is not FrameworkElement { IsLoaded: true })
             await Task.Delay(50, ct);
-        if (ContentFrame.Content is ChatPage chat && request.PageTag == "chat")
-            await chat.WaitForNativeSetupAsync(request, ct);
-        else if (ContentFrame.Content is ChannelsPage channels && request.PageTag == "channels")
+        if (ContentFrame.Content is ChannelsPage channels && request.PageTag == "channels")
             await channels.WaitForNativeSetupAsync(request, ct);
         else if (ContentFrame.Content is SkillsPage skills && request.PageTag == "skills")
             await skills.WaitForNativeSetupAsync(request, ct);

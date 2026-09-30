@@ -104,6 +104,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     {
         if (preserveConversation && destination is { Page: WorkspacePageId.Home, SessionKey: null })
             destination = _navigation.ChatDestination;
+        _chat.RetainNativeSetupForDestination(destination);
         if (!_navigation.Navigate(destination) && ContentHost.Children.FirstOrDefault() is FrameworkElement current)
         {
             SignalContentReady(current);
@@ -121,8 +122,31 @@ public sealed partial class WorkspaceWindow : WindowEx
     internal void SelectSession(string sessionKey) =>
         Navigate(new(WorkspacePageId.Home, sessionKey));
 
+    internal void NavigateNativeSetup(SetupNativeNavigationRequest request)
+    {
+        var destination = request.WorkspaceDestination
+            ?? throw new InvalidOperationException("The setup destination is not Workspace chat.");
+        _chat.BindNativeSetupRequest(request);
+        Navigate(destination, preserveConversation: false);
+        // An already selected session does not render again; apply the new verified binding too.
+        if (Root.XamlRoot is not null)
+            _chat.Initialize(this);
+    }
+
+    internal async Task WaitForNativeSetupAsync(SetupNativeNavigationRequest request, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        request.RequireWorkspaceDestination(Destination);
+        await _chat.WaitForNativeSetupAsync(request, ct);
+        ct.ThrowIfCancellationRequested();
+        request.RequireWorkspaceDestination(Destination);
+        if (IsClosed)
+            throw new InvalidOperationException("The native window closed.");
+    }
+
     internal async Task StartAgentChatAsync(WorkspaceAgent agent)
     {
+        _chat.InvalidateNativeSetupForNavigation();
         _agentId = agent.Id;
         RefreshSidebar();
         if (agent.LatestSessionKey is { } sessionKey)
@@ -133,6 +157,7 @@ public sealed partial class WorkspaceWindow : WindowEx
 
     private void RenderDestination()
     {
+        _chat.RetainNativeSetupForDestination(Destination);
         if (Destination.Page == WorkspacePageId.Home && Destination.SessionKey is { } sessionKey)
         {
             var session = _state.Sessions.FirstOrDefault(session => session.Key == sessionKey)
@@ -321,6 +346,7 @@ public sealed partial class WorkspaceWindow : WindowEx
             return;
         }
 
+        _chat.InvalidateNativeSetupForNavigation();
         _creatingSession = true;
         RefreshSidebar();
         try

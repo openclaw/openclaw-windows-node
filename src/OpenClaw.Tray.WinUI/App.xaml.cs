@@ -1006,7 +1006,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             Environment.GetEnvironmentVariable("OPENCLAW_SKIP_UPDATE_CHECK") != "1")
         {
             var shouldLaunch = await _activationRouter.CheckOrdinaryStartupUpdateAsync(
-                new LaunchActivationInput(_pendingProtocolUri, _startupArgs, _postSetupLaunch, setupShownDuringStartup),
+                new LaunchActivationInput(_pendingProtocolUri, _startupArgs, _postSetupLaunch, setupShownDuringStartup, activation.Kind),
                 () => _updateCoordinator.CheckForUpdatesAsync());
             if (!shouldLaunch)
             {

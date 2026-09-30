@@ -81,6 +81,18 @@ Generic Workspace refocus preserves the current page; explicit page/session
 links still navigate. `agent:<id>:workspace` retains its original agent-files
 meaning and is not the main Workspace route.
 
+Verified native setup completion follows the same window boundary. Chat binds
+the receipt's exact session to Workspace's retained ChatPage and waits for the
+native composer before activating the window and consuming the receipt.
+Channels and Skills keep typed companion navigation. Both paths retain fresh
+gateway, endpoint, identity, agent, and session checks; selecting a different
+Workspace destination invalidates an in-flight chat handoff.
+Admitted assistant changes and new-conversation creation invalidate that binding
+before any asynchronous session creation, even while the old conversation remains
+visible. Same-session rebinding must use the new request identity. Cancellation
+is checked on already-ready paths and immediately before receipt consumption;
+a canceled launch retains its receipt and restart recovery for explicit retry.
+
 `WorkspaceNavigation` owns only Home and the footer Notifications destination.
 The Home/Sessions-only user correction supersedes the expanded prototype.
 `WorkspaceNavigationHistory` owns Back/Forward history and clears forward
