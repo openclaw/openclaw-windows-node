@@ -40,7 +40,7 @@ public sealed class SetupDashboardHandoffTests
         });
         Assert.True(await startup.WaitAsync(TimeSpan.FromSeconds(1)));
         Assert.Equal(0, updateCalls);
-        using var lease = store.Acquire(handle);
+        using var lease = store.Acquire(handle).Lease;
         Assert.NotNull(lease);
         Assert.False(lease!.IsExpired);
         Assert.Equal(handle, Assert.IsType<ActivationRoute.CompleteAiSetup>(
@@ -81,7 +81,7 @@ public sealed class SetupDashboardHandoffTests
             var plan = Assert.IsType<ActivationPlan.Dispatch>(router.PlanLaunch(input));
             Assert.Equal(encoded, Assert.IsType<ActivationRoute.CompleteAiSetup>(plan.Route).Handle);
         }
-        using var lease = store.Acquire(encoded);
+        using var lease = store.Acquire(encoded).Lease;
         Assert.Equal(receipt, lease!.Completion);
         lease.Consume();
     }
@@ -109,7 +109,7 @@ public sealed class SetupDashboardHandoffTests
         Assert.Null(Assert.IsType<ActivationRoute.CompleteAiSetup>(plan.Route).Handle);
         using var directory = new TempDirectory();
         var store = new SetupDashboardHandoffStore(directory.Path);
-        Assert.Null(store.Acquire(handle));
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle).Status);
         Assert.Throws<SetupNativeOwnershipException>(() => store.Issue(Native(Receipt() with { ModelTarget = "utility" })));
         Assert.Throws<InvalidOperationException>(() => store.Issue(Native(Receipt() with { VerifiedGeneration = 0 })));
     }

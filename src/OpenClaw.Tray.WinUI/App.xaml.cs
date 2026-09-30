@@ -251,6 +251,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private DiagnosticsClipboardService? _diagnosticsClipboard;
     private ToastService? _toastService;
     private AppNotificationService? _appNotificationService;
+    private SettingsPersistenceNotification? _settingsPersistenceNotification;
     internal AppNotificationService? AppNotifications => _appNotificationService;
     private string? _lastConnectionIssueNotificationKey;
     private readonly Dictionary<string, string> _reportedChannelIssueSignatures = new(StringComparer.OrdinalIgnoreCase);
@@ -715,6 +716,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         _diagnosticsClipboard = new DiagnosticsClipboardService(BuildCommandCenterState);
         _toastService = new ToastService(() => _settings);
         _appNotificationService = new AppNotificationService();
+        _settingsPersistenceNotification = new SettingsPersistenceNotification(
+            _settings, new OpenClawTray.Presentation.Adapters.WinUIDispatcher(_dispatcherQueue!),
+            _appNotificationService, LocalizationHelper.GetString);
         PublishSandboxRiskNotificationIfNeeded();
 
         // Inbound pairing approvals: surface a focused dialog + awareness toast when another
@@ -3977,11 +3981,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     {
         AsyncEventHandlerGuard.Run(async () =>
         {
-            try { _nativeRestartRecovery?.Clear(handle); }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
-            {
-                Logger.Warn("The admitted setup restart recovery record could not be removed.");
-            }
             var launcher = new SetupNativeHandoffLauncher(
                 () => _gatewayRegistry?.GetActive(),
                 (proof, ct) => OpenClaw.SetupEngine.SetupNativeCompletionVerifier.VerifyAsync(
@@ -3993,7 +3992,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                         () => OpenNativeSetupCompletion(handle, explicitRetry: true)) ?? Task.CompletedTask,
                     new AppLogger(), "Native setup launch error"));
             if (await launcher.OpenAsync(new SetupDashboardHandoffStore(AppIdentity.ResolveRoamingDataDirectory()),
-                handle, explicitRetry))
+                handle, explicitRetry, restartRecovery: _nativeRestartRecovery))
                 _appNotificationService?.Dismiss(SetupNativeHandoffLauncher.FailureNotificationId);
         }, new AppLogger(), nameof(OpenNativeSetupCompletion));
     }

@@ -26,7 +26,7 @@ public sealed class SetupDashboardHandoffStoreTests
         var json = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!;
         json["Completion"]!.AsObject().Remove("IdentityBinding");
         File.WriteAllText(path, json.ToJsonString());
-        Assert.Null(store.Acquire(handle));
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle).Status);
     }
 
     [Fact]
@@ -36,15 +36,15 @@ public sealed class SetupDashboardHandoffStoreTests
         var store = new SetupDashboardHandoffStore(directory.Path);
         var forged = "ai-v1:" + Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(Receipt));
         Assert.Null(SetupDashboardHandoff.ParseHandle(forged));
-        Assert.Null(store.Acquire(forged));
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(forged).Status);
         var real = store.Issue(Choice);
-        Assert.Null(store.Acquire(SetupDashboardHandoff.NativePrefix + new string('0', 64)));
-        Assert.Null(store.Acquire("../pending.json"));
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(SetupDashboardHandoff.NativePrefix + new string('0', 64)).Status);
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire("../pending.json").Status);
         var router = new ActivationRouter("openclaw", "unused-source-test");
         var publicJson = "openclaw://setup-dashboard?receipt=" + Uri.EscapeDataString(forged);
         var plan = Assert.IsType<ActivationPlan.Dispatch>(router.PlanLaunch(new(publicJson, [], null, false)));
         Assert.Null(Assert.IsType<ActivationRoute.CompleteAiSetup>(plan.Route).Handle);
-        using var valid = store.Acquire(real);
+        using var valid = store.Acquire(real).Lease;
         Assert.Equal(Receipt, valid!.Completion);
         valid.Consume();
     }
@@ -60,8 +60,8 @@ public sealed class SetupDashboardHandoffStoreTests
         var text = File.ReadAllText(Path.Combine(directory.Path, "setup-dashboard-handoff", "pending.json"));
         Assert.DoesNotContain(current, text);
         Assert.DoesNotContain("token", text, StringComparison.OrdinalIgnoreCase);
-        Assert.Null(store.Acquire(old));
-        using var lease = store.Acquire(current);
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(old).Status);
+        using var lease = store.Acquire(current).Lease;
         Assert.Equal(SetupCompletionIntent.Dashboard, lease!.Completion.Intent);
         lease.Consume();
     }
@@ -74,10 +74,10 @@ public sealed class SetupDashboardHandoffStoreTests
         var store = new SetupDashboardHandoffStore(directory.Path, time);
         var handle = store.Issue(Choice);
         time.Now += TimeSpan.FromMinutes(5);
-        Assert.Null(store.Acquire(handle));
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle).Status);
         handle = store.Issue(Choice);
         time.Now -= TimeSpan.FromSeconds(1);
-        Assert.Null(store.Acquire(handle));
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle).Status);
     }
 
     [Fact]
@@ -87,15 +87,15 @@ public sealed class SetupDashboardHandoffStoreTests
         var firstProcess = new SetupDashboardHandoffStore(directory.Path);
         var secondProcess = new SetupDashboardHandoffStore(directory.Path);
         var handle = firstProcess.Issue(Choice);
-        using (var first = firstProcess.Acquire(handle))
+        using (var first = firstProcess.Acquire(handle).Lease)
         {
             Assert.NotNull(first);
-            Assert.Null(secondProcess.Acquire(handle));
-            Assert.Null(secondProcess.Acquire(handle, explicitRetry: true));
+            Assert.Equal(SetupHandoffAcquisitionStatus.Busy, secondProcess.Acquire(handle).Status);
+            Assert.Equal(SetupHandoffAcquisitionStatus.Busy, secondProcess.Acquire(handle, explicitRetry: true).Status);
             first!.Consume();
         }
-        Assert.Null(secondProcess.Acquire(handle));
-        Assert.Null(secondProcess.Acquire(handle, explicitRetry: true));
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, secondProcess.Acquire(handle).Status);
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, secondProcess.Acquire(handle, explicitRetry: true).Status);
     }
 
     [Fact]
@@ -104,9 +104,9 @@ public sealed class SetupDashboardHandoffStoreTests
         using var directory = new TempDirectory();
         var store = new SetupDashboardHandoffStore(directory.Path);
         var handle = store.Issue(Choice);
-        store.Acquire(handle)!.Dispose();
-        Assert.Null(store.Acquire(handle));
-        Assert.Null(store.Acquire(handle, explicitRetry: true));
+        store.Acquire(handle).Lease!.Dispose();
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle).Status);
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle, explicitRetry: true).Status);
     }
 
     [Fact]
@@ -157,7 +157,7 @@ public sealed class SetupDashboardHandoffStoreTests
         var plan = Assert.IsType<ActivationPlan.Dispatch>(router.PlanLaunch(new(
             "openclaw://setup-dashboard?handle=" + handle + "&receipt=" + Uri.EscapeDataString(spoof),
             [], null, false)));
-        using var lease = store.Acquire(Assert.IsType<ActivationRoute.CompleteAiSetup>(plan.Route).Handle);
+        using var lease = store.Acquire(Assert.IsType<ActivationRoute.CompleteAiSetup>(plan.Route).Handle).Lease;
         Assert.Equal(Receipt, lease!.Completion);
         lease.Consume();
     }

@@ -5,6 +5,11 @@ using OpenClaw.SetupEngine;
 
 namespace OpenClawTray.Services;
 
+internal enum SetupHandoffAcquisitionStatus { Acquired, Busy, Invalid, Unavailable }
+
+internal sealed record SetupHandoffAcquisition(
+    SetupHandoffAcquisitionStatus Status, SetupDashboardHandoffStore.Lease? Lease = null);
+
 /// <summary>
 /// One current-profile, short-lived completion. The exclusive file lease spans native presentation.
 /// Only local verified completion creates a record; public activation supplies an opaque lookup handle.
@@ -41,18 +46,32 @@ internal sealed class SetupDashboardHandoffStore
         return handle;
     }
 
-    public Lease? Acquire(string? handle, bool explicitRetry = false)
+    public SetupHandoffAcquisition Acquire(string? handle, bool explicitRetry = false)
     {
-        if (SetupDashboardHandoff.ParseHandle(handle) is null || !Directory.Exists(_directory))
-            return null;
+        try { return AcquireCore(handle, explicitRetry); }
+        catch (Exception error) when (error is InvalidDataException or FileNotFoundException or DirectoryNotFoundException)
+        {
+            return new(SetupHandoffAcquisitionStatus.Invalid);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return new(SetupHandoffAcquisitionStatus.Unavailable);
+        }
+    }
+
+    private SetupHandoffAcquisition AcquireCore(string? handle, bool explicitRetry)
+    {
+        if (SetupDashboardHandoff.ParseHandle(handle) is null)
+            return new(SetupHandoffAcquisitionStatus.Invalid);
         RequireOwnedDirectory();
         FileStream gate;
         try { gate = OpenGate(); }
-        catch (IOException) { return null; } // A concurrent launch owns the file lease; never queue another launch.
+        catch (IOException error) when ((error.HResult & 0xffff) is 32 or 33)
+        {
+            return new(SetupHandoffAcquisitionStatus.Busy);
+        }
         try
         {
-            if (!File.Exists(PendingPath))
-                return null;
             if ((File.GetAttributes(PendingPath) & FileAttributes.ReparsePoint) != 0)
                 throw new IOException("The pending handoff is not an owned regular file.");
             using var input = File.OpenRead(PendingPath);
@@ -60,26 +79,30 @@ internal sealed class SetupDashboardHandoffStore
                 throw new InvalidDataException("The pending handoff is too large.");
             PendingRecord? pending;
             try { pending = JsonSerializer.Deserialize<PendingRecord>(input); }
-            catch (JsonException) { return null; }
+            catch (JsonException) { return new(SetupHandoffAcquisitionStatus.Invalid); }
             input.Dispose();
             if (pending is null || !IsValidCompletion(pending.Completion) ||
                 pending.NativeTarget is not { } target || !target.Matches(pending.Completion) ||
                 pending.HandleHash != Hash(handle!) || !Guid.TryParseExact(pending.RunId, "N", out _) ||
                 pending.ExpiresUtc - pending.IssuedUtc != Lifetime)
-                return null;
+                return new(SetupHandoffAcquisitionStatus.Invalid);
             var now = _time.GetUtcNow();
             if (now < pending.IssuedUtc || now >= pending.ExpiresUtc)
             {
                 File.Delete(PendingPath);
-                return null;
+                return new(SetupHandoffAcquisitionStatus.Invalid);
             }
-            if (pending.State != (explicitRetry ? "retry" : "ready"))
-                return null;
+            if (pending.State == "retry" && !explicitRetry)
+                return new(SetupHandoffAcquisitionStatus.Unavailable);
+            // A pre-acquisition I/O failure leaves ready unchanged. Explicit retry may
+            // admit either unstarted ready or settled retry, never abandoned inflight.
+            if (pending.State != "ready" && !(explicitRetry && pending.State == "retry"))
+                return new(SetupHandoffAcquisitionStatus.Invalid);
             var inFlight = pending with { State = "inflight" };
             Write(inFlight);
             var lease = new Lease(this, gate, inFlight);
             gate = null!;
-            return lease;
+            return new(SetupHandoffAcquisitionStatus.Acquired, lease);
         }
         finally { gate?.Dispose(); }
     }

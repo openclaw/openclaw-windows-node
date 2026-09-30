@@ -80,6 +80,12 @@ public sealed class NativeCompletionPresentationTests
         Assert.True(admission < forwarding);
         Assert.True(forwarding < app.IndexOf("_settings = new SettingsManager();", forwarding, StringComparison.Ordinal));
         Assert.Contains("_postSetupLaunch = _nativeRestartRecovery.Read()", app);
+        Assert.DoesNotContain("_nativeRestartRecovery?.Clear(handle)", app);
+        Assert.Contains("handle, explicitRetry, restartRecovery: _nativeRestartRecovery", app);
+        var launcher = Read(@"src\OpenClaw.Tray.WinUI\Services\SetupNativeHandoffLauncher.cs");
+        Assert.Contains("SetupHandoffAcquisitionStatus.Busy", launcher);
+        Assert.True(launcher.IndexOf("lease.Consume();", StringComparison.Ordinal) <
+            launcher.IndexOf("ClearRestartRecovery();", StringComparison.Ordinal));
     }
 
     [Fact]

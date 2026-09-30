@@ -70,6 +70,7 @@ These are the canonical homes. Do not reintroduce private copies elsewhere.
 | Settings snapshot read + field-scoped save + origin-aware change notification | `ISettingsStore` | authoritative |
 | Hosted setup settings writes | `SetupSettingsWriter` through `ISettingsStore`; SetupWindow and the pipeline supply only reviewed field patches | authoritative |
 | Cooperating JSON persistence coordination | `PersistenceFileLease`; registry expected-snapshot Save and settings loaded-JSON CAS hold it through atomic replacement | authoritative |
+| Settings persistence conflict state and visible recovery | `SettingsManager` owns typed CAS rejection; `SettingsPersistenceNotification` owns dispatched, deduplicated restart guidance; App composes/disposes it | authoritative |
 | V2 exec-approvals snapshot/CAS persistence + observation | `ExecApprovalsStore` through `IExecApprovalsPresentationStore` | authoritative |
 | Settings page load/persist view logic | `SettingsPageViewModel` | authoritative |
 | Native tool identity, display arguments, payload extraction, and flattened-history projection | `NativeToolProjector` | authoritative |
@@ -111,6 +112,8 @@ These are the canonical homes. Do not reintroduce private copies elsewhere.
 | Verified AI completion intent and opaque pending restart handoff | `GatewayAiSetupClient` + `GatewayAiSetupCompletion` + `SetupDashboardHandoffStore` + `SetupDashboardHandoff` | authoritative |
 | Native verified destination choice and selection-time read-only verification | `SetupNativeCompletionCoordinator` + `SetupNativeCompletionVerifier`; `AiReadyPage` renders, `SetupWindow` composes finalization | authoritative |
 | Native pending launch and bound Chat/Channels/Skills entry | `SetupNativeHandoffLauncher` + `SetupNativeNavigationRequest`; `SetupNativeSkills` owns response-bound read-only skills loading; `WindowManager` and pages apply the selected route | authoritative |
+| Native receipt acquisition classification and restart recovery settlement | `SetupDashboardHandoffStore` distinguishes acquired/busy/invalid/unavailable; `SetupNativeHandoffLauncher` retains recovery on busy/unavailable and clears it only after consumption or definitive rejection | authoritative |
+| Pre-acquisition restart recovery deletion | `App.OpenNativeSetupCompletion`; deletion is delegated to the receipt outcome owner | closed |
 | Setup startup availability | `WindowManager` supplies app identity availability; `SetupWindow` gates presentation and persisted preference | authoritative |
 | Setup HWND sizing and DPI-aware minimum | `SetupWindow` applies `OverlappedPresenter` constraints; `SetupWindowSizing` projects DIP dimensions to physical pixels | authoritative |
 | Verified setup authority across fresh clients | `OpenClawGatewayClient.AuthenticatedSigningDeviceId` + `SetupCompletionAuthority` + `SetupGatewaySessionBinding`; accepted signing identity and exact session survive completion, disk reads only detect drift | authoritative |

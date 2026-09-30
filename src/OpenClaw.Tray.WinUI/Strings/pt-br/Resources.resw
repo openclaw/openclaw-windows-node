@@ -7785,4 +7785,6 @@ Suas configurações, gateway, arquivos e modelos permanecem onde estão.</value
   <data name="Onboarding_Native_ReplaceDraftContent" xml:space="preserve"><value>Isso limpa apenas o rascunho de configuração do Companion. Os arquivos do espaço de trabalho, a configuração e as credenciais existentes são mantidos. A nova configuração usa um novo perfil e não importa nem altera os dados antigos do Gateway, a configuração do WSL ou o perfil gerenciado pelo pacote.</value></data>
   <data name="Onboarding_Native_ReplaceDraftPrimary" xml:space="preserve"><value>Descartar e configurar novamente</value></data>
   <data name="Onboarding_Native_ReplaceDraftClose" xml:space="preserve"><value>Manter rascunho</value></data>
+  <data name="Settings_PersistenceConflict_Title" xml:space="preserve"><value>Não foi possível salvar as configurações</value></data>
+  <data name="Settings_PersistenceConflict_Message" xml:space="preserve"><value>Outro processo alterou suas configurações. Suas últimas alterações não foram salvas. Saia do OpenClaw pelo menu da bandeja e abra-o novamente. Depois, tente fazer suas alterações novamente. As configurações salvas pelo outro processo foram preservadas.</value></data>
 </root>

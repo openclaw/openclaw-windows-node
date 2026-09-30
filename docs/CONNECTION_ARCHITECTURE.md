@@ -110,6 +110,16 @@ same path lease for read/merge/replace. `SettingsManager` additionally checks it
 last loaded/saved JSON before replacing the file, rolls back failed store edits,
 and publishes notifications after releasing the file lease.
 
+A stale `SettingsManager` raises a typed persistence conflict for both the
+best-effort `Save()` path and throwing store updates. It does not adopt the new
+disk baseline or overwrite another writer. `SettingsPersistenceNotification`
+projects that state through the UI dispatcher into one persistent error notice.
+The notice directs the user to exit OpenClaw from the tray menu, reopen it, and
+retry their changes. Repeated failures do not stack notifications or emit
+`Saved`; `ISettingsStore.Update` still rolls back and throws. Explicit `Load()`
+refreshes both data and baseline and clears the conflict notice, without
+automatically restarting the app or replaying edits.
+
 **OpenClaw.Tray.WinUI** consumes the connection layer through interfaces. It never creates gateway clients directly - `GatewayConnectionManager` owns that entirely.
 
 ## Consumer API

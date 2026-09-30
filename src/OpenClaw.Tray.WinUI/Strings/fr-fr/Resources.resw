@@ -7731,4 +7731,6 @@ Vos paramètres, votre passerelle, vos fichiers et vos modèles restent en place
   <data name="Onboarding_Native_ReplaceDraftContent" xml:space="preserve"><value>Cette opération efface uniquement le brouillon de configuration Companion. Les fichiers de travail, la configuration et les informations d'identification existants sont conservés. La nouvelle configuration utilise un nouveau profil sans importer ni modifier les anciennes données Gateway, la configuration WSL ou le profil géré par le package.</value></data>
   <data name="Onboarding_Native_ReplaceDraftPrimary" xml:space="preserve"><value>Ignorer et configurer à nouveau</value></data>
   <data name="Onboarding_Native_ReplaceDraftClose" xml:space="preserve"><value>Conserver le brouillon</value></data>
+  <data name="Settings_PersistenceConflict_Title" xml:space="preserve"><value>Impossible d'enregistrer les paramètres</value></data>
+  <data name="Settings_PersistenceConflict_Message" xml:space="preserve"><value>Un autre processus a modifié vos paramètres. Vos dernières modifications n'ont pas été enregistrées. Quittez OpenClaw depuis le menu de la zone de notification et rouvrez-le, puis réessayez vos modifications. Les paramètres enregistrés par l'autre processus ont été conservés.</value></data>
 </root>

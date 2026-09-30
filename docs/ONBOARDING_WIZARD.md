@@ -399,6 +399,13 @@ Failures after acquiring a receipt are settled before reporting: changed or
 unreadable identity consumes it as Changed; an unavailable verification API or
 malformed verification response retains explicit retry. Malformed stored
 receipts, including oversized files rejected before acquisition, remain Invalid.
+Acquisition distinguishes a busy exclusive lease from invalid input and unavailable
+storage. A duplicate while a first launch owns the lease is ignored without a
+failure notification, Connection navigation, or another queued launch. Storage
+failures offer explicit Retry. That retry can admit an unstarted `ready` receipt
+after pre-acquisition I/O failure or a settled `retry` receipt after a failed
+presentation; it cannot replay an abandoned `inflight` receipt. Ordinary
+activation of a `retry` receipt only offers recovery, never automatic execution.
 
 A startup activation with a well-formed native handle bypasses the ordinary
 update prompt for that launch. Receipt validation still runs normally; handle
@@ -410,8 +417,10 @@ acquire the instance mutex synchronously on the same thread, with a 60-second
 wait per attempt followed by visible Retry/Cancel recovery. The unadmitted
 handle is retained in a protected, profile-local `setup-dashboard-handoff/restart.json`
 file, not logs or UI text. A newly owned ordinary launch can resume it; ordinary
-secondary forwarding is unchanged. Admission clears the matching recovery
-record. Retention does not extend receipt expiry or replace normal verification.
+secondary forwarding is unchanged. Busy or unavailable handoff attempts retain
+the matching recovery record. Successful receipt consumption after page mounting,
+or definitive invalid/changed rejection, clears only that matching record.
+Retention does not extend receipt expiry or replace normal verification.
 
 An invalid regular `restart.json` is rechecked and removed under its writer lease
 before reporting the error once. A newer valid handle, other handoff files and

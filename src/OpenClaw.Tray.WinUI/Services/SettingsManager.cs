@@ -8,6 +8,9 @@ using OpenClaw.Shared.Capabilities;
 
 namespace OpenClawTray.Services;
 
+internal sealed class SettingsPersistenceConflictException()
+    : InvalidOperationException("Settings changed in another writer. Reload before saving.");
+
 /// <summary>
 /// Manages application settings with JSON persistence.
 /// </summary>
@@ -31,6 +34,10 @@ public class SettingsManager
 
     /// <summary>Raised after settings are persisted to disk.</summary>
     public event EventHandler? Saved;
+
+    internal event EventHandler? PersistenceStateChanged;
+    internal bool HasPersistenceConflict => _hasPersistenceConflict;
+    private volatile bool _hasPersistenceConflict;
 
     private readonly object _saveLock = new();
     private SettingsData _data = CreateDefaultData();
@@ -214,6 +221,8 @@ public class SettingsManager
 
     public void Load()
     {
+        var loadSucceeded = false;
+        var conflictCleared = false;
         lock (_saveLock)
         {
         using var lease = PersistenceFileLease.Acquire(_settingsFilePath);
@@ -235,6 +244,7 @@ public class SettingsManager
                     _data = NormalizeLoadedData(loaded, json);
                 }
             }
+            loadSucceeded = true;
         }
         catch (Exception ex)
         {
@@ -242,7 +252,13 @@ public class SettingsManager
             LegacyToken = null;
             LegacyBootstrapToken = null;
         }
+        if (loadSucceeded && _hasPersistenceConflict)
+        {
+            _hasPersistenceConflict = false;
+            conflictCleared = true;
         }
+        }
+        if (conflictCleared) NotifyPersistenceStateChanged();
     }
 
     private static SettingsData CreateDefaultData() => new()
@@ -485,11 +501,47 @@ public class SettingsManager
     {
         lock (_saveLock)
         {
+            try
+            {
+                SaveCore();
+                SetPersistenceConflict(false);
+            }
+            catch (SettingsPersistenceConflictException)
+            {
+                SetPersistenceConflict(true);
+                throw;
+            }
+        }
+    }
+
+    private void SetPersistenceConflict(bool conflict)
+    {
+        lock (_saveLock)
+        {
+            if (!conflict && !_hasPersistenceConflict) return;
+            _hasPersistenceConflict = conflict;
+        }
+        NotifyPersistenceStateChanged();
+    }
+
+    private void NotifyPersistenceStateChanged()
+    {
+        try { PersistenceStateChanged?.Invoke(this, EventArgs.Empty); }
+        catch (Exception)
+        {
+            Logger.Warn("A settings persistence notification subscriber failed.");
+        }
+    }
+
+    private void SaveCore()
+    {
+        lock (_saveLock)
+        {
             using (PersistenceFileLease.Acquire(_settingsFilePath))
             {
             var current = File.Exists(_settingsFilePath) ? File.ReadAllText(_settingsFilePath) : null;
             if (current != _persistedJson)
-                throw new InvalidOperationException("Settings changed in another writer. Reload before saving.");
+                throw new SettingsPersistenceConflictException();
             Directory.CreateDirectory(_settingsDirectory);
             // Lock the tray data dir to current user + SYSTEM + Administrators —
             // it co-locates the MCP bearer token, settings.json (which embeds

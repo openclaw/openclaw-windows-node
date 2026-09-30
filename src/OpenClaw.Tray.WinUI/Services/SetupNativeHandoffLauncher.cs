@@ -16,12 +16,17 @@ internal sealed class SetupNativeHandoffLauncher(
     internal const string FailureNotificationId = "setup-native-launch";
 
     public async Task<bool> OpenAsync(SetupDashboardHandoffStore store, string? handle,
-        bool explicitRetry = false, CancellationToken ct = default)
+        bool explicitRetry = false, CancellationToken ct = default, NativeRestartRecoveryStore? restartRecovery = null)
     {
         var failure = SetupNativeLaunchFailure.Invalid;
         try
         {
-            using var lease = store.Acquire(handle, explicitRetry);
+            var acquisition = store.Acquire(handle, explicitRetry);
+            if (acquisition.Status == SetupHandoffAcquisitionStatus.Busy)
+                return false;
+            if (acquisition.Status == SetupHandoffAcquisitionStatus.Unavailable)
+                failure = SetupNativeLaunchFailure.Unavailable;
+            using var lease = acquisition.Lease;
             if (lease is not null)
             {
                 try
@@ -45,6 +50,7 @@ internal sealed class SetupNativeHandoffLauncher(
                     await open(new(current.Verification, lease.NativeTarget), timeout.Token);
                     RequireCurrent();
                     lease.Consume();
+                    ClearRestartRecovery();
                     return true;
                 }
                 catch (Exception error) when (error is SetupNativeOwnershipException or DeviceIdentityLoadException)
@@ -70,7 +76,19 @@ internal sealed class SetupNativeHandoffLauncher(
         {
             failure = SetupNativeLaunchFailure.Unavailable;
         }
+        if (failure is SetupNativeLaunchFailure.Invalid or SetupNativeLaunchFailure.Changed)
+            ClearRestartRecovery();
         reportFailure(failure);
         return false;
+
+        void ClearRestartRecovery()
+        {
+            if (handle is null || restartRecovery is null) return;
+            try { restartRecovery.Clear(handle); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+            {
+                Logger.Warn("The completed setup restart recovery record could not be removed.");
+            }
+        }
     }
 }

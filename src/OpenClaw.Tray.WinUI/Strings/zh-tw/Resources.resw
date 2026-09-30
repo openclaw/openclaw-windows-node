@@ -7731,4 +7731,6 @@
   <data name="Onboarding_Native_ReplaceDraftContent" xml:space="preserve"><value>這只會清除 Companion 設定草稿。現有工作區檔案、設定和認證都會保留。新設定使用新的設定檔，不會匯入或變更舊 Gateway 資料、WSL 設定或套件管理的設定檔。</value></data>
   <data name="Onboarding_Native_ReplaceDraftPrimary" xml:space="preserve"><value>捨棄並重新設定</value></data>
   <data name="Onboarding_Native_ReplaceDraftClose" xml:space="preserve"><value>保留草稿</value></data>
+  <data name="Settings_PersistenceConflict_Title" xml:space="preserve"><value>無法儲存設定</value></data>
+  <data name="Settings_PersistenceConflict_Message" xml:space="preserve"><value>另一個處理程序變更了您的設定。您最近的變更未儲存。請從系統匣選單結束 OpenClaw，然後重新開啟並重試您的變更。另一個處理程序儲存的設定已保留。</value></data>
 </root>

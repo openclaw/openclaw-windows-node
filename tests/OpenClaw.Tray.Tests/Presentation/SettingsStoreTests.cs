@@ -68,7 +68,7 @@ public sealed class SettingsStoreTests
             other.NotificationSound = "other-writer";
             other.SaveOrThrow();
             var before = File.ReadAllBytes(Path.Combine(temp.Path, "settings.json"));
-            Assert.Throws<InvalidOperationException>(() => store.Update(null, editor => editor.GlobalHotkeyEnabled = false));
+            Assert.Throws<SettingsPersistenceConflictException>(() => store.Update(null, editor => editor.GlobalHotkeyEnabled = false));
             Assert.True(settings.GlobalHotkeyEnabled);
             Assert.Equal(before, File.ReadAllBytes(Path.Combine(temp.Path, "settings.json")));
             settings.Load();

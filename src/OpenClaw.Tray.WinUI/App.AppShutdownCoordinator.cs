@@ -179,6 +179,8 @@ public partial class App
 
         steps.Add(new AppShutdownStep("app state observers", () =>
         {
+            _settingsPersistenceNotification?.Dispose();
+            _settingsPersistenceNotification = null;
             if (_appState != null)
                 _appState.PropertyChanged -= OnAppStateChanged;
             PermissionsRuntimeChanged = null;

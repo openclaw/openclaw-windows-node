@@ -7795,4 +7795,6 @@ Your settings, gateway, files, and models stay where they are.</value>
   <data name="Onboarding_Native_ReplaceDraftContent" xml:space="preserve"><value>This clears only the Companion setup draft. Existing workspace files, configuration and credentials are kept. New setup uses a new profile and does not import or change the old Gateway data, WSL setup, or package-managed profile.</value></data>
   <data name="Onboarding_Native_ReplaceDraftPrimary" xml:space="preserve"><value>Discard and set up again</value></data>
   <data name="Onboarding_Native_ReplaceDraftClose" xml:space="preserve"><value>Keep draft</value></data>
+  <data name="Settings_PersistenceConflict_Title" xml:space="preserve"><value>Settings could not be saved</value></data>
+  <data name="Settings_PersistenceConflict_Message" xml:space="preserve"><value>Another process changed your settings. Your latest changes were not saved. Exit OpenClaw from the tray menu and reopen it, then retry your changes. The other process's saved settings have been preserved.</value></data>
 </root>

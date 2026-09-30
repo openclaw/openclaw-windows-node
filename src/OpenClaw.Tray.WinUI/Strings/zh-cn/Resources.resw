@@ -7731,4 +7731,6 @@
   <data name="Onboarding_Native_ReplaceDraftContent" xml:space="preserve"><value>这只会清除 Companion 设置草稿。现有工作区文件、配置和凭据将被保留。新设置使用新的配置文件，不会导入或更改旧 Gateway 数据、WSL 设置或包管理的配置文件。</value></data>
   <data name="Onboarding_Native_ReplaceDraftPrimary" xml:space="preserve"><value>丢弃并重新设置</value></data>
   <data name="Onboarding_Native_ReplaceDraftClose" xml:space="preserve"><value>保留草稿</value></data>
+  <data name="Settings_PersistenceConflict_Title" xml:space="preserve"><value>无法保存设置</value></data>
+  <data name="Settings_PersistenceConflict_Message" xml:space="preserve"><value>另一个进程更改了您的设置。您最近的更改未保存。请从托盘菜单退出 OpenClaw，然后重新打开并重试您的更改。另一个进程保存的设置已保留。</value></data>
 </root>
