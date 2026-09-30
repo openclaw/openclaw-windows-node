@@ -16,6 +16,7 @@ public sealed partial class NativeGatewaySetupPage : Page
     private readonly NativeGatewayMsixInstaller _installer = new();
     private CancellationTokenSource? _operationCts;
     private Task? _operation;
+    private NativeGatewaySetupService? _setupService;
     private readonly List<StepRow> _rows = [];
     private int _currentStep;
     internal bool IsBusy => _operation is { IsCompleted: false };
@@ -58,6 +59,48 @@ public sealed partial class NativeGatewaySetupPage : Page
         try
         {
             await ConfigureAsync(cancellationToken);
+        }
+        catch (NativeGatewaySetupService.NativeGatewayDraftRecoveryRequiredException ex)
+        {
+            var discard = await new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = SetupLocalization.GetString("Onboarding_Native_ReplaceDraftTitle"),
+                Content = SetupLocalization.GetString("Onboarding_Native_ReplaceDraftContent"),
+                PrimaryButtonText = SetupLocalization.GetString("Onboarding_Native_ReplaceDraftPrimary"),
+                CloseButtonText = SetupLocalization.GetString("Onboarding_Native_ReplaceDraftClose"),
+                DefaultButton = ContentDialogButton.Close,
+            }.ShowAsync();
+            if (discard == ContentDialogResult.Primary)
+            {
+                try
+                {
+                    await (_setupService ?? throw new InvalidOperationException("Native Gateway setup is unavailable."))
+                        .DiscardIncompatibleDraftAsync(cancellationToken);
+                    await ConfigureAsync(cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    _rows[_currentStep].SetStatus(StepStatus.Idle);
+                    StatusText.Text = SetupLocalization.GetString("Onboarding_Native_Cancelled");
+                    RetryButton.Visibility = Visibility.Visible;
+                }
+                catch (Exception discardFailure) when (discardFailure is InvalidOperationException or IOException or
+                                                       UnauthorizedAccessException or Win32Exception or COMException or
+                                                       JsonException or TimeoutException or AggregateException)
+                {
+                    Trace.TraceError($"Native Gateway draft discard: {discardFailure}");
+                    _rows[_currentStep].SetStatus(StepStatus.Failed);
+                    StatusText.Text = SetupLogger.Sanitize(discardFailure.Message);
+                    RetryButton.Visibility = Visibility.Visible;
+                }
+            }
+            else
+            {
+                _rows[_currentStep].SetStatus(StepStatus.Failed);
+                StatusText.Text = ex.Message;
+                RetryButton.Visibility = Visibility.Visible;
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -115,7 +158,7 @@ public sealed partial class NativeGatewaySetupPage : Page
             if (stage is NativeGatewaySetupStage.StartingGateway or NativeGatewaySetupStage.VerifyingEndpoint)
                 SetCurrentStep(3);
         });
-        var service = new NativeGatewaySetupService(
+        var service = _setupService = new NativeGatewaySetupService(
             registry,
             _resolver,
             new NativeGatewaySetupHost(ReportProgress, ReportStage),

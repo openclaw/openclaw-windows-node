@@ -288,7 +288,8 @@ public sealed class NativeGatewayRuntimeRouter(
             NativeGatewayContract.Legacy)
             throw new NativeGatewayContractException(
                 "This Companion profile was created for a same-user Gateway. " +
-                "Set up the isolated Gateway again instead of sending it this profile's credentials.");
+                "In Companion, open Connections, select this old profile and choose Remove, then choose Add Gateway > Install a local native Gateway. " +
+                "This explicitly creates a new isolated profile instead of sending the old profile's credentials to the package.");
         _active = legacy;
         await legacy.EnsureRunningAsync(record, cancellationToken).ConfigureAwait(false);
     }

@@ -7389,4 +7389,8 @@ Vos paramètres, votre passerelle, vos fichiers et vos modèles restent en place
   <data name="Onboarding_Native_InProgress" xml:space="preserve"><value>Préparation du Gateway natif pour l'assistant partagé. Les questions sur le fournisseur et le modèle s'afficheront ici dans Companion.</value></data>
   <data name="Onboarding_Native_Cancelled" xml:space="preserve"><value>Configuration annulée. La demande WinGet a été annulée, mais Windows peut encore terminer le déploiement. Les paramètres déjà saisis sont conservés dans le profil natif dédié. Aucun package Gateway n'a été supprimé.</value></data>
   <data name="Onboarding_Native_Configured" xml:space="preserve"><value>Configuration et état authentifié du Gateway vérifiés à {0}. Ouvrez Companion pour démarrer le Gateway et terminer l'association dans les paramètres de connexion. Les fonctionnalités Windows que vous avez sélectionnées ont été enregistrées.</value></data>
+  <data name="Onboarding_Native_ReplaceDraftTitle" xml:space="preserve"><value>Remplacer la configuration Gateway inachevée ?</value></data>
+  <data name="Onboarding_Native_ReplaceDraftContent" xml:space="preserve"><value>Cette opération supprime uniquement le brouillon non publié de la configuration Companion et ses informations d'identification locales. Elle ne modifie pas une Gateway existante, la configuration WSL ou le profil géré par le package.</value></data>
+  <data name="Onboarding_Native_ReplaceDraftPrimary" xml:space="preserve"><value>Ignorer et configurer à nouveau</value></data>
+  <data name="Onboarding_Native_ReplaceDraftClose" xml:space="preserve"><value>Conserver le brouillon</value></data>
 </root>

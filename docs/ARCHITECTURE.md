@@ -274,6 +274,14 @@ profile paths or install its own Gateway supervisor. Package
 draft can resume without replacing the agent's credential. Finalization
 checks that the returned port and token still match before publishing.
 
+If an unpublished same-user draft survives an upgrade to an isolated package,
+Companion shows an explicit replacement choice. Discarding removes only that
+unpublished Companion draft and its local credentials, then starts isolated
+setup; it never reuses host configuration as agent configuration. A published
+same-user profile remains blocked and directs the user through Connections to
+remove it and create a new isolated profile. It never adopts a foreign listener
+or session, and it does not modify WSL or other package paths.
+
 The following same-user profile and port-rotation path applies only to the
 recognized legacy proof package. It creates a separate profile at
 `<Companion data>\gateways\<gateway-id>\native-gateway`, with its own

@@ -7389,4 +7389,8 @@
   <data name="Onboarding_Native_InProgress" xml:space="preserve"><value>正在为共享设置向导准备原生 Gateway。提供商和模型问题将在 Companion 中显示。</value></data>
   <data name="Onboarding_Native_Cancelled" xml:space="preserve"><value>设置已取消。WinGet 请求已取消，但 Windows 仍可能完成部署。已输入的配置保留在专用原生配置目录中。未删除任何 Gateway 包。</value></data>
   <data name="Onboarding_Native_Configured" xml:space="preserve"><value>已在 {0} 验证 Gateway 配置和经过身份验证的健康状态。打开 Companion 启动 Gateway，并在连接设置中完成设备配对。您选择的 Windows 功能已保存。</value></data>
+  <data name="Onboarding_Native_ReplaceDraftTitle" xml:space="preserve"><value>替换未完成的 Gateway 设置？</value></data>
+  <data name="Onboarding_Native_ReplaceDraftContent" xml:space="preserve"><value>这只会删除未发布的 Companion 设置草稿及其本地凭据。不会更改现有 Gateway、WSL 设置或包管理的配置文件。</value></data>
+  <data name="Onboarding_Native_ReplaceDraftPrimary" xml:space="preserve"><value>丢弃并重新设置</value></data>
+  <data name="Onboarding_Native_ReplaceDraftClose" xml:space="preserve"><value>保留草稿</value></data>
 </root>

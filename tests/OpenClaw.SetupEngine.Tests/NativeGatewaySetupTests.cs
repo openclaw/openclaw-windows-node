@@ -14,6 +14,58 @@ public sealed class NativeGatewaySetupTests
     private const string Family = "OpenClaw.Gateway_123456789abcd";
 
     [Fact]
+    public async Task IncompatibleUnpublishedDraft_RequiresExplicitDiscardBeforeCreatingIsolatedProfile()
+    {
+        using var fixture = new Fixture();
+        var legacy = await fixture.Service.CreateDraftAsync(default);
+        var stateDirectory = NativeGatewayPaths.GetStateDirectory(fixture.Registry, legacy.GatewayId);
+        Directory.CreateDirectory(stateDirectory);
+        File.WriteAllText(Path.Combine(stateDirectory, "credential-marker.txt"), "legacy-credential");
+
+        fixture.Host.Contract = NativeGatewayContract.IsolatedSessionV1;
+
+        await Assert.ThrowsAsync<NativeGatewaySetupService.NativeGatewayDraftRecoveryRequiredException>(
+            () => fixture.Service.CreateDraftAsync(default));
+        Assert.True(File.Exists(Path.Combine(stateDirectory, "credential-marker.txt")));
+
+        await fixture.Service.DiscardIncompatibleDraftAsync(default);
+        var isolated = await fixture.Service.CreateDraftAsync(default);
+
+        Assert.NotEqual(legacy.GatewayId, isolated.GatewayId);
+        Assert.Equal(NativeGatewayContract.IsolatedSessionV1, isolated.Contract);
+        Assert.False(Directory.Exists(stateDirectory));
+        Assert.Equal(isolated, JsonSerializer.Deserialize<NativeGatewaySetupDraft>(
+            File.ReadAllText(NativeGatewaySetupService.GetDraftPath(fixture.Registry))));
+        Assert.Empty(fixture.Registry.GetAll());
+    }
+
+    [Fact]
+    public async Task PublishedNativeProfileCannotBeDiscardedByDraftRecovery()
+    {
+        using var fixture = new Fixture();
+        var draft = await fixture.Service.CreateDraftAsync(default);
+        var stateDirectory = NativeGatewayPaths.GetStateDirectory(fixture.Registry, draft.GatewayId);
+        Directory.CreateDirectory(stateDirectory);
+        var credentialPath = Path.Combine(stateDirectory, "credential-marker.txt");
+        File.WriteAllText(credentialPath, "preserved-credential");
+        fixture.Registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = draft.GatewayId,
+            Url = $"ws://127.0.0.1:{draft.Port}",
+            IsLocal = true,
+            NativePackageFamilyName = draft.PackageFamilyName
+        });
+        fixture.Registry.Save();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => fixture.Service.DiscardIncompatibleDraftAsync(default));
+
+        Assert.True(File.Exists(credentialPath));
+        Assert.True(File.Exists(NativeGatewaySetupService.GetDraftPath(fixture.Registry)));
+        Assert.NotNull(fixture.Registry.GetById(draft.GatewayId));
+    }
+
+    [Fact]
     public async Task Draft_OccupiedPortRotatesWithoutReplacingProfileOrCredentials()
     {
         using var fixture = new Fixture();

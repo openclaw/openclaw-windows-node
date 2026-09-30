@@ -7443,4 +7443,8 @@ Suas configurações, gateway, arquivos e modelos permanecem onde estão.</value
   <data name="Onboarding_Native_InProgress" xml:space="preserve"><value>Preparando o Gateway nativo para o assistente compartilhado. As perguntas sobre provedor e modelo aparecerão aqui no Companion.</value></data>
   <data name="Onboarding_Native_Cancelled" xml:space="preserve"><value>Configuração cancelada. A solicitação do WinGet foi cancelada, mas o Windows ainda pode concluir a implantação. Os dados já inseridos são mantidos no perfil nativo dedicado. Nenhum pacote Gateway foi removido.</value></data>
   <data name="Onboarding_Native_Configured" xml:space="preserve"><value>Configuração e integridade autenticada verificadas em {0}. Abra o Companion para iniciar o Gateway e concluir o pareamento nas configurações de conexão. Os recursos do Windows que você selecionou foram salvos.</value></data>
+  <data name="Onboarding_Native_ReplaceDraftTitle" xml:space="preserve"><value>Substituir a configuração inacabada do Gateway?</value></data>
+  <data name="Onboarding_Native_ReplaceDraftContent" xml:space="preserve"><value>Isso remove apenas o rascunho não publicado da configuração do Companion e suas credenciais locais. Não altera um Gateway existente, a configuração do WSL ou o perfil gerenciado pelo pacote.</value></data>
+  <data name="Onboarding_Native_ReplaceDraftPrimary" xml:space="preserve"><value>Descartar e configurar novamente</value></data>
+  <data name="Onboarding_Native_ReplaceDraftClose" xml:space="preserve"><value>Manter rascunho</value></data>
 </root>

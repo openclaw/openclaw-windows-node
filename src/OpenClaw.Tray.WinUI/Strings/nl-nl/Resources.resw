@@ -7390,4 +7390,8 @@ Uw instellingen, gateway, bestanden en modellen blijven op hun plaats.</value>
   <data name="Onboarding_Native_InProgress" xml:space="preserve"><value>De native Gateway wordt voorbereid voor de gedeelde wizard. Vragen over de provider en het model verschijnen hier in Companion.</value></data>
   <data name="Onboarding_Native_Cancelled" xml:space="preserve"><value>Instelling geannuleerd. Het WinGet-verzoek is geannuleerd, maar Windows kan de implementatie nog voltooien. Ingevoerde configuratie blijft bewaard in het aparte native profiel. Er is geen Gateway-pakket verwijderd.</value></data>
   <data name="Onboarding_Native_Configured" xml:space="preserve"><value>Gateway-configuratie en geauthenticeerde gezondheid gecontroleerd op {0}. Open Companion om de Gateway te starten en het apparaat te koppelen in de verbindingsinstellingen. Uw geselecteerde Windows-functies zijn opgeslagen.</value></data>
+  <data name="Onboarding_Native_ReplaceDraftTitle" xml:space="preserve"><value>Onvoltooide Gateway-instelling vervangen?</value></data>
+  <data name="Onboarding_Native_ReplaceDraftContent" xml:space="preserve"><value>Hiermee worden alleen het niet-gepubliceerde Companion-instellingsconcept en de lokale referenties verwijderd. Een bestaande Gateway, WSL-instelling of pakketbeheerd profiel verandert niet.</value></data>
+  <data name="Onboarding_Native_ReplaceDraftPrimary" xml:space="preserve"><value>Verwijderen en opnieuw instellen</value></data>
+  <data name="Onboarding_Native_ReplaceDraftClose" xml:space="preserve"><value>Concept behouden</value></data>
 </root>

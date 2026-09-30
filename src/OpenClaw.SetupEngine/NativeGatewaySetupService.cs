@@ -92,9 +92,9 @@ public sealed class NativeGatewaySetupService(
                 if (saved.PackageFamilyName != package.PackageFamilyName)
                     throw new InvalidOperationException("The installed Gateway package does not match the saved setup profile.");
                 if (saved.Contract != contract)
-                    throw new InvalidOperationException(
+                    throw new NativeGatewayDraftRecoveryRequiredException(
                         "The saved native setup draft belongs to a different Gateway runtime. " +
-                        "Finish or discard that draft before starting a new setup.");
+                        "Discard the unpublished draft to create a new isolated Gateway profile.");
                 return contract == NativeGatewayContract.IsolatedSessionV1
                     ? saved
                     : ResumeDraft(saved, draftPath);
@@ -108,6 +108,29 @@ public sealed class NativeGatewaySetupService(
         Directory.CreateDirectory(Path.GetDirectoryName(draftPath)!);
         AtomicFile.WriteAllText(draftPath, JsonSerializer.Serialize(draft));
         return draft;
+    }
+
+    /// <summary>
+    /// Discards an unpublished draft after the user explicitly chooses to replace an
+    /// incompatible runtime. Published profiles and unrelated gateway state are never removed.
+    /// </summary>
+    public async Task DiscardIncompatibleDraftAsync(CancellationToken cancellationToken)
+    {
+        var draftPath = GetDraftPath(registry);
+        if (!File.Exists(draftPath))
+            return;
+
+        var saved = JsonSerializer.Deserialize<NativeGatewaySetupDraft>(
+            await File.ReadAllTextAsync(draftPath, cancellationToken).ConfigureAwait(false))
+            ?? throw new InvalidOperationException("The saved native setup draft is invalid.");
+        var stateDirectory = NativeGatewayPaths.GetStateDirectory(registry, saved.GatewayId);
+        registry.Load();
+        if (registry.GetById(saved.GatewayId) is not null)
+            throw new InvalidOperationException("The saved native Gateway profile has already been published and cannot be discarded from setup.");
+
+        if (Directory.Exists(stateDirectory))
+            Directory.Delete(stateDirectory, recursive: true);
+        File.Delete(draftPath);
     }
 
     private NativeGatewaySetupDraft ResumeDraft(NativeGatewaySetupDraft draft, string draftPath)
@@ -125,6 +148,9 @@ public sealed class NativeGatewaySetupService(
         System.Diagnostics.Trace.TraceInformation("Native setup is replacing an unavailable draft port.");
         return FinishPortChange(pending, draftPath);
     }
+
+    /// <summary>Signals that an unpublished same-user draft requires explicit replacement after a package upgrade.</summary>
+    public sealed class NativeGatewayDraftRecoveryRequiredException(string message) : InvalidOperationException(message);
 
     private NativeGatewaySetupDraft FinishPortChange(NativeGatewaySetupDraft draft, string draftPath)
     {
