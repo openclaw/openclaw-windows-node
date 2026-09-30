@@ -252,6 +252,68 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
         }
     }
 
+    [Fact]
+    public async Task SettledCapabilityScroll_ReachesLastRowAfterExtentGrowth()
+    {
+        OnboardingNativeProof.AssertIsolatedRoots();
+        await ui.RunOnUIAsync(async () =>
+        {
+            var target = new SettingsCard { Header = "Last capability", Height = 70 };
+            var content = new StackPanel();
+            content.Children.Add(new Border { Height = 400 });
+            content.Children.Add(target);
+            var scroll = new ScrollViewer { Content = content };
+            var root = new Grid { Width = 600, Height = 170 };
+            root.Children.Add(scroll);
+            var window = OnboardingNativeProof.CreateWindow(() => new Window { Content = root });
+            try
+            {
+                window.AppWindow.Resize(new(800, 500));
+                window.Activate();
+                window.AppWindow.Move(new(-32000, -32000));
+                await TestSupport.WaitForRenderedConditionAsync(() => target.IsLoaded, "scroll regression loaded");
+                root.UpdateLayout();
+                await OnboardingNativeProof.NextCompositionAsync();
+                var oldEnd = scroll.ScrollableHeight;
+                target.Height += 15;
+                root.UpdateLayout();
+                await OnboardingNativeProof.NextCompositionAsync();
+                Assert.True(scroll.ScrollableHeight >= oldEnd + 14);
+                scroll.ChangeView(null, oldEnd, null, disableAnimation: true);
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => Math.Abs(scroll.VerticalOffset - oldEnd) < 1, "stale scroll extent");
+                var clipped = target.TransformToVisual(scroll).TransformBounds(new(0, 0, target.ActualWidth, target.ActualHeight));
+                Assert.True(clipped.Bottom > scroll.ViewportHeight + 14);
+
+                await ScrollMeasuredTargetIntoViewportAsync(target, scroll, ui);
+
+                Assert.True(scroll.VerticalOffset > oldEnd);
+                OnboardingNativeProof.AssertFullyVisible(target, scroll);
+            }
+            finally
+            {
+                window.Close();
+                await ui.YieldToRenderAsync();
+            }
+        });
+    }
+
+    private static async Task ScrollMeasuredTargetIntoViewportAsync(
+        FrameworkElement target, ScrollViewer scroll, UIThreadFixture ui)
+    {
+        var root = Assert.IsAssignableFrom<FrameworkElement>(scroll.XamlRoot.Content);
+        root.UpdateLayout();
+        var bounds = target.TransformToVisual(scroll).TransformBounds(new(0, 0, target.ActualWidth, target.ActualHeight));
+        var offset = Math.Clamp(scroll.VerticalOffset + bounds.Top +
+            (bounds.Height - scroll.ViewportHeight) / 2, 0, scroll.ScrollableHeight);
+        scroll.ChangeView(null, offset, null, disableAnimation: true);
+        await TestSupport.WaitForRenderedConditionAsync(
+            () => Math.Abs(scroll.VerticalOffset - offset) < 1, "measured capability scroll");
+        await ui.YieldToRenderAsync();
+        await OnboardingNativeProof.NextCompositionAsync();
+        root.UpdateLayout();
+    }
+
     private static async Task SaveCapabilitiesAsync(SetupWindow window, CapabilitiesPage page, UIThreadFixture ui,
         ITestOutputHelper output, string name)
     {
@@ -275,6 +337,8 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
             await ui.YieldToRenderAsync();
             await OnboardingNativeProof.NextCompositionAsync();
             root.UpdateLayout();
+            // Responsive cards can grow the extent after BringIntoView used the old end offset.
+            await ScrollMeasuredTargetIntoViewportAsync(target, scroll, ui);
             var bounds = target.TransformToVisual(scroll).TransformBounds(new(0, 0, target.ActualWidth, target.ActualHeight));
             output.WriteLine($"control={index}; bounds={bounds}; viewport={scroll.ViewportWidth}x{scroll.ViewportHeight}; offset={scroll.VerticalOffset}; scrollable={scroll.ScrollableHeight}");
             OnboardingNativeProof.AssertFullyVisible(target, scroll);
