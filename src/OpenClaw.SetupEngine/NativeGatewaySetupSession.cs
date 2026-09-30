@@ -54,7 +54,7 @@ public sealed class NativeGatewaySetupSession(
     {
         // A failed final health check restored reload already. Suspend again before
         // starting a new wizard, not when retrying finalization itself.
-        if (!File.Exists(ReloadBackupPath))
+        if (!IsIsolated && !File.Exists(ReloadBackupPath))
             await RestartAsync(cancellationToken);
         await AuthorizeAsync(cancellationToken);
     }
@@ -171,7 +171,8 @@ public sealed class NativeGatewaySetupSession(
             BeginWizard();
             _terminal?.Dispose();
             _terminal = null;
-            await runtime.StopAsync(linked.Token);
+            if (!IsIsolated)
+                await runtime.StopAsync(linked.Token);
             // Upstream may have changed configuration before an error. Validate before restart.
             if (!IsIsolated)
             {
@@ -179,6 +180,8 @@ public sealed class NativeGatewaySetupSession(
                 SuspendReload();
             }
             await host.ValidateConfigurationAsync(package, environment, linked.Token);
+            if (IsIsolated)
+                await runtime.RestartAsync(Record, linked.Token);
             await AuthorizeCoreAsync(linked.Token);
         }
         finally { _gate.Release(); }

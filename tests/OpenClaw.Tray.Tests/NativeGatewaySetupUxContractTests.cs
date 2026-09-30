@@ -6,6 +6,31 @@ namespace OpenClaw.Tray.Tests;
 public sealed class NativeGatewaySetupUxContractTests
 {
     [Fact]
+    public void ConsoleFailureRecovery_IsIndependentOfWizardErrorAndSurvivesNormalStepClears()
+    {
+        // Retire when the WinUI wizard exposes a mounted log-failure interaction fixture.
+        var pages = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.SetupEngine.UI", "Pages");
+        var document = XDocument.Load(Path.Combine(pages, "WizardPage.xaml"));
+        XNamespace names = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var recovery = document.Descendants().Single(e => (string?)e.Attribute(names + "Name") == "ConsoleRecovery");
+        Assert.Contains(recovery.Descendants(), e =>
+            (string?)e.Attribute("Click") == "OpenGatewayTerminal_Click");
+        Assert.DoesNotContain(recovery.Ancestors(), e =>
+            (string?)e.Attribute(names + "Name") is "GatewayRecovery" or "ConsoleBanner");
+        var source = File.ReadAllText(Path.Combine(pages, "WizardPage.xaml.cs"));
+        var clear = source[source.IndexOf("private void ClearConsoleBanner()", StringComparison.Ordinal)..
+            source.IndexOf("private static FrameworkElement BuildLinkLine", StringComparison.Ordinal)];
+        Assert.DoesNotContain("ConsoleRecovery", clear);
+        Assert.DoesNotContain("ConsoleIssueText", clear);
+        var tail = source[source.IndexOf("private async Task<WizardConsoleTail> StartConsoleTailAsync", StringComparison.Ordinal)..
+            source.IndexOf("private void StopConsoleTail()", StringComparison.Ordinal)];
+        Assert.Contains("ShowConsoleIssue(issue)", tail);
+        Assert.Contains("ShowConsoleIssue(GatewayLogTailIssue.Unavailable)", tail);
+        Assert.Contains("if (ReferenceEquals(_consoleTail, tail))", tail);
+        Assert.Contains("ConsoleRecovery.Visibility = Visibility.Visible", tail);
+    }
+
+    [Fact]
     public void NativeReview_ExplainsWinGetConsentAndMatchesLocalizedResources()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();

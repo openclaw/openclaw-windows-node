@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Net;
 using OpenClaw.Shared;
 
@@ -12,11 +14,11 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
     private readonly Func<IReadOnlyDictionary<int, ulong>> _captureSequences;
     private readonly Func<string, bool> _aliasExists;
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private GatewayRecord? _record;
-    private NativeGatewayPackage? _package;
-    private IsolatedGatewayStatus? _proof;
-    private bool _startedHere;
+    private readonly TimeSpan _inspectionTimeout;
+    private readonly Dictionary<string, VerifiedGateway> _proofs = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _ownedStarts = new(StringComparer.Ordinal);
     private bool _disposed;
+    private sealed record VerifiedGateway(GatewayRecord Record, NativeGatewayPackage Package, IsolatedGatewayStatus Status);
 
     public IsolatedGatewayRuntime(INativeGatewayPackageResolver resolver)
         : this(resolver, new NativeGatewayPackageClient(), WindowsTcpListenerSnapshot.Capture,
@@ -29,13 +31,15 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
         NativeGatewayPackageClient client,
         Func<WindowsTcpListenerSnapshotResult> capture,
         Func<IReadOnlyDictionary<int, ulong>> captureSequences,
-        Func<string, bool> aliasExists)
+        Func<string, bool> aliasExists,
+        TimeSpan? inspectionTimeout = null)
     {
         _resolver = resolver;
         _client = client;
         _capture = capture;
         _captureSequences = captureSequences;
         _aliasExists = aliasExists;
+        _inspectionTimeout = inspectionTimeout ?? TimeSpan.FromSeconds(5);
     }
 
     public async Task EnsureRunningAsync(GatewayRecord record, CancellationToken cancellationToken)
@@ -45,16 +49,29 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
         try
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+            await EnsureRunningCoreAsync(record, endpoint, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private async Task EnsureRunningCoreAsync(GatewayRecord record, Uri endpoint, CancellationToken cancellationToken)
+    {
+        NativeGatewayPackage? startedThisCall = null;
+        _proofs.Remove(record.Id);
+        try
+        {
             NativeGatewayPackage package = await ResolveAsync(record, cancellationToken).ConfigureAwait(false);
-            _package = package;
             IsolatedGatewayStatus status = await _client.StatusAsync(package, cancellationToken).ConfigureAwait(false);
             if (status.State is "not-started" or "stopped")
             {
-                _proof = null;
                 var conflict = InspectSnapshot(endpoint.Port, null);
                 if (conflict.Kind != GatewayEndpointProvenanceKind.NoListener)
                     throw new NativeGatewayListenerException(conflict);
-                _startedHere = true;
+                startedThisCall = package;
+                _ownedStarts.Add(package.PackageFamilyName);
                 await _client.StartAsync(package, cancellationToken).ConfigureAwait(false);
                 status = await _client.StatusAsync(package, cancellationToken).ConfigureAwait(false);
             }
@@ -66,22 +83,23 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
             var provenance = InspectSnapshot(endpoint.Port, status);
             if (provenance.Kind != GatewayEndpointProvenanceKind.ExpectedManagedGateway)
                 throw new NativeGatewayListenerException(provenance);
-            _record = record;
-            _proof = status;
+            _proofs[record.Id] = new(record, package, status);
         }
         catch
         {
-            _proof = null;
-            if (_startedHere && _package is not null)
+            if (startedThisCall is not null)
             {
-                await _client.StopAsync(_package, CancellationToken.None).ConfigureAwait(false);
-                _startedHere = false;
+                try
+                {
+                    await _client.StopAsync(startedThisCall, CancellationToken.None).ConfigureAwait(false);
+                    _ownedStarts.Remove(startedThisCall.PackageFamilyName);
+                }
+                catch (Exception cleanupFailure) when (IsInspectionFailure(cleanupFailure))
+                {
+                    Trace.TraceError($"Isolated Gateway start rollback failed ({cleanupFailure.GetType().Name}); stop ownership retained.");
+                }
             }
             throw;
-        }
-        finally
-        {
-            _gate.Release();
         }
     }
 
@@ -89,26 +107,50 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
         GatewayRecord record, CancellationToken cancellationToken)
     {
         Uri endpoint = RequireRecord(record);
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(_inspectionTimeout);
+        bool entered = false;
         try
         {
+            await _gate.WaitAsync(deadline.Token).ConfigureAwait(false);
+            entered = true;
             ObjectDisposedException.ThrowIf(_disposed, this);
-            NativeGatewayPackage package = await ResolveAsync(record, cancellationToken).ConfigureAwait(false);
-            IsolatedGatewayStatus status = await _client.StatusAsync(package, cancellationToken).ConfigureAwait(false);
+            _proofs.Remove(record.Id);
+            NativeGatewayPackage package = await ResolveAsync(record, deadline.Token)
+                .WaitAsync(deadline.Token).ConfigureAwait(false);
+            IsolatedGatewayStatus status = await _client.StatusAsync(package, deadline.Token)
+                .WaitAsync(deadline.Token).ConfigureAwait(false);
+            deadline.Token.ThrowIfCancellationRequested();
             if (status.State != "running" || status.Port != endpoint.Port)
             {
-                _proof = null;
                 return InspectSnapshot(endpoint.Port, null);
             }
             var provenance = InspectSnapshot(endpoint.Port, status);
-            _proof = provenance.Kind == GatewayEndpointProvenanceKind.ExpectedManagedGateway ? status : null;
-            _record = record;
-            _package = package;
+            deadline.Token.ThrowIfCancellationRequested();
+            if (provenance.Kind == GatewayEndpointProvenanceKind.ExpectedManagedGateway)
+                _proofs[record.Id] = new(record, package, status);
             return provenance;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            Trace.TraceWarning("Isolated Gateway ownership inspection timed out. Credentials were not sent.");
+            return new(GatewayEndpointProvenanceKind.UnknownListener, endpoint.Port,
+                Detail: entered
+                    ? "Gateway ownership inspection timed out. Retry after checking the package. Credentials were not sent."
+                    : "Gateway lifecycle is busy. Retry after it finishes. Credentials were not sent.",
+                FailureReason: GatewayEndpointProvenanceFailureReason.InspectionUnavailable);
+        }
+        catch (Exception ex) when (IsInspectionFailure(ex))
+        {
+            Trace.TraceWarning($"Isolated Gateway ownership inspection failed ({ex.GetType().Name}). Credentials were not sent.");
+            return new(GatewayEndpointProvenanceKind.UnknownListener, endpoint.Port,
+                Detail: "Gateway ownership inspection failed. Check the installed Gateway package and retry. Credentials were not sent.",
+                FailureReason: GatewayEndpointProvenanceFailureReason.InspectionUnavailable);
         }
         finally
         {
-            _gate.Release();
+            if (entered)
+                _gate.Release();
         }
     }
 
@@ -121,11 +163,11 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
         try
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            return _record?.Id == record.Id &&
-                _record.NativePackageFamilyName == record.NativePackageFamilyName &&
-                GatewayRecordEditing.AreEquivalentLoopbackEndpoints(_record.Url, record.Url) &&
-                _package is not null && _aliasExists(_package.ClawCtlAliasPath)
-                ? InspectSnapshot(endpoint.Port, _proof)
+            return _proofs.TryGetValue(record.Id, out var proof) &&
+                proof.Record.NativePackageFamilyName == record.NativePackageFamilyName &&
+                GatewayRecordEditing.AreEquivalentLoopbackEndpoints(proof.Record.Url, record.Url) &&
+                _aliasExists(proof.Package.ClawCtlAliasPath)
+                ? InspectSnapshot(endpoint.Port, proof.Status)
                 : new(GatewayEndpointProvenanceKind.UnknownListener, endpoint.Port,
                     Detail: "No verified Gateway package listener is recorded for this Companion.");
         }
@@ -140,20 +182,74 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            _proof = null;
-            if (_startedHere && _package is not null)
-            {
-                NativeGatewayPackage package = await _resolver.ResolveAsync(
-                    _package.PackageFamilyName, cancellationToken).ConfigureAwait(false);
-                await _client.StopAsync(package, cancellationToken).ConfigureAwait(false);
-                _startedHere = false;
-            }
+            _proofs.Clear();
+            await StopOwnedAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
         {
             _gate.Release();
         }
     }
+
+    public async Task RestartAsync(GatewayRecord record, CancellationToken cancellationToken)
+    {
+        Uri endpoint = RequireRecord(record);
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            NativeGatewayPackage package = await ResolveAsync(record, cancellationToken).ConfigureAwait(false);
+            IsolatedGatewayStatus status = await _client.StatusAsync(package, cancellationToken).ConfigureAwait(false);
+            var provenance = InspectSnapshot(endpoint.Port,
+                status.State == "running" && status.Port == endpoint.Port ? status : null);
+            if (status.State == "running" && status.Port != endpoint.Port ||
+                provenance.Kind is not (GatewayEndpointProvenanceKind.ExpectedManagedGateway or GatewayEndpointProvenanceKind.NoListener))
+                throw new NativeGatewayListenerException(provenance);
+
+            bool owned = _ownedStarts.Contains(package.PackageFamilyName);
+            _proofs.Remove(record.Id);
+            await _client.StopAsync(package, cancellationToken).ConfigureAwait(false);
+            status = await _client.StatusAsync(package, cancellationToken).ConfigureAwait(false);
+            if (status.State is not ("stopped" or "not-started"))
+                throw new NativeGatewayContractException(
+                    "The Gateway package has not confirmed that its service stopped. Retry restart after checking its status.");
+            _ownedStarts.Remove(package.PackageFamilyName);
+            await EnsureRunningCoreAsync(record, endpoint, cancellationToken).ConfigureAwait(false);
+            // An explicit restart must not turn a pre-existing service into a detach-owned start.
+            if (owned)
+                _ownedStarts.Add(package.PackageFamilyName);
+            else
+                _ownedStarts.Remove(package.PackageFamilyName);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private async Task StopOwnedAsync(CancellationToken cancellationToken)
+    {
+        List<Exception> failures = [];
+        foreach (string family in _ownedStarts.ToArray())
+        {
+            try
+            {
+                NativeGatewayPackage package = await _resolver.ResolveAsync(family, cancellationToken).ConfigureAwait(false);
+                NativeGatewayPaths.ValidatePackage(package, family);
+                await _client.StopAsync(package, cancellationToken).ConfigureAwait(false);
+                _ownedStarts.Remove(family);
+            }
+            catch (Exception ex) when (IsInspectionFailure(ex))
+            {
+                failures.Add(ex);
+            }
+        }
+        if (failures.Count > 0)
+            throw new AggregateException("One or more Companion-owned Gateways could not be stopped.", failures);
+    }
+
+    private static bool IsInspectionFailure(Exception ex) =>
+        ex is InvalidOperationException or IOException or Win32Exception or UnauthorizedAccessException or TimeoutException;
 
     public async ValueTask DisposeAsync()
     {
@@ -162,17 +258,9 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
         {
             if (_disposed)
                 return;
+            _proofs.Clear();
+            await StopOwnedAsync(CancellationToken.None).ConfigureAwait(false);
             _disposed = true;
-            _proof = null;
-            if (_startedHere && _package is not null)
-            {
-                NativeGatewayPackage package = await _resolver.ResolveAsync(
-                    _package.PackageFamilyName, CancellationToken.None).ConfigureAwait(false);
-                await _client.StopAsync(package, CancellationToken.None).ConfigureAwait(false);
-                _startedHere = false;
-            }
-            _record = null;
-            _package = null;
         }
         finally
         {
@@ -296,23 +384,41 @@ public sealed class NativeGatewayRuntimeRouter(
 
     public Task<GatewayEndpointProvenance> InspectAsync(
         GatewayRecord record, CancellationToken cancellationToken) =>
-        Select(record).InspectAsync(record, cancellationToken);
+        record.NativeRuntimeContract == NativeGatewayPackageClient.IsolatedContract
+            ? isolated.InspectAsync(record, cancellationToken)
+            : record.NativeRuntimeContract is null && ReferenceEquals(_active, legacy)
+                ? legacy.InspectAsync(record, cancellationToken)
+                : Task.FromResult(Unestablished(record));
 
-    public GatewayEndpointProvenance Inspect(GatewayRecord record) => Select(record).Inspect(record);
+    public GatewayEndpointProvenance Inspect(GatewayRecord record) =>
+        record.NativeRuntimeContract == NativeGatewayPackageClient.IsolatedContract
+            ? isolated.Inspect(record)
+            : record.NativeRuntimeContract is null && ReferenceEquals(_active, legacy)
+                ? legacy.Inspect(record)
+                : Unestablished(record);
+
+    public async Task RestartAsync(GatewayRecord record, CancellationToken cancellationToken)
+    {
+        if (record.NativeRuntimeContract == NativeGatewayPackageClient.IsolatedContract)
+        {
+            _active = isolated;
+            await isolated.RestartAsync(record, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+        await EnsureRunningAsync(record, cancellationToken).ConfigureAwait(false);
+        await legacy.RestartAsync(record, cancellationToken).ConfigureAwait(false);
+    }
 
     public Task StopAsync(CancellationToken cancellationToken) =>
-        _active?.StopAsync(cancellationToken) ?? Task.CompletedTask;
+        Task.WhenAll(legacy.StopAsync(cancellationToken), isolated.StopAsync(cancellationToken));
 
     public async ValueTask DisposeAsync()
     {
-        await legacy.DisposeAsync().ConfigureAwait(false);
-        await isolated.DisposeAsync().ConfigureAwait(false);
+        try { await legacy.DisposeAsync().ConfigureAwait(false); }
+        finally { await isolated.DisposeAsync().ConfigureAwait(false); }
     }
 
-    private INativeGatewayRuntime Select(GatewayRecord record) =>
-        record.NativeRuntimeContract == NativeGatewayPackageClient.IsolatedContract
-            ? isolated
-            : record.NativeRuntimeContract is null && ReferenceEquals(_active, legacy)
-                ? legacy
-                : throw new InvalidOperationException("Gateway ownership has not been established for this profile.");
+    private static GatewayEndpointProvenance Unestablished(GatewayRecord record) =>
+        new(GatewayEndpointProvenanceKind.UnknownListener, NativeGatewayPaths.ValidateRecord(record).Port,
+            Detail: "Gateway ownership has not been established for this profile. Credentials were not sent.");
 }

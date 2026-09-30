@@ -64,12 +64,18 @@ public interface INativeGatewayPackageResolver
 }
 
 /// <summary>
-/// Owns a non-isolated native gateway's process lifetime, not its installation or persisted state.
+/// Owns native gateway runtime handoffs, not its installation or persisted state.
 /// Ensure is an explicit start/retry request; Stop and Dispose never schedule subsequent restarts.
 /// </summary>
 public interface INativeGatewayRuntime : IAsyncDisposable
 {
     Task EnsureRunningAsync(GatewayRecord record, CancellationToken cancellationToken);
+    /// <summary>Explicit user-requested restart, unlike Stop which only detaches owned starts.</summary>
+    async Task RestartAsync(GatewayRecord record, CancellationToken cancellationToken)
+    {
+        await StopAsync(cancellationToken).ConfigureAwait(false);
+        await EnsureRunningAsync(record, cancellationToken).ConfigureAwait(false);
+    }
     Task StopAsync(CancellationToken cancellationToken);
     Task<GatewayEndpointProvenance> InspectAsync(GatewayRecord record, CancellationToken cancellationToken);
     /// <summary>Fresh ownership inspection without starting or waiting for a lifecycle operation. Busy runtimes deny handoff.</summary>

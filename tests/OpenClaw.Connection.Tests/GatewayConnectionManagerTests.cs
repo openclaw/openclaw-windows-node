@@ -153,6 +153,45 @@ public class GatewayConnectionManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task NativeGateway_UnavailableInspectionIsNetworkFailureNotPortConflict()
+    {
+        SetupNativeGateway();
+        var runtime = new FakeNativeGatewayRuntime
+        {
+            Kind = GatewayEndpointProvenanceKind.UnknownListener,
+            FailureReason = GatewayEndpointProvenanceFailureReason.InspectionUnavailable
+        };
+        await using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance, nativeGatewayRuntime: runtime);
+        await manager.ConnectAsync();
+        Assert.Empty(_factory.CreatedCredentials);
+        Assert.Equal(GatewayErrorKind.Network, manager.CurrentSnapshot.OperatorErrorKind);
+    }
+
+    [Theory]
+    [InlineData(GatewayEndpointProvenanceFailureReason.InspectionUnavailable)]
+    [InlineData(GatewayEndpointProvenanceFailureReason.ProcessIdentityUnavailable)]
+    public async Task NativeGateway_AuthRecoveryCompletesWithNetworkErrorWhenInspectionUnavailable(
+        GatewayEndpointProvenanceFailureReason reason)
+    {
+        SetupNativeGateway();
+        var runtime = new FakeNativeGatewayRuntime();
+        await using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance, nativeGatewayRuntime: runtime);
+        await manager.ConnectAsync();
+        runtime.Kind = GatewayEndpointProvenanceKind.UnknownListener;
+        runtime.FailureReason = reason;
+
+        _factory.CreatedClients[0].SimulateConnectionFailure(GatewayErrorKind.DeviceTokenMismatch);
+        _factory.CreatedClients[0].SimulateAuthFailed("AUTH_DEVICE_TOKEN_MISMATCH");
+
+        await WaitUntilAsync(() => manager.CurrentSnapshot.OperatorState == RoleConnectionState.Error);
+        Assert.Equal(GatewayErrorKind.Network, manager.CurrentSnapshot.OperatorErrorKind);
+        Assert.Single(_factory.CreatedClients);
+        await manager.DisconnectAsync().WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
     public async Task NativeGateway_ReconnectRestartsCrashWithoutStoppingHealthyRuntime()
     {
         SetupNativeGateway();
@@ -5447,8 +5486,9 @@ public class GatewayConnectionManagerTests : IDisposable
     private sealed class FakeNativeGatewayRuntime : INativeGatewayRuntime
     {
         public GatewayEndpointProvenance Inspect(GatewayRecord record) =>
-            new(Kind, new Uri(record.Url).Port);
+            new(Kind, new Uri(record.Url).Port, FailureReason: FailureReason);
 
+        public GatewayEndpointProvenanceFailureReason FailureReason { get; set; }
         public Action? BeforeEnsure { get; init; }
         public Action? BeforeInspect { get; init; }
         public Exception? StartException { get; init; }
@@ -5480,7 +5520,8 @@ public class GatewayConnectionManagerTests : IDisposable
             BeforeInspect?.Invoke();
             InspectCount++;
             return Task.FromResult(new GatewayEndpointProvenance(Kind, 18789,
-                ProcessId: StartCount, ProcessStartTimeUtc: DateTime.UnixEpoch.AddSeconds(StartCount)));
+                ProcessId: StartCount, ProcessStartTimeUtc: DateTime.UnixEpoch.AddSeconds(StartCount),
+                FailureReason: FailureReason));
         }
 
         public Task StopAsync(CancellationToken cancellationToken)

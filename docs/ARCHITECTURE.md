@@ -142,6 +142,15 @@ move package resolution, process inspection or setup finalization back into it.
 
 ### Package installation and discovery
 
+Isolated runtime inspection and lifecycle ownership are separate. Verification
+is cached per record and is always checked against fresh listener snapshots;
+probing another package cannot transfer stop ownership. Only starts issued by
+Companion are stopped on detach, and failed authorization rolls back only a
+start issued by that same call. Explicit wizard restart uses a separate runtime
+operation and preserves a pre-existing service's leave-running policy.
+Passive ownership probes have a five-second deadline and report unknown
+ownership on package failure, without interrupting authentication recovery.
+
 `NativeGatewayMsixInstaller.InstallAsync` invokes the signed-in user's App Installer
 alias (`%LOCALAPPDATA%\Microsoft\WindowsApps\winget.exe`) through the existing
 `CommandRunner`, without a shell or elevation. The fixed command is

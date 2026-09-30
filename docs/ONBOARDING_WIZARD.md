@@ -62,6 +62,14 @@ provider unspecified so policy can choose among the actual offered values.
 
 ### Native Gateway MSIX (isolated or legacy)
 
+Isolated Gateway console polling retries transient I/O and timeout failures
+twice from the same cursor. A gap or failure also shows persistent terminal
+recovery outside the normal wizard-error controls, so continuing to another
+question cannot hide lost OAuth guidance. Starting a new wizard resets this
+warning. Explicit **Restart gateway** restarts the verified package service
+even if it was already running before Companion attached; merely preparing a
+wizard or disconnecting does not restart or stop that pre-existing service.
+
 **Historical package-aware proof (2026-09-16, package 0.0.0.1 ARM64):** the original
 listener-job mismatch is resolved. Companion creates the launcher suspended,
 assigns its lifecycle job, retains its process handle and resumes it. A listener

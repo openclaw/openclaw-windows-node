@@ -2221,7 +2221,11 @@ public sealed class GatewayConnectionManager :
                   _endpointProvenanceProbe is not null
                     ? await _endpointProvenanceProbe(activeRecord, CancellationToken.None).ConfigureAwait(false)
                     : null;
-            var unexpectedManagedLocalOwner =
+            bool nativeInspectionUnavailable = activeRecord?.NativePackageFamilyName is not null &&
+                provenance is not null && NativeGatewayEndpointSecurity.IsInspectionUnavailable(provenance);
+            if (nativeInspectionUnavailable)
+                failureKind = GatewayErrorKind.Network;
+            var unexpectedManagedLocalOwner = !nativeInspectionUnavailable &&
                 provenance?.Kind is GatewayEndpointProvenanceKind.ConflictingOpenClawGateway
                     or GatewayEndpointProvenanceKind.UnknownListener;
 

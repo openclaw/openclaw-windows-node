@@ -205,6 +205,65 @@ public class WizardConsoleTailTests
         Assert.Contains("https://auth.openai.com/oauth/authorize", extracted);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task IsolatedTailRetriesTransientFailureWithoutLosingItsCursor(bool reconnect)
+    {
+        var delivered = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cursors = new List<long?>();
+        var issues = new List<GatewayLogTailIssue>();
+        using var tail = new WizardConsoleTail(gatewayLogTail: (cursor, _) =>
+        {
+            cursors.Add(cursor);
+            if (cursor is null)
+                return Task.FromResult(Payload(100, 100));
+            if (cursors.Count == 2)
+                return Task.FromException<JsonElement>(reconnect
+                    ? new InvalidOperationException("handshake pending")
+                    : new TimeoutException("transient"));
+            return Task.FromResult(Payload(200, 200,
+                """{"_meta":{"name":"openclaw","path":{"method":"console.log"}},"message":"new OAuth instructions"}"""));
+        });
+
+        await tail.StartGatewayAsync(message => delivered.TrySetResult(message), issues.Add, default);
+        Assert.Equal("new OAuth instructions", await delivered.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        tail.Stop();
+        Assert.Equal(new long?[] { null, 100, 100 }, cursors);
+        Assert.Empty(issues);
+    }
+
+    [Fact]
+    public async Task IsolatedTailBoundsRetriesAndKeepsFailureVisible()
+    {
+        var exhausted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        int calls = 0;
+        using var tail = new WizardConsoleTail(gatewayLogTail: (cursor, _) =>
+        {
+            Interlocked.Increment(ref calls);
+            return cursor is null ? Task.FromResult(Payload(100, 100))
+                : Task.FromException<JsonElement>(new IOException("unavailable"));
+        });
+        await tail.StartGatewayAsync(_ => Assert.Fail("No synthetic console output."), issue =>
+        {
+            Assert.Equal(GatewayLogTailIssue.Unavailable, issue);
+            exhausted.TrySetResult();
+        }, default);
+        await exhausted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(4, Volatile.Read(ref calls));
+    }
+
+    [Fact]
+    public async Task StoppingDuringInitialReadCancelsWithoutDereferencingDisposedSource()
+    {
+        var response = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var tail = new WizardConsoleTail(gatewayLogTail: (_, _) => response.Task);
+        var start = tail.StartGatewayAsync(_ => Assert.Fail("Stopped tail emitted output."), _ => { }, default);
+        tail.Stop();
+        response.SetResult(Payload(100, 100));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => start);
+    }
+
     [Fact]
     public void ExtractsCodexVersionFallbackMessage()
     {

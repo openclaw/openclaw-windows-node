@@ -157,19 +157,23 @@ internal sealed class WizardConsoleTail : IDisposable
         if (_gatewayLogTail is null)
             throw new InvalidOperationException("No isolated Gateway log source was configured.");
         Stop();
-        _nativeTailCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _nativeTailCancellation = cancellation;
+        var token = cancellation.Token;
         try
         {
             // Anchor before wizard.start so old OAuth prompts cannot reappear on retry.
             var initial = ParseGatewayLogTail(
-                await _gatewayLogTail(null, _nativeTailCancellation.Token),
+                await _gatewayLogTail(null, token),
                 previousCursor: null);
+            token.ThrowIfCancellationRequested();
             _ = TailGatewayLogAsync(initial.File, initial.Size, onMessage, onIssue,
-                _nativeTailCancellation.Token);
+                token);
         }
         catch
         {
-            Stop();
+            if (ReferenceEquals(_nativeTailCancellation, cancellation))
+                Stop();
             throw;
         }
     }
@@ -183,10 +187,23 @@ internal sealed class WizardConsoleTail : IDisposable
     {
         try
         {
+            int failures = 0;
             while (!cancellationToken.IsCancellationRequested)
             {
-                var batch = ParseGatewayLogTail(
-                    await _gatewayLogTail!(cursor, cancellationToken), cursor);
+                GatewayConsoleBatch batch;
+                try
+                {
+                    batch = ParseGatewayLogTail(
+                        await _gatewayLogTail!(cursor, cancellationToken), cursor);
+                    failures = 0;
+                }
+                catch (Exception ex) when ((ex is TimeoutException or IOException or InvalidOperationException) &&
+                    ex is not ObjectDisposedException && ++failures <= 2)
+                {
+                    _logger.Warn($"Isolated Gateway console tail retry {failures} ({ex.GetType().Name}).");
+                    await Task.Delay(TimeSpan.FromMilliseconds(500 * failures), cancellationToken);
+                    continue;
+                }
                 cancellationToken.ThrowIfCancellationRequested();
                 if (!string.Equals(file, batch.File, StringComparison.Ordinal))
                 {

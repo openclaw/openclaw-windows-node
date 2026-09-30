@@ -952,6 +952,24 @@ public sealed class NativeGatewaySetupTests
         Assert.Empty(fixture.Registry.GetAll());
     }
 
+    [Fact]
+    public async Task IsolatedWizardPreparationDoesNotRestartUntilExplicitlyRequested()
+    {
+        using var fixture = new Fixture();
+        fixture.Host.Contract = NativeGatewayContract.IsolatedSessionV1;
+        var draft = await fixture.Service.CreateDraftAsync(default);
+        await using var session = await fixture.Service.PrepareAsync(draft, default);
+        fixture.Events.Clear();
+
+        await session.PrepareWizardAsync(default);
+        Assert.DoesNotContain("restart", fixture.Events);
+        Assert.DoesNotContain("stop", fixture.Events);
+
+        fixture.Events.Clear();
+        await session.RestartAsync(default);
+        Assert.Equal(["validate", "restart", "start", "inspect"], fixture.Events);
+    }
+
     private sealed class Fixture : IDisposable
     {
         public TempDirectory Temp { get; } = new();
@@ -1072,6 +1090,12 @@ public sealed class NativeGatewaySetupTests
 
     private sealed class Runtime(List<string> events) : INativeGatewayRuntime
     {
+        public Task RestartAsync(GatewayRecord record, CancellationToken cancellationToken)
+        {
+            events.Add("restart");
+            return Task.CompletedTask;
+        }
+
         public GatewayEndpointProvenance Inspect(GatewayRecord record) =>
             new(Provenance, new Uri(record.Url).Port);
 
