@@ -132,9 +132,11 @@ These are the canonical homes. Do not reintroduce private copies elsewhere.
 
 ## Native Gateway MSIX lifecycle and shared-wizard handoffs
 
-The native path has three separate owners: Windows deploys the MSIX, Companion
-supervises the installed Gateway, and upstream OpenClaw supplies onboarding over
-RPC. Package installation, a listening port, and successful onboarding are not
+Windows deploys the MSIX. The current Gateway package owns its isolated session
+and Gateway service; Companion owns setup, connection and credential handoff;
+upstream OpenClaw supplies onboarding over RPC. The known legacy proof package
+instead uses Companion's same-user process supervisor. Package installation,
+a listening port, and successful onboarding are not
 interchangeable readiness signals. `App` remains the composition root; do not
 move package resolution, process inspection or setup finalization back into it.
 
@@ -156,8 +158,14 @@ environment override, direct download, certificate-trust change, or ARM64-only g
 matching current-user package registration, verifies package health, and resolves
 its package-qualified `openclaw.exe` and `clawctl.exe` execution aliases. Never
 substitute a generic PATH/npm command, copied executable or guessed WindowsApps
-installation path. `NativeGatewaySetupHost` invokes `clawctl setup` to prepare
-the packaged runtime; that command does not perform Gateway onboarding.
+installation path. `NativeGatewayPackageClient` probes `clawctl status --json`
+for `integration.kind: "isolated-session"` and version `1`. An unversioned
+response that already describes a session is unsupported, not a legacy
+fallback. Only the known `0.0.0.0` and `0.0.0.1` proof packages retain the
+same-user path.
+`NativeGatewaySetupHost` invokes `clawctl setup --json` and requires a ready
+isolated session before configuring it; that command does not perform
+Gateway onboarding.
 
 `NativeGatewayPackageIdentity` accepts the Store manifest's exact pair:
 `OpenClawFoundation.OpenClawGateway` and
@@ -172,7 +180,8 @@ existing Gateway remains usable when both packages are installed. Runtime record
 remain pinned to their saved package family; Store
 installation does not rewrite a development profile's identity. Package-family
 syntax checks admit both names, while registration and exact family matching
-remain mandatory before launching. MXC session provisioning is not implemented.
+remain mandatory before launching. An existing same-user record is not silently
+migrated to a newly installed isolated package; it requires new setup.
 
 After native capability/permission review, `NativeGatewaySetupPage` starts
 automatically. It rechecks device support, then calls
@@ -196,8 +205,10 @@ Native and WSL use the same `CapabilitiesPage` profiles, toggles and Windows
 permission checks. Native entry branches before Local AI/Tailscale probes and
 uses its own review instead of advertising or invoking WSL provisioning. Cancelling
 the native wizard returns to this review flow, not automatic runtime restart.
-On finalization, the session applies selected command IDs to the dedicated
-profile's `gateway.nodes.commands.allow` before config/health verification.
+On finalization, the session applies selected command IDs to the Gateway's
+`gateway.nodes.commands.allow` through the upstream CLI before config/health
+verification. The isolated path applies this inside the agent account, not
+under Companion's Windows profile.
 `TraySettingsConfig.MergeCapabilitiesIntoSettingsFile` then saves only node-mode
 and capability flags, preserving startup, MCP and unrelated settings. Settings
 write failure stays retryable before releasing the session. Completion shows the
@@ -207,11 +218,11 @@ permission and exec-approval gates are unchanged.
 
 ### Capability recommendation and Windows Update
 
-The 2026-09-18 onboarding decision recommends the existing signed-in-user native
-Gateway, not a newly implemented isolated-session runtime. The separate
-"not isolated" warning/checkbox is removed by design; general onboarding security
-consent and exact-identity pairing remain unchanged. Capability eligibility does
-not change the native process ownership or account under which it runs.
+The 2026-09-18 onboarding decision removed the separate "not isolated"
+warning/checkbox. General security consent and exact-identity pairing remain.
+Capability eligibility alone does not establish the Gateway's runtime account:
+the package-qualified versioned integration check selects the isolated
+package path, while the known legacy proof remains same-user.
 
 On Welcome, `NativeGatewaySetupEligibility` consumes the actual
 `wxc-exec --probe` result `probes.isolationSessionAvailable` exposed by
@@ -244,13 +255,29 @@ package setup rechecks capability before preparing a profile.
 `ms-settings:windowsupdate` only opens Settings; Companion does not enroll the
 device in an Insider channel or change Windows feature flags.
 
-### Dedicated profile and staged setup ownership
+### Draft and configuration ownership
 
 `NativeGatewaySetupService` creates or resumes a credential-free draft descriptor
-containing a Gateway ID, selected loopback port and package family. It creates a
-separate profile at `<Companion data>\gateways\<gateway-id>\native-gateway`,
-with its own `openclaw.json`, generated authentication token and agent workspace.
-The draft is not yet a published `GatewayRegistry` record.
+containing a Gateway ID, preferred loopback port, package family, and runtime
+contract. The draft is not yet a published `GatewayRegistry` record. Companion
+keeps its device identity under its own data directory, but an isolated package
+keeps OpenClaw configuration, credentials and workspace under the agent account.
+
+For an isolated package, `clawctl companion prepare --port <preferred> --json`
+reads the agent's default `openclaw.json` and invokes upstream
+`openclaw config patch` inside the recorded session. It preserves an existing
+local port and token plus unrelated settings and rejects incompatible mode,
+bind and authentication settings. Companion records the returned effective
+port and token; it does not create a host-side `openclaw.json`, forward its
+profile paths or install its own Gateway supervisor. Package
+`gateway-service start/status/stop` owns the service lifetime. A cancelled
+draft can resume without replacing the agent's credential. Finalization
+checks that the returned port and token still match before publishing.
+
+The following same-user profile and port-rotation path applies only to the
+recognized legacy proof package. It creates a separate profile at
+`<Companion data>\gateways\<gateway-id>\native-gateway`, with its own
+`openclaw.json`, generated authentication token and workspace.
 
 Retry re-reads the draft instead of keeping a stale in-memory port. If an
 unpublished draft's port is occupied, `NativeGatewaySetupService` selects another
@@ -261,20 +288,36 @@ write to finish on the next attempt. Published records are never rotated by
 this recovery. Runtime ownership checks still reject listeners that race startup;
 no conflicting process is adopted or terminated.
 
-`NativeGatewayPaths` supplies explicit `OPENCLAW_STATE_DIR` and
+For that legacy path, `NativeGatewayPaths` supplies explicit `OPENCLAW_STATE_DIR` and
 `OPENCLAW_CONFIG_PATH` for package commands, rather than using the user's default
 Gateway profile. Launch paths are mapped through `ResolveDataPath` to physical
 locations because Companion and Gateway can have different MSIX filesystem
 views; canonical registry paths are unchanged. External-supervisor/service-repair
 flags and disabled automatic updates preserve Companion's lifecycle ownership.
 
-`NativeGatewaySetupSession` owns the temporary runtime, cancellation, pairing,
-reload-setting backup/restoration and final publication gates. It suspends
-configuration-triggered reload while the hosted wizard writes settings and
-persists the previous reload mode so restoration survives a Companion restart.
-Stopping the runtime does not delete the profile.
+`NativeGatewaySetupSession` owns cancellation, pairing and final publication
+gates for both paths. Only legacy setup backs up and suspends the reload setting
+in its host-owned profile; the isolated path leaves the agent's existing
+reload setting intact. Stopping either runtime does not delete its configuration.
 
-### Why listener verification requires package-aware process ownership
+### Isolated listener proof and legacy process ownership
+
+`IsolatedGatewayRuntime` accepts a running Gateway only after a fresh
+package-qualified `clawctl gateway-service status --json` attributes its
+listener process IDs, creation times, and OS sequence numbers to the
+recorded isolated session and agent SID. Companion compares that
+attribution to two complete IPv4/IPv6 loopback snapshots and
+`SystemBasicProcessInformation` process-sequence snapshots. It does not
+open the isolated agent's process handle: Windows denies that cross-account
+query. Windows 11 build 26100.4770 or newer is required for that
+process-sequence API; unsupported builds fail closed with update guidance.
+A port alone, a stale process ID, an unrelated listener, or a
+replaced listener is denied. Its
+synchronous browser credential callback uses the last attributed identity
+plus fresh OS snapshots; it never starts a Gateway on the UI thread.
+
+The process-job and ancestry checks below describe only the legacy same-user
+runtime. They are not an MXC session ownership proof.
 
 The installed package's launcher owns a separate kill-on-close job for Node.
 Observed ownership with the development package was:
@@ -324,7 +367,7 @@ process inspection stays in `NativeGatewayRuntime`. Non-native handoffs retain
 conflicts retain `LocalPortConflict` classification instead of becoming generic
 network failures.
 
-This is same-user supervision, not an MXC sandbox or a security boundary against
+The legacy path is same-user supervision, not an MXC sandbox or a security boundary against
 malicious same-user code. There is a narrow crash window between suspended
 creation and job assignment that can leave a suspended launcher; kill-on-close
 cleanup applies after assignment, and no launcher code has resumed before then.
@@ -335,24 +378,41 @@ cleanup applies after assignment, and no launcher code has resumed before then.
 `WizardPage`. The page owns RPC/rendering; the session owns the profile/runtime.
 There is no second provider UI or normal terminal-based onboarding path.
 
-1. Validate initial configuration, start the packaged Gateway and verify its
-   listener before sending credentials.
+1. Validate initial configuration, start the package-owned service or legacy
+   runtime as appropriate, and verify its listener before sending credentials.
 2. Connect using the per-Gateway identity and prefer its stored device token.
    When pairing is required, `ApproveWizardPairingAsync` matches the handshake
    request ID against that identity's device ID and public key, rechecks endpoint
    ownership/configuration, and approves only the exact request via the package
    CLI. Never approve the latest unrelated request or bypass onboarding consent.
-3. Scope pairing commands to the dedicated profile, clear inherited URL overrides,
-   pin the port, and supply the token in the child environment, not argv. The CLI
-   budget includes slow package startup. Dispose the failed-handshake client
+   The package omits listener ownership details if Windows cannot supply
+   process-sequence evidence. Gateway health remains independent, but Companion
+   refuses credential handoff until running on Windows 11 build 26100.4770 or
+   later. Re-running `clawctl setup` cannot add this OS capability.
+3. For the legacy profile, clear inherited URL overrides, pin the port and
+   supply the token in the child environment, not argv. The isolated path
+   uses package-qualified `openclaw devices list` and
+   `openclaw devices approve <request-id>`. These commands run in the agent
+   context and use its Gateway config; Companion checks that its saved port
+   and token still match the agent config before each command. It does not pass
+   the token or host profile paths to the CLI. The CLI budget includes slow
+   package startup. Dispose the failed-handshake client
    before one bounded retry; disconnect alone does not stop its reconnect loop.
 4. Call `wizard.start` with `mode=local` and `installDaemon=false`; render upstream
    steps and submit answers through `wizard.next`. `wizard.cancel` ends the
-   session. Native setup must not install a competing Gateway service.
+   session. Companion does not install a competing Gateway service.
 
 `WizardOnboardingPolicy` supplies the same audited optional skip/keep answers to
 native, WSL and headless onboarding. Consent, provider/auth/model choices,
 permissions, unknown prompts and errors are not silently answered.
+For isolated setup, `WizardConsoleTail` uses the authenticated operator's
+upstream `logs.tail` RPC to project only root-logger `console.log` entries
+after listener verification. The initial cursor is captured before
+`wizard.start`, and later polls are byte/line bounded and already redacted
+by OpenClaw. A gap or failure surfaces recovery-terminal guidance rather
+than silently discarding an OAuth prompt. No package log-file path or host
+profile is passed to the agent; legacy profile and WSL tail modes remain
+separate.
 
 ### Finalization and transfer to normal connection management
 
@@ -366,24 +426,29 @@ After real wizard completion or the validated optional handoff,
 `NativeGatewaySetupSession.CompleteAsync` performs:
 
 ```text
-Stop setup-owned Gateway -> restore reload -> validate endpoint/auth and config
--> restart with verified ownership -> authenticated health -> stop setup runtime
+Stop setup-owned Gateway -> apply capability policy (and restore legacy reload)
+-> validate endpoint/auth and config -> restart with verified ownership
+-> authenticated health -> stop setup-owned runtime
 -> save and activate GatewayRegistry record -> release setup ownership
 ```
 
 Only then does the existing setup-completion restart path hand normal operation
-to `GatewayConnectionManager` and its App-composed `NativeGatewayRuntime`.
-Disconnect/switch/shutdown delegate stopping to that runtime; reconnect can reuse
-a healthy owned runtime or restart a crashed one. Setup and normal connection
-management must not become simultaneous process owners. Failed/cancelled setup
+to `GatewayConnectionManager` and its App-composed
+`NativeGatewayRuntimeRouter`. The isolated branch delegates lifecycle to
+`clawctl gateway-service`; it leaves a pre-existing package service running
+when Companion detaches. The legacy branch retains Companion-owned process
+supervision. Reconnect verifies package/agent listener identity again rather
+than adopting an unrelated port. Failed/cancelled setup
 must not publish an unverified Gateway record.
 
 ### Removal and remaining boundaries
 
-Disconnect stops the owned runtime but preserves its files. Removing the saved
-Gateway in Connection settings removes the registry entry, not the native profile.
-Windows Installed apps owns MSIX uninstallation, including package-managed data;
-the separate Companion-managed profile is not automatically purged. Back up its
+Disconnect stops a Gateway that Companion started, but preserves its data;
+an already-running package-owned service is not stopped merely because
+Companion detached. Removing the saved Gateway in Connection settings removes
+the registry entry, not the agent's OpenClaw configuration or a legacy
+Companion-owned profile. Windows Installed apps owns MSIX uninstallation and
+package-managed agent data; Companion's device identity is separate. Back up
 configuration, credentials, workspace and conversation state before destructive
 cleanup. The broader Companion/WSL uninstall flow is not a native-Gateway-only
 uninstaller.

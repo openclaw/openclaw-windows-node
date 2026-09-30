@@ -2355,6 +2355,12 @@
   <data name="Onboarding_Wizard_ErrorGatewayDisconnected" xml:space="preserve">
     <value>閘道已中斷連線</value>
   </data>
+  <data name="Onboarding_Wizard_GatewayConsoleGap" xml:space="preserve">
+    <value>部分 Gateway 主控台訊息已略過。請開啟 Gateway 終端機查看遺漏的登入指示。</value>
+  </data>
+  <data name="Onboarding_Wizard_GatewayConsoleUnavailable" xml:space="preserve">
+    <value>無法取得 Gateway 主控台更新。請開啟 Gateway 終端機查看提供者登入指示。</value>
+  </data>
   <data name="Onboarding_Wizard_ErrorGatewayDisconnectedDetail" xml:space="preserve">
     <value>與閘道的連線已中斷。按一下「下一步」略過精靈，或等待重新連線。</value>
   </data>
@@ -7347,7 +7353,7 @@
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>更快</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>更深入</value></data>
   <data name="Onboarding_Native_Title.Text" xml:space="preserve"><value>安裝本機原生 Gateway</value></data>
-  <data name="Onboarding_Native_Description.Text" xml:space="preserve"><value>安裝受 MXC 約束的本機 OpenClaw Gateway</value></data>
+  <data name="Onboarding_Native_Description.Text" xml:space="preserve"><value>在此裝置上安裝並設定 OpenClaw Gateway</value></data>
   <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>安裝本機 WSL Gateway</value></data>
   <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>正在檢查原生 Gateway 支援情況...</value></data>
   <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>此裝置支援原生 Gateway。</value></data>

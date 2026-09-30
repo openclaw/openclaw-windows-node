@@ -2401,6 +2401,12 @@ Use uma destas opções:
   <data name="Onboarding_Wizard_ErrorGatewayDisconnected" xml:space="preserve">
     <value>Gateway desconectado</value>
   </data>
+  <data name="Onboarding_Wizard_GatewayConsoleGap" xml:space="preserve">
+    <value>Algumas mensagens do console do Gateway foram ignoradas. Abra o terminal do Gateway para ver as instruções de entrada ausentes.</value>
+  </data>
+  <data name="Onboarding_Wizard_GatewayConsoleUnavailable" xml:space="preserve">
+    <value>As atualizações do console do Gateway não estão disponíveis. Abra o terminal do Gateway para ver as instruções de entrada no provedor.</value>
+  </data>
   <data name="Onboarding_Wizard_ErrorGatewayDisconnectedDetail" xml:space="preserve">
     <value>Conexão com o Gateway perdida. Clique em Avançar para pular o assistente, ou aguarde a reconexão.</value>
   </data>
@@ -7401,7 +7407,7 @@ Suas configurações, gateway, arquivos e modelos permanecem onde estão.</value
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Mais rápido</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Mais detalhado</value></data>
   <data name="Onboarding_Native_Title.Text" xml:space="preserve"><value>Instalar um Gateway nativo local</value></data>
-  <data name="Onboarding_Native_Description.Text" xml:space="preserve"><value>Instalar um Gateway OpenClaw local, contido pelo MXC</value></data>
+  <data name="Onboarding_Native_Description.Text" xml:space="preserve"><value>Instalar e configurar um Gateway OpenClaw neste dispositivo</value></data>
   <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>Instalar um Gateway WSL local</value></data>
   <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>Verificando o suporte ao Gateway nativo...</value></data>
   <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>O suporte ao Gateway nativo está disponível neste dispositivo.</value></data>

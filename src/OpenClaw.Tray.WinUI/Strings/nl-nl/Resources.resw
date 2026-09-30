@@ -2356,6 +2356,12 @@ Gebruik een van deze opties:
   <data name="Onboarding_Wizard_ErrorGatewayDisconnected" xml:space="preserve">
     <value>Gatewayverbinding verbroken</value>
   </data>
+  <data name="Onboarding_Wizard_GatewayConsoleGap" xml:space="preserve">
+    <value>Sommige Gateway-consoleberichten zijn overgeslagen. Open de Gateway-terminal voor ontbrekende aanmeldinstructies.</value>
+  </data>
+  <data name="Onboarding_Wizard_GatewayConsoleUnavailable" xml:space="preserve">
+    <value>Updates van de Gateway-console zijn niet beschikbaar. Open de Gateway-terminal voor aanmeldinstructies voor de provider.</value>
+  </data>
   <data name="Onboarding_Wizard_ErrorGatewayDisconnectedDetail" xml:space="preserve">
     <value>Verbinding met gateway verloren. Klik op Volgende om de wizard over te slaan of wacht op opnieuw verbinden.</value>
   </data>
@@ -7348,7 +7354,7 @@ Uw instellingen, gateway, bestanden en modellen blijven op hun plaats.</value>
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Sneller</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Grondiger</value></data>
   <data name="Onboarding_Native_Title.Text" xml:space="preserve"><value>Een lokale native Gateway installeren</value></data>
-  <data name="Onboarding_Native_Description.Text" xml:space="preserve"><value>Een lokale OpenClaw Gateway installeren die door MXC wordt ingesloten</value></data>
+  <data name="Onboarding_Native_Description.Text" xml:space="preserve"><value>Een OpenClaw Gateway op dit apparaat installeren en instellen</value></data>
   <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>Een lokale WSL Gateway installeren</value></data>
   <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>Ondersteuning voor de native Gateway controleren...</value></data>
   <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>De native Gateway wordt ondersteund op dit apparaat.</value></data>

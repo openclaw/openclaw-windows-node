@@ -351,6 +351,23 @@ public sealed class NativeGatewaySetupTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => session.CompleteAsync(CancellationToken.None));
     }
 
+    [Fact]
+    public async Task IsolatedWizardPairingKeepsAgentCredentialsOutOfHostOverrides()
+    {
+        using var fixture = new Fixture();
+        fixture.Host.Contract = NativeGatewayContract.IsolatedSessionV1;
+        NativeGatewaySetupDraft draft = await fixture.Service.CreateDraftAsync(CancellationToken.None);
+        fixture.Host.IsolatedConfiguration = new(draft.Port, "agent-only-token");
+        await using var session = await fixture.Service.PrepareAsync(draft, CancellationToken.None);
+        fixture.Host.PendingRequests = PairingRequests(session);
+
+        await session.ApproveWizardPairingAsync("request-1", CancellationToken.None);
+
+        Assert.Equal("request-1", fixture.Host.ApprovedId);
+        Assert.Empty(fixture.Host.PairingEnvironment!);
+        Assert.Empty(fixture.Registry.GetAll());
+    }
+
     [Theory]
     [InlineData("different-device")]
     [InlineData("different-key")]
@@ -754,6 +771,90 @@ public sealed class NativeGatewaySetupTests
         Assert.DoesNotContain("TOKEN", string.Join(",", environment.Keys));
     }
 
+    [Fact]
+    public async Task IsolatedSetupUsesAgentConfigurationAndPublishesOnlyAfterHealthyWizard()
+    {
+        using var fixture = new Fixture();
+        fixture.Host.Contract = NativeGatewayContract.IsolatedSessionV1;
+        NativeGatewaySetupDraft draft = await fixture.Service.CreateDraftAsync(CancellationToken.None);
+        fixture.Host.IsolatedConfiguration = new(20123, "preserved-agent-token");
+
+        await using var session = await fixture.Service.PrepareAsync(draft, CancellationToken.None);
+
+        Assert.True(session.IsIsolated);
+        Assert.Equal("ws://127.0.0.1:20123", session.Record.Url);
+        Assert.Equal("preserved-agent-token", session.Record.SharedGatewayToken);
+        Assert.Equal(NativeGatewayPackageClient.IsolatedContract, session.Record.NativeRuntimeContract);
+        Assert.False(File.Exists(NativeGatewayPaths.GetConfigPath(fixture.Registry, draft.GatewayId)));
+        Assert.Empty(fixture.Host.LastPreparationEnvironment!);
+        Assert.Empty(fixture.Registry.GetAll());
+        Assert.Equal(20123, JsonSerializer.Deserialize<NativeGatewaySetupDraft>(
+            File.ReadAllText(NativeGatewaySetupService.GetDraftPath(fixture.Registry)))!.Port);
+
+        var capabilities = new CapabilitiesConfig { System = true, Screen = true };
+        session.MarkWizardCompleted();
+        GatewayRecord published = await session.CompleteAsync(CancellationToken.None, capabilities);
+
+        Assert.Equal(capabilities.GetEnabledCommandIds(), fixture.Host.AppliedCommands);
+        Assert.Equal(published, fixture.Registry.GetById(draft.GatewayId));
+        Assert.Contains("health", fixture.Events);
+        Assert.False(File.Exists(NativeGatewayPaths.GetConfigPath(fixture.Registry, draft.GatewayId)));
+    }
+
+    [Fact]
+    public async Task IsolatedSetupRetriesCancelledDraftWithoutReplacingAgentCredentials()
+    {
+        using var fixture = new Fixture();
+        fixture.Host.Contract = NativeGatewayContract.IsolatedSessionV1;
+        NativeGatewaySetupDraft draft = await fixture.Service.CreateDraftAsync(CancellationToken.None);
+        fixture.Host.IsolatedConfiguration = new(draft.Port, "agent-token");
+        await using (var first = await fixture.Service.PrepareAsync(draft, CancellationToken.None)) { }
+
+        NativeGatewaySetupDraft resumed = await fixture.Service.CreateDraftAsync(CancellationToken.None);
+        await using var retry = await fixture.Service.PrepareAsync(resumed, CancellationToken.None);
+
+        Assert.Equal(draft, resumed);
+        Assert.Equal("agent-token", retry.Record.SharedGatewayToken);
+        Assert.Empty(fixture.Registry.GetAll());
+    }
+
+    [Fact]
+    public async Task IsolatedSetupRejectsChangedPortAndTokenBeforePublicationWithoutRepairingConfiguration()
+    {
+        using var fixture = new Fixture();
+        fixture.Host.Contract = NativeGatewayContract.IsolatedSessionV1;
+        NativeGatewaySetupDraft draft = await fixture.Service.CreateDraftAsync(CancellationToken.None);
+        fixture.Host.IsolatedConfiguration = new(draft.Port, "first-token");
+        await using var session = await fixture.Service.PrepareAsync(draft, CancellationToken.None);
+        session.MarkWizardCompleted();
+        fixture.Events.Clear();
+        fixture.Host.IsolatedConfiguration = new(draft.Port + 1, "different-token");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => session.CompleteAsync(CancellationToken.None));
+        Assert.Empty(fixture.Registry.GetAll());
+        Assert.Contains("agent-check", fixture.Events);
+        Assert.DoesNotContain("agent-config", fixture.Events);
+        Assert.Equal(new IsolatedGatewayConfiguration(draft.Port + 1, "different-token"),
+            fixture.Host.IsolatedConfiguration);
+    }
+
+    [Fact]
+    public async Task CancellingAfterIsolatedPackageSetupDoesNotConfigureTheAgent()
+    {
+        using var fixture = new Fixture();
+        fixture.Host.Contract = NativeGatewayContract.IsolatedSessionV1;
+        NativeGatewaySetupDraft draft = await fixture.Service.CreateDraftAsync(CancellationToken.None);
+        using var cancellation = new CancellationTokenSource();
+        fixture.Host.Prepare = cancellation.Cancel;
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => fixture.Service.PrepareAsync(draft, cancellation.Token));
+
+        Assert.DoesNotContain("agent-config", fixture.Events);
+        Assert.Empty(fixture.Registry.GetAll());
+    }
+
     private sealed class Fixture : IDisposable
     {
         public TempDirectory Temp { get; } = new();
@@ -788,6 +889,36 @@ public sealed class NativeGatewaySetupTests
 
     private sealed class Host(List<string> events) : INativeGatewaySetupHost
     {
+        public NativeGatewayContract Contract { get; set; } = NativeGatewayContract.Legacy;
+        public IsolatedGatewayConfiguration IsolatedConfiguration { get; set; } =
+            new(18789, "fixture-agent-token");
+        public IReadOnlyDictionary<string, string>? LastPreparationEnvironment { get; private set; }
+        public IReadOnlyList<string>? AppliedCommands { get; private set; }
+        public Task<NativeGatewayContract> DetectContractAsync(
+            NativeGatewayPackage package, CancellationToken cancellationToken) =>
+            Task.FromResult(Contract);
+        public Task<IsolatedGatewayConfiguration> PrepareIsolatedConfigurationAsync(
+            NativeGatewayPackage package, int port, CancellationToken cancellationToken)
+        {
+            events.Add("agent-config");
+            return Task.FromResult(IsolatedConfiguration);
+        }
+        public Task ApplyIsolatedCapabilitiesAsync(
+            NativeGatewayPackage package, IReadOnlyList<string> commandIds, CancellationToken cancellationToken)
+        {
+            events.Add("agent-capabilities");
+            AppliedCommands = commandIds;
+            return Task.CompletedTask;
+        }
+
+        public Task<IsolatedGatewayConfiguration> CheckIsolatedPairingConfigurationAsync(
+            NativeGatewayPackage package, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            events.Add("agent-check");
+            return Task.FromResult(IsolatedConfiguration);
+        }
+
         public string PendingRequests { get; set; } = "{\"pending\":[]}";
         public Action OnList { get; set; } = () => { };
         public string? ApprovedId { get; private set; }
@@ -822,6 +953,7 @@ public sealed class NativeGatewaySetupTests
             CancellationToken cancellationToken)
         {
             events.Add("prepare");
+            LastPreparationEnvironment = environment;
             Prepare();
             return Task.CompletedTask;
         }

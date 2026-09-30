@@ -2355,6 +2355,12 @@
   <data name="Onboarding_Wizard_ErrorGatewayDisconnected" xml:space="preserve">
     <value>网关已断开连接</value>
   </data>
+  <data name="Onboarding_Wizard_GatewayConsoleGap" xml:space="preserve">
+    <value>部分 Gateway 控制台消息已跳过。请打开 Gateway 终端查看缺失的登录说明。</value>
+  </data>
+  <data name="Onboarding_Wizard_GatewayConsoleUnavailable" xml:space="preserve">
+    <value>无法获取 Gateway 控制台更新。请打开 Gateway 终端查看提供商登录说明。</value>
+  </data>
   <data name="Onboarding_Wizard_ErrorGatewayDisconnectedDetail" xml:space="preserve">
     <value>与网关的连接已丢失。单击“下一步”跳过向导，或等待重新连接。</value>
   </data>
@@ -7347,7 +7353,7 @@
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>更快</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>更深入</value></data>
   <data name="Onboarding_Native_Title.Text" xml:space="preserve"><value>安装本地原生 Gateway</value></data>
-  <data name="Onboarding_Native_Description.Text" xml:space="preserve"><value>安装受 MXC 约束的本地 OpenClaw Gateway</value></data>
+  <data name="Onboarding_Native_Description.Text" xml:space="preserve"><value>在此设备上安装并配置 OpenClaw Gateway</value></data>
   <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>安装本地 WSL Gateway</value></data>
   <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>正在检查原生 Gateway 支持情况...</value></data>
   <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>此设备支持原生 Gateway。</value></data>

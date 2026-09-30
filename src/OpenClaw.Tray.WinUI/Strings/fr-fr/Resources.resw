@@ -2355,6 +2355,12 @@ Utilisez l'une de ces options :
   <data name="Onboarding_Wizard_ErrorGatewayDisconnected" xml:space="preserve">
     <value>Passerelle déconnectée</value>
   </data>
+  <data name="Onboarding_Wizard_GatewayConsoleGap" xml:space="preserve">
+    <value>Certains messages de la console du Gateway ont été ignorés. Ouvrez le terminal du Gateway pour retrouver les instructions de connexion manquantes.</value>
+  </data>
+  <data name="Onboarding_Wizard_GatewayConsoleUnavailable" xml:space="preserve">
+    <value>Les mises à jour de la console du Gateway sont indisponibles. Ouvrez le terminal du Gateway pour obtenir les instructions de connexion au fournisseur.</value>
+  </data>
   <data name="Onboarding_Wizard_ErrorGatewayDisconnectedDetail" xml:space="preserve">
     <value>Connexion à la passerelle perdue. Cliquez sur Suivant pour ignorer l’assistant, ou attendez la reconnexion.</value>
   </data>
@@ -7347,7 +7353,7 @@ Vos paramètres, votre passerelle, vos fichiers et vos modèles restent en place
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Plus rapide</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Plus approfondi</value></data>
   <data name="Onboarding_Native_Title.Text" xml:space="preserve"><value>Installer un Gateway natif local</value></data>
-  <data name="Onboarding_Native_Description.Text" xml:space="preserve"><value>Installer un Gateway OpenClaw local, confiné par MXC</value></data>
+  <data name="Onboarding_Native_Description.Text" xml:space="preserve"><value>Installer et configurer un Gateway OpenClaw sur cet appareil</value></data>
   <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>Installer un Gateway WSL local</value></data>
   <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>Vérification de la prise en charge du Gateway natif...</value></data>
   <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>Le Gateway natif est pris en charge sur cet appareil.</value></data>

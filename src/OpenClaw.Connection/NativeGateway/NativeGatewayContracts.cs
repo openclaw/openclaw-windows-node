@@ -5,7 +5,31 @@ public sealed record NativeGatewayPackage(
     string PackageFamilyName,
     string Version,
     string OpenClawAliasPath,
-    string ClawCtlAliasPath);
+    string ClawCtlAliasPath)
+{
+    public NativeGatewayContract Contract { get; init; }
+}
+
+public enum NativeGatewayContract
+{
+    Unknown,
+    Legacy,
+    IsolatedSessionV1
+}
+
+/// <summary>A safe-to-display failure of the qualified Gateway integration contract.</summary>
+public sealed class NativeGatewayContractException(string message) : InvalidOperationException(message);
+
+public sealed record IsolatedGatewayConfiguration(int Port, string Token);
+
+public sealed record IsolatedGatewayListener(
+    int Port, int ProcessId, DateTime ProcessStartTimeUtc, ulong SequenceNumber);
+
+public sealed record IsolatedGatewayStatus(
+    string State,
+    int? Port,
+    string? AgentUserSid,
+    IReadOnlyList<IsolatedGatewayListener> Listeners);
 
 /// <summary>No matching trusted package is registered. Other validation failures are not install requests.</summary>
 public sealed class NativeGatewayPackageNotInstalledException : InvalidOperationException

@@ -119,7 +119,7 @@ public sealed partial class NativeGatewaySetupPage : Page
             registry,
             _resolver,
             new NativeGatewaySetupHost(ReportProgress, ReportStage),
-            () => new NativeGatewayRuntime(registry, _resolver, appLogger));
+            () => NativeGatewayRuntimeRouter.Create(registry, _resolver, appLogger));
         window.NativeSetupDraft = await service.CreateDraftAsync(cancellationToken);
         StatusText.Text = SetupLocalization.GetString("Onboarding_Native_InProgress");
         var session = await service.PrepareAsync(window.NativeSetupDraft, cancellationToken);

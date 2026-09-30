@@ -27,6 +27,7 @@ public sealed class NativeGatewaySetupSession(
     private bool _published;
     private IDisposable? _terminal;
     public GatewayRecord Record { get; private set; } = record;
+    public bool IsIsolated => draft.Contract == NativeGatewayContract.IsolatedSessionV1;
     public string IdentityDirectory => registry.GetIdentityDirectory(draft.GatewayId);
     public string ConsoleLogPath => Path.Combine(
         NativeGatewayPaths.GetStateDirectory(registry, draft.GatewayId), "wizard-console.log");
@@ -63,7 +64,8 @@ public sealed class NativeGatewaySetupSession(
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            SuspendReload();
+            if (!IsIsolated)
+                SuspendReload();
             await host.ValidateConfigurationAsync(package, environment, cancellationToken);
             await AuthorizeCoreAsync(cancellationToken);
         }
@@ -92,18 +94,20 @@ public sealed class NativeGatewaySetupSession(
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             await AuthorizeCoreAsync(linked.Token);
+            await RequireIsolatedPairingConfigurationAsync(linked.Token);
             RequirePairingConfiguration();
             var identity = new DeviceIdentity(IdentityDirectory);
             identity.Initialize();
-            var approvalEnvironment = new Dictionary<string, string>(environment)
-            {
-                // The CLI's local bootstrap requires a profile target, not --url.
-                // Prevent inherited target overrides from selecting another Gateway.
-                ["OPENCLAW_GATEWAY_URL"] = "",
-                ["OPENCLAW_GATEWAY_PORT"] = draft.Port.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                ["OPENCLAW_GATEWAY_TOKEN"] = Record.SharedGatewayToken ??
-                    throw new InvalidOperationException("The setup Gateway credential is unavailable for pairing."),
-            };
+            var approvalEnvironment = IsIsolated
+                ? new Dictionary<string, string>()
+                : new Dictionary<string, string>(environment)
+                {
+                    // Legacy CLI bootstrap needs the dedicated profile and explicit target.
+                    ["OPENCLAW_GATEWAY_URL"] = "",
+                    ["OPENCLAW_GATEWAY_PORT"] = draft.Port.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    ["OPENCLAW_GATEWAY_TOKEN"] = Record.SharedGatewayToken ??
+                        throw new InvalidOperationException("The setup Gateway credential is unavailable for pairing."),
+                };
             var normalizedId = requestId!.Trim();
             var listing = await host.ListDevicePairingRequestsAsync(
                 package, approvalEnvironment, linked.Token);
@@ -111,6 +115,7 @@ public sealed class NativeGatewaySetupSession(
                 listing, normalizedId, identity.DeviceId, identity.PublicKeyBase64Url);
             // Recheck after the CLI read and before issuing the exact approval.
             await AuthorizeCoreAsync(linked.Token);
+            await RequireIsolatedPairingConfigurationAsync(linked.Token);
             RequirePairingConfiguration();
             var result = await host.ApproveDevicePairingAsync(
                 package, normalizedId, approvalEnvironment, linked.Token);
@@ -124,9 +129,25 @@ public sealed class NativeGatewaySetupSession(
 
     private void RequirePairingConfiguration()
     {
+        if (IsIsolated)
+            return;
         var configured = NativeGatewaySetupService.ReadConfiguredRecord(draft, File.ReadAllText(ConfigPath));
         if (configured.SharedGatewayToken != Record.SharedGatewayToken)
             throw new InvalidOperationException("The setup Gateway credential changed. Restart setup before pairing.");
+    }
+
+    private async Task RequireIsolatedPairingConfigurationAsync(CancellationToken cancellationToken)
+    {
+        if (!IsIsolated)
+            return;
+        IsolatedGatewayConfiguration configuration =
+            await host.CheckIsolatedPairingConfigurationAsync(package, cancellationToken);
+        if (configuration.Port != new Uri(Record.Url).Port ||
+            !string.Equals(configuration.Token, Record.SharedGatewayToken, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "The isolated Gateway port or token changed. Restart Companion setup before pairing.");
+        }
     }
 
     private async Task AuthorizeCoreAsync(CancellationToken cancellationToken)
@@ -152,8 +173,11 @@ public sealed class NativeGatewaySetupSession(
             _terminal = null;
             await runtime.StopAsync(linked.Token);
             // Upstream may have changed configuration before an error. Validate before restart.
-            Record = NativeGatewaySetupService.ReadConfiguredRecord(draft, File.ReadAllText(ConfigPath));
-            SuspendReload();
+            if (!IsIsolated)
+            {
+                Record = NativeGatewaySetupService.ReadConfiguredRecord(draft, File.ReadAllText(ConfigPath));
+                SuspendReload();
+            }
             await host.ValidateConfigurationAsync(package, environment, linked.Token);
             await AuthorizeCoreAsync(linked.Token);
         }
@@ -186,10 +210,25 @@ public sealed class NativeGatewaySetupSession(
             // Stop before touching configuration: the hosted wizard must no longer be writing.
             await runtime.StopAsync(linked.Token);
             linked.Token.ThrowIfCancellationRequested();
-            RestoreReload();
-            if (capabilities is not null)
-                ApplyCapabilities(capabilities);
-            Record = NativeGatewaySetupService.ReadConfiguredRecord(draft, File.ReadAllText(ConfigPath));
+            if (IsIsolated)
+            {
+                if (capabilities is not null)
+                    await host.ApplyIsolatedCapabilitiesAsync(
+                        package, capabilities.GetEnabledCommandIds().ToArray(), linked.Token);
+                IsolatedGatewayConfiguration configured =
+                    await host.CheckIsolatedPairingConfigurationAsync(package, linked.Token);
+                if (configured.Port != draft.Port || configured.Token != Record.SharedGatewayToken)
+                    throw new InvalidOperationException(
+                        "The isolated Gateway credential or port changed during setup. " +
+                        "Restart setup before publishing this Companion connection.");
+            }
+            else
+            {
+                RestoreReload();
+                if (capabilities is not null)
+                    ApplyCapabilities(capabilities);
+                Record = NativeGatewaySetupService.ReadConfiguredRecord(draft, File.ReadAllText(ConfigPath));
+            }
             await host.ValidateConfigurationAsync(package, environment, linked.Token);
             await AuthorizeCoreAsync(linked.Token);
             await host.VerifyHealthAsync(package, environment, linked.Token);
@@ -298,7 +337,8 @@ public sealed class NativeGatewaySetupSession(
             _terminal?.Dispose();
             _terminal = null;
             await runtime.DisposeAsync();
-            RestoreReload();
+            if (!IsIsolated)
+                RestoreReload();
         }
         finally { _gate.Release(); }
     }

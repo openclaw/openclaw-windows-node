@@ -15,6 +15,8 @@ public class ApprovalRequestHelperTests
     [InlineData("-starts-with-dash")]
     [InlineData("bad;rm -rf")]
     [InlineData("bad id")]
+    [InlineData("latest")]
+    [InlineData("LATEST")]
     public void IsSafeRequestId_RejectsUnsafeIds(string requestId)
     {
         Assert.False(ApprovalRequestHelper.IsSafeRequestId(requestId));

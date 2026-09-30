@@ -1,3 +1,4 @@
+using System.Text.Json;
 using OpenClaw.SetupEngine.UI;
 
 namespace OpenClaw.Tray.Tests;
@@ -10,6 +11,187 @@ namespace OpenClaw.Tray.Tests;
 /// </summary>
 public class WizardConsoleTailTests
 {
+    private static JsonElement Payload(long cursor, long size, params string[] lines)
+        => PayloadFromFile("agent-wizard.log", cursor, size, lines);
+
+    private static JsonElement PayloadFromFile(string file, long cursor, long size, params string[] lines)
+    {
+        using JsonDocument document = JsonDocument.Parse(JsonSerializer.Serialize(new
+        {
+            file, cursor, size, lines
+        }));
+        return document.RootElement.Clone();
+    }
+
+    [Fact]
+    public async Task GatewayReaderSendsBoundedLogsTailRequestsWithoutANullCursor()
+    {
+        var requests = new List<JsonElement>();
+        var reader = WizardConsoleTail.CreateGatewayLogReader((method, parameters, timeout) =>
+        {
+            Assert.Equal("logs.tail", method);
+            Assert.Equal(10_000, timeout);
+            requests.Add(JsonSerializer.SerializeToElement(parameters));
+            return Task.FromResult(Payload(100, 100));
+        });
+
+        await reader(null, CancellationToken.None);
+        await reader(100, CancellationToken.None);
+
+        Assert.False(requests[0].TryGetProperty("cursor", out _));
+        Assert.Equal(1, requests[0].GetProperty("maxBytes").GetInt32());
+        Assert.Equal(100, requests[1].GetProperty("cursor").GetInt64());
+        Assert.Equal(128, requests[1].GetProperty("limit").GetInt32());
+        Assert.Equal(64 * 1024, requests[1].GetProperty("maxBytes").GetInt32());
+    }
+
+    [Fact]
+    public async Task IsolatedTailUsesAuthenticatedCursorAndOnlyDisplaysNewPluginConsoleLines()
+    {
+        string oauth = """{"_meta":{"name":"openclaw","path":{"method":"console.log"}},"message":"Open https://auth.example/authorize?client_id=fixture"}""";
+        string unrelated = """{"_meta":{"name":"openclaw/auth","path":{"method":"console.log"}},"message":"not user-facing"}""";
+        var requested = new List<long?>();
+        var delivered = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var tail = new WizardConsoleTail(gatewayLogTail: (cursor, _) =>
+        {
+            requested.Add(cursor);
+            return Task.FromResult(cursor is null
+                ? Payload(100, 100, oauth)
+                : Payload(300, 300, unrelated, oauth));
+        });
+
+        await tail.StartGatewayAsync(message => delivered.TrySetResult(message),
+            _ => { }, CancellationToken.None);
+        string received = await delivered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        tail.Stop();
+
+        Assert.Contains("https://auth.example/authorize", received, StringComparison.Ordinal);
+        Assert.Equal([null, 100], requested.Take(2));
+    }
+
+    [Fact]
+    public void IsolatedTailMarksSkippedOutputAndRejectsMalformedCursors()
+    {
+        string oauth = """{"_meta":{"name":"openclaw","path":{"method":"console.log"}},"message":"OAuth URL available"}""";
+        using JsonDocument gap = JsonDocument.Parse(JsonSerializer.Serialize(new
+        {
+            file = "agent-wizard.log",
+            cursor = 250,
+            size = 250,
+            reset = true,
+            truncated = true,
+            skippedBytes = 47,
+            lines = new[] { oauth }
+        }));
+
+        var batch = WizardConsoleTail.ParseGatewayLogTail(gap.RootElement, previousCursor: 100);
+
+        Assert.True(batch.Skipped);
+        Assert.Equal(250, batch.Cursor);
+        Assert.Equal(["OAuth URL available"], batch.Messages);
+        Assert.Throws<InvalidDataException>(() =>
+            WizardConsoleTail.ParseGatewayLogTail(Payload(50, 50), previousCursor: 100));
+        using JsonDocument invalid = JsonDocument.Parse(
+            """{"file":"agent-wizard.log","cursor":"50","size":50,"lines":[]}""");
+        Assert.Throws<InvalidDataException>(() =>
+            WizardConsoleTail.ParseGatewayLogTail(invalid.RootElement, previousCursor: null));
+        using JsonDocument invalidGap = JsonDocument.Parse(
+            """{"file":"agent-wizard.log","cursor":50,"size":50,"reset":"yes","lines":[]}""");
+        Assert.Throws<InvalidDataException>(() =>
+            WizardConsoleTail.ParseGatewayLogTail(invalidGap.RootElement, previousCursor: 100));
+    }
+
+    [Fact]
+    public async Task IsolatedTailReportsAVisibleGapBeforeLaterConsoleMessages()
+    {
+        string oauth = """{"_meta":{"name":"openclaw","path":{"method":"console.log"}},"message":"Open https://auth.example/authorize"}""";
+        var messages = new List<string>();
+        var issues = new List<GatewayLogTailIssue>();
+        var receivedBoth = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var tail = new WizardConsoleTail(gatewayLogTail: (cursor, _) =>
+        {
+            if (cursor is null)
+                return Task.FromResult(Payload(100, 100));
+            using JsonDocument document = JsonDocument.Parse(JsonSerializer.Serialize(new
+            {
+                file = "agent-wizard.log",
+                cursor = 250,
+                size = 250,
+                reset = true,
+                truncated = true,
+                skippedBytes = 47,
+                lines = new[] { oauth }
+            }));
+            return Task.FromResult(document.RootElement.Clone());
+        });
+
+        await tail.StartGatewayAsync(
+            message =>
+            {
+                messages.Add(message);
+                if (issues.Count == 1)
+                    receivedBoth.TrySetResult();
+            },
+            issue => issues.Add(issue),
+            CancellationToken.None);
+        await receivedBoth.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        tail.Stop();
+
+        Assert.Equal([GatewayLogTailIssue.Skipped], issues);
+        Assert.Equal(["Open https://auth.example/authorize"], messages);
+    }
+
+    [Fact]
+    public async Task IsolatedTailRejectsAChangedGatewayLogSource()
+    {
+        string oauth = """{"_meta":{"name":"openclaw","path":{"method":"console.log"}},"message":"Unrelated OAuth URL"}""";
+        var issue = new TaskCompletionSource<GatewayLogTailIssue>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var tail = new WizardConsoleTail(gatewayLogTail: (cursor, _) =>
+            Task.FromResult(cursor is null
+                ? PayloadFromFile("first-agent.log", 100, 100)
+                : PayloadFromFile("different-agent.log", 200, 200, oauth)));
+
+        await tail.StartGatewayAsync(
+            _ => throw new InvalidOperationException("A replaced log must not be projected."),
+            value => issue.TrySetResult(value),
+            CancellationToken.None);
+        GatewayLogTailIssue result = await issue.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        tail.Stop();
+
+        Assert.Equal(GatewayLogTailIssue.Skipped, result);
+    }
+
+    [Fact]
+    public async Task IsolatedTailDoesNotStartWslWhenLogRpcIsUnavailable()
+    {
+        using var tail = new WizardConsoleTail(gatewayLogTail: (_, _) =>
+            Task.FromException<JsonElement>(new InvalidOperationException("operator.read unavailable")));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => tail.StartGatewayAsync(_ => { }, _ => { }, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task IsolatedTailSurfacesPostStartRpcFailure()
+    {
+        var issue = new TaskCompletionSource<GatewayLogTailIssue>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var tail = new WizardConsoleTail(gatewayLogTail: (cursor, _) =>
+            cursor is null
+                ? Task.FromResult(Payload(100, 100))
+                : Task.FromException<JsonElement>(new IOException("agent log unavailable")));
+
+        await tail.StartGatewayAsync(
+            _ => throw new InvalidOperationException("A failed RPC must not invent a console message."),
+            value => issue.TrySetResult(value),
+            CancellationToken.None);
+        GatewayLogTailIssue result = await issue.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        tail.Stop();
+
+        Assert.Equal(GatewayLogTailIssue.Unavailable, result);
+    }
+
     [Fact]
     public void ExtractsOAuthUrlFromUpstreamConsoleLogEntry()
     {

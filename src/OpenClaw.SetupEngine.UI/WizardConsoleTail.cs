@@ -6,9 +6,15 @@ using OpenClaw.Shared;
 
 namespace OpenClaw.SetupEngine.UI;
 
+internal enum GatewayLogTailIssue
+{
+    Skipped,
+    Unavailable
+}
+
 /// <summary>
-/// Tails the OpenClaw gateway log running inside WSL and emits a callback for
-/// every line that the upstream openclaw wizard plugins wrote via
+/// Tails the WSL or legacy Gateway log, or the isolated Gateway's authenticated
+/// logs.tail RPC, and emits a callback for every line that wizard plugins wrote via
 /// <c>console.log</c>. Workaround for an upstream bug: plugins emit
 /// user-critical content (OAuth URLs, install fallback messages) to gateway
 /// stdout instead of as a <c>wizard.payload</c> WS frame, leaving the tray UI
@@ -31,15 +37,28 @@ internal sealed class WizardConsoleTail : IDisposable
     private readonly object _stateLock = new();
     private Process? _process;
     private readonly string? _nativeLogPath;
+    private readonly Func<long?, CancellationToken, Task<JsonElement>>? _gatewayLogTail;
     private CancellationTokenSource? _nativeTailCancellation;
 
     public WizardConsoleTail(IOpenClawLogger? logger = null, string? distroNameOverride = null,
-        string? nativeLogPath = null)
+        string? nativeLogPath = null,
+        Func<long?, CancellationToken, Task<JsonElement>>? gatewayLogTail = null)
     {
         _logger = logger ?? NullLogger.Instance;
         _distroName = distroNameOverride ?? DefaultDistroName;
         _nativeLogPath = nativeLogPath;
+        _gatewayLogTail = gatewayLogTail;
     }
+
+    internal static Func<long?, CancellationToken, Task<JsonElement>> CreateGatewayLogReader(
+        Func<string, object?, int, Task<JsonElement>> send) =>
+        (cursor, cancellationToken) =>
+        {
+            object parameters = cursor is long position
+                ? new { cursor = position, limit = 128, maxBytes = 64 * 1024 }
+                : new { limit = 1, maxBytes = 1 };
+            return send("logs.tail", parameters, 10_000).WaitAsync(cancellationToken);
+        };
 
     /// <summary>
     /// Starts tailing in the background. <paramref name="onMessage"/> is invoked
@@ -50,6 +69,8 @@ internal sealed class WizardConsoleTail : IDisposable
     public void Start(Action<string> onMessage)
     {
         ArgumentNullException.ThrowIfNull(onMessage);
+        if (_gatewayLogTail is not null)
+            throw new InvalidOperationException("The isolated Gateway requires StartGatewayAsync.");
         Stop();
         if (_nativeLogPath is not null)
         {
@@ -125,6 +146,125 @@ internal sealed class WizardConsoleTail : IDisposable
             Stop();
         }
     }
+
+    public async Task StartGatewayAsync(
+        Action<string> onMessage,
+        Action<GatewayLogTailIssue> onIssue,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(onMessage);
+        ArgumentNullException.ThrowIfNull(onIssue);
+        if (_gatewayLogTail is null)
+            throw new InvalidOperationException("No isolated Gateway log source was configured.");
+        Stop();
+        _nativeTailCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        try
+        {
+            // Anchor before wizard.start so old OAuth prompts cannot reappear on retry.
+            var initial = ParseGatewayLogTail(
+                await _gatewayLogTail(null, _nativeTailCancellation.Token),
+                previousCursor: null);
+            _ = TailGatewayLogAsync(initial.File, initial.Size, onMessage, onIssue,
+                _nativeTailCancellation.Token);
+        }
+        catch
+        {
+            Stop();
+            throw;
+        }
+    }
+
+    private async Task TailGatewayLogAsync(
+        string file,
+        long cursor,
+        Action<string> onMessage,
+        Action<GatewayLogTailIssue> onIssue,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                var batch = ParseGatewayLogTail(
+                    await _gatewayLogTail!(cursor, cancellationToken), cursor);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!string.Equals(file, batch.File, StringComparison.Ordinal))
+                {
+                    onIssue(GatewayLogTailIssue.Skipped);
+                    file = batch.File;
+                    cursor = batch.Size;
+                    await Task.Delay(500, cancellationToken);
+                    continue;
+                }
+                if (batch.Skipped)
+                    onIssue(GatewayLogTailIssue.Skipped);
+                foreach (string message in batch.Messages)
+                    onMessage(message);
+                cursor = batch.Cursor;
+                await Task.Delay(500, cancellationToken);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            _logger.Warn($"Isolated Gateway console tail stopped ({ex.GetType().Name}).");
+            onIssue(GatewayLogTailIssue.Unavailable);
+        }
+    }
+
+    internal static GatewayConsoleBatch ParseGatewayLogTail(JsonElement payload, long? previousCursor)
+    {
+        if (payload.ValueKind != JsonValueKind.Object ||
+            !payload.TryGetProperty("file", out var fileValue) ||
+            fileValue.ValueKind != JsonValueKind.String ||
+            string.IsNullOrWhiteSpace(fileValue.GetString()) ||
+            !payload.TryGetProperty("cursor", out var cursorValue) ||
+            cursorValue.ValueKind != JsonValueKind.Number ||
+            !cursorValue.TryGetInt64(out long cursor) ||
+            !payload.TryGetProperty("size", out var sizeValue) ||
+            sizeValue.ValueKind != JsonValueKind.Number ||
+            !sizeValue.TryGetInt64(out long size) ||
+            cursor < 0 || size < cursor ||
+            !payload.TryGetProperty("lines", out var lines) ||
+            lines.ValueKind != JsonValueKind.Array ||
+            lines.GetArrayLength() > 128)
+            throw new InvalidDataException("The Gateway returned an invalid bounded log tail.");
+        bool reset = false;
+        if (payload.TryGetProperty("reset", out var resetValue))
+        {
+            if (resetValue.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                throw new InvalidDataException("The Gateway log tail has an invalid reset flag.");
+            reset = resetValue.GetBoolean();
+        }
+        if (previousCursor is long previous && cursor < previous && !reset)
+            throw new InvalidDataException("The Gateway log cursor moved backward without a reset.");
+        bool skipped = false;
+        if (payload.TryGetProperty("truncated", out var truncated))
+        {
+            if (truncated.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                throw new InvalidDataException("The Gateway log tail has an invalid truncation flag.");
+            skipped = truncated.GetBoolean();
+        }
+        if (payload.TryGetProperty("skippedBytes", out var skippedBytes))
+        {
+            if (skippedBytes.ValueKind != JsonValueKind.Number ||
+                !skippedBytes.TryGetInt64(out long count) || count < 0)
+                throw new InvalidDataException("The Gateway log tail has an invalid skipped-byte count.");
+            skipped |= count > 0;
+        }
+        var messages = new List<string>();
+        foreach (var line in lines.EnumerateArray())
+        {
+            if (line.ValueKind != JsonValueKind.String)
+                throw new InvalidDataException("The Gateway log tail contains a non-text entry.");
+            if (TryExtractConsoleMessage(line.GetString()) is { } message)
+                messages.Add(message);
+        }
+        return new GatewayConsoleBatch(fileValue.GetString()!, cursor, size, messages, skipped);
+    }
+
+    internal sealed record GatewayConsoleBatch(
+        string File, long Cursor, long Size, IReadOnlyList<string> Messages, bool Skipped);
 
     public void Stop()
     {

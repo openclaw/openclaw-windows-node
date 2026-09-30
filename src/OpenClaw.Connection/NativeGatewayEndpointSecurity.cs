@@ -42,8 +42,15 @@ internal static class NativeGatewayEndpointSecurity
         }
         catch (NativeGatewayListenerException ex)
         {
-            return new(false, GatewayErrorKind.LocalPortConflict,
+            return new(false,
+                ex.Provenance.FailureReason == GatewayEndpointProvenanceFailureReason.ProcessIdentityUnavailable
+                    ? GatewayErrorKind.Network
+                    : GatewayErrorKind.LocalPortConflict,
                 ex.Provenance.Detail ?? ex.Message);
+        }
+        catch (NativeGatewayContractException ex)
+        {
+            return new(false, GatewayErrorKind.Network, ex.Message);
         }
         catch (Exception)
         {

@@ -81,7 +81,7 @@
                                       </Border>
                                   </Grid>
                                   <TextBlock x:Name="NativeDescription" x:Uid="Onboarding_Native_Description"
-                                             Text="Install a local, MXC contained OpenClaw gateway"
+                                             Text="Install and set up an OpenClaw gateway on this device"
                                              TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
                                              Foreground="{ThemeResource TextFillColorDisabledBrush}" />
                                   <Grid x:Name="NativeSupportAvailablePanel" Visibility="Collapsed"

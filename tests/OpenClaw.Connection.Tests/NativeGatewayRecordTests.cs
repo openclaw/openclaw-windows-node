@@ -1,4 +1,5 @@
 using System.Text.Json;
+using OpenClaw.Connection.NativeGateway;
 
 namespace OpenClaw.Connection.Tests;
 
@@ -6,7 +7,11 @@ public sealed class NativeGatewayRecordTests
 {
     private static GatewayRecord NativeRecord() => new GatewayRecordBuilder()
         .WithId("gw-native").WithUrl("ws://127.0.0.1:18789").Local().RequiresV2Signature().Build()
-        with { NativePackageFamilyName = "OpenClaw.Gateway_123456789abcd" };
+        with
+        {
+            NativePackageFamilyName = "OpenClaw.Gateway_123456789abcd",
+            NativeRuntimeContract = NativeGatewayPackageClient.IsolatedContract
+        };
 
     [Fact]
     public void Marker_RoundTripsWithoutWslOwnership()
@@ -28,6 +33,7 @@ public sealed class NativeGatewayRecordTests
         var rebuilt = new GatewayRecord { Id = existing.Id, Url = url, FriendlyName = "New label", SharedGatewayToken = "new-token" };
         var result = rebuilt.PreserveAdvancedFields(existing);
         Assert.Equal(existing.NativePackageFamilyName, result.NativePackageFamilyName);
+        Assert.Equal(existing.NativeRuntimeContract, result.NativeRuntimeContract);
         Assert.True(result.IsLocal);
         Assert.True(result.RequiresV2Signature);
         Assert.Equal("New label", result.FriendlyName);
@@ -44,6 +50,7 @@ public sealed class NativeGatewayRecordTests
         var record = NativeRecord();
         var result = (record with { Url = url }).PreserveAdvancedFields(record);
         Assert.Null(result.NativePackageFamilyName);
+        Assert.Null(result.NativeRuntimeContract);
         Assert.False(result.RequiresV2Signature);
         Assert.Null(result.SetupManagedDistroName);
     }
@@ -54,6 +61,7 @@ public sealed class NativeGatewayRecordTests
         var record = NativeRecord();
         var result = (record with { SshTunnel = new("user", "host", 18789, 18789) }).PreserveAdvancedFields(record);
         Assert.Null(result.NativePackageFamilyName);
+        Assert.Null(result.NativeRuntimeContract);
         Assert.False(result.RequiresV2Signature);
     }
 

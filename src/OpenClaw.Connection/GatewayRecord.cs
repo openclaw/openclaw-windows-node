@@ -39,6 +39,9 @@ public sealed record GatewayRecord
     /// </summary>
     public string? NativePackageFamilyName { get; init; }
 
+    /// <summary>The package-owned isolation contract. Null identifies an existing same-user profile.</summary>
+    public string? NativeRuntimeContract { get; init; }
+
     /// <summary>Per-gateway SSH tunnel configuration. Null if no tunnel needed.</summary>
     public SshTunnelConfig? SshTunnel { get; init; }
 
@@ -94,6 +97,7 @@ public static class GatewayRecordEditing
             return result with
             {
                 NativePackageFamilyName = preserveNative ? existing.NativePackageFamilyName : null,
+                NativeRuntimeContract = preserveNative ? existing.NativeRuntimeContract : null,
                 IsLocal = OpenClaw.Shared.LocalGatewayUrlClassifier.IsLocalGatewayUrl(rebuilt.Url),
                 RequiresV2Signature = preserveNative &&
                     (rebuilt.RequiresV2Signature || existing.RequiresV2Signature),

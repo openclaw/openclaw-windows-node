@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
@@ -160,7 +161,13 @@ public sealed partial class WizardPage : Page
             _client = client;
             _client.StatusChanged += OnWizardClientStatusChanged;
             SetBusy("Starting wizard...");
-            StartConsoleTail();
+            await StartConsoleTailAsync(client);
+            if (generation != _operationGeneration)
+            {
+                StopConsoleTail();
+                await DisconnectAndDisposeClientAsync(client);
+                return;
+            }
             _nativeSession?.BeginWizard();
             JsonElement payload;
             try
@@ -1350,16 +1357,20 @@ public sealed partial class WizardPage : Page
         }
     }
 
-    private void StartConsoleTail()
+    private async Task StartConsoleTailAsync(OpenClawGatewayClient client)
     {
         StopConsoleTail();
+        bool isolated = _nativeSession?.IsIsolated == true;
         var tail = new WizardConsoleTail(
             logger: NullLogger.Instance,
             distroNameOverride: _config.DistroName,
-            nativeLogPath: _nativeSession?.ConsoleLogPath);
+            nativeLogPath: isolated ? null : _nativeSession?.ConsoleLogPath,
+            gatewayLogTail: isolated
+                ? WizardConsoleTail.CreateGatewayLogReader(client.SendWizardRequestAsync)
+                : null);
         _consoleTail = tail;
         var dispatcher = DispatcherQueue;
-        tail.Start(message =>
+        void AppendMessage(string message)
         {
             try
             {
@@ -1374,7 +1385,32 @@ public sealed partial class WizardPage : Page
             catch
             {
             }
-        });
+        }
+        void ReportIssue(GatewayLogTailIssue issue) => AppendMessage(SetupLocalization.GetString(issue switch
+        {
+            GatewayLogTailIssue.Skipped => "Onboarding_Wizard_GatewayConsoleGap",
+            GatewayLogTailIssue.Unavailable => "Onboarding_Wizard_GatewayConsoleUnavailable",
+            _ => throw new ArgumentOutOfRangeException(nameof(issue))
+        }));
+        if (!isolated)
+        {
+            tail.Start(AppendMessage);
+            return;
+        }
+        try
+        {
+            await tail.StartGatewayAsync(AppendMessage, ReportIssue, _nativeSession!.LifetimeToken);
+        }
+        catch (OperationCanceledException) when (_nativeSession?.LifetimeToken.IsCancellationRequested == true)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Trace.TraceWarning($"Isolated Gateway console output could not start ({ex.GetType().Name}).");
+            StopConsoleTail();
+            AppendConsoleLine(SetupLocalization.GetString("Onboarding_Wizard_GatewayConsoleUnavailable"));
+        }
     }
 
     private void StopConsoleTail()

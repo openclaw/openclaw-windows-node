@@ -60,9 +60,9 @@ entry from the original configuration; the generated template does not reproduce
 that entry or its value. The bundled configuration leaves setup mode and search
 provider unspecified so policy can choose among the actual offered values.
 
-### Native Gateway MSIX (not isolated)
+### Native Gateway MSIX (isolated or legacy)
 
-**Package-aware verification (2026-09-16, package 0.0.0.1 ARM64):** the original
+**Historical package-aware proof (2026-09-16, package 0.0.0.1 ARM64):** the original
 listener-job mismatch is resolved. Companion creates the launcher suspended,
 assigns its lifecycle job, retains its process handle and resumes it. A listener
 may belong to that job or be a verified live, same-user descendant of the
@@ -93,11 +93,11 @@ for launch, shutdown, verification details and the pre-assignment crash window.
 **Install a local native gateway** is the first Welcome choice and retains its
 **Recommended** badge even while disabled, with WinUI disabled brushes for the
 title, description, badge and icon instead of active accent colors. Only a successful native capability
-check enables it. By the 2026-09-18 product decision, this
-continues to run the existing Gateway MSIX with the signed-in Windows user's
-access. The separate isolation warning and acknowledgment checkbox are removed;
-the general security notice and provider/onboarding consent remain explicit.
-This UI gate does not provision an MXC session or change the runtime identity.
+check enables it. The separate isolation warning and acknowledgment checkbox
+remain removed; the general security notice and provider/onboarding consent
+remain explicit. With an isolated-session Gateway package, the package provisions
+and runs the agent account; the known legacy proof package retains its original
+same-user runtime. The UI capability gate alone never proves isolation.
 Native and WSL use the **same WinUI `WizardPage`**, not separate provider/model
 wizards. WSL is always shown as the second Welcome choice after native,
 followed by **Connect to an existing gateway**.
@@ -117,7 +117,14 @@ The original `OpenClaw.Gateway` / OpenClaw Foundation development publisher pair
 is still accepted for existing installations. If both identities are installed,
 new setup reports duplicate registrations instead of guessing which to use. Existing
 profiles resolve their original package family even when both packages are installed;
-there is no implicit migration.
+there is no implicit migration. Companion additionally checks the qualified
+`clawctl status --json` integration kind and version before choosing a runtime.
+An unversioned package already reporting a session is unsupported and requires
+an MSIX update; it never falls back to same-user execution.
+If the package reports a healthy Gateway but omits listener ownership because
+Windows lacks process-sequence support, Gateway lifecycle remains available
+but Companion will not send credentials. Update to Windows 11 build 26100.4770
+or later before retrying; `clawctl setup` cannot add the missing OS API.
 
 The review explains that **Set up gateway** authorizes WinGet installation and
 accepts the package and Store source agreements. Provider sign-in remains interactive.
@@ -141,77 +148,87 @@ claim the stopped setup runtime or a not-yet-paired Windows node is running.
 
 The native path:
 
-1. Creates a dedicated configuration and workspace under
-   `gateways\<gateway-id>\native-gateway` in the Companion data directory.
-   `OPENCLAW_STATE_DIR` and `OPENCLAW_CONFIG_PATH` keep this separate from the
-   user's default `.openclaw` profile. A different profile is not a security
-   sandbox.
-2. Runs the installed package's `clawctl setup` with captured progress/errors in
-   Companion, without opening a TUI. The current package may extract its bundled Node runtime.
-   Older proof packages require a separately installed compatible Node runtime
-   (the supplied `0.0.0.0` proof rejects Node 22.19.0). Companion does not install
-   missing prerequisites.
-3. Validates the dedicated configuration, suspends config reload, and starts the
-   Gateway through the native runtime owner. Before every credential handoff,
-   including reconnects with a saved device identity, setup verifies package-owned
-   listener provenance. The staged record is **not** made active in the registry.
-4. Automatically pairs the setup's own Companion identity if required, then
+1. Saves a credential-free setup draft and Companion device identity. For a
+   versioned isolated package, `clawctl setup --json` must report a ready session,
+   then `clawctl companion prepare --port <preferred> --json` uses the agent's
+   default configuration and packaged Node.js. An existing agent port, token and
+   provider settings are preserved; incompatible configuration fails explicitly.
+   No host profile path is forwarded. The known legacy proof package alone
+   retains a separate Companion-owned profile and same-user runtime.
+2. Validates the active Gateway configuration and starts via the package's
+   `gateway-service` lifecycle (or the legacy runtime). Before every credential
+   handoff, including reconnects with a saved device identity, setup verifies
+   the package-owned listener and its isolated-session process sequence
+   against fresh Windows snapshots. The staged record is **not** made active
+   in the registry.
+3. Automatically pairs the setup's own Companion identity if required, then
    opens the shared `WizardPage` using `wizard.start` with `mode: "local"` and
    `installDaemon: false`. The same `wizard.next` transport and cards render the
    upstream security acknowledgement, provider, authentication, and model steps.
-   No consent or provider answer is supplied automatically. Native console output
-   is tailed from the dedicated profile, never through WSL.
-5. Error-free wizard completion or the validated optional-tail handoff permits
-   finalization. Setup stops its
-   runtime, restores the original reload setting, checks the selected
+   The isolated path uses package-qualified `openclaw devices list` and
+   `openclaw devices approve <request-id>`, which run as the agent user and read
+   its config. Before each command, Companion checks that the effective port
+   and token still match its setup record, then approves only the verified
+   request. No host token or profile path is forwarded. No consent or provider
+   answer is supplied automatically. Legacy console
+   output is tailed from its dedicated profile. The isolated path uses
+   upstream's authenticated `logs.tail` RPC after verifying the Gateway
+   listener, then displays only root-logger `console.log` messages. It anchors
+   at the current log size before `wizard.start`, polls bounded redacted
+   batches, and reports skipped output or RPC failure with recovery-terminal
+   guidance. It never tails WSL or a host profile for agent-side messages.
+4. Error-free wizard completion or the validated optional-tail handoff permits
+   finalization. Setup stops a Gateway it started, restores the legacy reload
+   setting, checks the selected
    local/loopback/token configuration, runs `config validate --json`, restarts
    with owned-listener proof and runs authenticated `gateway health --json`.
    A failed gate remains retryable and does not publish the staged record.
-6. Stops the setup-owned runtime before reloading and updating the registry.
+5. Stops a Gateway started by this setup before reloading and updating the registry.
    **Open Companion to connect** restarts Companion into the existing
    connection flow with the paired operator identity. This does not approve the
    separate Windows node role. Current Windows node permissions are preserved.
 
-Companion owns the native gateway process lifetime after this handoff. It starts
-the selected native gateway when connecting, can start it again after an exit,
-and stops its owned process when disconnecting, switching away, or shutting down.
-The MSIX package itself owns updates. Companion does not install an OS service
-or call `openclaw gateway install`.
+For the isolated package, `clawctl gateway-service` owns the Gateway process,
+sign-in recovery and isolated session. Companion starts it through the package
+when connecting and stops it only when this Companion runtime started it; an
+already-running package service is left alone on detach. Legacy proof packages
+retain Companion-owned same-user process supervision. Companion never calls
+`openclaw gateway install` or registers a second service.
 
-Cancelling setup, returning from the wizard, or closing setup stops only its own
-recovery terminal/runtime and restores reload. Cancel is not successful setup.
-**Restart gateway** controls the native owner; **Open terminal** opens a shell
-scoped to the dedicated profile and package aliases, not a second onboarding TUI.
+Cancelling setup, returning from the wizard, or closing setup stops only a
+Gateway started by the setup runtime and closes its recovery terminal. Legacy
+setup restores its reload setting. Cancel is not successful setup.
+**Restart gateway** controls the selected runtime; **Open terminal** opens
+`clawctl pwsh` in the agent for an isolated package, or the dedicated legacy
+profile's shell, not a second onboarding TUI.
 Its lifetime ends with setup or a restart. Configuration
-already entered is retained in the dedicated native profile so it is not lost
-on retry, including after returning to Welcome or reopening Companion. A
+already entered is retained in the agent's profile (or the legacy dedicated
+profile) so it is not lost on retry. A
 credential-free draft descriptor under `gateways\native-setup-draft.json`
-resumes the same profile until successful publication.
-The credential-free reload backup survives an interrupted process so a retry
-does not mistake the temporary `off` mode for the user's preference.
-Existing WSL distributions, remote gateways, and the default native
-OpenClaw profile are not replaced. The native path does not enter the WSL
+resumes the same setup until successful publication. Only the legacy path has
+a credential-free reload backup. Existing WSL distributions and remote
+gateways are not replaced. Isolated setup reuses the agent account's default
+OpenClaw configuration instead of touching the invoking user's `.openclaw`.
+The native path does not enter the WSL
 cleanup, Local AI installation, or WSL repair pipelines.
 
-This integration targets the packaging contract at
+The legacy proof path was based on the packaging contract at
 [`9a8cd4a`](https://github.com/openclaw/openclaw-windows-packaging/tree/9a8cd4af139513c21d290a01a8a1f2be19b602bc).
-Its README explicitly reserves isolated agent sessions for future work. A future
-MXC option needs a real session provisioning, eligibility, and lifecycle contract;
-MSIX registration or the presence of `IsolationProxy.exe` is not sufficient.
+The current source's isolated path instead requires the versioned
+`clawctl status --json` integration, agent-side configuration and
+`gateway-service status --json` listener attribution. MSIX registration or
+the presence of `IsolationProxy.exe` alone is not sufficient.
 
-### Planned MXC native Gateway recommendation policy
+### Historical MXC recommendation requirements
 
-The lifecycle/session-provisioning requirements below were recorded on 2026-09-16
-and remain future work. The 2026-09-18 UI decision implements capability-first
-recommendation and Windows-update guidance for the existing signed-in-user native
-Gateway without claiming session isolation. See [Welcome](#welcome) for the
-implemented recommendation behavior.
+The requirements below were recorded on 2026-09-16 for an earlier design.
+They are historical context, not the current lifecycle contract: the Gateway
+package now owns its isolated agent session, while Companion handles setup
+and verifies endpoint ownership. See [Welcome](#welcome) for the current UI.
 
-- **Lifecycle owner:** Companion provisions and supervises the MXC session,
-  delegates preparation to packaging and onboarding to upstream OpenClaw, and
-  runs both inside the isolated agent identity. Preserve that identity and its
-  configuration across Companion restarts; stop on exit and deprovision only
-  on explicit removal. Do not re-provision or re-onboard on restart. See the
+- **Lifecycle owner (superseded proposal):** Companion would have provisioned
+  and supervised the MXC session. The implemented package instead provisions
+  and records that session; Companion never creates a second one. See the
   [verified MXC 0.8 contract and blockers](GATEWAY_SETUP_RESPONSIBILITIES.md#verified-mxc-08-contract-and-implementation-blockers).
 - **Distribution:** Gateway packages are available as x64 MSIX, ARM64 MSIX,
   and an MSIX bundle. The future Store DLO is expected to point to the bundle,
@@ -240,9 +257,9 @@ implemented recommendation behavior.
   update is required. Meeting a version floor does not guarantee that a
   feature-gated OS API is enabled.
 
-The final MXC path must actually provision and run the Gateway inside an
-isolated session. Do not relabel the current ordinary-process MSIX path as MXC,
-or recommend it as isolated based only on a successful eligibility check.
+The implemented path must actually run the Gateway in the package's recorded
+isolated session. Do not relabel the historical ordinary-process proof as MXC,
+or recommend any MSIX as isolated based only on its registration.
 
 ## Overview
 
@@ -309,9 +326,11 @@ WSL or existing-gateway selection is not overridden by a late probe result.
 Back navigation preserves those explicit choices even when native is supported.
 The badge sits to the right of the title. Successful capability status appears
 inside the card below its description, with a decorative green checkmark and a
-screen-reader announcement. The requested description is **Install a local,
-MXC contained OpenClaw gateway**; this copy change does not implement MXC
-session containment, which remains outstanding for the current signed-in-user runtime.
+screen-reader announcement. The description says **Install and set up an OpenClaw
+gateway on this device**; it does not claim isolation based on a capability
+probe alone. An older recognized proof package still runs same-user; a
+non-proof package without the versioned isolation contract fails during
+setup rather than pretending to be isolated.
 If a resumed native setup profile's port has been taken by another process,
 Retry selects a new port without replacing the profile, credentials or identity.
 Unexpected launch/cleanup failures show an explicit failure and Retry action;

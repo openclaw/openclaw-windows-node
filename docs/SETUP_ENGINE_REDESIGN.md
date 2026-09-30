@@ -143,7 +143,7 @@ It never launches `openclaw onboard` or WSL.
 This path is non-isolated and UI-only. Companion never downloads an MSIX itself
 or bypasses Microsoft Store installation.
 Existing headless setup arguments continue to select the WSL pipeline.
-See [Native Gateway MSIX](ONBOARDING_WIZARD.md#native-gateway-msix-not-isolated)
+See [Native Gateway MSIX](ONBOARDING_WIZARD.md#native-gateway-msix-isolated-or-legacy)
 for consent, lifecycle, retry, and acquisition boundaries.
 
 See [Gateway setup responsibilities](GATEWAY_SETUP_RESPONSIBILITIES.md) for the

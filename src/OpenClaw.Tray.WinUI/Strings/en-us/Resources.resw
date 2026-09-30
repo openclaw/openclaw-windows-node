@@ -2402,6 +2402,12 @@ Use one of these options:
   <data name="Onboarding_Wizard_ErrorGatewayDisconnected" xml:space="preserve">
     <value>Gateway disconnected</value>
   </data>
+  <data name="Onboarding_Wizard_GatewayConsoleGap" xml:space="preserve">
+    <value>Some Gateway console messages were skipped. Open the Gateway terminal for missing sign-in guidance.</value>
+  </data>
+  <data name="Onboarding_Wizard_GatewayConsoleUnavailable" xml:space="preserve">
+    <value>Gateway console updates are unavailable. Open the Gateway terminal for provider sign-in guidance.</value>
+  </data>
   <data name="Onboarding_Wizard_ErrorGatewayDisconnectedDetail" xml:space="preserve">
     <value>Lost connection to gateway. Click Next to skip the wizard, or wait for reconnection.</value>
   </data>
@@ -7411,7 +7417,7 @@ Your settings, gateway, files, and models stay where they are.</value>
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Faster</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Smarter</value></data>
   <data name="Onboarding_Native_Title.Text" xml:space="preserve"><value>Install a local native gateway</value></data>
-  <data name="Onboarding_Native_Description.Text" xml:space="preserve"><value>Install a local, MXC contained OpenClaw gateway</value></data>
+  <data name="Onboarding_Native_Description.Text" xml:space="preserve"><value>Install and set up an OpenClaw gateway on this device</value></data>
   <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>Install a local WSL gateway</value></data>
   <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>Checking native gateway support...</value></data>
   <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>Native gateway support is available on this device.</value></data>

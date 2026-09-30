@@ -15,6 +15,7 @@ internal static partial class ApprovalRequestHelper
 
     internal static bool IsSafeRequestId(string? requestId)
         => !string.IsNullOrWhiteSpace(requestId)
+            && !string.Equals(requestId.Trim(), "latest", StringComparison.OrdinalIgnoreCase)
             && SafeRequestIdPattern().IsMatch(requestId.Trim());
 
     internal static string ApprovalCommand(ApprovalRequestKind kind)
