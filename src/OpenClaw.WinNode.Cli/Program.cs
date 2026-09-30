@@ -46,15 +46,18 @@ internal static class CliRunner
     internal const long MaxResponseContentBytes = 16L * 1024 * 1024; // 16 MiB
     internal const int MaxStderrEchoBytes = 4 * 1024; // 4 KiB cap on echoed error bodies
 
-    // Loopback MCP calls carry the local bearer. UseProxy stays false so
-    // HTTP_PROXY and ALL_PROXY cannot receive that header. Redirects stay
-    // off because the local server does not redirect.
-    internal static SocketsHttpHandler CreateMcpSocketsHandler()
-        => new()
+    // A loopback call carries the local bearer, so that host skips the
+    // process proxy. An explicit remote URL keeps the proxy. Redirects
+    // stay off because this client does not follow them.
+    internal static SocketsHttpHandler CreateMcpSocketsHandler(Uri endpoint)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+        return new SocketsHttpHandler
         {
             AllowAutoRedirect = false,
-            UseProxy = false,
+            UseProxy = !endpoint.IsLoopback,
         };
+    }
 
     public static async Task<int> RunAsync(
         string[] args,
@@ -238,9 +241,9 @@ internal static class CliRunner
         var httpTimeoutMs = (long)options.InvokeTimeoutMs + 5000L;
         var httpTimeout = TimeSpan.FromMilliseconds(httpTimeoutMs);
 
-        // F-02: explicit handler with AllowAutoRedirect=false and UseProxy=false.
-        // The local MCP server never redirects, and the local bearer must not
-        // be delivered to HTTP_PROXY or ALL_PROXY.
+        // F-02: explicit handler with AllowAutoRedirect=false. UseProxy is
+        // false only for a loopback URL, so the local bearer is not delivered
+        // to HTTP_PROXY or ALL_PROXY. An explicit remote URL still uses the proxy.
         // F-03: cap response buffer at 16 MiB; the only legitimately-large
         // response is a screen capture, which the server already caps below
         // this ceiling.
@@ -248,7 +251,7 @@ internal static class CliRunner
         SocketsHttpHandler? ownedHandler = null;
         if (httpHandler is null)
         {
-            ownedHandler = CreateMcpSocketsHandler();
+            ownedHandler = CreateMcpSocketsHandler(endpointUri);
             http = new HttpClient(ownedHandler, disposeHandler: true)
             {
                 Timeout = httpTimeout,
