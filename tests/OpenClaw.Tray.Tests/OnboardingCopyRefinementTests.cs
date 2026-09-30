@@ -32,7 +32,8 @@ public sealed class OnboardingCopyRefinementTests
                 Assert.DoesNotContain(strings.Keys, key => key.StartsWith(prefix, StringComparison.Ordinal));
             foreach (var key in new[] { "Onboarding_V2_Notifications", "Onboarding_V2_Microphone",
                          "Onboarding_V2_ScreenStatus", "Onboarding_V2_OpenSettings",
-                         "Onboarding_V2_OpenPermissionSettings", "Onboarding_Ready_Skip.Content" })
+                         "Onboarding_V2_OpenPermissionSettings", "Onboarding_Ready_Skip.Content",
+                         "Onboarding_V4_ProfileHeading.Text" })
                 Assert.False(strings.ContainsKey(key), key);
             foreach (var key in new[] { "Onboarding_Ready_Return.Content", "Onboarding_V2_Back.Content",
                          "Onboarding_V2_NativeSettings.Text", "PermissionsPage_Cap_Camera_Label",
@@ -45,17 +46,17 @@ public sealed class OnboardingCopyRefinementTests
     public void PresetCopyNamesOnlySelectableCapabilities_AndKeepsStableKeys()
     {
         var strings = Strings("en-us");
-        Assert.Equal("Choose what your agent can do", strings["Onboarding_V4_ProfileHeading.Text"]);
         foreach (var (key, title, detail) in new[]
         {
             ("ReadOnly", "Strict", "Canvas and screen capture. Command execution is off."),
-            ("Standard", "Balanced (Recommended)", "Commands, Canvas, screen capture and voice."),
+            ("Standard", "Balanced", "Commands, Canvas, screen capture and voice."),
             ("Full", "Open", "All eight capabilities, including Camera, Location and Browser control."),
         })
         {
             Assert.Equal(title, strings[$"Onboarding_V2_Profile{key}Title.Text"]);
             Assert.Equal(detail, strings[$"Onboarding_V2_Profile{key}Description.Text"]);
-            Assert.StartsWith(title + ":", strings[$"Onboarding_V2_Profile{key}.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name"]);
+            var accessibleTitle = key == "Standard" ? title + " (Recommended)" : title;
+            Assert.StartsWith(accessibleTitle + ":", strings[$"Onboarding_V2_Profile{key}.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name"]);
             Assert.DoesNotMatch(@"(?i)\b(folder|filesystem|workspace-only|internet|LAN|network|system folders)\b", detail);
         }
         var code = Read(@"src\OpenClaw.SetupEngine.UI\Pages\CapabilitiesPage.xaml.cs");
@@ -101,7 +102,7 @@ public sealed class OnboardingCopyRefinementTests
         var code = Read(@"src\OpenClaw.SetupEngine.UI\Pages\WelcomePage.xaml.cs");
         Assert.Contains("LocalAiAvailabilityPanel.Visibility = Visibility.Collapsed", code);
         Assert.Contains("LocalAiAvailabilityText.Text = \"\"", code);
-        Assert.Contains("AutomationProperties.SetName(InstallChoice, _installChoiceBaseAutomationName)", code);
+        Assert.Contains("AutomationProperties.SetName(LocalAiAvailabilityPanel, \"\")", code);
         Assert.Contains("new CancellationTokenSource(TimeSpan.FromSeconds(10))", code);
         Assert.Contains("_availability.IsCurrent(generation)", code);
         Assert.Contains("ReferenceEquals(_config, config)", code);

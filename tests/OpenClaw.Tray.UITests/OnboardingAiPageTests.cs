@@ -357,15 +357,100 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             await InvokeChoiceAsync(page);
             await WaitAsync(() => transport.MethodCalls.Contains("openclaw.setup.activate.start"));
             var dialog = GetDialog(page);
-            await WaitAsync(() => Assert.IsType<ScrollViewer>(dialog.Content).IsLoaded);
-            Assert.Equal("Existing AI", dialog.Title);
-            Assert.Equal(Visibility.Visible, Assert.IsType<ProgressBar>(dialog.FindName("DialogProgress")).Visibility);
+            await WaitAsync(() => Find<StackPanel>(page, "ProviderActivity").Visibility == Visibility.Visible);
+            Assert.False(Assert.IsType<ScrollViewer>(dialog.Content).IsLoaded);
+            Assert.Equal(Visibility.Visible, Find<ProgressBar>(page, "ProviderActivityProgress").Visibility);
+            Assert.False(string.IsNullOrWhiteSpace(Find<TextBlock>(page, "ProviderActivityStatus").Text));
+            Assert.False(Find<Button>(page, "ProviderCancelButton").IsEnabled);
             var close = page.CloseAsync();
             await close;
             Assert.Same(close, page.CloseAsync());
             Assert.Equal(0, completed());
             Assert.Contains("wizard.cancel", transport.MethodCalls);
             Assert.Equal(1, transport.MethodCalls.Count(method => method == "openclaw.setup.activate.start"));
+        });
+    }
+
+    [Theory]
+    [InlineData(ElementTheme.Light)]
+    [InlineData(ElementTheme.Dark)]
+    public async Task ProviderLoading_StaysInlineAndCanCancelWithoutOpeningAPopup(ElementTheme theme)
+    {
+        await WithPageAsync(async (page, transport, completed) =>
+        {
+            await InvokeChoiceAsync(page);
+            var cancel = Find<Button>(page, "ProviderCancelButton");
+            await WaitAsync(() => cancel.Visibility == Visibility.Visible && cancel.IsEnabled);
+            Assert.Equal(Visibility.Visible, Find<StackPanel>(page, "ProviderActivity").Visibility);
+            Assert.Equal(Visibility.Visible, Find<ProgressBar>(page, "ProviderActivityProgress").Visibility);
+            Assert.Equal("Synthetic provider loading", Find<TextBlock>(page, "ProviderActivityStatus").Text);
+            Assert.False(Assert.IsType<ScrollViewer>(GetDialog(page).Content).IsLoaded);
+            Assert.False(Find<ItemsControl>(page, "CandidateChoices").IsEnabled);
+            Assert.Equal(0, completed());
+            typeof(AiSetupPage).GetMethod("ShowError", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+                .Invoke(page, ["Failed"]);
+            var error = Find<InfoBar>(page, "ProviderActivityError");
+            Assert.True(error.IsOpen);
+            Assert.False(string.IsNullOrWhiteSpace(error.Message));
+            Assert.False(Assert.IsType<ScrollViewer>(GetDialog(page).Content).IsLoaded);
+            await OnboardingArtworkRenderingTests.SaveProofAsync(page, $"provider-inline-loading-{theme}", output);
+            Invoke(cancel);
+            await WaitAsync(() => Find<Button>(page, "RefreshButton").IsEnabled);
+            Assert.Equal(Visibility.Collapsed, Find<StackPanel>(page, "ProviderActivity").Visibility);
+            Assert.Equal(Visibility.Collapsed, cancel.Visibility);
+            Assert.Equal(1, transport.MethodCalls.Count(method => method == "wizard.cancel"));
+            Assert.Equal(1, transport.MethodCalls.Count(method => method == "openclaw.setup.activate.start"));
+            Assert.Equal(0, completed());
+        }, theme: theme, configure: transport => transport.WizardStep = new()
+        {
+            Id = "loading", Type = "progress", Executor = "gateway",
+            Title = "Current model", Message = "Synthetic provider loading",
+        });
+    }
+
+    [Theory]
+    [InlineData(ElementTheme.Light)]
+    [InlineData(ElementTheme.Dark)]
+    [Trait("Category", "NativeOnboardingProof")]
+    public async Task FollowupProof_ProviderInlineLoadingCancelAndInput(ElementTheme theme)
+    {
+        await WithPageAsync(async (page, transport, completed) =>
+        {
+            await InvokeChoiceAsync(page);
+            var cancel = Find<Button>(page, "ProviderCancelButton");
+            await WaitAsync(() => cancel.Visibility == Visibility.Visible && cancel.IsEnabled);
+            Assert.False(Assert.IsType<ScrollViewer>(GetDialog(page).Content).IsLoaded);
+            using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow, $"followup-provider-loading-{theme}", output,
+                ["Connect your AI", "Synthetic provider loading", "Cancel"], requiredContent: page)) { }
+            typeof(AiSetupPage).GetMethod("ShowError", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+                .Invoke(page, ["Failed"]);
+            Assert.True(Find<InfoBar>(page, "ProviderActivityError").IsOpen);
+            using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow, $"followup-provider-inline-error-{theme}", output,
+                ["Connect your AI", "Cancel"], requiredContent: page)) { }
+            Invoke(cancel);
+            await WaitAsync(() => Find<Button>(page, "RefreshButton").IsEnabled);
+            Assert.Equal(Visibility.Collapsed, Find<StackPanel>(page, "ProviderActivity").Visibility);
+            Assert.Equal(1, transport.MethodCalls.Count(method => method == "wizard.cancel"));
+            using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow, $"followup-provider-cancelled-{theme}", output,
+                ["Connect your AI", "Refresh"], requiredContent: page)) { }
+            transport.WizardStep = new()
+            {
+                Id = "synthetic-input", Type = "text", Executor = "client",
+                Title = "Provider input", Message = "Synthetic provider prompt. No provider contacted.",
+                DeviceCode = new("TEST-CODE", 15, "Synthetic device code"),
+            };
+            await InvokeChoiceAsync(page);
+            var dialog = GetDialog(page);
+            await WaitAsync(() => dialog.CanSubmit && Assert.IsType<ScrollViewer>(dialog.Content).IsLoaded);
+            Assert.Equal("TEST-CODE", Assert.IsType<TextBlock>(dialog.FindName("DeviceCode")).Text);
+            using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow, $"followup-provider-input-{theme}", output,
+                ["Provider input", "TEST-CODE", "Cancel"],
+                requiredContent: Assert.IsType<ScrollViewer>(dialog.Content))) { }
+            Assert.Equal(0, completed());
+        }, nativeProof: true, theme: theme, configure: transport => transport.WizardStep = new()
+        {
+            Id = "loading", Type = "progress", Executor = "gateway",
+            Title = "Current model", Message = "Synthetic provider loading",
         });
     }
 

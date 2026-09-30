@@ -740,6 +740,12 @@ internal static class OnboardingNativeProof
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
         var result = await engine.RecognizeAsync(bitmap).AsTask(timeout.Token);
         var missing = labels.Where(label => !Normalize(result.Text).Contains(Normalize(label), StringComparison.Ordinal)).ToArray();
+        File.WriteAllText(Path.ChangeExtension(path, ".ocr.json"), JsonSerializer.Serialize(new
+        {
+            image = path, sha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))),
+            requiredLabels = labels, originalText = original.Text, scaledText = result.Text,
+            missingLabels = missing, factor,
+        }, new JsonSerializerOptions { WriteIndented = true }));
         // Coordinator-approved evidence split only for the two documented capital-I/l
         // ambiguities. Never substitute text or call OCR successful; human pixel review
         // and exact visible HWND-scoped native labels are both still required.

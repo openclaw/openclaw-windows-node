@@ -37,13 +37,13 @@
             <controls:SetupProgressIndicator x:Name="FlowProgress" Grid.ColumnSpan="2"
                                             HorizontalAlignment="Center" />
             <Button x:Name="BackButton" Grid.Row="1" x:Uid="Onboarding_Native_Back" Content="Back"
-                    Click="Back_Click" MinWidth="0" HorizontalAlignment="Stretch"
+                    Click="Back_Click" MinWidth="100" HorizontalAlignment="Left"
                     ContentTemplate="{StaticResource WrappedFooterAction}" />
             <Button x:Name="CancelButton" Grid.Row="1" Grid.Column="1" x:Uid="Onboarding_Native_Cancel" Content="Cancel setup"
-                    MinWidth="0" HorizontalAlignment="Stretch" ContentTemplate="{StaticResource WrappedFooterAction}"
+                    MinWidth="100" HorizontalAlignment="Right" ContentTemplate="{StaticResource WrappedFooterAction}"
                     Visibility="Collapsed" Click="Cancel_Click" />
             <Button x:Name="RetryButton" Grid.Row="1" Grid.Column="1" x:Uid="Onboarding_Native_Retry" Content="Retry setup"
-                    MinWidth="0" HorizontalAlignment="Stretch" ContentTemplate="{StaticResource WrappedFooterAction}"
+                    MinWidth="100" HorizontalAlignment="Right" ContentTemplate="{StaticResource WrappedFooterAction}"
                     Style="{StaticResource AccentButtonStyle}" Visibility="Collapsed" Click="Retry_Click" />
         </Grid>
     </Grid>

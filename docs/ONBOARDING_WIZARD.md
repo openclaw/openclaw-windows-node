@@ -3,6 +3,18 @@
 The onboarding wizard can install an app-owned WSL gateway, acquire a native
 Gateway MSIX through Microsoft Store and configure it, or connect to an existing gateway.
 
+Native installation keeps Back at the left and Cancel setup (or Retry setup) at
+the right, using the same content-sized, 100 px minimum buttons as earlier setup
+screens. Progress stays centered on its own row and action labels can wrap.
+
+The Gateway chooser shows Local AI availability in a separate informational card
+below the choices, not inside the WSL choice. Its GPU details and accessible
+announcement describe the PC; existing hardware and WSL eligibility checks still
+apply. A successful native-support check enables the native choice without a
+redundant success line. The accent icon tile follows native availability: native
+uses it when available, otherwise WSL does. Unavailable/checking native support
+and Windows Update recovery remain visible in their existing support card.
+
 ### Shortened local onboarding (native and WSL)
 
 The shared `WizardOnboardingPolicy` removes optional setup cards from both WinUI
@@ -654,17 +666,24 @@ navigation. Device information is fixed, not a toggle. System controls
 `system.run` and `system.run.prepare`, not file/clipboard access.
 
 Profiles use vertical, full-width native single-selection rows with the system
-selection indicator, selected background and keyboard behavior. A visible
-**Choose what your agent can do** heading introduces Strict, Balanced (Recommended)
-and Open. The adjacent **Fine-tune** expander shows the selected-capability summary.
+selection indicator, selected background and keyboard behavior. Strict, Balanced
+(Recommended) and Open appear without a redundant section heading. The adjacent
+**Fine-tune** expander shows the selected-capability summary.
+Gateway choices, the Balanced preset and the final Chat choice share the
+`RecommendedBadge` control: a localized caption with an accent outline, 8 px
+horizontal and 4 px vertical padding, and disabled-state brushes inherited from
+the choice's enabled state. The Balanced label has no parenthetical suffix;
+its accessible choice name still includes the recommendation.
 Opening it only inspects existing flags; it does not select Custom. Editing any
 flag shows a **Custom capabilities** badge with no preset falsely selected, even
 if the flags later match a preset. Imported arbitrary flags have no invented base.
 Explicit Custom intent and `FineTuneExpanded` live only in `SetupAccessDraft` and
 survive page recreation. Selecting a preset reapplies exactly its eight flags
 without changing disclosure state. The Toolkit `SettingsExpander.Items` contain
-eight real `SettingsCard` rows; explanatory notes use `ItemsFooter`. Browser
-prerequisites remain in the Browser row description.
+eight real `SettingsCard` rows; explanatory notes use `ItemsFooter` with a
+16 px horizontal and 12 px vertical inset, keeping both paragraphs off the card
+edges while preserving wrapping. Browser prerequisites remain in the Browser row
+description.
 
 Node mode, local MCP and Ollama sharing are independent of profiles. When both
 transports are off, profile/capability controls are disabled and dimmed without
@@ -777,11 +796,20 @@ presentation retains the user's current checkbox value.
 
 #### One provider operation, one dialog
 
-The existing page-owned `ProviderSetupDialog` opens in a provider-specific
-Starting state before waiting for the start response. A page-owned operation
-lifetime keeps it visible across credential submission, server steps,
-preparation, activation and exact verification. The client still owns protocol
-state; the dialog never acquires another Gateway client or persistence store.
+Provider startup, noninteractive server progress, preparation, activation and
+exact verification stay inline on **Connect your AI**, with the shared mascot,
+visible status and a compact Cancel action whenever the operation can be
+cancelled. They do not open a loading-only popup. The page-owned
+`ProviderSetupDialog` opens for typed input, consent, acknowledgments, device
+codes/browser sign-in instructions, or an explicit recovery decision. Device
+codes and sign-in links remain visible while the Gateway polls for completion.
+An input prompt stays open, disabled, while its answer is being submitted so
+validation retries preserve the dialog and selection context. Inline errors
+remain visible during loading; Cancel is not enabled before the start request
+returns a cancellable session.
+The page retains the operation lifetime and locks the existing choices even
+while the popup is hidden. The client still owns protocol state; the dialog
+never acquires another Gateway client or persistence store.
 Confirmed rejection returns to the same cleared key field; confirmed cancellation
 returns to usable choices. An uncertain outcome stays available for reconciliation
 and is never replayed as another activation.
@@ -799,8 +827,8 @@ link remains available, and opening a browser never counts as successful login.
 
 `GatewayAiSetupController` retains the explicit preparation choice and catalog
 preference, then automatically activates only its authoritative
-`preparedModelRef` on the unchanged Gateway connection. The dialog does not
-dismiss for an extra page-level Activate button. Server download, plugin review
+`preparedModelRef` on the unchanged Gateway connection. Inline loading does not
+introduce an extra page-level Activate button. Server download, plugin review
 and promotion confirmations remain mandatory. Missing receipts, changed
 connections or unsupported activation fail visibly without choosing another
 model. If an uncertain preparation is later reconciled to an authoritative

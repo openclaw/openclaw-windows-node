@@ -7399,7 +7399,7 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_V2_ProfileFull.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Open: all eight capabilities, including Camera, Location and Browser control.</value></data>
   <data name="Onboarding_V2_ProfileReadOnlyTitle.Text" xml:space="preserve"><value>Strict</value></data>
   <data name="Onboarding_V2_ProfileReadOnlyDescription.Text" xml:space="preserve"><value>Canvas and screen capture. Command execution is off.</value></data>
-  <data name="Onboarding_V2_ProfileStandardTitle.Text" xml:space="preserve"><value>Balanced (Recommended)</value></data>
+  <data name="Onboarding_V2_ProfileStandardTitle.Text" xml:space="preserve"><value>Balanced</value></data>
   <data name="Onboarding_V2_ProfileStandardDescription.Text" xml:space="preserve"><value>Commands, Canvas, screen capture and voice.</value></data>
   <data name="Onboarding_V2_ProfileFullTitle.Text" xml:space="preserve"><value>Open</value></data>
   <data name="Onboarding_V2_ProfileFullDescription.Text" xml:space="preserve"><value>All eight capabilities, including Camera, Location and Browser control.</value></data>
@@ -7465,7 +7465,6 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_AiSetup_LocalState_UnsupportedGateway" xml:space="preserve"><value>Managed Local AI requires one app-managed local Gateway selected on this PC. Remote or ambiguous Gateways are not supported.</value></data>
   <data name="Onboarding_AiSetup_LocalState_Working" xml:space="preserve"><value>Local AI is starting or stopping. Check again when that operation finishes.</value></data>
   <data name="Onboarding_DashboardLaunchFailed" xml:space="preserve"><value>Dashboard could not open. Check the verified gateway connection, then try again.</value></data>
-  <data name="Onboarding_V4_ProfileHeading.Text" xml:space="preserve"><value>Choose what your agent can do</value></data>
   <data name="Onboarding_V4_ConnectionOptions.Text" xml:space="preserve"><value>Connection options</value></data>
   <data name="Onboarding_V4_OllamaDisclosure.Header" xml:space="preserve"><value>Ollama sharing</value></data>
   <data name="Onboarding_V4_OllamaDisclosure.Description" xml:space="preserve"><value>Optional</value></data>

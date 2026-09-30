@@ -24,7 +24,10 @@ public sealed class NativeGatewaySetupUxContractTests
                      element.Name.LocalName is "Button" or "DropDownButton"))
         {
             Assert.Equal("1", (string?)action.Attribute("Grid.Row"));
-            Assert.Equal("0", (string?)action.Attribute("MinWidth"));
+            Assert.Equal(file == "NativeGatewaySetupPage.xaml" ? "100" : "0", (string?)action.Attribute("MinWidth"));
+            if (file == "NativeGatewaySetupPage.xaml")
+                Assert.Equal((string?)action.Attribute(names + "Name") == "BackButton" ? "Left" : "Right",
+                    (string?)action.Attribute("HorizontalAlignment"));
             Assert.Equal("{StaticResource WrappedFooterAction}", (string?)action.Attribute("ContentTemplate"));
         }
         var source = File.ReadAllText(Path.Combine(pages, "NativeGatewaySetupPage.xaml.cs"));
@@ -186,7 +189,8 @@ public sealed class NativeGatewaySetupUxContractTests
         var native = primary.Elements().First();
         Assert.Equal("False", (string?)native.Attribute("IsEnabled"));
         Assert.Contains(native.Descendants(), element =>
-            (string?)element.Attribute(names + "Uid") == "Onboarding_Native_Recommended");
+            element.Name.LocalName == "RecommendedBadge" &&
+            (string?)element.Attribute(names + "Name") == "NativeRecommendedBadge");
         Assert.Empty(document.Descendants(xaml + "Expander"));
         Assert.DoesNotContain(document.Descendants(), element =>
             (string?)element.Attribute("Content") == "Check again");
@@ -227,7 +231,8 @@ public sealed class NativeGatewaySetupUxContractTests
         var native = Named("NativeChoice");
         Assert.Equal("False", (string?)native.Attribute("IsEnabled"));
         Assert.Contains(native.Descendants(), element =>
-            (string?)element.Attribute(names + "Uid") == "Onboarding_Native_Recommended");
+            element.Name.LocalName == "RecommendedBadge" &&
+            (string?)element.Attribute(names + "Name") == "NativeRecommendedBadge");
         var card = Named("NativeSupportCard");
         var selector = Named("GatewayChoiceSelector");
         Assert.Contains(card, selector.ElementsAfterSelf());
@@ -267,7 +272,7 @@ public sealed class NativeGatewaySetupUxContractTests
     }
 
     [Fact]
-    public void Welcome_NativeBadgeSharesHeadingAndSuccessFollowsDescription()
+    public void Welcome_NativeBadgeSharesHeadingWithoutRedundantSuccessCopy()
     {
         var pages = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.SetupEngine.UI", "Pages");
         var document = XDocument.Load(Path.Combine(pages, "WelcomePage.xaml"));
@@ -281,24 +286,28 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.Contains(heading.Elements(), element =>
             (string?)element.Attribute(names + "Uid") == "Onboarding_Native_Title");
         Assert.Contains(heading.Descendants(), element =>
-            (string?)element.Attribute(names + "Uid") == "Onboarding_Native_Recommended");
+            element.Name.LocalName == "RecommendedBadge" &&
+            (string?)element.Attribute(names + "Name") == "NativeRecommendedBadge");
         var description = heading.ElementsAfterSelf().First();
         Assert.Equal("Onboarding_Native_Description", (string?)description.Attribute(names + "Uid"));
         Assert.Equal("Install and set up an OpenClaw gateway on this device", (string?)description.Attribute("Text"));
-        var success = description.ElementsAfterSelf().First();
-        Assert.Equal("NativeSupportAvailablePanel", (string?)success.Attribute(names + "Name"));
-        Assert.Equal("Collapsed", (string?)success.Attribute("Visibility"));
-        var checkmark = Assert.Single(success.Elements(xaml + "FontIcon"));
-        Assert.Equal("\uE73E", (string?)checkmark.Attribute("Glyph"));
-        Assert.Equal("Raw", (string?)checkmark.Attribute("AutomationProperties.AccessibilityView"));
-        var text = Assert.Single(success.Elements(xaml + "TextBlock"));
-        Assert.Equal("Polite", (string?)text.Attribute("AutomationProperties.LiveSetting"));
+        Assert.Empty(description.ElementsAfterSelf());
+        Assert.DoesNotContain(document.Descendants(), element =>
+            (string?)element.Attribute(names + "Name") is "NativeSupportAvailablePanel" or "NativeSupportAvailableText");
+        var state = Assert.Single(document.Descendants(), element =>
+            (string?)element.Attribute(names + "Name") == "NativeRecommendedState");
+        var setters = state.Descendants().Where(element => element.Name.LocalName == "Setter")
+            .ToDictionary(element => (string)element.Attribute("Target")!, element => (string?)element.Attribute("Value"));
+        Assert.Equal("{ThemeResource AccentFillColorDefaultBrush}", setters["NativeIconBackground.Background"]);
+        Assert.Equal("{ThemeResource TextOnAccentFillColorPrimaryBrush}", setters["NativeIcon.Foreground"]);
+        Assert.Equal("{ThemeResource SubtleFillColorSecondaryBrush}", setters["WslIconBackground.Background"]);
+        Assert.Equal("{ThemeResource TextFillColorPrimaryBrush}", setters["WslIcon.Foreground"]);
         var source = File.ReadAllText(Path.Combine(pages, "WelcomePage.xaml.cs"));
-        Assert.Contains("NativeSupportAvailablePanel.Visibility = Visibility.Collapsed", source);
-        Assert.Contains("NativeSupportAvailablePanel.Visibility = available ? Visibility.Visible : Visibility.Collapsed", source);
+        Assert.Contains("VisualStateManager.GoToState(this, \"WslRecommendedState\", false)", source);
+        Assert.Contains("available ? \"NativeRecommendedState\" : \"WslRecommendedState\"", source);
         Assert.Contains("NativeSupportStatusPanel.Visibility = available ? Visibility.Collapsed : Visibility.Visible", source);
-        Assert.Contains("available ? NativeSupportAvailableText : NativeSupportStatus", source);
-        Assert.Contains("CreatePeerForElement(supportText)", source);
+        Assert.Contains("NativeSupportStatus.Text = available ? \"\" : NativeGatewayEligibilityText.Get(eligibility)", source);
+        Assert.Contains("CreatePeerForElement(NativeSupportStatus)", source);
     }
 
     [Fact]

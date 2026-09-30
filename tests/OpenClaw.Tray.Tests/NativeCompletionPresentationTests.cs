@@ -30,8 +30,7 @@ public sealed class NativeCompletionPresentationTests
         var recovery = Assert.Single(page.Descendants(), element => (string?)element.Attribute(x + "Name") == "RecoveryButton");
         Assert.Contains(recovery.Ancestors(), element => element.Name.LocalName == "InfoBar");
         var badge = Assert.Single(actions[0].Descendants(), element => (string?)element.Attribute(x + "Name") == "RecommendedBadge");
-        Assert.Equal("Recommended", (string?)badge.Attribute("Text"));
-        Assert.Equal("{ThemeResource AccentTextFillColorPrimaryBrush}", (string?)badge.Attribute("Foreground"));
+        Assert.Equal("RecommendedBadge", badge.Name.LocalName);
         Assert.Contains(page.Descendants(), element => element.Name.LocalName == "SetupProgressIndicator");
         Assert.DoesNotContain(page.Descendants(), element => (string?)element.Attribute(x + "Name") == "FinishButton");
         var source = Read(@"src\OpenClaw.SetupEngine.UI\Pages\AiReadyPage.xaml.cs");

@@ -18,8 +18,6 @@
                 <TextBlock x:Name="NativeInstallConsent" x:Uid="Onboarding_Native_Review"
                            Visibility="Collapsed" TextWrapping="Wrap" Style="{StaticResource BodyTextBlockStyle}"
                            Text="By selecting Set up gateway, you authorize WinGet to install the missing Gateway package from Microsoft Store and accept the package and Store source agreements. Companion then verifies the package, prepares a dedicated profile, and opens Gateway setup. Provider sign-in stays interactive. This path does not install WSL, Local AI, or Tailscale." />
-                <TextBlock x:Uid="Onboarding_V4_ProfileHeading" Text="Choose what your agent can do"
-                           TextWrapping="Wrap" Style="{StaticResource BodyStrongTextBlockStyle}" />
                 <InfoBar x:Name="TransportRequired" x:Uid="Onboarding_V3_TransportRequired" IsOpen="True"
                          IsClosable="False" Severity="Informational" Title="Capabilities are unavailable"
                          Message="Turn on Node mode or Local MCP Server to use these capabilities. Your choices are kept." />
@@ -48,8 +46,12 @@
                                       AutomationProperties.Name="Balanced (Recommended): commands, Canvas, screen capture and voice."
                                       HorizontalContentAlignment="Stretch" Padding="16,12">
                             <StackPanel Spacing="4">
-                                <TextBlock x:Uid="Onboarding_V2_ProfileStandardTitle" Text="Balanced (Recommended)"
-                                           TextWrapping="Wrap" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" HorizontalAlignment="Left">
+                                    <TextBlock x:Uid="Onboarding_V2_ProfileStandardTitle" Text="Balanced"
+                                               TextWrapping="Wrap" Style="{StaticResource BodyStrongTextBlockStyle}"
+                                               VerticalAlignment="Center" />
+                                    <controls:RecommendedBadge Grid.Column="1" />
+                                </Grid>
                                 <TextBlock x:Uid="Onboarding_V2_ProfileStandardDescription" Text="Commands, Canvas, screen capture and voice."
                                            TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
@@ -83,7 +85,7 @@
                                        Style="{StaticResource CaptionTextBlockStyle}" />
                         </tk:SettingsExpander.Description>
                         <tk:SettingsExpander.ItemsFooter>
-                            <StackPanel Spacing="8">
+                            <StackPanel Spacing="8" Padding="16,12">
                                 <TextBlock x:Uid="Onboarding_V2_DeviceFixed" TextWrapping="Wrap"
                                            Text="Basic device information and status remain available while a node service is running. They are not a profile toggle."
                                            Style="{StaticResource CaptionTextBlockStyle}" />

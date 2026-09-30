@@ -99,6 +99,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         CatalogPreferenceText.Text = S("CatalogOptIn");
         AutomationProperties.SetName(CatalogPreference, S("CatalogOptIn"));
         RefreshButton.Content = S("Refresh.Content");
+        ProviderCancelButton.Content = S("Cancel.Content");
         LegacyButton.Content = S("Legacy.Content");
         AutomationProperties.SetName(CandidateChoices, S("Candidates"));
         AutomationProperties.SetName(PrepareChoices, S("Prepare"));
@@ -877,7 +878,6 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                 CandidatesHeading.Visibility = Visible(LocalAiSection.Visibility == Visibility.Visible ||
                     ChoicePanel.Visibility == Visibility.Visible && CandidatesSection.Visibility == Visibility.Visible);
                 LegacyButton.Visibility = phase == GatewayAiSetupPhase.ClassicWizardRequired ? Visibility.Visible : Visibility.Collapsed;
-                BusyProgress.Visibility = _busy ? Visibility.Visible : Visibility.Collapsed;
             }
             else
             {
@@ -891,11 +891,26 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                 MoreExpander.IsEnabled = RecommendedSection.IsEnabled = CheckAgainButton.IsEnabled =
                 RefreshButton.IsEnabled = LegacyButton.IsEnabled = backgroundEnabled;
             var step = Client?.Wizard?.Step;
-            var showProvider = ProviderPending;
+            var showProvider = ProviderPending && !_cancelling &&
+                GatewayAiSetupPresentation.ShowProviderDialog(step, phase, _busy,
+                    !string.IsNullOrWhiteSpace(_providerError));
+            var inlineProvider = ProviderPending && !showProvider;
+            var canCancelProvider = Client?.SessionId is not null ||
+                (!_busy && phase is GatewayAiSetupPhase.Prepared or GatewayAiSetupPhase.Choosing);
+            ProviderActivity.Visibility = Visible(inlineProvider);
+            ProviderActivityStatus.Text = _cancelling ? S("Cancelling") :
+                phase == GatewayAiSetupPhase.Running && !string.IsNullOrWhiteSpace(step?.Message)
+                    ? step.Message : status;
+            ProviderActivityProgress.Visibility = Visible(_busy || _cancelling);
+            ProviderActivityError.Message = _providerError ?? "";
+            ProviderActivityError.IsOpen = inlineProvider && !string.IsNullOrWhiteSpace(_providerError);
+            StatusText.Visibility = Visible(!inlineProvider);
+            ProviderCancelButton.Visibility = Visible(inlineProvider && (canCancelProvider || _cancelling));
+            ProviderCancelButton.IsEnabled = canCancelProvider && !_cancelling;
+            BusyProgress.Visibility = Visible(_busy && !ProviderPending);
             if (showProvider)
             {
-                _providerDialog.Update(step, phase, _busy, Client?.SessionId is not null ||
-                    phase is GatewayAiSetupPhase.Prepared or GatewayAiSetupPhase.Choosing, _cancelling,
+                _providerDialog.Update(step, phase, _busy, canCancelProvider, _cancelling,
                     status, _providerError, _operationTitle);
                 if (XamlRoot is not null)
                 {

@@ -20,7 +20,6 @@ public sealed partial class WelcomePage : Page
     private int _probeGeneration;
     private bool _installInProgress;
     private bool _suppressSelectionWrite;
-    private string? _installChoiceBaseAutomationName;
     private readonly LocalAiSetupAvailabilityCoordinator _availability = new();
     private CancellationTokenSource? _availabilityCancellation;
 
@@ -55,10 +54,9 @@ public sealed partial class WelcomePage : Page
 
     private void ClearAvailabilityBadge()
     {
-        _installChoiceBaseAutomationName ??= AutomationProperties.GetName(InstallChoice);
         LocalAiAvailabilityPanel.Visibility = Visibility.Collapsed;
         LocalAiAvailabilityText.Text = "";
-        AutomationProperties.SetName(InstallChoice, _installChoiceBaseAutomationName);
+        AutomationProperties.SetName(LocalAiAvailabilityPanel, "");
     }
 
     private void CancelAvailability()
@@ -90,7 +88,7 @@ public sealed partial class WelcomePage : Page
         var generation = ++_probeGeneration;
         _nativeEligibility = null;
         NativeChoice.IsEnabled = false;
-        NativeSupportAvailablePanel.Visibility = Visibility.Collapsed;
+        VisualStateManager.GoToState(this, "WslRecommendedState", false);
         WslRecommendedBadge.Visibility = Visibility.Visible;
         NativeSupportCard.Visibility = Visibility.Visible;
         NativeSupportStatusPanel.Visibility = Visibility.Visible;
@@ -119,18 +117,20 @@ public sealed partial class WelcomePage : Page
         NativeChoice.IsEnabled = available;
         WslRecommendedBadge.Visibility = available ? Visibility.Collapsed : Visibility.Visible;
         NativeSupportCard.Visibility = available ? Visibility.Collapsed : Visibility.Visible;
-        NativeSupportAvailablePanel.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
+        VisualStateManager.GoToState(this, available ? "NativeRecommendedState" : "WslRecommendedState", false);
         NativeSupportStatusPanel.Visibility = available ? Visibility.Collapsed : Visibility.Visible;
         WindowsUpdateButton.Visibility = eligibility == NativeGatewayEligibility.CapabilityUnavailable
             ? Visibility.Visible : Visibility.Collapsed;
-        var supportText = available ? NativeSupportAvailableText : NativeSupportStatus;
-        supportText.Text = NativeGatewayEligibilityText.Get(eligibility);
+        NativeSupportStatus.Text = available ? "" : NativeGatewayEligibilityText.Get(eligibility);
         NativeCheckProgress.IsActive = false;
         NativeCheckProgress.Visibility = Visibility.Collapsed;
         SetChoice(NativeGatewaySetupEligibility.ResolveSelection(_selectedChoice, eligibility));
-        var peer = FrameworkElementAutomationPeer.FromElement(supportText)
-            ?? FrameworkElementAutomationPeer.CreatePeerForElement(supportText);
-        peer.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+        if (!available)
+        {
+            var peer = FrameworkElementAutomationPeer.FromElement(NativeSupportStatus)
+                ?? FrameworkElementAutomationPeer.CreatePeerForElement(NativeSupportStatus);
+            peer.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+        }
     }
 
     private void WindowsUpdate_Click(object sender, RoutedEventArgs e) =>
@@ -189,12 +189,11 @@ public sealed partial class WelcomePage : Page
                 eligibility.SelectedGpu.Name);
             LocalAiAvailabilityPanel.Visibility = Visibility.Visible;
             AutomationProperties.SetName(
-                InstallChoice,
-                $"{_installChoiceBaseAutomationName}, " +
-                $"{SetupLocalization.GetString("Onboarding_Welcome_LocalAiAvailableBadge.Text")}");
-            // Create the peer when an AT client has not queried this row yet.
-            AutomationPeer automationPeer = FrameworkElementAutomationPeer.FromElement(InstallChoice)
-                ?? FrameworkElementAutomationPeer.CreatePeerForElement(InstallChoice);
+                LocalAiAvailabilityPanel,
+                $"{SetupLocalization.GetString("Onboarding_Welcome_LocalAiAvailableBadge.Text")}. {LocalAiAvailabilityText.Text}");
+            // The capability announcement belongs to the general card, not a Gateway choice.
+            AutomationPeer automationPeer = FrameworkElementAutomationPeer.FromElement(LocalAiAvailabilityPanel)
+                ?? FrameworkElementAutomationPeer.CreatePeerForElement(LocalAiAvailabilityPanel);
             automationPeer.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)

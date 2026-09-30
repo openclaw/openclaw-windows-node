@@ -7336,7 +7336,7 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   <data name="Onboarding_V2_ProfileFull.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Open: alle acht capaciteiten, waaronder camera, locatie en browserbesturing.</value></data>
   <data name="Onboarding_V2_ProfileReadOnlyTitle.Text" xml:space="preserve"><value>Strikt</value></data>
   <data name="Onboarding_V2_ProfileReadOnlyDescription.Text" xml:space="preserve"><value>Canvas en schermopname. Opdrachtuitvoering is uitgeschakeld.</value></data>
-  <data name="Onboarding_V2_ProfileStandardTitle.Text" xml:space="preserve"><value>Gebalanceerd (aanbevolen)</value></data>
+  <data name="Onboarding_V2_ProfileStandardTitle.Text" xml:space="preserve"><value>Gebalanceerd</value></data>
   <data name="Onboarding_V2_ProfileStandardDescription.Text" xml:space="preserve"><value>Opdrachten, Canvas, schermopname en spraak.</value></data>
   <data name="Onboarding_V2_ProfileFullTitle.Text" xml:space="preserve"><value>Open</value></data>
   <data name="Onboarding_V2_ProfileFullDescription.Text" xml:space="preserve"><value>Alle acht capaciteiten, waaronder camera, locatie en browserbesturing.</value></data>
@@ -7402,7 +7402,6 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   <data name="Onboarding_AiSetup_LocalState_UnsupportedGateway" xml:space="preserve"><value>Beheerde lokale AI vereist één door de app beheerde lokale Gateway die op deze pc is geselecteerd. Externe of onduidelijke Gateways worden niet ondersteund.</value></data>
   <data name="Onboarding_AiSetup_LocalState_Working" xml:space="preserve"><value>Lokale AI wordt gestart of gestopt. Controleer opnieuw wanneer dit klaar is.</value></data>
   <data name="Onboarding_DashboardLaunchFailed" xml:space="preserve"><value>Dashboard kan niet worden geopend. Controleer de verbinding met de geverifieerde gateway en probeer het opnieuw.</value></data>
-  <data name="Onboarding_V4_ProfileHeading.Text" xml:space="preserve"><value>Kies wat je agent kan doen</value></data>
   <data name="Onboarding_V4_ConnectionOptions.Text" xml:space="preserve"><value>Verbindingsopties</value></data>
   <data name="Onboarding_V4_OllamaDisclosure.Header" xml:space="preserve"><value>Ollama delen</value></data>
   <data name="Onboarding_V4_OllamaDisclosure.Description" xml:space="preserve"><value>Optioneel</value></data>

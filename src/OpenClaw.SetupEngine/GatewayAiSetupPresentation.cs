@@ -23,6 +23,18 @@ public static class GatewayAiSetupPresentation
         return step.DeviceCode is not null ? "SignedIn" : "Continue.Content";
     }
 
+    public static bool ShowProviderDialog(GatewayAiSetupWizardStep? step, GatewayAiSetupPhase phase,
+        bool isBusy, bool hasError)
+    {
+        if (phase == GatewayAiSetupPhase.Running && step is not null &&
+            (step.DeviceCode is not null || step.ExternalUrl is not null ||
+             GetPromptAction(step) is not null))
+            return true;
+
+        return !isBusy && (hasError || phase is GatewayAiSetupPhase.Prepared or
+            GatewayAiSetupPhase.Uncertain or GatewayAiSetupPhase.VerificationRequired);
+    }
+
     public static IReadOnlyList<GatewayAiSetupWizardOption> GetInitialOptions(GatewayAiSetupWizardStep step)
     {
         if (step.InitialValue is not { } initial || step.Type is not ("select" or "multiselect"))

@@ -7335,7 +7335,7 @@
   <data name="Onboarding_V2_ProfileFull.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>开放：全部八项能力，包括相机、位置和浏览器控制。</value></data>
   <data name="Onboarding_V2_ProfileReadOnlyTitle.Text" xml:space="preserve"><value>严格</value></data>
   <data name="Onboarding_V2_ProfileReadOnlyDescription.Text" xml:space="preserve"><value>Canvas 和屏幕捕获。命令执行已关闭。</value></data>
-  <data name="Onboarding_V2_ProfileStandardTitle.Text" xml:space="preserve"><value>均衡（推荐）</value></data>
+  <data name="Onboarding_V2_ProfileStandardTitle.Text" xml:space="preserve"><value>均衡</value></data>
   <data name="Onboarding_V2_ProfileStandardDescription.Text" xml:space="preserve"><value>命令、Canvas、屏幕捕获和语音。</value></data>
   <data name="Onboarding_V2_ProfileFullTitle.Text" xml:space="preserve"><value>开放</value></data>
   <data name="Onboarding_V2_ProfileFullDescription.Text" xml:space="preserve"><value>全部八项能力，包括相机、位置和浏览器控制。</value></data>
@@ -7401,7 +7401,6 @@
   <data name="Onboarding_AiSetup_LocalState_UnsupportedGateway" xml:space="preserve"><value>托管本地 AI 要求在此电脑上选定唯一由应用管理的本地 Gateway。不支持远程或归属不明确的 Gateway。</value></data>
   <data name="Onboarding_AiSetup_LocalState_Working" xml:space="preserve"><value>本地 AI 正在启动或停止。请在操作完成后重新检查。</value></data>
   <data name="Onboarding_DashboardLaunchFailed" xml:space="preserve"><value>无法打开仪表板。请检查已验证网关的连接，然后重试。</value></data>
-  <data name="Onboarding_V4_ProfileHeading.Text" xml:space="preserve"><value>选择代理可以执行的操作</value></data>
   <data name="Onboarding_V4_ConnectionOptions.Text" xml:space="preserve"><value>连接选项</value></data>
   <data name="Onboarding_V4_OllamaDisclosure.Header" xml:space="preserve"><value>Ollama 共享</value></data>
   <data name="Onboarding_V4_OllamaDisclosure.Description" xml:space="preserve"><value>可选</value></data>

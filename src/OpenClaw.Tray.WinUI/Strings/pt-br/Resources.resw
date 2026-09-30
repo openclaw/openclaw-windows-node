@@ -7389,7 +7389,7 @@ O binário wxc-exec não pôde ser localizado. {1} Se esta for uma build de dese
   <data name="Onboarding_V2_ProfileFull.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Aberto: todas as oito capacidades, incluindo câmera, localização e controle do navegador.</value></data>
   <data name="Onboarding_V2_ProfileReadOnlyTitle.Text" xml:space="preserve"><value>Restrito</value></data>
   <data name="Onboarding_V2_ProfileReadOnlyDescription.Text" xml:space="preserve"><value>Canvas e captura de tela. A execução de comandos está desativada.</value></data>
-  <data name="Onboarding_V2_ProfileStandardTitle.Text" xml:space="preserve"><value>Equilibrado (recomendado)</value></data>
+  <data name="Onboarding_V2_ProfileStandardTitle.Text" xml:space="preserve"><value>Equilibrado</value></data>
   <data name="Onboarding_V2_ProfileStandardDescription.Text" xml:space="preserve"><value>Comandos, Canvas, captura de tela e voz.</value></data>
   <data name="Onboarding_V2_ProfileFullTitle.Text" xml:space="preserve"><value>Aberto</value></data>
   <data name="Onboarding_V2_ProfileFullDescription.Text" xml:space="preserve"><value>Todas as oito capacidades, incluindo câmera, localização e controle do navegador.</value></data>
@@ -7455,7 +7455,6 @@ O binário wxc-exec não pôde ser localizado. {1} Se esta for uma build de dese
   <data name="Onboarding_AiSetup_LocalState_UnsupportedGateway" xml:space="preserve"><value>A IA local gerenciada exige um único Gateway local gerenciado pelo aplicativo e selecionado neste PC. Gateways remotos ou ambíguos não são compatíveis.</value></data>
   <data name="Onboarding_AiSetup_LocalState_Working" xml:space="preserve"><value>A IA local está iniciando ou parando. Verifique novamente quando a operação terminar.</value></data>
   <data name="Onboarding_DashboardLaunchFailed" xml:space="preserve"><value>Não foi possível abrir o painel. Verifique a conexão com o gateway verificado e tente novamente.</value></data>
-  <data name="Onboarding_V4_ProfileHeading.Text" xml:space="preserve"><value>Escolha o que seu agente pode fazer</value></data>
   <data name="Onboarding_V4_ConnectionOptions.Text" xml:space="preserve"><value>Opções de conexão</value></data>
   <data name="Onboarding_V4_OllamaDisclosure.Header" xml:space="preserve"><value>Compartilhamento do Ollama</value></data>
   <data name="Onboarding_V4_OllamaDisclosure.Description" xml:space="preserve"><value>Opcional</value></data>
