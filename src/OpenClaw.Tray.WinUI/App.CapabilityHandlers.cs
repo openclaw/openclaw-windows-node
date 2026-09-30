@@ -317,13 +317,19 @@ public partial class App
             if (_gatewayDirectConnectService is null)
                 return new { outcome = "ConnectionFailed", error = "Gateway settings service is not initialized", connected = false };
 
+            GatewayDirectConnectService.SharedTokenSettingsAttempt? settingsAttempt = null;
             var result = await _connectionManager.ConnectWithSharedTokenAsync(
                 gatewayUrl,
                 token,
                 sshTunnel: null,
                 onGatewayCommitted: (record, _) =>
                 {
-                    _gatewayDirectConnectService.SynchronizeSettingsWithCommittedGateway(record);
+                    _gatewayDirectConnectService.SynchronizeSettingsWithCommittedGateway(record, settingsAttempt!);
+                    return Task.CompletedTask;
+                },
+                onTransactionStarted: _ =>
+                {
+                    settingsAttempt = _gatewayDirectConnectService.CaptureSharedTokenSettingsAttempt();
                     return Task.CompletedTask;
                 });
             return new
