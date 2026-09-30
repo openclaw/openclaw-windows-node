@@ -7225,7 +7225,6 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   <data name="Onboarding_NativeConnection_Cancel" xml:space="preserve"><value>Annuleren</value></data>
   <data name="Onboarding_Native_Checking" xml:space="preserve"><value>Het geïnstalleerde Gateway-pakket en de uitvoeringsaliassen controleren...</value></data>
   <data name="Onboarding_Native_Checked" xml:space="preserve"><value>Verbinding gecontroleerd. Er is niets opgeslagen. Volgende controleert opnieuw en slaat deze Gateway op.</value></data>
-  <data name="Onboarding_Native_Cancelled" xml:space="preserve"><value>Instelling geannuleerd. Ingevoerde configuratie blijft bewaard in het aparte native profiel. Er is geen Gateway-pakket verwijderd.</value></data>
   <data name="Onboarding_Native_Failed" xml:space="preserve"><value>Het resultaat van de verbinding kon niet worden bevestigd. Controleer de actieve Gateway in Companion Settings voordat u doorgaat.</value></data>
   <data name="Onboarding_V2_AlternativesTitle.Text" xml:space="preserve"><value>Kies een andere instelroute</value></data>
   <data name="Onboarding_V2_ExistingRoute.Header" xml:space="preserve"><value>Bestaande Gateway</value></data>
@@ -7689,20 +7688,6 @@ Uw instellingen, gateway, bestanden en modellen blijven op hun plaats.</value>
   <data name="Migration2_Busy" xml:space="preserve">
     <value>Wacht totdat deze stap is voltooid.</value>
   </data>
-  <data name="Chat_Code_Copy" xml:space="preserve"><value>Code kopiëren</value></data>
-  <data name="Chat_Code_Label" xml:space="preserve"><value>Codeblok</value></data>
-  <data name="Chat_Model_Current" xml:space="preserve"><value>Huidig model</value></data>
-  <data name="Chat_Model_Other" xml:space="preserve"><value>Andere modellen</value></data>
-  <data name="Chat_Model_NoMatches" xml:space="preserve"><value>Geen overeenkomende modellen</value></data>
-  <data name="Chat_Model_Search" xml:space="preserve"><value>Modellen zoeken</value></data>
-  <data name="Chat_Attachment_Remove" xml:space="preserve"><value>Bijlage verwijderen</value></data>
-  <data name="Chat_Timeline_Loading" xml:space="preserve"><value>Berichten laden...</value></data>
-  <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 bericht in wachtrij</value></data>
-  <data name="Chat_Copy_Copied" xml:space="preserve"><value>Gekopieerd</value></data>
-  <data name="Chat_Copy_Failed" xml:space="preserve"><value>Kopiëren mislukt</value></data>
-  <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>Denkinspanning</value></data>
-  <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Sneller</value></data>
-  <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Grondiger</value></data>
   <data name="Onboarding_Native_Title.Text" xml:space="preserve"><value>Een lokale native Gateway installeren</value></data>
   <data name="Onboarding_Native_Description.Text" xml:space="preserve"><value>Een OpenClaw Gateway op dit apparaat installeren en instellen</value></data>
   <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>Een lokale WSL Gateway installeren</value></data>

@@ -7224,7 +7224,6 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   <data name="Onboarding_NativeConnection_Cancel" xml:space="preserve"><value>Annuler</value></data>
   <data name="Onboarding_Native_Checking" xml:space="preserve"><value>Vérification du package Gateway installé et de ses alias d'exécution...</value></data>
   <data name="Onboarding_Native_Checked" xml:space="preserve"><value>Connexion vérifiée. Rien n'a été enregistré. Suivant vérifiera à nouveau et enregistrera ce Gateway.</value></data>
-  <data name="Onboarding_Native_Cancelled" xml:space="preserve"><value>Configuration annulée. Les paramètres déjà saisis sont conservés dans le profil natif dédié. Aucun package Gateway n'a été supprimé.</value></data>
   <data name="Onboarding_Native_Failed" xml:space="preserve"><value>Le résultat de la connexion n'a pas pu être confirmé. Vérifiez le Gateway actif dans Companion Settings avant de continuer.</value></data>
   <data name="Onboarding_V2_AlternativesTitle.Text" xml:space="preserve"><value>Choisir un autre parcours de configuration</value></data>
   <data name="Onboarding_V2_ExistingRoute.Header" xml:space="preserve"><value>Gateway existant</value></data>
@@ -7688,20 +7687,6 @@ Vos paramètres, votre passerelle, vos fichiers et vos modèles restent en place
   <data name="Migration2_Busy" xml:space="preserve">
     <value>Veuillez patienter jusqu'à la fin de cette étape.</value>
   </data>
-  <data name="Chat_Code_Copy" xml:space="preserve"><value>Copier le code</value></data>
-  <data name="Chat_Code_Label" xml:space="preserve"><value>Bloc de code</value></data>
-  <data name="Chat_Model_Current" xml:space="preserve"><value>Modèle actuel</value></data>
-  <data name="Chat_Model_Other" xml:space="preserve"><value>Autres modèles</value></data>
-  <data name="Chat_Model_NoMatches" xml:space="preserve"><value>Aucun modèle correspondant</value></data>
-  <data name="Chat_Model_Search" xml:space="preserve"><value>Rechercher des modèles</value></data>
-  <data name="Chat_Attachment_Remove" xml:space="preserve"><value>Supprimer la pièce jointe</value></data>
-  <data name="Chat_Timeline_Loading" xml:space="preserve"><value>Chargement des messages...</value></data>
-  <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 message en attente</value></data>
-  <data name="Chat_Copy_Copied" xml:space="preserve"><value>Copié</value></data>
-  <data name="Chat_Copy_Failed" xml:space="preserve"><value>Échec de la copie</value></data>
-  <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>Niveau d'effort</value></data>
-  <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Plus rapide</value></data>
-  <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Plus approfondi</value></data>
   <data name="Onboarding_Native_Title.Text" xml:space="preserve"><value>Installer un Gateway natif local</value></data>
   <data name="Onboarding_Native_Description.Text" xml:space="preserve"><value>Installer et configurer un Gateway OpenClaw sur cet appareil</value></data>
   <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>Installer un Gateway WSL local</value></data>

@@ -7288,7 +7288,6 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_NativeConnection_Cancel" xml:space="preserve"><value>Cancel</value></data>
   <data name="Onboarding_Native_Checking" xml:space="preserve"><value>Checking the installed Gateway package and its execution aliases...</value></data>
   <data name="Onboarding_Native_Checked" xml:space="preserve"><value>Connection checked. Nothing was saved. Next will check again and save this gateway.</value></data>
-  <data name="Onboarding_Native_Cancelled" xml:space="preserve"><value>Setup cancelled. Any configuration already entered is retained in the dedicated native profile. No Gateway package was removed.</value></data>
   <data name="Onboarding_Native_Failed" xml:space="preserve"><value>The connection outcome could not be confirmed. Review the active gateway in Companion Settings before continuing.</value></data>
   <data name="Onboarding_V2_AlternativesTitle.Text" xml:space="preserve"><value>Choose another setup route</value></data>
   <data name="Onboarding_V2_ExistingRoute.Header" xml:space="preserve"><value>Existing Gateway</value></data>
@@ -7752,20 +7751,6 @@ Your settings, gateway, files, and models stay where they are.</value>
   <data name="Migration2_Busy" xml:space="preserve">
     <value>Please wait for this step to finish.</value>
   </data>
-  <data name="Chat_Code_Copy" xml:space="preserve"><value>Copy code</value></data>
-  <data name="Chat_Code_Label" xml:space="preserve"><value>Code block</value></data>
-  <data name="Chat_Model_Current" xml:space="preserve"><value>Current model</value></data>
-  <data name="Chat_Model_Other" xml:space="preserve"><value>Other models</value></data>
-  <data name="Chat_Model_NoMatches" xml:space="preserve"><value>No matching models</value></data>
-  <data name="Chat_Model_Search" xml:space="preserve"><value>Search models</value></data>
-  <data name="Chat_Attachment_Remove" xml:space="preserve"><value>Remove attachment</value></data>
-  <data name="Chat_Timeline_Loading" xml:space="preserve"><value>Loading messages...</value></data>
-  <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 queued message</value></data>
-  <data name="Chat_Copy_Copied" xml:space="preserve"><value>Copied</value></data>
-  <data name="Chat_Copy_Failed" xml:space="preserve"><value>Copy failed</value></data>
-  <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>Effort</value></data>
-  <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Faster</value></data>
-  <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Smarter</value></data>
   <data name="Onboarding_Native_Title.Text" xml:space="preserve"><value>Install a local native gateway</value></data>
   <data name="Onboarding_Native_Description.Text" xml:space="preserve"><value>Install and set up an OpenClaw gateway on this device</value></data>
   <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>Install a local WSL gateway</value></data>
