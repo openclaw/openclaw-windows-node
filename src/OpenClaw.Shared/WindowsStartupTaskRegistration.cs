@@ -32,7 +32,7 @@ public static class WindowsStartupTaskRegistration
         try
         {
             Process? started;
-            try { started = Process.Start(CreateRegisterProcessStartInfo(executable, taskName)); }
+            try { started = Process.Start(CreateSetupRegisterProcessStartInfo(executable, taskName)); }
             catch (System.ComponentModel.Win32Exception error) when (error.NativeErrorCode is 2 or 3 or 5)
             {
                 return StartupTaskRegistrationOutcome.Rejected;
@@ -43,15 +43,30 @@ public static class WindowsStartupTaskRegistration
             {
                 try { process.Kill(entireProcessTree: false); }
                 catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception) { }
-                return StartupTaskRegistrationOutcome.Unknown;
+                return ClassifySetupResult(completed: false, hresult: null);
             }
-            // A failed CLI exit can still represent an uncertain service-side operation.
-            return process.ExitCode == 0 ? StartupTaskRegistrationOutcome.Registered : StartupTaskRegistrationOutcome.Unknown;
+            return ClassifySetupResult(completed: true, process.ExitCode);
         }
         catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
         {
             return StartupTaskRegistrationOutcome.Unknown;
         }
+    }
+
+    internal static StartupTaskRegistrationOutcome ClassifySetupResult(bool completed, int? hresult) =>
+        !completed ? StartupTaskRegistrationOutcome.Unknown : hresult switch
+        {
+            0 => StartupTaskRegistrationOutcome.Registered,
+            unchecked((int)0x80070005) => StartupTaskRegistrationOutcome.Rejected,
+            _ => StartupTaskRegistrationOutcome.Unknown,
+        };
+
+    internal static ProcessStartInfo CreateSetupRegisterProcessStartInfo(string executable, string taskName = TaskName)
+    {
+        var start = CreateRegisterProcessStartInfo(executable, taskName);
+        // schtasks /Create documents /HRESULT for locale-independent process exit codes.
+        start.ArgumentList.Add("/HRESULT");
+        return start;
     }
 
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]

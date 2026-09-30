@@ -464,7 +464,9 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.Contains("SetupWindow.Active?.AccessDraft", source);
         Assert.Contains("_draft.SetCapability(capability, toggle.IsOn)", source);
         Assert.DoesNotContain("TailscaleToggle", source);
-        Assert.Contains("SetupGatewayRoute.ManagedWsl or SetupGatewayRoute.Native", source);
+        Assert.Contains("StartupPreferenceRow.Visibility = window?.ShowStartupPreference == true &&", source);
+        Assert.Contains("_draft.Route != SetupGatewayRoute.ManagedWsl", source);
+        Assert.DoesNotContain("SetupGatewayRoute.ManagedWsl or SetupGatewayRoute.Native", source);
         Assert.Contains("OnboardingAccessDestination.NativeGatewaySetup", window);
         Assert.Contains("NavigateToNativeGatewaySetup()", window);
         Assert.Contains("SetupGatewayRoute.Native => OnboardingAccessDestination.NativeGatewaySetup", policy);

@@ -56,6 +56,20 @@ recovery owner retains its prior admission policy through the shared policy's
 explicit legacy allowance. Disposable identity copies use the product's
 sensitive-file ACL writer, not inherited copy permissions.
 
+Successful native-editor commit results carry the committed Gateway ID and
+`GatewayDashboardBinding`, captured from the transaction candidate rather than a
+later active selection. `SetupAccessDraft` retains both through capability
+selection. AI admission checks them before creating an operator client or
+borrowing a native manager client; changing the active Gateway, endpoint,
+runtime contract or SSH realm cannot silently redirect onboarding.
+
+During an expected model-activation restart, setup validates its captured
+registry/endpoint binding and persisted signing identity without requiring live
+handshake fields that disconnect deliberately clears. The bounded wait must
+finish on a fresh matching authenticated route. Normal setup requests and
+verification still require connected admin scope and the full live route, with
+their existing post-await checks. No activation is replayed to recover downtime.
+
 Canceling a Check, or a Next with confirmed rollback, retains the same draft's
 staged keypair and authenticated replacement token. Draft edits and close discard
 it; completed or uncertain commits also discard it. No ambiguous transaction
@@ -77,6 +91,12 @@ baseline, and publishes changes outside locks. Stale live connections are
 disconnected conditionally against their captured connection snapshot; a newer
 connection is not canceled. External conflicts preserve live edits and provide
 an explicit reopen/reload recovery message instead of weakening save CAS.
+
+If settlement itself fails, `SetupPipelineSettlementException` retains the
+original `PipelineResult` or thrown exception alongside the settlement error.
+This includes cancellation, failed-step identity, compatibility details and
+restart requirements. Progress reports both outcomes and remains failed; a
+reconciliation error cannot replace the original diagnostics or become success.
 
 Direct-connect commit and rollback use admitted registry snapshots. If rollback
 loses a CAS race, it observes the actual persisted active selection and

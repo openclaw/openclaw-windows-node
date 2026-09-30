@@ -146,6 +146,26 @@ public sealed class GatewayDirectConnectServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task NativeHostRejectsARepointedRecordInsteadOfReturningANewCommitBinding()
+    {
+        var previous = AddPreviousGateway();
+        CreateIdentity(previous.Id);
+        _manager.NextSnapshot = Connected(previous.Id);
+        _manager.BeforeSnapshot = () =>
+            _registry.Update(previous.Id, record => record with { Url = "wss://changed-during-commit.example" });
+        var notifications = 0;
+        var host = new SetupNativeConnectionHost(CreateService(), _registry, NullLogger.Instance, () => notifications++);
+        var result = await host.ConnectAsync(
+            new(previous.Url, EditingGatewayId: previous.Id), CancellationToken.None);
+        Assert.False(result.Success);
+        Assert.True(result.GatewayCommitted);
+        Assert.True(result.RequiresAttention);
+        Assert.Null(result.EndpointBinding);
+        Assert.Equal(1, notifications);
+        Assert.Equal("wss://changed-during-commit.example", _registry.GetActive()!.Url);
+    }
+
+    [Fact]
     public async Task NativePreflightIdentityReadFailureIsRetryableAndNotCommitted()
     {
         var previous = AddPreviousGateway();
@@ -995,6 +1015,7 @@ public sealed class GatewayDirectConnectServiceTests : IDisposable
             var connected = await host.ConnectAsync(request, CancellationToken.None);
             Assert.True(connected.Success, connected.Error);
             Assert.Equal(selected.Id, connected.GatewayId);
+            Assert.Equal(GatewayDashboardBinding.Capture(_registry.GetActive()!), connected.EndpointBinding);
             Assert.Equal(selected.Id, _registry.ActiveGatewayId);
             Assert.Equal(2, _registry.GetAll().Count);
             Assert.All(_manager.ValidationDeviceIds, id => Assert.Equal(selectedIdentity.DeviceId, id));
@@ -1024,6 +1045,7 @@ public sealed class GatewayDirectConnectServiceTests : IDisposable
         Assert.Null(DeviceIdentity.TryReadStoredDeviceToken(_manager.ValidationPaths[0]));
         var result = await host.ConnectAsync(request, CancellationToken.None);
         Assert.True(result.Success);
+        Assert.Equal(GatewayDashboardBinding.Capture(_registry.GetActive()!), result.EndpointBinding);
         Assert.Single(_manager.ValidationDeviceIds.Distinct());
         Assert.Equal(3, _manager.ValidationCount);
         Assert.Equal(CredentialResolver.SourceDeviceToken, _manager.ValidatedCredential!.Source);

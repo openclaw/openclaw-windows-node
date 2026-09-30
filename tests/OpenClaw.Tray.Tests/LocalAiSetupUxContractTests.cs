@@ -34,8 +34,11 @@ public sealed class LocalAiSetupUxContractTests
         Assert.Contains("SetupInstallationProgress", progress);
         // Recovery can show real inference steps. Ordinary installation must not schedule them.
         var factory = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine", "SetupPipeline.cs"));
-        var defaults = factory[factory.IndexOf("public static List<SetupStep> BuildDefaultSteps()", StringComparison.Ordinal)..
-            factory.IndexOf("public sealed class SetupPipeline", StringComparison.Ordinal)];
+        var defaultsStart = factory.IndexOf("public static List<SetupStep> BuildDefaultSteps()", StringComparison.Ordinal);
+        Assert.True(defaultsStart >= 0, "The default installation step factory must exist.");
+        var defaultsEnd = factory.IndexOf("public sealed class SetupPipeline", defaultsStart, StringComparison.Ordinal);
+        Assert.True(defaultsEnd > defaultsStart, "The pipeline declaration must follow the default step factory.");
+        var defaults = factory[defaultsStart..defaultsEnd];
         Assert.DoesNotContain("new CaptureLocalAiGpuBaselineStep", defaults);
         Assert.DoesNotContain("new VerifyLocalAiInferenceStep", defaults);
         Assert.DoesNotContain("new VerifyLocalAiGpuLoadStep", defaults);

@@ -7,14 +7,17 @@ namespace OpenClaw.SetupEngine;
 public sealed class GatewayAiSetupTransport(
     OpenClawGatewayClient client,
     Func<GatewayAiSetupRoute> routeProvider,
-    Func<CancellationToken, Task>? authorize = null) : IGatewayAiSetupTransport
+    Func<CancellationToken, Task>? authorize = null,
+    Action<GatewayAiSetupRoute>? requireRestartAuthority = null) : IGatewayAiSetupTransport
 {
     public static async Task<IGatewayAiSetupTransport> BorrowNativeAsync(
-        string dataDir, GatewayConnectionManager manager, string gatewayId, CancellationToken ct)
+        string dataDir, GatewayConnectionManager manager, string gatewayId, CancellationToken ct,
+        string? expectedEndpointBinding = null)
     {
         var registry = new GatewayRegistry(dataDir);
         registry.Load();
         var record = registry.GetActive();
+        SetupGatewaySessionBinding.RequireExpected(record, gatewayId, expectedEndpointBinding);
         if (record?.Id != gatewayId || record.NativePackageFamilyName is null)
             throw new SetupNativeOwnershipException();
         var binding = new SetupGatewaySessionBinding(record);
@@ -55,7 +58,14 @@ public sealed class GatewayAiSetupTransport(
             return current;
         }
         return new GatewayAiSetupTransport(borrowed, Route,
-            async token => { await manager.RequireNativeSetupClientAsync(record, token); });
+            async token => { await manager.RequireNativeSetupClientAsync(record, token); },
+            expected =>
+            {
+                RequireOwner();
+                if (!ReferenceEquals(borrowed, manager.ConcreteOperatorClient))
+                    throw new SetupNativeOwnershipException();
+                binding.RequirePersistedAuthority(registry.GetActive(), identity, expected);
+            });
     }
 
     public GatewayAiSetupRoute Route => routeProvider();
@@ -63,6 +73,14 @@ public sealed class GatewayAiSetupTransport(
     public bool IsConnected => client.IsConnectedToGateway && client.HasHandshakeSnapshot;
     public IReadOnlyCollection<string> Methods => client.AdvertisedServerMethods;
     public IReadOnlyCollection<string> OperatorScopes => client.GrantedOperatorScopes;
+
+    public void RequireRestartAuthority(GatewayAiSetupRoute expected)
+    {
+        if (requireRestartAuthority is not null)
+            requireRestartAuthority(expected);
+        else if (Route != expected)
+            throw new SetupNativeOwnershipException();
+    }
 
     public async Task<JsonElement> RequestAsync(string method, object? parameters, int timeoutMs, CancellationToken cancellationToken)
     {

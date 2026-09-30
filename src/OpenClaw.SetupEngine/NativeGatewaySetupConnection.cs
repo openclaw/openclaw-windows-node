@@ -20,6 +20,12 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
     public IReadOnlyCollection<string> Methods => Client.AdvertisedServerMethods;
     public IReadOnlyCollection<string> OperatorScopes => Client.GrantedOperatorScopes;
 
+    public void RequireRestartAuthority(GatewayAiSetupRoute expected)
+    {
+        _owner.RequireCurrentProfile();
+        _binding.RequirePersistedAuthority(_owner.Record, _owner.IdentityDirectory, expected);
+    }
+
     private NativeGatewaySetupConnection(NativeGatewaySetupSession owner, OpenClawGatewayClient client,
         Func<CancellationToken, Task> authorize)
     {

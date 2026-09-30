@@ -25,7 +25,8 @@ internal sealed record GatewayDirectConnectResult(
     GatewayConnectionSnapshot Snapshot,
     bool GatewayCommitted,
     string? Error = null,
-    bool RollbackIncomplete = false);
+    bool RollbackIncomplete = false,
+    string? EndpointBinding = null);
 
 /// <summary>
 /// Owns the direct-connect commit/rollback workflow. WinUI surfaces provide input and render the
@@ -189,7 +190,8 @@ internal sealed class GatewayDirectConnectService
                     ? GatewayDirectConnectOutcome.PairingRequired
                     : GatewayDirectConnectOutcome.Connected,
                 snapshot,
-                GatewayCommitted: true);
+                GatewayCommitted: true,
+                EndpointBinding: GatewayDashboardBinding.Capture(candidate));
         }
         catch (Exception ex)
         {

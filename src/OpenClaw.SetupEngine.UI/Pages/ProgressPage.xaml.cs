@@ -209,6 +209,17 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
                     restartRequired: result.RequiresRestart);
             }
         }
+        catch (SetupPipelineSettlementException ex)
+        {
+            sw.Stop();
+            _pipelineFinished = true;
+            _logger?.Error($"Setup pipeline and settlement outcomes: {ex}");
+            ProgressMascot.Mood = OnboardingMascotMood.Sad;
+            if (!_closed && _window?.IsClosed == false)
+                _window.NavigateToComplete(false, sw.Elapsed, config.LogPath, SetupLogger.Sanitize(ex.Message),
+                    ex.OriginalResult?.CompatibilityFailure, ex.OriginalResult?.Detail,
+                    restartRequired: ex.OriginalResult?.RequiresRestart == true);
+        }
         catch (OperationCanceledException) when (cts.IsCancellationRequested)
         {
             sw.Stop();

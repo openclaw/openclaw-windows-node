@@ -50,7 +50,8 @@ internal sealed class SetupNativeConnectionHost(
             var active = result.GatewayCommitted ? registry.GetActive() : null;
             var success = result.Outcome != GatewayDirectConnectOutcome.Failed &&
                 result.Snapshot.OperatorState == RoleConnectionState.Connected &&
-                active is not null && active.Id == result.Snapshot.GatewayId;
+                active is not null && active.Id == result.Snapshot.GatewayId &&
+                GatewayDashboardBinding.Capture(active) == result.EndpointBinding;
             var requiresAttention = result.RollbackIncomplete || !success && result.GatewayCommitted;
             if (result.GatewayCommitted || requiresAttention)
                 DiscardIdentity();
@@ -59,7 +60,8 @@ internal sealed class SetupNativeConnectionHost(
             return new(success, result.GatewayCommitted, active?.Id,
                 active is null ? null : GatewayClientEndpointResolver.Resolve(active),
                 result.Error ?? (success ? null : "The operator connection is not ready. Approve this PC on the gateway, then retry."),
-                RequiresAttention: requiresAttention);
+                RequiresAttention: requiresAttention,
+                EndpointBinding: success ? result.EndpointBinding : null);
         }
         catch (OperationCanceledException) { throw; }
         catch (ArgumentException ex) when (!transactionAdmitted) { return new(false, Error: ex.Message); }

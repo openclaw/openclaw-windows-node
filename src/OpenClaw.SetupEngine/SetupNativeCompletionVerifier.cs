@@ -20,7 +20,8 @@ public static class SetupNativeCompletionVerifier
         {
             if (connectionManager is null)
                 throw new InvalidOperationException("The native Gateway connection owner is unavailable.");
-            var transport = await GatewayAiSetupTransport.BorrowNativeAsync(dataDir, connectionManager, native.Id, ct);
+            var transport = await GatewayAiSetupTransport.BorrowNativeAsync(dataDir, connectionManager, native.Id, ct,
+                expected.EndpointBinding);
             SetupNativeVerification.RequireRoute(expected, transport.Route);
             var nativeClient = new GatewayAiSetupClient(transport, expected.ModelRef, expected.Intent);
             var current = new SetupVerifiedNativeRoute(

@@ -365,6 +365,12 @@ The Skills handoff ignores unscoped cached status, loads a response-bound
 before presentation. Its agent filter stays bound to that agent. An unavailable
 or changed Gateway does not consume the receipt as a successful page launch.
 
+Native setup offers the existing **Launch OpenClaw at sign-in** choice on
+**PC capabilities**, before package installation. Managed WSL keeps that choice
+on its Gateway setup review; Existing/Remote keep it on capabilities. Native
+finalization persists and applies the visible selection, including an explicit
+off choice. A failed application retains that selection for retry.
+
 Isolated app hosts do not offer Windows startup registration. The host passes
 that availability into setup, which hides the startup preference, keeps it off
 even if an old isolated setting was true, and saves `AutoStart=false` before
@@ -373,6 +379,16 @@ registration. An ordinary explicit choice applies both enable and disable;
 recovery preserves the saved preference. Registration failures remain visible
 and retryable rather than being swallowed. `AutoStartManager`'s isolation refusal
 remains unchanged.
+
+Setup requests `schtasks /Create /HRESULT` so completion can classify the
+documented numeric HRESULT instead of localized error text. A completed
+`E_ACCESSDENIED` (`0x80070005`) is a rejection; the existing policy may create a
+Run-key fallback only after strict inspection confirms the task is absent.
+An exact existing enabled task prevents duplication; a different or unknown
+task refuses fallback. Timeouts, generic nonzero exits and unclassified failures
+remain Unknown. No real non-elevated registration failure or universal failure
+on ordinary installations is inferred from the controlled tests.
+See Microsoft's [`schtasks create` reference](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/schtasks-create).
 
 Native completion uses strict startup application: task removal must succeed
 when the task exists, unknown task state is an error, and Run-key failures are

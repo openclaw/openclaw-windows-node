@@ -104,6 +104,69 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
     }
 
     [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, true, true)]
+    public async Task NativeStartupUsesVisibleChoiceAndRetainsItAcrossRegistrationRetry(
+        bool selectedStartup, bool failOnce, bool isolated)
+    {
+        var applications = new List<bool>();
+        await WithNativeAsync(async (window, frame, registry, _, _, completed) =>
+        {
+            var ai = Assert.IsType<AiSetupPage>(frame.Content);
+            await WaitAsync(() => Find<ItemsControl>(ai, "CandidateChoices").IsEnabled &&
+                TestSupport.FindDescendants<SettingsCard>(Find<ItemsControl>(ai, "CandidateChoices")).Any(), "native AI choice");
+            Assert.Empty(applications);
+            var candidate = Assert.Single(TestSupport.FindDescendants<SettingsCard>(Find<ItemsControl>(ai, "CandidateChoices")));
+            TestSupport.InvokeSettingsCardAction(ai, candidate, "ChoiceAction_Click");
+            await WaitAsync(() => frame.Content is AiReadyPage { IsLoaded: true }, "native ready");
+            var ready = Assert.IsType<AiReadyPage>(frame.Content);
+            var chat = Find<SettingsCard>(ready, "ChatChoice");
+            TestSupport.InvokeSettingsCardAction(ready, chat, "Choose_Click");
+            if (failOnce)
+            {
+                await WaitAsync(() => Find<InfoBar>(ready, "ErrorBar").IsOpen && chat.IsEnabled, "startup failure and retry");
+                Assert.Empty(completed);
+                Assert.Equal([selectedStartup], applications);
+                Assert.Equal(selectedStartup, window.AutoStartAfterSetup);
+                TestSupport.InvokeSettingsCardAction(ready, chat, "Choose_Click");
+            }
+            await WaitAsync(() => completed.Count == 1, "startup choice applied");
+            Assert.Equal(failOnce ? [selectedStartup, selectedStartup] : new[] { selectedStartup }, applications);
+            Assert.Equal("native-ui", registry.ActiveGatewayId);
+            var data = Assert.IsType<string>(typeof(SetupWindow).GetProperty("DataDir",
+                BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window));
+            using var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(data, "settings.json")));
+            Assert.Equal(selectedStartup, saved.RootElement.GetProperty("AutoStart").GetBoolean());
+        }, isolated: isolated, startupRegistrationAllowed: true,
+            applyStartup: (enabled, _) =>
+            {
+                applications.Add(enabled);
+                return failOnce && applications.Count == 1
+                    ? Task.FromException(new IOException("Synthetic startup registration failure"))
+                    : Task.CompletedTask;
+            },
+            beforeAi: async (window, frame) =>
+            {
+                await WaitAsync(() => frame.Content is CapabilitiesPage { IsLoaded: true }, "native capability choice");
+                var page = Assert.IsType<CapabilitiesPage>(frame.Content);
+                var row = Find<SettingsCard>(page, "StartupPreferenceRow");
+                Assert.Equal(Visibility.Visible, row.Visibility);
+                var toggle = Find<ToggleSwitch>(page, "StartupPreferenceToggle");
+                row.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
+                await ui.YieldToRenderAsync();
+                await OnboardingNativeProof.NextCompositionAsync();
+                page.UpdateLayout();
+                var scroll = Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<ScrollViewer>());
+                OnboardingNativeProof.AssertFullyVisible(toggle, scroll);
+                toggle.IsOn = !selectedStartup;
+                toggle.IsOn = selectedStartup;
+                Assert.Equal(selectedStartup, window.AutoStartAfterSetup);
+                Assert.Empty(applications);
+            });
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task IsolatedConsoleGapOrFailureUsesExistingErrorRecoveryWithoutHostLog(bool unavailable)
@@ -264,7 +327,9 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
         Func<SetupWindow, Frame, GatewayRegistry, Runtime, FixtureGatewayServer, List<SetupNativeCompletion>, Task> assertion,
         ElementTheme theme = ElementTheme.Light, bool supported = true, bool holdProvider = false, bool failDetectionOnce = false,
         Func<string, JsonElement, object>? wizardReply = null, bool isolated = false,
-        Func<JsonElement, object>? logReply = null)
+        Func<JsonElement, object>? logReply = null, bool startupRegistrationAllowed = false,
+        Func<bool, CancellationToken, Task>? applyStartup = null,
+        Func<SetupWindow, Frame, Task>? beforeAi = null)
     {
         OnboardingNativeProof.AssertIsolatedRoots();
         var detectionAttempts = 0;
@@ -332,17 +397,27 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
             {
                 window = OnboardingNativeProof.CreateWindow(() => new SetupWindow(configPath: setupConfig,
                     dataDir: data, localDataDir: temp.Combine("local"), commandLineArgs: [],
-                    startupRegistrationAllowed: false,
-                    applyNativeStartup: (_, _) => throw new InvalidOperationException("No OS startup changes in this fixture."),
+                    startupRegistrationAllowed: startupRegistrationAllowed,
+                    applyNativeStartup: applyStartup ??
+                        ((_, _) => throw new InvalidOperationException("No OS startup changes in this fixture.")),
                     publishNativeCompletion: (choice, _) => { completed.Add(choice); return Task.CompletedTask; }));
                 window.SelectGatewayRoute(SetupGatewayRoute.Native);
-                typeof(SetupWindow).GetMethod("NavigateToNativeAiSetup", BindingFlags.NonPublic | BindingFlags.Instance)!
-                    .Invoke(window, [native]);
+                if (beforeAi is null)
+                    typeof(SetupWindow).GetMethod("NavigateToNativeAiSetup", BindingFlags.NonPublic | BindingFlags.Instance)!
+                        .Invoke(window, [native]);
+                else
+                    window.NavigateToCapabilities();
                 window.Activate();
                 window.AppWindow.Move(new(-32000, -32000));
                 var root = Assert.IsType<Grid>(window.Content);
                 await OnboardingNativeProof.ApplyThemeSurfaceAsync(root, theme);
                 var frame = Find<Frame>(root, "RootFrame");
+                if (beforeAi is not null)
+                {
+                    await beforeAi(window, frame);
+                    typeof(SetupWindow).GetMethod("NavigateToNativeAiSetup", BindingFlags.NonPublic | BindingFlags.Instance)!
+                        .Invoke(window, [native]);
+                }
                 await WaitAsync(() => frame.Content is AiSetupPage { IsLoaded: true }, "shared native AI mounted");
                 await assertion(window, frame, registry, runtime, server, completed);
             }

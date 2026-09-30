@@ -22,7 +22,7 @@ public sealed record AiSetupPageArgs(
     SetupCompletionIntent ConfiguredCompletionIntent = SetupCompletionIntent.Dashboard,
     Func<GatewayAiSetupCompletion, Task>? CompleteVerifiedSetup = null,
     NativeGatewaySetupSession? NativeSession = null, Func<Task>? CancelNativeSetup = null,
-    GatewayConnectionManager? ConnectionManager = null);
+    GatewayConnectionManager? ConnectionManager = null, string? ExpectedEndpointBinding = null);
 
 public sealed partial class AiSetupPage : Page, IAsyncDisposable
 {
@@ -264,24 +264,28 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         {
             var registry = new GatewayRegistry(_args.DataDir);
             registry.Load();
+            SetupGatewaySession.RequireExpectedGateway(registry.GetActive(), ExpectedGatewayId, _args.ExpectedEndpointBinding);
             if (registry.GetActive() is { NativePackageFamilyName: not null } active)
             {
                 _managedNative = true;
                 if (_args.ConnectionManager is not { } manager)
                     throw new InvalidOperationException("The native Gateway connection owner is unavailable.");
-                transport = await GatewayAiSetupTransport.BorrowNativeAsync(_args.DataDir, manager, active.Id, ct);
+                transport = await GatewayAiSetupTransport.BorrowNativeAsync(_args.DataDir, manager, active.Id, ct,
+                    _args.ExpectedEndpointBinding);
             }
             else
             {
                 var session = await SetupGatewaySession.ConnectAsync(_args.DataDir,
-                    () => Client?.RequiresReconciliation == true, ct, ExpectedGatewayId);
+                    () => Client?.RequiresReconciliation == true, ct, ExpectedGatewayId,
+                    expectedEndpointBinding: _args.ExpectedEndpointBinding);
                 if (_closed || ct.IsCancellationRequested)
                 {
                     await session.DisposeAsync();
                     throw new OperationCanceledException(ct);
                 }
                 _session = session;
-                transport = new GatewayAiSetupTransport(session.Client, session.GetRoute);
+                transport = new GatewayAiSetupTransport(session.Client, session.GetRoute,
+                    requireRestartAuthority: session.RequireRestartAuthority);
             }
         }
         ct.ThrowIfCancellationRequested();

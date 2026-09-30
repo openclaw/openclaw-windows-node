@@ -34,6 +34,17 @@ public sealed class SetupGatewaySession : IAsyncDisposable
         return route;
     }
 
+    public void RequireRestartAuthority(GatewayAiSetupRoute expected)
+    {
+        if (_disposeTask is not null) throw new ObjectDisposedException(nameof(SetupGatewaySession));
+        var registry = new GatewayRegistry(_dataDir);
+        registry.Load();
+        _binding.RequirePersistedAuthority(registry.GetActive(), _identityPath, expected);
+    }
+
+    public static void RequireExpectedGateway(GatewayRecord? active, string? gatewayId, string? endpointBinding) =>
+        SetupGatewaySessionBinding.RequireExpected(active, gatewayId, endpointBinding);
+
     public static void RequireCompletionGateway(string dataDir, GatewayAiSetupCompletion completion)
     {
         var registry = new GatewayRegistry(dataDir);
@@ -48,11 +59,13 @@ public sealed class SetupGatewaySession : IAsyncDisposable
 
     public static async Task<SetupGatewaySession> ConnectAsync(
         string dataDir, Func<bool>? expectedRestart = null, CancellationToken ct = default,
-        string? expectedGatewayId = null, GatewayAiSetupCompletion? expectedCompletion = null)
+        string? expectedGatewayId = null, GatewayAiSetupCompletion? expectedCompletion = null,
+        string? expectedEndpointBinding = null)
     {
         var registry = new GatewayRegistry(dataDir);
         registry.Load();
         var record = registry.GetActive() ?? throw new InvalidOperationException("No active gateway record found.");
+        SetupGatewaySessionBinding.RequireExpected(record, expectedGatewayId, expectedEndpointBinding);
         if (record.NativePackageFamilyName is not null)
             throw new InvalidOperationException(
                 "Native onboarding requires its setup-owned runtime. Return to native Gateway setup.");

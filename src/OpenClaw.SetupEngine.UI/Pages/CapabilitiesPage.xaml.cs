@@ -34,7 +34,7 @@ public sealed partial class CapabilitiesPage : Page
         OllamaToggle.IsOn = _draft.Config.Settings.NodeOllamaInferenceEnabled == true;
         var window = SetupWindow.Active;
         StartupPreferenceRow.Visibility = window?.ShowStartupPreference == true &&
-            _draft.Route is not (SetupGatewayRoute.ManagedWsl or SetupGatewayRoute.Native)
+            _draft.Route != SetupGatewayRoute.ManagedWsl
             ? Visibility.Visible : Visibility.Collapsed;
         StartupPreferenceToggle.IsOn = window?.AutoStartAfterSetup == true;
         BuildCapabilityRows();

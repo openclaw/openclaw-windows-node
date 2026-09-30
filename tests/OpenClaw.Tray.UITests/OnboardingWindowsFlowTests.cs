@@ -15,12 +15,52 @@ using OpenClaw.SetupEngine.UI.Controls;
 using OpenClaw.SetupEngine.UI.Pages;
 using Xunit.Abstractions;
 using Uia = System.Windows.Automation;
+using OpenClaw.Connection;
+using OpenClaw.TestSupport.Gateway;
 
 namespace OpenClaw.Tray.UITests;
 
 [Collection(UICollection.Name)]
 public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHelper output)
 {
+    [Theory]
+    [InlineData(SetupGatewayRoute.Existing, false)]
+    [InlineData(SetupGatewayRoute.Remote, false)]
+    [InlineData(SetupGatewayRoute.Existing, true)]
+    [InlineData(SetupGatewayRoute.Remote, true)]
+    public async Task CommittedGatewayChangeDuringCapabilitiesNeverConnectsToReplacement(
+        SetupGatewayRoute route, bool sameId)
+    {
+        await using var replacement = await FixtureGatewayServer.StartAsync(
+            GatewayScenario.CreateNativeSetup((_, _) => throw new InvalidOperationException("Must not invoke replacement")),
+            "replacement-fixture-token");
+        await WithWindowAsync(async (window, frame, data) =>
+        {
+            var registry = new GatewayRegistry(data);
+            var committed = registry.AddOrUpdate(new() { Id = "committed-a", Url = "wss://committed.invalid" });
+            registry.SetActive(committed.Id);
+            registry.Save();
+            Assert.True(window.AccessDraft.TryAcceptNativeConnection(route,
+                new(true, true, committed.Id, committed.Url, EndpointBinding: GatewayDashboardBinding.Capture(committed))));
+            window.NavigateToCapabilities();
+            await MountedPageAsync<CapabilitiesPage>(window, frame);
+            var other = registry.AddOrUpdate(new()
+            {
+                Id = sameId ? committed.Id : "replacement-b", Url = replacement.Endpoint.ToString(),
+                SharedGatewayToken = "replacement-fixture-token",
+            });
+            registry.SetActive(other.Id);
+            registry.Save();
+            Assert.True(window.TryNavigateToWizard());
+            var page = await MountedPageAsync<AiSetupPage>(window, frame);
+            await WaitAsync(() => Find<InfoBar>(page, "ErrorBar").IsOpen &&
+                Find<Button>(page, "RefreshButton").IsEnabled, "changed committed Gateway refusal");
+            Assert.Equal(committed.Id, window.AccessDraft.NativeGatewayId);
+            Assert.Equal(0, replacement.ConnectionCount);
+            Assert.Empty(replacement.Requests);
+        });
+    }
+
     [Theory]
     [InlineData(SetupGatewayRoute.Native)]
     [InlineData(SetupGatewayRoute.ManagedWsl)]

@@ -57,6 +57,15 @@ public sealed class GatewayAiSetupClient(
             throw new InvalidOperationException("The gateway or agent changed during AI setup.");
     }
 
+    internal void RequireExpectedRestartAuthority()
+    {
+        if (!GatewayRestartRequired || Phase != GatewayAiSetupPhase.VerificationRequired)
+            throw new InvalidOperationException("No expected Gateway restart is pending.");
+        transport.RequireRestartAuthority(_route);
+        if (transport.IsConnected)
+            RequireSameRoute();
+    }
+
     public bool HasMethod(string method) => transport.Methods.Contains(method, StringComparer.Ordinal);
     public bool SupportsInteractiveActivation => HasMethod("openclaw.setup.activate.start");
     public bool SupportsChoice(GatewayAiSetupChoiceKind kind) => kind switch

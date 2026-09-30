@@ -11,11 +11,14 @@ public sealed class SetupAccessDraftTests
         var config = draft.Config;
         var request = new SetupNativeConnectionRequest("wss://native.example", EditingGatewayId: "committed-id");
         draft.NativeConnectionRequest = request;
+        var binding = OpenClaw.Connection.GatewayDashboardBinding.Capture(
+            new() { Id = "committed-id", Url = "wss://native.example" });
         Assert.True(draft.TryAcceptNativeConnection(route,
-            new(true, true, "committed-id", "wss://native.example")));
+            new(true, true, "committed-id", "wss://native.example", EndpointBinding: binding)));
         Assert.Same(config, draft.Config);
         Assert.Equal("wss://native.example", config.GatewayUrl);
         Assert.Equal("committed-id", draft.NativeGatewayId);
+        Assert.Equal(binding, draft.NativeEndpointBinding);
         Assert.True(draft.GatewayAvailable);
         Assert.Equal(route, draft.Route);
         draft.ApplyProfile(SetupCapabilityProfile.ReadOnly);
@@ -23,6 +26,8 @@ public sealed class SetupAccessDraftTests
         Assert.Equal("committed-id", draft.NativeGatewayId);
         draft.SelectRoute(SetupGatewayRoute.ManagedWsl);
         Assert.Null(config.GatewayUrl);
+        Assert.Null(draft.NativeGatewayId);
+        Assert.Null(draft.NativeEndpointBinding);
         Assert.Same(request, draft.NativeConnectionRequest);
     }
 
@@ -31,6 +36,7 @@ public sealed class SetupAccessDraftTests
     [InlineData(true, false, "id", "wss://native.example")]
     [InlineData(true, true, null, "wss://native.example")]
     [InlineData(true, true, "id", null)]
+    [InlineData(true, true, "id", "wss://native.example")]
     public void NativeCheckOrInvalidCommit_CannotAdvanceOrChangeConfig(
         bool success, bool committed, string? id, string? url)
     {

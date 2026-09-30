@@ -7,6 +7,85 @@ namespace OpenClaw.SetupEngine.Tests;
 public sealed class SetupPipelineSettlementTests
 {
     [Theory]
+    [InlineData(PipelineOutcome.Success)]
+    [InlineData(PipelineOutcome.Failed)]
+    [InlineData(PipelineOutcome.Cancelled)]
+    public async Task SettlementFailureRetainsTheOriginalResultAndFailsOverall(PipelineOutcome outcome)
+    {
+        var result = new PipelineResult(outcome, "original-step", "original diagnostics") { RequiresRestart = true };
+        var settlement = new IOException("registry settlement diagnostics");
+        var calls = 0;
+        var error = await Assert.ThrowsAsync<SetupPipelineSettlementException>(() =>
+            SetupPipeline.RunWithSettlementAsync(() => Task.FromResult(result), observed =>
+            {
+                calls++;
+                Assert.Same(result, observed);
+                throw settlement;
+            }));
+        Assert.Equal(1, calls);
+        Assert.Same(result, error.OriginalResult);
+        Assert.Null(error.RunFailure);
+        Assert.Same(settlement, error.SettlementFailure);
+        Assert.Equal([settlement], error.InnerExceptions);
+        Assert.Contains(outcome.ToString(), error.Message);
+        Assert.Contains("original-step", error.Message);
+        Assert.Contains("original diagnostics", error.Message);
+        Assert.Contains("registry settlement diagnostics", error.Message);
+        Assert.True(Assert.IsType<PipelineResult>(error.OriginalResult).RequiresRestart);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ThrownRunAndSettlementFailuresBothSurviveIncludingCancellation(bool cancel)
+    {
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        Exception runFailure = cancel
+            ? new OperationCanceledException("cancelled run", cancellation.Token)
+            : new InvalidOperationException("original run failure");
+        var settlement = new IOException("settlement failed");
+        var calls = 0;
+        var error = await Assert.ThrowsAsync<SetupPipelineSettlementException>(() =>
+            SetupPipeline.RunWithSettlementAsync(() => Task.FromException<PipelineResult>(runFailure), observed =>
+            {
+                calls++;
+                Assert.Null(observed);
+                throw settlement;
+            }));
+        Assert.Equal(1, calls);
+        Assert.Null(error.OriginalResult);
+        Assert.Same(runFailure, error.RunFailure);
+        Assert.Equal([runFailure, settlement], error.InnerExceptions);
+        if (cancel)
+            Assert.Equal(cancellation.Token, Assert.IsType<OperationCanceledException>(error.RunFailure).CancellationToken);
+    }
+
+    [Fact]
+    public async Task SuccessfulSettlementReturnsSameResultOrRethrowsOriginalRunFailureOnce()
+    {
+        var result = new PipelineResult(PipelineOutcome.Failed, "keep", "unchanged");
+        var calls = 0;
+        var returned = await SetupPipeline.RunWithSettlementAsync(() => Task.FromResult(result), observed =>
+        {
+            calls++;
+            Assert.Same(result, observed);
+            return Task.CompletedTask;
+        });
+        Assert.Same(result, returned);
+        var original = new IOException("same exception");
+        var thrown = await Assert.ThrowsAsync<IOException>(() =>
+            SetupPipeline.RunWithSettlementAsync(() => Task.FromException<PipelineResult>(original), observed =>
+            {
+                calls++;
+                Assert.Null(observed);
+                return Task.CompletedTask;
+            }));
+        Assert.Same(original, thrown);
+        Assert.Equal(2, calls);
+    }
+
+    [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]
     [InlineData(false, true)]

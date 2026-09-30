@@ -6,6 +6,26 @@ namespace OpenClaw.Tray.Tests;
 public sealed class SetupStartupPolicyTests
 {
     [Theory]
+    [InlineData(StartupTaskInspection.Absent, true, false)]
+    [InlineData(StartupTaskInspection.ExpectedEnabled, false, false)]
+    [InlineData(StartupTaskInspection.Different, false, true)]
+    [InlineData(StartupTaskInspection.Unknown, false, true)]
+    public void ConfirmedRejectionStillRequiresExactTaskInspection(
+        StartupTaskInspection inspection, bool fallback, bool rejects)
+    {
+        var writes = 0;
+        var removals = 0;
+        void Apply() => SetupStartupPolicy.ApplyUnpackaged(true,
+            () => StartupTaskRegistrationOutcome.Rejected, () => inspection,
+            () => throw new InvalidOperationException("Must not delete another task"),
+            () => writes++, () => removals++);
+        if (rejects) Assert.Throws<InvalidOperationException>(Apply);
+        else Apply();
+        Assert.Equal(fallback ? 1 : 0, writes);
+        Assert.Equal(inspection == StartupTaskInspection.ExpectedEnabled ? 1 : 0, removals);
+    }
+
+    [Theory]
     [InlineData(StartupTaskInspection.Absent)]
     [InlineData(StartupTaskInspection.Different)]
     [InlineData(StartupTaskInspection.Unknown)]

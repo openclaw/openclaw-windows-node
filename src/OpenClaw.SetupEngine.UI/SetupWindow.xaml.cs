@@ -671,11 +671,12 @@ public sealed partial class SetupWindow : Window
                 TryNavigateToLegacyWizard, CompleteSetupAsync, _expectedConfiguredModelRef,
                 LocalAiHost: NativeSetupSession is null ? _localAiHost : null, ReviewLocalAi: ReviewLocalAiAsync,
                 ExpectedGatewayId: NativeSetupSession?.Record.Id ??
-                    (_expectedConfiguredModelRef is null ? null : _expectedConfiguredGatewayId),
+                    (_expectedConfiguredModelRef is null ? AccessDraft.NativeGatewayId : _expectedConfiguredGatewayId),
                 ConfiguredCompletionIntent: _configuredCompletionIntent,
                 CompleteVerifiedSetup: CompleteVerifiedAiSetupAsync, NativeSession: NativeSetupSession,
                 CancelNativeSetup: NativeSetupSession is null ? null : CancelNativeAiSetupAsync,
-                ConnectionManager: _connectionManager);
+                ConnectionManager: _connectionManager,
+                ExpectedEndpointBinding: _expectedConfiguredModelRef is null ? AccessDraft.NativeEndpointBinding : null);
 
     public bool TryNavigateToLegacyWizard()
     {

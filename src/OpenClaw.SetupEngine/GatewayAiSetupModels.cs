@@ -10,6 +10,11 @@ public interface IGatewayAiSetupTransport
     bool IsConnected { get; }
     IReadOnlyCollection<string> Methods { get; }
     IReadOnlyCollection<string> OperatorScopes { get; }
+    void RequireRestartAuthority(GatewayAiSetupRoute expected)
+    {
+        if (Route != expected)
+            throw new SetupNativeOwnershipException();
+    }
     Task<JsonElement> RequestAsync(string method, object parameters, int timeoutMs, CancellationToken cancellationToken);
 }
 

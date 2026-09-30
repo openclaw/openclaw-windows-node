@@ -1,4 +1,7 @@
 using System.Text.Json;
+using OpenClaw.Connection;
+using OpenClaw.Shared;
+using OpenClaw.TestSupport;
 
 namespace OpenClaw.SetupEngine.Tests;
 
@@ -168,6 +171,81 @@ public sealed class GatewayAiSetupControllerTests
     }
 
     [Theory]
+    [InlineData("same")]
+    [InlineData("gateway")]
+    [InlineData("endpoint")]
+    [InlineData("identity-file")]
+    [InlineData("signing-device")]
+    [InlineData("session")]
+    [InlineData("agent")]
+    [InlineData("timeout")]
+    [InlineData("cancel")]
+    public async Task ExpectedRestart_ValidatesPersistedAuthorityDuringClearedHandshake(string change)
+    {
+        using var temp = new TempDirectory();
+        var identity = new DeviceIdentity(temp.Path);
+        identity.Initialize();
+        var active = new GatewayRecord { Id = "gateway", Url = "wss://restart.example" };
+        var binding = new SetupGatewaySessionBinding(active);
+        var sessionKey = "agent:main:main";
+        var signingId = identity.DeviceId;
+        var transport = new Transport { Configured = true };
+        transport.RouteProvider = () => binding.GetRoute(active, temp.Path,
+            transport.IsConnected ? sessionKey : null, transport.IsConnected ? signingId : null);
+        transport.RestartAuthority = expected => binding.RequirePersistedAuthority(active, temp.Path, expected);
+        var client = new GatewayAiSetupClient(transport);
+        var controller = new GatewayAiSetupController(client, transport.Clock);
+        await client.DetectAsync();
+        client.SelectCandidate("existing", "provider/exact");
+        transport.StartReply = (_, parameters) => Json(new
+        {
+            sessionId = Session(parameters), done = true, status = "done",
+            modelActivation = new { modelRef = "provider/exact", gatewayRestartRequired = true },
+        });
+        await controller.StartSelectedAsync(null, null);
+        transport.IsConnected = false;
+        Assert.Null(transport.Route.IdentityBinding);
+        Assert.Equal("", transport.Route.SessionKey);
+        Assert.NotEqual(client.Route, transport.Route);
+        await Assert.ThrowsAnyAsync<InvalidOperationException>(() => client.VerifyAsync());
+        using var cancellation = new CancellationTokenSource();
+        var ticks = 0;
+        transport.Clock.OnTick = () =>
+        {
+            if (++ticks == 1)
+            {
+                if (change == "gateway") active = active with { Id = "other" };
+                if (change == "endpoint") active = active with { Url = "wss://other.example" };
+                if (change == "identity-file") File.Delete(Path.Combine(temp.Path, "device-key-ed25519.json"));
+                if (change == "cancel") cancellation.Cancel();
+            }
+            if (ticks < 2 || change is "timeout" or "cancel") return;
+            if (change == "signing-device") signingId = "different-signing-device";
+            if (change == "session") sessionKey = "agent:main:other";
+            if (change == "agent") sessionKey = "agent:other:main";
+            transport.Generation++;
+            transport.IsConnected = true;
+        };
+        var wait = controller.WaitForExpectedRestartAsync(ct: cancellation.Token);
+        if (change == "same")
+        {
+            await wait;
+            Assert.True(ticks >= 2);
+            Assert.True((await client.VerifyAsync()).Ok);
+            Assert.Equal(GatewayAiSetupPhase.Verified, client.Phase);
+        }
+        else if (change == "cancel")
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => wait);
+        else if (change == "timeout")
+            await Assert.ThrowsAsync<TimeoutException>(() => wait);
+        else
+            await Assert.ThrowsAnyAsync<InvalidOperationException>(() => wait);
+        Assert.Single(transport.Calls, call => call.Method == "openclaw.setup.activate.start");
+        if (change != "same")
+            Assert.DoesNotContain(transport.Calls, call => call.Method == "openclaw.setup.verify");
+    }
+
+    [Theory]
     [InlineData("progress", "client", false, null)]
     [InlineData("action", "gateway", true, null)]
     [InlineData("note", "client", false, "Continue.Content")]
@@ -202,9 +280,18 @@ public sealed class GatewayAiSetupControllerTests
 
     private sealed class Transport : IGatewayAiSetupTransport
     {
-        public GatewayAiSetupRoute Route { get; set; } = new("gateway", "main", "authority");
+        private GatewayAiSetupRoute _route = new("gateway", "main", "authority");
+        public Func<GatewayAiSetupRoute>? RouteProvider { get; set; }
+        public Action<GatewayAiSetupRoute>? RestartAuthority { get; set; }
+        public GatewayAiSetupRoute Route { get => RouteProvider?.Invoke() ?? _route; set => _route = value; }
         public long Generation { get; set; } = 1;
-        public bool IsConnected => true;
+        public bool IsConnected { get; set; } = true;
+        public bool Configured { get; set; }
+        public void RequireRestartAuthority(GatewayAiSetupRoute expected)
+        {
+            if (RestartAuthority is not null) RestartAuthority(expected);
+            else if (Route != expected) throw new SetupNativeOwnershipException();
+        }
         public IReadOnlyCollection<string> OperatorScopes => ["operator.admin"];
         public IReadOnlyCollection<string> Methods =>
             ["openclaw.setup.detect", "openclaw.setup.verify", "openclaw.setup.auth.start",
@@ -225,8 +312,10 @@ public sealed class GatewayAiSetupControllerTests
                 manualProviders = Array.Empty<object>(),
                 authOptions = new[] { new { id = "login", label = "Sign in" } },
                 prepareOptions = new[] { new { id = "local/setup", label = "Set up and use" } },
-                workspace = "synthetic", setupComplete = false, nativeSessionCatalogPreferenceRequired = RequireConsent,
-            }) : method.EndsWith(".start", StringComparison.Ordinal) ? StartReply!(method, payload) : Polls.Dequeue());
+                workspace = "synthetic", setupComplete = Configured, configuredModel = Configured ? "provider/exact" : null,
+                nativeSessionCatalogPreferenceRequired = RequireConsent,
+            }) : method == "openclaw.setup.verify" ? Json(new { ok = true, modelRef = "provider/exact", latencyMs = 1 })
+                : method.EndsWith(".start", StringComparison.Ordinal) ? StartReply!(method, payload) : Polls.Dequeue());
         }
     }
 

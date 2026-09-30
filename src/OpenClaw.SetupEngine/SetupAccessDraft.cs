@@ -70,6 +70,7 @@ public sealed class SetupAccessDraft
     public bool GatewayAvailable { get; private set; }
     public SetupNativeConnectionRequest NativeConnectionRequest { get; set; } = new();
     public string? NativeGatewayId { get; private set; }
+    public string? NativeEndpointBinding { get; private set; }
     public bool CapabilityControlsEnabled => Config.Settings.EnableNodeMode || Config.Settings.EnableMcpServer == true;
     public bool BrowserAvailable => Config.Settings.EnableNodeMode && GatewayAvailable;
     public SetupCapabilityProfile Profile => IsCustomizingCapabilities
@@ -107,6 +108,11 @@ public sealed class SetupAccessDraft
     {
         if (route == SetupGatewayRoute.ManagedWsl && Route != SetupGatewayRoute.ManagedWsl)
             Config.GatewayUrl = _managedGatewayUrl;
+        if (route != Route)
+        {
+            NativeGatewayId = null;
+            NativeEndpointBinding = null;
+        }
         Route = route;
         GatewayAvailable = gatewayAvailable;
     }
@@ -115,12 +121,14 @@ public sealed class SetupAccessDraft
     {
         if (route is not (SetupGatewayRoute.Existing or SetupGatewayRoute.Remote) ||
             !result.Success || !result.GatewayCommitted ||
-            string.IsNullOrWhiteSpace(result.GatewayId) || string.IsNullOrWhiteSpace(result.GatewayUrl))
+            string.IsNullOrWhiteSpace(result.GatewayId) || string.IsNullOrWhiteSpace(result.GatewayUrl) ||
+            result.EndpointBinding is not { Length: 64 } || !result.EndpointBinding.All(Uri.IsHexDigit))
             return false;
 
+        SelectRoute(route, gatewayAvailable: true);
         Config.GatewayUrl = result.GatewayUrl;
         NativeGatewayId = result.GatewayId;
-        SelectRoute(route, gatewayAvailable: true);
+        NativeEndpointBinding = result.EndpointBinding;
         return true;
     }
 

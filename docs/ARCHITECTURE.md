@@ -106,8 +106,10 @@ These are the canonical homes. Do not reintroduce private copies elsewhere.
 | Setup-only Windows privacy preview and probing | Retired; current Permissions settings and runtime consent retain their existing owners | closed |
 | Setup Local AI and Tailscale control lifetimes | `LocalAiSetupControl` in `GatewaySetupDetailPage`; `TailscaleSetupControl` inline in `GatewaySetupPage` with a compatibility detail route | authoritative |
 | Temporary setup operator connection, captured identity and endpoint provenance | `SetupGatewaySession` + `SetupGatewaySessionBinding` | authoritative |
+| Expected AI restart admission during missing live handshake | `GatewayAiSetupController` bounds the wait; transports use the existing binding owner to validate persisted authority, then the client requires a fresh exact authenticated route | authoritative |
 | Native setup verify-only connection and isolated validation identity/tunnel | `GatewayConnectionValidator` + `GatewayValidationIdentity` | authoritative |
 | Native setup connection input and host transaction adapter | `SetupNativeConnectionInputResolver` + `SetupNativeConnectionHost` through `GatewayDirectConnectService` | authoritative |
+| Committed Existing/Remote Gateway through capability review and AI admission | `GatewayDirectConnectService` captures endpoint binding; `SetupAccessDraft` retains it; `SetupGatewaySession` / borrowed native transport reject drift before credentials or RPC | authoritative |
 | Focused AI setup protocol state and provider progress polling | `GatewayAiSetupClient` + `GatewayAiSetupController` | authoritative |
 | Verified AI completion intent and opaque pending restart handoff | `GatewayAiSetupClient` + `GatewayAiSetupCompletion` + `SetupDashboardHandoffStore` + `SetupDashboardHandoff` | authoritative |
 | Native verified destination choice and selection-time read-only verification | `SetupNativeCompletionCoordinator` + `SetupNativeCompletionVerifier`; `AiReadyPage` renders, `SetupWindow` composes finalization | authoritative |
@@ -115,6 +117,8 @@ These are the canonical homes. Do not reintroduce private copies elsewhere.
 | Native receipt acquisition classification and restart recovery settlement | `SetupDashboardHandoffStore` distinguishes acquired/busy/invalid/unavailable; `SetupNativeHandoffLauncher` retains recovery on busy/unavailable and clears it only after consumption or definitive rejection | authoritative |
 | Pre-acquisition restart recovery deletion | `App.OpenNativeSetupCompletion`; deletion is delegated to the receipt outcome owner | closed |
 | Setup startup availability | `WindowManager` supplies app identity availability; `SetupWindow` gates presentation and persisted preference | authoritative |
+| Setup registration outcome and fallback admission | `WindowsStartupTaskRegistration` classifies completed numeric HRESULT; `SetupStartupPolicy` still requires strict task absence for rejected-operation Run-key fallback | authoritative |
+| Pipeline failure plus failed registry settlement | `SetupPipeline.RunWithSettlementAsync` and `SetupPipelineSettlementException` retain both outcomes; `ProgressPage` renders/logs them without declaring reconciliation success | authoritative |
 | Setup HWND sizing and DPI-aware minimum | `SetupWindow` applies `OverlappedPresenter` constraints; `SetupWindowSizing` projects DIP dimensions to physical pixels | authoritative |
 | Verified setup authority across fresh clients | `OpenClawGatewayClient.AuthenticatedSigningDeviceId` + `SetupCompletionAuthority` + `SetupGatewaySessionBinding`; accepted signing identity and exact session survive completion, disk reads only detect drift | authoritative |
 | Native startup versus ordinary update prompt | `ActivationRouter.CheckOrdinaryStartupUpdateAsync`; App retains startup composition and receipt dispatch | authoritative |

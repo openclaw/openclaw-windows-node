@@ -152,13 +152,14 @@ public sealed class GatewayAiSetupController(GatewayAiSetupClient client, TimePr
         var started = _time.GetTimestamp();
         while (client.Phase == GatewayAiSetupPhase.VerificationRequired && client.WaitingForRestart)
         {
-            client.RequireSameRoute();
             ct.ThrowIfCancellationRequested();
+            client.RequireExpectedRestartAuthority();
             if (_time.GetElapsedTime(started) >= TimeSpan.FromSeconds(30))
                 throw new TimeoutException("The gateway has not reconnected. Recheck the exact model without repeating activation.");
             changed?.Invoke();
             await Task.Delay(TimeSpan.FromMilliseconds(500), _time, ct);
         }
+        ct.ThrowIfCancellationRequested();
         client.RequireSameRoute();
     }
 }

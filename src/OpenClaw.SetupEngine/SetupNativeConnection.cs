@@ -18,7 +18,8 @@ public sealed record SetupNativeConnectionResult(
     string? GatewayId = null,
     string? GatewayUrl = null,
     string? Error = null,
-    bool RequiresAttention = false);
+    bool RequiresAttention = false,
+    string? EndpointBinding = null);
 
 /// <summary>
 /// Check is nonpersistent. Connect rechecks the current input and commits through the host's
