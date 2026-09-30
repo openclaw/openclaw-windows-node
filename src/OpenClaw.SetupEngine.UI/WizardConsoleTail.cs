@@ -163,9 +163,7 @@ internal sealed class WizardConsoleTail : IDisposable
         try
         {
             // Anchor before wizard.start so old OAuth prompts cannot reappear on retry.
-            var initial = ParseGatewayLogTail(
-                await _gatewayLogTail(null, token),
-                previousCursor: null);
+            var initial = await ReadGatewayLogAsync(null, token);
             token.ThrowIfCancellationRequested();
             _ = TailGatewayLogAsync(initial.File, initial.Size, onMessage, onIssue,
                 token);
@@ -187,23 +185,9 @@ internal sealed class WizardConsoleTail : IDisposable
     {
         try
         {
-            int failures = 0;
             while (!cancellationToken.IsCancellationRequested)
             {
-                GatewayConsoleBatch batch;
-                try
-                {
-                    batch = ParseGatewayLogTail(
-                        await _gatewayLogTail!(cursor, cancellationToken), cursor);
-                    failures = 0;
-                }
-                catch (Exception ex) when ((ex is TimeoutException or IOException or InvalidOperationException) &&
-                    ex is not ObjectDisposedException && ++failures <= 2)
-                {
-                    _logger.Warn($"Isolated Gateway console tail retry {failures} ({ex.GetType().Name}).");
-                    await Task.Delay(TimeSpan.FromMilliseconds(500 * failures), cancellationToken);
-                    continue;
-                }
+                var batch = await ReadGatewayLogAsync(cursor, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
                 if (!string.Equals(file, batch.File, StringComparison.Ordinal))
                 {
@@ -226,6 +210,26 @@ internal sealed class WizardConsoleTail : IDisposable
         {
             _logger.Warn($"Isolated Gateway console tail stopped ({ex.GetType().Name}).");
             onIssue(GatewayLogTailIssue.Unavailable);
+        }
+    }
+
+    private async Task<GatewayConsoleBatch> ReadGatewayLogAsync(long? cursor, CancellationToken cancellationToken)
+    {
+        int failures = 0;
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                return ParseGatewayLogTail(
+                    await _gatewayLogTail!(cursor, cancellationToken), cursor);
+            }
+            catch (Exception ex) when ((ex is TimeoutException or IOException or InvalidOperationException) &&
+                ex is not ObjectDisposedException && ++failures <= 2)
+            {
+                _logger.Warn($"Isolated Gateway console tail retry {failures} ({ex.GetType().Name}).");
+                await Task.Delay(TimeSpan.FromMilliseconds(500 * failures), cancellationToken);
+            }
         }
     }
 

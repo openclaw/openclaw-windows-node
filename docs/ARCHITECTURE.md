@@ -148,8 +148,11 @@ probing another package cannot transfer stop ownership. Only starts issued by
 Companion are stopped on detach, and failed authorization rolls back only a
 start issued by that same call. Explicit wizard restart uses a separate runtime
 operation and preserves a pre-existing service's leave-running policy.
-Passive ownership probes have a five-second deadline and report unknown
-ownership on package failure, without interrupting authentication recovery.
+Ownership inspection, including the fresh check before credential handoff, has
+a five-second deadline. Package inspection failures, including WinRT deployment
+errors and an explicit unknown service state, deny handoff as unavailable
+inspection rather than claiming a conflicting listener. Authentication recovery
+classifies these unavailable probes as network failures.
 
 `NativeGatewayMsixInstaller.InstallAsync` invokes the signed-in user's App Installer
 alias (`%LOCALAPPDATA%\Microsoft\WindowsApps\winget.exe`) through the existing

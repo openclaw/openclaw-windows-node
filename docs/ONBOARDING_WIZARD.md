@@ -62,8 +62,10 @@ provider unspecified so policy can choose among the actual offered values.
 
 ### Native Gateway MSIX (isolated or legacy)
 
-Isolated Gateway console polling retries transient I/O and timeout failures
-twice from the same cursor. A gap or failure also shows persistent terminal
+Isolated Gateway console reads retry transient I/O and timeout failures twice,
+including the initial cursor anchor before `wizard.start`. Polling retries use
+the same cursor; initial reads never display historical instructions. A gap or
+failure also shows persistent terminal
 recovery outside the normal wizard-error controls, so continuing to another
 question cannot hide lost OAuth guidance. Starting a new wizard resets this
 warning. Explicit **Restart gateway** restarts the verified package service

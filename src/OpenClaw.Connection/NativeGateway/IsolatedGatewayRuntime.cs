@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Net;
+using System.Runtime.InteropServices;
 using OpenClaw.Shared;
 
 namespace OpenClaw.Connection.NativeGateway;
@@ -121,6 +122,13 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
             IsolatedGatewayStatus status = await _client.StatusAsync(package, deadline.Token)
                 .WaitAsync(deadline.Token).ConfigureAwait(false);
             deadline.Token.ThrowIfCancellationRequested();
+            if (status.State == "unknown")
+            {
+                Trace.TraceWarning("The Gateway package could not establish its service state. Credentials were not sent.");
+                return new(GatewayEndpointProvenanceKind.UnknownListener, endpoint.Port,
+                    Detail: "The Gateway package could not inspect its service. Check the package and retry. Credentials were not sent.",
+                    FailureReason: GatewayEndpointProvenanceFailureReason.InspectionUnavailable);
+            }
             if (status.State != "running" || status.Port != endpoint.Port)
             {
                 return InspectSnapshot(endpoint.Port, null);
@@ -249,7 +257,7 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
     }
 
     private static bool IsInspectionFailure(Exception ex) =>
-        ex is InvalidOperationException or IOException or Win32Exception or UnauthorizedAccessException or TimeoutException;
+        ex is InvalidOperationException or IOException or Win32Exception or COMException or UnauthorizedAccessException or TimeoutException;
 
     public async ValueTask DisposeAsync()
     {

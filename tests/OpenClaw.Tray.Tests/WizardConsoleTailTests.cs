@@ -234,6 +234,68 @@ public class WizardConsoleTailTests
     }
 
     [Fact]
+    public async Task IsolatedTailRetriesInitialAnchorBeforeDisplayingOnlyNewConsoleOutput()
+    {
+        var delivered = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cursors = new List<long?>();
+        var issues = new List<GatewayLogTailIssue>();
+        using var tail = new WizardConsoleTail(gatewayLogTail: (cursor, _) =>
+        {
+            cursors.Add(cursor);
+            if (cursors.Count == 1)
+                return Task.FromException<JsonElement>(new TimeoutException("initial timeout"));
+            return Task.FromResult(cursor is null
+                ? Payload(100, 100,
+                    """{"_meta":{"name":"openclaw","path":{"method":"console.log"}},"message":"stale instructions"}""")
+                : Payload(200, 200,
+                    """{"_meta":{"name":"openclaw","path":{"method":"console.log"}},"message":"new instructions"}"""));
+        });
+
+        await tail.StartGatewayAsync(message => delivered.TrySetResult(message), issues.Add, default);
+        Assert.Equal("new instructions", await delivered.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        tail.Stop();
+        Assert.Equal(new long?[] { null, null, 100 }, cursors);
+        Assert.Empty(issues);
+    }
+
+    [Fact]
+    public async Task IsolatedTailBoundsInitialAnchorRetries()
+    {
+        int calls = 0;
+        using var tail = new WizardConsoleTail(gatewayLogTail: (cursor, _) =>
+        {
+            Assert.Null(cursor);
+            Interlocked.Increment(ref calls);
+            return Task.FromException<JsonElement>(new TimeoutException("initial timeout"));
+        });
+
+        await Assert.ThrowsAsync<TimeoutException>(() =>
+            tail.StartGatewayAsync(_ => Assert.Fail("No output before anchoring."),
+                _ => Assert.Fail("Startup failures must reach the wizard recovery handler."), default));
+
+        Assert.Equal(3, Volatile.Read(ref calls));
+    }
+
+    [Fact]
+    public async Task IsolatedTailCancelsInitialAnchorRetryWithoutAnotherRequest()
+    {
+        int calls = 0;
+        using var cancellation = new CancellationTokenSource();
+        using var tail = new WizardConsoleTail(gatewayLogTail: (_, _) =>
+        {
+            Interlocked.Increment(ref calls);
+            cancellation.Cancel();
+            return Task.FromException<JsonElement>(new TimeoutException("initial timeout"));
+        });
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            tail.StartGatewayAsync(_ => Assert.Fail("Cancelled tail emitted output."),
+                _ => Assert.Fail("Cancellation is not a console failure."), cancellation.Token));
+
+        Assert.Equal(1, Volatile.Read(ref calls));
+    }
+
+    [Fact]
     public async Task IsolatedTailBoundsRetriesAndKeepsFailureVisible()
     {
         var exhausted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
