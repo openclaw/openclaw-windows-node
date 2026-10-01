@@ -43,6 +43,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
     private bool _closed;
     private int _generation;
     private bool _busy;
+    private bool _submittingAnswer;
     private bool _rendering;
     private readonly ProviderSetupDialog _providerDialog = new();
     private AiSetupPresentationModel _presentation = new();
@@ -598,7 +599,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         if (step is null || !_providerDialog.CanSubmit)
             return Task.CompletedTask;
         var answer = _providerDialog.TakeAnswer();
-        return RunAsync(ct => _controller!.SubmitAsync(step.Id, answer, Render, ct));
+        return RunAsync(ct => _controller!.SubmitAsync(step.Id, answer, Render, ct), submittingAnswer: true);
     }
 
     private void Refresh_Click(object sender, RoutedEventArgs e)
@@ -767,21 +768,23 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         catch (Exception ex) { ReportFailure(ex); }
     }
 
-    private Task RunAsync(Func<CancellationToken, Task> action)
+    private Task RunAsync(Func<CancellationToken, Task> action, bool submittingAnswer = false)
     {
         if (_closed || _busy)
             return Task.CompletedTask;
         CancelProviderViewportRestore();
-        return _activeRequest = RunCoreAsync(action);
+        return _activeRequest = RunCoreAsync(action, submittingAnswer);
     }
 
-    private async Task RunCoreAsync(Func<CancellationToken, Task> action)
+    private async Task RunCoreAsync(Func<CancellationToken, Task> action, bool submittingAnswer)
     {
         var generation = ++_generation;
         _request.Dispose();
         _request = new();
         var token = _request.Token;
         _busy = true;
+        // Uncertain is also used for recovery. Retain a prompt only for its own answer request.
+        _submittingAnswer = submittingAnswer;
         if (BackdropLocked) _providerError = null;
         else ErrorBar.IsOpen = false;
         Render();
@@ -825,6 +828,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             if (generation == _generation)
             {
                 _busy = false;
+                _submittingAnswer = false;
                 if (Client?.Phase is GatewayAiSetupPhase.Cancelled or GatewayAiSetupPhase.Rejected)
                 {
                     _providerOperationActive = false;
@@ -893,7 +897,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             var step = Client?.Wizard?.Step;
             var showProvider = ProviderPending && !_cancelling &&
                 GatewayAiSetupPresentation.ShowProviderDialog(step, phase, _busy,
-                    !string.IsNullOrWhiteSpace(_providerError));
+                    !string.IsNullOrWhiteSpace(_providerError), _submittingAnswer);
             var inlineProvider = ProviderPending && !showProvider;
             var canCancelProvider = Client?.SessionId is not null ||
                 (!_busy && phase is GatewayAiSetupPhase.Prepared or GatewayAiSetupPhase.Choosing);
@@ -911,7 +915,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             if (showProvider)
             {
                 _providerDialog.Update(step, phase, _busy, canCancelProvider, _cancelling,
-                    status, _providerError, _operationTitle);
+                    status, _providerError, _operationTitle, _submittingAnswer);
                 if (XamlRoot is not null)
                 {
                     var showing = _providerDialog.ShowOwnedAsync(XamlRoot, ActualTheme);

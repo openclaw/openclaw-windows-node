@@ -804,9 +804,12 @@ cancelled. They do not open a loading-only popup. The page-owned
 codes/browser sign-in instructions, or an explicit recovery decision. Device
 codes and sign-in links remain visible while the Gateway polls for completion.
 An input prompt stays open, disabled, while its answer is being submitted so
-validation retries preserve the dialog and selection context. Inline errors
-remain visible during loading; Cancel is not enabled before the start request
-returns a cancellable session.
+validation retries preserve the dialog and selection context. Submitted secrets
+are cleared immediately. The page tracks answer submission separately from the
+client's `Uncertain` protocol phase, so recovery does not expose a stale prompt.
+Inline errors remain visible during loading. Cancel is available once the client
+has allocated its owned wizard session ID, including while the start reply is
+pending; cancellation still requires the Gateway's acknowledgement.
 The page retains the operation lifetime and locks the existing choices even
 while the popup is hidden. The client still owns protocol state; the dialog
 never acquires another Gateway client or persistence store.

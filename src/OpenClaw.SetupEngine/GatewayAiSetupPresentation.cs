@@ -23,10 +23,15 @@ public static class GatewayAiSetupPresentation
         return step.DeviceCode is not null ? "SignedIn" : "Continue.Content";
     }
 
+    public static bool ShowProviderStep(GatewayAiSetupWizardStep? step, GatewayAiSetupPhase phase,
+        bool isBusy, bool isSubmittingAnswer = false) =>
+        step is not null && (phase == GatewayAiSetupPhase.Running ||
+            phase == GatewayAiSetupPhase.Uncertain && isBusy && isSubmittingAnswer);
+
     public static bool ShowProviderDialog(GatewayAiSetupWizardStep? step, GatewayAiSetupPhase phase,
-        bool isBusy, bool hasError)
+        bool isBusy, bool hasError, bool isSubmittingAnswer = false)
     {
-        if (phase == GatewayAiSetupPhase.Running && step is not null &&
+        if (ShowProviderStep(step, phase, isBusy, isSubmittingAnswer) && step is not null &&
             (step.DeviceCode is not null || step.ExternalUrl is not null ||
              GetPromptAction(step) is not null))
             return true;

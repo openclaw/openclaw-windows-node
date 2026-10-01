@@ -304,6 +304,24 @@ public sealed class GatewayAiSetupControllerTests
             step, GatewayAiSetupPhase.Running, busy, hasError: false));
     }
 
+    [Theory]
+    [InlineData(GatewayAiSetupPhase.Uncertain, true, true, true)]
+    [InlineData(GatewayAiSetupPhase.Uncertain, true, false, false)]
+    [InlineData(GatewayAiSetupPhase.Uncertain, false, true, false)]
+    [InlineData(GatewayAiSetupPhase.Running, true, false, true)]
+    [InlineData(GatewayAiSetupPhase.VerificationRequired, true, true, false)]
+    [InlineData(GatewayAiSetupPhase.Cancelled, true, true, false)]
+    public void ProviderStep_RetainsOnlyAnActiveAnswerSubmission(
+        GatewayAiSetupPhase phase, bool busy, bool submitting, bool expected)
+    {
+        var step = new GatewayAiSetupWizardStep { Id = "prompt", Type = "confirm", Executor = "client" };
+        Assert.Equal(expected, GatewayAiSetupPresentation.ShowProviderStep(step, phase, busy, submitting));
+        if (busy)
+            Assert.Equal(expected, GatewayAiSetupPresentation.ShowProviderDialog(
+                step, phase, busy, hasError: false, isSubmittingAnswer: submitting));
+        Assert.False(GatewayAiSetupPresentation.ShowProviderStep(null, phase, busy, submitting));
+    }
+
     private static async Task<(GatewayAiSetupClient, GatewayAiSetupController, Transport)> CreateAsync(bool requireConsent = false)
     {
         var transport = new Transport { RequireConsent = requireConsent };
