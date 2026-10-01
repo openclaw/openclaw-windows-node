@@ -11,6 +11,32 @@ public sealed class LlamaServerClientTests
     private static readonly Uri s_endpoint = new("http://127.0.0.1:18803/v1");
     private static readonly string s_modelPath = Path.GetFullPath("managed-model.gguf");
 
+    [Fact]
+    public async Task AuthenticatedProbe_UsesBearerForHealthAndLazyModelInspection()
+    {
+        var requests = new List<string>();
+        using var client = new LlamaServerClient(new DelegateHandler((request, _) =>
+        {
+            Assert.Equal("Bearer", request.Headers.Authorization?.Scheme);
+            Assert.Equal("local-test-credential", request.Headers.Authorization?.Parameter);
+            requests.Add(request.RequestUri!.PathAndQuery);
+            return request.RequestUri.AbsolutePath == "/health"
+                ? Task.FromResult(JsonResponse("{\"status\":\"ok\"}")) : ModelResponseAsync(ProbeCase.Verified);
+        }), () => "local-test-credential");
+        var result = await client.ProbeManagedModelAsync(s_endpoint, ModelAlias, s_modelPath);
+        Assert.True(result.IsHealthy);
+        Assert.Equal(["/health", "/models?autoload=false"], requests);
+    }
+
+    [Fact]
+    public async Task UnauthorizedProbeNeverReportsAReadyModel()
+    {
+        using var client = new LlamaServerClient(new DelegateHandler((_, _) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.Unauthorized))), () => "wrong-credential");
+        var result = await client.ProbeManagedModelAsync(s_endpoint, ModelAlias, s_modelPath);
+        Assert.False(result.IsHealthy);
+    }
+
     [Theory]
     [InlineData(ProbeCase.Timeout, LocalAiModelAvailabilityState.Unknown, false)]
     [InlineData(ProbeCase.InvalidResponse, LocalAiModelAvailabilityState.Unknown, false)]

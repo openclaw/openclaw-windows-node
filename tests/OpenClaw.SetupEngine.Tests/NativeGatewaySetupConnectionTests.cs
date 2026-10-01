@@ -12,6 +12,40 @@ public sealed class NativeGatewaySetupConnectionTests
     private const string Token = "native-loopback-fixture-token-not-a-production-credential";
     private const string Model = "fixture/native-model";
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MutationRequest_DrainsDispatchedRpcWhenCallerCancels(bool staged)
+    {
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        object Respond(string method, JsonElement parameters)
+        {
+            entered.Set();
+            if (!release.Wait(TimeSpan.FromSeconds(15)))
+                throw new TimeoutException("The mutation test did not release its fixture response.");
+            return Reply(method, parameters);
+        }
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(Respond), Token);
+        using var fixture = CreateFixture(server, isolated: true);
+        await using var owner = await fixture.PrepareAsync();
+        await using var connection = await NativeGatewaySetupConnection.ConnectAsync(owner);
+        IGatewayAiSetupTransport transport = staged ? connection :
+            new GatewayAiSetupTransport(connection.Client, () => connection.Route, owner.AuthorizeAsync);
+        using var cancellation = new CancellationTokenSource();
+        var request = transport.RequestMutationAsync("openclaw.setup.activate.start",
+            new { sessionId = "mutation-drain-test" }, 15_000, cancellation.Token);
+        try
+        {
+            Assert.True(await Task.Run(() => entered.Wait(TimeSpan.FromSeconds(10))));
+            cancellation.Cancel();
+            await Task.Delay(50);
+            Assert.False(request.IsCompleted);
+        }
+        finally { release.Set(); }
+        Assert.True((await request).GetProperty("done").GetBoolean());
+    }
+
     private static object Reply(string method, JsonElement parameters) => method switch
     {
         "openclaw.setup.detect" => new

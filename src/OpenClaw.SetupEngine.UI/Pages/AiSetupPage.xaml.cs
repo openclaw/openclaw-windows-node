@@ -30,6 +30,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
     private AiSetupPageArgs? _args;
     private SetupGatewaySession? _session;
     private NativeGatewaySetupConnection? _nativeConnection;
+    private IGatewayAiSetupTransport? _nativeLocalAiTransport;
     private WizardConsoleTail? _nativeConsole;
     private GatewayLogTailIssue? _nativeConsoleIssue;
     private readonly Queue<string> _nativeOutput = new();
@@ -247,6 +248,8 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
     private async Task InitializeAsync(CancellationToken ct)
     {
         IGatewayAiSetupTransport transport;
+        GatewayRecord? localAiRecord = null;
+        Func<CancellationToken, Task>? authorizeLocalAi = null;
         if (_args!.TransportFactory is { } factory)
             transport = factory();
         else if (_args.NativeSession is { } native)
@@ -259,6 +262,11 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             }
             _nativeConnection = connection;
             transport = connection;
+            if (native.IsIsolated)
+            {
+                localAiRecord = native.Record;
+                authorizeLocalAi = native.AuthorizeAsync;
+            }
         }
         else
         {
@@ -272,6 +280,15 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                     throw new InvalidOperationException("The native Gateway connection owner is unavailable.");
                 transport = await GatewayAiSetupTransport.BorrowNativeAsync(_args.DataDir, manager, active.Id, ct,
                     _args.ExpectedEndpointBinding);
+                if (active.NativeRuntimeContract == OpenClaw.Connection.NativeGateway.NativeGatewayPackageClient.IsolatedContract)
+                {
+                    localAiRecord = active;
+                    authorizeLocalAi = async token =>
+                    {
+                        await GatewayAiSetupTransport.BorrowNativeAsync(_args.DataDir, manager,
+                            active.Id, token, GatewayDashboardBinding.Capture(active));
+                    };
+                }
             }
             else
             {
@@ -291,6 +308,13 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         ct.ThrowIfCancellationRequested();
         ObjectDisposedException.ThrowIf(_closed, this);
         LocalAiOnboardingUse.RequireGateway(ExpectedGatewayId, transport.Route.GatewayId);
+        if (localAiRecord is not null && _args.LocalAiHost is INativeSetupLocalAiHost localAi)
+        {
+            localAi.ConfigureNative(localAiRecord, transport, authorizeLocalAi!);
+            _nativeLocalAiTransport = transport;
+            if (_localObservation is not null)
+                await _localObservation.RefreshAsync();
+        }
         if (_args.NativeSession is { IsIsolated: true } isolated)
             await StartIsolatedConsoleAsync(transport, isolated.LifetimeToken);
         _controller = new(new GatewayAiSetupClient(transport, _args.ExpectedConfiguredModelRef,
@@ -1009,7 +1033,8 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
 
     private void RenderLocalAi(GatewayAiSetupPhase phase)
     {
-        if (_args?.NativeSession is not null || _managedNative)
+        if ((_args?.NativeSession is not null || _managedNative) &&
+            _localObservation?.Snapshot.Target?.IsNative != true)
         {
             LocalAiSection.Visibility = Visibility.Collapsed;
             return;
@@ -1079,6 +1104,11 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
 
     private async Task ReleaseAsync(CancellationToken ct = default)
     {
+        if (_nativeLocalAiTransport is { } localTransport && _args?.LocalAiHost is INativeSetupLocalAiHost localAi)
+        {
+            localAi.ReleaseNative(localTransport);
+            _nativeLocalAiTransport = null;
+        }
         if (_args?.NativeSession?.IsIsolated == true)
         {
             _nativeConsole?.Dispose();

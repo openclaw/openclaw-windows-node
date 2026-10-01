@@ -243,7 +243,10 @@ public sealed class SetupGatewaySessionBindingTests
         Assert.Contains("catch\n        {\n            client.Dispose();\n            throw;", session);
         var transport = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine", "GatewayAiSetupTransport.cs"));
         Assert.True(transport.IndexOf("var route = routeProvider();", StringComparison.Ordinal) <
-            transport.IndexOf("await client.SendWizardRequestAsync", StringComparison.Ordinal));
+            transport.IndexOf("client.SendWizardRequestAsync", StringComparison.Ordinal));
         Assert.Contains("if (routeProvider() != route)", transport);
+        Assert.Contains("drainMutation: false", transport);
+        Assert.Contains("drainMutation: true", transport);
+        Assert.Contains("var result = drainMutation ? await request : await request.WaitAsync(cancellationToken);", transport);
     }
 }

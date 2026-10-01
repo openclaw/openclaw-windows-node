@@ -131,6 +131,18 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
         return await new GatewayAiSetupTransport(Client, () => Route).RequestAsync(method, parameters, timeoutMs, linked.Token);
     }
 
+    public async Task<JsonElement> RequestMutationAsync(string method, object parameters, int timeoutMs,
+        CancellationToken ct, Action? beforeDispatch = null)
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _owner.LifetimeToken);
+        await _authorize(linked.Token);
+        linked.Token.ThrowIfCancellationRequested();
+        // After admission, even session cancellation must await the tracked RPC's
+        // bounded result before the setup owner can release its mutation lifetime.
+        return await new GatewayAiSetupTransport(Client, () => Route)
+            .RequestMutationAsync(method, parameters, timeoutMs, linked.Token, beforeDispatch);
+    }
+
     public async Task RestartAsync(CancellationToken ct)
     {
         var generation = Generation;

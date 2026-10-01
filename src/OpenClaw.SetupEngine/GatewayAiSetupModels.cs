@@ -16,6 +16,18 @@ public interface IGatewayAiSetupTransport
             throw new SetupNativeOwnershipException();
     }
     Task<JsonElement> RequestAsync(string method, object parameters, int timeoutMs, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Admit cancellation before dispatch, then drain the bounded remote mutation.
+    /// A caller cancelling its wait is not evidence that a Gateway write was cancelled.
+    /// </summary>
+    Task<JsonElement> RequestMutationAsync(string method, object parameters, int timeoutMs,
+        CancellationToken cancellationToken, Action? beforeDispatch = null)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        beforeDispatch?.Invoke();
+        return RequestAsync(method, parameters, timeoutMs, CancellationToken.None);
+    }
 }
 
 public enum GatewayAiSetupPhase

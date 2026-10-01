@@ -171,18 +171,20 @@ public sealed class LlamaServerClient : ILlamaServerClient
 {
     private const int MaxEvidenceResponseBytes = 1024 * 1024;
     private readonly HttpClient _client;
+    private readonly Func<string?>? _getApiKey;
 
-    public LlamaServerClient() : this(new SocketsHttpHandler
+    public LlamaServerClient(Func<string?>? getApiKey = null) : this(new SocketsHttpHandler
     {
         UseProxy = false,
         AllowAutoRedirect = false,
         ConnectTimeout = TimeSpan.FromSeconds(2),
-    })
+    }, getApiKey)
     {
     }
 
-    internal LlamaServerClient(HttpMessageHandler handler)
+    internal LlamaServerClient(HttpMessageHandler handler, Func<string?>? getApiKey = null)
     {
+        _getApiKey = getApiKey;
         _client = new HttpClient(handler ?? throw new ArgumentNullException(nameof(handler)), disposeHandler: true)
         {
             Timeout = TimeSpan.FromSeconds(3),
@@ -236,8 +238,9 @@ public sealed class LlamaServerClient : ILlamaServerClient
     {
         try
         {
-            using var response = await _client.GetAsync(
-                    BuildEndpointUri(endpoint, "/health"),
+            using var request = CreateRequest(BuildEndpointUri(endpoint, "/health"));
+            using var response = await _client.SendAsync(
+                    request,
                     HttpCompletionOption.ResponseHeadersRead,
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -267,8 +270,9 @@ public sealed class LlamaServerClient : ILlamaServerClient
         string expectedModelPath,
         CancellationToken cancellationToken)
     {
-        using var response = await _client.GetAsync(
-                BuildEndpointUri(endpoint, "/models", "autoload=false"),
+        using var request = CreateRequest(BuildEndpointUri(endpoint, "/models", "autoload=false"));
+        using var response = await _client.SendAsync(
+                request,
                 HttpCompletionOption.ResponseHeadersRead,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -288,6 +292,15 @@ public sealed class LlamaServerClient : ILlamaServerClient
             evidence.State,
             evidence.ModelPath,
             $"llama-server reports the model as {evidence.ServerStatus}.");
+    }
+
+    private HttpRequestMessage CreateRequest(Uri uri)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, uri);
+        if (_getApiKey?.Invoke() is { } apiKey)
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+                "Bearer", LocalAiApiCredentialStore.RequireApiKey(apiKey));
+        return request;
     }
 
     private static void ValidateManagedEndpoint(Uri endpoint)

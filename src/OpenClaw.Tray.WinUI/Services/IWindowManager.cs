@@ -27,6 +27,7 @@ internal interface IWindowManager
     void ShowConnectionStatus();
     Task ShowOnboardingAsync();
     Task ShowLocalAiSetupAsync();
+    Task ShowLocalAiModelSetupAsync() => ShowOnboardingAsync();
     Task ShowGatewayWizardAsync();
     Task ShowDashboardLaunchFailureAsync(Action? retry);
     Task ShowNativeSetupAsync(OpenClaw.SetupEngine.SetupNativeCompletion completion, CancellationToken ct);

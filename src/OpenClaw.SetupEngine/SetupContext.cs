@@ -37,6 +37,8 @@ public sealed class SetupConfig
     public bool UsesBundledDefaultConfig { get; set; }
     [JsonIgnore]
     public string? LocalAiRecoveryGatewayId { get; set; }
+    [JsonIgnore]
+    public bool NativeLocalAiAcquisition { get; set; }
 
     // Nested config sections — everything is configurable
     public WslConfig Wsl { get; set; } = new();

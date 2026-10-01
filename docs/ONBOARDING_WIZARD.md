@@ -62,6 +62,21 @@ provider unspecified so policy can choose among the actual offered values.
 
 ### Native Gateway MSIX (isolated or legacy)
 
+For an authenticated isolated native Gateway, **Local AI on this PC** uses the
+Windows-only artifact pipeline, then returns to an explicit **Use Local AI**
+action. The choice requires guarded configuration RPCs, exact-model verification
+and operator administration scope; legacy same-user native Gateways remain
+unsupported. Installation itself never starts inference or changes the primary.
+
+Use starts the human-owned authenticated loopback server, publishes only to the
+selected Gateway, then verifies inference from that isolated Gateway with the
+exact primary model. The setup record remains staged until normal verified
+completion. Settings uses the same flow for an existing native Gateway.
+Native installation and recovery never create a WSL distro, change WSL
+networking, or run WSL configuration commands. Stop an existing owned runtime
+before repairing its files. Unconfirmed writes or external provider changes
+require reconciliation with the original Gateway, not an automatic overwrite.
+
 Isolated Gateway console reads retry transient I/O and timeout failures twice,
 including the initial cursor anchor before `wizard.start`. Polling retries use
 the same cursor; initial reads never display historical instructions. A gap or

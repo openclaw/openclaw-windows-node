@@ -428,6 +428,25 @@ excludes any requests already pending, including requests from earlier setup
 attempts. Later cleanup excludes requests that predate the retained successful
 baseline. A socket-provided request ID still uses the exact device-approval path.
 
+### Native Local AI integration
+
+`BuildNativeLocalAiAcquisitionSteps` is an artifact-only pipeline: Windows OS/GPU
+preflight, verified receipt reconciliation, pinned runtime/model acquisition and
+receipt persistence. Unlike WSL recovery, it never installs WSL, changes mirrored
+networking, starts a listener, forces inference, publishes a provider, or restarts
+a Gateway. Its caller must retain exact native-session admission and return to an
+explicit **Use Local AI** action after acquisition.
+
+Native onboarding and Settings select this pipeline only after exact native
+target admission. It does not participate in WSL registry settlement. Acquisition
+returns to AI setup without claiming that a model is configured. Explicit Use
+creates the durable native binding and starts the single app-owned authenticated
+runtime. Existing setup verification proves the exact Gateway primary before
+completion; the native session reconciles its Local AI revision after capability
+configuration and before registry publication. Cancellation drains mutations and
+withdraws the selected Local AI route before releasing the native session.
+A damaged or foreign ownership receipt is never adopted implicitly.
+
 ### Local AI GPU admission
 
 Local AI uses the CUDA driver's `cuMemGetInfo` total and free memory directly

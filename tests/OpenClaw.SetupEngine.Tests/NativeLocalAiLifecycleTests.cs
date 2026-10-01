@@ -1,0 +1,406 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Runtime.InteropServices;
+using OpenClaw.Connection;
+using OpenClaw.Connection.LocalAi;
+using OpenClaw.Connection.NativeGateway;
+using OpenClaw.Shared;
+using OpenClaw.Shared.Inference;
+using OpenClaw.TestSupport;
+using OpenClawTray.Services;
+
+namespace OpenClaw.SetupEngine.Tests;
+
+public sealed class NativeLocalAiLifecycleTests
+{
+    private static readonly GatewayRecord Record = new()
+    {
+        Id = "native-local-ai", IsLocal = true, Url = "ws://127.0.0.1:55060",
+        NativePackageFamilyName = "OpenClawFoundation.OpenClawGateway_test",
+        NativeRuntimeContract = NativeGatewayPackageClient.IsolatedContract,
+    };
+
+    [Fact]
+    public async Task StagedObservationAndReviewNeedNoRegistryPublicationWslOrCredential()
+    {
+        using var fixture = new Fixture();
+        var authorizations = 0;
+        var hardware = new HostHardwareInfo(Architecture.X64, 128L << 30, 100L << 30,
+            [new(GpuVendor.Nvidia, "Test GPU", 96L << 30, 80L << 30,
+                DriverVersion: "615.0", CudaMajorVersion: 13, StableId: "GPU-test")], false);
+        var host = new SetupLocalAiHost(
+            () => throw new InvalidOperationException("Native observation must not resolve WSL."),
+            () => null, () => null, _ => Task.FromResult<LocalAiResolvedInstall?>(null),
+            (_, _) => throw new InvalidOperationException("There is no install to inspect."),
+            _ => Task.FromResult(hardware),
+            () => throw new InvalidOperationException("Observation must not publish."),
+            nativeLifecycle: fixture.Lifecycle);
+        host.ConfigureNative(Record, fixture.Rpc, _ => { authorizations++; return Task.CompletedTask; });
+        var observed = await host.ObserveAsync(default);
+        Assert.Equal(LocalAiOnboardingState.SetUp, observed.State);
+        Assert.True(observed.Target!.IsNative);
+        Assert.Equal(Record.Id, observed.Target.GatewayId);
+        host.ReleaseNative(fixture.Rpc);
+        Assert.Equal(observed.Target, await host.RevalidateReviewAsync(observed, default));
+        Assert.Equal(2, authorizations);
+        Assert.False(fixture.Store.Exists);
+        Assert.Null(fixture.Lifecycle.GetApiKey());
+        Assert.Equal(0, fixture.Rpc.Writes);
+    }
+
+    [Fact]
+    public async Task ExplicitSelectionPublishesAuthenticatedProviderAndRestoresOnlyOwnedFields()
+    {
+        using var fixture = new Fixture();
+        var original = fixture.Rpc.Config.DeepClone();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        Assert.Equal(0, fixture.Rpc.Writes);
+        Assert.True((await fixture.Lifecycle.QuiesceAsync(fixture.Install, LocalAiQuiesceReason.EndpointCycle)).Success);
+        Assert.True((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+        Assert.Equal(fixture.Lifecycle.GetApiKey(),
+            fixture.Rpc.Config["models"]!["providers"]!["llamacpp"]!["apiKey"]!.GetValue<string>());
+        Assert.Equal(fixture.Model, fixture.Rpc.Config["agents"]!["defaults"]!["model"]!["primary"]!.GetValue<string>());
+        Assert.NotNull(fixture.Rpc.Config["agents"]!["defaults"]!["models"]![fixture.Model]);
+        Assert.True((await fixture.Lifecycle.QuiesceAsync(fixture.Install)).Success);
+        Assert.True(JsonNode.DeepEquals(original, fixture.Rpc.Config));
+        Assert.False(fixture.Store.Load()!.Pending);
+        Assert.Equal("cloud/model", fixture.Store.Load()!.PreviousPrimary);
+    }
+
+    [Fact]
+    public async Task RestartRetainsExactGatewayAndFallbackWithoutRequiringPreviousPageAuthority()
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        Assert.True((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+        var resumed = fixture.CreateLifecycle();
+        fixture.Rpc.Route = fixture.Rpc.Route with { AuthorityId = "new-page-lifetime" };
+        resumed.Register(Record, fixture.Rpc);
+        Assert.True((await resumed.QuiesceAsync(fixture.Install)).Success);
+        Assert.Equal("cloud/model", fixture.Rpc.Config["agents"]!["defaults"]!["model"]!["primary"]!.GetValue<string>());
+        Assert.True((await resumed.PublishAsync(fixture.Install)).Success);
+    }
+
+    [Fact]
+    public async Task EndpointCycleWithdrawsOldPortBeforePublishingReplacement()
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        Assert.True((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+        Assert.True((await fixture.Lifecycle.QuiesceAsync(fixture.Install, LocalAiQuiesceReason.EndpointCycle)).Success);
+        Assert.Null(fixture.Rpc.Config["models"]!["providers"]!["llamacpp"]);
+        Assert.Equal(fixture.Model, fixture.Rpc.Config["agents"]!["defaults"]!["model"]!["primary"]!.GetValue<string>());
+        var replacement = fixture.Install with { Endpoint = new Uri("http://127.0.0.1:18809/v1") };
+        Assert.True((await fixture.Lifecycle.PublishAsync(replacement)).Success);
+        Assert.Equal(replacement.Endpoint.AbsoluteUri,
+            fixture.Rpc.Config["models"]!["providers"]!["llamacpp"]!["baseUrl"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task ExternalConfigurationEditIsNeverOverwrittenEvenWhenProviderStillMatches()
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        Assert.True((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+        fixture.Rpc.Config["userPreference"] = "external-edit";
+        fixture.Rpc.Revision++;
+        var writes = fixture.Rpc.Writes;
+        Assert.False((await fixture.Lifecycle.QuiesceAsync(fixture.Install)).Success);
+        Assert.Equal(writes, fixture.Rpc.Writes);
+        Assert.NotNull(fixture.Rpc.Config["models"]!["providers"]!["llamacpp"]);
+    }
+
+    [Fact]
+    public async Task ExplicitInferenceReconcilesUnrelatedChangesAndPreservesThem()
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        Assert.True((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+        fixture.Rpc.Config["capabilities"] = new JsonObject { ["native"] = true };
+        fixture.Rpc.Revision++;
+        await fixture.Lifecycle.ReconcileVerifiedAsync(Record, fixture.Rpc, fixture.Install, default);
+        Assert.Equal(1, fixture.Rpc.Verifications);
+        Assert.True((await fixture.Lifecycle.QuiesceAsync(fixture.Install)).Success);
+        Assert.True(fixture.Rpc.Config["capabilities"]!["native"]!.GetValue<bool>());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FailedOrRacingInferenceNeverAdoptsNewRevision(bool race)
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        Assert.True((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+        var ownedHash = fixture.Store.Load()!.ConfigHash;
+        fixture.Rpc.Revision++;
+        fixture.Rpc.VerificationSucceeds = race;
+        fixture.Rpc.ChangeDuringVerification = race;
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            fixture.Lifecycle.ReconcileVerifiedAsync(Record, fixture.Rpc, fixture.Install, default));
+        Assert.Equal(ownedHash, fixture.Store.Load()!.ConfigHash);
+        Assert.Equal(1, fixture.Rpc.Writes);
+    }
+
+    [Fact]
+    public async Task LostMutationReplyLeavesDurablePendingStateAndNeverReplays()
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        fixture.Rpc.LoseReply = true;
+        Assert.False((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+        Assert.True(fixture.Store.Load()!.Pending);
+        Assert.NotNull(fixture.Rpc.Config["models"]!["providers"]!["llamacpp"]);
+        var resumed = fixture.CreateLifecycle();
+        resumed.Register(Record, fixture.Rpc);
+        var blocked = await resumed.QuiesceAsync(fixture.Install);
+        Assert.False(blocked.Success);
+        Assert.Contains(Record.Id, blocked.Detail);
+        Assert.Contains("cloud/model", blocked.Detail);
+        Assert.Contains(fixture.Install.Endpoint!.ToString(), blocked.Detail);
+        Assert.Equal(1, fixture.Rpc.Writes);
+    }
+
+    [Fact]
+    public async Task RejectedAdmissionDoesNotLeaveAnUnsentMutationPending()
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        fixture.Rpc.RejectMutationBeforeDispatch = true;
+        Assert.False((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+        Assert.False(fixture.Store.Load()!.Pending);
+        Assert.Equal(0, fixture.Rpc.Writes);
+    }
+
+    [Fact]
+    public async Task LostPublicationAfterCrashRestoresOnlySameEndpointAndVerifiesWithoutReplayingWrite()
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        fixture.Rpc.LoseReply = true;
+        Assert.False((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+        var recovered = fixture.CreateLifecycle();
+        recovered.Register(Record, fixture.Rpc);
+        await recovered.PrepareAsync(fixture.Install, default);
+        Assert.Equal(fixture.Install.Endpoint!.Port, recovered.GetRecoveryPort(fixture.Install));
+        Assert.True((await recovered.QuiesceAsync(fixture.Install, LocalAiQuiesceReason.EndpointCycle)).Success);
+        Assert.True(fixture.Store.Load()!.Pending);
+        Assert.True((await recovered.PublishAsync(fixture.Install)).Success);
+        Assert.False(fixture.Store.Load()!.Pending);
+        Assert.Equal(1, fixture.Rpc.Writes);
+        Assert.Equal(1, fixture.Rpc.Verifications);
+        Assert.Null(recovered.GetRecoveryPort(fixture.Install));
+    }
+
+    [Fact]
+    public async Task FailedInferenceDoesNotAdoptRecoveredPublication()
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        fixture.Rpc.LoseReply = true;
+        Assert.False((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+        var recovered = fixture.CreateLifecycle();
+        recovered.Register(Record, fixture.Rpc);
+        await recovered.PrepareAsync(fixture.Install, default);
+        fixture.Rpc.VerificationSucceeds = false;
+        Assert.False((await recovered.PublishAsync(fixture.Install)).Success);
+        Assert.True(fixture.Store.Load()!.Pending);
+        Assert.Equal(1, fixture.Rpc.Writes);
+    }
+
+    [Fact]
+    public async Task LandedWithdrawalWithLostReplyCanBeConfirmedAndReleased()
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        Assert.True((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+        fixture.Rpc.LoseReply = true;
+        Assert.False((await fixture.Lifecycle.QuiesceAsync(fixture.Install)).Success);
+        Assert.True(fixture.Store.Load()!.Pending);
+        var recovered = fixture.CreateLifecycle();
+        recovered.Register(Record, fixture.Rpc);
+        Assert.True((await recovered.QuiesceAsync(fixture.Install)).Success);
+        Assert.Equal(2, fixture.Rpc.Writes);
+        await recovered.ForgetWithdrawnAsync(Record.Id, default);
+        Assert.False(fixture.Store.Exists);
+    }
+
+    [Fact]
+    public async Task UnchangedRevisionClearsPendingWithoutInferringOrReplaying()
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        fixture.Store.Save(fixture.Store.Load()! with { Pending = true });
+        var recovered = fixture.CreateLifecycle();
+        recovered.Register(Record, fixture.Rpc);
+        await recovered.PrepareAsync(fixture.Install, default);
+        Assert.False(fixture.Store.Load()!.Pending);
+        Assert.Equal(0, fixture.Rpc.Writes);
+        Assert.Equal(0, fixture.Rpc.Verifications);
+    }
+
+    [Fact]
+    public async Task ActiveNativeRecordDoesNotRetargetAnExistingWslEndpointCycle()
+    {
+        using var directory = new TempDirectory();
+        var registry = new GatewayRegistry(directory.Path);
+        registry.AddOrUpdate(Record);
+        registry.SetActive(Record.Id);
+        var wsl = new CountingWsl();
+        var lifecycle = new LocalAiGatewayLifecycle(new(directory.Path), directory.Path,
+            () => registry, () => null, wsl, NullLogger.Instance);
+        Assert.True(lifecycle.IsNativeMode);
+        Assert.True((await lifecycle.QuiesceAsync(LocalAiOnboardingTests.Install())).Success);
+        Assert.True((await lifecycle.PublishAsync(LocalAiOnboardingTests.Install())).Success);
+        Assert.Equal(2, wsl.Calls);
+        Assert.Null(lifecycle.GetApiKey());
+    }
+
+    [Fact]
+    public async Task ReplacedIdentityCannotAdoptPersistedOwnership()
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        var resumed = fixture.CreateLifecycle();
+        fixture.Rpc.Route = fixture.Rpc.Route with { IdentityBinding = new string('B', 64) };
+        resumed.Register(Record, fixture.Rpc);
+        await Assert.ThrowsAsync<LocalAiSelectionRejectedException>(() => resumed.PrepareAsync(fixture.Install, default));
+        Assert.False((await resumed.PublishAsync(fixture.Install)).Success);
+        Assert.Equal(0, fixture.Rpc.Writes);
+    }
+
+    [Fact]
+    public async Task ExistingProviderWithoutOwnershipIsNotAdopted()
+    {
+        using var fixture = new Fixture();
+        fixture.Rpc.Config["models"]!["providers"]!["llamacpp"] = new JsonObject();
+        await Assert.ThrowsAsync<LocalAiSelectionRejectedException>(() =>
+            fixture.Lifecycle.PrepareAsync(fixture.Install, default));
+        Assert.False(fixture.Store.Exists);
+        Assert.Equal(0, fixture.Rpc.Writes);
+    }
+
+    [Fact]
+    public async Task OfflineOriginalGatewayLeavesCleanupUnresolvedWithoutWslFallback()
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        Assert.True((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+        fixture.Lifecycle.Release(fixture.Rpc);
+        Assert.False((await fixture.Lifecycle.QuiesceAsync(fixture.Install)).Success);
+        Assert.Equal(1, fixture.Rpc.Writes);
+    }
+
+    [Fact]
+    public async Task CancellationBeforeDispatchCreatesNoOwnershipOrMutation()
+    {
+        using var fixture = new Fixture();
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            fixture.Lifecycle.PrepareAsync(fixture.Install, cancellation.Token));
+        Assert.False(fixture.Store.Exists);
+        Assert.Equal(0, fixture.Rpc.Writes);
+    }
+
+    private sealed class Fixture : IDisposable
+    {
+        private readonly TempDirectory _directory = new();
+        public LocalAiResolvedInstall Install { get; } = LocalAiOnboardingTests.Install();
+        public string Model => LocalAiGatewayProviderDefinition.BuildPrimaryModel(Install);
+        public RpcTransport Rpc { get; } = new();
+        public LocalAiNativeBindingStore Store { get; }
+        public LocalAiGatewayLifecycle Lifecycle { get; }
+        public Fixture()
+        {
+            Store = new(new(_directory.Path));
+            Lifecycle = CreateLifecycle();
+            Lifecycle.Register(Record, Rpc);
+        }
+        public LocalAiGatewayLifecycle CreateLifecycle() => new(new(_directory.Path), _directory.Path,
+            () => null, () => null, new ForbiddenWsl(), NullLogger.Instance);
+        public void Dispose() => _directory.Dispose();
+    }
+
+    private sealed class ForbiddenWsl : ILocalAiEndpointLifecycle
+    {
+        public Task<LocalAiEndpointLifecycleResult> QuiesceAsync(LocalAiResolvedInstall install,
+            LocalAiQuiesceReason reason = LocalAiQuiesceReason.Teardown, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Native flow must never call WSL.");
+        public Task<LocalAiEndpointLifecycleResult> PublishAsync(LocalAiResolvedInstall install,
+            CancellationToken cancellationToken = default) => throw new InvalidOperationException("Native flow must never call WSL.");
+    }
+
+    private sealed class CountingWsl : ILocalAiEndpointLifecycle
+    {
+        public int Calls { get; private set; }
+        public Task<LocalAiEndpointLifecycleResult> QuiesceAsync(LocalAiResolvedInstall install,
+            LocalAiQuiesceReason reason = LocalAiQuiesceReason.Teardown, CancellationToken cancellationToken = default)
+        { Calls++; return Task.FromResult(LocalAiEndpointLifecycleResult.Ok()); }
+        public Task<LocalAiEndpointLifecycleResult> PublishAsync(LocalAiResolvedInstall install,
+            CancellationToken cancellationToken = default)
+        { Calls++; return Task.FromResult(LocalAiEndpointLifecycleResult.Ok()); }
+    }
+
+    private sealed class RpcTransport : IGatewayAiSetupTransport
+    {
+        public GatewayAiSetupRoute Route { get; set; } = new(Record.Id, "main", "page-authority",
+            GatewayDashboardBinding.Capture(Record), new string('A', 64), "agent:main:main");
+        public long Generation => 1;
+        public bool IsConnected => true;
+        public IReadOnlyCollection<string> Methods => ["config.get", "config.patch", "openclaw.setup.verify"];
+        public IReadOnlyCollection<string> OperatorScopes => ["operator.admin"];
+        public JsonObject Config { get; } = JsonNode.Parse("""
+            {"models":{"providers":{}},"agents":{"defaults":{"model":{"primary":"cloud/model"},"models":{"cloud/model":{"alias":"keep"}}}}}
+            """)!.AsObject();
+        public int Revision { get; set; }
+        public int Writes { get; private set; }
+        public bool LoseReply { get; set; }
+        public bool VerificationSucceeds { get; set; } = true;
+        public bool ChangeDuringVerification { get; set; }
+        public int Verifications { get; private set; }
+        public bool RejectMutationBeforeDispatch { get; set; }
+        public Task<JsonElement> RequestMutationAsync(string method, object parameters, int timeoutMs,
+            CancellationToken ct, Action? beforeDispatch = null)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (RejectMutationBeforeDispatch) throw new InvalidOperationException("Admission failed before dispatch.");
+            beforeDispatch?.Invoke();
+            return RequestAsync(method, parameters, timeoutMs, CancellationToken.None);
+        }
+        public Task<JsonElement> RequestAsync(string method, object parameters, int timeoutMs, CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (method == "openclaw.setup.verify")
+            {
+                Verifications++;
+                if (ChangeDuringVerification) Revision++;
+                return Task.FromResult(JsonSerializer.SerializeToElement(new
+                {
+                    ok = VerificationSucceeds,
+                    modelRef = Config["agents"]!["defaults"]!["model"]!["primary"]!.GetValue<string>(),
+                    latencyMs = 1, status = "unavailable", error = "Simulated inference failure.",
+                }));
+            }
+            if (method == "config.patch")
+            {
+                var payload = JsonSerializer.SerializeToElement(parameters);
+                Assert.Equal(Revision.ToString(), payload.GetProperty("baseHash").GetString());
+                Merge(Config, JsonNode.Parse(payload.GetProperty("raw").GetString()!)!.AsObject());
+                Revision++;
+                Writes++;
+                if (LoseReply) throw new IOException("Simulated lost reply after persistence.");
+            }
+            return Task.FromResult(JsonSerializer.SerializeToElement(new { hash = Revision.ToString(), config = Config, valid = true }));
+        }
+        private static void Merge(JsonObject target, JsonObject patch)
+        {
+            foreach (var pair in patch)
+            {
+                if (pair.Value is null) target.Remove(pair.Key);
+                else if (pair.Value is JsonObject child && target[pair.Key] is JsonObject existing) Merge(existing, child);
+                else target[pair.Key] = pair.Value.DeepClone();
+            }
+        }
+    }
+}

@@ -11,7 +11,18 @@ public enum LocalAiOnboardingState
 /// <summary>The exact existing Gateway, not a request to create or replace one.</summary>
 public sealed record SetupLocalAiTarget(
     string GatewayId, string DistroName, int GatewayPort,
-    string? ModelCatalogId, int? RequestedLocalAiPort);
+    string? ModelCatalogId, int? RequestedLocalAiPort,
+    bool IsNative = false, string? EndpointBinding = null);
+
+public interface INativeSetupLocalAiHost
+{
+    bool HasNativeSelection { get; }
+    void ConfigureNative(OpenClaw.Connection.GatewayRecord record, IGatewayAiSetupTransport transport,
+        Func<CancellationToken, Task> authorize);
+    void ReleaseNative(IGatewayAiSetupTransport transport);
+    Task ReconcileNativeAsync(IGatewayAiSetupTransport transport, string modelRef, CancellationToken ct);
+    Task WithdrawNativeAsync(CancellationToken ct);
+}
 
 public sealed record LocalAiOnboardingSnapshot(
     LocalAiOnboardingState State,

@@ -29,6 +29,7 @@ public sealed class NativeGatewaySetupSession(
     private IDisposable? _terminal;
     public GatewayRecord Record { get; private set; } = record;
     public bool IsIsolated => draft.Contract == NativeGatewayContract.IsolatedSessionV1;
+    public bool IsPublished => _published;
     public string IdentityDirectory => registry.GetIdentityDirectory(draft.GatewayId);
     public string ConsoleLogPath => Path.Combine(
         NativeGatewayPaths.GetStateDirectory(registry, draft.GatewayId), "wizard-console.log");
@@ -272,14 +273,16 @@ public sealed class NativeGatewaySetupSession(
         CompleteCoreAsync(cancellationToken, capabilities, null);
 
     public Task<GatewayRecord> CompleteVerifiedAsync(
-        GatewayAiSetupCompletion proof, CapabilitiesConfig capabilities, CancellationToken cancellationToken)
+        GatewayAiSetupCompletion proof, CapabilitiesConfig capabilities, CancellationToken cancellationToken,
+        Func<IGatewayAiSetupTransport, CancellationToken, Task>? afterVerification = null)
     {
         RequireCompletion(proof);
-        return CompleteCoreAsync(cancellationToken, capabilities, proof);
+        return CompleteCoreAsync(cancellationToken, capabilities, proof, afterVerification);
     }
 
     private async Task<GatewayRecord> CompleteCoreAsync(
-        CancellationToken cancellationToken, CapabilitiesConfig? capabilities, GatewayAiSetupCompletion? proof)
+        CancellationToken cancellationToken, CapabilitiesConfig? capabilities, GatewayAiSetupCompletion? proof,
+        Func<IGatewayAiSetupTransport, CancellationToken, Task>? afterVerification = null)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
         await _gate.WaitAsync(linked.Token);
@@ -326,6 +329,8 @@ public sealed class NativeGatewaySetupSession(
                 await using var connection = await NativeGatewaySetupConnection.ConnectForFinalizationAsync(
                     this, AuthorizeCoreAsync, linked.Token);
                 await VerifyConnectionAsync(connection, proof, linked.Token);
+                if (afterVerification is not null)
+                    await afterVerification(connection, linked.Token);
             }
             await runtime.StopAsync(linked.Token);
             linked.Token.ThrowIfCancellationRequested();

@@ -18,7 +18,8 @@ public sealed class OnboardingPresentationContractTests
             Assert.DoesNotContain("registry.Save()", source);
         }
         var progress = Read(@"src\OpenClaw.SetupEngine.UI\Pages\ProgressPage.xaml.cs");
-        Assert.Contains("ctx.ExpectedGatewayRegistry = setupOwner?.BeginGatewaySetup()", progress);
+        Assert.Contains("ctx.ExpectedGatewayRegistry = config.NativeLocalAiAcquisition ? null : setupOwner?.BeginGatewaySetup()", progress);
+        Assert.Contains("outcome => config.NativeLocalAiAcquisition ? Task.CompletedTask :", progress);
         Assert.Contains("SetupPipeline.RunWithSettlementAsync", progress);
         Assert.True(progress.IndexOf("SettleGatewaySetupAsync(ctx.ExpectedGatewayRegistry", StringComparison.Ordinal) <
             progress.IndexOf("if (_closed || _window?.IsClosed == true)", StringComparison.Ordinal));

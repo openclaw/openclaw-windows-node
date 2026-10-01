@@ -82,7 +82,16 @@ public sealed class GatewayAiSetupTransport(
             throw new SetupNativeOwnershipException();
     }
 
-    public async Task<JsonElement> RequestAsync(string method, object? parameters, int timeoutMs, CancellationToken cancellationToken)
+    public Task<JsonElement> RequestAsync(string method, object? parameters, int timeoutMs, CancellationToken cancellationToken) =>
+        RequestCoreAsync(method, parameters, timeoutMs, cancellationToken, drainMutation: false);
+
+    public Task<JsonElement> RequestMutationAsync(string method, object parameters, int timeoutMs,
+        CancellationToken cancellationToken, Action? beforeDispatch = null) =>
+        RequestCoreAsync(method, parameters, timeoutMs, cancellationToken, drainMutation: true, beforeDispatch);
+
+    private async Task<JsonElement> RequestCoreAsync(
+        string method, object? parameters, int timeoutMs, CancellationToken cancellationToken, bool drainMutation,
+        Action? beforeDispatch = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var route = routeProvider();
@@ -90,9 +99,12 @@ public sealed class GatewayAiSetupTransport(
             await authorize(cancellationToken);
         if (routeProvider() != route)
             throw new SetupNativeOwnershipException();
+        cancellationToken.ThrowIfCancellationRequested();
         // Cancelling the local wait never implies rollback of an admitted gateway
         // operation. The focused client retains its session for cancel/reconciliation.
-        var result = await client.SendWizardRequestAsync(method, parameters, timeoutMs).WaitAsync(cancellationToken);
+        beforeDispatch?.Invoke();
+        var request = client.SendWizardRequestAsync(method, parameters, timeoutMs);
+        var result = drainMutation ? await request : await request.WaitAsync(cancellationToken);
         if (routeProvider() != route)
             throw new InvalidOperationException("The setup Gateway authority changed during the request.");
         return result;

@@ -3,29 +3,48 @@ using OpenClaw.Connection.LocalAi;
 using OpenClaw.Shared;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace OpenClawTray.Services;
 
 /// <summary>
-/// Keeps the app-owned WSL gateway from routing to a listener while the native
+/// Keeps the app-owned gateway from routing to a listener while the native
 /// llama-server endpoint is absent, changing, or not owned by this companion.
 /// </summary>
 internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecycle
 {
-    private const string FixedPath = "/home/openclaw/.openclaw/bin:/opt/openclaw/bin:/usr/local/bin:/usr/bin:/bin";
     private const int MaximumConfigBytes = 1024 * 1024;
 
-    private readonly IWslCommandRunner _commands;
-    private readonly ILocalAiGatewayDistroResolver _distroResolver;
+    private readonly ILocalAiGatewayConfigurationTransport? _configuration;
+    private readonly ILocalAiGatewayAtomicConfigurationTransport? _atomicConfiguration;
+    private readonly Func<string>? _getApiKey;
     private readonly IOpenClawLogger _logger;
 
     public LocalAiGatewayProviderCoordinator(
         IWslCommandRunner commands,
         ILocalAiGatewayDistroResolver distroResolver,
         IOpenClawLogger logger)
+        : this(new WslLocalAiGatewayConfigurationTransport(
+            commands ?? throw new ArgumentNullException(nameof(commands)),
+            distroResolver ?? throw new ArgumentNullException(nameof(distroResolver))), logger)
     {
-        _commands = commands ?? throw new ArgumentNullException(nameof(commands));
-        _distroResolver = distroResolver ?? throw new ArgumentNullException(nameof(distroResolver));
+    }
+
+    public LocalAiGatewayProviderCoordinator(
+        ILocalAiGatewayConfigurationTransport configuration,
+        IOpenClawLogger logger)
+    {
+        _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    public LocalAiGatewayProviderCoordinator(
+        ILocalAiGatewayAtomicConfigurationTransport configuration,
+        Func<string> getApiKey,
+        IOpenClawLogger logger)
+    {
+        _atomicConfiguration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+        _getApiKey = getApiKey ?? throw new ArgumentNullException(nameof(getApiKey));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -47,10 +66,8 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
                 install.Manifest.GatewayFallbackModel);
             if (current.ProviderExists)
             {
-                _ = LocalAiGatewayProviderDefinition.BuildProviderJson(install);
-                if (!LocalAiGatewayProviderDefinition.MatchesProviderJson(
-                        current.ProviderJson!,
-                        install))
+                _ = BuildProvider(install);
+                if (!MatchesProvider(current.ProviderJson!, install))
                 {
                     return Failed("The llamacpp provider was changed outside the companion; preserving it and refusing to cycle the managed endpoint.");
                 }
@@ -72,6 +89,25 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
 
         string? expectedPrimary = current.PrimaryModel;
         bool retainManagedPrimary = reason == LocalAiQuiesceReason.EndpointCycle;
+        if (_atomicConfiguration is not null)
+        {
+            if (primaryIsManaged && !retainManagedPrimary)
+                expectedPrimary = install.Manifest.GatewayFallbackModel;
+            var patch = new JsonObject();
+            if (current.ProviderExists)
+                patch["models"] = new JsonObject { ["providers"] = new JsonObject { ["llamacpp"] = null } };
+            if (primaryIsManaged && !retainManagedPrimary)
+                patch["agents"] = new JsonObject { ["defaults"] = new JsonObject
+                {
+                    ["model"] = new JsonObject { ["primary"] = expectedPrimary },
+                } };
+            if (patch.Count > 0)
+            {
+                var applied = await ApplyAtomicAsync(current, patch, cancellationToken).ConfigureAwait(false);
+                if (!applied.Success) return applied;
+            }
+            return await VerifyQuiescedAsync(expectedPrimary, cancellationToken).ConfigureAwait(false);
+        }
         if (primaryIsManaged && !retainManagedPrimary)
         {
             expectedPrimary = install.Manifest.GatewayFallbackModel;
@@ -93,6 +129,12 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
                 return providerResult;
         }
 
+        return await VerifyQuiescedAsync(expectedPrimary, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<LocalAiEndpointLifecycleResult> VerifyQuiescedAsync(
+        string? expectedPrimary, CancellationToken cancellationToken)
+    {
         GatewayCapture verified = await CaptureGatewayAsync(cancellationToken).ConfigureAwait(false);
         if (!verified.Success || verified.ProviderExists ||
             verified.PrimaryExists != (expectedPrimary is not null) ||
@@ -124,7 +166,34 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
         if (!admission.Success || current.ProviderExists)
             return admission;
 
-        RoutedCommandResult applied = await ApplyBatchAsync(batch, cancellationToken).ConfigureAwait(false);
+        if (_atomicConfiguration is not null)
+        {
+            var defaults = new JsonObject
+            {
+                ["model"] = new JsonObject { ["primary"] = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install) },
+            };
+            // A configured allowlist is additive. Never send the whole redacted config
+            // back, and never replace unrelated providers, models, aliases or credentials.
+            if (TryGetPath(current.Snapshot!.Config, ["agents", "defaults", "models"], out var allowlist))
+            {
+                if (allowlist.ValueKind != JsonValueKind.Object)
+                    return Failed("The Gateway model allowlist is invalid; no Local AI configuration was changed.");
+                var model = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install);
+                if (!allowlist.TryGetProperty(model, out _))
+                    defaults["models"] = new JsonObject { [model] = new JsonObject() };
+            }
+            var patch = new JsonObject
+            {
+                ["models"] = new JsonObject { ["providers"] = new JsonObject
+                    { ["llamacpp"] = JsonNode.Parse(BuildProvider(install)) } },
+                ["agents"] = new JsonObject { ["defaults"] = defaults },
+            };
+            var result = await ApplyAtomicAsync(current, patch, cancellationToken).ConfigureAwait(false);
+            if (!result.Success) return result;
+            return await VerifyPublishedAsync(install, CancellationToken.None).ConfigureAwait(false);
+        }
+
+        LocalAiGatewayCommandOutcome applied = await _configuration!.ApplyBatchAsync(batch, cancellationToken).ConfigureAwait(false);
         if (!applied.Routed)
             return Failed(applied.Detail!);
         if (!applied.Result!.Success)
@@ -136,13 +205,21 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
                 cleanup);
         }
 
+        return await VerifyPublishedAsync(install, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<LocalAiEndpointLifecycleResult> VerifyPublishedAsync(
+        LocalAiResolvedInstall install, CancellationToken cancellationToken)
+    {
         string managedPrimary = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install);
         GatewayCapture verified = await CaptureGatewayAsync(cancellationToken).ConfigureAwait(false);
         if (!verified.Success || !verified.ProviderExists ||
-            !LocalAiGatewayProviderDefinition.MatchesProviderJson(verified.ProviderJson!, install) ||
+            !MatchesProvider(verified.ProviderJson!, install) ||
             !verified.PrimaryExists ||
             !string.Equals(verified.PrimaryModel, managedPrimary, StringComparison.Ordinal))
         {
+            if (_atomicConfiguration is not null)
+                return Failed("Local AI publication could not be verified. Reconnect the original Gateway to reconcile its route; no unguarded rollback was attempted.");
             LocalAiEndpointLifecycleResult cleanup = await QuiesceAsync(install, LocalAiQuiesceReason.Teardown, cancellationToken)
                 .ConfigureAwait(false);
             return PublicationFailed(
@@ -163,7 +240,7 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
         string managedPrimary = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install);
         if (current.ProviderExists)
         {
-            return LocalAiGatewayProviderDefinition.MatchesProviderJson(current.ProviderJson!, install) &&
+            return MatchesProvider(current.ProviderJson!, install) &&
                    current.PrimaryExists &&
                    string.Equals(current.PrimaryModel, managedPrimary, StringComparison.Ordinal)
                 ? LocalAiEndpointLifecycleResult.Ok()
@@ -192,6 +269,8 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
 
     private async Task<GatewayCapture> CaptureGatewayAsync(CancellationToken cancellationToken)
     {
+        if (_atomicConfiguration is not null)
+            return await CaptureAtomicAsync(cancellationToken).ConfigureAwait(false);
         SettingCapture provider = await CaptureSettingAsync(
             LocalAiGatewayProviderDefinition.ProviderPath,
             cancellationToken).ConfigureAwait(false);
@@ -247,12 +326,14 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
         string path,
         CancellationToken cancellationToken)
     {
-        RoutedCommandResult routed = await RunOpenClawAsync(
+        LocalAiGatewayCommandOutcome routed = await _configuration!.RunAsync(
             ["config", "get", path, "--json"], cancellationToken).ConfigureAwait(false);
         if (!routed.Routed)
             return new(false, false, null, routed.Detail);
 
-        WslCommandResult direct = routed.Result!;
+        LocalAiGatewayCommandResult direct = routed.Result!;
+        if (direct.TimedOut || direct.OutcomeIndeterminate)
+            return new(false, false, null, $"The app-owned gateway setting '{path}' could not be read reliably.");
         if (direct.Success)
             return new(true, true, direct.StandardOutput, null);
         return IsUnsetSetting(direct, path)
@@ -260,7 +341,7 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
             : new(false, false, null, $"The app-owned gateway setting '{path}' could not be read.");
     }
 
-    private static bool IsUnsetSetting(WslCommandResult result, string path) =>
+    private static bool IsUnsetSetting(LocalAiGatewayCommandResult result, string path) =>
         result.StandardError.Length <= 64 * 1024 &&
         GatewayConfigCliCompatibility.IsUnsetError(
             result.ExitCode, result.StandardOutput, result.StandardError, path);
@@ -274,7 +355,7 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
         {
             new { path = LocalAiGatewayProviderDefinition.PrimaryModelPath, value = model },
         });
-        RoutedCommandResult routed = await ApplyBatchAsync(batch, cancellationToken).ConfigureAwait(false);
+        LocalAiGatewayCommandOutcome routed = await _configuration!.ApplyBatchAsync(batch, cancellationToken).ConfigureAwait(false);
         if (!routed.Routed)
             return Failed(routed.Detail!);
         return routed.Result!.Success
@@ -286,33 +367,13 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
         string path,
         CancellationToken cancellationToken)
     {
-        RoutedCommandResult routed = await RunOpenClawAsync(
+        LocalAiGatewayCommandOutcome routed = await _configuration!.RunAsync(
             ["config", "unset", path], cancellationToken).ConfigureAwait(false);
         if (!routed.Routed)
             return Failed(routed.Detail!);
         return routed.Result!.Success
             ? LocalAiEndpointLifecycleResult.Ok()
             : Failed($"The managed gateway setting '{path}' could not be disabled before the Local AI endpoint changed.");
-    }
-
-    private Task<RoutedCommandResult> ApplyBatchAsync(
-        string batch,
-        CancellationToken cancellationToken)
-    {
-        string encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(batch));
-        // Gateway requires a regular batch file. Send this script through stdin
-        // so wsl.exe cannot expand the Linux temporary-file variable in argv.
-        string script =
-            "set -e\n" +
-            "batch_file=\"$(mktemp)\"\n" +
-            "trap 'rm -f \"$batch_file\"' EXIT\n" +
-            $"printf '%s' '{encoded}' | base64 -d > \"$batch_file\"\n" +
-            "openclaw config set --batch-file \"$batch_file\" --dry-run\n" +
-            "openclaw config set --batch-file \"$batch_file\"\n";
-        return RunInManagedDistroAsync(
-            ["/usr/bin/env", $"PATH={FixedPath}", "/bin/sh", "-s"],
-            cancellationToken,
-            standardInput: script);
     }
 
     private static JsonDocument ParseBounded(string value)
@@ -322,54 +383,85 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
         return JsonDocument.Parse(value, new JsonDocumentOptions { MaxDepth = 32 });
     }
 
-    private Task<RoutedCommandResult> RunOpenClawAsync(
-        IReadOnlyList<string> arguments,
-        CancellationToken cancellationToken)
-    {
-        var command = new List<string>(arguments.Count + 3)
-        {
-            "/usr/bin/env",
-            $"PATH={FixedPath}",
-            "openclaw",
-        };
-        command.AddRange(arguments);
-        return RunInManagedDistroAsync(command, cancellationToken);
-    }
-
-    private async Task<RoutedCommandResult> RunInManagedDistroAsync(
-        IReadOnlyList<string> command,
-        CancellationToken cancellationToken,
-        string? standardInput = null)
-    {
-        LocalAiGatewayDistroResolution resolution = _distroResolver.Resolve();
-        if (!resolution.Success)
-            return new(null, resolution.Detail);
-
-        WslCommandResult result = await _commands.RunInDistroAsync(
-                resolution.DistroName!,
-                command,
-                cancellationToken,
-                standardInput: standardInput)
-            .ConfigureAwait(false);
-        return new(result, null);
-    }
-
     private LocalAiEndpointLifecycleResult Failed(string detail)
     {
         _logger.Warn(detail);
         return LocalAiEndpointLifecycleResult.Failed(detail);
     }
 
-    private sealed record SettingCapture(bool Success, bool Exists, string? Json, string? Detail);
-    private sealed record RoutedCommandResult(WslCommandResult? Result, string? Detail)
+    private string BuildProvider(LocalAiResolvedInstall install) => _getApiKey is null
+        ? LocalAiGatewayProviderDefinition.BuildProviderJson(install)
+        : LocalAiGatewayProviderDefinition.BuildProviderJson(install, _getApiKey());
+
+    private bool MatchesProvider(string json, LocalAiResolvedInstall install) =>
+        LocalAiGatewayProviderDefinition.MatchesProviderJson(json, install, _getApiKey?.Invoke());
+
+    private async Task<GatewayCapture> CaptureAtomicAsync(CancellationToken ct)
     {
-        public bool Routed => Result is not null;
+        try
+        {
+            var snapshot = await _atomicConfiguration!.CaptureAsync(ct).ConfigureAwait(false);
+            bool providerExists = TryGetPath(snapshot.Config, ["models", "providers", "llamacpp"], out var provider);
+            bool primaryExists = TryGetPath(snapshot.Config, ["agents", "defaults", "model", "primary"], out var primary);
+            if (providerExists && provider.ValueKind != JsonValueKind.Object ||
+                primaryExists && (primary.ValueKind != JsonValueKind.String ||
+                    string.IsNullOrWhiteSpace(primary.GetString()) ||
+                    primary.GetString()!.Length > 512 ||
+                    primary.GetString()!.Any(c => char.IsControl(c) || char.IsWhiteSpace(c))))
+                return new(false, false, null, false, null, "The bound Gateway configuration has an invalid Local AI route.");
+            return new(true, providerExists, providerExists ? provider.GetRawText() : null,
+                primaryExists, primaryExists ? primary.GetString() : null, null, snapshot);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception)
+        {
+            // RPC errors can include authored config. Never log their payload or credentials.
+            return new(false, false, null, false, null,
+                "The bound Local AI Gateway could not be inspected. Reconnect it before changing the managed endpoint.");
+        }
     }
+
+    private async Task<LocalAiEndpointLifecycleResult> ApplyAtomicAsync(
+        GatewayCapture current, JsonObject patch, CancellationToken ct)
+    {
+        try
+        {
+            // config.patch merges model arrays by id. Removing the provider also
+            // removes that array, so authorize only this owned destructive path.
+            string[] replacePaths = current.ProviderExists &&
+                patch["models"]?["providers"] is JsonObject providers &&
+                providers.ContainsKey("llamacpp")
+                ? [LocalAiGatewayProviderDefinition.ProviderModelsPath] : [];
+            await _atomicConfiguration!.ApplyAsync(current.Snapshot!,
+                JsonSerializer.SerializeToElement(patch), ct, replacePaths).ConfigureAwait(false);
+            return LocalAiEndpointLifecycleResult.Ok();
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception)
+        {
+            return Failed("The guarded Local AI configuration change was not confirmed. Preserve the endpoint and reconnect the original Gateway to reconcile; do not retry an offline write.");
+        }
+    }
+
+    private static bool TryGetPath(JsonElement root, string[] path, out JsonElement value)
+    {
+        value = root;
+        foreach (var name in path)
+        {
+            if (value.ValueKind != JsonValueKind.Object)
+                throw new InvalidDataException("The Gateway configuration path has an invalid shape.");
+            if (!value.TryGetProperty(name, out value)) return false;
+        }
+        return true;
+    }
+
+    private sealed record SettingCapture(bool Success, bool Exists, string? Json, string? Detail);
     private sealed record GatewayCapture(
         bool Success,
         bool ProviderExists,
         string? ProviderJson,
         bool PrimaryExists,
         string? PrimaryModel,
-        string? Detail);
+        string? Detail,
+        LocalAiGatewayConfigurationSnapshot? Snapshot = null);
 }

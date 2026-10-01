@@ -147,7 +147,7 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
 
             var steps = BuildSteps(config, _localAiRecoveryOnly);
             var setupOwner = _window;
-            ctx.ExpectedGatewayRegistry = setupOwner?.BeginGatewaySetup();
+            ctx.ExpectedGatewayRegistry = config.NativeLocalAiAcquisition ? null : setupOwner?.BeginGatewaySetup();
             ctx.PersistTraySettings = _window is { } settingsOwner ? settingsOwner.PersistPipelineSettings : null;
             _pipeline = new SetupPipeline(steps);
             _pipeline.StepProgress += OnStepProgress;
@@ -155,7 +155,7 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
             var pipeline = _pipeline;
             var result = await SetupPipeline.RunWithSettlementAsync(
                 () => Task.Run(() => pipeline.RunAsync(ctx), cts.Token),
-                outcome => setupOwner?.SettleGatewaySetupAsync(ctx.ExpectedGatewayRegistry,
+                outcome => config.NativeLocalAiAcquisition ? Task.CompletedTask : setupOwner?.SettleGatewaySetupAsync(ctx.ExpectedGatewayRegistry,
                     outcome?.Outcome == PipelineOutcome.Success ? config.LocalAiRecoveryGatewayId ?? ctx.GatewayRecordId : null)
                     ?? Task.CompletedTask);
             sw.Stop();
@@ -168,7 +168,7 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
             if (success)
             {
                 var gatewayId = config.LocalAiRecoveryGatewayId ?? ctx.GatewayRecordId;
-                if (config.LocalAi.Enabled)
+                if (config.LocalAi.Enabled && !config.NativeLocalAiAcquisition)
                 {
                     var modelRef = ctx.ResolvedLocalAiModelRef ??
                         throw new InvalidOperationException("The completed Local AI install did not provide its configured model.");
@@ -397,7 +397,9 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
     }
 
     private static List<SetupStep> BuildSteps(SetupConfig config, bool localAiRecoveryOnly = false)
-        => OnboardingFlowPolicy.BuildInstallationSteps(localAiRecoveryOnly);
+        => config.NativeLocalAiAcquisition
+            ? SetupStepFactory.BuildNativeLocalAiAcquisitionSteps()
+            : OnboardingFlowPolicy.BuildInstallationSteps(localAiRecoveryOnly);
 }
 
 internal sealed class ProgressAuthorizationPresenter(

@@ -14,6 +14,9 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\LocalAiSetupRouteResolver.cs" Link="Services\LocalAiSetupRouteResolver.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\LocalAiGatewayDistroResolver.cs" Link="Services\LocalAiGatewayDistroResolver.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\LocalAiGatewayProviderCoordinator.cs" Link="Services\LocalAiGatewayProviderCoordinator.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\LocalAiGatewayConfigurationTransport.cs" Link="Services\LocalAiGatewayConfigurationTransport.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\LocalAiGatewayRpcConfigurationTransport.cs" Link="Services\LocalAiGatewayRpcConfigurationTransport.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\LocalAiGatewayLifecycle.cs" Link="Services\LocalAiGatewayLifecycle.cs" />
   </ItemGroup>
 
 </Project>

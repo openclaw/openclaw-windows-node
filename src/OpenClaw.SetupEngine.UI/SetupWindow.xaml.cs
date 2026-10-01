@@ -436,9 +436,22 @@ public sealed partial class SetupWindow : Window
         var session = NativeSetupSession;
         if (session is null)
             return;
-        await session.DisposeAsync();
-        if (ReferenceEquals(NativeSetupSession, session))
-            NativeSetupSession = null;
+        try
+        {
+            if (!session.IsPublished && _localAiHost is INativeSetupLocalAiHost { HasNativeSelection: true } localAi)
+            {
+                await using var connection = await NativeGatewaySetupConnection.ConnectAsync(session, CancellationToken.None);
+                localAi.ConfigureNative(session.Record, connection, session.AuthorizeAsync);
+                try { await localAi.WithdrawNativeAsync(CancellationToken.None); }
+                finally { localAi.ReleaseNative(connection); }
+            }
+        }
+        finally
+        {
+            await session.DisposeAsync();
+            if (ReferenceEquals(NativeSetupSession, session))
+                NativeSetupSession = null;
+        }
     }
 
     internal void NavigateToNativeComplete(string gatewayUrl)
@@ -582,7 +595,9 @@ public sealed partial class SetupWindow : Window
         _startAtLocalAiRecoveryReview = true;
         _pinLocalAiRecoveryModel = target.ModelCatalogId is not null;
         _config.LocalAiRecoveryGatewayId = target.GatewayId;
-        _config.DistroName = target.DistroName;
+        _config.NativeLocalAiAcquisition = target.IsNative;
+        if (!target.IsNative)
+            _config.DistroName = target.DistroName;
         _config.GatewayPort = target.GatewayPort;
         _config.GatewayUrl = null;
         _config.LocalAi.SelectedModelId = target.ModelCatalogId;
@@ -615,6 +630,7 @@ public sealed partial class SetupWindow : Window
             return;
         _localAiRecoveryBaseline.Restore(_config);
         _config.LocalAiRecoveryGatewayId = null;
+        _config.NativeLocalAiAcquisition = false;
         _localAiReviewSelection = null;
         _startAtLocalAiRecoveryReview = false;
         _pinLocalAiRecoveryModel = false;
@@ -671,6 +687,7 @@ public sealed partial class SetupWindow : Window
         _pinLocalAiRecoveryModel = false;
         _config.LocalAiRecoveryGatewayId = null;
         _localAiRecoveryBaseline.Restore(_config);
+        _config.NativeLocalAiAcquisition = false;
         AccessDraft.LocalAiReady = false;
         AccessDraft.TailscaleReady = false;
         _persistStartupPreferenceOnComplete = true;
@@ -689,7 +706,7 @@ public sealed partial class SetupWindow : Window
     private AiSetupPageArgs CreateAiSetupArgs() =>
         new AiSetupPageArgs(_config, _dataDir, _localDataDir,
                 TryNavigateToLegacyWizard, CompleteSetupAsync, _expectedConfiguredModelRef,
-                LocalAiHost: NativeSetupSession is null ? _localAiHost : null, ReviewLocalAi: ReviewLocalAiAsync,
+                LocalAiHost: _localAiHost, ReviewLocalAi: ReviewLocalAiAsync,
                 ExpectedGatewayId: NativeSetupSession?.Record.Id ??
                     (_expectedConfiguredModelRef is null ? AccessDraft.NativeGatewayId : _expectedConfiguredGatewayId),
                 ConfiguredCompletionIntent: _configuredCompletionIntent,
@@ -762,11 +779,23 @@ public sealed partial class SetupWindow : Window
         if (!_nativeContextFinalized)
         {
             if (NativeSetupSession is { } native)
-                await native.CompleteVerifiedAsync(proof, _config.Capabilities, ct);
+            {
+                await native.CompleteVerifiedAsync(proof, _config.Capabilities, ct,
+                    afterVerification: _localAiHost is INativeSetupLocalAiHost { HasNativeSelection: true } localAi
+                        ? (transport, token) => localAi.ReconcileNativeAsync(transport, proof.ModelRef, token)
+                        : null);
+            }
             else
             {
                 var result = await ApplyWindowsNodeContextAsync();
                 if (!result.IsSuccess) throw new InvalidOperationException(result.Message);
+                if (_localAiHost is INativeSetupLocalAiHost { HasNativeSelection: true } localAi &&
+                    _connectionManager is { } manager)
+                {
+                    var transport = await GatewayAiSetupTransport.BorrowNativeAsync(
+                        _dataDir, manager, proof.GatewayId, ct, proof.EndpointBinding);
+                    await localAi.ReconcileNativeAsync(transport, proof.ModelRef, ct);
+                }
             }
             ct.ThrowIfCancellationRequested();
             _nativeContextFinalized = true;

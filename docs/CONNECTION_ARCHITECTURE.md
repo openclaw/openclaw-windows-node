@@ -1,5 +1,66 @@
 # Connection Architecture
 
+## Native Local AI ownership and configuration
+
+Native Local AI configuration uses authenticated Gateway RPC, not CLI batch
+writes. The inspected OpenClaw 2026.9.4 CLI supports batches and expected-current
+guards separately; batch validation followed by a write is not compare-and-swap.
+`LocalAiGatewayRpcConfigurationTransport` captures provider, primary and model
+allowlist from one valid `config.get` response and applies only the changed fields
+with `config.patch { raw, baseHash }`. Conflict, disconnect, session replacement
+or uncertain response requires reconciliation with the original Gateway. There
+is no offline config-file write, blind retry or unguarded rollback.
+
+Gateway `config.patch` merges object arrays by stable ID and requires explicit
+`replacePaths` for destructive array changes. Withdrawing the owned provider
+therefore names only `models.providers.llamacpp.models`, alongside the same fresh
+`baseHash`; it never grants replacement of another provider's models or the model
+allowlist. An `UNAVAILABLE` response can follow successful persistence when
+restart/apply fails, so it remains indeterminate rather than proof of no write.
+
+`NativeLocalAiGatewayTarget` accepts authenticated isolated native records without
+requiring early registry publication. Published connections must still be borrowed
+from `GatewayConnectionManager`; staged connections belong to
+`NativeGatewaySetupConnection`. Remote, WSL and legacy same-user native records
+cannot enter this RPC path. Cancellation before dispatch prevents mutation;
+cancellation after dispatch drains the bounded request.
+
+The optional runtime authentication substrate keeps a stable current-user DPAPI
+credential outside the artifact manifest. The child receives it through
+`LLAMA_API_KEY`, never arguments or the router preset. HTTP clients send Bearer
+headers only after loopback validation; RPC publication carries the provider key
+inside the authenticated request. WSL callers retain their existing behavior.
+`LocalAiGatewayLifecycle` composes this path with the existing WSL lifecycle.
+`LocalAI/gateway-binding.json` records the exact Gateway endpoint and device
+identity, selected model, previous primary, owned allowlist entry and acknowledged
+configuration revision. A write-ahead pending flag is flushed before dispatch.
+An unacknowledged mutation remains pending across app restarts, with no blind
+replay or offline cleanup. A different Gateway cannot adopt the receipt.
+
+Recovery can confirm an unchanged pre-dispatch revision or an already-withdrawn
+provider whose primary is the saved fallback or the retained endpoint-cycle model.
+If a publication landed before a crash, explicit Use can recreate only the same
+authenticated loopback endpoint from the verified installation receipt. This does
+not replay the Gateway write or change the automatic-port preference. Ownership
+is confirmed only after exact Gateway inference and an unchanged configuration
+revision. Port conflicts, changed providers, failed inference and changed identities
+remain visible failures rather than triggering replacement or credential rotation.
+If the previous endpoint cannot be recovered, its receipt is retained. Restore
+the original port and artifacts, or inspect and withdraw the Local AI route using
+the original Gateway's configuration tools. Matching redacted provider metadata
+alone is insufficient authority to delete a potentially externally edited route.
+
+Native automatic startup waits for the manager-owned connection and an existing
+confirmed selection. Observation and artifact acquisition never switch models.
+Explicit Use publishes the authenticated endpoint, and the existing setup verifier
+performs real inference with the exact primary, without fallback. A changed
+revision is not silently adopted: explicit reconciliation requires the same
+provider/model, successful native inference and an unchanged revision across that
+probe. Native finalization uses this gate after its capability changes, before
+publishing the staged Gateway. Cancellation withdraws its route before releasing
+the native session. Unavailable Gateways and unresolved writes retain their
+receipt and report cleanup as pending.
+
 This document describes the gateway connection system - how the tray app discovers, authenticates with, and maintains connections to OpenClaw gateways.
 
 ## Project structure

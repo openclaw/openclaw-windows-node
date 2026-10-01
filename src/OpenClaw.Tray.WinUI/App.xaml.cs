@@ -59,6 +59,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private ManagedLocalGatewayPortProvenanceService? _managedLocalPortProvenance;
     private OpenClawTray.Chat.OpenClawChatCoordinator? _chatCoordinator;
     private ILocalAiRuntime? _localAiRuntime;
+    private LocalAiGatewayLifecycle? _localAiGatewayLifecycle;
 
     /// <summary>
     /// Root DI composition root, built once during startup and disposed during
@@ -674,6 +675,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 GetSettings: () => _settings,
                 GetGatewayDirectConnectService: () => GatewayDirectConnectService,
                 GetLocalAiRuntime: () => _localAiRuntime,
+                GetLocalAiGatewayLifecycle: () => _localAiGatewayLifecycle,
                 GetNodeService: () => _nodeService,
                 GetVoiceService: () => _nodeService?.VoiceService ?? _standaloneVoiceService,
                 GetPageActivator: () => PageActivator,
@@ -779,9 +781,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         InitializeTrayIcon();
         ShowSurfaceImprovementsTipIfNeeded();
 
-        // The singleton Local AI installation belongs to exactly one explicit
-        // setup-managed local WSL gateway. Load the registry before composing its
-        // lifecycle so no hardcoded distro can receive provider commands.
+        // Load ownership before composing the single Windows inference runtime.
         var appLogger = new AppLogger();
         _gatewayRegistry = new GatewayRegistry(SettingsManager.SettingsDirectoryPath, logger: appLogger);
         _gatewayRegistry.Load();
@@ -791,11 +791,16 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             new WslExeCommandRunner(localAiLogger),
             new LocalAiGatewayDistroResolver(_gatewayRegistry),
             localAiLogger);
+        _localAiGatewayLifecycle = new LocalAiGatewayLifecycle(localAiPaths,
+            SettingsManager.SettingsDirectoryPath, () => _gatewayRegistry, () => _connectionManager,
+            localAiEndpointLifecycle, localAiLogger);
         _localAiRuntime = new LlamaServerRuntimeService(
             new LlamaServerRuntimeOptions
             {
                 Paths = localAiPaths,
-                EndpointLifecycle = localAiEndpointLifecycle,
+                EndpointLifecycle = _localAiGatewayLifecycle,
+                GetApiKey = _localAiGatewayLifecycle.GetApiKey,
+                GetRecoveryPort = _localAiGatewayLifecycle.GetRecoveryPort,
             },
             localAiLogger);
 
@@ -803,7 +808,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         // can never delay or preempt tray initialization. It only needs the
         // dispatcher + settings (created above) and failures are non-fatal.
         InitializeServiceProvider();
-        StartLocalAiRouterInBackground();
+        if (!_localAiGatewayLifecycle.IsNativeMode)
+            StartLocalAiRouterInBackground();
 
         // Initialize connection manager before setup flow.
         var credentialResolver = new CredentialResolver(DeviceIdentityFileReader.Instance);
@@ -887,6 +893,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             nativeGatewayRuntime: nativeGatewayRuntime);
         _connectionManager.OperatorClientChanged += OnOperatorClientChanged;
         _connectionManager.StateChanged += OnManagerStateChanged;
+        _localAiGatewayLifecycle.Attach(_connectionManager, _localAiRuntime);
         _gatewayDirectConnectService = new GatewayDirectConnectService(
             _connectionManager,
             _gatewayRegistry,
@@ -4030,6 +4037,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     void IAppCommands.CheckForUpdates() => _ = _updateCoordinator!.CheckForUpdatesUserInitiatedAsync();
     void IAppCommands.ShowOnboarding() => _ = ShowOnboardingAsync();
     void IAppCommands.ShowLocalAiSetup() => _ = _windowManager?.ShowLocalAiSetupAsync();
+    void IAppCommands.ShowLocalAiModelSetup() => _ = _windowManager?.ShowLocalAiModelSetupAsync();
     void IAppCommands.OpenLocalAiLogs() =>
         OpenFolder(new LocalAiPaths(AppIdentity.ResolveSetupLocalDataDirectory()).LogsDirectory, "Local AI logs");
     void IAppCommands.ShowGatewayWizard() => _ = ShowGatewayWizardAsync();

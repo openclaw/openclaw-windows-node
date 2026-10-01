@@ -281,8 +281,10 @@ public sealed class LocalAiPortLifecycleTests
         Assert.NotNull(host.LastSpec);
     }
 
-    [Fact]
-    public async Task AutomaticPort_IsBoundByChildAndPersistedOnlyAfterOwnedHealth()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("local-api-test-credential")]
+    public async Task AutomaticPort_IsBoundByChildAndPersistedOnlyAfterOwnedHealth(string? apiKey)
     {
         using var temp = new TempDirectory("local-ai-port-");
         LocalAiPaths paths = await PrepareInstallAsync(temp);
@@ -291,18 +293,49 @@ public sealed class LocalAiPortLifecycleTests
         var host = new FakeProcessHost(platform, events, selectedPort: 28_765);
         var client = new FakeClient(events);
         var lifecycle = new FakeLifecycle(events);
-        await using var runtime = CreateRuntime(paths, host, platform, client, lifecycle);
+        await using var runtime = CreateRuntime(paths, host, platform, client, lifecycle,
+            getApiKey: apiKey is null ? null : () => apiKey);
 
         LocalAiRuntimeSnapshot snapshot = await runtime.EnsureStartedAsync();
 
         Assert.Equal(LocalAiRuntimeState.Healthy, snapshot.State);
         Assert.Equal(28_765, snapshot.Endpoint.Port);
         Assert.Equal("0", ArgumentAfter(host.LastSpec!.Arguments, "--port"));
+        if (apiKey is not null)
+        {
+            Assert.Equal(apiKey, host.LastSpec.Environment["LLAMA_API_KEY"]);
+            Assert.DoesNotContain(host.LastSpec.Arguments, argument => argument.Contains(apiKey, StringComparison.Ordinal));
+            Assert.DoesNotContain(apiKey, await File.ReadAllTextAsync(paths.RouterPresetPath));
+            Assert.DoesNotContain(apiKey, await File.ReadAllTextAsync(paths.ManifestPath));
+        }
         Assert.Equal(["quiesce:EndpointCycle", "start", "probe:28765", "publish:28765"], events);
         Assert.Equal([28_765], client.ProbedPorts);
         LocalAiResolvedInstall? saved = await new LocalAiManifestStore(paths).LoadAsync();
         Assert.Equal(0, saved!.Manifest.RequestedPort);
         Assert.Equal(28_765, saved.Endpoint!.Port);
+    }
+
+    [Fact]
+    public async Task RecoveryPort_ReusesVerifiedEndpointWithoutChangingAutomaticPortPreference()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var store = new LocalAiManifestStore(paths);
+        var install = (await store.LoadAsync())!;
+        await store.SaveAsync(install.Manifest with { Endpoint = "http://127.0.0.1:28765/v1" });
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_765);
+        await using var runtime = CreateRuntime(paths, host, platform,
+            new FakeClient(events), new FakeLifecycle(events),
+            getRecoveryPort: current => current.Endpoint?.Port);
+
+        var snapshot = await runtime.EnsureStartedAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Healthy, snapshot.State);
+        Assert.Equal("28765", ArgumentAfter(host.LastSpec!.Arguments, "--port"));
+        Assert.Equal(0, (await store.LoadAsync())!.Manifest.RequestedPort);
+        Assert.Equal(28_765, snapshot.Endpoint.Port);
     }
 
     [Fact]
@@ -2396,11 +2429,15 @@ public sealed class LocalAiPortLifecycleTests
         TimeSpan? startupTimeout = null,
         int maxRestartAttempts = 2,
         TimeSpan? shutdownTimeout = null,
-        ILocalAiModelFileVerifier? modelFileVerifier = null) => new(
+        ILocalAiModelFileVerifier? modelFileVerifier = null,
+        Func<string>? getApiKey = null,
+        Func<LocalAiResolvedInstall, int?>? getRecoveryPort = null) => new(
             new LlamaServerRuntimeOptions
             {
                 Paths = paths,
                 EndpointLifecycle = lifecycle,
+                GetApiKey = getApiKey,
+                GetRecoveryPort = getRecoveryPort,
                 HealthPollInterval = TimeSpan.FromMilliseconds(1),
                 StartupTimeout = startupTimeout ?? TimeSpan.FromSeconds(1),
                 ShutdownTimeout = shutdownTimeout ?? TimeSpan.FromSeconds(10),
