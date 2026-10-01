@@ -13,9 +13,7 @@ namespace OpenClawTray.Services;
 internal sealed record TrayControllerCallbacks(
     Func<TrayMenuSnapshot> CaptureMenuSnapshot,
     Func<TrayStateSnapshot> CaptureIconSnapshot,
-    Func<bool> IsOperatorConnected,
     Action ShowChat,
-    Action ShowConnection,
     Action<string> DispatchMenuAction,
     Action<Window> ApplyTheme,
     Func<bool> IsDispatcherAvailable,
@@ -166,10 +164,7 @@ internal sealed class TrayController : ITrayController
         if (_isClosing || _disposed)
             return;
 
-        if (_callbacks.IsOperatorConnected())
-            _callbacks.ShowChat();
-        else
-            _callbacks.ShowConnection();
+        _callbacks.ShowChat();
     }
 
     private void OnTrayContextMenu(TrayIcon sender, TrayIconEventArgs args) => ShowMenu();

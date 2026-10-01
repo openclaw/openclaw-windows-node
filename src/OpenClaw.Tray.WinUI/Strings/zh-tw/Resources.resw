@@ -2443,7 +2443,7 @@
     <value>輸入命令...</value>
   </data>
   <data name="HubWindow_winexWindowEx_2.Title" xml:space="preserve">
-    <value>OpenClaw</value>
+    <value>OpenClaw 設定</value>
   </data>
   <data name="TitleSearchBox.PlaceholderText" xml:space="preserve">
     <value>搜尋… (Ctrl+E)</value>
@@ -7343,7 +7343,7 @@
   <data name="Onboarding_V2_ProfileFull.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>開放：全部八項能力，包括相機、位置和瀏覽器控制。</value></data>
   <data name="Onboarding_V2_ProfileReadOnlyTitle.Text" xml:space="preserve"><value>嚴格</value></data>
   <data name="Onboarding_V2_ProfileReadOnlyDescription.Text" xml:space="preserve"><value>Canvas 和螢幕擷取。命令執行已關閉。</value></data>
-  <data name="Onboarding_V2_ProfileStandardTitle.Text" xml:space="preserve"><value>平衡（建議）</value></data>
+  <data name="Onboarding_V2_ProfileStandardTitle.Text" xml:space="preserve"><value>平衡</value></data>
   <data name="Onboarding_V2_ProfileStandardDescription.Text" xml:space="preserve"><value>命令、Canvas、螢幕擷取和語音。</value></data>
   <data name="Onboarding_V2_ProfileFullTitle.Text" xml:space="preserve"><value>開放</value></data>
   <data name="Onboarding_V2_ProfileFullDescription.Text" xml:space="preserve"><value>全部八項能力，包括相機、位置和瀏覽器控制。</value></data>
@@ -7409,7 +7409,6 @@
   <data name="Onboarding_AiSetup_LocalState_UnsupportedGateway" xml:space="preserve"><value>受管理本機 AI 要求在此電腦上選定唯一由應用程式管理的本機 Gateway。不支援遠端或歸屬不明確的 Gateway。</value></data>
   <data name="Onboarding_AiSetup_LocalState_Working" xml:space="preserve"><value>本機 AI 正在啟動或停止。請在作業完成後重新檢查。</value></data>
   <data name="Onboarding_DashboardLaunchFailed" xml:space="preserve"><value>無法開啟儀表板。請檢查已驗證閘道的連線，然後再試一次。</value></data>
-  <data name="Onboarding_V4_ProfileHeading.Text" xml:space="preserve"><value>選擇代理可以執行的操作</value></data>
   <data name="Onboarding_V4_ConnectionOptions.Text" xml:space="preserve"><value>連線選項</value></data>
   <data name="Onboarding_V4_OllamaDisclosure.Header" xml:space="preserve"><value>Ollama 共用</value></data>
   <data name="Onboarding_V4_OllamaDisclosure.Description" xml:space="preserve"><value>選用</value></data>
@@ -7741,4 +7740,146 @@
   <data name="Onboarding_Native_ReplaceDraftClose" xml:space="preserve"><value>保留草稿</value></data>
   <data name="Settings_PersistenceConflict_Title" xml:space="preserve"><value>無法儲存設定</value></data>
   <data name="Settings_PersistenceConflict_Message" xml:space="preserve"><value>另一個處理程序變更了您的設定。您最近的變更未儲存。請從系統匣選單結束 OpenClaw，然後重新開啟並重試您的變更。另一個處理程序儲存的設定已保留。</value></data>
+
+  <!-- Workspace: English fallback until translations are reviewed. -->
+  <data name="WorkspaceShell_AutomationMissing" xml:space="preserve"><value>This automation is no longer available. Return to Automations and refresh.</value></data>
+  <data name="WorkspaceShell_Connected" xml:space="preserve"><value>Gateway connected</value></data>
+  <data name="WorkspaceShell_ThisComputer" xml:space="preserve"><value>This computer</value></data>
+  <data name="WorkspaceShell_SystemMissing" xml:space="preserve"><value>System unavailable</value></data>
+  <data name="WorkspaceShell_SelectSystemFirst" xml:space="preserve"><value>Select an available system from Systems to view its details.</value></data>
+  <data name="WorkspaceShell_GatewayInsights" xml:space="preserve"><value>View usage and activity reported by the connected gateway.</value></data>
+  <data name="WorkspaceShell_ProjectMetrics" xml:space="preserve"><value>Project metrics</value></data>
+  <data name="WorkspaceShell_Priorities" xml:space="preserve"><value>Priorities</value></data>
+  <data name="WorkspaceShell_Title" xml:space="preserve"><value>Workspace</value></data>
+  <data name="WorkspaceShell_Home" xml:space="preserve"><value>Home</value></data>
+  <data name="WorkspaceShell_Agents" xml:space="preserve"><value>Agents</value></data>
+  <data name="WorkspaceShell_AgentDetail" xml:space="preserve"><value>Agent</value></data>
+  <data name="WorkspaceShell_WriterDetail" xml:space="preserve"><value>Agent</value></data>
+  <data name="WorkspaceShell_Dashboards" xml:space="preserve"><value>Dashboards</value></data>
+  <data name="WorkspaceShell_DashboardDetail" xml:space="preserve"><value>Dashboard details</value></data>
+  <data name="WorkspaceShell_Canvas" xml:space="preserve"><value>Canvas</value></data>
+  <data name="WorkspaceShell_Systems" xml:space="preserve"><value>Systems</value></data>
+  <data name="WorkspaceShell_SystemDetail" xml:space="preserve"><value>System details</value></data>
+  <data name="WorkspaceShell_Automations" xml:space="preserve"><value>Automations</value></data>
+  <data name="WorkspaceShell_AutomationDetail" xml:space="preserve"><value>Automation details</value></data>
+  <data name="WorkspaceShell_Plugins" xml:space="preserve"><value>Plugins</value></data>
+  <data name="WorkspaceShell_Skills" xml:space="preserve"><value>Skills</value></data>
+  <data name="WorkspaceShell_Sessions" xml:space="preserve"><value>Sessions</value></data>
+  <data name="WorkspaceShell_Usage" xml:space="preserve"><value>Usage</value></data>
+  <data name="WorkspaceShell_Activity" xml:space="preserve"><value>Activity</value></data>
+  <data name="WorkspaceShell_Tasks" xml:space="preserve"><value>Tasks</value></data>
+  <data name="WorkspaceShell_Meetings" xml:space="preserve"><value>Meetings</value></data>
+  <data name="WorkspaceShell_Apps" xml:space="preserve"><value>Apps</value></data>
+  <data name="WorkspaceShell_Portals" xml:space="preserve"><value>Portals</value></data>
+  <data name="WorkspaceShell_Notifications" xml:space="preserve"><value>Notifications</value></data>
+  <data name="WorkspaceShell_More" xml:space="preserve"><value>More</value></data>
+  <data name="WorkspaceShell_Connection" xml:space="preserve"><value>Connection</value></data>
+  <data name="WorkspaceShell_Channels" xml:space="preserve"><value>Channels</value></data>
+  <data name="WorkspaceShell_Instances" xml:space="preserve"><value>Instances</value></data>
+  <data name="WorkspaceShell_Cron" xml:space="preserve"><value>Cron</value></data>
+  <data name="WorkspaceShell_AgentEvents" xml:space="preserve"><value>Agent events</value></data>
+  <data name="WorkspaceShell_Bindings" xml:space="preserve"><value>Bindings</value></data>
+  <data name="WorkspaceShell_Config" xml:space="preserve"><value>Configuration</value></data>
+  <data name="WorkspaceShell_LocalAi" xml:space="preserve"><value>Local AI</value></data>
+  <data name="WorkspaceShell_Voice" xml:space="preserve"><value>Voice</value></data>
+  <data name="WorkspaceShell_Permissions" xml:space="preserve"><value>Permissions</value></data>
+  <data name="WorkspaceShell_Sandbox" xml:space="preserve"><value>Sandbox</value></data>
+  <data name="WorkspaceShell_Debug" xml:space="preserve"><value>Diagnostics</value></data>
+  <data name="WorkspaceShell_Settings" xml:space="preserve"><value>Settings</value></data>
+  <data name="WorkspaceShell_About" xml:space="preserve"><value>About OpenClaw</value></data>
+  <data name="WorkspaceShell_AgentsDescription" xml:space="preserve"><value>Your gateway agents and their recent conversations.</value></data>
+  <data name="WorkspaceShell_AgentDetailDescription" xml:space="preserve"><value>Agent workspace and recent work.</value></data>
+  <data name="WorkspaceShell_WriterDetailDescription" xml:space="preserve"><value>Agent workspace and recent work.</value></data>
+  <data name="WorkspaceShell_DashboardsDescription" xml:space="preserve"><value>Projects, priorities, and gateway insights.</value></data>
+  <data name="WorkspaceShell_DashboardDetailDescription" xml:space="preserve"><value>Dashboard data is provided by your gateway.</value></data>
+  <data name="WorkspaceShell_CanvasDescription" xml:space="preserve"><value>Gateway-managed visual workspaces.</value></data>
+  <data name="WorkspaceShell_SystemsDescription" xml:space="preserve"><value>This computer, your gateway, and paired devices.</value></data>
+  <data name="WorkspaceShell_SystemDetailDescription" xml:space="preserve"><value>Connection and access for your systems.</value></data>
+  <data name="WorkspaceShell_PluginsDescription" xml:space="preserve"><value>Extensions and tools available to your gateway.</value></data>
+  <data name="WorkspaceShell_ActivityDescription" xml:space="preserve"><value>Live events from the current gateway connection.</value></data>
+  <data name="WorkspaceShell_MoreDescription" xml:space="preserve"><value>Explore your workspace and companion tools.</value></data>
+  <data name="WorkspaceShell_AppsDescription" xml:space="preserve"><value>Manage this companion or learn about other OpenClaw apps.</value></data>
+  <data name="WorkspaceShell_PortalsDescription" xml:space="preserve"><value>Open your configured gateway dashboard or documentation.</value></data>
+  <data name="WorkspaceShell_TasksDescription" xml:space="preserve"><value>Task workflows provided by your gateway.</value></data>
+  <data name="WorkspaceShell_MeetingsDescription" xml:space="preserve"><value>Meeting workflows provided by your gateway.</value></data>
+  <data name="WorkspaceShell_NoAgents" xml:space="preserve"><value>No agents loaded</value></data>
+  <data name="WorkspaceShell_SelectAssistant" xml:space="preserve"><value>Select assistant</value></data>
+  <data name="WorkspaceShell_NoSessions" xml:space="preserve"><value>No conversations to show.</value></data>
+  <data name="WorkspaceShell_ConnectionRequired" xml:space="preserve"><value>Connect a gateway to load agents and conversations.</value></data>
+  <data name="WorkspaceShell_ConnectionInfo.Message" xml:space="preserve"><value>Connect a gateway to load live workspace data.</value></data>
+  <data name="WorkspaceShell_SessionFailed" xml:space="preserve"><value>The gateway could not create a new session. Refresh the list before retrying.</value></data>
+  <data name="WorkspaceShell_SessionUnsupported" xml:space="preserve"><value>This gateway does not support creating sessions. Update the gateway to use this action.</value></data>
+  <data name="WorkspaceShell_TrayUnavailable" xml:space="preserve"><value>The Windows tray menu is not available.</value></data>
+  <data name="WorkspaceShell_LinkFailed" xml:space="preserve"><value>Windows could not open the link.</value></data>
+  <data name="WorkspaceShell_AgentsEmpty" xml:space="preserve"><value>Connect and refresh to load agents. Manage agent configuration in the companion.</value></data>
+  <data name="WorkspaceShell_SelectAgentFirst" xml:space="preserve"><value>Select an agent from the Agents page to view its details.</value></data>
+  <data name="WorkspaceShell_AgentSummary" xml:space="preserve"><value>{0} · {1} conversations</value></data>
+  <data name="WorkspaceShell_WorkspaceNotReported" xml:space="preserve"><value>The gateway has not reported a workspace path.</value></data>
+  <data name="WorkspaceShell_RecentWork" xml:space="preserve"><value>Recent work</value></data>
+  <data name="WorkspaceShell_Gateway" xml:space="preserve"><value>Gateway</value></data>
+  <data name="WorkspaceShell_DeviceAccess" xml:space="preserve"><value>Device access</value></data>
+  <data name="WorkspaceShell_DeviceAccessDescription" xml:space="preserve"><value>Manage permissions and pairing in the native companion.</value></data>
+  <data name="WorkspaceShell_MetricsUnavailable" xml:space="preserve"><value>CPU, memory, and storage utilization are not reported by the current node API.</value></data>
+  <data name="WorkspaceShell_DashboardsUnavailable" xml:space="preserve"><value>No native dashboard catalog</value></data>
+  <data name="WorkspaceShell_DashboardsUnavailableDescription" xml:space="preserve"><value>The current gateway client does not expose a dashboard catalog or project metrics. Open the real gateway dashboard instead.</value></data>
+  <data name="WorkspaceShell_NoDashboardSelected" xml:space="preserve"><value>No dashboard data is available. Usage and activity remain available from the gateway.</value></data>
+  <data name="WorkspaceShell_Installed" xml:space="preserve"><value>Installed</value></data>
+  <data name="WorkspaceShell_Discover" xml:space="preserve"><value>Discover</value></data>
+  <data name="WorkspaceShell_Install" xml:space="preserve"><value>Install</value></data>
+  <data name="WorkspaceShell_PluginInventoryUnavailable" xml:space="preserve"><value>Plugin inventory unavailable</value></data>
+  <data name="WorkspaceShell_PluginsUnavailableDescription" xml:space="preserve"><value>The current gateway client has no plugin inventory API. Configuration and Skills show the supported gateway workflows.</value></data>
+  <data name="WorkspaceShell_PluginCatalogUnavailable" xml:space="preserve"><value>Plugin catalog unavailable</value></data>
+  <data name="WorkspaceShell_PluginMutationsUnavailable" xml:space="preserve"><value>Plugin installation and removal are unavailable because this client has no supported plugin management API.</value></data>
+  <data name="WorkspaceShell_NotAvailable" xml:space="preserve"><value>Not available in this companion</value></data>
+  <data name="WorkspaceShell_NoNativeWorkflow" xml:space="preserve"><value>The current gateway client does not expose this workflow. Check your gateway dashboard for supported extensions.</value></data>
+  <data name="WorkspaceShell_NoActivity" xml:space="preserve"><value>No recent activity</value></data>
+  <data name="WorkspaceShell_ActivityEmpty" xml:space="preserve"><value>Agent events will appear here as the connected gateway sends them.</value></data>
+  <data name="WorkspaceShell_CompanionApp" xml:space="preserve"><value>OpenClaw Windows companion</value></data>
+  <data name="WorkspaceShell_OpenChat" xml:space="preserve"><value>Open chat</value></data>
+  <data name="WorkspaceShell_Details" xml:space="preserve"><value>View details</value></data>
+  <data name="WorkspaceShell_AgentSettings" xml:space="preserve"><value>Agent settings</value></data>
+  <data name="WorkspaceShell_AgentFiles" xml:space="preserve"><value>Workspace files</value></data>
+  <data name="WorkspaceShell_ManageConnection" xml:space="preserve"><value>Manage connection</value></data>
+  <data name="WorkspaceShell_ConnectionTimeline" xml:space="preserve"><value>Connection event timeline</value></data>
+  <data name="WorkspaceShell_PairedDevices" xml:space="preserve"><value>Paired devices</value></data>
+  <data name="WorkspaceShell_PairDevice" xml:space="preserve"><value>Pair device</value></data>
+  <data name="WorkspaceShell_OpenDashboard" xml:space="preserve"><value>Open gateway dashboard</value></data>
+  <data name="WorkspaceShell_Help" xml:space="preserve"><value>Help</value></data>
+  <data name="WorkspaceShell_Documentation" xml:space="preserve"><value>Documentation</value></data>
+  <data name="WorkspaceShell_Support" xml:space="preserve"><value>Get help</value></data>
+  <data name="WorkspaceShell_Community" xml:space="preserve"><value>Community</value></data>
+  <data name="WorkspaceShell_ReleaseNotes" xml:space="preserve"><value>Release notes</value></data>
+  <data name="WorkspaceShell_GetApps" xml:space="preserve"><value>Get apps</value></data>
+  <data name="WorkspaceShell_CommandCenter" xml:space="preserve"><value>Command center</value></data>
+  <data name="WorkspaceShell_SearchPages" xml:space="preserve"><value>Search companion pages</value></data>
+  <data name="WorkspaceShell_Tray" xml:space="preserve"><value>Windows tray menu</value></data>
+  <data name="WorkspaceShell_Setup" xml:space="preserve"><value>Setup and onboarding</value></data>
+  <data name="WorkspaceShell_Owner.Text" xml:space="preserve"><value>Owner</value></data>
+  <data name="WorkspaceShell_PersonalWorkspace.Text" xml:space="preserve"><value>Personal workspace</value></data>
+  <data name="WorkspaceShell_Pages.Text" xml:space="preserve"><value>Pages</value></data>
+  <data name="WorkspaceShell_SessionsLabel.Text" xml:space="preserve"><value>Sessions</value></data>
+  <data name="WorkspaceShell_MoreButton.Content" xml:space="preserve"><value>More</value></data>
+  <data name="WorkspaceShell_Refresh.Content" xml:space="preserve"><value>Refresh</value></data>
+  <data name="WorkspaceShell_OpenConnection.Content" xml:space="preserve"><value>Open Connection</value></data>
+  <data name="WorkspaceShell_Assistant.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Assistant</value></data>
+  <data name="WorkspaceShell_NewConversation.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>New conversation</value></data>
+  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Notifications</value></data>
+  <data name="WorkspaceShell_Forward.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>前進</value></data>
+  <data name="WorkspaceShell_Forward.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>前進</value></data>
+  <data name="WorkspaceShell_Back.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Back</value></data>
+  <data name="WorkspaceShell_TogglePane.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Toggle sidebar</value></data>
+  <data name="WorkspaceShell_AutomationSendFailed" xml:space="preserve">
+    <value>The automation could not be sent. Your changes are still in the editor. Check the gateway connection and try again.</value>
+  </data>
+  <data name="WorkspaceShell_AutomationSubmitted" xml:space="preserve">
+    <value>Changes sent. The list will update when the gateway confirms them.</value>
+  </data>
+  <data name="AgentCreation_Title" xml:space="preserve"><value>新增代理程式</value></data>
+  <data name="AgentCreation_Creating" xml:space="preserve"><value>正在閘道上建立代理程式。請等待確認。</value></data>
+  <data name="AgentCreation_Create" xml:space="preserve"><value>建立代理程式</value></data>
+  <data name="AgentCreation_Name" xml:space="preserve"><value>名稱</value></data>
+  <data name="AgentCreation_Workspace" xml:space="preserve"><value>閘道上的工作區路徑</value></data>
+  <data name="AgentCreation_Description" xml:space="preserve"><value>在已連線的閘道上建立代理程式及其工作區。此操作不會建立對話或變更目前的聊天。</value></data>
+  <data name="AgentCreation_PermissionRequired" xml:space="preserve"><value>請連線至具有 operator.admin 權限的閘道以建立代理程式。</value></data>
+  <data name="AgentCreation_Failed" xml:space="preserve"><value>無法確認代理程式是否已建立。請關閉此對話方塊並重新整理代理程式清單，然後再試。</value></data>
 </root>

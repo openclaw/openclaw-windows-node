@@ -65,6 +65,159 @@ This document describes the gateway connection system - how the tray app discove
 
 ## Project structure
 
+### Workspace and Settings companion
+
+The normal foreground entry point is `WorkspaceWindow`, a native WinUI 3 shell
+with Reactor chat, assistant selection, Home, sessions, and an Owner
+menu. Notifications is an independent footer action immediately beside Owner.
+There is no Settings item in the Workspace rail.
+The rail is the same native `NavigationView` as the companion, using its existing
+colourful sidebar SVG assets via direct `ImageIcon` controls. Native menu items
+retain their icon-column sizing; the pane uses the expanded theme background
+without a second acrylic fill. Session-row selection is retained by original
+session key across list refresh, pane toggling, and companion refocus.
+Home explicitly selects Home without discarding the current chat draft.
+Native menu items
+own selection and keyboard behavior; assistant, sessions, and footer controls
+use the pane's header and footer slots. Sessions follow Home in the
+same native scrolling menu with a native section header. Owner stays fixed
+in the footer. Native WinUI `TitleBar` owns title/icon layout and typography.
+`NavigationView.PaneHeader` puts the pane-collapse button and sidebar-right
+Back/Forward in one row, with the assistant selector below. Its final dropdown
+option invokes the existing New conversation workflow and restores the selected
+agent rather than persisting the action as an agent. It remains disabled while
+disconnected or creating a session. The native ComboBox uses transparent/subtle
+chrome. Sessions retains its independent subtle Add button.
+NavigationView has zero compact width. Home's icon is inline native content
+so it is not clipped by WinUI's zero-width icon column. The mode stays `Left`. Home,
+sessions, and the entire footer disappear, and content fills the vacated width.
+The native 160ms slide goes directly to zero width; `PaneClosed` hides offscreen
+controls without a second layout step. Native motion preferences still apply.
+Both toggle states share a stable overlay position outside the animated pane,
+so native focus restoration and intermediate layout cannot move the target.
+A floating-style subtle reopen button reserves a dedicated 56 DIP row at
+the content's top-left below the titlebar, never covering hosted hit targets.
+The pane toggle retains a 40 DIP target and 16 DIP glyph in both states; focus
+moves to the surviving toggle. Pane changes do not remount chat or reset drafts.
+The companion uses a native TitleBar titled OpenClaw Settings with shared claw
+artwork. Search, Back, and Forward live beside the toggle in its stable sidebar
+toolbar. The native pane reserves 56 DIP above its items, including in compact mode.
+Connection status occupies the footer bar above Diagnostics and Settings;
+compact mode retains its icon-only target. Settings has no notification button.
+Workspace's bell opens `NotificationFlyoutContent` using the existing
+`AppNotificationService`, without replacing chat or changing history. Its
+explicit Open notifications link and existing deep links retain the full page.
+Owner's connection entry shows the same `ConnectionStatusPresenter` label/accent
+as Settings, refreshed both on menu opening and every manager snapshot through
+`WindowManager`, including richer changes that keep the same legacy status.
+It opens `GatewayStatusContent`, shared with Settings,
+using the current manager snapshot and existing reconnect/Connection actions.
+The flyout contents own named-control application; windows own popup lifetime
+and route side effects. Notification subscriptions detach when the flyout closes.
+
+The assistant selector projects the gateway's existing `agents.list` response:
+`identity.name` (then roster name/ID), `identity.emoji`, and `identity.avatarUrl`
+(then configured `identity.avatar`). The gateway resolves workspace-local avatar
+files to data URLs for native clients. Windows never reads those paths locally.
+`AgentIdentityBadge` uses native `PersonPicture` and the existing bounded
+`MediaResolver` for image data and public HTTPS sources; blocked/failed images
+are logged and retain emoji/initials. The secondary `main`-style label is the
+agent ID, not a Git branch; this RPC has no branch-name field. Selection honors
+`defaultId` and `selectionRequired`, without sending a chat or creating a session
+when metadata refreshes. Existing item identities/pictures survive roster refresh.
+Contract reference: `openclaw/openclaw` gateway `agents-list.ts`,
+`session-utils-store.ts`, and `packages/gateway-protocol/src/schema/agents-models-skills.ts`.
+Search retains the existing catalog and keyboard shortcuts through a native
+flyout. Both Frame history stacks prune unavailable gateway/diagnostics routes.
+All footer
+buttons use native `SubtleButtonStyle` state brushes, and Owner uses the native
+`PersonPicture` avatar rather than a font glyph.
+
+`WindowManager` owns Workspace and `HubWindow` independently. The latter is the
+Settings companion and reuses the existing native Settings pages, excluding
+Chat. Owner's Settings, Usage, Pair device, and About links open or focus that
+companion at `settings`, `usage`, `channels`, and `about` respectively. Closing
+the companion does not close Workspace or discard an unsent chat draft.
+Generic Workspace refocus preserves the current page; explicit page/session
+links still navigate. `agent:<id>:workspace` retains its original agent-files
+meaning and is not the main Workspace route.
+
+Verified native setup completion follows the same window boundary. Chat binds
+the receipt's exact session to Workspace's retained ChatPage and waits for the
+native composer before activating the window and consuming the receipt.
+Channels and Skills keep typed companion navigation. Both paths retain fresh
+gateway, endpoint, identity, agent, and session checks; selecting a different
+Workspace destination invalidates an in-flight chat handoff.
+Admitted assistant changes and new-conversation creation invalidate that binding
+before any asynchronous session creation, even while the old conversation remains
+visible. Same-session rebinding must use the new request identity. Cancellation
+is checked on already-ready paths and immediately before receipt consumption;
+a canceled launch retains its receipt and restart recovery for explicit retry.
+
+`WorkspaceNavigation` owns only Home and the footer Notifications destination.
+The Home/Sessions-only user correction supersedes the expanded prototype.
+`WorkspaceNavigationHistory` owns Back/Forward history and clears forward
+entries only on a different destination. All 20 deprecated `workspace:` links
+(including agents, dashboards, systems, automations, plugins, detail pages,
+sessions, and more) explicitly return Home without creating obsolete history
+entries. Unknown Workspace routes are not accepted as compatibility aliases.
+Both native window entry points use `WorkspaceNavigation.Dispatch` to reject
+unknown prefixed routes before creating a companion or forwarding navigation.
+`app.navigate` reports this rejection as an MCP tool error, not a successful
+no-op.
+Unprefixed companion routes, including `cron`, `sessions`, `skills`, `usage`,
+and `agent:<id>:workspace`, are unchanged.
+
+The removed `WorkspaceContentPage` and `WorkspacePageRenderer` no longer host
+placeholder management pages. Native Cron keeps its existing companion
+list/editor and gateway submissions, without a Workspace-specific layout.
+`WorkspaceProjection` still supplies real assistant and conversation identities.
+Its sidebar and latest assistant conversation use
+`SessionDisplayResolver.IsBackground`: explicit `isBackground` wins, otherwise
+gateway classification and legacy session keys determine background status.
+Home uses the existing Reactor chat and session creation/history; disconnected
+state directs users to Connection. Notifications uses the existing notification
+service. Owner Settings provides access to the full companion catalog, while
+Owner Usage and Pair device keep their deep links. Owner Get apps opens the
+existing platforms documentation directly, without a placeholder Apps page.
+No underlying management
+APIs, companion pages, or capabilities were removed.
+
+The connection event timeline remains an independent `ConnectionStatusWindow`.
+Its initial position is aligned to the right of the active main window's monitor
+work area; subsequent activation reuses it without resetting a user's position.
+It reads the same connection manager diagnostics, not a parallel client.
+
+An argument-free user launch opens only setup when no gateway is configured
+(unless local MCP mode is enabled). After gateway configuration it opens only
+Workspace, even when disconnected or node pairing is still pending. Repeat
+launches and Workspace tray/deep-link activation refocus required setup instead
+of opening Workspace alongside it. Node pairing and credential checks still
+gate actual connections; this is only foreground-window selection.
+New autostart registrations pass
+`--background` to remain quiet. The installer migrates only exact, argument-free
+Run/task entries for its own executable and preserves customized entries and
+task enablement. A portable/manual binary replacement bypasses that migration;
+re-enable **Start with Windows** once in Settings to refresh a legacy entry.
+Explicit protocol and post-setup restart behavior is unchanged.
+Packaged Windows StartupTask activations retain their activation kind through
+initial launch and secondary-instance forwarding. Unlike a real interactive
+argument-free launch, StartupTask does not implicitly open Workspace. Existing
+first-run setup and restart guards remain in effect.
+
+Chat response notifications are suppressed only while native Workspace is
+visible, not minimized, and showing Home/chat, or the legacy compact chat is
+visible. An existing Settings companion, a hidden/minimized Workspace, or the
+Notifications destination is not evidence that chat is visible. The chat and
+per-type notification settings still apply.
+
+New Workspace resource keys exist in every supported locale. Non-English copy
+is explicitly deferred English pending translation; resource-key parity is
+still enforced. Native Light/Dark disconnected proof and synthetic composer
+regressions are distinct from connected gateway proof. In-process captures do
+not include the native window frame or Mica; system high contrast requires its
+own approved host/session and must not be inferred from Dark mode.
+
 Connection management lives in three layers:
 
 ```
@@ -489,6 +642,12 @@ The bootstrap token is cleared only after operator and node role tokens are both
 In-chat exec approval cards sanitize the gateway's command and message before rendering. If either cannot be reviewed in full because it is truncated, suppressed, or conceals command syntax, the card offers only Deny; the chat provider also rejects Allow RPCs that are not permitted by the matching pending card.
 
 ## Inbound pairing approval (operator)
+
+The approval popup retains its original compact lock header, spacing, scrollable
+identity/access card and icon actions. Reject and Decide later remain grouped
+on the left, with Approve on the right. Long access descriptions wrap within
+the card instead of overflowing horizontally. This presentation does not change
+the approval delay or decision flow.
 
 When **another** device or node requests pairing, the gateway broadcasts `device.pair.requested` / `node.pair.requested` to operators with pairing scope. `OpenClawGatewayClient` refreshes the pending lists and raises `DevicePairListUpdated` / `NodePairListUpdated`, which `GatewayService` forwards via its `PairListsChanged` event.
 

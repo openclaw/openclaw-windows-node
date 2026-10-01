@@ -8,6 +8,16 @@ internal sealed record SetupNativeNavigationRequest(SetupNativeCompletion Comple
 {
     public string PageTag => HubPageRegistry.GetNativeSetupPage(Completion.Target.Destination);
     public string? ChannelId => Completion.Target.ChannelId;
+    public WorkspaceDestination? WorkspaceDestination =>
+        WorkspaceNavigation.TryResolveWorkspace(PageTag, out var destination)
+            ? destination with { SessionKey = Completion.Target.SessionKey }
+            : null;
+
+    public void RequireWorkspaceDestination(WorkspaceDestination destination)
+    {
+        if (WorkspaceDestination is not { } expected || destination != expected)
+            throw new SetupNativeOwnershipException();
+    }
 
     public IOperatorGatewayClient GetConnectedClient(GatewayRegistry? registry, IGatewayConnectionManager? manager)
     {
@@ -40,6 +50,28 @@ internal sealed record SetupNativeNavigationRequest(SetupNativeCompletion Comple
             throw new SetupNativeOwnershipException();
         if (!connected) throw new InvalidOperationException("The verified Gateway is not connected.");
         if (connectedGatewayId != Completion.Verification.GatewayId || sessionKey != Completion.Target.SessionKey)
+            throw new SetupNativeOwnershipException();
+    }
+}
+
+internal sealed class SetupNativeChatBinding
+{
+    public SetupNativeNavigationRequest? Request { get; private set; }
+
+    public void Bind(SetupNativeNavigationRequest? request) => Request = request;
+
+    public void Invalidate() => Request = null;
+
+    public void RetainForDestination(WorkspaceDestination destination)
+    {
+        if (Request is { } request && request.WorkspaceDestination != destination)
+            Invalidate();
+    }
+
+    public void RequireCurrent(SetupNativeNavigationRequest request, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (!ReferenceEquals(Request, request))
             throw new SetupNativeOwnershipException();
     }
 }

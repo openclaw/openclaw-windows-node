@@ -48,12 +48,16 @@ internal sealed class SetupNativeHandoffLauncher(
                     using var deadline = new CancellationTokenSource(budget, timeProvider ?? TimeProvider.System);
                     using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct, deadline.Token);
                     var current = await verify(lease.Completion, timeout.Token);
+                    timeout.Token.ThrowIfCancellationRequested();
                     SetupNativeVerification.RequireSame(lease.Completion, current);
                     if (current.SessionKey != lease.NativeTarget!.SessionKey)
                         throw new SetupNativeOwnershipException();
                     RequireCurrent();
+                    timeout.Token.ThrowIfCancellationRequested();
                     await open(new(current.Verification, lease.NativeTarget), timeout.Token);
+                    timeout.Token.ThrowIfCancellationRequested();
                     RequireCurrent();
+                    timeout.Token.ThrowIfCancellationRequested();
                     lease.Consume();
                     ClearRestartRecovery();
                     return true;

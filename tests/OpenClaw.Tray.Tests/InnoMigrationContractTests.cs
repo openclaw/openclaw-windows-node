@@ -14,7 +14,7 @@ public sealed class InnoMigrationContractTests
         var launch = app[app.IndexOf("private async Task OnLaunchedAsync", StringComparison.Ordinal)..];
         var guard = launch.IndexOf("await StoreMigrationStartupGuard.ShouldStopLaunchAsync(DeepLinkPipeName)", StringComparison.Ordinal);
         Assert.True(guard > launch.IndexOf("await CliUninstallHandler.RunAsync", StringComparison.Ordinal));
-        Assert.True(guard < launch.IndexOf("GetProtocolActivationUri()", StringComparison.Ordinal));
+        Assert.True(guard < launch.IndexOf("GetLaunchActivation()", StringComparison.Ordinal));
         Assert.True(guard < launch.IndexOf("_mutex = new Mutex(", StringComparison.Ordinal));
         Assert.True(guard < launch.IndexOf("new ActivationRouter(", StringComparison.Ordinal));
         Assert.True(guard < launch.IndexOf("new SettingsManager()", StringComparison.Ordinal));
@@ -222,6 +222,27 @@ public sealed class InnoMigrationContractTests
         var workflow = Read("src", "OpenClaw.Tray.WinUI", "Services", "StoreMigrationWorkflow.cs");
         Assert.DoesNotContain("StoreMigrationStage.Ready or StoreMigrationStage.Recovery", workflow);
         Assert.Contains("args.Cancel = true", code);
+    }
+
+    [Fact]
+    public void MigrationWindow_ReusesNativeOnboardingArtworkAndWrappingCompactActions()
+    {
+        var xaml = Read("src", "OpenClaw.Tray.WinUI", "Windows", "StoreMigrationWindow.xaml");
+        var document = System.Xml.Linq.XDocument.Parse(xaml);
+        System.Xml.Linq.XNamespace names = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var hero = document.Descendants().Single(element => (string?)element.Attribute(names + "Name") == "MascotHero");
+        Assert.Equal("OnboardingMascot", hero.Name.LocalName);
+        Assert.Equal("using:OpenClaw.SetupEngine.UI.Controls", hero.Name.NamespaceName);
+        Assert.Equal("Center", (string?)hero.Attribute("HorizontalAlignment"));
+        Assert.DoesNotContain("OpenClawMascot.png", xaml);
+        var actions = document.Descendants().Single(element => (string?)element.Attribute(names + "Name") == "Actions");
+        Assert.Equal("560", (string?)actions.Attribute("MaxWidth"));
+        foreach (var button in actions.Elements().Where(element => element.Name.LocalName == "Button"))
+        {
+            Assert.Equal("{StaticResource WrappedAction}", (string?)button.Attribute("ContentTemplate"));
+            Assert.NotEqual("Stretch", (string?)button.Attribute("HorizontalAlignment"));
+            Assert.Null(button.Attribute("Width"));
+        }
     }
 
     [Fact]

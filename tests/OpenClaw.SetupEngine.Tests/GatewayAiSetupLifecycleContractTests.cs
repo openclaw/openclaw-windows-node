@@ -95,6 +95,13 @@ public sealed class GatewayAiSetupLifecycleContractTests
         Assert.Contains("if (Client?.SessionId is null)", page);
         Assert.Contains("private bool ProviderPending => _providerOperationActive ||", page);
         Assert.Contains("var showProvider = ProviderPending", page);
+        Assert.Contains("GatewayAiSetupPresentation.ShowProviderDialog(step, phase, _busy", page);
+        Assert.Contains("ProviderActivity.Visibility = Visible(inlineProvider)", page);
+        Assert.Contains("ProviderCancelButton.IsEnabled = canCancelProvider && !_cancelling", page);
+        Assert.Contains("(!_busy && phase is GatewayAiSetupPhase.Prepared or GatewayAiSetupPhase.Choosing)", page);
+        Assert.Contains("ProviderActivityError.IsOpen = inlineProvider && !string.IsNullOrWhiteSpace(_providerError)", page);
+        Assert.Contains("x:Name=\"ProviderActivityStatus\"", xaml);
+        Assert.Contains("x:Name=\"ProviderCancelButton\"", xaml);
         Assert.Contains("_controller!.StopAutomaticContinuation();", page);
         var completion = page[page.IndexOf("Client?.Phase == GatewayAiSetupPhase.Verified", StringComparison.Ordinal)..];
         Assert.True(completion.IndexOf("_providerDialog.Dismiss();", StringComparison.Ordinal) <

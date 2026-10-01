@@ -93,7 +93,8 @@ public static class ReactorChatHostExtensions
         Func<string, Task>? onReadAloud = null,
         Action? onStopSpeaking = null,
         Action<string>? onOpenCheckpoints = null,
-        bool isCompact = false)
+        bool isCompact = false,
+        bool showSessionPicker = true)
     {
         ArgumentNullException.ThrowIfNull(window);
         ArgumentNullException.ThrowIfNull(target);
@@ -118,7 +119,8 @@ public static class ReactorChatHostExtensions
             onReadAloud,
             onStopSpeaking,
             onOpenCheckpoints,
-            isCompact);
+            isCompact,
+            ShowSessionPicker: showSessionPicker);
         var host = new ReactorHostControl();
         host.Mount(_ => Component<OpenClawReactorChatRoot, OpenClawReactorChatRootProps>(props));
         target.Child = host;
@@ -140,6 +142,8 @@ public sealed class MountedReactorChat(
     ChatComposerSession session) : IDisposable
 {
     private int _disposed;
+
+    internal bool TrySelectSession(string sessionKey) => session.Controller.TrySelectChannel(sessionKey);
 
     public void AttachFile(ChatAttachment attachment) => AttachFiles(new[] { attachment });
 

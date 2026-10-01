@@ -7,8 +7,9 @@ using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Media.Imaging;
 using OpenClaw.Connection.Migration;
+using OpenClaw.SetupEngine;
+using OpenClaw.SetupEngine.UI.Controls;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
@@ -20,7 +21,8 @@ namespace OpenClaw.Tray.UITests;
 
 /// <summary>
 /// Mounted production-window proof with in-memory operations only, not migration/package proof.
-/// Set OPENCLAW_VISUAL_TEST=1 and OPENCLAW_VISUAL_TEST_DIR to capture rendered states.
+/// Set OPENCLAW_VISUAL_TEST=1 with the OnboardingNativeProof directory/source/build freeze
+/// environment to capture complete test-owned windows, including the composed mascot.
 /// Never invokes Installed apps or constructs the production migration operations.
 /// </summary>
 [Collection(UICollection.Name)]
@@ -76,11 +78,13 @@ public sealed class StoreMigrationWindowProofTests(UIThreadFixture ui, ITestOutp
     }
 
     [Theory]
-    [InlineData(ElementTheme.Light, 720, 820, false)]
-    [InlineData(ElementTheme.Dark, 720, 820, false)]
-    [InlineData(ElementTheme.Light, 520, 520, true)]
+    [InlineData(ElementTheme.Light, 720, 820, false, false)]
+    [InlineData(ElementTheme.Dark, 720, 820, false, false)]
+    [InlineData(ElementTheme.Light, 720, 728, false, true)]
+    [InlineData(ElementTheme.Dark, 720, 728, false, true)]
+    [InlineData(ElementTheme.Light, 520, 520, true, true)]
     public Task Consent_UsesWizardVisuals_AndKeepsActionsOutsideScrollingContent(
-        ElementTheme theme, int width, int height, bool largeText)
+        ElementTheme theme, int width, int height, bool largeText, bool scrollToWarning)
     {
         var operations = new Operations();
         return WithWindowAsync(operations, async (window, workflow, completion) =>
@@ -96,8 +100,7 @@ public sealed class StoreMigrationWindowProofTests(UIThreadFixture ui, ITestOutp
                     Control<TextBlock>(window, "Heading").FontSize = 40;
                 }
             });
-            await WaitUntilAsync(() => Control<Image>(window, "MascotHero").Source
-                is BitmapImage { PixelWidth: > 0, PixelHeight: > 0 }, "wizard mascot to load");
+            await ui.YieldToRenderAsync();
             await ui.RunOnUIAsync(() =>
             {
                 AssertState(window, "Consent", consent: true);
@@ -106,18 +109,21 @@ public sealed class StoreMigrationWindowProofTests(UIThreadFixture ui, ITestOutp
                 Assert.Equal(Localized("Migration2_Title"), Control<TextBlock>(window, "TitleBarText").Text);
                 Assert.Equal(AutomationHeadingLevel.Level1,
                     AutomationProperties.GetHeadingLevel(Control<TextBlock>(window, "Heading")));
-                var mascot = Control<Image>(window, "MascotHero");
-                Assert.Equal(96, mascot.ActualWidth);
-                Assert.Equal(96, mascot.ActualHeight);
+                var mascot = Control<OnboardingMascot>(window, "MascotHero");
+                Assert.Equal(OnboardingMascot.HeroSize, mascot.ActualWidth);
+                Assert.Equal(OnboardingMascot.HeroSize, mascot.ActualHeight);
+                Assert.Equal(OnboardingMascotMood.Curious, mascot.Mood);
+                Assert.False(mascot.IsTabStop);
                 Assert.Equal(AccessibilityView.Raw, AutomationProperties.GetAccessibilityView(mascot));
 
                 var viewport = Control<ScrollViewer>(window, "MigrationContent");
                 Assert.InRange(viewport.ActualWidth, 1, 560);
                 Assert.Equal(ScrollBarVisibility.Disabled, viewport.HorizontalScrollBarVisibility);
                 var layout = Assert.IsType<Grid>(viewport.Parent);
-                Assert.Equal(new Thickness(48, 28, 48, 24), layout.Padding);
+                Assert.Equal(new Thickness(40, 4, 40, 24), layout.Padding);
                 Assert.Equal(16, layout.RowSpacing);
                 var actions = Control<Grid>(window, "Actions");
+                Assert.InRange(actions.ActualWidth, 1, 560);
                 Assert.True(actions.ColumnDefinitions[1].Width.IsAuto);
                 Assert.Equal(HorizontalAlignment.Left, Control<Button>(window, "Dismiss").HorizontalAlignment);
                 Assert.Equal(HorizontalAlignment.Right, Control<Button>(window, "Primary").HorizontalAlignment);
@@ -133,11 +139,11 @@ public sealed class StoreMigrationWindowProofTests(UIThreadFixture ui, ITestOutp
                 Assert.Equal(new[] { "inspect", "consent?" }, operations.Calls);
                 if (largeText)
                     Assert.True(viewport.ScrollableHeight > 0, "Large text must scroll, not push actions offscreen.");
-                else
+                if (!scrollToWarning)
                     AssertSafetyWithinViewport(window);
             });
-            await CaptureAsync(window, $"Wizard-{theme}-{width}x{height}-LargeText{largeText}");
-            if (largeText)
+            await CaptureAsync(window, $"Wizard-{width}x{height}-LargeText{largeText}");
+            if (scrollToWarning)
             {
                 await ui.RunOnUIAsync(() =>
                 {
@@ -150,7 +156,7 @@ public sealed class StoreMigrationWindowProofTests(UIThreadFixture ui, ITestOutp
                     return Math.Abs(viewport.VerticalOffset - viewport.ScrollableHeight) < 1;
                 }, "consent warning to scroll into view");
                 await ui.RunOnUIAsync(() => AssertSafetyWithinViewport(window));
-                await CaptureAsync(window, "Consent-520x520-WarningScrolled");
+                await CaptureAsync(window, $"Consent-{width}x{height}-WarningScrolled");
             }
             await InvokeAsync(window, "Dismiss");
             // Not now leaves the previous app installed, so the Store app must stay inactive.
@@ -188,8 +194,10 @@ public sealed class StoreMigrationWindowProofTests(UIThreadFixture ui, ITestOutp
         });
     }
 
-    [Fact]
-    public Task ExplicitConsent_BusyClose_ManualRetry_OffersRemovalOnlyAfterCompletion()
+    [Theory]
+    [InlineData(ElementTheme.Light)]
+    [InlineData(ElementTheme.Dark)]
+    public Task ExplicitConsent_BusyClose_ManualRetry_OffersRemovalOnlyAfterCompletion(ElementTheme theme)
     {
         var operations = new Operations
         {
@@ -199,6 +207,7 @@ public sealed class StoreMigrationWindowProofTests(UIThreadFixture ui, ITestOutp
         return WithWindowAsync(operations, async (window, workflow, completion) =>
         {
             await WaitForStageAsync(workflow, StoreMigrationStage.Consent);
+            await ui.RunOnUIAsync(() => Root(window).RequestedTheme = theme);
             await InvokeAsync(window, "Primary");
             await WaitForStageAsync(workflow, StoreMigrationStage.ClosingSource, busy: true);
             await ui.RunOnUIAsync(() =>
@@ -400,8 +409,10 @@ public sealed class StoreMigrationWindowProofTests(UIThreadFixture ui, ITestOutp
         });
     }
 
-    [Fact]
-    public Task Recovery_DiscardsUnreadableRecordsAndReleasesTheApp()
+    [Theory]
+    [InlineData(ElementTheme.Light)]
+    [InlineData(ElementTheme.Dark)]
+    public Task Recovery_DiscardsUnreadableRecordsAndReleasesTheApp(ElementTheme theme)
     {
         var operations = new Operations
         {
@@ -411,7 +422,11 @@ public sealed class StoreMigrationWindowProofTests(UIThreadFixture ui, ITestOutp
         return WithWindowAsync(operations, async (window, workflow, completion) =>
         {
             await WaitForStageAsync(workflow, StoreMigrationStage.Recovery);
-            await ui.RunOnUIAsync(() => AssertState(window, "Recovery", removal: true, discard: true));
+            await ui.RunOnUIAsync(() =>
+            {
+                Root(window).RequestedTheme = theme;
+                AssertState(window, "Recovery", removal: true, discard: true);
+            });
             await CaptureAsync(window, "RecoveryDiscard");
 
             await InvokeAsync(window, "DiscardRecords");
@@ -471,7 +486,8 @@ public sealed class StoreMigrationWindowProofTests(UIThreadFixture ui, ITestOutp
             await ui.RunOnUIAsync(() =>
             {
                 workflow = new StoreMigrationWorkflow(operations, NullLogger.Instance);
-                window = new StoreMigrationWindow(workflow);
+                window = OnboardingNativeProof.CreateWindow(() => new StoreMigrationWindow(workflow));
+                Control<OnboardingMascot>(window, "MascotHero").IsAnimationEnabled = false;
                 window.Closed += (_, _) => closed = true;
                 completion = window.ShowAsync();
             });
@@ -609,6 +625,7 @@ public sealed class StoreMigrationWindowProofTests(UIThreadFixture ui, ITestOutp
         Assert.Equal(Localized(resourceKey), new ButtonAutomationPeer(button).GetName());
         Assert.Equal(enabled, button.IsEnabled);
         Assert.Equal(100, button.MinWidth);
+        Assert.NotNull(button.ContentTemplate);
         Assert.Equal(visible ? Visibility.Visible : Visibility.Collapsed, button.Visibility);
         if (visible)
         {
@@ -617,6 +634,12 @@ public sealed class StoreMigrationWindowProofTests(UIThreadFixture ui, ITestOutp
             Assert.InRange(position.X, 0, Root(window).ActualWidth);
             Assert.InRange(position.X + button.ActualWidth, 1, Root(window).ActualWidth + 1);
             Assert.InRange(position.Y + button.ActualHeight, 1, Root(window).ActualHeight + 1);
+            if (name is "InstalledApps" or "DiscardRecords")
+            {
+                Assert.Equal(HorizontalAlignment.Left, button.HorizontalAlignment);
+                Assert.True(button.ActualWidth < Control<Grid>(window, "Actions").ActualWidth,
+                    "Recovery actions must fit their content rather than stretching across the footer.");
+            }
         }
     }
 
@@ -633,31 +656,62 @@ public sealed class StoreMigrationWindowProofTests(UIThreadFixture ui, ITestOutp
         if (Environment.GetEnvironmentVariable("OPENCLAW_VISUAL_TEST") != "1")
             return;
 
-        var directory = Environment.GetEnvironmentVariable("OPENCLAW_VISUAL_TEST_DIR");
-        Assert.False(string.IsNullOrWhiteSpace(directory), "Screenshot proof requires OPENCLAW_VISUAL_TEST_DIR.");
-        var surface = $"StoreMigrationWindow-FakeOperations-{state}-{Guid.NewGuid():N}";
-        var surfaceDirectory = Path.Combine(Path.GetFullPath(directory!), surface);
-        await ui.YieldToRenderAsync();
         await ui.RunOnUIAsync(async () =>
         {
-            var root = Assert.IsType<Grid>(Root(window));
-            var background = root.Background;
-            try
+            var root = Root(window);
+            Assert.Equal(root.ActualTheme == ElementTheme.Dark ? ApplicationTheme.Dark : ApplicationTheme.Light,
+                Application.Current.RequestedTheme);
+            var viewport = Control<ScrollViewer>(window, "MigrationContent");
+            bool FullyVisible(FrameworkElement element)
             {
-                // RenderTargetBitmap omits Mica. Avoid the capture helper's white fill over dark-theme text.
-                if (root.ActualTheme == ElementTheme.Dark)
-                    root.Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 32, 32, 32));
-                await VisualTestCapture.CaptureAsync(root, surface);
+                var top = element.TransformToVisual(viewport).TransformPoint(new Windows.Foundation.Point()).Y;
+                return element.Visibility == Visibility.Visible && top >= 0 &&
+                    top + element.ActualHeight <= viewport.ActualHeight;
             }
-            finally
+            var labels = new List<string>
             {
-                root.Background = background;
+                Control<TextBlock>(window, "TitleBarText").Text,
+                (string)Control<Button>(window, "Dismiss").Content
+            };
+            foreach (var name in new[] { "Primary", "InstalledApps", "DiscardRecords" })
+            {
+                var button = Control<Button>(window, name);
+                if (button.Visibility == Visibility.Visible)
+                    labels.Add((string)button.Content);
             }
+            var status = Control<TextBlock>(window, "Status");
+            if (FullyVisible(status))
+                labels.Add(status.Text);
+            var safety = Control<InfoBar>(window, "Safety");
+            if (safety.IsOpen && FullyVisible(safety))
+            {
+                labels.Add(safety.Title);
+                labels.Add(safety.Message);
+            }
+            OnboardingNativeProof.ActivateOwned(window);
+            using var frame = await OnboardingNativeProof.CaptureAsync(window,
+                $"migration-fake-{state}-{root.ActualTheme}-{Guid.NewGuid():N}", output, labels.ToArray(),
+                new { state, theme = root.ActualTheme.ToString(), fakeOperations = true },
+                requiredContent: Control<Grid>(window, "Actions"));
+            var hero = Control<OnboardingMascot>(window, "MascotHero");
+            if (FullyVisible(hero))
+            {
+                var region = OnboardingNativeProof.ClientPixels(window, hero, frame);
+                var coralPixels = 0;
+                for (var y = region.Top; y < region.Bottom; y++)
+                {
+                    for (var x = region.Left; x < region.Right; x++)
+                    {
+                        var pixel = frame.Bitmap.GetPixel(x, y);
+                        if (pixel.R > 100 && pixel.R > pixel.G * 1.5 && pixel.R > pixel.B * 1.5)
+                            coralPixels++;
+                    }
+                }
+                Assert.True(coralPixels > 100, $"Native capture omitted the visible mascot in {state}.");
+            }
+            OnboardingNativeProof.AssertSourceUnchanged();
         });
-        Assert.True(Directory.Exists(surfaceDirectory), "The screenshot helper did not create the proof directory.");
-        var screenshot = Assert.Single(Directory.GetFiles(surfaceDirectory, "*.png"));
-        Assert.True(new FileInfo(screenshot).Length > 0, "The screenshot helper produced an empty artifact.");
-        output.WriteLine($"XAML-only proof with solid capture background and fake operations, not Mica/package proof: {state}; screenshot={screenshot}");
+        output.WriteLine($"Complete owned-window proof with fake operations, not package/migration proof: {state}.");
     }
 
     private static FrameworkElement Root(StoreMigrationWindow window) =>

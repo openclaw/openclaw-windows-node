@@ -90,7 +90,9 @@ public sealed class NativeGatewaySetupService(
             if (registry.GetById(saved.GatewayId) is null)
             {
                 if (saved.PackageFamilyName != package.PackageFamilyName)
-                    throw new InvalidOperationException("The installed Gateway package does not match the saved setup profile.");
+                    throw new NativeGatewayDraftRecoveryRequiredException(
+                        "The installed Gateway package does not match the saved setup profile. " +
+                        "Discard the unfinished setup draft to create a new profile for the installed Gateway package.");
                 if (saved.Contract != contract)
                     throw new NativeGatewayDraftRecoveryRequiredException(
                         "The saved native setup draft belongs to a different Gateway runtime. " +

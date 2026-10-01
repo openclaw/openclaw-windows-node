@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Connection;
 using OpenClaw.SetupEngine;
 using OpenClaw.SetupEngine.UI;
+using OpenClaw.SetupEngine.UI.Controls;
 using OpenClaw.SetupEngine.UI.Pages;
 using OpenClaw.TestSupport;
 using Xunit.Abstractions;
@@ -70,8 +71,8 @@ public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHel
                 Assert.Null(page.FindName("SkipButton"));
                 Assert.Null(page.FindName("ReturnButton"));
                 Assert.Null(page.FindName("FinishButton"));
-                var badge = Assert.IsType<TextBlock>(page.FindName("RecommendedBadge"));
-                Assert.Equal("Recommended", badge.Text);
+                var badge = Assert.IsType<RecommendedBadge>(page.FindName("RecommendedBadge"));
+                Assert.Equal("Recommended", Assert.IsType<TextBlock>(badge.FindName("Label")).Text);
                 Assert.True(badge.ActualWidth > 0 && badge.ActualHeight > 0);
                 Assert.Equal("Talk to my agent, recommended",
                     Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(choices.Children[0]));
@@ -79,8 +80,16 @@ public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHel
                 Assert.False(Directory.Exists(Path.Combine(data, "setup-dashboard-handoff")));
                 Assert.False(File.Exists(Path.Combine(data, "settings.json")));
                 Assert.Equal(size, window.AppWindow.Size);
-                await OnboardingArtworkRenderingTests.SaveNativeWindowProofAsync(window,
-                    $"native-ready-{theme}", output, page);
+                if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENCLAW_UI_PROOF_DIR")))
+                {
+                    using (await OnboardingNativeProof.CaptureAsync(window, $"followup-native-ready-{theme}", output,
+                        ["Recommended", "Talk to my agent"], requiredContent: page)) { }
+                    foreach (var choice in choices.Children.Cast<Control>()) choice.IsEnabled = false;
+                    Assert.False(badge.IsEnabled);
+                    using (await OnboardingNativeProof.CaptureAsync(window, $"followup-native-ready-disabled-{theme}", output,
+                        ["Recommended", "Talk to my agent"], requiredContent: page)) { }
+                    foreach (var choice in choices.Children.Cast<Control>()) choice.IsEnabled = true;
+                }
                 // Fail at the coordinator boundary without touching a Gateway or publishing a handoff.
                 var argsField = typeof(AiReadyPage).GetField("_args", BindingFlags.Instance | BindingFlags.NonPublic)!;
                 var originalArgs = argsField.GetValue(page)!;

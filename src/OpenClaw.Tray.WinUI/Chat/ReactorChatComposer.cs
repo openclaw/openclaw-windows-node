@@ -32,7 +32,8 @@ internal sealed record ReactorChatComposerViewProps(
     ChatComposerInputs Inputs,
     ChatDataSnapshot InputSnapshot,
     Action OnSendRequested,
-    bool IsCompact);
+    bool IsCompact,
+    bool ShowSessionPicker = true);
 
 /// <summary>
 /// Declarative Reactor view for the composer. It owns control construction, popup/
@@ -52,6 +53,8 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         var vm = props.Session.ViewModel;
         var controller = props.Session.Controller;
         var inputs = props.Inputs;
+        var sessionItemStatus = GatewayFixtureRenderObservation.Create(
+            props.InputSnapshot, inputs.CurrentThread.Id, GatewayFixtureIsolation.IsEnabled);
         var colorScheme = UseColorScheme();
         var (viewportWidth, setViewportWidth) = UseState(props.IsCompact ? 480d : 800d);
 
@@ -569,6 +572,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             .Set(control =>
             {
                 inputControl.Current = control;
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetItemStatus(control, sessionItemStatus);
                 control.Resources["TextControlBorderThemeThickness"] = new Thickness(0);
                 control.Resources["TextControlBorderThemeThicknessFocused"] = new Thickness(0);
                 control.Resources["TextControlBackground"] = transparentInputBrush;
@@ -603,8 +607,6 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             return static () => { };
         }), popupStateKey);
 
-        var sessionItemStatus = GatewayFixtureRenderObservation.Create(
-            props.InputSnapshot, inputs.CurrentThread.Id, GatewayFixtureIsolation.IsEnabled);
         var sessionPicker = MenuFlyout(
             compactSession
                 ? IconButton(FluentIconCatalog.Sessions,
@@ -709,13 +711,14 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 .OnUnmount(control => ComposerAutomationVisibility.Detach(
                     (FrameworkElement)control));
 
-        var leading = Grid(
+        Element leading = props.ShowSessionPicker ? Grid(
             [GridSize.Auto, GridSize.Star()],
             [GridSize.Auto],
             attachButton.Grid(column: 0),
             sessionPicker.Margin(compactSession ? 0 : 4, 0, 0, 0).Grid(column: 1))
             .MaxWidth(compactSession ? 64 : 184)
-            .HAlign(HorizontalAlignment.Left).VAlign(VerticalAlignment.Center);
+            .HAlign(HorizontalAlignment.Left).VAlign(VerticalAlignment.Center)
+            : attachButton.VAlign(VerticalAlignment.Center);
         var pickers = Grid(
             [GridSize.Star(), GridSize.Auto],
             [GridSize.Auto],

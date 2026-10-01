@@ -29,7 +29,8 @@ public sealed record OpenClawReactorChatRootProps(
     Action? OnStopSpeaking = null,
     Action<string>? OnOpenCheckpoints = null,
     bool IsCompact = false,
-    Func<string, bool>? TryCopyText = null);
+    Func<string, bool>? TryCopyText = null,
+    bool ShowSessionPicker = true);
 
 /// <summary>
 /// Production Reactor root for the native chat surface. It owns the provider
@@ -326,7 +327,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 composerInputs,
                 snapshot,
                 () => setScrollToBottomToken(scrollToBottomToken + 1),
-                props.IsCompact));
+                props.IsCompact,
+                props.ShowSessionPicker));
         }
 
         return Grid(

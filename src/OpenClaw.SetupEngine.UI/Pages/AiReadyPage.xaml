@@ -30,12 +30,7 @@
                     <tk:SettingsCard x:Name="ChatChoice" x:Uid="Onboarding_Ready_Chat" Header="Talk to my agent"
                                      Description="Open Chat with your agent." Tag="Chat" IsClickEnabled="True" Click="Choose_Click"
                                      AutomationProperties.Name="Talk to my agent, recommended">
-                        <Border CornerRadius="4" Padding="8,4" VerticalAlignment="Center"
-                                BorderBrush="{ThemeResource AccentTextFillColorPrimaryBrush}" BorderThickness="1">
-                            <TextBlock x:Name="RecommendedBadge" x:Uid="Onboarding_Copy_Recommended" Text="Recommended"
-                                       Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap"
-                                       Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
-                        </Border>
+                        <controls:RecommendedBadge x:Name="RecommendedBadge" />
                     </tk:SettingsCard>
                     <tk:SettingsCard x:Name="ChannelsChoice" x:Uid="Onboarding_Ready_Channels" Header="Connect channels"
                                      Description="WhatsApp, Telegram, and more. You choose when to sign in." Tag="Channels" IsClickEnabled="True" Click="Choose_Click" />

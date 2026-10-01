@@ -357,15 +357,103 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             await InvokeChoiceAsync(page);
             await WaitAsync(() => transport.MethodCalls.Contains("openclaw.setup.activate.start"));
             var dialog = GetDialog(page);
-            await WaitAsync(() => Assert.IsType<ScrollViewer>(dialog.Content).IsLoaded);
-            Assert.Equal("Existing AI", dialog.Title);
-            Assert.Equal(Visibility.Visible, Assert.IsType<ProgressBar>(dialog.FindName("DialogProgress")).Visibility);
+            await WaitAsync(() => Find<StackPanel>(page, "ProviderActivity").Visibility == Visibility.Visible);
+            Assert.False(Assert.IsType<ScrollViewer>(dialog.Content).IsLoaded);
+            Assert.Equal(Visibility.Visible, Find<ProgressBar>(page, "ProviderActivityProgress").Visibility);
+            Assert.False(string.IsNullOrWhiteSpace(Find<TextBlock>(page, "ProviderActivityStatus").Text));
+            var sessionId = transport.LastActivation.GetProperty("sessionId").GetString();
+            Assert.False(string.IsNullOrWhiteSpace(sessionId));
             var close = page.CloseAsync();
             await close;
             Assert.Same(close, page.CloseAsync());
             Assert.Equal(0, completed());
-            Assert.Contains("wizard.cancel", transport.MethodCalls);
+            Assert.Single(transport.MethodCalls, method => method == "wizard.cancel");
+            Assert.Equal(sessionId, transport.LastCancel.GetProperty("sessionId").GetString());
+            Assert.DoesNotContain("openclaw.setup.verify", transport.MethodCalls);
             Assert.Equal(1, transport.MethodCalls.Count(method => method == "openclaw.setup.activate.start"));
+        });
+    }
+
+    [Theory]
+    [InlineData(ElementTheme.Light)]
+    [InlineData(ElementTheme.Dark)]
+    public async Task ProviderLoading_StaysInlineAndCanCancelWithoutOpeningAPopup(ElementTheme theme)
+    {
+        await WithPageAsync(async (page, transport, completed) =>
+        {
+            await InvokeChoiceAsync(page);
+            var cancel = Find<Button>(page, "ProviderCancelButton");
+            await WaitAsync(() => cancel.Visibility == Visibility.Visible && cancel.IsEnabled);
+            Assert.Equal(Visibility.Visible, Find<StackPanel>(page, "ProviderActivity").Visibility);
+            Assert.Equal(Visibility.Visible, Find<ProgressBar>(page, "ProviderActivityProgress").Visibility);
+            Assert.Equal("Synthetic provider loading", Find<TextBlock>(page, "ProviderActivityStatus").Text);
+            Assert.False(Assert.IsType<ScrollViewer>(GetDialog(page).Content).IsLoaded);
+            Assert.False(Find<ItemsControl>(page, "CandidateChoices").IsEnabled);
+            Assert.Equal(0, completed());
+            typeof(AiSetupPage).GetMethod("ShowError", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+                .Invoke(page, ["Failed"]);
+            var error = Find<InfoBar>(page, "ProviderActivityError");
+            Assert.True(error.IsOpen);
+            Assert.False(string.IsNullOrWhiteSpace(error.Message));
+            Assert.False(Assert.IsType<ScrollViewer>(GetDialog(page).Content).IsLoaded);
+            await OnboardingArtworkRenderingTests.SaveProofAsync(page, $"provider-inline-loading-{theme}", output);
+            Invoke(cancel);
+            await WaitAsync(() => Find<Button>(page, "RefreshButton").IsEnabled);
+            Assert.Equal(Visibility.Collapsed, Find<StackPanel>(page, "ProviderActivity").Visibility);
+            Assert.Equal(Visibility.Collapsed, cancel.Visibility);
+            Assert.Equal(1, transport.MethodCalls.Count(method => method == "wizard.cancel"));
+            Assert.Equal(1, transport.MethodCalls.Count(method => method == "openclaw.setup.activate.start"));
+            Assert.Equal(0, completed());
+        }, theme: theme, configure: transport => transport.WizardStep = new()
+        {
+            Id = "loading", Type = "progress", Executor = "gateway",
+            Title = "Current model", Message = "Synthetic provider loading",
+        });
+    }
+
+    [Theory]
+    [InlineData(ElementTheme.Light)]
+    [InlineData(ElementTheme.Dark)]
+    [Trait("Category", "NativeOnboardingProof")]
+    public async Task FollowupProof_ProviderInlineLoadingCancelAndInput(ElementTheme theme)
+    {
+        await WithPageAsync(async (page, transport, completed) =>
+        {
+            await InvokeChoiceAsync(page);
+            var cancel = Find<Button>(page, "ProviderCancelButton");
+            await WaitAsync(() => cancel.Visibility == Visibility.Visible && cancel.IsEnabled);
+            Assert.False(Assert.IsType<ScrollViewer>(GetDialog(page).Content).IsLoaded);
+            using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow, $"followup-provider-loading-{theme}", output,
+                ["Connect your AI", "Synthetic provider loading", "Cancel"], requiredContent: page)) { }
+            typeof(AiSetupPage).GetMethod("ShowError", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+                .Invoke(page, ["Failed"]);
+            Assert.True(Find<InfoBar>(page, "ProviderActivityError").IsOpen);
+            using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow, $"followup-provider-inline-error-{theme}", output,
+                ["Connect your AI", "Cancel"], requiredContent: page)) { }
+            Invoke(cancel);
+            await WaitAsync(() => Find<Button>(page, "RefreshButton").IsEnabled);
+            Assert.Equal(Visibility.Collapsed, Find<StackPanel>(page, "ProviderActivity").Visibility);
+            Assert.Equal(1, transport.MethodCalls.Count(method => method == "wizard.cancel"));
+            using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow, $"followup-provider-cancelled-{theme}", output,
+                ["Connect your AI", "Refresh"], requiredContent: page)) { }
+            transport.WizardStep = new()
+            {
+                Id = "synthetic-input", Type = "text", Executor = "client",
+                Title = "Provider input", Message = "Synthetic provider prompt. No provider contacted.",
+                DeviceCode = new("TEST-CODE", 15, "Synthetic device code"),
+            };
+            await InvokeChoiceAsync(page);
+            var dialog = GetDialog(page);
+            await WaitAsync(() => dialog.CanSubmit && Assert.IsType<ScrollViewer>(dialog.Content).IsLoaded);
+            Assert.Equal("TEST-CODE", Assert.IsType<TextBlock>(dialog.FindName("DeviceCode")).Text);
+            using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow, $"followup-provider-input-{theme}", output,
+                ["Provider input", "TEST-CODE", "Cancel"],
+                requiredContent: Assert.IsType<ScrollViewer>(dialog.Content))) { }
+            Assert.Equal(0, completed());
+        }, nativeProof: true, theme: theme, configure: transport => transport.WizardStep = new()
+        {
+            Id = "loading", Type = "progress", Executor = "gateway",
+            Title = "Current model", Message = "Synthetic provider loading",
         });
     }
 
@@ -586,6 +674,135 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
         });
     }
 
+    [Theory]
+    [InlineData("text", false, false)]
+    [InlineData("text", true, false)]
+    [InlineData("select", false, false)]
+    [InlineData("multiselect", false, false)]
+    [InlineData("confirm", false, false)]
+    [InlineData("note", false, false)]
+    [InlineData("select", false, true)]
+    public async Task ProviderDialog_PendingAnswerKeepsDisabledPromptMounted(
+        string type, bool sensitive, bool failAnswer)
+    {
+        await WithPageAsync(async (page, transport, completed) =>
+        {
+            await InvokeChoiceAsync(page);
+            var dialog = GetDialog(page);
+            var content = Assert.IsType<ScrollViewer>(dialog.Content);
+            await WaitAsync(() => dialog.CanSubmit && content.IsLoaded);
+            var closed = 0;
+            dialog.Closed += (_, _) => closed++;
+            var text = Assert.IsType<TextBox>(dialog.FindName("TextInput"));
+            var secret = Assert.IsType<PasswordBox>(dialog.FindName("SecretInput"));
+            var options = Assert.IsType<ListView>(dialog.FindName("StepOptions"));
+            var confirm = Assert.IsType<CheckBox>(dialog.FindName("ConfirmInput"));
+            if (type == "text")
+            {
+                if (sensitive) secret.Password = "synthetic-secret";
+                else text.Text = "synthetic-answer";
+            }
+            await ui.YieldToRenderAsync();
+            Invoke(DialogButton(dialog, "PrimaryButton"));
+            await WaitAsync(() => transport.MethodCalls.Contains("wizard.next"));
+            await ui.YieldToRenderAsync();
+            Assert.Equal(0, closed);
+            Assert.True(content.IsLoaded);
+            Assert.Equal(Visibility.Visible, Assert.IsType<StackPanel>(dialog.FindName("StepPanel")).Visibility);
+            Assert.Equal(Visibility.Collapsed, Find<StackPanel>(page, "ProviderActivity").Visibility);
+            Assert.False(dialog.CanSubmit);
+            Assert.False(dialog.IsPrimaryButtonEnabled);
+            Assert.False(text.IsEnabled);
+            Assert.False(secret.IsEnabled);
+            Assert.False(options.IsEnabled);
+            Assert.False(confirm.IsEnabled);
+            Assert.Empty(secret.Password);
+            if (type == "text" && !sensitive) Assert.Equal("synthetic-answer", text.Text);
+            if (type == "select") Assert.NotNull(options.SelectedItem);
+            if (type == "multiselect") Assert.Single(options.SelectedItems);
+            if (type == "confirm") Assert.True(confirm.IsChecked);
+            Assert.Equal("TEST-CODE", Assert.IsType<TextBlock>(dialog.FindName("DeviceCode")).Text);
+            Assert.Equal(Visibility.Visible, Assert.IsType<Button>(dialog.FindName("CopyCodeButton")).Visibility);
+            Assert.Equal(0, completed());
+            output.WriteLine($"Pending {type} answer: dialog loaded, step visible, inputs disabled, no Closed event.");
+            await OnboardingArtworkRenderingTests.SaveProofAsync(
+                content, $"provider-pending-answer-{type}-{sensitive}-{failAnswer}", output);
+
+            transport.ReleaseAnswer(failAnswer);
+            if (failAnswer)
+            {
+                await WaitAsync(() => dialog.IsSecondaryButtonEnabled);
+                Assert.Equal(Visibility.Collapsed, Assert.IsType<StackPanel>(dialog.FindName("StepPanel")).Visibility);
+                Assert.False(dialog.CanSubmit);
+                Assert.Empty(secret.Password);
+                Assert.Null(options.SelectedItem);
+            }
+            else
+            {
+                await WaitAsync(() => dialog.CanSubmit);
+                Assert.Equal("Provider retry", dialog.Title);
+                Assert.True(Assert.IsType<InfoBar>(dialog.FindName("DialogError")).IsOpen);
+            }
+            Assert.Equal(0, closed);
+            Assert.True(content.IsLoaded);
+            Assert.Equal(0, completed());
+            Assert.Single(transport.MethodCalls, method => method == "wizard.next");
+        }, configure: transport =>
+        {
+            transport.HoldAnswer = true;
+            transport.WizardStep = new()
+            {
+                Id = "pending-answer", Type = type, Executor = "client", Sensitive = sensitive,
+                Title = "Provider input", Message = "Synthetic provider prompt",
+                DeviceCode = new("TEST-CODE"),
+                InitialValue = type == "multiselect" ? JsonSerializer.SerializeToElement(new[] { 7 })
+                    : type == "select" ? JsonSerializer.SerializeToElement(7)
+                    : type == "confirm" ? JsonSerializer.SerializeToElement(true) : null,
+                Options = [new(JsonSerializer.SerializeToElement(7), "Seven")],
+            };
+            transport.FollowingSteps.Enqueue(new()
+            {
+                Id = "pending-answer", Type = "confirm", Executor = "client", Title = "Provider retry",
+            });
+            transport.AnswerError = "Synthetic validation retry";
+        });
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ProviderDialog_PendingAnswerCanCancelOrCloseWithoutHandoff(bool closePage)
+    {
+        await WithPageAsync(async (page, transport, completed) =>
+        {
+            await InvokeChoiceAsync(page);
+            var dialog = GetDialog(page);
+            await WaitAsync(() => dialog.CanSubmit && Assert.IsType<ScrollViewer>(dialog.Content).IsLoaded);
+            await ui.YieldToRenderAsync();
+            Invoke(DialogButton(dialog, "PrimaryButton"));
+            await WaitAsync(() => transport.MethodCalls.Contains("wizard.next"));
+            if (closePage)
+                await page.CloseAsync();
+            else
+            {
+                Invoke(Assert.IsType<Button>(dialog.FindName("CancelButton")));
+                await WaitAsync(() => Find<Button>(page, "RefreshButton").IsEnabled);
+            }
+            transport.ReleaseAnswer(fail: false);
+            await ui.YieldToRenderAsync();
+            Assert.Equal(0, completed());
+            Assert.Single(transport.MethodCalls, method => method == "wizard.cancel");
+            Assert.Equal(transport.LastActivation.GetProperty("sessionId").GetString(),
+                transport.LastCancel.GetProperty("sessionId").GetString());
+            Assert.DoesNotContain("openclaw.setup.verify", transport.MethodCalls);
+            Assert.False(dialog.CanSubmit);
+        }, configure: transport =>
+        {
+            transport.HoldAnswer = true;
+            transport.WizardStep = new() { Id = "consent", Type = "confirm", Executor = "client", Title = "Provider consent" };
+        });
+    }
+
     [Fact]
     public async Task RejectedManualCredential_KeepsProviderAndSecureFormForExplicitRetry()
     {
@@ -750,6 +967,13 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                 Assert.False(dialog.CanSubmit);
                 await OnboardingArtworkRenderingTests.SaveNativeWindowProofAsync(
                     ui.TestWindow, $"onboarding-device-code-deduplicated-{theme}", output, content);
+
+                dialog.Update(step, GatewayAiSetupPhase.Uncertain, true, true, false, "Submitting", null,
+                    isSubmittingAnswer: true);
+                Assert.Equal(Visibility.Visible, Assert.IsType<StackPanel>(dialog.FindName("StepPanel")).Visibility);
+                Assert.Equal("TEST-CODE", code.Text);
+                Assert.Equal(Visibility.Visible, Assert.IsType<Button>(dialog.FindName("ExternalLink")).Visibility);
+                Assert.False(dialog.CanSubmit);
 
                 dialog.Update(new()
                 {
@@ -1382,6 +1606,8 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
         public bool FailActivation { get; set; }
         public bool RejectActivation { get; set; }
         public bool HoldActivation { get; set; }
+        public bool HoldAnswer { get; set; }
+        public string? AnswerError { get; set; }
         public bool FailVerification { get; set; }
         public bool RequireCatalogConsent { get; set; }
         public bool EmptyCandidates { get; set; }
@@ -1393,8 +1619,39 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
         public GatewayAiSetupWizardStep? WizardStep { get; set; }
         public string CancelStatus { get; set; } = "cancelled";
         public JsonElement LastNext { get; private set; }
+        public JsonElement LastCancel { get; private set; }
         private readonly TaskCompletionSource<JsonElement> _heldActivation =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _answerRelease =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void ReleaseAnswer(bool fail)
+        {
+            if (fail) _answerRelease.SetException(new IOException("Synthetic lost answer reply."));
+            else _answerRelease.SetResult();
+        }
+
+        private async Task<JsonElement> AnswerAsync(CancellationToken ct)
+        {
+            if (HoldAnswer)
+                await _answerRelease.Task.WaitAsync(ct);
+            ct.ThrowIfCancellationRequested();
+            if (FollowingSteps.TryDequeue(out var nextStep))
+            {
+                WizardStep = nextStep;
+                return JsonSerializer.SerializeToElement(new
+                {
+                    sessionId = LastActivation.GetProperty("sessionId").GetString(),
+                    done = false, status = "running", step = WizardStep, error = AnswerError,
+                }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            }
+            return JsonSerializer.SerializeToElement(new
+            {
+                sessionId = LastActivation.GetProperty("sessionId").GetString(),
+                done = true, status = "done",
+                modelActivation = new { modelRef = "openai/test-model" },
+            });
+        }
 
         public Task<JsonElement> RequestAsync(
             string method, object parameters, int timeoutMs, CancellationToken cancellationToken)
@@ -1455,23 +1712,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             {
                 LastNext = JsonSerializer.SerializeToElement(parameters);
                 if (LastNext.TryGetProperty("answer", out _))
-                {
-                    if (FollowingSteps.TryDequeue(out var nextStep))
-                    {
-                        WizardStep = nextStep;
-                        return Task.FromResult(JsonSerializer.SerializeToElement(new
-                        {
-                            sessionId = LastActivation.GetProperty("sessionId").GetString(),
-                            done = false, status = "running", step = WizardStep,
-                        }, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
-                    }
-                    return Task.FromResult(JsonSerializer.SerializeToElement(new
-                    {
-                        sessionId = LastActivation.GetProperty("sessionId").GetString(),
-                        done = true, status = "done",
-                        modelActivation = new { modelRef = "openai/test-model" },
-                    }));
-                }
+                    return AnswerAsync(cancellationToken);
                 return Task.FromResult(JsonSerializer.SerializeToElement(new
                 {
                     sessionId = LastActivation.GetProperty("sessionId").GetString(),
@@ -1481,7 +1722,10 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                 }, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
             }
             if (method == "wizard.cancel")
+            {
+                LastCancel = JsonSerializer.SerializeToElement(parameters);
                 return Task.FromResult(JsonSerializer.SerializeToElement(new { status = CancelStatus }));
+            }
             if (method == "openclaw.setup.verify")
             {
                 if (FailVerification)

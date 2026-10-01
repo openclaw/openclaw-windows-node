@@ -38,6 +38,14 @@ The one write-shaped exception is `exec.approval.resolve`: the fixture validates
 the fixture-owned approval ID and decision, records only that safe correlation,
 and returns a synthetic acknowledgement without executing a command.
 
+The native agent-creation UI test explicitly opts into a separate `agent-creation`
+scenario. Only that scenario grants administrator scope and accepts one
+`agents.create` request into an in-memory catalog. It validates name/workspace
+fields, returns a server-assigned ID, and exposes it through subsequent
+`agents.list` responses. It creates no files or real agents; other mutations
+remain rejected. The test verifies the refreshed selector while retaining the
+existing session and unsent draft. Normal interactive browse runs remain read-only.
+
 The host is `tests\OpenClaw.GatewayFixtureHost`, a plain .NET console app, not a
 test container. The request-driven server and scenario live in
 `tests\OpenClaw.TestSupport\Gateway`. Repeated reads and different request
@@ -61,7 +69,7 @@ a Windows desktop and the same WinUI prerequisites as the existing UI suite.
 There is no skip-as-success fallback when the desktop is unavailable.
 
 The tests use local MCP for discovery, startup state and page navigation, and
-UI Automation for the actual session-picker flyout, scrolling and settings
+UI Automation for the actual agent selector, Workspace session sidebar, scrolling and settings
 controls. They verify:
 
 - Real operator connection and populated sessions with node execution off.
@@ -79,7 +87,7 @@ controls. They verify:
 returns only the last 30 entries and does not prove the mounted UI selection.
 The UI smoke checks the actual selected control and final text bounds within
 the transcript viewport, rather than merely checking the current scroll extent.
-For the delayed-history test, a passive `ChatComposerSessionPicker` UI Automation
+For the delayed-history test, a passive `ChatComposerInput` UI Automation
 `ItemStatus` acknowledgement records which loaded-history keys the render
 consumed. It contains no messages, is empty outside explicit fixture mode,
 and never changes chat state. The test waits for this render acknowledgement

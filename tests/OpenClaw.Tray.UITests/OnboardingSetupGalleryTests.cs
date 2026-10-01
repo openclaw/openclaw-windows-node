@@ -27,6 +27,34 @@ namespace OpenClaw.Tray.UITests;
 [Collection(UICollection.Name)]
 public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputHelper output)
 {
+    [Theory]
+    [InlineData(ElementTheme.Light)]
+    [InlineData(ElementTheme.Dark)]
+    [Trait("Category", "NativeOnboardingProof")]
+    public async Task FollowupProof_CapabilitiesAndWelcome(ElementTheme theme)
+    {
+        OnboardingNativeProof.AssertIsolatedRoots();
+        _directory = OnboardingNativeProof.RequireProofDirectory();
+        OnboardingNativeProof.AssertSourceUnchanged();
+        foreach (var scene in new[]
+        {
+            new Scene("followup-welcome-available", "welcome", "available"),
+            new Scene("followup-welcome-unavailable", "welcome", "unavailable"),
+            new Scene("followup-capabilities", "capabilities", "Standard"),
+            new Scene("followup-capabilities-fine-tune", "capabilities", "Standard-fine-tune"),
+        })
+        {
+            var result = new SceneResult(scene, theme);
+            _results.Add(result);
+            await CaptureSceneAsync(result);
+            Assert.True(result.AllViewportsCaptured);
+        }
+        OnboardingNativeProof.AssertSourceUnchanged();
+        _sourceVerifiedAfterCapture = true;
+        foreach (var result in _results) result.Status = "captured";
+        WriteManifest();
+    }
+
     private const string PreviewVariable = "OPENCLAW_SETUP_PREVIEW_PAGE";
     private readonly string _run = $"setup-gallery-{DateTime.UtcNow:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}";
     private readonly List<SceneResult> _results = [];
@@ -113,6 +141,12 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                     var bounds = action.TransformToVisual(footer).TransformBounds(
                         new(0, 0, action.ActualWidth, action.ActualHeight));
                     Assert.True(bounds.Width > 0 && bounds.Height > 0, $"{name}: {bounds}");
+                    if (!wizard)
+                    {
+                        Assert.InRange(bounds.Width, 100, footer.ActualWidth / 2 - 8);
+                        Assert.Equal(name == "BackButton" ? HorizontalAlignment.Left : HorizontalAlignment.Right,
+                            action.HorizontalAlignment);
+                    }
                     Assert.True(bounds.Left >= previousRight - 0.1);
                     Assert.True(bounds.Right <= footer.ActualWidth + 0.1);
                     Assert.True(progressBounds.Bottom <= bounds.Top);
@@ -135,7 +169,7 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
     }
 
     [Fact]
-    public async Task WelcomeAvailability_ClearsStaleBadgeAndAccessibleSuffixBeforeInjectedRechecks()
+    public async Task WelcomeAvailability_ClearsStaleGeneralCardBeforeInjectedRechecks()
     {
         using var temp = new TempDirectory("welcome-badge-recheck-");
         var config = new SetupConfig();
@@ -156,16 +190,20 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                 window.NavigateToWelcome();
                 window.Activate();
                 var page = await MountedAsync<WelcomePage>(frame);
-                var panel = Find<StackPanel>(page, "LocalAiAvailabilityPanel");
+                var panel = Find<SettingsCard>(page, "LocalAiAvailabilityPanel");
                 var choice = Find<ListViewItem>(page, "InstallChoice");
                 await WaitAsync(() => panel.Visibility == Visibility.Visible, "eligible injected GPU");
-                Assert.Contains("Your PC supports Local AI", AutomationProperties.GetName(choice));
+                Assert.Contains("Your PC supports Local AI", AutomationProperties.GetName(panel));
+                Assert.DoesNotContain("supports Local AI", AutomationProperties.GetName(choice));
+                Assert.False(panel.IsClickEnabled);
+                Assert.Same(Find<ListView>(page, "GatewayChoiceSelector").Parent, panel.Parent);
                 var before = JsonSerializer.Serialize(window.AccessDraft.Config);
                 var pending = new TaskCompletionSource<HostHardwareInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
                 SeedHardware(window, pending.Task);
                 var detect = typeof(WelcomePage).GetMethod("DetectLocalAiAvailabilityAsync", BindingFlags.NonPublic | BindingFlags.Instance)!;
                 var stale = Assert.IsAssignableFrom<Task>(detect.Invoke(page, null));
                 Assert.Equal(Visibility.Collapsed, panel.Visibility);
+                Assert.Empty(AutomationProperties.GetName(panel));
                 Assert.DoesNotContain("supports Local AI", AutomationProperties.GetName(choice));
                 Assert.Empty(Find<TextBlock>(page, "LocalAiAvailabilityText").Text);
                 SeedHardware(window, Task.FromResult(Hardware("unsupported")));
@@ -477,8 +515,27 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                         case "welcome":
                             window.NavigateToWelcome();
                             var welcome = await MountedAsync<WelcomePage>(frame);
-                            await WaitAsync(() => Find<StackPanel>(welcome, "LocalAiAvailabilityPanel").Visibility == Visibility.Visible,
+                            await WaitAsync(() => Find<SettingsCard>(welcome, "LocalAiAvailabilityPanel").Visibility == Visibility.Visible,
                                 "synthetic hardware availability");
+                            if (scene.State is "available" or "unavailable")
+                            {
+                                await WaitAsync(() => !Find<ProgressRing>(welcome, "NativeCheckProgress").IsActive,
+                                    "read-only native capability probe completed");
+                                // Render both production visual states without changing host capabilities.
+                                var available = scene.State == "available";
+                                Find<ListViewItem>(welcome, "NativeChoice").IsEnabled = available;
+                                Find<RecommendedBadge>(welcome, "WslRecommendedBadge").Visibility =
+                                    available ? Visibility.Collapsed : Visibility.Visible;
+                                Find<Border>(welcome, "NativeSupportCard").Visibility =
+                                    available ? Visibility.Collapsed : Visibility.Visible;
+                                Find<StackPanel>(welcome, "NativeSupportStatusPanel").Visibility =
+                                    available ? Visibility.Collapsed : Visibility.Visible;
+                                Find<TextBlock>(welcome, "NativeSupportStatus").Text =
+                                    available ? "" : "Synthetic unavailable host. Windows update required.";
+                                Assert.True(VisualStateManager.GoToState(welcome,
+                                    available ? "NativeRecommendedState" : "WslRecommendedState", false));
+                                result.Facts.Add("Synthetic availability projection using production visual states, not host eligibility proof.");
+                            }
                             if (scene.State == "existing")
                                 Find<ListView>(welcome, "GatewayChoiceSelector").SelectedIndex = 1;
                             if (scene.State is "checking" or "blocked" or "failure")
@@ -531,6 +588,8 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                             if (scene.State != "browser") draft.SelectRoute(SetupGatewayRoute.ManagedWsl, gatewayAvailable: true);
                             window.NavigateToCapabilities();
                             var capabilities = await MountedAsync<CapabilitiesPage>(frame);
+                            Assert.DoesNotContain(TestSupport.FindDescendants<TextBlock>(capabilities),
+                                text => text.Text == "Choose what your agent can do");
                             Assert.Equal(3, Find<ListView>(capabilities, "ProfileSelector").Items.Count);
                             if (draft.FineTuneExpanded)
                                 await TestSupport.WaitForSettingsExpanderSettledAsync(ui,
@@ -932,7 +991,17 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
             if (headerInViewport)
             {
                 OnboardingNativeProof.AssertFullyVisible(heading, root);
-                labels.Add(contract.Text);
+                if (result.Scene.Id.StartsWith("followup-welcome-", StringComparison.Ordinal))
+                {
+                    await OnboardingNativeProof.AssertNativeLabelAfterWpfLoadAsync(
+                        WinRT.Interop.WindowNative.GetWindowHandle(window), contract.Text);
+                    OnboardingNativeProof.AssertProductDpi(window);
+                    labels.Add("Install a local native gateway");
+                    labels.Add("Connect to an existing Gateway");
+                    labels.Add("Your PC supports Local AI");
+                }
+                else
+                    labels.Add(contract.Text);
             }
             else
                 Assert.Contains(contract.Text, result.OcrLabels); // A scrolling header must already be proven in its first viewport.

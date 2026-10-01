@@ -215,7 +215,7 @@ public static class AutoStartManager
                     return;
                 }
 
-                key.SetValue(AppName, $"\"{exePath}\"");
+                key.SetValue(AppName, $"\"{exePath}\" --background");
                 Logger.Info("Auto-start enabled");
             }
             else

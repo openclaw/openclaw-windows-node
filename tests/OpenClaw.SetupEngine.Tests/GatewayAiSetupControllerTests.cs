@@ -261,6 +261,67 @@ public sealed class GatewayAiSetupControllerTests
         }));
     }
 
+    [Theory]
+    [InlineData(GatewayAiSetupPhase.Choosing, true, false, false)]
+    [InlineData(GatewayAiSetupPhase.Running, true, false, false)]
+    [InlineData(GatewayAiSetupPhase.Prepared, true, false, false)]
+    [InlineData(GatewayAiSetupPhase.VerificationRequired, true, false, false)]
+    [InlineData(GatewayAiSetupPhase.Uncertain, true, true, false)]
+    [InlineData(GatewayAiSetupPhase.Prepared, false, false, true)]
+    [InlineData(GatewayAiSetupPhase.VerificationRequired, false, false, true)]
+    [InlineData(GatewayAiSetupPhase.Uncertain, false, false, true)]
+    [InlineData(GatewayAiSetupPhase.Running, false, true, true)]
+    public void ProviderDialog_OnlyOpensForAnActionOrRecovery(
+        GatewayAiSetupPhase phase, bool busy, bool error, bool expected)
+    {
+        Assert.Equal(expected, GatewayAiSetupPresentation.ShowProviderDialog(null, phase, busy, error));
+    }
+
+    [Theory]
+    [InlineData("progress", "gateway", true, false, false, false)]
+    [InlineData("progress", "gateway", false, false, false, false)]
+    [InlineData("text", "client", true, false, false, true)]
+    [InlineData("text", "client", false, false, false, true)]
+    [InlineData("select", "client", false, false, false, true)]
+    [InlineData("multiselect", "client", false, false, false, true)]
+    [InlineData("confirm", "client", false, false, false, true)]
+    [InlineData("confirm", "client", true, false, false, true)]
+    [InlineData("select", "client", true, false, false, true)]
+    [InlineData("note", "client", false, false, false, true)]
+    [InlineData("action", "gateway", false, false, false, false)]
+    [InlineData("progress", "gateway", true, true, false, true)]
+    [InlineData("progress", "gateway", true, false, true, true)]
+    public void ProviderDialog_KeepsSignInInstructionsVisibleWhileGatewayPolls(
+        string type, string executor, bool busy, bool code, bool link, bool expected)
+    {
+        var step = new GatewayAiSetupWizardStep
+        {
+            Id = "step", Type = type, Executor = executor, Message = "Provider status",
+            DeviceCode = code ? new("SYNTHETIC") : null,
+            ExternalUrl = link ? "https://provider.example/signin" : null,
+        };
+        Assert.Equal(expected, GatewayAiSetupPresentation.ShowProviderDialog(
+            step, GatewayAiSetupPhase.Running, busy, hasError: false));
+    }
+
+    [Theory]
+    [InlineData(GatewayAiSetupPhase.Uncertain, true, true, true)]
+    [InlineData(GatewayAiSetupPhase.Uncertain, true, false, false)]
+    [InlineData(GatewayAiSetupPhase.Uncertain, false, true, false)]
+    [InlineData(GatewayAiSetupPhase.Running, true, false, true)]
+    [InlineData(GatewayAiSetupPhase.VerificationRequired, true, true, false)]
+    [InlineData(GatewayAiSetupPhase.Cancelled, true, true, false)]
+    public void ProviderStep_RetainsOnlyAnActiveAnswerSubmission(
+        GatewayAiSetupPhase phase, bool busy, bool submitting, bool expected)
+    {
+        var step = new GatewayAiSetupWizardStep { Id = "prompt", Type = "confirm", Executor = "client" };
+        Assert.Equal(expected, GatewayAiSetupPresentation.ShowProviderStep(step, phase, busy, submitting));
+        if (busy)
+            Assert.Equal(expected, GatewayAiSetupPresentation.ShowProviderDialog(
+                step, phase, busy, hasError: false, isSubmittingAnswer: submitting));
+        Assert.False(GatewayAiSetupPresentation.ShowProviderStep(null, phase, busy, submitting));
+    }
+
     private static async Task<(GatewayAiSetupClient, GatewayAiSetupController, Transport)> CreateAsync(bool requireConsent = false)
     {
         var transport = new Transport { RequireConsent = requireConsent };

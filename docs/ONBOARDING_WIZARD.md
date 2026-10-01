@@ -16,6 +16,19 @@ five-minute receipt expiry. A failed attempt remains available for explicit Retr
 but automatic reactivation does not show the same failure dialog again. Successful
 runtime checks alone do not prove that a full, potentially longer chat turn has finished.
 
+Native installation keeps Back at the left and Cancel setup (or Retry setup) at
+the right, using the same content-sized, 100 px minimum buttons as earlier setup
+screens. Progress stays centered on its own row and action labels can wrap.
+
+The Gateway chooser shows Local AI availability in a subtle, transparent status row
+below all three choices and above "Remote, local MCP or set up later", not inside
+the WSL choice. Its GPU details and accessible
+announcement describe the PC; existing hardware and WSL eligibility checks still
+apply. A successful native-support check enables the native choice without a
+redundant success line. The accent icon tile follows native availability: native
+uses it when available, otherwise WSL does. Unavailable/checking native support
+and Windows Update recovery remain visible in their existing support card.
+
 ### Shortened local onboarding (native and WSL)
 
 The shared `WizardOnboardingPolicy` removes optional setup cards from both WinUI
@@ -153,6 +166,19 @@ Tailscale provisioning and without an additional review page.
 A missing package is installed automatically using
 `winget install --id 9NV70LV3D6XC --source msstore --silent --accept-package-agreements --accept-source-agreements --disable-interactivity --no-upgrade`;
 unhealthy registration or unavailable aliases show an explicit repair error.
+The fixed product is [OpenClaw Gateway in Microsoft Store](https://apps.microsoft.com/detail/9NV70LV3D6XC).
+No MSIX version or download URL is pinned; Store selects the current compatible
+release. Existing healthy installations are not silently upgraded during setup.
+To explicitly refresh one, run
+`winget install --id 9NV70LV3D6XC --source msstore --accept-package-agreements --accept-source-agreements`
+without `--no-upgrade`. WinGet may report that no newer package is available.
+
+An unfinished draft saved against a different package family (for example, the
+older development Gateway) offers **Discard and set up again**, just like a
+runtime-contract change. Keeping the draft changes nothing. Confirming replaces
+only its descriptor with a new profile for the installed package; old workspace
+files, configuration and credentials are preserved. Published profiles cannot
+be discarded through this recovery.
 No local MSIX path or environment-variable configuration is required.
 The original `OpenClaw.Gateway` / OpenClaw Foundation development publisher pair
 is still accepted for existing installations. If both identities are installed,
@@ -568,14 +594,20 @@ arguments remain supported.
 ### Store migration preview
 
 The gated Inno-to-Store migration window reuses the wizard's visual design:
-Mica backdrop, mascot, centered heading, themed content card, and persistent
+Mica backdrop, shared native vector `OnboardingMascot`, centered heading, themed content card, and persistent
 footer actions. Its content scrolls independently so consent and recovery
 actions remain available in smaller windows or with enlarged text.
+The hero retains the shared 180-DIP frame and reduced-motion/theme behavior;
+the small title-bar mascot is static and non-interactive. No legacy PNG artwork
+or separate mascot implementation is used by this window.
 Consent uses three short titled sections and a separate, non-dismissible warning.
 Manual close and removal use step-specific headings and short instructions;
 warnings stay in the same native InfoBar style as setup. Buttons retain the
 wizard's 100-DIP minimum width, neutral left-hand dismissal, accent right-hand
-primary action, and standard content/footer spacing. The title bar stays
+primary action, and standard content/footer spacing. Recovery shortcuts are also
+content-sized, and every action label wraps without ellipsis. The window uses
+setup's `40,4,40,24` outer padding. Unlike setup's full-width footer, this
+standalone window aligns its footer to the body's 560-DIP reading width. The title bar stays
 "Move to the Store version"; retry/recovery states do not use setup step dots.
 The window also sets the native OpenClaw icon for taskbar previews and the
 window switcher; the custom title-bar image alone does not supply that icon.
@@ -601,6 +633,23 @@ publication is blocked until that release's artifacts and acceptance are
 verified, and the switch is set to `false` and retagged if acceptance fails.
 See [Release migration gates](RELEASING.md) for the shared build contract and
 the two-PR coordinated-release requirements.
+
+`StoreMigrationWindowProofTests` mounts this production window with in-memory
+operations only. It covers light/dark consent, busy/manual-close/removal and
+unreadable-record recovery, plus work-area-height and small-window enlarged-text
+layouts that scroll to the complete consent warning. With
+`OPENCLAW_VISUAL_TEST=1` and the existing `OnboardingNativeProof` environment
+(`OPENCLAW_UI_PROOF_DIR`, `OPENCLAW_UI_PROOF_FREEZE_DIR`, and
+`OPENCLAW_UI_PROOF_MANIFEST_SHA256`), it captures complete test-owned windows
+against the reviewed source/build freeze. Run a fresh testhost for each theme,
+setting `OPENCLAW_UI_TEST_APP_THEME=Light` or `Dark` before launch and selecting
+matching theory rows with `DisplayName!~Dark` or `DisplayName~Dark`. The app theme
+must be selected in the `TestApp` constructor; changing only the root theme after
+window creation can leave Mica light beneath dark-theme text. Capture verifies
+that app/content themes agree, as well as visible action/status
+labels and mascot pixels, including the composed artwork rather than a
+`RenderTargetBitmap` approximation. This is presentation proof, not real migration or installer
+proof: it never runs production migration operations or opens Installed apps.
 
 ## Screen Details
 
@@ -682,17 +731,24 @@ navigation. Device information is fixed, not a toggle. System controls
 `system.run` and `system.run.prepare`, not file/clipboard access.
 
 Profiles use vertical, full-width native single-selection rows with the system
-selection indicator, selected background and keyboard behavior. A visible
-**Choose what your agent can do** heading introduces Strict, Balanced (Recommended)
-and Open. The adjacent **Fine-tune** expander shows the selected-capability summary.
+selection indicator, selected background and keyboard behavior. Strict, Balanced
+(Recommended) and Open appear without a redundant section heading. The adjacent
+**Fine-tune** expander shows the selected-capability summary.
+Gateway choices, the Balanced preset and the final Chat choice share the
+`RecommendedBadge` control: a localized caption with an accent outline, 8 px
+horizontal and 4 px vertical padding, and disabled-state brushes inherited from
+the choice's enabled state. The Balanced label has no parenthetical suffix;
+its accessible choice name still includes the recommendation.
 Opening it only inspects existing flags; it does not select Custom. Editing any
 flag shows a **Custom capabilities** badge with no preset falsely selected, even
 if the flags later match a preset. Imported arbitrary flags have no invented base.
 Explicit Custom intent and `FineTuneExpanded` live only in `SetupAccessDraft` and
 survive page recreation. Selecting a preset reapplies exactly its eight flags
 without changing disclosure state. The Toolkit `SettingsExpander.Items` contain
-eight real `SettingsCard` rows; explanatory notes use `ItemsFooter`. Browser
-prerequisites remain in the Browser row description.
+eight real `SettingsCard` rows; explanatory notes use `ItemsFooter` with a
+16 px horizontal and 12 px vertical inset, keeping both paragraphs off the card
+edges while preserving wrapping. Browser prerequisites remain in the Browser row
+description.
 
 Node mode, local MCP and Ollama sharing are independent of profiles. When both
 transports are off, profile/capability controls are disabled and dimmed without
@@ -805,11 +861,23 @@ presentation retains the user's current checkbox value.
 
 #### One provider operation, one dialog
 
-The existing page-owned `ProviderSetupDialog` opens in a provider-specific
-Starting state before waiting for the start response. A page-owned operation
-lifetime keeps it visible across credential submission, server steps,
-preparation, activation and exact verification. The client still owns protocol
-state; the dialog never acquires another Gateway client or persistence store.
+Provider startup, noninteractive server progress, preparation, activation and
+exact verification stay inline on **Connect your AI**, with the shared mascot,
+visible status and a compact Cancel action whenever the operation can be
+cancelled. They do not open a loading-only popup. The page-owned
+`ProviderSetupDialog` opens for typed input, consent, acknowledgments, device
+codes/browser sign-in instructions, or an explicit recovery decision. Device
+codes and sign-in links remain visible while the Gateway polls for completion.
+An input prompt stays open, disabled, while its answer is being submitted so
+validation retries preserve the dialog and selection context. Submitted secrets
+are cleared immediately. The page tracks answer submission separately from the
+client's `Uncertain` protocol phase, so recovery does not expose a stale prompt.
+Inline errors remain visible during loading. Cancel is available once the client
+has allocated its owned wizard session ID, including while the start reply is
+pending; cancellation still requires the Gateway's acknowledgement.
+The page retains the operation lifetime and locks the existing choices even
+while the popup is hidden. The client still owns protocol state; the dialog
+never acquires another Gateway client or persistence store.
 Confirmed rejection returns to the same cleared key field; confirmed cancellation
 returns to usable choices. An uncertain outcome stays available for reconciliation
 and is never replayed as another activation.
@@ -827,8 +895,8 @@ link remains available, and opening a browser never counts as successful login.
 
 `GatewayAiSetupController` retains the explicit preparation choice and catalog
 preference, then automatically activates only its authoritative
-`preparedModelRef` on the unchanged Gateway connection. The dialog does not
-dismiss for an extra page-level Activate button. Server download, plugin review
+`preparedModelRef` on the unchanged Gateway connection. Inline loading does not
+introduce an extra page-level Activate button. Server download, plugin review
 and promotion confirmations remain mandatory. Missing receipts, changed
 connections or unsupported activation fail visibly without choosing another
 model. If an uncertain preparation is later reconciled to an authoritative
