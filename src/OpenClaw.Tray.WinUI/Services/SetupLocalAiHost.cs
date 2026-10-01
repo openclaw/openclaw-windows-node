@@ -134,8 +134,11 @@ internal sealed class SetupLocalAiHost(
         if (target.IsNative)
             target = target with { ModelCatalogId = install?.Manifest.ModelCatalogId,
                 RequestedLocalAiPort = install?.Manifest.RequestedPort };
+        var ownership = target.IsNative && _nativeTransport is { } nativeTransport
+            ? await nativeLifecycle!.ObserveOwnershipAsync(_nativeRecord!, nativeTransport, install, ct)
+            : (NativeLocalAiOwnershipState?)null;
         return LocalAiOnboardingSnapshot.Project(target, eligibility, install, verified, damaged,
-            getRuntime()?.Snapshot, Identity(install));
+            getRuntime()?.Snapshot, Identity(install), nativeOwnership: ownership);
     }
 
     public async Task<SetupLocalAiTarget> RevalidateReviewAsync(LocalAiOnboardingSnapshot selected, CancellationToken ct)

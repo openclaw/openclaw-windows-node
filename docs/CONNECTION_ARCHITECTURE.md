@@ -95,6 +95,22 @@ route offers **Recover and use Local AI**, not artifact Repair. It follows the
 same guarded endpoint-recovery and inference path. Edited provider, primary or
 Companion-added allowlist fields are not adopted or overwritten.
 
+Setup also observes the current profile's durable native binding through
+`LocalAiGatewayLifecycle`, so a pending receipt or changed revision can expose
+recovery even before the in-memory runtime has rediscovered a failure. This
+read-only assessment checks the authenticated route and versioned configuration;
+it never starts a listener, settles a receipt, reads or creates an API credential,
+or performs inference. Explicit Use still revalidates and executes the existing
+guarded recovery. The assessment is not publication authority.
+
+A portable artifact receipt, matching endpoint or successful previous inference
+does not prove this profile owns an existing provider. Missing, invalid or
+mismatched native ownership keeps management blocked and directs the user to the
+original Companion profile and Gateway. No receipt or credential import occurs.
+Independently detected models remain usable through the ordinary Gateway choice;
+that choice does not restore Companion management. Native duplicate suppression
+requires a usable same-owner managed choice, not just a matching artifact model.
+
 Withdrawal can preserve unrelated configuration edits using a fresh CAS revision.
 An exact unredacted credential or successful inference through the same provider
 must confirm a still-published route. A redacted credential alone never authorizes

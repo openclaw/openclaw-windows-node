@@ -721,9 +721,132 @@ public sealed class NativeLocalAiLifecycleTests
         Assert.False(fixture.Store.Exists);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task OwnershipObservationDoesNotAdoptExistingProvider(bool existing)
+    {
+        using var fixture = new Fixture();
+        if (existing) fixture.Rpc.Config["models"]!["providers"]!["llamacpp"] = new JsonObject();
+        var files = Directory.GetFiles(fixture.DirectoryPath, "*", SearchOption.AllDirectories);
+        var observed = await fixture.Lifecycle.ObserveOwnershipAsync(Record, fixture.Rpc, fixture.Install, default);
+        Assert.Equal(existing ? NativeLocalAiOwnershipState.MissingReceipt : NativeLocalAiOwnershipState.Unselected, observed);
+        Assert.Equal(files, Directory.GetFiles(fixture.DirectoryPath, "*", SearchOption.AllDirectories));
+        Assert.False(fixture.Store.Exists);
+        Assert.Equal(0, fixture.Rpc.Writes);
+        Assert.Equal(0, fixture.Rpc.Verifications);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task OwnershipObservationFindsDurableRecoveryWithoutSettlingIt(bool pending, bool landed)
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        if (landed) Assert.True((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+        fixture.Store.Save(fixture.Store.Load()! with { Pending = pending });
+        var before = fixture.Store.Load();
+        var files = Directory.GetFiles(fixture.DirectoryPath, "*", SearchOption.AllDirectories);
+        var writes = fixture.Rpc.Writes;
+        var observed = await fixture.CreateLifecycle().ObserveOwnershipAsync(Record, fixture.Rpc, fixture.Install, default);
+        Assert.Equal(pending ? NativeLocalAiOwnershipState.RecoveryRequired : NativeLocalAiOwnershipState.SameOwner, observed);
+        Assert.Equal(before, fixture.Store.Load());
+        Assert.Equal(files, Directory.GetFiles(fixture.DirectoryPath, "*", SearchOption.AllDirectories));
+        Assert.Equal(writes, fixture.Rpc.Writes);
+        Assert.Equal(0, fixture.Rpc.Verifications);
+    }
+
+    [Theory]
+    [InlineData("gateway")]
+    [InlineData("endpoint")]
+    [InlineData("identity")]
+    [InlineData("model")]
+    [InlineData("damaged")]
+    [InlineData("allowlist")]
+    public async Task OwnershipObservationRejectsInvalidEvidenceWithoutMutation(string change)
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        var binding = fixture.Store.Load()!;
+        fixture.Store.Save(change switch
+        {
+            "gateway" => binding with { GatewayId = "another" },
+            "endpoint" => binding with { EndpointBinding = "another" },
+            "identity" => binding with { IdentityBinding = new string('B', 64) },
+            "model" => binding with { ModelRef = "llamacpp/another" },
+            _ => binding
+        });
+        if (change == "damaged")
+            File.WriteAllText(fixture.BindingPath, "{");
+        if (change == "allowlist")
+            fixture.Rpc.Config["agents"]!["defaults"]!["models"]![fixture.Model] = new JsonObject { ["alias"] = "user" };
+        var before = File.ReadAllText(fixture.BindingPath);
+        var observed = await fixture.Lifecycle.ObserveOwnershipAsync(Record, fixture.Rpc, fixture.Install, default);
+        Assert.Equal(change == "allowlist" ? NativeLocalAiOwnershipState.Unavailable :
+            change == "damaged" ? NativeLocalAiOwnershipState.InvalidReceipt :
+            NativeLocalAiOwnershipState.DifferentOwner, observed);
+        Assert.Equal(before, File.ReadAllText(fixture.BindingPath));
+        Assert.Equal(0, fixture.Rpc.Writes);
+        Assert.Equal(0, fixture.Rpc.Verifications);
+    }
+
+    [Fact]
+    public async Task OwnershipObservationDetectsRevisionDriftAndCancellationWithoutSettling()
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        fixture.Rpc.Revision++;
+        var before = fixture.Store.Load();
+        Assert.Equal(NativeLocalAiOwnershipState.RecoveryRequired,
+            await fixture.Lifecycle.ObserveOwnershipAsync(Record, fixture.Rpc, fixture.Install, default));
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            fixture.Lifecycle.ObserveOwnershipAsync(Record, fixture.Rpc, fixture.Install, cancellation.Token));
+        Assert.Equal(before, fixture.Store.Load());
+        Assert.Equal(0, fixture.Rpc.Verifications);
+        Assert.Equal(0, fixture.Rpc.Writes);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task HostObservationProjectsDurableOwnershipBeforeOfferingManagement(bool owned)
+    {
+        using var fixture = new Fixture();
+        if (owned)
+        {
+            await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+            fixture.Store.Save(fixture.Store.Load()! with { Pending = true });
+        }
+        else fixture.Rpc.Config["models"]!["providers"]!["llamacpp"] = new JsonObject();
+        var hardware = new HostHardwareInfo(Architecture.X64, 128L << 30, 100L << 30,
+            [new(GpuVendor.Nvidia, "Test GPU", 96L << 30, 80L << 30,
+                DriverVersion: "615.0", CudaMajorVersion: 13, StableId: "GPU-test")], false);
+        var host = new SetupLocalAiHost(
+            () => throw new InvalidOperationException("No WSL inspection."),
+            () => null, () => null, _ => Task.FromResult<LocalAiResolvedInstall?>(fixture.Install),
+            (_, _) => Task.FromResult(true), _ => Task.FromResult(hardware),
+            () => throw new InvalidOperationException("No publication."),
+            nativeLifecycle: fixture.Lifecycle);
+        host.ConfigureNative(Record, fixture.Rpc, _ => Task.CompletedTask);
+        var result = await host.ObserveAsync(default);
+        Assert.Equal(owned ? LocalAiOnboardingState.Reconcile : LocalAiOnboardingState.ManagementBlocked, result.State);
+        Assert.Equal(owned, result.CanUse);
+        Assert.Equal(owned, result.ReplacesDetectedChoice);
+        if (!owned)
+            await Assert.ThrowsAsync<LocalAiSelectionRejectedException>(() => host.UseAsync(result, default));
+        Assert.Equal(0, fixture.Rpc.Writes);
+        Assert.Equal(0, fixture.Rpc.Verifications);
+    }
+
     private sealed class Fixture : IDisposable
     {
         private readonly TempDirectory _directory = new();
+        public string DirectoryPath => _directory.Path;
+        public string BindingPath => Path.Combine(_directory.Path, "LocalAI", "gateway-binding.json");
         public LocalAiResolvedInstall Install { get; } = LocalAiOnboardingTests.Install();
         public string Model => LocalAiGatewayProviderDefinition.BuildPrimaryModel(Install);
         public RpcTransport Rpc { get; } = new();

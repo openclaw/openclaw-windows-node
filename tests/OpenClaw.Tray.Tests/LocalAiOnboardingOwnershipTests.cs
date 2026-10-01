@@ -94,6 +94,32 @@ public sealed class LocalAiOnboardingOwnershipTests
     }
 
     [Fact]
+    public void NativeOwnershipDiscoveryIsReadOnlyAndGuidanceIsLocalized()
+    {
+        var source = Read(@"src\OpenClaw.Tray.WinUI\Services\LocalAiGatewayLifecycle.cs");
+        var observation = source[source.IndexOf("public async Task<NativeLocalAiOwnershipState> ObserveOwnershipAsync", StringComparison.Ordinal)..
+            source.IndexOf("public async Task SetAutomaticRecoveryEnabledAsync", StringComparison.Ordinal)];
+        foreach (var prohibited in new[] { "GetOrCreate", "AcquireAsync", ".Save(", ".Delete(", "VerifyConfiguredAsync",
+            "PrepareAsync", "EnsureStartedAsync", "PublishAsync", "RefreshAsync" })
+            Assert.DoesNotContain(prohibited, observation);
+        var page = Read(@"src\OpenClaw.SetupEngine.UI\Pages\AiSetupPage.xaml.cs");
+        Assert.Contains("local?.ReplacesDetectedChoice == true", page);
+        Assert.Contains("state == LocalAiOnboardingState.ManagementBlocked", page);
+        foreach (var locale in new[] { "en-us", "fr-fr", "nl-nl", "pt-br", "zh-cn", "zh-tw" })
+        {
+            var resources = System.Xml.Linq.XDocument.Parse(Read($@"src\OpenClaw.Tray.WinUI\Strings\{locale}\Resources.resw"));
+            foreach (var key in new[] { "LocalState_ManagementBlocked", "LocalOwnershipMissing", "LocalOwnershipInvalid",
+                "LocalOwnershipUnavailable", "LocalOwnershipFiles" })
+            {
+                var value = Assert.Single(resources.Descendants("data"),
+                    element => (string?)element.Attribute("name") == "Onboarding_AiSetup_" + key).Element("value")!.Value;
+                Assert.False(string.IsNullOrWhiteSpace(value));
+                Assert.DoesNotContain("—", value);
+            }
+        }
+    }
+
+    [Fact]
     public void SetupWindow_DrainsDepartedAiPagesAndCancelledPipelineBeforeUnlock()
     {
         var window = Read(@"src\OpenClaw.SetupEngine.UI\SetupWindow.xaml.cs");

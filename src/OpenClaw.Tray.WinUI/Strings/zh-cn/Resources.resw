@@ -7886,4 +7886,9 @@
   <data name="AgentCreation_Description" xml:space="preserve"><value>在已连接的网关上创建智能体及其工作区。此操作不会创建会话或更改当前聊天。</value></data>
   <data name="AgentCreation_PermissionRequired" xml:space="preserve"><value>请连接具有 operator.admin 权限的网关以创建智能体。</value></data>
   <data name="AgentCreation_Failed" xml:space="preserve"><value>无法确认智能体是否创建成功。请关闭此对话框并刷新智能体列表，然后再试。</value></data>
+  <data name="Onboarding_AiSetup_LocalState_ManagementBlocked" xml:space="preserve"><value>Companion 管理不可用。</value></data>
+  <data name="Onboarding_AiSetup_LocalOwnershipMissing" xml:space="preserve"><value>此配置文件没有现有本地 AI 提供程序的所有权凭据。如果 Companion 在之前的设置尝试中创建了它，请重新打开原始 Companion 配置文件并选择“恢复并使用本地 AI”。未进行任何更改。使用检测到的模型不会恢复 Companion 管理。</value></data>
+  <data name="Onboarding_AiSetup_LocalOwnershipInvalid" xml:space="preserve"><value>无法验证此网关和模型已保存的本地 AI 所有权。请在原始 Companion 配置文件中重新连接原始网关。保留所有权凭据，不要复制身份验证凭据或替换提供程序。</value></data>
+  <data name="Onboarding_AiSetup_LocalOwnershipUnavailable" xml:space="preserve"><value>无法检查原始网关的所有权或配置。请重新连接原始网关并再次检查。未进行任何更改。</value></data>
+  <data name="Onboarding_AiSetup_LocalOwnershipFiles" xml:space="preserve"><value>受管理的本地 AI 安装需要修复文件。请先在本地 AI 设置中停止运行时并解决原始网关路由问题，再修复文件。保留所有权凭据。</value></data>
 </root>

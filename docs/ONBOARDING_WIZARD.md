@@ -9,6 +9,18 @@ the provider, reconnecting and testing real Gateway inference. File verification
 can take a minute or more for large models; it is not a download. Artifact acquisition
 retains the installation progress page and its actual download progress.
 
+Reopening an incomplete native Local AI setup uses this Companion profile's saved
+Gateway ownership to offer **Recover and use Local AI**, including pending
+configuration writes not yet reflected in runtime status. Recovery preserves the
+healthy managed listener and uses the existing exact-model verification and
+conditional configuration guards, rather than reinstalling it.
+
+An existing provider without matching saved ownership remains unmanaged by this
+profile. Setup explains how to reopen the original Companion profile and reconnect
+its original Gateway. Keep the ownership receipt; do not copy credentials or
+replace the provider. An independently detected **Use this model** choice remains
+separate and does not claim or restore Companion management.
+
 After setup restarts Companion, destination handoff waits for native connection
 startup and any already-admitted Local AI recovery before fresh model verification.
 The attempt is bounded to four and a half minutes, still subject to the original

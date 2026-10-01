@@ -240,6 +240,68 @@ public sealed class LocalAiOnboardingTests
         Assert.Equal(2, detection.Candidates.Length);
     }
 
+    [Theory]
+    [InlineData(NativeLocalAiOwnershipState.Unselected, LocalAiOnboardingState.StartAndUse, false)]
+    [InlineData(NativeLocalAiOwnershipState.SameOwner, LocalAiOnboardingState.StartAndUse, true)]
+    [InlineData(NativeLocalAiOwnershipState.RecoveryRequired, LocalAiOnboardingState.Reconcile, true)]
+    [InlineData(NativeLocalAiOwnershipState.MissingReceipt, LocalAiOnboardingState.ManagementBlocked, false)]
+    [InlineData(NativeLocalAiOwnershipState.InvalidReceipt, LocalAiOnboardingState.ManagementBlocked, false)]
+    [InlineData(NativeLocalAiOwnershipState.DifferentOwner, LocalAiOnboardingState.ManagementBlocked, false)]
+    [InlineData(NativeLocalAiOwnershipState.Unavailable, LocalAiOnboardingState.ManagementBlocked, false)]
+    public void NativeManagementRequiresOwnershipBeforeReplacingDetectedChoice(
+        NativeLocalAiOwnershipState ownership, LocalAiOnboardingState expected, bool replaces)
+    {
+        var install = Install();
+        var snapshot = LocalAiOnboardingSnapshot.Project(Target with { IsNative = true },
+            LocalInferenceEligibility.Evaluate(Hardware, install.Manifest.ModelCatalogId),
+            install, true, false, RuntimeSnapshot(install, LocalAiRuntimeState.Stopped) with
+                { GatewayRouteRequiresResolution = false }, nativeOwnership: ownership);
+        Assert.Equal(expected, snapshot.State);
+        Assert.Equal(replaces, snapshot.ReplacesDetectedChoice);
+        var detection = new GatewayAiSetupDetection
+        {
+            Candidates = [new("existing-model", "Existing model", "", LocalAiGatewayProviderDefinition.BuildPrimaryModel(install), true)],
+            ManualProviders = [], Workspace = "workspace", SetupComplete = true
+        };
+        var view = AiSetupPresentationModel.Create(detection, Enum.GetValues<GatewayAiSetupChoiceKind>().ToHashSet(),
+            gatewayId: Target.GatewayId,
+            localGatewayId: snapshot.ReplacesDetectedChoice ? snapshot.Target?.GatewayId : null,
+            localModelRef: snapshot.ReplacesDetectedChoice ? snapshot.ModelRef : null);
+        Assert.Equal(replaces ? 0 : 1, view.Candidates.Count);
+        if (expected == LocalAiOnboardingState.ManagementBlocked)
+        {
+            Assert.False(snapshot.CanUse);
+            Assert.False(snapshot.CanReview);
+            Assert.True(snapshot.CanRefresh);
+            Assert.NotNull(snapshot.ReasonKey);
+        }
+    }
+
+    [Fact]
+    public void NativeOwnedFilesNeedResolutionBeforeArtifactRepair()
+    {
+        var install = Install();
+        var snapshot = LocalAiOnboardingSnapshot.Project(Target with { IsNative = true },
+            LocalInferenceEligibility.Evaluate(Hardware, install.Manifest.ModelCatalogId),
+            install, false, false, null, nativeOwnership: NativeLocalAiOwnershipState.SameOwner);
+        Assert.Equal(LocalAiOnboardingState.ManagementBlocked, snapshot.State);
+        Assert.Equal("LocalOwnershipFiles", snapshot.ReasonKey);
+        Assert.False(snapshot.CanReview);
+        Assert.False(snapshot.CanUse);
+    }
+
+    [Fact]
+    public void NativeHealthySameOwnerRemainsUseWithoutRepair()
+    {
+        var install = Install();
+        var snapshot = LocalAiOnboardingSnapshot.Project(Target with { IsNative = true },
+            LocalInferenceEligibility.Evaluate(Hardware, install.Manifest.ModelCatalogId),
+            install, true, false, RuntimeSnapshot(install, LocalAiRuntimeState.Healthy),
+            nativeOwnership: NativeLocalAiOwnershipState.SameOwner);
+        Assert.Equal(LocalAiOnboardingState.Use, snapshot.State);
+        Assert.True(snapshot.ReplacesDetectedChoice);
+    }
+
     [Fact]
     public void UtilityChoices_AreNotMainChoices_ButExplanationIsVisible()
     {

@@ -7886,4 +7886,9 @@
   <data name="AgentCreation_Description" xml:space="preserve"><value>在已連線的閘道上建立代理程式及其工作區。此操作不會建立對話或變更目前的聊天。</value></data>
   <data name="AgentCreation_PermissionRequired" xml:space="preserve"><value>請連線至具有 operator.admin 權限的閘道以建立代理程式。</value></data>
   <data name="AgentCreation_Failed" xml:space="preserve"><value>無法確認代理程式是否已建立。請關閉此對話方塊並重新整理代理程式清單，然後再試。</value></data>
+  <data name="Onboarding_AiSetup_LocalState_ManagementBlocked" xml:space="preserve"><value>Companion 管理無法使用。</value></data>
+  <data name="Onboarding_AiSetup_LocalOwnershipMissing" xml:space="preserve"><value>此設定檔沒有現有本機 AI 提供者的擁有權憑據。如果 Companion 在先前的設定嘗試中建立了它，請重新開啟原始 Companion 設定檔並選擇「復原並使用本機 AI」。未進行任何變更。使用偵測到的模型不會還原 Companion 管理。</value></data>
+  <data name="Onboarding_AiSetup_LocalOwnershipInvalid" xml:space="preserve"><value>無法驗證此閘道和模型已儲存的本機 AI 擁有權。請在原始 Companion 設定檔中重新連線原始閘道。保留擁有權憑據，不要複製驗證認證或取代提供者。</value></data>
+  <data name="Onboarding_AiSetup_LocalOwnershipUnavailable" xml:space="preserve"><value>無法檢查原始閘道的擁有權或設定。請重新連線原始閘道並再次檢查。未進行任何變更。</value></data>
+  <data name="Onboarding_AiSetup_LocalOwnershipFiles" xml:space="preserve"><value>受管理的本機 AI 安裝需要修復檔案。請先在本機 AI 設定中停止執行階段並解決原始閘道路由問題，再修復檔案。保留擁有權憑據。</value></data>
 </root>

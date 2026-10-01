@@ -458,8 +458,8 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         _presentation = AiSetupPresentationModel.Create(detection,
             Enum.GetValues<GatewayAiSetupChoiceKind>().Where(Client!.SupportsChoice).ToHashSet(),
             apiKeyFormRequested: _apiKeyFormRequested, gatewayId: Client!.Route.GatewayId,
-            localGatewayId: local?.CanUse == true ? local.Target?.GatewayId : null,
-            localModelRef: local?.CanUse == true ? local.ModelRef : null,
+            localGatewayId: local?.ReplacesDetectedChoice == true ? local.Target?.GatewayId : null,
+            localModelRef: local?.ReplacesDetectedChoice == true ? local.ModelRef : null,
             hasLocalChoice: local?.ShowLocalChoice == true);
         _rendering = true;
         try
@@ -1174,6 +1174,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             string.Join(" · ", new[] { snapshot.GpuName, snapshot.ModelName }.Where(value => !string.IsNullOrWhiteSpace(value))),
             state == LocalAiOnboardingState.Unsupported && snapshot.Eligibility is { } eligibility
                 ? LocalAiSetupControl.DescribeLocalAiUnavailable(eligibility) : null,
+            state == LocalAiOnboardingState.ManagementBlocked && snapshot.ReasonKey is { } reason ? S(reason) : null,
         }.Where(value => !string.IsNullOrWhiteSpace(value)));
         LocalAiActionText.Text = state switch
         {
