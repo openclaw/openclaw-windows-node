@@ -666,6 +666,61 @@ public sealed class NativeLocalAiLifecycleTests
         Assert.Equal(0, fixture.Rpc.Writes);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExternallyWithdrawnRouteCleansOnlyOwnedAllowlistAndReleases(bool edited)
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        Assert.True((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+        fixture.Rpc.Config["models"]!["providers"]!.AsObject().Remove("llamacpp");
+        fixture.Rpc.Config["agents"]!["defaults"]!["model"]!["primary"] = "cloud/model";
+        if (edited) fixture.Rpc.Config["agents"]!["defaults"]!["models"]![fixture.Model]!["alias"] = "user";
+        fixture.Rpc.Revision++;
+        await fixture.Lifecycle.SetAutomaticRecoveryEnabledAsync(false);
+
+        Assert.True((await fixture.Lifecycle.QuiesceAsync(fixture.Install)).Success);
+        Assert.Equal(edited ? 1 : 2, fixture.Rpc.Writes);
+        if (edited)
+            Assert.Equal("user", fixture.Rpc.Config["agents"]!["defaults"]!["models"]![fixture.Model]!["alias"]!.GetValue<string>());
+        else
+            Assert.Null(fixture.Rpc.Config["agents"]!["defaults"]!["models"]![fixture.Model]);
+        await fixture.Lifecycle.ForgetWithdrawnAsync(Record.Id, default);
+        Assert.False(fixture.Store.Exists);
+    }
+
+    [Theory]
+    [InlineData("conflict")]
+    [InlineData("authority")]
+    [InlineData("lost-reply")]
+    public async Task AllowlistOnlyCleanupRetainsJournalAndAuthorityFences(string failure)
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        Assert.True((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+        fixture.Rpc.Config["models"]!["providers"]!.AsObject().Remove("llamacpp");
+        fixture.Rpc.Config["agents"]!["defaults"]!["model"]!["primary"] = "cloud/model";
+        fixture.Rpc.Revision++;
+        await fixture.Lifecycle.SetAutomaticRecoveryEnabledAsync(false);
+        fixture.Rpc.RejectMutationBeforeDispatch = failure == "authority";
+        fixture.Rpc.ConflictAtDispatch = failure == "conflict";
+        fixture.Rpc.LoseReply = failure == "lost-reply";
+
+        Assert.False((await fixture.Lifecycle.QuiesceAsync(fixture.Install)).Success);
+        Assert.Equal(failure != "authority", fixture.Store.Load()!.Pending);
+        Assert.Equal(failure == "lost-reply" ? 2 : 1, fixture.Rpc.Writes);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Lifecycle.ForgetWithdrawnAsync(Record.Id, default));
+        Assert.True(fixture.Store.Exists);
+        fixture.Rpc.RejectMutationBeforeDispatch = false;
+        fixture.Rpc.ConflictAtDispatch = false;
+        fixture.Rpc.LoseReply = false;
+        Assert.True((await fixture.Lifecycle.QuiesceAsync(fixture.Install)).Success);
+        Assert.False(fixture.Store.Load()!.Pending);
+        await fixture.Lifecycle.ForgetWithdrawnAsync(Record.Id, default);
+        Assert.False(fixture.Store.Exists);
+    }
+
     private sealed class Fixture : IDisposable
     {
         private readonly TempDirectory _directory = new();
@@ -727,6 +782,7 @@ public sealed class NativeLocalAiLifecycleTests
         public bool ChangeDuringVerification { get; set; }
         public int Verifications { get; private set; }
         public bool RejectMutationBeforeDispatch { get; set; }
+        public bool ConflictAtDispatch { get; set; }
         public Task<JsonElement> RequestMutationAsync(string method, object parameters, int timeoutMs,
             CancellationToken ct, Action? beforeDispatch = null)
         {
@@ -752,6 +808,9 @@ public sealed class NativeLocalAiLifecycleTests
             if (method == "config.patch")
             {
                 var payload = JsonSerializer.SerializeToElement(parameters);
+                if (ConflictAtDispatch) Revision++;
+                if (payload.GetProperty("baseHash").GetString() != Revision.ToString())
+                    throw new InvalidOperationException("Configuration hash conflict.");
                 Assert.Equal(Revision.ToString(), payload.GetProperty("baseHash").GetString());
                 Merge(Config, JsonNode.Parse(payload.GetProperty("raw").GetString()!)!.AsObject());
                 Revision++;

@@ -366,6 +366,8 @@ internal sealed class LocalAiGatewayLifecycle(
             var result = reason is { } withdrawal
                 ? await coordinator.QuiesceAsync(ownedInstall, withdrawal, ct).ConfigureAwait(false)
                 : await coordinator.PublishAsync(ownedInstall, ct).ConfigureAwait(false);
+            if (result.Success && reason == LocalAiQuiesceReason.Teardown)
+                await guarded.CompleteTeardownAsync(ct).ConfigureAwait(false);
             return result;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
@@ -427,6 +429,24 @@ internal sealed class LocalAiGatewayLifecycle(
         LocalAiNativeBinding binding, bool teardown) : ILocalAiGatewayAtomicConfigurationTransport
     {
         private LocalAiNativeBinding _binding = binding;
+        private bool _applied;
+
+        public async Task CompleteTeardownAsync(CancellationToken ct)
+        {
+            if (_applied || !_binding.AddedAllowlistEntry) return;
+            var current = await CaptureAsync(ct).ConfigureAwait(false);
+            var config = JsonNode.Parse(current.Config.GetRawText())!;
+            if (config["agents"]?["defaults"]?["models"]?[_binding.ModelRef] is not null)
+            {
+                // Routing may already be withdrawn, so the coordinator emits no patch.
+                // Use the same journal and CAS path for the remaining owned empty entry.
+                await ApplyAsync(current, JsonSerializer.SerializeToElement(new JsonObject()), ct)
+                    .ConfigureAwait(false);
+                var after = await CaptureAsync(ct).ConfigureAwait(false);
+                if (JsonNode.Parse(after.Config.GetRawText())!["agents"]?["defaults"]?["models"]?[_binding.ModelRef] is not null)
+                    throw new InvalidOperationException("The Gateway did not confirm removal of the owned Local AI allowlist entry.");
+            }
+        }
 
         public async Task<LocalAiGatewayConfigurationSnapshot> CaptureAsync(CancellationToken ct)
         {
@@ -455,6 +475,7 @@ internal sealed class LocalAiGatewayLifecycle(
             {
                 await rpc.ApplyAsync(expected, JsonSerializer.SerializeToElement(outgoing),
                     ct, replacePaths).ConfigureAwait(false);
+                _applied = true;
             }
             finally
             {

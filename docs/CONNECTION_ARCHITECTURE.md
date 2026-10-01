@@ -102,10 +102,21 @@ deletion: if that listener is unavailable, explicit recovery remains necessary.
 User-edited allowlist metadata is preserved and its deletion ownership relinquished
 when routing is safely withdrawn. Native startup completes reconciliation and
 publication under the runtime gate, including an already-healthy listener; setup
-never publishes again after that gate has been released. Failed completion keeps
-recovery disabled and blocks status refresh from republishing until explicit
-Start or Reconcile succeeds. A timestamp-only healthy refresh does not invalidate
+never publishes again after that gate has been released. Every admitted non-success
+Start or Restart, including core startup failure and interrupted completion, keeps
+recovery disabled and suppresses status-refresh publication and crash restart until
+explicit Start or Reconcile succeeds. A rejected admission preserves prior intent.
+Clean failures without a listener or unresolved route still allow read-only refresh
+to discover a repaired installation, without automatically starting or publishing it.
+Interrupted Start completion reports a retained listener as failed with unresolved
+routing, rather than Healthy with disabled recovery. A timestamp-only healthy refresh does not invalidate
 successful Use; process, endpoint, model evidence and route readiness still must match.
+
+When routing was already withdrawn externally, teardown still removes an unchanged
+empty allowlist entry owned by Companion through the same write-ahead journal and
+hash-conditional RPC path. Lost replies retain pending ownership; a fresh read must
+confirm cleanup before release. User-edited entries remain untouched. Release still
+requires the documented restored fallback; external primary changes do not relax it.
 
 This document describes the gateway connection system - how the tray app discovers, authenticates with, and maintains connections to OpenClaw gateways.
 
