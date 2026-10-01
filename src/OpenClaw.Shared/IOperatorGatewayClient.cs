@@ -127,6 +127,22 @@ public interface IOperatorGatewayClient
     Task RequestAgentFilesListAsync(string agentId = "main");
     Task RequestAgentFileGetAsync(string agentId, string name);
     Task RequestModelsListAsync();
+    Task<PluginInspectionInfo> InspectPluginAsync(string pluginId, int timeoutMs = 15000)
+        => Task.FromException<PluginInspectionInfo>(
+            new NotSupportedException("plugins.inspect is not supported by this gateway client."));
+    Task<PluginInstallResult> InstallClawHubPluginAsync(
+        string packageName,
+        string expectedPluginId,
+        string? reviewToken,
+        bool acknowledgeInstallPolicyWarning = true,
+        int timeoutMs = 120000)
+        => Task.FromException<PluginInstallResult>(
+            new NotSupportedException("plugins.install is not supported by this gateway client."));
+    Task<ClawHubSkillInstallResult> InstallClawHubSkillAsync(
+        string slug,
+        int timeoutMs = 120000)
+        => Task.FromException<ClawHubSkillInstallResult>(
+            new NotSupportedException("ClawHub skills.install is not supported by this gateway client."));
     Task RequestNodePairListAsync();
     Task<bool> NodePairApproveAsync(string requestId);
     Task<bool> NodePairRejectAsync(string requestId);

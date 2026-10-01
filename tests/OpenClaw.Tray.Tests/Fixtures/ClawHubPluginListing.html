@@ -1,0 +1,51 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>ClawHub fixture</title>
+</head>
+<body>
+    <script>{{CLAWHUB_INSTALL_BRIDGE}}</script>
+    <script>
+        var card = document.createElement("div");
+        card.className = "skill-install-command-card";
+        card.innerHTML =
+            "<h3 class=\"skill-install-panel-title\">Install</h3>" +
+            "<div class=\"skill-install-command-wrap\">" +
+            "<div class=\"fixture-command-skeleton\">Loading command</div>" +
+            "</div>";
+        document.body.appendChild(card);
+        queueMicrotask(function () {
+            var commandWrap = card.querySelector(".skill-install-command-wrap");
+            if (!commandWrap) {
+                return;
+            }
+            commandWrap.innerHTML =
+                "<code class=\"skill-install-command-target\">" +
+                "{{INSTALL_TARGET}}</code>" +
+                "<button type=\"button\" aria-label=\"Copy plugin install command\">Copy</button>";
+            document.documentElement.setAttribute("data-fixture-target-applied", "true");
+        });
+    </script>
+    <script>
+        window.addEventListener("load", function () {
+            var button = document.querySelector("[data-openclaw-windows-hub-install]");
+            var command = document.querySelector(".skill-install-command-wrap");
+            var title = document.querySelector(".skill-install-panel-title");
+            document.documentElement.setAttribute(
+                "data-clawhub-script-result",
+                button &&
+                button.textContent === "Install via Windows Hub" &&
+                button.getAttribute("data-openclaw-windows-hub-kind") === "{{EXPECTED_KIND}}" &&
+                button.getAttribute("data-openclaw-windows-hub-id") === "{{EXPECTED_ID}}" &&
+                (button.getAttribute("data-openclaw-windows-hub-kind") !== "plugin" ||
+                    button.getAttribute("data-openclaw-windows-hub-package") ===
+                        "{{EXPECTED_PACKAGE}}") &&
+                document.documentElement.getAttribute("data-fixture-target-applied") === "true" &&
+                !command &&
+                title &&
+                title.textContent === "Install" ? "pass" : "fail");
+        });
+    </script>
+</body>
+</html>

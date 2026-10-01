@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.Toolkit.Uwp.Notifications;
+using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
@@ -18,6 +19,7 @@ namespace OpenClawTray;
 public partial class App : IActivationPlanSink
 {
     private ActivationRouter? _activationRouter;
+    private ClawHubInstallCoordinator? _clawHubInstallCoordinator;
 
     async Task IActivationPlanSink.DispatchAsync(ActivationRoute route, CancellationToken cancellationToken)
     {
@@ -209,6 +211,53 @@ public partial class App : IActivationPlanSink
                     Logger.Warn("Deep link: agent message received but SendMessage handler is not registered");
                 }
                 break;
+            case ActivationRoute.InstallClawHubPlugin r:
+                ShowHub("clawhub");
+                _clawHubInstallCoordinator ??= new ClawHubInstallCoordinator(
+                    () => _connectionManager?.OperatorClient,
+                    new ClawHubInstallDialogPresenter(
+                        () => _windowManager?.DialogXamlRoot));
+                _ = ObserveClawHubInstallAsync(r.Request);
+                break;
+        }
+    }
+
+    internal Task<bool> DispatchProtocolUriAsync(
+        string uri,
+        CancellationToken cancellationToken = default)
+    {
+        if (_activationRouter is null)
+            return Task.FromResult(false);
+
+        var plan = _activationRouter.PlanLaunch(new LaunchActivationInput(
+            uri,
+            [Environment.ProcessPath ?? "OpenClaw.Tray.WinUI.exe"],
+            PostSetupLaunch: null,
+            SetupShownDuringStartup: false,
+            LaunchActivationKind.Protocol));
+        return _activationRouter.DispatchPlanAsync(plan, this, cancellationToken);
+    }
+
+    private async Task ObserveClawHubInstallAsync(ClawHubInstallRequest request)
+    {
+        try
+        {
+            await _clawHubInstallCoordinator!.ExecuteAsync(request, CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            Logger.Error($"ClawHub install workflow failed: {exception.Message}");
+            _appNotificationService?.Show(new AppNotification
+            {
+                Id = $"clawhub-install-error-{Guid.NewGuid():N}",
+                Title = "ClawHub install could not continue",
+                Message = exception.Message,
+                Severity = AppNotificationSeverity.Error,
+                Source = "clawhub",
+                DedupeKey = "clawhub-install-workflow-error",
+                CreatedAt = DateTimeOffset.UtcNow,
+                Persistence = AppNotificationPersistence.Persistent
+            });
         }
     }
 
