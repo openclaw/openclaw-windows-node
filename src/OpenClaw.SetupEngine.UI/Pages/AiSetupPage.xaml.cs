@@ -43,6 +43,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
     private bool _closed;
     private int _generation;
     private bool _busy;
+    private bool _submittingAnswer;
     private bool _rendering;
     private readonly ProviderSetupDialog _providerDialog = new();
     private AiSetupPresentationModel _presentation = new();
@@ -99,6 +100,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         CatalogPreferenceText.Text = S("CatalogOptIn");
         AutomationProperties.SetName(CatalogPreference, S("CatalogOptIn"));
         RefreshButton.Content = S("Refresh.Content");
+        ProviderCancelButton.Content = S("Cancel.Content");
         LegacyButton.Content = S("Legacy.Content");
         AutomationProperties.SetName(CandidateChoices, S("Candidates"));
         AutomationProperties.SetName(PrepareChoices, S("Prepare"));
@@ -597,7 +599,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         if (step is null || !_providerDialog.CanSubmit)
             return Task.CompletedTask;
         var answer = _providerDialog.TakeAnswer();
-        return RunAsync(ct => _controller!.SubmitAsync(step.Id, answer, Render, ct));
+        return RunAsync(ct => _controller!.SubmitAsync(step.Id, answer, Render, ct), submittingAnswer: true);
     }
 
     private void Refresh_Click(object sender, RoutedEventArgs e)
@@ -766,21 +768,23 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         catch (Exception ex) { ReportFailure(ex); }
     }
 
-    private Task RunAsync(Func<CancellationToken, Task> action)
+    private Task RunAsync(Func<CancellationToken, Task> action, bool submittingAnswer = false)
     {
         if (_closed || _busy)
             return Task.CompletedTask;
         CancelProviderViewportRestore();
-        return _activeRequest = RunCoreAsync(action);
+        return _activeRequest = RunCoreAsync(action, submittingAnswer);
     }
 
-    private async Task RunCoreAsync(Func<CancellationToken, Task> action)
+    private async Task RunCoreAsync(Func<CancellationToken, Task> action, bool submittingAnswer)
     {
         var generation = ++_generation;
         _request.Dispose();
         _request = new();
         var token = _request.Token;
         _busy = true;
+        // Uncertain is also used for recovery. Retain a prompt only for its own answer request.
+        _submittingAnswer = submittingAnswer;
         if (BackdropLocked) _providerError = null;
         else ErrorBar.IsOpen = false;
         Render();
@@ -824,6 +828,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             if (generation == _generation)
             {
                 _busy = false;
+                _submittingAnswer = false;
                 if (Client?.Phase is GatewayAiSetupPhase.Cancelled or GatewayAiSetupPhase.Rejected)
                 {
                     _providerOperationActive = false;
@@ -877,7 +882,6 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                 CandidatesHeading.Visibility = Visible(LocalAiSection.Visibility == Visibility.Visible ||
                     ChoicePanel.Visibility == Visibility.Visible && CandidatesSection.Visibility == Visibility.Visible);
                 LegacyButton.Visibility = phase == GatewayAiSetupPhase.ClassicWizardRequired ? Visibility.Visible : Visibility.Collapsed;
-                BusyProgress.Visibility = _busy ? Visibility.Visible : Visibility.Collapsed;
             }
             else
             {
@@ -891,12 +895,27 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                 MoreExpander.IsEnabled = RecommendedSection.IsEnabled = CheckAgainButton.IsEnabled =
                 RefreshButton.IsEnabled = LegacyButton.IsEnabled = backgroundEnabled;
             var step = Client?.Wizard?.Step;
-            var showProvider = ProviderPending;
+            var showProvider = ProviderPending && !_cancelling &&
+                GatewayAiSetupPresentation.ShowProviderDialog(step, phase, _busy,
+                    !string.IsNullOrWhiteSpace(_providerError), _submittingAnswer);
+            var inlineProvider = ProviderPending && !showProvider;
+            var canCancelProvider = Client?.SessionId is not null ||
+                (!_busy && phase is GatewayAiSetupPhase.Prepared or GatewayAiSetupPhase.Choosing);
+            ProviderActivity.Visibility = Visible(inlineProvider);
+            ProviderActivityStatus.Text = _cancelling ? S("Cancelling") :
+                phase == GatewayAiSetupPhase.Running && !string.IsNullOrWhiteSpace(step?.Message)
+                    ? step.Message : status;
+            ProviderActivityProgress.Visibility = Visible(_busy || _cancelling);
+            ProviderActivityError.Message = _providerError ?? "";
+            ProviderActivityError.IsOpen = inlineProvider && !string.IsNullOrWhiteSpace(_providerError);
+            StatusText.Visibility = Visible(!inlineProvider);
+            ProviderCancelButton.Visibility = Visible(inlineProvider && (canCancelProvider || _cancelling));
+            ProviderCancelButton.IsEnabled = canCancelProvider && !_cancelling;
+            BusyProgress.Visibility = Visible(_busy && !ProviderPending);
             if (showProvider)
             {
-                _providerDialog.Update(step, phase, _busy, Client?.SessionId is not null ||
-                    phase is GatewayAiSetupPhase.Prepared or GatewayAiSetupPhase.Choosing, _cancelling,
-                    status, _providerError, _operationTitle);
+                _providerDialog.Update(step, phase, _busy, canCancelProvider, _cancelling,
+                    status, _providerError, _operationTitle, _submittingAnswer);
                 if (XamlRoot is not null)
                 {
                     var showing = _providerDialog.ShowOwnedAsync(XamlRoot, ActualTheme);

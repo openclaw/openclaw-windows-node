@@ -124,12 +124,17 @@ internal sealed partial class ChatComposerController : IDisposable
     /// <summary>Handles a session-picker selection. Reuses the same handoff delegate
     /// the lifecycle "/new" flow uses to select a freshly created session. No-ops
     /// after disposal.</summary>
-    public void SelectChannel(string threadId)
-    {
-        if (_disposed)
-            return;
+    public void SelectChannel(string threadId) => TrySelectChannel(threadId);
 
-        _selectedSessionHandoff?.Invoke(threadId);
+    /// <summary>Returns false until the root is ready, or after disposal, so an
+    /// external host can retain its initial-selection handoff instead.</summary>
+    internal bool TrySelectChannel(string threadId)
+    {
+        if (_disposed || _selectedSessionHandoff is null)
+            return false;
+
+        _selectedSessionHandoff(threadId);
+        return true;
     }
 
     /// <summary>Full composer send workflow: local admission first, snapshot of draft

@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl x:Class="OpenClawTray.Controls.GatewayStatusContent"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <StackPanel Width="304" Spacing="0">
+        <Grid Padding="0,0,0,10" ColumnSpacing="11">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <Ellipse x:Name="GatewayRowDot" Width="10" Height="10" VerticalAlignment="Center" Fill="Gray"/>
+            <StackPanel Grid.Column="1" Spacing="1">
+                <TextBlock x:Uid="HubWindow_StatusFlyout_GatewayLabel" Text="Gateway"
+                           Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                <TextBlock x:Name="GatewayRowDetail" Text=""
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           TextTrimming="CharacterEllipsis"/>
+            </StackPanel>
+            <HyperlinkButton x:Name="GatewayRowAction" x:Uid="HubWindow_StatusFlyout_Reconnect"
+                             Grid.Column="2" Content="Reconnect"
+                             Padding="4,0" VerticalAlignment="Center"
+                             Visibility="Collapsed"
+                             Click="OnStatusFlyoutReconnectClick"/>
+        </Grid>
+        <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}"/>
+    
+        <Grid Padding="0,10" ColumnSpacing="11">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Ellipse x:Name="OperatorRowDot" Width="10" Height="10" VerticalAlignment="Center" Fill="Gray"/>
+            <StackPanel Grid.Column="1" Spacing="1">
+                <TextBlock x:Uid="HubWindow_StatusFlyout_OperatorLabel" Text="Operator"
+                           Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                <TextBlock x:Name="OperatorRowDetail" Text=""
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+            </StackPanel>
+        </Grid>
+        <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}"/>
+    
+        <Grid Padding="0,10" ColumnSpacing="11">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <Ellipse x:Name="NodeRowDot" Width="10" Height="10" VerticalAlignment="Center" Fill="Gray"/>
+            <StackPanel Grid.Column="1" Spacing="1">
+                <TextBlock x:Uid="HubWindow_StatusFlyout_NodeLabel" Text="Node"
+                           Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                <TextBlock x:Name="NodeRowDetail" Text=""
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+            </StackPanel>
+            <HyperlinkButton x:Name="NodeRowAction" x:Uid="HubWindow_StatusFlyout_Approve"
+                             Grid.Column="2" Content="Approve…"
+                             Padding="4,0" VerticalAlignment="Center"
+                             Visibility="Collapsed"
+                             Click="OnStatusFlyoutNodeActionClick"/>
+        </Grid>
+    
+        <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}"/>
+        <HyperlinkButton x:Uid="HubWindow_StatusFlyout_OpenConnection"
+                         AutomationProperties.AutomationId="GatewayStatusOpenConnection"
+                         Content="Open Connection"
+                         Margin="2,8,2,0" Padding="4,0"
+                         Click="OnStatusFlyoutOpenConnectionClick"/>
+    </StackPanel>
+</UserControl>

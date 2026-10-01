@@ -66,7 +66,19 @@ public sealed partial class SessionsPage : Page
         if (Environment.GetEnvironmentVariable("OPENCLAW_ACCESSIBILITY_TEST_SESSIONS") == "1"
             && Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR") is { Length: > 0 })
         {
-            UpdateSessions(
+            if (Environment.GetEnvironmentVariable("OPENCLAW_ACCESSIBILITY_TEST_AGENT_IDENTITIES") == "1")
+            {
+                using var agents = System.Text.Json.JsonDocument.Parse("""
+                    {"defaultId":"main","mainKey":"main","agents":[
+                      {"id":"main","name":"Roster alias","identity":{"name":"Configured assistant","emoji":"C","avatarUrl":"data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='32'%20height='32'%3E%3Crect%20width='32'%20height='32'%20fill='teal'/%3E%3Ccircle%20cx='16'%20cy='16'%20r='8'%20fill='white'/%3E%3C/svg%3E"}},
+                      {"id":"research","identity":{"name":"Research assistant","emoji":"\ud83d\udd2c"}},
+                      {"id":"fallback","name":"No configured icon"}
+                    ]}
+                    """);
+                _appState.AgentsList = agents.RootElement.Clone();
+            }
+            // Use the same test-only snapshot for the companion and Workspace sidebar.
+            _appState.Sessions =
             [
                 new SessionInfo
                 {
@@ -123,7 +135,7 @@ public sealed partial class SessionsPage : Page
                     DisplayName = "Completed cleanup",
                     UpdatedAt = DateTime.UtcNow.AddMinutes(-8),
                 },
-            ]);
+            ];
             return;
         }
 
@@ -644,11 +656,13 @@ public sealed partial class SessionsPage : Page
 
     private IntPtr ResolveHostHwnd()
     {
-        var window = CurrentApp.ActiveHubWindow;
+        var window = HostWindow ?? CurrentApp.ActiveHubWindow;
         if (window == null) return IntPtr.Zero;
         try { return WinRT.Interop.WindowNative.GetWindowHandle(window); }
         catch { return IntPtr.Zero; }
     }
+
+    internal Window? HostWindow { get; set; }
 
     private void OnSessionCommandCompleted(object? sender, SessionCommandResult result)
     {

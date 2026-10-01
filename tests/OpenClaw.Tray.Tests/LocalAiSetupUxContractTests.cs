@@ -13,10 +13,13 @@ public sealed class LocalAiSetupUxContractTests
         string svg = File.ReadAllText(Path.Combine(tray, "Assets", "SidebarIcons", "LocalAi.svg"));
 
         Assert.Contains("x:Key=\"LocalAi_Icon\" UriSource=\"ms-appx:///Assets/SidebarIcons/LocalAi.svg\"", xaml);
-        Assert.Contains(
-            "Tag=\"local-ai\" Content=\"Local AI\">\n" +
-            "                <NavigationViewItem.Icon><ImageIcon Source=\"{StaticResource LocalAi_Icon}\" AutomationProperties.AccessibilityView=\"Raw\"/>",
-            xaml.Replace("\r\n", "\n"));
+        System.Xml.Linq.XNamespace ui = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+        var item = System.Xml.Linq.XDocument.Parse(xaml).Descendants(ui + "NavigationViewItem")
+            .Single(element => (string?)element.Attribute("Tag") == "local-ai");
+        Assert.Equal("Local AI", (string?)item.Attribute("Content"));
+        var icon = Assert.Single(item.Descendants(ui + "ImageIcon"));
+        Assert.Equal("{StaticResource LocalAi_Icon}", (string?)icon.Attribute("Source"));
+        Assert.Equal("Raw", (string?)icon.Attribute("AutomationProperties.AccessibilityView"));
         Assert.Contains("viewBox=\"0 0 24 24\"", svg);
         Assert.Contains("<rect x=\"5\" y=\"5\" width=\"14\" height=\"14\" rx=\"3.75\" fill=\"url(#body)\"/>", svg);
         Assert.DoesNotContain("<circle", svg);
@@ -68,15 +71,15 @@ public sealed class LocalAiSetupUxContractTests
             "Pages",
             "WelcomePage.xaml.cs"));
         Assert.Contains("WelcomeLocalAiAvailable", xaml);
-        Assert.Contains("Glyph=\"&#xE73E;\"", xaml);
+        Assert.Contains("Glyph=\"{x:Bind icons:FluentIconCatalog.StatusOk}\"", xaml);
         Assert.Contains("x:Uid=\"Onboarding_Welcome_LocalAiAvailableBadge\"", xaml);
         Assert.Contains("Your PC supports Local AI", xaml);
-        Assert.Contains("AutomationProperties.AccessibilityView=\"Raw\"", xaml);
         AssertInOrder(
             xaml,
-            "Text=\"Recommended\"",
+            "</ListView>",
             "x:Name=\"LocalAiAvailabilityPanel\"",
             "x:Name=\"LocalAiAvailabilityText\"");
+        Assert.Contains("<tk:SettingsCard x:Name=\"LocalAiAvailabilityPanel\"", xaml);
         Assert.DoesNotContain("LocalAiAvailabilityBadge", xaml);
         Assert.Contains("SetupLocalization.Format(", source);
         Assert.Contains("\"Onboarding_Welcome_LocalAiAvailabilityDetail\"", source);
@@ -99,7 +102,7 @@ public sealed class LocalAiSetupUxContractTests
         Assert.Contains("x:Name=\"LocalAiAvailabilityPanel\"", xaml);
         Assert.Contains(
             "SetupLocalization.GetString(\"Onboarding_Welcome_LocalAiAvailableBadge.Text\")", source);
-        Assert.Contains("AutomationProperties.GetName(InstallChoice)", source);
+        Assert.Contains("FrameworkElementAutomationPeer.FromElement(LocalAiAvailabilityPanel)", source);
 
         foreach (string locale in new[] { "en-us", "fr-fr", "nl-nl", "zh-cn", "zh-tw", "pt-br" })
         {
@@ -607,12 +610,11 @@ public sealed class LocalAiSetupUxContractTests
     }
 
     /// <summary>
-    /// The Welcome page's accessible-name badge suffix must be idempotent: repeated detections
-    /// (e.g. the page reloads after navigating back) must rebuild the announcement from a
-    /// captured base name instead of appending the suffix again on every call.
+    /// Repeated detections rebuild the general card announcement from localized copy and
+    /// current hardware details, never append it to a Gateway choice.
     /// </summary>
     [Fact]
-    public void WelcomePage_LocalAiBadgeAccessibleName_IsIdempotentAcrossRepeatedDetections()
+    public void WelcomePage_LocalAiCardAccessibleName_IsIdempotentAcrossRepeatedDetections()
     {
         string root = TestRepositoryPaths.GetRepositoryRoot();
         string source = File.ReadAllText(Path.Combine(
@@ -620,8 +622,9 @@ public sealed class LocalAiSetupUxContractTests
         string xaml = File.ReadAllText(Path.Combine(
             root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WelcomePage.xaml"));
 
-        Assert.Contains("_installChoiceBaseAutomationName ??= AutomationProperties.GetName(InstallChoice);", source);
-        Assert.Contains("FrameworkElementAutomationPeer.FromElement(InstallChoice)", source);
+        Assert.DoesNotContain("AutomationProperties.GetName(InstallChoice)", source);
+        Assert.Contains("FrameworkElementAutomationPeer.FromElement(LocalAiAvailabilityPanel)", source);
+        Assert.Contains("AutomationProperties.SetName(LocalAiAvailabilityPanel, \"\")", source);
         Assert.Contains("AutomationEvents.LiveRegionChanged", source);
         Assert.Contains("AutomationProperties.LiveSetting=\"Polite\"", xaml);
     }

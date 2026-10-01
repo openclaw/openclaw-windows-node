@@ -55,6 +55,63 @@ public sealed class OnboardingMockPresentationTests
     }
 
     [Fact]
+    public void Recommendations_UseOneLocalizedThemeAwareBadge()
+    {
+        foreach (var (pageName, choiceName) in new[]
+                 {
+                     ("WelcomePage", "NativeChoice"), ("WelcomePage", "InstallChoice"),
+                     ("CapabilitiesPage", "StandardChoice"), ("AiReadyPage", "ChatChoice")
+                 })
+        {
+            var choice = Named(Page(pageName), choiceName);
+            var badge = Assert.Single(choice.Descendants(), element => element.Name.LocalName == "RecommendedBadge");
+            Assert.Null(badge.Attribute("Padding"));
+            Assert.Null(badge.Attribute("Foreground"));
+        }
+
+        var document = XDocument.Load(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.SetupEngine.UI", "Controls", "RecommendedBadge.xaml"));
+        var border = Named(document, "BadgeBorder");
+        Assert.Equal("8,4", (string?)border.Attribute("Padding"));
+        Assert.Equal("4", (string?)border.Attribute("CornerRadius"));
+        Assert.Equal("1", (string?)border.Attribute("BorderThickness"));
+        var label = Named(document, "Label");
+        Assert.Equal("Onboarding_Copy_Recommended", (string?)label.Attribute(X + "Uid"));
+        Assert.Equal("Wrap", (string?)label.Attribute("TextWrapping"));
+        Assert.Equal("{StaticResource CaptionTextBlockStyle}", (string?)label.Attribute("Style"));
+        Assert.Equal("{ThemeResource AccentTextFillColorPrimaryBrush}", (string?)label.Attribute("Foreground"));
+        var disabled = Named(document, "Disabled");
+        Assert.Equal(new[] { "BadgeBorder.BorderBrush", "Label.Foreground" },
+            disabled.Descendants().Where(element => element.Name.LocalName == "Setter")
+                .Select(element => (string?)element.Attribute("Target")));
+        Assert.All(disabled.Descendants().Where(element => element.Name.LocalName == "Setter"),
+            setter => Assert.Equal("{ThemeResource TextFillColorDisabledBrush}", (string?)setter.Attribute("Value")));
+    }
+
+    [Fact]
+    public void FineTune_ExplanatoryNotesKeepCardInsetsAndWrap()
+    {
+        var fineTune = Named(Page("CapabilitiesPage"), "FineTuneExpander");
+        var footer = Assert.Single(fineTune.Elements(), element =>
+            element.Name.LocalName == "SettingsExpander.ItemsFooter");
+        var panel = Assert.Single(footer.Elements());
+        Assert.Equal("StackPanel", panel.Name.LocalName);
+        Assert.Equal("16,12", (string?)panel.Attribute("Padding"));
+        Assert.Equal("8", (string?)panel.Attribute("Spacing"));
+        Assert.Null(panel.Attribute("Height"));
+        Assert.Null(panel.Attribute("MaxHeight"));
+        Assert.Equal(
+            new[] { "Onboarding_V2_DeviceFixed", "Onboarding_V2_NativeSettings" },
+            panel.Elements().Select(element => (string?)element.Attribute(X + "Uid")));
+        Assert.All(panel.Elements(), note =>
+        {
+            Assert.Equal("Wrap", (string?)note.Attribute("TextWrapping"));
+            Assert.Null(note.Attribute("Height"));
+            Assert.Null(note.Attribute("MaxHeight"));
+        });
+    }
+
+    [Fact]
     public void Installation_KeepsOverviewAndActionableStatusOutsideCollapsedDetails()
     {
         var page = Page("ProgressPage");

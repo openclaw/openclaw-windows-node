@@ -92,13 +92,15 @@ public sealed partial class ProviderSetupDialog : ContentDialog
     }
 
     public void Update(GatewayAiSetupWizardStep? step, GatewayAiSetupPhase phase,
-        bool busy, bool canCancel, bool cancelling, string status, string? error, string? providerTitle = null)
+        bool busy, bool canCancel, bool cancelling, string status, string? error, string? providerTitle = null,
+        bool isSubmittingAnswer = false)
     {
         if (_closed)
             return;
         _rendering = true;
         try
         {
+            var showStep = GatewayAiSetupPresentation.ShowProviderStep(step, phase, busy, isSubmittingAnswer);
             Title = step?.Title ?? providerTitle ?? S("Title.Text");
             ProviderName.Text = providerTitle ?? "";
             ProviderName.Visibility = step?.Title is not null && !string.IsNullOrWhiteSpace(providerTitle) &&
@@ -111,11 +113,10 @@ public sealed partial class ProviderSetupDialog : ContentDialog
             DialogError.IsOpen = !string.IsNullOrWhiteSpace(error);
             _canAnswer = phase == GatewayAiSetupPhase.Running && !busy && !cancelling;
             _canActivatePrepared = phase == GatewayAiSetupPhase.Prepared && !busy && !cancelling;
-            StepPanel.Visibility = phase == GatewayAiSetupPhase.Running && step is not null
-                ? Visibility.Visible : Visibility.Collapsed;
+            StepPanel.Visibility = showStep ? Visibility.Visible : Visibility.Collapsed;
             if (!ReferenceEquals(_step, step))
                 RenderStep(step);
-            if (phase != GatewayAiSetupPhase.Running)
+            if (!showStep)
                 ClearInputs();
             StepOptions.IsEnabled = TextInput.IsEnabled = SecretInput.IsEnabled = ConfirmInput.IsEnabled = _canAnswer;
             ExternalLink.IsEnabled = !cancelling;
@@ -150,7 +151,6 @@ public sealed partial class ProviderSetupDialog : ContentDialog
             _ => null,
         };
         SecretInput.Password = "";
-        TextInput.Text = "";
         return value;
     }
 

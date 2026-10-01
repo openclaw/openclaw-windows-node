@@ -46,7 +46,10 @@ public sealed class GatewayScenario
         "logs.tail",
     ];
 
-    public string Name => _setup is null ? BrowseName : "native-setup";
+    private readonly bool _allowAgentCreation;
+    private readonly List<object> _createdAgents = [];
+
+    public string Name => _setup is not null ? "native-setup" : _allowAgentCreation ? "agent-creation" : BrowseName;
     public int Version => 1;
     public int ProtocolVersion => GatewayProtocolContract.CurrentVersion;
     public string ContractProvenance =>
@@ -56,11 +59,12 @@ public sealed class GatewayScenario
     public IReadOnlyList<string> ReadMethods { get; }
 
     private GatewayScenario(Session[] sessions, IReadOnlyDictionary<string, JsonElement> reads,
-        Func<string, JsonElement, object>? setup = null, bool advertiseSetup = true)
+        Func<string, JsonElement, object>? setup = null, bool advertiseSetup = true, bool allowAgentCreation = false)
     {
         _sessions = sessions;
         _reads = reads;
         _setup = setup;
+        _allowAgentCreation = allowAgentCreation;
         SessionKeys = Array.AsReadOnly(sessions.Select(s => s.Key).ToArray());
         ReadMethods = Array.AsReadOnly(new[]
         {
@@ -86,7 +90,7 @@ public sealed class GatewayScenario
         return new(browse._sessions, browse._reads, responder, advertiseSetup);
     }
 
-    public static GatewayScenario CreateBrowse()
+    public static GatewayScenario CreateBrowse(bool allowAgentCreation = false, bool requireAgentSelection = false)
     {
         Session[] sessions =
         [
@@ -165,6 +169,10 @@ public sealed class GatewayScenario
         var configHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(config.GetRawText()))).ToLowerInvariant();
         var reads = new Dictionary<string, JsonElement>(StringComparer.Ordinal)
         {
+            ["users.self"] = JsonSerializer.SerializeToElement(new
+            {
+                profile = new { id = "fixture-owner", displayName = "Fixture Owner", emails = new[] { "owner@example.test" } }
+            }),
             ["health"] = JsonSerializer.SerializeToElement(new
             {
                 ok = true, ts = Epoch.ToUnixTimeMilliseconds(), durationMs = 0,
@@ -175,6 +183,7 @@ public sealed class GatewayScenario
             ["agents.list"] = JsonSerializer.SerializeToElement(new
             {
                 defaultId = "main", mainKey = "main", scope = "per-sender",
+                selectionRequired = requireAgentSelection,
                 agents = new[]
                 {
                     new { id = "main", name = "Fixture Main", identity = new { name = "Fixture Main" } },
@@ -215,7 +224,7 @@ public sealed class GatewayScenario
                 version = "fixture-1", generatedAt = Epoch.ToString("O")
             })
         };
-        return new GatewayScenario(sessions, reads);
+        return new GatewayScenario(sessions, reads, allowAgentCreation: allowAgentCreation);
     }
 
     internal object CreateHello(string connectionId) => new
@@ -229,7 +238,7 @@ public sealed class GatewayScenario
             presence = Array.Empty<object>(), health = _reads["health"],
             sessionDefaults = new { defaultAgentId = "main", mainKey = "main", mainSessionKey = MainSessionKey, scope = "per-sender" }
         },
-        auth = new { role = "operator", scopes = new[] { _setup is null ? "operator.read" : "operator.admin" } },
+        auth = new { role = "operator", scopes = _allowAgentCreation ? new[] { "operator.admin", "operator.read" } : new[] { _setup is null ? "operator.read" : "operator.admin" } },
         policy = new { maxPayload = 1_048_576, maxBufferedBytes = 1_048_576, tickIntervalMs = 30_000 }
     };
 
@@ -239,6 +248,30 @@ public sealed class GatewayScenario
     {
         if (_setup is not null && SetupMethods.Contains(method, StringComparer.Ordinal))
             return _setup(method, parameters);
+        if (_allowAgentCreation && method is "agents.create" or "agents.list")
+        {
+            lock (_createdAgents)
+            {
+                if (method == "agents.create")
+                {
+                    ValidateProperties(parameters, "name", "workspace");
+                    var name = RequiredString(parameters, "name");
+                    var workspace = RequiredString(parameters, "workspace");
+                    if (_createdAgents.Count > 0)
+                        throw new FixtureRequestException("INVALID_REQUEST", "Fixture agent already exists.");
+                    _createdAgents.Add(new { id = "fixture-created", name, identity = new { name } });
+                    return new { ok = true, agentId = "fixture-created", name, workspace };
+                }
+                ValidateProperties(parameters);
+                return new
+                {
+                    defaultId = "main", mainKey = "main", scope = "per-sender",
+                    selectionRequired = _reads["agents.list"].GetProperty("selectionRequired").GetBoolean(),
+                    agents = _reads["agents.list"].GetProperty("agents").EnumerateArray().Cast<object>()
+                        .Concat(_createdAgents).ToArray()
+                };
+            }
+        }
         if (method == "exec.approval.resolve")
             return ResolveApproval(parameters);
         if (IsWrite(method))

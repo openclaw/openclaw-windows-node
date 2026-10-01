@@ -432,10 +432,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private void OnUiThread(Microsoft.UI.Dispatching.DispatcherQueueHandler action) => _dispatcherQueue?.TryEnqueue(action);
 
     /// <summary>
-    /// Check if the app was launched via protocol activation (MSIX deep link).
-    /// In WinUI 3, protocol activation is retrieved via AppInstance, not OnActivated.
+    /// Preserve packaged activation identity before planning or forwarding a launch.
     /// </summary>
-    private static string? GetProtocolActivationUri()
+    private static (LaunchActivationKind Kind, string? ProtocolUri) GetLaunchActivation()
     {
         try
         {
@@ -443,15 +442,20 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             if (activatedArgs.Kind == Microsoft.Windows.AppLifecycle.ExtendedActivationKind.Protocol
                 && activatedArgs.Data is global::Windows.ApplicationModel.Activation.IProtocolActivatedEventArgs protocolArgs)
             {
-                return protocolArgs.Uri?.ToString();
+                return (LaunchActivationKind.Protocol, protocolArgs.Uri?.ToString());
             }
+            return (activatedArgs.Kind switch
+            {
+                Microsoft.Windows.AppLifecycle.ExtendedActivationKind.StartupTask => LaunchActivationKind.StartupTask,
+                Microsoft.Windows.AppLifecycle.ExtendedActivationKind.Launch => LaunchActivationKind.Launch,
+                _ => LaunchActivationKind.Other
+            }, null);
         }
         catch (Exception ex)
         {
-            // Not activated via protocol, or not packaged. Surface at Debug for diagnostics.
-            Logger.Debug($"GetProtocolActivationUri: {ex.GetType().Name}: {ex.Message}");
+            Logger.Debug($"GetLaunchActivation: {ex.GetType().Name}: {ex.Message}");
         }
-        return null;
+        return (LaunchActivationKind.Launch, null);
     }
 
     /// <summary>
@@ -550,8 +554,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             return;
         }
 
-        // Check for protocol activation (MSIX packaged apps receive deep links this way)
-        string? protocolUri = GetProtocolActivationUri();
+        var activation = GetLaunchActivation();
+        string? protocolUri = activation.ProtocolUri;
 
         // Single instance check - keep mutex alive for app lifetime.
         // When running with an isolated data dir (tests), suffix the mutex name so
@@ -630,7 +634,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 protocolUri,
                 _startupArgs,
                 _postSetupLaunch,
-                SetupShownDuringStartup: false), CancellationToken.None);
+                SetupShownDuringStartup: false,
+                Kind: activation.Kind), CancellationToken.None);
             Exit();
             return;
         }
@@ -680,6 +685,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 GetPendingChatSessionKey: () => PendingChatSessionKey,
                 GetStartupArgs: () => _startupArgs,
                 IsDeepLinkArg: IsDeepLinkArg,
+                RequiresSetup: () => !_isPostSetupRestart && _settings is not null && RequiresSetup(_settings),
                 Connect: ReconnectWithSyncedBrowserProxyForward,
                 Disconnect: () =>
                 {
@@ -907,11 +913,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 setupShownDuringStartup = true;
             }
         }
-        catch (DeviceIdentityLoadException ex)
-        {
-            Logger.Error($"Stored device identity load failed during launch setup detection: {ex.InnerException?.Message}");
-            ShowTransientConnectionError(ex.Message);
-        }
         catch (Exception ex)
         {
             Logger.Error($"Onboarding failed during launch (tray remains available): {ex}");
@@ -1005,7 +1006,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             Environment.GetEnvironmentVariable("OPENCLAW_SKIP_UPDATE_CHECK") != "1")
         {
             var shouldLaunch = await _activationRouter.CheckOrdinaryStartupUpdateAsync(
-                new LaunchActivationInput(_pendingProtocolUri, _startupArgs, _postSetupLaunch, setupShownDuringStartup),
+                new LaunchActivationInput(_pendingProtocolUri, _startupArgs, _postSetupLaunch, setupShownDuringStartup, activation.Kind),
                 () => _updateCoordinator.CheckForUpdatesAsync());
             if (!shouldLaunch)
             {
@@ -1040,7 +1041,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             _pendingProtocolUri,
             _startupArgs,
             _postSetupLaunch,
-            setupShownDuringStartup));
+            setupShownDuringStartup,
+            activation.Kind));
         await _activationRouter.DispatchPlanAsync(launchPlan, this, CancellationToken.None);
 
         Logger.Info("Application started (WinUI 3)");
@@ -1083,10 +1085,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         _trayController = new TrayController(new TrayControllerCallbacks(
             CaptureMenuSnapshot: CaptureTrayMenuSnapshot,
             CaptureIconSnapshot: CaptureTraySnapshot,
-            IsOperatorConnected: () =>
-                _connectionManager?.CurrentSnapshot.OperatorState == RoleConnectionState.Connected,
-            ShowChat: ShowChatWindow,
-            ShowConnection: () => ShowHub("connection"),
+            ShowChat: () => ShowHub("chat"),
             DispatchMenuAction: action => OnTrayMenuItemClicked(null, action),
             ApplyTheme: ApplyThemePreference,
             IsDispatcherAvailable: () => _dispatcherQueue != null,
@@ -2436,7 +2435,17 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
     private bool RequiresSetup(SettingsManager settings)
     {
-        return StartupSetupState.RequiresSetup(settings, IdentityDataPath, _gatewayRegistry);
+        try
+        {
+            return StartupSetupState.RequiresSetup(settings, IdentityDataPath, _gatewayRegistry);
+        }
+        catch (DeviceIdentityLoadException ex)
+        {
+            Logger.Error($"Stored device identity load failed during setup detection: {ex.InnerException?.Message}");
+            ShowTransientConnectionError(ex.Message);
+            // Keep connection recovery available; an unreadable identity is not a fresh install.
+            return false;
+        }
     }
 
     private bool ShouldInitializeNodeService()
@@ -3383,8 +3392,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         // Suppress chat notifications when a chat window is already showing them
         if (notification.IsChat)
         {
-            if (_windowManager?.IsHubOpen == true)
-                return false;
             if (_windowManager?.IsChatVisible == true)
                 return false;
         }

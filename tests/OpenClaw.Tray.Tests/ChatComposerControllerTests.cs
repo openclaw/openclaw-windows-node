@@ -251,6 +251,22 @@ public sealed class ChatComposerControllerTests
     }
 
     [Fact]
+    public void TrySelectChannel_RequiresLiveRootAndPreservesDraft()
+    {
+        var (vm, controller, _, _) = MakeController();
+        vm.SetDraft("Unsent sidebar draft");
+        Assert.False(controller.TrySelectChannel("agent:main:main"));
+        string? selected = null;
+        controller.BindSelectionHandoff(key => selected = key);
+        Assert.True(controller.TrySelectChannel("agent:research:thread"));
+        Assert.Equal("agent:research:thread", selected);
+        Assert.Equal("Unsent sidebar draft", vm.Draft);
+        controller.Dispose();
+        Assert.False(controller.TrySelectChannel("agent:main:main"));
+        Assert.Equal("agent:research:thread", selected);
+    }
+
+    [Fact]
     public async Task SendAsync_NewCommand_HandsCanonicalSessionKeyToBoundSelection()
     {
         var (vm, controller, port, _) = MakeController();

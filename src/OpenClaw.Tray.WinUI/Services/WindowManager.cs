@@ -27,6 +27,7 @@ internal sealed record WindowManagerCallbacks(
     Func<string?> GetPendingChatSessionKey,
     Func<string[]?> GetStartupArgs,
     Func<string, bool> IsDeepLinkArg,
+    Func<bool> RequiresSetup,
     Action Connect,
     Action Disconnect,
     EventHandler SettingsSaved,
@@ -43,6 +44,8 @@ internal sealed class WindowManager : IWindowManager
     private readonly WindowManagerCallbacks _callbacks;
     private Window? _keepAliveWindow;
     private HubWindow? _hubWindow;
+    private WorkspaceWindow? _workspaceWindow;
+    private Window? _lastActiveMainWindow;
     private ChatWindow? _chatWindow;
     private ConnectionStatusWindow? _connectionStatusWindow;
     private SetupWindow? _setupWindow;
@@ -59,19 +62,28 @@ internal sealed class WindowManager : IWindowManager
     }
 
     public Window? ActiveHubWindow =>
-        !_isShuttingDown && _hubWindow is { IsClosed: false } ? _hubWindow : null;
+        _isShuttingDown ? null :
+            _lastActiveMainWindow is WorkspaceWindow { IsClosed: false } workspace ? workspace :
+            _lastActiveMainWindow is HubWindow { IsClosed: false } hub ? hub :
+            _hubWindow is { IsClosed: false } ? _hubWindow :
+            _workspaceWindow is { IsClosed: false } ? _workspaceWindow : null;
 
-    public bool IsHubOpen => !_isShuttingDown && _hubWindow is { IsClosed: false };
+    public bool IsHubOpen => !_isShuttingDown &&
+        (_workspaceWindow is { IsClosed: false } || _hubWindow is { IsClosed: false });
 
-    public bool IsChatVisible =>
-        !_isShuttingDown && _chatWindow is { IsClosed: false, Visible: true };
+    public bool IsChatVisible => ChatVisibilityPolicy.IsChatVisible(
+        _isShuttingDown,
+        !_isShuttingDown && _workspaceWindow is { IsChatVisible: true },
+        _chatWindow is { IsClosed: false, Visible: true });
 
     public XamlRoot? DialogXamlRoot =>
         _isShuttingDown
             ? null
-            : (_hubWindow is { IsClosed: false } hub
+            : (ActiveHubWindow?.Content as FrameworkElement)?.XamlRoot
+              ?? (_hubWindow is { IsClosed: false } hub
                 ? (hub.Content as FrameworkElement)?.XamlRoot
                 : null)
+              ?? (_workspaceWindow?.Content as FrameworkElement)?.XamlRoot
               ?? (_keepAliveWindow?.Content as FrameworkElement)?.XamlRoot;
 
     public XamlRoot? RuntimeAnchorXamlRoot =>
@@ -80,12 +92,18 @@ internal sealed class WindowManager : IWindowManager
     public XamlRoot? SetupXamlRoot =>
         _isShuttingDown ? null : (_setupWindow?.Content as FrameworkElement)?.XamlRoot;
 
-    public bool CanNavigateHubBack() =>
-        !_isShuttingDown && _hubWindow is { IsClosed: false } hub && hub.CanGoBack;
+    public bool CanNavigateHubBack() => ActiveHubWindow switch
+    {
+        WorkspaceWindow workspace => workspace.CanGoBack,
+        HubWindow hub => hub.CanGoBack,
+        _ => false
+    };
 
     public void NavigateHubBack()
     {
-        if (!_isShuttingDown && _hubWindow is { IsClosed: false } hub)
+        if (ActiveHubWindow is WorkspaceWindow workspace)
+            workspace.NavigateBack();
+        else if (ActiveHubWindow is HubWindow hub)
         {
             hub.NavigateBack();
         }
@@ -249,15 +267,36 @@ internal sealed class WindowManager : IWindowManager
             }
             await Task.Delay(100, ct);
         }
-        ShowHubCore(request.PageTag, activate: false, request);
-        if (_hubWindow is not { } hub) throw new InvalidOperationException("The native window is unavailable.");
-        await hub.WaitForNativeSetupAsync(request, ct);
+        ct.ThrowIfCancellationRequested();
+        if (_isShuttingDown)
+            throw new InvalidOperationException("The application is shutting down.");
+        Window window;
+        if (request.WorkspaceDestination is { } destination)
+        {
+            ShowWorkspace(destination, activate: false, preserveCurrent: false, nativeRequest: request);
+            if (_workspaceWindow is not { } workspace)
+                throw new InvalidOperationException("The native window is unavailable.");
+            await workspace.WaitForNativeSetupAsync(request, ct);
+            window = workspace;
+        }
+        else
+        {
+            ShowCompanion(request.PageTag, activate: false, nativeRequest: request);
+            if (_hubWindow is not { } hub)
+                throw new InvalidOperationException("The native window is unavailable.");
+            await hub.WaitForNativeSetupAsync(request, ct);
+            window = hub;
+        }
+        ct.ThrowIfCancellationRequested();
         request.GetConnectedClient(_callbacks.GetGatewayRegistry(), _callbacks.GetConnectionManager());
         if (SetupDashboardLiveFacts.Capture(_callbacks.GetConnectionManager()) is { } facts &&
             !facts.Matches(completion.Verification))
             throw new SetupNativeOwnershipException();
-        if (_isShuttingDown || hub.IsClosed) throw new InvalidOperationException("The native window closed.");
-        hub.Activate();
+        if (_isShuttingDown || window is WorkspaceWindow { IsClosed: true } or HubWindow { IsClosed: true })
+            throw new InvalidOperationException("The native window closed.");
+        ct.ThrowIfCancellationRequested();
+        _lastActiveMainWindow = window;
+        window.Activate();
     }
 
     public async Task ShowNativeSetupFailureAsync(SetupNativeLaunchFailure failure, Action? retry)
@@ -302,13 +341,30 @@ internal sealed class WindowManager : IWindowManager
         if (retryRequested && !_isShuttingDown) retry?.Invoke();
     }
 
-    private void ShowHubCore(string? navigateTo, bool activate, SetupNativeNavigationRequest? nativeRequest = null)
+    private void ShowHubCore(string? navigateTo, bool activate)
     {
         if (_isShuttingDown)
         {
             return;
         }
 
+        WorkspaceNavigation.Dispatch(navigateTo, destination =>
+        {
+            if (_callbacks.RequiresSetup())
+            {
+                AsyncEventHandlerGuard.Run(
+                    ShowOnboardingAsync,
+                    new AppLogger(),
+                    nameof(ShowOnboardingAsync));
+                return;
+            }
+
+            ShowWorkspace(destination, activate, preserveCurrent: navigateTo is null or "hub");
+        }, tag => ShowCompanion(tag, activate));
+    }
+
+    private void ShowCompanion(string navigateTo, bool activate, SetupNativeNavigationRequest? nativeRequest = null)
+    {
         if (_hubWindow is null || _hubWindow.IsClosed)
         {
             var appState = _callbacks.GetAppState();
@@ -350,6 +406,7 @@ internal sealed class WindowManager : IWindowManager
             _hubWindow.SettingsSaved += _callbacks.SettingsSaved;
             _hubWindow.PendingChatSessionKey = _callbacks.GetPendingChatSessionKey();
             _hubWindow.Closed += OnHubClosed;
+            _hubWindow.Activated += OnMainWindowActivated;
             _hubWindow.BindToAppState();
             if (nativeRequest is null) _hubWindow.NavigateToDefault();
         }
@@ -358,6 +415,10 @@ internal sealed class WindowManager : IWindowManager
         {
             _hubWindow.NavigateTo(nativeRequest);
         }
+        else if (navigateTo == "command-center")
+        {
+            _hubWindow.OpenCommandCenter();
+        }
         else if (navigateTo is not null)
         {
             _hubWindow.NavigateTo(navigateTo);
@@ -365,6 +426,7 @@ internal sealed class WindowManager : IWindowManager
 
         if (activate)
         {
+            _lastActiveMainWindow = _hubWindow;
             _ = ActivateHubWhenReadyAsync(_hubWindow);
         }
         else
@@ -383,6 +445,70 @@ internal sealed class WindowManager : IWindowManager
                 Logger.Debug($"WindowManager: Failed to show hub window without activation before tray menu: {ex.Message}");
             }
         }
+    }
+
+    private void ShowWorkspace(
+        WorkspaceDestination destination, bool activate, bool preserveCurrent,
+        SetupNativeNavigationRequest? nativeRequest = null)
+    {
+        if (_workspaceWindow is null || _workspaceWindow.IsClosed)
+        {
+            if (_callbacks.GetAppState() is not { } state ||
+                _callbacks.GetAppNotificationService() is not { } notifications)
+            {
+                Logger.Warn("[WindowManager] Workspace cannot open before application services are ready.");
+                return;
+            }
+
+            _workspaceWindow = new WorkspaceWindow(state, notifications,
+                tag => ShowHub(tag), ShowConnectionStatus);
+            _callbacks.ApplyTheme(_workspaceWindow);
+            _workspaceWindow.Closed += OnWorkspaceClosed;
+            _workspaceWindow.Activated += OnMainWindowActivated;
+        }
+
+        if (nativeRequest is not null)
+        {
+            nativeRequest.RequireWorkspaceDestination(destination);
+            _workspaceWindow.NavigateNativeSetup(nativeRequest);
+        }
+        else if (!preserveCurrent)
+        {
+            if (destination.Page == WorkspacePageId.Home &&
+                _callbacks.GetPendingChatSessionKey() is { Length: > 0 } sessionKey)
+                _workspaceWindow.SelectSession(sessionKey);
+            else
+                _workspaceWindow.Navigate(destination);
+        }
+        if (_workspaceWindow.AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter &&
+            presenter.State == Microsoft.UI.Windowing.OverlappedPresenterState.Minimized)
+            presenter.Restore(activate);
+        if (activate)
+        {
+            _lastActiveMainWindow = _workspaceWindow;
+            _workspaceWindow.Activate();
+        }
+        else
+            _workspaceWindow.AppWindow.Show(activateWindow: false);
+    }
+
+    private void OnWorkspaceClosed(object sender, WindowEventArgs args)
+    {
+        if (sender is WorkspaceWindow workspace)
+        {
+            workspace.Closed -= OnWorkspaceClosed;
+            workspace.Activated -= OnMainWindowActivated;
+        }
+        if (ReferenceEquals(sender, _lastActiveMainWindow))
+            _lastActiveMainWindow = null;
+        if (ReferenceEquals(sender, _workspaceWindow))
+            _workspaceWindow = null;
+    }
+
+    private void OnMainWindowActivated(object sender, WindowActivatedEventArgs args)
+    {
+        if (args.WindowActivationState != WindowActivationState.Deactivated && sender is Window window)
+            _lastActiveMainWindow = window;
     }
 
     private async Task ActivateHubWhenReadyAsync(HubWindow hub)
@@ -410,6 +536,9 @@ internal sealed class WindowManager : IWindowManager
 
         hub.SettingsSaved -= _callbacks.SettingsSaved;
         hub.Closed -= OnHubClosed;
+        hub.Activated -= OnMainWindowActivated;
+        if (ReferenceEquals(hub, _lastActiveMainWindow))
+            _lastActiveMainWindow = null;
         if (ReferenceEquals(_hubWindow, hub))
         {
             _hubWindow = null;
@@ -438,6 +567,9 @@ internal sealed class WindowManager : IWindowManager
 
         if (_connectionStatusWindow is { IsClosed: false })
         {
+            if (_connectionStatusWindow.AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter &&
+                presenter.State == Microsoft.UI.Windowing.OverlappedPresenterState.Minimized)
+                presenter.Restore();
             _connectionStatusWindow.Activate();
             return;
         }
@@ -455,6 +587,18 @@ internal sealed class WindowManager : IWindowManager
             manager);
         _connectionStatusWindow.Closed += OnConnectionStatusClosed;
         _callbacks.ApplyTheme(_connectionStatusWindow);
+        if (ActiveHubWindow is { } owner)
+        {
+            var area = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(
+                owner.AppWindow.Id, Microsoft.UI.Windowing.DisplayAreaFallback.Nearest).WorkArea;
+            var size = _connectionStatusWindow.AppWindow.Size;
+            size.Width = Math.Min(size.Width, Math.Max(1, area.Width - 32));
+            size.Height = Math.Min(size.Height, Math.Max(1, area.Height - 32));
+            _connectionStatusWindow.AppWindow.MoveAndResize(new global::Windows.Graphics.RectInt32(
+                Math.Max(area.X, area.X + area.Width - size.Width - 16),
+                Math.Clamp(owner.AppWindow.Position.Y + 48, area.Y, Math.Max(area.Y, area.Y + area.Height - size.Height)),
+                size.Width, size.Height));
+        }
         _connectionStatusWindow.Activate();
     }
 
@@ -786,6 +930,7 @@ internal sealed class WindowManager : IWindowManager
 
         _callbacks.ApplyTheme(_keepAliveWindow);
         _callbacks.ApplyTheme(_hubWindow);
+        _callbacks.ApplyTheme(_workspaceWindow);
         _callbacks.ApplyTheme(_chatWindow);
         _callbacks.ApplyTheme(_connectionStatusWindow);
         _callbacks.ApplyTheme(_setupWindow);
@@ -798,6 +943,7 @@ internal sealed class WindowManager : IWindowManager
         if (!_isShuttingDown)
         {
             _hubWindow?.UpdateTitleBarStatus(snapshot, status);
+            _workspaceWindow?.UpdateConnectionStatus(snapshot, status);
         }
     }
 
@@ -811,10 +957,8 @@ internal sealed class WindowManager : IWindowManager
 
     public void SetPendingChatSessionKey(string? sessionKey)
     {
-        if (!_isShuttingDown && _hubWindow is not null)
-        {
-            _hubWindow.PendingChatSessionKey = sessionKey;
-        }
+        if (!_isShuttingDown)
+            _workspaceWindow?.ChatPage.QueueSession(sessionKey);
     }
 
     public void ShowHubChatAndStartVoice()
@@ -824,36 +968,13 @@ internal sealed class WindowManager : IWindowManager
             return;
         }
 
-        bool hubExisted = _hubWindow is { IsClosed: false };
         ShowHub("chat");
-        if (_hubWindow is null)
-        {
-            return;
-        }
-
-        if (_hubWindow.CurrentPage is Pages.ChatPage chatPage)
-        {
-            chatPage.TriggerAutoStartVoice();
-        }
-        else if (!hubExisted)
-        {
-            _hubWindow.PendingAutoStartVoice = true;
-            _dispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
-            {
-                if (!_isShuttingDown &&
-                    _hubWindow?.PendingAutoStartVoice == true &&
-                    _hubWindow.CurrentPage is Pages.ChatPage pendingChatPage)
-                {
-                    _hubWindow.PendingAutoStartVoice = false;
-                    pendingChatPage.TriggerAutoStartVoice();
-                }
-            });
-        }
+        _workspaceWindow?.ChatPage.TriggerAutoStartVoice();
     }
 
     public IntPtr GetHubWindowHandle() =>
-        !_isShuttingDown && _hubWindow is { IsClosed: false }
-            ? WinRT.Interop.WindowNative.GetWindowHandle(_hubWindow)
+        ActiveHubWindow is { } window
+            ? WinRT.Interop.WindowNative.GetWindowHandle(window)
             : IntPtr.Zero;
 
     public IntPtr GetOnboardingWindowHandle() =>
@@ -870,6 +991,14 @@ internal sealed class WindowManager : IWindowManager
     private async Task CloseOwnedWindowsAsync()
     {
         List<Exception>? failures = null;
+
+        if (_workspaceWindow is not null)
+        {
+            _workspaceWindow.Closed -= OnWorkspaceClosed;
+            _workspaceWindow.Activated -= OnMainWindowActivated;
+            TryClose("Workspace window", _workspaceWindow.Close, ref failures);
+            _workspaceWindow = null;
+        }
 
         TryClose("Chat window", () => _chatWindow?.ForceClose(), ref failures);
         _chatWindow = null;
@@ -924,11 +1053,13 @@ internal sealed class WindowManager : IWindowManager
             var hub = _hubWindow;
             hub.SettingsSaved -= _callbacks.SettingsSaved;
             hub.Closed -= OnHubClosed;
+            hub.Activated -= OnMainWindowActivated;
             TryClose("Hub window", hub.Close, ref failures);
             _hubWindow = null;
             ResetNavigationScope();
         }
 
+        _lastActiveMainWindow = null;
         TryClose("Runtime anchor window", () => _keepAliveWindow?.Close(), ref failures);
         _keepAliveWindow = null;
 

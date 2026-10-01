@@ -538,7 +538,7 @@
                 </Border>
 
                 <!-- ═════════ About ═════════ -->
-                <TextBlock x:Uid="SettingsPage_About" Text="About" Style="{StaticResource BodyStrongTextBlockStyle}"
+                <TextBlock x:Name="AboutHeading" x:Uid="SettingsPage_About" Text="About" Style="{StaticResource BodyStrongTextBlockStyle}"
                            Margin="{StaticResource SectionHeaderMargin}"/>
 
                 <toolkit:SettingsExpander x:Uid="SettingsPage_AppInfoExpander"

@@ -321,7 +321,7 @@ public sealed class OnboardingPresentationContractTests
         Assert.Equal("SettingsExpander", editor.Name.LocalName);
         Assert.Equal("False", (string?)editor.Attribute("IsExpanded"));
         Assert.DoesNotContain(xaml.Descendants(), element => (string?)element.Attribute(x + "Name") == "CustomChoice");
-        Assert.Contains(xaml.Descendants(), element => (string?)element.Attribute(x + "Uid") == "Onboarding_V4_ProfileHeading");
+        Assert.DoesNotContain(xaml.Descendants(), element => (string?)element.Attribute(x + "Uid") == "Onboarding_V4_ProfileHeading");
         Assert.Contains(editor.Elements(), element => element.Name.LocalName == "SettingsExpander.ItemsFooter");
         Assert.Contains(editor.Descendants(), element => (string?)element.Attribute(x + "Name") == "SelectedSummary");
         var source = Read(@"src\OpenClaw.SetupEngine.UI\Pages\CapabilitiesPage.xaml.cs");

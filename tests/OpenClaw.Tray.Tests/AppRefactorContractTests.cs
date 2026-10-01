@@ -749,13 +749,16 @@ public sealed class AppRefactorContractTests
     {
         var source = ReadAppSources();
         var launchMethod = ExtractMethod(source, "OnLaunchedAsync");
+        var probeMethod = ExtractMethod(source, "RequiresSetup");
 
-        Assert.Contains("catch (DeviceIdentityLoadException ex)", launchMethod);
-        Assert.Contains("ShowTransientConnectionError(ex.Message)", launchMethod);
+        Assert.Contains("RequiresSetup(_settings)", launchMethod);
         AssertInOrder(
-            launchMethod,
+            probeMethod,
+            "StartupSetupState.RequiresSetup(",
             "catch (DeviceIdentityLoadException ex)",
-            "catch (Exception ex)");
+            "ShowTransientConnectionError(ex.Message)",
+            "return false;");
+        Assert.DoesNotContain("ShowOnboardingAsync", probeMethod);
     }
 
     [Fact]

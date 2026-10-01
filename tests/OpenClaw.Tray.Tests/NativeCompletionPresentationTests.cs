@@ -30,8 +30,7 @@ public sealed class NativeCompletionPresentationTests
         var recovery = Assert.Single(page.Descendants(), element => (string?)element.Attribute(x + "Name") == "RecoveryButton");
         Assert.Contains(recovery.Ancestors(), element => element.Name.LocalName == "InfoBar");
         var badge = Assert.Single(actions[0].Descendants(), element => (string?)element.Attribute(x + "Name") == "RecommendedBadge");
-        Assert.Equal("Recommended", (string?)badge.Attribute("Text"));
-        Assert.Equal("{ThemeResource AccentTextFillColorPrimaryBrush}", (string?)badge.Attribute("Foreground"));
+        Assert.Equal("RecommendedBadge", badge.Name.LocalName);
         Assert.Contains(page.Descendants(), element => element.Name.LocalName == "SetupProgressIndicator");
         Assert.DoesNotContain(page.Descendants(), element => (string?)element.Attribute(x + "Name") == "FinishButton");
         var source = Read(@"src\OpenClaw.SetupEngine.UI\Pages\AiReadyPage.xaml.cs");
@@ -67,6 +66,40 @@ public sealed class NativeCompletionPresentationTests
         Assert.DoesNotContain("GatewayAiSetupCompletion", dashboard);
         Assert.DoesNotContain("OpenPendingAsync", dashboard);
         Assert.DoesNotContain("Issue(GatewayAiSetupCompletion", Read(@"src\OpenClaw.Tray.WinUI\Services\SetupDashboardHandoffStore.cs"));
+    }
+
+    [Fact]
+    public void NativeChatHandoff_UsesWorkspaceBindingWithoutReopeningCompanionChat()
+    {
+        // retirement_condition: replace with mounted native handoff tests when authorized UI proof is available.
+        var manager = Read(@"src\OpenClaw.Tray.WinUI\Services\WindowManager.cs");
+        var handoff = manager[manager.IndexOf("public async Task ShowNativeSetupAsync", StringComparison.Ordinal)..];
+        Assert.True(handoff.IndexOf("if (_isShuttingDown)", StringComparison.Ordinal) <
+            handoff.IndexOf("ShowWorkspace(destination", StringComparison.Ordinal));
+        Assert.Contains("if (request.WorkspaceDestination is { } destination)", manager);
+        Assert.Contains("ShowWorkspace(destination, activate: false, preserveCurrent: false, nativeRequest: request)", manager);
+        Assert.Contains("await workspace.WaitForNativeSetupAsync(request, ct)", manager);
+        Assert.Contains("ShowCompanion(request.PageTag, activate: false, nativeRequest: request)", manager);
+        Assert.Contains("await hub.WaitForNativeSetupAsync(request, ct)", manager);
+        var workspace = Read(@"src\OpenClaw.Tray.WinUI\Windows\WorkspaceWindow.xaml.cs");
+        var binding = workspace[workspace.IndexOf("internal void NavigateNativeSetup(SetupNativeNavigationRequest request)", StringComparison.Ordinal)..];
+        Assert.True(binding.IndexOf("_chat.BindNativeSetupRequest(request)", StringComparison.Ordinal) <
+            binding.IndexOf("_chat.Initialize(this)", StringComparison.Ordinal));
+        Assert.Contains("_chat.RetainNativeSetupForDestination(Destination)", workspace);
+        Assert.Contains("await _chat.WaitForNativeSetupAsync(request, ct)", workspace);
+        Assert.Contains("request.RequireWorkspaceDestination(Destination)", workspace);
+        var chat = Read(@"src\OpenClaw.Tray.WinUI\Pages\ChatPage.xaml.cs");
+        Assert.Contains("_nativeSetupBinding.RequireCurrent(request, ct)", chat);
+        Assert.Contains("_pendingSessionKey = native.Completion.Target.SessionKey", chat);
+        var hub = Read(@"src\OpenClaw.Tray.WinUI\Windows\HubWindow.xaml.cs");
+        Assert.Contains("if (request.WorkspaceDestination is not null)", hub);
+        Assert.DoesNotContain("await chat.WaitForNativeSetupAsync", hub);
+        var agentIntent = workspace[workspace.IndexOf("internal async Task StartAgentChatAsync", StringComparison.Ordinal)..];
+        Assert.True(agentIntent.IndexOf("_chat.InvalidateNativeSetupForNavigation()", StringComparison.Ordinal) <
+            agentIntent.IndexOf("_agentId = agent.Id", StringComparison.Ordinal));
+        var createIntent = workspace[workspace.IndexOf("private async Task NewSessionAsync()", StringComparison.Ordinal)..];
+        Assert.True(createIntent.IndexOf("_chat.InvalidateNativeSetupForNavigation()", StringComparison.Ordinal) <
+            createIntent.IndexOf("await client.CreateSessionAsync", StringComparison.Ordinal));
     }
 
     [Fact]

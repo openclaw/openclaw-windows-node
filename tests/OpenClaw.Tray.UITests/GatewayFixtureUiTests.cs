@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using System.Windows.Automation;
 using OpenClaw.GatewayFixtureHost;
+using OpenClaw.Shared;
 using OpenClaw.TestSupport.Gateway;
 using Xunit.Abstractions;
 
@@ -24,12 +25,124 @@ public sealed class GatewayFixtureUiTests(ITestOutputHelper output)
 {
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
-    public async Task SessionPickerSwitchesRealHistoriesAndShowsMessage240AtBothWidths()
+    public async Task OwnerFooterUsesAuthenticatedProfileAndLiveConnectionStatus()
     {
         await WithAppAsync(async run =>
         {
             await run.InvokeAsync("app.navigate", new { page = "chat" });
-            await WaitUiAsync(run, () => FindById(run, "ChatComposerSessionPicker") is not null, "native session picker");
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceOwner")?.Current.Name == "Fixture Owner",
+                "authenticated profile in footer");
+            var owner = FindById(run, "WorkspaceOwner")!;
+            Assert.Contains("Connected", owner.Current.HelpText, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Personal workspace", owner.Current.HelpText);
+            Assert.Contains(run.Gateway.Requests, request => request.Method == "users.self" && request.Outcome == "ok");
+            await CaptureIfRequestedAsync(run, "owner-profile.png");
+        });
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    public async Task SessionHistoryRestoresSelectionTranscriptAndDraftAcrossAgents()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            await SelectSessionAsync(run, GatewayScenario.LongSessionTitle, GatewayScenario.LongSessionKey);
+            var home = FindById(run, "WorkspaceNavHome")!.Current.BoundingRectangle;
+            var add = FindById(run, "WorkspaceSessionsAdd")!;
+            Assert.True(add.Current.IsEnabled);
+            Assert.InRange(add.Current.BoundingRectangle.Right - home.Right, -1, 1);
+            const string draft = "Keep draft through back and forward";
+            ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).SetValue(draft);
+            await SelectSessionAsync(run, GatewayScenario.OtherSessionTitle, GatewayScenario.OtherSessionKey);
+            Assert.True(FindById(run, "WorkspaceBack")!.Current.IsEnabled);
+            Invoke(FindById(run, "WorkspaceBack")!);
+            await WaitUiAsync(run, () => SessionSelected(run, GatewayScenario.LongSessionTitle)
+                && IsVisibleInTimeline(run, GatewayScenario.LongHistoryFinalMarker), "back to original session and transcript");
+            Assert.Equal(draft, ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+            Assert.True(FindById(run, "WorkspaceForward")!.Current.IsEnabled);
+            Invoke(FindById(run, "WorkspaceForward")!);
+            await WaitUiAsync(run, () => SessionSelected(run, GatewayScenario.OtherSessionTitle)
+                && IsVisibleInTimeline(run, GatewayScenario.OtherHistoryMarker), "forward across agents");
+            Assert.False(FindById(run, "WorkspaceForward")!.Current.IsEnabled);
+            await run.InvokeAsync("app.navigate", new { page = "workspace:notifications" });
+            Invoke(FindById(run, "WorkspaceBack")!);
+            await WaitUiAsync(run, () => SessionSelected(run, GatewayScenario.OtherSessionTitle), "back from notifications");
+            Invoke(FindById(run, "WorkspaceBack")!);
+            await WaitUiAsync(run, () => SessionSelected(run, GatewayScenario.LongSessionTitle), "back to first conversation");
+            await SelectSessionAsync(run, GatewayScenario.EmptyTitle, GatewayScenario.EmptySessionKey);
+            Assert.False(FindById(run, "WorkspaceForward")!.Current.IsEnabled);
+            Invoke(FindById(run, "WorkspaceBack")!);
+            await WaitUiAsync(run, () => SessionSelected(run, GatewayScenario.LongSessionTitle), "back after branching history");
+            Assert.Equal(draft, ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+        });
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    public async Task SessionsAddRequiresExplicitAssistantSelection()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceSessionsAdd") is { } add &&
+                !add.Current.IsEnabled && add.Current.HelpText == "Select assistant", "required assistant selection");
+            Assert.DoesNotContain(run.Gateway.Requests, request => request.Method == "sessions.create");
+            await CaptureIfRequestedAsync(run, "assistant-selection-required.png");
+            await SelectSessionAsync(run, GatewayScenario.LongSessionTitle, GatewayScenario.LongSessionKey);
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceSessionsAdd")?.Current.IsEnabled == true,
+                "conversation creation enabled after assistant selection");
+            Assert.Equal(string.Empty, FindById(run, "WorkspaceSessionsAdd")!.Current.HelpText);
+            Assert.DoesNotContain(run.Gateway.Requests, request => request.Method == "sessions.create");
+            await CaptureIfRequestedAsync(run, "assistant-selection-ready.png");
+        }, requireAgentSelection: true);
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    public async Task NewAgentUsesGatewayCreationAndRefreshesWithoutReplacingConversation()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            await SelectSessionAsync(run, GatewayScenario.LongSessionTitle, GatewayScenario.LongSessionKey);
+            var commands = await run.InvokeAsync("app.search", new { query = "Connection" });
+            Assert.Contains("Connection", commands.GetRawText(), StringComparison.OrdinalIgnoreCase);
+            var draft = "Keep this draft while creating an agent";
+            ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).SetValue(draft);
+            var selector = FindById(run, "WorkspaceAssistantSelector")!;
+            ((ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceNewAgent") is not null, "new agent action");
+            Invoke(FindById(run, "WorkspaceNewAgent")!);
+            await WaitUiAsync(run, () => FindById(run, "AgentCreationName") is not null, "native creation dialog");
+            ((ValuePattern)FindById(run, "AgentCreationName")!.GetCurrentPattern(ValuePattern.Pattern)).SetValue("Fixture Created");
+            ((ValuePattern)FindById(run, "AgentCreationWorkspace")!.GetCurrentPattern(ValuePattern.Pattern)).SetValue("/fixture/new-agent");
+            await WaitUiAsync(run, () => FindButton(run, "Create agent")?.Current.IsEnabled == true, "enabled create action");
+            Invoke(FindButton(run, "Create agent")!);
+            await WaitUiAsync(run, () => FindById(run, "AgentCreationDialog") is null, "confirmed creation");
+            Assert.Single(run.Gateway.Requests, request => request.Method == "agents.create" && request.Outcome == "ok");
+            Assert.DoesNotContain(run.Gateway.Requests, request => request.Method == "sessions.create");
+            Assert.Equal(draft, ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+            Assert.True(SessionSelected(run, GatewayScenario.LongSessionTitle));
+            ((ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceAgent:fixture-created") is not null, "server-returned agent");
+            Assert.Equal("Fixture Created, fixture-created", FindById(run, "WorkspaceAgent:fixture-created")!.Current.Name);
+            Assert.Equal(ExpandCollapseState.Expanded,
+                ((ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Current.ExpandCollapseState);
+            Assert.Equal(draft, ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+            Assert.True(SessionSelected(run, GatewayScenario.LongSessionTitle));
+            ((ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Collapse();
+        }, allowAgentCreation: true);
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    public async Task SidebarSwitchesRealHistoriesAndShowsMessage240AtBothWidths()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceNavigation") is not null, "native session navigation");
             for (var iteration = 0; iteration < 3; iteration++)
             {
                 await SelectSessionAsync(run, GatewayScenario.LongSessionTitle, GatewayScenario.LongSessionKey);
@@ -102,7 +215,7 @@ public sealed class GatewayFixtureUiTests(ITestOutputHelper output)
                 }
             }
             await run.InvokeAsync("app.navigate", new { page = "chat" });
-            await WaitUiAsync(run, () => PickerShows(run, GatewayScenario.OtherSessionTitle)
+            await WaitUiAsync(run, () => SessionSelected(run, GatewayScenario.OtherSessionTitle)
                 && IsVisibleInTimeline(run, GatewayScenario.OtherHistoryMarker), "selected session after page navigation");
             await run.InvokeAsync("app.navigate", new { page = "sessions" });
             await WaitUiAsync(run, () => FindText(run, GatewayScenario.LongSessionTitle) is not null, "long session row");
@@ -115,7 +228,7 @@ public sealed class GatewayFixtureUiTests(ITestOutputHelper output)
                 new PropertyCondition(AutomationElement.NameProperty, "Open in chat")));
             Assert.NotNull(openChat);
             Invoke(openChat);
-            await WaitUiAsync(run, () => PickerShows(run, GatewayScenario.LongSessionTitle)
+            await WaitUiAsync(run, () => SessionSelected(run, GatewayScenario.LongSessionTitle)
                 && IsVisibleInTimeline(run, GatewayScenario.LongHistoryFinalMarker), "Sessions-page action routes to long chat");
         });
     }
@@ -130,7 +243,7 @@ public sealed class GatewayFixtureUiTests(ITestOutputHelper output)
             await SelectSessionAsync(run, GatewayScenario.OtherSessionTitle, GatewayScenario.OtherSessionKey);
             await SelectSessionAsync(run, GatewayScenario.EmptyTitle, GatewayScenario.EmptySessionKey);
             await WaitUiAsync(run, () => RenderConsumedHistory(run, GatewayScenario.EmptySessionKey), "rendered empty-session history");
-            Assert.True(PickerShows(run, GatewayScenario.EmptyTitle));
+            Assert.True(SessionSelected(run, GatewayScenario.EmptyTitle));
             Assert.NotNull(FindById(run, "ChatComposerInput"));
             Assert.False(IsVisibleInTimeline(run, GatewayScenario.OtherHistoryMarker));
             var snapshot = await run.InvokeAsync("app.chat.snapshot", new { threadId = GatewayScenario.EmptySessionKey });
@@ -154,7 +267,7 @@ public sealed class GatewayFixtureUiTests(ITestOutputHelper output)
             await WaitHistoryAsync(run, GatewayScenario.LongSessionKey);
             await WaitUiAsync(run, () => RenderConsumedHistory(run, GatewayScenario.LongSessionKey),
                 "native composer rendering the snapshot containing delayed A history");
-            Assert.True(PickerShows(run, GatewayScenario.OtherSessionTitle));
+            Assert.True(SessionSelected(run, GatewayScenario.OtherSessionTitle));
             await WaitUiAsync(run, () => IsVisibleInTimeline(run, GatewayScenario.OtherHistoryMarker), "other history after late response");
             Assert.False(IsVisibleInTimeline(run, GatewayScenario.LongHistoryFinalMarker));
             await SelectSessionAsync(run, GatewayScenario.LongSessionTitle, GatewayScenario.LongSessionKey);
@@ -238,12 +351,14 @@ public sealed class GatewayFixtureUiTests(ITestOutputHelper output)
         });
     }
 
-    private async Task WithAppAsync(Func<GatewayFixtureRun, Task> test)
+    private async Task WithAppAsync(Func<GatewayFixtureRun, Task> test, bool allowAgentCreation = false,
+        bool requireAgentSelection = false)
     {
         var appPath = Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_APP")
             ?? throw new InvalidOperationException("Set OPENCLAW_GATEWAY_FIXTURE_APP to the freshly built app. No installed-app fallback is allowed.");
         await using var run = await GatewayFixtureRun.StartAsync(appPath,
-            Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS"));
+            Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS"),
+            allowAgentCreation: allowAgentCreation, requireAgentSelection: requireAgentSelection);
         output.WriteLine($"Fixture run {run.Profile.RunId}, PID {run.AppProcessId}, artifacts: {run.ArtifactsDirectory}");
         try
         {
@@ -274,18 +389,21 @@ public sealed class GatewayFixtureUiTests(ITestOutputHelper output)
 
     private static async Task SelectSessionAsync(GatewayFixtureRun run, string title, string key, bool waitForHistory = true)
     {
-        await WaitUiAsync(run, () => FindById(run, "ChatComposerSessionPicker") is not null, "session picker");
-        Invoke(FindById(run, "ChatComposerSessionPicker")!);
-        AutomationElement? item = null;
-        await WaitUiAsync(run, () =>
+        await WaitUiAsync(run, () => FindById(run, "WorkspaceAssistantSelector") is not null, "agent selector");
+        var selector = FindById(run, "WorkspaceAssistantSelector")!;
+        var agentId = $"WorkspaceAgent:{SessionDisplayResolver.Resolve(new SessionInfo { Key = key }).AgentId}";
+        var selection = (SelectionPattern)selector.GetCurrentPattern(SelectionPattern.Pattern);
+        if (!selection.Current.GetSelection().Any(item => item.Current.AutomationId == agentId))
         {
-            item = FindInApp(run, new AndCondition(
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.MenuItem),
-                new PropertyCondition(AutomationElement.NameProperty, title)));
-            return item is not null;
-        }, $"picker item {title}");
-        Invoke(item!);
-        await WaitUiAsync(run, () => PickerShows(run, title), $"selected session {title}");
+            var dropdown = (ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern);
+            dropdown.Expand();
+            await WaitUiAsync(run, () => FindById(run, agentId) is not null, "session's agent");
+            Invoke(FindById(run, agentId)!);
+            dropdown.Collapse();
+        }
+        await WaitUiAsync(run, () => FindById(run, $"WorkspaceSession:{key}") is not null, $"sidebar session {title}");
+        Invoke(FindById(run, $"WorkspaceSession:{key}")!);
+        await WaitUiAsync(run, () => SessionSelected(run, title), $"selected session {title}");
         if (waitForHistory) await WaitHistoryAsync(run, key);
     }
 
@@ -298,14 +416,19 @@ public sealed class GatewayFixtureUiTests(ITestOutputHelper output)
                 && timeline.GetProperty("historyLoaded").GetBoolean();
         }, $"history loaded for {key}");
 
-    private static bool PickerShows(GatewayFixtureRun run, string title) =>
-        FindById(run, "ChatComposerSessionPicker")?.Current.Name.Contains(title, StringComparison.Ordinal) == true;
+    private static bool SessionSelected(GatewayFixtureRun run, string title)
+    {
+        var item = FindInApp(run, new AndCondition(
+            new PropertyCondition(AutomationElement.NameProperty, title),
+            new PropertyCondition(AutomationElement.IsSelectionItemPatternAvailableProperty, true)));
+        return item is not null && ((SelectionItemPattern)item.GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected;
+    }
 
     private static bool RenderConsumedHistory(GatewayFixtureRun run, string key)
     {
-        var picker = FindById(run, "ChatComposerSessionPicker");
-        if (picker is null || string.IsNullOrEmpty(picker.Current.ItemStatus)) return false;
-        using var rendered = JsonDocument.Parse(picker.Current.ItemStatus);
+        var composer = FindById(run, "ChatComposerInput");
+        if (composer is null || string.IsNullOrEmpty(composer.Current.ItemStatus)) return false;
+        using var rendered = JsonDocument.Parse(composer.Current.ItemStatus);
         return rendered.RootElement.GetProperty("loadedThreadIds").EnumerateArray()
             .Any(thread => thread.GetString() == key);
     }
@@ -361,7 +484,7 @@ public sealed class GatewayFixtureUiTests(ITestOutputHelper output)
 
     private static AutomationElement FindHub(GatewayFixtureRun run) =>
         AppWindows(run).First(window => window.FindFirst(TreeScope.Descendants,
-            new PropertyCondition(AutomationElement.AutomationIdProperty, "ChatComposerSessionPicker")) is not null);
+            new PropertyCondition(AutomationElement.AutomationIdProperty, "ChatComposerInput")) is not null);
 
     private static AutomationElement? FindTimeline(GatewayFixtureRun run) =>
         FindInApp(run, new PropertyCondition(AutomationElement.NameProperty, "Chat messages"));

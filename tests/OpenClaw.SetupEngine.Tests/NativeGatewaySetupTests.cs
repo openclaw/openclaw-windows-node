@@ -13,6 +13,38 @@ public sealed class NativeGatewaySetupTests
 {
     private const string Family = "OpenClaw.Gateway_123456789abcd";
 
+    [Theory]
+    [InlineData(NativeGatewayContract.Legacy)]
+    [InlineData(NativeGatewayContract.IsolatedSessionV1)]
+    public async Task DevelopmentToStorePackage_RequiresConsentAndPreservesOldProfile(NativeGatewayContract contract)
+    {
+        using var fixture = new Fixture();
+        var previous = await fixture.Service.CreateDraftAsync(default);
+        var draftPath = NativeGatewaySetupService.GetDraftPath(fixture.Registry);
+        var savedDraft = File.ReadAllBytes(draftPath);
+        var stateDirectory = NativeGatewayPaths.GetStateDirectory(fixture.Registry, previous.GatewayId);
+        Directory.CreateDirectory(stateDirectory);
+        var markerPath = Path.Combine(stateDirectory, "existing-profile.txt");
+        File.WriteAllText(markerPath, "preserved profile data");
+        fixture.Resolver.FamilyName = "OpenClawFoundation.OpenClawGateway_rfcbke2p71se2";
+        fixture.Host.Contract = contract;
+
+        await Assert.ThrowsAsync<NativeGatewaySetupService.NativeGatewayDraftRecoveryRequiredException>(
+            () => fixture.Service.CreateDraftAsync(default));
+        Assert.Equal(savedDraft, File.ReadAllBytes(draftPath));
+        Assert.Equal("preserved profile data", File.ReadAllText(markerPath));
+        Assert.Empty(fixture.Events);
+
+        await fixture.Service.DiscardIncompatibleDraftAsync(default);
+        var refreshed = await fixture.Service.CreateDraftAsync(default);
+
+        Assert.NotEqual(previous.GatewayId, refreshed.GatewayId);
+        Assert.Equal(fixture.Resolver.FamilyName, refreshed.PackageFamilyName);
+        Assert.Equal(contract, refreshed.Contract);
+        Assert.Equal("preserved profile data", File.ReadAllText(markerPath));
+        Assert.Empty(fixture.Registry.GetAll());
+    }
+
     [Fact]
     public async Task IncompatibleUnpublishedDraft_RequiresExplicitDiscardBeforeCreatingIsolatedProfile()
     {

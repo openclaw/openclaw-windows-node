@@ -22,6 +22,17 @@ public sealed class ConnectionStatusPresenterTests
         var (labelKey, accent) = ConnectionStatusPresenter.Pill(overall);
         Assert.Equal(expectedKey, labelKey);
         Assert.Equal(expectedAccent, (int)accent);
+        Assert.Equal((labelKey, accent), ConnectionStatusPresenter.Pill(overall, ConnectionStatus.Error));
+    }
+
+    [Theory]
+    [InlineData(ConnectionStatus.Connected, "StatusDisplay_Connected", (int)ConnectionStatusAccent.Success)]
+    [InlineData(ConnectionStatus.Connecting, "StatusDisplay_Connecting", (int)ConnectionStatusAccent.Caution)]
+    [InlineData(ConnectionStatus.Error, "StatusDisplay_Error", (int)ConnectionStatusAccent.Critical)]
+    [InlineData(ConnectionStatus.Disconnected, "StatusDisplay_Disconnected", (int)ConnectionStatusAccent.Neutral)]
+    public void Pill_WithoutManager_UsesLegacyLabelAndAccent(ConnectionStatus status, string key, int accent)
+    {
+        Assert.Equal((key, (ConnectionStatusAccent)accent), ConnectionStatusPresenter.Pill(null, status));
     }
 
     [Fact]

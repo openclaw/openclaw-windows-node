@@ -62,6 +62,14 @@
                        TextAlignment="Center" />
             <TextBlock x:Name="StatusText" Style="{StaticResource BodyTextBlockStyle}" TextWrapping="Wrap"
                        TextAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" AutomationProperties.LiveSetting="Polite" />
+            <StackPanel x:Name="ProviderActivity" Spacing="16" Visibility="Collapsed">
+                <TextBlock x:Name="ProviderActivityStatus" Style="{StaticResource BodyTextBlockStyle}"
+                           TextWrapping="Wrap" TextAlignment="Center"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" AutomationProperties.LiveSetting="Polite" />
+                <ProgressBar x:Name="ProviderActivityProgress" IsIndeterminate="True" MaxWidth="320"
+                             HorizontalAlignment="Stretch" />
+                <InfoBar x:Name="ProviderActivityError" IsOpen="False" IsClosable="False" Severity="Error" />
+            </StackPanel>
         </StackPanel>
         <ScrollViewer x:Name="ChoicesScroller" Grid.Row="1" Margin="0,24,0,16" VerticalScrollBarVisibility="Auto">
             <StackPanel Spacing="12">
@@ -222,6 +230,8 @@
             </StackPanel>
             <controls:SetupProgressIndicator x:Name="FlowProgress" Grid.Column="1"
                                             HorizontalAlignment="Center" VerticalAlignment="Center" />
+            <Button x:Name="ProviderCancelButton" Grid.Column="2" Click="Cancel_Click"
+                    MinWidth="100" HorizontalAlignment="Right" Visibility="Collapsed" />
         </Grid>
     </Grid>
 </Page>

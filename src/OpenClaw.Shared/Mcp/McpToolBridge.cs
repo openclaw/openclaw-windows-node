@@ -360,7 +360,7 @@ public class McpToolBridge
             "Send a single-turn chat prompt to a local Ollama model. Args: model (string, required), prompt (string, required, max 128000 chars), system (string, optional, max 32000 chars), temperature (number, optional, 0..2), maxTokens (int, optional, default 512, max 8192), timeoutMs (int, optional, default 120000, max 600000). Only one chat runs at a time per node; a concurrent call while one is in flight returns an error. Returns { provider, model, response, usage?: { promptTokens, completionTokens }, timings?: { loadMs, totalMs } }. Privacy and resource sensitive (sends prompt content to a locally running model and consumes CPU/GPU). Requires NodeOllamaInferenceEnabled.",
         // app.*
         ["app.navigate"] =
-            "Navigate the companion app to a specific page (e.g., 'home', 'sessions', 'settings'). Args: page (string, required). Returns { navigated, page }.",
+            "Navigate Workspace or the Settings companion to a specific page (e.g., 'workspace:home', 'workspace:notifications', 'sessions', 'settings'). Args: page (string, required). Returns { navigated, page }. Unknown workspace: routes return a tool error without opening or forwarding a window.",
         ["app.status"] =
             "Get current connection status, manager-owned overall/operator/node state, and gateway info. Returns { connectionStatus, overallState, operatorState, nodeState, nodeConnected, nodePaired, nodePendingApproval, nodeError, gatewayVersion, sessionCount, nodeCount }.",
         ["app.sessions"] =
