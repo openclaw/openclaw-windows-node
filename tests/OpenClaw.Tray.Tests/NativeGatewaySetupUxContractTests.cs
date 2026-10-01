@@ -62,7 +62,7 @@ public sealed class NativeGatewaySetupUxContractTests
     }
 
     [Fact]
-    public void NativeReview_ExplainsPinnedGitHubMsixConsentAndMatchesLocalizedResources()
+    public void NativeReview_ExplainsWinGetConsentAndMatchesLocalizedResources()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
         var document = XDocument.Load(Path.Combine(root,
@@ -76,21 +76,17 @@ public sealed class NativeGatewaySetupUxContractTests
             var resources = XDocument.Load(path).Descendants("data")
                 .ToDictionary(element => (string)element.Attribute("name")!,
                     element => element.Element("value")?.Value);
-            foreach (var key in new[] { "Onboarding_Native_Review.Text", "Onboarding_Native_Acquisition.Text",
-                         "Onboarding_Native_InstallingPackage" })
-            {
-                Assert.Contains("GitHub", resources[key]);
-                Assert.Contains("2026.9.7-msix.0", resources[key]);
-            }
-            foreach (var key in new[] { "Onboarding_Native_Review.Text", "Onboarding_Native_Acquisition.Text",
-                         "Onboarding_Native_InstallingPackage", "Onboarding_Native_VerifyingPackage",
-                         "Onboarding_Native_Cancelled" })
-                Assert.DoesNotContain("WinGet", resources[key]);
+            Assert.Contains("WinGet", resources["Onboarding_Native_Review.Text"]);
+            Assert.Contains("Microsoft Store", resources["Onboarding_Native_Review.Text"]);
+            Assert.Contains("WinGet", resources["Onboarding_Native_Acquisition.Text"]);
+            Assert.Contains("WinGet", resources["Onboarding_Native_InstallingPackage"]);
+            Assert.Contains("WinGet", resources["Onboarding_Native_VerifyingPackage"]);
+            Assert.Contains("WinGet", resources["Onboarding_Native_Cancelled"]);
             Assert.False(resources.ContainsKey("Onboarding_Native_InstallerOpened"));
             if (Path.GetFileName(Path.GetDirectoryName(path)) == "en-us")
             {
                 Assert.Equal(resources["Onboarding_Native_Review.Text"], (string?)review.Attribute("Text"));
-                Assert.Contains("authorize Companion to download and install the signed Gateway MSIX", resources["Onboarding_Native_Review.Text"]);
+                Assert.Contains("accept the package and Store source agreements", resources["Onboarding_Native_Review.Text"]);
                 Assert.DoesNotContain("stay interactive", resources["Onboarding_Native_Review.Text"]);
             }
         }

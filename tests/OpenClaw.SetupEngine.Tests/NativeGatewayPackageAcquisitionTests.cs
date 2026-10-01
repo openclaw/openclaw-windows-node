@@ -70,7 +70,7 @@ public sealed class NativeGatewayPackageAcquisitionTests
     public async Task InstallationFailure_StopsImmediately()
     {
         var resolver = new Resolver(_ => Missing());
-        var failure = new InvalidOperationException("MSIX installation failed");
+        var failure = new InvalidOperationException("WinGet installation failed");
         var actual = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             NativeGatewayPackageAcquisition.EnsureAsync(resolver, _ => throw failure,
                 () => throw new InvalidOperationException("Must not wait")));
@@ -228,7 +228,7 @@ public sealed class NativeGatewayPackageAcquisitionTests
 
         Assert.Equal(1, installerCalls);
         Assert.True(resolver.Calls >= 2);
-        Assert.Contains("Check GitHub access and Windows app package installation policy", exception.Message);
+        Assert.Contains("Check WinGet and Microsoft Store access", exception.Message);
         Assert.Contains("retry native setup", exception.Message);
     }
 

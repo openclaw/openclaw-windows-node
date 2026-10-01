@@ -115,23 +115,23 @@ the owned `NativeGatewaySetupConnection` authorization and upstream
 `installDaemon: false` contract.
 `NativeGatewayPackageResolver`
 checks Windows package registration and package-qualified aliases.
-`NativeGatewayMsixInstaller` downloads the signed GitHub MSIX bundle from release
-`v2026.9.7-msix.0`, verifies its pinned SHA256, and installs it for the current user
-with `Add-AppxPackage` through system Windows PowerShell and `CommandRunner`.
-The shared capabilities page shows the pinned release and download source
+`NativeGatewayMsixInstaller` installs the fixed Store product using the current-user
+App Installer alias and `CommandRunner`:
+`winget install --id 9NV70LV3D6XC --source msstore --silent --accept-package-agreements --accept-source-agreements --disable-interactivity --no-upgrade`.
+The shared capabilities page shows the native installation and agreement
 disclosure before its **Set up gateway** action; other routes retain **Next**.
 This preserves consent without adding a separate native review step.
-Windows owns bundle architecture selection,
-signature validation and deployment; no local MSIX path is required. Download,
-hash and deployment failures surface bounded, sanitized diagnostics and retry
-guidance. There is no WinGet or Store fallback and no certificate-trust change.
+Microsoft Store owns architecture selection,
+signature validation and deployment; no local MSIX path is required. Missing
+WinGet, Store access failures and nonzero exit codes surface bounded, sanitized
+diagnostics and retry guidance instead of opening a manual Store page.
 `NativeGatewayPackageIdentity` pins the exact Store name/publisher pair and retains
-the original development identity used by the GitHub release. Multiple matching
+the original development identity for existing installations. Multiple matching
 registrations fail explicitly for new setup. Existing runtime profiles resolve only
 their saved family, allowing both packages to coexist without an implicit migration.
 `NativeGatewayPackageAcquisition` invokes installation once only for missing
 registration. Installation and verified package readiness share a five-minute
-deadline. Cancellation stops the installer process, but Windows deployment may
+deadline. Cancellation stops the WinGet request, but Windows deployment may
 continue. Repair errors and timeouts stay visible, with explicit retry rather
 than repeated installer launches; retries recheck registration before installing.
 Native setup shares the `SetupAccessDraft` capability profiles with WSL but

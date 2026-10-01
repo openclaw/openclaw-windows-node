@@ -9,7 +9,7 @@ public static class NativeGatewayPackageAcquisition
     /// Resolves before installing, installs at most once, and retries only missing registration.
     /// The total deadline includes installation and verification. Cancellation reaches the
     /// installer, which must honor its token. Await its cleanup before releasing setup
-    /// ownership; Windows deployment may outlive the cancelled installer process.
+    /// ownership; Windows deployment may outlive the cancelled WinGet process.
     /// </summary>
     public static async Task<NativeGatewayPackage> EnsureAsync(
         INativeGatewayPackageResolver resolver,
@@ -62,7 +62,7 @@ public static class NativeGatewayPackageAcquisition
         {
             throw new TimeoutException(
                 "Timed out waiting for a verified OpenClaw Gateway package. " +
-                "Windows may still finish deployment. Check GitHub access and Windows app package installation policy, then retry native setup.", exception);
+                "Windows may still finish deployment. Check WinGet and Microsoft Store access, then retry native setup.", exception);
         }
 
         async Task<NativeGatewayPackage> ResolveAsync()
