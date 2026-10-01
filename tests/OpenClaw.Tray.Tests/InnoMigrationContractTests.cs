@@ -225,6 +225,27 @@ public sealed class InnoMigrationContractTests
     }
 
     [Fact]
+    public void MigrationWindow_ReusesNativeOnboardingArtworkAndWrappingCompactActions()
+    {
+        var xaml = Read("src", "OpenClaw.Tray.WinUI", "Windows", "StoreMigrationWindow.xaml");
+        var document = System.Xml.Linq.XDocument.Parse(xaml);
+        System.Xml.Linq.XNamespace names = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var hero = document.Descendants().Single(element => (string?)element.Attribute(names + "Name") == "MascotHero");
+        Assert.Equal("OnboardingMascot", hero.Name.LocalName);
+        Assert.Equal("using:OpenClaw.SetupEngine.UI.Controls", hero.Name.NamespaceName);
+        Assert.Equal("Center", (string?)hero.Attribute("HorizontalAlignment"));
+        Assert.DoesNotContain("OpenClawMascot.png", xaml);
+        var actions = document.Descendants().Single(element => (string?)element.Attribute(names + "Name") == "Actions");
+        Assert.Equal("560", (string?)actions.Attribute("MaxWidth"));
+        foreach (var button in actions.Elements().Where(element => element.Name.LocalName == "Button"))
+        {
+            Assert.Equal("{StaticResource WrappedAction}", (string?)button.Attribute("ContentTemplate"));
+            Assert.NotEqual("Stretch", (string?)button.Attribute("HorizontalAlignment"));
+            Assert.Null(button.Attribute("Width"));
+        }
+    }
+
+    [Fact]
     public void StorePreviewBuildGate_RequiresExplicitNonShippingConfiguration()
     {
         var project = System.Xml.Linq.XDocument.Parse(Read("src", "OpenClaw.Tray.WinUI", "Migration.Build.props"));

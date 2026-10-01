@@ -38,6 +38,15 @@ internal sealed class TestApp : Application, IXamlMetadataProvider
 
     public TestApp()
     {
+        var requestedTheme = Environment.GetEnvironmentVariable("OPENCLAW_UI_TEST_APP_THEME");
+        if (!string.IsNullOrWhiteSpace(requestedTheme))
+        {
+            if (!Enum.TryParse<ApplicationTheme>(requestedTheme, ignoreCase: true, out var theme) ||
+                !Enum.IsDefined(theme))
+                throw new InvalidOperationException("OPENCLAW_UI_TEST_APP_THEME must be Light or Dark.");
+            RequestedTheme = theme;
+        }
+
         // Resolve compiled product strings, not the testhost executable's empty PRI.
         var productResources = new ResourceManager(
             Path.Combine(AppContext.BaseDirectory, "OpenClaw.Tray.WinUI.pri"));

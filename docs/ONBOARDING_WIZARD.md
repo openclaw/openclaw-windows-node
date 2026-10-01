@@ -540,14 +540,20 @@ arguments remain supported.
 ### Store migration preview
 
 The gated Inno-to-Store migration window reuses the wizard's visual design:
-Mica backdrop, mascot, centered heading, themed content card, and persistent
+Mica backdrop, shared native vector `OnboardingMascot`, centered heading, themed content card, and persistent
 footer actions. Its content scrolls independently so consent and recovery
 actions remain available in smaller windows or with enlarged text.
+The hero retains the shared 180-DIP frame and reduced-motion/theme behavior;
+the small title-bar mascot is static and non-interactive. No legacy PNG artwork
+or separate mascot implementation is used by this window.
 Consent uses three short titled sections and a separate, non-dismissible warning.
 Manual close and removal use step-specific headings and short instructions;
 warnings stay in the same native InfoBar style as setup. Buttons retain the
 wizard's 100-DIP minimum width, neutral left-hand dismissal, accent right-hand
-primary action, and standard content/footer spacing. The title bar stays
+primary action, and standard content/footer spacing. Recovery shortcuts are also
+content-sized, and every action label wraps without ellipsis. The window uses
+setup's `40,4,40,24` outer padding. Unlike setup's full-width footer, this
+standalone window aligns its footer to the body's 560-DIP reading width. The title bar stays
 "Move to the Store version"; retry/recovery states do not use setup step dots.
 The window also sets the native OpenClaw icon for taskbar previews and the
 window switcher; the custom title-bar image alone does not supply that icon.
@@ -573,6 +579,23 @@ publication is blocked until that release's artifacts and acceptance are
 verified, and the switch is set to `false` and retagged if acceptance fails.
 See [Release migration gates](RELEASING.md) for the shared build contract and
 the two-PR coordinated-release requirements.
+
+`StoreMigrationWindowProofTests` mounts this production window with in-memory
+operations only. It covers light/dark consent, busy/manual-close/removal and
+unreadable-record recovery, plus work-area-height and small-window enlarged-text
+layouts that scroll to the complete consent warning. With
+`OPENCLAW_VISUAL_TEST=1` and the existing `OnboardingNativeProof` environment
+(`OPENCLAW_UI_PROOF_DIR`, `OPENCLAW_UI_PROOF_FREEZE_DIR`, and
+`OPENCLAW_UI_PROOF_MANIFEST_SHA256`), it captures complete test-owned windows
+against the reviewed source/build freeze. Run a fresh testhost for each theme,
+setting `OPENCLAW_UI_TEST_APP_THEME=Light` or `Dark` before launch and selecting
+matching theory rows with `DisplayName!~Dark` or `DisplayName~Dark`. The app theme
+must be selected in the `TestApp` constructor; changing only the root theme after
+window creation can leave Mica light beneath dark-theme text. Capture verifies
+that app/content themes agree, as well as visible action/status
+labels and mascot pixels, including the composed artwork rather than a
+`RenderTargetBitmap` approximation. This is presentation proof, not real migration or installer
+proof: it never runs production migration operations or opens Installed apps.
 
 ## Screen Details
 
