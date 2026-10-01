@@ -99,9 +99,6 @@ public sealed partial class ChatPage : Page
         Unloaded += OnUnloaded;
     }
 
-    private void OnOpenDashboard(object sender, RoutedEventArgs e) =>
-        ((IAppCommands)CurrentApp).OpenDashboard();
-
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         _pageActive = false;

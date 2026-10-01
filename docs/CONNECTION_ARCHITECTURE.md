@@ -73,8 +73,14 @@ buttons use native `SubtleButtonStyle` state brushes, and Owner uses the native
 `PersonPicture` avatar rather than a font glyph.
 
 `WindowManager` owns Workspace and `HubWindow` independently. The latter is the
-Settings companion and reuses the existing native Settings pages, excluding
-Chat. Owner's Settings, Usage, Pair device, and About links open or focus that
+Settings companion and reuses the existing native Settings pages. Its Chat rail
+item opens or focuses Workspace without selecting a Settings page or replacing
+the retained composer. Its activation is queued after NavigationView completes its
+own focus handling. WindowManager restores a minimized Workspace and explicitly
+requests foreground activation, including when the Chat window is already open.
+The Gateway dashboard action and its channels/integrations
+description live in their own Connection settings card, not above chat.
+Owner's Settings, Usage, Pair device, and About links open or focus that
 companion at `settings`, `usage`, `channels`, and `about` respectively. Closing
 the companion does not close Workspace or discard an unsent chat draft.
 Generic Workspace refocus preserves the current page; explicit page/session

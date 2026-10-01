@@ -76,6 +76,13 @@ The composer and code cards use the card fill above that content layer.
 
 ## Controls and states
 
+Welcome quick-start suggestions use borderless native buttons with a quiet gray
+`ControlAltFillColorSecondaryBrush` backplate and the shared subtle toolbar
+hover/pressed resources. Disabled and keyboard-focus states remain native.
+Gateway dashboard management lives in a Connection settings card rather than
+occupying a row above the chat surface. Settings' Chat rail action opens Workspace
+without changing the selected Settings page or discarding the chat draft.
+
 The footer has a leading Attach/session group, model/reasoning selectors, and
 quiet secondary actions beside the primary Send/Stop action. Every control stays
 in one bottom row: model text shrinks rather than moving the selectors above

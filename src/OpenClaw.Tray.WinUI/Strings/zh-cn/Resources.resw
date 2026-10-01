@@ -7699,9 +7699,9 @@
   <data name="Onboarding_Native_Alternatives.Header" xml:space="preserve"><value>其他 Gateway 选项</value></data>
   <data name="Onboarding_Native_UpdateLaunchFailed" xml:space="preserve"><value>无法打开 Windows 更新。请打开 Windows 设置，然后选择 Windows 更新。</value></data>
   <data name="Onboarding_Native_Lifecycle.Text" xml:space="preserve"><value>在 Companion 中继续使用与 WSL 相同的 Gateway 设置向导。连接前将验证配置和健康状态。现有 WSL Gateway 和默认 OpenClaw 配置不会被替换。</value></data>
-  <data name="Onboarding_Native_Acquisition.Text" xml:space="preserve"><value>如果尚未安装 Gateway，设置程序将使用 WinGet 从 Microsoft Store 安装，并在验证包后自动继续。</value></data>
-  <data name="Onboarding_Native_InstallingPackage" xml:space="preserve"><value>正在使用 WinGet 从 Microsoft Store 安装 Gateway...</value></data>
-  <data name="Onboarding_Native_VerifyingPackage" xml:space="preserve"><value>WinGet 已完成。正在验证 Gateway 注册和执行别名，然后继续...</value></data>
+  <data name="Onboarding_Native_Acquisition.Text" xml:space="preserve"><value>如果尚未安装 Gateway，设置程序将从 GitHub 下载并安装已签名的 MSIX 2026.9.7-msix.0，并在验证包后自动继续。</value></data>
+  <data name="Onboarding_Native_InstallingPackage" xml:space="preserve"><value>正在从 GitHub 下载并安装 Gateway MSIX 2026.9.7-msix.0...</value></data>
+  <data name="Onboarding_Native_VerifyingPackage" xml:space="preserve"><value>MSIX 安装已完成。正在验证 Gateway 注册和执行别名，然后继续...</value></data>
   <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>Companion 将准备您的 Gateway，然后帮助您连接 AI。</value></data>
   <data name="Onboarding_Native_Recovery.Header" xml:space="preserve"><value>Gateway 恢复</value></data>
   <data name="Onboarding_Native_Terminal.Content" xml:space="preserve"><value>打开终端</value></data>
@@ -7713,7 +7713,7 @@
   <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>启动并验证 Gateway</value></data>
   <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>重试设置</value></data>
   <data name="Onboarding_Native_Preview" xml:space="preserve"><value>仅供预览。不会安装任何包或启动 Gateway。</value></data>
-  <data name="Onboarding_Native_Review.Text" xml:space="preserve"><value>选择“设置 Gateway”即表示您授权 WinGet 从 Microsoft Store 安装缺失的 Gateway 包，并接受包协议和商店源协议。Companion 随后将验证包、准备专用配置文件并打开 Gateway 设置。提供商登录仍需您交互操作。此方式不会安装 WSL、本地 AI 或 Tailscale。</value></data>
+  <data name="Onboarding_Native_Review.Text" xml:space="preserve"><value>选择“设置 Gateway”即表示您授权 Companion 在尚未安装 Gateway 时从 GitHub 下载并安装已签名的 Gateway MSIX 2026.9.7-msix.0。Companion 将验证下载、准备专用配置文件并打开 Gateway 设置。提供商登录仍需您交互操作。此方式不使用 Microsoft Store，也不会安装 WSL、本地 AI 或 Tailscale。</value></data>
   <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>节点模式连接 Gateway 并完成配对后，即可使用这些 Windows 功能。Windows 权限和命令审批仍然适用。</value></data>
   <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>原生 Gateway 已配置</value></data>
   <data name="Onboarding_Native_CapabilitySummary" xml:space="preserve"><value>{0}。您可以在 Companion 设置中更改这些选项。</value></data>
@@ -7724,7 +7724,7 @@
   <data name="Onboarding_Native_Open.Content" xml:space="preserve"><value>打开 Companion 进行连接</value></data>
   <data name="Onboarding_Native_Available" xml:space="preserve"><value>已安装 Gateway 包 {0}。</value></data>
   <data name="Onboarding_Native_InProgress" xml:space="preserve"><value>正在准备原生 Gateway。接下来请在 Companion 中连接 AI。</value></data>
-  <data name="Onboarding_Native_Cancelled" xml:space="preserve"><value>设置已取消。WinGet 请求已取消，但 Windows 仍可能完成部署。已输入的配置保留在专用原生配置目录中。未删除任何 Gateway 包。</value></data>
+  <data name="Onboarding_Native_Cancelled" xml:space="preserve"><value>设置已取消。MSIX 安装请求已取消，但 Windows 仍可能完成部署。已输入的配置保留在专用原生配置目录中。未删除任何 Gateway 包。</value></data>
   <data name="Onboarding_Native_Configured" xml:space="preserve"><value>已在 {0} 验证 Gateway 配置和经过身份验证的健康状态。打开 Companion 启动 Gateway，并在连接设置中完成设备配对。您选择的 Windows 功能已保存。</value></data>
   <data name="Onboarding_Native_ReplaceDraftTitle" xml:space="preserve"><value>替换未完成的 Gateway 设置？</value></data>
   <data name="Onboarding_Native_ReplaceDraftContent" xml:space="preserve"><value>这只会清除 Companion 设置草稿。现有工作区文件、配置和凭据将被保留。新设置使用新的配置文件，不会导入或更改旧 Gateway 数据、WSL 设置或包管理的配置文件。</value></data>

@@ -103,7 +103,7 @@ disconnect, replacement, or close. This cache is not used for authorization.
 | Settings page load/persist view logic | `SettingsPageViewModel` | authoritative |
 | Native tool identity, display arguments, payload extraction, and flattened-history projection | `NativeToolProjector` | authoritative |
 | Managed-local listener provenance and strong-credential authorization | `ManagedLocalGatewayPortProvenanceService` | authoritative |
-| Native Gateway fixed-product WinGet installation from Microsoft Store | `NativeGatewayMsixInstaller` | authoritative |
+| Native Gateway pinned GitHub MSIX download, hash verification and current-user installation | `NativeGatewayMsixInstaller` | authoritative |
 | Trusted Store and existing development Gateway registration identities | `NativeGatewayPackageIdentity` | authoritative |
 | Current-user Gateway package registration, health and package-qualified alias discovery | `NativeGatewayPackageResolver` | authoritative |
 | Missing-package acquisition, one installation attempt and bounded registration verification | `NativeGatewayPackageAcquisition` | authoritative |
@@ -145,6 +145,8 @@ disconnect, replacement, or close. This cache is not used for authorization.
 | Native pending launch and bound Chat/Channels/Skills entry | `SetupNativeHandoffLauncher` + `SetupNativeNavigationRequest`; `SetupNativeSkills` owns response-bound read-only skills loading; `WindowManager` and pages apply the selected route | authoritative |
 | Verified native setup Chat window boundary | `SetupNativeNavigationRequest` projects the exact Workspace session; `WindowManager` awaits `WorkspaceWindow` and its retained `ChatPage` before activation and receipt consumption. Channels/Skills remain typed companion routes | authoritative |
 | Verified setup Chat hosting in the Settings companion | Closed in `HubWindow`; typed native Chat requests must use Workspace without dropping endpoint, identity, agent or session verification | closed |
+| Settings Chat rail action | `HubWindow` forwards a non-selecting item invocation through `WorkspaceNavigation` to the existing Workspace; Settings never mounts Chat | authoritative |
+| Gateway dashboard management card | `ConnectionPage` owns the visible card and forwards to the existing `GatewayDashboardLauncher` path; `ChatPage` has no management banner | authoritative |
 | In-flight native chat navigation identity | `SetupNativeChatBinding` holds the exact request reference; `WorkspaceWindow` invalidates it at admitted agent/session navigation intent, before asynchronous creation. `ChatPage` checks identity and cancellation on ready and waiting paths; `SetupNativeHandoffLauncher` fences receipt consumption with the linked timeout | authoritative |
 | Native receipt acquisition classification and restart recovery settlement | `SetupDashboardHandoffStore` distinguishes acquired/busy/invalid/unavailable; `SetupNativeHandoffLauncher` retains recovery on busy/unavailable and clears it only after consumption or definitive rejection | authoritative |
 | Pre-acquisition restart recovery deletion | `App.OpenNativeSetupCompletion`; deletion is delegated to the receipt outcome owner | closed |
@@ -244,17 +246,15 @@ errors and an explicit unknown service state, deny handoff as unavailable
 inspection rather than claiming a conflicting listener. Authentication recovery
 classifies these unavailable probes as network failures.
 
-`NativeGatewayMsixInstaller.InstallAsync` invokes the signed-in user's App Installer
-alias (`%LOCALAPPDATA%\Microsoft\WindowsApps\winget.exe`) through the existing
-`CommandRunner`, without a shell or elevation. The fixed command is
-`install --id 9NV70LV3D6XC --source msstore --silent --accept-package-agreements --accept-source-agreements --disable-interactivity --no-upgrade`.
-The native review explains that selecting **Set up gateway** authorizes installation
-and accepts the package and Store source agreements. Microsoft Store still owns
-architecture/package selection, signature validation and deployment. There is no
-automatic Store-page fallback: missing WinGet, policy/source failures and nonzero
-exit codes produce explicit retry/repair guidance with sanitized, bounded output.
-Command success is not package readiness. There is no local source path,
-environment override, direct download, certificate-trust change, or ARM64-only gate.
+`NativeGatewayMsixInstaller.InstallAsync` downloads the signed GitHub release
+`v2026.9.7-msix.0` MSIX bundle, verifies its pinned SHA256, and invokes
+`Add-AppxPackage` for the current user. It uses system Windows PowerShell through
+the existing `CommandRunner`, without elevation or certificate-trust changes.
+The native review names the release and GitHub source before **Set up gateway**.
+Windows owns bundle architecture selection, signature validation and deployment.
+There is no WinGet or Store fallback. Download, hash, policy and deployment failures
+produce explicit retry guidance with sanitized, bounded output. The temporary
+download is removed after command cleanup. Command success is not package readiness.
 
 `NativeGatewayPackageResolver.ResolveAsync` subsequently requires exactly one
 matching current-user package registration, verifies package health, and resolves
@@ -274,12 +274,12 @@ Gateway onboarding.
 `CN=4BA40A7A-B719-4C40-BF91-84AF4F1136FC`
 ([packaging manifest](https://github.com/openclaw/openclaw-windows-packaging/blob/96770f14d73edfcba41964c08cd2f64f39420278/src/OpenClaw.Launcher/Package.appxmanifest)).
 The original `OpenClaw.Gateway` / OpenClaw Foundation development publisher pair
-remains accepted for already installed packages and saved profiles. Names and
+is used by the pinned GitHub release and remains accepted for saved profiles. Names and
 publishers cannot be mixed. New setup with both identities installed produces an
 explicit duplicate-registration error, not an implicit migration or preferred-package
 fallback. The runtime resolver selects the saved profile's exact family, so an
 existing Gateway remains usable when both packages are installed. Runtime records
-remain pinned to their saved package family; Store
+remain pinned to their saved package family; MSIX
 installation does not rewrite a development profile's identity. Package-family
 syntax checks admit both names, while registration and exact family matching
 remain mandatory before launching. An existing same-user record is not silently
@@ -288,12 +288,12 @@ migrated to a newly installed isolated package; it requires new setup.
 After native capability/permission review, `NativeGatewaySetupPage` starts
 automatically. It rechecks device support, then calls
 `NativeGatewayPackageAcquisition.EnsureAsync`. Only the typed
-`NativeGatewayPackageNotInstalledException` starts WinGet installation, once per attempt.
+`NativeGatewayPackageNotInstalledException` starts MSIX installation, once per attempt.
 Healthy registration skips installation; duplicate registration, unhealthy packages
 and missing aliases fail explicitly instead of triggering reinstall loops.
 The cancellable acquisition deadline is five minutes including installation and
-registration verification, with one-second polling after WinGet completes.
-Cancellation reaches `CommandRunner`, which stops its WinGet process tree;
+registration verification, with one-second polling after installation completes.
+Cancellation reaches `CommandRunner`, which stops its PowerShell process tree;
 Windows may still finish an already submitted deployment. No installed package
 is removed, and retry starts by resolving registration again.
 

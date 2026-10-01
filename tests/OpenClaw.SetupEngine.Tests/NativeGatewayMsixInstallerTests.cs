@@ -1,22 +1,34 @@
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Security.Cryptography;
+
 namespace OpenClaw.SetupEngine.Tests;
 
 public sealed class NativeGatewayMsixInstallerTests
 {
     [Fact]
-    public async Task Install_UsesCurrentUserWinGetAndFixedStoreProductExactlyOnce()
+    public async Task Install_DownloadsPinnedBundleAndChecksHashBeforeCurrentUserDeployment()
     {
         using var cts = new CancellationTokenSource();
         var commands = new Commands((executable, arguments, timeout, ct) =>
         {
             Assert.Equal(Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Microsoft", "WindowsApps", "winget.exe"), executable);
-            Assert.Equal(
-                [
-                    "install", "--id", "9NV70LV3D6XC", "--source", "msstore",
-                    "--silent", "--accept-package-agreements", "--accept-source-agreements",
-                    "--disable-interactivity", "--no-upgrade",
-                ], arguments);
+                Environment.GetFolderPath(Environment.SpecialFolder.System),
+                "WindowsPowerShell", "v1.0", "powershell.exe"), executable);
+            Assert.Equal(["-NoProfile", "-NonInteractive", "-OutputFormat", "Text", "-EncodedCommand"], arguments[..5]);
+            Assert.Equal(6, arguments.Length);
+            var script = Encoding.Unicode.GetString(Convert.FromBase64String(arguments[5]));
+            Assert.Contains("'https://github.com/openclaw/openclaw-windows-packaging/releases/download/v2026.9.7-msix.0/OpenClawGateway-2026.9.7-msix.0.msixbundle'", script);
+            Assert.Contains("'97c335c10ba3ac5bdf473b7043ec828a5a2bdc6bae60dfc988d37887e2b6e221'", script);
+            Assert.Contains("$ErrorActionPreference = 'Stop'", script);
+            Assert.Contains("Invoke-WebRequest -UseBasicParsing", script);
+            Assert.Contains("Get-FileHash -LiteralPath $packagePath -Algorithm SHA256", script);
+            Assert.Contains("throw 'The downloaded Gateway MSIX bundle", script);
+            Assert.Contains("Add-AppxPackage -Path $packagePath -ErrorAction Stop", script);
+            Assert.True(script.IndexOf("Get-FileHash", StringComparison.Ordinal) <
+                script.IndexOf("Add-AppxPackage", StringComparison.Ordinal));
+            Assert.DoesNotContain("winget", script, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Import-Certificate", script);
             Assert.Equal(TimeSpan.FromMinutes(5), timeout);
             Assert.Equal(cts.Token, ct);
             return Task.FromResult(Result());
@@ -32,15 +44,15 @@ public sealed class NativeGatewayMsixInstallerTests
     public async Task Failure_ReportsExitCodeOutputAndRepairGuidanceWithoutRetry(int exitCode)
     {
         var commands = new Commands((_, _, _, _) =>
-            Task.FromResult(Result(exitCode, stdout: "Store unavailable", stderr: "App Installer error")));
+            Task.FromResult(Result(exitCode, stdout: "GitHub unavailable", stderr: "Deployment error")));
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             new NativeGatewayMsixInstaller().InstallAsync(commands, CancellationToken.None));
         Assert.Contains($"0x{exitCode:X8}", error.Message);
-        Assert.Contains("App Installer (WinGet)", error.Message);
-        Assert.Contains("Microsoft Store access", error.Message);
+        Assert.Contains("GitHub access", error.Message);
+        Assert.Contains("Windows app package installation policy", error.Message);
         Assert.Contains("retry native setup", error.Message);
-        Assert.Contains("Store unavailable", error.Message);
-        Assert.Contains("App Installer error", error.Message);
+        Assert.Contains("GitHub unavailable", error.Message);
+        Assert.Contains("Deployment error", error.Message);
         Assert.Equal(1, commands.Calls);
     }
 
@@ -78,7 +90,7 @@ public sealed class NativeGatewayMsixInstallerTests
     }
 
     [Fact]
-    public async Task Cancellation_DoesNotStartWinGet()
+    public async Task Cancellation_DoesNotStartDownload()
     {
         using var cts = new CancellationTokenSource();
         cts.Cancel();
@@ -133,6 +145,84 @@ public sealed class NativeGatewayMsixInstallerTests
             allowCleanup.SetResult();
         }
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => install);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Download_IsRemovedAfterSuccessOrCancellation(bool cancel)
+    {
+        using var cts = new CancellationTokenSource();
+        string? packagePath = null;
+        var commands = new Commands((_, arguments, _, ct) =>
+        {
+            var script = Encoding.Unicode.GetString(Convert.FromBase64String(arguments[5]));
+            var match = Regex.Match(script, @"\$packagePath = '((?:[^']|'')*)'");
+            Assert.True(match.Success);
+            packagePath = match.Groups[1].Value.Replace("''", "'");
+            File.WriteAllText(packagePath, "partial download");
+            if (cancel)
+            {
+                cts.Cancel();
+                ct.ThrowIfCancellationRequested();
+            }
+            return Task.FromResult(Result());
+        });
+
+        if (cancel)
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                new NativeGatewayMsixInstaller().InstallAsync(commands, cts.Token));
+        else
+            await new NativeGatewayMsixInstaller().InstallAsync(commands, cts.Token);
+        Assert.NotNull(packagePath);
+        Assert.False(File.Exists(packagePath));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task InstallerScript_DeploysOnlyWhenDownloadedBytesMatchHash(bool hashMatches)
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var logger = new SetupLogger(filePath: null);
+        var runner = new CommandRunner(logger);
+        CommandResult? result = null;
+        var commands = new Commands(async (executable, arguments, timeout, ct) =>
+        {
+            var script = Encoding.Unicode.GetString(Convert.FromBase64String(arguments[5]));
+            var expectedHash = Convert.ToHexString(SHA256.HashData(
+                Encoding.UTF8.GetBytes(hashMatches ? "test package" : "different package")));
+            script = script.Replace(NativeGatewayMsixInstaller.PackageSha256, expectedHash);
+            // Exercise the real PowerShell hash/failure flow without downloading or deploying.
+            var stubs = """
+                function Invoke-WebRequest {
+                    param([switch]$UseBasicParsing, $Uri, $OutFile)
+                    [IO.File]::WriteAllBytes($OutFile, [Text.Encoding]::UTF8.GetBytes('test package'))
+                }
+                function Add-AppxPackage {
+                    param($Path, $ErrorAction)
+                    if (!(Test-Path -LiteralPath $Path)) { throw 'Download missing' }
+                    Write-Output 'DEPLOYMENT_PROOF'
+                }
+                """;
+            var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(stubs + "\n" + script));
+            result = await runner.RunAsync(
+                executable, [.. arguments[..5], encoded], timeout, ct: ct);
+            return result;
+        });
+
+        if (hashMatches)
+            await new NativeGatewayMsixInstaller().InstallAsync(commands, CancellationToken.None);
+        else
+        {
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                new NativeGatewayMsixInstaller().InstallAsync(commands, CancellationToken.None));
+            Assert.Contains("does not match the pinned release SHA256", error.Message);
+        }
+        Assert.NotNull(result);
+        Assert.Equal(hashMatches, result.Stdout.Contains("DEPLOYMENT_PROOF", StringComparison.Ordinal));
     }
 
     private static CommandResult Result(

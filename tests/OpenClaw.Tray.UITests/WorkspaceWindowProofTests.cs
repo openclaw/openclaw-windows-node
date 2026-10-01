@@ -293,6 +293,71 @@ public sealed class WorkspaceWindowProofTests
         }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SettingsChatLink_OpensWorkspaceWithoutChangingSettingsOrDiscardingDraft(bool useMouse)
+    {
+        using var app = new AccessibilityAppFixture(initializeAxe: false, syntheticData: true, initialRoute: null);
+        await app.NavigateAsync("chat", "ChatPage", "ChatComposerInput");
+        var workspace = AutomationElement.FromHandle(app.HubWindowHandle);
+        var workspaceHandle = app.HubWindowHandle;
+        var composer = Find(workspace, "ChatComposerInput");
+        var identity = composer.GetRuntimeId();
+        const string draft = "Keep this draft when opening Chat from Settings";
+        ((ValuePattern)composer.GetCurrentPattern(ValuePattern.Pattern)).SetValue(draft);
+        Assert.Null(workspace.FindFirst(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.AutomationIdProperty, "ChatDashboardButton")));
+        await app.NavigateAsync("workspace:notifications", "NotificationsPage", "NotificationsPageMarker");
+        await app.NavigateAsync("connection", "ConnectionPage", "ConnectionPageMarker");
+        var settings = AutomationElement.FromHandle(app.HubWindowHandle);
+        Assert.NotNull(Find(settings, "ConnectionDashboardButton"));
+        Capture(app, "System", "connection-dashboard-card");
+        ActivateChatLink();
+        await WaitUntilAsync(() => IsVisible(workspace, "ChatComposerInput"));
+        await AssertChatForegroundAsync();
+        var retained = Find(workspace, "ChatComposerInput");
+        Assert.Equal(identity, retained.GetRuntimeId());
+        Assert.Equal(draft, ((ValuePattern)retained.GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+        Assert.NotNull(Find(settings, "ConnectionPageMarker"));
+        ActivateChatLink();
+        await AssertChatForegroundAsync();
+        Assert.Equal(identity, Find(workspace, "ChatComposerInput").GetRuntimeId());
+        var window = (WindowPattern)workspace.GetCurrentPattern(WindowPattern.Pattern);
+        window.SetWindowVisualState(WindowVisualState.Minimized);
+        ActivateChatLink();
+        await AssertChatForegroundAsync();
+        Assert.NotEqual(WindowVisualState.Minimized, window.Current.WindowVisualState);
+        Assert.Equal(draft, ((ValuePattern)Find(workspace, "ChatComposerInput")
+            .GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+        await app.RefocusWorkspaceAsync();
+        Capture(app, "System", "settings-chat-link");
+
+        void ActivateChatLink()
+        {
+            var link = Find(settings, "SettingsNavChat");
+            link.SetFocus();
+            Assert.Equal(new IntPtr(settings.Current.NativeWindowHandle), GetForegroundWindow());
+            if (useMouse)
+            {
+                var bounds = link.Current.BoundingRectangle;
+                System.Windows.Forms.Cursor.Position = new System.Drawing.Point(
+                    (int)(bounds.Left + bounds.Width / 2), (int)(bounds.Top + bounds.Height / 2));
+                MouseEvent(0x0002, 0, 0, 0, UIntPtr.Zero);
+                MouseEvent(0x0004, 0, 0, 0, UIntPtr.Zero);
+            }
+            else
+                System.Windows.Forms.SendKeys.SendWait("{ENTER}");
+        }
+
+        async Task AssertChatForegroundAsync()
+        {
+            await WaitUntilAsync(() => GetForegroundWindow() == workspaceHandle);
+            await Task.Delay(250);
+            Assert.Equal(workspaceHandle, GetForegroundWindow());
+        }
+    }
+
     [Fact]
     public async Task DefaultLaunchAndCompanionRefocus_PreserveNativeComposerDraft()
     {
@@ -769,6 +834,9 @@ public sealed class WorkspaceWindowProofTests
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "mouse_event")]
+    private static extern void MouseEvent(uint flags, uint dx, uint dy, uint data, UIntPtr extraInfo);
 
     private static string? ProofDirectory =>
         Environment.GetEnvironmentVariable("OPENCLAW_WORKSPACE_PROOF_DIR")

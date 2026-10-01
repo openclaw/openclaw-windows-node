@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -40,6 +41,10 @@ internal sealed record WindowManagerCallbacks(
 
 internal sealed class WindowManager : IWindowManager
 {
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetForegroundWindow(IntPtr window);
+
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly WindowManagerCallbacks _callbacks;
     private Window? _keepAliveWindow;
@@ -487,6 +492,8 @@ internal sealed class WindowManager : IWindowManager
         {
             _lastActiveMainWindow = _workspaceWindow;
             _workspaceWindow.Activate();
+            if (!SetForegroundWindow(WinRT.Interop.WindowNative.GetWindowHandle(_workspaceWindow)))
+                Logger.Warn("Windows declined the Workspace foreground activation request.");
         }
         else
             _workspaceWindow.AppWindow.Show(activateWindow: false);

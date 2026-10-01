@@ -29,6 +29,7 @@
                             IsBackButtonVisible="Collapsed" IsSettingsVisible="False"
                             IsPaneToggleButtonVisible="False" PaneDisplayMode="Left"
                             PaneOpening="OnNavPaneStateChanged" PaneClosing="OnNavPaneStateChanged"
+                            ItemInvoked="NavView_ItemInvoked"
                             SelectionChanged="NavView_SelectionChanged">
                 <NavigationView.Resources>
                     <Thickness x:Key="NavigationViewPaneContentGridMargin">0,56,0,0</Thickness>
@@ -57,6 +58,11 @@
                     <SvgImageSource x:Key="Debug_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Debug.svg"/>
                 </NavigationView.Resources>
                 <NavigationView.MenuItems>
+                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_82" Tag="chat" Content="Chat"
+                                        SelectsOnInvoked="False"
+                                        AutomationProperties.AutomationId="SettingsNavChat">
+                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Chat_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
+                    </NavigationViewItem>
                     <NavigationViewItemHeader x:Uid="HubWindow_NavigationViewItemHeader_87" x:Name="NavGatewayHeader" Content="Gateway"/>
                     <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_88" Tag="connection" Content="Connection">
                         <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Connection_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>

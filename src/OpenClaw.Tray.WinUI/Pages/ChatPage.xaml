@@ -8,24 +8,12 @@
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="12" Padding="16,8">
-            <TextBlock x:Uid="ChatDashboardHint"
-                       Text="Channels, integrations and gateway settings"
-                       Style="{StaticResource CaptionTextBlockStyle}"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                       TextWrapping="Wrap" VerticalAlignment="Center" />
-            <Button x:Name="DashboardButton" x:Uid="ChatDashboardButton" Grid.Column="1"
-                    Content="Dashboard" Click="OnOpenDashboard"
-                    AutomationProperties.AutomationId="ChatDashboardButton" />
-        </Grid>
-
         <!-- Toolbar — Home/Refresh/DevTools only meaningful when WebView2 mode is active.
              Collapsed by default in native mode so the chat surface starts at the very top. -->
-        <Border x:Name="ToolbarBorder" Grid.Row="1"
+        <Border x:Name="ToolbarBorder" Grid.Row="0"
                 Visibility="Collapsed"
                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
@@ -71,16 +59,16 @@
         </Border>
 
         <!-- Native chat host: the Reactor tree mounts into this Border (default UI). -->
-        <Border x:Name="ChatHost" Grid.Row="2"/>
+        <Border x:Name="ChatHost" Grid.Row="1"/>
 
         <!-- WebView2 host: only created/used when "Use standard Gateway Chat interface" is enabled. -->
-        <WebView2 x:Name="WebView" Grid.Row="2" Visibility="Collapsed"/>
+        <WebView2 x:Name="WebView" Grid.Row="1" Visibility="Collapsed"/>
 
         <!-- Loading spinner shown while WebView2 navigates. -->
-        <ProgressRing x:Name="LoadingRing" Grid.Row="2" IsActive="False"
+        <ProgressRing x:Name="LoadingRing" Grid.Row="1" IsActive="False"
                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
 
-        <StackPanel x:Name="WaitingPanel" Grid.Row="2"
+        <StackPanel x:Name="WaitingPanel" Grid.Row="1"
                     Visibility="Collapsed"
                     VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
             <FontIcon Glyph="&#xE8F2;" FontSize="48" HorizontalAlignment="Center"/>
@@ -98,7 +86,7 @@
         </StackPanel>
 
         <!-- Disconnected placeholder (shown when no provider yet). -->
-        <StackPanel x:Name="PlaceholderPanel" Grid.Row="2"
+        <StackPanel x:Name="PlaceholderPanel" Grid.Row="1"
                     VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
             <FontIcon Glyph="&#xE8F2;" FontSize="48" HorizontalAlignment="Center"/>
             <TextBlock x:Uid="ChatPage_TextBlock_53" Text="Connect to gateway to start chatting"
@@ -109,9 +97,9 @@
         </StackPanel>
 
         <!-- WebView2 navigation error panel. -->
-        <InfoBar x:Name="NativeSetupError" Grid.Row="2" IsOpen="False" Visibility="Collapsed"
+        <InfoBar x:Name="NativeSetupError" Grid.Row="1" IsOpen="False" Visibility="Collapsed"
                  IsClosable="False" Severity="Error" VerticalAlignment="Top" />
-        <ScrollViewer x:Name="ErrorPanel" Grid.Row="2" Visibility="Collapsed" Padding="20">
+        <ScrollViewer x:Name="ErrorPanel" Grid.Row="1" Visibility="Collapsed" Padding="20">
             <StackPanel Spacing="12">
                 <TextBlock x:Uid="WebChatErrorTitle" Text="Web Chat Unavailable" Style="{StaticResource SubtitleTextBlockStyle}"
                            Foreground="{ThemeResource SystemFillColorCriticalBrush}"/>

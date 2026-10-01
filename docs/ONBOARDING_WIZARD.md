@@ -134,15 +134,14 @@ from `PATH`. Native setup uses the same Windows capabilities and permission
 selection as WSL, with native package installation consent on that same page.
 Selecting **Set up gateway** starts native progress without WSL, Local AI or
 Tailscale provisioning and without an additional review page.
-A missing package is installed automatically using
-`winget install --id 9NV70LV3D6XC --source msstore --silent --accept-package-agreements --accept-source-agreements --disable-interactivity --no-upgrade`;
-unhealthy registration or unavailable aliases show an explicit repair error.
-The fixed product is [OpenClaw Gateway in Microsoft Store](https://apps.microsoft.com/detail/9NV70LV3D6XC).
-No MSIX version or download URL is pinned; Store selects the current compatible
-release. Existing healthy installations are not silently upgraded during setup.
-To explicitly refresh one, run
-`winget install --id 9NV70LV3D6XC --source msstore --accept-package-agreements --accept-source-agreements`
-without `--no-upgrade`. WinGet may report that no newer package is available.
+A missing package is downloaded from the signed
+[GitHub release v2026.9.7-msix.0](https://github.com/openclaw/openclaw-windows-packaging/releases/tag/v2026.9.7-msix.0).
+Setup verifies the pinned SHA256 of `OpenClawGateway-2026.9.7-msix.0.msixbundle`
+and installs it with `Add-AppxPackage`. Windows selects x64 or ARM64 from the
+bundle and validates the signature. This local verification build does not use
+WinGet or Microsoft Store for acquisition. Existing healthy installations are
+not silently upgraded during setup; unhealthy registration or unavailable
+aliases show an explicit repair error.
 
 An unfinished draft saved against a different package family (for example, the
 older development Gateway) offers **Discard and set up again**, just like a
@@ -152,7 +151,7 @@ files, configuration and credentials are preserved. Published profiles cannot
 be discarded through this recovery.
 No local MSIX path or environment-variable configuration is required.
 The original `OpenClaw.Gateway` / OpenClaw Foundation development publisher pair
-is still accepted for existing installations. If both identities are installed,
+is used by this GitHub release. If both identities are installed,
 new setup reports duplicate registrations instead of guessing which to use. Existing
 profiles resolve their original package family even when both packages are installed;
 there is no implicit migration. Companion additionally checks the qualified
@@ -164,20 +163,19 @@ Windows lacks process-sequence support, Gateway lifecycle remains available
 but Companion will not send credentials. Update to Windows 11 build 26100.4770
 or later before retrying; `clawctl setup` cannot add the missing OS API.
 
-The capabilities-page disclosure explains that **Set up gateway** authorizes WinGet installation and
-accepts the package and Store source agreements. Provider sign-in remains interactive.
-Microsoft Store owns architecture/package selection, signature validation and
-deployment. WinGet runs through the signed-in user's App Installer execution alias,
-without a shell or elevation. Companion verifies actual package registration and aliases, then
+The capabilities-page disclosure explains that **Set up gateway** authorizes downloading
+and installing the named signed MSIX release from GitHub. Provider sign-in remains interactive.
+The installer uses system Windows PowerShell without elevation.
+Companion verifies actual package registration and aliases, then
 automatically prepares the profile and opens **Connect your AI**.
 Installation and verification share a cancellable five-minute deadline. Cancellation
-stops the WinGet request, but Windows may still finish an in-progress deployment.
-Missing WinGet, Store policy/source failures, nonzero exit codes and timeouts show
+stops the installer process, but Windows may still finish an in-progress deployment.
+Download, hash, package policy failures, nonzero exit codes and timeouts show
 explicit repair guidance and **Retry setup**, not a manual Store-page fallback. The normal
 path has no separate install, availability-check or wizard-launch buttons.
 An already installed healthy package skips installation. Retry checks registration
-again before invoking WinGet. Companion does not download packages directly,
-change certificate trust, or uninstall packages on cancellation.
+again before downloading. Temporary downloads are removed after command cleanup.
+Companion does not change certificate trust or uninstall packages on cancellation.
 
 Progress reuses the WSL spinner/checkmark rows. Normal completion uses the same
 verified-model heading and three destination choices as WSL, without a native-only

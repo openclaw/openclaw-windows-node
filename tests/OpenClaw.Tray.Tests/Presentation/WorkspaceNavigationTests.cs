@@ -460,7 +460,18 @@ public sealed class WorkspaceNavigationTests
         Assert.DoesNotContain("GatewayRegistry", workspace);
         Assert.DoesNotContain("new OpenClawGatewayClient", workspace);
         var hubMarkup = File.ReadAllText(Source("Windows", "HubWindow.xaml"));
-        Assert.DoesNotContain("Tag=\"chat\"", hubMarkup);
+        var chatLink = XDocument.Parse(hubMarkup).Descendants()
+            .Single(element => (string?)element.Attribute("Tag") == "chat");
+        Assert.Equal("False", (string?)chatLink.Attribute("SelectsOnInvoked"));
+        Assert.Equal("SettingsNavChat", (string?)chatLink.Attribute("AutomationProperties.AutomationId"));
+        var hub = File.ReadAllText(Source("Windows", "HubWindow.xaml.cs"));
+        var invoked = hub[hub.IndexOf("private void NavView_ItemInvoked", StringComparison.Ordinal)..
+            hub.IndexOf("private void NavView_SelectionChanged", StringComparison.Ordinal)];
+        Assert.Contains("NavigateTo(\"chat\")", invoked);
+        Assert.Contains("DispatcherQueuePriority.Low", invoked);
+        Assert.Contains("if (!IsClosed)", invoked);
+        Assert.DoesNotContain("NavigateInternal", invoked);
+        Assert.Contains("SetForegroundWindow(WinRT.Interop.WindowNative.GetWindowHandle(_workspaceWindow))", code);
         var chat = File.ReadAllText(Source("Pages", "ChatPage.xaml.cs"));
         Assert.Contains("Initialize(Window? ownerWindow)", chat);
         Assert.Contains("GetWindowHandle(_ownerWindow)", chat);

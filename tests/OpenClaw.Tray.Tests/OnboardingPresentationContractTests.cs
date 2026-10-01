@@ -112,17 +112,16 @@ public sealed class OnboardingPresentationContractTests
     }
 
     [Fact]
-    public void NativeChat_DashboardActionDoesNotDependOnTheWebViewToolbar()
+    public void DashboardAction_LivesInConnectionCardAndRetainsCompactFlyoutShortcut()
     {
-        var document = XDocument.Parse(Read(@"src\OpenClaw.Tray.WinUI\Pages\ChatPage.xaml"));
-        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var document = XDocument.Parse(Read(@"src\OpenClaw.Tray.WinUI\Pages\ConnectionPage.xaml"));
         var dashboard = Assert.Single(document.Descendants(),
-            element => (string?)element.Attribute(x + "Name") == "DashboardButton");
+            element => (string?)element.Attribute("AutomationProperties.AutomationId") == "ConnectionDashboardButton");
         Assert.Equal("OnOpenDashboard", (string?)dashboard.Attribute("Click"));
-        Assert.DoesNotContain(dashboard.Ancestors(),
-            element => (string?)element.Attribute(x + "Name") == "ToolbarBorder");
+        Assert.Contains(dashboard.Ancestors(),
+            element => (string?)element.Attribute("AutomationProperties.AutomationId") == "ConnectionDashboardCard");
         Assert.Contains("((IAppCommands)CurrentApp).OpenDashboard()",
-            Read(@"src\OpenClaw.Tray.WinUI\Pages\ChatPage.xaml.cs"));
+            Read(@"src\OpenClaw.Tray.WinUI\Pages\ConnectionPage.xaml.cs"));
         Assert.Contains("ChatFlyoutDashboardButton",
             Read(@"src\OpenClaw.Tray.WinUI\Windows\ChatWindow.xaml"));
         Assert.Contains("((IAppCommands)Application.Current).OpenDashboard()",

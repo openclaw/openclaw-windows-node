@@ -778,6 +778,20 @@ public sealed partial class HubWindow : WindowEx
 
     public System.Text.Json.JsonElement? LastAgentsData => AppModel?.AgentsList;
 
+    private void NavView_ItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)
+    {
+        if (args.InvokedItemContainer is not NavigationViewItem { Tag: "chat" })
+            return;
+
+        // NavigationView finishes focusing its item after ItemInvoked returns.
+        if (!DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+            {
+                if (!IsClosed)
+                    NavigateTo("chat");
+            }))
+            Logger.Warn("Could not queue the Chat window activation because Settings is shutting down.");
+    }
+
     private void NavView_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
         // Skip when the selection was set programmatically by

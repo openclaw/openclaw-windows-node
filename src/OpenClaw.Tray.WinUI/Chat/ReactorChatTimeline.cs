@@ -345,6 +345,12 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                     () => row.Props.OnSuggestionPicked?.Invoke(suggestion))
                 .IsEnabled(!row.Props.SuggestionsDisabled)
                 .MinHeight(40)
+                .BorderThickness(0)
+                .Resources(resources =>
+                {
+                    ChatVisuals.ToolbarButtonResources(resources);
+                    resources.Set("ButtonBackground", Theme.Ref("ControlAltFillColorSecondaryBrush"));
+                })
                 .HAlign(HorizontalAlignment.Stretch)
                 .AutomationName(suggestion));
         }

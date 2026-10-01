@@ -5,6 +5,35 @@ namespace OpenClaw.Tray.Tests;
 public sealed class ChatTimelinePresentationTests
 {
     [Fact]
+    public void GatewayDashboard_StaysInConnectionCardNotChat()
+    {
+        var pages = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Pages");
+        var chat = File.ReadAllText(Path.Combine(pages, "ChatPage.xaml"));
+        Assert.DoesNotContain("ChatDashboard", chat);
+        Assert.DoesNotContain("OnOpenDashboard", File.ReadAllText(Path.Combine(pages, "ChatPage.xaml.cs")));
+        var connection = System.Xml.Linq.XDocument.Load(Path.Combine(pages, "ConnectionPage.xaml"));
+        var card = connection.Descendants().Single(element =>
+            (string?)element.Attribute("AutomationProperties.AutomationId") == "ConnectionDashboardCard");
+        Assert.Contains(card.Descendants(), element => (string?)element.Attribute("Click") == "OnOpenDashboard");
+        Assert.Contains(card.Descendants(), element =>
+            (string?)element.Attribute("Text") == "Channels, integrations and gateway settings");
+    }
+
+    [Fact]
+    public void WelcomeSuggestions_UseBorderlessGraySubtleChrome()
+    {
+        var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatTimeline.cs"));
+        var empty = source[source.IndexOf("private static Element BuildEmpty", StringComparison.Ordinal)..
+            source.IndexOf("private static Element BuildLoadEarlier", StringComparison.Ordinal)];
+        Assert.Contains(".BorderThickness(0)", empty);
+        Assert.Contains("ChatVisuals.ToolbarButtonResources(resources)", empty);
+        Assert.Contains("Theme.Ref(\"ControlAltFillColorSecondaryBrush\")", empty);
+        Assert.Contains("OnSuggestionPicked?.Invoke(suggestion)", empty);
+        Assert.Contains(".IsEnabled(!row.Props.SuggestionsDisabled)", empty);
+    }
+
+    [Fact]
     public void ReactorTimeline_UsesNonSelectableItemsViewContainersAndAnnotatedScrollBar()
     {
         var timeline = File.ReadAllText(Path.Combine(
