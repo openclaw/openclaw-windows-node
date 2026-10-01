@@ -47,14 +47,6 @@ public sealed class ReleaseSigningWorkflowTests
 
         Assert.Contains("Test-ReleaseExecutableSignatures.ps1 -PayloadPath artifacts/tray-win-x64 -RequireSignedOpenClaw", workflow);
         Assert.Contains("Test-ReleaseExecutableSignatures.ps1 -PayloadPath artifacts/tray-win-arm64 -RequireSignedOpenClaw", workflow);
-        Assert.Contains(@"^OpenClaw\.Tray\.WinUI\.exe$", verifier);
-        Assert.Contains(@"^OpenClaw\.Tray\.WinUI\.dll$", verifier);
-        Assert.Contains(@"^OpenClaw\.Chat\.dll$", verifier);
-        Assert.Contains(@"^OpenClaw\.Connection\.dll$", verifier);
-        Assert.Contains(@"^OpenClaw\.SetupEngine\.UI\.dll$", verifier);
-        Assert.Contains(@"^OpenClaw\.SetupEngine\.dll$", verifier);
-        Assert.Contains(@"^OpenClaw\.Shared\.dll$", verifier);
-        Assert.Contains(@"^OpenClawTray\.FunctionalUI\.dll$", verifier);
         Assert.DoesNotContain(@"^SetupEngine\\OpenClaw\.SetupEngine\.exe$", verifier);
         Assert.DoesNotContain(@"^SetupEngine\\OpenClaw\.SetupEngine\.UI\.exe$", verifier);
         Assert.Contains("SetupEngine\\OpenClaw.SetupEngine.exe should not be present", verifier);
@@ -67,6 +59,41 @@ public sealed class ReleaseSigningWorkflowTests
         Assert.Contains("$OpenClawSignerSubject", verifier);
         Assert.Contains("[StringComparison]::OrdinalIgnoreCase", verifier);
         Assert.Contains("OpenClaw binary is not signed by the expected OpenClaw signer", verifier);
+        Assert.Contains("OpenClaw binary has no Authenticode timestamp", verifier);
+        Assert.Contains("./scripts/test-release-executable-signatures.ps1", workflow);
+    }
+
+    [Fact]
+    public void ReleaseWorkflow_VerifiesBothFinalInstallersBeforePublishing()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var workflow = File.ReadAllText(Path.Combine(root, ".github", "workflows", "ci.yml"));
+        var verifier = File.ReadAllText(Path.Combine(root, "scripts", "Test-ReleaseExecutableSignatures.ps1"));
+        var sign = workflow.IndexOf("- name: Sign Installers", StringComparison.Ordinal);
+        var verify = workflow.IndexOf("- name: Verify Final Installer Signatures", StringComparison.Ordinal);
+        var publish = workflow.IndexOf("- name: Create Release", StringComparison.Ordinal);
+
+        Assert.True(sign >= 0 && verify > sign && publish > verify);
+        Assert.Contains("Test-ReleaseExecutableSignatures.ps1 -InstallerPath Output", workflow);
+        Assert.Contains("OpenClawCompanion-Setup-x64.exe", verifier);
+        Assert.Contains("OpenClawCompanion-Setup-arm64.exe", verifier);
+    }
+
+    [Fact]
+    public void PublishedSignatureProof_IsOptInAndBranchOnly()
+    {
+        var workflow = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), ".github", "workflows", "ci.yml"));
+        var start = workflow.IndexOf("    - name: Verify published release signatures without publishing", StringComparison.Ordinal);
+        var end = workflow.IndexOf("    - name: Setup .NET for agent signing proof validation", start, StringComparison.Ordinal);
+        var step = workflow[start..end];
+
+        Assert.Contains("verify_release_signatures:", workflow);
+        Assert.Contains("default: false", workflow);
+        Assert.Contains("github.event_name == 'workflow_dispatch' && inputs.verify_release_signatures && github.ref_type == 'branch'", step);
+        Assert.Contains("refs/heads/", step);
+        Assert.Contains("test-release-executable-signatures.ps1 -PublishedFixtures", step);
+        Assert.DoesNotContain("secrets.", step);
+        Assert.DoesNotContain("id-token:", step);
     }
 
     [Fact]

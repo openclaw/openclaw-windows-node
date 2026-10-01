@@ -1,27 +1,36 @@
 <#
 .SYNOPSIS
-    Verifies release payload binary signing policy.
+    Verifies release payload and installer binary signing policy.
 
 .DESCRIPTION
     Classifies every .exe and .dll in a release payload. OpenClaw-owned binaries
     must be signed when -RequireSignedOpenClaw is passed. Third-party binaries,
     including wxc-exec.exe, must not be signed by the OpenClaw release signer.
     Unknown executables and unknown OpenClaw-named binaries fail closed.
+    Installer mode requires both architecture-specific installers to be signed.
+    Required OpenClaw signatures must be valid and have an Authenticode timestamp.
 
 .PARAMETER PayloadPath
     Root directory of the release payload to inspect.
 
 .PARAMETER RequireSignedOpenClaw
-    Require OpenClaw-owned binaries to have valid Authenticode signatures.
+    Require OpenClaw-owned payload binaries to have valid, timestamped signatures.
+
+.PARAMETER InstallerPath
+    Directory containing the final x64 and ARM64 installers after signing.
 
 .PARAMETER OpenClawSignerSubject
     Exact certificate subject required for OpenClaw-owned binaries.
 #>
-[CmdletBinding()]
+[CmdletBinding(DefaultParameterSetName = "Payload")]
 param(
-    [Parameter(Mandatory = $true)]
+    [Parameter(Mandatory = $true, ParameterSetName = "Payload")]
     [string]$PayloadPath,
 
+    [Parameter(Mandatory = $true, ParameterSetName = "Installers")]
+    [string]$InstallerPath,
+
+    [Parameter(ParameterSetName = "Payload")]
     [switch]$RequireSignedOpenClaw,
 
     [string]$OpenClawSignerSubject = "CN=OpenClaw Foundation, O=OpenClaw Foundation, L=Mill Valley, S=California, C=US"
@@ -30,7 +39,24 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$payloadRoot = (Resolve-Path -LiteralPath $PayloadPath).Path
+$isInstaller = $PSCmdlet.ParameterSetName -eq "Installers"
+$artifactPath = if ($isInstaller) { $InstallerPath } else { $PayloadPath }
+$payloadRoot = (Resolve-Path -LiteralPath $artifactPath).Path
+$requireSigned = $isInstaller -or $RequireSignedOpenClaw
+$requiredBinaries = if ($isInstaller) {
+    @("OpenClawCompanion-Setup-x64.exe", "OpenClawCompanion-Setup-arm64.exe")
+} else {
+    @(
+        "OpenClaw.Tray.WinUI.exe",
+        "OpenClaw.Tray.WinUI.dll",
+        "OpenClaw.Chat.dll",
+        "OpenClaw.Connection.dll",
+        "OpenClaw.SetupEngine.UI.dll",
+        "OpenClaw.SetupEngine.dll",
+        "OpenClaw.Shared.dll",
+        "OpenClawTray.FunctionalUI.dll"
+    )
+}
 
 function Get-RelativePath {
     param(
@@ -44,15 +70,10 @@ function Get-RelativePath {
 function Get-BinaryClassification {
     param([Parameter(Mandatory = $true)][string]$RelativePath)
 
+    if ($requiredBinaries -contains $RelativePath) { return "OpenClawOwned" }
+    if ($isInstaller) { return "UnknownExecutable" }
+
     switch -Regex ($RelativePath) {
-        '^OpenClaw\.Tray\.WinUI\.exe$' { return "OpenClawOwned" }
-        '^OpenClaw\.Tray\.WinUI\.dll$' { return "OpenClawOwned" }
-        '^OpenClaw\.Chat\.dll$' { return "OpenClawOwned" }
-        '^OpenClaw\.Connection\.dll$' { return "OpenClawOwned" }
-        '^OpenClaw\.SetupEngine\.UI\.dll$' { return "OpenClawOwned" }
-        '^OpenClaw\.SetupEngine\.dll$' { return "OpenClawOwned" }
-        '^OpenClaw\.Shared\.dll$' { return "OpenClawOwned" }
-        '^OpenClawTray\.FunctionalUI\.dll$' { return "OpenClawOwned" }
         '(^|\\)createdump\.exe$' { return "ThirdPartyExcluded" }
         '(^|\\)RestartAgent\.exe$' { return "ThirdPartyExcluded" }
         '^tools\\mxc\\[^\\]+\\wxc-exec\.exe$' { return "ThirdPartyExcluded" }
@@ -75,6 +96,7 @@ $binaries = @(
                 Classification = Get-BinaryClassification -RelativePath $relativePath
                 SignatureStatus = $signature.Status.ToString()
                 SignerSubject = $signerSubject
+                HasTimestamp = $null -ne $signature.TimeStamperCertificate
             }
         }
 )
@@ -90,15 +112,18 @@ $errors = New-Object System.Collections.Generic.List[string]
 foreach ($binary in $binaries) {
     switch ($binary.Classification) {
         "OpenClawOwned" {
-            if ($RequireSignedOpenClaw -and $binary.SignatureStatus -ne "Valid") {
+            if ($requireSigned -and $binary.SignatureStatus -ne "Valid") {
                 $errors.Add("OpenClaw binary is not validly signed: $($binary.RelativePath) [$($binary.SignatureStatus)]")
             }
-            elseif ($RequireSignedOpenClaw -and
+            elseif ($requireSigned -and
                     -not [string]::Equals(
                         $binary.SignerSubject,
                         $OpenClawSignerSubject,
                         [StringComparison]::OrdinalIgnoreCase)) {
                 $errors.Add("OpenClaw binary is not signed by the expected OpenClaw signer: $($binary.RelativePath) [$($binary.SignerSubject)]")
+            }
+            elseif ($requireSigned -and -not $binary.HasTimestamp) {
+                $errors.Add("OpenClaw binary has no Authenticode timestamp: $($binary.RelativePath)")
             }
         }
         "ThirdPartyExcluded" {
@@ -119,16 +144,7 @@ foreach ($binary in $binaries) {
     }
 }
 
-@(
-    "OpenClaw.Tray.WinUI.exe",
-    "OpenClaw.Tray.WinUI.dll",
-    "OpenClaw.Chat.dll",
-    "OpenClaw.Connection.dll",
-    "OpenClaw.SetupEngine.UI.dll",
-    "OpenClaw.SetupEngine.dll",
-    "OpenClaw.Shared.dll",
-    "OpenClawTray.FunctionalUI.dll"
-) | ForEach-Object {
+$requiredBinaries | ForEach-Object {
     $requiredBinary = $_
     if (-not ($binaries | Where-Object RelativePath -eq $requiredBinary)) {
         $errors.Add("Missing OpenClaw binary: $_.")
@@ -140,7 +156,7 @@ if ($binaries | Where-Object RelativePath -eq "SetupEngine\OpenClaw.SetupEngine.
 if ($binaries | Where-Object RelativePath -eq "SetupEngine\OpenClaw.SetupEngine.exe") {
     $errors.Add("SetupEngine\OpenClaw.SetupEngine.exe should not be present in the release payload.")
 }
-if (-not ($binaries | Where-Object RelativePath -match '^tools\\mxc\\[^\\]+\\wxc-exec\.exe$')) {
+if (-not $isInstaller -and -not ($binaries | Where-Object RelativePath -match '^tools\\mxc\\[^\\]+\\wxc-exec\.exe$')) {
     $errors.Add("Missing tools\mxc\<arch>\wxc-exec.exe third-party executable.")
 }
 
