@@ -81,7 +81,9 @@ public sealed record LocalAiOnboardingSnapshot(
                 NativeLocalAiOwnershipState.InvalidReceipt or NativeLocalAiOwnershipState.DifferentOwner => "LocalOwnershipInvalid",
                 NativeLocalAiOwnershipState.Unavailable => "LocalOwnershipUnavailable",
                 NativeLocalAiOwnershipState.SameOwner or NativeLocalAiOwnershipState.RecoveryRequired
-                    when receiptDamaged || install is null || !filesVerified => "LocalOwnershipFiles",
+                    when (receiptDamaged || install is null || !filesVerified) &&
+                        (runtime?.Ownership == LocalAiOwnership.CompanionManaged ||
+                         runtime?.GatewayRouteRequiresResolution == true) => "LocalOwnershipFiles",
                 _ => null
             };
             if (reason is not null)

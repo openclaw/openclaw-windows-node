@@ -77,7 +77,12 @@ internal sealed class LocalAiGatewayLifecycle(
                     primary?.StartsWith("llamacpp/", StringComparison.OrdinalIgnoreCase) == true
                     ? NativeLocalAiOwnershipState.MissingReceipt : NativeLocalAiOwnershipState.Unselected;
             }
-            RequireOwnedAllowlist(binding, config);
+            try { RequireOwnedAllowlist(binding, config); }
+            catch (InvalidOperationException)
+            {
+                logger.Warn("Local AI ownership discovery found an edited owned model allowlist entry.");
+                return NativeLocalAiOwnershipState.InvalidReceipt;
+            }
             // Provider authentication and revision reconciliation remain explicit Use operations.
             return binding.Pending || binding.ConfigHash != current.Hash
                 ? NativeLocalAiOwnershipState.RecoveryRequired : NativeLocalAiOwnershipState.SameOwner;

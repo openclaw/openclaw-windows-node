@@ -277,16 +277,34 @@ public sealed class LocalAiOnboardingTests
         }
     }
 
+    [Theory]
+    [InlineData(NativeLocalAiOwnershipState.SameOwner, false)]
+    [InlineData(NativeLocalAiOwnershipState.SameOwner, true)]
+    [InlineData(NativeLocalAiOwnershipState.RecoveryRequired, false)]
+    [InlineData(NativeLocalAiOwnershipState.RecoveryRequired, true)]
+    public void NativeOwnedFilesNeedResolutionBeforeArtifactRepair(NativeLocalAiOwnershipState ownership, bool unresolved)
+    {
+        var install = Install();
+        var runtime = RuntimeSnapshot(install, LocalAiRuntimeState.Stopped) with
+            { GatewayRouteRequiresResolution = unresolved };
+        var snapshot = LocalAiOnboardingSnapshot.Project(Target with { IsNative = true },
+            LocalInferenceEligibility.Evaluate(Hardware, install.Manifest.ModelCatalogId),
+            install, false, false, runtime, nativeOwnership: ownership);
+        Assert.Equal(unresolved ? LocalAiOnboardingState.ManagementBlocked : LocalAiOnboardingState.Repair, snapshot.State);
+        Assert.Equal(unresolved ? "LocalOwnershipFiles" : null, snapshot.ReasonKey);
+        Assert.Equal(!unresolved, snapshot.CanReview);
+        Assert.False(snapshot.CanUse);
+    }
+
     [Fact]
-    public void NativeOwnedFilesNeedResolutionBeforeArtifactRepair()
+    public void ReopenedOwnedFilesStillOfferGuardedRepairWithoutRuntimeEvidence()
     {
         var install = Install();
         var snapshot = LocalAiOnboardingSnapshot.Project(Target with { IsNative = true },
             LocalInferenceEligibility.Evaluate(Hardware, install.Manifest.ModelCatalogId),
-            install, false, false, null, nativeOwnership: NativeLocalAiOwnershipState.SameOwner);
-        Assert.Equal(LocalAiOnboardingState.ManagementBlocked, snapshot.State);
-        Assert.Equal("LocalOwnershipFiles", snapshot.ReasonKey);
-        Assert.False(snapshot.CanReview);
+            install, false, false, null, nativeOwnership: NativeLocalAiOwnershipState.RecoveryRequired);
+        Assert.Equal(LocalAiOnboardingState.Repair, snapshot.State);
+        Assert.True(snapshot.CanReview);
         Assert.False(snapshot.CanUse);
     }
 

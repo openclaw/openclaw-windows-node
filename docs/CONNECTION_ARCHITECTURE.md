@@ -110,6 +110,12 @@ original Companion profile and Gateway. No receipt or credential import occurs.
 Independently detected models remain usable through the ordinary Gateway choice;
 that choice does not restore Companion management. Native duplicate suppression
 requires a usable same-owner managed choice, not just a matching artifact model.
+An unavailable configuration read blocks managed setup until a fresh check
+succeeds, even on a first installation; unknown provider ownership is not treated
+as an empty Gateway. Ordinary detected-model choices remain independent.
+File-repair guidance blocks review only while the runtime is owned or its route
+is unresolved. Once those conditions clear, the existing guarded Repair flow
+remains available; retaining the durable binding alone does not prohibit repair.
 
 Withdrawal can preserve unrelated configuration edits using a fresh CAS revision.
 An exact unredacted credential or successful inference through the same provider

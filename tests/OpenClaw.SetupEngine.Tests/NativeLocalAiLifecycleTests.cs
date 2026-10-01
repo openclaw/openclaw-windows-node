@@ -784,8 +784,7 @@ public sealed class NativeLocalAiLifecycleTests
             fixture.Rpc.Config["agents"]!["defaults"]!["models"]![fixture.Model] = new JsonObject { ["alias"] = "user" };
         var before = File.ReadAllText(fixture.BindingPath);
         var observed = await fixture.Lifecycle.ObserveOwnershipAsync(Record, fixture.Rpc, fixture.Install, default);
-        Assert.Equal(change == "allowlist" ? NativeLocalAiOwnershipState.Unavailable :
-            change == "damaged" ? NativeLocalAiOwnershipState.InvalidReceipt :
+        Assert.Equal(change is "damaged" or "allowlist" ? NativeLocalAiOwnershipState.InvalidReceipt :
             NativeLocalAiOwnershipState.DifferentOwner, observed);
         Assert.Equal(before, File.ReadAllText(fixture.BindingPath));
         Assert.Equal(0, fixture.Rpc.Writes);
