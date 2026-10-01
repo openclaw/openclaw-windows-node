@@ -28,6 +28,21 @@
     Move stray files out of the gateways folder so preparation can run. They
     are moved, not deleted, into a timestamped folder alongside it.
 
+.PARAMETER ResetMigrationState
+    Delete the store-migration records so the next launch re-evaluates from
+    scratch. A finished migration consumes its own records, so this is only
+    needed after a run that was interrupted part way through and left a
+    stale consent or intent behind.
+
+    The completion receipt is left alone. See -IncludeCompletionReceipt.
+
+.PARAMETER IncludeCompletionReceipt
+    Also delete completed.dpapi, the receipt that proves a migration finished.
+    Leave this off unless you need a true cold start, because the gateway
+    uninstaller reads the receipt to decide whether to preserve your WSL
+    gateway. Without it, and with the Store app unregistered, uninstalling
+    will unregister the distro and delete the generated state it holds.
+
 .EXAMPLE
     .\scripts\Enable-StoreMigrationTest.ps1
     Relabels 2026.9.5-alpha.64 as 2026.9.5.
@@ -35,6 +50,10 @@
 .EXAMPLE
     .\scripts\Enable-StoreMigrationTest.ps1 -Revert
     Puts the original prerelease label back.
+
+.EXAMPLE
+    .\scripts\Enable-StoreMigrationTest.ps1 -ResetMigrationState
+    Clears a half-finished migration so the next test starts clean.
 
 .NOTES
     Uninstalling the Inno app removes the key, so a completed migration needs
@@ -47,7 +66,9 @@
 param(
     [string] $TargetVersion,
     [switch] $Revert,
-    [switch] $MoveBlockingFiles
+    [switch] $MoveBlockingFiles,
+    [switch] $ResetMigrationState,
+    [switch] $IncludeCompletionReceipt
 )
 
 Set-StrictMode -Version Latest
@@ -56,6 +77,26 @@ $ErrorActionPreference = 'Stop'
 $AppId = '{M0LTB0T-TRAY-4PP1-D3N7}_is1'
 $BackupVersionValue = 'OpenClawMigrationTestOriginalDisplayVersion'
 $BackupNameValue = 'OpenClawMigrationTestOriginalDisplayName'
+
+# Everything the migration writes, from MigrationRecordCodec and
+# InnoMigrationConsentStore. All of it lives in one folder under roaming
+# AppData, not in the package-virtualized location, so uninstalling either app
+# leaves it behind.
+$MigrationStateDirectory = Join-Path $env:APPDATA 'OpenClawTray\store-migration'
+$MigrationStateFiles = @(
+    'consent.lock',
+    'prepare.lock',
+    'intent.dpapi',
+    'consent.dpapi'
+)
+
+# Deliberately not in the list above. Test-InnoMigration.ps1 reads this file to
+# decide whether a gateway belongs to a migrated Store install: a valid receipt
+# exits 10 and Uninstall-LocalGateway.ps1 preserves the distro, while an absent
+# receipt with the Store package unregistered exits 0 and authorizes
+# wsl --unregister. Deleting it as a matter of routine would hand a later
+# uninstall permission to destroy a gateway it should have kept.
+$CompletionReceiptFile = 'completed.dpapi'
 
 # Files the migration detector requires in the install directory. Several of
 # these also live in scripts/ in this repository; the installer copies them into
@@ -95,19 +136,128 @@ function Get-StableCore {
     return "$($Matches[1]).$($Matches[2]).$($Matches[3])"
 }
 
+function Get-StaleMigrationRecords {
+    # Known record and lock names, plus the .<guid>.tmp that MigrationRecordStorage
+    # leaves behind when a record write is interrupted before the final move.
+    $names = @($MigrationStateFiles)
+    if ($IncludeCompletionReceipt) {
+        $names += $CompletionReceiptFile
+    }
+    return @(Get-ChildItem -LiteralPath $MigrationStateDirectory -Force -File -ErrorAction Stop |
+        Where-Object { $names -contains $_.Name -or $_.Name -match '^\.[0-9a-fA-F]{32}\.tmp$' })
+}
+
 function Stop-TrayProcesses {
     $procs = @(Get-Process -ErrorAction SilentlyContinue |
         Where-Object { $_.ProcessName -like '*OpenClaw*' })
 
+    if ($procs.Count -eq 0) {
+        Write-Host '  no OpenClaw processes running'
+        return @()
+    }
+
+    $stopping = @()
+    $skipped = @()
     foreach ($p in $procs) {
         if ($PSCmdlet.ShouldProcess("PID $($p.Id) ($($p.ProcessName))", 'Stop process')) {
             Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
             Write-Host "  stopped $($p.ProcessName) (PID $($p.Id))"
+            $stopping += $p
+        }
+        else {
+            # Never attempted, so its handles are certainly still open. Counting
+            # it as exited would let -WhatIf and a declined -Confirm report a
+            # confirmation that was never made.
+            $skipped += $p
         }
     }
-    if ($procs.Count -eq 0) {
-        Write-Host '  no OpenClaw processes running'
+
+    # Stop-Process returns before the kernel has finished tearing the process
+    # down, so its file handles can still be open. Wait for confirmed exit
+    # before anything tries to delete what the app held open.
+    $deadline = (Get-Date).AddSeconds(10)
+    $unconfirmed = @()
+    foreach ($p in $stopping) {
+        $remaining = [int][Math]::Max(0, ((New-TimeSpan -End $deadline).TotalMilliseconds))
+        try {
+            $p.WaitForExit($remaining) | Out-Null
+            if (-not $p.HasExited) { $unconfirmed += $p }
+        }
+        catch {
+            # Access denied or an already-reaped handle. Treat as unconfirmed.
+            $unconfirmed += $p
+        }
     }
+
+    foreach ($s in $unconfirmed) {
+        Write-Host "  WARNING: PID $($s.Id) ($($s.ProcessName)) did not exit" -ForegroundColor Yellow
+    }
+    foreach ($s in $skipped) {
+        Write-Host "  WARNING: PID $($s.Id) ($($s.ProcessName)) was not stopped, so its files stay locked" -ForegroundColor Yellow
+    }
+    return @($unconfirmed + $skipped)
+}
+
+if ($IncludeCompletionReceipt -and -not $ResetMigrationState) {
+    throw '-IncludeCompletionReceipt only applies to -ResetMigrationState.'
+}
+
+# ------------------------------------------------ reset migration state ----
+# Runs before the installation lookup because a reset is still useful once the
+# source app is gone, which is the state a completed migration leaves behind.
+if ($ResetMigrationState) {
+    if ($IncludeCompletionReceipt) {
+        Write-Host "Including $CompletionReceiptFile. Uninstalling the gateway after this can unregister the WSL distro." -ForegroundColor Yellow
+    }
+
+    if (-not (Test-Path -LiteralPath $MigrationStateDirectory -PathType Container)) {
+        Write-Host "No migration state at $MigrationStateDirectory. Nothing to reset." -ForegroundColor Yellow
+        return
+    }
+
+    # Scanned before the tray is stopped so a no-op reset does not shut the app
+    # down for nothing. This result decides that and nothing else; the list
+    # actually acted on is taken again once the app has exited.
+    if (@(Get-StaleMigrationRecords).Count -eq 0) {
+        Write-Host 'Migration state is already clear.' -ForegroundColor Green
+        return
+    }
+
+    # Both lock files are held open for as long as the tray runs.
+    Write-Host 'Closing the tray app...' -ForegroundColor Cyan
+    $survivors = @(Stop-TrayProcesses)
+    if ($survivors.Count -gt 0 -and -not $WhatIfPreference) {
+        throw "Could not confirm $($survivors.Count) OpenClaw process(es) exited. Close them and re-run."
+    }
+
+    $stale = @(Get-StaleMigrationRecords)
+    if ($stale.Count -eq 0) {
+        Write-Host 'Migration state is already clear.' -ForegroundColor Green
+        return
+    }
+
+    $removed = 0
+    foreach ($item in $stale) {
+        if ($PSCmdlet.ShouldProcess($item.FullName, 'Delete migration record')) {
+            Remove-Item -LiteralPath $item.FullName -Force
+            Write-Host "  removed $($item.Name)"
+            $removed++
+        }
+    }
+
+    if ($removed -eq 0) {
+        return
+    }
+
+    $leftover = @(Get-StaleMigrationRecords)
+    if ($leftover.Count -gt 0) {
+        $names = ($leftover | ForEach-Object { $_.Name }) -join ', '
+        throw "Migration state is not clear: $names remain. Close OpenClaw and re-run."
+    }
+
+    Write-Host ''
+    Write-Host 'Migration state cleared.' -ForegroundColor Green
+    return
 }
 
 $keyPath = Get-RegistrationKeyPath
@@ -214,7 +364,7 @@ abandons an unfinished setup.
 
 # ------------------------------------------------------------- relabel ------
 Write-Host 'Closing the tray app (migration fails while it runs)...' -ForegroundColor Cyan
-Stop-TrayProcesses
+Stop-TrayProcesses | Out-Null
 
 $newName = "OpenClaw Companion version $TargetVersion"
 

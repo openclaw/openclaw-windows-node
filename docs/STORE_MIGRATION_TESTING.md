@@ -36,10 +36,6 @@ You do not need to onboard the Inno app. Migration captures state from
 `%APPDATA%\OpenClawTray`, which persists across installs. If you already have a
 gateway and device identities, that is a richer test than a fresh onboard.
 
-You do not need to onboard the Inno app. Migration captures state from
-`%APPDATA%\OpenClawTray`, which persists across installs. If you already have a
-gateway and device identities, that is a richer test than a fresh onboard.
-
 ## Steps
 
 ### 1. Close the Store app, then install the alpha Inno build
@@ -169,3 +165,35 @@ relabelled Inno registration returns `ConsentRequired` again.
 To run it a second time, reinstall the alpha exe and re-run the script. The
 leftover `store-migration\prepare.lock` is a cross-session lock file, not state,
 and does not need clearing.
+
+That holds for a run you finished. A run interrupted between consent and
+finalization leaves a `consent.dpapi` or `intent.dpapi` behind, and the next
+attempt resumes from it instead of starting at the consent screen. Clear it
+with:
+
+```powershell
+.\scripts\Enable-StoreMigrationTest.ps1 -ResetMigrationState
+```
+
+That closes the tray, since both lock files are held open while it runs, then
+deletes the records in `%APPDATA%\OpenClawTray\store-migration\`. It leaves the
+folder itself and anything it does not recognise alone, and it works whether or
+not an Inno installation is still present.
+
+It also leaves `completed.dpapi` alone. That file is the receipt a finished
+migration writes, and `Test-InnoMigration.ps1` reads it to decide whether a WSL
+gateway belongs to a migrated Store install. With a valid receipt the gateway
+uninstaller preserves the distro. With the receipt gone and the Store app
+unregistered, it is free to run `wsl --unregister` and take the generated state
+with it. If you genuinely need a cold start, ask for it:
+
+```powershell
+.\scripts\Enable-StoreMigrationTest.ps1 -ResetMigrationState -IncludeCompletionReceipt
+```
+
+Do not leave that machine in a half-uninstalled state afterwards.
+
+Nothing else clears these records. They sit in real roaming AppData rather than
+the package-virtualized location, so `Remove-AppxPackage` walks past them, and
+`TrayArtifactCleanup` never names the folder, so `--uninstall` leaves it too.
+
