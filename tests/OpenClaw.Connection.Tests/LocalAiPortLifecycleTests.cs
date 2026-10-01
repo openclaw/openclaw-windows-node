@@ -1837,6 +1837,27 @@ public sealed class LocalAiPortLifecycleTests
     }
 
     [Fact]
+    public async Task Resume_RenewsTheBoundedRestartBudgetAfterRecovery()
+    {
+        using var temp = new TempDirectory("local-ai-resume-budget-");
+        var paths = await PrepareInstallAsync(temp);
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_769);
+        await using var runtime = CreateRuntime(paths, host, platform,
+            new FakeClient(events), new FakeLifecycle(events), maxRestartAttempts: 1);
+        Assert.Equal(LocalAiRuntimeState.Healthy, (await runtime.EnsureStartedAsync()).State);
+        await TriggerExitAndWaitForStateAsync(runtime, host,
+            snapshot => snapshot.State == LocalAiRuntimeState.Healthy);
+        await TriggerExitAndWaitForStateAsync(runtime, host,
+            snapshot => snapshot.State == LocalAiRuntimeState.Failed);
+        Assert.Equal(LocalAiRuntimeState.Healthy, (await runtime.ResumeAsync()).State);
+        var recovered = await TriggerExitAndWaitForStateAsync(runtime, host,
+            snapshot => snapshot.State == LocalAiRuntimeState.Healthy);
+        Assert.Equal(LocalAiRuntimeState.Healthy, recovered.State);
+    }
+
+    [Fact]
     public async Task Stop_QueuedAutomaticResumeCannotOverrideStopButExplicitStartCan()
     {
         using var temp = new TempDirectory("local-ai-stop-intent-");

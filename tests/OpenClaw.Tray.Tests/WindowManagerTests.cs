@@ -100,6 +100,8 @@ public sealed class WindowManagerTests
         var manager = ReadManager();
         Assert.Contains("if (created && window is { IsClosed: false })", manager);
         Assert.Contains("window.TryNavigateToExistingNativeLocalAi(native)", manager);
+        var entry = manager[manager.IndexOf("public async Task ShowLocalAiSetupAsync()", StringComparison.Ordinal)..];
+        AssertInOrder(entry, "NativePackageFamilyName: not null", "await EnsureSetupWindowAsync(");
         var window = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
             @"src\OpenClaw.SetupEngine.UI\SetupWindow.xaml.cs"));
         var start = window.IndexOf("public bool TryNavigateToExistingNativeLocalAi", StringComparison.Ordinal);

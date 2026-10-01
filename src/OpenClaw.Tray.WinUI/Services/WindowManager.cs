@@ -626,13 +626,15 @@ internal sealed class WindowManager : IWindowManager
 
     public Task ShowLocalAiModelSetupAsync() =>
         _callbacks.GetGatewayRegistry()?.GetActive() is
-            { NativeRuntimeContract: OpenClaw.Connection.NativeGateway.NativeGatewayPackageClient.IsolatedContract }
+            { NativePackageFamilyName: not null,
+              NativeRuntimeContract: OpenClaw.Connection.NativeGateway.NativeGatewayPackageClient.IsolatedContract }
                 ? ShowLocalAiSetupAsync() : ShowOnboardingAsync();
 
     public async Task ShowLocalAiSetupAsync()
     {
         if (_callbacks.GetGatewayRegistry()?.GetActive() is
-            { NativeRuntimeContract: OpenClaw.Connection.NativeGateway.NativeGatewayPackageClient.IsolatedContract } native)
+            { NativePackageFamilyName: not null,
+              NativeRuntimeContract: OpenClaw.Connection.NativeGateway.NativeGatewayPackageClient.IsolatedContract } native)
         {
             var (window, created) = await EnsureSetupWindowAsync(
                 startAtGatewayInstalledMilestone: true, localAiRecoveryTarget: null);

@@ -195,6 +195,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
             ThrowIfDisposed();
             if (_automaticResumeSuppressed)
                 return Snapshot;
+            _restartAttempts = 0;
             return await EnsureStartedCoreAsync(cancellationToken).ConfigureAwait(false);
         }
         finally { _operationGate.Release(); }
