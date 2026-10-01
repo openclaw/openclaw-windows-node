@@ -361,12 +361,15 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             Assert.False(Assert.IsType<ScrollViewer>(dialog.Content).IsLoaded);
             Assert.Equal(Visibility.Visible, Find<ProgressBar>(page, "ProviderActivityProgress").Visibility);
             Assert.False(string.IsNullOrWhiteSpace(Find<TextBlock>(page, "ProviderActivityStatus").Text));
-            Assert.False(Find<Button>(page, "ProviderCancelButton").IsEnabled);
+            var sessionId = transport.LastActivation.GetProperty("sessionId").GetString();
+            Assert.False(string.IsNullOrWhiteSpace(sessionId));
             var close = page.CloseAsync();
             await close;
             Assert.Same(close, page.CloseAsync());
             Assert.Equal(0, completed());
-            Assert.Contains("wizard.cancel", transport.MethodCalls);
+            Assert.Single(transport.MethodCalls, method => method == "wizard.cancel");
+            Assert.Equal(sessionId, transport.LastCancel.GetProperty("sessionId").GetString());
+            Assert.DoesNotContain("openclaw.setup.verify", transport.MethodCalls);
             Assert.Equal(1, transport.MethodCalls.Count(method => method == "openclaw.setup.activate.start"));
         });
     }
@@ -1478,6 +1481,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
         public GatewayAiSetupWizardStep? WizardStep { get; set; }
         public string CancelStatus { get; set; } = "cancelled";
         public JsonElement LastNext { get; private set; }
+        public JsonElement LastCancel { get; private set; }
         private readonly TaskCompletionSource<JsonElement> _heldActivation =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -1566,7 +1570,10 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                 }, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
             }
             if (method == "wizard.cancel")
+            {
+                LastCancel = JsonSerializer.SerializeToElement(parameters);
                 return Task.FromResult(JsonSerializer.SerializeToElement(new { status = CancelStatus }));
+            }
             if (method == "openclaw.setup.verify")
             {
                 if (FailVerification)
