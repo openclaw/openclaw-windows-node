@@ -632,12 +632,12 @@ internal sealed class WindowManager : IWindowManager
     public async Task ShowLocalAiSetupAsync()
     {
         if (_callbacks.GetGatewayRegistry()?.GetActive() is
-            { NativeRuntimeContract: OpenClaw.Connection.NativeGateway.NativeGatewayPackageClient.IsolatedContract })
+            { NativeRuntimeContract: OpenClaw.Connection.NativeGateway.NativeGatewayPackageClient.IsolatedContract } native)
         {
             var (window, created) = await EnsureSetupWindowAsync(
                 startAtGatewayInstalledMilestone: true, localAiRecoveryTarget: null);
             if (created && window is { IsClosed: false })
-                window.TryNavigateToWizard();
+                window.TryNavigateToExistingNativeLocalAi(native);
             return;
         }
         var resolution = await ResolveLocalAiSetupRouteAsync();

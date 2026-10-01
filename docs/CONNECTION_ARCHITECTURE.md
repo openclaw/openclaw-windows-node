@@ -37,6 +37,13 @@ configuration revision. A write-ahead pending flag is flushed before dispatch.
 An unacknowledged mutation remains pending across app restarts, with no blind
 replay or offline cleanup. A different Gateway cannot adopt the receipt.
 
+Explicit Stop persists `AutomaticRecoveryEnabled=false` in that same receipt
+without relinquishing ownership. Connection notifications use guarded runtime
+Resume rather than explicit Start; the runtime operation gate also prevents a
+resume already queued behind Stop from restarting the listener. Explicit Start
+or Restart re-enables recovery. Older receipts default to enabled, preserving
+their prior startup behavior.
+
 Recovery can confirm an unchanged pre-dispatch revision or an already-withdrawn
 provider whose primary is the saved fallback or the retained endpoint-cycle model.
 If a publication landed before a crash, explicit Use can recreate only the same

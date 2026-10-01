@@ -88,16 +88,29 @@ provider unspecified so policy can choose among the actual offered values.
 
 ### Native Gateway MSIX (isolated or legacy)
 
-For an authenticated isolated native Gateway, **Local AI on this PC** uses the
-Windows-only artifact pipeline, then returns to an explicit **Use Local AI**
-action. The choice requires guarded configuration RPCs, exact-model verification
-and operator administration scope; legacy same-user native Gateways remain
-unsupported. Installation itself never starts inference or changes the primary.
+For an authenticated isolated native Gateway, **Install and use Local AI** captures
+one in-memory consent for the reviewed Gateway, endpoint binding, model and port.
+The Windows-only artifact pipeline then continues directly into startup, provider
+publication and exact-model verification under **Setting up Local AI**, without
+returning to provider discovery or requiring a second Use click. Acquisition itself
+still never starts inference or changes the primary; the continuation uses the same
+guarded Use owner. Changed targets or files fail closed, and an uncertain mutation
+can only be reconciled, not replayed. Consent is not persisted across app restarts.
+Confirmed startup failures retain their runtime diagnostics and immediately restore
+repair/provider choices with the normal **Connect your AI** heading. Failure before
+mutation admission drops automatic continuation, so recovering the connection or
+permissions requires a new explicit Use action. Ordinary WSL setup keeps its
+read-only Local AI check independent of Gateway connection availability.
+Existing installations retain the explicit **Start and use** action. Both paths
+require operator administration scope; legacy same-user native Gateways remain unsupported.
 
 Use starts the human-owned authenticated loopback server, publishes only to the
 selected Gateway, then verifies inference from that isolated Gateway with the
 exact primary model. The setup record remains staged until normal verified
 completion. Settings uses the same flow for an existing native Gateway.
+That Settings entry binds the existing Gateway ID and endpoint before opening AI
+setup. Its completion does not run WSL workspace finalization or rewrite existing
+permissions, sharing choices, or startup preferences.
 Native installation and recovery never create a WSL distro, change WSL
 networking, or run WSL configuration commands. Stop an existing owned runtime
 before repairing its files. Unconfirmed writes or external provider changes

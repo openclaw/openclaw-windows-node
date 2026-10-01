@@ -89,6 +89,7 @@ public sealed partial class GatewaySetupDetailPage : Page
         }
         if (_installing) return;
         _installing = true;
+        LocalAiOptions.IsEnabled = false;
         UpdatePrimaryAction();
         try { await SetupWindow.Active.InstallReviewedLocalAiAsync(); }
         catch (Exception)
@@ -96,6 +97,6 @@ public sealed partial class GatewaySetupDetailPage : Page
             LocalAiReviewError.Message = SetupLocalization.GetString("Onboarding_AiSetup_LocalChanged");
             LocalAiReviewError.IsOpen = true;
         }
-        finally { _installing = false; UpdatePrimaryAction(); }
+        finally { _installing = false; LocalAiOptions.IsEnabled = true; UpdatePrimaryAction(); }
     }
 }

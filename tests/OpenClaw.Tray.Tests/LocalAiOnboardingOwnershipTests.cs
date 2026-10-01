@@ -6,6 +6,60 @@ public sealed class LocalAiOnboardingOwnershipTests
         File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), path));
 
     [Fact]
+    public void NativeInstallAndUse_TransfersReviewedConsentWithoutReturningToDiscovery()
+    {
+        var window = Read(@"src\OpenClaw.SetupEngine.UI\SetupWindow.xaml.cs");
+        var progress = Read(@"src\OpenClaw.SetupEngine.UI\Pages\ProgressPage.xaml.cs");
+        var page = Read(@"src\OpenClaw.SetupEngine.UI\Pages\AiSetupPage.xaml.cs");
+        Assert.Contains("var modelId = _config.LocalAi.SelectedModelId;", window);
+        Assert.Contains("_config.LocalAi.SelectedModelId != modelId || _config.LocalAi.Port != requestedPort", window);
+        Assert.Contains("InstallAndUse = intent", window);
+        Assert.Contains("ExpectedEndpointBinding = intent.Target.EndpointBinding", window);
+        Assert.Contains("owner.ContinueInstalledNativeLocalAi();", progress);
+        var start = page.IndexOf("if (_args.InstallAndUse is { IsConsumed: false } intent)", StringComparison.Ordinal);
+        var end = page.IndexOf("if (_localObservation is not null && _localExpectedModel is null)", start, StringComparison.Ordinal);
+        var continuation = page[start..end];
+        Assert.Contains("EnsureLocalAiCanStart(intent.Target.GatewayId)", continuation);
+        Assert.Contains("await _localUse.UseInstalledAsync(intent", continuation);
+        Assert.Contains("await ReleaseAsync(ct)", continuation);
+        Assert.Contains("await InitializeAsync(ct)", continuation);
+        Assert.Contains("return;", continuation);
+        var recoveryStart = continuation.IndexOf("catch (Exception ex)", StringComparison.Ordinal);
+        var recoveryEnd = continuation.IndexOf("finally { ++_progressScope; }", StringComparison.Ordinal);
+        var recovery = continuation[recoveryStart..recoveryEnd];
+        Assert.Contains("LocalAiSelectionRejectedException or LocalAiStartFailedException", recovery);
+        Assert.Contains("_localObservation!.RefreshAsync", recovery);
+        Assert.Contains("TitleText.Text = S(\"Title.Text\")", recovery);
+        Assert.Contains("S(\"LocalStartFailed\") + \" \" + ex.Message", recovery);
+        Assert.Contains("await DetectAsync(ct)", recovery);
+        Assert.DoesNotContain("DetectAsync", continuation[recoveryEnd..]);
+        var navigation = page[page.IndexOf("protected override void OnNavigatedTo", StringComparison.Ordinal)..
+            page.IndexOf("protected override void OnNavigatedFrom", StringComparison.Ordinal)];
+        Assert.DoesNotContain("_localObservation.RefreshAsync", navigation);
+        Assert.Contains("VerifyConfiguredAsync(modelRef, ct)", page);
+        foreach (var locale in new[] { "en-us", "fr-fr", "nl-nl", "pt-br", "zh-cn", "zh-tw" })
+            Assert.Contains("Onboarding_AiSetup_LocalInstalling",
+                Read($@"src\OpenClaw.Tray.WinUI\Strings\{locale}\Resources.resw"));
+        Assert.Contains("Onboarding_AiSetup_LocalInstalling", progress);
+        Assert.Contains("TitleText.Text = S(\"LocalInstalling\")", page);
+        Assert.Contains("_args = _args with { InstallAndUse = null };", page);
+    }
+
+    [Fact]
+    public void WslObservation_StartsBeforeConnectionAndIsNotRepeatedAfterAdmission()
+    {
+        var page = Read(@"src\OpenClaw.SetupEngine.UI\Pages\AiSetupPage.xaml.cs");
+        var start = page.IndexOf("private async Task InitializeAsync", StringComparison.Ordinal);
+        var end = page.IndexOf("private async Task StartIsolatedConsoleAsync", start, StringComparison.Ordinal);
+        var initialize = page[start..end];
+        var observation = initialize.IndexOf("AsyncEventHandlerGuard.Run(_localObservation.RefreshAsync", StringComparison.Ordinal);
+        var connect = initialize.IndexOf("await SetupGatewaySession.ConnectAsync", StringComparison.Ordinal);
+        Assert.True(observation >= 0 && observation < connect);
+        Assert.Contains("observationStarted = true;", initialize[observation..connect]);
+        Assert.Contains("else if (!observationStarted)", initialize[connect..]);
+    }
+
+    [Fact]
     public void AiPage_UsesTypedSameWindowHostAndNeverOwnsRuntimeOrGatewayRegistration()
     {
         var page = Read(@"src\OpenClaw.SetupEngine.UI\Pages\AiSetupPage.xaml.cs");

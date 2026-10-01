@@ -670,6 +670,8 @@ public sealed class LocalAiOnboardingTests
         public LocalAiRuntimeSnapshot? StartResult { get; init; }
         public LocalAiRuntimeSnapshot Snapshot { get; set; } = snapshot;
         public event EventHandler<LocalAiRuntimeSnapshotChangedEventArgs>? StateChanged { add { } remove { } }
+        public Task<LocalAiRuntimeSnapshot> ResumeAsync(CancellationToken cancellationToken = default) =>
+            EnsureStartedAsync(cancellationToken);
         public Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken = default)
         { Calls++; OnStart?.Invoke(); Snapshot = StartResult ?? Snapshot; return Task.FromResult(Snapshot); }
         public Task<LocalAiRuntimeSnapshot> StopAsync(CancellationToken cancellationToken = default) =>

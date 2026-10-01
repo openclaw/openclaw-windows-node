@@ -1114,6 +1114,8 @@ public sealed class LocalAiPageViewModelTests
 
         public void CompleteStart() => _startCompletion?.TrySetResult(Snapshot);
 
+        public Task<LocalAiRuntimeSnapshot> ResumeAsync(CancellationToken cancellationToken = default) =>
+            EnsureStartedAsync(cancellationToken);
         public Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken = default)
         {
             StartCount++;

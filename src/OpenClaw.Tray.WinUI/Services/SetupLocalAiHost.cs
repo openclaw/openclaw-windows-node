@@ -164,6 +164,20 @@ internal sealed class SetupLocalAiHost(
         RequireSameSelection(selected, current);
         if (!current.CanUse)
             throw new LocalAiSelectionRejectedException("Local AI readiness changed. Check this PC again.");
+        return await UseAdmittedAsync(current, ct, progress);
+    }
+
+    public async Task<SetupLocalAiUseResult> UseInstalledAsync(LocalAiInstallAndUseIntent intent, CancellationToken ct,
+        IProgress<LocalAiSetupStage>? progress)
+    {
+        var current = await ObserveAsync(ct, progress);
+        intent.RequireInstalledSelection(current);
+        return await UseAdmittedAsync(current, ct, progress);
+    }
+
+    private async Task<SetupLocalAiUseResult> UseAdmittedAsync(LocalAiOnboardingSnapshot selected, CancellationToken ct,
+        IProgress<LocalAiSetupStage>? progress)
+    {
         var runtime = getRuntime() ?? throw new InvalidOperationException("The managed Local AI runtime is unavailable.");
         var install = await loadInstall(ct) ?? throw new InvalidOperationException("The Local AI receipt is unavailable.");
         if (Identity(install) != selected.ReceiptIdentity)

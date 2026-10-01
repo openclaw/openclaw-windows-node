@@ -1837,6 +1837,46 @@ public sealed class LocalAiPortLifecycleTests
     }
 
     [Fact]
+    public async Task Stop_QueuedAutomaticResumeCannotOverrideStopButExplicitStartCan()
+    {
+        using var temp = new TempDirectory("local-ai-stop-intent-");
+        var paths = await PrepareInstallAsync(temp);
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var withdrawing = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var lifecycle = new FakeLifecycle(events)
+        {
+            QuiesceHandler = async (call, _, ct) =>
+            {
+                if (call == 2)
+                {
+                    withdrawing.SetResult();
+                    await release.Task.WaitAsync(ct);
+                }
+                return LocalAiEndpointLifecycleResult.Ok();
+            }
+        };
+        await using var runtime = CreateRuntime(paths,
+            new FakeProcessHost(platform, events, selectedPort: 28_769),
+            platform, new FakeClient(events), lifecycle);
+        Assert.Equal(LocalAiRuntimeState.Healthy, (await runtime.EnsureStartedAsync()).State);
+        var stopping = runtime.StopAsync();
+        await withdrawing.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal([true, false], lifecycle.RecoveryIntents);
+        var resume = runtime.ResumeAsync();
+        Assert.False(resume.IsCompleted);
+        release.SetResult();
+        await stopping;
+        Assert.Equal(LocalAiRuntimeState.Stopped, (await resume).State);
+        Assert.Equal(LocalAiRuntimeState.Stopped, (await runtime.ResumeAsync()).State);
+        Assert.Equal(1, events.Count(value => value == "start"));
+        Assert.Equal(LocalAiRuntimeState.Healthy, (await runtime.EnsureStartedAsync()).State);
+        Assert.Equal([true, false, true], lifecycle.RecoveryIntents);
+        Assert.Equal(2, events.Count(value => value == "start"));
+    }
+
+    [Fact]
     public async Task Stop_QuiescesEndpointConsumerBeforeListenerDisappears()
     {
         using var temp = new TempDirectory("local-ai-port-");
@@ -2947,6 +2987,14 @@ public sealed class LocalAiPortLifecycleTests
 
     private sealed class FakeLifecycle(SynchronizedEventLog events) : ILocalAiEndpointLifecycle
     {
+        public List<bool> RecoveryIntents { get; } = [];
+        public Task SetAutomaticRecoveryEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            RecoveryIntents.Add(enabled);
+            return Task.CompletedTask;
+        }
+
         public bool FailPublish { get; set; }
         public bool FailQuiesce { get; set; }
         public Exception? PublishException { get; set; }

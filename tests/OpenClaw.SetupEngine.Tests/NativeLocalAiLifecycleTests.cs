@@ -14,6 +14,38 @@ namespace OpenClaw.SetupEngine.Tests;
 public sealed class NativeLocalAiLifecycleTests
 {
     [Fact]
+    public void LegacyBindingRetainsAutomaticRecoveryDefault()
+    {
+        var oldReceipt = JsonSerializer.SerializeToNode(new LocalAiNativeBinding(
+            "gateway", "endpoint", "identity", "llamacpp/model", null, "hash", false))!.AsObject();
+        oldReceipt.Remove(nameof(LocalAiNativeBinding.AutomaticRecoveryEnabled));
+        Assert.True(oldReceipt.Deserialize<LocalAiNativeBinding>()!.AutomaticRecoveryEnabled);
+    }
+
+    [Fact]
+    public async Task ExplicitStopPersistsAcrossReconnectsAndNewLifecycleUntilExplicitStart()
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        Assert.True((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+        await fixture.Lifecycle.SetAutomaticRecoveryEnabledAsync(false);
+        Assert.True((await fixture.Lifecycle.QuiesceAsync(fixture.Install)).Success);
+        var writes = fixture.Rpc.Writes;
+        var runtime = new LocalAiOnboardingTests.FakeRuntime(
+            LocalAiOnboardingTests.RuntimeSnapshot(fixture.Install, LocalAiRuntimeState.Stopped));
+        var reopened = fixture.CreateLifecycle();
+        await reopened.ResumeAsync(runtime);
+        await reopened.ResumeAsync(runtime);
+        Assert.Equal(0, runtime.Calls);
+        Assert.Equal(writes, fixture.Rpc.Writes);
+        Assert.False(fixture.Store.Load()!.AutomaticRecoveryEnabled);
+        Assert.True(fixture.Store.Exists);
+        await reopened.SetAutomaticRecoveryEnabledAsync(true);
+        await reopened.ResumeAsync(runtime);
+        Assert.Equal(1, runtime.Calls);
+    }
+
+    [Fact]
     public async Task HandoffIgnoresStaleCompletedRecoveryAndJoinsTheNextRecovery()
     {
         var install = LocalAiOnboardingTests.Install();
@@ -88,6 +120,97 @@ public sealed class NativeLocalAiLifecycleTests
         NativePackageFamilyName = "OpenClawFoundation.OpenClawGateway_test",
         NativeRuntimeContract = NativeGatewayPackageClient.IsolatedContract,
     };
+
+    [Theory]
+    [InlineData("none")]
+    [InlineData("gateway")]
+    [InlineData("endpoint")]
+    [InlineData("model")]
+    [InlineData("port")]
+    [InlineData("files")]
+    [InlineData("lost-reply")]
+    public async Task InstallAndUse_ObservesOnceAndNeverReplaysOrSubstitutesTheReviewedSelection(string change)
+    {
+        using var fixture = new Fixture();
+        var inspections = 0;
+        var runtime = new LocalAiOnboardingTests.FakeRuntime(
+            LocalAiOnboardingTests.RuntimeSnapshot(fixture.Install, LocalAiRuntimeState.Stopped))
+        {
+            StartResult = LocalAiOnboardingTests.RuntimeSnapshot(fixture.Install, LocalAiRuntimeState.Healthy)
+        };
+        var hardware = new HostHardwareInfo(Architecture.X64, 128L << 30, 100L << 30,
+            [new(GpuVendor.Nvidia, "Test GPU", 96L << 30, 80L << 30,
+                DriverVersion: "615.0", CudaMajorVersion: 13, StableId: "GPU-test")], false);
+        var host = new SetupLocalAiHost(
+            () => throw new InvalidOperationException("Native continuation must not resolve WSL."),
+            () => null, () => runtime, _ => Task.FromResult<LocalAiResolvedInstall?>(fixture.Install),
+            (_, _) => { inspections++; return Task.FromResult(change != "files"); },
+            _ => Task.FromResult(hardware),
+            () => throw new InvalidOperationException("Native continuation must not publish through WSL."),
+            nativeLifecycle: fixture.Lifecycle);
+        host.ConfigureNative(Record, fixture.Rpc, _ => Task.CompletedTask);
+        var target = new SetupLocalAiTarget(Record.Id, "", new Uri(Record.Url).Port, null, null,
+            true, GatewayDashboardBinding.Capture(Record));
+        target = change switch
+        {
+            "gateway" => target with { GatewayId = "different" },
+            "endpoint" => target with { EndpointBinding = "different" },
+            _ => target
+        };
+        var intent = new LocalAiInstallAndUseIntent(target,
+            change == "model" ? "different" : fixture.Install.Manifest.ModelCatalogId,
+            change == "port" ? 12345 : fixture.Install.Manifest.RequestedPort);
+        var use = new LocalAiOnboardingUse(host);
+        var stages = new List<LocalAiSetupStage>();
+        fixture.Rpc.LoseReply = change == "lost-reply";
+        if (change == "none")
+        {
+            await use.UseInstalledAsync(intent, default, new SynchronousProgress<LocalAiSetupStage>(stages.Add));
+            Assert.Equal(intent.Expected, use.Expected);
+            Assert.Equal([LocalAiSetupStage.CheckingHardware, LocalAiSetupStage.CheckingFiles,
+                LocalAiSetupStage.PreparingGateway, LocalAiSetupStage.StartingRuntime,
+                LocalAiSetupStage.PublishingProvider], stages);
+        }
+        else if (change == "lost-reply")
+        {
+            await Assert.ThrowsAnyAsync<Exception>(() => use.UseInstalledAsync(intent, default));
+            Assert.Equal(intent.Expected, use.Expected);
+            Assert.True(fixture.Store.Load()!.Pending);
+        }
+        else
+        {
+            await Assert.ThrowsAsync<LocalAiSelectionRejectedException>(() => use.UseInstalledAsync(intent, default));
+            Assert.Null(use.Expected);
+        }
+        Assert.Equal(1, inspections);
+        Assert.Equal(change is "none" or "lost-reply" ? 1 : 0, runtime.Calls);
+        Assert.Equal(change is "none" or "lost-reply" ? 1 : 0, fixture.Rpc.Writes);
+        Assert.True(intent.IsConsumed);
+        await use.DrainAsync();
+        await Assert.ThrowsAsync<LocalAiSelectionRejectedException>(() => use.UseInstalledAsync(intent, default));
+        Assert.Equal(1, inspections);
+    }
+
+    [Fact]
+    public async Task InstallAndUse_CancellationBeforeAdmissionDoesNotConsumeConsentOrStartAnything()
+    {
+        using var fixture = new Fixture();
+        var host = new SetupLocalAiHost(
+            () => throw new InvalidOperationException(), () => null, () => null,
+            _ => throw new InvalidOperationException(), (_, _) => throw new InvalidOperationException(),
+            _ => throw new InvalidOperationException(), () => throw new InvalidOperationException(),
+            nativeLifecycle: fixture.Lifecycle);
+        var intent = new LocalAiInstallAndUseIntent(
+            new(Record.Id, "", 55060, null, null, true, GatewayDashboardBinding.Capture(Record)),
+            fixture.Install.Manifest.ModelCatalogId, 0);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        var use = new LocalAiOnboardingUse(host);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => use.UseInstalledAsync(intent, cancellation.Token));
+        Assert.False(intent.IsConsumed);
+        Assert.Null(use.Expected);
+        Assert.Equal(0, fixture.Rpc.Writes);
+    }
 
     [Fact]
     public async Task StagedObservationAndReviewNeedNoRegistryPublicationWslOrCredential()
@@ -380,14 +503,18 @@ public sealed class NativeLocalAiLifecycleTests
         public RpcTransport Rpc { get; } = new();
         public LocalAiNativeBindingStore Store { get; }
         public LocalAiGatewayLifecycle Lifecycle { get; }
+        public GatewayRegistry Registry { get; }
         public Fixture()
         {
+            Registry = new(_directory.Path);
+            Registry.AddOrUpdate(Record);
+            Registry.SetActive(Record.Id);
             Store = new(new(_directory.Path));
             Lifecycle = CreateLifecycle();
             Lifecycle.Register(Record, Rpc);
         }
         public LocalAiGatewayLifecycle CreateLifecycle() => new(new(_directory.Path), _directory.Path,
-            () => null, () => null, new ForbiddenWsl(), NullLogger.Instance);
+            () => Registry, () => null, new ForbiddenWsl(), NullLogger.Instance);
         public void Dispose() => _directory.Dispose();
     }
 

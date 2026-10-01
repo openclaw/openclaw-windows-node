@@ -7449,7 +7449,8 @@ O binário wxc-exec não pôde ser localizado. {1} Se esta for uma build de dese
   <data name="Onboarding_AiSetup_LocalStartAndUse" xml:space="preserve"><value>Iniciar e usar</value></data>
   <data name="Onboarding_AiSetup_LocalUse" xml:space="preserve"><value>Usar este modelo</value></data>
   <data name="Onboarding_AiSetup_LocalRepair" xml:space="preserve"><value>Reparar IA local</value></data>
-  <data name="Onboarding_AiSetup_LocalInstall" xml:space="preserve"><value>Instalar e usar</value></data>
+  <data name="Onboarding_AiSetup_LocalInstall" xml:space="preserve"><value>Instalar e usar a IA local</value></data>
+  <data name="Onboarding_AiSetup_LocalInstalling" xml:space="preserve"><value>Configurando a IA local</value></data>
   <data name="Onboarding_AiSetup_LocalChanged" xml:space="preserve"><value>O Gateway ou a disponibilidade da IA local mudou. Volte à conexão da IA e verifique novamente antes de instalar.</value></data>
   <data name="Onboarding_AiSetup_LocalStartFailed" xml:space="preserve"><value>A IA local não pôde iniciar. A limpeza foi concluída. Repare a IA local ou escolha outro provedor.</value></data>
   <data name="Onboarding_AiSetup_LocalState_Checking" xml:space="preserve"><value>Verificando este PC. Você ainda pode escolher um provedor de IA.</value></data>

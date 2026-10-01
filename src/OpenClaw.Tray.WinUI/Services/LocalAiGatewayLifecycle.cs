@@ -36,6 +36,13 @@ internal sealed class LocalAiGatewayLifecycle(
             ? recovery.Endpoint.Port : null;
     public void EndEndpointRecovery() => _endpointRecovery = null;
 
+    public async Task SetAutomaticRecoveryEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
+    {
+        await using var lease = await _store.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        if (_store.Load() is { } binding)
+            _store.Save(binding with { AutomaticRecoveryEnabled = enabled });
+    }
+
     public async Task ForgetWithdrawnAsync(string gatewayId, CancellationToken ct)
     {
         await using var lease = await _store.AcquireAsync(ct).ConfigureAwait(false);
@@ -127,17 +134,19 @@ internal sealed class LocalAiGatewayLifecycle(
             throw new InvalidOperationException("The selected Local AI runtime is not ready after Gateway reconnection.");
     }
 
-    private async Task ResumeAsync(ILocalAiRuntime runtime)
+    internal async Task ResumeAsync(ILocalAiRuntime runtime)
     {
         try
         {
             var binding = _store.Load();
+            if (binding is { AutomaticRecoveryEnabled: false })
+                return;
             if (binding is null || binding.Pending || getRegistry()?.GetActive()?.Id != binding.GatewayId)
             {
                 logger.Warn("Local AI automatic recovery is waiting for its original Gateway and a confirmed configuration revision.");
                 return;
             }
-            var snapshot = await runtime.EnsureStartedAsync().ConfigureAwait(false);
+            var snapshot = await runtime.ResumeAsync().ConfigureAwait(false);
             if (snapshot.State != LocalAiRuntimeState.Healthy)
                 logger.Warn("The bound Local AI runtime needs attention after Gateway reconnection.");
         }

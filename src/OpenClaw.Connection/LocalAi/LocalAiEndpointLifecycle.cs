@@ -19,6 +19,10 @@ public enum LocalAiQuiesceReason
 /// </summary>
 public interface ILocalAiEndpointLifecycle
 {
+    /// <summary>Durable owners persist explicit running intent; stateless transports need no receipt.</summary>
+    Task SetAutomaticRecoveryEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
     Task<LocalAiEndpointLifecycleResult> QuiesceAsync(
         LocalAiResolvedInstall install,
         LocalAiQuiesceReason reason = LocalAiQuiesceReason.Teardown,

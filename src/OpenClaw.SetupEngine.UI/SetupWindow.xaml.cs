@@ -45,6 +45,7 @@ public sealed partial class SetupWindow : Window
     private readonly ISetupLocalAiHost? _localAiHost;
     private readonly GatewayConnectionManager? _connectionManager;
     private LocalAiOnboardingSnapshot? _localAiReviewSelection;
+    private LocalAiInstallAndUseIntent? _localAiInstallAndUse;
     private Task _aiPageCleanupTask = Task.CompletedTask;
     private SetupNativeCompletionCoordinator? _readyChoice;
     private readonly Func<SetupNativeCompletion, CancellationToken, Task>? _publishNativeCompletion;
@@ -618,10 +619,34 @@ public sealed partial class SetupWindow : Window
         if (_isClosed || _localAiHost is null || _localAiReviewSelection is not { } selection ||
             !AccessDraft.CanInstall(localAiRecovery: true))
             return;
+        var modelId = _config.LocalAi.SelectedModelId;
+        var requestedPort = _config.LocalAi.Port;
         await _aiPageCleanupTask;
-        await _localAiHost.RevalidateReviewAsync(selection, _lifetimeCts.Token);
+        var target = await _localAiHost.RevalidateReviewAsync(selection, _lifetimeCts.Token);
+        if (_config.LocalAi.SelectedModelId != modelId || _config.LocalAi.Port != requestedPort)
+            throw new LocalAiSelectionRejectedException("The reviewed Local AI model changed. Review it again before installing.");
         if (!_isClosed && AccessDraft.CanInstall(localAiRecovery: true))
+        {
+            _localAiInstallAndUse = target.IsNative
+                ? new(target, modelId ??
+                    throw new LocalAiSelectionRejectedException("Select a Local AI model before installing."),
+                    requestedPort)
+                : null;
             NavigateToProgress();
+        }
+    }
+
+    internal void ContinueInstalledNativeLocalAi()
+    {
+        if (_isClosed || !_config.NativeLocalAiAcquisition || _localAiInstallAndUse is not { } intent)
+            throw new InvalidOperationException("The reviewed native Local AI installation is no longer available.");
+        _localAiInstallAndUse = null;
+        NavigateTo(typeof(AiSetupPage), CreateAiSetupArgs() with
+        {
+            ExpectedGatewayId = intent.Target.GatewayId,
+            ExpectedEndpointBinding = intent.Target.EndpointBinding,
+            InstallAndUse = intent
+        });
     }
 
     internal void CancelLocalAiReview()
@@ -632,6 +657,7 @@ public sealed partial class SetupWindow : Window
         _config.LocalAiRecoveryGatewayId = null;
         _config.NativeLocalAiAcquisition = false;
         _localAiReviewSelection = null;
+        _localAiInstallAndUse = null;
         _startAtLocalAiRecoveryReview = false;
         _pinLocalAiRecoveryModel = false;
         AccessDraft.LocalAiReady = false;
@@ -684,6 +710,7 @@ public sealed partial class SetupWindow : Window
 
         _startAtLocalAiRecoveryReview = false;
         _localAiReviewSelection = null;
+        _localAiInstallAndUse = null;
         _pinLocalAiRecoveryModel = false;
         _config.LocalAiRecoveryGatewayId = null;
         _localAiRecoveryBaseline.Restore(_config);
@@ -692,6 +719,16 @@ public sealed partial class SetupWindow : Window
         AccessDraft.TailscaleReady = false;
         _persistStartupPreferenceOnComplete = true;
         _showStartupPreferenceOnComplete = true;
+    }
+
+    public bool TryNavigateToExistingNativeLocalAi(OpenClaw.Connection.GatewayRecord record)
+    {
+        if (!CanNavigateToWizard)
+            return false;
+        AccessDraft.SelectExistingNativeGateway(record);
+        _persistStartupPreferenceOnComplete = false;
+        _showStartupPreferenceOnComplete = false;
+        return TryNavigateToWizard();
     }
 
     public bool TryNavigateToWizard(bool back = false)
@@ -1092,6 +1129,8 @@ public sealed partial class SetupWindow : Window
 
     private void SaveSetupChoices(bool enableAutoStart)
     {
+        if (AccessDraft.IsExistingNativeLocalAi)
+            return;
         enableAutoStart &= _startupRegistrationAllowed;
         if (_persistChoices is not null)
         {

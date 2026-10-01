@@ -1245,6 +1245,95 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
     }
 
     [Fact]
+    [Trait("Category", "NativeOnboardingProof")]
+    public async Task LocalAi_InstalledContinuationShowsProgressAndVerifiesWithoutRediscovery()
+    {
+        var finish = new TaskCompletionSource<SetupLocalAiUseResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var intent = new LocalAiInstallAndUseIntent(new("ui-proof", "", 18789, null, null, true, "binding"), "test-model", 0);
+        var host = new PageLocalAiHost(LocalAiOnboardingState.StartAndUse)
+        {
+            ModelRef = intent.Expected.ModelRef,
+            Use = ct => finish.Task.WaitAsync(ct)
+        };
+        await WithPageAsync(async (page, transport, completed) =>
+        {
+            try
+            {
+                Assert.Equal("Setting up Local AI", Find<TextBlock>(page, "TitleText").Text);
+                Assert.Equal(Visibility.Collapsed, Find<StackPanel>(page, "ChoicePanel").Visibility);
+                Assert.Empty(transport.MethodCalls);
+                Assert.Equal(0, host.Observations);
+                Assert.Equal(0, completed());
+                using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow, "native-local-ai-install-continuation", output,
+                    ["Setting up Local AI", "Starting llama-server"],
+                    new { host.Actions, host.Observations, discoveryCalls = transport.MethodCalls.Count },
+                    requiredContent: page)) { }
+            }
+            finally { finish.TrySetResult(intent.Expected); }
+            await WaitAsync(() => completed() == 1);
+            Assert.Equal(1, host.Actions);
+            Assert.Equal(["openclaw.setup.verify"], transport.MethodCalls);
+        }, localAiHost: host, installAndUse: intent, ready: () => host.Actions == 1,
+            configure: transport => transport.VerificationModelRef = intent.Expected.ModelRef, nativeProof: true);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LocalAi_InstalledContinuationRefreshNeverRepeatsTheMutation(bool uncertain)
+    {
+        var intent = new LocalAiInstallAndUseIntent(new("ui-proof", "", 18789, null, null, true, "binding"), "test-model", 0);
+        var host = new PageLocalAiHost(LocalAiOnboardingState.StartAndUse)
+        {
+            ModelRef = intent.Expected.ModelRef,
+            UseFailure = uncertain ? new IOException("Lost publication response.") : new LocalAiStartFailedException("Start failed.")
+        };
+        await WithPageAsync(async (page, transport, completed) =>
+        {
+            Assert.Equal(1, host.Actions);
+            Assert.True(intent.IsConsumed);
+            if (uncertain)
+                Assert.Empty(transport.MethodCalls);
+            else
+            {
+                Assert.Equal(["openclaw.setup.detect"], transport.MethodCalls);
+                Assert.Equal("Connect your AI", Find<TextBlock>(page, "TitleText").Text);
+                Assert.Contains("Start failed.", Find<InfoBar>(page, "ErrorBar").Message);
+                Assert.Equal(Visibility.Visible, Find<StackPanel>(page, "ChoicePanel").Visibility);
+                Assert.Contains("Repair", Find<TextBlock>(page, "LocalAiActionText").Text);
+                Assert.True(Find<SettingsCard>(page, "LocalAiCard").IsClickEnabled);
+            }
+            Invoke(Find<Button>(page, "RefreshButton"));
+            await WaitAsync(() => Find<Button>(page, "RefreshButton").IsEnabled);
+            Assert.Equal(1, host.Actions);
+            Assert.Equal(0, completed());
+            Assert.Equal(uncertain ? ["openclaw.setup.verify"] :
+                new[] { "openclaw.setup.detect", "openclaw.setup.detect" }, transport.MethodCalls);
+        }, localAiHost: host, installAndUse: intent, configure: transport => transport.FailVerification = true,
+            reviewLocalAi: _ => Task.CompletedTask);
+    }
+
+    [Fact]
+    public async Task LocalAi_AdmissionFailureRequiresExplicitUseAfterAuthorizationRecovers()
+    {
+        var intent = new LocalAiInstallAndUseIntent(new("ui-proof", "", 18789, null, null, true, "binding"), "test-model", 0);
+        var host = new PageLocalAiHost(LocalAiOnboardingState.StartAndUse) { ModelRef = intent.Expected.ModelRef };
+        await WithPageAsync(async (page, transport, completed) =>
+        {
+            await WaitAsync(() => host.Observations == 1);
+            Assert.Equal("Connect your AI", Find<TextBlock>(page, "TitleText").Text);
+            Assert.False(intent.IsConsumed);
+            Assert.Equal(0, host.Actions);
+            transport.OperatorScopes = ["operator.admin"];
+            Invoke(Find<Button>(page, "RefreshButton"));
+            await WaitAsync(() => Find<Button>(page, "RefreshButton").IsEnabled);
+            Assert.Equal(["openclaw.setup.detect"], transport.MethodCalls);
+            Assert.Equal(0, host.Actions);
+            Assert.Equal(0, completed());
+        }, localAiHost: host, installAndUse: intent, configure: transport => transport.OperatorScopes = []);
+    }
+
+    [Fact]
     public async Task LocalAi_ReconnectToOtherGatewayWithSameModelCannotVerifyOrComplete()
     {
         var host = new PageLocalAiHost(LocalAiOnboardingState.Use);
@@ -1408,22 +1497,40 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
         }, localAiHost: host, reviewLocalAi: _ => throw new InvalidOperationException("Must settle provider first."));
     }
 
-    private sealed class PageLocalAiHost(LocalAiOnboardingState state) : ISetupLocalAiHost
+    private sealed class PageLocalAiHost(LocalAiOnboardingState state) : ISetupLocalAiHost, INativeSetupLocalAiHost
     {
         public int Actions { get; private set; }
+        public int Observations { get; private set; }
+        public bool HasNativeSelection => false;
+        public void ConfigureNative(OpenClaw.Connection.GatewayRecord record, IGatewayAiSetupTransport transport,
+            Func<CancellationToken, Task> authorize) => throw new InvalidOperationException();
+        public void ReleaseNative(IGatewayAiSetupTransport transport) => throw new InvalidOperationException();
+        public Task ReconcileNativeAsync(IGatewayAiSetupTransport transport, string modelRef, CancellationToken ct) =>
+            throw new InvalidOperationException();
+        public Task WithdrawNativeAsync(CancellationToken ct) => throw new InvalidOperationException();
+        public Task<SetupLocalAiUseResult> UseInstalledAsync(LocalAiInstallAndUseIntent intent, CancellationToken ct,
+            IProgress<LocalAiSetupStage>? progress)
+        {
+            progress?.Report(LocalAiSetupStage.StartingRuntime);
+            return UseAsync(new(LocalAiOnboardingState.StartAndUse, intent.Target, intent.Expected.ModelRef, "receipt"), ct);
+        }
         public string ModelRef { get; init; } = "openai/test-model";
         public Exception? UseFailure { get; init; }
         public Func<CancellationToken, Task<SetupLocalAiUseResult>>? Use { get; init; }
         public bool FreshUnsupported { get; init; }
         public OpenClaw.Connection.GatewayRegistrySnapshot BeginGatewaySetup() => throw new InvalidOperationException();
         public Task ReconcileGatewaySetupAsync(OpenClaw.Connection.GatewayRegistrySnapshot expectedOutput, string? completedGatewayId) => throw new InvalidOperationException();
-        public Task<LocalAiOnboardingSnapshot> ObserveAsync(CancellationToken ct) => Task.FromResult(
+        public Task<LocalAiOnboardingSnapshot> ObserveAsync(CancellationToken ct)
+        {
+            Observations++;
+            return Task.FromResult(
             FreshUnsupported
                 ? LocalAiOnboardingSnapshot.Project(new("ui-proof", "Managed", 18789, null, null),
                     LocalInferenceEligibility.Evaluate(OnboardingSetupGalleryData.Hardware("unsupported")),
                     null, false, false, null)
                 : new LocalAiOnboardingSnapshot(state, new("ui-proof", "Managed", 18789, "test", 18803),
                     ModelRef, "receipt", "Synthetic GPU", "Synthetic model", HasInstallationEvidence: true));
+        }
         public Task<SetupLocalAiTarget> RevalidateReviewAsync(LocalAiOnboardingSnapshot selected, CancellationToken ct) =>
             Task.FromResult(selected.Target!);
         public Task<SetupLocalAiUseResult> UseAsync(LocalAiOnboardingSnapshot selected, CancellationToken ct)
@@ -1451,7 +1558,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
         Func<LocalAiOnboardingSnapshot, Task>? reviewLocalAi = null,
         PageTransport? reconnectTransport = null,
         string? expectedGatewayId = null, bool nativeProof = false, ElementTheme theme = ElementTheme.Light,
-        double width = 720)
+        double width = 720, LocalAiInstallAndUseIntent? installAndUse = null, Func<bool>? ready = null)
     {
         await ui.ResetContainerAsync();
         await ui.RunOnUIAsync(async () =>
@@ -1494,13 +1601,14 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                     () => true, () => { completions++; return Task.CompletedTask; },
                     ExpectedConfiguredModelRef: expectedModelRef,
                     TransportFactory: () => connects++ == 0 ? transport : reconnectTransport ?? transport,
-                    LocalAiHost: localAiHost, ReviewLocalAi: reviewLocalAi, ExpectedGatewayId: expectedGatewayId);
+                    LocalAiHost: localAiHost, ReviewLocalAi: reviewLocalAi, ExpectedGatewayId: expectedGatewayId,
+                    InstallAndUse: installAndUse);
                 frame = nativeProof ? new Frame() : new Frame { Width = width, Height = 820 };
                 navigation = OnboardingNativeProof.TrackNavigation(frame);
                 ui.Container.Children.Add(frame);
                 frame.Navigate(typeof(AiSetupPage), args);
                 page = Assert.IsType<AiSetupPage>(frame.Content);
-                await WaitAsync(() => expectedModelRef is not null
+                await WaitAsync(() => ready is not null ? ready() : expectedModelRef is not null || installAndUse is not null
                     ? completions > 0 || Find<InfoBar>(page, "ErrorBar").IsOpen
                     : focusedSupported ? Find<StackPanel>(page, "ChoicePanel").Visibility == Visibility.Visible ||
                         Find<InfoBar>(page, "ErrorBar").IsOpen
@@ -1596,7 +1704,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
         public GatewayAiSetupRoute Route { get; init; } = new("ui-proof", "main", "ui-proof-authority");
         public long Generation => 1;
         public bool IsConnected => true;
-        public IReadOnlyCollection<string> OperatorScopes => ["operator.admin"];
+        public IReadOnlyCollection<string> OperatorScopes { get; set; } = ["operator.admin"];
         public IReadOnlyCollection<string> Methods => focusedSupported
             ? ["openclaw.setup.detect", "openclaw.setup.activate.start", "openclaw.setup.verify",
                 "openclaw.setup.auth.start", "openclaw.setup.prepare.start", "wizard.next", "wizard.cancel", "wizard.status"]
@@ -1609,6 +1717,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
         public bool HoldAnswer { get; set; }
         public string? AnswerError { get; set; }
         public bool FailVerification { get; set; }
+        public string VerificationModelRef { get; set; } = "openai/test-model";
         public bool RequireCatalogConsent { get; set; }
         public bool EmptyCandidates { get; set; }
         public bool FailDetection { get; set; }
@@ -1735,7 +1844,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                     }));
                 return Task.FromResult(JsonSerializer.SerializeToElement(new
                 {
-                    ok = true, modelRef = "openai/test-model", latencyMs = 1.0
+                    ok = true, modelRef = VerificationModelRef, latencyMs = 1.0
                 }));
             }
             throw new InvalidOperationException($"Unexpected proof request: {method}");

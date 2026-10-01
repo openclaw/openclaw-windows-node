@@ -84,7 +84,7 @@ public static class SetupStepFactory
 
     /// <summary>
     /// Artifact-only native acquisition. The caller retains exact Gateway admission
-    /// and returns to an explicit Use action afterward. This never starts a listener,
+    /// and continues through a separately authorized Use action afterward. This never starts a listener,
     /// loads a model, publishes a provider, or creates/restarts a Gateway.
     /// </summary>
     public static List<SetupStep> BuildNativeLocalAiAcquisitionSteps() =>

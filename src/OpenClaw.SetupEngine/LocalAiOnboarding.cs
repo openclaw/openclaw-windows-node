@@ -27,6 +27,8 @@ public interface INativeSetupLocalAiHost
     void ReleaseNative(IGatewayAiSetupTransport transport);
     Task ReconcileNativeAsync(IGatewayAiSetupTransport transport, string modelRef, CancellationToken ct);
     Task WithdrawNativeAsync(CancellationToken ct);
+    Task<SetupLocalAiUseResult> UseInstalledAsync(LocalAiInstallAndUseIntent intent, CancellationToken ct,
+        IProgress<LocalAiSetupStage>? progress);
 }
 
 public sealed record LocalAiOnboardingSnapshot(
@@ -114,6 +116,37 @@ public sealed class LocalAiSelectionRejectedException(string message) : InvalidO
 /// <summary>The runtime returned after confirming cleanup. No uncertain publication remains.</summary>
 public sealed class LocalAiStartFailedException(string message) : InvalidOperationException(message);
 
+/// <summary>Window-scoped, single-use consent for the exact native installation reviewed by the user.</summary>
+public sealed class LocalAiInstallAndUseIntent
+{
+    private int _consumed;
+    public SetupLocalAiTarget Target { get; }
+    public SetupLocalAiUseResult Expected { get; }
+    public bool IsConsumed => Volatile.Read(ref _consumed) != 0;
+
+    public LocalAiInstallAndUseIntent(SetupLocalAiTarget target, string modelCatalogId, int requestedPort)
+    {
+        if (!target.IsNative || string.IsNullOrWhiteSpace(target.EndpointBinding) ||
+            string.IsNullOrWhiteSpace(modelCatalogId) || requestedPort is < 0 or > 65535)
+            throw new LocalAiSelectionRejectedException("Review the native Gateway and Local AI model before installing.");
+        Target = target with { ModelCatalogId = modelCatalogId, RequestedLocalAiPort = requestedPort };
+        Expected = new(target.GatewayId, $"llamacpp/{modelCatalogId}");
+    }
+
+    public void Consume()
+    {
+        if (Interlocked.Exchange(ref _consumed, 1) != 0)
+            throw new LocalAiSelectionRejectedException("This Local AI installation action has already been attempted.");
+    }
+
+    public void RequireInstalledSelection(LocalAiOnboardingSnapshot current)
+    {
+        if (!current.CanUse || current.Target != Target || current.ModelRef != Expected.ModelRef ||
+            string.IsNullOrWhiteSpace(current.ReceiptIdentity))
+            throw new LocalAiSelectionRejectedException("The reviewed Gateway or installed Local AI model changed. Review Local AI again.");
+    }
+}
+
 /// <summary>
 /// Owns the explicit local mutation independently of bounded discovery/connection requests.
 /// An uncertain result retains both identities and may only be reconciled, never replayed.
@@ -129,15 +162,25 @@ public sealed class LocalAiOnboardingUse(ISetupLocalAiHost host)
         if (Expected is not null)
             throw new InvalidOperationException("Reconcile the selected Local AI Gateway and model before another action.");
         Expected = new(selected.Target!.GatewayId, selected.ModelRef!);
-        return _mutation = UseCoreAsync(selected, ct, progress);
+        return _mutation = UseCoreAsync(() => host.UseAsync(selected, ct, progress));
     }
 
-    private async Task UseCoreAsync(LocalAiOnboardingSnapshot selected, CancellationToken ct,
-        IProgress<LocalAiSetupStage>? progress)
+    public Task UseInstalledAsync(LocalAiInstallAndUseIntent intent, CancellationToken ct,
+        IProgress<LocalAiSetupStage>? progress = null)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (Expected is not null || host is not INativeSetupLocalAiHost native)
+            throw new LocalAiSelectionRejectedException("Reconnect the selected native Gateway before continuing Local AI setup.");
+        intent.Consume();
+        Expected = intent.Expected;
+        return _mutation = UseCoreAsync(() => native.UseInstalledAsync(intent, ct, progress));
+    }
+
+    private async Task UseCoreAsync(Func<Task<SetupLocalAiUseResult>> action)
     {
         try
         {
-            var used = await host.UseAsync(selected, ct, progress);
+            var used = await action();
             if (used != Expected)
                 throw new InvalidDataException("Local AI returned a different Gateway or model.");
         }

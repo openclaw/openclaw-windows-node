@@ -2,6 +2,34 @@ namespace OpenClaw.SetupEngine.Tests;
 
 public sealed class SetupAccessDraftTests
 {
+    [Fact]
+    public void ExistingNativeLocalAi_BindsExactGatewayWithoutWslFinalizationOrSettingsReplacement()
+    {
+        var config = new SetupConfig();
+        var draft = new SetupAccessDraft(config);
+        draft.ApplyProfile(SetupCapabilityProfile.ReadOnly);
+        draft.SetNodeMode(false);
+        draft.SetMcpServer(true);
+        var settings = System.Text.Json.JsonSerializer.Serialize(config.Settings);
+        var record = new OpenClaw.Connection.GatewayRecord
+        {
+            Id = "native-owner", Url = "ws://127.0.0.1:55123",
+            NativePackageFamilyName = "native-package",
+            NativeRuntimeContract = OpenClaw.Connection.NativeGateway.NativeGatewayPackageClient.IsolatedContract
+        };
+        draft.SelectExistingNativeGateway(record);
+        Assert.Equal(SetupGatewayRoute.Existing, draft.Route);
+        Assert.True(draft.IsExistingNativeLocalAi);
+        Assert.True(draft.GatewayAvailable);
+        Assert.False(OnboardingFlowPolicy.UsesWslWorkspaceFinalization(draft.Route));
+        Assert.Equal(record.Id, draft.NativeGatewayId);
+        Assert.Equal(record.Url, config.GatewayUrl);
+        Assert.Equal(OpenClaw.Connection.GatewayDashboardBinding.Capture(record), draft.NativeEndpointBinding);
+        Assert.Equal(settings, System.Text.Json.JsonSerializer.Serialize(config.Settings));
+        draft.SelectRoute(SetupGatewayRoute.ManagedWsl);
+        Assert.False(draft.IsExistingNativeLocalAi);
+    }
+
     [Theory]
     [InlineData(SetupGatewayRoute.Existing)]
     [InlineData(SetupGatewayRoute.Remote)]

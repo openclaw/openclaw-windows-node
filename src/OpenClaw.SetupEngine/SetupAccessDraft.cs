@@ -71,6 +71,7 @@ public sealed class SetupAccessDraft
     public SetupNativeConnectionRequest NativeConnectionRequest { get; set; } = new();
     public string? NativeGatewayId { get; private set; }
     public string? NativeEndpointBinding { get; private set; }
+    public bool IsExistingNativeLocalAi { get; private set; }
     public bool CapabilityControlsEnabled => Config.Settings.EnableNodeMode || Config.Settings.EnableMcpServer == true;
     public bool BrowserAvailable => Config.Settings.EnableNodeMode && GatewayAvailable;
     public SetupCapabilityProfile Profile => IsCustomizingCapabilities
@@ -106,6 +107,7 @@ public sealed class SetupAccessDraft
 
     public void SelectRoute(SetupGatewayRoute route, bool gatewayAvailable = false)
     {
+        IsExistingNativeLocalAi = false;
         if (route == SetupGatewayRoute.ManagedWsl && Route != SetupGatewayRoute.ManagedWsl)
             Config.GatewayUrl = _managedGatewayUrl;
         if (route != Route)
@@ -130,6 +132,18 @@ public sealed class SetupAccessDraft
         NativeGatewayId = result.GatewayId;
         NativeEndpointBinding = result.EndpointBinding;
         return true;
+    }
+
+    public void SelectExistingNativeGateway(OpenClaw.Connection.GatewayRecord record)
+    {
+        ArgumentNullException.ThrowIfNull(record);
+        if (record.NativePackageFamilyName is null ||
+            record.NativeRuntimeContract != OpenClaw.Connection.NativeGateway.NativeGatewayPackageClient.IsolatedContract ||
+            !TryAcceptNativeConnection(SetupGatewayRoute.Existing,
+                new(true, true, record.Id, record.Url,
+                    EndpointBinding: OpenClaw.Connection.GatewayDashboardBinding.Capture(record))))
+            throw new InvalidOperationException("Local AI setup requires an existing isolated native Gateway.");
+        IsExistingNativeLocalAi = true;
     }
 
     public void ClearNativeConnectionSecrets() =>

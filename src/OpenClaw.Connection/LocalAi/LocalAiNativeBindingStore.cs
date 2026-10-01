@@ -10,7 +10,8 @@ public sealed record LocalAiNativeBinding(
     string? PreviousPrimary,
     string ConfigHash,
     bool AddedAllowlistEntry,
-    bool Pending = false);
+    bool Pending = false,
+    bool AutomaticRecoveryEnabled = true);
 
 /// <summary>
 /// Separate from the portable artifact receipt. The write-ahead pending flag survives
