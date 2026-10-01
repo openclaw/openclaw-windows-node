@@ -8,6 +8,11 @@ public enum LocalAiOnboardingState
     Checking, SetUp, StartAndUse, Use, Repair, BusyGpu, Unsupported, Unknown, UnsupportedGateway, Working
 }
 
+public enum LocalAiSetupStage
+{
+    CheckingHardware, CheckingFiles, PreparingGateway, StartingRuntime, PublishingProvider
+}
+
 /// <summary>The exact existing Gateway, not a request to create or replace one.</summary>
 public sealed record SetupLocalAiTarget(
     string GatewayId, string DistroName, int GatewayPort,
@@ -118,19 +123,21 @@ public sealed class LocalAiOnboardingUse(ISetupLocalAiHost host)
     private Task _mutation = Task.CompletedTask;
     public SetupLocalAiUseResult? Expected { get; private set; }
 
-    public Task UseAsync(LocalAiOnboardingSnapshot selected, CancellationToken ct)
+    public Task UseAsync(LocalAiOnboardingSnapshot selected, CancellationToken ct,
+        IProgress<LocalAiSetupStage>? progress = null)
     {
         if (Expected is not null)
             throw new InvalidOperationException("Reconcile the selected Local AI Gateway and model before another action.");
         Expected = new(selected.Target!.GatewayId, selected.ModelRef!);
-        return _mutation = UseCoreAsync(selected, ct);
+        return _mutation = UseCoreAsync(selected, ct, progress);
     }
 
-    private async Task UseCoreAsync(LocalAiOnboardingSnapshot selected, CancellationToken ct)
+    private async Task UseCoreAsync(LocalAiOnboardingSnapshot selected, CancellationToken ct,
+        IProgress<LocalAiSetupStage>? progress)
     {
         try
         {
-            var used = await host.UseAsync(selected, ct);
+            var used = await host.UseAsync(selected, ct, progress);
             if (used != Expected)
                 throw new InvalidDataException("Local AI returned a different Gateway or model.");
         }
@@ -166,8 +173,12 @@ public interface ISetupLocalAiHost
     OpenClaw.Connection.GatewayRegistrySnapshot BeginGatewaySetup();
     Task ReconcileGatewaySetupAsync(OpenClaw.Connection.GatewayRegistrySnapshot expectedOutput, string? completedGatewayId);
     Task<LocalAiOnboardingSnapshot> ObserveAsync(CancellationToken ct);
+    Task<LocalAiOnboardingSnapshot> ObserveAsync(CancellationToken ct, IProgress<LocalAiSetupStage>? progress)
+        => ObserveAsync(ct);
     Task<SetupLocalAiTarget> RevalidateReviewAsync(LocalAiOnboardingSnapshot selected, CancellationToken ct);
     Task<SetupLocalAiUseResult> UseAsync(LocalAiOnboardingSnapshot selected, CancellationToken ct);
+    Task<SetupLocalAiUseResult> UseAsync(LocalAiOnboardingSnapshot selected, CancellationToken ct,
+        IProgress<LocalAiSetupStage>? progress) => UseAsync(selected, ct);
 }
 
 /// <summary>Independent, generation-fenced page observation. No install or runtime mutation port is used here.</summary>
@@ -180,7 +191,9 @@ public sealed class LocalAiOnboardingObservation(ISetupLocalAiHost host) : IAsyn
     public LocalAiOnboardingSnapshot Snapshot { get; private set; } = new(LocalAiOnboardingState.Checking);
     public event Action? Changed;
 
-    public Task RefreshAsync()
+    public Task RefreshAsync() => RefreshAsync(null);
+
+    public Task RefreshAsync(IProgress<LocalAiSetupStage>? progress)
     {
         ObjectDisposedException.ThrowIf(_closed, this);
         _request?.Cancel();
@@ -189,22 +202,31 @@ public sealed class LocalAiOnboardingObservation(ISetupLocalAiHost host) : IAsyn
         var generation = ++_generation;
         Snapshot = new(LocalAiOnboardingState.Checking);
         Changed?.Invoke();
-        var task = ObserveAsync(generation, _request.Token);
+        var task = ObserveAsync(generation, _request.Token, progress);
         _requests.RemoveAll(request => request.IsCompleted);
         _requests.Add(task);
         return task;
     }
 
-    private async Task ObserveAsync(long generation, CancellationToken ct)
+    private async Task ObserveAsync(long generation, CancellationToken ct, IProgress<LocalAiSetupStage>? progress)
     {
         LocalAiOnboardingSnapshot result;
-        try { result = await host.ObserveAsync(ct); }
+        var finished = false;
+        try
+        {
+            result = await host.ObserveAsync(ct, new SynchronousProgress<LocalAiSetupStage>(stage =>
+            {
+                if (!finished && !_closed && !ct.IsCancellationRequested && generation == _generation)
+                    progress?.Report(stage);
+            }));
+        }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
         catch (Exception ex)
         {
             System.Diagnostics.Trace.TraceWarning("Local AI observation failed ({0}).", ex.GetType().Name);
             result = new(LocalAiOnboardingState.Unknown);
         }
+        finally { finished = true; }
         if (_closed || ct.IsCancellationRequested || generation != _generation)
             return;
         Snapshot = result;

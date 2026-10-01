@@ -13,6 +13,75 @@ namespace OpenClaw.SetupEngine.Tests;
 
 public sealed class NativeLocalAiLifecycleTests
 {
+    [Fact]
+    public async Task HandoffIgnoresStaleCompletedRecoveryAndJoinsTheNextRecovery()
+    {
+        var install = LocalAiOnboardingTests.Install();
+        var runtime = new LocalAiOnboardingTests.FakeRuntime(
+            LocalAiOnboardingTests.RuntimeSnapshot(install, LocalAiRuntimeState.Stopped));
+        Task recovery = Task.CompletedTask;
+        var joined = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var waiting = LocalAiGatewayLifecycle.WaitForRecoveryAsync(
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install), runtime, () =>
+            {
+                if (!recovery.IsCompleted) joined.TrySetResult();
+                return recovery;
+            }, default);
+        Assert.False(waiting.IsCompleted);
+        var next = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        recovery = next.Task;
+        await joined.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        runtime.Snapshot = LocalAiOnboardingTests.RuntimeSnapshot(install, LocalAiRuntimeState.Healthy);
+        Assert.False(waiting.IsCompleted);
+        next.SetResult();
+        await waiting.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(0, runtime.Calls);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task HandoffWaitsForOwnedRuntimeWithoutStartingOrReplayingIt(bool cancel)
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        var writes = fixture.Rpc.Writes;
+        var runtime = new LocalAiOnboardingTests.FakeRuntime(
+            LocalAiOnboardingTests.RuntimeSnapshot(fixture.Install, LocalAiRuntimeState.Stopped));
+        var completion = new GatewayAiSetupCompletion(SetupCompletionIntent.CustodianOnboarding,
+            Record.Id, GatewayDashboardBinding.Capture(Record), fixture.Model, "main", 1);
+        using var cancellation = new CancellationTokenSource();
+        var waiting = fixture.Lifecycle.WaitForRuntimeAsync(completion, runtime, cancellation.Token);
+        Assert.False(waiting.IsCompleted);
+        if (cancel)
+        {
+            cancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => waiting);
+        }
+        else
+        {
+            runtime.Snapshot = LocalAiOnboardingTests.RuntimeSnapshot(fixture.Install, LocalAiRuntimeState.Healthy);
+            await waiting.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        Assert.Equal(0, runtime.Calls);
+        Assert.Equal(writes, fixture.Rpc.Writes);
+    }
+
+    [Fact]
+    public async Task HandoffCannotTreatAnotherLoadedModelAsTheOwnedRuntime()
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        var runtime = new LocalAiOnboardingTests.FakeRuntime(
+            LocalAiOnboardingTests.RuntimeSnapshot(fixture.Install, LocalAiRuntimeState.Healthy) with { ModelId = "different" });
+        var completion = new GatewayAiSetupCompletion(SetupCompletionIntent.CustodianOnboarding,
+            Record.Id, GatewayDashboardBinding.Capture(Record), fixture.Model, "main", 1);
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            fixture.Lifecycle.WaitForRuntimeAsync(completion, runtime, default));
+        Assert.Equal(0, runtime.Calls);
+        Assert.Equal(0, fixture.Rpc.Writes);
+    }
+
     private static readonly GatewayRecord Record = new()
     {
         Id = "native-local-ai", IsLocal = true, Url = "ws://127.0.0.1:55060",

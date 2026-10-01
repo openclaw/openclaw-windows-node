@@ -21,6 +21,7 @@ internal sealed class LocalAiGatewayLifecycle(
     private NativeLocalAiGatewayTarget? _registeredTarget;
     private IGatewayAiSetupTransport? _registeredTransport;
     private int _resuming;
+    private Task? _resumeTask;
     private sealed record EndpointRecovery(string GatewayId, string ModelRef, Uri Endpoint, string ConfigHash);
     private EndpointRecovery? _endpointRecovery;
 
@@ -92,8 +93,38 @@ internal sealed class LocalAiGatewayLifecycle(
         {
             if (snapshot.OperatorState == RoleConnectionState.Connected && _store.Exists &&
                 Interlocked.CompareExchange(ref _resuming, 1, 0) == 0)
-                _ = ResumeAsync(runtime);
+                Volatile.Write(ref _resumeTask, ResumeAsync(runtime));
         };
+    }
+
+    public Task WaitForRuntimeAsync(GatewayAiSetupCompletion expected, ILocalAiRuntime runtime, CancellationToken ct)
+    {
+        var binding = _store.Load();
+        if (binding is null || binding.GatewayId != expected.GatewayId || binding.ModelRef != expected.ModelRef)
+            return Task.CompletedTask;
+        return WaitForRecoveryAsync(expected.ModelRef, runtime, () => Volatile.Read(ref _resumeTask), ct);
+    }
+
+    internal static async Task WaitForRecoveryAsync(string expectedModelRef, ILocalAiRuntime runtime,
+        Func<Task?> getRecoveryTask, CancellationToken ct)
+    {
+        // Only join recovery already admitted by the connection owner. Handoff
+        // cannot replay a pending write or start a different Gateway's runtime.
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (getRecoveryTask() is { IsCompleted: false } recovery)
+            {
+                await recovery.WaitAsync(ct).ConfigureAwait(false);
+                continue;
+            }
+            if (runtime.Snapshot.State == LocalAiRuntimeState.Healthy) break;
+            await Task.Delay(100, ct).ConfigureAwait(false);
+        }
+        ct.ThrowIfCancellationRequested();
+        if (runtime.Snapshot is not { State: LocalAiRuntimeState.Healthy, Ownership: LocalAiOwnership.CompanionManaged } ready ||
+            "llamacpp/" + ready.ModelId != expectedModelRef)
+            throw new InvalidOperationException("The selected Local AI runtime is not ready after Gateway reconnection.");
     }
 
     private async Task ResumeAsync(ILocalAiRuntime runtime)

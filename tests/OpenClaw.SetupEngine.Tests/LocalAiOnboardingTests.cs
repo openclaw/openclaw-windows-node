@@ -172,15 +172,22 @@ public sealed class LocalAiOnboardingTests
         var second = new TaskCompletionSource<LocalAiOnboardingSnapshot>();
         var host = new ObservationHost(first.Task, second.Task);
         await using var observation = new LocalAiOnboardingObservation(host);
-        var firstRequest = observation.RefreshAsync();
-        var secondRequest = observation.RefreshAsync();
+        var stages = new List<LocalAiSetupStage>();
+        var progress = new SynchronousProgress<LocalAiSetupStage>(stages.Add);
+        var firstRequest = observation.RefreshAsync(progress);
+        host.Progress[0]!.Report(LocalAiSetupStage.CheckingHardware);
+        var secondRequest = observation.RefreshAsync(progress);
         Assert.True(host.Tokens[0].IsCancellationRequested);
+        host.Progress[0]!.Report(LocalAiSetupStage.CheckingFiles);
+        host.Progress[1]!.Report(LocalAiSetupStage.CheckingHardware);
         second.SetResult(new(LocalAiOnboardingState.SetUp, Target));
         await secondRequest;
+        host.Progress[1]!.Report(LocalAiSetupStage.CheckingFiles);
         first.SetResult(new(LocalAiOnboardingState.Repair, Target));
         await firstRequest;
         Assert.Equal(LocalAiOnboardingState.SetUp, observation.Snapshot.State);
         Assert.Equal(0, host.Mutations);
+        Assert.Equal([LocalAiSetupStage.CheckingHardware, LocalAiSetupStage.CheckingHardware], stages);
     }
 
     [Fact]
@@ -565,18 +572,27 @@ public sealed class LocalAiOnboardingTests
             () => new(commands, new LocalAiGatewayDistroResolver(registry), NullLogger.Instance));
         var selected = await host.ObserveAsync(CancellationToken.None);
         Assert.Equal(0, commands.Reads);
+        var stages = new List<LocalAiSetupStage>();
+        var progress = new SynchronousProgress<LocalAiSetupStage>(stages.Add);
         if (drifted)
         {
-            await Assert.ThrowsAsync<LocalAiSelectionRejectedException>(() => host.UseAsync(selected, CancellationToken.None));
+            await Assert.ThrowsAsync<LocalAiSelectionRejectedException>(() => host.UseAsync(selected, CancellationToken.None, progress));
             Assert.Equal(0, runtime.Calls);
+            Assert.Equal([LocalAiSetupStage.CheckingHardware, LocalAiSetupStage.CheckingFiles,
+                LocalAiSetupStage.PreparingGateway], stages);
         }
         else
         {
-            var result = await host.UseAsync(selected, CancellationToken.None);
+            var use = new LocalAiOnboardingUse(host);
+            await use.UseAsync(selected, CancellationToken.None, progress);
+            var result = use.Expected!;
             Assert.Equal("gateway", result.GatewayId);
             Assert.Equal(selected.ModelRef, result.ModelRef);
             Assert.Equal(1, runtime.Calls);
             Assert.Equal(4, commands.Reads);
+            Assert.Equal([LocalAiSetupStage.CheckingHardware, LocalAiSetupStage.CheckingFiles,
+                LocalAiSetupStage.PreparingGateway, LocalAiSetupStage.StartingRuntime,
+                LocalAiSetupStage.PublishingProvider], stages);
         }
     }
 
@@ -641,18 +657,18 @@ public sealed class LocalAiOnboardingTests
         }, "llama-server.exe", "test.gguf", endpoint);
     }
 
-    private static LocalAiRuntimeSnapshot RuntimeSnapshot(LocalAiResolvedInstall install, LocalAiRuntimeState state) =>
+    internal static LocalAiRuntimeSnapshot RuntimeSnapshot(LocalAiResolvedInstall install, LocalAiRuntimeState state) =>
         new(state, state == LocalAiRuntimeState.Healthy ? LocalAiOwnership.CompanionManaged : LocalAiOwnership.None,
             install.Endpoint!, "test", install.Manifest.ModelCatalogId,
             new(LocalAiModelAvailabilityState.Verified, DateTimeOffset.UtcNow, new string('a', 64), 1),
             null, null, null, DateTimeOffset.UtcNow);
 
-    private sealed class FakeRuntime(LocalAiRuntimeSnapshot snapshot) : ILocalAiRuntime
+    internal sealed class FakeRuntime(LocalAiRuntimeSnapshot snapshot) : ILocalAiRuntime
     {
         public int Calls { get; private set; }
         public Action? OnStart { get; init; }
         public LocalAiRuntimeSnapshot? StartResult { get; init; }
-        public LocalAiRuntimeSnapshot Snapshot { get; private set; } = snapshot;
+        public LocalAiRuntimeSnapshot Snapshot { get; set; } = snapshot;
         public event EventHandler<LocalAiRuntimeSnapshotChangedEventArgs>? StateChanged { add { } remove { } }
         public Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken = default)
         { Calls++; OnStart?.Invoke(); Snapshot = StartResult ?? Snapshot; return Task.FromResult(Snapshot); }
@@ -671,9 +687,12 @@ public sealed class LocalAiOnboardingTests
         public Task ReconcileGatewaySetupAsync(GatewayRegistrySnapshot expectedOutput, string? completedGatewayId) => throw new InvalidOperationException();
         private readonly Queue<Task<LocalAiOnboardingSnapshot>> _results = new(results);
         public List<CancellationToken> Tokens { get; } = [];
+        public List<IProgress<LocalAiSetupStage>?> Progress { get; } = [];
         public int Mutations { get; private set; }
         public Task<LocalAiOnboardingSnapshot> ObserveAsync(CancellationToken ct)
         { Tokens.Add(ct); return _results.Dequeue(); }
+        public Task<LocalAiOnboardingSnapshot> ObserveAsync(CancellationToken ct, IProgress<LocalAiSetupStage>? progress)
+        { Progress.Add(progress); return ObserveAsync(ct); }
         public Task<SetupLocalAiTarget> RevalidateReviewAsync(LocalAiOnboardingSnapshot selected, CancellationToken ct)
         { Mutations++; throw new InvalidOperationException(); }
         public Task<SetupLocalAiUseResult> UseAsync(LocalAiOnboardingSnapshot selected, CancellationToken ct)

@@ -66,6 +66,19 @@
         <ScrollViewer x:Name="ChoicesScroller" Grid.Row="1" Margin="0,24,0,16" VerticalScrollBarVisibility="Auto">
             <StackPanel Spacing="12">
                 <InfoBar x:Name="ErrorBar" IsOpen="False" IsClosable="False" Severity="Error" />
+                <ItemsControl x:Name="SetupActivitySteps" Visibility="Collapsed"
+                              AutomationProperties.AutomationId="OnboardingAiProgress">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="0,4">
+                                <TextBlock Text="{Binding Description}" TextWrapping="Wrap"
+                                           Style="{StaticResource CaptionTextBlockStyle}" />
+                                <TextBlock Grid.Column="1" Text="{Binding Status}"
+                                           Style="{StaticResource CaptionTextBlockStyle}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
                 <TextBlock x:Name="CandidatesHeading" Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
                 <StackPanel x:Name="LocalAiSection" Spacing="8">
                     <tk:SettingsCard x:Name="LocalAiCard" IsClickEnabled="False" Click="LocalAi_Click"

@@ -7250,6 +7250,14 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_AiSetup_Legacy.Content" xml:space="preserve"><value>Use classic setup</value></data>
   <data name="Onboarding_AiSetup_Continue.Content" xml:space="preserve"><value>Continue</value></data>
   <data name="Onboarding_AiSetup_Connecting" xml:space="preserve"><value>Connecting to your gateway...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_CheckingHardware" xml:space="preserve"><value>Checking NVIDIA GPU memory and CUDA support...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_CheckingFiles" xml:space="preserve"><value>Verifying llama.cpp and downloaded model files. Large models can take a minute or more; no download is needed for intact files.</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_PreparingGateway" xml:space="preserve"><value>Checking the selected Gateway and its Local AI configuration...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_StartingRuntime" xml:space="preserve"><value>Starting llama-server and checking the model. Loading the model into GPU memory can take a while...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_PublishingProvider" xml:space="preserve"><value>Confirming the Local AI provider and primary model in your Gateway...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_Verifying" xml:space="preserve"><value>Testing a real response from the selected model through your Gateway...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_Detecting" xml:space="preserve"><value>Discovering configured models and AI providers...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_Console" xml:space="preserve"><value>Opening the isolated Gateway diagnostic console...</value></data>
   <data name="Onboarding_AiSetup_Choose" xml:space="preserve"><value>Choose a model or connect an AI provider.</value></data>
   <data name="Onboarding_AiSetup_Running" xml:space="preserve"><value>Follow your provider's setup steps.</value></data>
   <data name="Onboarding_AiSetup_Verifying" xml:space="preserve"><value>Your model was saved. Verifying the current gateway connection.</value></data>

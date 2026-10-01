@@ -5,7 +5,7 @@ using OpenClaw.SetupEngine;
 
 namespace OpenClawTray.Services;
 
-internal enum SetupHandoffAcquisitionStatus { Acquired, Busy, Invalid, Unavailable }
+internal enum SetupHandoffAcquisitionStatus { Acquired, Busy, Invalid, Unavailable, RetryRequired }
 
 internal sealed record SetupHandoffAcquisition(
     SetupHandoffAcquisitionStatus Status, SetupDashboardHandoffStore.Lease? Lease = null);
@@ -93,7 +93,7 @@ internal sealed class SetupDashboardHandoffStore
                 return new(SetupHandoffAcquisitionStatus.Invalid);
             }
             if (pending.State == "retry" && !explicitRetry)
-                return new(SetupHandoffAcquisitionStatus.Unavailable);
+                return new(SetupHandoffAcquisitionStatus.RetryRequired);
             // A pre-acquisition I/O failure leaves ready unchanged. Explicit retry may
             // admit either unstarted ready or settled retry, never abandoned inflight.
             if (pending.State != "ready" && !(explicitRetry && pending.State == "retry"))
@@ -162,6 +162,7 @@ internal sealed class SetupDashboardHandoffStore
         public SetupNativeTarget? NativeTarget => _pending.NativeTarget;
         public bool IsExpired => _owner._time.GetUtcNow() >= _pending.ExpiresUtc ||
             _owner._time.GetUtcNow() < _pending.IssuedUtc;
+        public TimeSpan RemainingLifetime => _pending.ExpiresUtc - _owner._time.GetUtcNow();
 
         internal Lease(SetupDashboardHandoffStore owner, FileStream gate, PendingRecord pending)
         {

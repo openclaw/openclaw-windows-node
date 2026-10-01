@@ -12,7 +12,7 @@ public sealed class GatewayAiSetupTransport(
 {
     public static async Task<IGatewayAiSetupTransport> BorrowNativeAsync(
         string dataDir, GatewayConnectionManager manager, string gatewayId, CancellationToken ct,
-        string? expectedEndpointBinding = null)
+        string? expectedEndpointBinding = null, TimeSpan? readyTimeout = null)
     {
         var registry = new GatewayRegistry(dataDir);
         registry.Load();
@@ -29,7 +29,7 @@ public sealed class GatewayAiSetupTransport(
                 throw new SetupNativeOwnershipException();
         }
         using var ready = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        ready.CancelAfter(TimeSpan.FromSeconds(20));
+        ready.CancelAfter(readyTimeout ?? TimeSpan.FromSeconds(20));
         while (manager.OperatorClient is not { IsConnectedToGateway: true, HasHandshakeSnapshot: true })
         {
             RequireOwner();

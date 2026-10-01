@@ -11,9 +11,13 @@ internal sealed class SetupNativeHandoffLauncher(
     Func<GatewayRecord?> getActive,
     Func<GatewayAiSetupCompletion, CancellationToken, Task<SetupVerifiedNativeRoute>> verify,
     Func<SetupNativeCompletion, CancellationToken, Task> open,
-    Action<SetupNativeLaunchFailure> reportFailure)
+    Action<SetupNativeLaunchFailure> reportFailure,
+    TimeProvider? timeProvider = null)
 {
     internal const string FailureNotificationId = "setup-native-launch";
+    // Connection startup, model recovery and real inference must fit inside the
+    // five-minute receipt. Do not truncate the model's two-minute RPC to 30 seconds.
+    internal static readonly TimeSpan LaunchTimeout = TimeSpan.FromMinutes(4.5);
 
     public async Task<bool> OpenAsync(SetupDashboardHandoffStore store, string? handle,
         bool explicitRetry = false, CancellationToken ct = default, NativeRestartRecoveryStore? restartRecovery = null)
@@ -22,7 +26,7 @@ internal sealed class SetupNativeHandoffLauncher(
         try
         {
             var acquisition = store.Acquire(handle, explicitRetry);
-            if (acquisition.Status == SetupHandoffAcquisitionStatus.Busy)
+            if (acquisition.Status is SetupHandoffAcquisitionStatus.Busy or SetupHandoffAcquisitionStatus.RetryRequired)
                 return false;
             if (acquisition.Status == SetupHandoffAcquisitionStatus.Unavailable)
                 failure = SetupNativeLaunchFailure.Unavailable;
@@ -40,8 +44,9 @@ internal sealed class SetupNativeHandoffLauncher(
                             throw new SetupNativeOwnershipException();
                     }
                     RequireCurrent();
-                    using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                    timeout.CancelAfter(TimeSpan.FromSeconds(30));
+                    var budget = TimeSpan.FromTicks(Math.Max(0, Math.Min(LaunchTimeout.Ticks, lease.RemainingLifetime.Ticks)));
+                    using var deadline = new CancellationTokenSource(budget, timeProvider ?? TimeProvider.System);
+                    using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct, deadline.Token);
                     var current = await verify(lease.Completion, timeout.Token);
                     SetupNativeVerification.RequireSame(lease.Completion, current);
                     if (current.SessionKey != lease.NativeTarget!.SessionKey)
@@ -55,6 +60,7 @@ internal sealed class SetupNativeHandoffLauncher(
                 }
                 catch (Exception error) when (error is SetupNativeOwnershipException or DeviceIdentityLoadException)
                 {
+                    Logger.Warn($"Native setup destination rejected changed authority ({error.GetType().Name}).");
                     lease.Consume();
                     failure = SetupNativeLaunchFailure.Changed;
                 }
@@ -63,6 +69,7 @@ internal sealed class SetupNativeHandoffLauncher(
                     UnauthorizedAccessException or OperationCanceledException or TimeoutException or ArgumentException or
                     System.Runtime.InteropServices.COMException)
                 {
+                    Logger.Warn($"Native setup destination is unavailable ({error.GetType().Name}); explicit retry is required.");
                     lease.RetainForExplicitRetry();
                     failure = SetupNativeLaunchFailure.Unavailable;
                 }

@@ -3,6 +3,19 @@
 The onboarding wizard can install an app-owned WSL gateway, acquire a native
 Gateway MSIX through Microsoft Store and configure it, or connect to an existing gateway.
 
+Native Local AI setup displays the current phase and completed steps while checking
+GPU readiness, verifying cached runtime/model files, starting the model, publishing
+the provider, reconnecting and testing real Gateway inference. File verification
+can take a minute or more for large models; it is not a download. Artifact acquisition
+retains the installation progress page and its actual download progress.
+
+After setup restarts Companion, destination handoff waits for native connection
+startup and any already-admitted Local AI recovery before fresh model verification.
+The attempt is bounded to four and a half minutes, still subject to the original
+five-minute receipt expiry. A failed attempt remains available for explicit Retry,
+but automatic reactivation does not show the same failure dialog again. Successful
+runtime checks alone do not prove that a full, potentially longer chat turn has finished.
+
 ### Shortened local onboarding (native and WSL)
 
 The shared `WizardOnboardingPolicy` removes optional setup cards from both WinUI

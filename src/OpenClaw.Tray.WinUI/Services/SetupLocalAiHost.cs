@@ -88,7 +88,10 @@ internal sealed class SetupLocalAiHost(
         }
     }
 
-    public async Task<LocalAiOnboardingSnapshot> ObserveAsync(CancellationToken ct)
+    public Task<LocalAiOnboardingSnapshot> ObserveAsync(CancellationToken ct) => ObserveAsync(ct, null);
+
+    public async Task<LocalAiOnboardingSnapshot> ObserveAsync(CancellationToken ct,
+        IProgress<LocalAiSetupStage>? progress)
     {
         SetupLocalAiTarget target;
         if (_nativeRecord is { } native)
@@ -115,11 +118,13 @@ internal sealed class SetupLocalAiHost(
         bool damaged = false;
         try { install = await loadInstall(ct); }
         catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException) { damaged = true; }
+        progress?.Report(LocalAiSetupStage.CheckingHardware);
         var hardware = await probeHardware(ct);
         var eligibility = LocalInferenceEligibility.Evaluate(hardware, install?.Manifest.ModelCatalogId);
         bool verified = false;
         if (install is not null)
         {
+            progress?.Report(LocalAiSetupStage.CheckingFiles);
             try { verified = await inspectFiles(install, ct); }
             catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException) { damaged = true; }
         }
@@ -147,11 +152,15 @@ internal sealed class SetupLocalAiHost(
         return current.Target!;
     }
 
-    public async Task<SetupLocalAiUseResult> UseAsync(LocalAiOnboardingSnapshot selected, CancellationToken ct)
+    public Task<SetupLocalAiUseResult> UseAsync(LocalAiOnboardingSnapshot selected, CancellationToken ct)
+        => UseAsync(selected, ct, null);
+
+    public async Task<SetupLocalAiUseResult> UseAsync(LocalAiOnboardingSnapshot selected, CancellationToken ct,
+        IProgress<LocalAiSetupStage>? progress)
     {
         if (!selected.CanUse)
             throw new LocalAiSelectionRejectedException("The selected Local AI model is not ready to start.");
-        var current = await ObserveAsync(ct);
+        var current = await ObserveAsync(ct, progress);
         RequireSameSelection(selected, current);
         if (!current.CanUse)
             throw new LocalAiSelectionRejectedException("Local AI readiness changed. Check this PC again.");
@@ -160,6 +169,7 @@ internal sealed class SetupLocalAiHost(
         if (Identity(install) != selected.ReceiptIdentity)
             throw new LocalAiSelectionRejectedException("The selected Local AI installation changed.");
         LocalAiGatewayProviderCoordinator? provider = null;
+        progress?.Report(LocalAiSetupStage.PreparingGateway);
         if (selected.Target!.IsNative)
         {
             await _authorizeNative!(ct);
@@ -186,6 +196,7 @@ internal sealed class SetupLocalAiHost(
         try
         {
             RequireActiveTarget(selected.Target!, mutationStarted: false);
+            progress?.Report(LocalAiSetupStage.StartingRuntime);
             started = await runtime.EnsureStartedAsync(ct);
         }
         finally
@@ -204,6 +215,7 @@ internal sealed class SetupLocalAiHost(
             LocalAiGatewayProviderDefinition.BuildPrimaryModel(install) != selected.ModelRef ||
             started.ModelEvidence.State is not (LocalAiModelAvailabilityState.Verified or LocalAiModelAvailabilityState.Loaded))
             throw new InvalidOperationException("The exact managed Local AI model did not become ready.");
+        progress?.Report(LocalAiSetupStage.PublishingProvider);
         var published = selected.Target.IsNative
             ? await nativeLifecycle!.PublishAsync(install, ct)
             : await provider!.PublishAsync(install, ct);

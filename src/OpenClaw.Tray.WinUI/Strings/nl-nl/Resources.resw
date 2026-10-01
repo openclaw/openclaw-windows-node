@@ -7187,6 +7187,14 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   <data name="Onboarding_AiSetup_Legacy.Content" xml:space="preserve"><value>Klassieke installatie</value></data>
   <data name="Onboarding_AiSetup_Continue.Content" xml:space="preserve"><value>Doorgaan</value></data>
   <data name="Onboarding_AiSetup_Connecting" xml:space="preserve"><value>Verbinding maken met je Gateway...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_CheckingHardware" xml:space="preserve"><value>NVIDIA GPU-geheugen en CUDA-ondersteuning controleren...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_CheckingFiles" xml:space="preserve"><value>llama.cpp en gedownloade modelbestanden controleren. Grote modellen kunnen een minuut of langer duren; intacte bestanden hoeven niet opnieuw te worden gedownload.</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_PreparingGateway" xml:space="preserve"><value>De geselecteerde Gateway en de lokale AI-configuratie controleren...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_StartingRuntime" xml:space="preserve"><value>llama-server starten en het model controleren. Het laden in GPU-geheugen kan even duren...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_PublishingProvider" xml:space="preserve"><value>De lokale AI-provider en het primaire model in je Gateway bevestigen...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_Verifying" xml:space="preserve"><value>Een echt antwoord van het geselecteerde model via je Gateway testen...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_Detecting" xml:space="preserve"><value>Geconfigureerde modellen en AI-providers zoeken...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_Console" xml:space="preserve"><value>De diagnostische console van de geïsoleerde Gateway openen...</value></data>
   <data name="Onboarding_AiSetup_Choose" xml:space="preserve"><value>Kies een model of verbind een AI-provider.</value></data>
   <data name="Onboarding_AiSetup_Running" xml:space="preserve"><value>Volg de stappen van je provider.</value></data>
   <data name="Onboarding_AiSetup_Verifying" xml:space="preserve"><value>Model opgeslagen. De huidige Gateway-verbinding wordt gecontroleerd.</value></data>

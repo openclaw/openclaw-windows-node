@@ -126,7 +126,7 @@ public sealed class SetupNativeHandoffTests
         Assert.False(await launcher.OpenAsync(store, handle));
         Assert.Equal(1, attempts);
         Assert.True(await launcher.OpenAsync(store, handle, explicitRetry: true));
-        Assert.Equal(["verify", "open", "failure", "failure", "verify", "open"], calls);
+        Assert.Equal(["verify", "open", "failure", "verify", "open"], calls);
         Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle, explicitRetry: true).Status);
     }
 
@@ -279,7 +279,7 @@ public sealed class SetupNativeHandoffTests
         Assert.Equal(handle, recovery.Read());
         Assert.False(await launcher.OpenAsync(store, handle, restartRecovery: recovery));
         Assert.Equal(1, attempts);
-        Assert.Equal([SetupNativeLaunchFailure.Unavailable, SetupNativeLaunchFailure.Unavailable], failures);
+        Assert.Equal([SetupNativeLaunchFailure.Unavailable], failures);
         Assert.Equal(handle, recovery.Read());
         Assert.True(await launcher.OpenAsync(store, handle, explicitRetry: true, restartRecovery: recovery));
         Assert.Equal(2, attempts);
@@ -359,5 +359,87 @@ public sealed class SetupNativeHandoffTests
     {
         public DateTimeOffset Now { get; set; } = new(2026, 9, 24, 12, 0, 0, TimeSpan.Zero);
         public override DateTimeOffset GetUtcNow() => Now;
+        public TimeSpan? Deadline { get; private set; }
+        public Action? Expire { get; private set; }
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            Deadline = dueTime;
+            Expire = () => callback(state);
+            return base.CreateTimer(callback, state, dueTime, period);
+        }
+    }
+
+    [Fact]
+    public async Task ColdStartupAndRealInferenceHaveTimeToFinishBeforeOpening()
+    {
+        using var temp = new TempDirectory();
+        var clock = new Clock();
+        var store = new SetupDashboardHandoffStore(temp.Path, clock);
+        var handle = store.Issue(Choice);
+        var opened = false;
+        var launcher = new SetupNativeHandoffLauncher(() => Gateway,
+            (_, ct) =>
+            {
+                Assert.Equal(TimeSpan.FromMinutes(4.5), clock.Deadline);
+                clock.Now += TimeSpan.FromSeconds(60 + 120);
+                Assert.False(ct.IsCancellationRequested);
+                return Task.FromResult(new SetupVerifiedNativeRoute(Proof, Choice.Target.SessionKey));
+            },
+            (_, _) => { opened = true; return Task.CompletedTask; },
+            _ => Assert.Fail("Cold startup should not produce a premature dialog."), clock);
+        Assert.True(await launcher.OpenAsync(store, handle));
+        Assert.True(opened);
+    }
+
+    [Fact]
+    public async Task DeadlineStopsVerificationAndAutomaticActivationDoesNotRepeatTheDialog()
+    {
+        using var temp = new TempDirectory();
+        var clock = new Clock();
+        var store = new SetupDashboardHandoffStore(temp.Path, clock);
+        var handle = store.Issue(Choice);
+        var failures = new List<SetupNativeLaunchFailure>();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var launcher = new SetupNativeHandoffLauncher(() => Gateway,
+            async (_, ct) =>
+            {
+                entered.SetResult();
+                await Task.Delay(Timeout.Infinite, ct);
+                throw new InvalidOperationException("Verification must be cancelled.");
+            },
+            (_, _) => throw new InvalidOperationException("Must not open before verification."),
+            failures.Add, clock);
+        var attempt = launcher.OpenAsync(store, handle);
+        await entered.Task;
+        clock.Expire!();
+        Assert.False(await attempt);
+        Assert.Equal(SetupHandoffAcquisitionStatus.RetryRequired, store.Acquire(handle).Status);
+        Assert.False(await launcher.OpenAsync(store, handle));
+        Assert.Single(failures);
+        using var retry = store.Acquire(handle, explicitRetry: true).Lease;
+        Assert.NotNull(retry);
+        retry.Consume();
+    }
+
+    [Fact]
+    public async Task DelayedAcquisitionCannotExtendTheOriginalReceiptLifetime()
+    {
+        using var temp = new TempDirectory();
+        var clock = new Clock();
+        var store = new SetupDashboardHandoffStore(temp.Path, clock);
+        var handle = store.Issue(Choice);
+        clock.Now += TimeSpan.FromMinutes(4);
+        var launcher = new SetupNativeHandoffLauncher(() => Gateway,
+            (_, ct) =>
+            {
+                Assert.Equal(TimeSpan.FromMinutes(1), clock.Deadline);
+                clock.Now += TimeSpan.FromMinutes(1);
+                clock.Expire!();
+                ct.ThrowIfCancellationRequested();
+                throw new InvalidOperationException("An expired receipt must not verify.");
+            }, (_, _) => throw new InvalidOperationException("Must not open."),
+            failure => Assert.Equal(SetupNativeLaunchFailure.Unavailable, failure), clock);
+        Assert.False(await launcher.OpenAsync(store, handle));
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle, explicitRetry: true).Status);
     }
 }

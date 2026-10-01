@@ -6,7 +6,8 @@ public static class SetupNativeCompletionVerifier
 {
     public static async Task<SetupVerifiedNativeRoute> VerifyAsync(
         string dataDir, GatewayAiSetupCompletion expected, CancellationToken ct,
-        GatewayConnectionManager? connectionManager = null)
+        GatewayConnectionManager? connectionManager = null,
+        Func<GatewayAiSetupCompletion, CancellationToken, Task>? waitForModel = null)
     {
         void RequireOwner()
         {
@@ -21,8 +22,18 @@ public static class SetupNativeCompletionVerifier
             if (connectionManager is null)
                 throw new InvalidOperationException("The native Gateway connection owner is unavailable.");
             var transport = await GatewayAiSetupTransport.BorrowNativeAsync(dataDir, connectionManager, native.Id, ct,
-                expected.EndpointBinding);
+                expected.EndpointBinding, TimeSpan.FromMinutes(2));
             SetupNativeVerification.RequireRoute(expected, transport.Route);
+            if (waitForModel is not null)
+            {
+                await waitForModel(expected, ct);
+                RequireOwner();
+                // Model recovery can publish a new port and restart the Gateway.
+                // Never verify on the pre-recovery handshake.
+                transport = await GatewayAiSetupTransport.BorrowNativeAsync(dataDir, connectionManager, native.Id, ct,
+                    expected.EndpointBinding, TimeSpan.FromMinutes(2));
+                SetupNativeVerification.RequireRoute(expected, transport.Route);
+            }
             var nativeClient = new GatewayAiSetupClient(transport, expected.ModelRef, expected.Intent);
             var current = new SetupVerifiedNativeRoute(
                 await VerifyModelAsync(nativeClient, expected.ModelRef, ct), transport.Route.SessionKey ?? "");

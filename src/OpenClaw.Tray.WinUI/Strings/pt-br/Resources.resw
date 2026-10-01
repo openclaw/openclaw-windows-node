@@ -7240,6 +7240,14 @@ O binário wxc-exec não pôde ser localizado. {1} Se esta for uma build de dese
   <data name="Onboarding_AiSetup_Legacy.Content" xml:space="preserve"><value>Configuração clássica</value></data>
   <data name="Onboarding_AiSetup_Continue.Content" xml:space="preserve"><value>Continuar</value></data>
   <data name="Onboarding_AiSetup_Connecting" xml:space="preserve"><value>Conectando ao seu Gateway...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_CheckingHardware" xml:space="preserve"><value>Verificando a memória da GPU NVIDIA e o suporte a CUDA...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_CheckingFiles" xml:space="preserve"><value>Verificando llama.cpp e os arquivos de modelo baixados. Modelos grandes podem levar um minuto ou mais; arquivos íntegros não precisam ser baixados novamente.</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_PreparingGateway" xml:space="preserve"><value>Verificando o Gateway selecionado e sua configuração de IA local...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_StartingRuntime" xml:space="preserve"><value>Iniciando llama-server e verificando o modelo. Carregar o modelo na memória da GPU pode demorar...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_PublishingProvider" xml:space="preserve"><value>Confirmando o provedor de IA local e o modelo principal no Gateway...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_Verifying" xml:space="preserve"><value>Testando uma resposta real do modelo selecionado pelo Gateway...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_Detecting" xml:space="preserve"><value>Buscando modelos configurados e provedores de IA...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_Console" xml:space="preserve"><value>Abrindo o console de diagnóstico do Gateway isolado...</value></data>
   <data name="Onboarding_AiSetup_Choose" xml:space="preserve"><value>Escolha um modelo ou conecte um provedor de IA.</value></data>
   <data name="Onboarding_AiSetup_Running" xml:space="preserve"><value>Siga as etapas do seu provedor.</value></data>
   <data name="Onboarding_AiSetup_Verifying" xml:space="preserve"><value>Modelo salvo. Verificando a conexão atual com o Gateway.</value></data>

@@ -5,6 +5,33 @@ namespace OpenClaw.Tray.Tests;
 
 public sealed class NativeGatewaySetupUxContractTests
 {
+    [Fact]
+    public void FocusedLocalAiShowsActualPhasesAndFencesLateProgress()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var pages = Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages");
+        var source = File.ReadAllText(Path.Combine(pages, "AiSetupPage.xaml.cs"));
+        Assert.Contains("await _localUse!.UseAsync(selected, ct, CreateLocalProgress(ct))", source);
+        Assert.Contains("_localObservation.RefreshAsync(CreateLocalProgress(ct))", source);
+        Assert.Contains("generation == _generation && scope == _progressScope", source);
+        Assert.Contains("if (DispatcherQueue.HasThreadAccess) Apply();", source);
+        Assert.Contains("finally { ++_progressScope; }", source);
+        Assert.Contains("if (_localObservation is not null && _localExpectedModel is null)", source);
+        Assert.Contains("SetActivity(\"LocalProgress_Verifying\")", source);
+        Assert.Contains("SetActivity(\"LocalProgress_Detecting\")", source);
+        var document = XDocument.Load(Path.Combine(pages, "AiSetupPage.xaml"));
+        Assert.Contains(document.Descendants(), element =>
+            (string?)element.Attribute("AutomationProperties.AutomationId") == "OnboardingAiProgress");
+        foreach (var directory in Directory.GetDirectories(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Strings")))
+        {
+            var resources = XDocument.Load(Path.Combine(directory, "Resources.resw"));
+            foreach (var stage in new[] { "CheckingHardware", "CheckingFiles", "PreparingGateway",
+                         "StartingRuntime", "PublishingProvider", "Verifying", "Detecting", "Console" })
+                Assert.Contains(resources.Descendants("data"), element =>
+                    (string?)element.Attribute("name") == "Onboarding_AiSetup_LocalProgress_" + stage);
+        }
+    }
+
     [Theory]
     [InlineData("NativeGatewaySetupPage.xaml", "ProgressMascot")]
     [InlineData("WizardPage.xaml", "MascotHero")]

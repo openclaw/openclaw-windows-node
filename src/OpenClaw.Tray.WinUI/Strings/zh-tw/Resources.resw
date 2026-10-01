@@ -7186,6 +7186,14 @@
   <data name="Onboarding_AiSetup_Legacy.Content" xml:space="preserve"><value>使用傳統設定</value></data>
   <data name="Onboarding_AiSetup_Continue.Content" xml:space="preserve"><value>繼續</value></data>
   <data name="Onboarding_AiSetup_Connecting" xml:space="preserve"><value>正在連接你的 Gateway...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_CheckingHardware" xml:space="preserve"><value>正在檢查 NVIDIA GPU 記憶體和 CUDA 支援...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_CheckingFiles" xml:space="preserve"><value>正在驗證 llama.cpp 和已下載的模型檔案。大型模型可能需要一分鐘或更長時間；完整的檔案無需重新下載。</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_PreparingGateway" xml:space="preserve"><value>正在檢查所選 Gateway 及其本機 AI 設定...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_StartingRuntime" xml:space="preserve"><value>正在啟動 llama-server 並檢查模型。將模型載入 GPU 記憶體可能需要一些時間...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_PublishingProvider" xml:space="preserve"><value>正在確認 Gateway 中的本機 AI 提供者和主要模型...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_Verifying" xml:space="preserve"><value>正在透過 Gateway 測試所選模型的實際回應...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_Detecting" xml:space="preserve"><value>正在探索已設定的模型和 AI 提供者...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_Console" xml:space="preserve"><value>正在開啟隔離 Gateway 的診斷主控台...</value></data>
   <data name="Onboarding_AiSetup_Choose" xml:space="preserve"><value>選擇模型或連線 AI 提供者。</value></data>
   <data name="Onboarding_AiSetup_Running" xml:space="preserve"><value>依照提供者的步驟完成設定。</value></data>
   <data name="Onboarding_AiSetup_Verifying" xml:space="preserve"><value>模型已儲存。正在驗證目前的 Gateway 連線。</value></data>
