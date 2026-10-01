@@ -44,10 +44,12 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
     private TimeSpan _startDuration;
     private Action? _beforeStatus;
     private bool _failStart;
+    private Func<CancellationToken, Task>? _duringStart;
+    private Func<CancellationToken, Task>? _duringStatus;
 
     public IsolatedGatewayRuntimeTests()
     {
-        var client = new NativeGatewayPackageClient((package, args, _) =>
+        var client = new NativeGatewayPackageClient(async (package, args, ct) =>
         {
             _calls.Add(string.Join(" ", args));
             _packageCalls.Add((package.PackageFamilyName, string.Join(" ", args)));
@@ -55,15 +57,19 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
             int port = other ? Port + 1 : Port;
             int processId = other ? 4567 : ProcessId;
             if (args.SequenceEqual(["gateway-service", "status", "--json"]) && _statusFailure is not null)
-                return Task.FromException<NativeGatewayCommandResult>(_statusFailure);
+                throw _statusFailure;
             if (args.SequenceEqual(["gateway-service", "status", "--json"]))
+            {
+                if (_duringStatus is not null) await _duringStatus(ct);
                 _beforeStatus?.Invoke();
+            }
             if (args.SequenceEqual(["gateway-service", "start", "--json"]))
             {
+                if (_duringStart is not null) await _duringStart(ct);
                 _clock.Advance(_startDuration);
                 if (_failStart)
-                    return Task.FromResult(new NativeGatewayCommandResult(1,
-                        """{"ok":false,"schemaVersion":1,"command":"gateway-service start","integration":{"kind":"isolated-session","version":1},"error":{"code":"cli_error","message":"The gateway process started but is not listening yet."}}"""));
+                    return new NativeGatewayCommandResult(1,
+                        """{"ok":false,"schemaVersion":1,"command":"gateway-service start","integration":{"kind":"isolated-session","version":1},"error":{"code":"cli_error","message":"The gateway process started but is not listening yet."}}""");
                 if (other) _otherState = "running";
                 else _state = _startState;
                 if (_listenOnStart)
@@ -73,7 +79,7 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
             if (args.SequenceEqual(["gateway-service", "stop", "--json"]))
             {
                 if (_stopFailure is not null)
-                    return Task.FromException<NativeGatewayCommandResult>(_stopFailure);
+                    throw _stopFailure;
                 if (!_stopKeepsRunning)
                 {
                     if (other) _otherState = "stopped";
@@ -96,7 +102,7 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
                     }
                 }
                 : new { state };
-            return Task.FromResult(new NativeGatewayCommandResult(0,
+            return new NativeGatewayCommandResult(0,
                 JsonSerializer.Serialize(new
                 {
                     ok = true,
@@ -104,12 +110,89 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
                     command = string.Join(" ", args.Take(2)),
                     integration = new { kind = "isolated-session", version = 1 },
                     gateway
-                })));
+                }));
         });
         _runtime = new IsolatedGatewayRuntime(new Resolver(_package, FixturePackage(OtherFamily)), client,
             () => new WindowsTcpListenerSnapshotResult(_listeners, _snapshotComplete, true),
             () => new Dictionary<int, ulong> { [ProcessId] = _hostSequence, [4567] = 88 },
             _ => true, timeProvider: _clock);
+    }
+
+    [Fact]
+    public async Task SlowSuccessfulStartAcknowledgementStillRequiresFreshRunningStatus()
+    {
+        _state = "stopped";
+        _listeners = [];
+        _listenOnStart = true;
+        _startDuration = TimeSpan.FromSeconds(136);
+        await _runtime.EnsureRunningAsync(_record, default);
+        Assert.Equal(2, _calls.Count(call => call == "gateway-service status --json"));
+        Assert.DoesNotContain("gateway-service stop --json", _calls);
+        Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway, _runtime.Inspect(_record).Kind);
+    }
+
+    [Fact]
+    public async Task ConditionalAcknowledgedPendingContractPollsRepeatedlyWithoutRestarting()
+    {
+        _state = "stopped";
+        _listeners = [];
+        _startState = "starting";
+        using var pollScheduled = new SemaphoreSlim(0);
+        _clock.TimerScheduled += due =>
+        {
+            if (due == TimeSpan.FromSeconds(2)) pollScheduled.Release();
+        };
+        var start = _runtime.EnsureRunningAsync(_record, default);
+        for (var poll = 0; poll < 68; poll++)
+        {
+            Assert.True(await pollScheduled.WaitAsync(TimeSpan.FromSeconds(5)));
+            if (poll == 67)
+                _beforeStatus = () =>
+                {
+                    _state = "running";
+                    _listeners = [new(IPAddress.Loopback, Port, ProcessId, "fixture", null)];
+                };
+            _clock.Advance(TimeSpan.FromSeconds(2));
+        }
+        await start.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(70, _calls.Count(call => call == "gateway-service status --json"));
+        Assert.Equal(1, _calls.Count(call => call == "gateway-service start --json"));
+        Assert.DoesNotContain("gateway-service stop --json", _calls);
+        _beforeStatus = null;
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task CancellationDuringPackageCommandRollsBackAndReleasesGate(bool duringStatus, bool deadline)
+    {
+        _state = "stopped";
+        _listeners = [];
+        _listenOnStart = true;
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        async Task Block(CancellationToken ct)
+        {
+            entered.SetResult();
+            await Task.Delay(Timeout.Infinite, ct);
+        }
+        _duringStart = duringStatus
+            ? _ => { _duringStatus = Block; return Task.CompletedTask; }
+            : Block;
+        using var cancellation = new CancellationTokenSource();
+        var start = _runtime.EnsureRunningAsync(_record, cancellation.Token);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        if (deadline) _clock.Advance(IsolatedGatewayRuntime.StartupTimeout);
+        else cancellation.Cancel();
+        if (deadline)
+            await Assert.ThrowsAsync<TimeoutException>(() => start.WaitAsync(TimeSpan.FromSeconds(5)));
+        else
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => start.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal(1, _calls.Count(call => call == "gateway-service stop --json"));
+        _duringStart = _duringStatus = null;
+        await _runtime.EnsureRunningAsync(_record, default);
+        Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway, _runtime.Inspect(_record).Kind);
     }
 
     [Theory]

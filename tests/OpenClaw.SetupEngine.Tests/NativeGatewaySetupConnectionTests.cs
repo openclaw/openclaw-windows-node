@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using OpenClaw.Connection;
 using OpenClaw.Connection.NativeGateway;
 using OpenClaw.Shared;
+using OpenClaw.TestSupport;
 using OpenClaw.TestSupport.Gateway;
 
 namespace OpenClaw.SetupEngine.Tests;
@@ -332,5 +333,73 @@ public sealed class NativeGatewaySetupConnectionTests
         fixture.Registry.Save();
         await Assert.ThrowsAsync<SetupNativeOwnershipException>(() =>
             SetupNativeCompletionVerifier.VerifyAsync(fixture.Temp.Path, proof, deadline.Token, manager));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PublishedVerifierEnforcesRecoveryAndModelPhaseTokens(bool blockModel)
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var releaseModel = new ManualResetEventSlim();
+        var block = false;
+        object Respond(string method, JsonElement parameters)
+        {
+            if (block && blockModel && method == "openclaw.setup.verify")
+            {
+                entered.TrySetResult();
+                if (!releaseModel.Wait(TimeSpan.FromSeconds(20)))
+                    throw new TimeoutException("The test did not release model verification.");
+            }
+            return Reply(method, parameters);
+        }
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(Respond), Token);
+        using var fixture = CreateFixture(server, isolated: true);
+        GatewayAiSetupCompletion proof;
+        await using (var owner = await fixture.PrepareAsync())
+        {
+            await using (var connection = await NativeGatewaySetupConnection.ConnectAsync(owner))
+            {
+                var client = new GatewayAiSetupClient(connection, Model);
+                await client.VerifyConfiguredAsync(Model);
+                proof = client.GetVerifiedCompletion();
+            }
+            await owner.CompleteVerifiedAsync(proof, new CapabilitiesConfig(), default);
+        }
+        var runtime = new NativeGatewaySetupTests.Runtime(fixture.Events)
+        {
+            StopConnections = () => server.CloseConnectionsAsync()
+        };
+        await using var manager = new GatewayConnectionManager(
+            new CredentialResolver(DeviceIdentityFileReader.Instance), new GatewayClientFactory(),
+            fixture.Registry, NullLogger.Instance, nativeGatewayRuntime: runtime);
+        await manager.ConnectAsync(proof.GatewayId);
+        var clock = new ManualTimeProvider();
+        using var caller = new CancellationTokenSource();
+        CancellationToken recoveryToken = default;
+        async Task Recover(GatewayAiSetupCompletion _, CancellationToken ct)
+        {
+            recoveryToken = ct;
+            if (blockModel) return;
+            entered.TrySetResult();
+            await Task.Delay(Timeout.Infinite, ct);
+        }
+        block = true;
+        var verifying = SetupNativeCompletionVerifier.VerifyAsync(
+            fixture.Temp.Path, proof, caller.Token, manager, Recover, clock);
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(15));
+            clock.Advance(blockModel ? SetupNativeCompletionTiming.ModelVerification : SetupNativeCompletionTiming.ModelRecovery);
+            var error = await Assert.ThrowsAsync<TimeoutException>(() => verifying.WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.Contains(blockModel ? "selected AI model" : "Local AI recovery", error.Message);
+            Assert.False(caller.IsCancellationRequested);
+            if (!blockModel) Assert.True(recoveryToken.IsCancellationRequested);
+        }
+        finally { block = false; releaseModel.Set(); caller.Cancel(); }
+        using var retryDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var verified = await SetupNativeCompletionVerifier.VerifyAsync(
+            fixture.Temp.Path, proof, retryDeadline.Token, manager, timeProvider: clock);
+        SetupNativeVerification.RequireSame(proof, verified);
     }
 }

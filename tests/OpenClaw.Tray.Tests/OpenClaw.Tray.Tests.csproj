@@ -104,6 +104,7 @@
     <Compile Include="..\..\src\OpenClaw.SetupEngine\GatewayAiSetupModels.cs" Link="GatewayAiSetupModels.cs" />
     <Compile Include="..\..\src\OpenClaw.SetupEngine\NativeLocalAiGatewayTarget.cs" Link="NativeLocalAiGatewayTarget.cs" />
     <Compile Include="..\..\src\OpenClaw.SetupEngine\SetupNativeCompletion.cs" Link="SetupNativeCompletion.cs" />
+    <Compile Include="..\..\src\OpenClaw.SetupEngine\SetupNativeCompletionTiming.cs" Link="SetupNativeCompletionTiming.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SetupNativeHandoffLauncher.cs" Link="Services\SetupNativeHandoffLauncher.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\SetupNativeNavigationRequest.cs" Link="Presentation\SetupNativeNavigationRequest.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\SetupNativeSkills.cs" Link="Presentation\SetupNativeSkills.cs" />

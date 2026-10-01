@@ -5,6 +5,7 @@ public sealed class ManualTimeProvider : TimeProvider
 {
     private readonly List<Timer> _timers = [];
     private long _ticks;
+    public event Action<TimeSpan>? TimerScheduled;
     public override long TimestampFrequency => TimeSpan.TicksPerSecond;
     public override long GetTimestamp() => Interlocked.Read(ref _ticks);
     public override DateTimeOffset GetUtcNow() => DateTimeOffset.UnixEpoch.AddTicks(GetTimestamp());
@@ -17,6 +18,7 @@ public sealed class ManualTimeProvider : TimeProvider
             timer.Change(dueTime, period);
             _timers.Add(timer);
         }
+        TimerScheduled?.Invoke(dueTime);
         return timer;
     }
 

@@ -157,7 +157,7 @@ disconnect, replacement, or close. This cache is not used for authorization.
 | Gateway dashboard management card | `ConnectionPage` owns the visible card and forwards to the existing `GatewayDashboardLauncher` path; `ChatPage` has no management banner | authoritative |
 | In-flight native chat navigation identity | `SetupNativeChatBinding` holds the exact request reference; `WorkspaceWindow` invalidates it at admitted agent/session navigation intent, before asynchronous creation. `ChatPage` checks identity and cancellation on ready and waiting paths; `SetupNativeHandoffLauncher` fences receipt consumption with the linked timeout | authoritative |
 | Native receipt acquisition classification and restart recovery settlement | `SetupDashboardHandoffStore` distinguishes acquired/busy/invalid/unavailable; `SetupNativeHandoffLauncher` retains recovery on busy/unavailable and clears it only after consumption or definitive rejection | authoritative |
-| Native completion startup readiness | `SetupNativeCompletionVerifier` waits for the manager-owned handshake and joins existing Local AI recovery through `LocalAiGatewayLifecycle`, then reborrows and verifies the exact route; `SetupNativeHandoffLauncher` bounds the entire attempt within the receipt lifetime and does not redisplay settled retry failures on automatic activation | authoritative |
+| Native completion startup readiness | `SetupNativeCompletionTiming` defines finite phase budgets; `SetupNativeCompletionVerifier` enforces both borrows, the existing Local AI recovery join and exact-model proof; `SetupDashboardHandoffStore` keeps five-minute unused admission and persists one non-renewable execution start/deadline under its exclusive lease; `SetupNativeHandoffLauncher` enforces navigation and total execution deadlines and does not redisplay settled retry failures on automatic activation | authoritative |
 | Pre-acquisition restart recovery deletion | `App.OpenNativeSetupCompletion`; deletion is delegated to the receipt outcome owner | closed |
 | Setup startup availability | `WindowManager` supplies app identity availability; `SetupWindow` gates presentation and persisted preference | authoritative |
 | Setup registration outcome and fallback admission | `WindowsStartupTaskRegistration` classifies completed numeric HRESULT; `SetupStartupPolicy` still requires strict task absence for rejected-operation Run-key fallback | authoritative |
@@ -455,6 +455,8 @@ ownership checks fail closed. Cancellation/deadline failure retains the existing
 owned-start rollback rules; pre-existing pending services are not adopted.
 See [native startup contract limitations](ONBOARDING_WIZARD.md#native-startup-and-completion-deadlines)
 for the older package's ambiguous failed-start response, which is not admitted.
+The pending-start fixtures are conditional client-contract tests, not proof that
+the installed package can acknowledge a pending launch.
 
 `IsolatedGatewayRuntime` accepts a running Gateway only after a fresh
 package-qualified `clawctl gateway-service status --json` attributes its

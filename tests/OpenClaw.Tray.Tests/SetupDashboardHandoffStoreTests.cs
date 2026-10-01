@@ -167,4 +167,144 @@ public sealed class SetupDashboardHandoffStoreTests
         public DateTimeOffset Now { get; set; } = new(2026, 9, 24, 12, 0, 0, TimeSpan.Zero);
         public override DateTimeOffset GetUtcNow() => Now;
     }
+
+    [Fact]
+    public void FirstAcquisitionStartsOnePersistedExecutionWindow_RetryCannotRenewIt()
+    {
+        using var directory = new TempDirectory();
+        var clock = new ManualTimeProvider();
+        var store = new SetupDashboardHandoffStore(directory.Path, clock);
+        var handle = store.Issue(Choice);
+        clock.Advance(TimeSpan.FromMinutes(4));
+        using (var lease = store.Acquire(handle).Lease)
+        {
+            Assert.NotNull(lease);
+            Assert.Equal(SetupNativeCompletionTiming.Execution, lease.RemainingLifetime);
+            clock.Advance(TimeSpan.FromMinutes(6));
+            Assert.False(lease.IsExpired);
+            lease.RetainForExplicitRetry();
+        }
+        var restarted = new SetupDashboardHandoffStore(directory.Path, clock);
+        Assert.Equal(SetupHandoffAcquisitionStatus.RetryRequired, restarted.Acquire(handle).Status);
+        using (var retry = restarted.Acquire(handle, explicitRetry: true).Lease)
+        {
+            Assert.NotNull(retry);
+            Assert.Equal(SetupNativeCompletionTiming.Execution - TimeSpan.FromMinutes(6), retry.RemainingLifetime);
+            clock.Advance(TimeSpan.FromMinutes(1));
+            retry.RetainForExplicitRetry();
+        }
+        using (var retry = store.Acquire(handle, explicitRetry: true).Lease)
+        {
+            Assert.NotNull(retry);
+            Assert.Equal(SetupNativeCompletionTiming.Execution - TimeSpan.FromMinutes(7), retry.RemainingLifetime);
+            clock.Advance(retry.RemainingLifetime);
+            Assert.True(retry.IsExpired);
+            retry.RetainForExplicitRetry();
+        }
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, restarted.Acquire(handle, explicitRetry: true).Status);
+    }
+
+    [Fact]
+    public async Task ConcurrentFirstAcquisitionCannotGrantTwoExecutionWindows()
+    {
+        using var directory = new TempDirectory();
+        var clock = new ManualTimeProvider();
+        var firstStore = new SetupDashboardHandoffStore(directory.Path, clock);
+        var secondStore = new SetupDashboardHandoffStore(directory.Path, clock);
+        var handle = firstStore.Issue(Choice);
+        var attempts = await Task.WhenAll(
+            Task.Run(() => firstStore.Acquire(handle)),
+            Task.Run(() => secondStore.Acquire(handle)));
+        using var lease = Assert.Single(attempts, result => result.Lease is not null).Lease!;
+        Assert.Single(attempts, result => result.Status == SetupHandoffAcquisitionStatus.Busy);
+        Assert.Equal(SetupNativeCompletionTiming.Execution, lease.RemainingLifetime);
+        lease.Consume();
+    }
+
+    [Theory]
+    [InlineData("retry", null)]
+    [InlineData("inflight", null)]
+    [InlineData("retry", -1)]
+    [InlineData("retry", 300)]
+    [InlineData("ready", 0)]
+    public void InvalidOrLegacyExecutionStateCannotGrantFreshTime(string state, int? startedSeconds)
+    {
+        using var directory = new TempDirectory();
+        var clock = new ManualTimeProvider();
+        var store = new SetupDashboardHandoffStore(directory.Path, clock);
+        var handle = store.Issue(Choice);
+        var path = Path.Combine(directory.Path, "setup-dashboard-handoff", "pending.json");
+        var record = JsonSerializer.Deserialize<SetupDashboardHandoffStore.PendingRecord>(File.ReadAllText(path))!;
+        record = record with
+        {
+            State = state,
+            ExecutionStartedUtc = startedSeconds is { } seconds ? record.IssuedUtc.AddSeconds(seconds) : null,
+            ExecutionExpiresUtc = startedSeconds is { } value
+                ? record.IssuedUtc.AddSeconds(value) + SetupNativeCompletionTiming.Execution : null
+        };
+        File.WriteAllText(path, JsonSerializer.Serialize(record));
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle, explicitRetry: true).Status);
+    }
+
+    [Fact]
+    public void PersistedRetryExpiresEvenAfterProcessRestart_AndClockCannotMoveBeforeAcquisition()
+    {
+        using var directory = new TempDirectory();
+        var clock = new Clock();
+        var store = new SetupDashboardHandoffStore(directory.Path, clock);
+        var handle = store.Issue(Choice);
+        clock.Now += TimeSpan.FromMinutes(1);
+        var acquired = clock.Now;
+        using (var lease = store.Acquire(handle).Lease!)
+            lease.RetainForExplicitRetry();
+        clock.Now -= TimeSpan.FromSeconds(1);
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid,
+            new SetupDashboardHandoffStore(directory.Path, clock).Acquire(handle, explicitRetry: true).Status);
+        clock.Now = acquired + SetupNativeCompletionTiming.Execution;
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid,
+            new SetupDashboardHandoffStore(directory.Path, clock).Acquire(handle, explicitRetry: true).Status);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(1)]
+    [InlineData(-1)]
+    public void MissingOrAlteredExecutionDeadlineCannotAcquireNewTime(int? adjustment)
+    {
+        using var directory = new TempDirectory();
+        var clock = new ManualTimeProvider();
+        var store = new SetupDashboardHandoffStore(directory.Path, clock);
+        var handle = store.Issue(Choice);
+        using (var lease = store.Acquire(handle).Lease!)
+            lease.RetainForExplicitRetry();
+        var path = Path.Combine(directory.Path, "setup-dashboard-handoff", "pending.json");
+        var record = JsonSerializer.Deserialize<SetupDashboardHandoffStore.PendingRecord>(File.ReadAllText(path))!;
+        record = record with
+        {
+            ExecutionExpiresUtc = adjustment is { } seconds ? record.ExecutionExpiresUtc!.Value.AddSeconds(seconds) : null
+        };
+        File.WriteAllText(path, JsonSerializer.Serialize(record));
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle, explicitRetry: true).Status);
+    }
+
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(300, false)]
+    public void LegacyUnusedRecordKeepsItsOriginalAdmissionDeadline(int elapsed, bool acquired)
+    {
+        using var directory = new TempDirectory();
+        var clock = new ManualTimeProvider();
+        var store = new SetupDashboardHandoffStore(directory.Path, clock);
+        var handle = store.Issue(Choice);
+        var path = Path.Combine(directory.Path, "setup-dashboard-handoff", "pending.json");
+        var json = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        json.Remove("ExecutionStartedUtc");
+        json.Remove("ExecutionExpiresUtc");
+        File.WriteAllText(path, json.ToJsonString());
+        clock.Advance(TimeSpan.FromSeconds(elapsed));
+        var result = store.Acquire(handle);
+        using var lease = result.Lease;
+        Assert.Equal(acquired ? SetupHandoffAcquisitionStatus.Acquired : SetupHandoffAcquisitionStatus.Invalid, result.Status);
+        lease?.Consume();
+    }
 }
