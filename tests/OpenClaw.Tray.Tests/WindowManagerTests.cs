@@ -114,6 +114,22 @@ public sealed class WindowManagerTests
     }
 
     [Fact]
+    public void LocalAiSettingsRepair_RejectsNativeOwnershipBeforeWslRecoveryAdmission()
+    {
+        var manager = ReadManager();
+        var start = manager.IndexOf("public async Task ShowLocalAiSetupAsync()", StringComparison.Ordinal);
+        var end = manager.IndexOf("private async Task<LocalAiSetupResolution>", start, StringComparison.Ordinal);
+        AssertInOrder(manager[start..end],
+            "TryNavigateToExistingNativeLocalAi(native)",
+            "_callbacks.GetLocalAiGatewayLifecycle?.Invoke()?.HasNativeBinding == true",
+            "release its Gateway ownership before repairing it for WSL.",
+            "ShowHub(\"local-ai\");",
+            "return;",
+            "await ResolveLocalAiSetupRouteAsync()",
+            "await ShowLocalAiSetupRecoveryAsync(");
+    }
+
+    [Fact]
     public void LocalAiRecoveryMode_IsNotAppliedToAnExistingSetupWindow()
     {
         var manager = ReadManager();

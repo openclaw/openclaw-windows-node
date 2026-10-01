@@ -7395,6 +7395,9 @@
   <data name="Onboarding_AiSetup_LocalStartAndUse" xml:space="preserve"><value>啟動並使用</value></data>
   <data name="Onboarding_AiSetup_LocalUse" xml:space="preserve"><value>使用此模型</value></data>
   <data name="Onboarding_AiSetup_LocalRepair" xml:space="preserve"><value>修復本機 AI</value></data>
+  <data name="Onboarding_AiSetup_LocalReconcile" xml:space="preserve"><value>復原並使用本機 AI</value></data>
+  <data name="Onboarding_AiSetup_LocalState_Reconcile" xml:space="preserve"><value>需要復原所擁有的閘道路由。</value></data>
+  <data name="LocalAiPage_ReleaseOwnershipButton.Content" xml:space="preserve"><value>釋放閘道所有權</value></data>
   <data name="Onboarding_AiSetup_LocalInstall" xml:space="preserve"><value>安裝並使用本機 AI</value></data>
   <data name="Onboarding_AiSetup_LocalInstalling" xml:space="preserve"><value>正在設定本機 AI</value></data>
   <data name="Onboarding_AiSetup_LocalChanged" xml:space="preserve"><value>Gateway 或本機 AI 的就緒狀態已變更。請返回連線 AI 頁面並重新檢查，然後再安裝。</value></data>

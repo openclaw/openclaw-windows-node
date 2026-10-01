@@ -11,6 +11,29 @@ namespace OpenClaw.Tray.Tests.Presentation;
 public sealed class LocalAiPageViewModelTests
 {
     [Fact]
+    public async Task ExplicitReleaseIsDistinctFromStopAndRequiresStoppedCleanRuntime()
+    {
+        var runtime = new FakeLocalAiRuntime(CreateInstalledSnapshot())
+        {
+            HasReleasableOwnership = true,
+            StopResult = CreateInstalledSnapshot(LocalAiRuntimeState.Stopped) with
+            { Ownership = LocalAiOwnership.None, GatewayRouteRequiresResolution = false },
+        };
+        using var gatewaySource = new PermissionsPageRuntimeSource(new FakePermissionsPageRuntimeHost());
+        using var viewModel = new LocalAiPageViewModel(runtime, gatewaySource, new FakeAppCommands(),
+            new RecordingUiDispatcher(), new FixedHardwareProbe(HostHardwareInfo.Unknown));
+        Assert.True(viewModel.ShowReleaseOwnership);
+        Assert.False(viewModel.CanReleaseOwnership);
+        Assert.False(await viewModel.ReleaseOwnershipAsync());
+        Assert.True(await viewModel.StopAsync());
+        Assert.True(runtime.HasReleasableOwnership);
+        Assert.True(viewModel.CanReleaseOwnership);
+        Assert.True(await viewModel.ReleaseOwnershipAsync(), viewModel.ActionError);
+        Assert.False(viewModel.ShowReleaseOwnership);
+        Assert.Equal(1, runtime.ReleaseCount);
+    }
+
+    [Fact]
     public async Task UnsupportedHardware_KeepsExistingRuntimeManagementAvailable()
     {
         var runtime = new FakeLocalAiRuntime(CreateInstalledSnapshot());
@@ -1094,6 +1117,14 @@ public sealed class LocalAiPageViewModelTests
 
     private sealed class FakeLocalAiRuntime(LocalAiRuntimeSnapshot snapshot) : ILocalAiRuntime
     {
+        public bool HasReleasableOwnership { get; set; }
+        public int ReleaseCount { get; private set; }
+        public Task<LocalAiRuntimeSnapshot> ReleaseOwnershipAsync(CancellationToken cancellationToken = default)
+        {
+            ReleaseCount++;
+            HasReleasableOwnership = false;
+            return Task.FromResult(Snapshot);
+        }
         private TaskCompletionSource<LocalAiRuntimeSnapshot>? _startCompletion;
 
         public LocalAiRuntimeSnapshot Snapshot { get; private set; } = snapshot;

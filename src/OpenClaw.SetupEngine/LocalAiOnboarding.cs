@@ -5,7 +5,7 @@ namespace OpenClaw.SetupEngine;
 
 public enum LocalAiOnboardingState
 {
-    Checking, SetUp, StartAndUse, Use, Repair, BusyGpu, Unsupported, Unknown, UnsupportedGateway, Working
+    Checking, SetUp, StartAndUse, Use, Repair, BusyGpu, Unsupported, Unknown, UnsupportedGateway, Working, Reconcile
 }
 
 public enum LocalAiSetupStage
@@ -52,7 +52,7 @@ public sealed record LocalAiOnboardingSnapshot(
             eligibility.SelectionFailureCode == LocalInferenceSelectionFailureCode.NoNvidiaGpu);
 
     public bool CanReview => Target is not null && State is LocalAiOnboardingState.SetUp or LocalAiOnboardingState.Repair;
-    public bool CanUse => Target is not null && State is LocalAiOnboardingState.StartAndUse or LocalAiOnboardingState.Use;
+    public bool CanUse => Target is not null && State is LocalAiOnboardingState.StartAndUse or LocalAiOnboardingState.Use or LocalAiOnboardingState.Reconcile;
     public bool CanRefresh => State is LocalAiOnboardingState.BusyGpu or LocalAiOnboardingState.Unknown or
         LocalAiOnboardingState.Unsupported or LocalAiOnboardingState.UnsupportedGateway or LocalAiOnboardingState.Working;
 
@@ -87,6 +87,10 @@ public sealed record LocalAiOnboardingSnapshot(
         if (eligibility.Status == LocalInferenceEligibilityStatus.EligibleButBusy &&
             !(exactHealthyRuntime && runtime!.ModelEvidence.State == LocalAiModelAvailabilityState.Loaded))
             return result with { State = LocalAiOnboardingState.BusyGpu };
+        if (target.IsNative && install is not null && filesVerified &&
+            (runtime?.GatewayRouteRequiresResolution == true ||
+             runtime is { State: LocalAiRuntimeState.Failed, Ownership: LocalAiOwnership.CompanionManaged }))
+            return result with { State = LocalAiOnboardingState.Reconcile };
         if (receiptDamaged || install is not null && (!filesVerified ||
             runtime?.State is LocalAiRuntimeState.Failed or LocalAiRuntimeState.Conflict ||
             runtime?.State == LocalAiRuntimeState.Healthy && !exactHealthyRuntime))

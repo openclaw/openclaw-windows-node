@@ -135,10 +135,15 @@ public sealed class LocalAiRuntimeSnapshotChangedEventArgs(LocalAiRuntimeSnapsho
 
 public interface ILocalAiRuntime : IAsyncDisposable
 {
+    bool HasReleasableOwnership => false;
+    Task<LocalAiRuntimeSnapshot> ReleaseOwnershipAsync(CancellationToken cancellationToken = default)
+        => throw new InvalidOperationException("There is no native Local AI ownership to release.");
     LocalAiRuntimeSnapshot Snapshot { get; }
     event EventHandler<LocalAiRuntimeSnapshotChangedEventArgs>? StateChanged;
     Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken = default);
     Task<LocalAiRuntimeSnapshot> ResumeAsync(CancellationToken cancellationToken = default);
+    Task<LocalAiRuntimeSnapshot> ReconcileStoppedAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(Snapshot);
     Task<LocalAiRuntimeSnapshot> StopAsync(CancellationToken cancellationToken = default);
     Task<LocalAiRuntimeSnapshot> RestartAsync(CancellationToken cancellationToken = default);
     Task<LocalAiRuntimeSnapshot> RefreshAsync(CancellationToken cancellationToken = default);

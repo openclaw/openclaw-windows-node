@@ -163,7 +163,7 @@ public sealed partial class LocalAiSetupControl : UserControl
         string? wslNetworkingReason = null;
         try
         {
-            WslGlobalConfigStatus networkingStatus = forceNetworkingConsent
+            WslGlobalConfigStatus? networkingStatus = _config!.NativeLocalAiAcquisition ? null : forceNetworkingConsent
                 ? new(false, false)
                 : CreateWslGlobalConfigManager().Inspect();
             if (!CanApplyLocalAiAvailability(checking.Generation, setupWindow))
@@ -481,6 +481,12 @@ public sealed partial class LocalAiSetupControl : UserControl
         }
 
         UpdateLocalAiModelDetails();
+        if (config.NativeLocalAiAcquisition)
+        {
+            LocalAiNetworkingConsentPanel.Visibility = Visibility.Collapsed;
+            UpdatePrimaryButtonState();
+            return;
+        }
         WslGlobalConfigStatus status = forceNetworkingConsent
             ? new(false, false)
             : _localAiNetworkingStatus ?? new(false, false);

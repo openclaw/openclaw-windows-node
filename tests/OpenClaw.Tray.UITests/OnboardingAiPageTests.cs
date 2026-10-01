@@ -1049,6 +1049,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
     [InlineData(LocalAiOnboardingState.StartAndUse)]
     [InlineData(LocalAiOnboardingState.Use)]
     [InlineData(LocalAiOnboardingState.Repair)]
+    [InlineData(LocalAiOnboardingState.Reconcile)]
     [InlineData(LocalAiOnboardingState.BusyGpu)]
     [InlineData(LocalAiOnboardingState.Unsupported)]
     [InlineData(LocalAiOnboardingState.Unknown)]
@@ -1065,6 +1066,11 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             Assert.False(string.IsNullOrWhiteSpace(AutomationProperties.GetName(card)));
             Assert.False(string.IsNullOrWhiteSpace(Find<TextBlock>(page, "LocalAiDescription").Text));
             Assert.DoesNotContain("Onboarding_", Find<TextBlock>(page, "LocalAiDescription").Text);
+            if (state == LocalAiOnboardingState.Reconcile)
+            {
+                Assert.Equal("Recover and use Local AI", Find<TextBlock>(page, "LocalAiActionText").Text);
+                Assert.True(card.IsClickEnabled);
+            }
             Assert.Equal(0, host.Actions);
             Assert.Equal(0, completed());
             Assert.Single(transport.MethodCalls);

@@ -7396,6 +7396,9 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   <data name="Onboarding_AiSetup_LocalStartAndUse" xml:space="preserve"><value>Starten en gebruiken</value></data>
   <data name="Onboarding_AiSetup_LocalUse" xml:space="preserve"><value>Dit model gebruiken</value></data>
   <data name="Onboarding_AiSetup_LocalRepair" xml:space="preserve"><value>Lokale AI herstellen</value></data>
+  <data name="Onboarding_AiSetup_LocalReconcile" xml:space="preserve"><value>Lokale AI herstellen en gebruiken</value></data>
+  <data name="Onboarding_AiSetup_LocalState_Reconcile" xml:space="preserve"><value>De gekoppelde gatewayroute moet worden hersteld.</value></data>
+  <data name="LocalAiPage_ReleaseOwnershipButton.Content" xml:space="preserve"><value>Gatewaykoppeling vrijgeven</value></data>
   <data name="Onboarding_AiSetup_LocalInstall" xml:space="preserve"><value>Lokale AI installeren en gebruiken</value></data>
   <data name="Onboarding_AiSetup_LocalInstalling" xml:space="preserve"><value>Lokale AI instellen</value></data>
   <data name="Onboarding_AiSetup_LocalChanged" xml:space="preserve"><value>De Gateway of de status van lokale AI is gewijzigd. Ga terug naar AI verbinden en controleer opnieuw voordat je installeert.</value></data>

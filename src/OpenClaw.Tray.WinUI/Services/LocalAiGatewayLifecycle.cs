@@ -22,12 +22,16 @@ internal sealed class LocalAiGatewayLifecycle(
     private IGatewayAiSetupTransport? _registeredTransport;
     private int _resuming;
     private Task? _resumeTask;
+    private readonly object _recoveryGate = new();
+    private bool _shuttingDown;
     private sealed record EndpointRecovery(string GatewayId, string ModelRef, Uri Endpoint, string ConfigHash);
     private EndpointRecovery? _endpointRecovery;
 
     public bool IsNativeMode => _store.Exists ||
         getRegistry()?.GetActive()?.NativePackageFamilyName is not null;
     public bool HasNativeBinding => _store.Exists;
+    public bool HasReleasableOwnership => _store.Exists;
+    public bool AutomaticRecoveryEnabled => _store.Load()?.AutomaticRecoveryEnabled ?? true;
     public bool OwnsGateway(string id) => _store.Load()?.GatewayId == id;
     public string? GetApiKey() => _store.Exists ? _credentials.GetOrCreate() : null;
     public int? GetRecoveryPort(LocalAiResolvedInstall install) =>
@@ -47,9 +51,24 @@ internal sealed class LocalAiGatewayLifecycle(
     {
         await using var lease = await _store.AcquireAsync(ct).ConfigureAwait(false);
         var binding = _store.Load();
-        if (binding?.GatewayId != gatewayId || binding.Pending)
+        if (binding?.GatewayId != gatewayId || binding.Pending || binding.AutomaticRecoveryEnabled)
             throw new InvalidOperationException("The native Local AI ownership receipt is not safe to release.");
+        var (target, transport) = await GetTransportAsync(binding, ct).ConfigureAwait(false);
+        var current = await new LocalAiGatewayRpcConfigurationTransport(target, transport).CaptureAsync(ct).ConfigureAwait(false);
+        var config = JsonNode.Parse(current.Config.GetRawText())!;
+        if (config["models"]?["providers"]?["llamacpp"] is not null ||
+            config["agents"]?["defaults"]?["model"]?["primary"]?.GetValue<string>() != binding.PreviousPrimary ||
+            binding.AddedAllowlistEntry && config["agents"]?["defaults"]?["models"]?[binding.ModelRef] is not null)
+            throw new InvalidOperationException("The original Gateway has not confirmed withdrawal. Its ownership receipt was retained.");
         _store.Delete();
+    }
+
+    public async Task ReleaseOwnershipAsync(CancellationToken ct)
+    {
+        if (_registeredTransport is not null)
+            throw new InvalidOperationException("Close Local AI setup before releasing Gateway ownership.");
+        var binding = _store.Load() ?? throw new InvalidOperationException("There is no native Local AI ownership to release.");
+        await ForgetWithdrawnAsync(binding.GatewayId, ct).ConfigureAwait(false);
     }
 
     public async Task ReconcileVerifiedAsync(GatewayRecord record, IGatewayAiSetupTransport transport,
@@ -62,6 +81,7 @@ internal sealed class LocalAiGatewayLifecycle(
         var rpc = new LocalAiGatewayRpcConfigurationTransport(target, transport);
         var before = await rpc.CaptureAsync(ct).ConfigureAwait(false);
         var config = JsonNode.Parse(before.Config.GetRawText())!;
+        RequireOwnedAllowlist(binding, config);
         var provider = config["models"]?["providers"]?["llamacpp"];
         if (binding.ModelRef != LocalAiGatewayProviderDefinition.BuildPrimaryModel(install) ||
             config["agents"]?["defaults"]?["model"]?["primary"]?.GetValue<string>() != binding.ModelRef ||
@@ -98,10 +118,24 @@ internal sealed class LocalAiGatewayLifecycle(
     {
         manager.StateChanged += (_, snapshot) =>
         {
-            if (snapshot.OperatorState == RoleConnectionState.Connected && _store.Exists &&
-                Interlocked.CompareExchange(ref _resuming, 1, 0) == 0)
-                Volatile.Write(ref _resumeTask, ResumeAsync(runtime));
+            lock (_recoveryGate)
+            {
+                if (!_shuttingDown && snapshot.OperatorState == RoleConnectionState.Connected && _store.Exists &&
+                    Interlocked.CompareExchange(ref _resuming, 1, 0) == 0)
+                    Volatile.Write(ref _resumeTask, ResumeAsync(runtime));
+            }
         };
+    }
+
+    public async Task DrainRecoveryAsync()
+    {
+        Task? recovery;
+        lock (_recoveryGate)
+        {
+            _shuttingDown = true;
+            recovery = _resumeTask;
+        }
+        if (recovery is not null) await recovery.ConfigureAwait(false);
     }
 
     public Task WaitForRuntimeAsync(GatewayAiSetupCompletion expected, ILocalAiRuntime runtime, CancellationToken ct)
@@ -139,8 +173,15 @@ internal sealed class LocalAiGatewayLifecycle(
         try
         {
             var binding = _store.Load();
-            if (binding is { AutomaticRecoveryEnabled: false })
+            if (binding is { AutomaticRecoveryEnabled: false } &&
+                getRegistry()?.GetActive()?.Id == binding.GatewayId)
+            {
+                // Stopped intent permits withdrawal only, including after an offline Stop.
+                var stopped = await runtime.ReconcileStoppedAsync().ConfigureAwait(false);
+                if (stopped.State == LocalAiRuntimeState.Failed || stopped.GatewayRouteRequiresResolution)
+                    logger.Warn("The stopped Local AI route still needs withdrawal through its original Gateway.");
                 return;
+            }
             if (binding is null || binding.Pending || getRegistry()?.GetActive()?.Id != binding.GatewayId)
             {
                 logger.Warn("Local AI automatic recovery is waiting for its original Gateway and a confirmed configuration revision.");
@@ -154,21 +195,36 @@ internal sealed class LocalAiGatewayLifecycle(
         finally { Interlocked.Exchange(ref _resuming, 0); }
     }
 
-    public async Task PrepareAsync(LocalAiResolvedInstall install, CancellationToken ct)
+    public Task PrepareAsync(LocalAiResolvedInstall install, CancellationToken ct) =>
+        PrepareCoreAsync(install, _registeredTarget ??
+            throw new LocalAiSelectionRejectedException("Reconnect the selected native Gateway before using Local AI."),
+            _registeredTransport!, ct);
+
+    public async Task PrepareStartAsync(LocalAiResolvedInstall install, CancellationToken ct)
+    {
+        if (_store.Load() is not { } binding) return;
+        var (target, transport) = await GetTransportAsync(binding, ct).ConfigureAwait(false);
+        await PrepareCoreAsync(install, target, transport, ct).ConfigureAwait(false);
+    }
+
+    public Task<LocalAiEndpointLifecycleResult> CompleteStartAsync(LocalAiResolvedInstall install, CancellationToken ct) =>
+        _store.Exists ? PublishAsync(install, ct) : Task.FromResult(LocalAiEndpointLifecycleResult.Ok());
+
+    private async Task PrepareCoreAsync(LocalAiResolvedInstall install, NativeLocalAiGatewayTarget target,
+        IGatewayAiSetupTransport transport, CancellationToken ct)
     {
         _endpointRecovery = null;
         await using var lease = await _store.AcquireAsync(ct).ConfigureAwait(false);
-        var target = _registeredTarget ??
-            throw new LocalAiSelectionRejectedException("Reconnect the selected native Gateway before using Local AI.");
-        var rpc = new LocalAiGatewayRpcConfigurationTransport(target, _registeredTransport!);
+        var rpc = new LocalAiGatewayRpcConfigurationTransport(target, transport);
         var current = await rpc.CaptureAsync(ct).ConfigureAwait(false);
         var binding = _store.Load();
         if (binding is not null)
         {
             RequireBinding(binding, target);
-            if (binding.Pending)
+            if (binding.Pending || binding.ConfigHash != current.Hash)
             {
                 var pendingConfig = JsonNode.Parse(current.Config.GetRawText())!;
+                RequireOwnedAllowlist(binding, pendingConfig);
                 var provider = pendingConfig["models"]?["providers"]?["llamacpp"];
                 var primary = pendingConfig["agents"]?["defaults"]?["model"]?["primary"]?.GetValue<string>();
                 if (current.Hash == binding.ConfigHash ||
@@ -210,7 +266,8 @@ internal sealed class LocalAiGatewayLifecycle(
             throw new LocalAiSelectionRejectedException("The Gateway model allowlist is invalid.");
         _store.Save(new(target.GatewayId, target.Route.EndpointBinding!,
             target.Route.IdentityBinding!, model, previous, current.Hash,
-            allowlist is JsonObject entries && !entries.ContainsKey(model)));
+            allowlist is JsonObject entries && !entries.ContainsKey(model),
+            AutomaticRecoveryEnabled: false));
     }
 
     public Task<LocalAiEndpointLifecycleResult> QuiesceAsync(LocalAiResolvedInstall install,
@@ -233,36 +290,49 @@ internal sealed class LocalAiGatewayLifecycle(
             if (binding is null)
                 return reason is not null ? LocalAiEndpointLifecycleResult.Ok() :
                     LocalAiEndpointLifecycleResult.Failed("Choose Use Local AI for the selected native Gateway before publishing its endpoint.");
-            IGatewayAiSetupTransport transport;
-            NativeLocalAiGatewayTarget target;
-            if (_registeredTarget?.GatewayId == binding.GatewayId && _registeredTransport is { IsConnected: true } registered)
-            {
-                transport = registered;
-                target = _registeredTarget;
-            }
-            else
-            {
-                var record = getRegistry()?.GetActive();
-                if (record?.Id != binding.GatewayId || getManager() is not { } manager)
-                    throw new InvalidOperationException("The original Local AI Gateway is not connected. Cleanup remains pending.");
-                transport = await GatewayAiSetupTransport.BorrowNativeAsync(dataDirectory, manager,
-                    binding.GatewayId, ct, binding.EndpointBinding).ConfigureAwait(false);
-                target = NativeLocalAiGatewayTarget.Capture(record, transport.Route);
-            }
-            RequireBinding(binding, target);
+            var (target, transport) = await GetTransportAsync(binding, ct).ConfigureAwait(false);
             if (binding.ModelRef != LocalAiGatewayProviderDefinition.BuildPrimaryModel(install))
                 throw new InvalidOperationException("The Local AI installation differs from its saved Gateway owner.");
-            if (binding.Pending)
+            var rpc = new LocalAiGatewayRpcConfigurationTransport(target, transport);
+            var current = await rpc.CaptureAsync(ct).ConfigureAwait(false);
+            var config = JsonNode.Parse(current.Config.GetRawText())!;
+            if (reason == LocalAiQuiesceReason.Teardown && binding.AddedAllowlistEntry &&
+                config["agents"]?["defaults"]?["models"]?[binding.ModelRef] is { } entry &&
+                entry is not JsonObject { Count: 0 })
             {
-                var rpc = new LocalAiGatewayRpcConfigurationTransport(target, transport);
-                var current = await rpc.CaptureAsync(ct).ConfigureAwait(false);
-                var config = JsonNode.Parse(current.Config.GetRawText())!;
+                // User metadata is no longer ours to remove; withdraw routing without deleting it.
+                binding = binding with { AddedAllowlistEntry = false };
+            }
+            if (binding.Pending || current.Hash != binding.ConfigHash)
+            {
+                RequireOwnedAllowlist(binding, config);
                 var provider = config["models"]?["providers"]?["llamacpp"];
                 var primary = config["agents"]?["defaults"]?["model"]?["primary"]?.GetValue<string>();
                 if (current.Hash == binding.ConfigHash ||
                     provider is null && (primary == binding.PreviousPrimary || primary == binding.ModelRef))
                 {
                     binding = binding with { Pending = false, ConfigHash = current.Hash };
+                    _store.Save(binding);
+                }
+                else if (reason == LocalAiQuiesceReason.Teardown && !binding.Pending &&
+                    provider is not null && primary == binding.ModelRef &&
+                    LocalAiGatewayProviderDefinition.MatchesProviderJson(
+                        provider.ToJsonString(), install, _credentials.GetOrCreate()))
+                {
+                    // Redacted keys alone cannot authorize deletion after an external edit.
+                    // A live listener can prove the credential; a stopped one requires explicit recovery.
+                    var key = provider["apiKey"]?.GetValue<string>();
+                    if (key != _credentials.GetOrCreate())
+                    {
+                        var verified = await new GatewayAiSetupClient(transport)
+                            .VerifyConfiguredAsync(binding.ModelRef, ct).ConfigureAwait(false);
+                        if (!verified.Ok)
+                            throw new InvalidOperationException("Recover the original authenticated listener before withdrawing its edited Gateway route.");
+                    }
+                    var after = await rpc.CaptureAsync(ct).ConfigureAwait(false);
+                    if (after.Hash != current.Hash)
+                        throw new InvalidOperationException("The Gateway configuration changed during withdrawal verification.");
+                    binding = binding with { ConfigHash = current.Hash };
                     _store.Save(binding);
                 }
                 else if (_endpointRecovery is { } recovery && recovery.GatewayId == binding.GatewayId &&
@@ -288,13 +358,15 @@ internal sealed class LocalAiGatewayLifecycle(
                     return LocalAiEndpointLifecycleResult.Failed(PendingRecoveryDetail(binding, install));
                 }
             }
+            _store.Save(binding);
             var guarded = new JournaledTransport(new(target, transport), _store, binding,
                 reason == LocalAiQuiesceReason.Teardown);
             var coordinator = new LocalAiGatewayProviderCoordinator(guarded, _credentials.GetOrCreate, logger);
             var ownedInstall = install with { Manifest = install.Manifest with { GatewayFallbackModel = binding.PreviousPrimary } };
-            return reason is { } withdrawal
+            var result = reason is { } withdrawal
                 ? await coordinator.QuiesceAsync(ownedInstall, withdrawal, ct).ConfigureAwait(false)
                 : await coordinator.PublishAsync(ownedInstall, ct).ConfigureAwait(false);
+            return result;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception ex)
@@ -303,6 +375,37 @@ internal sealed class LocalAiGatewayLifecycle(
             return LocalAiEndpointLifecycleResult.Failed(
                 "The original native Gateway route could not be safely updated. Its saved ownership or configuration changed, or it is offline. Reconnect it and review Local AI before retrying.");
         }
+    }
+
+    private async Task<(NativeLocalAiGatewayTarget, IGatewayAiSetupTransport)> GetTransportAsync(
+        LocalAiNativeBinding binding, CancellationToken ct)
+    {
+        NativeLocalAiGatewayTarget target;
+        IGatewayAiSetupTransport transport;
+        if (_registeredTarget?.GatewayId == binding.GatewayId && _registeredTransport is { IsConnected: true } registered)
+        {
+            target = _registeredTarget;
+            transport = registered;
+        }
+        else
+        {
+            var record = getRegistry()?.GetActive();
+            if (record?.Id != binding.GatewayId || getManager() is not { } manager)
+                throw new InvalidOperationException("Reconnect the original Local AI Gateway to withdraw and release its ownership.");
+            transport = await GatewayAiSetupTransport.BorrowNativeAsync(dataDirectory, manager,
+                binding.GatewayId, ct, binding.EndpointBinding).ConfigureAwait(false);
+            target = NativeLocalAiGatewayTarget.Capture(record, transport.Route);
+        }
+        RequireBinding(binding, target);
+        return (target, transport);
+    }
+
+    private static void RequireOwnedAllowlist(LocalAiNativeBinding binding, JsonNode config)
+    {
+        if (binding.AddedAllowlistEntry &&
+            config["agents"]?["defaults"]?["models"]?[binding.ModelRef] is { } entry &&
+            entry is not JsonObject { Count: 0 })
+            throw new InvalidOperationException("The owned Local AI allowlist entry was edited. Preserve it before reconciling.");
     }
 
     private static string PendingRecoveryDetail(LocalAiNativeBinding binding, LocalAiResolvedInstall install) =>
@@ -328,6 +431,7 @@ internal sealed class LocalAiGatewayLifecycle(
         public async Task<LocalAiGatewayConfigurationSnapshot> CaptureAsync(CancellationToken ct)
         {
             var snapshot = await rpc.CaptureAsync(ct).ConfigureAwait(false);
+            RequireOwnedAllowlist(_binding, JsonNode.Parse(snapshot.Config.GetRawText())!);
             if (snapshot.Hash != _binding.ConfigHash)
                 throw new InvalidOperationException("The bound Gateway configuration changed outside this Local AI operation.");
             return snapshot;

@@ -630,10 +630,11 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                         await InitializeAsync(ct);
                     Client!.EnsureLocalAiCanStart(selected.Target!.GatewayId);
                     try { await _localUse!.UseAsync(selected, ct, CreateLocalProgress(ct)); }
-                    catch (LocalAiSelectionRejectedException)
+                    catch (LocalAiSelectionRejectedException ex)
                     {
                         if (_closed) return;
                         ShowError("LocalChanged");
+                        ErrorBar.Message += " " + ex.Message;
                         await _localObservation.RefreshAsync();
                         return;
                     }
@@ -1180,6 +1181,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             LocalAiOnboardingState.StartAndUse => S("LocalStartAndUse"),
             LocalAiOnboardingState.Use => S("LocalUse"),
             LocalAiOnboardingState.Repair => S("LocalRepair"),
+            LocalAiOnboardingState.Reconcile => S("LocalReconcile"),
             _ => snapshot.CanRefresh ? S("CheckAgain") : "",
         };
         var providerPending = _providerOperationActive || phase is GatewayAiSetupPhase.Running or GatewayAiSetupPhase.Uncertain or
@@ -1229,6 +1231,8 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                 error is UnauthorizedAccessException ? "AdminRequired" :
                 Client?.Phase == GatewayAiSetupPhase.Prepared ? "PreparedChanged" :
                 _localExpectedModel is not null || Client?.RequiresReconciliation == true ? "Uncertain" : "Failed");
+            if (error is LocalAiSelectionRejectedException)
+                ErrorBar.Message += " " + error.Message;
             Render();
         }
     }

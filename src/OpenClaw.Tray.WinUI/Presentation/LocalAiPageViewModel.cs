@@ -142,6 +142,10 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
                 _runtimeSnapshot.State is LocalAiRuntimeState.Starting or LocalAiRuntimeState.Healthy));
     public bool CanRestart => !IsBusy && _runtimeSnapshot.Ownership == LocalAiOwnership.CompanionManaged &&
         _runtimeSnapshot.State == LocalAiRuntimeState.Healthy;
+    public bool ShowReleaseOwnership => _runtime.HasReleasableOwnership;
+    public bool CanReleaseOwnership => !IsBusy && ShowReleaseOwnership &&
+        _runtimeSnapshot.State == LocalAiRuntimeState.Stopped &&
+        _runtimeSnapshot.Ownership == LocalAiOwnership.None && !_runtimeSnapshot.GatewayRouteRequiresResolution;
     public bool CanOpenLogs => !IsBusy && HasManagedInstall;
     public bool CanRetrySetup => IsSetupAvailable && !IsBusy && ModelState is
         LocalAiModelPresentationState.NotInstalled or LocalAiModelPresentationState.Unknown;
@@ -191,6 +195,7 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
 
     public Task<bool> StartAsync() => RunRuntimeActionAsync(CanStart, _runtime.EnsureStartedAsync);
     public Task<bool> StopAsync() => RunRuntimeActionAsync(CanStop, _runtime.StopAsync);
+    public Task<bool> ReleaseOwnershipAsync() => RunRuntimeActionAsync(CanReleaseOwnership, _runtime.ReleaseOwnershipAsync);
     public Task<bool> RestartAsync() => RunRuntimeActionAsync(CanRestart, _runtime.RestartAsync);
     public bool OpenLogs() => RunCommand(CanOpenLogs, _appCommands.OpenLocalAiLogs);
     public bool RetrySetup() => RunCommand(CanRetrySetup, _appCommands.ShowLocalAiSetup);

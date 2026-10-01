@@ -7395,6 +7395,9 @@
   <data name="Onboarding_AiSetup_LocalStartAndUse" xml:space="preserve"><value>启动并使用</value></data>
   <data name="Onboarding_AiSetup_LocalUse" xml:space="preserve"><value>使用此模型</value></data>
   <data name="Onboarding_AiSetup_LocalRepair" xml:space="preserve"><value>修复本地 AI</value></data>
+  <data name="Onboarding_AiSetup_LocalReconcile" xml:space="preserve"><value>恢复并使用本地 AI</value></data>
+  <data name="Onboarding_AiSetup_LocalState_Reconcile" xml:space="preserve"><value>需要恢复所拥有的网关路由。</value></data>
+  <data name="LocalAiPage_ReleaseOwnershipButton.Content" xml:space="preserve"><value>释放网关所有权</value></data>
   <data name="Onboarding_AiSetup_LocalInstall" xml:space="preserve"><value>安装并使用本地 AI</value></data>
   <data name="Onboarding_AiSetup_LocalInstalling" xml:space="preserve"><value>正在设置本地 AI</value></data>
   <data name="Onboarding_AiSetup_LocalChanged" xml:space="preserve"><value>Gateway 或本地 AI 的就绪状态已更改。请返回连接 AI 页面并重新检查，然后再安装。</value></data>

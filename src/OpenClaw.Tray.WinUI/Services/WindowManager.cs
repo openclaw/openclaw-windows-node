@@ -642,6 +642,23 @@ internal sealed class WindowManager : IWindowManager
                 window.TryNavigateToExistingNativeLocalAi(native);
             return;
         }
+        if (_callbacks.GetLocalAiGatewayLifecycle?.Invoke()?.HasNativeBinding == true)
+        {
+            Logger.Warn("Local AI WSL recovery is blocked by retained native Gateway ownership");
+            _callbacks.GetAppNotificationService()?.Show(new AppNotification
+            {
+                Id = $"local-ai-native-owner-{Guid.NewGuid():N}",
+                Title = "Local AI setup needs attention",
+                Message = "Reconnect the original native Gateway, stop Local AI and release its Gateway ownership before repairing it for WSL.",
+                Severity = AppNotificationSeverity.Warning,
+                Source = "local-ai",
+                ActionRoute = "local-ai",
+                DedupeKey = "local-ai-native-owner",
+                CreatedAt = DateTimeOffset.UtcNow,
+            });
+            ShowHub("local-ai");
+            return;
+        }
         var resolution = await ResolveLocalAiSetupRouteAsync();
         if (resolution.Route == LocalAiSetupRoute.Provision)
         {

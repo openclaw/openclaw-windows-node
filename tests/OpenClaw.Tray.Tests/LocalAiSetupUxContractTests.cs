@@ -5,6 +5,17 @@ namespace OpenClaw.Tray.Tests;
 public sealed class LocalAiSetupUxContractTests
 {
     [Fact]
+    public void NativeAcquisitionSkipsWslInspectionAndNetworkingConsent()
+    {
+        var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.SetupEngine.UI", "Controls", "LocalAiSetupControl.xaml.cs"));
+        Assert.Contains("_config!.NativeLocalAiAcquisition ? null : forceNetworkingConsent", source);
+        AssertInOrder(source, "private void UpdateLocalAiOptions(", "if (config.NativeLocalAiAcquisition)",
+            "LocalAiNetworkingConsentPanel.Visibility = Visibility.Collapsed;", "return;",
+            "WslGlobalConfigStatus status");
+    }
+
+    [Fact]
     public void LocalAiSidebar_UsesColorChipAsset()
     {
         string root = TestRepositoryPaths.GetRepositoryRoot();
@@ -192,7 +203,7 @@ public sealed class LocalAiSetupUxContractTests
             "_localAiHardware = hardware;");
         AssertInOrder(
             source,
-            "WslGlobalConfigStatus networkingStatus = forceNetworkingConsent",
+            "WslGlobalConfigStatus? networkingStatus = _config!.NativeLocalAiAcquisition ? null : forceNetworkingConsent",
             "if (!CanApplyLocalAiAvailability(checking.Generation, setupWindow))",
             "_localAiNetworkingStatus = networkingStatus;");
         AssertInOrder(

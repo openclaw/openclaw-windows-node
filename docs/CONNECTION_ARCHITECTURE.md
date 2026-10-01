@@ -41,12 +41,34 @@ Explicit Stop persists `AutomaticRecoveryEnabled=false` in that same receipt
 without relinquishing ownership. Connection notifications use guarded runtime
 Resume rather than explicit Start; the runtime operation gate also prevents a
 resume already queued behind Stop from restarting the listener. Explicit Start
-or Restart re-enables recovery. Older receipts default to enabled, preserving
+or Restart re-enables recovery only after successful startup/publication.
+New first-Use bindings start disabled, so a clean failure cannot publish on
+reconnect. Older receipts default to enabled, preserving
 their prior startup behavior.
+
+When stopped intent survives an offline Stop, reconnect performs withdraw-only
+reconciliation under the runtime operation gate. It never starts the listener,
+and rechecks durable intent so a queued withdrawal cannot undo a newer Start.
+Shutdown drains connection-triggered Local AI recovery and disposes the inference
+runtime before disposing the authorized Gateway connection manager.
+
+After a successful Stop, **Release Gateway ownership** in Local AI settings
+explicitly releases the binding. The runtime must be stopped, and a fresh read
+through the original authenticated identity must confirm
+absent provider, restored fallback and absent Companion-added allowlist entry.
+Uncertain writes, offline owners and changed owned fields keep the receipt. Unrelated
+post-withdrawal edits do not prevent release. Close setup before releasing. Release
+before switching or removing the original Gateway, then explicitly choose Use on
+the next Gateway. If already switched, reconnect the original owner first.
+WSL Use and artifact Repair (including Settings Retry setup) refuse admission
+while a native binding exists; they cannot reuse a native-authenticated listener
+with the WSL provider key or replace its shared installation artifacts.
 
 Recovery can confirm an unchanged pre-dispatch revision or an already-withdrawn
 provider whose primary is the saved fallback or the retained endpoint-cycle model.
-If a publication landed before a crash, explicit Use can recreate only the same
+If a publication landed before a crash, or an unrelated configuration edit
+changed the whole-config revision while the listener was stopped, explicit
+Start/Use can recreate only the same
 authenticated loopback endpoint from the verified installation receipt. This does
 not replay the Gateway write or change the automatic-port preference. Ownership
 is confirmed only after exact Gateway inference and an unchanged configuration
@@ -67,6 +89,23 @@ probe. Native finalization uses this gate after its capability changes, before
 publishing the staged Gateway. Cancellation withdraws its route before releasing
 the native session. Unavailable Gateways and unresolved writes retain their
 receipt and report cleanup as pending.
+
+A reopened, verified installation with an owned failed listener or unresolved
+route offers **Recover and use Local AI**, not artifact Repair. It follows the
+same guarded endpoint-recovery and inference path. Edited provider, primary or
+Companion-added allowlist fields are not adopted or overwritten.
+
+Withdrawal can preserve unrelated configuration edits using a fresh CAS revision.
+An exact unredacted credential or successful inference through the same provider
+must confirm a still-published route. A redacted credential alone never authorizes
+deletion: if that listener is unavailable, explicit recovery remains necessary.
+User-edited allowlist metadata is preserved and its deletion ownership relinquished
+when routing is safely withdrawn. Native startup completes reconciliation and
+publication under the runtime gate, including an already-healthy listener; setup
+never publishes again after that gate has been released. Failed completion keeps
+recovery disabled and blocks status refresh from republishing until explicit
+Start or Reconcile succeeds. A timestamp-only healthy refresh does not invalidate
+successful Use; process, endpoint, model evidence and route readiness still must match.
 
 This document describes the gateway connection system - how the tray app discovers, authenticates with, and maintains connections to OpenClaw gateways.
 

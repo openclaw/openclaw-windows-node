@@ -19,6 +19,15 @@ public enum LocalAiQuiesceReason
 /// </summary>
 public interface ILocalAiEndpointLifecycle
 {
+    bool HasReleasableOwnership => false;
+    bool AutomaticRecoveryEnabled => true;
+    Task ReleaseOwnershipAsync(CancellationToken cancellationToken)
+        => throw new InvalidOperationException("There is no native Local AI ownership to release.");
+    Task PrepareStartAsync(LocalAiResolvedInstall install, CancellationToken cancellationToken)
+        => Task.CompletedTask;
+    Task<LocalAiEndpointLifecycleResult> CompleteStartAsync(LocalAiResolvedInstall install, CancellationToken cancellationToken)
+        => Task.FromResult(LocalAiEndpointLifecycleResult.Ok());
+
     /// <summary>Durable owners persist explicit running intent; stateless transports need no receipt.</summary>
     Task SetAutomaticRecoveryEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
         => Task.CompletedTask;

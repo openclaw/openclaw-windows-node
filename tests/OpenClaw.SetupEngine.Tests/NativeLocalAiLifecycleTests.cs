@@ -37,6 +37,7 @@ public sealed class NativeLocalAiLifecycleTests
         await reopened.ResumeAsync(runtime);
         await reopened.ResumeAsync(runtime);
         Assert.Equal(0, runtime.Calls);
+        Assert.Equal(2, runtime.WithdrawOnlyCalls);
         Assert.Equal(writes, fixture.Rpc.Writes);
         Assert.False(fixture.Store.Load()!.AutomaticRecoveryEnabled);
         Assert.True(fixture.Store.Exists);
@@ -136,7 +137,13 @@ public sealed class NativeLocalAiLifecycleTests
         var runtime = new LocalAiOnboardingTests.FakeRuntime(
             LocalAiOnboardingTests.RuntimeSnapshot(fixture.Install, LocalAiRuntimeState.Stopped))
         {
-            StartResult = LocalAiOnboardingTests.RuntimeSnapshot(fixture.Install, LocalAiRuntimeState.Healthy)
+            StartResult = LocalAiOnboardingTests.RuntimeSnapshot(fixture.Install, LocalAiRuntimeState.Healthy),
+            OnStartAsync = async () =>
+            {
+                var published = await fixture.Lifecycle.CompleteStartAsync(fixture.Install, default);
+                if (!published.Success) throw new InvalidOperationException(published.Detail);
+                await fixture.Lifecycle.SetAutomaticRecoveryEnabledAsync(true);
+            },
         };
         var hardware = new HostHardwareInfo(Architecture.X64, 128L << 30, 100L << 30,
             [new(GpuVendor.Nvidia, "Test GPU", 96L << 30, 80L << 30,
@@ -288,18 +295,24 @@ public sealed class NativeLocalAiLifecycleTests
             fixture.Rpc.Config["models"]!["providers"]!["llamacpp"]!["baseUrl"]!.GetValue<string>());
     }
 
-    [Fact]
-    public async Task ExternalConfigurationEditIsNeverOverwrittenEvenWhenProviderStillMatches()
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task WithdrawalPreservesUnrelatedEditAndRequiresProofOfRedactedCredential(bool redacted, bool verified)
     {
         using var fixture = new Fixture();
         await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
         Assert.True((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
         fixture.Rpc.Config["userPreference"] = "external-edit";
+        if (redacted) fixture.Rpc.Config["models"]!["providers"]!["llamacpp"]!["apiKey"] =
+            LocalAiGatewayProviderDefinition.CliRedactedApiKey;
+        fixture.Rpc.VerificationSucceeds = verified;
         fixture.Rpc.Revision++;
         var writes = fixture.Rpc.Writes;
-        Assert.False((await fixture.Lifecycle.QuiesceAsync(fixture.Install)).Success);
-        Assert.Equal(writes, fixture.Rpc.Writes);
-        Assert.NotNull(fixture.Rpc.Config["models"]!["providers"]!["llamacpp"]);
+        Assert.Equal(!redacted || verified, (await fixture.Lifecycle.QuiesceAsync(fixture.Install)).Success);
+        Assert.Equal(writes + (!redacted || verified ? 1 : 0), fixture.Rpc.Writes);
+        Assert.Equal("external-edit", fixture.Rpc.Config["userPreference"]!.GetValue<string>());
     }
 
     [Fact]
@@ -406,6 +419,7 @@ public sealed class NativeLocalAiLifecycleTests
         using var fixture = new Fixture();
         await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
         Assert.True((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+        await fixture.Lifecycle.SetAutomaticRecoveryEnabledAsync(false);
         fixture.Rpc.LoseReply = true;
         Assert.False((await fixture.Lifecycle.QuiesceAsync(fixture.Install)).Success);
         Assert.True(fixture.Store.Load()!.Pending);
@@ -415,6 +429,161 @@ public sealed class NativeLocalAiLifecycleTests
         Assert.Equal(2, fixture.Rpc.Writes);
         await recovered.ForgetWithdrawnAsync(Record.Id, default);
         Assert.False(fixture.Store.Exists);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StoppedListenerReconcilesUnrelatedEditWithoutReplayingPublication(bool withdrawn)
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        Assert.True((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+        if (withdrawn) Assert.True((await fixture.Lifecycle.QuiesceAsync(fixture.Install)).Success);
+        fixture.Rpc.Config["unrelated"] = "preserved";
+        fixture.Rpc.Revision++;
+        var writes = fixture.Rpc.Writes;
+        await fixture.Lifecycle.PrepareStartAsync(fixture.Install, default);
+        Assert.True((await fixture.Lifecycle.QuiesceAsync(fixture.Install, LocalAiQuiesceReason.EndpointCycle)).Success);
+        Assert.True((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+        Assert.Equal(writes + (withdrawn ? 1 : 0), fixture.Rpc.Writes);
+        Assert.Equal(withdrawn ? 0 : 1, fixture.Rpc.Verifications);
+        Assert.Equal("preserved", fixture.Rpc.Config["unrelated"]!.GetValue<string>());
+        Assert.False(fixture.Store.Load()!.Pending);
+    }
+
+    [Theory]
+    [InlineData("provider")]
+    [InlineData("primary")]
+    [InlineData("allowlist")]
+    public async Task StoppedRecoveryRejectsOwnedFieldEdits(string field)
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        Assert.True((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+        if (field == "provider") fixture.Rpc.Config["models"]!["providers"]!["llamacpp"]!["baseUrl"] = "http://127.0.0.1:9999/v1";
+        if (field == "primary") fixture.Rpc.Config["agents"]!["defaults"]!["model"]!["primary"] = "other/model";
+        if (field == "allowlist") fixture.Rpc.Config["agents"]!["defaults"]!["models"]![fixture.Model]!["alias"] = "external";
+        fixture.Rpc.Revision++;
+        await Assert.ThrowsAnyAsync<InvalidOperationException>(() => fixture.Lifecycle.PrepareStartAsync(fixture.Install, default));
+        Assert.Equal(1, fixture.Rpc.Writes);
+    }
+
+    [Fact]
+    public async Task FirstUseAdmissionDoesNotAuthorizeAutomaticStartupBeforePublication()
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        Assert.False(fixture.Store.Load()!.AutomaticRecoveryEnabled);
+        var runtime = new LocalAiOnboardingTests.FakeRuntime(
+            LocalAiOnboardingTests.RuntimeSnapshot(fixture.Install, LocalAiRuntimeState.Stopped));
+        await fixture.Lifecycle.ResumeAsync(runtime);
+        Assert.Equal(0, runtime.Calls);
+        Assert.Equal(1, runtime.WithdrawOnlyCalls);
+        Assert.Equal(0, fixture.Rpc.Writes);
+        Assert.False(fixture.Store.Load()!.AutomaticRecoveryEnabled);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task HealthyHostUseReconcilesUnderRuntimeOwnerWithoutLatePublication(bool stopAfterStart)
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        Assert.True((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+        fixture.Rpc.Config["unrelated"] = true;
+        fixture.Rpc.Revision++;
+        var runtime = new LocalAiOnboardingTests.FakeRuntime(
+            LocalAiOnboardingTests.RuntimeSnapshot(fixture.Install, LocalAiRuntimeState.Healthy))
+        {
+            OnStartAsync = async () =>
+            {
+                await fixture.Lifecycle.PrepareStartAsync(fixture.Install, default);
+                Assert.True((await fixture.Lifecycle.CompleteStartAsync(fixture.Install, default)).Success);
+                await fixture.Lifecycle.SetAutomaticRecoveryEnabledAsync(true);
+            },
+        };
+        var hardware = new HostHardwareInfo(Architecture.X64, 128L << 30, 100L << 30,
+            [new(GpuVendor.Nvidia, "Test GPU", 96L << 30, 80L << 30,
+                DriverVersion: "615.0", CudaMajorVersion: 13, StableId: "GPU-test")], false);
+        var host = new SetupLocalAiHost(() => throw new InvalidOperationException(), () => fixture.Registry,
+            () => runtime, _ => Task.FromResult<LocalAiResolvedInstall?>(fixture.Install),
+            (_, _) => Task.FromResult(true), _ => Task.FromResult(hardware),
+            () => throw new InvalidOperationException(), nativeLifecycle: fixture.Lifecycle);
+        host.ConfigureNative(Record, fixture.Rpc, _ => Task.CompletedTask);
+        var selected = await host.ObserveAsync(default);
+        var progress = new SynchronousProgress<LocalAiSetupStage>(stage =>
+        {
+            if (stage != LocalAiSetupStage.PublishingProvider) return;
+            if (!stopAfterStart)
+            {
+                var evidence = runtime.Snapshot.ModelEvidence;
+                runtime.Snapshot = runtime.Snapshot with
+                {
+                    UpdatedAtUtc = runtime.Snapshot.UpdatedAtUtc.AddSeconds(1),
+                    ModelEvidence = new(evidence.State, evidence.ObservedAtUtc.AddSeconds(1),
+                        evidence.Sha256, evidence.SizeBytes, evidence.ServerModelId),
+                    GatewayRouteRequiresResolution = false,
+                };
+                return;
+            }
+            fixture.Lifecycle.SetAutomaticRecoveryEnabledAsync(false).GetAwaiter().GetResult();
+            Assert.True(fixture.Lifecycle.QuiesceAsync(fixture.Install).GetAwaiter().GetResult().Success);
+            runtime.Snapshot = LocalAiOnboardingTests.RuntimeSnapshot(fixture.Install, LocalAiRuntimeState.Stopped);
+        });
+        if (stopAfterStart)
+            await Assert.ThrowsAsync<InvalidOperationException>(() => host.UseAsync(selected, default, progress));
+        else
+            await host.UseAsync(selected, default, progress);
+        Assert.Equal(stopAfterStart ? 2 : 1, fixture.Rpc.Writes);
+        Assert.Equal(1, fixture.Rpc.Verifications);
+        Assert.False(fixture.Store.Load()!.Pending);
+        Assert.Equal(!stopAfterStart, fixture.Store.Load()!.AutomaticRecoveryEnabled);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExplicitReleaseRequiresFreshConfirmedWithdrawal(bool editAfterStop)
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        Assert.True((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Lifecycle.ForgetWithdrawnAsync(Record.Id, default));
+        await fixture.Lifecycle.SetAutomaticRecoveryEnabledAsync(false);
+        Assert.True((await fixture.Lifecycle.QuiesceAsync(fixture.Install)).Success);
+        if (editAfterStop)
+        {
+            fixture.Rpc.Revision++;
+        }
+        await fixture.Lifecycle.ForgetWithdrawnAsync(Record.Id, default);
+        Assert.False(fixture.Store.Exists);
+    }
+
+    [Fact]
+    public async Task TeardownPreservesUserAdoptedAllowlistEntryAndAllowsRelease()
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        Assert.True((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+        fixture.Rpc.Config["agents"]!["defaults"]!["models"]![fixture.Model]!["alias"] = "user label";
+        fixture.Rpc.Revision++;
+        Assert.True((await fixture.Lifecycle.QuiesceAsync(fixture.Install)).Success);
+        Assert.Equal("user label", fixture.Rpc.Config["agents"]!["defaults"]!["models"]![fixture.Model]!["alias"]!.GetValue<string>());
+        Assert.False(fixture.Store.Load()!.AddedAllowlistEntry);
+        await fixture.Lifecycle.ForgetWithdrawnAsync(Record.Id, default);
+        Assert.False(fixture.Store.Exists);
+    }
+
+    [Fact]
+    public async Task SetupRegistrationExcludesExplicitRelease()
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Lifecycle.ReleaseOwnershipAsync(default));
+        Assert.Contains("Close Local AI setup", error.Message);
+        Assert.True(fixture.Store.Exists);
     }
 
     [Fact]
@@ -478,8 +647,10 @@ public sealed class NativeLocalAiLifecycleTests
         using var fixture = new Fixture();
         await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
         Assert.True((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+        var binding = fixture.Store.Load();
         fixture.Lifecycle.Release(fixture.Rpc);
         Assert.False((await fixture.Lifecycle.QuiesceAsync(fixture.Install)).Success);
+        Assert.Equal(binding, fixture.Store.Load());
         Assert.Equal(1, fixture.Rpc.Writes);
     }
 

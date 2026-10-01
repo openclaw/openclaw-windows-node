@@ -146,6 +146,9 @@ internal sealed class SetupLocalAiHost(
         RequireSameSelection(selected, current);
         if (!current.CanReview)
             throw new InvalidOperationException("Local AI readiness changed. Check this PC again.");
+        if (!current.Target!.IsNative && nativeLifecycle?.HasNativeBinding == true)
+            throw new LocalAiSelectionRejectedException(
+                "Stop Local AI and release its native Gateway ownership before repairing it for WSL.");
         if (current.Target!.IsNative && getRuntime()?.Snapshot is
             { Ownership: LocalAiOwnership.CompanionManaged } or { GatewayRouteRequiresResolution: true })
             throw new InvalidOperationException("Stop the owned Local AI runtime and resolve its Gateway route before repairing its files.");
@@ -201,6 +204,9 @@ internal sealed class SetupLocalAiHost(
         }
         else
         {
+            if (nativeLifecycle?.HasNativeBinding == true)
+                throw new LocalAiSelectionRejectedException(
+                    "Stop Local AI and release its native Gateway ownership before using it with WSL.");
             provider = getProvider();
             var admitted = await provider.ValidatePublicationAsync(install, ct);
             if (!admitted.Success)
@@ -230,11 +236,26 @@ internal sealed class SetupLocalAiHost(
             started.ModelEvidence.State is not (LocalAiModelAvailabilityState.Verified or LocalAiModelAvailabilityState.Loaded))
             throw new InvalidOperationException("The exact managed Local AI model did not become ready.");
         progress?.Report(LocalAiSetupStage.PublishingProvider);
-        var published = selected.Target.IsNative
-            ? await nativeLifecycle!.PublishAsync(install, ct)
-            : await provider!.PublishAsync(install, ct);
-        if (!published.Success)
-            throw new InvalidOperationException(published.Detail);
+        // Native startup owns publication and recovery authorization under the runtime
+        // gate. A second host write could otherwise republish after a newer Stop.
+        if (!selected.Target.IsNative)
+        {
+            var published = await provider!.PublishAsync(install, ct);
+            if (!published.Success)
+                throw new InvalidOperationException(published.Detail);
+        }
+        else
+        {
+            var current = runtime.Snapshot;
+            if (current.State != started.State || current.Ownership != started.Ownership ||
+                current.Endpoint != started.Endpoint || current.ModelId != started.ModelId ||
+                current.ProcessId != started.ProcessId || current.ProcessStartedAtUtc != started.ProcessStartedAtUtc ||
+                current.GatewayRouteRequiresResolution ||
+                current.ModelEvidence.State is not (LocalAiModelAvailabilityState.Verified or LocalAiModelAvailabilityState.Loaded) ||
+                current.ModelEvidence.Sha256 != started.ModelEvidence.Sha256 ||
+                current.ModelEvidence.SizeBytes != started.ModelEvidence.SizeBytes)
+                throw new InvalidOperationException("The Local AI runtime changed after startup. Review its current state before continuing.");
+        }
         RequireActiveTarget(selected.Target!, mutationStarted: true);
         return new(selected.Target!.GatewayId, selected.ModelRef!);
     }

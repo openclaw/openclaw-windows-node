@@ -107,6 +107,9 @@
                         <Button x:Name="OpenLogsButton" x:Uid="LocalAiPage_OpenLogsButton" Content="Open logs"
                                 Click="OnOpenLogs" AutomationProperties.AutomationId="LocalAiOpenLogs"/>
                     </StackPanel>
+                    <Button x:Name="ReleaseOwnershipButton" x:Uid="LocalAiPage_ReleaseOwnershipButton"
+                            Content="Release Gateway ownership" Visibility="Collapsed"
+                            Click="OnReleaseOwnership" AutomationProperties.AutomationId="LocalAiReleaseOwnership"/>
                 </StackPanel>
                 </Border>
             </ContentControl>

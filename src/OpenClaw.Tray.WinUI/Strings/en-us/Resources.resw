@@ -7459,6 +7459,9 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_AiSetup_LocalStartAndUse" xml:space="preserve"><value>Start and use</value></data>
   <data name="Onboarding_AiSetup_LocalUse" xml:space="preserve"><value>Use this model</value></data>
   <data name="Onboarding_AiSetup_LocalRepair" xml:space="preserve"><value>Repair Local AI</value></data>
+  <data name="Onboarding_AiSetup_LocalReconcile" xml:space="preserve"><value>Recover and use Local AI</value></data>
+  <data name="Onboarding_AiSetup_LocalState_Reconcile" xml:space="preserve"><value>The owned Gateway route needs recovery.</value></data>
+  <data name="LocalAiPage_ReleaseOwnershipButton.Content" xml:space="preserve"><value>Release Gateway ownership</value></data>
   <data name="Onboarding_AiSetup_LocalInstall" xml:space="preserve"><value>Install and use Local AI</value></data>
   <data name="Onboarding_AiSetup_LocalInstalling" xml:space="preserve"><value>Setting up Local AI</value></data>
   <data name="Onboarding_AiSetup_LocalChanged" xml:space="preserve"><value>The Gateway or Local AI readiness changed. Go back to Connect your AI and check again before installing.</value></data>

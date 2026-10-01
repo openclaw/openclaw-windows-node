@@ -90,6 +90,8 @@ provider unspecified so policy can choose among the actual offered values.
 
 For an authenticated isolated native Gateway, **Install and use Local AI** captures
 one in-memory consent for the reviewed Gateway, endpoint binding, model and port.
+Native acquisition review does not inspect `.wslconfig` or require consent to
+mirrored WSL networking. WSL review retains its existing inspection and consent.
 The Windows-only artifact pipeline then continues directly into startup, provider
 publication and exact-model verification under **Setting up Local AI**, without
 returning to provider discovery or requiring a second Use click. Acquisition itself

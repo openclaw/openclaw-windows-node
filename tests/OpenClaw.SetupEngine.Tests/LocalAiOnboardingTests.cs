@@ -603,6 +603,53 @@ public sealed class LocalAiOnboardingTests
             () => registry, () => runtime, _ => Task.FromResult(install()), (_, _) => Task.FromResult(true),
             _ => Task.FromResult(Hardware), provider ?? (() => throw new InvalidOperationException("No route mutation expected.")));
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ReopenedOwnedFailureOffersRecoveryNotArtifactRepair(bool verified)
+    {
+        var install = Install();
+        var runtime = RuntimeSnapshot(install, LocalAiRuntimeState.Failed) with
+        { Ownership = LocalAiOwnership.CompanionManaged, GatewayRouteRequiresResolution = true };
+        var result = LocalAiOnboardingSnapshot.Project(Target with { IsNative = true },
+            LocalInferenceEligibility.Evaluate(Hardware, install.Manifest.ModelCatalogId),
+            install, verified, false, runtime);
+        Assert.Equal(verified ? LocalAiOnboardingState.Reconcile : LocalAiOnboardingState.Repair, result.State);
+        Assert.Equal(verified, result.CanUse);
+        Assert.Equal(!verified, result.CanReview);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task WslUseAndRepairRejectNativeOwnershipBeforeAdmission(bool repair)
+    {
+        using var temp = new TempDirectory();
+        var registry = Registry(temp.Path);
+        var install = Install();
+        var runtime = new FakeRuntime(RuntimeSnapshot(install,
+            repair ? LocalAiRuntimeState.Failed : LocalAiRuntimeState.Healthy));
+        var paths = new LocalAiPaths(temp.Path);
+        new LocalAiNativeBindingStore(paths).Save(new("native", "endpoint", "identity",
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install), null, "hash", false));
+        var lifecycle = new LocalAiGatewayLifecycle(paths, temp.Path, () => registry, () => null,
+            new LocalAiGatewayProviderCoordinator(new ReadOnlyGateway(install, false),
+                new LocalAiGatewayDistroResolver(registry), NullLogger.Instance), NullLogger.Instance);
+        var host = new SetupLocalAiHost(
+            () => Task.FromResult(new LocalAiSetupResolution(LocalAiSetupRoute.Recovery,
+                new("gateway", "Managed", 18789, install.Manifest.ModelCatalogId, install.Manifest.RequestedPort))),
+            () => registry, () => runtime, _ => Task.FromResult<LocalAiResolvedInstall?>(install),
+            (_, _) => Task.FromResult(true), _ => Task.FromResult(Hardware),
+            () => throw new InvalidOperationException("WSL admission must not run."),
+            nativeLifecycle: lifecycle);
+        var selected = await host.ObserveAsync(default);
+        var error = repair
+            ? await Assert.ThrowsAsync<LocalAiSelectionRejectedException>(() => host.RevalidateReviewAsync(selected, default))
+            : await Assert.ThrowsAsync<LocalAiSelectionRejectedException>(() => host.UseAsync(selected, default));
+        Assert.Contains("release", error.Message);
+        Assert.Equal(0, runtime.Calls);
+    }
+
     private sealed class ReadOnlyGateway(LocalAiResolvedInstall install, bool drifted) : IWslCommandRunner
     {
         public int Reads { get; private set; }
@@ -661,19 +708,30 @@ public sealed class LocalAiOnboardingTests
         new(state, state == LocalAiRuntimeState.Healthy ? LocalAiOwnership.CompanionManaged : LocalAiOwnership.None,
             install.Endpoint!, "test", install.Manifest.ModelCatalogId,
             new(LocalAiModelAvailabilityState.Verified, DateTimeOffset.UtcNow, new string('a', 64), 1),
-            null, null, null, DateTimeOffset.UtcNow);
+            null, null, null, DateTimeOffset.UtcNow)
+        { GatewayRouteRequiresResolution = state != LocalAiRuntimeState.Healthy };
 
     internal sealed class FakeRuntime(LocalAiRuntimeSnapshot snapshot) : ILocalAiRuntime
     {
         public int Calls { get; private set; }
+        public int WithdrawOnlyCalls { get; private set; }
         public Action? OnStart { get; init; }
+        public Func<Task>? OnStartAsync { get; init; }
         public LocalAiRuntimeSnapshot? StartResult { get; init; }
         public LocalAiRuntimeSnapshot Snapshot { get; set; } = snapshot;
         public event EventHandler<LocalAiRuntimeSnapshotChangedEventArgs>? StateChanged { add { } remove { } }
         public Task<LocalAiRuntimeSnapshot> ResumeAsync(CancellationToken cancellationToken = default) =>
             EnsureStartedAsync(cancellationToken);
-        public Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken = default)
-        { Calls++; OnStart?.Invoke(); Snapshot = StartResult ?? Snapshot; return Task.FromResult(Snapshot); }
+        public Task<LocalAiRuntimeSnapshot> ReconcileStoppedAsync(CancellationToken cancellationToken = default)
+        { WithdrawOnlyCalls++; return Task.FromResult(Snapshot); }
+        public async Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            OnStart?.Invoke();
+            Snapshot = StartResult ?? Snapshot;
+            if (OnStartAsync is not null) await OnStartAsync();
+            return Snapshot;
+        }
         public Task<LocalAiRuntimeSnapshot> StopAsync(CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("Observation must not stop a runtime.");
         public Task<LocalAiRuntimeSnapshot> RestartAsync(CancellationToken cancellationToken = default) =>
