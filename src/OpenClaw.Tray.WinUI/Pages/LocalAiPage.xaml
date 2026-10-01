@@ -138,7 +138,7 @@
                             AutomationProperties.AutomationId="LocalAiRetrySetup"/>
                     <StackPanel x:Name="ChangeModelPanel" Spacing="8" Visibility="Collapsed">
                         <TextBlock x:Uid="LocalAiPage_ChangeModelDescription"
-                                  Text="Opens setup to choose another model. Replacing the existing Local Gateway still requires confirmation."
+                                  Text="Opens Local AI setup to choose another model. The existing Local Gateway is kept."
                                   Style="{StaticResource CaptionTextBlockStyle}"
                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                   TextWrapping="Wrap"/>

@@ -134,7 +134,8 @@ public sealed partial class SetupWindow : Window
         Func<bool, CancellationToken, Task>? applyNativeStartup = null,
         bool startupRegistrationAllowed = true,
         Action<TraySettingsConfig, bool?, bool>? persistChoices = null,
-        GatewayConnectionManager? connectionManager = null)
+        GatewayConnectionManager? connectionManager = null,
+        bool pinLocalAiRecoveryModel = true)
     {
         _startupRegistrationAllowed = startupRegistrationAllowed;
         _dataDir = dataDir ?? SetupContext.ResolveDataDir();
@@ -328,10 +329,9 @@ public sealed partial class SetupWindow : Window
                 _config.GatewayUrl = null;
             }
             if (!string.IsNullOrWhiteSpace(localAiRecoveryModelId))
-            {
                 _config.LocalAi.SelectedModelId = localAiRecoveryModelId;
-                _pinLocalAiRecoveryModel = true;
-            }
+            _pinLocalAiRecoveryModel = pinLocalAiRecoveryModel &&
+                !string.IsNullOrWhiteSpace(localAiRecoveryModelId);
             if (localAiRecoveryRequestedPort is { } requestedPort &&
                 LocalAiPortPolicy.TryValidate(requestedPort, out _))
             {
@@ -614,8 +614,16 @@ public sealed partial class SetupWindow : Window
         NavigateToLocalAiSetup();
     }
 
-    internal Task InstallReviewedLocalAiAsync() =>
-        _localAiTransitionTask = InstallReviewedLocalAiCoreAsync();
+    internal Task InstallReviewedLocalAiAsync()
+    {
+        if (_localAiReviewSelection is null)
+        {
+            if (_startAtLocalAiRecoveryReview)
+                NavigateToProgress();
+            return Task.CompletedTask;
+        }
+        return _localAiTransitionTask = InstallReviewedLocalAiCoreAsync();
+    }
 
     private async Task InstallReviewedLocalAiCoreAsync()
     {
@@ -655,7 +663,14 @@ public sealed partial class SetupWindow : Window
     internal void CancelLocalAiReview()
     {
         if (_localAiReviewSelection is null)
+        {
+            if (_startAtLocalAiRecoveryReview)
+            {
+                ResetLocalAiRecoveryMode();
+                Close();
+            }
             return;
+        }
         _localAiRecoveryBaseline.Restore(_config);
         _config.LocalAiRecoveryGatewayId = null;
         _config.NativeLocalAiAcquisition = false;

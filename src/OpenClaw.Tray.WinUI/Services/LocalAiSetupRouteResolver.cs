@@ -9,7 +9,9 @@ internal sealed class LocalAiSetupRouteResolver(
     Func<GatewayRegistry?> getRegistry, string dataDir, string localDataDir, string defaultDistroName,
     Func<string, string?, ExistingConfigDetector.ExistingConfig>? detectExisting = null)
 {
-    public async Task<LocalAiSetupResolution> ResolveAsync(CancellationToken ct = default)
+    public async Task<LocalAiSetupResolution> ResolveAsync(
+        CancellationToken ct = default,
+        bool pinInstalledModelSelection = true)
     {
         var registry = getRegistry();
         if (registry is null)
@@ -33,6 +35,7 @@ internal sealed class LocalAiSetupRouteResolver(
         ct.ThrowIfCancellationRequested();
         return LocalAiSetupRoutePolicy.Decide(owners, existing.HasLocalGateway, existing.LocalGatewayId,
             existing.HasDistro, existing.HasDistroDataDirectory, existing.DistroIsAppOwned,
-            install?.Manifest.ModelCatalogId, install?.Manifest.RequestedPort);
+            install?.Manifest.ModelCatalogId, install?.Manifest.RequestedPort,
+            pinInstalledModelSelection);
     }
 }

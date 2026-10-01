@@ -194,6 +194,8 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
     public Task<bool> RestartAsync() => RunRuntimeActionAsync(CanRestart, _runtime.RestartAsync);
     public bool OpenLogs() => RunCommand(CanOpenLogs, _appCommands.OpenLocalAiLogs);
     public bool RetrySetup() => RunCommand(CanRetrySetup, _appCommands.ShowLocalAiSetup);
+    // Model changes reuse the non-destructive Local AI recovery route for the existing
+    // managed gateway; full onboarding would offer to reinstall the WSL gateway.
     public bool ChangeModel() => RunCommand(CanChangeModel, _appCommands.ShowLocalAiModelSetup);
     public bool RepairConnection() => RunCommand(CanRepairConnection, _appCommands.Reconnect);
     public bool OpenChat() => RunCommand(CanOpenChat, _appCommands.ShowChat);

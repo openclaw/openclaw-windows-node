@@ -7140,7 +7140,7 @@ O binário wxc-exec não pôde ser localizado. {1} Se esta for uma build de dese
   <data name="LocalAi_Reason_UnknownModel" xml:space="preserve"><value>O modelo selecionado não está disponível nesta versão da IA local.</value></data>
   <data name="LocalAi_Reason_UnknownModelName" xml:space="preserve"><value>O modelo selecionado</value></data>
   <data name="LocalAiPage_ChangeModelButton.Content" xml:space="preserve"><value>Alterar modelo</value></data>
-  <data name="LocalAiPage_ChangeModelDescription.Text" xml:space="preserve"><value>Abre a configuração para escolher outro modelo. Substituir o Gateway local existente ainda requer confirmação.</value></data>
+  <data name="LocalAiPage_ChangeModelDescription.Text" xml:space="preserve"><value>Abre a configuração da IA local para escolher outro modelo. O Gateway local existente é mantido.</value></data>
   <data name="LocalAiPage_CheckingMessage" xml:space="preserve"><value>O OpenClaw está verificando se este dispositivo pode executar IA local. Isso levará apenas um instante.</value></data>
   <data name="LocalAiPage_CheckingTitle" xml:space="preserve"><value>Verificando a disponibilidade da IA local</value></data>
   <data name="LocalAiPage_RecheckAvailabilityButton.Content" xml:space="preserve"><value>Verificar novamente</value></data>

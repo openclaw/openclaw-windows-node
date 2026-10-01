@@ -368,7 +368,8 @@ public sealed class OnboardingPresentationContractTests
         Assert.DoesNotContain("TailscaleReady", source);
         Assert.Contains("NavigateToWslNetworking(returnToReview: true)", source);
         var detail = Read(@"src\OpenClaw.SetupEngine.UI\Pages\GatewaySetupDetailPage.xaml.cs");
-        Assert.Contains("Detail: GatewaySetupDetail.Networking, ReturnToReview: false", detail);
+        Assert.Contains("Detail: GatewaySetupDetail.Networking } networking", detail);
+        Assert.Contains("if (networking.ReturnToReview)", detail);
         Assert.Contains("NavigateToLocalAiSetup(back: true)", detail);
         Assert.Contains("NavigateToGatewaySetup(back: true)", detail);
         var window = Read(@"src\OpenClaw.SetupEngine.UI\SetupWindow.xaml.cs");

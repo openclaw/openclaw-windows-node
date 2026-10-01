@@ -677,8 +677,11 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         Assert.Empty(commands.Distros);
     }
 
-    [Fact]
-    public void LocalAiSetupRoute_UsesUniqueManagedOwnerEvenWhenItIsNotActive()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void LocalAiSetupRoute_UsesUniqueManagedOwnerEvenWhenItIsNotActive(
+        bool pinModelSelection)
     {
         GatewayRecord owner = ManagedRecord("managed", "CustomGateway") with
         {
@@ -696,7 +699,7 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
             distroIsAppOwned: true,
             installedModelCatalogId: LocalModelCatalog.Qwen38_27BModelId,
             installedRequestedLocalAiPort: 28888,
-            pinInstalledModelSelection: true);
+            pinInstalledModelSelection: pinModelSelection);
 
         Assert.Equal(LocalAiSetupRoute.Recovery, resolution.Route);
         Assert.Equal("managed", resolution.RecoveryTarget?.GatewayId);
@@ -704,7 +707,7 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         Assert.Equal(29999, resolution.RecoveryTarget?.GatewayPort);
         Assert.Equal(LocalModelCatalog.Qwen38_27BModelId, resolution.RecoveryTarget?.ModelCatalogId);
         Assert.Equal(28888, resolution.RecoveryTarget?.RequestedLocalAiPort);
-        Assert.True(resolution.RecoveryTarget?.PinModelSelection);
+        Assert.Equal(pinModelSelection, resolution.RecoveryTarget?.PinModelSelection);
     }
 
     [Fact]

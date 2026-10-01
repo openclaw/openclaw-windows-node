@@ -78,6 +78,17 @@ public sealed class WindowManagerTests
         var manager = ReadManager();
 
         Assert.Contains("public async Task ShowLocalAiSetupAsync()", manager);
+        Assert.Contains("public Task ShowLocalAiModelSetupAsync()", manager);
+        AssertInOrder(
+            manager,
+            "public Task ShowLocalAiModelSetupAsync()",
+            "pinInstalledModelSelection: false,",
+            "allowProvisioningFallback: false);",
+            "private async Task ShowLocalAiSetupAsync(",
+            "bool allowProvisioningFallback)",
+            "var resolution = await ResolveLocalAiSetupRouteAsync(pinInstalledModelSelection);",
+            "if (resolution.Route == LocalAiSetupRoute.Provision && allowProvisioningFallback)",
+            "await ShowLocalAiSetupRecoveryAsync(resolution.RecoveryTarget);");
         var resolver = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src",
             "OpenClaw.Tray.WinUI", "Services", "LocalAiSetupRouteResolver.cs"));
         Assert.Contains("new LocalAiSetupRouteResolver(", manager);
@@ -86,9 +97,10 @@ public sealed class WindowManagerTests
         Assert.Contains("new LocalAiManifestStore(", resolver);
         Assert.Contains("install?.Manifest.ModelCatalogId", resolver);
         Assert.Contains("LocalAiSetupRoutePolicy.Decide(", resolver);
+        Assert.Contains("pinInstalledModelSelection);", resolver);
         AssertInOrder(
             manager,
-            "if (resolution.Route == LocalAiSetupRoute.Provision)",
+            "if (resolution.Route == LocalAiSetupRoute.Provision && allowProvisioningFallback)",
             "await ShowOnboardingAsync();",
             "if (resolution.Route == LocalAiSetupRoute.Blocked",
             "await ShowLocalAiSetupRecoveryAsync(");
@@ -143,6 +155,9 @@ public sealed class WindowManagerTests
         Assert.Contains("_localAiRecoveryBaseline.Restore(_config);", setupWindow);
         Assert.Contains("localAiRecoveryModelId: localAiRecoveryTarget?.ModelCatalogId", manager);
         Assert.Contains(
+            "pinLocalAiRecoveryModel: localAiRecoveryTarget?.PinModelSelection ?? false",
+            manager);
+        Assert.Contains(
             "localAiRecoveryRequestedPort: localAiRecoveryTarget?.RequestedLocalAiPort",
             manager);
 
@@ -173,6 +188,10 @@ public sealed class WindowManagerTests
             "LocalAiModelSelector.IsEnabled = isAvailable && !_localAiRecoveryModelPinned;",
             localAi);
         Assert.Contains(
+            "_pinLocalAiRecoveryModel = pinLocalAiRecoveryModel &&",
+            setupWindow);
+        Assert.Contains("!string.IsNullOrWhiteSpace(localAiRecoveryModelId);", setupWindow);
+        Assert.Contains(
             "LocalAiToggle.IsEnabled = isAvailable && !_localAiRecoveryOnly;",
             localAi);
         AssertInOrder(
@@ -181,6 +200,52 @@ public sealed class WindowManagerTests
             "eligibility = selectedEligibility;",
             "else if (!selectedEligibility.CanInstall)",
             "_config.LocalAi.SelectedModelId = null;");
+    }
+
+    [Fact]
+    public void ConstructorStartedLocalAiRecovery_ContinuesAndCancelsWithoutGenericGatewayReview()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var setupWindow = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.SetupEngine.UI", "SetupWindow.xaml.cs"));
+        var detail = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.SetupEngine.UI", "Pages", "GatewaySetupDetailPage.xaml.cs"));
+
+        Assert.DoesNotContain("SetupWindow.Active?.IsAiLocalReview", detail);
+        Assert.Contains("SetupWindow.Active?.IsLocalAiRecovery", detail);
+        AssertInOrder(
+            setupWindow,
+            "internal Task InstallReviewedLocalAiAsync()",
+            "if (_localAiReviewSelection is null)",
+            "if (_startAtLocalAiRecoveryReview)",
+            "NavigateToProgress();");
+        AssertInOrder(
+            setupWindow,
+            "public void NavigateToProgress()",
+            "if (!AccessDraft.CanInstall(_startAtLocalAiRecoveryReview))",
+            "return;",
+            "NavigateTo(typeof(ProgressPage)");
+        AssertInOrder(
+            setupWindow,
+            "internal void CancelLocalAiReview()",
+            "if (_localAiReviewSelection is null)",
+            "if (_startAtLocalAiRecoveryReview)",
+            "ResetLocalAiRecoveryMode();",
+            "Close();");
+        AssertInOrder(
+            detail,
+            "private void Back_Click(object sender, RoutedEventArgs e)",
+            "if (_args is { Detail: GatewaySetupDetail.Networking } networking)",
+            "if (networking.ReturnToReview)",
+            "SetupWindow.Active?.NavigateToGatewaySetup(back: true);",
+            "SetupWindow.Active?.NavigateToLocalAiSetup(back: true);",
+            "SetupWindow.Active?.IsLocalAiRecovery == true",
+            "SetupWindow.Active.CancelLocalAiReview();");
+        AssertInOrder(
+            detail,
+            "private async Task PrimaryAsync(object sender, RoutedEventArgs e)",
+            "SetupWindow.Active?.IsLocalAiRecovery != true",
+            "await SetupWindow.Active.InstallReviewedLocalAiAsync();");
     }
 
     [Fact]
