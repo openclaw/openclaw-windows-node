@@ -682,9 +682,7 @@ public sealed class WorkspaceWindowProofTests
         Assert.InRange(reopenBounds.Left - nativeNavigation.Current.BoundingRectangle.Left, 0, 12);
         await app.NavigateAsync("workspace:notifications", "NotificationsPage", "WorkspaceReopenPane");
         Assert.Equal(workspace, app.HubWindowHandle);
-        var reopenButton = Find(workspaceElement, "WorkspaceReopenPane");
-        reopenButton.SetFocus();
-        Assert.True(reopenButton.Current.HasKeyboardFocus);
+        await FocusForKeyboardAsync(app, workspaceElement, "WorkspaceReopenPane");
         System.Windows.Forms.SendKeys.SendWait(" ");
         await WaitUntilAsync(() => IsVisible(workspaceElement, "WorkspaceOwner") &&
             IsVisible(workspaceElement, "WorkspaceNotifications") &&
@@ -723,7 +721,7 @@ public sealed class WorkspaceWindowProofTests
             var bounds = nativeNavigation.Current.BoundingRectangle;
             return Math.Abs((content.Left + content.Right) / 2 - (bounds.Left + bounds.Right) / 2) <= 2;
         });
-        Find(workspaceElement, "WorkspaceReopenPane").SetFocus();
+        await FocusForKeyboardAsync(app, workspaceElement, "WorkspaceReopenPane");
         System.Windows.Forms.SendKeys.SendWait("{TAB}");
         Assert.NotEqual("WorkspaceReopenPane", AutomationElement.FocusedElement.Current.AutomationId);
         Assert.DoesNotContain(AutomationElement.FocusedElement.Current.AutomationId,
