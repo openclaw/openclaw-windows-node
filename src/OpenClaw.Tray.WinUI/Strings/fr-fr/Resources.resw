@@ -7886,4 +7886,5 @@ Vos paramètres, votre passerelle, vos fichiers et vos modèles restent en place
   <data name="AgentCreation_Description" xml:space="preserve"><value>Créez un agent et son espace de travail sur la passerelle connectée. Cela ne crée pas de conversation et ne modifie pas la conversation actuelle.</value></data>
   <data name="AgentCreation_PermissionRequired" xml:space="preserve"><value>Connectez-vous à une passerelle avec l’autorisation operator.admin pour créer un agent.</value></data>
   <data name="AgentCreation_Failed" xml:space="preserve"><value>La création de l’agent n’a pas pu être confirmée. Fermez cette boîte de dialogue et actualisez les agents avant de réessayer.</value></data>
+  <data name="Onboarding_AiSetup_LocalRepairRequiresStop" xml:space="preserve"><value>Ouvrez les paramètres Local AI, reconnectez la passerelle d’origine et arrêtez Local AI avant de réparer ses fichiers. Si une récupération du routage est en attente, effectuez-la d’abord. Conservez le reçu de propriété et les modèles téléchargés.</value></data>
 </root>

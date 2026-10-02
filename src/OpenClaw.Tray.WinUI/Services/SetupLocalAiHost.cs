@@ -151,7 +151,7 @@ internal sealed class SetupLocalAiHost(
                 "Stop Local AI and release its native Gateway ownership before repairing it for WSL.");
         if (current.Target!.IsNative && getRuntime()?.Snapshot is
             { Ownership: LocalAiOwnership.CompanionManaged } or { GatewayRouteRequiresResolution: true })
-            throw new InvalidOperationException("Stop the owned Local AI runtime and resolve its Gateway route before repairing its files.");
+            throw new LocalAiRepairRequiresStopException();
         return current.Target!;
     }
 

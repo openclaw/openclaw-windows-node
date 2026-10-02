@@ -7886,4 +7886,5 @@
   <data name="AgentCreation_Description" xml:space="preserve"><value>在已連線的閘道上建立代理程式及其工作區。此操作不會建立對話或變更目前的聊天。</value></data>
   <data name="AgentCreation_PermissionRequired" xml:space="preserve"><value>請連線至具有 operator.admin 權限的閘道以建立代理程式。</value></data>
   <data name="AgentCreation_Failed" xml:space="preserve"><value>無法確認代理程式是否已建立。請關閉此對話方塊並重新整理代理程式清單，然後再試。</value></data>
+  <data name="Onboarding_AiSetup_LocalRepairRequiresStop" xml:space="preserve"><value>開啟 Local AI 設定，重新連線至原本的閘道，並成功停止 Local AI 後再修復檔案。如果路由仍需復原，請先完成復原。請保留擁有權記錄和已下載的模型。</value></data>
 </root>

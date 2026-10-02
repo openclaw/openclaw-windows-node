@@ -5,6 +5,28 @@ namespace OpenClaw.Tray.Tests;
 public sealed class LocalAiSetupUxContractTests
 {
     [Fact]
+    public void NativeRepairOwnershipFailureHasLocalizedRecoveryInstructions()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(root,
+            "src", "OpenClaw.SetupEngine.UI", "Pages", "AiSetupPage.xaml.cs"));
+        // Retire when ReportFailure can be invoked in a mounted WinUI fixture.
+        Assert.Contains("error is LocalAiRepairRequiresStopException ? \"LocalRepairRequiresStop\"", source);
+        var review = File.ReadAllText(Path.Combine(root,
+            "src", "OpenClaw.SetupEngine.UI", "Pages", "GatewaySetupDetailPage.xaml.cs"));
+        Assert.Contains("error is LocalAiRepairRequiresStopException", review);
+        Assert.Contains("\"Onboarding_AiSetup_LocalRepairRequiresStop\"", review);
+        foreach (var locale in new[] { "en-us", "fr-fr", "nl-nl", "pt-br", "zh-cn", "zh-tw" })
+        {
+            var resources = System.Xml.Linq.XDocument.Load(Path.Combine(root,
+                "src", "OpenClaw.Tray.WinUI", "Strings", locale, "Resources.resw"));
+            var text = Assert.Single(resources.Root!.Elements("data"), element =>
+                (string?)element.Attribute("name") == "Onboarding_AiSetup_LocalRepairRequiresStop");
+            Assert.False(string.IsNullOrWhiteSpace(text.Element("value")?.Value));
+        }
+    }
+
+    [Fact]
     public void NativeAcquisitionSkipsWslInspectionAndNetworkingConsent()
     {
         var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),

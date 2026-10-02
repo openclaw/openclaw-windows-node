@@ -7459,6 +7459,7 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_AiSetup_LocalStartAndUse" xml:space="preserve"><value>Start and use</value></data>
   <data name="Onboarding_AiSetup_LocalUse" xml:space="preserve"><value>Use this model</value></data>
   <data name="Onboarding_AiSetup_LocalRepair" xml:space="preserve"><value>Repair Local AI</value></data>
+  <data name="Onboarding_AiSetup_LocalRepairRequiresStop" xml:space="preserve"><value>Open Local AI settings, reconnect the original Gateway, and stop Local AI successfully before repairing its files. If route recovery is pending, recover it first. Keep the ownership receipt and downloaded models.</value></data>
   <data name="Onboarding_AiSetup_LocalReconcile" xml:space="preserve"><value>Recover and use Local AI</value></data>
   <data name="Onboarding_AiSetup_LocalState_Reconcile" xml:space="preserve"><value>The owned Gateway route needs recovery.</value></data>
   <data name="LocalAiPage_ReleaseOwnershipButton.Content" xml:space="preserve"><value>Release Gateway ownership</value></data>

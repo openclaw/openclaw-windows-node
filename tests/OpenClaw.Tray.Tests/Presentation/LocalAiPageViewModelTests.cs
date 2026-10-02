@@ -11,6 +11,28 @@ namespace OpenClaw.Tray.Tests.Presentation;
 public sealed class LocalAiPageViewModelTests
 {
     [Fact]
+    public async Task UnresolvedStoppedNativeOwnerKeepsExplicitStopAvailableBeforeReceiptHydration()
+    {
+        var initial = LocalAiRuntimeSnapshot.Initial(new Uri("http://127.0.0.1:18803/v1"), DateTimeOffset.UtcNow);
+        var runtime = new FakeLocalAiRuntime(initial)
+        {
+            HasReleasableOwnership = true,
+            StopResult = initial with { GatewayRouteRequiresResolution = false },
+        };
+        using var gatewaySource = new PermissionsPageRuntimeSource(new FakePermissionsPageRuntimeHost());
+        using var viewModel = new LocalAiPageViewModel(runtime, gatewaySource, new FakeAppCommands(),
+            new RecordingUiDispatcher(), new FixedHardwareProbe(HostHardwareInfo.Unknown));
+        Assert.False(viewModel.CanStart);
+        Assert.True(viewModel.CanStop);
+        Assert.False(viewModel.CanReleaseOwnership);
+        Assert.True(await viewModel.StopAsync());
+        Assert.True(viewModel.CanReleaseOwnership);
+        Assert.True(await viewModel.ReleaseOwnershipAsync());
+        Assert.Equal(1, runtime.StopCount);
+        Assert.Equal(1, runtime.ReleaseCount);
+    }
+
+    [Fact]
     public async Task ExplicitReleaseIsDistinctFromStopAndRequiresStoppedCleanRuntime()
     {
         var runtime = new FakeLocalAiRuntime(CreateInstalledSnapshot())

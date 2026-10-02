@@ -1227,7 +1227,8 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                 if (_controller is not null && _localObservation is not null)
                     AsyncEventHandlerGuard.Run(_localObservation.RefreshAsync, onError: ReportFailure);
             }
-            ShowError(error is LocalAiSelectionRejectedException ? "LocalChanged" :
+            ShowError(error is LocalAiRepairRequiresStopException ? "LocalRepairRequiresStop" :
+                error is LocalAiSelectionRejectedException ? "LocalChanged" :
                 error is UnauthorizedAccessException ? "AdminRequired" :
                 Client?.Phase == GatewayAiSetupPhase.Prepared ? "PreparedChanged" :
                 _localExpectedModel is not null || Client?.RequiresReconciliation == true ? "Uncertain" : "Failed");

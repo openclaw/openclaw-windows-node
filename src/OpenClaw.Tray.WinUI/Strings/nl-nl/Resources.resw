@@ -7887,4 +7887,5 @@ Uw instellingen, gateway, bestanden en modellen blijven op hun plaats.</value>
   <data name="AgentCreation_Description" xml:space="preserve"><value>Maak een agent en werkruimte op de verbonden gateway. Dit maakt geen gesprek en wijzigt uw huidige chat niet.</value></data>
   <data name="AgentCreation_PermissionRequired" xml:space="preserve"><value>Maak verbinding met een gateway met operator.admin-machtiging om een agent te maken.</value></data>
   <data name="AgentCreation_Failed" xml:space="preserve"><value>Het maken van de agent kon niet worden bevestigd. Sluit dit dialoogvenster en vernieuw de agents voordat u het opnieuw probeert.</value></data>
+  <data name="Onboarding_AiSetup_LocalRepairRequiresStop" xml:space="preserve"><value>Open de instellingen van Local AI, verbind opnieuw met de oorspronkelijke Gateway en stop Local AI voordat je de bestanden herstelt. Herstel eerst de routering als dat nog nodig is. Bewaar het eigendomsbewijs en de gedownloade modellen.</value></data>
 </root>

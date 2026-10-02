@@ -119,6 +119,8 @@ public sealed record SetupLocalAiUseResult(
 public sealed class LocalAiSelectionRejectedException(string message) : InvalidOperationException(message);
 /// <summary>The runtime returned after confirming cleanup. No uncertain publication remains.</summary>
 public sealed class LocalAiStartFailedException(string message) : InvalidOperationException(message);
+public sealed class LocalAiRepairRequiresStopException() : InvalidOperationException(
+    "Stop Local AI and resolve its original Gateway route in Local AI settings before repairing its files.");
 
 /// <summary>Window-scoped, single-use consent for the exact native installation reviewed by the user.</summary>
 public sealed class LocalAiInstallAndUseIntent

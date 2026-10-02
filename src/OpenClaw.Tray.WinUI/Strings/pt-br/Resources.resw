@@ -7940,4 +7940,5 @@ Suas configurações, gateway, arquivos e modelos permanecem onde estão.</value
   <data name="AgentCreation_Description" xml:space="preserve"><value>Crie um agente e seu espaço de trabalho no gateway conectado. Isso não cria uma conversa nem altera seu chat atual.</value></data>
   <data name="AgentCreation_PermissionRequired" xml:space="preserve"><value>Conecte-se a um gateway com a permissão operator.admin para criar um agente.</value></data>
   <data name="AgentCreation_Failed" xml:space="preserve"><value>Não foi possível confirmar a criação do agente. Feche esta caixa de diálogo e atualize os agentes antes de tentar novamente.</value></data>
+  <data name="Onboarding_AiSetup_LocalRepairRequiresStop" xml:space="preserve"><value>Abra as configurações do Local AI, reconecte o Gateway original e pare o Local AI com sucesso antes de reparar seus arquivos. Se houver recuperação de rota pendente, conclua-a primeiro. Preserve o registro de propriedade e os modelos baixados.</value></data>
 </root>

@@ -25,6 +25,11 @@ public interface ILocalAiEndpointLifecycle
         => throw new InvalidOperationException("There is no native Local AI ownership to release.");
     Task PrepareStartAsync(LocalAiResolvedInstall install, CancellationToken cancellationToken)
         => Task.CompletedTask;
+    Task PrepareUnownedStopAsync(CancellationToken cancellationToken)
+        => Task.CompletedTask;
+    /// <summary>Confirm withdrawal through the original owner without inferring provider ownership from damaged artifacts.</summary>
+    Task ConfirmWithdrawnWithoutInstallAsync(CancellationToken cancellationToken)
+        => throw new InvalidOperationException("Restore the Local AI installation receipt before resolving its Gateway route.");
     Task<LocalAiEndpointLifecycleResult> CompleteStartAsync(LocalAiResolvedInstall install, CancellationToken cancellationToken)
         => Task.FromResult(LocalAiEndpointLifecycleResult.Ok());
 

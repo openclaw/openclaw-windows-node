@@ -6,6 +6,15 @@ namespace OpenClaw.Tray.Tests;
 public sealed class AppRefactorContractTests
 {
     [Fact]
+    public void AutomaticLocalAiStartupRequiresPositiveWslOwnershipAdmission()
+    {
+        var source = ReadAppSources();
+        // Retire when startup can be mounted without activating real app services.
+        Assert.Contains("if (_localAiGatewayLifecycle.CanStartWslAutomatically)", source);
+        Assert.DoesNotContain("if (!_localAiGatewayLifecycle.IsNativeMode)", source);
+    }
+
+    [Fact]
     public void E2ESetupTeardown_UsesFixtureOwnedUninstallArguments()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();

@@ -81,6 +81,40 @@ alone is insufficient authority to delete a potentially externally edited route.
 
 Native automatic startup waits for the manager-owned connection and an existing
 confirmed selection. Observation and artifact acquisition never switch models.
+Legacy Windows artifact receipts alone do not authorize background WSL startup.
+`LocalAiGatewayLifecycle` admits automatic WSL startup only with one pinned,
+explicit setup-managed WSL owner and no native binding, active native Gateway or
+staged native selection. Explicit startup revalidates ownership before runtime
+mutation. An unbound runtime with no attempted route write does not report pending
+route reconciliation; a durable native binding or an actual uncertain write still
+does. Native setup can review damaged legacy artifacts without a WSL Gateway.
+Repair blocked by owned runtime or pending routing directs users to reconnect the
+original Gateway and stop/recover Local AI, never delete its receipt or models.
+An unresolved stopped native runtime keeps Stop available even before artifact
+observation completes. Read-only observation can load its initial installation
+status without clearing the ownership flag. Stop without an authorized owner is
+rejected before marking any routing uncertain.
+
+If the installation receipt is missing or invalid, Stop cannot infer a provider
+definition from model files or a listening process. It can settle the retained
+binding only after a fresh read through the original authenticated identity proves
+that the provider is absent, the saved fallback is restored, and any Companion-added
+allowlist entry is absent. This performs no Gateway write and retains the binding
+until explicit release. If those checks fail, restore the installation receipt or
+withdraw the route using the original Gateway's configuration tools, then retry
+Stop. Offline, mismatched and still-published routes remain blocked; artifact Repair
+is not a way to bypass their ownership.
+Successful receiptless Stop preserves its stopped intent across page refresh until
+explicit Start or Release, or observation loads a repaired installation receipt.
+Loading that receipt resumes read-only status checks, not automatic startup.
+Canceled or rejected Release retains the ownership and stopped intent; successful
+Release lets observation report the missing installation.
+This receiptless confirmation also blocks if an originally Companion-added allowlist
+entry now contains user customizations. Restore the original installation receipt
+from an external backup and use the normal Stop path, which can preserve the edited
+entry; do not delete user metadata to force receiptless settlement. Companion does
+not keep a restorable backup or reconstruct this receipt. Without one, this case
+remains blocked rather than adopting or deleting the customized entry.
 Explicit Use publishes the authenticated endpoint, and the existing setup verifier
 performs real inference with the exact primary, without fallback. A changed
 revision is not silently adopted: explicit reconciliation requires the same
