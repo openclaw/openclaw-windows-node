@@ -455,6 +455,7 @@ public sealed class WorkspaceWindowProofTests
         await WaitUntilAsync(() => SelectionState(root, "WorkspaceSession:agent:main:fork") == true);
         Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
         var composerId = Find(root, "ChatComposerInput").GetRuntimeId();
+        await FocusForKeyboardAsync(app, root, "WorkspaceTogglePane");
         // This test covers session/draft preservation. NativePagesAndOwnerLinks_KeepCompanionIndependent
         // separately requires Space activation and keyboard focus transfer after the Settings round-trip.
         Invoke(Find(root, "WorkspaceTogglePane"));
