@@ -9,6 +9,18 @@ the provider, reconnecting and testing real Gateway inference. File verification
 can take a minute or more for large models; it is not a download. Artifact acquisition
 retains the installation progress page and its actual download progress.
 
+Reopening an incomplete native Local AI setup uses this Companion profile's saved
+Gateway ownership to offer **Recover and use Local AI**, including pending
+configuration writes not yet reflected in runtime status. Recovery preserves the
+healthy managed listener and uses the existing exact-model verification and
+conditional configuration guards, rather than reinstalling it.
+
+An existing provider without matching saved ownership remains unmanaged by this
+profile. Setup explains how to reopen the original Companion profile and reconnect
+its original Gateway. Keep the ownership receipt; do not copy credentials or
+replace the provider. An independently detected **Use this model** choice remains
+separate and does not claim or restore Companion management.
+
 After setup restarts Companion, destination handoff waits for native connection
 startup and any already-admitted Local AI recovery before fresh model verification.
 An unused receipt must still be acquired within five minutes. First exclusive
@@ -217,11 +229,13 @@ without a shell or elevation. Companion verifies actual package registration and
 automatically prepares the profile and opens **Connect your AI**.
 Installation and verification share a cancellable five-minute deadline. Cancellation
 stops the WinGet request, but Windows may still finish an in-progress deployment.
-Missing WinGet, Store policy/source failures, nonzero exit codes and timeouts show
-explicit repair guidance and **Retry setup**, not a manual Store-page fallback. The normal
+If WinGet reports stale Microsoft Store certificate pins (`0x8A15005E`), Companion
+runs one current-user `Repair-WinGetPackageManager -Force -Latest` bootstrap and retries once.
+The repair installs Microsoft's WinGet client module; it never bypasses certificate validation.
+Other failures show explicit repair guidance and **Retry setup**. The normal
 path has no separate install, availability-check or wizard-launch buttons.
 An already installed healthy package skips installation. Retry checks registration
-again before invoking WinGet. Companion does not download packages directly,
+again before invoking WinGet. Companion does not download Gateway packages directly,
 change certificate trust, or uninstall packages on cancellation.
 
 Progress reuses the WSL spinner/checkmark rows. Normal completion uses the same

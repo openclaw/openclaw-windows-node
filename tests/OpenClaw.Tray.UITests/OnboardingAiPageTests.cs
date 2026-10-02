@@ -1475,6 +1475,38 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
         }, localAiHost: host);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LocalAi_UncertainUseRefreshPreservesManagedCompletion(bool installedContinuation)
+    {
+        var intent = installedContinuation
+            ? new LocalAiInstallAndUseIntent(new("ui-proof", "", 18789, null, null, true, "binding"), "test-model", 0)
+            : null;
+        var host = new PageLocalAiHost(LocalAiOnboardingState.Use)
+        {
+            ModelRef = intent?.Expected.ModelRef ?? "openai/test-model",
+            UseFailure = new IOException("Synthetic lost publication response.")
+        };
+        GatewayAiSetupCompletion? completion = null;
+        await WithPageAsync(async (page, transport, completed) =>
+        {
+            if (!installedContinuation)
+                await InvokeLocalAiAsync(page);
+            await WaitAsync(() => Find<InfoBar>(page, "ErrorBar").IsOpen && Find<Button>(page, "RefreshButton").IsEnabled);
+            Invoke(Find<Button>(page, "RefreshButton"));
+            await WaitAsync(() => completed() == 1);
+            Assert.Equal(1, host.Actions);
+            Assert.Equal(1, transport.MethodCalls.Count(method => method == "openclaw.setup.verify"));
+            Assert.NotNull(completion);
+            Assert.True(completion.RequiresManagedLocalAi);
+            Assert.Equal(SetupCompletionIntent.CustodianOnboarding, completion.Intent);
+            Assert.Equal(host.ModelRef, completion.ModelRef);
+        }, localAiHost: host, installAndUse: intent,
+            configure: transport => transport.VerificationModelRef = host.ModelRef,
+            completedProof: proof => completion = proof);
+    }
+
     [Fact]
     public async Task LocalAi_GatewayDiscoveryFailureDoesNotHideLocalReview()
     {
@@ -1564,7 +1596,8 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
         Func<LocalAiOnboardingSnapshot, Task>? reviewLocalAi = null,
         PageTransport? reconnectTransport = null,
         string? expectedGatewayId = null, bool nativeProof = false, ElementTheme theme = ElementTheme.Light,
-        double width = 720, LocalAiInstallAndUseIntent? installAndUse = null, Func<bool>? ready = null)
+        double width = 720, LocalAiInstallAndUseIntent? installAndUse = null, Func<bool>? ready = null,
+        Action<GatewayAiSetupCompletion>? completedProof = null)
     {
         await ui.ResetContainerAsync();
         await ui.RunOnUIAsync(async () =>
@@ -1608,7 +1641,13 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                     ExpectedConfiguredModelRef: expectedModelRef,
                     TransportFactory: () => connects++ == 0 ? transport : reconnectTransport ?? transport,
                     LocalAiHost: localAiHost, ReviewLocalAi: reviewLocalAi, ExpectedGatewayId: expectedGatewayId,
-                    InstallAndUse: installAndUse);
+                    InstallAndUse: installAndUse,
+                    CompleteVerifiedSetup: completedProof is null ? null : proof =>
+                    {
+                        completedProof(proof);
+                        completions++;
+                        return Task.CompletedTask;
+                    });
                 frame = nativeProof ? new Frame() : new Frame { Width = width, Height = 820 };
                 navigation = OnboardingNativeProof.TrackNavigation(frame);
                 ui.Container.Children.Add(frame);
@@ -1707,7 +1746,8 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
 
     private sealed class PageTransport(bool focusedSupported) : IGatewayAiSetupTransport
     {
-        public GatewayAiSetupRoute Route { get; init; } = new("ui-proof", "main", "ui-proof-authority");
+        public GatewayAiSetupRoute Route { get; init; } = new("ui-proof", "main", "ui-proof-authority",
+            EndpointBinding: new string('A', 64), IdentityBinding: new string('B', 64), SessionKey: "agent:main:main");
         public long Generation => 1;
         public bool IsConnected => true;
         public IReadOnlyCollection<string> OperatorScopes { get; set; } = ["operator.admin"];

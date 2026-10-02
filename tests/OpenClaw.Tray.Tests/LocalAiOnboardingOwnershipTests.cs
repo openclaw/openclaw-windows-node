@@ -6,6 +6,48 @@ public sealed class LocalAiOnboardingOwnershipTests
         File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), path));
 
     [Fact]
+    public void OnlyExplicitManagedUseCarriesRuntimeAndReconciliationRequirements()
+    {
+        // Retire when mounted onboarding tests can observe the complete native handoff.
+        var page = Read(@"src\OpenClaw.SetupEngine.UI\Pages\AiSetupPage.xaml.cs");
+        Assert.Contains("requiresManagedLocalAi: _localUse?.Expected is not null", page);
+        var refresh = page[page.IndexOf("private Task RefreshAsync()", StringComparison.Ordinal)..
+            page.IndexOf("else if (Client.Phase == GatewayAiSetupPhase.Verified)", StringComparison.Ordinal)];
+        var retainedUse = refresh.IndexOf("if (_localUse?.Expected is not null)", StringComparison.Ordinal);
+        Assert.True(retainedUse >= 0);
+        var reinitialize = refresh.IndexOf("if (Client is null)", retainedUse, StringComparison.Ordinal);
+        Assert.Contains("await ReleaseAsync(ct);", refresh[retainedUse..reinitialize]);
+        Assert.Contains("_controller = null;", refresh[retainedUse..reinitialize]);
+        Assert.Contains("await InitializeAsync(ct);", refresh[reinitialize..]);
+        var window = Read(@"src\OpenClaw.SetupEngine.UI\SetupWindow.xaml.cs");
+        Assert.Contains("afterVerification: proof.RequiresManagedLocalAi &&", window);
+        Assert.Contains("if (proof.RequiresManagedLocalAi &&", window);
+        var verifier = Read(@"src\OpenClaw.SetupEngine\SetupNativeCompletionVerifier.cs");
+        Assert.Equal(2, verifier.Split("expected.Intent, expected.RequiresManagedLocalAi").Length - 1);
+        var session = Read(@"src\OpenClaw.SetupEngine\NativeGatewaySetupSession.cs");
+        Assert.Contains("expected.Intent, expected.RequiresManagedLocalAi", session);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RestartHandoffRetainsExplicitManagedUseRequirement(bool managedLocalAi)
+    {
+        using var directory = new OpenClaw.TestSupport.TempDirectory();
+        var proof = new OpenClaw.SetupEngine.GatewayAiSetupCompletion(
+            OpenClaw.SetupEngine.SetupCompletionIntent.CustodianOnboarding,
+            "gateway", new string('A', 64), "llamacpp/model", "main", 1,
+            IdentityBinding: new string('B', 64), SessionKey: "agent:main:main",
+            RequiresManagedLocalAi: managedLocalAi);
+        var store = new OpenClawTray.Services.SetupDashboardHandoffStore(directory.Path);
+        var handle = store.Issue(new(proof, new(OpenClaw.SetupEngine.SetupNativeDestination.Chat, proof.SessionKey!)));
+        using var lease = new OpenClawTray.Services.SetupDashboardHandoffStore(directory.Path).Acquire(handle).Lease;
+        Assert.NotNull(lease);
+        Assert.Equal(proof, lease!.Completion);
+        lease.Consume();
+    }
+
+    [Fact]
     public void NativeInstallAndUse_TransfersReviewedConsentWithoutReturningToDiscovery()
     {
         var window = Read(@"src\OpenClaw.SetupEngine.UI\SetupWindow.xaml.cs");
@@ -91,6 +133,32 @@ public sealed class LocalAiOnboardingOwnershipTests
             reconciler.IndexOf("private static LlamaRuntimeInstallResult CreateRuntimeInstall", StringComparison.Ordinal)];
         Assert.DoesNotContain("Migrate", inspection);
         Assert.DoesNotContain("SaveAsync", inspection);
+    }
+
+    [Fact]
+    public void NativeOwnershipDiscoveryIsReadOnlyAndGuidanceIsLocalized()
+    {
+        var source = Read(@"src\OpenClaw.Tray.WinUI\Services\LocalAiGatewayLifecycle.cs");
+        var observation = source[source.IndexOf("public async Task<NativeLocalAiOwnershipState> ObserveOwnershipAsync", StringComparison.Ordinal)..
+            source.IndexOf("public async Task SetAutomaticRecoveryEnabledAsync", StringComparison.Ordinal)];
+        foreach (var prohibited in new[] { "GetOrCreate", "AcquireAsync", ".Save(", ".Delete(", "VerifyConfiguredAsync",
+            "PrepareAsync", "EnsureStartedAsync", "PublishAsync", "RefreshAsync" })
+            Assert.DoesNotContain(prohibited, observation);
+        var page = Read(@"src\OpenClaw.SetupEngine.UI\Pages\AiSetupPage.xaml.cs");
+        Assert.Contains("local?.ReplacesDetectedChoice == true", page);
+        Assert.Contains("state == LocalAiOnboardingState.ManagementBlocked", page);
+        foreach (var locale in new[] { "en-us", "fr-fr", "nl-nl", "pt-br", "zh-cn", "zh-tw" })
+        {
+            var resources = System.Xml.Linq.XDocument.Parse(Read($@"src\OpenClaw.Tray.WinUI\Strings\{locale}\Resources.resw"));
+            foreach (var key in new[] { "LocalState_ManagementBlocked", "LocalOwnershipMissing", "LocalOwnershipInvalid",
+                "LocalOwnershipUnavailable", "LocalOwnershipFiles" })
+            {
+                var value = Assert.Single(resources.Descendants("data"),
+                    element => (string?)element.Attribute("name") == "Onboarding_AiSetup_" + key).Element("value")!.Value;
+                Assert.False(string.IsNullOrWhiteSpace(value));
+                Assert.DoesNotContain("—", value);
+            }
+        }
     }
 
     [Fact]

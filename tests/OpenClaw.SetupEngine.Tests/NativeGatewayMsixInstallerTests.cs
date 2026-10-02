@@ -26,6 +26,58 @@ public sealed class NativeGatewayMsixInstallerTests
         Assert.Equal(1, commands.Calls);
     }
 
+    [Fact]
+    public async Task PinnedCertificateMismatch_RepairsLatestWinGetAndRetriesOnce()
+    {
+        var call = 0;
+        var commands = new Commands((executable, arguments, timeout, _) =>
+        {
+            call++;
+            Assert.Equal(TimeSpan.FromMinutes(5), timeout);
+            if (call is 1 or 3)
+            {
+                Assert.EndsWith(Path.Combine("Microsoft", "WindowsApps", "winget.exe"), executable);
+                Assert.Equal("install", arguments[0]);
+                return Task.FromResult(call == 1
+                    ? Result(unchecked((int)0x8A15005E), stderr: "certificate mismatch")
+                    : Result());
+            }
+
+            Assert.EndsWith(Path.Combine("WindowsPowerShell", "v1.0", "powershell.exe"), executable);
+            Assert.Equal(["-NoProfile", "-NonInteractive", "-Command"], arguments[..3]);
+            Assert.Contains("Install-Module -Name Microsoft.WinGet.Client", arguments[3]);
+            Assert.Contains("-Scope CurrentUser", arguments[3]);
+            Assert.Contains("Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned -Force", arguments[3]);
+            Assert.Contains("Repair-WinGetPackageManager -Force -Latest", arguments[3]);
+            Assert.DoesNotContain("BypassCertificatePinningForMicrosoftStore", arguments[3]);
+            Assert.DoesNotContain("ExecutionPolicy Bypass", arguments[3]);
+            Assert.DoesNotContain("ExecutionPolicy Unrestricted", arguments[3]);
+            Assert.DoesNotContain("-ExecutionPolicy", arguments);
+            return Task.FromResult(Result());
+        });
+
+        await new NativeGatewayMsixInstaller().InstallAsync(commands, CancellationToken.None);
+
+        Assert.Equal(3, commands.Calls);
+    }
+
+    [Fact]
+    public async Task WinGetRepairFailure_StopsWithoutRetryingInstallation()
+    {
+        var call = 0;
+        var commands = new Commands((_, _, _, _) => Task.FromResult(++call == 1
+            ? Result(unchecked((int)0x8A15005E), stderr: "certificate mismatch")
+            : Result(7, stderr: "PowerShell Gallery unavailable")));
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            new NativeGatewayMsixInstaller().InstallAsync(commands, CancellationToken.None));
+
+        Assert.Contains("0x00000007", error.Message);
+        Assert.Contains("PowerShell Gallery unavailable", error.Message);
+        Assert.Contains("Repair-WinGetPackageManager -Force -Latest", error.Message);
+        Assert.Equal(2, commands.Calls);
+    }
+
     [Theory]
     [InlineData(-1)]
     [InlineData(unchecked((int)0x8A15000F))]
@@ -65,6 +117,21 @@ public sealed class NativeGatewayMsixInstallerTests
         var error = await Assert.ThrowsAsync<TimeoutException>(() =>
             new NativeGatewayMsixInstaller().InstallAsync(commands, CancellationToken.None));
         Assert.Contains("Windows may still finish deployment", error.Message);
+    }
+
+    [Fact]
+    public async Task RepairTimeout_IsNotRetriedOrReportedAsInstallationSuccess()
+    {
+        var call = 0;
+        var commands = new Commands((_, _, _, _) => Task.FromResult(++call == 1
+            ? Result(unchecked((int)0x8A15005E))
+            : Result(timedOut: true)));
+
+        var error = await Assert.ThrowsAsync<TimeoutException>(() =>
+            new NativeGatewayMsixInstaller().InstallAsync(commands, CancellationToken.None));
+
+        Assert.Contains("WinGet repair timed out", error.Message);
+        Assert.Equal(2, commands.Calls);
     }
 
     [Fact]

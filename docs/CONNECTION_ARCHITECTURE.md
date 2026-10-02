@@ -95,6 +95,43 @@ route offers **Recover and use Local AI**, not artifact Repair. It follows the
 same guarded endpoint-recovery and inference path. Edited provider, primary or
 Companion-added allowlist fields are not adopted or overwritten.
 
+Setup also observes the current profile's durable native binding through
+`LocalAiGatewayLifecycle`, so a pending receipt or changed revision can expose
+recovery even before the in-memory runtime has rediscovered a failure. This
+read-only assessment checks the authenticated route and versioned configuration;
+it never starts a listener, settles a receipt, reads or creates an API credential,
+or performs inference. Explicit Use still revalidates and executes the existing
+guarded recovery. The assessment is not publication authority.
+
+A portable artifact receipt, matching endpoint or successful previous inference
+does not prove this profile owns an existing provider. Missing, invalid or
+mismatched native ownership keeps management blocked and directs the user to the
+original Companion profile and Gateway. No receipt or credential import occurs.
+Independently detected models remain usable through the ordinary Gateway choice;
+that choice does not restore Companion management. Native duplicate suppression
+requires a usable same-owner managed choice, not just a matching artifact model.
+Pending ownership and changed revisions keep the independently detected model
+visible alongside recovery: neither proves compatibility with current provider
+or primary-model fields. Only a confirmed same-owner revision can suppress that
+duplicate. Connection loss during inspection retains the native target and
+unavailable guidance so **Check again** can refresh it after reconnection;
+caller cancellation still propagates without publishing stale observation.
+Verified completion carries an explicit `RequiresManagedLocalAi` flag from
+`LocalAiOnboardingUse.Expected`, not provider/model equality or destination intent.
+Only that managed choice joins runtime recovery and reconciles the native Local AI
+receipt during finalization. Ordinary detected choices still reverify the exact
+Gateway, identity, session and model through inference, but do not acquire managed
+runtime dependencies from a coincidentally matching or pending binding. Fresh
+verification and restart receipts preserve this flag. Refresh after an uncertain
+managed Use rebuilds the verification client from the retained expectation without
+replaying Use, including the consumed install-and-use continuation.
+An unavailable configuration read blocks managed setup until a fresh check
+succeeds, even on a first installation; unknown provider ownership is not treated
+as an empty Gateway. Ordinary detected-model choices remain independent.
+File-repair guidance blocks review only while the runtime is owned or its route
+is unresolved. Once those conditions clear, the existing guarded Repair flow
+remains available; retaining the durable binding alone does not prohibit repair.
+
 Withdrawal can preserve unrelated configuration edits using a fresh CAS revision.
 An exact unredacted credential or successful inference through the same provider
 must confirm a still-published route. A redacted credential alone never authorizes

@@ -41,7 +41,7 @@ public static class SetupNativeCompletionVerifier
                 transport = await BorrowAsync();
                 SetupNativeVerification.RequireRoute(expected, transport.Route);
             }
-            var nativeClient = new GatewayAiSetupClient(transport, expected.ModelRef, expected.Intent);
+            var nativeClient = new GatewayAiSetupClient(transport, expected.ModelRef, expected.Intent, expected.RequiresManagedLocalAi);
             var current = new SetupVerifiedNativeRoute(
                 await VerifyModelAsync(nativeClient, expected.ModelRef, ct, timeProvider), transport.Route.SessionKey ?? "");
             SetupNativeVerification.RequireSame(expected, current);
@@ -56,7 +56,7 @@ public static class SetupNativeCompletionVerifier
             route.IdentityBinding != expected.IdentityBinding || route.SessionKey != expected.SessionKey)
             throw new SetupNativeOwnershipException();
         var client = new GatewayAiSetupClient(new GatewayAiSetupTransport(session.Client, session.GetRoute),
-            expected.ModelRef, expected.Intent);
+            expected.ModelRef, expected.Intent, expected.RequiresManagedLocalAi);
         var verified = new SetupVerifiedNativeRoute(await VerifyModelAsync(client, expected.ModelRef, ct, timeProvider),
             session.Client.MainSessionKey ?? "");
         SetupNativeVerification.RequireSame(expected, verified);

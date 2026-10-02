@@ -224,7 +224,7 @@ public sealed class NativeGatewaySetupSession(
         NativeGatewaySetupConnection connection, GatewayAiSetupCompletion expected, CancellationToken ct)
     {
         SetupNativeVerification.RequireRoute(expected, connection.Route);
-        var client = new GatewayAiSetupClient(connection, expected.ModelRef, expected.Intent);
+        var client = new GatewayAiSetupClient(connection, expected.ModelRef, expected.Intent, expected.RequiresManagedLocalAi);
         var result = new SetupVerifiedNativeRoute(
             await SetupNativeCompletionVerifier.VerifyModelAsync(client, expected.ModelRef, ct),
             connection.Route.SessionKey ?? "");

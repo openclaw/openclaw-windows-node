@@ -17,7 +17,7 @@
             <StackPanel Spacing="12">
                 <TextBlock x:Name="NativeInstallConsent" x:Uid="Onboarding_Native_Review"
                            Visibility="Collapsed" TextWrapping="Wrap" Style="{StaticResource BodyTextBlockStyle}"
-                           Text="By selecting Set up gateway, you authorize WinGet to install the missing Gateway package from Microsoft Store and accept the package and Store source agreements. Companion then verifies the package, prepares a dedicated profile, and opens Gateway setup. Provider sign-in stays interactive. This path does not install WSL, Local AI, or Tailscale." />
+                           Text="By selecting Set up gateway, you authorize WinGet to install the missing Gateway package from Microsoft Store and accept the package and Store source agreements. If WinGet is not ready, setup may repair App Installer before retrying. Companion then verifies the package, prepares a dedicated profile, and opens Gateway setup. Provider sign-in stays interactive. This path does not install WSL, Local AI, or Tailscale." />
                 <InfoBar x:Name="TransportRequired" x:Uid="Onboarding_V3_TransportRequired" IsOpen="True"
                          IsClosable="False" Severity="Informational" Title="Capabilities are unavailable"
                          Message="Turn on Node mode or Local MCP Server to use these capabilities. Your choices are kept." />
