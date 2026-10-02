@@ -144,9 +144,9 @@ jobs:
       shell: pwsh
       run: ./scripts/test-msix-preview-source-version.ps1
 
-    - name: Validate Store MSIX alpha release assets
+    - name: Validate signed Dev MSIX release assets
       shell: pwsh
-      run: ./scripts/test-msix-alpha-release.ps1
+      run: ./scripts/test-dev-msix-release.ps1
 
     - name: Validate stable correction release ordering regressions
       shell: pwsh
@@ -899,7 +899,7 @@ jobs:
     name: MSIX artifacts (${{ matrix.architecture }})
     needs: [change-classification, metadata, reserve-msix-version]
     if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.metadata.result == 'success' && (needs.reserve-msix-version.result == 'success' || needs.reserve-msix-version.result == 'skipped') && (needs.change-classification.outputs.x64_release == 'true' || needs.change-classification.outputs.arm64_release == 'true') }}
-    # Unsigned Store packages may publish to alpha releases only. Dev packages stay workflow-only.
+    # Dev-signed packages publish on tag releases. Unsigned Store packages stay workflow-only.
     runs-on: ${{ matrix.architecture == 'arm64' && 'windows-11-arm' || 'windows-latest' }}
     env:
       OPENCLAW_BUILD_VERSION: ${{ needs.metadata.outputs.semVer }}
@@ -1363,27 +1363,36 @@ jobs:
         -Tag $env:RELEASE_TAG
         -GitHubToken $env:GH_TOKEN
 
-    - name: Download Store MSIX release artifacts
+    - name: Download x64 signed Dev MSIX release artifact
       uses: actions/download-artifact@v8
       with:
-        pattern: openclaw-msix-store-unsigned-*
-        path: artifacts/msix-release
+        name: openclaw-msix-dev-x64
+        path: artifacts/msix-release/openclaw-msix-dev-x64
 
-    - name: Stage Store MSIX release assets
+    - name: Download ARM64 signed Dev MSIX release artifact
+      uses: actions/download-artifact@v8
+      with:
+        name: openclaw-msix-dev-arm64
+        path: artifacts/msix-release/openclaw-msix-dev-arm64
+
+    - name: Stage signed Dev MSIX release assets
       id: msix_release
       shell: pwsh
       env:
         RELEASE_VERSION: ${{ needs.metadata.outputs.semVer }}
         MSIX_VERSION_INFO: ${{ needs.reserve-msix-version.outputs.versionInfo }}
+        DEV_MSIX_REVISION: ${{ github.run_number }}
       run: |
         if ([string]::IsNullOrWhiteSpace($env:MSIX_VERSION_INFO)) {
           throw 'Missing official MSIX reservation.'
         }
         $env:MSIX_VERSION_INFO | Set-Content -LiteralPath "$env:RUNNER_TEMP\openclaw-msix-version.json" -Encoding utf8
-        $assets = .\scripts\Stage-StoreMsixReleaseAssets.ps1 `
+        $assets = .\scripts\Stage-DevMsixReleaseAssets.ps1 `
           -ArtifactDirectory 'artifacts\msix-release' `
           -OutputDirectory 'msix-release' `
           -Version $env:RELEASE_VERSION `
+          -ExpectedRevision $env:DEV_MSIX_REVISION `
+          -ExpectedWorkflowRunId $env:GITHUB_RUN_ID `
           -VersionInfoPath "$env:RUNNER_TEMP\openclaw-msix-version.json" `
           -ExpectedSourceCommit $env:GITHUB_SHA
         @('files<<MSIX_RELEASE_FILES'; $assets.Files; 'MSIX_RELEASE_FILES') >> $env:GITHUB_OUTPUT

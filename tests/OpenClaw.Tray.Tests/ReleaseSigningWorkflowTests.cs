@@ -115,11 +115,11 @@ public sealed class ReleaseSigningWorkflowTests
     }
 
     [Fact]
-    public void ReleaseWorkflow_PublishesUnsignedStoreMsixForEveryTag()
+    public void ReleaseWorkflow_PublishesSignedDevMsixForEveryTag()
     {
         var workflow = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), ".github", "workflows", "ci.yml"));
 
-        Assert.Contains("Dev packages stay workflow-only.", workflow);
+        Assert.Contains("Dev-signed packages publish on tag releases. Unsigned Store packages stay workflow-only.", workflow);
         Assert.Contains("global-json-file: global.json", workflow);
         Assert.Contains(@".\scripts\Build-StoreMsix.ps1 -Architecture", workflow);
         Assert.Contains(@".\scripts\Export-DevMsixArtifact.ps1", workflow);
@@ -134,17 +134,19 @@ public sealed class ReleaseSigningWorkflowTests
         Assert.DoesNotContain("Download win-x64 MSIX artifact", workflow);
         Assert.DoesNotContain("Download win-arm64 MSIX artifact", workflow);
         Assert.DoesNotContain("Sign Release MSIX Packages", workflow);
-        Assert.Contains("pattern: openclaw-msix-store-unsigned-*", workflow);
-        Assert.Contains(@".\scripts\Stage-StoreMsixReleaseAssets.ps1", workflow);
-        Assert.Contains("name: Download Store MSIX release artifacts", workflow);
-        Assert.Contains("name: Stage Store MSIX release assets", workflow);
+        Assert.DoesNotContain("pattern: openclaw-msix-store-unsigned-*", workflow);
+        Assert.Contains(@".\scripts\Stage-DevMsixReleaseAssets.ps1", workflow);
+        Assert.Contains("name: Download x64 signed Dev MSIX release artifact", workflow);
+        Assert.Contains("name: Download ARM64 signed Dev MSIX release artifact", workflow);
+        Assert.Contains("name: Stage signed Dev MSIX release assets", workflow);
+        Assert.Contains("-ExpectedWorkflowRunId $env:GITHUB_RUN_ID", workflow);
         Assert.DoesNotContain("if: needs.metadata.outputs.isMsixAlpha == 'true'", workflow);
         var releaseStep = ExtractReleaseStep(workflow);
         Assert.Contains("${{ steps.msix_release.outputs.files }}", releaseStep);
         Assert.Contains("${{ steps.msix_release.outputs.notes }}", releaseStep);
         Assert.DoesNotContain("OpenClaw-x64.msix", releaseStep);
         Assert.DoesNotContain("OpenClaw-arm64.msix", releaseStep);
-        Assert.DoesNotContain("openclaw-msix-dev-", releaseStep);
+        Assert.DoesNotContain("OpenClaw.msixbundle", releaseStep);
     }
 
     private static string ExtractReleaseStep(string workflow)
