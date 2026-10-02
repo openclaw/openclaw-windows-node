@@ -29,10 +29,10 @@ public sealed class BoundedProcessWaitTests
             () => BoundedProcessWait.WaitAsync(process, TimeSpan.FromMilliseconds(200)));
 
         stopwatch.Stop();
-        Assert.True(process.HasExited);
         Assert.True(
             stopwatch.Elapsed < TimeSpan.FromSeconds(3),
             $"Timeout cleanup took {stopwatch.ElapsedMilliseconds} ms.");
+        await AssertExitsEventuallyAsync(process);
     }
 
     [Fact]
@@ -51,10 +51,10 @@ public sealed class BoundedProcessWaitTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => wait);
 
         stopwatch.Stop();
-        Assert.True(process.HasExited);
         Assert.True(
             stopwatch.Elapsed < TimeSpan.FromSeconds(3),
             $"Cancellation cleanup took {stopwatch.ElapsedMilliseconds} ms.");
+        await AssertExitsEventuallyAsync(process);
     }
 
     [Fact]
@@ -70,7 +70,7 @@ public sealed class BoundedProcessWaitTests
                 BoundedProcessWait.DefaultTimeout,
                 cancellation.Token));
 
-        Assert.True(process.HasExited);
+        await AssertExitsEventuallyAsync(process);
     }
 
     [Fact]
@@ -162,6 +162,13 @@ public sealed class BoundedProcessWaitTests
             executableName);
         Assert.True(File.Exists(hostPath), $"Process test host was not built: {hostPath}");
         return hostPath;
+    }
+
+    private static async Task AssertExitsEventuallyAsync(Process process)
+    {
+        // Cleanup is intentionally bounded, so Windows may report the killed
+        // process exit just after WaitAsync has returned to its caller.
+        await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
     }
 
     private static async Task<int> ReadChildPidAsync(string pidFile)
