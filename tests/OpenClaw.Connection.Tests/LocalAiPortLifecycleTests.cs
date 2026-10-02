@@ -12,6 +12,23 @@ namespace OpenClaw.Connection.Tests;
 
 public sealed class LocalAiPortLifecycleTests
 {
+    [Fact]
+    public async Task ChildProcessPathResolver_ResolvesExistingFileAndDirectoryPaths()
+    {
+        using var temp = new TempDirectory("local-ai-child-path-resolver-");
+        string file = temp.Combine("runtime", "llama-server.exe");
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        await File.WriteAllTextAsync(file, "launcher");
+
+        string resolvedDirectory = LocalAiChildProcessPathResolver.Resolve(Path.GetDirectoryName(file)!);
+        string resolvedFile = LocalAiChildProcessPathResolver.Resolve(file);
+
+        Assert.True(Path.IsPathFullyQualified(resolvedDirectory));
+        Assert.True(Path.IsPathFullyQualified(resolvedFile));
+        Assert.True(Directory.Exists(resolvedDirectory));
+        Assert.True(File.Exists(resolvedFile));
+    }
+
     [Theory]
     [InlineData(0, true)]
     [InlineData(1, true)]
@@ -323,6 +340,40 @@ public sealed class LocalAiPortLifecycleTests
         LocalAiResolvedInstall? saved = await new LocalAiManifestStore(paths).LoadAsync();
         Assert.Equal(0, saved!.Manifest.RequestedPort);
         Assert.Equal(28_765, saved.Endpoint!.Port);
+    }
+
+    [Fact]
+    public async Task Start_UsesChildVisiblePhysicalExecutableWorkingDirectoryAndPresetPaths()
+    {
+        using var temp = new TempDirectory("local-ai-child-paths-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        string physicalRoot = temp.Combine("physical-local-ai");
+        string ResolveForChild(string path) => Path.Combine(
+            physicalRoot,
+            Path.GetRelativePath(paths.RootDirectory, path));
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_765);
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            new FakeClient(events),
+            new FakeLifecycle(events),
+            resolveChildProcessPath: ResolveForChild);
+
+        LocalAiRuntimeSnapshot snapshot = await runtime.EnsureStartedAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Healthy, snapshot.State);
+        LocalAiResolvedInstall install = (await new LocalAiManifestStore(paths).LoadAsync())!;
+        Assert.Equal(ResolveForChild(install.ExecutablePath), host.LastSpec!.ExecutablePath);
+        Assert.Equal(ResolveForChild(Path.GetDirectoryName(install.ExecutablePath)!), host.LastSpec.WorkingDirectory);
+        Assert.Equal(ResolveForChild(paths.RouterPresetPath), ArgumentAfter(host.LastSpec.Arguments, "--models-preset"));
+        Assert.Contains(
+            $"model = {ResolveForChild(install.ModelPath)}",
+            await File.ReadAllTextAsync(paths.RouterPresetPath),
+            StringComparison.OrdinalIgnoreCase);
+        Assert.True(File.Exists(paths.RouterPresetPath));
     }
 
     [Fact]
@@ -2872,13 +2923,15 @@ public sealed class LocalAiPortLifecycleTests
         TimeSpan? shutdownTimeout = null,
         ILocalAiModelFileVerifier? modelFileVerifier = null,
         Func<string>? getApiKey = null,
-        Func<LocalAiResolvedInstall, int?>? getRecoveryPort = null) => new(
+        Func<LocalAiResolvedInstall, int?>? getRecoveryPort = null,
+        Func<string, string>? resolveChildProcessPath = null) => new(
             new LlamaServerRuntimeOptions
             {
                 Paths = paths,
                 EndpointLifecycle = lifecycle,
                 GetApiKey = getApiKey,
                 GetRecoveryPort = getRecoveryPort,
+                ResolveChildProcessPath = resolveChildProcessPath ?? (static path => path),
                 HealthPollInterval = TimeSpan.FromMilliseconds(1),
                 StartupTimeout = startupTimeout ?? TimeSpan.FromSeconds(1),
                 ShutdownTimeout = shutdownTimeout ?? TimeSpan.FromSeconds(10),
