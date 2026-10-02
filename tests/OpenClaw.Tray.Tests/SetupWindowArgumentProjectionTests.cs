@@ -50,6 +50,19 @@ public sealed class SetupWindowArgumentProjectionTests
         Assert.Equal(["--config=custom.json"], projected);
     }
 
+    [Theory]
+    [InlineData("-ToastActivated")]
+    [InlineData("-toastactivated")]
+    public void Project_RemovesPackagedToastActivationArgument(string activationArgument)
+    {
+        var projected = SetupWindowArgumentProjection.Project(
+            ["OpenClaw.Tray.WinUI.exe", activationArgument, "--config=custom.json"],
+            _ => false,
+            currentProcessId: 1000);
+
+        Assert.Equal(["--config=custom.json"], projected);
+    }
+
     [Fact]
     public void Project_PreservesDeepLinkShapedConfigValue()
     {

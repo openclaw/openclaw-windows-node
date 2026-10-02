@@ -5,6 +5,7 @@ internal static class SetupWindowArgumentProjection
     private static readonly HashSet<string> s_hostFlags =
         new(StringComparer.OrdinalIgnoreCase)
         {
+            "-ToastActivated",
             "--post-setup-restart",
         };
 
