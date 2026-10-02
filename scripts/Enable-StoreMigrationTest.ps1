@@ -160,7 +160,7 @@ function Stop-TrayProcesses {
     $skipped = @()
     foreach ($p in $procs) {
         if ($PSCmdlet.ShouldProcess("PID $($p.Id) ($($p.ProcessName))", 'Stop process')) {
-            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+            Stop-Process -Id $p.Id -Force -Confirm:$false -ErrorAction SilentlyContinue
             Write-Host "  stopped $($p.ProcessName) (PID $($p.Id))"
             $stopping += $p
         }
@@ -239,7 +239,7 @@ if ($ResetMigrationState) {
     $removed = 0
     foreach ($item in $stale) {
         if ($PSCmdlet.ShouldProcess($item.FullName, 'Delete migration record')) {
-            Remove-Item -LiteralPath $item.FullName -Force
+            Remove-Item -LiteralPath $item.FullName -Force -Confirm:$false
             Write-Host "  removed $($item.Name)"
             $removed++
         }
@@ -273,10 +273,10 @@ if ($Revert) {
     }
 
     if ($PSCmdlet.ShouldProcess($keyPath, 'Restore original label')) {
-        Set-ItemProperty $keyPath -Name DisplayVersion -Value $originalVersion.Value -Type String
-        Set-ItemProperty $keyPath -Name DisplayName    -Value $originalName.Value    -Type String
-        Remove-ItemProperty $keyPath -Name $BackupVersionValue
-        Remove-ItemProperty $keyPath -Name $BackupNameValue
+        Set-ItemProperty $keyPath -Name DisplayVersion -Value $originalVersion.Value -Type String -Confirm:$false
+        Set-ItemProperty $keyPath -Name DisplayName    -Value $originalName.Value    -Type String -Confirm:$false
+        Remove-ItemProperty $keyPath -Name $BackupVersionValue -Confirm:$false
+        Remove-ItemProperty $keyPath -Name $BackupNameValue -Confirm:$false
         Write-Host "Restored DisplayName and DisplayVersion to '$($originalVersion.Value)'." -ForegroundColor Green
     }
     return
@@ -352,8 +352,8 @@ abandons an unfinished setup.
 
         $quarantine = Join-Path $env:APPDATA "OpenClawTray\gateways-blocking-$(Get-Date -Format yyyyMMdd-HHmmss)"
         if ($PSCmdlet.ShouldProcess($names, "Move out of gateways folder")) {
-            New-Item -ItemType Directory -Path $quarantine -Force | Out-Null
-            foreach ($item in $blocking) { Move-Item $item.FullName (Join-Path $quarantine $item.Name) -Force }
+            New-Item -ItemType Directory -Path $quarantine -Force -Confirm:$false | Out-Null
+            foreach ($item in $blocking) { Move-Item $item.FullName (Join-Path $quarantine $item.Name) -Force -Confirm:$false }
             Write-Host "  moved $names to $quarantine" -ForegroundColor Yellow
         }
     }
@@ -370,12 +370,12 @@ $newName = "OpenClaw Companion version $TargetVersion"
 
 if ($PSCmdlet.ShouldProcess($keyPath, "Relabel $currentVersion -> $TargetVersion")) {
     # Saved before the overwrite so -Revert can restore the real label.
-    New-ItemProperty $keyPath -Name $BackupVersionValue -Value $currentVersion   -PropertyType String -Force | Out-Null
-    New-ItemProperty $keyPath -Name $BackupNameValue    -Value $props.DisplayName -PropertyType String -Force | Out-Null
+    New-ItemProperty $keyPath -Name $BackupVersionValue -Value $currentVersion   -PropertyType String -Force -Confirm:$false | Out-Null
+    New-ItemProperty $keyPath -Name $BackupNameValue    -Value $props.DisplayName -PropertyType String -Force -Confirm:$false | Out-Null
 
     # DisplayName is validated against DisplayVersion, so both must change.
-    Set-ItemProperty $keyPath -Name DisplayVersion -Value $TargetVersion -Type String
-    Set-ItemProperty $keyPath -Name DisplayName    -Value $newName      -Type String
+    Set-ItemProperty $keyPath -Name DisplayVersion -Value $TargetVersion -Type String -Confirm:$false
+    Set-ItemProperty $keyPath -Name DisplayName    -Value $newName      -Type String -Confirm:$false
 
     Write-Host ''
     Write-Host "Relabelled $currentVersion -> $TargetVersion" -ForegroundColor Green
