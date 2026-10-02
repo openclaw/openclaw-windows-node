@@ -119,7 +119,7 @@ function Get-RegistrationKeyPath {
     $found = @($candidates | Where-Object { Test-Path $_ })
 
     if ($found.Count -eq 0) {
-        throw "No OpenClaw Companion (Inno) installation found. Install the alpha release first."
+        throw "No OpenClaw Companion (Inno) installation found, so there is nothing to relabel or revert. Install the alpha release first to start a test."
     }
     if ($found.Count -gt 1) {
         throw "Registrations exist in both registry views. The migration detector rejects this. Uninstall and reinstall once."
