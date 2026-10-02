@@ -243,7 +243,7 @@ public sealed class LocalAiOnboardingTests
     [Theory]
     [InlineData(NativeLocalAiOwnershipState.Unselected, LocalAiOnboardingState.StartAndUse, false)]
     [InlineData(NativeLocalAiOwnershipState.SameOwner, LocalAiOnboardingState.StartAndUse, true)]
-    [InlineData(NativeLocalAiOwnershipState.RecoveryRequired, LocalAiOnboardingState.Reconcile, true)]
+    [InlineData(NativeLocalAiOwnershipState.RecoveryRequired, LocalAiOnboardingState.Reconcile, false)]
     [InlineData(NativeLocalAiOwnershipState.MissingReceipt, LocalAiOnboardingState.ManagementBlocked, false)]
     [InlineData(NativeLocalAiOwnershipState.InvalidReceipt, LocalAiOnboardingState.ManagementBlocked, false)]
     [InlineData(NativeLocalAiOwnershipState.DifferentOwner, LocalAiOnboardingState.ManagementBlocked, false)]
@@ -318,6 +318,23 @@ public sealed class LocalAiOnboardingTests
             nativeOwnership: NativeLocalAiOwnershipState.SameOwner);
         Assert.Equal(LocalAiOnboardingState.Use, snapshot.State);
         Assert.True(snapshot.ReplacesDetectedChoice);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void HealthyOwnedRuntimeBlocksFileRepairUntilStopped(bool missingInstall)
+    {
+        var install = Install();
+        var snapshot = LocalAiOnboardingSnapshot.Project(Target with { IsNative = true },
+            LocalInferenceEligibility.Evaluate(Hardware, install.Manifest.ModelCatalogId),
+            missingInstall ? null : install, false, false, RuntimeSnapshot(install, LocalAiRuntimeState.Healthy),
+            nativeOwnership: NativeLocalAiOwnershipState.SameOwner);
+        Assert.Equal(LocalAiOnboardingState.ManagementBlocked, snapshot.State);
+        Assert.Equal("LocalOwnershipFiles", snapshot.ReasonKey);
+        Assert.False(snapshot.CanReview);
+        Assert.False(snapshot.CanUse);
+        Assert.False(snapshot.ReplacesDetectedChoice);
     }
 
     [Fact]

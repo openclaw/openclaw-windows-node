@@ -50,6 +50,7 @@ public static class SetupNativeVerification
             expected.ModelTarget is not null || proof.ModelTarget is not null ||
             proof.GatewayId != expected.GatewayId || proof.EndpointBinding != expected.EndpointBinding ||
             proof.AgentId != expected.AgentId || proof.ModelRef != expected.ModelRef ||
+            proof.RequiresManagedLocalAi != expected.RequiresManagedLocalAi ||
             !SetupCompletionAuthority.IsValid(expected.IdentityBinding, expected.SessionKey, expected.AgentId) ||
             proof.IdentityBinding != expected.IdentityBinding || proof.SessionKey != expected.SessionKey ||
             !new SetupNativeTarget(SetupNativeDestination.Chat, current.SessionKey).Matches(proof))

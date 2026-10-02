@@ -62,6 +62,7 @@ public sealed class SetupCompletionAuthorityTests
     [InlineData("identity")]
     [InlineData("session")]
     [InlineData("missing")]
+    [InlineData("managed-use")]
     public void CrossSessionVerification_RejectsChangedOrMissingStableAuthority(string change)
     {
         var current = Proof with
@@ -75,6 +76,7 @@ public sealed class SetupCompletionAuthorityTests
                 _ => Proof.IdentityBinding,
             },
             SessionKey = change == "session" ? "agent:primary:alternate" : Proof.SessionKey,
+            RequiresManagedLocalAi = change == "managed-use",
         };
         Assert.Throws<SetupNativeOwnershipException>(() => SetupNativeVerification.RequireSame(
             Proof, new(current, current.SessionKey!)));

@@ -61,8 +61,10 @@ public sealed record LocalAiOnboardingSnapshot(
 
     public bool CanReview => Target is not null && State is LocalAiOnboardingState.SetUp or LocalAiOnboardingState.Repair;
     public bool CanUse => Target is not null && State is LocalAiOnboardingState.StartAndUse or LocalAiOnboardingState.Use or LocalAiOnboardingState.Reconcile;
+    // A changed revision can contain incompatible provider edits. Keep ordinary
+    // model use available until explicit recovery confirms the managed route.
     public bool ReplacesDetectedChoice => CanUse && (Target?.IsNative != true ||
-        NativeOwnership is NativeLocalAiOwnershipState.SameOwner or NativeLocalAiOwnershipState.RecoveryRequired);
+        NativeOwnership == NativeLocalAiOwnershipState.SameOwner);
     public bool CanRefresh => State is LocalAiOnboardingState.BusyGpu or LocalAiOnboardingState.Unknown or
         LocalAiOnboardingState.Unsupported or LocalAiOnboardingState.UnsupportedGateway or LocalAiOnboardingState.Working or
         LocalAiOnboardingState.ManagementBlocked;

@@ -91,6 +91,11 @@ internal sealed class LocalAiGatewayLifecycle(
         {
             return NativeLocalAiOwnershipState.DifferentOwner;
         }
+        catch (GatewayConnectionLostException) when (!ct.IsCancellationRequested)
+        {
+            logger.Warn("Local AI ownership discovery lost its Gateway connection. Reconnect and check again.");
+            return NativeLocalAiOwnershipState.Unavailable;
+        }
         catch (Exception ex) when (ex is InvalidDataException or JsonException)
         {
             logger.Warn("Local AI ownership discovery found invalid ownership evidence.");
@@ -203,6 +208,8 @@ internal sealed class LocalAiGatewayLifecycle(
 
     public Task WaitForRuntimeAsync(GatewayAiSetupCompletion expected, ILocalAiRuntime runtime, CancellationToken ct)
     {
+        // A matching receipt does not turn ordinary detected-model use into managed use.
+        if (!expected.RequiresManagedLocalAi) return Task.CompletedTask;
         var binding = _store.Load();
         if (binding is null || binding.GatewayId != expected.GatewayId || binding.ModelRef != expected.ModelRef)
             return Task.CompletedTask;

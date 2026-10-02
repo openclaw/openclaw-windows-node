@@ -330,7 +330,8 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             _nativeLocalAiTransport = transport;
         }
         _controller = new(new GatewayAiSetupClient(transport, _args.ExpectedConfiguredModelRef,
-            _localUse?.Expected?.CompletionIntent ?? _args.ConfiguredCompletionIntent));
+            _localUse?.Expected?.CompletionIntent ?? _args.ConfiguredCompletionIntent,
+            requiresManagedLocalAi: _localUse?.Expected is not null));
         if (_args.InstallAndUse is { IsConsumed: false } intent)
         {
             Client!.EnsureLocalAiCanStart(intent.Target.GatewayId);
@@ -693,6 +694,12 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
     private Task RefreshAsync() => RunAsync(async ct =>
     {
         _controller?.StopAutomaticContinuation();
+        if (_localUse?.Expected is not null)
+        {
+            // An uncertain Use retains intent but may leave the pre-Use client alive.
+            await ReleaseAsync(ct);
+            _controller = null;
+        }
         if (Client?.Phase == GatewayAiSetupPhase.Idle && _session is not null &&
             !_session.Client.GrantedOperatorScopes.Contains("operator.admin", StringComparer.Ordinal))
         {

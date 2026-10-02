@@ -8,7 +8,8 @@ namespace OpenClaw.SetupEngine;
 /// </summary>
 public sealed class GatewayAiSetupClient(
     IGatewayAiSetupTransport transport, string? expectedConfiguredModelRef = null,
-    SetupCompletionIntent configuredCompletionIntent = SetupCompletionIntent.Dashboard)
+    SetupCompletionIntent configuredCompletionIntent = SetupCompletionIntent.Dashboard,
+    bool requiresManagedLocalAi = false)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly GatewayAiSetupRoute _route = transport.Route;
@@ -21,6 +22,7 @@ public sealed class GatewayAiSetupClient(
     private bool _hasActivationReceipt;
     private readonly SetupCompletionIntent _configuredCompletionIntent = configuredCompletionIntent;
     private SetupCompletionIntent _completionIntent = configuredCompletionIntent;
+    private bool _requiresManagedLocalAi;
     private long _verifiedGeneration;
     public bool GatewayRestartRequired { get; private set; }
 
@@ -48,7 +50,7 @@ public sealed class GatewayAiSetupClient(
             throw new InvalidOperationException("AI setup completion requires a current, exact-model verification.");
         return new(_completionIntent, _route.GatewayId, _route.EndpointBinding,
             model, _route.AgentId, _verifiedGeneration, IdentityBinding: _route.IdentityBinding,
-            SessionKey: _route.SessionKey);
+            SessionKey: _route.SessionKey, RequiresManagedLocalAi: _requiresManagedLocalAi);
     }
 
     internal void RequireSameRoute()
@@ -216,6 +218,7 @@ public sealed class GatewayAiSetupClient(
         _before = Detection;
         _completionIntent = choice is { Kind: GatewayAiSetupChoiceKind.Candidate, Id: "existing-model" }
             ? SetupCompletionIntent.Dashboard : SetupCompletionIntent.CustodianOnboarding;
+        _requiresManagedLocalAi = false;
         _expectedModel = choice.ModelRef;
         _attemptGeneration = transport.Generation;
         _hasActivationReceipt = false;
@@ -304,6 +307,7 @@ public sealed class GatewayAiSetupClient(
         EnsureAuthorized();
         _expectedModel = expectedModelRef;
         _completionIntent = _configuredCompletionIntent;
+        _requiresManagedLocalAi = requiresManagedLocalAi;
         var result = await VerifyRouteAsync(expectedModelRef, ct);
         Phase = result.Ok ? GatewayAiSetupPhase.Verified : GatewayAiSetupPhase.Rejected;
         return result;

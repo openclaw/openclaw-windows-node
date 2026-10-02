@@ -110,6 +110,21 @@ original Companion profile and Gateway. No receipt or credential import occurs.
 Independently detected models remain usable through the ordinary Gateway choice;
 that choice does not restore Companion management. Native duplicate suppression
 requires a usable same-owner managed choice, not just a matching artifact model.
+Pending ownership and changed revisions keep the independently detected model
+visible alongside recovery: neither proves compatibility with current provider
+or primary-model fields. Only a confirmed same-owner revision can suppress that
+duplicate. Connection loss during inspection retains the native target and
+unavailable guidance so **Check again** can refresh it after reconnection;
+caller cancellation still propagates without publishing stale observation.
+Verified completion carries an explicit `RequiresManagedLocalAi` flag from
+`LocalAiOnboardingUse.Expected`, not provider/model equality or destination intent.
+Only that managed choice joins runtime recovery and reconciles the native Local AI
+receipt during finalization. Ordinary detected choices still reverify the exact
+Gateway, identity, session and model through inference, but do not acquire managed
+runtime dependencies from a coincidentally matching or pending binding. Fresh
+verification and restart receipts preserve this flag. Refresh after an uncertain
+managed Use rebuilds the verification client from the retained expectation without
+replaying Use, including the consumed install-and-use continuation.
 An unavailable configuration read blocks managed setup until a fresh check
 succeeds, even on a first installation; unknown provider ownership is not treated
 as an empty Gateway. Ordinary detected-model choices remain independent.
