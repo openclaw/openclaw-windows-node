@@ -47,6 +47,46 @@ public sealed class WindowsLlamaRuntimeInspectorTests
     }
 
     [Fact]
+    public void VcRuntimeStager_UsesSystemRuntime_WhenUnpackagedArm64OutputHasNoPayload()
+    {
+        using var app = new TempDirectory("openclaw-llama-vc-app-");
+        using var system = new TempDirectory("openclaw-llama-vc-system-");
+        using var install = new TempDirectory("openclaw-llama-vc-install-");
+
+        foreach (string fileName in LocalAiVcRuntimeStager.RequiredFiles)
+            File.WriteAllText(Path.Combine(system.Path, fileName), "system-current");
+
+        new LocalAiVcRuntimeStager(app.Path, system.Path).Stage(install.Path);
+
+        Assert.All(
+            LocalAiVcRuntimeStager.RequiredFiles,
+            fileName => Assert.Equal(
+                "system-current",
+                File.ReadAllText(Path.Combine(install.Path, fileName))));
+    }
+
+    [Fact]
+    public void VcRuntimeStager_DefaultWindowsFallback_StagesInstalledSystemRuntime()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var app = new TempDirectory("openclaw-llama-vc-app-");
+        using var install = new TempDirectory("openclaw-llama-vc-install-");
+        Assert.All(
+            LocalAiVcRuntimeStager.RequiredFiles,
+            fileName => Assert.True(File.Exists(Path.Combine(Environment.SystemDirectory, fileName))));
+
+        new LocalAiVcRuntimeStager(app.Path).Stage(install.Path);
+
+        Assert.All(
+            LocalAiVcRuntimeStager.RequiredFiles,
+            fileName => Assert.Equal(
+                File.ReadAllBytes(Path.Combine(Environment.SystemDirectory, fileName)),
+                File.ReadAllBytes(Path.Combine(install.Path, fileName))));
+    }
+
+    [Fact]
     public void VcRuntimeStager_IncompletePayload_FailsClosed()
     {
         using var app = new TempDirectory("openclaw-llama-vc-app-");
@@ -54,7 +94,7 @@ public sealed class WindowsLlamaRuntimeInspectorTests
         File.WriteAllText(Path.Combine(app.Path, "msvcp140.dll"), "partial");
 
         FileNotFoundException failure = Assert.Throws<FileNotFoundException>(
-            () => new LocalAiVcRuntimeStager(app.Path).Stage(install.Path));
+            () => new LocalAiVcRuntimeStager(app.Path, systemRuntimeDirectory: null).Stage(install.Path));
 
         Assert.Contains("payload required by llama-server is incomplete", failure.Message);
         Assert.DoesNotContain(

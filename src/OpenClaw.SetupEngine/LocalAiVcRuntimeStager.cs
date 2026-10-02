@@ -19,11 +19,24 @@ internal sealed class LocalAiVcRuntimeStager
     ];
 
     private readonly string _applicationBaseDirectory;
+    private readonly string? _systemRuntimeDirectory;
 
     public LocalAiVcRuntimeStager(string applicationBaseDirectory)
+        : this(
+            applicationBaseDirectory,
+            OperatingSystem.IsWindows() ? Environment.SystemDirectory : null)
+    {
+    }
+
+    internal LocalAiVcRuntimeStager(
+        string applicationBaseDirectory,
+        string? systemRuntimeDirectory)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(applicationBaseDirectory);
         _applicationBaseDirectory = Path.GetFullPath(applicationBaseDirectory);
+        _systemRuntimeDirectory = string.IsNullOrWhiteSpace(systemRuntimeDirectory)
+            ? null
+            : Path.GetFullPath(systemRuntimeDirectory);
     }
 
     public void Stage(string installDirectory)
@@ -47,6 +60,8 @@ internal sealed class LocalAiVcRuntimeStager
             return packagedDirectory;
         if (ContainsRuntime(_applicationBaseDirectory))
             return _applicationBaseDirectory;
+        if (_systemRuntimeDirectory is not null && ContainsRuntime(_systemRuntimeDirectory))
+            return _systemRuntimeDirectory;
 
         throw new FileNotFoundException(
             "The app-local Visual C++ runtime payload required by llama-server is incomplete.");
