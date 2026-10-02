@@ -1158,17 +1158,19 @@ jobs:
           -MsixBundleResult $env:MSIX_BUNDLE_RESULT
         "CI Gate passed $validatedMode validation." >> $env:GITHUB_STEP_SUMMARY
 
-  release:
-    needs: [change-classification, metadata, reserve-msix-version, build-x64, build-arm64, build-msix-bundle, ci-gate]
-    if: startsWith(github.ref, 'refs/tags/v') && needs.ci-gate.result == 'success' && needs.change-classification.outputs.full == 'true' && needs.metadata.result == 'success' && needs.reserve-msix-version.result == 'success' && needs.build-x64.result == 'success' && needs.build-arm64.result == 'success' && needs.build-msix-bundle.result == 'success' && !cancelled()
+  # Sign and package after the early release-critical suites pass so this work can
+  # overlap the long UI and E2E tail. Publication remains gated by ci-gate below.
+  prepare-release-assets:
+    needs: [change-classification, metadata, reserve-msix-version, proof-pool-contracts, core-tests, tray-tests, build-x64, build-arm64]
+    if: startsWith(github.ref, 'refs/tags/v') && needs.change-classification.outputs.full == 'true' && needs.metadata.result == 'success' && needs.reserve-msix-version.result == 'success' && needs.proof-pool-contracts.result == 'success' && needs.core-tests.result == 'success' && needs.tray-tests.result == 'success' && needs.build-x64.result == 'success' && needs.build-arm64.result == 'success' && !cancelled()
     runs-on: windows-latest
     environment: release-signing
     permissions:
       actions: read
-      contents: write
+      contents: read
       id-token: write
     concurrency:
-      group: openclaw-windows-node-release
+      group: openclaw-windows-node-release-preparation
       cancel-in-progress: false
 
     steps:
@@ -1351,6 +1353,39 @@ jobs:
         file-digest: SHA256
         timestamp-rfc3161: http://timestamp.acs.microsoft.com
         timestamp-digest: SHA256
+
+    - name: Upload prepared release assets
+      uses: actions/upload-artifact@v7
+      with:
+        name: openclaw-release-assets
+        path: |
+          Output/OpenClawCompanion-Setup-x64.exe
+          Output/OpenClawCompanion-Setup-arm64.exe
+          OpenClawTray-${{ needs.metadata.outputs.semVer }}-win-x64.zip
+          OpenClawTray-${{ needs.metadata.outputs.semVer }}-win-arm64.zip
+        compression-level: 0
+        if-no-files-found: error
+
+  release:
+    needs: [change-classification, metadata, reserve-msix-version, prepare-release-assets, build-msix-bundle, ci-gate]
+    if: startsWith(github.ref, 'refs/tags/v') && needs.ci-gate.result == 'success' && needs.change-classification.outputs.full == 'true' && needs.metadata.result == 'success' && needs.reserve-msix-version.result == 'success' && needs.prepare-release-assets.result == 'success' && needs.build-msix-bundle.result == 'success' && !cancelled()
+    runs-on: windows-latest
+    environment: release-signing
+    permissions:
+      actions: read
+      contents: write
+    concurrency:
+      group: openclaw-windows-node-release
+      cancel-in-progress: false
+
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Download prepared release assets
+      uses: actions/download-artifact@v8
+      with:
+        name: openclaw-release-assets
+        path: .
 
     - name: Revalidate stable correction release ordering
       if: needs.metadata.outputs.isStableCorrection == 'true'

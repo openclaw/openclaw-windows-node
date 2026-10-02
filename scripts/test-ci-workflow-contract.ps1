@@ -818,10 +818,28 @@ foreach ($token in @(
     Assert-Contains -Text $ciGateJob -Expected $token -Message "Stable CI Gate is missing '$token'."
 }
 
+$releasePreparationJob = Get-JobBlock "prepare-release-assets"
+foreach ($token in @(
+        "needs: [change-classification, metadata, reserve-msix-version, proof-pool-contracts, core-tests, tray-tests, build-x64, build-arm64]",
+        "needs.reserve-msix-version.result == 'success'",
+        "needs.proof-pool-contracts.result == 'success'",
+        "needs.core-tests.result == 'success'",
+        "needs.tray-tests.result == 'success'",
+        "group: openclaw-windows-node-release-preparation",
+        "name: Upload prepared release assets",
+        "name: openclaw-release-assets",
+        "compression-level: 0",
+        "if-no-files-found: error"
+    )) {
+    Assert-Contains -Text $releasePreparationJob -Expected $token -Message "Release preparation is missing '$token'."
+}
+Assert-NotContains -Text $releasePreparationJob -Unexpected "ci-gate" -Message "Release preparation must overlap the long CI tail."
+
 $releaseJob = Get-JobBlock "release"
 foreach ($token in @(
-        "needs: [change-classification, metadata, reserve-msix-version, build-x64, build-arm64, build-msix-bundle, ci-gate]",
+        "needs: [change-classification, metadata, reserve-msix-version, prepare-release-assets, build-msix-bundle, ci-gate]",
         "needs.reserve-msix-version.result == 'success'",
+        "needs.prepare-release-assets.result == 'success'",
         "needs.build-msix-bundle.result == 'success'",
         "needs.ci-gate.result == 'success'",
         "needs.metadata.outputs.semVer",
@@ -830,6 +848,9 @@ foreach ($token in @(
     )) {
     Assert-Contains -Text $releaseJob -Expected $token -Message "Tag release is missing '$token'."
 }
+$preparedAssetsDownload = Get-StepBlock -Text $releaseJob -Name 'Download prepared release assets'
+Assert-Contains -Text $preparedAssetsDownload -Expected 'name: openclaw-release-assets' -Message 'Publication must consume the prepared signed assets.'
+Assert-Contains -Text $preparedAssetsDownload -Expected 'path: .' -Message 'Prepared assets must retain the release action paths.'
 $msixX64Download = Get-StepBlock -Text $releaseJob -Name 'Download x64 signed Dev MSIX release artifact'
 $msixArm64Download = Get-StepBlock -Text $releaseJob -Name 'Download ARM64 signed Dev MSIX release artifact'
 $msixTrust = Get-StepBlock -Text $releaseJob -Name 'Trust signed Dev MSIX certificates for validation'
