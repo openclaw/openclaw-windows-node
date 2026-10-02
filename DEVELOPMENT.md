@@ -1233,6 +1233,7 @@ Direct `dotnet build` without the script will fail with "WindowsAppSDKSelfContai
 | `OPENCLAW_NATIVE_GATEWAY_START_TIMEOUT=600` | Native Gateway startup budget in whole seconds (30-3600, default 300) |
 | `OPENCLAW_VISUAL_TEST=1` | Enable automatic screenshot capture on page transitions |
 | `OPENCLAW_VISUAL_TEST_DIR=path` | Output directory for visual test screenshots |
+| `OPENCLAW_LOCAL_AI_DEV_LOW_MEMORY_MODELS=1` | Development only: offer, recommend and launch Qwen3.5 9B with its full context/KV profile set so Local AI works on 12 and 16 GB GPUs. Set it at user level (`setx`) so the tray, setup UI and setup engine all see it; a 9B install with a reduced profile fails launch validation in any process without it. Tests clear it at startup. |
 
 ### Testing the Wizard Locally
 
