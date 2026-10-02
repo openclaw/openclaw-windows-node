@@ -3603,7 +3603,7 @@ public sealed partial class LocalAiPortLifecycleTests
         Assert.Contains("runtime family", error.Message);
     }
 
-    private static LocalAiInstallManifest ValidManifest()
+    internal static LocalAiInstallManifest ValidManifest()
     {
         LlamaRuntimeVariant runtime = LlamaRuntimeCatalog.Find(
             System.Runtime.InteropServices.Architecture.Arm64)!;
