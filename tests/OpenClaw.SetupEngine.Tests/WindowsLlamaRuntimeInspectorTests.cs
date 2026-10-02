@@ -16,6 +16,53 @@ public sealed class WindowsLlamaRuntimeInspectorTests
     }
 
     [Fact]
+    public void VcRuntimeStager_PrefersPackagedPayload_AndStagesEveryImportedDll()
+    {
+        using var app = new TempDirectory("openclaw-llama-vc-app-");
+        using var install = new TempDirectory("openclaw-llama-vc-install-");
+        string packaged = Path.Combine(
+            app.Path,
+            LocalAiVcRuntimeStager.PackagedRuntimeRelativeDirectory.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(packaged);
+
+        foreach (string fileName in LocalAiVcRuntimeStager.RequiredFiles)
+        {
+            File.WriteAllText(Path.Combine(app.Path, fileName), "root-old");
+            File.WriteAllText(Path.Combine(packaged, fileName), "packaged-current");
+        }
+
+        new LocalAiVcRuntimeStager(app.Path).Stage(install.Path);
+
+        Assert.All(
+            LocalAiVcRuntimeStager.RequiredFiles,
+            fileName => Assert.Equal(
+                "packaged-current",
+                File.ReadAllText(Path.Combine(install.Path, fileName))));
+
+        string unchanged = Path.Combine(install.Path, LocalAiVcRuntimeStager.RequiredFiles[0]);
+        DateTime preservedWriteTime = new(2020, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(unchanged, preservedWriteTime);
+        new LocalAiVcRuntimeStager(app.Path).Stage(install.Path);
+        Assert.Equal(preservedWriteTime, File.GetLastWriteTimeUtc(unchanged));
+    }
+
+    [Fact]
+    public void VcRuntimeStager_IncompletePayload_FailsClosed()
+    {
+        using var app = new TempDirectory("openclaw-llama-vc-app-");
+        using var install = new TempDirectory("openclaw-llama-vc-install-");
+        File.WriteAllText(Path.Combine(app.Path, "msvcp140.dll"), "partial");
+
+        FileNotFoundException failure = Assert.Throws<FileNotFoundException>(
+            () => new LocalAiVcRuntimeStager(app.Path).Stage(install.Path));
+
+        Assert.Contains("payload required by llama-server is incomplete", failure.Message);
+        Assert.DoesNotContain(
+            LocalAiVcRuntimeStager.RequiredFiles,
+            fileName => File.Exists(Path.Combine(install.Path, fileName)));
+    }
+
+    [Fact]
     public async Task InspectAsync_Win32StartFailure_ReturnsInvalidInspection()
     {
         if (!OperatingSystem.IsWindows())
@@ -34,6 +81,8 @@ public sealed class WindowsLlamaRuntimeInspectorTests
 
         foreach (string path in requiredFiles)
             await File.WriteAllTextAsync(path, "not a Windows executable");
+        foreach (string fileName in LocalAiVcRuntimeStager.RequiredFiles)
+            await File.WriteAllTextAsync(temp.Combine(fileName), "not a Windows executable");
 
         Assert.All(requiredFiles, path =>
         {

@@ -43,18 +43,31 @@ internal sealed class LlamaRuntimeInstaller : ILlamaRuntimeAcquirer
     private const int MaximumDeleteAttempts = 8;
     private readonly LocalAiArtifactInstaller _artifactInstaller;
     private readonly ILlamaRuntimeInspector _inspector;
+    private readonly LocalAiVcRuntimeStager? _vcRuntimeStager;
 
     public LlamaRuntimeInstaller(HttpClient httpClient)
-        : this(new LocalAiArtifactInstaller(httpClient), new WindowsLlamaRuntimeInspector())
+        : this(
+            new LocalAiArtifactInstaller(httpClient),
+            new WindowsLlamaRuntimeInspector(),
+            new LocalAiVcRuntimeStager(AppContext.BaseDirectory))
     {
     }
 
     internal LlamaRuntimeInstaller(
         LocalAiArtifactInstaller artifactInstaller,
         ILlamaRuntimeInspector inspector)
+        : this(artifactInstaller, inspector, vcRuntimeStager: null)
+    {
+    }
+
+    internal LlamaRuntimeInstaller(
+        LocalAiArtifactInstaller artifactInstaller,
+        ILlamaRuntimeInspector inspector,
+        LocalAiVcRuntimeStager? vcRuntimeStager)
     {
         _artifactInstaller = artifactInstaller ?? throw new ArgumentNullException(nameof(artifactInstaller));
         _inspector = inspector ?? throw new ArgumentNullException(nameof(inspector));
+        _vcRuntimeStager = vcRuntimeStager;
     }
 
     public event EventHandler<LocalAiArtifactInstallProgress>? ProgressChanged
@@ -135,6 +148,7 @@ internal sealed class LlamaRuntimeInstaller : ILlamaRuntimeAcquirer
 
         try
         {
+            _vcRuntimeStager?.Stage(installed.InstallDirectory);
             LlamaRuntimeInspection inspection = await _inspector.InspectAsync(
                     installed.InstallDirectory,
                     cancellationToken)
@@ -256,6 +270,7 @@ internal sealed class WindowsLlamaRuntimeInspector : ILlamaRuntimeInspector
         "cudart64_13.dll",
         "cublas64_13.dll",
         "cublasLt64_13.dll",
+        .. LocalAiVcRuntimeStager.RequiredFiles,
     ];
 
     public async Task<LlamaRuntimeInspection> InspectAsync(

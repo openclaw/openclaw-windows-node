@@ -385,6 +385,21 @@
     </ItemGroup>
   </Target>
 
+  <!-- llama-server is downloaded under LocalAppData and runs outside the MSIX
+       package graph. Keep a private copy of the publish-time VC runtime in the
+       package so SetupEngine can stage its three imported DLLs app-local. -->
+  <Target Name="AddLocalAiVCRuntimeToPublishItems"
+          BeforeTargets="ComputeFilesToPublish"
+          DependsOnTargets="ResolveOpenClawVCRuntimeFromVSInstall"
+          Condition="'$(PackageMsix)' == 'true'">
+    <ItemGroup>
+      <ResolvedFileToPublish Include="@(OpenClawVCRuntimeFiles)">
+        <RelativePath>tools\local-ai-vc-runtime\%(Filename)%(Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+
   <!-- Fail the build if wxc-exec.exe didn't land in the expected output path.
        Catches RID/arch mismatches and silent npm ci skips. Gated on
        VerifyWxcExecShipped (default true) so unit-test-only builds without

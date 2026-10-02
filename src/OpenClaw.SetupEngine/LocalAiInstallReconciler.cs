@@ -119,23 +119,27 @@ internal sealed class LocalAiInstallReconciler
     private readonly ILlamaRuntimeInspector _runtimeInspector;
     private readonly ILocalAiModelFileVerifier _modelVerifier;
     private readonly Func<string> _cacheRootResolver;
+    private readonly LocalAiVcRuntimeStager? _vcRuntimeStager;
 
     public LocalAiInstallReconciler()
         : this(
             new WindowsLlamaRuntimeInspector(),
             new LocalAiModelFileVerifier(),
-            HuggingFaceHubCache.ResolveCacheRoot)
+            HuggingFaceHubCache.ResolveCacheRoot,
+            new LocalAiVcRuntimeStager(AppContext.BaseDirectory))
     {
     }
 
     internal LocalAiInstallReconciler(
         ILlamaRuntimeInspector runtimeInspector,
         ILocalAiModelFileVerifier modelVerifier,
-        Func<string>? cacheRootResolver = null)
+        Func<string>? cacheRootResolver = null,
+        LocalAiVcRuntimeStager? vcRuntimeStager = null)
     {
         _runtimeInspector = runtimeInspector ?? throw new ArgumentNullException(nameof(runtimeInspector));
         _modelVerifier = modelVerifier ?? throw new ArgumentNullException(nameof(modelVerifier));
         _cacheRootResolver = cacheRootResolver ?? HuggingFaceHubCache.ResolveCacheRoot;
+        _vcRuntimeStager = vcRuntimeStager;
     }
 
     public async Task<LocalAiReconcileResult> ReconcileAsync(
@@ -164,8 +168,23 @@ internal sealed class LocalAiInstallReconciler
             !string.Equals(install.Manifest.SelectedGpuId, selectedGpuId, StringComparison.Ordinal) &&
             GpuIdsMatch(install.Manifest.SelectedGpuId, selectedGpuId);
 
-        LlamaRuntimeInspection inspection = await _runtimeInspector
-            .InspectAsync(Path.GetDirectoryName(install.ExecutablePath)!, cancellationToken)
+        string runtimeDirectory = Path.GetDirectoryName(install.ExecutablePath)!;
+        LlamaRuntimeInspection? stagingFailure = null;
+        try
+        {
+            if (!runtimeUpgradePending)
+                _vcRuntimeStager?.Stage(runtimeDirectory);
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            stagingFailure = new LlamaRuntimeInspection(
+                false,
+                null,
+                $"The app-local Visual C++ runtime could not be staged for llama-server: {exception.Message}");
+        }
+        LlamaRuntimeInspection inspection = stagingFailure ?? await _runtimeInspector
+            .InspectAsync(runtimeDirectory, cancellationToken)
             .ConfigureAwait(false);
         bool activeModelIsValid = await _modelVerifier
             .VerifyActiveAsync(install, plan.Model.Weights, cancellationToken)
