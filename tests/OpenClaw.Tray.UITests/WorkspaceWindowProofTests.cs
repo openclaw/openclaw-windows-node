@@ -503,6 +503,10 @@ public sealed class WorkspaceWindowProofTests
         await WaitUntilAsync(() => IsVisible(root, "ChatComposerInput"));
         await WaitUntilAsync(() => SelectionState(root, "WorkspaceSession:agent:main:fork") == true);
         await app.NavigateAsync("chat", "ChatPage", "ChatComposerInput");
+        // Same-page chat navigation can acknowledge the existing composer while an adaptive
+        // NavigationView transition has temporarily closed the pane. Restore it before querying
+        // pane-owned controls so UI Automation does not race the NavigationView subtree.
+        await EnsureWorkspacePaneOpenAsync(root);
         ((SelectionItemPattern)Find(root, "WorkspaceNavHome").GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
         await WaitUntilAsync(() => SelectionState(root, "WorkspaceNavHome") == true);
         Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
@@ -773,6 +777,35 @@ public sealed class WorkspaceWindowProofTests
             await Task.Delay(100);
         }
         Assert.True(predicate(), "Native navigation did not reach the expected state.");
+    }
+
+    private static async Task EnsureWorkspacePaneOpenAsync(AutomationElement root)
+    {
+        var timeout = Stopwatch.StartNew();
+        TimeSpan? visibleSince = null;
+        var reopenInvoked = false;
+        while (timeout.Elapsed < TimeSpan.FromSeconds(10))
+        {
+            if (IsVisible(root, "WorkspaceNavHome"))
+            {
+                reopenInvoked = false;
+                visibleSince ??= timeout.Elapsed;
+                if (timeout.Elapsed - visibleSince >= TimeSpan.FromMilliseconds(500)) return;
+            }
+            else
+            {
+                visibleSince = null;
+                if (!reopenInvoked && IsVisible(root, "WorkspaceReopenPane"))
+                {
+                    Invoke(Find(root, "WorkspaceReopenPane"));
+                    reopenInvoked = true;
+                }
+            }
+
+            await Task.Delay(100);
+        }
+
+        Assert.Fail("The workspace pane did not remain open after navigation.");
     }
 
     private static AutomationElement? FindOrNull(AutomationElement root, string id) =>
