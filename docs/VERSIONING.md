@@ -103,6 +103,11 @@ GitVersion can continue deriving the next monotonic alpha version from complete
 tag history. If the new release is not yet visible through the Releases API,
 cleanup defers until the next alpha publication.
 
+Alpha release notes explicitly compare the new tag with the newest reachable
+published canonical alpha tag. This avoids GitHub's automatic previous-tag
+selection accumulating changes from an older alpha. The first published alpha
+falls back to GitHub's normal comparison-base selection.
+
 GitVersion interprets `X.Y.Z-N` as a prerelease, so numeric stable corrections
 use one narrow exception: the release-version step recognizes the correction
 tag, validates its stable ordering with

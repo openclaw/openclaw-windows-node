@@ -102,6 +102,11 @@ public sealed class VersioningContractTests
             @"(?ms)^      - name: Determine alpha version\r?\n(?<body>.*?)(?=^      - |\z)");
         Assert.True(versionStep.Success, "The daily workflow must calculate the default-branch version.");
         Assert.Contains("disableNormalization: true", versionStep.Groups["body"].Value);
+        var releaseJob = Regex.Match(
+            releaseWorkflow,
+            @"(?ms)^  release:\s*$\r?\n(?<body>.*?)(?=^  \S|\z)");
+        Assert.True(releaseJob.Success, "The release workflow must define the release job.");
+        Assert.Contains("fetch-depth: 0", releaseJob.Groups["body"].Value);
         Assert.Contains("head_non_alpha_tag", dailyWorkflow);
         Assert.Contains("published_head_tag", dailyWorkflow);
         Assert.Contains("Deferring alpha release because main already has unpublished non-alpha tag", dailyWorkflow);
@@ -116,6 +121,13 @@ public sealed class VersioningContractTests
         Assert.Contains("gh workflow run ci.yml --ref \"$ALPHA_TAG\"", dailyWorkflow);
         Assert.Contains("workflow_dispatch:", releaseWorkflow);
         Assert.Contains("uses: softprops/action-gh-release@v3", releaseWorkflow);
+        Assert.Contains("Generate alpha release notes from previous published alpha", releaseWorkflow);
+        Assert.Contains("previous_tag_name=$previousTag", releaseWorkflow);
+        Assert.Contains("git merge-base --is-ancestor", releaseWorkflow);
+        Assert.Contains("steps.alpha_release_notes.outputs.body", releaseWorkflow);
+        Assert.Contains(
+            "generate_release_notes: ${{ ! contains(github.ref_name, '-alpha.') }}",
+            releaseWorkflow);
         Assert.Contains("prerelease: ${{ needs.metadata.outputs.isPrerelease }}", releaseWorkflow);
         Assert.Contains(
             "if: needs.metadata.outputs.isPrerelease == 'true' && contains(github.ref_name, '-alpha.')",

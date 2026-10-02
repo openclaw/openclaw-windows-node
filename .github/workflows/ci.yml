@@ -1175,6 +1175,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
 
     - name: Download win-x64 tray artifact
       uses: actions/download-artifact@v8
@@ -1468,10 +1470,65 @@ jobs:
           }
         }
 
+    - name: Generate alpha release notes from previous published alpha
+      if: needs.metadata.outputs.isPrerelease == 'true' && contains(github.ref_name, '-alpha.')
+      id: alpha_release_notes
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
+        RELEASE_TAG: ${{ github.ref_name }}
+      run: |
+        $releasesJson = gh api "repos/$env:GITHUB_REPOSITORY/releases?per_page=100"
+        if ($LASTEXITCODE -ne 0) {
+          throw 'Could not list published releases for alpha release notes.'
+        }
+
+        $releases = @($releasesJson | ConvertFrom-Json)
+        $previousTag = $null
+        foreach ($release in $releases) {
+          if ($release.draft -or -not $release.published_at -or
+              $release.tag_name -eq $env:RELEASE_TAG -or
+              $release.tag_name -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+$') {
+            continue
+          }
+
+          git merge-base --is-ancestor $release.tag_name $env:RELEASE_TAG
+          if ($LASTEXITCODE -eq 0) {
+            $previousTag = $release.tag_name
+            break
+          }
+          if ($LASTEXITCODE -ne 1) {
+            throw "Could not compare alpha tag $($release.tag_name) with $env:RELEASE_TAG."
+          }
+        }
+
+        $arguments = @(
+          'api',
+          '--method', 'POST',
+          "repos/$env:GITHUB_REPOSITORY/releases/generate-notes",
+          '-f', "tag_name=$env:RELEASE_TAG"
+        )
+        if ($previousTag) {
+          $arguments += @('-f', "previous_tag_name=$previousTag")
+          "Generating release notes from $previousTag to $env:RELEASE_TAG."
+        } else {
+          'No previous published alpha is reachable; using GitHub release-note fallback selection.'
+        }
+
+        $notesJson = gh @arguments
+        if ($LASTEXITCODE -ne 0) {
+          throw 'Could not generate alpha release notes.'
+        }
+        $notes = $notesJson | ConvertFrom-Json
+        $delimiter = [Guid]::NewGuid().ToString('N')
+        "body<<$delimiter" >> $env:GITHUB_OUTPUT
+        $notes.body >> $env:GITHUB_OUTPUT
+        $delimiter >> $env:GITHUB_OUTPUT
+
     - name: Create Release
       uses: softprops/action-gh-release@v3
       with:
-        generate_release_notes: true
+        generate_release_notes: ${{ ! contains(github.ref_name, '-alpha.') }}
         files: |
           Output/OpenClawCompanion-Setup-x64.exe
           Output/OpenClawCompanion-Setup-arm64.exe
@@ -1506,6 +1563,8 @@ jobs:
           1. Run the installer for your architecture
           2. Launch from Start Menu or system tray
           3. Right-click tray icon → Settings to configure
+
+          ${{ steps.alpha_release_notes.outputs.body }}
 
     - name: Retain alpha releases for 30 days
       if: needs.metadata.outputs.isPrerelease == 'true' && contains(github.ref_name, '-alpha.')
