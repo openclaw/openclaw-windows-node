@@ -26,6 +26,14 @@ $request = [Security.Cryptography.X509Certificates.CertificateRequest]::new(
     [Security.Cryptography.RSASignaturePadding]::Pkcs1)
 $certificate = $request.CreateSelfSigned(
     [DateTimeOffset]::UtcNow.AddMinutes(-1), [DateTimeOffset]::UtcNow.AddDays(30))
+$signatureStatus = 'Valid'
+$signatureCertificate = $certificate
+
+function Get-AuthenticodeSignature {
+    param([string]$LiteralPath)
+    if (-not (Test-Path -LiteralPath $LiteralPath)) { throw 'Signature probe received a missing package.' }
+    [pscustomobject]@{ Status = $signatureStatus; SignerCertificate = $signatureCertificate }
+}
 
 function Assert-Fails {
     param([scriptblock]$Action, [string]$Expected)
@@ -225,6 +233,10 @@ try {
     $metadata.msixVersionAllocation.reservationRef = $null
     $metadata | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $path
     Assert-Fails { & $stager @arguments } 'MSIX'
+    $signatureStatus = 'HashMismatch'
+    $arguments = New-Fixture
+    Assert-Fails { & $stager @arguments } 'signature is not valid'
+    $signatureStatus = 'Valid'
 
     $daily = Get-Content -LiteralPath (Join-Path $RepoRoot '.github\workflows\daily-alpha-release.yml') -Raw
     $scheduleBlock = [regex]::Match($daily, '(?ms)^        run: \|\r?\n(?<script>.*?)(?=^      - )')

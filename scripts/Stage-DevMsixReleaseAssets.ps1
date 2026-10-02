@@ -99,6 +99,13 @@ $packages = foreach ($architecture in @('x64', 'arm64')) {
                 [string]$metadata.certificateThumbprint, [StringComparison]::OrdinalIgnoreCase)) {
             throw "The $architecture Dev certificate does not match its public signer metadata."
         }
+
+        $signature = Get-AuthenticodeSignature -LiteralPath $packagePath
+        if ($signature.Status -ne 'Valid' -or $null -eq $signature.SignerCertificate -or
+            -not $signature.SignerCertificate.Thumbprint.Equals(
+                $certificate.Thumbprint, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "The $architecture Dev package signature is not valid for its published certificate."
+        }
     }
     finally { $certificate.Dispose() }
 

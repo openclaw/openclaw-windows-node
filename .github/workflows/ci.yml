@@ -1375,6 +1375,25 @@ jobs:
         name: openclaw-msix-dev-arm64
         path: artifacts/msix-release/openclaw-msix-dev-arm64
 
+    - name: Trust signed Dev MSIX certificates for validation
+      shell: pwsh
+      run: |
+        $storePath = 'Cert:\CurrentUser\TrustedPeople'
+        $thumbprintsPath = "$env:RUNNER_TEMP\openclaw-dev-msix-imported-certs.txt"
+        [IO.File]::WriteAllText($thumbprintsPath, '')
+        foreach ($architecture in @('x64', 'arm64')) {
+          $certificatePath = "artifacts\msix-release\openclaw-msix-dev-$architecture\OpenClaw-Dev.cer"
+          $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new($certificatePath)
+          try {
+            $existing = @(Get-ChildItem -LiteralPath $storePath | Where-Object Thumbprint -EQ $certificate.Thumbprint)
+            if ($existing.Count -eq 0) {
+              Import-Certificate -FilePath $certificatePath -CertStoreLocation $storePath | Out-Null
+              Add-Content -LiteralPath $thumbprintsPath -Value $certificate.Thumbprint
+            }
+          }
+          finally { $certificate.Dispose() }
+        }
+
     - name: Stage signed Dev MSIX release assets
       id: msix_release
       shell: pwsh
@@ -1397,6 +1416,19 @@ jobs:
           -ExpectedSourceCommit $env:GITHUB_SHA
         @('files<<MSIX_RELEASE_FILES'; $assets.Files; 'MSIX_RELEASE_FILES') >> $env:GITHUB_OUTPUT
         @('notes<<MSIX_RELEASE_NOTES'; $assets.Notes; 'MSIX_RELEASE_NOTES') >> $env:GITHUB_OUTPUT
+
+    - name: Remove trusted Dev MSIX certificates
+      if: ${{ always() }}
+      shell: pwsh
+      run: |
+        $thumbprintsPath = "$env:RUNNER_TEMP\openclaw-dev-msix-imported-certs.txt"
+        if (Test-Path -LiteralPath $thumbprintsPath) {
+          foreach ($thumbprint in @(Get-Content -LiteralPath $thumbprintsPath)) {
+            Get-ChildItem -LiteralPath 'Cert:\CurrentUser\TrustedPeople' |
+              Where-Object Thumbprint -EQ $thumbprint |
+              Remove-Item -Force
+          }
+        }
 
     - name: Create Release
       uses: softprops/action-gh-release@v3

@@ -138,7 +138,11 @@ public sealed class ReleaseSigningWorkflowTests
         Assert.Contains(@".\scripts\Stage-DevMsixReleaseAssets.ps1", workflow);
         Assert.Contains("name: Download x64 signed Dev MSIX release artifact", workflow);
         Assert.Contains("name: Download ARM64 signed Dev MSIX release artifact", workflow);
+        Assert.Contains("name: Trust signed Dev MSIX certificates for validation", workflow);
         Assert.Contains("name: Stage signed Dev MSIX release assets", workflow);
+        Assert.Contains("name: Remove trusted Dev MSIX certificates", workflow);
+        Assert.Contains("Get-AuthenticodeSignature -LiteralPath $packagePath", File.ReadAllText(
+            Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "scripts", "Stage-DevMsixReleaseAssets.ps1")));
         Assert.Contains("-ExpectedWorkflowRunId $env:GITHUB_RUN_ID", workflow);
         Assert.DoesNotContain("if: needs.metadata.outputs.isMsixAlpha == 'true'", workflow);
         var releaseStep = ExtractReleaseStep(workflow);
