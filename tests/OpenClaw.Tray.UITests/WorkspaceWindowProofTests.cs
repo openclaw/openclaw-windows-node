@@ -455,14 +455,9 @@ public sealed class WorkspaceWindowProofTests
         await WaitUntilAsync(() => SelectionState(root, "WorkspaceSession:agent:main:fork") == true);
         Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
         var composerId = Find(root, "ChatComposerInput").GetRuntimeId();
-        await FocusForKeyboardAsync(app, root, "WorkspaceTogglePane");
-        // Pin focus at the moment of the key so a lost Space reports who held focus instead of timing out.
-        var focused = AutomationElement.FocusedElement.Current;
-        Assert.True(focused.AutomationId == "WorkspaceTogglePane" && GetForegroundWindow() == app.HubWindowHandle,
-            $"Keyboard focus moved before SendKeys: focused '{focused.AutomationId}' " +
-            $"({focused.ControlType.ProgrammaticName}, '{focused.Name}', pid {focused.ProcessId}); " +
-            $"Hub foreground: {GetForegroundWindow() == app.HubWindowHandle}.");
-        System.Windows.Forms.SendKeys.SendWait(" ");
+        // This test covers session/draft preservation. NativePagesAndOwnerLinks_KeepCompanionIndependent
+        // separately requires Space activation and keyboard focus transfer after the Settings round-trip.
+        Invoke(Find(root, "WorkspaceTogglePane"));
         await WaitUntilAsync(() => IsVisible(root, "WorkspaceReopenPane"));
         Capture(app, theme, "sidebar-hidden");
         await app.NavigateAsync("chat", "ChatPage", "ChatComposerInput");
