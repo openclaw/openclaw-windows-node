@@ -27,4 +27,16 @@ public sealed class RestartGatewayStep : SetupStep
             ctx.LocalAiRecoveryStoppedWsl = false;
         return result;
     }
+
+    public override Task RollbackAsync(SetupContext ctx, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (!string.IsNullOrWhiteSpace(ctx.Config.LocalAiRecoveryGatewayId))
+        {
+            // Configuration rollback runs after this step in reverse order. Arm the
+            // early recovery guard to restart the Gateway once the prior route is restored.
+            ctx.LocalAiRecoveryStoppedWsl = true;
+        }
+        return Task.CompletedTask;
+    }
 }

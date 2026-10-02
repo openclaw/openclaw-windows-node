@@ -19,9 +19,13 @@ public sealed class OnboardingPresentationContractTests
         }
         var progress = Read(@"src\OpenClaw.SetupEngine.UI\Pages\ProgressPage.xaml.cs");
         Assert.Contains("ctx.ExpectedGatewayRegistry = config.NativeLocalAiAcquisition ? null : setupOwner?.BeginGatewaySetup()", progress);
-        Assert.Contains("outcome => config.NativeLocalAiAcquisition ? Task.CompletedTask :", progress);
+        Assert.Contains("ReleaseBorrowedLocalAiRuntimeAfterFailureAsync(ctx, outcome)", progress);
+        Assert.Contains("if (!config.NativeLocalAiAcquisition && setupOwner is not null)", progress);
         Assert.Contains("SetupPipeline.RunWithSettlementAsync", progress);
-        Assert.True(progress.IndexOf("SettleGatewaySetupAsync(ctx.ExpectedGatewayRegistry", StringComparison.Ordinal) <
+        Assert.Contains("await setupOwner.SettleGatewaySetupAsync(", progress);
+        Assert.True(progress.IndexOf("ReleaseBorrowedLocalAiRuntimeAfterFailureAsync(ctx, outcome)", StringComparison.Ordinal) <
+            progress.IndexOf("await setupOwner.SettleGatewaySetupAsync(", StringComparison.Ordinal));
+        Assert.True(progress.IndexOf("await setupOwner.SettleGatewaySetupAsync(", StringComparison.Ordinal) <
             progress.IndexOf("if (_closed || _window?.IsClosed == true)", StringComparison.Ordinal));
     }
 

@@ -252,6 +252,15 @@ public sealed record LocalAiInstallManifest
     /// managed llama.cpp model. Null means no prior primary model was configured.
     /// </summary>
     public string? GatewayFallbackModel { get; init; }
+    /// <summary>
+    /// The last committed receipt while a recovery flow replaces its model.
+    /// Cleared only after the Gateway has restarted on the replacement route.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public LocalAiInstallManifest? ReplacedManifest { get; init; }
+    /// <summary>Earlier verified replacement endpoints that may still be published to the Gateway.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ImmutableArray<string>? PreviousEndpoints { get; init; }
     public required int ContextLength { get; init; }
     public KvCachePrecision KeyCachePrecision { get; init; } = KvCachePrecision.F16;
     public KvCachePrecision ValueCachePrecision { get; init; } = KvCachePrecision.F16;
@@ -484,6 +493,158 @@ public sealed class LocalAiManifestStore
         await SaveWithoutLockAsync(manifest, cancellationToken).ConfigureAwait(false);
     }
 
+    internal async Task<LocalAiResolvedInstall> UpdateVerifiedEndpointAsync(
+        LocalAiInstallManifest expectedManifest,
+        Uri endpoint,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(expectedManifest);
+        ArgumentNullException.ThrowIfNull(endpoint);
+        await using FileStream writeLock = await AcquireManifestWriteLockAsync(cancellationToken)
+            .ConfigureAwait(false);
+        LocalAiInstallManifest current = await ReadManifestAsync(cancellationToken).ConfigureAwait(false);
+        if (!HasSameRuntimeAndModel(current, expectedManifest))
+        {
+            throw new InvalidDataException(
+                "The Local AI installation changed before its verified endpoint could be recorded.");
+        }
+        if (expectedManifest.ReplacedManifest is not null && current.ReplacedManifest is null)
+        {
+            throw new InvalidDataException(
+                "The Local AI model replacement was finalized before its verified endpoint could be recorded.");
+        }
+
+        ImmutableArray<string>? history = current.PreviousEndpoints;
+        if (current.ReplacedManifest is null)
+        {
+            history = null;
+        }
+        else if (current.Endpoint is { } previousEndpoint &&
+                 !string.Equals(previousEndpoint, endpoint.AbsoluteUri, StringComparison.Ordinal))
+        {
+            ImmutableArray<string> values = history ?? [];
+            if (!values.Contains(previousEndpoint, StringComparer.Ordinal))
+                history = values.Add(previousEndpoint);
+        }
+
+        LocalAiInstallManifest updated = current with
+        {
+            Endpoint = endpoint.AbsoluteUri,
+            PreviousEndpoints = history,
+        };
+        LocalAiResolvedInstall resolved = ResolveAndValidate(updated);
+        await SaveWithoutLockAsync(updated, cancellationToken).ConfigureAwait(false);
+        return resolved;
+    }
+
+    internal async Task<LocalAiResolvedInstall> FinalizeReplacementAsync(
+        LocalAiInstallManifest expectedManifest,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(expectedManifest);
+        await using FileStream writeLock = await AcquireManifestWriteLockAsync(cancellationToken)
+            .ConfigureAwait(false);
+        LocalAiInstallManifest current = await ReadManifestAsync(cancellationToken).ConfigureAwait(false);
+        if (!HasSameRuntimeAndModel(current, expectedManifest))
+        {
+            throw new InvalidDataException(
+                "The Local AI installation changed before its model replacement could be finalized.");
+        }
+        if (expectedManifest.ReplacedManifest is null || current.ReplacedManifest is null ||
+            !string.Equals(current.Endpoint, expectedManifest.Endpoint, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                "The Local AI model replacement changed before it could be finalized.");
+        }
+
+        LocalAiInstallManifest finalized = current with
+        {
+            ReplacedManifest = null,
+            PreviousEndpoints = null,
+        };
+        LocalAiResolvedInstall resolved = ResolveAndValidate(finalized);
+        await SaveWithoutLockAsync(finalized, cancellationToken).ConfigureAwait(false);
+        return resolved;
+    }
+
+    internal async Task<LocalAiResolvedInstall> RestoreRecoveryManifestAsync(
+        LocalAiInstallManifest expectedManifest,
+        LocalAiInstallManifest recoveryManifest,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(expectedManifest);
+        ArgumentNullException.ThrowIfNull(recoveryManifest);
+        await using FileStream writeLock = await AcquireManifestWriteLockAsync(cancellationToken)
+            .ConfigureAwait(false);
+        LocalAiInstallManifest current = await ReadManifestAsync(cancellationToken).ConfigureAwait(false);
+        if (!JsonElement.DeepEquals(
+                JsonSerializer.SerializeToElement(current),
+                JsonSerializer.SerializeToElement(expectedManifest)) ||
+            current.ReplacedManifest is null)
+        {
+            throw new InvalidDataException(
+                "The Local AI model replacement changed before its recovery receipt could be restored.");
+        }
+
+        bool restoresOriginal = JsonElement.DeepEquals(
+            JsonSerializer.SerializeToElement(current.ReplacedManifest),
+            JsonSerializer.SerializeToElement(recoveryManifest));
+        bool endpointWasPublished = recoveryManifest.Endpoint is { } recoveryEndpoint &&
+            (string.Equals(current.Endpoint, recoveryEndpoint, StringComparison.Ordinal) ||
+                (current.PreviousEndpoints?.Contains(recoveryEndpoint, StringComparer.Ordinal) ?? false));
+        bool restoresPendingRoute = endpointWasPublished && JsonElement.DeepEquals(
+            JsonSerializer.SerializeToElement(current),
+            JsonSerializer.SerializeToElement(recoveryManifest with
+            {
+                Endpoint = current.Endpoint,
+                PreviousEndpoints = current.PreviousEndpoints,
+            }));
+        if (!restoresOriginal && !restoresPendingRoute)
+        {
+            throw new InvalidDataException(
+                "The requested Local AI recovery receipt is not an authorized replacement route.");
+        }
+
+        LocalAiInstallManifest restored = restoresPendingRoute
+            ? current with { Endpoint = recoveryManifest.Endpoint }
+            : recoveryManifest;
+        LocalAiResolvedInstall resolved = ResolveAndValidate(restored);
+        await SaveWithoutLockAsync(restored, cancellationToken).ConfigureAwait(false);
+        return resolved;
+    }
+
+    internal async Task<LocalAiResolvedInstall> RestoreManifestIfUnchangedAsync(
+        LocalAiInstallManifest expectedManifest,
+        LocalAiInstallManifest recoveryManifest,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(expectedManifest);
+        ArgumentNullException.ThrowIfNull(recoveryManifest);
+        await using FileStream writeLock = await AcquireManifestWriteLockAsync(cancellationToken)
+            .ConfigureAwait(false);
+        LocalAiInstallManifest current = await ReadManifestAsync(cancellationToken).ConfigureAwait(false);
+        if (!JsonElement.DeepEquals(
+                JsonSerializer.SerializeToElement(current),
+                JsonSerializer.SerializeToElement(expectedManifest)))
+        {
+            throw new InvalidDataException(
+                "The Local AI installation changed before its recovery receipt could be restored.");
+        }
+
+        LocalAiResolvedInstall resolved = ResolveAndValidate(recoveryManifest);
+        await SaveWithoutLockAsync(recoveryManifest, cancellationToken).ConfigureAwait(false);
+        return resolved;
+    }
+
+    private static bool HasSameRuntimeAndModel(
+        LocalAiInstallManifest current,
+        LocalAiInstallManifest expected) =>
+        string.Equals(current.RuntimeId, expected.RuntimeId, StringComparison.Ordinal) &&
+        string.Equals(current.SelectedGpuId, expected.SelectedGpuId, StringComparison.Ordinal) &&
+        string.Equals(current.ModelCatalogId, expected.ModelCatalogId, StringComparison.Ordinal) &&
+        string.Equals(current.ModelPath, expected.ModelPath, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(current.CachedModelPath, expected.CachedModelPath, StringComparison.OrdinalIgnoreCase);
+
     private async Task SaveWithoutLockAsync(
         LocalAiInstallManifest manifest,
         CancellationToken cancellationToken)
@@ -632,28 +793,64 @@ public sealed class LocalAiManifestStore
         LocalAiPortPolicy.Validate(manifest.RequestedPort);
         LocalAiGatewayModelPolicy.ValidateFallbackModel(manifest.GatewayFallbackModel);
 
-        Uri? endpoint = null;
-        if (manifest.Endpoint is not null)
+        if (manifest.ReplacedManifest is { } replaced)
         {
-            if (!Uri.TryCreate(manifest.Endpoint, UriKind.Absolute, out endpoint) ||
-                endpoint.Scheme != Uri.UriSchemeHttp ||
-                !string.Equals(endpoint.Host, "127.0.0.1", StringComparison.Ordinal) ||
-                endpoint.IsDefaultPort ||
-                endpoint.Port is <= 0 or > 65535 ||
-                endpoint.Port == 80 ||
-                !string.IsNullOrEmpty(endpoint.UserInfo) ||
-                !string.IsNullOrEmpty(endpoint.Query) ||
-                !string.IsNullOrEmpty(endpoint.Fragment) ||
-                !string.Equals(endpoint.AbsolutePath, "/v1", StringComparison.Ordinal))
+            if (replaced.ReplacedManifest is not null ||
+                string.Equals(replaced.ModelCatalogId, manifest.ModelCatalogId, StringComparison.Ordinal) ||
+                !string.Equals(replaced.Engine, manifest.Engine, StringComparison.Ordinal) ||
+                !string.Equals(replaced.EngineVersion, manifest.EngineVersion, StringComparison.Ordinal) ||
+                !string.Equals(replaced.Architecture, manifest.Architecture, StringComparison.Ordinal) ||
+                !string.Equals(replaced.RuntimeId, manifest.RuntimeId, StringComparison.Ordinal) ||
+                !string.Equals(replaced.ExecutablePath, manifest.ExecutablePath, StringComparison.Ordinal) ||
+                !replaced.RuntimeAssets.SequenceEqual(manifest.RuntimeAssets) ||
+                replaced.RequestedPort != manifest.RequestedPort)
             {
-                throw new InvalidDataException("The local AI endpoint must be an HTTP IPv4 loopback /v1 address with an explicit non-reserved port.");
+                throw new InvalidDataException("The local AI model replacement receipt is invalid.");
             }
+            _ = ResolveAndValidate(replaced);
+        }
+        else if (manifest.PreviousEndpoints is not null)
+        {
+            throw new InvalidDataException("Previous Local AI endpoints require a pending model replacement.");
+        }
 
-            if (manifest.RequestedPort != LocalAiPortPolicy.Automatic && endpoint.Port != manifest.RequestedPort)
-                throw new InvalidDataException("The verified Local AI endpoint does not match its requested fixed port.");
+        Uri? endpoint = ValidateEndpoint(manifest.Endpoint, manifest.RequestedPort);
+        ImmutableArray<string> endpointHistory = manifest.PreviousEndpoints.GetValueOrDefault();
+        if (endpointHistory.IsDefault)
+            endpointHistory = [];
+        HashSet<string> previousEndpoints = endpointHistory.ToHashSet(StringComparer.Ordinal);
+        if (previousEndpoints.Count != endpointHistory.Length)
+        {
+            throw new InvalidDataException("Previous Local AI endpoints must be unique.");
+        }
+        foreach (string previousEndpoint in previousEndpoints)
+        {
+            if (string.IsNullOrWhiteSpace(previousEndpoint))
+                throw new InvalidDataException("Previous Local AI endpoints must be non-empty endpoint strings.");
+            _ = ValidateEndpoint(previousEndpoint, manifest.RequestedPort);
         }
 
         return new LocalAiResolvedInstall(manifest, executable, model, endpoint);
+    }
+
+    private static Uri? ValidateEndpoint(string? value, int requestedPort)
+    {
+        if (value is null)
+            return null;
+        if (!Uri.TryCreate(value, UriKind.Absolute, out Uri? endpoint) ||
+            endpoint.Scheme != Uri.UriSchemeHttp ||
+            !string.Equals(endpoint.Host, "127.0.0.1", StringComparison.Ordinal) ||
+            endpoint.IsDefaultPort || endpoint.Port is <= 0 or > 65535 || endpoint.Port == 80 ||
+            !string.IsNullOrEmpty(endpoint.UserInfo) ||
+            !string.IsNullOrEmpty(endpoint.Query) ||
+            !string.IsNullOrEmpty(endpoint.Fragment) ||
+            !string.Equals(endpoint.AbsolutePath, "/v1", StringComparison.Ordinal))
+        {
+            throw new InvalidDataException("The local AI endpoint must be an HTTP IPv4 loopback /v1 address with an explicit non-reserved port.");
+        }
+        if (requestedPort != LocalAiPortPolicy.Automatic && endpoint.Port != requestedPort)
+            throw new InvalidDataException("The verified Local AI endpoint does not match its requested fixed port.");
+        return endpoint;
     }
 
     private static void ValidateModelPath(

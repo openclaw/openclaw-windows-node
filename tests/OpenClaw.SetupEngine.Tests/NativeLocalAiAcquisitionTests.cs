@@ -37,6 +37,7 @@ public sealed class NativeLocalAiAcquisitionTests
         Assert.Contains(steps, step => step is ConfigureLocalAiWslNetworkingStep);
         Assert.Contains(steps, step => step is VerifyLocalAiWslStep);
         Assert.Contains(steps, step => step is ConfigureLocalAiGatewayStep);
-        Assert.IsType<RestartGatewayStep>(steps[^1]);
+        Assert.IsType<RestartGatewayStep>(steps[^2]);
+        Assert.IsType<FinalizeLocalAiModelReplacementStep>(steps[^1]);
     }
 }

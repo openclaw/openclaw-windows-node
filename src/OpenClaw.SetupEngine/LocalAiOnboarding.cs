@@ -217,6 +217,11 @@ public static class LocalAiInstallationObservation
 /// <summary>Observation never calls a runtime refresh (which may publish or withdraw a route).</summary>
 public interface ISetupLocalAiHost
 {
+    /// <summary>
+    /// Borrows the tray-owned runtime for a recovery transaction. The setup pipeline may restart
+    /// this runtime, but its lifetime remains owned by the tray.
+    /// </summary>
+    ILocalAiRuntime? BorrowManagedRuntime() => null;
     OpenClaw.Connection.GatewayRegistrySnapshot BeginGatewaySetup();
     Task ReconcileGatewaySetupAsync(OpenClaw.Connection.GatewayRegistrySnapshot expectedOutput, string? completedGatewayId);
     Task<LocalAiOnboardingSnapshot> ObserveAsync(CancellationToken ct);

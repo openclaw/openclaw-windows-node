@@ -490,6 +490,9 @@ public sealed partial class SetupWindow : Window
     internal Task<HostHardwareInfo> GetLocalAiHardwareAsync(bool forceRefresh = false) =>
         _localAiHardwareProbe.GetAsync(forceRefresh);
 
+    internal ILocalAiRuntime? BorrowManagedLocalAiRuntime() =>
+        _startAtLocalAiRecoveryReview ? _localAiHost?.BorrowManagedRuntime() : null;
+
     internal Task<WslViabilityResult> GetWslViabilityAsync(bool refresh = false) =>
         _wslViabilityProbe.GetAsync(refresh);
 

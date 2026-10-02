@@ -1280,14 +1280,21 @@ public sealed class LocalAiInstallRecoveryTests
     }
 
     [Theory]
-    [InlineData(false, null)]
-    [InlineData(true, null)]
-    [InlineData(false, "after-reconcile")]
-    [InlineData(true, "after-reconcile")]
-    [InlineData(false, "after-persist")]
-    [InlineData(true, "after-persist")]
+    [InlineData(false, false, null)]
+    [InlineData(true, false, null)]
+    [InlineData(false, true, null)]
+    [InlineData(true, true, null)]
+    [InlineData(false, false, "after-reconcile")]
+    [InlineData(true, false, "after-reconcile")]
+    [InlineData(false, true, "after-reconcile")]
+    [InlineData(true, true, "after-reconcile")]
+    [InlineData(false, false, "after-persist")]
+    [InlineData(true, false, "after-persist")]
+    [InlineData(false, true, "after-persist")]
+    [InlineData(true, true, "after-persist")]
     public async Task RuntimeUpgrade_MigratesModelAndRestoresOriginalReceiptOnFailure(
         bool usesHubCache,
+        bool pendingReplacement,
         string? failureStage)
     {
         using var temp = new TempDirectory();
@@ -1307,6 +1314,18 @@ public sealed class LocalAiInstallRecoveryTests
         {
             GatewayFallbackModel = "openai/gpt-5",
         };
+        if (pendingReplacement)
+        {
+            manifest = manifest with
+            {
+                ReplacedManifest = manifest with
+                {
+                    ModelCatalogId = "prior-model",
+                    ModelAlias = "prior-model",
+                },
+                PreviousEndpoints = [manifest.Endpoint!],
+            };
+        }
         string oldExecutable = paths.ResolveContainedPath(manifest.ExecutablePath, "executable");
         Directory.CreateDirectory(Path.GetDirectoryName(oldExecutable)!);
         await File.WriteAllTextAsync(oldExecutable, "old-server");
@@ -1320,6 +1339,7 @@ public sealed class LocalAiInstallRecoveryTests
 
         var context = CreateContext(temp.Path, confirmDestructive: false);
         context.Config.LocalAi.Enabled = true;
+        context.Config.LocalAiRecoveryGatewayId = pendingReplacement ? "gateway-id" : null;
         context.Config.RollbackOnFailure = true;
         context.LocalAiPort = manifest.RequestedPort;
         context.LocalAiEligibility = new LocalInferenceEligibilityResult(
@@ -1355,7 +1375,8 @@ public sealed class LocalAiInstallRecoveryTests
             new ReconcileLocalAiInstallationStep(reconciler),
             new UpgradeCheckpointStep("after-reconcile", ctx =>
             {
-                Assert.Null(ctx.LocalAiRecoveryOriginalInstall);
+                Assert.Equal(pendingReplacement, ctx.LocalAiRecoveryOriginalInstall is not null);
+                Assert.Equal(pendingReplacement, ctx.LocalAiRecoveryPendingInstall is not null);
                 Assert.Equal(manifest.SchemaVersion, ctx.LocalAiUpgradeOriginalInstall?.Manifest.SchemaVersion);
                 Assert.Equal(oldExecutable, ctx.LocalAiUpgradeOriginalInstall?.ExecutablePath);
                 Assert.Equal(cacheRoot, ctx.LocalAiModelInstall?.CacheRoot);
@@ -1376,6 +1397,22 @@ public sealed class LocalAiInstallRecoveryTests
                 Assert.Equal(manifest.InstalledAtUtc, upgraded.Manifest.InstalledAtUtc);
                 Assert.Equal(manifest.GatewayFallbackModel, upgraded.Manifest.GatewayFallbackModel);
                 Assert.Null(upgraded.Endpoint);
+                Assert.Equal(pendingReplacement, upgraded.Manifest.ReplacedManifest is not null);
+                if (pendingReplacement)
+                {
+                    Assert.Equal("prior-model", upgraded.Manifest.ReplacedManifest!.ModelCatalogId);
+                    Assert.Equal(upgraded.Manifest.RuntimeId, upgraded.Manifest.ReplacedManifest.RuntimeId);
+                    Assert.Equal(upgraded.Manifest.RuntimeAssets, upgraded.Manifest.ReplacedManifest.RuntimeAssets);
+                    Assert.Equal(
+                        upgraded.Manifest.ReplacedManifest,
+                        ctx.LocalAiRecoveryOriginalInstall?.Manifest);
+                    LocalAiResolvedInstall pendingRoute = Assert.IsType<LocalAiResolvedInstall>(
+                        ctx.LocalAiRecoveryPendingInstall);
+                    Assert.Equal(manifest.Endpoint, pendingRoute.Manifest.Endpoint);
+                    Assert.Equal(upgraded.Manifest.RuntimeId, pendingRoute.Manifest.RuntimeId);
+                    Assert.Equal(upgraded.Manifest.RuntimeAssets, pendingRoute.Manifest.RuntimeAssets);
+                    Assert.Equal(upgraded.Manifest.ReplacedManifest, pendingRoute.Manifest.ReplacedManifest);
+                }
                 newExecutable = upgraded.ExecutablePath;
                 Assert.True(File.Exists(newExecutable));
                 return failureStage == "after-persist";
@@ -1490,7 +1527,43 @@ public sealed class LocalAiInstallRecoveryTests
     }
 
     [Fact]
-    public async Task Reconciler_RecoveryRetainsReceiptWhileMissingModelIsRepaired()
+    public async Task Reconciler_RecoveryReusesRuntimeWhenSelectedModelChanges()
+    {
+        using var temp = new TempDirectory();
+        LocalInferencePlan installed = CatalogPlan();
+        LocalModelInfo replacementModel = LocalModelCatalog.Models.First(
+            model => model.Id != installed.Model.Id);
+        var replacement = new LocalInferencePlan(
+            installed.Runtime,
+            replacementModel,
+            LocalModelCatalog.GetProfiles(replacementModel)[0],
+            LocalInferenceModelSelectionOrigin.Explicit);
+        const string gpuId = "GPU-0";
+        var paths = new LocalAiPaths(temp.Path);
+        LocalAiInstallManifest manifest = CreateManifest(temp.Path, installed, gpuId);
+        await new LocalAiManifestStore(paths).SaveAsync(manifest);
+
+        LocalAiReconcileResult result = await new LocalAiInstallReconciler(
+                new ValidRuntimeInspector(),
+                new AcceptingModelVerifier())
+            .ReconcileAsync(
+                temp.Path,
+                replacement,
+                gpuId,
+                CancellationToken.None,
+                allowIncompleteInstallation: true);
+
+        Assert.False(result.Reused);
+        Assert.False(result.RuntimeInstall!.CreatedThisRun);
+        Assert.Null(result.ModelInstall);
+        Assert.Equal(manifest.ModelCatalogId, result.OriginalInstall?.Manifest.ModelCatalogId);
+        Assert.Null((await new LocalAiManifestStore(paths).LoadAsync())!.Manifest.ReplacedManifest);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Reconciler_RecoveryRetainsReceiptWhileMissingModelIsRepaired(bool pendingReplacement)
     {
         using var temp = new TempDirectory();
         LocalInferencePlan plan = CatalogPlan();
@@ -1498,6 +1571,16 @@ public sealed class LocalAiInstallRecoveryTests
         var paths = new LocalAiPaths(temp.Path);
         var store = new LocalAiManifestStore(paths);
         LocalAiInstallManifest manifest = CreateManifest(temp.Path, plan, gpuId);
+        if (pendingReplacement)
+        {
+            LocalModelInfo priorModel = LocalModelCatalog.Models.First(model => model.Id != plan.Model.Id);
+            var priorPlan = new LocalInferencePlan(
+                plan.Runtime,
+                priorModel,
+                LocalModelCatalog.GetProfiles(priorModel)[0],
+                LocalInferenceModelSelectionOrigin.Explicit);
+            manifest = manifest with { ReplacedManifest = CreateManifest(temp.Path, priorPlan, gpuId) };
+        }
         await store.SaveAsync(manifest);
         var reconciler = new LocalAiInstallReconciler(
             new ValidRuntimeInspector(),
@@ -1515,7 +1598,181 @@ public sealed class LocalAiInstallRecoveryTests
         Assert.Equal(manifest.Endpoint, result.OriginalInstall!.Manifest.Endpoint);
         Assert.NotNull(result.RuntimeInstall);
         Assert.Null(result.ModelInstall);
+        Assert.Equal(pendingReplacement, result.PendingReplacement is not null);
         Assert.True(File.Exists(paths.ManifestPath));
+    }
+
+    [Fact]
+    public async Task FinalizeReplacement_ClearsRollbackReceipt()
+    {
+        using var temp = new TempDirectory();
+        LocalAiInstallManifest original = CreateManifest(temp.Path, CatalogPlan(), "GPU-0");
+        LocalAiInstallManifest pending = original with
+        {
+            ModelCatalogId = "replacement-model",
+            ModelAlias = "replacement-model",
+            ReplacedManifest = original,
+            PreviousEndpoints = [original.Endpoint!],
+        };
+        var store = new LocalAiManifestStore(new LocalAiPaths(temp.Path));
+        await store.SaveAsync(pending);
+        SetupContext context = CreateContext(temp.Path, confirmDestructive: false);
+        context.LocalAiResolvedInstall = store.ResolveAndValidate(pending);
+
+        StepResult result = await new FinalizeLocalAiModelReplacementStep()
+            .ExecuteAsync(context, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Success, result.Outcome);
+        LocalAiInstallManifest committed = (await store.LoadAsync())!.Manifest;
+        Assert.Null(committed.ReplacedManifest);
+        Assert.Null(committed.PreviousEndpoints);
+        string json = await File.ReadAllTextAsync(new LocalAiPaths(temp.Path).ManifestPath);
+        Assert.DoesNotContain("previousEndpoints", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("replacedManifest", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task PersistRollback_RestoresOriginalReceiptBeforeGatewayGuard()
+    {
+        using var temp = new TempDirectory();
+        LocalAiInstallManifest original = CreateManifest(temp.Path, CatalogPlan(), "GPU-0");
+        LocalAiInstallManifest pending = original with
+        {
+            ModelCatalogId = "replacement-model",
+            ModelAlias = "replacement-model",
+            ReplacedManifest = original,
+            PreviousEndpoints = [original.Endpoint!],
+        };
+        var store = new LocalAiManifestStore(new LocalAiPaths(temp.Path));
+        await store.SaveAsync(pending);
+        SetupContext context = CreateContext(temp.Path, confirmDestructive: false);
+        context.LocalAiResolvedInstall = store.ResolveAndValidate(pending);
+        context.LocalAiRecoveryOriginalInstall = store.ResolveAndValidate(original);
+        context.LocalAiRecoveryProviderTransition = true;
+        context.LocalAiRecoveryReceiptRollbackAllowed = false;
+
+        await new PersistLocalAiManifestStep().RollbackAsync(context, CancellationToken.None);
+
+        LocalAiInstallManifest restored = (await store.LoadAsync())!.Manifest;
+        Assert.Equal(original.ModelCatalogId, restored.ModelCatalogId);
+        Assert.Null(restored.ReplacedManifest);
+        Assert.Null(restored.PreviousEndpoints);
+        Assert.False(context.LocalAiRecoveryProviderTransition);
+        Assert.False(context.LocalAiRecoveryReceiptRollbackAllowed);
+    }
+
+    [Fact]
+    public async Task Rollback_RestoresUpgradeAndRemovesTaskOwnedRuntimeBeforeGatewayConfiguration()
+    {
+        using var temp = new TempDirectory();
+        LocalAiInstallManifest original = CreateManifest(temp.Path, CatalogPlan(), "GPU-0");
+        LocalAiInstallManifest replacement = original with
+        {
+            ModelCatalogId = "replacement-model",
+            ModelAlias = "replacement-model",
+        };
+        var store = new LocalAiManifestStore(new LocalAiPaths(temp.Path));
+        await store.SaveAsync(replacement);
+        var acquirer = new TrackingRuntimeAcquirer();
+        SetupContext context = CreateContext(temp.Path, confirmDestructive: false);
+        context.LocalAiResolvedInstall = store.ResolveAndValidate(replacement);
+        context.LocalAiUpgradeOriginalInstall = store.ResolveAndValidate(original);
+        context.LocalAiRuntimeInstall = new LlamaRuntimeInstallResult(
+            temp.Path,
+            Path.Combine(temp.Path, "llama-server.exe"),
+            LlamaRuntimeInstallDisposition.Installed,
+            CreatedThisRun: true,
+            VerifiedArchives: [],
+            Rollback: null);
+        context.LocalAiRecoveryProviderTransition = true;
+        context.LocalAiRecoveryRollbackUncertain = true;
+        context.LocalAiRecoveryReceiptRollbackAllowed = false;
+
+        await new PersistLocalAiManifestStep().RollbackAsync(context, CancellationToken.None);
+        await new AcquireLocalAiRuntimeStep(acquirer).RollbackAsync(context, CancellationToken.None);
+
+        Assert.Equal(original.ModelCatalogId, (await store.LoadAsync())!.Manifest.ModelCatalogId);
+        Assert.Null(context.LocalAiUpgradeOriginalInstall);
+        Assert.Null(context.LocalAiRuntimeInstall);
+        Assert.False(context.LocalAiRecoveryRollbackUncertain);
+        Assert.Equal(1, acquirer.RemoveCalls);
+    }
+
+    [Fact]
+    public async Task Rollback_PreservesPublishedUpgradeWhenGatewayCompensationIsUncertain()
+    {
+        using var temp = new TempDirectory();
+        LocalAiInstallManifest original = CreateManifest(temp.Path, CatalogPlan(), "GPU-0");
+        LocalAiInstallManifest replacement = original with
+        {
+            ModelCatalogId = "replacement-model",
+            ModelAlias = "replacement-model",
+        };
+        var store = new LocalAiManifestStore(new LocalAiPaths(temp.Path));
+        await store.SaveAsync(replacement);
+        var acquirer = new TrackingRuntimeAcquirer();
+        SetupContext context = CreateContext(temp.Path, confirmDestructive: false);
+        context.LocalAiResolvedInstall = store.ResolveAndValidate(replacement);
+        context.LocalAiUpgradeOriginalInstall = store.ResolveAndValidate(original);
+        context.LocalAiRuntimeInstall = new LlamaRuntimeInstallResult(
+            temp.Path,
+            Path.Combine(temp.Path, "llama-server.exe"),
+            LlamaRuntimeInstallDisposition.Installed,
+            CreatedThisRun: true,
+            VerifiedArchives: [],
+            Rollback: null);
+        context.LocalAiRecoveryProviderTransition = true;
+        context.LocalAiRecoveryRollbackUncertain = true;
+        context.LocalAiRecoveryReceiptRollbackAllowed = false;
+        context.LocalAiRecoveryGatewayConfigurationStartedThisRun = true;
+
+        await new PersistLocalAiManifestStep().RollbackAsync(context, CancellationToken.None);
+        await new AcquireLocalAiRuntimeStep(acquirer).RollbackAsync(context, CancellationToken.None);
+
+        Assert.Equal(replacement.ModelCatalogId, (await store.LoadAsync())!.Manifest.ModelCatalogId);
+        Assert.NotNull(context.LocalAiUpgradeOriginalInstall);
+        Assert.NotNull(context.LocalAiRuntimeInstall);
+        Assert.Equal(0, acquirer.RemoveCalls);
+    }
+
+    [Fact]
+    public async Task RecoveryGuard_RejectsStaleReplacementHistoryAndBlocksCleanup()
+    {
+        using var temp = new TempDirectory();
+        LocalAiInstallManifest original = CreateManifest(temp.Path, CatalogPlan(), "GPU-0");
+        LocalAiInstallManifest pending = original with
+        {
+            ModelCatalogId = "replacement-model",
+            ModelAlias = "replacement-model",
+            Endpoint = "http://127.0.0.1:18802/v1",
+            ReplacedManifest = original,
+            PreviousEndpoints = [original.Endpoint!],
+        };
+        LocalAiInstallManifest newer = pending with
+        {
+            Endpoint = "http://127.0.0.1:18803/v1",
+            PreviousEndpoints = [original.Endpoint!, pending.Endpoint!],
+        };
+        var store = new LocalAiManifestStore(new LocalAiPaths(temp.Path));
+        await store.SaveAsync(newer);
+        SetupContext context = CreateContext(temp.Path, confirmDestructive: false);
+        context.LocalAiResolvedInstall = store.ResolveAndValidate(pending);
+        context.LocalAiRecoveryOriginalInstall = store.ResolveAndValidate(original);
+        context.LocalAiRecoveryProviderTransition = true;
+
+        context.LocalAiRecoveryReceiptRollbackAllowed = true;
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            new PreserveLocalAiRecoveryGatewayStep(
+                    (_, _) => Task.FromResult(StepResult.Ok("restarted")),
+                    (_, _) => Task.FromResult(true))
+                .RollbackAsync(context, CancellationToken.None));
+
+        LocalAiInstallManifest retained = (await store.LoadAsync())!.Manifest;
+        Assert.Equal(newer.Endpoint, retained.Endpoint);
+        Assert.Equal(newer.PreviousEndpoints, retained.PreviousEndpoints);
+        Assert.True(context.LocalAiRecoveryRollbackUncertain);
+        Assert.False(context.LocalAiRecoveryReceiptRollbackAllowed);
+        Assert.False(context.LocalAiRecoveryCleanupAllowed);
     }
 
     [Fact]
@@ -1552,8 +1809,10 @@ public sealed class LocalAiInstallRecoveryTests
         Assert.Null(context.LocalAiModelInstall);
     }
 
-    [Fact]
-    public async Task RecoveryPipeline_RewritesIncompleteReceiptAfterModelRepair()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RecoveryPipeline_RewritesIncompleteReceiptAfterModelRepair(bool pendingReplacement)
     {
         using var temp = new TempDirectory();
         LocalInferencePlan plan = CatalogPlan();
@@ -1563,6 +1822,19 @@ public sealed class LocalAiInstallRecoveryTests
             RequestedPort = 18803,
             GatewayFallbackModel = "openai/gpt-5",
         };
+        if (pendingReplacement)
+        {
+            LocalModelInfo priorModel = LocalModelCatalog.Models.First(model => model.Id != plan.Model.Id);
+            var priorPlan = new LocalInferencePlan(
+                plan.Runtime,
+                priorModel,
+                LocalModelCatalog.GetProfiles(priorModel)[0],
+                LocalInferenceModelSelectionOrigin.Explicit);
+            manifest = manifest with
+            {
+                ReplacedManifest = CreateManifest(temp.Path, priorPlan, gpuId) with { RequestedPort = 18803 },
+            };
+        }
         var store = new LocalAiManifestStore(new LocalAiPaths(temp.Path));
         await store.SaveAsync(manifest);
         LocalAiResolvedInstall original = (await store.LoadAsync())!;
@@ -1601,6 +1873,13 @@ public sealed class LocalAiInstallRecoveryTests
         Assert.Equal(CacheRoot(temp.Path), repaired.Manifest.ModelCacheRoot);
         Assert.Equal(repaired.Manifest.CachedModelPath, repaired.ModelPath);
         Assert.False(context.LocalAiManifestCreatedThisRun);
+        Assert.Equal(pendingReplacement, context.LocalAiRecoveryRollbackUncertain);
+        if (!pendingReplacement)
+        {
+            Assert.Null(repaired.Manifest.PreviousEndpoints);
+            string json = await File.ReadAllTextAsync(new LocalAiPaths(temp.Path).ManifestPath);
+            Assert.DoesNotContain("previousEndpoints", json, StringComparison.Ordinal);
+        }
     }
 
     [Fact]
@@ -2462,6 +2741,22 @@ public sealed class LocalAiInstallRecoveryTests
             string installDirectory,
             CancellationToken cancellationToken) =>
             Task.FromResult(new LlamaRuntimeInspection(false, "invalid", "simulated corrupted runtime"));
+    }
+
+    private sealed class TrackingRuntimeAcquirer : ILlamaRuntimeAcquirer
+    {
+        public int RemoveCalls { get; private set; }
+
+        public Task<LlamaRuntimeInstallResult> InstallAsync(
+            string localDataDirectory,
+            LlamaRuntimeVariant runtime,
+            IProgress<LocalAiArtifactInstallProgress>? progress,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public void RemoveInstalledRuntime(
+            string localDataDirectory,
+            LlamaRuntimeInstallResult install) => RemoveCalls++;
     }
 
     /// <summary>Accepts the runtime but cancels the install as inspection returns.</summary>

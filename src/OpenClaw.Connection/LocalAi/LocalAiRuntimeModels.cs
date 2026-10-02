@@ -146,5 +146,35 @@ public interface ILocalAiRuntime : IAsyncDisposable
         => Task.FromResult(Snapshot);
     Task<LocalAiRuntimeSnapshot> StopAsync(CancellationToken cancellationToken = default);
     Task<LocalAiRuntimeSnapshot> RestartAsync(CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Stops the managed process for a setup transaction without changing Gateway routing.
+    /// Implementations that publish endpoint lifecycle changes must suppress them here because
+    /// the setup pipeline coordinates the matching Gateway transaction separately.
+    /// </summary>
+    Task<LocalAiRuntimeSnapshot> StopForSetupAsync(CancellationToken cancellationToken = default) =>
+        StopAsync(cancellationToken);
+    /// <summary>
+    /// Restarts the managed process for a setup transaction without changing Gateway routing.
+    /// Implementations that publish endpoint lifecycle changes must suppress them here because
+    /// the setup pipeline coordinates the matching Gateway transaction separately.
+    /// </summary>
+    Task<LocalAiRuntimeSnapshot> RestartForSetupAsync(CancellationToken cancellationToken = default) =>
+        RestartAsync(cancellationToken);
+    /// <summary>
+    /// Adopts setup's restored receipt, then restarts through the ordinary Gateway lifecycle.
+    /// Use only before setup has begun its own Gateway configuration transaction.
+    /// </summary>
+    Task<LocalAiRuntimeSnapshot> RestartForSetupRollbackAsync(
+        CancellationToken cancellationToken = default) => RestartAsync(cancellationToken);
+    /// <summary>
+    /// Acknowledges that setup committed or compensated the Gateway route for the current endpoint.
+    /// </summary>
+    Task<LocalAiRuntimeSnapshot> AcknowledgeSetupGatewayRouteAsync(
+        CancellationToken cancellationToken = default) => Task.FromResult(Snapshot);
+    /// <summary>
+    /// Returns endpoint lifecycle ownership to the runtime without claiming Gateway reconciliation.
+    /// </summary>
+    Task<LocalAiRuntimeSnapshot> ReleaseSetupGatewayRouteAsync(
+        CancellationToken cancellationToken = default) => Task.FromResult(Snapshot);
     Task<LocalAiRuntimeSnapshot> RefreshAsync(CancellationToken cancellationToken = default);
 }

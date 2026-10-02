@@ -583,14 +583,22 @@ public sealed class SetupContext
         : null;
     internal LocalAiResolvedInstall? LocalAiRecoveryOriginalInstall { get; set; }
     internal LocalAiResolvedInstall? LocalAiUpgradeOriginalInstall { get; set; }
+    internal LocalAiResolvedInstall? LocalAiRecoveryPendingInstall { get; set; }
     internal bool LocalAiRecoveryProviderTransition { get; set; }
     internal bool LocalAiRecoveryReceiptRollbackAllowed { get; set; }
+    internal bool LocalAiRecoveryRollbackUncertain { get; set; }
+    internal bool LocalAiRecoveryCleanupAllowed =>
+        !LocalAiRecoveryRollbackUncertain || LocalAiRecoveryReceiptRollbackAllowed;
     internal bool LocalAiManifestCreatedThisRun { get; set; }
     internal ILocalAiRuntime? LocalAiRuntime { get; set; }
+    internal bool LocalAiRuntimeBorrowed { get; set; }
+    internal bool LocalAiBorrowedRuntimeRestartedThisRun { get; set; }
+    internal bool LocalAiBorrowedRuntimeRestored { get; set; }
     internal HostHardwareInfo? LocalAiGpuBaseline { get; set; }
     internal LlamaServerInferenceVerification? LocalAiInferenceVerification { get; set; }
     internal LocalAiGpuLoadEvidence? LocalAiGpuLoadEvidence { get; set; }
     internal LocalAiGatewayPriorState? LocalAiGatewayPriorState { get; set; }
+    internal bool LocalAiRecoveryGatewayConfigurationStartedThisRun { get; set; }
     internal bool IsUninstalling { get; set; }
     internal bool LocalAiRecoveryStoppedWsl { get; set; }
 

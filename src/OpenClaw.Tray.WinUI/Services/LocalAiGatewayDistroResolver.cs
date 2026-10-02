@@ -31,7 +31,8 @@ internal sealed record LocalAiRecoveryTarget(
     string DistroName,
     int GatewayPort,
     string? ModelCatalogId,
-    int? RequestedLocalAiPort);
+    int? RequestedLocalAiPort,
+    bool PinModelSelection);
 
 internal sealed record LocalAiSetupResolution(
     LocalAiSetupRoute Route,
@@ -47,7 +48,8 @@ internal static class LocalAiSetupRoutePolicy
         bool hasDistroDataDirectory,
         bool distroIsAppOwned,
         string? installedModelCatalogId = null,
-        int? installedRequestedLocalAiPort = null)
+        int? installedRequestedLocalAiPort = null,
+        bool pinInstalledModelSelection = false)
     {
         if (owners.Count == 1)
         {
@@ -69,7 +71,8 @@ internal static class LocalAiSetupRoutePolicy
                         GatewayRecordEditing.ResolveManagedDistroName(owner)!.Trim(),
                         uri.Port,
                         installedModelCatalogId,
-                        installedRequestedLocalAiPort));
+                        installedRequestedLocalAiPort,
+                        pinInstalledModelSelection));
             }
 
             return new(LocalAiSetupRoute.Blocked);

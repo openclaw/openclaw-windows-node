@@ -113,6 +113,124 @@ public sealed class LocalAiPortLifecycleTests
     }
 
     [Fact]
+    public async Task Manifest_OrdinaryReceiptRemainsReadableBySchemaFourReader()
+    {
+        using var temp = new TempDirectory("local-ai-manifest-");
+        var paths = new LocalAiPaths(temp.Path);
+        await new LocalAiManifestStore(paths).SaveAsync(ValidManifest());
+
+        string json = await File.ReadAllTextAsync(paths.ManifestPath);
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+        {
+            UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow,
+        };
+
+        Assert.NotNull(JsonSerializer.Deserialize<SchemaFourTransitionalManifest>(json, options));
+        Assert.DoesNotContain("previousEndpoints", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("replacedManifest", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Manifest_EndpointUpdateDoesNotRestoreFinalizedReplacementState()
+    {
+        using var temp = new TempDirectory("local-ai-manifest-");
+        var paths = new LocalAiPaths(temp.Path);
+        var store = new LocalAiManifestStore(paths);
+        LocalAiInstallManifest original = ValidManifest() with
+        {
+            Endpoint = "http://127.0.0.1:28765/v1",
+        };
+        LocalAiInstallManifest pending = original with
+        {
+            ModelCatalogId = "replacement-model",
+            ModelAlias = "replacement-model",
+            Endpoint = "http://127.0.0.1:28766/v1",
+            ReplacedManifest = original,
+            PreviousEndpoints = [original.Endpoint!],
+        };
+        await store.SaveAsync(pending);
+        await store.SaveAsync(pending with
+        {
+            ReplacedManifest = null,
+            PreviousEndpoints = null,
+        });
+
+        InvalidDataException error = await Assert.ThrowsAsync<InvalidDataException>(() =>
+            store.UpdateVerifiedEndpointAsync(
+                pending,
+                new Uri("http://127.0.0.1:28767/v1")));
+
+        Assert.Contains("finalized", error.Message, StringComparison.Ordinal);
+        LocalAiResolvedInstall updated = (await store.LoadAsync())!;
+        Assert.Equal("http://127.0.0.1:28766/v1", updated.Manifest.Endpoint);
+        Assert.Null(updated.Manifest.ReplacedManifest);
+        Assert.Null(updated.Manifest.PreviousEndpoints);
+        string json = await File.ReadAllTextAsync(paths.ManifestPath);
+        Assert.DoesNotContain("previousEndpoints", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("replacedManifest", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Manifest_FinalizationRejectsConcurrentlyUpdatedEndpoint()
+    {
+        using var temp = new TempDirectory("local-ai-manifest-");
+        var paths = new LocalAiPaths(temp.Path);
+        var store = new LocalAiManifestStore(paths);
+        LocalAiInstallManifest original = ValidManifest() with
+        {
+            Endpoint = "http://127.0.0.1:28765/v1",
+        };
+        LocalAiInstallManifest pending = original with
+        {
+            ModelCatalogId = "replacement-model",
+            ModelAlias = "replacement-model",
+            Endpoint = "http://127.0.0.1:28766/v1",
+            ReplacedManifest = original,
+            PreviousEndpoints = [original.Endpoint!],
+        };
+        await store.SaveAsync(pending);
+        await store.UpdateVerifiedEndpointAsync(
+            pending,
+            new Uri("http://127.0.0.1:28767/v1"));
+
+        InvalidDataException error = await Assert.ThrowsAsync<InvalidDataException>(() =>
+            store.FinalizeReplacementAsync(pending));
+
+        Assert.Contains("changed", error.Message, StringComparison.Ordinal);
+        LocalAiResolvedInstall retained = (await store.LoadAsync())!;
+        Assert.Equal("http://127.0.0.1:28767/v1", retained.Manifest.Endpoint);
+        Assert.NotNull(retained.Manifest.ReplacedManifest);
+        Assert.NotNull(retained.Manifest.PreviousEndpoints);
+    }
+
+    [Fact]
+    public async Task Manifest_RejectsNullPreviousEndpoint()
+    {
+        using var temp = new TempDirectory("local-ai-manifest-");
+        var paths = new LocalAiPaths(temp.Path);
+        var store = new LocalAiManifestStore(paths);
+        LocalAiInstallManifest original = ValidManifest() with
+        {
+            Endpoint = "http://127.0.0.1:28765/v1",
+        };
+        await store.SaveAsync(original with
+        {
+            ModelCatalogId = "replacement-model",
+            ModelAlias = "replacement-model",
+            Endpoint = "http://127.0.0.1:28766/v1",
+            ReplacedManifest = original,
+            PreviousEndpoints = [original.Endpoint!],
+        });
+        JsonObject json = (JsonNode.Parse(await File.ReadAllTextAsync(paths.ManifestPath)) as JsonObject)!;
+        json["previousEndpoints"] = new JsonArray { null };
+        await File.WriteAllTextAsync(paths.ManifestPath, json.ToJsonString());
+
+        InvalidDataException error = await Assert.ThrowsAsync<InvalidDataException>(() => store.LoadAsync());
+
+        Assert.Contains("non-empty endpoint", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Router_RejectsRuntimeArchitectureMismatchWithoutHardwareProfile()
     {
         using var temp = new TempDirectory("local-ai-manifest-");
@@ -2236,6 +2354,131 @@ public sealed class LocalAiPortLifecycleTests
     }
 
     [Fact]
+    public async Task RestartForSetupAsync_RestartsProcessWithoutChangingGatewayLifecycle()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_769);
+        var lifecycle = new FakeLifecycle(events);
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            new FakeClient(events),
+            lifecycle);
+        LocalAiRuntimeSnapshot started = await runtime.EnsureStartedAsync();
+        Assert.Equal(LocalAiRuntimeState.Healthy, started.State);
+        events.Clear();
+
+        LocalAiRuntimeSnapshot restarted = await runtime.RestartForSetupAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Healthy, restarted.State);
+        Assert.Equal(["stop", "start", "probe:28769"], events);
+        Assert.True(restarted.GatewayRouteRequiresResolution);
+
+        events.Clear();
+        LocalAiRuntimeSnapshot stillSetupOwned = await runtime.RestartAsync();
+
+        Assert.True(stillSetupOwned.GatewayRouteRequiresResolution);
+        Assert.Equal(["stop", "start", "probe:28769"], events);
+        await runtime.AcknowledgeSetupGatewayRouteAsync();
+        Assert.Equal([false, true, false, false, true], lifecycle.RecoveryIntents);
+    }
+
+    [Fact]
+    public async Task AcknowledgeSetupGatewayRouteAsync_ClearsResolutionWithoutLifecycleIo()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_769);
+        var lifecycle = new FakeLifecycle(events);
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            new FakeClient(events),
+            lifecycle);
+        LocalAiRuntimeSnapshot started = await runtime.RestartForSetupAsync();
+        Assert.Equal(LocalAiRuntimeState.Healthy, started.State);
+        Assert.True(started.GatewayRouteRequiresResolution);
+        events.Clear();
+
+        LocalAiRuntimeSnapshot acknowledged = await runtime.AcknowledgeSetupGatewayRouteAsync();
+
+        Assert.False(acknowledged.GatewayRouteRequiresResolution);
+        Assert.Empty(events);
+        Assert.Equal([false, true], lifecycle.RecoveryIntents);
+    }
+
+    [Fact]
+    public async Task ReleaseSetupGatewayRouteAsync_ReturnsLifecycleOwnershipWithoutAcknowledgingRoute()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_769);
+        var lifecycle = new FakeLifecycle(events);
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            new FakeClient(events),
+            lifecycle);
+        LocalAiRuntimeSnapshot started = await runtime.RestartForSetupAsync();
+        Assert.True(started.GatewayRouteRequiresResolution);
+
+        LocalAiRuntimeSnapshot released = await runtime.ReleaseSetupGatewayRouteAsync();
+        events.Clear();
+        LocalAiRuntimeSnapshot restarted = await runtime.RestartAsync();
+
+        Assert.True(released.GatewayRouteRequiresResolution);
+        Assert.False(restarted.GatewayRouteRequiresResolution);
+        Assert.Equal([false, true, false, true], lifecycle.RecoveryIntents);
+        Assert.Contains("quiesce:EndpointCycle", events);
+        Assert.Contains("publish:28769", events);
+    }
+
+    [Fact]
+    public async Task RestartForSetupRollbackAsync_AdoptsRestoredReceiptBeforeGatewayLifecycle()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var lifecycle = new FakeLifecycle(events);
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_769);
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            new FakeClient(events),
+            lifecycle);
+        LocalAiRuntimeSnapshot started = await runtime.EnsureStartedAsync();
+        Assert.Equal(LocalAiRuntimeState.Healthy, started.State);
+        LocalAiResolvedInstall current = (await new LocalAiManifestStore(paths).LoadAsync())!;
+        LocalAiInstallManifest restoredManifest = current.Manifest with
+        {
+            Endpoint = "http://127.0.0.1:28768/v1",
+        };
+        await new LocalAiManifestStore(paths).SaveAsync(restoredManifest);
+        events.Clear();
+        lifecycle.QuiescedEndpoints.Clear();
+
+        LocalAiRuntimeSnapshot restarted = await runtime.RestartForSetupRollbackAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Healthy, restarted.State);
+        Assert.Equal(new Uri("http://127.0.0.1:28768/v1"), lifecycle.QuiescedEndpoints[0]);
+        Assert.Equal(new Uri("http://127.0.0.1:28769/v1"), restarted.Endpoint);
+        Assert.False(restarted.GatewayRouteRequiresResolution);
+        Assert.Contains("publish:28769", events);
+    }
+
+    [Fact]
     public async Task RestartAsync_InitialEndpointCycleExceptionCompletesTeardownBeforeStopping()
     {
         using var temp = new TempDirectory("local-ai-port-");
@@ -3153,6 +3396,35 @@ public sealed class LocalAiPortLifecycleTests
             DraftValueCachePrecision = KvCachePrecision.Q8_0,
             InstalledAtUtc = DateTimeOffset.Parse("2026-08-18T12:00:00Z"),
         };
+    }
+
+    private sealed record SchemaFourTransitionalManifest
+    {
+        public int SchemaVersion { get; init; }
+        public string? Engine { get; init; }
+        public string? EngineVersion { get; init; }
+        public string? Architecture { get; init; }
+        public string? HardwareProfileId { get; init; }
+        public string? RuntimeId { get; init; }
+        public string? ModelCatalogId { get; init; }
+        public string? SelectedGpuId { get; init; }
+        public string? ExecutablePath { get; init; }
+        public JsonElement RuntimeAssets { get; init; }
+        public string? ModelPath { get; init; }
+        public string? ModelCacheRoot { get; init; }
+        public string? CachedModelPath { get; init; }
+        public string? ModelId { get; init; }
+        public string? ModelAlias { get; init; }
+        public JsonElement ModelAsset { get; init; }
+        public int RequestedPort { get; init; }
+        public string? Endpoint { get; init; }
+        public string? GatewayFallbackModel { get; init; }
+        public int ContextLength { get; init; }
+        public string? KeyCachePrecision { get; init; }
+        public string? ValueCachePrecision { get; init; }
+        public string? DraftKeyCachePrecision { get; init; }
+        public string? DraftValueCachePrecision { get; init; }
+        public DateTimeOffset InstalledAtUtc { get; init; }
     }
 
     private sealed class SynchronizedEventLog : IReadOnlyCollection<string>

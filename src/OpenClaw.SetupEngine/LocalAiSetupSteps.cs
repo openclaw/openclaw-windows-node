@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using OpenClaw.Connection.LocalAi;
+using OpenClaw.Shared.IO;
 using OpenClaw.Shared.Inference;
 using OpenClaw.Shared.Inference.Catalog;
 
@@ -283,7 +284,13 @@ public sealed class ReconcileLocalAiInstallationStep : SetupStep
                 (result.OriginalInstall ?? result.ResolvedInstall) is { } originalInstall)
             {
                 ctx.LocalAiRecoveryOriginalInstall = originalInstall;
-                ctx.LocalAiRecoveryReceiptRollbackAllowed = true;
+                ctx.LocalAiRecoveryPendingInstall = result.PendingReplacement;
+                bool pendingReplacement = result.PendingReplacement is not null;
+                ctx.LocalAiRecoveryProviderTransition = pendingReplacement;
+                ctx.LocalAiRecoveryReceiptRollbackAllowed = !pendingReplacement;
+                // A recovered replacement may already be the active Gateway route. Only the
+                // process that created a fresh replacement knows it has not published it yet.
+                ctx.LocalAiRecoveryRollbackUncertain = pendingReplacement;
             }
             if (!result.Reused)
             {
@@ -292,6 +299,9 @@ public sealed class ReconcileLocalAiInstallationStep : SetupStep
                 if (ctx.LocalAiRecoveryOriginalInstall is null &&
                     result.OriginalInstall is { } retainedReceipt)
                     ctx.LocalAiUpgradeOriginalInstall ??= retainedReceipt;
+                else if (result.PendingReplacement is { } pendingInstall &&
+                    result.RuntimeInstall is null)
+                    ctx.LocalAiUpgradeOriginalInstall ??= pendingInstall;
                 ctx.LocalAiRuntimeInstall = result.RuntimeInstall;
                 ctx.LocalAiModelInstall = result.ModelInstall;
                 ctx.LocalAiAdditionalModelInstalls = result.AdditionalModelInstalls
@@ -424,6 +434,8 @@ public sealed class AcquireLocalAiRuntimeStep : SetupStep
     public override Task RollbackAsync(SetupContext ctx, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
+        if (!ctx.LocalAiRecoveryCleanupAllowed)
+            return Task.CompletedTask;
         if (ctx.LocalAiRuntimeInstall is { } install)
         {
             _acquirer.RemoveInstalledRuntime(ctx.LocalDataDir, install);
@@ -431,6 +443,21 @@ public sealed class AcquireLocalAiRuntimeStep : SetupStep
         }
 
         return Task.CompletedTask;
+    }
+
+    internal static void TransferCleanupOwnershipToRestoredRuntime(
+        SetupContext ctx,
+        LocalAiResolvedInstall restoredInstall)
+    {
+        if (ctx.LocalAiRuntimeInstall is not { CreatedThisRun: true } runtimeInstall)
+            return;
+
+        string restoredDirectory = WindowsPathSafety.NormalizePath(
+            Path.GetDirectoryName(restoredInstall.ExecutablePath)
+                ?? throw new InvalidDataException("The restored Local AI executable path has no directory."));
+        string acquiredDirectory = WindowsPathSafety.NormalizePath(runtimeInstall.InstallDirectory);
+        if (WindowsPathSafety.PathEquals(restoredDirectory, acquiredDirectory))
+            ctx.LocalAiRuntimeInstall = null;
     }
 }
 
@@ -555,6 +582,10 @@ public sealed class AcquireLocalAiModelStep : SetupStep
     public override Task RollbackAsync(SetupContext ctx, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
+        if (!ctx.LocalAiRecoveryCleanupAllowed)
+        {
+            return Task.CompletedTask;
+        }
         if (ctx.LocalAiModelInstall is { } install)
         {
             _acquirer.RemoveInstalledModel(ctx.LocalDataDir, install);
@@ -721,6 +752,23 @@ public sealed class PersistLocalAiManifestStep : SetupStep
         };
         if (originalInstall is not null)
         {
+            bool replacingModel = !string.Equals(
+                originalInstall.Manifest.ModelCatalogId,
+                manifest.ModelCatalogId,
+                StringComparison.Ordinal);
+            LocalAiInstallManifest replacedManifest = originalInstall.Manifest.ReplacedManifest ??
+                originalInstall.Manifest;
+            // A pending model replacement can outlive a catalog runtime bump. Both sides
+            // of the replacement receipt must describe the newly acquired shared runtime,
+            // while retaining the prior model as rollback provenance.
+            replacedManifest = replacedManifest with
+            {
+                EngineVersion = manifest.EngineVersion,
+                Architecture = manifest.Architecture,
+                RuntimeId = manifest.RuntimeId,
+                ExecutablePath = manifest.ExecutablePath,
+                RuntimeAssets = manifest.RuntimeAssets,
+            };
             manifest = originalInstall.Manifest with
             {
                 SchemaVersion = manifest.SchemaVersion,
@@ -746,6 +794,15 @@ public sealed class PersistLocalAiManifestStep : SetupStep
                 ValueCachePrecision = manifest.ValueCachePrecision,
                 DraftKeyCachePrecision = manifest.DraftKeyCachePrecision,
                 DraftValueCachePrecision = manifest.DraftValueCachePrecision,
+                GatewayFallbackModel = ctx.LocalAiRecoveryPendingInstall is { } pendingInstall
+                    ? pendingInstall.Manifest.GatewayFallbackModel
+                    : originalInstall.Manifest.GatewayFallbackModel,
+                InstalledAtUtc = ctx.LocalAiRecoveryPendingInstall?.Manifest.InstalledAtUtc ??
+                    originalInstall.Manifest.InstalledAtUtc,
+                ReplacedManifest = replacingModel
+                    ? replacedManifest
+                    : null,
+                PreviousEndpoints = ReplacementEndpointHistory(ctx.LocalAiRecoveryPendingInstall),
             };
         }
 
@@ -755,6 +812,28 @@ public sealed class PersistLocalAiManifestStep : SetupStep
             await store.SaveAsync(manifest, ct);
             ctx.LocalAiResolvedInstall = store.ResolveAndValidate(manifest);
             ctx.LocalAiManifestCreatedThisRun = !replacesExistingReceipt;
+            if (manifest.ReplacedManifest is not null)
+            {
+                if (ctx.LocalAiRecoveryOriginalInstall is not null)
+                {
+                    ctx.LocalAiRecoveryOriginalInstall = store.ResolveAndValidate(
+                        manifest.ReplacedManifest);
+                }
+                if (ctx.LocalAiRecoveryPendingInstall is { } pendingRouteBaseline)
+                {
+                    // Keep the published pending route as rollback provenance, but move
+                    // it onto the upgraded runtime generation. Otherwise Gateway capture
+                    // can replace the coherent upgraded original with the retired receipt.
+                    LocalAiInstallManifest upgradedPendingRoute = manifest with
+                    {
+                        Endpoint = pendingRouteBaseline.Manifest.Endpoint,
+                    };
+                    ctx.LocalAiRecoveryPendingInstall = store.ResolveAndValidate(
+                        upgradedPendingRoute);
+                }
+                ctx.LocalAiRecoveryProviderTransition = true;
+                ctx.LocalAiRecoveryReceiptRollbackAllowed = false;
+            }
             return StepResult.Ok("Recorded the verified llama-server and Hugging Face installation.");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
@@ -804,11 +883,46 @@ public sealed class PersistLocalAiManifestStep : SetupStep
         if (ctx.LocalAiUpgradeOriginalInstall is not null)
         {
             await RestoreUpgradeReceiptAsync(ctx, ct);
+            if (ctx.LocalAiUpgradeOriginalInstall is null)
+                await RestartBorrowedRuntimeAsync(ctx, ct);
             return;
         }
 
         if (!ctx.LocalAiManifestCreatedThisRun)
+        {
+            bool restoredRecoveryReceipt = false;
+            // Before Gateway configuration is enrolled, this step still owns restoring a fresh
+            // replacement receipt. Once configuration starts, the recovery guard must settle the
+            // route and endpoint-health decision before any receipt or resource cleanup occurs.
+            if (ctx.LocalAiGatewayPriorState is null &&
+                !ctx.LocalAiRecoveryRollbackUncertain &&
+                ctx.LocalAiResolvedInstall?.Manifest.ReplacedManifest is not null &&
+                ctx.LocalAiRecoveryOriginalInstall is { } recoveryInstall)
+            {
+                var recoveryStore = new LocalAiManifestStore(new LocalAiPaths(ctx.LocalDataDir));
+                try
+                {
+                    ctx.LocalAiResolvedInstall = await recoveryStore
+                        .RestoreRecoveryManifestAsync(
+                            ctx.LocalAiResolvedInstall.Manifest,
+                            recoveryInstall.Manifest,
+                            ct)
+                        .ConfigureAwait(false);
+                }
+                catch (InvalidDataException)
+                {
+                    ctx.LocalAiRecoveryRollbackUncertain = true;
+                    ctx.LocalAiRecoveryReceiptRollbackAllowed = false;
+                    throw;
+                }
+                ctx.LocalAiRecoveryProviderTransition = false;
+                ctx.LocalAiRecoveryReceiptRollbackAllowed = false;
+                restoredRecoveryReceipt = true;
+            }
+            if (restoredRecoveryReceipt)
+                await RestartBorrowedRuntimeAsync(ctx, ct);
             return;
+        }
 
         var paths = new LocalAiPaths(ctx.LocalDataDir);
         await new LocalAiManifestStore(paths).DeleteAsync(ct);
@@ -818,9 +932,39 @@ public sealed class PersistLocalAiManifestStep : SetupStep
         ctx.LocalAiManifestCreatedThisRun = false;
     }
 
+    private static async Task RestartBorrowedRuntimeAsync(SetupContext ctx, CancellationToken ct)
+    {
+        if (!ctx.LocalAiRuntimeBorrowed || ctx.LocalAiRuntime is null)
+            return;
+        // Before ConfigureLocalAiGatewayStep begins, the tray runtime still owns Gateway
+        // publication. Use its ordinary lifecycle so an automatic-port move is published.
+        LocalAiRuntimeSnapshot restored = await ctx.LocalAiRuntime.RestartForSetupRollbackAsync(ct);
+        LocalAiResolvedInstall expected = await new LocalAiManifestStore(new LocalAiPaths(ctx.LocalDataDir))
+            .LoadAsync(ct)
+            .ConfigureAwait(false)
+            ?? throw new InvalidOperationException("The restored Local AI receipt is unavailable.");
+        ctx.LocalAiResolvedInstall = expected;
+        if (restored.State != LocalAiRuntimeState.Healthy ||
+            restored.Ownership != LocalAiOwnership.CompanionManaged ||
+            restored.ModelId != expected.Manifest.ModelCatalogId ||
+            restored.Endpoint != expected.Endpoint ||
+            restored.ModelEvidence.State is not
+                (LocalAiModelAvailabilityState.Verified or LocalAiModelAvailabilityState.Loaded))
+        {
+            throw new InvalidOperationException(
+                restored.Detail ?? "The previous Local AI runtime could not be restored.");
+        }
+        AcquireLocalAiRuntimeStep.TransferCleanupOwnershipToRestoredRuntime(ctx, expected);
+    }
+
     internal static async Task RestoreUpgradeReceiptAsync(SetupContext ctx, CancellationToken ct)
     {
         if (ctx.LocalAiUpgradeOriginalInstall is not { } originalInstall)
+            return;
+        // A resumed pending replacement uses that pending receipt as the upgrade baseline, so
+        // restoring it before this process touches Gateway preserves any route published by an
+        // earlier process. After Gateway I/O begins, the recovery guard must settle authority.
+        if (!ctx.LocalAiRecoveryCleanupAllowed && ctx.LocalAiRecoveryGatewayConfigurationStartedThisRun)
             return;
 
         var paths = new LocalAiPaths(ctx.LocalDataDir);
@@ -830,6 +974,8 @@ public sealed class PersistLocalAiManifestStep : SetupStep
         ctx.LocalAiResolvedInstall = store.ResolveAndValidate(originalInstall.Manifest);
         ctx.LocalAiManifestCreatedThisRun = false;
         ctx.LocalAiUpgradeOriginalInstall = null;
+        if (!ctx.LocalAiRecoveryGatewayConfigurationStartedThisRun)
+            ctx.LocalAiRecoveryRollbackUncertain = false;
     }
 
     private static ImmutableArray<LocalAiAssetReceipt> BuildRuntimeReceipts(
@@ -865,6 +1011,52 @@ public sealed class PersistLocalAiManifestStep : SetupStep
 
         return receipts.MoveToImmutable();
     }
+
+    private static ImmutableArray<string>? ReplacementEndpointHistory(LocalAiResolvedInstall? pending)
+    {
+        if (pending is null)
+            return null;
+
+        ImmutableArray<string> history = pending.Manifest.PreviousEndpoints ?? [];
+        if (pending.Endpoint is null ||
+            history.Contains(pending.Endpoint.AbsoluteUri, StringComparer.Ordinal))
+        {
+            return history;
+        }
+        return history.Add(pending.Endpoint.AbsoluteUri);
+    }
+}
+
+/// <summary>Commits a model replacement after its Gateway route has restarted successfully.</summary>
+public sealed class FinalizeLocalAiModelReplacementStep : SetupStep
+{
+    public override string Id => "finalize-local-ai-model-replacement";
+    public override string DisplayName => "Finalizing Local AI model replacement";
+    public override bool CanRetry => false;
+    public override RetryPolicy Retry => RetryPolicy.None;
+    public override bool CanSkip(SetupContext ctx) =>
+        ctx.LocalAiResolvedInstall?.Manifest.ReplacedManifest is null;
+
+    public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    {
+        LocalAiResolvedInstall install = ctx.LocalAiResolvedInstall!;
+        try
+        {
+            var store = new LocalAiManifestStore(new LocalAiPaths(ctx.LocalDataDir));
+            ctx.LocalAiResolvedInstall = await store
+                .FinalizeReplacementAsync(install.Manifest, ct)
+                .ConfigureAwait(false);
+            ctx.LocalAiRecoveryProviderTransition = false;
+            ctx.LocalAiRecoveryReceiptRollbackAllowed = false;
+            ctx.LocalAiRecoveryRollbackUncertain = false;
+            ctx.LocalAiRecoveryGatewayConfigurationStartedThisRun = false;
+            return StepResult.Ok("Local AI model replacement is committed.");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            return StepResult.Fail("The Local AI model replacement could not be finalized.", ex);
+        }
+    }
 }
 
 /// <summary>Starts the companion-owned llama-server router without preloading a model.</summary>
@@ -891,64 +1083,107 @@ public sealed class StartLocalAiRuntimeStep : SetupStep
     {
         if (ctx.LocalAiResolvedInstall is null)
             return StepResult.Terminal("llama-server startup requires a verified installation receipt.");
-        if (ctx.LocalAiRuntime is not null)
+        if (ctx.LocalAiRuntime is not null && !ctx.LocalAiRuntimeBorrowed)
             return StepResult.Terminal("A Local AI runtime is already attached to this setup transaction.");
+        if (ctx.LocalAiRuntimeBorrowed &&
+            ctx.LocalAiRecoveryOriginalInstall is null &&
+            ctx.LocalAiUpgradeOriginalInstall is null &&
+            ctx.LocalAiResolvedInstall.Manifest.ReplacedManifest is null &&
+            string.IsNullOrWhiteSpace(ctx.Config.LocalAiRecoveryGatewayId))
+        {
+            return StepResult.Terminal(
+                "Borrowing the tray Local AI runtime requires an armed recovery or recorded upgrade.");
+        }
 
-        ILocalAiRuntime runtime = _runtimeFactory(ctx);
+        ILocalAiRuntime runtime = ctx.LocalAiRuntime ?? _runtimeFactory(ctx);
         ctx.LocalAiRuntime = runtime;
+        LocalAiInstallManifest expectedManifest = ctx.LocalAiResolvedInstall.Manifest;
         try
         {
-            LocalAiRuntimeSnapshot snapshot = await runtime.EnsureStartedAsync(ct);
+            LocalAiRuntimeSnapshot snapshot;
+            if (ctx.LocalAiRuntimeBorrowed)
+            {
+                ctx.LocalAiBorrowedRuntimeRestartedThisRun = true;
+                snapshot = await runtime.RestartForSetupAsync(ct);
+            }
+            else
+            {
+                snapshot = await runtime.EnsureStartedAsync(ct);
+            }
             if (snapshot.State != LocalAiRuntimeState.Healthy ||
                 snapshot.Ownership != LocalAiOwnership.CompanionManaged ||
                 snapshot.ProcessId is null ||
+                snapshot.ModelId != ctx.LocalAiResolvedInstall.Manifest.ModelCatalogId ||
                 snapshot.ModelEvidence.State != LocalAiModelAvailabilityState.Verified)
             {
-                await DisposeRuntimeAsync(ctx);
+                await CleanUpFailedRuntimeAsync(ctx);
                 return StepResult.Fail(
                     snapshot.Detail ?? "The managed llama-server router did not become healthy.");
             }
 
             LocalAiResolvedInstall? verifiedInstall = await new LocalAiManifestStore(
                     new LocalAiPaths(ctx.LocalDataDir))
-                .LoadAsync(ct);
-            if (verifiedInstall?.Endpoint is null || verifiedInstall.Endpoint != snapshot.Endpoint)
+                .LoadAsync(CancellationToken.None);
+            if (verifiedInstall?.Endpoint is null ||
+                verifiedInstall.Endpoint != snapshot.Endpoint ||
+                !IsEndpointOnlyTransition(expectedManifest, verifiedInstall.Manifest))
             {
-                await DisposeRuntimeAsync(ctx);
+                await CleanUpFailedRuntimeAsync(ctx);
                 return StepResult.Fail(
                     "llama-server became healthy without committing its verified endpoint receipt.");
             }
             ctx.LocalAiResolvedInstall = verifiedInstall;
+            ct.ThrowIfCancellationRequested();
 
             return StepResult.Ok(
                 "The companion-owned llama-server router is healthy. The model remains unloaded until the first request.");
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            await DisposeRuntimeAsync(ctx);
+            await CleanUpFailedRuntimeAsync(ctx);
             throw;
         }
         catch (Exception ex)
         {
-            await DisposeRuntimeAsync(ctx);
+            await CleanUpFailedRuntimeAsync(ctx);
             return StepResult.Fail($"llama-server startup failed: {ex.Message}", ex);
         }
     }
 
+    internal static bool IsEndpointOnlyTransition(
+        LocalAiInstallManifest expected,
+        LocalAiInstallManifest current) =>
+        JsonElement.DeepEquals(
+            JsonSerializer.SerializeToElement(current),
+            JsonSerializer.SerializeToElement(expected with
+            {
+                Endpoint = current.Endpoint,
+                PreviousEndpoints = current.PreviousEndpoints,
+            }));
+
     public override Task RollbackAsync(SetupContext ctx, CancellationToken ct)
     {
+        if (ctx.LocalAiRuntimeBorrowed && !ctx.LocalAiBorrowedRuntimeRestartedThisRun)
+            return Task.CompletedTask;
+        if (ctx.LocalAiBorrowedRuntimeRestored)
+            return Task.CompletedTask;
+
         // During a recovery provider transition, ConfigureLocalAiGatewayStep's rollback (which
         // runs before this step's rollback) sets LocalAiRecoveryReceiptRollbackAllowed only when
         // it confirmed the Gateway no longer routes to this runtime's endpoint. If that could not
         // be confirmed, the Gateway may still be pointed at this runtime; disposing it here would
         // orphan the active route instead of the intended, coordinated rollback.
-        if (ctx.LocalAiRecoveryProviderTransition && !ctx.LocalAiRecoveryReceiptRollbackAllowed)
+        if (!ctx.LocalAiRecoveryCleanupAllowed)
         {
             ctx.Logger.Warn(
                 "Keeping the replacement llama-server router running because the Gateway configuration " +
                 "rollback could not confirm it no longer routes to this endpoint.");
-            return Task.CompletedTask;
+            return ctx.LocalAiRuntimeBorrowed && ctx.LocalAiRuntime is { } borrowedRuntime
+                ? borrowedRuntime.ReleaseSetupGatewayRouteAsync(ct)
+                : Task.CompletedTask;
         }
+        if (ctx.LocalAiRuntimeBorrowed)
+            return StopBorrowedRuntimeAsync(ctx, ct);
         return DisposeRuntimeAsync(ctx).AsTask();
     }
 
@@ -971,6 +1206,23 @@ public sealed class StartLocalAiRuntimeStep : SetupStep
         ILocalAiRuntime runtime = ctx.LocalAiRuntime;
         ctx.LocalAiRuntime = null;
         await runtime.DisposeAsync();
+    }
+
+    private static async Task CleanUpFailedRuntimeAsync(SetupContext ctx)
+    {
+        if (ctx.LocalAiRuntimeBorrowed)
+        {
+            if (ctx.LocalAiRuntime is not null)
+                await ctx.LocalAiRuntime.StopForSetupAsync(CancellationToken.None);
+            return;
+        }
+        await DisposeRuntimeAsync(ctx);
+    }
+
+    private static async Task StopBorrowedRuntimeAsync(SetupContext ctx, CancellationToken ct)
+    {
+        if (ctx.LocalAiRuntime is not null)
+            await ctx.LocalAiRuntime.StopForSetupAsync(ct);
     }
 }
 
@@ -1031,7 +1283,7 @@ public sealed class VerifyLocalAiInferenceStep : SetupStep
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            await ResetRouterAsync(runtime);
+            await ResetRouterAsync(ctx, runtime);
             throw;
         }
         catch (OperationCanceledException ex)
@@ -1075,7 +1327,7 @@ public sealed class VerifyLocalAiInferenceStep : SetupStep
         var paths = new LocalAiPaths(ctx.LocalDataDir);
         IReadOnlyList<string> diagnostics =
             await LocalAiLogTail.ReadDiagnosticLinesAsync(paths, CancellationToken.None);
-        await ResetRouterAsync(runtime);
+        await ResetRouterAsync(ctx, runtime);
         // Echo into the setup log the UI already links, so the root cause remains available if
         // the router restart rotates the managed llama-server logs.
         foreach (string line in diagnostics)
@@ -1083,16 +1335,53 @@ public sealed class VerifyLocalAiInferenceStep : SetupStep
         return new LocalAiFailureDetail(diagnostics, paths.LogsDirectory);
     }
 
-    internal static async Task<LocalAiRuntimeSnapshot> ResetRouterAsync(ILocalAiRuntime runtime)
+    internal static async Task<LocalAiRuntimeSnapshot> ResetRouterAsync(
+        ILocalAiRuntime runtime,
+        bool setupScoped = false)
     {
         try
         {
-            return await runtime.RestartAsync(CancellationToken.None);
+            return setupScoped
+                ? await runtime.RestartForSetupAsync(CancellationToken.None)
+                : await runtime.RestartAsync(CancellationToken.None);
         }
         catch
         {
             return runtime.Snapshot;
         }
+    }
+
+    internal static async Task<LocalAiRuntimeSnapshot> ResetRouterAsync(
+        SetupContext ctx,
+        ILocalAiRuntime runtime)
+    {
+        LocalAiRuntimeSnapshot reset = await ResetRouterAsync(runtime, ctx.LocalAiRuntimeBorrowed);
+        if (!ctx.LocalAiRuntimeBorrowed)
+            return reset;
+
+        try
+        {
+            LocalAiResolvedInstall? restartedInstall = await new LocalAiManifestStore(
+                    new LocalAiPaths(ctx.LocalDataDir))
+                .LoadAsync(CancellationToken.None)
+                .ConfigureAwait(false);
+            LocalAiInstallManifest expected = ctx.LocalAiResolvedInstall!.Manifest;
+            bool onlyEndpointStateChanged = restartedInstall is not null &&
+                StartLocalAiRuntimeStep.IsEndpointOnlyTransition(
+                    expected,
+                    restartedInstall.Manifest);
+            if (restartedInstall?.Endpoint == reset.Endpoint && onlyEndpointStateChanged)
+            {
+                // This refresh updates only the rollback compare-and-swap baseline. The caller
+                // still decides whether the runtime restart itself was healthy and successful.
+                ctx.LocalAiResolvedInstall = restartedInstall;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            // Keep the prior compare-and-swap baseline so rollback fails closed.
+        }
+        return reset;
     }
 }
 
