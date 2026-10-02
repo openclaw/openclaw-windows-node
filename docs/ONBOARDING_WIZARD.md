@@ -216,11 +216,13 @@ without a shell or elevation. Companion verifies actual package registration and
 automatically prepares the profile and opens **Connect your AI**.
 Installation and verification share a cancellable five-minute deadline. Cancellation
 stops the WinGet request, but Windows may still finish an in-progress deployment.
-Missing WinGet, Store policy/source failures, nonzero exit codes and timeouts show
-explicit repair guidance and **Retry setup**, not a manual Store-page fallback. The normal
+If WinGet reports stale Microsoft Store certificate pins (`0x8A15005E`), Companion
+runs one current-user `Repair-WinGetPackageManager -Force -Latest` bootstrap and retries once.
+The repair installs Microsoft's WinGet client module; it never bypasses certificate validation.
+Other failures show explicit repair guidance and **Retry setup**. The normal
 path has no separate install, availability-check or wizard-launch buttons.
 An already installed healthy package skips installation. Retry checks registration
-again before invoking WinGet. Companion does not download packages directly,
+again before invoking WinGet. Companion does not download Gateway packages directly,
 change certificate trust, or uninstall packages on cancellation.
 
 Progress reuses the WSL spinner/checkmark rows. Normal completion uses the same
