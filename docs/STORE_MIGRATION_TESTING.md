@@ -193,6 +193,16 @@ with it. If you genuinely need a cold start, ask for it:
 
 Do not leave that machine in a half-uninstalled state afterwards.
 
+The reset refuses to run if the `store-migration` folder, or anything above it,
+is a junction or other reparse point. Following a link there would delete the
+receipt out of whatever the link targets, which is the one deletion with real
+consequences. `scripts\test-store-migration-test-script.ps1` holds that guard
+in place:
+
+```powershell
+.\scripts\test-store-migration-test-script.ps1
+```
+
 Nothing else clears these records. They sit in real roaming AppData rather than
 the package-virtualized location, so `Remove-AppxPackage` walks past them, and
 `TrayArtifactCleanup` never names the folder, so `--uninstall` leaves it too.

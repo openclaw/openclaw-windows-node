@@ -147,6 +147,30 @@ function Get-StaleMigrationRecords {
         Where-Object { $names -contains $_.Name -or $_.Name -match '^\.[0-9a-fA-F]{32}\.tmp$' })
 }
 
+function Assert-NoReparsePointAncestors {
+    # Mirrors the guard in Uninstall-LocalGateway.ps1, which walks every ancestor
+    # of the lock path and refuses to proceed through a reparse point. Without
+    # it, a junction anywhere above store-migration would let a reset delete
+    # matching names out of whatever directory the link targets. Deleting the
+    # completion receipt from a redirected path is the dangerous case: a later
+    # gateway uninstall reads its absence as permission to unregister the distro.
+    param([string] $Path)
+
+    $current = [IO.Path]::GetFullPath($Path)
+    while (-not [string]::IsNullOrEmpty($current)) {
+        try {
+            if (([IO.File]::GetAttributes($current) -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "Refusing to reset migration state: '$current' is a reparse point. Records must live on a real path under AppData."
+            }
+        }
+        catch [IO.FileNotFoundException] {
+        }
+        catch [IO.DirectoryNotFoundException] {
+        }
+        $current = [IO.Path]::GetDirectoryName($current)
+    }
+}
+
 function Stop-TrayProcesses {
     $procs = @(Get-Process -ErrorAction SilentlyContinue |
         Where-Object { $_.ProcessName -like '*OpenClaw*' })
@@ -214,6 +238,8 @@ if ($ResetMigrationState) {
         Write-Host "No migration state at $MigrationStateDirectory. Nothing to reset." -ForegroundColor Yellow
         return
     }
+
+    Assert-NoReparsePointAncestors -Path $MigrationStateDirectory
 
     # Scanned before the tray is stopped so a no-op reset does not shut the app
     # down for nothing. This result decides that and nothing else; the list
