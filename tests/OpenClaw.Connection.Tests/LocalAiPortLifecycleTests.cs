@@ -178,6 +178,11 @@ public sealed class LocalAiPortLifecycleTests
         Directory.CreateDirectory(Path.GetDirectoryName(executable)!);
         Directory.CreateDirectory(Path.GetDirectoryName(cachedModelPath)!);
         await File.WriteAllTextAsync(executable, "test executable");
+        await File.WriteAllTextAsync(
+            Path.Combine(
+                Path.GetDirectoryName(executable)!,
+                LlamaRuntimeCatalog.ServerImplementationLibraryName),
+            "test implementation library");
         await File.WriteAllBytesAsync(cachedModelPath, tampered);
         await new LocalAiManifestStore(paths).SaveAsync(manifest);
         var events = new SynchronizedEventLog();
@@ -237,6 +242,11 @@ public sealed class LocalAiPortLifecycleTests
         Directory.CreateDirectory(Path.GetDirectoryName(cachedModelPath)!);
         Directory.CreateDirectory(Path.GetDirectoryName(blobPath)!);
         await File.WriteAllTextAsync(executable, "test executable");
+        await File.WriteAllTextAsync(
+            Path.Combine(
+                Path.GetDirectoryName(executable)!,
+                LlamaRuntimeCatalog.ServerImplementationLibraryName),
+            "test implementation library");
         await File.WriteAllBytesAsync(blobPath, content);
         File.CreateSymbolicLink(
             cachedModelPath,
@@ -1808,6 +1818,33 @@ public sealed class LocalAiPortLifecycleTests
     }
 
     [Fact]
+    public async Task MissingImplementationLibrary_FailsBeforeStartingNativeProcess()
+    {
+        using var temp = new TempDirectory("local-ai-missing-impl-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        LocalAiResolvedInstall install = (await new LocalAiManifestStore(paths).LoadAsync())!;
+        File.Delete(Path.Combine(
+            Path.GetDirectoryName(install.ExecutablePath)!,
+            LlamaRuntimeCatalog.ServerImplementationLibraryName));
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_772);
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            new FakeClient(events),
+            new FakeLifecycle(events));
+
+        LocalAiRuntimeSnapshot snapshot = await runtime.EnsureStartedAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Failed, snapshot.State);
+        Assert.Contains("implementation library", snapshot.Detail, StringComparison.Ordinal);
+        Assert.Equal(["quiesce:EndpointCycle", "quiesce:Teardown"], events);
+        Assert.Null(host.LastSpec);
+    }
+
+    [Fact]
     public async Task AutomaticPort_RejectsWildcardChildListenerWithoutProbing()
     {
         using var temp = new TempDirectory("local-ai-port-");
@@ -2863,6 +2900,11 @@ public sealed class LocalAiPortLifecycleTests
         Directory.CreateDirectory(Path.GetDirectoryName(executable)!);
         Directory.CreateDirectory(Path.GetDirectoryName(model)!);
         await File.WriteAllTextAsync(executable, "test executable");
+        await File.WriteAllTextAsync(
+            Path.Combine(
+                Path.GetDirectoryName(executable)!,
+                LlamaRuntimeCatalog.ServerImplementationLibraryName),
+            "test implementation library");
         await using (var stream = new FileStream(model, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             stream.SetLength(manifest.ModelAsset.SizeBytes);
         await new LocalAiManifestStore(paths).SaveAsync(manifest);

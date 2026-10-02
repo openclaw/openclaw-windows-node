@@ -1040,6 +1040,15 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
     {
         if (!File.Exists(install.ExecutablePath))
             throw new InvalidDataException("The managed llama-server executable is missing.");
+        string implementationLibrary = Path.Combine(
+            Path.GetDirectoryName(install.ExecutablePath)!,
+            LlamaRuntimeCatalog.ServerImplementationLibraryName);
+        if (!File.Exists(implementationLibrary) ||
+            (File.GetAttributes(implementationLibrary) & FileAttributes.ReparsePoint) != 0)
+        {
+            throw new InvalidDataException(
+                "The managed llama-server implementation library is missing or unsafe.");
+        }
         if (install.Manifest.UsesHubCache)
         {
             if (!File.Exists(install.ModelPath))

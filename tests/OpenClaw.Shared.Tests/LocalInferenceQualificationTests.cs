@@ -853,6 +853,31 @@ public class LocalInferenceQualificationTests
     }
 
     [Fact]
+    public void CurrentRuntimesPinEveryRequiredFileBySizeAndDigest()
+    {
+        foreach (LlamaRuntimeVariant runtime in LlamaRuntimeCatalog.Variants)
+        {
+            Assert.NotEmpty(runtime.RequiredFiles);
+            Assert.Equal(
+                runtime.RequiredFiles.Count,
+                runtime.RequiredFiles.Select(file => file.FileName).Distinct(StringComparer.Ordinal).Count());
+            Assert.Contains(
+                runtime.RequiredFiles,
+                file => file.FileName == LlamaRuntimeCatalog.ServerImplementationLibraryName);
+            Assert.Contains(
+                runtime.RequiredFiles,
+                file => file.FileName == (runtime.Architecture == RuntimeArchitecture.X64
+                    ? "ggml-cpu-x64.dll"
+                    : "ggml-cpu.dll"));
+            Assert.All(runtime.RequiredFiles, file =>
+            {
+                Assert.True(file.SizeBytes > 0);
+                Assert.Equal(64, file.Sha256.Value.Length);
+            });
+        }
+    }
+
+    [Fact]
     public void FindInstalled_RejectsUnknownRuntimeId()
     {
         Assert.Null(LlamaRuntimeCatalog.FindInstalled("b00000-cuda13-x64"));
