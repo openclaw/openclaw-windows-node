@@ -24,7 +24,12 @@ public sealed record LlamaServerRuntimeOptions
     public ILocalAiEndpointLifecycle EndpointLifecycle { get; init; } = NullLocalAiEndpointLifecycle.Instance;
     public Func<string?>? GetApiKey { get; init; }
     public Func<LocalAiResolvedInstall, int?>? GetRecoveryPort { get; init; }
-    public TimeSpan StartupTimeout { get; init; } = TimeSpan.FromSeconds(15);
+    /// <summary>
+    /// The first start after an install pays a Windows Defender scan of the freshly
+    /// extracted ~700 MB CUDA runtime (measured 26.0 s cold, 0.17 s once cached), and a
+    /// later signature update can invalidate that cache and charge it again.
+    /// </summary>
+    public TimeSpan StartupTimeout { get; init; } = TimeSpan.FromSeconds(90);
     public TimeSpan HealthPollInterval { get; init; } = TimeSpan.FromMilliseconds(250);
     public TimeSpan ShutdownTimeout { get; init; } = TimeSpan.FromSeconds(10);
     public TimeSpan RestartDelay { get; init; } = TimeSpan.FromSeconds(2);
