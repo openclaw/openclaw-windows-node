@@ -255,14 +255,37 @@ public sealed class PreserveLocalAiRecoveryGatewayStep : SetupStep
         LocalAiResolvedInstall original,
         CancellationToken ct)
     {
+        using var client = new LlamaServerClient();
+        return await ProbeOriginalEndpointAsync(
+            original, ct, client, LocalAiChildProcessPathResolver.Resolve).ConfigureAwait(false);
+    }
+
+    internal static async Task<bool> ProbeOriginalEndpointAsync(
+        LocalAiResolvedInstall original,
+        CancellationToken ct,
+        ILlamaServerClient client,
+        Func<string, string> resolveFilePath)
+    {
+        ct.ThrowIfCancellationRequested();
         if (original.Endpoint is null)
             return true;
 
-        using var client = new LlamaServerClient();
+        string modelPath;
+        try
+        {
+            modelPath = resolveFilePath(original.ModelPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Rollback logs the failed verification and preserves the replacement receipt.
+            // Never compare the router's physical model path with an unresolved MSIX alias.
+            return false;
+        }
+
         LlamaServerRouterProbeResult probe = await client.ProbeManagedModelAsync(
             original.Endpoint,
             original.Manifest.ModelAlias,
-            original.ModelPath,
+            modelPath,
             ct).ConfigureAwait(false);
         return probe.IsHealthy;
     }

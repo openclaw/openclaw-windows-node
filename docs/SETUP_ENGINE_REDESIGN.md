@@ -515,6 +515,12 @@ hub-cache snapshot as the active model path, while preserving the legacy
 compatibility path and the prior gateway fallback, install time, and rollback
 metadata.
 
+Before restoring the original endpoint receipt, recovery resolves its model
+through the same existing-file handle resolver used for native runtime launch.
+The health probe compares physical model paths; receipts and cleanup ownership
+remain logical. If resolution fails, rollback warns and keeps the replacement
+receipt rather than probing with the unresolved alias.
+
 Runtime upgrades validate the installed executable against its recorded runtime
 release, not the current catalog release. A verified schema-3 model is migrated
 to the hub cache before reuse by the new runtime, without downloading it again.
