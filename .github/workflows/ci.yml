@@ -1378,7 +1378,10 @@ jobs:
     - name: Trust signed Dev MSIX certificates for validation
       shell: pwsh
       run: |
-        $storePath = 'Cert:\CurrentUser\TrustedPeople'
+        # setup-dev-msix-cert.ps1 validates these self-signed packages through
+        # LocalMachine trust. Use the same store after artifact download so
+        # Get-AuthenticodeSignature evaluates the package as Valid.
+        $storePath = 'Cert:\LocalMachine\TrustedPeople'
         $thumbprintsPath = "$env:RUNNER_TEMP\openclaw-dev-msix-imported-certs.txt"
         [IO.File]::WriteAllText($thumbprintsPath, '')
         foreach ($architecture in @('x64', 'arm64')) {
@@ -1424,7 +1427,7 @@ jobs:
         $thumbprintsPath = "$env:RUNNER_TEMP\openclaw-dev-msix-imported-certs.txt"
         if (Test-Path -LiteralPath $thumbprintsPath) {
           foreach ($thumbprint in @(Get-Content -LiteralPath $thumbprintsPath)) {
-            Get-ChildItem -LiteralPath 'Cert:\CurrentUser\TrustedPeople' |
+            Get-ChildItem -LiteralPath 'Cert:\LocalMachine\TrustedPeople' |
               Where-Object Thumbprint -EQ $thumbprint |
               Remove-Item -Force
           }

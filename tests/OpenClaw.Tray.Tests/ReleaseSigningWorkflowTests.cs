@@ -139,6 +139,8 @@ public sealed class ReleaseSigningWorkflowTests
         Assert.Contains("name: Download x64 signed Dev MSIX release artifact", workflow);
         Assert.Contains("name: Download ARM64 signed Dev MSIX release artifact", workflow);
         Assert.Contains("name: Trust signed Dev MSIX certificates for validation", workflow);
+        Assert.Contains(@"$storePath = 'Cert:\LocalMachine\TrustedPeople'", workflow);
+        Assert.DoesNotContain(@"Cert:\CurrentUser\TrustedPeople", workflow);
         Assert.Contains("name: Stage signed Dev MSIX release assets", workflow);
         Assert.Contains("name: Remove trusted Dev MSIX certificates", workflow);
         Assert.Contains("Get-AuthenticodeSignature -LiteralPath $packagePath", File.ReadAllText(
