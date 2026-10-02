@@ -144,6 +144,10 @@ jobs:
       shell: pwsh
       run: ./scripts/test-msix-alpha-release.ps1
 
+    - name: Validate daily alpha release-line selection
+      shell: pwsh
+      run: ./scripts/test-daily-alpha-version.ps1
+
     - name: Validate stable correction release ordering regressions
       shell: pwsh
       run: ./scripts/test-stable-correction-release-validator.ps1
