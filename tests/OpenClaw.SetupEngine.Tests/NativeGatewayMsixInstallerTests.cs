@@ -47,8 +47,11 @@ public sealed class NativeGatewayMsixInstallerTests
             Assert.Equal(["-NoProfile", "-NonInteractive", "-Command"], arguments[..3]);
             Assert.Contains("Install-Module -Name Microsoft.WinGet.Client", arguments[3]);
             Assert.Contains("-Scope CurrentUser", arguments[3]);
+            Assert.Contains("Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned -Force", arguments[3]);
             Assert.Contains("Repair-WinGetPackageManager -Force -Latest", arguments[3]);
             Assert.DoesNotContain("BypassCertificatePinningForMicrosoftStore", arguments[3]);
+            Assert.DoesNotContain("ExecutionPolicy Bypass", arguments[3]);
+            Assert.DoesNotContain("ExecutionPolicy Unrestricted", arguments[3]);
             Assert.DoesNotContain("-ExecutionPolicy", arguments);
             return Task.FromResult(Result());
         });

@@ -15,6 +15,7 @@ public sealed class NativeGatewayMsixInstaller
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         Install-PackageProvider -Name NuGet -Force -Scope CurrentUser | Out-Null
         Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery -Scope CurrentUser -AllowClobber -Confirm:$false
+        Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned -Force
         Import-Module Microsoft.WinGet.Client -Force
         Repair-WinGetPackageManager -Force -Latest -ErrorAction Stop
         """;
