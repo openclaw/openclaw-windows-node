@@ -427,13 +427,23 @@ verification. MCP-only/deferred routes do not claim verified AI.
 ### Native startup and completion deadlines
 
 A reported slow native cold start took about 136 seconds. Conditional on a
-successful package acknowledgement, Companion waits within a three-minute total
-budget, then still requires fresh selected-port and process-sequence ownership
+successful package acknowledgement, Companion uses a three-minute startup
+budget, with ten seconds for confirmation after a late acknowledgement, subject
+to the caller deadline (at most 190 seconds for start/status), then still requires fresh selected-port and process-sequence ownership
 proof. It never treats an `unhealthy`/`starting` observation as ready, waits for
 an unrelated pre-existing start, or retries the start command while polling.
+If a listener appears between a pending status and the host snapshot, one immediate
+status recheck may admit only a fresh `running` attestation. The full selected-port,
+listener and process-sequence checks still run; another pending status or failed
+attribution rejects the start.
 The published native connection borrow gets up to 210 seconds for startup,
 authenticated handshake and authorization before exact-model verification.
-This does not override a shorter connection-manager deadline or an error state.
+Preflight and final inspection also consume that outer budget; the confirmation
+allowance never extends it. Slow surrounding work can therefore cancel confirmation.
+Native credential reauthorization also has a bounded 210-second allowance instead
+of the unrelated five-second SSH/listener-check budget. Non-native authorization
+keeps its existing deadline. Caller cancellation, superseded attempts, record drift
+and connection error states still reject admission.
 Page drain, selection
 verification, runtime startup and published-owner handoff are distinct lifetimes.
 
@@ -445,6 +455,13 @@ verification (including the existing 120-second RPC and authorization), and
 lease. A phase can fail earlier due to its underlying owner or caller cancellation;
 unused phase time is not a guarantee that a different phase may overrun its ceiling.
 Recovery waits never initiate or replay a provider mutation.
+Timeouts retain a typed, finite phase (page drain, connection, Local AI recovery,
+model verification, or native startup). The aggregate pre-publication verification
+deadline uses neutral readiness guidance because it includes both connection and model
+work; it does not incorrectly attribute a connection stall to model inference.
+The chooser displays localized phase-specific
+guidance and local diagnostics record only the phase/type, never raw package output,
+model content or credentials.
 
 The five-minute unused-handle admission window is unchanged. The first acquisition
 atomically stores its execution start and deadline under the existing file lock. Retries,

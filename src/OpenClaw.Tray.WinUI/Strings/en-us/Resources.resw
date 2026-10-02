@@ -7515,6 +7515,11 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_Ready_Opening" xml:space="preserve"><value>Opening your selected app page...</value></data>
   <data name="Onboarding_Ready_OwnershipChanged" xml:space="preserve"><value>The Gateway, agent, or primary model could not be verified. Return to AI setup and verify again.</value></data>
   <data name="Onboarding_Ready_Timeout" xml:space="preserve"><value>Verification timed out or was cancelled. Choose again to retry, or return to AI setup.</value></data>
+  <data name="Onboarding_Ready_TimeoutPageDrain" xml:space="preserve"><value>Closing the previous AI setup page timed out. Retry, or return to AI setup.</value></data>
+  <data name="Onboarding_Ready_TimeoutConnection" xml:space="preserve"><value>Connecting to the native Gateway timed out. Check Gateway readiness, then retry.</value></data>
+  <data name="Onboarding_Ready_TimeoutModelRecovery" xml:space="preserve"><value>Waiting for Local AI recovery timed out. Check Local AI status, then retry.</value></data>
+  <data name="Onboarding_Ready_TimeoutModelVerification" xml:space="preserve"><value>Verifying the selected AI model timed out. Check that the model can respond, then retry.</value></data>
+  <data name="Onboarding_Ready_TimeoutGatewayStartup" xml:space="preserve"><value>Starting the native Gateway or confirming its listener timed out. Check Gateway status, then retry.</value></data>
   <data name="Onboarding_Ready_VerifyingFailed" xml:space="preserve"><value>AI verification is not available right now. Check the Gateway connection and model readiness, then choose again or return to AI setup.</value></data>
   <data name="Onboarding_Ready_FinalizingFailed" xml:space="preserve"><value>Windows setup could not finish. Your choice was not launched. Choose again to retry or return to AI setup.</value></data>
   <data name="Onboarding_Ready_OpeningFailed" xml:space="preserve"><value>The app could not open your selected destination. Choose again to retry. No channel sign-in was started.</value></data>

@@ -46,6 +46,7 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
     private bool _failStart;
     private Func<CancellationToken, Task>? _duringStart;
     private Func<CancellationToken, Task>? _duringStatus;
+    private int _reportedPort = Port;
 
     public IsolatedGatewayRuntimeTests()
     {
@@ -54,7 +55,7 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
             _calls.Add(string.Join(" ", args));
             _packageCalls.Add((package.PackageFamilyName, string.Join(" ", args)));
             bool other = package.PackageFamilyName == OtherFamily;
-            int port = other ? Port + 1 : Port;
+            int port = other ? Port + 1 : _reportedPort;
             int processId = other ? 4567 : ProcessId;
             if (args.SequenceEqual(["gateway-service", "status", "--json"]) && _statusFailure is not null)
                 throw _statusFailure;
@@ -131,6 +132,149 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
         Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway, _runtime.Inspect(_record).Kind);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LateSuccessfulAcknowledgementGetsBoundedConfirmationWithoutRestarting(bool expire)
+    {
+        _state = "stopped";
+        _listeners = [];
+        _listenOnStart = true;
+        _duringStart = _ =>
+        {
+            _clock.Advance(TimeSpan.FromSeconds(179));
+            _duringStatus = ct => expire
+                ? Task.Delay(Timeout.Infinite, ct)
+                : Task.Delay(TimeSpan.FromSeconds(8), _clock, ct);
+            return Task.CompletedTask;
+        };
+        var start = _runtime.EnsureRunningAsync(_record, default);
+        _clock.Advance(expire ? IsolatedGatewayRuntime.StartupConfirmationTimeout : TimeSpan.FromSeconds(8));
+        if (expire)
+        {
+            await Assert.ThrowsAsync<NativeGatewayStartupTimeoutException>(() => start.WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.Equal(1, _calls.Count(call => call == "gateway-service stop --json"));
+        }
+        else
+        {
+            await start.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.DoesNotContain("gateway-service stop --json", _calls);
+            Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway, _runtime.Inspect(_record).Kind);
+        }
+        Assert.Equal(1, _calls.Count(call => call == "gateway-service start --json"));
+        _duringStart = _duringStatus = null;
+    }
+
+    [Theory]
+    [InlineData(5, true)]
+    [InlineData(25, false)]
+    public async Task LateAcknowledgementConfirmationRemainsWithinOuterAuthorizationBudget(int initialStatusSeconds, bool allowed)
+    {
+        _state = "stopped";
+        _listeners = [];
+        _listenOnStart = true;
+        var statuses = 0;
+        _duringStatus = ct =>
+        {
+            statuses++;
+            _clock.Advance(TimeSpan.FromSeconds(statuses switch
+            {
+                1 => initialStatusSeconds,
+                2 => 8,
+                _ => 5
+            }));
+            ct.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
+        };
+        _startDuration = TimeSpan.FromSeconds(179);
+        using var outer = new CancellationTokenSource(NativeGatewayEndpointSecurity.CredentialHandoffTimeout, _clock);
+        var authorization = NativeGatewayEndpointSecurity.AuthorizeAsync(_runtime, _record, outer.Token);
+        if (allowed)
+        {
+            Assert.True((await authorization.WaitAsync(TimeSpan.FromSeconds(5))).Allowed);
+            Assert.Equal(3, statuses);
+            Assert.False(outer.IsCancellationRequested);
+            Assert.DoesNotContain("gateway-service stop --json", _calls);
+        }
+        else
+        {
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => authorization.WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.True(outer.IsCancellationRequested);
+            Assert.Equal(1, _calls.Count(call => call == "gateway-service stop --json"));
+        }
+        Assert.Equal(1, _calls.Count(call => call == "gateway-service start --json"));
+        _duringStatus = null;
+    }
+
+    [Theory]
+    [InlineData("valid")]
+    [InlineData("sequence")]
+    [InlineData("port")]
+    [InlineData("pending")]
+    [InlineData("incomplete")]
+    public async Task ListenerTransitionGetsOneFreshAttestationAndStillRequiresFullOwnership(string outcome)
+    {
+        _state = "stopped";
+        _listeners = [];
+        _startState = "starting";
+        var start = _runtime.EnsureRunningAsync(_record, default);
+        var confirmations = 0;
+        _beforeStatus = () =>
+        {
+            confirmations++;
+            _listeners = [new(IPAddress.Loopback, Port, ProcessId, "fixture", null)];
+            if (confirmations < 2) return;
+            _state = outcome == "pending" ? "starting" : "running";
+            if (outcome == "sequence") _hostSequence = 99;
+            if (outcome == "incomplete") _snapshotComplete = false;
+        };
+        // The fixture captures the response port before _beforeStatus. Set it
+        // between observations so the confirmation reports the changed port.
+        if (outcome == "port") _reportedPort = Port + 1;
+        _clock.Advance(TimeSpan.FromSeconds(2));
+        if (outcome == "valid")
+        {
+            await start.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.DoesNotContain("gateway-service stop --json", _calls);
+            Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway, _runtime.Inspect(_record).Kind);
+        }
+        else
+        {
+            await Assert.ThrowsAnyAsync<InvalidOperationException>(() => start.WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.Equal(1, _calls.Count(call => call == "gateway-service stop --json"));
+        }
+        Assert.Equal(2, confirmations);
+        Assert.Equal(1, _calls.Count(call => call == "gateway-service start --json"));
+        _beforeStatus = null;
+    }
+
+    [Fact]
+    public async Task StartupTimeoutKeepsSafeDiagnosticThroughCredentialAuthorization()
+    {
+        _state = "stopped";
+        _listeners = [];
+        _duringStart = ct => Task.Delay(Timeout.Infinite, ct);
+        var authorization = NativeGatewayEndpointSecurity.AuthorizeAsync(_runtime, _record, default);
+        _clock.Advance(IsolatedGatewayRuntime.StartupTimeout);
+        var result = await authorization.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(result.Allowed);
+        Assert.Equal(GatewayErrorKind.Network, result.FailureKind);
+        Assert.Contains("startup or listener confirmation timed out", result.Detail);
+        Assert.DoesNotContain("fixture-token", result.Detail);
+    }
+
+    [Fact]
+    public async Task PackageTimeoutKeepsTypedStartupDiagnosticWithoutRawPackageText()
+    {
+        _state = "stopped";
+        _listeners = [];
+        _duringStart = _ => throw new TimeoutException("sensitive package fixture output");
+        var error = await Assert.ThrowsAsync<NativeGatewayStartupTimeoutException>(() =>
+            _runtime.EnsureRunningAsync(_record, default));
+        Assert.DoesNotContain("sensitive", error.Message);
+        Assert.Equal(1, _calls.Count(call => call == "gateway-service stop --json"));
+    }
+
     [Fact]
     public async Task ConditionalAcknowledgedPendingContractPollsRepeatedlyWithoutRestarting()
     {
@@ -186,7 +330,7 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
         if (deadline) _clock.Advance(IsolatedGatewayRuntime.StartupTimeout);
         else cancellation.Cancel();
         if (deadline)
-            await Assert.ThrowsAsync<TimeoutException>(() => start.WaitAsync(TimeSpan.FromSeconds(5)));
+            await Assert.ThrowsAsync<NativeGatewayStartupTimeoutException>(() => start.WaitAsync(TimeSpan.FromSeconds(5)));
         else
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => start.WaitAsync(TimeSpan.FromSeconds(5)));
         Assert.Equal(1, _calls.Count(call => call == "gateway-service stop --json"));
@@ -233,7 +377,7 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
         var start = _runtime.EnsureRunningAsync(_record, default);
         _clock.Advance(TimeSpan.FromSeconds(90));
 
-        await Assert.ThrowsAsync<TimeoutException>(() => start.WaitAsync(TimeSpan.FromSeconds(5)));
+        await Assert.ThrowsAsync<NativeGatewayStartupTimeoutException>(() => start.WaitAsync(TimeSpan.FromSeconds(5)));
         Assert.Equal(1, _calls.Count(call => call == "gateway-service stop --json"));
         Assert.Equal(GatewayEndpointProvenanceKind.UnknownListener, _runtime.Inspect(_record).Kind);
     }

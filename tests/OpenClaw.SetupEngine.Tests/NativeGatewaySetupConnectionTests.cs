@@ -391,7 +391,7 @@ public sealed class NativeGatewaySetupConnectionTests
         {
             await entered.Task.WaitAsync(TimeSpan.FromSeconds(15));
             clock.Advance(blockModel ? SetupNativeCompletionTiming.ModelVerification : SetupNativeCompletionTiming.ModelRecovery);
-            var error = await Assert.ThrowsAsync<TimeoutException>(() => verifying.WaitAsync(TimeSpan.FromSeconds(5)));
+            var error = await Assert.ThrowsAsync<SetupNativeCompletionTimeoutException>(() => verifying.WaitAsync(TimeSpan.FromSeconds(5)));
             Assert.Contains(blockModel ? "selected AI model" : "Local AI recovery", error.Message);
             Assert.False(caller.IsCancellationRequested);
             if (!blockModel) Assert.True(recoveryToken.IsCancellationRequested);

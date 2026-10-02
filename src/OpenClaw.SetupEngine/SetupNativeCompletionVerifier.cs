@@ -25,7 +25,7 @@ public static class SetupNativeCompletionVerifier
             Task<IGatewayAiSetupTransport> BorrowAsync() => SetupNativeCompletionTiming.RunAsync(
                 token => GatewayAiSetupTransport.BorrowNativeAsync(dataDir, connectionManager, native.Id, token,
                     expected.EndpointBinding, SetupNativeCompletionTiming.Connection),
-                SetupNativeCompletionTiming.Connection, "connecting to the native Gateway", ct, timeProvider);
+                SetupNativeCompletionTiming.Connection, SetupNativeCompletionPhase.Connection, ct, timeProvider);
             var transport = await BorrowAsync();
             SetupNativeVerification.RequireRoute(expected, transport.Route);
             if (waitForModel is not null)
@@ -34,7 +34,7 @@ public static class SetupNativeCompletionVerifier
                     {
                         await waitForModel(expected, token);
                         return true;
-                    }, SetupNativeCompletionTiming.ModelRecovery, "waiting for Local AI recovery", ct, timeProvider);
+                    }, SetupNativeCompletionTiming.ModelRecovery, SetupNativeCompletionPhase.ModelRecovery, ct, timeProvider);
                 RequireOwner();
                 // Model recovery can publish a new port and restart the Gateway.
                 // Never verify on the pre-recovery handshake.
@@ -78,7 +78,7 @@ public static class SetupNativeCompletionVerifier
         {
             var result = await SetupNativeCompletionTiming.RunAsync(
                 token => client.VerifyConfiguredAsync(modelRef, token),
-                SetupNativeCompletionTiming.ModelVerification, "verifying the selected AI model", ct, timeProvider);
+                SetupNativeCompletionTiming.ModelVerification, SetupNativeCompletionPhase.ModelVerification, ct, timeProvider);
             ct.ThrowIfCancellationRequested();
             RequireAvailable(result);
             return client.GetVerifiedCompletion();

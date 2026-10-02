@@ -7451,6 +7451,11 @@
   <data name="Onboarding_Ready_Opening" xml:space="preserve"><value>正在開啟您選擇的應用程式頁面...</value></data>
   <data name="Onboarding_Ready_OwnershipChanged" xml:space="preserve"><value>無法驗證 Gateway、代理程式或主要模型。請返回 AI 設定並重新驗證。</value></data>
   <data name="Onboarding_Ready_Timeout" xml:space="preserve"><value>驗證逾時或已取消。請再次選擇以重試，或返回 AI 設定。</value></data>
+  <data name="Onboarding_Ready_TimeoutPageDrain" xml:space="preserve"><value>關閉上一個 AI 設定頁面逾時。請重試，或返回 AI 設定。</value></data>
+  <data name="Onboarding_Ready_TimeoutConnection" xml:space="preserve"><value>連線至原生閘道逾時。請檢查閘道是否就緒，然後重試。</value></data>
+  <data name="Onboarding_Ready_TimeoutModelRecovery" xml:space="preserve"><value>等待本機 AI 復原逾時。請檢查本機 AI 狀態，然後重試。</value></data>
+  <data name="Onboarding_Ready_TimeoutModelVerification" xml:space="preserve"><value>驗證所選 AI 模型逾時。請檢查模型是否能夠回應，然後重試。</value></data>
+  <data name="Onboarding_Ready_TimeoutGatewayStartup" xml:space="preserve"><value>啟動原生閘道或確認其監聽連接埠逾時。請檢查閘道狀態，然後重試。</value></data>
   <data name="Onboarding_Ready_VerifyingFailed" xml:space="preserve"><value>暫時無法驗證 AI。請檢查 Gateway 連線及模型是否就緒，然後重試或返回 AI 設定。</value></data>
   <data name="Onboarding_Ready_FinalizingFailed" xml:space="preserve"><value>Windows 設定未能完成。所選目標尚未開啟。請重試或返回 AI 設定。</value></data>
   <data name="Onboarding_Ready_OpeningFailed" xml:space="preserve"><value>應用程式無法開啟所選目標。請再次選擇以重試。未啟動任何頻道登入。</value></data>

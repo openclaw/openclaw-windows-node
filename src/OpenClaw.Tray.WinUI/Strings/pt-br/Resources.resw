@@ -7505,6 +7505,11 @@ O binário wxc-exec não pôde ser localizado. {1} Se esta for uma build de dese
   <data name="Onboarding_Ready_Opening" xml:space="preserve"><value>Abrindo a página escolhida...</value></data>
   <data name="Onboarding_Ready_OwnershipChanged" xml:space="preserve"><value>Não foi possível verificar o Gateway, agente ou modelo principal. Volte à configuração da IA e verifique novamente.</value></data>
   <data name="Onboarding_Ready_Timeout" xml:space="preserve"><value>A verificação expirou ou foi cancelada. Escolha novamente para tentar ou volte à configuração da IA.</value></data>
+  <data name="Onboarding_Ready_TimeoutPageDrain" xml:space="preserve"><value>O fechamento da página anterior de configuração da IA excedeu o tempo limite. Tente novamente ou volte à configuração da IA.</value></data>
+  <data name="Onboarding_Ready_TimeoutConnection" xml:space="preserve"><value>A conexão com o Gateway nativo excedeu o tempo limite. Verifique se o Gateway está pronto e tente novamente.</value></data>
+  <data name="Onboarding_Ready_TimeoutModelRecovery" xml:space="preserve"><value>A espera pela recuperação da IA local excedeu o tempo limite. Verifique o status da IA local e tente novamente.</value></data>
+  <data name="Onboarding_Ready_TimeoutModelVerification" xml:space="preserve"><value>A verificação do modelo de IA selecionado excedeu o tempo limite. Verifique se o modelo consegue responder e tente novamente.</value></data>
+  <data name="Onboarding_Ready_TimeoutGatewayStartup" xml:space="preserve"><value>A inicialização do Gateway nativo ou a confirmação da porta de escuta excedeu o tempo limite. Verifique o status do Gateway e tente novamente.</value></data>
   <data name="Onboarding_Ready_VerifyingFailed" xml:space="preserve"><value>A verificação da IA está indisponível no momento. Confira a conexão com o Gateway e a disponibilidade do modelo e tente novamente ou volte à configuração da IA.</value></data>
   <data name="Onboarding_Ready_FinalizingFailed" xml:space="preserve"><value>Não foi possível concluir a configuração do Windows. O destino não foi aberto. Tente novamente ou volte à configuração da IA.</value></data>
   <data name="Onboarding_Ready_OpeningFailed" xml:space="preserve"><value>O aplicativo não conseguiu abrir o destino escolhido. Escolha novamente para tentar. Nenhum login de canal foi iniciado.</value></data>

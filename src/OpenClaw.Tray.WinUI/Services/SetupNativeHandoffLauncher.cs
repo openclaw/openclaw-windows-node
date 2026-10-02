@@ -78,7 +78,8 @@ internal sealed class SetupNativeHandoffLauncher(
                     System.Runtime.InteropServices.COMException)
                 {
                     failure = lease.IsExpired ? SetupNativeLaunchFailure.Invalid : SetupNativeLaunchFailure.Unavailable;
-                    Logger.Warn($"Native setup destination failed ({error.GetType().Name}); result: {failure}.");
+                    var phase = (error as SetupNativeCompletionTimeoutException)?.Phase.ToString() ?? "none";
+                    Logger.Warn($"Native setup destination failed ({error.GetType().Name}); phase: {phase}; result: {failure}.");
                     lease.RetainForExplicitRetry();
                 }
             }

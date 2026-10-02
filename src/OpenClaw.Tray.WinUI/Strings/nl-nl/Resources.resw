@@ -7452,6 +7452,11 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   <data name="Onboarding_Ready_Opening" xml:space="preserve"><value>Uw gekozen app-pagina openen...</value></data>
   <data name="Onboarding_Ready_OwnershipChanged" xml:space="preserve"><value>De Gateway, agent of het primaire model kon niet worden geverifieerd. Ga terug naar AI-instellingen en controleer opnieuw.</value></data>
   <data name="Onboarding_Ready_Timeout" xml:space="preserve"><value>De verificatie duurde te lang of is geannuleerd. Kies opnieuw om te proberen of ga terug naar AI-instellingen.</value></data>
+  <data name="Onboarding_Ready_TimeoutPageDrain" xml:space="preserve"><value>Het sluiten van de vorige AI-instellingenpagina duurde te lang. Probeer opnieuw of ga terug naar AI-instellingen.</value></data>
+  <data name="Onboarding_Ready_TimeoutConnection" xml:space="preserve"><value>Verbinding maken met de native Gateway duurde te lang. Controleer of de Gateway gereed is en probeer opnieuw.</value></data>
+  <data name="Onboarding_Ready_TimeoutModelRecovery" xml:space="preserve"><value>Het wachten op herstel van lokale AI duurde te lang. Controleer de status van lokale AI en probeer opnieuw.</value></data>
+  <data name="Onboarding_Ready_TimeoutModelVerification" xml:space="preserve"><value>Het verifiëren van het geselecteerde AI-model duurde te lang. Controleer of het model kan reageren en probeer opnieuw.</value></data>
+  <data name="Onboarding_Ready_TimeoutGatewayStartup" xml:space="preserve"><value>Het starten van de native Gateway of het bevestigen van de luisterpoort duurde te lang. Controleer de Gateway-status en probeer opnieuw.</value></data>
   <data name="Onboarding_Ready_VerifyingFailed" xml:space="preserve"><value>AI-verificatie is momenteel niet beschikbaar. Controleer de Gateway-verbinding en het model en probeer opnieuw of ga terug naar AI-instellingen.</value></data>
   <data name="Onboarding_Ready_FinalizingFailed" xml:space="preserve"><value>Windows-configuratie kon niet worden afgerond. Uw bestemming is niet geopend. Probeer opnieuw of ga terug naar AI-instellingen.</value></data>
   <data name="Onboarding_Ready_OpeningFailed" xml:space="preserve"><value>De app kon uw bestemming niet openen. Kies opnieuw om te proberen. Er is geen kanaalaanmelding gestart.</value></data>

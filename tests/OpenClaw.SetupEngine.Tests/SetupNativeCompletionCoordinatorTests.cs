@@ -67,8 +67,9 @@ public sealed class SetupNativeCompletionCoordinatorTests
             },
             (_, _) => throw new InvalidOperationException("Must not finalize"),
             (_, _) => throw new InvalidOperationException("Must not publish"), clock);
-        var error = await Assert.ThrowsAsync<TimeoutException>(() => owner.SelectAsync(SetupNativeDestination.Chat));
-        Assert.Contains(drain ? "closing the previous AI setup page" : "verifying the selected AI model", error.Message);
+        var error = await Assert.ThrowsAsync<SetupNativeCompletionTimeoutException>(() => owner.SelectAsync(SetupNativeDestination.Chat));
+        Assert.Contains(drain ? "closing the previous AI setup page" : "checking AI setup readiness", error.Message);
+        Assert.Equal(drain ? SetupNativeCompletionPhase.PageDrain : SetupNativeCompletionPhase.Verification, error.Phase);
         Assert.False(owner.IsBusy);
         Assert.False(owner.IsCompleted);
     }

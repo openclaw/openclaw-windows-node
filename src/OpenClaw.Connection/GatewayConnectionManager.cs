@@ -71,6 +71,7 @@ public sealed class GatewayConnectionManager :
         _endpointProvenanceProbe;
     private readonly Func<ISshTunnelManager> _validationTunnelFactory;
     private readonly TimeSpan _credentialHandoffTimeout;
+    private readonly TimeProvider _credentialHandoffTimeProvider;
     private readonly TimeSpan _manualSshRestartTimeout;
     private readonly TimeSpan _manualSshRestartCleanupTimeout;
     private readonly SemaphoreSlim _transitionSemaphore = new(1, 1);
@@ -134,7 +135,8 @@ public sealed class GatewayConnectionManager :
         TimeSpan? credentialHandoffTimeout = null,
         TimeSpan? manualSshRestartTimeout = null,
         TimeSpan? manualSshRestartCleanupTimeout = null,
-        INativeGatewayRuntime? nativeGatewayRuntime = null)
+        INativeGatewayRuntime? nativeGatewayRuntime = null,
+        TimeProvider? credentialHandoffTimeProvider = null)
     {
         _credentialResolver = credentialResolver ?? throw new ArgumentNullException(nameof(credentialResolver));
         _clientFactory = clientFactory ?? throw new ArgumentNullException(nameof(clientFactory));
@@ -151,6 +153,7 @@ public sealed class GatewayConnectionManager :
         _endpointProvenanceProbe = endpointProvenanceProbe;
         _validationTunnelFactory = validationTunnelFactory ?? (() => new SshTunnelService(_logger));
         _credentialHandoffTimeout = credentialHandoffTimeout ?? TimeSpan.FromSeconds(5);
+        _credentialHandoffTimeProvider = credentialHandoffTimeProvider ?? TimeProvider.System;
         _manualSshRestartTimeout = manualSshRestartTimeout ?? TimeSpan.FromSeconds(35);
         _manualSshRestartCleanupTimeout =
             manualSshRestartCleanupTimeout ?? TimeSpan.FromSeconds(5);
@@ -2528,7 +2531,9 @@ public sealed class GatewayConnectionManager :
         CancellationToken handshakeCancellationToken,
         string role)
     {
-        using var timeoutCts = new CancellationTokenSource(_credentialHandoffTimeout);
+        var budget = expectedRecord.NativePackageFamilyName is not null
+            ? NativeGatewayEndpointSecurity.CredentialHandoffTimeout : _credentialHandoffTimeout;
+        using var timeoutCts = new CancellationTokenSource(budget, _credentialHandoffTimeProvider);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
             operationCancellationToken,
             handshakeCancellationToken,
@@ -2608,7 +2613,9 @@ public sealed class GatewayConnectionManager :
             return new ReconnectAuthorizationResult(
                 false,
                 GatewayErrorKind.Network,
-                $"Timed out re-verifying the owned SSH listener before the {role} credential handoff.");
+                expectedRecord.NativePackageFamilyName is not null
+                    ? $"Timed out starting or re-verifying the owned native Gateway before the {role} credential handoff."
+                    : $"Timed out re-verifying the owned SSH listener before the {role} credential handoff.");
         }
     }
 

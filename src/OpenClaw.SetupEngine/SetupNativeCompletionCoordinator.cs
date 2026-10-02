@@ -43,9 +43,9 @@ public sealed class SetupNativeCompletionCoordinator(
             Stage = SetupNativeCompletionStage.Verifying;
             StateChanged?.Invoke();
             await SetupNativeCompletionTiming.RunAsync(async ct => { await drain(ct); return true; },
-                DrainTimeout, "closing the previous AI setup page", lifetime, timeProvider);
+                DrainTimeout, SetupNativeCompletionPhase.PageDrain, lifetime, timeProvider);
             var current = await SetupNativeCompletionTiming.RunAsync(ct => verify(Proof, ct),
-                VerificationTimeout, "verifying the selected AI model", lifetime, timeProvider);
+                VerificationTimeout, SetupNativeCompletionPhase.Verification, lifetime, timeProvider);
             SetupNativeVerification.RequireSame(Proof, current);
             if (!_finalized)
             {

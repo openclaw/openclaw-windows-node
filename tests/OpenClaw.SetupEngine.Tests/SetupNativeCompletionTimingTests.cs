@@ -15,15 +15,15 @@ public sealed class SetupNativeCompletionTimingTests
     }
 
     [Theory]
-    [InlineData("connection")]
-    [InlineData("recovery")]
-    [InlineData("model")]
-    public async Task EachVerificationPhaseHasAnEnforcedDeadline(string phase)
+    [InlineData(SetupNativeCompletionPhase.Connection)]
+    [InlineData(SetupNativeCompletionPhase.ModelRecovery)]
+    [InlineData(SetupNativeCompletionPhase.ModelVerification)]
+    public async Task EachVerificationPhaseHasAnEnforcedDeadline(SetupNativeCompletionPhase phase)
     {
         var budget = phase switch
         {
-            "connection" => SetupNativeCompletionTiming.Connection,
-            "recovery" => SetupNativeCompletionTiming.ModelRecovery,
+            SetupNativeCompletionPhase.Connection => SetupNativeCompletionTiming.Connection,
+            SetupNativeCompletionPhase.ModelRecovery => SetupNativeCompletionTiming.ModelRecovery,
             _ => SetupNativeCompletionTiming.ModelVerification
         };
         var clock = new ManualTimeProvider();
@@ -33,8 +33,8 @@ public sealed class SetupNativeCompletionTimingTests
             return true;
         }, budget, phase, default, clock);
         clock.Advance(budget);
-        var error = await Assert.ThrowsAsync<TimeoutException>(() => work);
-        Assert.Contains(phase, error.Message);
+        var error = await Assert.ThrowsAsync<SetupNativeCompletionTimeoutException>(() => work);
+        Assert.Equal(phase, error.Phase);
     }
 
     [Fact]
@@ -46,8 +46,17 @@ public sealed class SetupNativeCompletionTimingTests
         {
             await Task.Delay(Timeout.Infinite, ct);
             return true;
-        }, SetupNativeCompletionTiming.ModelRecovery, "recovery", lifetime.Token, clock);
+        }, SetupNativeCompletionTiming.ModelRecovery, SetupNativeCompletionPhase.ModelRecovery, lifetime.Token, clock);
         lifetime.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => work);
+    }
+
+    [Fact]
+    public void TimeoutDiagnosticsDoNotUseUnderlyingCommandOrModelContent()
+    {
+        var error = new SetupNativeCompletionTimeoutException(SetupNativeCompletionPhase.ModelRecovery,
+            new OperationCanceledException("sensitive fixture content"));
+        Assert.DoesNotContain("sensitive", error.Message);
+        Assert.Equal(SetupNativeCompletionPhase.ModelRecovery, error.Phase);
     }
 }

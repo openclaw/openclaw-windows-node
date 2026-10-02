@@ -19,6 +19,31 @@ public sealed class NativeCompletionPresentationTests
 
     private static string Read(string path) => File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), path));
 
+    [Theory]
+    [InlineData("PageDrain")]
+    [InlineData("Connection")]
+    [InlineData("ModelRecovery")]
+    [InlineData("ModelVerification")]
+    [InlineData("GatewayStartup")]
+    public void TimeoutPhasesHaveLocalizedUserGuidanceWithoutRenderingRawErrors(string phase)
+    {
+        foreach (var language in new[] { "en-us", "fr-fr", "nl-nl", "pt-br", "zh-cn", "zh-tw" })
+        {
+            var resources = XDocument.Parse(Read($@"src\OpenClaw.Tray.WinUI\Strings\{language}\Resources.resw"));
+            var entry = Assert.Single(resources.Descendants("data"),
+                item => (string?)item.Attribute("name") == "Onboarding_Ready_Timeout" + phase);
+            Assert.False(string.IsNullOrWhiteSpace(entry.Element("value")?.Value));
+        }
+        var page = Read(@"src\OpenClaw.SetupEngine.UI\Pages\AiReadyPage.xaml.cs");
+        Assert.Contains("\"Onboarding_Ready_Timeout\" + timeout.Phase", page);
+        Assert.Contains("Phase: SetupNativeCompletionPhase.Verification } => \"Onboarding_Ready_Timeout\"", page);
+        Assert.Contains("\"Onboarding_Ready_TimeoutGatewayStartup\"", page);
+        Assert.DoesNotContain("error.Message", page);
+        var launcher = Read(@"src\OpenClaw.Tray.WinUI\Services\SetupNativeHandoffLauncher.cs");
+        Assert.Contains("(error as SetupNativeCompletionTimeoutException)?.Phase", launcher);
+        Assert.DoesNotContain("error.Message", launcher);
+    }
+
     [Fact]
     public void ChooserHasThreeNativeActions_RecommendationAndErrorOnlyRecovery_NoFooterButtons()
     {

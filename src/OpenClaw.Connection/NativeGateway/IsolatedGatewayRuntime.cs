@@ -18,6 +18,7 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
     private readonly TimeSpan _inspectionTimeout;
     private readonly TimeProvider _timeProvider;
     internal static readonly TimeSpan StartupTimeout = TimeSpan.FromMinutes(3);
+    internal static readonly TimeSpan StartupConfirmationTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan StartupPollInterval = TimeSpan.FromSeconds(2);
     private readonly Dictionary<string, VerifiedGateway> _proofs = new(StringComparer.Ordinal);
     private readonly HashSet<string> _ownedStarts = new(StringComparer.Ordinal);
@@ -112,6 +113,7 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
     private async Task<IsolatedGatewayStatus> StartAndWaitAsync(
         NativeGatewayPackage package, int port, CancellationToken cancellationToken)
     {
+        var startedAt = _timeProvider.GetTimestamp();
         using var deadline = new CancellationTokenSource(StartupTimeout, _timeProvider);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
         try
@@ -119,6 +121,11 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
             // A failed/ambiguous start response is not a pending-start acknowledgement.
             // In particular, older packages omit the lifecycle state on exit 1.
             await _client.StartAsync(package, linked.Token).ConfigureAwait(false);
+            linked.Token.ThrowIfCancellationRequested();
+            // A late successful acknowledgement still gets one bounded status window.
+            // This can extend the total startup ceiling by at most ten seconds.
+            var remaining = StartupTimeout - _timeProvider.GetElapsedTime(startedAt);
+            deadline.CancelAfter(remaining > StartupConfirmationTimeout ? remaining : StartupConfirmationTimeout);
             while (true)
             {
                 var status = await _client.StatusAsync(package, linked.Token).ConfigureAwait(false);
@@ -127,19 +134,29 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
                     return status;
 
                 // Only this call's acknowledged start may wait without listener proof.
-                // A listener appearing without package attribution still fails closed.
+                // Recheck a transition racing the status snapshot once. Only a fresh
+                // Running attestation may proceed to the full listener identity checks.
                 var provenance = InspectSnapshot(port, null);
                 if (provenance.Kind != GatewayEndpointProvenanceKind.NoListener)
+                {
+                    var confirmation = await _client.StatusAsync(package, linked.Token).ConfigureAwait(false);
+                    linked.Token.ThrowIfCancellationRequested();
+                    if (confirmation.State == "running")
+                        return confirmation;
                     throw new NativeGatewayListenerException(provenance);
+                }
                 await Task.Delay(StartupPollInterval, _timeProvider, linked.Token).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException error) when (
             deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
-            throw new TimeoutException(
-                "The package-managed Gateway did not become ready within three minutes. Check clawctl gateway-service status before retrying.",
-                error);
+            throw new NativeGatewayStartupTimeoutException(error);
+        }
+        catch (TimeoutException error)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            throw new NativeGatewayStartupTimeoutException(error);
         }
     }
 

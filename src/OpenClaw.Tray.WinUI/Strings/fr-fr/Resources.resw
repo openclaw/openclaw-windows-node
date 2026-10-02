@@ -7451,6 +7451,11 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   <data name="Onboarding_Ready_Opening" xml:space="preserve"><value>Ouverture de la page sélectionnée...</value></data>
   <data name="Onboarding_Ready_OwnershipChanged" xml:space="preserve"><value>Le Gateway, l’agent ou le modèle principal n’a pas pu être vérifié. Revenez à la configuration IA et vérifiez à nouveau.</value></data>
   <data name="Onboarding_Ready_Timeout" xml:space="preserve"><value>La vérification a expiré ou a été annulée. Choisissez à nouveau pour réessayer ou revenez à la configuration IA.</value></data>
+  <data name="Onboarding_Ready_TimeoutPageDrain" xml:space="preserve"><value>La fermeture de la page de configuration IA précédente a expiré. Réessayez ou revenez à la configuration IA.</value></data>
+  <data name="Onboarding_Ready_TimeoutConnection" xml:space="preserve"><value>La connexion au Gateway natif a expiré. Vérifiez que le Gateway est prêt, puis réessayez.</value></data>
+  <data name="Onboarding_Ready_TimeoutModelRecovery" xml:space="preserve"><value>L’attente de la récupération de l’IA locale a expiré. Vérifiez son état, puis réessayez.</value></data>
+  <data name="Onboarding_Ready_TimeoutModelVerification" xml:space="preserve"><value>La vérification du modèle IA sélectionné a expiré. Vérifiez que le modèle peut répondre, puis réessayez.</value></data>
+  <data name="Onboarding_Ready_TimeoutGatewayStartup" xml:space="preserve"><value>Le démarrage du Gateway natif ou la confirmation de son port d’écoute a expiré. Vérifiez l’état du Gateway, puis réessayez.</value></data>
   <data name="Onboarding_Ready_VerifyingFailed" xml:space="preserve"><value>La vérification IA est momentanément indisponible. Vérifiez la connexion au Gateway et la disponibilité du modèle, puis réessayez ou revenez à la configuration IA.</value></data>
   <data name="Onboarding_Ready_FinalizingFailed" xml:space="preserve"><value>La configuration Windows n’a pas pu se terminer. La destination n’a pas été ouverte. Réessayez ou revenez à la configuration IA.</value></data>
   <data name="Onboarding_Ready_OpeningFailed" xml:space="preserve"><value>L’application n’a pas pu ouvrir la destination choisie. Réessayez. Aucune connexion à un canal n’a été démarrée.</value></data>
