@@ -7047,6 +7047,8 @@
   <data name="Chat_AssistantMedia_MediaAttachment" xml:space="preserve"><value>媒体附件</value></data>
   <data name="Chat_AssistantMedia_OpenImage" xml:space="preserve"><value>打开图像 {0}</value></data>
   <data name="Chat_AssistantMedia_Close" xml:space="preserve"><value>关闭</value></data>
+  <data name="Chat_AssistantMedia_Download" xml:space="preserve"><value>下载</value></data>
+  <data name="Chat_AssistantMedia_DownloadFailed" xml:space="preserve"><value>无法开始下载</value></data>
   <data name="HubWindow_NavigationViewItem_LocalAi.Content" xml:space="preserve"><value>本地 AI</value></data>
   <data name="LocalAiPage_Title.Text" xml:space="preserve"><value>本地 AI</value></data>
   <data name="LocalAiPage_Intro.Text" xml:space="preserve"><value>在此计算机上私密运行经过验证的原生 llama-server。模型仅在收到请求时加载。</value></data>

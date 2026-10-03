@@ -7047,6 +7047,8 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   <data name="Chat_AssistantMedia_MediaAttachment" xml:space="preserve"><value>Pièce jointe multimédia</value></data>
   <data name="Chat_AssistantMedia_OpenImage" xml:space="preserve"><value>Ouvrir l’image {0}</value></data>
   <data name="Chat_AssistantMedia_Close" xml:space="preserve"><value>Fermer</value></data>
+  <data name="Chat_AssistantMedia_Download" xml:space="preserve"><value>Télécharger</value></data>
+  <data name="Chat_AssistantMedia_DownloadFailed" xml:space="preserve"><value>Impossible de lancer le téléchargement</value></data>
   <data name="HubWindow_NavigationViewItem_LocalAi.Content" xml:space="preserve"><value>IA locale</value></data>
   <data name="LocalAiPage_Title.Text" xml:space="preserve"><value>IA locale</value></data>
   <data name="LocalAiPage_Intro.Text" xml:space="preserve"><value>Exécutez le llama-server natif vérifié en privé sur cet ordinateur. Les modèles ne sont chargés qu'à la demande.</value></data>

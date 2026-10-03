@@ -21,7 +21,9 @@ internal static class ChatAssistantMediaRenderer
         ChatAssistantMediaPresentation media,
         string? sessionKey,
         Func<string, ChatMediaContentInfo, CancellationToken, Task<AssistantMediaResolutionResult>>?
-            resolver)
+            resolver,
+        Func<string, ChatMediaContentInfo, CancellationToken, Task<Uri?>>?
+            fileDownloadResolver = null)
     {
         if (media.Kind == ChatMediaContentKind.Image
             && !string.IsNullOrWhiteSpace(sessionKey)
@@ -29,6 +31,16 @@ internal static class ChatAssistantMediaRenderer
         {
             return Component<ChatAssistantImageCard, ChatAssistantImageCardProps>(
                 new(media, sessionKey, resolver));
+        }
+
+        if (media.Kind == ChatMediaContentKind.File
+            && media.Reference.Source == ChatMediaContentSource.Structured
+            && !string.IsNullOrWhiteSpace(media.Reference.ArtifactId)
+            && !string.IsNullOrWhiteSpace(sessionKey)
+            && fileDownloadResolver is not null)
+        {
+            return Component<ChatAssistantFileCard, ChatAssistantFileCardProps>(
+                new(media, sessionKey, fileDownloadResolver));
         }
 
         return BuildUnavailableCard(media);
@@ -40,13 +52,32 @@ internal static class ChatAssistantMediaRenderer
         Action? retry = null)
     {
         var kind = KindLabel(media.Kind);
-        var displayName = DisplayName(media);
         var statusText = preparing
             ? LocalizedOrDefault("Chat_AssistantMedia_Preparing", $"Preparing {kind.ToLowerInvariant()}")
             : LocalizedOrDefault("Chat_AssistantMedia_Unavailable", $"{kind} unavailable");
         var detail = string.IsNullOrWhiteSpace(media.MimeType)
             ? statusText
             : $"{statusText} · {media.MimeType}";
+        return BuildCard(
+            media,
+            statusText,
+            detail,
+            retry is null
+                ? null
+                : Button(
+                        LocalizedOrDefault("Chat_AssistantMedia_Retry", "Retry"),
+                        retry)
+                    .AutomationName(
+                        LocalizedOrDefault("Chat_AssistantMedia_Retry", "Retry")));
+    }
+
+    internal static Element BuildCard(
+        ChatAssistantMediaPresentation media,
+        string statusText,
+        string detail,
+        Element? action)
+    {
+        var displayName = DisplayName(media);
         var accessibleName = $"{displayName}. {statusText}";
 
         var glyph = TextBlock(Glyph(media.Kind))
@@ -77,16 +108,9 @@ internal static class ChatAssistantMediaRenderer
             10,
             glyphBackground,
             VStack(2, title, status).VAlign(VerticalAlignment.Center));
-        Element body = retry is null
+        Element body = action is null
             ? content
-            : HStack(
-                10,
-                content,
-                Button(
-                        LocalizedOrDefault("Chat_AssistantMedia_Retry", "Retry"),
-                        retry)
-                    .AutomationName(
-                        LocalizedOrDefault("Chat_AssistantMedia_Retry", "Retry")));
+            : HStack(10, content, action);
 
         return Border(body)
             .Padding(10, 8)
@@ -127,6 +151,85 @@ internal static class ChatAssistantMediaRenderer
         return string.IsNullOrWhiteSpace(localized) || string.Equals(localized, key, StringComparison.Ordinal)
             ? fallback
             : localized;
+    }
+}
+
+internal sealed record ChatAssistantFileCardProps(
+    ChatAssistantMediaPresentation Media,
+    string SessionKey,
+    Func<string, ChatMediaContentInfo, CancellationToken, Task<Uri?>> ResolveDownloadUri);
+
+internal sealed record ChatAssistantFileDownloadState(
+    ChatMediaContentInfo Reference,
+    bool Failed);
+
+/// <summary>
+/// A downloadable file attachment (for example a zip the agent produced). Files are
+/// never rendered inline: Download asks the Gateway for a short-lived ticketed URL and
+/// hands it to the default browser, which saves the file with the Gateway's name.
+/// </summary>
+internal sealed class ChatAssistantFileCard : Component<ChatAssistantFileCardProps>
+{
+    public override Element Render()
+    {
+        var props = Props;
+        // A pending download has Failed == false. State is scoped to the attachment so a
+        // reused component never shows another file's failure.
+        var (stored, setStored) = UseState<ChatAssistantFileDownloadState?>(null, threadSafe: true);
+        var current = stored is not null && ReferenceEquals(stored.Reference, props.Media.Reference)
+            ? stored
+            : null;
+
+        void Download()
+        {
+            if (current is { Failed: false })
+                return;
+            var reference = props.Media.Reference;
+            setStored(new(reference, Failed: false));
+            _ = DownloadAsync(reference);
+        }
+
+        async Task DownloadAsync(ChatMediaContentInfo reference)
+        {
+            var launched = false;
+            try
+            {
+                var uri = await props.ResolveDownloadUri(props.SessionKey, reference, CancellationToken.None);
+                launched = uri is not null && await global::Windows.System.Launcher.LaunchUriAsync(uri);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"Assistant file download failed ({ex.GetType().Name}).");
+            }
+            setStored(launched ? null : new(reference, Failed: true));
+        }
+
+        var failed = current is { Failed: true };
+        var statusText = failed
+            ? ChatAssistantMediaRenderer.LocalizedOrDefault(
+                "Chat_AssistantMedia_DownloadFailed",
+                "Couldn't start the download")
+            : DescribeFile(props.Media);
+        var actionLabel = failed
+            ? ChatAssistantMediaRenderer.LocalizedOrDefault("Chat_AssistantMedia_Retry", "Retry")
+            : ChatAssistantMediaRenderer.LocalizedOrDefault("Chat_AssistantMedia_Download", "Download");
+        return ChatAssistantMediaRenderer.BuildCard(
+            props.Media,
+            statusText,
+            statusText,
+            Button(actionLabel, Download).AutomationName(actionLabel));
+    }
+
+    private static string DescribeFile(ChatAssistantMediaPresentation media)
+    {
+        var parts = new List<string>(2);
+        if (!string.IsNullOrWhiteSpace(media.MimeType))
+            parts.Add(media.MimeType);
+        if (media.Reference.SizeBytes is long size && size > 0)
+            parts.Add(ChatAttachment.FormatBytes(size));
+        return parts.Count == 0
+            ? ChatAssistantMediaRenderer.LocalizedOrDefault("Chat_AssistantMedia_File", "File")
+            : string.Join(" · ", parts);
     }
 }
 

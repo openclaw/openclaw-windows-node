@@ -7091,6 +7091,8 @@ O binário wxc-exec não pôde ser localizado. {1} Se esta for uma build de dese
   <data name="Chat_AssistantMedia_Close" xml:space="preserve">
     <value>Fechar</value>
   </data>
+  <data name="Chat_AssistantMedia_Download" xml:space="preserve"><value>Baixar</value></data>
+  <data name="Chat_AssistantMedia_DownloadFailed" xml:space="preserve"><value>Não foi possível iniciar o download</value></data>
   <data name="HubWindow_NavigationViewItem_LocalAi.Content" xml:space="preserve"><value>IA local</value></data>
   <data name="LocalAiPage_Title.Text" xml:space="preserve"><value>IA local</value></data>
   <data name="LocalAiPage_Intro.Text" xml:space="preserve"><value>Execute o llama-server nativo verificado de forma privada neste computador. Os modelos são carregados apenas quando solicitados.</value></data>
