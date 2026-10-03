@@ -7048,6 +7048,8 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   <data name="Chat_AssistantMedia_MediaAttachment" xml:space="preserve"><value>Mediabijlage</value></data>
   <data name="Chat_AssistantMedia_OpenImage" xml:space="preserve"><value>Afbeelding {0} openen</value></data>
   <data name="Chat_AssistantMedia_Close" xml:space="preserve"><value>Sluiten</value></data>
+  <data name="Chat_AssistantMedia_Download" xml:space="preserve"><value>Downloaden</value></data>
+  <data name="Chat_AssistantMedia_DownloadFailed" xml:space="preserve"><value>Kan de download niet starten</value></data>
   <data name="HubWindow_NavigationViewItem_LocalAi.Content" xml:space="preserve"><value>Lokale AI</value></data>
   <data name="LocalAiPage_Title.Text" xml:space="preserve"><value>Lokale AI</value></data>
   <data name="LocalAiPage_Intro.Text" xml:space="preserve"><value>Voer de geverifieerde native llama-server privé uit op deze computer. Modellen worden alleen op aanvraag geladen.</value></data>

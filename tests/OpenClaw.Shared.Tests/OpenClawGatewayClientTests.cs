@@ -2361,6 +2361,85 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void ParseChatHistoryPayload_GatewayAttachmentBlock_ReadsNestedDocumentFields()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        // Shape the Gateway projects from openclawDisplayContent for a managed zip.
+        var history = helper.ParseChatHistoryPayload("""
+        {
+          "messages": [
+            {
+              "role": "assistant",
+              "content": [
+                { "type": "text", "text": "Zip's ready." },
+                {
+                  "type": "attachment",
+                  "attachment": {
+                    "artifactId": "artifact_managed_media_dbedbff5-b83b-4da5-abaf-c479f4f40bb0",
+                    "url": "/api/chat/media/outgoing/agent%3Amain%3Amain/dbedbff5-b83b-4da5-abaf-c479f4f40bb0/full",
+                    "kind": "document",
+                    "label": "sett-images-2026-10-02.zip",
+                    "mimeType": "application/zip",
+                    "sizeBytes": 64690236
+                  }
+                }
+              ],
+              "timestamp": 1
+            }
+          ]
+        }
+        """);
+
+        var message = Assert.Single(history.Messages);
+        Assert.Equal("Zip's ready.", message.Text);
+        var media = Assert.Single(
+            message.ContentParts,
+            part => part.Kind == ChatMessageContentPartKind.Media).Media;
+        Assert.NotNull(media);
+        Assert.Equal(ChatMediaContentKind.File, media.Kind);
+        Assert.Equal(ChatMediaContentSource.Structured, media.Source);
+        Assert.Equal("attachment", media.Type);
+        Assert.Equal("application/zip", media.MimeType);
+        Assert.Equal("sett-images-2026-10-02.zip", media.FileName);
+        Assert.Equal("artifact_managed_media_dbedbff5-b83b-4da5-abaf-c479f4f40bb0", media.ArtifactId);
+        Assert.Equal(64690236, media.SizeBytes);
+    }
+
+    [Fact]
+    public void ParseChatHistoryPayload_GatewayAttachmentWithoutArtifactId_DerivesManagedMediaId()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var history = helper.ParseChatHistoryPayload("""
+        {
+          "messages": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "attachment",
+                  "attachment": {
+                    "url": "/api/chat/media/outgoing/agent%3Amain%3Amain/dbedbff5-b83b-4da5-abaf-c479f4f40bb0/full",
+                    "kind": "document",
+                    "label": "report.pdf",
+                    "mimeType": "application/pdf"
+                  }
+                }
+              ],
+              "timestamp": 1
+            }
+          ]
+        }
+        """);
+
+        var media = Assert.Single(Assert.Single(history.Messages).ContentParts).Media;
+        Assert.NotNull(media);
+        Assert.Equal(ChatMediaContentKind.File, media.Kind);
+        Assert.Equal("artifact_managed_media_dbedbff5-b83b-4da5-abaf-c479f4f40bb0", media.ArtifactId);
+    }
+
+    [Fact]
     public void ParseChatHistoryPayload_LegacyMediaOnly_PreservesMessageAndRedactsPath()
     {
         var helper = new GatewayClientTestHelper();
