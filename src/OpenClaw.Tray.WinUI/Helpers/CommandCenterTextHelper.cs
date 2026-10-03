@@ -327,8 +327,29 @@ internal static class CommandCenterTextHelper
         var target = string.IsNullOrWhiteSpace(tunnel?.User) || string.IsNullOrWhiteSpace(tunnel.Host)
             ? "<user>@<host>"
             : $"{tunnel.User}@{tunnel.Host}";
-        var remoteBrowserPort = TryParseEndpointPort(tunnel?.BrowserProxyRemoteEndpoint) ?? browserProxyPort;
-        return $"ssh -N -L {browserProxyPort}:127.0.0.1:{remoteBrowserPort} {target}";
+        var remoteBrowserPort = ResolveRemoteBrowserProxyPort(browserProxyPort, tunnel);
+        return remoteBrowserPort is >= 1 and <= 65535
+            ? $"ssh -N -L {browserProxyPort}:127.0.0.1:{remoteBrowserPort} {target}"
+            : $"ssh -N -L {browserProxyPort}:127.0.0.1:<remote-gateway-port+2> {target}";
+    }
+
+    // The managed tunnel forwards local gateway port + 2 to remote gateway port + 2.
+    // A missing browser-proxy remote endpoint must not reuse the local browser port.
+    private static int? ResolveRemoteBrowserProxyPort(int localBrowserProxyPort, TunnelCommandCenterInfo? tunnel)
+    {
+        var browserRemotePort = TryParseEndpointPort(tunnel?.BrowserProxyRemoteEndpoint);
+        if (browserRemotePort is >= 1 and <= 65535)
+            return browserRemotePort;
+
+        var remoteGatewayPort = TryParseEndpointPort(tunnel?.RemoteEndpoint);
+        if (remoteGatewayPort is not (>= 1 and <= 65533))
+            return null;
+
+        var localGatewayPort = TryParseEndpointPort(tunnel?.LocalEndpoint);
+        if (localGatewayPort is not null && localBrowserProxyPort != localGatewayPort + 2)
+            return null;
+
+        return remoteGatewayPort + 2;
     }
 
     private static int? TryParseEndpointPort(string? endpoint)
