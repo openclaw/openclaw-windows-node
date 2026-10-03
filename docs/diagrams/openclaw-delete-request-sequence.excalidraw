@@ -841,7 +841,7 @@
       "y": 1385,
       "width": 245,
       "height": 65,
-      "text": "prompt if needed; revalidate\nMXC, strict deny, or host fallback",
+      "text": "prompt if needed; revalidate\nOn: MXC or block; Off: host",
       "fontSize": 14,
       "fontFamily": 1,
       "strokeColor": "#000000",

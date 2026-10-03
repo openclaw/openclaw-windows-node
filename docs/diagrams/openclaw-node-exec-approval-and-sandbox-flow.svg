@@ -42,7 +42,7 @@
   <rect x="845" y="495" width="450" height="200" rx="16" fill="#DFF6DD" stroke="#107C10" stroke-width="3"/>
   <text x="1070" y="530" class="box"><tspan x="1070">Windows V2 approval</tspan><tspan x="1070" dy="23">validate; detect wrappers for policy</tspan><tspan x="1070" dy="23">resolve absolute executable</tspan><tspan x="1070" dy="23">allowlist and ask evaluation</tspan><tspan x="1070" dy="23">local prompt or bounded fallback</tspan><tspan x="1070" dy="23">policy revalidation</tspan></text>
   <rect x="845" y="755" width="450" height="130" rx="14" fill="#99E9F2" stroke="#0C8599" stroke-width="2"/>
-  <text x="1070" y="790" class="box"><tspan x="1070">MxcCommandRunner</tspan><tspan x="1070" dy="24">MXC AppContainer, strict deny,</tspan><tspan x="1070" dy="24">or approved host fallback</tspan></text>
+  <text x="1070" y="790" class="box"><tspan x="1070">MxcCommandRunner</tspan><tspan x="1070" dy="24">On: MXC or block</tspan><tspan x="1070" dy="24">Off: host execution</tspan></text>
   <rect x="845" y="940" width="450" height="70" rx="14" fill="#DFF6DD" stroke="#107C10" stroke-width="2"/>
   <text x="1070" y="982" class="box">Approved process -> result -> gateway -> agent</text>
 

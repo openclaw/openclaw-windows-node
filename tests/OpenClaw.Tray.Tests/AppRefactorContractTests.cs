@@ -1995,49 +1995,43 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
-    public void AppNotifications_SandboxRiskMessageReflectsStrictFallbackBlocking()
+    public void AppNotifications_SandboxOnUnavailableAlwaysReportsBlocked()
     {
         var source = ReadAppSources();
         var method = ExtractMethod(source, "PublishSandboxRiskNotification", parameterHint: "MxcAvailability");
 
-        Assert.Contains("SystemRunBlockHostFallbackWhenMxcUnavailable", method);
+        Assert.Contains("SystemRunSandboxEnabled: true", method);
+        Assert.DoesNotContain("SystemRunBlockHostFallbackWhenMxcUnavailable", method);
         Assert.Contains("AppNotification_SandboxUnavailableBlocked_Title", method);
         Assert.Contains("AppNotification_SandboxUnavailableBlocked_MessageFormat", method);
-        Assert.Contains("host-fallback", method);
+        Assert.DoesNotContain("host-fallback", method);
         Assert.Contains("blocked", method);
     }
 
     [Fact]
-    public void SandboxPage_NormalizesDefinitiveUnavailableMxcOff()
+    public void SandboxPage_UnavailableMxcNeverDisablesSavedSandboxIntent()
     {
         var source = ReadSandboxPageSource();
         var refresh = ExtractMethod(source, "RefreshAvailabilityAsync");
         var loadState = ExtractMethod(source, "LoadState");
-        var definitiveUnavailable = ExtractMethod(source, "IsSandboxDefinitivelyUnavailable");
-        var normalize = ExtractMethod(source, "NormalizeSandboxToggleForAvailability");
+        var status = ExtractMethod(source, "UpdateSandboxStatusCard");
 
         AssertInOrder(
             refresh,
-            "NormalizeSandboxToggleForAvailability();",
             "UpdateSandboxStatusCard();",
             "UpdateControlsEnabledState();");
         AssertInOrder(
             loadState,
-            "NormalizeSandboxToggleForAvailability();",
             "UpdatePresetHighlight();",
             "UpdateSandboxStatusCard();",
             "UpdateControlsEnabledState();");
-        Assert.Contains("CanRunSystemRunSandbox: false", definitiveUnavailable);
-        Assert.Contains("ProbeErrored: false", definitiveUnavailable);
-        Assert.Contains("ProbeSuppressedBySkuGate: false", definitiveUnavailable);
-        AssertInOrder(
-            normalize,
-            "settings.SystemRunSandboxEnabled",
-            "settings.SystemRunBlockHostFallbackWhenMxcUnavailable",
-            "settings.SystemRunSandboxEnabled = false");
-        Assert.Contains("settings.SystemRunSandboxEnabled = false", normalize);
-        Assert.Contains("SandboxEnabledToggle.IsOn = false", normalize);
-        Assert.Contains("Save();", normalize);
+        Assert.DoesNotContain("NormalizeSandboxToggleForAvailability", source);
+        Assert.DoesNotContain("SystemRunSandboxEnabled = false", source);
+        Assert.DoesNotContain("Save();", refresh);
+        Assert.DoesNotContain("Save();", loadState);
+        Assert.Contains("if (enabled)", status);
+        Assert.Contains("SandboxPage_StatusUnavailableBlockedTitle", status);
+        Assert.DoesNotContain("SystemRunBlockHostFallbackWhenMxcUnavailable", source);
     }
 
     [Fact]
@@ -2059,7 +2053,7 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
-    public void SandboxPage_RejectsTurningOnWhenMxcIsDefinitivelyUnavailable()
+    public void SandboxPage_RequiresConfirmedAvailabilityBeforeTurningOn()
     {
         var source = ReadSandboxPageSource();
         var toggle = ExtractMethod(source, "OnSandboxEnabledToggledAsync");
@@ -2069,8 +2063,7 @@ public sealed class AppRefactorContractTests
             toggle,
             "newValue",
             "!oldValue",
-            "IsSandboxDefinitivelyUnavailable()",
-            "!s.SystemRunBlockHostFallbackWhenMxcUnavailable",
+            "_cachedAvailability?.CanRunSystemRunSandbox != true",
             "await RejectSandboxEnableWhenUnavailableAsync();",
             "return;");
         Assert.Contains("SandboxEnabledToggle.IsOn = false", reject);
@@ -2079,6 +2072,8 @@ public sealed class AppRefactorContractTests
         Assert.Contains("SandboxPage_WindowsUnsupportedTitle", reject);
         Assert.Contains("SandboxPage_WindowsUnsupportedMessageFormat", reject);
         Assert.Contains("SandboxPage_UnavailableBehaviorHostFallback", reject);
+        Assert.Contains("SandboxEnabledToggle.IsEnabled = sandboxOn || available",
+            ExtractMethod(source, "UpdateControlsEnabledState"));
     }
 
     private static string ReadCoordinatorSource()

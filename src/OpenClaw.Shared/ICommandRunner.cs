@@ -40,15 +40,14 @@ public class CommandRequest
 
     /// <summary>
     /// Optional effective shell that already passed shell-scoped approval.
-    /// Dynamic runners must execute this shell, or a separately approved host
-    /// fallback shell, so live settings cannot change the approved boundary.
+    /// Dynamic runners must execute this shell so live settings cannot change
+    /// the approved boundary.
     /// </summary>
     public string? ApprovedEffectiveShell { get; set; }
 
     /// <summary>
-    /// Optional host fallback shell that has already passed shell-scoped approval.
-    /// Sandboxed runners use this only when a compatibility fallback would execute
-    /// a different host shell than the sandbox effective shell.
+    /// Legacy approved fallback shell. Node Sandbox no longer consults this field
+    /// or permits a host fallback while enabled.
     /// </summary>
     public string? ApprovedHostFallbackShell { get; set; }
 
@@ -104,8 +103,8 @@ public interface ICommandRunner
 }
 
 /// <summary>
-/// Optional contract for runners that may preserve compatibility through an
-/// uncontained host fallback with a shell different from their sandbox shell.
+/// Legacy compatibility contract. The current MXC runner advertises no host
+/// fallback: an enabled sandbox requires containment or blocks the command.
 /// </summary>
 public interface IHostFallbackAwareCommandRunner : ICommandRunner
 {

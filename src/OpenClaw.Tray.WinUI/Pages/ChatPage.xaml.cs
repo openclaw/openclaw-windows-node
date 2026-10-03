@@ -378,6 +378,7 @@ public sealed partial class ChatPage : Page
 
         PlaceholderPanel.Visibility = Visibility.Collapsed;
         ChatHost.Visibility = Visibility.Visible;
+        var ownerWindow = _ownerWindow ?? throw new InvalidOperationException("Chat requires an owning window.");
         var composerSession = ReactorChatHostExtensions.CreateComposerSession(
             ChatHost,
             composerFactory,
@@ -386,8 +387,9 @@ public sealed partial class ChatPage : Page
             onAttachClick: OnAttachClicked,
             onSettingsClick: NavigateToVoiceSettings,
             onSpeakerMuteChanged: muted => _ = OnSpeakerMuteChangedAsync(muted),
-            initialMuted: ShouldStartSpeakerMuted(CurrentApp.Settings));
-        _reactorHost = (_ownerWindow ?? throw new InvalidOperationException("Chat requires an owning window.")).MountReactorChat(
+            initialMuted: ShouldStartSpeakerMuted(CurrentApp.Settings),
+            onSandboxSettingsClick: () => CurrentApp.ShowHub("sandbox"));
+        _reactorHost = ownerWindow.MountReactorChat(
             ChatHost,
             provider,
             composerSession,

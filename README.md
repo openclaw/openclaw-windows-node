@@ -120,7 +120,9 @@ The **Sandbox** page controls programs launched through the Windows node's `syst
 - **Unprotected** allows broad folder and clipboard access. Use it only when you accept the added risk.
 - Custom controls set folder access, network access, clipboard access, timeout, and output limits.
 
-When enabled and available, the Windows node uses MXC process isolation for `system.run`. If MXC is unavailable and strict fallback blocking is off, OpenClaw can fall back to uncontained host execution for compatibility. The **Sandbox** page shows the current state and lets you choose the appropriate policy.
+When Node Sandbox is on, Windows node `system.run` commands require MXC process isolation. If containment is unavailable or fails at runtime, commands are blocked without turning the preference off. Host execution requires explicitly turning Node Sandbox off. The **Sandbox** page shows availability and only allows enabling after a successful check.
+
+Existing profiles with Node Sandbox enabled no longer use the old compatibility host fallback. The legacy `SystemRunBlockHostFallbackWhenMxcUnavailable` JSON field is retained for file compatibility but has no effect. Existing Off preferences are preserved, including ones automatically saved by earlier builds on unsupported hosts. Their original intent cannot be distinguished from a deliberate opt-out; review Sandbox settings to enable containment when supported.
 
 This sandbox covers commands run through the Windows node. Commands run directly on the gateway use the gateway's separate security controls.
 

@@ -48,8 +48,7 @@ internal static class AppServiceRegistration
         // Container-owned navigation lifetime manager (disposed with the root provider).
         services.AddSingleton<NavigationScopeManager>();
 
-        // Stateless per-host-mount composer session factory. Depends only on the
-        // App-owned dispatcher instance above; starts no background work.
+        // Per-host-mount composer sessions borrow the dispatcher and settings store.
         services.AddSingleton<IChatComposerFactory, ChatComposerFactory>();
 
         // Transient page view models resolved per navigation scope.

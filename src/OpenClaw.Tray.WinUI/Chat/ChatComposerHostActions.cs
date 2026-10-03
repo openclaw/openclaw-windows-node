@@ -24,4 +24,5 @@ internal sealed record ChatComposerHostActions(
     Action? AttachmentPickerRequest,
     Func<CancellationToken, Action?, Task<string?>>? VoiceCaptureRequest,
     Action? SettingsNavigation,
-    Action<bool>? SpeakerMuteChanged);
+    Action<bool>? SpeakerMuteChanged,
+    Action? SandboxSettingsNavigation = null);

@@ -2,6 +2,7 @@ using OpenClaw.Chat;
 using OpenClaw.Shared;
 using OpenClaw.Tray.Tests.Presentation;
 using OpenClawTray.Chat;
+using OpenClawTray.Presentation;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Reflection;
@@ -19,6 +20,41 @@ namespace OpenClaw.Tray.Tests;
 /// </summary>
 public sealed class ChatComposerViewModelTests
 {
+    [Fact]
+    public void SandboxSettings_IgnoreOlderSnapshotsAndUnrelatedChanges()
+    {
+        using var vm = new ChatComposerViewModel(new RecordingUiDispatcher(), false);
+        var snapshot = new SettingsSnapshot { Version = 2, SystemRunSandboxEnabled = true };
+        vm.ApplySandboxSettings(snapshot);
+        var revision = vm.RenderRevision;
+
+        vm.ApplySandboxSettings(new SettingsSnapshot { Version = 1 });
+        vm.ApplySandboxSettings(snapshot with { Version = 3, AutoStart = true });
+
+        Assert.True(vm.SandboxEnabled);
+        Assert.Equal(revision, vm.RenderRevision);
+        vm.ApplySandboxSettings(snapshot with { Version = 4, SystemRunSandboxEnabled = false });
+        Assert.False(vm.SandboxEnabled);
+        Assert.Equal(revision + 1, vm.RenderRevision);
+    }
+
+    [Fact]
+    public void SandboxSettings_QueuedUpdateCannotNotifyAfterDisposal()
+    {
+        var dispatcher = new RecordingUiDispatcher
+        {
+            HasThreadAccess = false,
+            RunEnqueuedImmediately = false,
+        };
+        using var vm = new ChatComposerViewModel(dispatcher, false);
+        vm.ApplySandboxSettings(new SettingsSnapshot { Version = 1, SystemRunSandboxEnabled = true });
+        vm.Dispose();
+        dispatcher.FlushPending();
+
+        Assert.False(vm.SandboxEnabled);
+        Assert.Equal(0, vm.RenderRevision);
+    }
+
     private static ChatThread MakeThread(string id = "session-1", string? model = null, string? thinking = null) =>
         new()
         {

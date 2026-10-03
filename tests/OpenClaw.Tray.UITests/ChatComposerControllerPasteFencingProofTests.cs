@@ -5,6 +5,9 @@ using OpenClaw.Chat;
 using OpenClaw.Shared;
 using OpenClawTray.Chat;
 using OpenClawTray.Presentation.Adapters;
+using OpenClawTray.Presentation;
+using OpenClawTray.Services;
+using OpenClaw.TestSupport;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;
@@ -56,11 +59,13 @@ public sealed class ChatComposerControllerPasteFencingProofTests
         UIThreadFixture ui)
     {
         var dispatcher = new WinUIDispatcher(ui.Dispatcher);
-        var factory = new ChatComposerFactory(dispatcher);
+        var temp = new TempDirectory();
+        var store = new SettingsStore(new SettingsManager(temp.Path), dispatcher);
+        var factory = new ChatComposerFactory(dispatcher, store);
         var provider = new NoopChatDataProvider();
         var hostActions = new ChatComposerHostActions(null, null, null, null, null);
         var session = factory.Create(provider, hostActions, initialSpeakerMuted: false);
-        return (new ChatComposerViewModelHandle(session), session.Controller);
+        return (new ChatComposerViewModelHandle(session, store, temp), session.Controller);
     }
 
     /// <summary>Thin internal-visibility accessor so this file does not need to
@@ -70,13 +75,25 @@ public sealed class ChatComposerControllerPasteFencingProofTests
     private sealed class ChatComposerViewModelHandle
     {
         private readonly ChatComposerSession _session;
-        public ChatComposerViewModelHandle(ChatComposerSession session) => _session = session;
+        private readonly SettingsStore _store;
+        private readonly TempDirectory _temp;
+        public ChatComposerViewModelHandle(ChatComposerSession session, SettingsStore store, TempDirectory temp)
+        {
+            _session = session;
+            _store = store;
+            _temp = temp;
+        }
         public int PendingAttachmentCount => _session.ViewModel.PendingAttachments.Count;
         public string? LastAttachmentFileName =>
             _session.ViewModel.PendingAttachments.Count == 0
                 ? null
                 : _session.ViewModel.PendingAttachments[^1].FileName;
-        public void Dispose() => _session.Dispose();
+        public void Dispose()
+        {
+            _session.Dispose();
+            _store.Dispose();
+            _temp.Dispose();
+        }
     }
 
     private static async Task<DataPackageView> CreateClipboardBitmapAsync(byte r, byte g, byte b)

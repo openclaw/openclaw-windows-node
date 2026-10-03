@@ -8,6 +8,8 @@ using OpenClaw.Shared;
 using OpenClawTray.Chat;
 using OpenClawTray.Presentation;
 using OpenClawTray.Presentation.Adapters;
+using OpenClaw.TestSupport;
+using OpenClawTray.Services;
 using static Microsoft.UI.Reactor.Factories;
 
 namespace OpenClaw.Tray.UITests;
@@ -58,7 +60,9 @@ public sealed class MountedReactorChatDisposalProofTests
         await _ui.RunOnUIAsync(() =>
         {
             var dispatcher = new WinUIDispatcher(_ui.Dispatcher);
-            var factory = new ChatComposerFactory(dispatcher);
+            using var temp = new TempDirectory();
+            using var store = new SettingsStore(new SettingsManager(temp.Path), dispatcher);
+            var factory = new ChatComposerFactory(dispatcher, store);
             var provider = new NoopChatDataProvider();
             var hostActions = new ChatComposerHostActions(null, null, null, null, null);
             var session = factory.Create(provider, hostActions, initialSpeakerMuted: false);
@@ -93,6 +97,47 @@ public sealed class MountedReactorChatDisposalProofTests
             Assert.Null(callbacks.AttachFiles);
 
             _ui.Container.Children.Remove(target);
+        });
+    }
+
+    [Theory]
+    [InlineData("window")]
+    [InlineData("target")]
+    [InlineData("provider")]
+    public async Task FailedMount_DisposesSessionAndLeavesExistingContent(string invalidArgument)
+    {
+        await _ui.RunOnUIAsync(() =>
+        {
+            var dispatcher = new WinUIDispatcher(_ui.Dispatcher);
+            using var temp = new TempDirectory();
+            var settings = new SettingsManager(temp.Path) { SystemRunSandboxEnabled = true };
+            using var store = new SettingsStore(settings, dispatcher);
+            var provider = new NoopChatDataProvider();
+            using var session = new ChatComposerFactory(dispatcher, store).Create(
+                provider, new ChatComposerHostActions(null, null, null, null, null), false);
+            var existingContent = new TextBlock { Text = "Keep existing content" };
+            var target = new Border { Child = existingContent };
+            var window = new Microsoft.UI.Xaml.Window();
+            try
+            {
+                Assert.Throws<ArgumentNullException>(() => ReactorChatHostExtensions.MountReactorChat(
+                    invalidArgument == "window" ? null! : window,
+                    invalidArgument == "target" ? null! : target,
+                    invalidArgument == "provider" ? null! : provider,
+                    session));
+
+                Assert.True(session.ViewModel.IsDisposed);
+                Assert.True(session.Controller.IsDisposed);
+                Assert.Same(existingContent, target.Child);
+                var revision = session.ViewModel.RenderRevision;
+                settings.SystemRunSandboxEnabled = false;
+                settings.Save();
+                Assert.Equal(revision, session.ViewModel.RenderRevision);
+            }
+            finally
+            {
+                window.Close();
+            }
         });
     }
 }

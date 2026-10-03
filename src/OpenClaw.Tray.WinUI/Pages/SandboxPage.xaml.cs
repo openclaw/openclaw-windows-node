@@ -65,7 +65,6 @@ public sealed partial class SandboxPage : Page
             // await resumed us on the UI thread (DispatcherQueue sync context), so it
             // is safe to touch controls here. Always re-render — on both the happy
             // path and the failure path — so the page never stays in "Checking…".
-            NormalizeSandboxToggleForAvailability();
             UpdateSandboxStatusCard();
             UpdateControlsEnabledState();
         }
@@ -190,7 +189,6 @@ public sealed partial class SandboxPage : Page
             _suppress = false;
         }
 
-        NormalizeSandboxToggleForAvailability();
         UpdateWindowsUiWarning();
         UpdatePresetHighlight();
         UpdateSandboxStatusCard();
@@ -199,17 +197,13 @@ public sealed partial class SandboxPage : Page
 
     /// <summary>
     /// Drives the page header (icon + title + subtext + toggle visibility) based on
-    /// MXC availability AND the current sandbox toggle state. Definitively
-    /// unavailable MXC is normalized to OFF so the UI never claims Node Sandbox is
-    /// on when containment cannot run. Transient probe errors can still render the
-    /// enabled/strict-blocking state until retry resolves the probe.
+    /// MXC availability AND the saved sandbox intent. Losing availability never
+    /// turns protection off: commands remain blocked until containment recovers.
     /// </summary>
     private void UpdateSandboxStatusCard()
     {
         var availability = _cachedAvailability;
         var enabled = SandboxEnabledToggle.IsOn;
-        var blockHostFallback = CurrentApp.Settings?.SystemRunBlockHostFallbackWhenMxcUnavailable ?? false;
-
         UpdateUnavailableActionBar(availability, enabled);
 
         if (availability is null)
@@ -228,15 +222,10 @@ public sealed partial class SandboxPage : Page
             SandboxStatusIcon.Text = "⚠";
             SandboxEnabledToggle.Visibility = Visibility.Visible;
 
-            if (enabled && blockHostFallback)
+            if (enabled)
             {
                 SandboxStatusTitle.Text = L("SandboxPage_StatusUnavailableBlockedTitle");
                 SandboxStatusSubtext.Text = L("SandboxPage_StatusUnavailableBlockedSubtext");
-            }
-            else if (enabled)
-            {
-                SandboxStatusTitle.Text = L("SandboxPage_StatusUnavailableTitle");
-                SandboxStatusSubtext.Text = L("SandboxPage_StatusUnavailableSubtext");
             }
             else
             {
@@ -295,9 +284,7 @@ public sealed partial class SandboxPage : Page
 
         var isSetupIssue = !availability.ProbeSuppressedBySkuGate
             && !availability.IsWxcExecResolvable;
-        var blockHostFallback = sandboxEnabled
-            && (CurrentApp.Settings?.SystemRunBlockHostFallbackWhenMxcUnavailable ?? false);
-        var unavailableBehavior = L(blockHostFallback
+        var unavailableBehavior = L(sandboxEnabled
             ? "SandboxPage_UnavailableBehaviorBlocked"
             : "SandboxPage_UnavailableBehaviorHostFallback");
 
@@ -327,9 +314,9 @@ public sealed partial class SandboxPage : Page
         }
         else
         {
-            UnavailableActionBar.Title = blockHostFallback
+            UnavailableActionBar.Title = sandboxEnabled
                 ? L("SandboxPage_UnavailableBlockedTitle")
-                : L("SandboxPage_UnavailableTitle");
+                : L("SandboxPage_StatusUnavailableOffTitle");
             UnavailableActionMessage.Text = $"{reasonText}\n\n{unavailableBehavior}";
             UnavailablePrimaryButton.Visibility = Visibility.Collapsed;
         }
@@ -337,44 +324,10 @@ public sealed partial class SandboxPage : Page
         UnavailableActionBar.IsOpen = true;
     }
 
-    private bool IsSandboxDefinitivelyUnavailable()
-    {
-        return _cachedAvailability is
-        {
-            CanRunSystemRunSandbox: false,
-            ProbeErrored: false,
-            ProbeSuppressedBySkuGate: false,
-        };
-    }
-
     private static bool IsWindowsSandboxCapabilityUnavailable(OpenClaw.Shared.Mxc.MxcAvailability availability) =>
         !availability.ProbeErrored
         && availability.IsWxcExecResolvable
         && !availability.CanRunSystemRunSandbox;
-
-    private bool NormalizeSandboxToggleForAvailability()
-    {
-        if (!IsSandboxDefinitivelyUnavailable())
-            return false;
-        if (CurrentApp.Settings is not { } settings || !settings.SystemRunSandboxEnabled)
-            return false;
-        if (settings.SystemRunBlockHostFallbackWhenMxcUnavailable)
-            return false;
-
-        _suppress = true;
-        try
-        {
-            settings.SystemRunSandboxEnabled = false;
-            SandboxEnabledToggle.IsOn = false;
-        }
-        finally
-        {
-            _suppress = false;
-        }
-
-        Save();
-        return true;
-    }
 
     private void OnUnavailableActionClick(object sender, RoutedEventArgs e) =>
         AsyncEventHandlerGuard.Run(
@@ -428,6 +381,7 @@ public sealed partial class SandboxPage : Page
         var available = _cachedAvailability?.CanRunSystemRunSandbox ?? false;
         var sandboxOn = SandboxEnabledToggle.IsOn;
         var active = available && sandboxOn;
+        SandboxEnabledToggle.IsEnabled = sandboxOn || available;
 
         // StackPanel doesn't expose IsEnabled, so we mimic the disabled look manually:
         // block hit-testing (no clicks reach children) and dim opacity for visual cue.
@@ -636,8 +590,7 @@ public sealed partial class SandboxPage : Page
 
         if (newValue
             && !oldValue
-            && IsSandboxDefinitivelyUnavailable()
-            && !s.SystemRunBlockHostFallbackWhenMxcUnavailable)
+            && _cachedAvailability?.CanRunSystemRunSandbox != true)
         {
             await RejectSandboxEnableWhenUnavailableAsync();
             return;
