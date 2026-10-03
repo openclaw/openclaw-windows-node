@@ -5,6 +5,19 @@ namespace OpenClaw.Tray.Tests;
 public class GatewayHostAccessTests
 {
     [Fact]
+    public void NativeMarkerNeverOffersWslCommandsEvenWithStaleDistroMetadata()
+    {
+        var access = GatewayHostAccessClassifier.Classify(new()
+        {
+            Id = "native", NativePackageFamilyName = "OpenClaw.Gateway_123456789abcd",
+            SetupManagedDistroName = "OldWslGateway",
+        });
+        Assert.False(access.CanControlWslGateway);
+        Assert.False(access.CanOpenTerminal);
+        Assert.Equal("GatewayHostAccess_NativeManaged", access.DisabledReason);
+    }
+
+    [Fact]
     public void Classify_UsesWslManagedDistro_WhenRecordWasCreatedBySetup()
     {
         var record = new GatewayRecord

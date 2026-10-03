@@ -4957,6 +4957,45 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
   <data name="SettingsPage_Privacy.Text" xml:space="preserve">
     <value>Privacy</value>
   </data>
+  <data name="GatewayHostAccess_NativeManaged" xml:space="preserve">
+    <value>This native Gateway is managed by its Windows package. Open setup in Settings for configuration.</value>
+  </data>
+  <data name="SettingsPage_SetupGatewayDescription" xml:space="preserve">
+    <value>Install a native or WSL gateway, or configure an existing gateway. Existing installations are only replaced after confirmation.</value>
+  </data>
+  <data name="SettingsPage_SetupNativeDescription" xml:space="preserve">
+    <value>Configure the AI provider and model on the selected native gateway without reinstalling it.</value>
+  </data>
+  <data name="SettingsPage_GatewayOnboardingDescription.Text" xml:space="preserve">
+    <value>Configure the AI provider and model on the selected local gateway without reinstalling it.</value>
+  </data>
+  <data name="SettingsPage_RemoveNativeBody" xml:space="preserve">
+    <value>Permanently removes this Windows package's isolated gateway account, workspace, configuration, credentials, and startup records. Other Companion profiles using the same package and Windows account will also lose access. The Gateway Store app, WSL gateways, other saved gateways, Companion settings, and MCP token are preserved.</value>
+  </data>
+  <data name="SettingsPage_RemoveLegacyNativeBody" xml:space="preserve">
+    <value>Stops this legacy native gateway and permanently removes its saved connection, credentials, and local profile data. The Gateway Store app, WSL gateways, other saved gateways, Companion settings, and MCP token are preserved.</value>
+  </data>
+  <data name="SettingsPage_RemoveWslBody" xml:space="preserve">
+    <value>Permanently removes the WSL gateway in {0}, its disk image, saved connection, and gateway credentials. Other gateways, Local AI files, Companion settings, startup entries, execution approvals, the MCP token, and the root device key are preserved.</value>
+  </data>
+  <data name="SettingsPage_GatewayRemovalTitle" xml:space="preserve">
+    <value>Remove Local Gateway?</value>
+  </data>
+  <data name="SettingsPage_GatewayRemovalPermanent" xml:space="preserve">
+    <value>This cannot be undone.</value>
+  </data>
+  <data name="SettingsPage_GatewayRemovalTargetChanged" xml:space="preserve">
+    <value>Select the local gateway in Connection settings, then review removal again. The previous selection is no longer current.</value>
+  </data>
+  <data name="SettingsPage_GatewayRemovalLocalAi" xml:space="preserve">
+    <value>Stop Local AI and release its Gateway ownership in Local AI settings before removing a gateway. No gateway was removed.</value>
+  </data>
+  <data name="SettingsPage_NativeGatewayRemoved" xml:space="preserve">
+    <value>The native gateway and its saved connection were removed. The Gateway Store app remains installed. Open setup to configure a new gateway.</value>
+  </data>
+  <data name="SettingsPage_RemovingGateway" xml:space="preserve">
+    <value>Removing gateway...</value>
+  </data>
   <data name="SettingsPage_LocalGateway.Text" xml:space="preserve">
     <value>Local Gateway</value>
   </data>
@@ -7959,4 +7998,10 @@ Your settings, gateway, files, and models stay where they are.</value>
   <data name="Onboarding_AiSetup_LocalOwnershipInvalid" xml:space="preserve"><value>The saved Local AI ownership, model or Gateway configuration no longer matches. In the original Companion profile, review the original Gateway and its model settings, including edited model allowlist entries. Keep the ownership receipt; do not copy credentials or replace the provider.</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipUnavailable" xml:space="preserve"><value>The original Gateway ownership or configuration could not be checked. Reconnect the original Gateway and check again. Nothing has been changed.</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipFiles" xml:space="preserve"><value>The owned Local AI installation needs file repair. In Local AI settings, stop its runtime and resolve its original Gateway route before repairing files. Keep the ownership receipt.</value></data>
+  <data name="ConnectionPage_LocalConflictAddress" xml:space="preserve"><value>Another app is using this gateway's local address.</value></data>
+  <data name="ConnectionPage_LocalConflictOwnership" xml:space="preserve"><value>Unknown processes are never stopped automatically.</value></data>
+  <data name="ConnectionPage_LocalConflictRecovery" xml:space="preserve"><value>Close the conflicting app or review the gateway installation's service status and address, then retry.</value></data>
+  <data name="SettingsPage_LegacyNativeAiTitle" xml:space="preserve"><value>Native Gateway needs an update</value></data>
+  <data name="SettingsPage_LegacyNativeAiMessage" xml:space="preserve"><value>Managed Local AI requires an isolated native Gateway. Update the Gateway package and configure an isolated Gateway before using Local AI.</value></data>
+  <data name="Onboarding_LocalAi_NativeCheckingMessage" xml:space="preserve"><value>OpenClaw is checking the NVIDIA GPU, driver, CUDA, and memory requirements.</value></data>
 </root>

@@ -1155,9 +1155,9 @@ public sealed partial class ConnectionPage : Page
             },
             RecoveryCategory.LocalPortConflict => new[]
             {
-                "Another process is listening on the managed WSL gateway's local address.",
-                "OpenClaw automatically removes only a fully verified obsolete OpenClaw gateway. Unknown processes are never stopped.",
-                "Stop the conflicting app or run Reconfigure… to choose a different gateway address, then retry.",
+                LocalizationHelper.GetString("ConnectionPage_LocalConflictAddress"),
+                LocalizationHelper.GetString("ConnectionPage_LocalConflictOwnership"),
+                LocalizationHelper.GetString("ConnectionPage_LocalConflictRecovery"),
             },
             _ => new[]
             {

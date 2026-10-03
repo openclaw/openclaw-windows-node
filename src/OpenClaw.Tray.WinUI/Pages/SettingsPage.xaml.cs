@@ -3,6 +3,8 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Connection;
+using OpenClaw.Connection.LocalAi;
+using OpenClaw.SetupEngine;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClawTray.Presentation;
@@ -24,6 +26,9 @@ public sealed partial class SettingsPage : Page
     private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private SettingsPageViewModel? _viewModel;
     private bool _localGatewayInstalled;
+    private GatewayRegistry? _gatewayRegistry;
+    private GatewayRecord? _localGatewayTarget;
+    private LocalGatewayKind _localGatewayKind;
     private bool _uninstallInitiatedThisSession;
     private CancellationTokenSource? _uninstallCts;
     private AppState? _appState;
@@ -36,16 +41,20 @@ public sealed partial class SettingsPage : Page
 
     private enum UninstallUiState { Idle, InProgress, Success, Failure }
 
-    private static string GatewayIdleBodyText =>
-        $"Removes the WSL distro ({AppIdentity.SetupDistroName}), its disk image, autostart entry, and clears gateway credentials. Your MCP token is preserved. Onboarding will reset.";
+    private string GatewayIdleBodyText => _localGatewayKind switch
+    {
+        LocalGatewayKind.Native => LocalizationHelper.GetString("SettingsPage_RemoveNativeBody"),
+        LocalGatewayKind.LegacyNative => LocalizationHelper.GetString("SettingsPage_RemoveLegacyNativeBody"),
+        LocalGatewayKind.Wsl => string.Format(LocalizationHelper.GetString("SettingsPage_RemoveWslBody"),
+            GatewayRecordEditing.ResolveManagedDistroName(_localGatewayTarget ?? new GatewayRecord()) ?? AppIdentity.SetupDistroName),
+        _ => string.Empty,
+    };
 
 
     public SettingsPage()
     {
         InitializeComponent();
-        LocalGatewaySetupDescriptionText.Text =
-            $"Launches setup to install the app-owned {AppIdentity.SetupDistroName} WSL distro or re-run provider and model setup for an existing one. Existing local gateways are only replaced after confirmation.";
-        GatewayBodyText.Text = GatewayIdleBodyText;
+        LocalGatewaySetupDescriptionText.Text = LocalizationHelper.GetString("SettingsPage_SetupGatewayDescription");
         _gatewayUptimeRefreshTimer.Tick += OnGatewayUptimeRefreshTimerTick;
         DataContextChanged += OnDataContextChanged;
         Unloaded += OnUnloaded;
@@ -57,6 +66,9 @@ public sealed partial class SettingsPage : Page
         StoreMigrationCard.Visibility = InnoMigrationHandoff.IsAvailable ? Visibility.Visible : Visibility.Collapsed;
         PopulateAppInfo();
         InitializeGatewayInfo();
+        if (_gatewayRegistry is not null) _gatewayRegistry.Changed -= OnGatewayRegistryChanged;
+        _gatewayRegistry = CurrentApp.Registry;
+        if (_gatewayRegistry is not null) _gatewayRegistry.Changed += OnGatewayRegistryChanged;
         if (CurrentApp.Settings is { } settings)
             LoadGatewaySection(settings);
     }
@@ -170,6 +182,8 @@ public sealed partial class SettingsPage : Page
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        if (_gatewayRegistry is not null) _gatewayRegistry.Changed -= OnGatewayRegistryChanged;
+        _gatewayRegistry = null;
         if (_appState != null)
             _appState.PropertyChanged -= OnAppStateChanged;
         _appState = null;
@@ -306,19 +320,34 @@ public sealed partial class SettingsPage : Page
 
     private void LoadGatewaySection(SettingsManager settings)
     {
-        var setupStatePath = Path.Combine(SetupExistingGatewayClassifier.ResolveLocalDataPath(), "setup-state.json");
-        var activeGatewayAccess = GatewayHostAccessClassifier.Classify(CurrentApp.Registry?.GetActive());
+        if (_uninstallCts is not null) return;
+        ApplyLocalGatewaySection(CurrentApp.Registry?.GetActive(), PackageHelper.IsPackaged);
+    }
 
-        _localGatewayInstalled = File.Exists(setupStatePath)
-            || LocalGatewayUrlClassifier.IsLocalGatewayUrl(settings.GatewayUrl);
-
-        OpenClawOnboardCard.Visibility = activeGatewayAccess.CanControlWslGateway
+    internal void ApplyLocalGatewaySection(GatewayRecord? active, bool isPackaged)
+    {
+        var previousTarget = _localGatewayTarget;
+        _localGatewayTarget = active;
+        _localGatewayKind = LocalGatewaySettings.Classify(_localGatewayTarget);
+        _localGatewayInstalled = _localGatewayKind != LocalGatewayKind.None;
+        if (_localGatewayInstalled && previousTarget?.Id != _localGatewayTarget?.Id)
+            ApplyUninstallUiState(UninstallUiState.Idle);
+        GatewayBodyText.Text = GatewayIdleBodyText;
+        LocalGatewaySetupDescriptionText.Text = LocalizationHelper.GetString(
+            _localGatewayKind == LocalGatewayKind.Native
+                ? "SettingsPage_SetupNativeDescription" : "SettingsPage_SetupGatewayDescription");
+        OpenClawOnboardCard.Visibility = _localGatewayKind is LocalGatewayKind.Wsl or LocalGatewayKind.Native
             ? Visibility.Visible : Visibility.Collapsed;
         LocalGatewayExpander.Visibility = ComputeLocalGatewaySectionVisibility();
 
-        // MSIX warning: Path A (conservative) — show when packaged AND gateway installed.
-        MsixWarningBar.IsOpen = PackageHelper.IsPackaged && _localGatewayInstalled;
+        MsixWarningBar.IsOpen = isPackaged && _localGatewayKind == LocalGatewayKind.Wsl;
     }
+
+    private void OnGatewayRegistryChanged(object? sender, GatewayRegistryChangedEventArgs e) =>
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (CurrentApp.Settings is { } settings) LoadGatewaySection(settings);
+        });
 
     /// <summary>
     /// Returns Visible for the installed-gateway management card when a local gateway exists
@@ -335,7 +364,10 @@ public sealed partial class SettingsPage : Page
 
     private void OnOpenLocalGatewaySetup(object sender, RoutedEventArgs e)
     {
-        ((IAppCommands)CurrentApp).ShowOnboarding();
+        if (LocalGatewaySettings.Classify(CurrentApp.Registry?.GetActive()) == LocalGatewayKind.Native)
+            ((IAppCommands)CurrentApp).ShowGatewayWizard();
+        else
+            ((IAppCommands)CurrentApp).ShowOnboarding();
     }
 
     private void OnOpenGatewayWizard(object sender, RoutedEventArgs e)
@@ -412,31 +444,28 @@ public sealed partial class SettingsPage : Page
 
     private async Task OnRemoveGatewayAsync()
     {
+        var target = _localGatewayTarget;
+        if (target is null || !LocalGatewaySettings.IsSameTarget(target, CurrentApp.Registry?.GetActive()))
+        {
+            ShowUninstallError(LocalizationHelper.GetString("SettingsPage_GatewayRemovalTargetChanged"));
+            return;
+        }
+        var kind = LocalGatewaySettings.Classify(target);
         var dialogContent = new StackPanel { Spacing = 8 };
         dialogContent.Children.Add(new TextBlock
         {
-            Text = "This will permanently remove the following:",
+            Text = target.FriendlyName ?? target.Url,
             TextWrapping = TextWrapping.Wrap
         });
         dialogContent.Children.Add(new TextBlock
         {
-            Text = $"• WSL distro: {AppIdentity.SetupDistroName} (and its disk image)\n" +
-                   "• Autostart registry entry\n" +
-                   "• Gateway credentials (token and bootstrap token cleared)\n" +
-                   "• Setup state (onboarding will reset)",
+            Text = GatewayIdleBodyText,
             TextWrapping = TextWrapping.Wrap,
             Opacity = 0.7
         });
         dialogContent.Children.Add(new TextBlock
         {
-            Text = "Preserved: Your MCP token and root device key are NOT deleted.\n" +
-                   "Removed: Local gateway identity credentials and registry records.",
-            TextWrapping = TextWrapping.Wrap,
-            Opacity = 0.7
-        });
-        dialogContent.Children.Add(new TextBlock
-        {
-            Text = "This cannot be undone.",
+            Text = LocalizationHelper.GetString("SettingsPage_GatewayRemovalPermanent"),
             TextWrapping = TextWrapping.Wrap,
             Margin = new Microsoft.UI.Xaml.Thickness(0, 4, 0, 0),
             Opacity = 0.7
@@ -444,16 +473,21 @@ public sealed partial class SettingsPage : Page
 
         var dialog = new ContentDialog
         {
-            Title = "Remove Local Gateway?",
+            Title = LocalizationHelper.GetString("SettingsPage_GatewayRemovalTitle"),
             Content = dialogContent,
-            PrimaryButtonText = "Remove Local Gateway",
-            CloseButtonText = "Cancel",
+            PrimaryButtonText = LocalizationHelper.GetString("SettingsPage_RemoveLocalGatewayButton"),
+            CloseButtonText = LocalizationHelper.GetString("ConnectionPage_CancelAction"),
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = XamlRoot
         };
 
         var dialogResult = await dialog.ShowAsync();
         if (dialogResult != ContentDialogResult.Primary) return;
+        if (!LocalGatewaySettings.IsSameTarget(target, CurrentApp.Registry?.GetActive()))
+        {
+            ShowUninstallError(LocalizationHelper.GetString("SettingsPage_GatewayRemovalTargetChanged"));
+            return;
+        }
 
         _uninstallInitiatedThisSession = true;
         LocalGatewayExpander.Visibility = ComputeLocalGatewaySectionVisibility();
@@ -466,6 +500,32 @@ public sealed partial class SettingsPage : Page
         string? jsonOutput = null;
         try
         {
+            if (kind is LocalGatewayKind.Native or LocalGatewayKind.LegacyNative)
+            {
+                var binding = new LocalAiNativeBindingStore(new LocalAiPaths(AppIdentity.ResolveSetupLocalDataDirectory()));
+                await using var ownershipLock = await binding.AcquireAsync(_uninstallCts.Token);
+                if (binding.Exists)
+                    throw new InvalidOperationException(LocalizationHelper.GetString("SettingsPage_GatewayRemovalLocalAi"));
+                if (!SetupRunLock.TryAcquire(AppIdentity.ResolveRoamingDataDirectory(), out var setupLock, out var message))
+                    throw new InvalidOperationException(message);
+                using (setupLock)
+                {
+                    var manager = CurrentApp.ConnectionManager ??
+                        throw new InvalidOperationException("The Gateway connection manager is unavailable.");
+                    await manager.RemoveNativeGatewayAsync(target,
+                        new OpenClaw.SetupEngine.UI.NativeGatewayPackageResolver(), _uninstallCts.Token);
+                }
+                ShowUninstallSuccess(LocalizationHelper.GetString("SettingsPage_NativeGatewayRemoved"));
+                return;
+            }
+
+            if (CurrentApp.ConnectionManager is { } wslManager)
+                await wslManager.DisconnectByUserAsync();
+            if (!LocalGatewaySettings.IsSameTarget(target, CurrentApp.Registry?.GetActive()))
+                throw new InvalidOperationException(LocalizationHelper.GetString("SettingsPage_GatewayRemovalTargetChanged"));
+            var removalRegistry = CurrentApp.Registry ??
+                throw new InvalidOperationException("The Gateway registry is unavailable.");
+            var removalBaseline = removalRegistry.CapturePersistedSnapshot();
             var exePath = ResolveCurrentExecutablePath()
                 ?? throw new FileNotFoundException("OpenClaw tray executable could not be resolved for local gateway removal.");
 
@@ -478,22 +538,20 @@ public sealed partial class SettingsPage : Page
             };
             psi.ArgumentList.Add("--uninstall");
             psi.ArgumentList.Add("--confirm-destructive");
+            psi.ArgumentList.Add("--gateway-id");
+            psi.ArgumentList.Add(target.Id);
+            psi.ArgumentList.Add("--gateway-binding");
+            psi.ArgumentList.Add(GatewayDashboardBinding.Capture(target));
             psi.ArgumentList.Add("--json-output");
             psi.ArgumentList.Add(jsonOutput);
 
             proc = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start OpenClaw uninstall process.");
             await proc.WaitForExitAsync(_uninstallCts.Token);
+            removalRegistry.AdoptPersistedSnapshot(removalBaseline);
 
             if (proc.ExitCode == 0)
             {
-                CurrentApp.Registry?.Load();
-                OpenClawOnboardCard.Visibility = Visibility.Collapsed;
-                ApplyUninstallUiState(UninstallUiState.Success);
-                UninstallResultBar.Severity = InfoBarSeverity.Success;
-                UninstallResultBar.Title = LocalizationHelper.GetString("SettingsPage_LocalGatewayRemovedTitle");
-                UninstallResultBar.Message = LocalizationHelper.GetString("SettingsPage_LocalGatewayRemovedMessage");
-                UninstallResultBar.ActionButton = null;
-                UninstallResultBar.IsOpen = true;
+                ShowUninstallSuccess(LocalizationHelper.GetString("SettingsPage_LocalGatewayRemovedMessage"));
             }
             else
             {
@@ -555,7 +613,20 @@ public sealed partial class SettingsPage : Page
             catch (Exception ex) { Logger.Warn($"SettingsPage: Failed to delete uninstall result file '{jsonOutput}': {ex.Message}"); }
             _uninstallCts?.Dispose();
             _uninstallCts = null;
+            if (CurrentApp.Settings is { } settings) LoadGatewaySection(settings);
         }
+    }
+
+    private void ShowUninstallSuccess(string message)
+    {
+        _localGatewayInstalled = false;
+        OpenClawOnboardCard.Visibility = Visibility.Collapsed;
+        ApplyUninstallUiState(UninstallUiState.Success);
+        UninstallResultBar.Severity = InfoBarSeverity.Success;
+        UninstallResultBar.Title = LocalizationHelper.GetString("SettingsPage_LocalGatewayRemovedTitle");
+        UninstallResultBar.Message = message;
+        UninstallResultBar.ActionButton = null;
+        UninstallResultBar.IsOpen = true;
     }
 
     private static string? ResolveCurrentExecutablePath()
@@ -615,7 +686,7 @@ public sealed partial class SettingsPage : Page
                 });
                 sp.Children.Add(new TextBlock
                 {
-                    Text = LocalizationHelper.GetString("SettingsPage_RemovingDistro"),
+                    Text = LocalizationHelper.GetString("SettingsPage_RemovingGateway"),
                     VerticalAlignment = VerticalAlignment.Center
                 });
                 RemoveGatewayButton.Content = sp;

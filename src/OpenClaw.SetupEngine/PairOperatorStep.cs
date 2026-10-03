@@ -568,8 +568,7 @@ public sealed class PairOperatorStep : SetupStep
 
         // Null operator device token (mirrors old uninstall step 7)
         // Check if external gateways remain — if so, preserve root device tokens
-        var hasExternalGateways = registry.GetAll().Any(r =>
-            !r.IsLocal && !(r.SshTunnel is null && LocalGatewayUrlClassifier.IsLocalGatewayUrl(r.Url)));
+        var hasExternalGateways = registry.GetAll().Any(r => !IsSetupManagedLocalRecord(r, ctx));
 
         if (hasExternalGateways)
         {
@@ -589,7 +588,7 @@ public sealed class PairOperatorStep : SetupStep
 
     internal static bool IsSetupManagedLocalRecord(GatewayRecord record, SetupContext ctx)
     {
-        if (!record.IsLocal || record.SshTunnel != null)
+        if (record.NativePackageFamilyName is not null || !record.IsLocal || record.SshTunnel != null)
             return false;
 
         if (string.Equals(record.SetupManagedDistroName, ctx.DistroName, StringComparison.Ordinal))

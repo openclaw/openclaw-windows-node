@@ -9,7 +9,8 @@ internal static class WslKeepAlivePolicy
     private static string DefaultSetupManagedFriendlyName => $"Local ({AppIdentity.SetupDistroName})";
 
     public static bool CanManageGateway(GatewayRecord? activeRecord, bool isIsolated) =>
-        !isIsolated || !string.IsNullOrWhiteSpace(activeRecord?.SetupManagedDistroName);
+        activeRecord?.NativePackageFamilyName is null &&
+        (!isIsolated || !string.IsNullOrWhiteSpace(activeRecord?.SetupManagedDistroName));
 
     public static bool ShouldStart(GatewayRecord? activeRecord, string? legacyGatewayUrl)
     {
@@ -18,7 +19,7 @@ internal static class WslKeepAlivePolicy
 
         if (activeRecord is not null)
         {
-            if (activeRecord.SshTunnel is not null)
+            if (activeRecord.NativePackageFamilyName is not null || activeRecord.SshTunnel is not null)
                 return false;
 
             return activeRecord.IsLocal
@@ -34,7 +35,7 @@ internal static class WslKeepAlivePolicy
         string? setupStateDistroName,
         string? environmentOverride)
     {
-        if (GatewayFixtureIsolation.IsEnabled)
+        if (GatewayFixtureIsolation.IsEnabled || activeRecord?.NativePackageFamilyName is not null)
             return null;
 
         if (activeRecord is not null &&
@@ -116,9 +117,9 @@ internal static class WslKeepAlivePolicy
     }
 
     public static bool IsSetupManagedLocalRecord(GatewayRecord record)
-        => GatewayRecordEditing.IsSetupManagedLocalRecord(record) ||
+        => record.NativePackageFamilyName is null && (GatewayRecordEditing.IsSetupManagedLocalRecord(record) ||
            (record.SshTunnel is null &&
-            IsLegacyDefaultSetupManagedLocalRecord(record));
+            IsLegacyDefaultSetupManagedLocalRecord(record)));
 
     public static bool IsSameSetupManagedGateway(
         GatewayRecord expected,

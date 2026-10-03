@@ -1,5 +1,86 @@
 # Connection Architecture
 
+## Local gateway management in Settings
+
+`LocalGatewaySettings` selects management actions from the active saved record's
+installation ownership, never merely a loopback URL or a leftover WSL setup file.
+Native provider/model configuration uses the existing bound native AI setup route.
+WSL onboarding retains its existing installation milestone. Native records never
+start or adopt WSL keepalives, including records with legacy-looking display names.
+Reopened WSL onboarding pins the selected record, endpoint and managed distro
+through AI setup and workspace finalization; HTTPS/Tailscale port 443 is never
+treated as the WSL service port. An already open setup window retains its owner
+instead of being repointed to a newly selected Gateway.
+
+Connection port-conflict guidance is installation-neutral, Diagnostics displays
+the current registry/manager endpoint instead of stale settings, and WSL loopback
+Gateways retain their WSL tray label. Native Local AI checks do not claim WSL
+requirements. Explicit Add WSL choices remain WSL-labelled by design.
+Connection Start/Stop/Restart and terminal controls, plus Diagnostics Doctor,
+remain WSL-only and hidden for native. This change does not add native equivalents.
+
+**Remove Local Gateway** is destructive installation removal, distinct from
+Connection's saved-connection **Remove**. Native isolated removal invokes the
+saved family's qualified `clawctl teardown --force --json`, validates its versioned
+acknowledgement, then removes this profile's identity and saved connection.
+This deletes the package-owned isolated account, workspace and Gateway data for
+the current Windows user, including access from other Companion profiles using
+that same package. It leaves the Store package, WSL installations, other saved
+gateways, Companion settings and MCP token installed. Duplicate isolated references
+to the same package must be forgotten before installation removal.
+Legacy native removal stops the owned runtime, requires no remaining listener,
+and deletes only its Companion-owned profile, without resolving or invoking the
+package. Upgraded or uninstalled legacy packages do not block profile cleanup.
+Workspace links are deleted as links, without traversing their targets.
+`GatewayIdentityRemoval` stages the profile outside the startup-scanned `gateways`
+directory, commits the
+registry removal, and restores the profile if that commit fails. A failure to
+delete committed staging data reports its exact remaining path rather than
+claiming complete cleanup. Read-only workspace files are cleared before deletion;
+link targets are not modified.
+Retries also detect staging directories left by an interrupted process, before
+treating a missing profile as successfully removed. They retain the connection
+and report the exact recovery folder without automatically restoring or deleting
+its contents.
+
+The native removal owner runs under the connection transition gate, checks the
+confirmed record and persisted registry again at asynchronous boundaries, and
+preserves retry state on package failure or unconfirmed output. Unrelated saved
+gateway edits do not block acknowledged removal; changed target authority still
+does. A post-teardown cleanup error explicitly states that the installation is
+already removed. Settings holds
+the setup lock and Local AI binding lock; an existing native Local AI receipt
+requires explicit Stop and Release Gateway ownership before native removal.
+An unrelated native binding does not block targeted WSL removal, which preserves
+Local AI files.
+WSL removal passes the confirmed gateway ID and endpoint binding to the headless
+engine's dedicated `WslGatewayRemoval` path, not its profile-wide uninstaller.
+Before any lifecycle action, the current WSL registration must match the managed
+install path and explicit ownership metadata or a path-bound installation marker.
+A legacy display name alone never authorizes unregister. The owner stops only
+that distro's keepalive, removes the distro and disk image, and forgets only its
+workspace/setup receipts. Local AI, startup entries, approvals, other gateways and
+other workspace receipts remain untouched. The saved target and identity remain
+until installation cleanup succeeds, allowing retry after unregister or disk
+cleanup failure. Missing-registration retries never issue an unregister command.
+Before unregister, a per-target removal receipt pins the registration and managed
+path so residual disk cleanup can resume even when the older profile-wide marker
+belongs to another distro. Registration identity is rechecked immediately before
+each terminate/unregister dispatch; changed or unavailable registrations fail
+closed without a name-only fallback. Settings reconciles the child process's
+saved registry on both successful and failed exits without overwriting concurrent
+in-memory edits.
+Invalid or mismatched WSL removal receipts return a structured failure with the
+receipt's recovery path, without modifying the receipt or issuing a WSL command.
+The original untargeted `--uninstall` retains full-profile cleanup semantics.
+Removing a Tailscale-backed distro destroys its local credentials; its offline
+machine entry may still require removal in the Tailscale administration console.
+The package command contract was checked against
+`openclaw/openclaw-windows-packaging` commit
+`1134c50cd589f60fcb2ed71c15229fef12275402`, `ClawCtlJson.cs` and
+`ClawCtlCommandLine.cs`. Automated fake-package tests do not constitute live
+destructive teardown proof.
+
 ## Native Local AI ownership and configuration
 
 Native Local AI configuration uses authenticated Gateway RPC, not CLI batch

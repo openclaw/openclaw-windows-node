@@ -5,6 +5,23 @@ namespace OpenClaw.Tray.Tests;
 
 public class WslKeepAlivePolicyTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NativeGatewayNeverStartsOrAdoptsWslKeepalive(bool isolated)
+    {
+        var native = new GatewayRecord
+        {
+            Id = "native", IsLocal = true, Url = "ws://localhost:18789",
+            NativePackageFamilyName = "OpenClaw.Gateway_123456789abcd",
+            FriendlyName = "Local (OpenClawGateway)",
+        };
+        Assert.False(WslKeepAlivePolicy.CanManageGateway(native, isolated));
+        Assert.False(WslKeepAlivePolicy.ShouldStart(native, "ws://localhost:18789"));
+        Assert.False(WslKeepAlivePolicy.IsSetupManagedLocalRecord(native));
+        Assert.Null(WslKeepAlivePolicy.ResolveDistroName(native, "OldWslGateway", "Override"));
+    }
+
     [Fact]
     public void IsolatedProfile_RequiresExplicitManagedGatewayBeforeAnyLifecycleAction()
     {

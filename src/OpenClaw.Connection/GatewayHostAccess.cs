@@ -61,6 +61,10 @@ public static class GatewayHostAccessClassifier
             return GatewayHostAccessPlan.None();
         }
 
+        if (record.NativePackageFamilyName is not null)
+            return GatewayHostAccessPlan.None(record.Id,
+                GatewayHostAccessLocalization.GetString("GatewayHostAccess_NativeManaged"));
+
         var distroName = Normalize(record.SetupManagedDistroName);
         var sshUser = Normalize(record.SshTunnel?.User);
         var sshHost = Normalize(record.SshTunnel?.Host);

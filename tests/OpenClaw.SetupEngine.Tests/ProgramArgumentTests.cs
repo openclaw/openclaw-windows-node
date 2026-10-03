@@ -20,6 +20,8 @@ public sealed class ProgramArgumentTests : IDisposable
         "--tailscale-hostname",
         "--autostart-name",
         "--startup-task-name",
+        "--gateway-id",
+        "--gateway-binding",
     ];
 
     private static readonly string[] s_expectedFlagOptionNames =

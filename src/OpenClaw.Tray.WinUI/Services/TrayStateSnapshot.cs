@@ -15,6 +15,7 @@ internal sealed record TrayStateSnapshot
     public string? AuthFailureMessage          { get; init; }
     public DateTime LastCheckTime              { get; init; }
     public SettingsManager? Settings           { get; init; }
+    public GatewayRecord? ActiveGateway        { get; init; }
     public bool IsMcpRunning                   { get; init; }
     public string? McpStartupError             { get; init; }
 }

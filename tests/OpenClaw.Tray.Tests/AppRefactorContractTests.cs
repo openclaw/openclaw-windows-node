@@ -1148,7 +1148,9 @@ public sealed class AppRefactorContractTests
         Assert.Contains("\"Update_Message_Skipped_Dev\"", updateCoordinator);
         Assert.Contains("\"--data-dir\", AppIdentity.ResolveRoamingDataDirectory()", cliUninstall);
         Assert.Contains("\"--local-data-dir\", AppIdentity.ResolveSetupLocalDataDirectory()", cliUninstall);
-        Assert.Contains("\"--distro-name\", AppIdentity.SetupDistroName", cliUninstall);
+        Assert.Contains("var distroName = AppIdentity.SetupDistroName", cliUninstall);
+        Assert.Contains("distroName = GatewayRecordEditing.ResolveManagedDistroName(target!)!", cliUninstall);
+        Assert.Contains("\"--distro-name\", distroName", cliUninstall);
         Assert.Contains("\"--autostart-name\", AppIdentity.AutoStartRegistryName", cliUninstall);
         Assert.Contains("AppIdentity.SetupDistroName", settingsPage);
         Assert.Contains("AppIdentity.SetupGatewayUrl", settingsManager);
@@ -1165,7 +1167,8 @@ public sealed class AppRefactorContractTests
         Assert.Contains("RootFrame.Content is not ProgressPage { IsPipelineRunning: true }", setupWindow);
         Assert.Contains("RootFrame.Content is not WizardPage", setupWindow);
         Assert.Contains("TryNavigateToGatewayInstalledMilestone", setupWindow);
-        Assert.Contains("setupWindow.TryNavigateToGatewayInstalledMilestone()", source);
+        Assert.Contains("existingWslGateway: existingWslGateway", source);
+        Assert.Contains("retaining its pinned Gateway and current page", source);
         AssertInOrder(
             setupWindow,
             "SetupRunLock.TryAcquire",
@@ -1699,7 +1702,7 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
-    public void Settings_OnboardCardRequiresActiveManagedWslGateway()
+    public void Settings_OnboardCardRequiresActiveManagedWslOrNativeGateway()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
         var xaml = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml"));
@@ -1707,9 +1710,10 @@ public sealed class AppRefactorContractTests
 
         Assert.Contains("x:Name=\"OpenClawOnboardCard\"", xaml);
         Assert.Contains("Visibility=\"Collapsed\"", xaml);
-        Assert.Contains("GatewayHostAccessClassifier.Classify(CurrentApp.Registry?.GetActive())", code);
-        Assert.Contains("OpenClawOnboardCard.Visibility = activeGatewayAccess.CanControlWslGateway", code);
-        Assert.Contains("CurrentApp.Registry?.Load();", code);
+        Assert.Contains("ApplyLocalGatewaySection(CurrentApp.Registry?.GetActive(), PackageHelper.IsPackaged)", code);
+        Assert.Contains("LocalGatewaySettings.Classify(_localGatewayTarget)", code);
+        Assert.Contains("OpenClawOnboardCard.Visibility = _localGatewayKind is LocalGatewayKind.Wsl or LocalGatewayKind.Native", code);
+        Assert.Contains("removalRegistry.AdoptPersistedSnapshot(removalBaseline);", code);
         Assert.Contains("OpenClawOnboardCard.Visibility = Visibility.Collapsed;", code);
     }
 

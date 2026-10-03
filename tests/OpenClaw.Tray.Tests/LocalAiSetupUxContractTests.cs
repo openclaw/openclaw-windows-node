@@ -363,7 +363,8 @@ public sealed class LocalAiSetupUxContractTests
         string[] setupResourceCalls =
         [
             "SetupLocalization.GetString(\"Onboarding_LocalAi_CheckingTitle\")",
-            "SetupLocalization.GetString(\"Onboarding_LocalAi_CheckingMessage\")",
+            "\"Onboarding_LocalAi_CheckingMessage\"",
+            "\"Onboarding_LocalAi_NativeCheckingMessage\"",
             "SetupLocalization.GetString(\"Onboarding_LocalAi_CheckingHelpText\")",
             "SetupLocalization.GetString(\"Onboarding_LocalAi_ProbeUnknownTitle\")",
             "SetupLocalization.GetString(\"Onboarding_LocalAi_ProbeUnknownMessage\")",
@@ -391,6 +392,7 @@ public sealed class LocalAiSetupUxContractTests
             "Onboarding_LocalAi_UnavailableDetailsButton.Content",
             "Onboarding_LocalAi_CheckingTitle",
             "Onboarding_LocalAi_CheckingMessage",
+            "Onboarding_LocalAi_NativeCheckingMessage",
             "Onboarding_LocalAi_CheckingHelpText",
             "Onboarding_LocalAi_ProbeUnknownTitle",
             "Onboarding_LocalAi_ProbeUnknownMessage",
