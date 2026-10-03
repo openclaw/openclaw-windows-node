@@ -57,18 +57,21 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
     }
 
     public static async Task<NativeGatewaySetupConnection> ConnectAsync(
-        NativeGatewaySetupSession owner, CancellationToken ct = default)
+        NativeGatewaySetupSession owner, CancellationToken ct = default, IProgress<SetupLoadingStep>? progress = null)
     {
+        progress?.Report(SetupLoadingStep.ConnectGateway);
         await owner.PrepareConnectionAsync(ct);
-        return await ConnectCoreAsync(owner, owner.AuthorizeAsync, allowPairing: true, ct);
+        return await ConnectCoreAsync(owner, owner.AuthorizeAsync, allowPairing: true, ct, progress);
     }
 
     internal static Task<NativeGatewaySetupConnection> ConnectForFinalizationAsync(
-        NativeGatewaySetupSession owner, Func<CancellationToken, Task> authorize, CancellationToken ct) =>
-        ConnectCoreAsync(owner, authorize, allowPairing: false, ct);
+        NativeGatewaySetupSession owner, Func<CancellationToken, Task> authorize, CancellationToken ct,
+        IProgress<SetupLoadingStep>? progress = null) =>
+        ConnectCoreAsync(owner, authorize, allowPairing: false, ct, progress);
 
     private static async Task<NativeGatewaySetupConnection> ConnectCoreAsync(
-        NativeGatewaySetupSession owner, Func<CancellationToken, Task> authorize, bool allowPairing, CancellationToken ct)
+        NativeGatewaySetupSession owner, Func<CancellationToken, Task> authorize, bool allowPairing, CancellationToken ct,
+        IProgress<SetupLoadingStep>? progress)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, owner.LifetimeToken);
         for (var attempt = 0; attempt < 2; attempt++)
@@ -100,6 +103,7 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
             using var cancellation = linked.Token.Register(client.Dispose);
             try
             {
+                progress?.Report(SetupLoadingStep.ConnectGateway);
                 await client.ConnectAsync().WaitAsync(linked.Token);
                 await connected.Task.WaitAsync(TimeSpan.FromSeconds(20), linked.Token);
                 linked.Token.ThrowIfCancellationRequested();
@@ -108,6 +112,7 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
             catch (NativePairingException error) when (allowPairing && attempt == 0)
             {
                 client.Dispose();
+                progress?.Report(SetupLoadingStep.PairGateway);
                 await owner.ApproveWizardPairingAsync(error.RequestId, linked.Token);
             }
             catch

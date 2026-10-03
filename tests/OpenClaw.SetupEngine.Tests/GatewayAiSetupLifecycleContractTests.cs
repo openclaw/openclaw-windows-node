@@ -3,7 +3,27 @@ namespace OpenClaw.SetupEngine.Tests;
 public sealed class GatewayAiSetupLifecycleContractTests
 {
     [Fact]
-    public void VerifiedCompletion_ShowsOwnedChooserWithoutFinalizingOrIssuingHandoff()
+    public void NativeConnectionLossShowsFailureAndRetryInBothPreparationPaths()
+    {
+        var page = ReadSource("OpenClaw.SetupEngine.UI", "Pages", "NativeGatewaySetupPage.xaml.cs");
+        const string handler = "catch (OperationCanceledException connectionFailure) when (!cancellationToken.IsCancellationRequested)";
+        var handlers = page.Split(handler, StringSplitOptions.None);
+        Assert.Equal(3, handlers.Length);
+        foreach (var following in handlers.Skip(1))
+        {
+            var body = following[..following.IndexOf("catch (", StringComparison.Ordinal)];
+            Assert.Contains("SetupInstallationStatus.Failed", body);
+            Assert.Contains("SetupLogger.Sanitize(connectionFailure.Message)", body);
+            Assert.Contains("RetryButton.Visibility = Visibility.Visible", body);
+            Assert.DoesNotContain("SetupInstallationStatus.Cancelled", body);
+        }
+        Assert.Equal(2, page.Split(
+            "catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)",
+            StringSplitOptions.None).Length - 1);
+    }
+
+    [Fact]
+    public void VerifiedCompletion_TransfersTrackedFinishingWithoutAwaitingItsOwnDrain()
     {
         var window = ReadSource("OpenClaw.SetupEngine.UI", "SetupWindow.xaml.cs");
         Assert.Contains("_startAtLocalAiRecoveryReview && _pinLocalAiRecoveryModel", window);
@@ -12,9 +32,10 @@ public sealed class GatewayAiSetupLifecycleContractTests
         Assert.Contains("GatewayDashboardBinding.Capture(active) != completion.EndpointBinding",
             ReadSource("OpenClaw.SetupEngine", "SetupGatewaySession.cs"));
         var ready = window[window.IndexOf("private Task CompleteVerifiedAiSetupAsync", StringComparison.Ordinal)..
-            window.IndexOf("internal bool OwnsReadyChoice", StringComparison.Ordinal)];
-        Assert.Contains("NavigateTo(typeof(AiReadyPage)", ready);
-        Assert.Contains("new AiReadyPageArgs(_readyChoice, this)", ready);
+            window.IndexOf("private async Task ObservePreparationAsync", StringComparison.Ordinal)];
+        Assert.Contains("NavigateTo(typeof(AiCompletionPage)", ready);
+        Assert.Contains("_preparationTask = ObservePreparationAsync(_completionPreparation)", ready);
+        Assert.DoesNotContain("typeof(AiReadyPage)", ready);
         Assert.DoesNotContain("return CompleteSetupAsync()", ready);
         Assert.DoesNotContain(".Issue(", ready);
         Assert.DoesNotContain("await _aiPageCleanupTask", ready);
@@ -49,7 +70,11 @@ public sealed class GatewayAiSetupLifecycleContractTests
         Assert.Contains("if (_closed || ct.IsCancellationRequested)", page);
         Assert.Contains("ObjectDisposedException.ThrowIf(_closed, this);", page);
         Assert.Contains("if (!_closed && generation == _generation && Client?.Phase == GatewayAiSetupPhase.Verified)", page);
-        Assert.Contains("await _activeRequest.WaitAsync(timeout.Token);", page);
+        Assert.Contains("await _requestDrain.DrainAsync(_activeRequest, retainRequestOwnership", page);
+        Assert.Contains("SetupPageRequestDrain.RequiresOwnership(Client?.Phase,", page);
+        Assert.DoesNotContain("await _activeRequest;", page[page.IndexOf("private async Task CloseCoreAsync", StringComparison.Ordinal)..
+            page.IndexOf("private async Task InitializeAsync", StringComparison.Ordinal)]);
+        Assert.DoesNotContain("await _activeRequest.WaitAsync(timeout.Token);", page);
         Assert.Contains("await client.CancelAsync(ct).WaitAsync(CloseTimeout, ct);", page);
         var session = ReadSource("OpenClaw.SetupEngine", "SetupGatewaySession.cs");
         Assert.Contains("ct.Register(static state => ((OpenClawGatewayClient)state!).Dispose(), client)", session);
@@ -93,7 +118,7 @@ public sealed class GatewayAiSetupLifecycleContractTests
         Assert.Contains("_providerDialog.CancelRequested -= ProviderCancelRequested;", page);
         Assert.Contains("if (_closed || _cancelling)", page);
         Assert.Contains("if (Client?.SessionId is null)", page);
-        Assert.Contains("private bool ProviderPending => _providerOperationActive ||", page);
+        Assert.Contains("private bool ProviderPending => !ManagerRecoveryBlocked && (_providerOperationActive ||", page);
         Assert.Contains("var showProvider = ProviderPending", page);
         Assert.Contains("GatewayAiSetupPresentation.ShowProviderDialog(step, phase, _busy", page);
         Assert.Contains("ProviderActivity.Visibility = Visible(inlineProvider)", page);

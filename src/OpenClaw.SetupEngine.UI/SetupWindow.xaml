@@ -23,6 +23,7 @@
 
         <!-- Content -->
         <Frame x:Name="RootFrame" Grid.Row="1" Navigated="RootFrame_Navigated" NavigationFailed="RootFrame_NavigationFailed" />
+        <controls:SetupLoadingView x:Name="LoadingOverlay" Grid.Row="1" Visibility="Collapsed" />
     </Grid>
 
 </Window>

@@ -98,12 +98,17 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\StoreMigrationListing.cs" Link="Services\StoreMigrationListing.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SetupDashboardHandoff.cs" Link="Services\SetupDashboardHandoff.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SetupDashboardHandoffStore.cs" Link="Services\SetupDashboardHandoffStore.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SetupReadyObservation.cs" Link="Services\SetupReadyObservation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SetupDashboardLiveFacts.cs" Link="Services\SetupDashboardLiveFacts.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\GatewayDashboardLauncher.cs" Link="Services\GatewayDashboardLauncher.cs" />
     <Compile Include="..\..\src\OpenClaw.SetupEngine\GatewayAiSetupCompletion.cs" Link="GatewayAiSetupCompletion.cs" />
     <Compile Include="..\..\src\OpenClaw.SetupEngine\GatewayAiSetupModels.cs" Link="GatewayAiSetupModels.cs" />
     <Compile Include="..\..\src\OpenClaw.SetupEngine\NativeLocalAiGatewayTarget.cs" Link="NativeLocalAiGatewayTarget.cs" />
     <Compile Include="..\..\src\OpenClaw.SetupEngine\SetupNativeCompletion.cs" Link="SetupNativeCompletion.cs" />
+    <Compile Include="..\..\src\OpenClaw.SetupEngine\GatewayAiSetupClient.cs" Link="GatewayAiSetupClient.cs" />
+    <Compile Include="..\..\src\OpenClaw.SetupEngine\SetupNativeReadyBinding.cs" Link="SetupNativeReadyBinding.cs" />
+    <Compile Include="..\..\src\OpenClaw.SetupEngine\SetupLoadingProgress.cs" Link="SetupLoadingProgress.cs" />
+    <Compile Include="..\..\src\OpenClaw.SetupEngine\SetupModelVerification.cs" Link="SetupModelVerification.cs" />
     <Compile Include="..\..\src\OpenClaw.SetupEngine\SetupNativeCompletionTiming.cs" Link="SetupNativeCompletionTiming.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SetupNativeHandoffLauncher.cs" Link="Services\SetupNativeHandoffLauncher.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\SetupNativeNavigationRequest.cs" Link="Presentation\SetupNativeNavigationRequest.cs" />

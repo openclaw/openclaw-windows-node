@@ -17,7 +17,8 @@ public enum NativeLocalAiOwnershipState
 
 public enum LocalAiSetupStage
 {
-    CheckingHardware, CheckingFiles, PreparingGateway, StartingRuntime, PublishingProvider
+    CheckingHardware, CheckingFiles, PreparingGateway, StartingRuntime, PublishingProvider,
+    CheckingConfiguration, VerifyingEndpoint
 }
 
 /// <summary>The exact existing Gateway, not a request to create or replace one.</summary>

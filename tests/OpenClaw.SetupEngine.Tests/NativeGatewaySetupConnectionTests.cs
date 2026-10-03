@@ -13,6 +13,112 @@ public sealed class NativeGatewaySetupConnectionTests
     private const string Token = "native-loopback-fixture-token-not-a-production-credential";
     private const string Model = "fixture/native-model";
 
+    [Fact]
+    public async Task FinalizationReportsRealSubstepsBeforePausedHealthAndPublishesOnlyAfterVerification()
+    {
+        using var loading = new SetupLoadingProgress();
+        using var scope = loading.Begin(SetupLoadingGroup.Finishing, SetupLoadingStep.Drain);
+        var checkProgress = false;
+        object Respond(string method, JsonElement parameters)
+        {
+            if (checkProgress && method == "openclaw.setup.verify")
+                Assert.Equal(SetupLoadingStep.VerifyModel, loading.Current!.Step);
+            return Reply(method, parameters);
+        }
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(Respond), Token);
+        using var fixture = CreateFixture(server, isolated: true);
+        await using var session = await fixture.PrepareAsync();
+        GatewayAiSetupCompletion proof;
+        await using (var connection = await NativeGatewaySetupConnection.ConnectAsync(session))
+        {
+            var client = new GatewayAiSetupClient(connection, Model);
+            await client.VerifyConfiguredAsync(Model);
+            proof = client.GetVerifiedCompletion();
+        }
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Host.Validate = () => Assert.Equal(SetupLoadingStep.CheckConfiguration, loading.Current!.Step);
+        fixture.Host.Health = () =>
+        {
+            Assert.Equal(SetupLoadingStep.CheckHealth, loading.Current!.Step);
+            entered.SetResult();
+        };
+        fixture.Host.HealthAsync = () => release.Task;
+        fixture.Runtime.Stop = () => Assert.Equal(SetupLoadingStep.StopGateway, loading.Current!.Step);
+        var stages = new List<SetupLoadingStep>();
+        loading.Changed += () => { if (loading.Current is { } current) stages.Add(current.Step); };
+        checkProgress = true;
+        var completing = session.CompleteVerifiedAsync(proof, new CapabilitiesConfig(), default,
+            afterVerification: (_, _) =>
+            {
+                Assert.Equal(SetupLoadingStep.ReconcileLocalAi, loading.Current!.Step);
+                return Task.CompletedTask;
+            }, progress: scope);
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.False(completing.IsCompleted);
+            Assert.Empty(fixture.Registry.GetAll());
+        }
+        finally { release.TrySetResult(); }
+        await completing;
+        Assert.Contains(SetupLoadingStep.ApplyCapabilities, stages);
+        Assert.Contains(SetupLoadingStep.RestartGateway, stages);
+        Assert.Contains(SetupLoadingStep.VerifyModel, stages);
+        Assert.Contains(SetupLoadingStep.PublishGateway, stages);
+        Assert.True(session.IsPublished);
+    }
+
+    [Fact]
+    public async Task PublishedProgressReportsRecoveryBeforeWaitingThenFreshConnectionAndModelCheck()
+    {
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(Reply), Token);
+        using var fixture = CreateFixture(server, isolated: true);
+        GatewayAiSetupCompletion proof;
+        await using (var session = await fixture.PrepareAsync())
+        {
+            await using (var connection = await NativeGatewaySetupConnection.ConnectAsync(session))
+            {
+                var client = new GatewayAiSetupClient(connection, Model);
+                await client.VerifyConfiguredAsync(Model);
+                proof = client.GetVerifiedCompletion();
+            }
+            await session.CompleteVerifiedAsync(proof, new CapabilitiesConfig(), default);
+        }
+        var runtime = new NativeGatewaySetupTests.Runtime(fixture.Events);
+        await using var manager = new GatewayConnectionManager(
+            new CredentialResolver(DeviceIdentityFileReader.Instance), new GatewayClientFactory(),
+            fixture.Registry, NullLogger.Instance, nativeGatewayRuntime: runtime);
+        await manager.ConnectAsync(proof.GatewayId);
+        using var loading = new SetupLoadingProgress();
+        using var scope = loading.Begin(SetupLoadingGroup.Finishing, SetupLoadingStep.StartCompanion);
+        var stages = new List<SetupLoadingStep>();
+        loading.Changed += () => { if (loading.Current is { } current) stages.Add(current.Step); };
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        // Synthetic managed-use intent tests the wait signal, not a real inference runtime.
+        var expected = proof with { RequiresManagedLocalAi = true };
+        var verification = SetupNativeCompletionVerifier.VerifyAsync(fixture.Temp.Path, expected, deadline.Token, manager,
+            async (_, ct) =>
+            {
+                Assert.Equal(SetupLoadingStep.RecoverLocalAi, loading.Current!.Step);
+                entered.SetResult();
+                await release.Task.WaitAsync(ct);
+            }, captureReadiness: true, progress: scope);
+        try
+        {
+            await entered.Task.WaitAsync(deadline.Token);
+            Assert.False(verification.IsCompleted);
+        }
+        finally { release.TrySetResult(); }
+        var ready = await verification;
+        Assert.NotNull(ready.ReadyBinding);
+        Assert.True(stages.IndexOf(SetupLoadingStep.RecoverLocalAi) > stages.IndexOf(SetupLoadingStep.ConnectGateway));
+        Assert.True(stages.IndexOf(SetupLoadingStep.ReconnectGateway) > stages.IndexOf(SetupLoadingStep.RecoverLocalAi));
+        Assert.True(stages.IndexOf(SetupLoadingStep.VerifyModel) > stages.IndexOf(SetupLoadingStep.ReconnectGateway));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -374,6 +480,11 @@ public sealed class NativeGatewaySetupConnectionTests
             new CredentialResolver(DeviceIdentityFileReader.Instance), new GatewayClientFactory(),
             fixture.Registry, NullLogger.Instance, nativeGatewayRuntime: runtime);
         await manager.ConnectAsync(proof.GatewayId);
+        // Establish the real fixture handshake before measuring a manual-clock phase.
+        // ConnectAsync can return before the operator handshake is published.
+        using (var ready = new CancellationTokenSource(TimeSpan.FromSeconds(20)))
+            await GatewayAiSetupTransport.BorrowNativeAsync(
+                fixture.Temp.Path, manager, proof.GatewayId, ready.Token, proof.EndpointBinding);
         var clock = new ManualTimeProvider();
         using var caller = new CancellationTokenSource();
         CancellationToken recoveryToken = default;
@@ -389,17 +500,101 @@ public sealed class NativeGatewaySetupConnectionTests
             fixture.Temp.Path, proof, caller.Token, manager, Recover, clock);
         try
         {
-            await entered.Task.WaitAsync(TimeSpan.FromSeconds(15));
+            var admission = await Task.WhenAny(entered.Task, verifying).WaitAsync(TimeSpan.FromSeconds(15));
+            if (ReferenceEquals(admission, verifying))
+                await verifying; // Surface a pre-phase failure instead of masking it as an entry timeout.
+            Assert.True(entered.Task.IsCompleted);
             clock.Advance(blockModel ? SetupNativeCompletionTiming.ModelVerification : SetupNativeCompletionTiming.ModelRecovery);
             var error = await Assert.ThrowsAsync<SetupNativeCompletionTimeoutException>(() => verifying.WaitAsync(TimeSpan.FromSeconds(5)));
             Assert.Contains(blockModel ? "selected AI model" : "Local AI recovery", error.Message);
             Assert.False(caller.IsCancellationRequested);
             if (!blockModel) Assert.True(recoveryToken.IsCancellationRequested);
         }
-        finally { block = false; releaseModel.Set(); caller.Cancel(); }
+        finally
+        {
+            block = false;
+            releaseModel.Set();
+            caller.Cancel();
+            try { await verifying.WaitAsync(TimeSpan.FromSeconds(5)); }
+            catch (Exception) when (verifying.IsCompleted) { }
+        }
         using var retryDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var verified = await SetupNativeCompletionVerifier.VerifyAsync(
             fixture.Temp.Path, proof, retryDeadline.Token, manager, timeProvider: clock);
         SetupNativeVerification.RequireSame(proof, verified);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task NativePreparationMalformedDiscoveryRetainsOneAuthenticatedOwnerForLocalRecovery(bool isolated)
+    {
+        object Respond(string method, JsonElement parameters) =>
+            method == "openclaw.setup.detect" ? new { malformed = true } : Reply(method, parameters);
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(Respond), Token);
+        using var fixture = CreateFixture(server, isolated);
+        await using var session = await fixture.PrepareAsync();
+        await using var preparation = await GatewayAiPreparation.PrepareNativeAsync(session, default);
+        Assert.Equal(GatewayAiDiscoveryFailure.InvalidResponse, preparation.DiscoveryFailure);
+        var transferred = preparation.Take();
+        var connection = Assert.IsType<NativeGatewaySetupConnection>(transferred.Transport);
+        await preparation.DisposeAsync();
+        Assert.True(connection.IsConnected);
+        Assert.Single(server.Requests, request => request.Method == "openclaw.setup.detect");
+        Assert.Empty(fixture.Registry.GetAll());
+        Assert.Throws<SetupNativeOwnershipException>(() => preparation.Take());
+        await transferred.Owner.DisposeAsync();
+        Assert.False(connection.IsConnected);
+        Assert.DoesNotContain(server.Requests, request => request.Method.StartsWith("openclaw.setup.activate", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task NativeReadOnlyBorrowNeverStartsRuntimeEvenWhenListenerStopsBeforeAuthorization(bool stopBeforeBorrow)
+    {
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(Reply), Token);
+        using var fixture = CreateFixture(server, isolated: true);
+        GatewayAiSetupCompletion proof;
+        await using (var session = await fixture.PrepareAsync())
+        {
+            await using (var connection = await NativeGatewaySetupConnection.ConnectAsync(session))
+            {
+                var client = new GatewayAiSetupClient(connection, Model);
+                await client.VerifyConfiguredAsync(Model);
+                proof = client.GetVerifiedCompletion();
+            }
+            await session.CompleteVerifiedAsync(proof, new CapabilitiesConfig(), default);
+        }
+        var runtime = new NativeGatewaySetupTests.Runtime(fixture.Events);
+        await using var manager = new GatewayConnectionManager(
+            new CredentialResolver(DeviceIdentityFileReader.Instance), new GatewayClientFactory(),
+            fixture.Registry, NullLogger.Instance, nativeGatewayRuntime: runtime);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        await manager.ConnectAsync(proof.GatewayId);
+        await GatewayAiSetupTransport.BorrowNativeAsync(fixture.Temp.Path, manager, proof.GatewayId, deadline.Token);
+        if (stopBeforeBorrow)
+        {
+            await runtime.StopAsync(deadline.Token);
+            runtime.Provenance = GatewayEndpointProvenanceKind.NoListener;
+        }
+        fixture.Events.Clear();
+        var connections = server.ConnectionCount;
+        var borrowing = GatewayAiSetupTransport.BorrowAsync(fixture.Temp.Path, manager, proof.GatewayId,
+            deadline.Token, proof.EndpointBinding, readOnlyRequests: true);
+        if (stopBeforeBorrow) await Assert.ThrowsAsync<InvalidOperationException>(() => borrowing);
+        else
+        {
+            var borrowed = await borrowing;
+            await borrowed.RequestAsync("config.get", new { }, 15_000, deadline.Token);
+            var probes = server.Requests.Count(request => request.Method == "openclaw.setup.verify");
+            await SetupNativeCompletionVerifier.ConfirmReadinessAuthorityAsync(
+                fixture.Temp.Path, proof, manager, deadline.Token);
+            Assert.Equal(probes, server.Requests.Count(request => request.Method == "openclaw.setup.verify"));
+        }
+        Assert.Contains("inspect", fixture.Events);
+        Assert.DoesNotContain("start", fixture.Events);
+        Assert.DoesNotContain("restart", fixture.Events);
+        Assert.Equal(connections, server.ConnectionCount);
     }
 }
