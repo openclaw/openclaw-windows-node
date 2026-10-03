@@ -45,6 +45,7 @@ public sealed partial class CanvasWindow : WindowEx
     private bool _isFullScreen;
     private string? _pendingUrl;
     private string? _pendingHtml;
+    private string? _pendingNativeNavigationUrl;
     private readonly TaskCompletionSource<bool> _webViewReadyTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private TaskCompletionSource<bool>? _navigationTcs;
 
@@ -395,6 +396,7 @@ public sealed partial class CanvasWindow : WindowEx
                 // Re-validate URL before navigation (defense in depth)
                 if (IsUrlSafe(url))
                 {
+                    NoteNativeA2uiNavigation(url);
                     CanvasWebView.CoreWebView2.Navigate(url);
                 }
                 else
@@ -406,6 +408,7 @@ public sealed partial class CanvasWindow : WindowEx
             {
                 var html = _pendingHtml;
                 _pendingHtml = null;
+                _pendingNativeNavigationUrl = null;
                 CanvasWebView.CoreWebView2.NavigateToString(html);
             }
             else
@@ -485,14 +488,29 @@ public sealed partial class CanvasWindow : WindowEx
         if (string.IsNullOrEmpty(trustedOrigin) || string.IsNullOrEmpty(token))
             return;
 
-        if (IsUriForOrigin(args.Request.Uri, trustedOrigin))
+        var initiator = RequestHeader(args, "Referer");
+        if (CanvasGatewayAuth.ShouldAttachGatewayBearer(
+                sender.Source,
+                args.Request.Uri,
+                trustedOrigin,
+                initiator,
+                _pendingNativeNavigationUrl))
         {
             args.Request.Headers.SetHeader("Authorization", $"Bearer {token}");
         }
     }
+
+    private static string? RequestHeader(CoreWebView2WebResourceRequestedEventArgs args, string name)
+    {
+        if (!args.Request.Headers.Contains(name))
+            return null;
+
+        return args.Request.Headers.GetHeader(name);
+    }
     
     private void OnNavigationCompleted(CoreWebView2 sender, CoreWebView2NavigationCompletedEventArgs args)
     {
+        _pendingNativeNavigationUrl = null;
         if (_navigationTcs != null)
         {
             var tcs = _navigationTcs;
@@ -584,6 +602,7 @@ public sealed partial class CanvasWindow : WindowEx
         
         if (_isWebViewInitialized)
         {
+            NoteNativeA2uiNavigation(url);
             CanvasWebView.CoreWebView2.Navigate(url);
         }
         else
@@ -604,6 +623,7 @@ public sealed partial class CanvasWindow : WindowEx
         
         if (_isWebViewInitialized)
         {
+            _pendingNativeNavigationUrl = null;
             CanvasWebView.CoreWebView2.NavigateToString(html);
         }
         else
@@ -773,8 +793,14 @@ public sealed partial class CanvasWindow : WindowEx
     {
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         _navigationTcs = tcs;
+        NoteNativeA2uiNavigation(url);
         CanvasWebView.CoreWebView2.Navigate(url);
         return tcs.Task;
+    }
+
+    private void NoteNativeA2uiNavigation(string url)
+    {
+        _pendingNativeNavigationUrl = url;
     }
     
     private static bool IsTrustedA2UIUrl(string url)
@@ -788,15 +814,6 @@ public sealed partial class CanvasWindow : WindowEx
         return uri.AbsolutePath.StartsWith("/__openclaw__/a2ui/", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool IsUriForOrigin(string uri, string origin)
-    {
-        return uri.StartsWith(origin, StringComparison.OrdinalIgnoreCase) &&
-            (uri.Length == origin.Length ||
-             uri[origin.Length] == '/' ||
-             uri[origin.Length] == '?' ||
-             uri[origin.Length] == '#');
-    }
-    
     private Task EnsureWebViewReadyAsync()
     {
         return _isWebViewInitialized ? Task.CompletedTask : _webViewReadyTcs.Task;
