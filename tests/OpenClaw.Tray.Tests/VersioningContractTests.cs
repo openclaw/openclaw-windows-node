@@ -102,11 +102,13 @@ public sealed class VersioningContractTests
             @"(?ms)^      - name: Determine alpha version\r?\n(?<body>.*?)(?=^      - |\z)");
         Assert.True(versionStep.Success, "The daily workflow must calculate the default-branch version.");
         Assert.Contains("disableNormalization: true", versionStep.Groups["body"].Value);
-        var releaseJob = Regex.Match(
-            releaseWorkflow,
-            @"(?ms)^  release:\s*$\r?\n(?<body>.*?)(?=^  \S|\z)");
-        Assert.True(releaseJob.Success, "The release workflow must define the release job.");
-        Assert.Contains("fetch-depth: 0", releaseJob.Groups["body"].Value);
+        const string releaseCheckoutPattern =
+            @"(?ms)^  release:[^\S\r\n]*\r?\n.*?^    - uses: actions/checkout@v7[^\S\r\n]*\r?\n" +
+            @"      with:[^\S\r\n]*\r?\n        fetch-depth: 0[^\S\r\n]*(?:\r?\n|$)";
+        Assert.Matches(releaseCheckoutPattern, releaseWorkflow);
+        Assert.Matches(
+            releaseCheckoutPattern,
+            releaseWorkflow.Replace("\r\n", "\n", StringComparison.Ordinal).Replace("\n", "\r\n", StringComparison.Ordinal));
         Assert.Contains("head_non_alpha_tag", dailyWorkflow);
         Assert.Contains("published_head_tag", dailyWorkflow);
         Assert.Contains("Deferring alpha release because main already has unpublished non-alpha tag", dailyWorkflow);
