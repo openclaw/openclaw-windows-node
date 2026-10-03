@@ -2041,6 +2041,24 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void SandboxPage_SuppressesXamlDefaultSliderEventsDuringConstruction()
+    {
+        var source = ReadSandboxPageSource();
+        var constructorStart = source.IndexOf("public SandboxPage()", StringComparison.Ordinal);
+        var initializeStart = source.IndexOf("public void Initialize()", constructorStart, StringComparison.Ordinal);
+        Assert.True(constructorStart >= 0, "Could not find SandboxPage constructor.");
+        Assert.True(initializeStart > constructorStart, "Could not find SandboxPage.Initialize after constructor.");
+        var constructor = source[constructorStart..initializeStart];
+
+        AssertInOrder(
+            constructor,
+            "_suppress = true;",
+            "InitializeComponent();",
+            "CustomFoldersList.ItemsSource = CustomFolders;",
+            "_suppress = false;");
+    }
+
+    [Fact]
     public void SandboxPage_SkuSuppressionIsNotClassifiedAsMissingComponents()
     {
         var source = ReadSandboxPageSource();

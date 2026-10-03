@@ -527,6 +527,38 @@ public class SettingsRoundTripTests
     }
 
     [Fact]
+    public void SettingsManager_PreservesSandboxTimeoutAcrossSaveReloadAndResave()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
+        var settingsPath = Path.Combine(dir, "settings.json");
+
+        try
+        {
+            var settings = new SettingsManager(dir)
+            {
+                SandboxTimeoutMs = 280_000
+            };
+
+            settings.Save();
+
+            var reloaded = new SettingsManager(dir);
+            Assert.Equal(280_000, reloaded.SandboxTimeoutMs);
+
+            reloaded.Save();
+
+            var resaved = new SettingsManager(dir);
+            Assert.Equal(280_000, resaved.SandboxTimeoutMs);
+            using var json = JsonDocument.Parse(File.ReadAllText(settingsPath));
+            Assert.Equal(280_000, json.RootElement.GetProperty(nameof(SettingsData.SandboxTimeoutMs)).GetInt32());
+        }
+        finally
+        {
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void SettingsManager_NormalizesInvalidAppTheme()
     {
         var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));

@@ -128,8 +128,16 @@ public sealed partial class SandboxPage : Page
 
     public SandboxPage()
     {
-        InitializeComponent();
-        CustomFoldersList.ItemsSource = CustomFolders;
+        _suppress = true;
+        try
+        {
+            InitializeComponent();
+            CustomFoldersList.ItemsSource = CustomFolders;
+        }
+        finally
+        {
+            _suppress = false;
+        }
     }
 
     public void Initialize()
