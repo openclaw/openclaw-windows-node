@@ -47,11 +47,19 @@ internal static class ChatLifecycleSelectionPolicy
 {
     public static string? RetainPendingForSelection(
         string? pendingSelectedId,
-        string? selectedId) =>
-        pendingSelectedId is not null &&
+        string? selectedId,
+        bool selectedMaterialized = false) =>
+        !selectedMaterialized && pendingSelectedId is not null &&
         string.Equals(pendingSelectedId, selectedId, StringComparison.Ordinal)
             ? pendingSelectedId
             : null;
+
+    public static bool IsComposeOnlyWelcomeEligible(
+        string? threadId,
+        string? pendingSelectedId,
+        bool hasRealThreads) =>
+        !hasRealThreads || (pendingSelectedId is not null &&
+            string.Equals(threadId, pendingSelectedId, StringComparison.Ordinal));
 
     public static bool ShouldFallback(
         string staleSelectedId,
