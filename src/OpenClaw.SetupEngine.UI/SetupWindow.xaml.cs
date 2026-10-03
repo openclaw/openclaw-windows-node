@@ -330,6 +330,7 @@ public sealed partial class SetupWindow : Window
             if (!string.IsNullOrWhiteSpace(localAiRecoveryModelId))
             {
                 _config.LocalAi.SelectedModelId = localAiRecoveryModelId;
+                _config.LocalAi.InstalledReceiptModelId = localAiRecoveryModelId;
                 _pinLocalAiRecoveryModel = true;
             }
             if (localAiRecoveryRequestedPort is { } requestedPort &&
@@ -602,6 +603,7 @@ public sealed partial class SetupWindow : Window
         _config.GatewayPort = target.GatewayPort;
         _config.GatewayUrl = null;
         _config.LocalAi.SelectedModelId = target.ModelCatalogId;
+        _config.LocalAi.InstalledReceiptModelId = target.ModelCatalogId;
         if (target.RequestedLocalAiPort is { } port)
             _config.LocalAi.Port = port;
         _config.LocalAi.Enabled = true;

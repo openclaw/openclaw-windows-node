@@ -190,6 +190,35 @@ public sealed class LocalAiOnboardingTests
         Assert.Equal([LocalAiSetupStage.CheckingHardware, LocalAiSetupStage.CheckingHardware], stages);
     }
 
+    [Theory]
+    [InlineData(LocalAiRuntimeState.Stopped, LocalAiOnboardingState.StartAndUse)]
+    [InlineData(LocalAiRuntimeState.Healthy, LocalAiOnboardingState.Use)]
+    [InlineData(LocalAiRuntimeState.Failed, LocalAiOnboardingState.Repair)]
+    public async Task Observation_RetainedSparkReceiptPreservesOnboardingActions(
+        LocalAiRuntimeState runtimeState,
+        LocalAiOnboardingState expected)
+    {
+        using var directory = new TempDirectory();
+        var registry = Registry(directory.Path);
+        var install = Install(LocalModelCatalog.Qwen35B_IQ4XSModelId);
+        var runtime = new FakeRuntime(RuntimeSnapshot(install, runtimeState));
+        var hardware = new HostHardwareInfo(Architecture.Arm64, 128L << 30, 80L << 30,
+            [new(GpuVendor.Nvidia, "NVIDIA RTX Spark N1X", 45L << 30, 45L << 30,
+                DriverVersion: "615.0", CudaMajorVersion: 13, StableId: "GPU-spark")], false);
+        var host = new SetupLocalAiHost(
+            () => Task.FromResult(new LocalAiSetupResolution(LocalAiSetupRoute.Recovery,
+                new("gateway", "Managed", 18789, install.Manifest.ModelCatalogId, install.Manifest.RequestedPort))),
+            () => registry, () => runtime, _ => Task.FromResult<LocalAiResolvedInstall?>(install),
+            (_, _) => Task.FromResult(true), _ => Task.FromResult(hardware),
+            () => throw new InvalidOperationException("Observation must not mutate the Gateway."));
+
+        LocalAiOnboardingSnapshot snapshot = await host.ObserveAsync(CancellationToken.None);
+
+        Assert.Equal(expected, snapshot.State);
+        Assert.True(snapshot.CanUse || snapshot.CanReview);
+        Assert.Equal(LocalModelCatalog.Qwen35B_IQ4XSModelId, snapshot.Eligibility!.Plan!.Model.Id);
+    }
+
     [Fact]
     public async Task ClosingObservation_FencesCallbacksAndNeverMutates()
     {
@@ -785,9 +814,9 @@ public sealed class LocalAiOnboardingTests
         return registry;
     }
 
-    internal static LocalAiResolvedInstall Install()
+    internal static LocalAiResolvedInstall Install(string modelId = LocalModelCatalog.Qwen35BModelId)
     {
-        var model = LocalModelCatalog.FindInstalled(LocalModelCatalog.Qwen35BModelId)!;
+        var model = LocalModelCatalog.FindInstalled(modelId)!;
         var endpoint = new Uri("http://127.0.0.1:18803/v1");
         return new(new LocalAiInstallManifest
         {
