@@ -629,6 +629,245 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public async Task InspectPluginAsync_SendsExactPluginIdAndParsesReview()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("plugin-inspect-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+
+        var responseTask = client.InspectPluginAsync("diagnostics-otel");
+        var requestText = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        using var request = JsonDocument.Parse(requestText);
+        Assert.Equal("plugins.inspect", request.RootElement.GetProperty("method").GetString());
+        var parameters = request.RootElement.GetProperty("params");
+        Assert.Single(parameters.EnumerateObject());
+        Assert.Equal("diagnostics-otel", parameters.GetProperty("pluginId").GetString());
+
+        await server.SendTextAsync(JsonSerializer.Serialize(new
+        {
+            type = "res",
+            id = ReadRequestId(requestText),
+            ok = true,
+            payload = new
+            {
+                ok = true,
+                plugin = new
+                {
+                    id = "diagnostics-otel",
+                    name = "Diagnostics OpenTelemetry",
+                    description = "Exports telemetry.",
+                    installed = false,
+                    enabled = false
+                },
+                source = new
+                {
+                    kind = "official-catalog",
+                    packageName = "@openclaw/diagnostics-otel"
+                },
+                declared = new
+                {
+                    channels = Array.Empty<string>(),
+                    providers = Array.Empty<string>(),
+                    tools = new[] { "diagnostics.export" },
+                    contracts = Array.Empty<string>(),
+                    hooks = Array.Empty<string>(),
+                    mcpServers = Array.Empty<string>(),
+                    cliCommands = Array.Empty<string>(),
+                    cliBackends = Array.Empty<string>(),
+                    skills = Array.Empty<string>(),
+                    dangerousConfigFlags = Array.Empty<string>()
+                },
+                reviewToken = "review-token",
+                grants = new { hooks = new { allowPromptInjection = false } }
+            }
+        }));
+
+        var result = await responseTask.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal("@openclaw/diagnostics-otel", result.PackageName);
+        Assert.Equal("review-token", result.ReviewToken);
+    }
+
+    [Fact]
+    public async Task InstallClawHubPluginAsync_SendsExactConsentBoundRequest()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("plugin-install-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+
+        var responseTask = client.InstallClawHubPluginAsync(
+            "@openclaw/diagnostics-otel",
+            "diagnostics-otel",
+            "review-token");
+        var requestText = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        using var request = JsonDocument.Parse(requestText);
+        Assert.Equal("plugins.install", request.RootElement.GetProperty("method").GetString());
+        var parameters = request.RootElement.GetProperty("params");
+        Assert.Equal(6, parameters.EnumerateObject().Count());
+        Assert.Equal("clawhub", parameters.GetProperty("source").GetString());
+        Assert.Equal("@openclaw/diagnostics-otel", parameters.GetProperty("packageName").GetString());
+        Assert.Equal("diagnostics-otel", parameters.GetProperty("expectedPluginId").GetString());
+        Assert.Equal("install", parameters.GetProperty("mode").GetString());
+        Assert.True(parameters.GetProperty("acknowledgeInstallPolicyWarning").GetBoolean());
+        Assert.Equal(
+            "review-token",
+            parameters.GetProperty("acknowledgeCapabilities").GetProperty("reviewToken").GetString());
+
+        await server.SendTextAsync(JsonSerializer.Serialize(new
+        {
+            type = "res",
+            id = ReadRequestId(requestText),
+            ok = true,
+            payload = new { ok = true, restartRequired = true }
+        }));
+
+        var result = await responseTask.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.True(result.RestartRequired);
+    }
+
+    [Fact]
+    public async Task InstallClawHubPluginAsync_CommunityPackageStartsWithoutAcknowledgements()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("plugin-community-install-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+
+        var responseTask = client.InstallClawHubPluginAsync(
+            "@expediagroup/expedia-openclaw",
+            "expedia-openclaw",
+            reviewToken: null,
+            acknowledgeInstallPolicyWarning: false);
+        var requestText = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        using var request = JsonDocument.Parse(requestText);
+        var parameters = request.RootElement.GetProperty("params");
+        Assert.Equal(4, parameters.EnumerateObject().Count());
+        Assert.Equal("clawhub", parameters.GetProperty("source").GetString());
+        Assert.Equal(
+            "@expediagroup/expedia-openclaw",
+            parameters.GetProperty("packageName").GetString());
+        Assert.Equal("expedia-openclaw", parameters.GetProperty("expectedPluginId").GetString());
+        Assert.Equal("install", parameters.GetProperty("mode").GetString());
+        Assert.False(parameters.TryGetProperty("acknowledgeCapabilities", out _));
+        Assert.False(parameters.TryGetProperty("acknowledgeInstallPolicyWarning", out _));
+
+        await server.SendTextAsync(JsonSerializer.Serialize(new
+        {
+            type = "res",
+            id = ReadRequestId(requestText),
+            ok = true,
+            payload = new { ok = true, restartRequired = false }
+        }));
+
+        await responseTask.WaitAsync(TimeSpan.FromSeconds(2));
+    }
+
+    [Fact]
+    public async Task WizardError_PreservesStructuredDetails()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("plugin-policy-error-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+
+        var responseTask = client.InstallClawHubPluginAsync(
+            "@expediagroup/expedia-openclaw",
+            "expedia-openclaw",
+            reviewToken: null,
+            acknowledgeInstallPolicyWarning: false);
+        var requestText = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        await server.SendTextAsync(JsonSerializer.Serialize(new
+        {
+            type = "res",
+            id = ReadRequestId(requestText),
+            ok = false,
+            error = new
+            {
+                message = "Install policy acknowledgement required.",
+                details = new
+                {
+                    installPolicyCode = "install_policy_warning_acknowledgement_required",
+                    targetName = "@expediagroup/expedia-openclaw",
+                    targetType = "plugin",
+                    requestMode = "install",
+                    reason = "Review required."
+                }
+            }
+        }));
+
+        var exception = await Assert.ThrowsAsync<GatewayRequestException>(
+            () => responseTask.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.True(
+            PluginManagementParser.TryParseInstallPolicyWarning(exception, out var warning));
+        Assert.Equal("@expediagroup/expedia-openclaw", warning?.TargetName);
+        Assert.Equal("Review required.", warning?.Reason);
+    }
+
+    [Theory]
+    [InlineData("@alipay/alipay-aipay")]
+    [InlineData("skills-sh:vercel-labs/skills/find-skills")]
+    public async Task InstallClawHubSkillAsync_SendsSourceRoutedRequest(string installReference)
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("skill-install-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+
+        var responseTask = client.InstallClawHubSkillAsync(installReference);
+        var requestText = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        using var request = JsonDocument.Parse(requestText);
+        Assert.Equal("skills.install", request.RootElement.GetProperty("method").GetString());
+        var parameters = request.RootElement.GetProperty("params");
+        Assert.Equal(2, parameters.EnumerateObject().Count());
+        Assert.Equal("clawhub", parameters.GetProperty("source").GetString());
+        Assert.Equal(installReference, parameters.GetProperty("slug").GetString());
+
+        await server.SendTextAsync(JsonSerializer.Serialize(new
+        {
+            type = "res",
+            id = ReadRequestId(requestText),
+            ok = true,
+            payload = new
+            {
+                ok = true,
+                slug = installReference,
+                version = "1.2.3",
+                warning = "Review the installed skill before use."
+            }
+        }));
+
+        var result = await responseTask.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(installReference, result.Slug);
+        Assert.Equal("1.2.3", result.Version);
+    }
+
+    [Fact]
     public async Task SendWizardRequestAsync_GatewayError_PropagatesUnchangedAndCleansTracking()
     {
         using var server = new LoopbackWebSocketServer();

@@ -40,6 +40,7 @@
                     <SvgImageSource x:Key="Connection_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Connection.svg"/>
                     <SvgImageSource x:Key="Sessions_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Sessions.svg"/>
                     <SvgImageSource x:Key="Skills_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Skills.svg"/>
+                    <SvgImageSource x:Key="ClawHub_Icon" UriSource="ms-appx:///Assets/SidebarIcons/ClawHubStore.svg"/>
                     <SvgImageSource x:Key="Channels_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Channels.svg"/>
                     <SvgImageSource x:Key="Instances_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Instances.svg"/>
                     <SvgImageSource x:Key="Advanced_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Advanced.svg"/>
@@ -72,6 +73,10 @@
                     </NavigationViewItem>
                     <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_97" x:Name="NavSkills" Tag="skills" Content="Skills">
                         <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Skills_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
+                    </NavigationViewItem>
+                    <NavigationViewItem Tag="clawhub" Content="ClawHub"
+                                        AutomationProperties.AutomationId="SettingsNavClawHub">
+                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource ClawHub_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
                     </NavigationViewItem>
                     <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_109" x:Name="NavChannels" Tag="channels" Content="Channels">
                         <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Channels_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>

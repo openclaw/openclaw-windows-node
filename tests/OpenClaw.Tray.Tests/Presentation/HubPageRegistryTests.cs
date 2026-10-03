@@ -34,6 +34,7 @@ public sealed class HubPageRegistryTests
     [InlineData("agent:main:agentevents", (int)HubPageKind.AgentEvents)]
     [InlineData("agent:main:skills", (int)HubPageKind.Skills)]
     [InlineData("agent:main:cron", (int)HubPageKind.Cron)]
+    [InlineData("clawhub", (int)HubPageKind.ClawHub)]
     [InlineData("agent:main:workspace", (int)HubPageKind.Workspace)]
     public void ResolvePage_OwnsDirectLegacyAndAgentMappings(string tag, int expected)
     {
@@ -75,6 +76,7 @@ public sealed class HubPageRegistryTests
     [InlineData("connection")]
     [InlineData("permissions")]
     [InlineData("local-ai")]
+    [InlineData("clawhub")]
     [InlineData("debug")]
     [InlineData(null)]
     public void GatewayClassification_RejectsNonGatewayTags(string? tag)

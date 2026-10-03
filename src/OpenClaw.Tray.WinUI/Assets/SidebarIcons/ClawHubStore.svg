@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <defs>
+    <linearGradient id="bag" x1="4" y1="6" x2="20" y2="22" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ff8a65"/>
+      <stop offset="1" stop-color="#e53935"/>
+    </linearGradient>
+    <linearGradient id="handle" x1="8" y1="2" x2="16" y2="10" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffd180"/>
+      <stop offset="1" stop-color="#ff8f00"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#bag)" d="M4.5 8.25A1.75 1.75 0 0 1 6.25 6.5h11.5a1.75 1.75 0 0 1 1.75 1.75l.9 11A2.5 2.5 0 0 1 17.91 22H6.09a2.5 2.5 0 0 1-2.49-2.75z"/>
+  <path fill="none" stroke="url(#handle)" stroke-linecap="round" stroke-width="2" d="M8.5 9V6a3.5 3.5 0 0 1 7 0v3"/>
+  <path fill="#fff3e0" d="M8 13.25c0-.69.56-1.25 1.25-1.25h5.5a1.25 1.25 0 1 1 0 2.5h-5.5C8.56 14.5 8 13.94 8 13.25"/>
+</svg>

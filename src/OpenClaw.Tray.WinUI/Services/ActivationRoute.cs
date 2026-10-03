@@ -30,6 +30,7 @@ internal abstract record ActivationRoute
     internal sealed record OpenVoice : ActivationRoute;
     internal sealed record StopVoice : ActivationRoute;
     internal sealed record SendMessage(string Message) : ActivationRoute;
+    internal sealed record InstallClawHubPlugin(ClawHubInstallRequest Request) : ActivationRoute;
 
     private ActivationRoute()
     {
