@@ -1800,6 +1800,19 @@ public class ChatMessageInfo
     /// <summary>Session this message belongs to (e.g. "main").</summary>
     public string SessionKey { get; set; } = "";
 
+    /// <summary>Optional run identity from the live chat event payload, not the message ID.</summary>
+    public string? RunId { get; set; }
+
+    /// <summary>Set by synchronous chat consumers when this frame must not produce a notification.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsNotificationSuppressed { get; private set; }
+
+    /// <summary>
+    /// Suppresses the parser's subsequent notification without changing other
+    /// consumers' delivery. Suppression is monotonic for this received frame.
+    /// </summary>
+    public void SuppressNotification() => IsNotificationSuppressed = true;
+
     /// <summary>"user", "assistant", "system", etc.</summary>
     public string Role { get; set; } = "";
 
