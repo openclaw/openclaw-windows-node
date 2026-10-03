@@ -7215,24 +7215,26 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   <data name="Onboarding_AiSetup_InvalidInput" xml:space="preserve"><value>Le fournisseur n'a pas accepté cette réponse. Vérifiez l'étape actuelle et réessayez.</value></data>
   <data name="Onboarding_NativeConnection_Title" xml:space="preserve"><value>Se connecter à un Gateway</value></data>
   <data name="Onboarding_NativeConnection_Description" xml:space="preserve"><value>Vérifiez la connexion sans l'enregistrer. Suivant vérifie à nouveau et enregistre ce Gateway avant de revoir les accès de ce PC.</value></data>
-  <data name="Onboarding_Native_Address" xml:space="preserve"><value>Adresse du Gateway</value></data>
-  <data name="Onboarding_Native_Code" xml:space="preserve"><value>Code de configuration</value></data>
-  <data name="Onboarding_Native_Token" xml:space="preserve"><value>Token partagé (à la place du code)</value></data>
-  <data name="Onboarding_Native_Ssh" xml:space="preserve"><value>Tunnel SSH</value></data>
-  <data name="Onboarding_Native_SshDescription" xml:space="preserve"><value>Facultatif. Utilise vos clés et votre configuration OpenSSH. Conservez l'adresse du Gateway de votre connexion enregistrée ou de votre code de configuration. Le port distant du Gateway est redirigé depuis l'hôte SSH.</value></data>
-  <data name="Onboarding_Native_SshEnabled" xml:space="preserve"><value>Utiliser un tunnel SSH</value></data>
-  <data name="Onboarding_Native_SshHost" xml:space="preserve"><value>Hôte SSH</value></data>
-  <data name="Onboarding_Native_SshUser" xml:space="preserve"><value>Utilisateur SSH</value></data>
-  <data name="Onboarding_Native_SshPort" xml:space="preserve"><value>Port SSH</value></data>
-  <data name="Onboarding_Native_RemotePort" xml:space="preserve"><value>Port distant du Gateway</value></data>
-  <data name="Onboarding_Native_LocalPort" xml:space="preserve"><value>Port local du tunnel</value></data>
+  <data name="Onboarding_NativeConnection_Address" xml:space="preserve"><value>Adresse du Gateway</value></data>
+  <data name="Onboarding_NativeConnection_Code" xml:space="preserve"><value>Code de configuration</value></data>
+  <data name="Onboarding_NativeConnection_Token" xml:space="preserve"><value>Token partagé (à la place du code)</value></data>
+  <data name="Onboarding_NativeConnection_Ssh" xml:space="preserve"><value>Tunnel SSH</value></data>
+  <data name="Onboarding_NativeConnection_SshDescription" xml:space="preserve"><value>Facultatif. Utilise vos clés et votre configuration OpenSSH. Conservez l'adresse du Gateway de votre connexion enregistrée ou de votre code de configuration. Le port distant du Gateway est redirigé depuis l'hôte SSH.</value></data>
+  <data name="Onboarding_NativeConnection_SshEnabled" xml:space="preserve"><value>Utiliser un tunnel SSH</value></data>
+  <data name="Onboarding_NativeConnection_SshHost" xml:space="preserve"><value>Hôte SSH</value></data>
+  <data name="Onboarding_NativeConnection_SshUser" xml:space="preserve"><value>Utilisateur SSH</value></data>
+  <data name="Onboarding_NativeConnection_SshPort" xml:space="preserve"><value>Port SSH</value></data>
+  <data name="Onboarding_NativeConnection_RemotePort" xml:space="preserve"><value>Port distant du Gateway</value></data>
+  <data name="Onboarding_NativeConnection_LocalPort" xml:space="preserve"><value>Port local du tunnel</value></data>
   <data name="Onboarding_NativeConnection_Back" xml:space="preserve"><value>Retour</value></data>
-  <data name="Onboarding_Native_Check" xml:space="preserve"><value>Vérifier la connexion</value></data>
-  <data name="Onboarding_Native_Next" xml:space="preserve"><value>Suivant</value></data>
+  <data name="Onboarding_NativeConnection_Check" xml:space="preserve"><value>Vérifier la connexion</value></data>
+  <data name="Onboarding_NativeConnection_Next" xml:space="preserve"><value>Suivant</value></data>
   <data name="Onboarding_NativeConnection_Cancel" xml:space="preserve"><value>Annuler</value></data>
   <data name="Onboarding_Native_Checking" xml:space="preserve"><value>Vérification du package Gateway installé et de ses alias d'exécution...</value></data>
-  <data name="Onboarding_Native_Checked" xml:space="preserve"><value>Connexion vérifiée. Rien n'a été enregistré. Suivant vérifiera à nouveau et enregistrera ce Gateway.</value></data>
-  <data name="Onboarding_Native_Failed" xml:space="preserve"><value>Le résultat de la connexion n'a pas pu être confirmé. Vérifiez le Gateway actif dans Companion Settings avant de continuer.</value></data>
+  <data name="Onboarding_NativeConnection_Checking" xml:space="preserve"><value>Vérification de la connexion au Gateway...</value></data>
+  <data name="Onboarding_NativeConnection_Cancelled" xml:space="preserve"><value>Tentative de connexion annulée.</value></data>
+  <data name="Onboarding_NativeConnection_Checked" xml:space="preserve"><value>Connexion vérifiée. Rien n'a été enregistré. Suivant vérifiera à nouveau et enregistrera ce Gateway.</value></data>
+  <data name="Onboarding_NativeConnection_Failed" xml:space="preserve"><value>Le résultat de la connexion n'a pas pu être confirmé. Vérifiez le Gateway actif dans Companion Settings avant de continuer.</value></data>
   <data name="Onboarding_V2_AlternativesTitle.Text" xml:space="preserve"><value>Choisir un autre parcours de configuration</value></data>
   <data name="Onboarding_V2_ExistingRoute.Header" xml:space="preserve"><value>Gateway existant</value></data>
   <data name="Onboarding_V2_ExistingRoute.Description" xml:space="preserve"><value>Utilisez une connexion enregistrée ou existante. Aucune installation WSL.</value></data>

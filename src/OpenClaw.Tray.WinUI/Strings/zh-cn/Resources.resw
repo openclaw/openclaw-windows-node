@@ -7215,24 +7215,26 @@
   <data name="Onboarding_AiSetup_InvalidInput" xml:space="preserve"><value>提供商未接受此答案。请检查当前步骤并重试。</value></data>
   <data name="Onboarding_NativeConnection_Title" xml:space="preserve"><value>连接到 Gateway</value></data>
   <data name="Onboarding_NativeConnection_Description" xml:space="preserve"><value>检查连接而不保存。下一步会再次检查并保存此 Gateway，然后查看此电脑的访问权限。</value></data>
-  <data name="Onboarding_Native_Address" xml:space="preserve"><value>Gateway 地址</value></data>
-  <data name="Onboarding_Native_Code" xml:space="preserve"><value>设置代码</value></data>
-  <data name="Onboarding_Native_Token" xml:space="preserve"><value>共享 Token（代替设置代码）</value></data>
-  <data name="Onboarding_Native_Ssh" xml:space="preserve"><value>SSH 隧道</value></data>
-  <data name="Onboarding_Native_SshDescription" xml:space="preserve"><value>可选。使用现有的 OpenSSH 密钥和配置。保留已保存连接或设置代码中的 Gateway 地址。远程 Gateway 端口将从 SSH 主机转发。</value></data>
-  <data name="Onboarding_Native_SshEnabled" xml:space="preserve"><value>使用 SSH 隧道</value></data>
-  <data name="Onboarding_Native_SshHost" xml:space="preserve"><value>SSH 主机</value></data>
-  <data name="Onboarding_Native_SshUser" xml:space="preserve"><value>SSH 用户</value></data>
-  <data name="Onboarding_Native_SshPort" xml:space="preserve"><value>SSH 端口</value></data>
-  <data name="Onboarding_Native_RemotePort" xml:space="preserve"><value>远程 Gateway 端口</value></data>
-  <data name="Onboarding_Native_LocalPort" xml:space="preserve"><value>本地隧道端口</value></data>
+  <data name="Onboarding_NativeConnection_Address" xml:space="preserve"><value>Gateway 地址</value></data>
+  <data name="Onboarding_NativeConnection_Code" xml:space="preserve"><value>设置代码</value></data>
+  <data name="Onboarding_NativeConnection_Token" xml:space="preserve"><value>共享 Token（代替设置代码）</value></data>
+  <data name="Onboarding_NativeConnection_Ssh" xml:space="preserve"><value>SSH 隧道</value></data>
+  <data name="Onboarding_NativeConnection_SshDescription" xml:space="preserve"><value>可选。使用现有的 OpenSSH 密钥和配置。保留已保存连接或设置代码中的 Gateway 地址。远程 Gateway 端口将从 SSH 主机转发。</value></data>
+  <data name="Onboarding_NativeConnection_SshEnabled" xml:space="preserve"><value>使用 SSH 隧道</value></data>
+  <data name="Onboarding_NativeConnection_SshHost" xml:space="preserve"><value>SSH 主机</value></data>
+  <data name="Onboarding_NativeConnection_SshUser" xml:space="preserve"><value>SSH 用户</value></data>
+  <data name="Onboarding_NativeConnection_SshPort" xml:space="preserve"><value>SSH 端口</value></data>
+  <data name="Onboarding_NativeConnection_RemotePort" xml:space="preserve"><value>远程 Gateway 端口</value></data>
+  <data name="Onboarding_NativeConnection_LocalPort" xml:space="preserve"><value>本地隧道端口</value></data>
   <data name="Onboarding_NativeConnection_Back" xml:space="preserve"><value>返回</value></data>
-  <data name="Onboarding_Native_Check" xml:space="preserve"><value>检查连接</value></data>
-  <data name="Onboarding_Native_Next" xml:space="preserve"><value>下一步</value></data>
+  <data name="Onboarding_NativeConnection_Check" xml:space="preserve"><value>检查连接</value></data>
+  <data name="Onboarding_NativeConnection_Next" xml:space="preserve"><value>下一步</value></data>
   <data name="Onboarding_NativeConnection_Cancel" xml:space="preserve"><value>取消</value></data>
   <data name="Onboarding_Native_Checking" xml:space="preserve"><value>正在检查已安装的 Gateway 包及其执行别名...</value></data>
-  <data name="Onboarding_Native_Checked" xml:space="preserve"><value>连接已检查，未保存任何内容。下一步将再次检查并保存此 Gateway。</value></data>
-  <data name="Onboarding_Native_Failed" xml:space="preserve"><value>无法确认连接结果。请先在 Companion Settings 中查看当前 Gateway，然后继续。</value></data>
+  <data name="Onboarding_NativeConnection_Checking" xml:space="preserve"><value>正在检查 Gateway 连接...</value></data>
+  <data name="Onboarding_NativeConnection_Cancelled" xml:space="preserve"><value>连接尝试已取消。</value></data>
+  <data name="Onboarding_NativeConnection_Checked" xml:space="preserve"><value>连接已检查，未保存任何内容。下一步将再次检查并保存此 Gateway。</value></data>
+  <data name="Onboarding_NativeConnection_Failed" xml:space="preserve"><value>无法确认连接结果。请先在 Companion Settings 中查看当前 Gateway，然后继续。</value></data>
   <data name="Onboarding_V2_AlternativesTitle.Text" xml:space="preserve"><value>选择其他设置路径</value></data>
   <data name="Onboarding_V2_ExistingRoute.Header" xml:space="preserve"><value>现有 Gateway</value></data>
   <data name="Onboarding_V2_ExistingRoute.Description" xml:space="preserve"><value>使用已保存或现有连接。不安装 WSL。</value></data>

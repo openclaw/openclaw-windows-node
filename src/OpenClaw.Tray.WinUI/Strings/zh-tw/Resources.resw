@@ -7215,24 +7215,26 @@
   <data name="Onboarding_AiSetup_InvalidInput" xml:space="preserve"><value>提供者未接受此答案。請檢查目前步驟並重試。</value></data>
   <data name="Onboarding_NativeConnection_Title" xml:space="preserve"><value>連線至 Gateway</value></data>
   <data name="Onboarding_NativeConnection_Description" xml:space="preserve"><value>檢查連線而不儲存。下一步會再次檢查並儲存此 Gateway，然後檢視此電腦的存取權限。</value></data>
-  <data name="Onboarding_Native_Address" xml:space="preserve"><value>Gateway 位址</value></data>
-  <data name="Onboarding_Native_Code" xml:space="preserve"><value>設定代碼</value></data>
-  <data name="Onboarding_Native_Token" xml:space="preserve"><value>共用 Token（代替設定代碼）</value></data>
-  <data name="Onboarding_Native_Ssh" xml:space="preserve"><value>SSH 通道</value></data>
-  <data name="Onboarding_Native_SshDescription" xml:space="preserve"><value>選用。使用現有的 OpenSSH 金鑰和設定。保留已儲存連線或設定代碼中的 Gateway 位址。遠端 Gateway 連接埠將從 SSH 主機轉送。</value></data>
-  <data name="Onboarding_Native_SshEnabled" xml:space="preserve"><value>使用 SSH 通道</value></data>
-  <data name="Onboarding_Native_SshHost" xml:space="preserve"><value>SSH 主機</value></data>
-  <data name="Onboarding_Native_SshUser" xml:space="preserve"><value>SSH 使用者</value></data>
-  <data name="Onboarding_Native_SshPort" xml:space="preserve"><value>SSH 連接埠</value></data>
-  <data name="Onboarding_Native_RemotePort" xml:space="preserve"><value>遠端 Gateway 連接埠</value></data>
-  <data name="Onboarding_Native_LocalPort" xml:space="preserve"><value>本機通道連接埠</value></data>
+  <data name="Onboarding_NativeConnection_Address" xml:space="preserve"><value>Gateway 位址</value></data>
+  <data name="Onboarding_NativeConnection_Code" xml:space="preserve"><value>設定代碼</value></data>
+  <data name="Onboarding_NativeConnection_Token" xml:space="preserve"><value>共用 Token（代替設定代碼）</value></data>
+  <data name="Onboarding_NativeConnection_Ssh" xml:space="preserve"><value>SSH 通道</value></data>
+  <data name="Onboarding_NativeConnection_SshDescription" xml:space="preserve"><value>選用。使用現有的 OpenSSH 金鑰和設定。保留已儲存連線或設定代碼中的 Gateway 位址。遠端 Gateway 連接埠將從 SSH 主機轉送。</value></data>
+  <data name="Onboarding_NativeConnection_SshEnabled" xml:space="preserve"><value>使用 SSH 通道</value></data>
+  <data name="Onboarding_NativeConnection_SshHost" xml:space="preserve"><value>SSH 主機</value></data>
+  <data name="Onboarding_NativeConnection_SshUser" xml:space="preserve"><value>SSH 使用者</value></data>
+  <data name="Onboarding_NativeConnection_SshPort" xml:space="preserve"><value>SSH 連接埠</value></data>
+  <data name="Onboarding_NativeConnection_RemotePort" xml:space="preserve"><value>遠端 Gateway 連接埠</value></data>
+  <data name="Onboarding_NativeConnection_LocalPort" xml:space="preserve"><value>本機通道連接埠</value></data>
   <data name="Onboarding_NativeConnection_Back" xml:space="preserve"><value>返回</value></data>
-  <data name="Onboarding_Native_Check" xml:space="preserve"><value>檢查連線</value></data>
-  <data name="Onboarding_Native_Next" xml:space="preserve"><value>下一步</value></data>
+  <data name="Onboarding_NativeConnection_Check" xml:space="preserve"><value>檢查連線</value></data>
+  <data name="Onboarding_NativeConnection_Next" xml:space="preserve"><value>下一步</value></data>
   <data name="Onboarding_NativeConnection_Cancel" xml:space="preserve"><value>取消</value></data>
   <data name="Onboarding_Native_Checking" xml:space="preserve"><value>正在檢查已安裝的 Gateway 套件及其執行別名...</value></data>
-  <data name="Onboarding_Native_Checked" xml:space="preserve"><value>連線已檢查，未儲存任何內容。下一步將再次檢查並儲存此 Gateway。</value></data>
-  <data name="Onboarding_Native_Failed" xml:space="preserve"><value>無法確認連線結果。請先在 Companion Settings 中檢視目前的 Gateway，再繼續操作。</value></data>
+  <data name="Onboarding_NativeConnection_Checking" xml:space="preserve"><value>正在檢查 Gateway 連線...</value></data>
+  <data name="Onboarding_NativeConnection_Cancelled" xml:space="preserve"><value>連線嘗試已取消。</value></data>
+  <data name="Onboarding_NativeConnection_Checked" xml:space="preserve"><value>連線已檢查，未儲存任何內容。下一步將再次檢查並儲存此 Gateway。</value></data>
+  <data name="Onboarding_NativeConnection_Failed" xml:space="preserve"><value>無法確認連線結果。請先在 Companion Settings 中檢視目前的 Gateway，再繼續操作。</value></data>
   <data name="Onboarding_V2_AlternativesTitle.Text" xml:space="preserve"><value>選擇其他設定路徑</value></data>
   <data name="Onboarding_V2_ExistingRoute.Header" xml:space="preserve"><value>現有 Gateway</value></data>
   <data name="Onboarding_V2_ExistingRoute.Description" xml:space="preserve"><value>使用已儲存或現有連線。不安裝 WSL。</value></data>

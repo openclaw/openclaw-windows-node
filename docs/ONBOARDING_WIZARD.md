@@ -1206,6 +1206,11 @@ The browser-only profile route is not implemented through native credentials.
 
 The connection editor shows the Gateway-stage progress indicator above a
 separate row of wrapping Back, Cancel, Check and Next actions.
+Both the Welcome existing-Gateway choice and Advanced existing/remote routes
+use this editor. Its labels, accessible names and status messages use
+`Onboarding_NativeConnection_*` resources in every supported locale.
+Connection checking and cancellation copy is separate from the native
+installer's package-check and WinGet cancellation messages.
 
 Check connection authenticates with an isolated identity copy and optional
 temporary owned SSH listener, without saving a gateway or changing the active

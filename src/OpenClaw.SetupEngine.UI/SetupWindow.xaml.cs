@@ -531,7 +531,7 @@ public sealed partial class SetupWindow : Window
                 if (!accepted)
                 {
                     NavigateToComplete(false, TimeSpan.Zero, _config.LogPath,
-                        result.Error ?? SetupLocalization.GetString("Onboarding_Native_Failed"));
+                        result.Error ?? SetupLocalization.GetString("Onboarding_NativeConnection_Failed"));
                     return;
                 }
                 SelectGatewayRoute(route, gatewayAvailable: true);

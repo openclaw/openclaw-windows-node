@@ -7216,24 +7216,26 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   <data name="Onboarding_AiSetup_InvalidInput" xml:space="preserve"><value>De provider heeft dit antwoord niet geaccepteerd. Controleer de huidige stap en probeer opnieuw.</value></data>
   <data name="Onboarding_NativeConnection_Title" xml:space="preserve"><value>Verbinding maken met een Gateway</value></data>
   <data name="Onboarding_NativeConnection_Description" xml:space="preserve"><value>Controleer de verbinding zonder op te slaan. Volgende controleert opnieuw en slaat deze Gateway op voordat u de toegang van deze pc bekijkt.</value></data>
-  <data name="Onboarding_Native_Address" xml:space="preserve"><value>Gateway-adres</value></data>
-  <data name="Onboarding_Native_Code" xml:space="preserve"><value>Installatiecode</value></data>
-  <data name="Onboarding_Native_Token" xml:space="preserve"><value>Gedeeld Token (in plaats van een installatiecode)</value></data>
-  <data name="Onboarding_Native_Ssh" xml:space="preserve"><value>SSH-tunnel</value></data>
-  <data name="Onboarding_Native_SshDescription" xml:space="preserve"><value>Optioneel. Gebruikt uw bestaande OpenSSH-sleutels en configuratie. Behoud het Gateway-adres uit uw opgeslagen verbinding of installatiecode. De externe Gateway-poort wordt doorgestuurd vanaf de SSH-host.</value></data>
-  <data name="Onboarding_Native_SshEnabled" xml:space="preserve"><value>Een SSH-tunnel gebruiken</value></data>
-  <data name="Onboarding_Native_SshHost" xml:space="preserve"><value>SSH-host</value></data>
-  <data name="Onboarding_Native_SshUser" xml:space="preserve"><value>SSH-gebruiker</value></data>
-  <data name="Onboarding_Native_SshPort" xml:space="preserve"><value>SSH-poort</value></data>
-  <data name="Onboarding_Native_RemotePort" xml:space="preserve"><value>Externe Gateway-poort</value></data>
-  <data name="Onboarding_Native_LocalPort" xml:space="preserve"><value>Lokale tunnelpoort</value></data>
+  <data name="Onboarding_NativeConnection_Address" xml:space="preserve"><value>Gateway-adres</value></data>
+  <data name="Onboarding_NativeConnection_Code" xml:space="preserve"><value>Installatiecode</value></data>
+  <data name="Onboarding_NativeConnection_Token" xml:space="preserve"><value>Gedeeld Token (in plaats van een installatiecode)</value></data>
+  <data name="Onboarding_NativeConnection_Ssh" xml:space="preserve"><value>SSH-tunnel</value></data>
+  <data name="Onboarding_NativeConnection_SshDescription" xml:space="preserve"><value>Optioneel. Gebruikt uw bestaande OpenSSH-sleutels en configuratie. Behoud het Gateway-adres uit uw opgeslagen verbinding of installatiecode. De externe Gateway-poort wordt doorgestuurd vanaf de SSH-host.</value></data>
+  <data name="Onboarding_NativeConnection_SshEnabled" xml:space="preserve"><value>Een SSH-tunnel gebruiken</value></data>
+  <data name="Onboarding_NativeConnection_SshHost" xml:space="preserve"><value>SSH-host</value></data>
+  <data name="Onboarding_NativeConnection_SshUser" xml:space="preserve"><value>SSH-gebruiker</value></data>
+  <data name="Onboarding_NativeConnection_SshPort" xml:space="preserve"><value>SSH-poort</value></data>
+  <data name="Onboarding_NativeConnection_RemotePort" xml:space="preserve"><value>Externe Gateway-poort</value></data>
+  <data name="Onboarding_NativeConnection_LocalPort" xml:space="preserve"><value>Lokale tunnelpoort</value></data>
   <data name="Onboarding_NativeConnection_Back" xml:space="preserve"><value>Terug</value></data>
-  <data name="Onboarding_Native_Check" xml:space="preserve"><value>Verbinding controleren</value></data>
-  <data name="Onboarding_Native_Next" xml:space="preserve"><value>Volgende</value></data>
+  <data name="Onboarding_NativeConnection_Check" xml:space="preserve"><value>Verbinding controleren</value></data>
+  <data name="Onboarding_NativeConnection_Next" xml:space="preserve"><value>Volgende</value></data>
   <data name="Onboarding_NativeConnection_Cancel" xml:space="preserve"><value>Annuleren</value></data>
   <data name="Onboarding_Native_Checking" xml:space="preserve"><value>Het geïnstalleerde Gateway-pakket en de uitvoeringsaliassen controleren...</value></data>
-  <data name="Onboarding_Native_Checked" xml:space="preserve"><value>Verbinding gecontroleerd. Er is niets opgeslagen. Volgende controleert opnieuw en slaat deze Gateway op.</value></data>
-  <data name="Onboarding_Native_Failed" xml:space="preserve"><value>Het resultaat van de verbinding kon niet worden bevestigd. Controleer de actieve Gateway in Companion Settings voordat u doorgaat.</value></data>
+  <data name="Onboarding_NativeConnection_Checking" xml:space="preserve"><value>De verbinding met de Gateway controleren...</value></data>
+  <data name="Onboarding_NativeConnection_Cancelled" xml:space="preserve"><value>Verbindingspoging geannuleerd.</value></data>
+  <data name="Onboarding_NativeConnection_Checked" xml:space="preserve"><value>Verbinding gecontroleerd. Er is niets opgeslagen. Volgende controleert opnieuw en slaat deze Gateway op.</value></data>
+  <data name="Onboarding_NativeConnection_Failed" xml:space="preserve"><value>Het resultaat van de verbinding kon niet worden bevestigd. Controleer de actieve Gateway in Companion Settings voordat u doorgaat.</value></data>
   <data name="Onboarding_V2_AlternativesTitle.Text" xml:space="preserve"><value>Kies een andere instelroute</value></data>
   <data name="Onboarding_V2_ExistingRoute.Header" xml:space="preserve"><value>Bestaande Gateway</value></data>
   <data name="Onboarding_V2_ExistingRoute.Description" xml:space="preserve"><value>Gebruik een opgeslagen of bestaande verbinding. Geen WSL-installatie.</value></data>
