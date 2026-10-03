@@ -105,8 +105,10 @@ cleanup defers until the next alpha publication.
 
 Alpha release notes explicitly compare the new tag with the newest reachable
 published canonical alpha tag. This avoids GitHub's automatic previous-tag
-selection accumulating changes from an older alpha. The first published alpha
-falls back to GitHub's normal comparison-base selection.
+selection accumulating changes from an older alpha. Within each generated
+GitHub release-note section, pull requests follow the Compare API's
+oldest-to-newest chronological commit order. The first published alpha falls
+back to GitHub's normal comparison-base selection.
 
 GitVersion interprets `X.Y.Z-N` as a prerelease, so numeric stable corrections
 use one narrow exception: the release-version step recognizes the correction

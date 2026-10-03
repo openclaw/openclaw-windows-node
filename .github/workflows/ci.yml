@@ -1520,9 +1520,63 @@ jobs:
           throw 'Could not generate alpha release notes.'
         }
         $notes = $notesJson | ConvertFrom-Json
+        $notesBody = [string]$notes.body
+        if ($previousTag) {
+          $comparePath = 'repos/{0}/compare/{1}...{2}?per_page=100' -f `
+            $env:GITHUB_REPOSITORY, $previousTag, $env:RELEASE_TAG
+          $compareJson = gh api --paginate --slurp $comparePath
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not load the chronological commit order from $previousTag to $env:RELEASE_TAG."
+          }
+
+          $pullOrder = @{}
+          $commitOrder = 0
+          foreach ($page in @($compareJson | ConvertFrom-Json)) {
+            foreach ($commit in @($page.commits)) {
+              if ($commit.commit.message -match '(?m)\(#(?<number>[0-9]+)\)\s*$' -and
+                  -not $pullOrder.ContainsKey($Matches.number)) {
+                $pullOrder[$Matches.number] = $commitOrder
+              }
+              $commitOrder++
+            }
+          }
+
+          $lines = @($notesBody -split '\r?\n')
+          $sortedLines = [Collections.Generic.List[string]]::new()
+          for ($lineIndex = 0; $lineIndex -lt $lines.Count;) {
+            if ($lines[$lineIndex] -notmatch '^\* .*?/pull/(?<number>[0-9]+)(?:\s|$)') {
+              $sortedLines.Add($lines[$lineIndex])
+              $lineIndex++
+              continue
+            }
+
+            $entries = [Collections.Generic.List[object]]::new()
+            while ($lineIndex -lt $lines.Count -and
+                   $lines[$lineIndex] -match '^\* .*?/pull/(?<number>[0-9]+)(?:\s|$)') {
+              $number = $Matches.number
+              $order = if ($pullOrder.ContainsKey($number)) {
+                $pullOrder[$number]
+              } else {
+                [int]::MaxValue
+              }
+              $entries.Add([pscustomobject]@{
+                Line = $lines[$lineIndex]
+                CommitOrder = $order
+                OriginalIndex = $lineIndex
+              })
+              $lineIndex++
+            }
+
+            foreach ($entry in @($entries | Sort-Object CommitOrder, OriginalIndex)) {
+              $sortedLines.Add($entry.Line)
+            }
+          }
+          $notesBody = $sortedLines -join "`n"
+        }
+
         $delimiter = [Guid]::NewGuid().ToString('N')
         "body<<$delimiter" >> $env:GITHUB_OUTPUT
-        $notes.body >> $env:GITHUB_OUTPUT
+        $notesBody >> $env:GITHUB_OUTPUT
         $delimiter >> $env:GITHUB_OUTPUT
 
     - name: Create Release

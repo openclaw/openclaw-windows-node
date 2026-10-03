@@ -124,6 +124,9 @@ public sealed class VersioningContractTests
         Assert.Contains("Generate alpha release notes from previous published alpha", releaseWorkflow);
         Assert.Contains("previous_tag_name=$previousTag", releaseWorkflow);
         Assert.Contains("git merge-base --is-ancestor", releaseWorkflow);
+        Assert.Contains("compare/{1}...{2}?per_page=100", releaseWorkflow);
+        Assert.Contains("gh api --paginate --slurp", releaseWorkflow);
+        Assert.Contains("Sort-Object CommitOrder, OriginalIndex", releaseWorkflow);
         Assert.Contains("steps.alpha_release_notes.outputs.body", releaseWorkflow);
         Assert.Contains(
             "generate_release_notes: ${{ ! contains(github.ref_name, '-alpha.') }}",
