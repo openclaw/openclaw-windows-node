@@ -2588,11 +2588,18 @@ public sealed partial class ConnectionPage : Page
                 }
             }
 
-            var url = GatewayDashboardUrlBuilder.Build(
-                rec.Url,
-                path: null,
-                rec.SharedGatewayToken,
-                appendSharedGatewayToken: !string.IsNullOrWhiteSpace(rec.SharedGatewayToken));
+            if (!GatewayDashboardUrlBuilder.TryBuild(
+                    rec.Url,
+                    path: null,
+                    rec.SharedGatewayToken,
+                    appendSharedGatewayToken: !string.IsNullOrWhiteSpace(rec.SharedGatewayToken),
+                    out var url,
+                    out var urlError))
+            {
+                CurrentApp.ShowTransientConnectionError(urlError);
+                return;
+            }
+
             await global::Windows.System.Launcher.LaunchUriAsync(new Uri(url));
         }
         catch (Exception ex)
