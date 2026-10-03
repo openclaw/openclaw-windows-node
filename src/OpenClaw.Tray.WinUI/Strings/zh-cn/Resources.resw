@@ -3051,6 +3051,9 @@
   <data name="Chat_Composer_QueuedMessageFailed" xml:space="preserve">
     <value>失败</value>
   </data>
+  <data name="Chat_Timeline_Pending" xml:space="preserve">
+    <value>待发送</value>
+  </data>
   <data name="Chat_Composer_QueuedMessageCancel" xml:space="preserve">
     <value>取消已排队消息</value>
   </data>

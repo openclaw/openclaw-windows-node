@@ -334,86 +334,6 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                         HStack(4, waveformBars).Margin(12, 0, 0, 0).Grid(column: 1)))
                 .Padding(8, 4)
                 .HAlign(HorizontalAlignment.Stretch);
-        var queuedRows = inputs.QueuedMessages
-            .Select((message, index) =>
-            {
-                var failed = message.SendState == ChatQueuedMessageSendState.Failed;
-                var actionKey = failed
-                    ? "Chat_Composer_QueuedMessageRemoveFailed"
-                    : "Chat_Composer_QueuedMessageCancel";
-                var actionAutomationKey = failed
-                    ? "Chat_Composer_QueuedMessageRemoveFailedAutomationFormat"
-                    : "Chat_Composer_QueuedMessageCancelAutomationFormat";
-                var rowAutomationKey = failed
-                    ? "Chat_Composer_QueuedMessageFailedAutomationFormat"
-                    : "Chat_Composer_QueuedMessageAutomationFormat";
-                var action = message.SendState == ChatQueuedMessageSendState.Sending
-                    ? Empty()
-                    : Button(TextBlock(FluentIconCatalog.Exit)
-                            .FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
-                            .FontSize(12).Set(text => text.IsTextScaleFactorEnabled = false),
-                            () => controller.CancelQueuedMessage(message.Id))
-                        .SubtleButton()
-                        .MinWidth(32).MinHeight(32).Padding(4)
-                        .ToolTip(Localized(actionKey, failed ? "Remove failed message" : "Cancel"))
-                        .AutomationId($"{(failed ? "ChatQueuedMessageRemoveFailed" : "ChatQueuedMessageCancel")}_{message.Id}")
-                        .AutomationName(string.Format(
-                            CultureInfo.CurrentCulture,
-                            Localized(actionAutomationKey, "{0}: {1}"),
-                            index + 1,
-                            message.Text));
-                var state = failed
-                    ? (Element)TextBlock(Localized("Chat_Composer_QueuedMessageFailed", "Failed"))
-                        .FontSize(12)
-                    : Empty();
-                var error = failed && !string.IsNullOrWhiteSpace(message.ErrorText)
-                    ? (Element)TextBlock(message.ErrorText!).FontSize(12).TextWrapping(TextWrapping.Wrap)
-                        .Foreground(Theme.Ref("SystemFillColorCriticalBrush"))
-                    : Empty();
-                return (Element)Grid(
-                        [GridSize.Star(), GridSize.Auto],
-                        [GridSize.Auto],
-                        VStack(
-                                4,
-                                state,
-                                TextBlock(message.Text).FontSize(12).TextWrapping(TextWrapping.Wrap),
-                                error)
-                            .HAlign(HorizontalAlignment.Stretch).Grid(column: 0),
-                        action.Grid(column: 1))
-                    .AutomationName(string.Format(
-                        CultureInfo.CurrentCulture,
-                        Localized(rowAutomationKey, "{0}"),
-                        message.Text));
-            })
-            .ToArray();
-        var queuedCountText = queuedRows.Length == 1
-            ? Localized("Chat_Composer_QueuedCountSingle", "1 queued message")
-            : string.Format(
-            CultureInfo.CurrentCulture,
-            Localized("Chat_Composer_QueuedCountFormat", "{0} queued messages"),
-            queuedRows.Length);
-        Element queuedPanel = queuedRows.Length == 0
-            ? Empty()
-            : Border(
-                    VStack(
-                        8,
-                        TextBlock(queuedCountText)
-                            .FontSize(13)
-                            .FontWeight(Microsoft.UI.Text.FontWeights.SemiBold),
-                        ScrollView(VStack(4, queuedRows))
-                            .MaxHeight(viewportWidth < ChatVisuals.FooterBreakpoint ? 144 : 220)
-                            .Set(scrollView =>
-                            {
-                                scrollView.VerticalScrollBarVisibility = ScrollingScrollBarVisibility.Auto;
-                                scrollView.HorizontalScrollBarVisibility = ScrollingScrollBarVisibility.Hidden;
-                                scrollView.HorizontalScrollMode = ScrollingScrollMode.Disabled;
-                                scrollView.HorizontalContentAlignment = HorizontalAlignment.Stretch;
-                            })))
-                .LiveRegion(Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite)
-                .AutomationName(queuedCountText)
-                .Padding(8).CornerRadius(8)
-                .Background(Theme.Ref("ChatCardBrush"));
-
         var slashPopupVisible = slashDisplay.IsVisible
             && (slashDisplay.IsLoading
                 || (slashDisplay.IsArgsMode && slashDisplay.ArgCommand is not null)
@@ -754,8 +674,6 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                     scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Disabled;
                     scroll.HorizontalContentAlignment = HorizontalAlignment.Left;
                 }));
-        if (queuedRows.Length > 0)
-            composerChildren.Add(queuedPanel);
         composerChildren.Add(input);
         composerChildren.Add(toolbar);
 

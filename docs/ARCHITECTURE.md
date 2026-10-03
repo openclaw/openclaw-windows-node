@@ -219,6 +219,8 @@ disconnect, replacement, or close. This cache is not used for authorization.
 | Gateway request tracking | `PendingRequestRegistry` | authoritative |
 | Chat atomic runtime transaction lock and cross-domain commits | `ChatConversationState` | authoritative |
 | Chat queue collections, echo correlation, drain and retry commit mechanics | `ChatQueueState` under the `ChatConversationState` lock | authoritative |
+| Pending chat bubble presentation | `ReactorChatTimeline` projects the selected-thread queue after the current turn, using the normal user bubble and existing controller cancellation | authoritative |
+| Pending chat preview list inside the composer | Closed in `ReactorChatComposer`; the composer contains only the unsubmitted draft and attachments | closed |
 | Chat reset generations, gates, echoes and backfill state | `ChatResetState` under the `ChatConversationState` lock | authoritative |
 | Chat history identity, revisions and connection-generation tokens | `ChatHistoryState` under the `ChatConversationState` lock | authoritative |
 | Chat sessions, models, catalog and snapshot projection inputs | `ChatPresentationState` under the `ChatConversationState` lock | authoritative |

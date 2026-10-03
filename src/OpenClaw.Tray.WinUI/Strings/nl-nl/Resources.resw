@@ -3052,6 +3052,9 @@ Gebruik een van deze opties:
   <data name="Chat_Composer_QueuedMessageFailed" xml:space="preserve">
     <value>Mislukt</value>
   </data>
+  <data name="Chat_Timeline_Pending" xml:space="preserve">
+    <value>In afwachting</value>
+  </data>
   <data name="Chat_Composer_QueuedMessageCancel" xml:space="preserve">
     <value>Bericht in wachtrij annuleren</value>
   </data>

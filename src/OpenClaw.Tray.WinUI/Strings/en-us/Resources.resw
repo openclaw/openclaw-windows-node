@@ -3098,6 +3098,9 @@ Use one of these options:
   <data name="Chat_Composer_QueuedMessageFailed" xml:space="preserve">
     <value>Failed</value>
   </data>
+  <data name="Chat_Timeline_Pending" xml:space="preserve">
+    <value>Pending</value>
+  </data>
   <data name="Chat_Composer_QueuedMessageCancel" xml:space="preserve">
     <value>Cancel queued message</value>
   </data>

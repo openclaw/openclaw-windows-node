@@ -99,6 +99,28 @@ public sealed class ChatComposerControllerTests
     }
 
     [Fact]
+    public async Task SendAsync_ActiveTurn_AcceptedFollowUpClearsComposerAndAllowsAnotherDraft()
+    {
+        var (vm, controller, port, _) = MakeController();
+        vm.ApplyInputs(MakeInputs(revision: 2) with { TurnActive = true });
+        var attachment = new ChatAttachment { FileName = "notes.txt" };
+        vm.AddAttachments([attachment]);
+        vm.SetDraft("next message");
+
+        Assert.True(await controller.SendAsync());
+        Assert.Equal(string.Empty, vm.Draft);
+        Assert.Empty(vm.PendingAttachments);
+        Assert.False(vm.IsSending);
+        Assert.Equal(1, port.SendMessageCallCount);
+
+        vm.SetDraft("another message");
+        Assert.True(vm.CanSend);
+        Assert.True(await controller.SendAsync());
+        Assert.Equal(string.Empty, vm.Draft);
+        Assert.Equal(2, port.SendMessageCallCount);
+    }
+
+    [Fact]
     public async Task SendAsync_AttachmentOnlySubmission_SendsEmptyMessageAndClearsAttachment()
     {
         var (vm, controller, port, _) = MakeController();

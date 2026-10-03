@@ -3070,6 +3070,9 @@ Use uma destas opções:
   <data name="Chat_Composer_QueuedMessageFailed" xml:space="preserve">
     <value>Falhou</value>
   </data>
+  <data name="Chat_Timeline_Pending" xml:space="preserve">
+    <value>Pendente</value>
+  </data>
   <data name="Chat_Composer_QueuedMessageCancel" xml:space="preserve">
     <value>Cancelar mensagem em fila</value>
   </data>
