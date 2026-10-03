@@ -1261,7 +1261,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         var role = message.Role?.ToLowerInvariant() ?? string.Empty;
         var rawText = message.Text ?? string.Empty;
         var projection = role == "user"
-            ? GatewayMediaMessageProjection.Project(rawText)
+            ? GatewayMediaMessageProjection.Project(rawText, message.ContentParts)
             : null;
         var gate = _state.GateIncomingChatMessage(message, ProjectionContext(), projection);
         HandleOpenedLifecycle(

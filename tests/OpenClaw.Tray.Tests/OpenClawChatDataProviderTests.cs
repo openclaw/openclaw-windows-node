@@ -12268,6 +12268,51 @@ public class OpenClawChatDataProviderTests
         Assert.Equal("artifact-1", media.Reference.ArtifactId);
     }
 
+    [Fact]
+    public async Task LoadHistoryAsync_UserStructuredMedia_CreatesOneUserRowWithAttachment()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    SessionKey = "main",
+                    Role = "user",
+                    Text = "Describe this",
+                    ContentParts =
+                    [
+                        new ChatMessageContentPartInfo
+                        {
+                            Kind = ChatMessageContentPartKind.Media,
+                            Media = new ChatMediaContentInfo
+                            {
+                                Kind = ChatMediaContentKind.Image,
+                                Source = ChatMediaContentSource.Structured,
+                                MimeType = "image/png",
+                                FileName = "gateway.png",
+                            },
+                        },
+                    ],
+                },
+            ],
+        });
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        await provider.LoadHistoryAsync("main");
+
+        var timeline = snapshots[^1].Timelines["main"];
+        var entry = Assert.Single(timeline.Entries, item => item.Kind == ChatTimelineItemKind.User);
+        Assert.Equal("Describe this", entry.Text);
+        var attachment = Assert.Single(provider.GetEntryMetadata("main")[entry.Id].Attachments!);
+        Assert.Equal(ChatAttachmentOrigin.GatewayReference, attachment.Origin);
+        Assert.Equal("gateway.png", attachment.DisplayFileName);
+        Assert.False(attachment.CanAccessPreviewCache);
+    }
+
     // ── chat rubber-duck MEDIUM 4: per-message size cap ──
 
     [Fact]
@@ -12449,6 +12494,64 @@ public class OpenClawChatDataProviderTests
             attachment.DisplayFileName);
         Assert.True(attachment.CanAccessPreviewCache);
         Assert.True(ChatImagePreviewCache.Contains(attachment.PreviewCacheKey!));
+
+        sendGate.SetResult();
+    }
+
+    [Fact]
+    public async Task ChatMessageReceived_StructuredMediaEcho_ReconcilesOneCleanRowAndPreservesLocalPreview()
+    {
+        var sendGate = new TaskCompletionSource();
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendBehavior = (_, _, _) => sendGate.Task;
+        await provider.LoadAsync();
+
+        _ = provider.SendMessageAsync("main", "Describe this", default,
+        [
+            new ChatAttachment
+            {
+                Type = "image",
+                MimeType = "image/png",
+                FileName = "clipboard.png",
+                Content = Convert.ToBase64String([1, 2, 3]),
+                SizeBytes = 3,
+            },
+        ]);
+        snapshots.Clear();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "Describe this",
+            State = "final",
+            OpenClawId = "gateway-structured-media",
+            OpenClawSeq = 12,
+            ContentParts =
+            [
+                new ChatMessageContentPartInfo
+                {
+                    Kind = ChatMessageContentPartKind.Media,
+                    Media = new ChatMediaContentInfo
+                    {
+                        Kind = ChatMediaContentKind.Image,
+                        Source = ChatMediaContentSource.Structured,
+                        MimeType = "image/png",
+                        FileName = "gateway.png",
+                    },
+                },
+            ],
+        });
+
+        var timeline = Assert.Single(snapshots).Timelines["main"];
+        var user = Assert.Single(timeline.Entries, entry => entry.Kind == ChatTimelineItemKind.User);
+        Assert.Equal("Describe this", user.Text);
+        var metadata = provider.GetEntryMetadata("main")[user.Id];
+        Assert.Equal("gateway-structured-media", metadata.GatewayMessageId);
+        var attachment = Assert.Single(metadata.Attachments!);
+        Assert.Equal(ChatAttachmentOrigin.Local, attachment.Origin);
+        Assert.Equal("clipboard.png", attachment.DisplayFileName);
+        Assert.True(attachment.CanAccessPreviewCache);
 
         sendGate.SetResult();
     }

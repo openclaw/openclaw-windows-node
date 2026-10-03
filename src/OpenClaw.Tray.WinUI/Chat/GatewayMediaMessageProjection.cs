@@ -65,6 +65,29 @@ public static class GatewayMediaMessageProjection
             HasMediaEnvelope: true);
     }
 
+    public static GatewayMediaMessageProjectionResult Project(
+        string? text,
+        IReadOnlyList<ChatMessageContentPartInfo>? contentParts)
+    {
+        var projection = Project(text);
+        if (projection.HasMediaEnvelope ||
+            contentParts is null ||
+            contentParts.Count == 0)
+        {
+            return projection;
+        }
+
+        var attachments = CreateStructuredPresentations(contentParts);
+        if (attachments.Count == 0)
+            return projection;
+
+        return new GatewayMediaMessageProjectionResult(
+            projection.ReconciliationText,
+            projection.ResidualText,
+            attachments,
+            HasMediaEnvelope: true);
+    }
+
     public static IReadOnlyList<ChatAttachmentPresentation> CreateLocalPresentations(
         IReadOnlyList<ChatAttachment>? attachments,
         Func<string> previewKeyFactory)
@@ -172,6 +195,38 @@ public static class GatewayMediaMessageProjection
     public static string NormalizeEchoCorrelationText(string? text) =>
         ChatContentFormatting.TruncateForChatEntry(
             ChatMetadataStore.EscapeUntrustedAttachmentMarkerLines(text?.Trim()));
+
+    private static IReadOnlyList<ChatAttachmentPresentation> CreateStructuredPresentations(
+        IEnumerable<ChatMessageContentPartInfo> contentParts)
+    {
+        var attachments = new List<ChatAttachmentPresentation>();
+        foreach (var part in contentParts)
+        {
+            if (part.Kind != ChatMessageContentPartKind.Media ||
+                part.Media is not { } media)
+            {
+                continue;
+            }
+
+            var mimeType = NormalizeMimeType(media.MimeType);
+            var isImage = media.Kind == ChatMediaContentKind.Image ||
+                string.Equals(media.Type, "image", StringComparison.OrdinalIgnoreCase) ||
+                mimeType.StartsWith("image/", StringComparison.Ordinal);
+            var displayName = NormalizeDisplayFileName(media.FileName) is { Length: > 0 } fileName
+                ? fileName
+                : isImage
+                    ? "image"
+                    : "attachment";
+            attachments.Add(new ChatAttachmentPresentation(
+                ChatAttachmentOrigin.GatewayReference,
+                displayName,
+                mimeType,
+                isImage,
+                PreviewCacheKey: null));
+        }
+
+        return attachments;
+    }
 
     private static bool TryParseEnvelopeLine(
         ReadOnlySpan<char> line,

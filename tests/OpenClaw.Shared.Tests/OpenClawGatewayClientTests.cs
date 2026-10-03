@@ -1905,6 +1905,49 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void ProcessRawMessage_SessionMessageWithOpenClawMedia_EmitsStructuredMediaPart()
+    {
+        var helper = new GatewayClientTestHelper();
+        ChatMessageInfo? received = null;
+        helper.Client.ChatMessageReceived += (_, message) => received = message;
+
+        helper.ProcessRawMessage("""
+        {
+          "type": "event",
+          "event": "session.message",
+          "payload": {
+            "sessionKey": "main",
+            "message": {
+              "role": "user",
+              "content": "Describe this",
+              "timestamp": 1781631273567,
+              "__openclaw": {
+                "id": "msg-user-media",
+                "seq": 43,
+                "media": [
+                  {
+                    "kind": "image",
+                    "contentType": "image/png",
+                    "fileName": "gateway.png"
+                  }
+                ],
+                "mediaImageLayout": "grid"
+              }
+            },
+            "state": "final"
+          }
+        }
+        """);
+
+        Assert.NotNull(received);
+        Assert.Equal("Describe this", received!.Text);
+        var part = Assert.Single(received.ContentParts, part => part.Kind == ChatMessageContentPartKind.Media);
+        Assert.Equal(ChatMediaContentKind.Image, part.Media?.Kind);
+        Assert.Equal("image/png", part.Media?.MimeType);
+        Assert.Equal("gateway.png", part.Media?.FileName);
+    }
+
+    [Fact]
     public void ProcessRawMessage_SessionMessageWithContentBlocks_EmitsChatMessage()
     {
         var helper = new GatewayClientTestHelper();
@@ -2358,6 +2401,41 @@ public class OpenClawGatewayClientTests
                 Assert.Equal(ChatMessageContentPartKind.Text, part.Kind);
                 Assert.Equal("Finished.", part.Text);
             });
+    }
+
+    [Fact]
+    public void ParseChatHistoryPayload_OpenClawMedia_PreservesUserStructuredMedia()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var history = helper.ParseChatHistoryPayload("""
+        {
+          "messages": [
+            {
+              "role": "user",
+              "content": "Describe this",
+              "__openclaw": {
+                "media": [
+                  {
+                    "kind": "image",
+                    "contentType": "image/png",
+                    "fileName": "gateway.png"
+                  }
+                ],
+                "mediaImageLayout": "grid"
+              },
+              "timestamp": 1
+            }
+          ]
+        }
+        """);
+
+        var message = Assert.Single(history.Messages);
+        Assert.Equal("Describe this", message.Text);
+        var part = Assert.Single(message.ContentParts, part => part.Kind == ChatMessageContentPartKind.Media);
+        Assert.Equal(ChatMediaContentKind.Image, part.Media?.Kind);
+        Assert.Equal("image/png", part.Media?.MimeType);
+        Assert.Equal("gateway.png", part.Media?.FileName);
     }
 
     [Fact]

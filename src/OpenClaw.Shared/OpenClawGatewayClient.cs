@@ -939,12 +939,14 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         if (!message.TryGetProperty("content", out var content)
             || content.ValueKind is not (JsonValueKind.Array or JsonValueKind.String))
         {
-            return Array.Empty<ChatMessageContentPartInfo>();
+            return ExtractOpenClawMediaContentParts(message);
         }
 
         if (content.ValueKind == JsonValueKind.String)
         {
-            return AssistantMediaDirectiveParser.Project(role, content.GetString()).ContentParts;
+            return AppendOpenClawMediaPartsIfAbsent(
+                AssistantMediaDirectiveParser.Project(role, content.GetString()).ContentParts,
+                message);
         }
 
         var parts = new List<ChatMessageContentPartInfo>();
@@ -1048,7 +1050,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             });
         }
 
-        return parts;
+        return AppendOpenClawMediaPartsIfAbsent(parts, message);
     }
 
     private static bool TryParseStructuredMedia(
@@ -1057,7 +1059,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         out ChatMediaContentInfo media)
     {
         media = null!;
-        var mimeType = ReadFirstString(item, "mimeType", "mime_type")?.Trim().ToLowerInvariant();
+        var mimeType = ReadFirstString(item, "mimeType", "mime_type", "contentType", "content_type")?.Trim().ToLowerInvariant();
         var hasMediaShape = normalizedType is "image" or "audio" or "video" or "file" or "attachment"
             || !string.IsNullOrWhiteSpace(mimeType)
             || ReadFirstString(item, "artifactId", "artifact_id") is not null
@@ -1103,6 +1105,66 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             },
         };
         return true;
+    }
+
+    private static IReadOnlyList<ChatMessageContentPartInfo> AppendOpenClawMediaPartsIfAbsent(
+        IReadOnlyList<ChatMessageContentPartInfo> parts,
+        JsonElement message)
+    {
+        if (parts.Any(static part => part.Kind == ChatMessageContentPartKind.Media))
+            return parts;
+
+        var mediaParts = ExtractOpenClawMediaContentParts(message);
+        if (mediaParts.Count == 0)
+            return parts;
+        if (parts.Count == 0)
+            return mediaParts;
+
+        return parts.Concat(mediaParts).ToArray();
+    }
+
+    private static IReadOnlyList<ChatMessageContentPartInfo> ExtractOpenClawMediaContentParts(JsonElement node)
+    {
+        if (node.ValueKind != JsonValueKind.Object ||
+            !node.TryGetProperty("__openclaw", out var openClaw) ||
+            openClaw.ValueKind != JsonValueKind.Object ||
+            !openClaw.TryGetProperty("media", out var media))
+        {
+            return Array.Empty<ChatMessageContentPartInfo>();
+        }
+
+        var parts = new List<ChatMessageContentPartInfo>();
+        if (media.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in media.EnumerateArray())
+                TryAddOpenClawMediaPart(item, parts);
+        }
+        else
+        {
+            TryAddOpenClawMediaPart(media, parts);
+        }
+
+        return parts;
+    }
+
+    private static void TryAddOpenClawMediaPart(
+        JsonElement item,
+        ICollection<ChatMessageContentPartInfo> parts)
+    {
+        if (item.ValueKind != JsonValueKind.Object)
+            return;
+
+        var normalizedType = (ReadFirstString(item, "type", "kind") ?? string.Empty)
+            .Replace("_", string.Empty, StringComparison.Ordinal)
+            .ToLowerInvariant();
+        if (!TryParseStructuredMedia(item, normalizedType, out var media))
+            return;
+
+        parts.Add(new ChatMessageContentPartInfo
+        {
+            Kind = ChatMessageContentPartKind.Media,
+            Media = media,
+        });
     }
 
     private static ChatMediaContentKind ClassifyMediaMimeType(
