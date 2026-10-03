@@ -76,6 +76,12 @@ The composer and code cards use the card fill above that content layer.
 
 ## Controls and states
 
+Chat responses are not read aloud by default. Enabling the Text-to-speech
+capability permits playback but does not enable automatic spoken replies.
+Settings > Voice > "Read responses aloud" opts in to automatic playback;
+manual "Read aloud" remains available independently when the capability is
+enabled. Existing saved read-aloud preferences are preserved.
+
 Welcome quick-start suggestions use borderless native buttons with a quiet gray
 `ControlAltFillColorSecondaryBrush` backplate and the shared subtle toolbar
 hover/pressed resources. Disabled and keyboard-focus states remain native.
