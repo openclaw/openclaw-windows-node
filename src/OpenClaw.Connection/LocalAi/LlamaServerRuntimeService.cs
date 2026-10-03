@@ -516,6 +516,13 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                         "LLAMA_API_KEY", LocalAiApiCredentialStore.RequireApiKey(apiKey)),
                 };
             await WritePresetAtomicallyAsync(launchPlan, cancellationToken).ConfigureAwait(false);
+            if (!launchPlan.AppliedOverrides.IsEmpty)
+            {
+                _logger.Info(Sanitize(
+                    $"Local AI recipe overrides applied from {LocalAiRecipeOverrides.FileName}: " +
+                    string.Join(", ", launchPlan.AppliedOverrides.Select(o =>
+                        o.Value is null ? $"{o.Key} (removed)" : $"{o.Key}={o.Value}"))));
+            }
             launchPlan = ResolveChildProcessLaunchPlan(launchPlan);
             spec = new LocalAiProcessStartSpec(
                 ResolveChildProcessPath(install.ExecutablePath),
