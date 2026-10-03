@@ -115,7 +115,8 @@ public sealed class NativeCompletionPresentationTests
         Assert.Contains("request.RequireWorkspaceDestination(Destination)", workspace);
         var chat = Read(@"src\OpenClaw.Tray.WinUI\Pages\ChatPage.xaml.cs");
         Assert.Contains("_nativeSetupBinding.RequireCurrent(request, ct)", chat);
-        Assert.Contains("_pendingSessionKey = native.Completion.Target.SessionKey", chat);
+        Assert.Contains("!_nativeSetupPresentation.IsReady", chat);
+        Assert.Contains("if (target is not null) _pendingSessionKey = target", chat);
         var hub = Read(@"src\OpenClaw.Tray.WinUI\Windows\HubWindow.xaml.cs");
         Assert.Contains("if (request.WorkspaceDestination is not null)", hub);
         Assert.DoesNotContain("await chat.WaitForNativeSetupAsync", hub);
@@ -125,6 +126,47 @@ public sealed class NativeCompletionPresentationTests
         var createIntent = workspace[workspace.IndexOf("private async Task NewSessionAsync()", StringComparison.Ordinal)..];
         Assert.True(createIntent.IndexOf("_chat.InvalidateNativeSetupForNavigation()", StringComparison.Ordinal) <
             createIntent.IndexOf("await client.CreateSessionAsync", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void SetupChatWarningsAreLocalizedAndRecheckIsSeparateFromLegacyRetryAndReceiptOwnership()
+    {
+        var root = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), @"src\OpenClaw.Tray.WinUI\Strings");
+        foreach (var resourcePath in Directory.EnumerateFiles(root, "Resources.resw", SearchOption.AllDirectories))
+        {
+            var resources = XDocument.Load(resourcePath);
+            foreach (var key in new[] { "ChatPage_SetupUnavailable", "ChatPage_SetupAuthorityUnconfirmed",
+                "ChatPage_SetupRenderingFailed", "ChatPage_SetupCheckAgain.Content" })
+            {
+                var entry = Assert.Single(resources.Descendants("data"), item => (string?)item.Attribute("name") == key);
+                Assert.False(string.IsNullOrWhiteSpace(entry.Element("value")?.Value));
+                Assert.DoesNotContain("—", entry.Element("value")!.Value);
+            }
+        }
+
+        // retirement_condition: replace with full mounted App/manager tests when
+        // the product page no longer requires the process-global App singleton.
+        var chat = Read(@"src\OpenClaw.Tray.WinUI\Pages\ChatPage.xaml.cs");
+        Assert.DoesNotContain("Onboarding_Ready_LaunchChanged", chat);
+        Assert.Contains("SynchronizeNativeSetupBinding();", chat);
+        Assert.Contains("ReconcileNativeSetupObserver();", chat);
+        var action = chat[chat.IndexOf("private void OnNativeSetupCheckAgain", StringComparison.Ordinal)..
+            chat.IndexOf("private static string? TryComputeChatUrl", StringComparison.Ordinal)];
+        Assert.Contains("ApplyChatSurface(\"explicit recheck\")", action);
+        Assert.DoesNotContain("OnRetryChat", action);
+        Assert.DoesNotContain("Initialize(", action);
+        var helper = Read(@"src\OpenClaw.Tray.WinUI\Presentation\SetupNativeChatPresentation.cs");
+        foreach (var prohibited in new[] { "ReconnectAsync", "SetupDashboardHandoffStore", "OpenAsync(", "SendMessage",
+            "RequireNativeSetupClientAsync", "Timer", "catch (Exception" })
+        {
+            Assert.DoesNotContain(prohibited, action);
+            Assert.DoesNotContain(prohibited, helper);
+        }
+        var xaml = XDocument.Parse(Read(@"src\OpenClaw.Tray.WinUI\Pages\ChatPage.xaml"));
+        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var bar = Assert.Single(xaml.Descendants(), element => (string?)element.Attribute(x + "Name") == "NativeSetupError");
+        Assert.Equal("False", (string?)bar.Attribute("IsClosable"));
+        Assert.Contains(bar.Descendants(), element => (string?)element.Attribute("Click") == "OnNativeSetupCheckAgain");
     }
 
     [Fact]

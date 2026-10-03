@@ -7959,4 +7959,16 @@ Your settings, gateway, files, and models stay where they are.</value>
   <data name="Onboarding_AiSetup_LocalOwnershipInvalid" xml:space="preserve"><value>The saved Local AI ownership, model or Gateway configuration no longer matches. In the original Companion profile, review the original Gateway and its model settings, including edited model allowlist entries. Keep the ownership receipt; do not copy credentials or replace the provider.</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipUnavailable" xml:space="preserve"><value>The original Gateway ownership or configuration could not be checked. Reconnect the original Gateway and check again. Nothing has been changed.</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipFiles" xml:space="preserve"><value>The owned Local AI installation needs file repair. In Local AI settings, stop its runtime and resolve its original Gateway route before repairing files. Keep the ownership receipt.</value></data>
+  <data name="ChatPage_SetupUnavailable" xml:space="preserve">
+    <value>The Gateway verified during setup is not connected. Check Connection, or check again when it is available.</value>
+  </data>
+  <data name="ChatPage_SetupAuthorityUnconfirmed" xml:space="preserve">
+    <value>The Gateway and agent verified during setup could not be confirmed. Open Connection to check them.</value>
+  </data>
+  <data name="ChatPage_SetupRenderingFailed" xml:space="preserve">
+    <value>Chat could not be displayed. Check again. If the problem continues, open Diagnostics.</value>
+  </data>
+  <data name="ChatPage_SetupCheckAgain.Content" xml:space="preserve">
+    <value>Check again</value>
+  </data>
 </root>

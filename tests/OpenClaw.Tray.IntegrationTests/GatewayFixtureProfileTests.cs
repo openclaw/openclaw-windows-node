@@ -91,13 +91,30 @@ public sealed class GatewayFixtureProfileTests
         Assert.False(start.UseShellExecute);
         Assert.Equal(profile.DataDirectory, start.Environment["OPENCLAW_TRAY_DATA_DIR"]);
         Assert.Equal(profile.SetupDirectory, start.Environment["OPENCLAW_TRAY_LOCAL_DATA_DIR"]);
+        Assert.Equal(profile.RoamingRoot, start.Environment["OPENCLAW_TRAY_APPDATA_DIR"]);
+        Assert.Equal(profile.LocalRoot, start.Environment["OPENCLAW_TRAY_LOCALAPPDATA_DIR"]);
+        Assert.Equal(4, new[] { profile.DataDirectory, profile.SetupDirectory, profile.RoamingRoot, profile.LocalRoot }
+            .Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        Assert.True(Directory.Exists(profile.LocalRoot));
+        Assert.True(Directory.Exists(profile.RoamingRoot));
         Assert.Equal("1", start.Environment["OPENCLAW_GATEWAY_FIXTURE"]);
         Assert.Equal("49233", start.Environment["OPENCLAW_MCP_PORT"]);
         Assert.False(start.Environment.ContainsKey("OPENCLAW_ACCESSIBILITY_TEST_CHAT"));
         Assert.False(start.Environment.ContainsKey("OPENCLAW_FORCE_ONBOARDING"));
-        Assert.False(start.Environment.ContainsKey("OPENCLAW_TRAY_LOCALAPPDATA_DIR"));
         Assert.False(start.Environment.ContainsKey("OPENCLAW_FUTURE_UNRECOGNIZED_OVERRIDE"));
         Assert.Equal("must-not-use", Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR"));
+        Assert.Equal("must-not-use", Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR"));
+        Assert.Empty(start.ArgumentList);
+    }
+
+    [Fact]
+    public void SetupHandoffIsExplicitAndPassedAsOneOpaqueArgument()
+    {
+        using var app = CreateFakeSupportedApp();
+        using var profile = new GatewayFixtureProfile(Endpoint, "fixture-token");
+        var start = profile.CreateStartInfo(app.Combine("OpenClaw.Tray.WinUI.exe"), 49233, "native:synthetic-handoff");
+        Assert.Equal(new[] { "--post-setup-launch", "native:synthetic-handoff" }, start.ArgumentList);
+        Assert.Equal(profile.LocalRoot, start.Environment["OPENCLAW_TRAY_LOCALAPPDATA_DIR"]);
     }
 
     [Theory]

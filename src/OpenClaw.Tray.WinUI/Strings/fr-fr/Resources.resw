@@ -7896,4 +7896,16 @@ Vos paramètres, votre passerelle, vos fichiers et vos modèles restent en place
   <data name="Onboarding_AiSetup_LocalOwnershipInvalid" xml:space="preserve"><value>La propriété enregistrée de l’IA locale, le modèle ou la configuration de la passerelle ne correspond plus. Dans le profil Companion d’origine, vérifiez la passerelle d’origine et ses paramètres de modèle, y compris les entrées modifiées de la liste des modèles autorisés. Conservez la preuve de propriété ; ne copiez pas les identifiants et ne remplacez pas le fournisseur.</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipUnavailable" xml:space="preserve"><value>La propriété ou la configuration de la passerelle d’origine n’a pas pu être vérifiée. Reconnectez cette passerelle et réessayez. Rien n’a été modifié.</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipFiles" xml:space="preserve"><value>Les fichiers de l’installation d’IA locale doivent être réparés. Dans les paramètres d’IA locale, arrêtez le moteur et résolvez son routage vers la passerelle d’origine avant de réparer les fichiers. Conservez la preuve de propriété.</value></data>
+  <data name="ChatPage_SetupUnavailable" xml:space="preserve">
+    <value>Le Gateway vérifié pendant la configuration n’est pas connecté. Consultez Connexion ou vérifiez à nouveau lorsqu’il est disponible.</value>
+  </data>
+  <data name="ChatPage_SetupAuthorityUnconfirmed" xml:space="preserve">
+    <value>Le Gateway et l’agent vérifiés pendant la configuration n’ont pas pu être confirmés. Ouvrez Connexion pour les vérifier.</value>
+  </data>
+  <data name="ChatPage_SetupRenderingFailed" xml:space="preserve">
+    <value>Chat n’a pas pu être affiché. Vérifiez à nouveau. Si le problème persiste, ouvrez Diagnostics.</value>
+  </data>
+  <data name="ChatPage_SetupCheckAgain.Content" xml:space="preserve">
+    <value>Vérifier à nouveau</value>
+  </data>
 </root>
