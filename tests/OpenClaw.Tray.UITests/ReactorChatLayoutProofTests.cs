@@ -190,6 +190,33 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         });
     }
 
+    [Fact]
+    public async Task ComposerInput_AcceptsNativeReturnAtCaretWithoutSelectionResetToStart()
+    {
+        await WithChatAsync(480, async (surface, _, _, _) =>
+        {
+            TextBox? input = null;
+            await ui.RunOnUIAsync(() =>
+            {
+                input = FindControl<TextBox>(surface, "ChatComposerInput");
+                Assert.True(input.AcceptsReturn);
+                Assert.True(input.Focus(FocusState.Keyboard));
+                input.Text = "hello world";
+                input.SelectionStart = 5;
+                input.SelectionLength = 0;
+                input.SelectedText = "\r";
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                input ??= FindControl<TextBox>(surface, "ChatComposerInput");
+                Assert.Equal("hello\n world", NormalizeNewlines(input.Text));
+                Assert.NotEqual(0, input.SelectionStart);
+                Assert.Equal("hello".Length, NormalizeNewlines(input.Text[..input.SelectionStart]).Length);
+            });
+        });
+    }
+
     [Theory]
     [InlineData(800)]
     [InlineData(480)]
@@ -1547,6 +1574,9 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
 
     private static Rect Bounds(FrameworkElement control, UIElement root) =>
         control.TransformToVisual(root).TransformBounds(new Rect(0, 0, control.ActualWidth, control.ActualHeight));
+
+    private static string NormalizeNewlines(string value) =>
+        value.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
 
     private static void AssertCentered(Border surface, Border composer, Border prose)
     {

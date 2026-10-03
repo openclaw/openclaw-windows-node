@@ -541,21 +541,12 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 if (args.Key != global::Windows.System.VirtualKey.Enter)
                     return;
 
-                args.Handled = true;
                 var shift = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(
                     global::Windows.System.VirtualKey.Shift);
-                if (shift.HasFlag(global::Windows.UI.Core.CoreVirtualKeyStates.Down)
-                    && sender is Microsoft.UI.Xaml.Controls.TextBox textBox)
-                {
-                    var current = textBox.Text ?? string.Empty;
-                    var start = Math.Clamp(textBox.SelectionStart, 0, current.Length);
-                    var end = Math.Clamp(start + textBox.SelectionLength, start, current.Length);
-                    vm.SetDraft(current[..start] + "\n" + current[end..]);
-                    textBox.SelectionStart = start + 1;
-                    textBox.SelectionLength = 0;
+                if (shift.HasFlag(global::Windows.UI.Core.CoreVirtualKeyStates.Down))
                     return;
-                }
 
+                args.Handled = true;
                 Send();
             })
             .TextWrapping(TextWrapping.Wrap)
@@ -566,7 +557,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             .BorderThickness(0)
             .BorderBrush(transparentInputBrush)
             .Background(transparentInputBrush)
-            .AcceptsReturn(false)
+            .AcceptsReturn(true)
             .FontSize(16)
             .Foreground(Theme.Ref("ChatTextBrush"))
             .Set(control =>
