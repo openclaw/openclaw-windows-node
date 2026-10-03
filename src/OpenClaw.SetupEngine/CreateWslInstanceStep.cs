@@ -17,6 +17,12 @@ namespace OpenClaw.SetupEngine;
 public sealed class CreateWslInstanceStep : SetupStep
 {
     private static readonly TimeSpan DistroVersionVerificationTimeout = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan[] FreshDistroListTimeouts =
+    [
+        TimeSpan.FromSeconds(15),
+        TimeSpan.FromSeconds(30),
+        TimeSpan.FromSeconds(60),
+    ];
     private static readonly TimeSpan[] FreshDistroProbeTimeouts =
     [
         TimeSpan.FromSeconds(30),
@@ -24,12 +30,17 @@ public sealed class CreateWslInstanceStep : SetupStep
         TimeSpan.FromSeconds(90),
     ];
 
+    private readonly record struct FreshDistroVerification(StepResult Result, bool PreserveRegistration);
+
+    private bool _preserveRegistrationOnRollback;
+
     public override string Id => "wsl-create";
     public override string DisplayName => "Create WSL instance";
     public override bool CanRetry => false;
 
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
+        _preserveRegistrationOnRollback = false;
         var distro = ctx.DistroName!;
         var baseDistro = ctx.Config.BaseDistro.Trim();
 
@@ -92,13 +103,19 @@ public sealed class CreateWslInstanceStep : SetupStep
         }
 
         var verify = await VerifyFreshDistro(ctx, distro, installPath, ct);
-        if (!verify.IsSuccess)
+        if (!verify.Result.IsSuccess)
         {
-            var cleanupError = await CleanupPartialInstall(ctx, distro, installPath, ct);
-            return StepResult.Fail($"{verify.Message}{cleanupError}");
+            _preserveRegistrationOnRollback = verify.PreserveRegistration;
+            var cleanupError = await CleanupPartialInstall(
+                ctx,
+                distro,
+                installPath,
+                ct,
+                verify.PreserveRegistration);
+            return StepResult.Fail($"{verify.Result.Message}{cleanupError}");
         }
 
-        return verify;
+        return verify.Result;
     }
 
     private static StepResult EnsureInstallPathReady(string installPath)
@@ -128,18 +145,43 @@ public sealed class CreateWslInstanceStep : SetupStep
         return StepResult.Ok();
     }
 
-    private static async Task<StepResult> VerifyFreshDistro(SetupContext ctx, string distro, string installPath, CancellationToken ct)
+    private static async Task<FreshDistroVerification> VerifyFreshDistro(SetupContext ctx, string distro, string installPath, CancellationToken ct)
     {
-        var list = await ctx.Commands.RunAsyncAllowingInheritedPipeHandleEscape(
-            WslConstants.WslExePath,
-            ["--list", "--quiet"],
-            TimeSpan.FromSeconds(15),
-            ct: ct);
-        if (list.ExitCode != 0 || !WslInstallSupport.ContainsDistro(list.Stdout, distro))
+        CommandResult? list = null;
+        for (var attempt = 0; attempt < FreshDistroListTimeouts.Length; attempt++)
+        {
+            list = await ctx.Commands.RunAsyncAllowingInheritedPipeHandleEscape(
+                WslConstants.WslExePath,
+                ["--list", "--quiet"],
+                FreshDistroListTimeouts[attempt],
+                ct: ct);
+            if (list.ExitCode == 0 && !list.TimedOut)
+                break;
+
+            if (attempt < FreshDistroListTimeouts.Length - 1)
+            {
+                ctx.Logger.Warn(
+                    $"Fresh WSL distro '{distro}' registration list was not ready " +
+                    $"(attempt {attempt + 1}/{FreshDistroListTimeouts.Length}, exit {list.ExitCode}); retrying.");
+            }
+        }
+
+        if (list is not { ExitCode: 0, TimedOut: false } completedList)
+        {
+            var environmentIssue = await PreflightWslStep.DetectEnvironmentIssueAsync(ctx, ct);
+            var baseMessage = $"Fresh WSL install could not list distros after installing '{distro}'.";
+            return new FreshDistroVerification(
+                StepResult.Fail(environmentIssue != null ? $"{baseMessage} {environmentIssue}" : baseMessage),
+                PreserveRegistration: true);
+        }
+
+        if (!WslInstallSupport.ContainsDistro(completedList.Stdout, distro))
         {
             var environmentIssue = await PreflightWslStep.DetectEnvironmentIssueAsync(ctx, ct);
             var baseMessage = $"Fresh WSL install did not register expected distro '{distro}'.";
-            return StepResult.Fail(environmentIssue != null ? $"{baseMessage} {environmentIssue}" : baseMessage);
+            return new FreshDistroVerification(
+                StepResult.Fail(environmentIssue != null ? $"{baseMessage} {environmentIssue}" : baseMessage),
+                PreserveRegistration: false);
         }
 
         var verbose = await ctx.Commands.RunAsyncAllowingInheritedPipeHandleEscape(
@@ -148,10 +190,14 @@ public sealed class CreateWslInstanceStep : SetupStep
             DistroVersionVerificationTimeout,
             ct: ct);
         if (verbose.ExitCode != 0 || !WslInstallSupport.TryGetDistroVersion(verbose.Stdout, distro, out var version))
-            return StepResult.Fail($"Fresh WSL install registered '{distro}', but setup could not verify it is WSL2.");
+            return new FreshDistroVerification(
+                StepResult.Fail($"Fresh WSL install registered '{distro}', but setup could not verify it is WSL2."),
+                PreserveRegistration: false);
 
         if (version != 2)
-            return StepResult.Fail($"Fresh WSL install registered '{distro}' as WSL{version}; WSL2 is required.");
+            return new FreshDistroVerification(
+                StepResult.Fail($"Fresh WSL install registered '{distro}' as WSL{version}; WSL2 is required."),
+                PreserveRegistration: false);
 
         CommandResult? probe = null;
         for (var attempt = 0; attempt < FreshDistroProbeTimeouts.Length; attempt++)
@@ -180,13 +226,22 @@ public sealed class CreateWslInstanceStep : SetupStep
             || !probe.Stdout.Contains("OPENCLAW_FRESH_WSL_READY", StringComparison.Ordinal))
         {
             var detail = probe is null ? "no output" : FirstNonEmpty(probe.Stderr, probe.Stdout);
-            return StepResult.Fail($"Fresh WSL distro '{distro}' could not run a root verification command: {detail}");
+            return new FreshDistroVerification(
+                StepResult.Fail($"Fresh WSL distro '{distro}' could not run a root verification command: {detail}"),
+                PreserveRegistration: false);
         }
 
-        return StepResult.Ok($"Created clean WSL2 distro '{distro}' at '{installPath}'");
+        return new FreshDistroVerification(
+            StepResult.Ok($"Created clean WSL2 distro '{distro}' at '{installPath}'"),
+            PreserveRegistration: false);
     }
 
-    private static async Task<string> CleanupPartialInstall(SetupContext ctx, string distro, string installPath, CancellationToken ct)
+    private static async Task<string> CleanupPartialInstall(
+        SetupContext ctx,
+        string distro,
+        string installPath,
+        CancellationToken ct,
+        bool preserveRegistration = false)
     {
         var cleanupErrors = new List<string>();
         var installPathExists = Directory.Exists(installPath) || File.Exists(installPath);
@@ -199,7 +254,19 @@ public sealed class CreateWslInstanceStep : SetupStep
         var distroExists = registrationStateKnown && WslInstallSupport.ContainsDistro(list.Stdout, distro);
         var canDeleteInstallPath = registrationStateKnown && !distroExists;
 
-        if (!registrationStateKnown)
+        if (preserveRegistration && (!registrationStateKnown || distroExists))
+        {
+            ctx.Logger.Warn(
+                $"Leaving WSL distro '{distro}' in place because the post-install distro list did not complete.");
+            if (distroExists)
+            {
+                cleanupErrors.Add(
+                    $"left distro '{distro}' registered because the post-install distro list did not complete");
+            }
+
+            canDeleteInstallPath = false;
+        }
+        else if (!registrationStateKnown)
         {
             ctx.Logger.Warn($"Partial install cleanup could not list WSL distros (exit {list.ExitCode}); attempting best-effort unregister for '{distro}' before deleting app-owned files");
             canDeleteInstallPath = await TryUnregisterPartialInstall(ctx, distro, cleanupErrors, ct);
@@ -285,7 +352,9 @@ public sealed class CreateWslInstanceStep : SetupStep
         if (!DistroInstallPathPolicy.TryGetManagedInstallPath(ctx.LocalDataDir, distro, out var vhdDir, out var pathError))
             throw new IOException($"[Uninstall] Refusing WSL rollback filesystem cleanup: {pathError}");
 
-        var cleanupError = await CleanupPartialInstall(ctx, distro, vhdDir, ct);
+        var preserveRegistration = _preserveRegistrationOnRollback;
+        _preserveRegistrationOnRollback = false;
+        var cleanupError = await CleanupPartialInstall(ctx, distro, vhdDir, ct, preserveRegistration);
         if (cleanupError.Length > 0)
             throw new IOException($"[Uninstall] Refusing unsafe WSL rollback cleanup.{cleanupError}");
 
