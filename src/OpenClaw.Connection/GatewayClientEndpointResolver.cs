@@ -16,6 +16,7 @@ public static class GatewayClientEndpointResolver
         if (tunnel.LocalPort is < 1 or > 65535)
             throw new InvalidOperationException("SSH tunnel local port must be between 1 and 65535.");
 
-        return $"ws://localhost:{tunnel.LocalPort}";
+        var host = DashboardForwardPortGuard.IsHolding(tunnel.LocalPort) ? "127.0.0.1" : "localhost";
+        return $"ws://{host}:{tunnel.LocalPort}";
     }
 }
