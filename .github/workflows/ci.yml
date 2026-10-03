@@ -1175,8 +1175,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v7
-      with:
-        fetch-depth: 0
 
     - name: Download win-x64 tray artifact
       uses: actions/download-artifact@v8
@@ -1382,6 +1380,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
 
     - name: Download prepared release assets
       uses: actions/download-artifact@v8
