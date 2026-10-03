@@ -18,15 +18,7 @@ public sealed class VerifyEndToEndStep : SetupStep
 
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
-        // Verify gateway is still healthy
-        var distro = ctx.DistroName!;
-        var status = await ctx.Commands.RunInWslAsync(
-            distro, $"{ctx.WslPathPrefix} && openclaw gateway status --json", TimeSpan.FromSeconds(15), ct: ct, inputViaStdin: true);
-
-        if (status.ExitCode != 0 || !status.Stdout.Contains("running", StringComparison.OrdinalIgnoreCase))
-            return StepResult.Fail("Gateway is not running");
-
-        // Verify registry state
+        // Gateway health is proven by the operator connect below; no separate status CLI call.
         var registry = new GatewayRegistry(ctx.DataDir, logger: new SetupOpenClawLogger(ctx.Logger));
         registry.Load();
         var record = registry.GetById(ctx.GatewayRecordId!);
@@ -49,67 +41,68 @@ public sealed class VerifyEndToEndStep : SetupStep
                 new DeviceIdentityLoadException(identityPath, cause));
         }
 
-        if (tokenRead.Status != DeviceTokenReadStatus.Resolved)
+        SetupOperatorPairingSession? session = null;
+        try
         {
-            ctx.Logger.Warn("No stored device token found. Tray app may need to re-pair.");
+            if (tokenRead.Status != DeviceTokenReadStatus.Resolved)
+            {
+                ctx.Logger.Warn("No stored device token found. Tray app may need to re-pair.");
+                (session, var sessionFailure) = await SetupOperatorPairingSession.OpenAsync(ctx, identityDirectory, ct);
+                if (sessionFailure is not null)
+                    return sessionFailure;
+            }
+            else
+            {
+                ctx.Logger.Info("Device token present. Performing final operator handshake.");
+
+                // CRITICAL: The operator finalization must happen AFTER node pairing.
+                // Node pairing changes the device's "current metadata" to node-host/node.
+                // The tray connects as operator (cli/cli), so we must re-establish operator
+                // as the device's last-seen metadata. This prevents "metadata-upgrade" errors.
+                // The finalize connection is kept open as the pairing session for the drain below.
+                var wsLogger = new SetupOpenClawLogger(ctx.Logger);
+                (var finalResult, session) = await FinalizeOperatorForTray(ctx, ctx.GatewayUrl!, identityDirectory, wsLogger, ct);
+                if (!finalResult.IsSuccess)
+                    return finalResult;
+            }
+
+            // Write setup-state.json so tray knows the distro name for WSL keepalive
+            await WriteSetupStateAsync(ctx, ct);
+
+            // Write settings.json with EnableNodeMode + capability toggles from config
+            WriteSettingsJson(ctx);
+
+            // Drain any remaining pending approvals (device or node) so tray starts clean
+            var drainResult = await DrainPendingApprovalsAsync(ctx, session!, ct);
+            if (!drainResult.IsSuccess)
+                return drainResult;
         }
-        else
+        finally
         {
-            ctx.Logger.Info("Device token present. Performing final operator handshake.");
-
-            // CRITICAL: The operator finalization must happen AFTER node pairing.
-            // Node pairing changes the device's "current metadata" to node-host/node.
-            // The tray connects as operator (cli/cli), so we must re-establish operator
-            // as the device's last-seen metadata. This prevents "metadata-upgrade" errors.
-            var wsLogger = new SetupOpenClawLogger(ctx.Logger);
-            var finalResult = await FinalizeOperatorForTray(ctx, ctx.GatewayUrl!, identityDirectory, wsLogger, ct);
-            if (!finalResult.IsSuccess)
-                return finalResult;
+            if (session is not null)
+                await session.DisposeAsync();
         }
-
-        // Write setup-state.json so tray knows the distro name for WSL keepalive
-        await WriteSetupStateAsync(ctx, ct);
-
-        // Write settings.json with EnableNodeMode + capability toggles from config
-        WriteSettingsJson(ctx);
-
-        // Drain any remaining pending approvals (device or node) so tray starts clean
-        var drainResult = await DrainPendingApprovalsAsync(ctx, ct);
-        if (!drainResult.IsSuccess)
-            return drainResult;
 
         ClearPersistedBootstrapCredentials(ctx);
 
         return StepResult.Ok("Gateway running; operator finalized; settings written for tray.");
     }
 
-    internal static async Task<StepResult> DrainPendingDeviceApprovalsAsync(SetupContext ctx, CancellationToken ct)
-    {
-        var distro = ctx.DistroName!;
-        var token = ctx.SharedGatewayToken ?? ctx.BootstrapToken;
-        if (string.IsNullOrWhiteSpace(token))
-            return StepResult.Fail("No gateway token available to drain pending device approvals");
-
-        var pathPrefix = ctx.WslPathPrefix;
-        var env = new Dictionary<string, string> { ["OPENCLAW_GATEWAY_TOKEN"] = token };
-        return await DrainPendingRequestsForSetupDeviceAsync(
+    internal static Task<StepResult> DrainPendingDeviceApprovalsAsync(
+        SetupContext ctx,
+        ISetupPairingRequests requests,
+        CancellationToken ct)
+        => DrainPendingRequestsForSetupDeviceAsync(
             ctx,
-            distro,
-            pathPrefix,
-            env,
-            listCommand: "openclaw devices list --json",
-            kind: ApprovalRequestKind.Device,
+            requests,
+            ApprovalRequestKind.Device,
             matchNodeId: false,
-            requestBaseline: ctx.SetupDeviceApprovalBaseline,
+            ctx.SetupDeviceApprovalBaseline,
             ct);
-    }
 
     private static async Task<StepResult> DrainPendingRequestsForSetupDeviceAsync(
         SetupContext ctx,
-        string distro,
-        string pathPrefix,
-        Dictionary<string, string> env,
-        string listCommand,
+        ISetupPairingRequests requests,
         ApprovalRequestKind kind,
         bool matchNodeId,
         PendingRequestBaseline? requestBaseline,
@@ -126,26 +119,19 @@ public sealed class VerifyEndToEndStep : SetupStep
 
         for (var i = 0; i < maxDrainIterations; i++)
         {
-            var pending = await ctx.Commands.RunInWslAsync(
-                distro,
-                $"""{pathPrefix} && {listCommand}""",
-                TimeSpan.FromSeconds(15), env, ct, inputViaStdin: true);
-
-            if (pending.ExitCode != 0)
-            {
-                var pendingOutput = $"{pending.Stdout.Trim()} {pending.Stderr.Trim()}".Trim();
-                return StepResult.Fail($"Could not list pending {label.ToLowerInvariant()} approvals (exit {pending.ExitCode}): {pendingOutput}");
-            }
+            var pending = await requests.ListAsync(kind, TimeSpan.FromSeconds(15), ct);
+            if (!pending.Success)
+                return StepResult.Fail($"Could not list pending {label.ToLowerInvariant()} approvals ({pending.FailureDetail}): {pending.Output}");
 
             var parsed = ApprovalRequestHelper.TrySelectPendingRequestForDevice(
-                pending.Stdout.Trim(),
+                pending.Output,
                 ctx.OperatorDeviceId,
                 requestBaseline.RequestIds,
                 matchNodeId);
             if (!parsed.Success)
             {
                 if (ApprovalRequestHelper.IsNothingToDrain(parsed) ||
-                    ApprovalRequestHelper.IsExplicitNoPendingMessage(pending.Stdout))
+                    ApprovalRequestHelper.IsExplicitNoPendingMessage(pending.Output))
                 {
                     break;
                 }
@@ -154,14 +140,9 @@ public sealed class VerifyEndToEndStep : SetupStep
             }
 
             ctx.Logger.Info($"Draining pending {label.ToLowerInvariant()} approval: {parsed.RequestId}");
-            var approvalEnv = ApprovalRequestHelper.AddRequestIdEnvironment(env, parsed.RequestId!);
-            var approve = await ctx.Commands.RunInWslAsync(
-                distro,
-                $"""{pathPrefix} && {ApprovalRequestHelper.ApprovalCommand(kind)}""",
-                TimeSpan.FromSeconds(15), approvalEnv, ct, inputViaStdin: true);
-
-            if (approve.ExitCode != 0)
-                return StepResult.Fail($"{label} approval drain failed for {parsed.RequestId} (exit {approve.ExitCode}): {approve.Stdout.Trim()} {approve.Stderr.Trim()}".Trim());
+            var approve = await requests.ApproveAsync(kind, parsed.RequestId!, TimeSpan.FromSeconds(15), ct);
+            if (!approve.Success)
+                return StepResult.Fail($"{label} approval drain failed for {parsed.RequestId} ({approve.FailureDetail}): {approve.Output}");
 
             if (i == maxDrainIterations - 1)
                 return StepResult.Fail($"{label} approval drain reached its iteration limit; pending approvals may remain");
@@ -172,67 +153,24 @@ public sealed class VerifyEndToEndStep : SetupStep
             : "Pending device approvals drained");
     }
 
-    internal static async Task<StepResult> DrainPendingApprovalsAsync(SetupContext ctx, CancellationToken ct)
+    internal static async Task<StepResult> DrainPendingApprovalsAsync(
+        SetupContext ctx,
+        ISetupPairingRequests requests,
+        CancellationToken ct)
     {
-        var deviceDrainResult = await DrainPendingDeviceApprovalsAsync(ctx, ct);
+        var deviceDrainResult = await DrainPendingDeviceApprovalsAsync(ctx, requests, ct);
         if (!deviceDrainResult.IsSuccess)
             return deviceDrainResult;
 
-        var distro = ctx.DistroName!;
-        var token = ctx.SharedGatewayToken ?? ctx.BootstrapToken;
-        if (string.IsNullOrWhiteSpace(token))
-            return StepResult.Fail("No gateway token available to drain pending approvals");
-
-        var pathPrefix = ctx.WslPathPrefix;
-        var env = new Dictionary<string, string> { ["OPENCLAW_GATEWAY_TOKEN"] = token };
-        const int maxDrainIterations = 10;
-        var requestBaseline = ctx.SetupNodeApprovalBaseline;
-        if (requestBaseline is null || !requestBaseline.Success)
-        {
-            ctx.Logger.Warn(
-                "Skipping pending node approval drain because setup did not capture a pre-connect request baseline");
-            return StepResult.Ok("Pending node approval drain skipped");
-        }
-
-        for (var i = 0; i < maxDrainIterations; i++)
-        {
-            var nodeList = await ctx.Commands.RunInWslAsync(
-                distro,
-                $"""{pathPrefix} && openclaw nodes list --json""",
-                TimeSpan.FromSeconds(15), env, ct, inputViaStdin: true);
-
-            if (nodeList.ExitCode != 0)
-                return StepResult.Fail($"Could not list pending node approvals (exit {nodeList.ExitCode}): {nodeList.Stdout.Trim()} {nodeList.Stderr.Trim()}".Trim());
-
-            var parsed = ApprovalRequestHelper.TrySelectPendingRequestForDevice(
-                nodeList.Stdout.Trim(),
-                ctx.OperatorDeviceId,
-                requestBaseline.RequestIds,
-                matchNodeId: true);
-            if (!parsed.Success)
-            {
-                if (ApprovalRequestHelper.IsNothingToDrain(parsed) ||
-                    ApprovalRequestHelper.IsExplicitNoPendingMessage(nodeList.Stdout))
-                {
-                    break;
-                }
-
-                return StepResult.Fail($"Could not select pending node approval for drain: {parsed.Error}");
-            }
-
-            ctx.Logger.Info($"Draining pending node approval: {parsed.RequestId}");
-            var approvalEnv = ApprovalRequestHelper.AddRequestIdEnvironment(env, parsed.RequestId!);
-            var approve = await ctx.Commands.RunInWslAsync(
-                distro,
-                $"""{pathPrefix} && {ApprovalRequestHelper.ApprovalCommand(ApprovalRequestKind.Node)}""",
-                TimeSpan.FromSeconds(15), approvalEnv, ct, inputViaStdin: true);
-
-            if (approve.ExitCode != 0)
-                return StepResult.Fail($"Node approval drain failed for {parsed.RequestId} (exit {approve.ExitCode}): {approve.Stdout.Trim()} {approve.Stderr.Trim()}".Trim());
-
-            if (i == maxDrainIterations - 1)
-                return StepResult.Fail("Node approval drain reached its iteration limit; pending approvals may remain");
-        }
+        var nodeDrainResult = await DrainPendingRequestsForSetupDeviceAsync(
+            ctx,
+            requests,
+            ApprovalRequestKind.Node,
+            matchNodeId: true,
+            ctx.SetupNodeApprovalBaseline,
+            ct);
+        if (!nodeDrainResult.IsSuccess)
+            return nodeDrainResult;
 
         return StepResult.Ok("Pending approvals drained");
     }
@@ -272,8 +210,9 @@ public sealed class VerifyEndToEndStep : SetupStep
     /// <summary>
     /// Final operator connect using device token — establishes operator/cli/cli as the
     /// device's "current metadata" so the tray can connect without metadata-upgrade.
+    /// On success the connected client is returned as the setup pairing session; the caller owns it.
     /// </summary>
-    private static async Task<StepResult> FinalizeOperatorForTray(
+    private static async Task<(StepResult Result, SetupOperatorPairingSession? Session)> FinalizeOperatorForTray(
         SetupContext ctx, string gatewayUrl, string identityPath, IOpenClawLogger wsLogger, CancellationToken ct)
     {
         var identity = new DeviceIdentity(identityPath);
@@ -283,25 +222,26 @@ public sealed class VerifyEndToEndStep : SetupStep
         }
         catch (DeviceIdentityLoadException ex)
         {
-            return SetupIdentityFailure.Terminal(ctx, "operator finalization", ex);
+            return (SetupIdentityFailure.Terminal(ctx, "operator finalization", ex), null);
         }
         var deviceToken = identity.DeviceToken;
 
         if (string.IsNullOrEmpty(deviceToken))
-            return StepResult.Fail("No device token available for operator finalization");
+            return (StepResult.Fail("No device token available for operator finalization"), null);
 
-        // Wait for grace period to expire so this connect is treated as a real metadata change
-        ctx.Logger.Info("Waiting for grace period before final operator handshake...");
-        await Task.Delay(TimeSpan.FromSeconds(5), ct);
+        // Fail closed: the setup-wide pre-connect baseline excludes requests that existed
+        // before setup opened its sockets; ambiguous or missing baselines refuse approval.
+        ctx.CurrentDeviceApprovalBaseline = ctx.SetupDeviceApprovalBaseline;
 
-        var requestBaseline = await ApprovalRequestHelper.CapturePendingRequestBaselineAsync(
-            ctx,
-            ApprovalRequestKind.Device,
-            ct);
-        ctx.CurrentDeviceApprovalBaseline = requestBaseline;
-        var client = new OpenClawGatewayClient(gatewayUrl, deviceToken, logger: wsLogger, identityPath: identityPath);
-        PairOperatorStep.ApplyReconnectAuthorization(client, ctx);
-        client.UseV2Signature = true;
+        OpenClawGatewayClient CreateClient(string credential)
+        {
+            var created = new OpenClawGatewayClient(gatewayUrl, credential, logger: wsLogger, identityPath: identityPath);
+            PairOperatorStep.ApplyReconnectAuthorization(created, ctx);
+            created.UseV2Signature = true;
+            return created;
+        }
+
+        var client = CreateClient(deviceToken);
 
         try
         {
@@ -310,7 +250,9 @@ public sealed class VerifyEndToEndStep : SetupStep
             if (result == PairOperatorStep.ConnectionOutcome.Connected)
             {
                 ctx.Logger.Info("Final operator handshake succeeded — tray will connect seamlessly");
-                return StepResult.Ok("Operator finalized");
+                var session = SetupOperatorPairingSession.FromConnectedClient(client);
+                client = null;
+                return (StepResult.Ok("Operator finalized"), session);
             }
 
             if (result == PairOperatorStep.ConnectionOutcome.PairingRequired)
@@ -322,11 +264,9 @@ public sealed class VerifyEndToEndStep : SetupStep
                 client.Dispose();
                 client = null;
 
-                var approveResult = await PairOperatorStep.AutoApprovePairing(ctx, requestId, ct);
+                var approveResult = await PairOperatorStep.AutoApprovePairing(ctx, new CliPairingRequests(ctx), requestId, ct);
                 if (!approveResult.IsSuccess)
-                    return StepResult.Fail($"Operator finalization approval failed: {approveResult.Message}");
-
-                await Task.Delay(2000, ct);
+                    return (StepResult.Fail($"Operator finalization approval failed: {approveResult.Message}"), null);
 
                 // After approval, the gateway rotates the device token. The old one is invalid.
                 // Clear the stale DeviceToken from the identity file so the client doesn't
@@ -336,27 +276,34 @@ public sealed class VerifyEndToEndStep : SetupStep
 
                 // Reconnect with the SHARED GATEWAY TOKEN to get a fresh device token.
                 ctx.Logger.Info("Reconnecting with shared token to get fresh device token after approval");
-                var provenanceCheck = await PairOperatorStep.EnsurePairingEndpointTrustedAsync(ctx, ct);
-                if (provenanceCheck is not null)
-                    return provenanceCheck;
-                client = new OpenClawGatewayClient(gatewayUrl, ctx.SharedGatewayToken!, logger: wsLogger, identityPath: identityPath);
-                PairOperatorStep.ApplyReconnectAuthorization(client, ctx);
-                client.UseV2Signature = true;
+                client = CreateClient(ctx.SharedGatewayToken!);
                 var confirmResult = await PairOperatorStep.WaitForConnectionOrPairing(client, ctx, TimeSpan.FromSeconds(15), ct);
+                if (confirmResult == PairOperatorStep.ConnectionOutcome.PairingRequired)
+                {
+                    ctx.Logger.Info("Operator still pending right after finalization approval; retrying reconnect once");
+                    await client.DisconnectAsync();
+                    client.Dispose();
+                    client = null;
+                    await Task.Delay(PairOperatorStep.PostApprovalReconnectRetryDelay, ct);
+                    client = CreateClient(ctx.SharedGatewayToken!);
+                    confirmResult = await PairOperatorStep.WaitForConnectionOrPairing(client, ctx, TimeSpan.FromSeconds(15), ct);
+                }
 
                 if (confirmResult == PairOperatorStep.ConnectionOutcome.Connected)
                 {
                     ctx.Logger.Info("Operator finalization approved — fresh device token stored, tray will connect seamlessly");
-                    return StepResult.Ok("Operator finalized after approval");
+                    var session = SetupOperatorPairingSession.FromConnectedClient(client);
+                    client = null;
+                    return (StepResult.Ok("Operator finalized after approval"), session);
                 }
 
-                return PairOperatorStep.ConnectionFailureResult(
+                return (PairOperatorStep.ConnectionFailureResult(
                     ctx,
                     "Operator finalization failed after approval",
-                    confirmResult);
+                    confirmResult), null);
             }
 
-            return PairOperatorStep.ConnectionFailureResult(ctx, "Operator finalization failed", result);
+            return (PairOperatorStep.ConnectionFailureResult(ctx, "Operator finalization failed", result), null);
         }
         finally
         {

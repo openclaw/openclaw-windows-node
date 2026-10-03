@@ -16,6 +16,10 @@ public sealed class PairOperatorStep : SetupStep
     public override string DisplayName => "Pair operator connection";
     public override RetryPolicy Retry => new(MaxAttempts: 3, InitialDelay: TimeSpan.FromSeconds(3));
 
+    // Approval RPC/CLI returns after the gateway persisted the decision. One short
+    // retry covers a reconnect that races the gateway's pairing-store refresh.
+    internal static readonly TimeSpan PostApprovalReconnectRetryDelay = TimeSpan.FromSeconds(1);
+
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         var gatewayUrl = ctx.GatewayUrl!;
@@ -77,6 +81,8 @@ public sealed class PairOperatorStep : SetupStep
         var reachability = await WindowsGatewayReachability.VerifyAsync(ctx, "operator", ct);
         if (!reachability.IsSuccess)
             return reachability;
+        // The CLI baseline below sends the gateway token outside the handshake-gated
+        // WebSocket, so verify the listener owner before it runs.
         var provenanceCheck = await EnsurePairingEndpointTrustedAsync(ctx, ct);
         if (provenanceCheck is not null)
             return provenanceCheck;
@@ -86,16 +92,23 @@ public sealed class PairOperatorStep : SetupStep
         OpenClawGatewayClient? client = null;
         var requestBaseline = await ApprovalRequestHelper.CaptureSetupBaselineOnceAsync(
             ctx,
+            new CliPairingRequests(ctx),
             ApprovalRequestKind.Device,
             ct);
         ctx.CurrentDeviceApprovalBaseline = requestBaseline;
 
+        OpenClawGatewayClient CreateClient()
+        {
+            var created = new OpenClawGatewayClient(gatewayUrl, token, logger: wsLogger, identityPath: identityPath);
+            ApplyReconnectAuthorization(created, ctx);
+            created.UseV2Signature = true; // Local gateway uses v2 signature format
+            return created;
+        }
+
         try
         {
             // Phase 1: Initial connect (may get PAIRING_REQUIRED)
-            client = new OpenClawGatewayClient(gatewayUrl, token, logger: wsLogger, identityPath: identityPath);
-            ApplyReconnectAuthorization(client, ctx);
-            client.UseV2Signature = true; // Local gateway uses v2 signature format
+            client = CreateClient();
             var phase1Result = await WaitForConnectionOrPairing(client, ctx, TimeSpan.FromSeconds(15), ct);
 
             if (phase1Result == ConnectionOutcome.Connected)
@@ -116,21 +129,23 @@ public sealed class PairOperatorStep : SetupStep
                 client = null;
 
                 // Auto-approve the pending pairing request
-                var approveResult = await AutoApprovePairing(ctx, requestId, ct);
+                var approveResult = await AutoApprovePairing(ctx, new CliPairingRequests(ctx), requestId, ct);
                 if (!approveResult.IsSuccess)
                     return approveResult;
 
-                // Wait for gateway to process the approval
-                await Task.Delay(2000, ct);
-
                 // Phase 2: Reconnect — the device should now be approved
-                provenanceCheck = await EnsurePairingEndpointTrustedAsync(ctx, ct);
-                if (provenanceCheck is not null)
-                    return provenanceCheck;
-                client = new OpenClawGatewayClient(gatewayUrl, token, logger: wsLogger, identityPath: identityPath);
-                ApplyReconnectAuthorization(client, ctx);
-                client.UseV2Signature = true;
+                client = CreateClient();
                 var phase2Result = await WaitForConnectionOrPairing(client, ctx, TimeSpan.FromSeconds(20), ct);
+                if (phase2Result == ConnectionOutcome.PairingRequired)
+                {
+                    ctx.Logger.Info("Operator still pending right after approval; retrying reconnect once");
+                    await client.DisconnectAsync();
+                    client.Dispose();
+                    client = null;
+                    await Task.Delay(PostApprovalReconnectRetryDelay, ct);
+                    client = CreateClient();
+                    phase2Result = await WaitForConnectionOrPairing(client, ctx, TimeSpan.FromSeconds(20), ct);
+                }
 
                 if (phase2Result == ConnectionOutcome.Connected)
                 {
@@ -223,6 +238,8 @@ public sealed class PairOperatorStep : SetupStep
                 cancellationToken,
                 provenanceRetryCount,
                 provenanceRetryDelay).ConfigureAwait(false);
+            if (failure is not null)
+                ctx.PairingEndpointTrustFailure = failure;
             return failure is null
                 ? ReconnectAuthorizationResult.AllowedResult
                 : new ReconnectAuthorizationResult(
@@ -245,110 +262,12 @@ public sealed class PairOperatorStep : SetupStep
         }
     }
 
-    /// <summary>
-    /// After initial pairing, the gateway knows us via auth.token (shared gateway token).
-    /// The tray will connect using auth.deviceToken (the token we just received).
-    /// This "finalizes" the transition so the gateway doesn't flag it as metadata-upgrade.
-    /// </summary>
-    private static async Task<StepResult> FinalizeWithDeviceToken(
-        SetupContext ctx, string gatewayUrl, string identityPath, IOpenClawLogger wsLogger, CancellationToken ct)
+    internal static async Task<StepResult> AutoApprovePairing(
+        SetupContext ctx,
+        ISetupPairingRequests requests,
+        string? requestId,
+        CancellationToken ct)
     {
-        ctx.Logger.Info("Finalizing: reconnect with device token (like tray will)");
-
-        // Read the device token we just stored
-        var identity = new DeviceIdentity(identityPath);
-        try
-        {
-            identity.Initialize();
-        }
-        catch (DeviceIdentityLoadException ex)
-        {
-            return SetupIdentityFailure.Terminal(ctx, "operator finalization", ex);
-        }
-        var deviceToken = identity.DeviceToken;
-
-        if (string.IsNullOrEmpty(deviceToken))
-        {
-            ctx.Logger.Warn("No device token stored after pairing — skipping finalization");
-            return StepResult.Ok("Operator paired (no finalization needed)");
-        }
-
-        // Wait for the gateway's internal session grace period to expire.
-        // Without this delay, the gateway accepts the deviceToken connect within grace
-        // but would later reject the tray's identical connect as "metadata-upgrade".
-        ctx.Logger.Info("Waiting for gateway grace period to expire before finalization...");
-        await Task.Delay(TimeSpan.FromSeconds(5), ct);
-
-        var requestBaseline = await ApprovalRequestHelper.CapturePendingRequestBaselineAsync(
-            ctx,
-            ApprovalRequestKind.Device,
-            ct);
-        ctx.CurrentDeviceApprovalBaseline = requestBaseline;
-
-        // Connect exactly as the tray would: pass deviceToken as the credential
-        var finalClient = new OpenClawGatewayClient(gatewayUrl, deviceToken, logger: wsLogger, identityPath: identityPath);
-        ApplyReconnectAuthorization(finalClient, ctx);
-        finalClient.UseV2Signature = true;
-
-        try
-        {
-            var result = await WaitForConnectionOrPairing(finalClient, ctx, TimeSpan.FromSeconds(15), ct);
-
-            if (result == ConnectionOutcome.Connected)
-            {
-                ctx.Logger.Info("Finalization connected — tray will connect seamlessly");
-                return StepResult.Ok("Operator paired and finalized for tray");
-            }
-
-            if (result == ConnectionOutcome.PairingRequired)
-            {
-                ctx.Logger.Info("Metadata-upgrade detected during finalization — auto-approving");
-                var requestId = finalClient.PairingRequiredRequestId;
-                await finalClient.DisconnectAsync();
-                finalClient.Dispose();
-                finalClient = null;
-
-                // Approve the metadata-upgrade
-                var approveResult = await AutoApprovePairing(ctx, requestId, ct);
-                if (!approveResult.IsSuccess)
-                    return StepResult.Fail($"Finalization approval failed: {approveResult.Message}");
-
-                await Task.Delay(2000, ct);
-
-                // One more connect to confirm
-                finalClient = new OpenClawGatewayClient(gatewayUrl, deviceToken, logger: wsLogger, identityPath: identityPath);
-                ApplyReconnectAuthorization(finalClient, ctx);
-                finalClient.UseV2Signature = true;
-                var finalResult = await WaitForConnectionOrPairing(finalClient, ctx, TimeSpan.FromSeconds(15), ct);
-
-                if (finalResult == ConnectionOutcome.Connected)
-                {
-                    ctx.Logger.Info("Finalization approved — tray will connect seamlessly");
-                    return StepResult.Ok("Operator paired and finalized for tray");
-                }
-
-                return ConnectionFailureResult(ctx, "Finalization failed after approval", finalResult);
-            }
-
-            return ConnectionFailureResult(ctx, "Finalization connect failed", result);
-        }
-        finally
-        {
-            if (finalClient != null)
-            {
-                await finalClient.DisconnectAsync();
-                finalClient.Dispose();
-            }
-        }
-    }
-
-    internal static async Task<StepResult> AutoApprovePairing(SetupContext ctx, string? requestId, CancellationToken ct)
-    {
-        var distro = ctx.DistroName!;
-        var token = ctx.SharedGatewayToken ?? ctx.BootstrapToken ?? throw new InvalidOperationException("No gateway token available for auto-approve");
-
-        var env = new Dictionary<string, string> { ["OPENCLAW_GATEWAY_TOKEN"] = token };
-
         if (string.IsNullOrWhiteSpace(requestId))
         {
             var requestBaseline = ctx.CurrentDeviceApprovalBaseline;
@@ -362,23 +281,19 @@ public sealed class PairOperatorStep : SetupStep
                     "The setup socket did not provide a pairing request ID, and no pre-connect approval baseline is available.");
             }
 
-            var pending = await ctx.Commands.RunInWslAsync(
-                distro,
-                $"""{ctx.WslPathPrefix} && openclaw devices list --json""",
-                TimeSpan.FromSeconds(30), env, ct, inputViaStdin: true);
+            var pending = await requests.ListAsync(ApprovalRequestKind.Device, TimeSpan.FromSeconds(30), ct);
 
-            ctx.Logger.Info($"Device pending list: exit={pending.ExitCode}");
+            ctx.Logger.Info($"Device pending list: {(pending.Success ? "ok" : pending.FailureDetail)}");
 
-            if (pending.ExitCode != 0)
+            if (!pending.Success)
             {
-                var pendingOutput = pending.Stdout.Trim();
-                if (ApprovalRequestHelper.IsPluginNotFoundError(pendingOutput))
+                if (ApprovalRequestHelper.IsPluginNotFoundError(pending.Output))
                     return StepResult.Terminal(ApprovalRequestHelper.PluginNotFoundMessage);
-                return StepResult.Fail($"Could not list pending pairing requests (exit {pending.ExitCode}): {pendingOutput}");
+                return StepResult.Fail($"Could not list pending pairing requests ({pending.FailureDetail}): {pending.Output}");
             }
 
             var parsed = ApprovalRequestHelper.TrySelectPendingRequestForDevice(
-                pending.Stdout.Trim(),
+                pending.Output,
                 ctx.OperatorDeviceId,
                 requestBaseline.RequestIds,
                 matchNodeId: false);
@@ -398,21 +313,16 @@ public sealed class PairOperatorStep : SetupStep
         }
 
         ctx.Logger.Info($"Approving pairing request: {requestId}");
-        var approvalEnv = ApprovalRequestHelper.AddRequestIdEnvironment(env, requestId!);
 
-        var approve = await ctx.Commands.RunInWslAsync(
-            distro,
-            $"""{ctx.WslPathPrefix} && {ApprovalRequestHelper.ApprovalCommand(ApprovalRequestKind.Device)}""",
-            TimeSpan.FromSeconds(30), approvalEnv, ct, inputViaStdin: true);
+        var approve = await requests.ApproveAsync(ApprovalRequestKind.Device, requestId!, TimeSpan.FromSeconds(30), ct);
 
-        ctx.Logger.Info($"Approve result: exit={approve.ExitCode}");
+        ctx.Logger.Info($"Approve result: {(approve.Success ? "ok" : approve.FailureDetail)}");
 
-        if (approve.ExitCode != 0)
+        if (!approve.Success)
         {
-            var approveOutput = approve.Stdout.Trim();
-            if (ApprovalRequestHelper.IsPluginNotFoundError(approveOutput))
+            if (ApprovalRequestHelper.IsPluginNotFoundError(approve.Output))
                 return StepResult.Terminal(ApprovalRequestHelper.PluginNotFoundMessage);
-            return StepResult.Fail($"Device approval failed (exit {approve.ExitCode}): {approveOutput}");
+            return StepResult.Fail($"Device approval failed ({approve.FailureDetail}): {approve.Output}");
         }
 
         return StepResult.Ok($"Approved request {requestId}");
@@ -425,6 +335,9 @@ public sealed class PairOperatorStep : SetupStep
         string prefix,
         ConnectionOutcome outcome)
     {
+        if (outcome == ConnectionOutcome.Error && ctx.PairingEndpointTrustFailure is { } trustFailure)
+            return trustFailure;
+
         if (outcome == ConnectionOutcome.CompatibilityFailure &&
             ctx.GatewayCompatibilityFailure is { } compatibilityFailure)
         {
@@ -463,6 +376,7 @@ public sealed class PairOperatorStep : SetupStep
     {
         var tcs = new TaskCompletionSource<ConnectionOutcome>();
         ctx.ObservedGatewaySelf = null;
+        ctx.PairingEndpointTrustFailure = null;
         ctx.GatewayCompatibilityFailure = null;
 
         void OnStatusChanged(object? sender, ConnectionStatus status)
