@@ -234,7 +234,7 @@ internal static class Program
 
         if (!settings.UseSshTunnel)
         {
-            return settings.GatewayUrl;
+            return settings.GatewayUrl ?? "ws://127.0.0.1:18789";
         }
 
         var port = settings.SshTunnelLocalPort <= 0 ? 18789 : settings.SshTunnelLocalPort;

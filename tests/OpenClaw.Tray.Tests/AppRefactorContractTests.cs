@@ -449,6 +449,37 @@ public sealed class AppRefactorContractTests
         Assert.Contains("SettingsManager.SettingsDirectoryPath", method);
         Assert.DoesNotContain("SharedGatewayToken =", method);
         Assert.DoesNotContain("BootstrapToken =", method);
+        var initializeGateway = ExtractMethod(source, "InitializeGatewayClient");
+        Assert.Contains(
+            "var gatewayUrl = _settings.GetLegacyCredentialGatewayUrlOrNull();",
+            initializeGateway);
+        Assert.Contains(
+            "_settings.GetLegacyCredentialGatewayUrlOrNull(),",
+            source);
+        Assert.Contains(
+            "_settings?.GetLegacyCredentialGatewayUrlOrNull()",
+            ExtractMethod(source, "ResolveStartupOperatorCredential"));
+        Assert.Contains(
+            "_settings?.GetLegacyCredentialGatewayUrlOrNull()",
+            ExtractMethod(source, "ResolveStartupNodeCredential"));
+    }
+
+    [Fact]
+    public void UrlLessSettings_KeepCliDefaultButUninstallValidationRemovesLegacyCredentialKeys()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var cli = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Cli", "Program.cs"));
+        var validator = File.ReadAllText(Path.Combine(root, "scripts", "validate-wsl-gateway-uninstall.ps1"));
+
+        Assert.Contains(
+            "return settings.GatewayUrl ?? \"ws://127.0.0.1:18789\";",
+            cli);
+        Assert.Contains(
+            "foreach ($field in @('Token', 'BootstrapToken', 'GatewayUrl'))",
+            validator);
+        Assert.Contains("$sObj.PSObject.Properties.Remove($field)", validator);
+        Assert.DoesNotContain("$sObj.$field = ''", validator);
+        Assert.DoesNotContain("$sObj.GatewayUrl = 'ws://localhost:18789'", validator);
     }
 
     [Fact]
