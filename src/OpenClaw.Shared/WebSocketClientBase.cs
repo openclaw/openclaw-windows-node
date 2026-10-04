@@ -462,6 +462,7 @@ public abstract class WebSocketClientBase : IDisposable
         // (16–64 KB) heap allocation per connection that would otherwise land on the LOH.
         var buffer = ArrayPool<byte>.Shared.Rent(ReceiveBufferSize);
         var sb = new StringBuilder();
+        var textDecoder = Encoding.UTF8.GetDecoder();
 
         try
         {
@@ -478,22 +479,27 @@ public abstract class WebSocketClientBase : IDisposable
                 {
                     if (result.EndOfMessage && sb.Length == 0)
                     {
-                        // Fast path: single-frame message — decode directly, skip StringBuilder round-trip
+                        // Fast path: single-frame message. Decode directly and skip the StringBuilder.
                         await ProcessMessageForConnectionAsync(
                             Encoding.UTF8.GetString(buffer, 0, result.Count),
                             connectionGeneration);
                     }
                     else
                     {
-                        // Multi-frame path: decode into a pooled char buffer and append to the
-                        // StringBuilder directly, avoiding the intermediate string allocation that
-                        // Encoding.UTF8.GetString would produce.
+                        // One decoder for this message. A code unit split across frames stays
+                        // buffered until EndOfMessage, instead of becoming U+FFFD on each side.
                         var maxCharCount = Encoding.UTF8.GetMaxCharCount(result.Count);
                         var charBuffer = ArrayPool<char>.Shared.Rent(maxCharCount);
                         bool withinLimit;
                         try
                         {
-                            var charCount = Encoding.UTF8.GetChars(buffer, 0, result.Count, charBuffer, 0);
+                            textDecoder.Convert(
+                                buffer, 0, result.Count,
+                                charBuffer, 0, charBuffer.Length,
+                                flush: result.EndOfMessage,
+                                out _,
+                                out var charCount,
+                                out _);
                             withinLimit = TryAppendWithinLimit(sb, charBuffer, charCount, MaxInboundMessageChars);
                         }
                         finally
@@ -503,6 +509,7 @@ public abstract class WebSocketClientBase : IDisposable
 
                         if (!withinLimit)
                         {
+                            textDecoder.Reset();
                             _logger.Warn($"[{ClientRole}] inbound message exceeded {MaxInboundMessageChars} chars; closing connection (memory-exhaustion guard)");
                             try { await ws.CloseAsync(WebSocketCloseStatus.MessageTooBig, "message too large", CancellationToken.None); }
                             catch { /* best-effort close */ }
@@ -515,6 +522,7 @@ public abstract class WebSocketClientBase : IDisposable
                                 sb.ToString(),
                                 connectionGeneration);
                             sb.Clear();
+                            textDecoder.Reset();
                         }
                     }
                 }
