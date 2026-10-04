@@ -92,6 +92,18 @@ public static class MxcConfigBuilder
                 "Explicit environment variables are not supported by the Windows companion sandbox.");
         }
 
+        IReadOnlyList<string>? environment = null;
+        if (request.ExecutionContext is { } executionContext)
+        {
+            // SDK inheritance has no UNSET operation. Project onto clean profile
+            // defaults ourselves so omitted markers are absent, never empty.
+            var defaults = new Dictionary<string, string?>(
+                context.DefaultEnvironmentProvider?.Invoke() ?? WindowsDefaultEnvironment.Read(),
+                StringComparer.OrdinalIgnoreCase);
+            executionContext.ApplyTo(defaults);
+            environment = defaults.Select(entry => $"{entry.Key}={entry.Value}").ToArray();
+        }
+
         // readonly = UI grants. Additional compatibility paths are added below.
         // PATH itself is bootstrapped inside the shell, and backend-safe PATH
         // directories are also granted readonly so PATH-resolved user tools can
@@ -179,7 +191,8 @@ public static class MxcConfigBuilder
             {
                 CommandLine = commandLine,
                 Cwd = workingDirectory,
-                // Omit env: SDK 0.9 treats [] as empty, losing Windows defaults.
+                Env = environment,
+                InheritDefaultEnv = environment is null ? null : false,
                 TimeoutMs = timeoutMs,
             },
             ProcessContainer = new MxcProcessContainer
@@ -620,7 +633,8 @@ public static class MxcConfigBuilder
 internal sealed record MxcConfigBuildContext(
     string? ContainerId = null,
     string? PathEnvVar = null,
-    Func<string, bool>? ReadonlyGrantIsBackendSafe = null)
+    Func<string, bool>? ReadonlyGrantIsBackendSafe = null,
+    Func<IReadOnlyDictionary<string, string?>>? DefaultEnvironmentProvider = null)
 {
     public static MxcConfigBuildContext Default { get; } = new();
 }

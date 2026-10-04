@@ -73,6 +73,9 @@ public interface INodeCapability
     /// <summary>Commands this capability can handle</summary>
     IReadOnlyList<string> Commands { get; }
 
+    /// <summary>Protocol features advertised in caps, not invocable commands.</summary>
+    IReadOnlyList<string> ProtocolCapabilities => Array.Empty<string>();
+
     /// <summary>Check if this capability can handle the given command</summary>
     bool CanHandle(string command);
 
@@ -97,6 +100,7 @@ public abstract class NodeCapabilityBase : INodeCapability
 {
     public abstract string Category { get; }
     public abstract IReadOnlyList<string> Commands { get; }
+    public virtual IReadOnlyList<string> ProtocolCapabilities => Array.Empty<string>();
 
     protected IOpenClawLogger Logger { get; }
 

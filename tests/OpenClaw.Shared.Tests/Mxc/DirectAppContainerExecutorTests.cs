@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using Xunit;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Mxc;
@@ -12,6 +14,37 @@ namespace OpenClaw.Shared.Tests.Mxc;
 /// </summary>
 public class DirectAppContainerExecutorTests
 {
+    [Fact]
+    public async Task ScratchConfigFile_IsBomFreeAndRestrictedToUserAndSystem()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var path = DirectAppContainerExecutor.CreateScratchDir();
+        try
+        {
+            using var identity = WindowsIdentity.GetCurrent();
+            var security = new DirectoryInfo(path).GetAccessControl();
+            Assert.True(security.AreAccessRulesProtected);
+            var rules = security.GetAccessRules(true, true, typeof(SecurityIdentifier)).Cast<FileSystemAccessRule>().ToArray();
+            Assert.Equal(2, rules.Length);
+            var allowedSids = new[] { identity.User!.Value, new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null).Value };
+            foreach (var rule in rules)
+                Assert.Contains(rule.IdentityReference.Value, allowedSids);
+            var file = Path.Combine(path, "config.json");
+            await DirectAppContainerExecutor.WriteConfigFileAsync(file,
+                """{"process":{"env":["CONTROL=synthetic ☃"]}}""", CancellationToken.None);
+            var bytes = await File.ReadAllBytesAsync(file);
+            Assert.False(bytes.AsSpan().StartsWith(new byte[] { 0xef, 0xbb, 0xbf }));
+            using var parsed = JsonDocument.Parse(bytes);
+            Assert.Equal("CONTROL=synthetic ☃", parsed.RootElement.GetProperty("process").GetProperty("env")[0].GetString());
+            var fileRules = new FileInfo(file).GetAccessControl().GetAccessRules(true, true, typeof(SecurityIdentifier))
+                .Cast<FileSystemAccessRule>().ToArray();
+            Assert.Equal(2, fileRules.Length);
+            foreach (var rule in fileRules)
+                Assert.Contains(rule.IdentityReference.Value, allowedSids);
+        }
+        finally { Directory.Delete(path, recursive: true); }
+    }
+
     private static SandboxExecutionRequest NewRequest() => new(
         CapabilityCommand: "system.run",
         Args: JsonDocument.Parse("{\"command\":\"echo hi\",\"shell\":\"cmd\"}").RootElement,

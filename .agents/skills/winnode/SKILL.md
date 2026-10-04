@@ -100,7 +100,8 @@ Execute canonical argv. Subject to the local exec approval policy at
   "command": ["executable", "arg", ...], // required
   "rawCommand": "string",                // optional display metadata
   "cwd":     "string",
-  "timeoutMs": 30000
+  "timeoutMs": 30000,
+  "executionContext": { "senderId": "sender", "chatId": "chat", "subagent": true }
 }
 ```
 Shell behavior must be explicit in the argv, for example
@@ -108,6 +109,23 @@ Shell behavior must be explicit in the argv, for example
 The gateway's `exec host=node` path performs this wrapping automatically.
 Non-empty custom `env` is rejected until environment values can be identity-bound
 and shown safely during approval.
+
+`executionContext` is optional and closed. `senderId` and `chatId`, when present,
+must be non-empty strings; `subagent` may only be `true`. Unknown fields and null
+values are rejected. These are routing hints, with no session, turn, or approval
+authority. They never change the approved argv.
+
+A present context replaces the complete projection of `OPENCLAW_CHANNEL_CONTEXT`
+and `OPENCLAW_SUBAGENT_EXEC`: `{}` removes both; channel-only removes a stale
+subagent marker; subagent-only removes a stale channel marker. Absence preserves
+legacy environment behavior. MXC uses clean Windows profile defaults with these
+two names removed, then adds the requested markers. It does not use empty strings
+as an unset convention. Host execution applies the same projection after caller
+environment handling. Arbitrary `env` remains rejected.
+
+Gateway discovery advertises `system.run.execution-context.v1` in `caps` when
+`system.run` is enabled. It is a protocol capability, not an invocable command.
+Reconnect and approve the expanded node surface in Devices when requested.
 
 #### Migration from the pre-V2 low-level contract
 

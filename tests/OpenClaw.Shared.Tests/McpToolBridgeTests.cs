@@ -928,6 +928,10 @@ public class McpToolBridgeTests
 
         Assert.Contains("system.run", toolNames);
         Assert.Contains("system.run.prepare", toolNames);
+        Assert.DoesNotContain(SystemRunExecutionContext.Capability, toolNames);
+        var runTool = doc.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray()
+            .Single(tool => tool.GetProperty("name").GetString() == "system.run");
+        Assert.Contains("executionContext", runTool.GetProperty("description").GetString());
         // The rest of the system category is always present.
         Assert.Contains("system.notify", toolNames);
         Assert.Contains("system.which", toolNames);
@@ -945,6 +949,7 @@ public class McpToolBridgeTests
             new SystemCapability(OpenClaw.Shared.NullLogger.Instance, includeRunCommands: false),
         };
         var bridge = CreateBridge(caps);
+        Assert.Empty(caps[0].ProtocolCapabilities);
         var resp = await bridge.HandleRequestAsync(@"{""jsonrpc"":""2.0"",""id"":1,""method"":""tools/list""}");
 
         using var doc = JsonDocument.Parse(resp!);
@@ -958,6 +963,28 @@ public class McpToolBridgeTests
         Assert.Contains("system.which", toolNames);
         Assert.Contains("system.execApprovals.get", toolNames);
         Assert.Contains("system.execApprovals.set", toolNames);
+    }
+
+    [Theory]
+    [InlineData("system.run")]
+    [InlineData("system.run.prepare")]
+    public async Task ToolsCall_RejectsAuthorityInsideExecutionContext(string command)
+    {
+        var bridge = CreateBridge(new List<INodeCapability> { new SystemCapability(NullLogger.Instance) });
+        var request = JsonSerializer.Serialize(new
+        {
+            jsonrpc = "2.0", id = 1, method = "tools/call",
+            @params = new { name = command, arguments = new
+            {
+                command = new[] { "cmd.exe", "/c", "echo must-not-run" },
+                executionContext = new { sessionKey = "not-authority" },
+            } },
+        });
+        var response = await bridge.HandleRequestAsync(request);
+        using var document = JsonDocument.Parse(response!);
+        var result = document.RootElement.GetProperty("result");
+        Assert.True(result.GetProperty("isError").GetBoolean());
+        Assert.Contains("executionContext invalid", result.GetProperty("content")[0].GetProperty("text").GetString());
     }
 
     [Fact]

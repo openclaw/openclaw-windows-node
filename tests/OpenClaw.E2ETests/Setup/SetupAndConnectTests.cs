@@ -66,7 +66,7 @@ public class SetupAndConnectTests
         var windowsNode = FindWindowsNode(root);
         var expectedCapabilities = new CapabilitiesConfig()
             .GetEnabledCapabilities()
-            .Select(c => c.Category)
+            .SelectMany(c => new StubNodeCapability(c.Category, c.Commands).ProtocolCapabilities.Prepend(c.Category))
             .Order(StringComparer.OrdinalIgnoreCase)
             .ToArray();
         var expectedCommands = new CapabilitiesConfig().GetEnabledCommandIds().ToArray();
@@ -1640,7 +1640,8 @@ public class SetupAndConnectTests
     {
         var expectedCapabilities = expected
             .GetEnabledCapabilities()
-            .Select(capability => capability.Category)
+            .SelectMany(capability => new StubNodeCapability(capability.Category, capability.Commands)
+                .ProtocolCapabilities.Prepend(capability.Category))
             .Order(StringComparer.OrdinalIgnoreCase)
             .ToArray();
         var expectedCommands = expected

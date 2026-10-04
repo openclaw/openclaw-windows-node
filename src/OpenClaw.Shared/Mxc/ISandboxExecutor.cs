@@ -55,7 +55,8 @@ public sealed record SandboxExecutionRequest(
     int TimeoutMs,
     string? Cwd = null,
     IReadOnlyDictionary<string, string>? Env = null,
-    long? MaxOutputBytes = null);
+    long? MaxOutputBytes = null,
+    SystemRunExecutionContext? ExecutionContext = null);
 
 /// <summary>
 /// Result of a sandboxed capability invocation. Mirrors <see cref="CommandResult"/>

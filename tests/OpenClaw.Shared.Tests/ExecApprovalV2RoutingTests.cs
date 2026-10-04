@@ -259,6 +259,54 @@ public class ExecApprovalV2RoutingTests
         => new(new[] { "cmd", "/c", "echo hi" }, cwd: @"C:\work", timeoutMs: 5000,
             env: null);
 
+    [Theory]
+    [InlineData("system.run")]
+    [InlineData("system.run.prepare")]
+    public async Task InvalidContext_IsRejectedBeforeApproval(string command)
+    {
+        var handler = new TrackingHandler();
+        var cap = new SystemCapability(NullLogger.Instance);
+        cap.SetV2Handler(handler);
+        var response = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "context", Command = command,
+            Args = Parse("""{"command":["cmd.exe","/c","echo hi"],"executionContext":{"approved":true}}"""),
+        });
+        Assert.False(response.Ok);
+        Assert.Contains("executionContext", response.Error);
+        Assert.False(handler.WasCalled);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Context_ReachesSandboxOrApprovedHostFallback_WithoutAlteringApproval(bool available)
+    {
+        var host = new FakeRunner();
+        var sandbox = new FakeSandboxExecutor();
+        var cap = new SystemCapability(NullLogger.Instance);
+        cap.SetCommandRunner(BuildMxcRunner(new SettingsData { SystemRunSandboxEnabled = true }, available, host, sandbox));
+        var approved = ApprovedEchoNoEnv();
+        cap.SetV2Handler(new FixedResultHandler(ExecApprovalV2Result.Allow(approved)));
+        var request = RunRequest();
+        request.Args = Parse("""{"command":["cmd.exe","/c","echo unapproved"],"executionContext":{"chatId":"chat","subagent":true}}""");
+
+        Assert.True((await cap.ExecuteAsync(request)).Ok);
+        var context = available ? sandbox.LastRequest!.ExecutionContext : host.LastRequest!.ExecutionContext;
+        Assert.Equal(new SystemRunExecutionContext(ChatId: "chat", Subagent: true), context);
+        Assert.Null(approved.Env);
+        if (available)
+            Assert.Equal(approved.Argv, sandbox.LastRequest!.Args.GetProperty("argv").EnumerateArray().Select(value => value.GetString()!));
+        else
+            Assert.Equal(approved.Argv, host.LastRequest!.Argv);
+
+        var deniedHost = new FakeRunner();
+        cap.SetCommandRunner(deniedHost);
+        cap.SetV2Handler(new FixedResultHandler(ExecApprovalV2Result.SecurityDeny("blocked")));
+        Assert.False((await cap.ExecuteAsync(request)).Ok);
+        Assert.Null(deniedHost.LastRequest);
+    }
+
     [Fact]
     public async Task V2Allow_ExecutesApprovedArgv_WithLegacyResponseShape()
     {

@@ -29,10 +29,34 @@ They may still be probed for diagnostics, but `system.run` refuses to send them
 0.9 policy requests. Unset the override to use the packaged executor. This
 unavailability follows the same existing host-fallback/strict-block policy.
 
-Normal requests omit `process.env`: SDK 0.9 interprets `[]` as an explicitly
+Requests without typed execution context omit `process.env`: SDK 0.9 interprets `[]` as an explicitly
 empty Windows environment, even with older schemas. The existing shell PATH
 and scratch-directory bootstrap remains intact. Arbitrary caller environment
 overrides remain rejected.
+
+## Typed execution context
+
+`system.run.execution-context.v1` negotiates a closed optional context with
+`senderId?`, `chatId?`, and `subagent?: true`. Routing metadata is validated at
+the capability boundary and kept separate from approval identity, session/turn
+authority, and the approved argv. MCP and Gateway calls use the same capability.
+The setup pairing stub uses the runtime's protocol-feature declaration, so a
+freshly approved node does not immediately request an additional capability
+approval when the tray replaces the stub.
+
+Presence means a complete projection, including `{}`. The companion calls
+`CreateEnvironmentBlock` with `bInherit=FALSE`, removes both fixed marker names
+case-insensitively, and adds only the requested routing markers. It sends that
+complete environment with `inheritDefaultEnv: false`. SDK inheritance has no
+UNSET operation, so omitting a marker from an inherited override list would not
+remove a stale profile value. Empty strings are not used as a substitute for
+absence. Without context, existing default-environment behavior is unchanged.
+
+Explicit environments travel through a temporary config file in a directory
+restricted to the current user and SYSTEM, never through launcher arguments.
+Diagnostics continue to redact environment values. Host fallback, when already
+permitted by the operator, applies the same marker projection after normal
+environment handling. Strict sandbox policy never changes because of context.
 
 Regenerate policy fixtures on native Windows after `npm ci`:
 

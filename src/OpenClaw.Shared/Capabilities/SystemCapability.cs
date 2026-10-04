@@ -41,6 +41,12 @@ public class SystemCapability : NodeCapabilityBase
     public override IReadOnlyList<string> Commands =>
         _includeRunCommands ? _commandsWithRun : _commandsWithoutRun;
 
+    public override IReadOnlyList<string> ProtocolCapabilities =>
+        GetProtocolCapabilities(_includeRunCommands);
+
+    internal static IReadOnlyList<string> GetProtocolCapabilities(bool includeRunCommands) =>
+        includeRunCommands ? [SystemRunExecutionContext.Capability] : [];
+
     // Event to let UI handle the actual notification display
     public event EventHandler<SystemNotifyArgs>? NotifyRequested;
 
@@ -100,10 +106,17 @@ public class SystemCapability : NodeCapabilityBase
                 NodeToolErrorCategory.PermissionDenied);
         }
 
+        SystemRunExecutionContext? executionContext = null;
+        if (request.Command is "system.run" or "system.run.prepare"
+            && !SystemRunExecutionContext.TryRead(request.Args, out executionContext))
+        {
+            return ErrorWithDiagnostic("executionContext invalid or unsupported", NodeToolErrorCategory.InvalidRequest);
+        }
+
         return request.Command switch
         {
             "system.notify" => await HandleNotifyAsync(request),
-            "system.run" => await HandleRunAsync(request),
+            "system.run" => await HandleRunAsync(request, executionContext),
             "system.run.prepare" => HandleRunPrepare(request),
             "system.which" => HandleWhich(request),
             "system.execApprovals.get" => await HandleExecApprovalsGetAsync(),
@@ -224,7 +237,8 @@ public class SystemCapability : NodeCapabilityBase
         });
     }
     
-    private async Task<NodeInvokeResponse> HandleRunAsync(NodeInvokeRequest request)
+    private async Task<NodeInvokeResponse> HandleRunAsync(
+        NodeInvokeRequest request, SystemRunExecutionContext? executionContext)
     {
         var correlationId = Guid.NewGuid().ToString("N")[..8];
         var v2Handler = _v2Handler;
@@ -299,7 +313,7 @@ public class SystemCapability : NodeCapabilityBase
                     NodeToolErrorCategory.ExecPolicyDenied);
             }
 
-            return await RunApprovedAsync(approvedExecution, correlationId, request);
+            return await RunApprovedAsync(approvedExecution, correlationId, request, executionContext);
         }
 
         var response = Error($"exec-approvals-v2: {v2Result.Code} ({v2Result.Reason})");
@@ -360,7 +374,8 @@ public class SystemCapability : NodeCapabilityBase
     private async Task<NodeInvokeResponse> RunApprovedAsync(
         ExecApprovedExecution execution,
         string correlationId,
-        NodeInvokeRequest request)
+        NodeInvokeRequest request,
+        SystemRunExecutionContext? executionContext)
     {
         var runSpan = request.Telemetry?.StartChild(
             NodeToolInvocation.SystemRunRunSpanName,
@@ -379,6 +394,8 @@ public class SystemCapability : NodeCapabilityBase
         try
         {
             var commandRequest = execution.ToCommandRequest();
+            // Routing hints remain separate from the revalidated approval and argv.
+            commandRequest.ExecutionContext = executionContext;
             commandRequest.Telemetry = request.Telemetry;
             commandRequest.TelemetryParentContext =
                 runSpan?.Context ?? request.Telemetry?.Context ?? default;

@@ -2443,6 +2443,8 @@ public class WindowsNodeClientTests
 
             Assert.Single(client.Capabilities);
             Assert.Same(cap, client.Capabilities[0]);
+            Assert.Contains(SystemRunExecutionContext.Capability, client.Registration.Capabilities);
+            Assert.DoesNotContain(SystemRunExecutionContext.Capability, client.Registration.Commands);
         }
         finally
         {
@@ -2476,6 +2478,7 @@ public class WindowsNodeClientTests
                 BindingFlags.NonPublic | BindingFlags.Instance);
             var reg = (NodeRegistration)registrationField!.GetValue(client)!;
             Assert.Equal(1, reg.Capabilities.Count(c => c == "system"));
+            Assert.Equal(1, reg.Capabilities.Count(c => c == SystemRunExecutionContext.Capability));
         }
         finally
         {

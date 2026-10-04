@@ -530,7 +530,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             {
                 Assert.ThrowsAny<Xunit.Sdk.XunitException>(() =>
                     TestSupport.InvokeSettingsCardAction(page, cards[0], "ChoiceAction_Click"));
-                Assert.Throws<InvalidOperationException>(() => { _ = InvokeCardAsync(cards[0]); });
+                await Assert.ThrowsAsync<InvalidOperationException>(() => InvokeCardAsync(cards[0]));
             }
             finally { cards[0].Name = "ChoiceActionCard"; }
             Assert.Equal(["openclaw.setup.detect"], transport.MethodCalls);
@@ -1727,10 +1727,13 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
     private Task InvokeLocalAiAsync(AiSetupPage page) =>
         InvokeCardAsync(Find<SettingsCard>(page, "LocalAiCard"));
 
-    private Task InvokeCardAsync(SettingsCard card)
+    private async Task InvokeCardAsync(SettingsCard card)
     {
         if (_nativeProof)
-            return OnboardingNativeProof.InvokeSettingsCardAsync(ui.TestWindow, card);
+        {
+            await OnboardingNativeProof.InvokeSettingsCardAsync(ui.TestWindow, card);
+            return;
+        }
         var page = Assert.Single(TestSupport.FindDescendants<AiSetupPage>(ui.Container));
         var handler = card.Name switch
         {
@@ -1740,8 +1743,12 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             "RecommendedInstallCard" => "RecommendedInstall_Click",
             _ => throw new InvalidOperationException($"Unsupported AI setup card: {card.Name}")
         };
+        // Choice visibility can precede Loaded and the asynchronous readiness update.
+        await TestSupport.WaitForRenderedConditionAsync(
+            () => card.IsLoaded && card.IsEnabled && card.IsClickEnabled && card.XamlRoot == page.XamlRoot,
+            $"AI setup card '{card.Name}' to become actionable");
         TestSupport.InvokeSettingsCardAction(page, card, handler);
-        return ui.YieldToRenderAsync();
+        await ui.YieldToRenderAsync();
     }
 
     private sealed class PageTransport(bool focusedSupported) : IGatewayAiSetupTransport

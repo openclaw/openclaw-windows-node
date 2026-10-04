@@ -156,7 +156,8 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner, IDirectA
             Env: request.Env,
             MaxOutputBytes: settings.SandboxMaxOutputBytes > 0
                 ? settings.SandboxMaxOutputBytes
-                : null);
+                : null,
+            ExecutionContext: request.ExecutionContext);
 
         try
         {
@@ -287,6 +288,7 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner, IDirectA
             Cwd = request.Cwd,
             TimeoutMs = request.TimeoutMs,
             Env = request.Env,
+            ExecutionContext = request.ExecutionContext,
             ApprovedEffectiveShell = request.ApprovedEffectiveShell,
             ApprovedHostFallbackShell = request.ApprovedHostFallbackShell,
             Telemetry = request.Telemetry,

@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text.Json.Serialization;
 
 namespace OpenClaw.Shared.Mxc;
@@ -134,14 +136,16 @@ public sealed class DirectAppContainerExecutor : ISandboxExecutor
             // under-estimate the encoded size and overflow the cmdline limit.
             var configByteCount = Encoding.UTF8.GetByteCount(configJson);
             var base64Len = ((configByteCount + 2) / 3) * 4;
-            if (base64Len <= Base64ConfigCharLimit)
+            // Profile defaults can contain secrets. Never put an explicit
+            // environment on the launcher command line.
+            if (config.Process.Env is null && base64Len <= Base64ConfigCharLimit)
             {
                 result = await executor.RunAsync(config, linked.Token, workingDirectory: launchWorkingDirectory);
             }
             else
             {
                 tempConfigFile = Path.Combine(scratchDir, "wxc-config.json");
-                await File.WriteAllTextAsync(tempConfigFile, configJson, Encoding.UTF8, linked.Token);
+                await WriteConfigFileAsync(tempConfigFile, configJson, linked.Token);
                 result = await executor.RunWithConfigFileAsync(tempConfigFile, linked.Token, workingDirectory: launchWorkingDirectory);
             }
 
@@ -185,10 +189,28 @@ public sealed class DirectAppContainerExecutor : ISandboxExecutor
         }
     }
 
-    private static string CreateScratchDir()
+    internal static Task WriteConfigFileAsync(string path, string json, CancellationToken ct) =>
+        // The SDK JSON parser consumes bytes verbatim and rejects a UTF-8 BOM.
+        File.WriteAllTextAsync(path, json, ct);
+
+    internal static string CreateScratchDir()
     {
         var dir = Path.Combine(Path.GetTempPath(), "openclaw-mxc-" + Guid.NewGuid().ToString("N").Substring(0, 12));
-        Directory.CreateDirectory(dir);
+        if (OperatingSystem.IsWindows())
+        {
+            using var identity = WindowsIdentity.GetCurrent();
+            var security = new DirectorySecurity();
+            security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+            foreach (var sid in new[] { identity.User!, new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null) })
+                security.AddAccessRule(new FileSystemAccessRule(sid, FileSystemRights.FullControl,
+                    InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
+                    PropagationFlags.None, AccessControlType.Allow));
+            new DirectoryInfo(dir).Create(security);
+        }
+        else
+        {
+            Directory.CreateDirectory(dir);
+        }
         return dir;
     }
 

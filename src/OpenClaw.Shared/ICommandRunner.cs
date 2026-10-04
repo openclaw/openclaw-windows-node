@@ -38,6 +38,9 @@ public class CommandRequest
     /// <summary>Additional environment variables</summary>
     public Dictionary<string, string>? Env { get; set; }
 
+    /// <summary>Validated routing hints, separate from caller env and approval authority.</summary>
+    public SystemRunExecutionContext? ExecutionContext { get; set; }
+
     /// <summary>
     /// Optional effective shell that already passed shell-scoped approval.
     /// Dynamic runners must execute this shell, or a separately approved host

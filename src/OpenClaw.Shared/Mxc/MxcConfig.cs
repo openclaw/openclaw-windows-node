@@ -56,6 +56,10 @@ public sealed record MxcProcess
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<string>? Env { get; init; }
 
+    [JsonPropertyName("inheritDefaultEnv")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? InheritDefaultEnv { get; init; }
+
     [JsonPropertyName("timeout")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? TimeoutMs { get; init; }

@@ -288,7 +288,7 @@ public class McpToolBridge
         ["system.notify"] =
             "Show a Windows toast notification on the node. Args: title (string, default 'OpenClaw'), body (string), subtitle (string), sound (bool, default true). Returns { sent: true }.",
         ["system.run"] =
-            "Execute canonical argv on the Windows node host. Args: command (string[] argv, required), rawCommand (string, optional display metadata), cwd (string), timeoutMs (int, default 30000). Non-empty custom env is not supported. Shell commands must name their wrapper explicitly, for example [\"cmd.exe\",\"/d\",\"/s\",\"/c\",\"echo hello\"]. Subject to the local exec approval policy. Returns { stdout, stderr, exitCode, timedOut, success, durationMs }.",
+            "Execute canonical argv on the Windows node host. Args: command (string[] argv, required), rawCommand (string, optional display metadata), cwd (string), timeoutMs (int, default 30000), executionContext (optional closed object: senderId and chatId are non-empty strings, subagent may only be true). A present context completely replaces the fixed channel/subagent child routing markers; {} removes both. Routing hints grant no session, turn, or approval authority. Non-empty custom env is not supported. Shell commands must name their wrapper explicitly, for example [\"cmd.exe\",\"/d\",\"/s\",\"/c\",\"echo hello\"]. Subject to the local exec approval policy. Returns { stdout, stderr, exitCode, timedOut, success, durationMs }.",
         ["system.run.prepare"] =
             "Pre-flight a system.run invocation: returns the parsed execution plan (argv, cwd, rawCommand, agentId, sessionKey) without running anything. The gateway uses this to build its approval context before the actual run.",
         ["system.which"] =

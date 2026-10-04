@@ -216,9 +216,10 @@ public class WindowsNodeClient : WebSocketClientBase
         }
         
         // Update registration
-        if (!_registration.Capabilities.Contains(capability.Category))
+        foreach (var name in capability.ProtocolCapabilities.Prepend(capability.Category))
         {
-            _registration.Capabilities.Add(capability.Category);
+            if (!_registration.Capabilities.Contains(name))
+                _registration.Capabilities.Add(name);
         }
         foreach (var cmd in capability.Commands)
         {

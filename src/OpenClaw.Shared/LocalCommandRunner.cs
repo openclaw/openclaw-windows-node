@@ -79,6 +79,8 @@ public class LocalCommandRunner : ICommandRunner
             }
         }
         
+        request.ExecutionContext?.ApplyTo(psi.Environment);
+
         var sw = Stopwatch.StartNew();
         using var process = new Process { StartInfo = psi };
         

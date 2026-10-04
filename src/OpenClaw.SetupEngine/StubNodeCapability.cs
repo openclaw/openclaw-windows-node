@@ -1,4 +1,5 @@
 using OpenClaw.Shared;
+using OpenClaw.Shared.Capabilities;
 
 namespace OpenClaw.SetupEngine;
 
@@ -10,6 +11,10 @@ internal sealed class StubNodeCapability : INodeCapability
 {
     public string Category { get; }
     public IReadOnlyList<string> Commands { get; }
+
+    // Pair the same wire surface the tray will declare after setup completes.
+    public IReadOnlyList<string> ProtocolCapabilities => SystemCapability.GetProtocolCapabilities(
+        Category == "system" && Commands.Contains("system.run"));
 
     public StubNodeCapability(string category, string[] commands)
     {
