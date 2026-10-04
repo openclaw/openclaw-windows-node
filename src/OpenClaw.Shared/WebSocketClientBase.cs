@@ -463,6 +463,7 @@ public abstract class WebSocketClientBase : IDisposable
         var buffer = ArrayPool<byte>.Shared.Rent(ReceiveBufferSize);
         var sb = new StringBuilder();
         var textDecoder = Encoding.UTF8.GetDecoder();
+        var fragmented = false;
 
         try
         {
@@ -477,7 +478,7 @@ public abstract class WebSocketClientBase : IDisposable
 
                 if (result.MessageType == WebSocketMessageType.Text)
                 {
-                    if (result.EndOfMessage && sb.Length == 0)
+                    if (result.EndOfMessage && !fragmented)
                     {
                         // Fast path: single-frame message. Decode directly and skip the StringBuilder.
                         await ProcessMessageForConnectionAsync(
@@ -486,8 +487,9 @@ public abstract class WebSocketClientBase : IDisposable
                     }
                     else
                     {
-                        // One decoder for this message. A code unit split across frames stays
-                        // buffered until EndOfMessage, instead of becoming U+FFFD on each side.
+                        // A split character can produce zero chars on the first frame. Track the
+                        // message itself, not the decoded length, so the last frame still flushes.
+                        fragmented = true;
                         var maxCharCount = Encoding.UTF8.GetMaxCharCount(result.Count);
                         var charBuffer = ArrayPool<char>.Shared.Rent(maxCharCount);
                         bool withinLimit;
@@ -510,6 +512,7 @@ public abstract class WebSocketClientBase : IDisposable
                         if (!withinLimit)
                         {
                             textDecoder.Reset();
+                            fragmented = false;
                             _logger.Warn($"[{ClientRole}] inbound message exceeded {MaxInboundMessageChars} chars; closing connection (memory-exhaustion guard)");
                             try { await ws.CloseAsync(WebSocketCloseStatus.MessageTooBig, "message too large", CancellationToken.None); }
                             catch { /* best-effort close */ }
@@ -523,6 +526,7 @@ public abstract class WebSocketClientBase : IDisposable
                                 connectionGeneration);
                             sb.Clear();
                             textDecoder.Reset();
+                            fragmented = false;
                         }
                     }
                 }

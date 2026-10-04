@@ -169,6 +169,34 @@ public class WebSocketClientBaseTests
     }
 
     [Fact]
+    public async Task ZeroCharFirstFragment_DoesNotCorruptTheNextSplitMessage()
+    {
+        var emoji = Encoding.UTF8.GetBytes("😀");
+        var next = Encoding.UTF8.GetBytes("next");
+        Assert.Equal(4, emoji.Length);
+        using var server = new LoopbackWebSocketServer();
+        await server.StartAsync();
+        using var client = new TestWebSocketClient(server.WebSocketUrl, "strong-token", _logger)
+        {
+            AutoReconnectEnabled = false,
+        };
+        await client.ConnectAsync();
+        await WaitForConditionAsync(
+            () => server.AcceptedCount == 1,
+            TimeSpan.FromSeconds(2));
+
+        await server.SendTextFramesAsync(new[] { emoji[..2], emoji[2..] });
+        await server.SendTextFramesAsync(new[] { next[..2], next[2..] });
+        await WaitForConditionAsync(
+            () => client.ProcessedMessages.Count >= 2,
+            TimeSpan.FromSeconds(2));
+
+        Assert.Equal("😀", client.ProcessedMessages[0]);
+        Assert.Equal("next", client.ProcessedMessages[1]);
+        Assert.DoesNotContain("\uFFFD", string.Join("", client.ProcessedMessages));
+    }
+
+    [Fact]
     public async Task AbortCurrentWebSocket_PreventsLaterMessagesOnAcceptedSocket()
     {
         using var server = new LoopbackWebSocketServer();
