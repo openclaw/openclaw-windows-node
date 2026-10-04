@@ -4,6 +4,8 @@ using OpenClaw.Shared.Inference.Catalog;
 using OpenClaw.TestSupport;
 using System.Collections.Immutable;
 using System.Net;
+using System.Net.Http;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -687,6 +689,136 @@ public sealed class LocalAiPortLifecycleTests
         Assert.Equal(LocalAiRuntimeState.Failed, snapshot.State);
         Assert.Contains("startup timeout", snapshot.Detail, StringComparison.OrdinalIgnoreCase);
         Assert.True(started.Elapsed < TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task Startup_RealStalledLoopbackBodyEndsAtTheBudget()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        using var stalled = new CancellationTokenSource();
+        Task accept = AcceptAndHoldBodyAsync(listener, stalled.Token);
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: port);
+        using var http = new LlamaServerClient(
+            new SocketsHttpHandler
+            {
+                UseProxy = false,
+                AllowAutoRedirect = false,
+                ConnectTimeout = TimeSpan.FromSeconds(2),
+            },
+            timeout: TimeSpan.FromMilliseconds(400));
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            http,
+            new FakeLifecycle(events),
+            startupTimeout: TimeSpan.FromSeconds(1));
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            LocalAiRuntimeSnapshot snapshot = await runtime.EnsureStartedAsync();
+            Console.WriteLine(
+                "real-transport startup state={0} elapsed_ms={1} detail={2} port={3}",
+                snapshot.State,
+                started.ElapsedMilliseconds,
+                snapshot.Detail,
+                port);
+            Assert.Equal(LocalAiRuntimeState.Failed, snapshot.State);
+            Assert.Contains("startup timeout", snapshot.Detail, StringComparison.OrdinalIgnoreCase);
+            Assert.True(started.Elapsed < TimeSpan.FromSeconds(8));
+        }
+        finally
+        {
+            stalled.Cancel();
+            listener.Stop();
+            try
+            {
+                await accept.WaitAsync(TimeSpan.FromSeconds(2));
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Dispose_RealStalledLoopbackBodyDoesNotWaitOutTheBudget()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var headersSent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var stalled = new CancellationTokenSource();
+        Task accept = AcceptAndHoldBodyAsync(listener, stalled.Token, headersSent);
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: port);
+        using var http = new LlamaServerClient(
+            new SocketsHttpHandler
+            {
+                UseProxy = false,
+                AllowAutoRedirect = false,
+                ConnectTimeout = TimeSpan.FromSeconds(2),
+            },
+            timeout: TimeSpan.FromSeconds(30));
+        var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            http,
+            new FakeLifecycle(events),
+            startupTimeout: TimeSpan.FromSeconds(30));
+        Task<LocalAiRuntimeSnapshot> starting = runtime.EnsureStartedAsync();
+        await headersSent.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var disposeStarted = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            await runtime.DisposeAsync();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => starting);
+            Console.WriteLine(
+                "real-transport dispose elapsed_ms={0} port={1}",
+                disposeStarted.ElapsedMilliseconds,
+                port);
+            Assert.True(disposeStarted.Elapsed < TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            stalled.Cancel();
+            listener.Stop();
+        }
+    }
+
+    private static async Task AcceptAndHoldBodyAsync(
+        TcpListener listener,
+        CancellationToken cancellationToken,
+        TaskCompletionSource? headersSent = null)
+    {
+        try
+        {
+            using TcpClient client = await listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
+            await using NetworkStream stream = client.GetStream();
+            byte[] headers = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n"u8.ToArray();
+            await stream.WriteAsync(headers, cancellationToken).ConfigureAwait(false);
+            await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            headersSent?.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            headersSent?.TrySetCanceled(cancellationToken);
+        }
+        catch (ObjectDisposedException)
+        {
+            headersSent?.TrySetCanceled();
+        }
     }
 
     [Fact]
@@ -2991,7 +3123,7 @@ public sealed class LocalAiPortLifecycleTests
         LocalAiPaths paths,
         FakeProcessHost host,
         FakePlatform platform,
-        FakeClient client,
+        ILlamaServerClient client,
         ILocalAiEndpointLifecycle lifecycle,
         TimeSpan? startupTimeout = null,
         int maxRestartAttempts = 2,
