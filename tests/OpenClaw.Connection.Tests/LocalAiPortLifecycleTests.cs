@@ -654,6 +654,81 @@ public sealed class LocalAiPortLifecycleTests
     }
 
     [Fact]
+    public async Task Startup_HungProbeEndsAtTheStartupTimeout()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var store = new LocalAiManifestStore(paths);
+        LocalAiResolvedInstall install = (await store.LoadAsync())!;
+        await store.SaveAsync(install.Manifest with { Endpoint = "http://127.0.0.1:28765/v1" });
+
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        platform.Listeners.Add(new WindowsTcpListenerInfo(
+            IPAddress.Loopback,
+            28_765,
+            9001,
+            "other-process",
+            @"C:\other\server.exe",
+            platform.UtcNow.UtcDateTime));
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_771);
+        var client = new FakeClient(events) { WaitForCancellation = true };
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            client,
+            new FakeLifecycle(events),
+            startupTimeout: TimeSpan.FromMilliseconds(200));
+        var started = System.Diagnostics.Stopwatch.StartNew();
+
+        LocalAiRuntimeSnapshot snapshot = await runtime.EnsureStartedAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Failed, snapshot.State);
+        Assert.Contains("startup timeout", snapshot.Detail, StringComparison.OrdinalIgnoreCase);
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task Dispose_DuringHungStartupDoesNotWaitForTheProbe()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var store = new LocalAiManifestStore(paths);
+        LocalAiResolvedInstall install = (await store.LoadAsync())!;
+        await store.SaveAsync(install.Manifest with { Endpoint = "http://127.0.0.1:28765/v1" });
+
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        platform.Listeners.Add(new WindowsTcpListenerInfo(
+            IPAddress.Loopback,
+            28_765,
+            9001,
+            "other-process",
+            @"C:\other\server.exe",
+            platform.UtcNow.UtcDateTime));
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_771);
+        var client = new FakeClient(events) { WaitForCancellation = true };
+        var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            client,
+            new FakeLifecycle(events),
+            startupTimeout: TimeSpan.FromSeconds(30));
+        Task<LocalAiRuntimeSnapshot> starting = runtime.EnsureStartedAsync();
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (DateTime.UtcNow < deadline && !events.Any(item => item.StartsWith("probe:", StringComparison.Ordinal)))
+            await Task.Delay(10);
+
+        var disposeStarted = System.Diagnostics.Stopwatch.StartNew();
+        await runtime.DisposeAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => starting);
+
+        Assert.True(disposeStarted.Elapsed < TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
     public async Task Restart_PortRelocationFailureRestoresTerminalRouting()
     {
         using var temp = new TempDirectory("local-ai-port-");
@@ -3409,21 +3484,25 @@ public sealed class LocalAiPortLifecycleTests
 
         public List<int> ProbedPorts { get; } = [];
 
-        public Task<LlamaServerRouterProbeResult> ProbeManagedModelAsync(
+        public bool WaitForCancellation { get; init; }
+
+        public async Task<LlamaServerRouterProbeResult> ProbeManagedModelAsync(
             Uri endpoint,
             string modelAlias,
             string expectedModelPath,
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (WaitForCancellation)
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
             ProbedPorts.Add(endpoint.Port);
             events.Add($"probe:{endpoint.Port}");
             int probeNumber = ++_probeCount;
-            return Task.FromResult(probeFactory?.Invoke(expectedModelPath, probeNumber) ?? new LlamaServerRouterProbeResult(
+            return probeFactory?.Invoke(expectedModelPath, probeNumber) ?? new LlamaServerRouterProbeResult(
                 true,
                 LocalAiModelAvailabilityState.Verified,
                 expectedModelPath,
-                null));
+                null);
         }
 
         public void Dispose() { }
