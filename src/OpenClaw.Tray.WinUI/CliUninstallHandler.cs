@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Globalization;
+using OpenClaw.Connection;
 
 namespace OpenClawTray;
 
@@ -39,18 +40,48 @@ internal static class CliUninstallHandler
             return;
         }
 
+        var distroName = AppIdentity.SetupDistroName;
+        var gatewayPort = AppIdentity.SetupGatewayPort;
+        var targetIndex = Array.FindIndex(args, arg => string.Equals(arg, "--gateway-id", StringComparison.OrdinalIgnoreCase));
+        if (targetIndex >= 0)
+        {
+            var registry = new GatewayRegistry(AppIdentity.ResolveRoamingDataDirectory());
+            registry.Load();
+            var target = registry.GetActive();
+            var bindingIndex = Array.FindIndex(args, arg => string.Equals(arg, "--gateway-binding", StringComparison.OrdinalIgnoreCase));
+            if (targetIndex + 1 >= args.Length || target?.Id != args[targetIndex + 1] ||
+                LocalGatewaySettings.Classify(target) != LocalGatewayKind.Wsl ||
+                bindingIndex < 0 || bindingIndex + 1 >= args.Length ||
+                GatewayDashboardBinding.Capture(target!) != args[bindingIndex + 1])
+            {
+                Console.Error.WriteLine("ERROR: The selected WSL Gateway changed. No uninstall was started.");
+                Environment.Exit(2);
+                return;
+            }
+            distroName = GatewayRecordEditing.ResolveManagedDistroName(target!)!;
+            // A Tailscale URL's 443 is not the service's loopback port.
+            if (GatewayRecordEditing.IsLoopbackEndpoint(target!.Url))
+                gatewayPort = new Uri(target.Url).Port;
+        }
+
         // Build CLI arguments for SetupEngine
         var setupArgs = new List<string> { "--headless", "--uninstall" };
         setupArgs.AddRange([
             "--data-dir", AppIdentity.ResolveRoamingDataDirectory(),
             "--local-data-dir", AppIdentity.ResolveSetupLocalDataDirectory(),
-            "--distro-name", AppIdentity.SetupDistroName,
-            "--gateway-port", AppIdentity.SetupGatewayPort.ToString(CultureInfo.InvariantCulture),
+            "--distro-name", distroName,
+            "--gateway-port", gatewayPort.ToString(CultureInfo.InvariantCulture),
             "--autostart-name", AppIdentity.AutoStartRegistryName,
             "--startup-task-name", AppIdentity.StartupTaskName,
         ]);
         if (confirmDestructive) setupArgs.Add("--confirm-destructive");
         if (dryRun) setupArgs.Add("--dry-run");
+        if (targetIndex >= 0)
+        {
+            setupArgs.AddRange(["--gateway-id", args[targetIndex + 1]]);
+            var bindingIndex = Array.FindIndex(args, arg => string.Equals(arg, "--gateway-binding", StringComparison.OrdinalIgnoreCase));
+            setupArgs.AddRange(["--gateway-binding", args[bindingIndex + 1]]);
+        }
         if (jsonOutputPath != null)
         {
             setupArgs.Add("--json-output");

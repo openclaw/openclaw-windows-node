@@ -1268,7 +1268,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             case "healthcheck": _ = RunHealthCheckAsync(userInitiated: true); break;
             case "checkupdates": _ = _updateCoordinator!.CheckForUpdatesUserInitiatedAsync(); break;
             case "settings": ShowSettings(); break;
-            case "setup": _ = ShowOnboardingAsync(); break;
+            case "setup": _ = _windowManager?.ShowGatewaySetupAsync(); break;
             case "autostart": ToggleAutoStart(); break;
             case "log": OpenLogFile(); break;
             case "logfolder": OpenLogFolder(); break;
@@ -3491,6 +3491,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             AuthFailureMessage = _appState!.AuthFailureMessage,
             LastCheckTime = _appState!.LastCheckTime,
             Settings = _settings,
+            ActiveGateway = _gatewayRegistry?.GetActive(),
             IsMcpRunning = _nodeService?.IsMcpRunning == true,
             McpStartupError = _nodeService?.McpStartupError
         };

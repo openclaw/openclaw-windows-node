@@ -5,6 +5,25 @@ namespace OpenClaw.Connection.Tests;
 
 public sealed class NativeGatewayPackageClientTests
 {
+    [Fact]
+    public async Task TeardownPreservesPreDispatchErrorWithoutIntegration()
+    {
+        var client = new NativeGatewayPackageClient((_, _, _) => Task.FromResult(new NativeGatewayCommandResult(
+            1, """{"ok":false,"error":{"message":"Fixture lifecycle lock busy"}}""")));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => client.TeardownAsync(s_package, default));
+        Assert.Equal("Fixture lifecycle lock busy", error.Message);
+    }
+
+    [Fact]
+    public async Task TeardownTimeoutReportsUncertainRemovalAndRetainedConnection()
+    {
+        var client = new NativeGatewayPackageClient((_, _, _) => throw new TimeoutException("Retry setup"));
+        var error = await Assert.ThrowsAsync<TimeoutException>(() => client.TeardownAsync(s_package, default));
+        Assert.Contains("retry removal", error.Message);
+        Assert.Contains("retained", error.Message);
+        Assert.DoesNotContain("Retry setup", error.Message);
+    }
+
     private static readonly NativeGatewayPackage s_package =
         new("OpenClaw.Gateway_123456789abcd", "2026.9.5.5",
             @"C:\package\openclaw.exe", @"C:\package\clawctl.exe");

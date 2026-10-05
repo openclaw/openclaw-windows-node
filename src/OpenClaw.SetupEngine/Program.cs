@@ -21,6 +21,8 @@ public static class Program
         "--tailscale-hostname",
         "--autostart-name",
         "--startup-task-name",
+        "--gateway-id",
+        "--gateway-binding",
     ]);
 
     internal static IReadOnlyList<string> FlagOptionNames { get; } = Array.AsReadOnly(
@@ -70,6 +72,14 @@ public static class Program
         var dryRun = parsedArguments.HasFlag("--dry-run");
         var wizardOnly = parsedArguments.HasFlag("--wizard-only");
         var uninstall = parsedArguments.HasFlag("--uninstall");
+        var removalGatewayId = parsedArguments.GetValue("--gateway-id");
+        var removalBinding = parsedArguments.GetValue("--gateway-binding");
+        if ((removalGatewayId is not null || removalBinding is not null) &&
+            (!uninstall || string.IsNullOrWhiteSpace(removalGatewayId) || string.IsNullOrWhiteSpace(removalBinding)))
+        {
+            Console.Error.WriteLine("ERROR: Selected Gateway removal requires --uninstall, --gateway-id and --gateway-binding.");
+            return 2;
+        }
         var confirmDestructive = parsedArguments.HasFlag("--confirm-destructive");
         var jsonOutput = parsedArguments.GetValue("--json-output");
         var preserveLogs = parsedArguments.HasFlag("--preserve-logs");
@@ -322,7 +332,11 @@ public static class Program
             new { version = AppVersionInfo.Version, args = string.Join(' ', args) });
 
         PipelineResult result;
-        if (uninstall)
+        if (uninstall && removalGatewayId is not null)
+        {
+            result = await new WslGatewayRemoval().RunAsync(ctx, removalGatewayId, removalBinding!);
+        }
+        else if (uninstall)
         {
             result = await pipeline.UninstallAsync(ctx);
 

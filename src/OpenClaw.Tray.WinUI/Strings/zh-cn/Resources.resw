@@ -4910,6 +4910,45 @@
   <data name="SettingsPage_Privacy.Text" xml:space="preserve">
     <value>隐私</value>
   </data>
+  <data name="GatewayHostAccess_NativeManaged" xml:space="preserve">
+    <value>此原生网关由其 Windows 程序包管理。请在设置中打开设置向导以配置网关。</value>
+  </data>
+  <data name="SettingsPage_SetupGatewayDescription" xml:space="preserve">
+    <value>安装原生网关或 WSL 网关，或配置现有网关。只有在确认后才会替换现有安装。</value>
+  </data>
+  <data name="SettingsPage_SetupNativeDescription" xml:space="preserve">
+    <value>配置所选原生网关的 AI 提供商和模型，无需重新安装网关。</value>
+  </data>
+  <data name="SettingsPage_GatewayOnboardingDescription.Text" xml:space="preserve">
+    <value>配置所选本地网关的 AI 提供商和模型，无需重新安装网关。</value>
+  </data>
+  <data name="SettingsPage_RemoveNativeBody" xml:space="preserve">
+    <value>永久删除此 Windows 程序包的隔离网关账户、工作区、配置、凭据和启动记录。使用同一程序包和 Windows 账户的其他 Companion 配置文件也将失去访问权限。Store 中的 Gateway 应用、WSL 网关、其他已保存的网关、Companion 设置和 MCP 令牌将予以保留。</value>
+  </data>
+  <data name="SettingsPage_RemoveLegacyNativeBody" xml:space="preserve">
+    <value>停止此旧版原生网关，并永久删除其已保存的连接、凭据和本地配置文件数据。Store 中的 Gateway 应用、WSL 网关、其他已保存的网关、Companion 设置和 MCP 令牌将予以保留。</value>
+  </data>
+  <data name="SettingsPage_RemoveWslBody" xml:space="preserve">
+    <value>永久删除 {0} 中的 WSL 网关、其磁盘映像、已保存的连接和网关凭据。其他网关、本地 AI 文件、Companion 设置、启动项、执行批准、MCP 令牌和根设备密钥将予以保留。</value>
+  </data>
+  <data name="SettingsPage_GatewayRemovalTitle" xml:space="preserve">
+    <value>删除本地网关？</value>
+  </data>
+  <data name="SettingsPage_GatewayRemovalPermanent" xml:space="preserve">
+    <value>此操作无法撤销。</value>
+  </data>
+  <data name="SettingsPage_GatewayRemovalTargetChanged" xml:space="preserve">
+    <value>请在连接设置中选择本地网关，然后重新查看删除操作。之前的选择已不再是当前选择。</value>
+  </data>
+  <data name="SettingsPage_GatewayRemovalLocalAi" xml:space="preserve">
+    <value>删除网关前，请在本地 AI 设置中停止本地 AI 并解除其对网关的管理权。未删除任何网关。</value>
+  </data>
+  <data name="SettingsPage_NativeGatewayRemoved" xml:space="preserve">
+    <value>原生网关及其已保存的连接已删除。Store 中的 Gateway 应用仍保持安装状态。请打开设置向导以配置新网关。</value>
+  </data>
+  <data name="SettingsPage_RemovingGateway" xml:space="preserve">
+    <value>正在删除网关...</value>
+  </data>
   <data name="SettingsPage_LocalGateway.Text" xml:space="preserve">
     <value>本地网关</value>
   </data>
@@ -7896,4 +7935,10 @@
   <data name="Onboarding_AiSetup_LocalOwnershipInvalid" xml:space="preserve"><value>已保存的本地 AI 所有权、模型或网关配置不再匹配。请在原始 Companion 配置文件中检查原始网关及其模型设置，包括已修改的模型允许列表条目。保留所有权凭据，不要复制身份验证凭据或替换提供程序。</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipUnavailable" xml:space="preserve"><value>无法检查原始网关的所有权或配置。请重新连接原始网关并再次检查。未进行任何更改。</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipFiles" xml:space="preserve"><value>受管理的本地 AI 安装需要修复文件。请先在本地 AI 设置中停止运行时并解决原始网关路由问题，再修复文件。保留所有权凭据。</value></data>
+  <data name="ConnectionPage_LocalConflictAddress" xml:space="preserve"><value>另一个应用正在使用此网关的本地地址。</value></data>
+  <data name="ConnectionPage_LocalConflictOwnership" xml:space="preserve"><value>绝不会自动停止未知进程。</value></data>
+  <data name="ConnectionPage_LocalConflictRecovery" xml:space="preserve"><value>关闭发生冲突的应用，或检查此网关安装的服务状态和地址，然后重试。</value></data>
+  <data name="SettingsPage_LegacyNativeAiTitle" xml:space="preserve"><value>原生网关需要更新</value></data>
+  <data name="SettingsPage_LegacyNativeAiMessage" xml:space="preserve"><value>受管理的本地 AI 需要隔离的原生网关。请更新 Gateway 软件包并配置隔离的网关，然后再使用本地 AI。</value></data>
+  <data name="Onboarding_LocalAi_NativeCheckingMessage" xml:space="preserve"><value>OpenClaw 正在检查 NVIDIA GPU、驱动程序、CUDA 和内存要求。</value></data>
 </root>

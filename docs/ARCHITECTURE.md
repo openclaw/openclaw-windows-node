@@ -101,6 +101,11 @@ disconnect, replacement, or close. This cache is not used for authorization.
 | Settings persistence conflict state and visible recovery | `SettingsManager` owns typed CAS rejection; `SettingsPersistenceNotification` owns dispatched, deduplicated restart guidance; App composes/disposes it | authoritative |
 | V2 exec-approvals snapshot/CAS persistence + observation | `ExecApprovalsStore` through `IExecApprovalsPresentationStore` | authoritative |
 | Settings page load/persist view logic | `SettingsPageViewModel` | authoritative |
+| Local Gateway Settings ownership classification | `LocalGatewaySettings` projects the active record; `SettingsPage` applies copy and forwards onboarding/removal | authoritative |
+| Reopened managed WSL onboarding ownership | `ExistingWslGatewaySetup` pins record/endpoint/distro; `WindowManager` passes the owner and `SetupWindow` revalidates before workspace finalization | authoritative |
+| Explicit native Gateway installation removal | `NativeGatewayRemoval` owns package-qualified teardown acknowledgement and registry/identity cleanup; `GatewayConnectionManager` serializes disconnect and removal; Settings holds setup and Local AI ownership locks | authoritative |
+| Transactional Gateway profile removal | `GatewayIdentityRemoval` stages profile files and restores them on a rejected registry commit; child filesystem links are removed without traversing their targets | authoritative |
+| Selected WSL Gateway removal | `WslGatewayRemoval` verifies the registered managed path, removes only that distro and its receipts, and retains the saved retry target until cleanup succeeds; full-profile uninstall remains separate | authoritative |
 | Native tool identity, display arguments, payload extraction, and flattened-history projection | `NativeToolProjector` | authoritative |
 | Managed-local listener provenance and strong-credential authorization | `ManagedLocalGatewayPortProvenanceService` | authoritative |
 | Native Gateway fixed-product WinGet installation from Microsoft Store and bounded App Installer bootstrap | `NativeGatewayMsixInstaller` | authoritative |

@@ -61,6 +61,35 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public async Task WslRemovalPreservesNativeGatewayWithLegacyLookingNameAndItsCredentials()
+    {
+        var ctx = CreateContext();
+        var registry = new GatewayRegistry(ctx.DataDir);
+        var native = new GatewayRecord
+        {
+            Id = "native", IsLocal = true, Url = ctx.Config.EffectiveGatewayUrl,
+            FriendlyName = $"Local ({ctx.DistroName})",
+            NativePackageFamilyName = "OpenClaw.Gateway_123456789abcd",
+        };
+        registry.AddOrUpdate(native);
+        registry.SetActive(native.Id);
+        registry.Save();
+        Directory.CreateDirectory(registry.GetIdentityDirectory(native.Id));
+        var key = Path.Combine(registry.GetIdentityDirectory(native.Id), "device-key-ed25519.json");
+        File.WriteAllText(key, "fixture-native-key");
+
+        Assert.False(PairOperatorStep.IsSetupManagedLocalRecord(native, ctx));
+        Assert.False(PairOperatorStep.IsSetupManagedLocalRecord(native with { SetupManagedDistroName = ctx.DistroName }, ctx));
+        await new PairOperatorStep().RollbackAsync(ctx, CancellationToken.None);
+        await new PairNodeStep().RollbackAsync(ctx, CancellationToken.None);
+
+        registry.Load();
+        Assert.Equal(native, registry.GetById(native.Id));
+        Assert.Equal(native.Id, registry.ActiveGatewayId);
+        Assert.Equal("fixture-native-key", File.ReadAllText(key));
+    }
+
+    [Fact]
     public async Task PairingEndpointTrust_UnknownLoopbackOwner_BlocksBeforeCredentialUse()
     {
         var context = CreateContext(new SetupConfig

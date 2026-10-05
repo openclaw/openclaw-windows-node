@@ -428,8 +428,8 @@
                            <TextBlock x:Uid="SettingsPage_LocalGatewaySetup_Header"
                                       Text="Set up or reconfigure Local Gateway"
                                       Style="{StaticResource BodyTextBlockStyle}"/>
-                           <TextBlock x:Uid="SettingsPage_LocalGatewaySetup_Description" x:Name="LocalGatewaySetupDescriptionText"
-                                      Text="Launches setup to install an app-owned WSL distro or re-run provider and model setup for an existing one. Existing local gateways are only replaced after confirmation."
+                           <TextBlock x:Name="LocalGatewaySetupDescriptionText"
+                                      Text="Install a native or WSL gateway, or configure an existing gateway."
                                       Style="{StaticResource CaptionTextBlockStyle}"
                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                       TextWrapping="Wrap"/>
@@ -458,8 +458,8 @@
                            <TextBlock x:Uid="SettingsPage_OnboardWizard_Header"
                                       Text="OpenClaw Onboard"
                                       Style="{StaticResource BodyTextBlockStyle}"/>
-                           <TextBlock x:Uid="SettingsPage_OnboardWizard_Description"
-                                      Text="Open the OpenClaw onboarding on an installed Local Gateway. Skips WSL installation and jumps straight to configuration."
+                           <TextBlock x:Uid="SettingsPage_GatewayOnboardingDescription"
+                                      Text="Configure the AI provider and model on the selected local gateway without reinstalling it."
                                       Style="{StaticResource CaptionTextBlockStyle}"
                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                       TextWrapping="Wrap"/>
@@ -487,8 +487,8 @@
                                  Title="MSIX installation detected"
                                  Message="Removing OpenClaw from Windows Settings → Apps will NOT clean up the Local Gateway (WSL distro, disk image). Use Remove Local Gateway below FIRST, then uninstall OpenClaw."/>
 
-                        <TextBlock x:Uid="SettingsPage_RemovesTheWSLDistro" x:Name="GatewayBodyText"
-                                   Text="Removes the app-owned WSL distro, its disk image, autostart entry, and clears gateway credentials. Your MCP token is preserved. Onboarding will reset."
+                        <TextBlock x:Name="GatewayBodyText"
+                                   Text=""
                                    Style="{StaticResource BodyTextBlockStyle}"
                                    TextWrapping="Wrap"/>
 

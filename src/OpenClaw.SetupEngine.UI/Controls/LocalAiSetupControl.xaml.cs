@@ -357,7 +357,8 @@ public sealed partial class LocalAiSetupControl : UserControl
         LocalAiUnavailablePanel.Message = snapshot.Status switch
         {
             LocalAiSetupAvailabilityStatus.Checking =>
-                SetupLocalization.GetString("Onboarding_LocalAi_CheckingMessage"),
+                SetupLocalization.GetString(_config?.NativeLocalAiAcquisition == true
+                    ? "Onboarding_LocalAi_NativeCheckingMessage" : "Onboarding_LocalAi_CheckingMessage"),
             LocalAiSetupAvailabilityStatus.Unknown =>
                 SetupLocalization.GetString("Onboarding_LocalAi_ProbeUnknownMessage"),
             _ => SetupLocalization.GetString("Onboarding_LocalAi_UnavailableMessage"),

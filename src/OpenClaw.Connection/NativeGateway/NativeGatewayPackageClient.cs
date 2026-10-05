@@ -162,6 +162,28 @@ public sealed class NativeGatewayPackageClient
     public async Task StopAsync(NativeGatewayPackage package, CancellationToken cancellationToken) =>
         await RunLifecycleAsync(package, "stop", cancellationToken).ConfigureAwait(false);
 
+    /// <summary>Explicit destructive removal of the package-owned session, not the MSIX.</summary>
+    public async Task TeardownAsync(NativeGatewayPackage package, CancellationToken cancellationToken)
+    {
+        NativeGatewayCommandResult result;
+        try
+        {
+            result = await _invoke(package, ["teardown", "--force", "--json"], cancellationToken).ConfigureAwait(false);
+        }
+        catch (TimeoutException exception)
+        {
+            throw new TimeoutException(
+                "Native Gateway removal timed out and may be incomplete. Check the Gateway package status, then retry removal. The saved connection was retained.", exception);
+        }
+        using var document = Parse(result.StandardOutput);
+        var root = document.RootElement;
+        RequireSuccess(root, result.ExitCode);
+        RequireIntegration(root, "teardown");
+        if (RequiredString(RequiredObject(root, "session"), "state") is not ("removed" or "not-configured") ||
+            RequiredString(RequiredObject(root, "gateway"), "state") != "records-removed")
+            throw new NativeGatewayContractException("The Gateway package did not confirm removal. Its saved connection was retained.");
+    }
+
     private async Task RunLifecycleAsync(
         NativeGatewayPackage package, string operation, CancellationToken cancellationToken)
     {

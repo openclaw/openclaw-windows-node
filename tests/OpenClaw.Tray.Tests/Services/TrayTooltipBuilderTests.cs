@@ -11,6 +11,21 @@ namespace OpenClaw.Tray.Tests.Services;
 
 public sealed class TrayTooltipBuilderTests : IDisposable
 {
+    [Fact]
+    public void ManagedWslLoopbackIsNotLabelledWindowsNative()
+    {
+        var snapshot = BaseConnected() with
+        {
+            ActiveGateway = new GatewayRecord
+            {
+                Id = "wsl", Url = "ws://localhost:18789", IsLocal = true, SetupManagedDistroName = "GatewayB",
+            },
+        };
+        var text = new TrayTooltipBuilder(snapshot).Build();
+        Assert.Contains("WSL", text);
+        Assert.DoesNotContain("Windows native", text);
+    }
+
     private static readonly DateTime FixedTime = new(2024, 1, 15, 10, 30, 45);
 
     private readonly string _tempDir;

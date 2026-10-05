@@ -4910,6 +4910,45 @@
   <data name="SettingsPage_Privacy.Text" xml:space="preserve">
     <value>隱私</value>
   </data>
+  <data name="GatewayHostAccess_NativeManaged" xml:space="preserve">
+    <value>此原生閘道由其 Windows 套件管理。請在設定中開啟設定精靈以設定閘道。</value>
+  </data>
+  <data name="SettingsPage_SetupGatewayDescription" xml:space="preserve">
+    <value>安裝原生閘道或 WSL 閘道，或設定現有閘道。只有在確認後才會取代現有安裝。</value>
+  </data>
+  <data name="SettingsPage_SetupNativeDescription" xml:space="preserve">
+    <value>設定所選原生閘道的 AI 提供者和模型，無需重新安裝閘道。</value>
+  </data>
+  <data name="SettingsPage_GatewayOnboardingDescription.Text" xml:space="preserve">
+    <value>設定所選本機閘道的 AI 提供者和模型，無需重新安裝閘道。</value>
+  </data>
+  <data name="SettingsPage_RemoveNativeBody" xml:space="preserve">
+    <value>永久移除此 Windows 套件的隔離閘道帳戶、工作區、設定、認證資訊和啟動記錄。使用相同套件和 Windows 帳戶的其他 Companion 設定檔也將失去存取權。Store 中的 Gateway 應用程式、WSL 閘道、其他已儲存的閘道、Companion 設定和 MCP 權杖都會保留。</value>
+  </data>
+  <data name="SettingsPage_RemoveLegacyNativeBody" xml:space="preserve">
+    <value>停止此舊版原生閘道，並永久移除其已儲存的連線、認證資訊和本機設定檔資料。Store 中的 Gateway 應用程式、WSL 閘道、其他已儲存的閘道、Companion 設定和 MCP 權杖都會保留。</value>
+  </data>
+  <data name="SettingsPage_RemoveWslBody" xml:space="preserve">
+    <value>永久移除 {0} 中的 WSL 閘道、其磁碟映像、已儲存的連線和閘道認證資訊。其他閘道、本機 AI 檔案、Companion 設定、啟動項目、執行核准、MCP 權杖和根裝置金鑰都會保留。</value>
+  </data>
+  <data name="SettingsPage_GatewayRemovalTitle" xml:space="preserve">
+    <value>移除本機閘道？</value>
+  </data>
+  <data name="SettingsPage_GatewayRemovalPermanent" xml:space="preserve">
+    <value>此操作無法復原。</value>
+  </data>
+  <data name="SettingsPage_GatewayRemovalTargetChanged" xml:space="preserve">
+    <value>請在連線設定中選取本機閘道，然後重新檢視移除操作。先前的選取項目已不再是目前的選取項目。</value>
+  </data>
+  <data name="SettingsPage_GatewayRemovalLocalAi" xml:space="preserve">
+    <value>移除閘道前，請在本機 AI 設定中停止本機 AI 並解除其對閘道的管理權。未移除任何閘道。</value>
+  </data>
+  <data name="SettingsPage_NativeGatewayRemoved" xml:space="preserve">
+    <value>原生閘道及其已儲存的連線已移除。Store 中的 Gateway 應用程式仍保持安裝狀態。請開啟設定精靈以設定新的閘道。</value>
+  </data>
+  <data name="SettingsPage_RemovingGateway" xml:space="preserve">
+    <value>正在移除閘道...</value>
+  </data>
   <data name="SettingsPage_LocalGateway.Text" xml:space="preserve">
     <value>本機閘道</value>
   </data>
@@ -7896,4 +7935,10 @@
   <data name="Onboarding_AiSetup_LocalOwnershipInvalid" xml:space="preserve"><value>已儲存的本機 AI 擁有權、模型或閘道設定不再相符。請在原始 Companion 設定檔中檢查原始閘道及其模型設定，包括已修改的模型允許清單項目。保留擁有權憑據，不要複製驗證認證或取代提供者。</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipUnavailable" xml:space="preserve"><value>無法檢查原始閘道的擁有權或設定。請重新連線原始閘道並再次檢查。未進行任何變更。</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipFiles" xml:space="preserve"><value>受管理的本機 AI 安裝需要修復檔案。請先在本機 AI 設定中停止執行階段並解決原始閘道路由問題，再修復檔案。保留擁有權憑據。</value></data>
+  <data name="ConnectionPage_LocalConflictAddress" xml:space="preserve"><value>另一個應用程式正在使用此閘道的本機位址。</value></data>
+  <data name="ConnectionPage_LocalConflictOwnership" xml:space="preserve"><value>絕不會自動停止未知處理程序。</value></data>
+  <data name="ConnectionPage_LocalConflictRecovery" xml:space="preserve"><value>關閉發生衝突的應用程式，或檢查此閘道安裝的服務狀態和位址，然後再試一次。</value></data>
+  <data name="SettingsPage_LegacyNativeAiTitle" xml:space="preserve"><value>原生閘道需要更新</value></data>
+  <data name="SettingsPage_LegacyNativeAiMessage" xml:space="preserve"><value>受管理的本機 AI 需要隔離的原生閘道。請更新 Gateway 套件並設定隔離的閘道，再使用本機 AI。</value></data>
+  <data name="Onboarding_LocalAi_NativeCheckingMessage" xml:space="preserve"><value>OpenClaw 正在檢查 NVIDIA GPU、驅動程式、CUDA 和記憶體需求。</value></data>
 </root>
