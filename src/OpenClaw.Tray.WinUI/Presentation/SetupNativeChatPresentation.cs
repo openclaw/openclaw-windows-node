@@ -41,7 +41,10 @@ internal sealed class SetupNativeChatPresentation
         }
         catch (SetupNativeConnectionUnavailableException)
         {
-            Fail(SetupNativeChatWarning.Unavailable, block);
+            // Keep mount-local draft state while offline. Reuse still requires
+            // the full authority check and the exact provider association.
+            Warning = SetupNativeChatWarning.Unavailable;
+            defer();
             return;
         }
         catch (SetupNativeOwnershipException)

@@ -115,4 +115,33 @@ public sealed class SetupNativeChatWarningTests(UIThreadFixture fixture)
             fixture.Container.Children.Remove(page);
         });
     }
+
+    [Fact]
+    public async Task ComposerSelectionClearsForeignBindingAndUpdatesMountedSessionWithoutReseeding()
+    {
+        await fixture.RunOnUIAsync(() =>
+        {
+            var page = new ChatPage();
+            fixture.Container.Children.Add(page);
+            var binding = (SetupNativeChatBinding)typeof(ChatPage)
+                .GetField("_nativeSetupBinding", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(page)!;
+            var request = new SetupNativeNavigationRequest(new(
+                new(SetupCompletionIntent.CustodianOnboarding, "test", "endpoint", "provider/model", "verified", 1,
+                    IdentityBinding: new string('A', 64), SessionKey: "agent:verified:main"),
+                new(SetupNativeDestination.Chat, "agent:verified:main")));
+            binding.Bind(request);
+            page.RetainNativeSetupForDestination(request.WorkspaceDestination!);
+            page.OnComposerSessionSelected(request.Completion.Target.SessionKey);
+            Assert.Same(request, binding.Request);
+            page.ApplyNativeSetupWarning(SetupNativeChatWarning.Unavailable, "test");
+            page.OnComposerSessionSelected("agent:verified:child");
+            Assert.Null(binding.Request);
+            Assert.False(Assert.IsType<InfoBar>(page.FindName("NativeSetupError")).IsOpen);
+            Assert.Equal("agent:verified:child", typeof(ChatPage)
+                .GetField("_mountedThreadId", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(page));
+            Assert.Null(typeof(ChatPage)
+                .GetField("_pendingSessionKey", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(page));
+            fixture.Container.Children.Remove(page);
+        });
+    }
 }

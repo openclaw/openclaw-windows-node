@@ -17,7 +17,7 @@ public sealed class SetupNativeChatPresentationTests
         new(SetupNativeDestination.Chat, "agent:verified:main")));
 
     [Fact]
-    public void SameClientRecoveryRestoresExactTargetOnceAndHealthyRefreshDoesNotReseed()
+    public void SameClientRecoveryRetainsHostAndHealthyRefreshDoesNotReseed()
     {
         var h = new Harness();
         h.Activate();
@@ -26,17 +26,78 @@ public sealed class SetupNativeChatPresentationTests
         h.SetConnected(false);
         h.Drain();
         Assert.Equal(SetupNativeChatWarning.Unavailable, h.Presentation.Warning);
-        Assert.Null(h.MountedTarget);
-        Assert.Equal(1, h.Disposals);
+        Assert.False(h.Presentation.IsReady);
+        Assert.Equal(Request.Completion.Target.SessionKey, h.MountedTarget);
+        Assert.Equal(0, h.Disposals);
         h.SetConnected(true);
         h.Drain();
         Assert.Equal(SetupNativeChatWarning.None, h.Presentation.Warning);
         Assert.Equal(Request.Completion.Target.SessionKey, h.MountedTarget);
-        Assert.Equal(2, h.Mounts);
+        Assert.Equal(1, h.Mounts);
+        Assert.Null(h.LastRenderTarget);
         h.Observer.Request("settings");
         h.Drain();
         Assert.Null(h.LastRenderTarget);
-        Assert.Equal(2, h.Mounts);
+        Assert.Equal(1, h.Mounts);
+    }
+
+    [Fact]
+    public void UnavailableBeforeFirstMountStillSeedsExactTargetOnRecovery()
+    {
+        var h = new Harness();
+        h.SetConnected(false);
+        h.Activate();
+        h.Drain();
+        Assert.Equal(0, h.Mounts);
+        Assert.False(h.Presentation.IsReady);
+        h.SetConnected(true);
+        h.Drain();
+        Assert.Equal(Request.Completion.Target.SessionKey, h.LastRenderTarget);
+        Assert.True(h.Presentation.IsReady);
+    }
+
+    [Fact]
+    public void RetainedUnavailableHostIsDiscardedWhenAuthorityFailsOnRecovery()
+    {
+        var h = new Harness();
+        h.Activate();
+        h.Drain();
+        h.SetConnected(false);
+        h.Drain();
+        Assert.Equal(0, h.Disposals);
+        h.RequireOwner = () => throw new SetupNativeOwnershipException();
+        h.SetConnected(true);
+        h.Drain();
+        Assert.Equal(1, h.Disposals);
+        Assert.Null(h.MountedTarget);
+        Assert.False(h.Presentation.IsReady);
+        Assert.Equal(SetupNativeChatWarning.AuthorityUnconfirmed, h.Presentation.Warning);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void PendingVoiceWaitsThroughUnavailableOrDeferredEvaluation(bool unavailable)
+    {
+        var h = new Harness();
+        h.Activate();
+        h.Drain();
+        var voice = new OpenClawTray.Chat.PendingVoiceActivation();
+        voice.Request(nativeSurface: true);
+        if (unavailable)
+            h.SetConnected(false);
+        else
+            h.Provider = null;
+        h.Observer.Request("voice wait");
+        h.Drain();
+        Assert.False(voice.TryConsume(true, h.Presentation.IsReady));
+        h.DuringCheck = () => Assert.False(voice.TryConsume(true, h.Presentation.IsReady));
+        h.Provider ??= new();
+        h.SetConnected(true);
+        h.Observer.Request("provider ready");
+        h.Drain();
+        Assert.True(voice.TryConsume(true, h.Presentation.IsReady));
+        Assert.False(voice.TryConsume(true, h.Presentation.IsReady));
     }
 
     [Fact]

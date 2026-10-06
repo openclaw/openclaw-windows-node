@@ -146,6 +146,7 @@ public sealed partial class ChatPage : Page
         _surfaceGeneration++;
         ReconcileNativeSetupObserver();
         _pendingVoice.Cancel();
+        _reactorHost?.CancelVoiceRecording();
         UpdateNativeChatSurfaceActive();
 
         // Don't tear down the native chat host — preserve it across page
@@ -193,7 +194,9 @@ public sealed partial class ChatPage : Page
             _pendingVoice.Request(nativeSurface: !_webViewMode);
         }
         if (_reactorHost is { HasVoiceTrigger: true } host &&
-            _pendingVoice.TryConsume(_pageActive, composerReady: true))
+            _pendingVoice.TryConsume(_pageActive, composerReady:
+                ChatHost.Visibility == Visibility.Visible &&
+                (_nativeSetupBinding.Request is null || _nativeSetupPresentation.IsReady)))
             host.TriggerVoiceRecording();
     }
 
@@ -301,6 +304,14 @@ public sealed partial class ChatPage : Page
         _pendingSessionKey = sessionKey;
     }
 
+    internal void OnComposerSessionSelected(string sessionKey)
+    {
+        if (_nativeSetupBinding.Request is { } request &&
+            sessionKey != request.Completion.Target.SessionKey)
+            InvalidateNativeSetupForNavigation();
+        _mountedThreadId = sessionKey;
+    }
+
     private void OnWorkspaceOpenConnection(object sender, RoutedEventArgs e) =>
         ((IAppCommands)CurrentApp).Navigate("connection");
 
@@ -326,6 +337,7 @@ public sealed partial class ChatPage : Page
                 DeferNativeSetupChat);
             ApplyNativeSetupWarning(_nativeSetupPresentation.Warning, source);
             UpdateNativeChatSurfaceActive();
+            ConsumePendingVoice();
             return;
         }
 
@@ -351,8 +363,10 @@ public sealed partial class ChatPage : Page
 
     private void DeferNativeSetupChat()
     {
+        _reactorHost?.CancelVoiceRecording();
         HideNativeSetupChat();
-        WaitingPanel.Visibility = Visibility.Visible;
+        if (_nativeSetupPresentation.Warning == SetupNativeChatWarning.None)
+            WaitingPanel.Visibility = Visibility.Visible;
     }
 
     private void HideNativeSetupChat()
@@ -495,6 +509,7 @@ public sealed partial class ChatPage : Page
 
         PlaceholderPanel.Visibility = Visibility.Collapsed;
         ChatHost.Visibility = Visibility.Visible;
+        MountedReactorChat? mountedHost = null;
         var composerSession = ReactorChatHostExtensions.CreateComposerSession(
             ChatHost,
             composerFactory,
@@ -503,10 +518,20 @@ public sealed partial class ChatPage : Page
             onAttachClick: OnAttachClicked,
             onSettingsClick: NavigateToVoiceSettings,
             onSpeakerMuteChanged: muted => _ = OnSpeakerMuteChangedAsync(muted),
-            initialMuted: ShouldStartSpeakerMuted(CurrentApp.Settings));
+            initialMuted: ShouldStartSpeakerMuted(CurrentApp.Settings),
+            onSessionNavigationStarting: () =>
+            {
+                if (_pageActive && ReferenceEquals(_reactorHost, mountedHost))
+                    InvalidateNativeSetupForNavigation();
+            },
+            onSessionSelected: sessionKey =>
+            {
+                if (ReferenceEquals(_reactorHost, mountedHost))
+                    OnComposerSessionSelected(sessionKey);
+            });
         try
         {
-            _reactorHost = (_ownerWindow ?? throw new InvalidOperationException("Chat requires an owning window.")).MountReactorChat(
+            mountedHost = (_ownerWindow ?? throw new InvalidOperationException("Chat requires an owning window.")).MountReactorChat(
                 ChatHost,
                 provider,
                 composerSession,
@@ -515,6 +540,7 @@ public sealed partial class ChatPage : Page
                 onStopSpeaking: () => app?.StopChatSpeaking(),
                 onOpenCheckpoints: OpenSessionCheckpoints,
                 showSessionPicker: _ownerWindow is not WorkspaceWindow);
+            _reactorHost = mountedHost;
         }
         catch (InvalidOperationException)
         {

@@ -158,11 +158,20 @@ mode. The launcher retains ownership and reparse-point cleanup checks.
 The opt-in native setup warning regression uses a synthetic `native-setup`
 scenario and an actual disposable signing identity and handoff receipt.
 `--post-setup-launch` exercises the product authority check and model-verification
-protocol, then connection loss, recovery, changed identity, and ordinary navigation.
+protocol, then connection loss, recovery with the same unsent composer draft,
+changed identity, and ordinary navigation.
 Model replies are synthetic; this is not real Gateway or inference proof.
 Captured frames use `PrintWindow(PW_RENDERFULLCONTENT)` on the owned App HWND,
 reject blank content and cropped asserted controls, and record SHA256 plus UIA
 evidence beside each PNG.
+
+Composer/controller tests separately cover `/new` releasing the setup binding
+before async session creation, reporting the selected session back to the page,
+and keeping the subsequent send on that session. Mounted UI tests cover
+binding invalidation and voice activation waiting for visible, verified readiness.
+Temporary unavailability retains draft/attachments but cancels capture; actual
+authority failure still disposes the host. The synthetic full-app scenario does
+not claim a real Gateway session-creation or microphone proof.
 
 WSL keepalive/startup cleanup and Windows autostart writes are explicitly
 guarded. A loopback URL alone is not enough to prevent the regular keepalive

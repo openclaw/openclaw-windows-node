@@ -51,6 +51,8 @@ public sealed partial class GatewayFixtureUiTests
                 "production launcher consuming verified handoff");
             var initial = await run.InvokeAsync("app.chat.snapshot", new { threadId = GatewayScenario.MainSessionKey });
             var connectionCount = run.Gateway.ConnectionCount;
+            const string draft = "Keep this unsent draft through setup chat recovery";
+            ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).SetValue(draft);
             CaptureWarningState(run, "01-bound-verified-chat.png", null);
 
             await run.Gateway.CloseConnectionsAsync();
@@ -59,6 +61,8 @@ public sealed partial class GatewayFixtureUiTests
             CaptureWarningState(run, "02-connection-unavailable.png", UnavailableWarning);
             await WaitVerifiedChatAsync(run);
             Assert.True(run.Gateway.ConnectionCount > connectionCount);
+            Assert.Equal(draft,
+                ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
             CaptureWarningState(run, "03-automatic-recovery.png", null);
             var recovered = await run.InvokeAsync("app.chat.snapshot", new { threadId = GatewayScenario.MainSessionKey });
 
@@ -92,6 +96,7 @@ public sealed partial class GatewayFixtureUiTests
                     activation = "--post-setup-launch; actual SetupDashboardHandoffStore receipt and production verifier",
                     verifiedSession = GatewayScenario.MainSessionKey, initial, recovered,
                     automaticRecovery = true, authorityMismatchRemainedBlocked = true,
+                    unsentDraftPreserved = true,
                     checkAgainInvoked = true, ordinaryNavigationClearedWarning = true,
                     setupVerificationRequests = run.Gateway.Requests.Count(request => request.Method == "openclaw.setup.verify"),
                     run.Gateway.ConnectionCount
