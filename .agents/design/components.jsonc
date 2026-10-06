@@ -1,0 +1,3376 @@
+{
+  "meta": {
+    "version": 3,
+    "updatedBy": "copilot",
+    "note": "Windows Fluent UI for OpenClaw — ported from the v1 raw-CSS components.jsonc to v3 Auto Layout. WinUI-derived pixel padding is snapped to the nearest 4px spacing token; per-component notes record the source values and any approximation. Chat components track the native chat refresh in docs/CHAT_VISUAL_DESIGN.md and Themes/ChatResources.xaml (#1459): message and code surfaces use the `bubble` (12px) radius, the composer uses the `composer` (20px) radius, and chat binds the chat-local ChatResources brushes. Workspace-shell components (AgentIdentityBadge, ConnectionStatusFlyout, NotificationFlyout, WorkspaceShell) mirror the native Home and Sessions workspace shipped in #1541: WorkspaceWindow.xaml (Mica shell, left NavigationView, Owner footer), Controls/AgentIdentityBadge.xaml, Controls/GatewayStatusContent.xaml, and Controls/NotificationFlyoutContent.xaml are the source of truth; token bindings follow their ThemeResource keys."
+  },
+  "components": [
+    {
+      "name": "Button",
+      "note": "Basic control. Primary action — one per view, where the eye should land. Previewed as `variant:primary`, the WinUI AccentButtonStyle: `accent` fill (AccentFillColorDefaultBrush) with `accentInk` text (TextOnAccentFillColorPrimaryBrush), `sm` radius (ControlCornerRadius). Hover = AccentFillColorSecondary (token `accentSubtle`); pressed = AccentFillColorTertiary (no exact token, previewed with `accentSubtle`, documented here); disabled = AccentFillColorDisabled with TextOnAccentFillColorDisabled (previewed as `control`/`muted`). The `variant:standard` Button swaps to the default ButtonStyle: `control` fill (ControlFillColorDefault), `controlLine` border (ControlStrokeColorDefault), `ink` text; hover ControlFillColorSecondary, pressed ControlFillColorTertiary, disabled ControlFillColorDisabled. Subtle/icon buttons are the separate SubtleButton block. Padding mirrors WinUI ButtonPadding (11,5,11,6), snapped to spacing tokens 3 (12≈11) and 1 (4≈5/6). In-app MinWidth 100px keeps short labels (OK / Connect) from cramping and gives side-by-side buttons a consistent footprint; that minimum has no spacing-token equivalent, so it stays a port note and the preview hugs its label.",
+      "props": {
+        "children": "Save changes",
+        "variant": "primary"
+      },
+      "root": {
+        "id": "button-root",
+        "el": "button",
+        "class": "ds-btn ds-btn-{variant}",
+        "attrs": {
+          "type": "button"
+        },
+        "layout": {
+          "mode": "horizontal",
+          "padding": {
+            "x": "3",
+            "y": "1"
+          },
+          "align": "center",
+          "justify": "center",
+          "width": "hug"
+        },
+        "appearance": {
+          "fontFamily": "body",
+          "textStyle": "body",
+          "color": "accentInk",
+          "background": "accent",
+          "radius": "sm"
+        },
+        "control": {
+          "focus": { "kind": "outline", "color": "accent" }
+        },
+        "states": {
+          "hover": { "background": "accentSubtle" },
+          "pressed": { "background": "accentSubtle" },
+          "hoverPressed": { "background": "accentSubtle" },
+          "disabled": { "color": "muted", "background": "control" }
+        },
+        "children": [
+          "{children}"
+        ]
+      }
+    },
+    {
+      "name": "Field",
+      "note": "Basic control. Text input with a quiet label above it — the field is the subject. The input ships as the default WinUI TextBox: `control` fill (ControlFillColorDefault), `controlLine` hairline border (ControlStrokeColorDefault), `ink` text, `sm` radius. Hover = ControlFillColorSecondary (no exact token; previewed with `control`, documented here). Focus draws the Fluent accent underline, previewed as a `accent` bottom border via `states.focus`. Disabled = ControlFillColorDisabled with `muted` text. Input padding mirrors WinUI TextControlThemePadding (10,5,6,6), snapped to tokens 2 (8≈10/6 horizontal) and 1 (4≈5/6 vertical). In-app MinHeight 32px lines a field up with a Button on the same row; that minimum stays a port note. Focus draws the Fluent accent underline, supplied here by `control.focus` (accent rectangle); the OFF-grid hover tint (ControlFillColorSecondary) has no exact token and previews with `control`.",
+      "props": {
+        "label": "Gateway address",
+        "placeholder": "127.0.0.1:18789"
+      },
+      "root": {
+        "id": "field-root",
+        "el": "label",
+        "class": "ds-field",
+        "layout": {
+          "mode": "vertical",
+          "gap": "2",
+          "width": "fill"
+        },
+        "children": [
+          {
+            "id": "field-label",
+            "el": "span",
+            "class": "ds-field-label",
+            "children": [
+              "{label}"
+            ]
+          },
+          {
+            "id": "field-input",
+            "el": "input",
+            "class": "ds-input",
+            "attrs": {
+              "placeholder": "{placeholder}"
+            },
+            "layout": {
+              "padding": {
+                "x": "2",
+                "y": "1"
+              },
+              "width": "fill"
+            },
+            "appearance": {
+              "fontFamily": "body",
+              "textStyle": "body",
+              "color": "ink",
+              "background": "control",
+              "borderColor": "controlLine",
+              "radius": "sm"
+            },
+            "control": {
+              "focus": { "kind": "outline", "color": "accent" }
+            },
+            "states": {
+              "hover": { "background": "control" },
+              "disabled": { "color": "muted", "background": "control" }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Card",
+      "note": "Content card. Flat by default — a 1px hairline border, not a drop shadow. Padding mirrors the WinUI Gallery card (16,12) as tokens 4 (16) and 3 (12) exactly, with the `md` radius and a `line`-colored border supplied by the ds-card class. Never nest a card inside a card.",
+      "props": {
+        "title": "Windows node",
+        "body": "Paired · 6 capabilities exposed over MCP."
+      },
+      "root": {
+        "id": "card-root",
+        "el": "article",
+        "class": "ds-card",
+        "layout": {
+          "mode": "vertical",
+          "gap": "2",
+          "padding": {
+            "x": "4",
+            "y": "3"
+          },
+          "width": "fill"
+        },
+        "children": [
+          {
+            "id": "card-title",
+            "el": "h3",
+            "class": "ds-card-title",
+            "children": [
+              "{title}"
+            ]
+          },
+          {
+            "id": "card-body",
+            "el": "p",
+            "class": "ds-card-body",
+            "children": [
+              "{body}"
+            ]
+          },
+          {
+            "id": "card-link",
+            "el": "a",
+            "class": "ds-link",
+            "attrs": {
+              "href": "#"
+            },
+            "margin": {
+              "top": "1"
+            },
+            "children": [
+              "Open report →"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "Badge",
+      "note": "Basic control. Status pill — a read-only, non-interactive label, so it carries no hover/pressed states. Uses semantic color tokens, never a raw hex: `positive` (SystemFillColorSuccess), `warning` (SystemFillColorCaution), `critical` (SystemFillColorCritical), or `muted` for neutral. Padding tokens 3/1 give the pill a compact footprint; the `pill` radius and tone color come from the ds-badge class. Two production relatives: the WorkspaceShell count badge is a Fluent InfoBadge (default pill geometry, framework fill), and the notification recurrence badge is a 10px-radius `warning` subtle-background chip with 7,1 padding — both non-interactive, documented on their host components.",
+      "props": {
+        "children": "Connected",
+        "tone": "positive"
+      },
+      "root": {
+        "id": "badge-root",
+        "el": "span",
+        "class": "ds-badge ds-badge-{tone}",
+        "layout": {
+          "mode": "horizontal",
+          "padding": {
+            "x": "3",
+            "y": "1"
+          },
+          "align": "center",
+          "width": "hug"
+        },
+        "children": [
+          "{children}"
+        ]
+      }
+    },
+    {
+      "name": "SubtleButton",
+      "note": "Basic control. The quiet icon button used across the workspace chrome and flyouts (WinUI SubtleButtonStyle): Back/Forward, New session, pane toggle, notification bell, and the flyout dismiss button. Transparent rest (SubtleFillColorTransparent, `$none`) with a glyph in `ink`; hover = SubtleFillColorSecondary (`subtleHover`), pressed = SubtleFillColorTertiary (`subtlePressed`), disabled = ControlFillColorDisabled with `muted` glyph. `sm` radius (ControlCornerRadius). Previewed at the workspace command size 40x40 with a 16px glyph (WorkspaceWindow.xaml uses Width/Height 40, FontSize 16); the notification dismiss variant is 30x30 with an 11px glyph and 6px padding. `control.chrome:none` removes the web button border so the transparent Windows rest state shows, and `control.focus` draws the accent focus rectangle. Glyph shown is New session (Segoe Fluent Add, U+E710).",
+      "props": {
+        "label": "New session"
+      },
+      "root": {
+        "id": "subtle-button-root",
+        "el": "button",
+        "attrs": {
+          "type": "button",
+          "aria-label": "{label}"
+        },
+        "layout": {
+          "mode": "horizontal",
+          "align": "center",
+          "justify": "center",
+          "width": 40,
+          "height": 40
+        },
+        "appearance": {
+          "color": "ink",
+          "background": "$none",
+          "radius": "sm"
+        },
+        "control": {
+          "chrome": "none",
+          "focus": { "kind": "outline", "color": "accent" }
+        },
+        "states": {
+          "hover": { "background": "subtleHover" },
+          "pressed": { "background": "subtlePressed" },
+          "hoverPressed": { "background": "subtlePressed" },
+          "disabled": { "color": "muted", "background": "$none" }
+        },
+        "children": [
+          {
+            "id": "subtle-button-glyph",
+            "el": "span",
+            "attrs": {
+              "aria-hidden": "true",
+              "style": "font-family:'Segoe Fluent Icons','Segoe MDL2 Assets',sans-serif;font-size:16px"
+            },
+            "children": [
+              "\uE710"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "HyperlinkButton",
+      "note": "Basic control. WinUI HyperlinkButton used for inline navigation and quiet actions (Reconnect, Approve, Open Connection, Clear all, Open notifications). Accent link text (system accent hyperlink brush, token `accent`) with no border or fill at rest; hover shows the subtle wash (SubtleFillColorSecondary, `subtleHover`) and pressed deepens to SubtleFillColorTertiary (`subtlePressed`); disabled drops to `muted`. Horizontal padding mirrors the production `Padding=4,0` (token `1` left/right, no vertical pad); `sm` radius. Text uses the `body` scale. `control.chrome:none` strips the web button chrome; `control.focus` supplies the accent focus rectangle.",
+      "props": {
+        "children": "Open Connection"
+      },
+      "root": {
+        "id": "hyperlink-button-root",
+        "el": "button",
+        "attrs": {
+          "type": "button"
+        },
+        "layout": {
+          "mode": "horizontal",
+          "align": "center",
+          "padding": {
+            "left": "1",
+            "right": "1"
+          },
+          "width": "hug"
+        },
+        "appearance": {
+          "fontFamily": "body",
+          "textStyle": "body",
+          "color": "accent",
+          "background": "$none",
+          "radius": "sm"
+        },
+        "control": {
+          "chrome": "none",
+          "focus": { "kind": "outline", "color": "accent" }
+        },
+        "states": {
+          "hover": { "background": "subtleHover" },
+          "pressed": { "background": "subtlePressed" },
+          "hoverPressed": { "background": "subtlePressed" },
+          "disabled": { "color": "muted", "background": "$none" }
+        },
+        "children": [
+          "{children}"
+        ]
+      }
+    },
+    {
+      "name": "ToggleSwitch",
+      "note": "Basic control. The stock WinUI ToggleSwitch used on settings and permission rows. Previewed in the ON state: track fills `accent` (AccentFillColorDefault / ToggleSwitchFillOn) with an `accentInk` (TextOnAccentFillColorPrimary) thumb pushed right. OFF state (documented as a port note): track is `control` (ControlFillColorDefault) with a `controlLine` border and a `muted`/ControlStrongFill thumb at left. Hover = AccentFillColorSecondary on (ControlFillColorSecondary off); pressed = AccentFillColorTertiary on (ControlFillColorTertiary off); disabled uses the Fluent disabled track. Track previewed at 40x20 with a `pill` radius and a 14px circular thumb; the thumb/track visuals are WinUI template parts and are a port note. Toggle-state brushes are stock Fluent resources, not locally remapped.",
+      "props": {
+        "label": "Launch at startup"
+      },
+      "root": {
+        "id": "toggle-switch-root",
+        "el": "button",
+        "attrs": {
+          "type": "button",
+          "role": "switch",
+          "aria-checked": "true",
+          "aria-label": "{label}"
+        },
+        "layout": {
+          "mode": "horizontal",
+          "align": "center",
+          "justify": "end",
+          "padding": { "x": "1" },
+          "width": 40,
+          "height": 20
+        },
+        "appearance": {
+          "background": "accent",
+          "radius": "pill"
+        },
+        "control": {
+          "chrome": "none",
+          "focus": { "kind": "outline", "color": "accent" }
+        },
+        "states": {
+          "hover": { "background": "accentSubtle" },
+          "pressed": { "background": "accentSubtle" },
+          "hoverPressed": { "background": "accentSubtle" },
+          "disabled": { "background": "control" }
+        },
+        "children": [
+          {
+            "id": "toggle-switch-thumb",
+            "el": "span",
+            "attrs": { "aria-hidden": "true" },
+            "layout": { "width": 14, "height": 14 },
+            "appearance": { "background": "accentInk", "radius": "pill" }
+          }
+        ]
+      }
+    },
+    {
+      "name": "StatusDot",
+      "note": "Basic control. The 10x10 connection/status indicator reused in the gateway flyout (Ellipse), the workspace Owner footer (10px FontIcon), and the identity badges. Non-interactive, so no hover/pressed states. Fill is a semantic token; previewed `positive` (SystemFillColorSuccess) for connected, and the variants are `warning` (SystemFillColorCaution) attention, `critical` (SystemFillColorCritical) error, and `muted`/neutral unknown. 10px sits between spacing tokens (nearest `2`=8); previewed at a literal 10x10 with a `pill` radius.",
+      "props": {
+        "tone": "positive"
+      },
+      "root": {
+        "id": "status-dot-root",
+        "el": "span",
+        "attrs": {
+          "role": "img",
+          "aria-label": "Connected"
+        },
+        "layout": {
+          "width": 10,
+          "height": 10
+        },
+        "appearance": {
+          "background": "positive",
+          "radius": "pill"
+        }
+      }
+    },
+    {
+      "name": "Avatar",
+      "note": "Basic control. WinUI PersonPicture circular avatar. Non-interactive. The agent avatar is 32x32 (AgentIdentityBadge), the workspace Owner avatar is 24x24; both render a circular initials/photo tile. Previewed at 32x32 with a `pill` radius and a `muted` placeholder fill plus `ink`-on-muted initials; real photo/initials and the circular clip are WinUI template behavior and a port note.",
+      "props": {
+        "initials": "AU"
+      },
+      "root": {
+        "id": "avatar-root",
+        "el": "span",
+        "attrs": {
+          "role": "img"
+        },
+        "layout": {
+          "mode": "horizontal",
+          "align": "center",
+          "justify": "center",
+          "width": 32,
+          "height": 32
+        },
+        "appearance": {
+          "fontFamily": "body",
+          "textStyle": "small",
+          "color": "ink",
+          "background": "muted",
+          "radius": "pill"
+        },
+        "children": [
+          "{initials}"
+        ]
+      }
+    },
+    {
+      "name": "InfoBar",
+      "note": "Basic control. The Fluent InfoBar severity banner used for workspace operation errors and app notifications (WorkspaceWindow OperationInfo, HubWindow AppNotificationInfoBar, ChatPage). Previewed at Error severity: a `surface` sheet with a `line` hairline, `md` radius, and 16px padding, led by a `critical` status glyph (Segoe Fluent Error, U+EA39), a `ink` BodyStrong title, a `muted` caption message, and a trailing SubtleButton close (U+E711). Severity recolors the leading glyph only: `critical` Error, `warning` Warning, `positive` Success, `accent` Informational. The banner body is non-interactive; the close button carries the shared subtle hover/pressed states.",
+      "props": {
+        "title": "Couldn't reach the gateway",
+        "message": "Check that the gateway is running, then retry."
+      },
+      "root": {
+        "id": "info-bar-root",
+        "el": "div",
+        "attrs": { "role": "status" },
+        "layout": {
+          "mode": "horizontal",
+          "gap": "3",
+          "padding": "4",
+          "align": "start",
+          "width": "fill"
+        },
+        "appearance": {
+          "background": "surface",
+          "borderColor": "line",
+          "radius": "md"
+        },
+        "children": [
+          {
+            "id": "info-bar-icon",
+            "el": "span",
+            "attrs": {
+              "aria-hidden": "true",
+              "style": "font-family:'Segoe Fluent Icons','Segoe MDL2 Assets',sans-serif;font-size:16px"
+            },
+            "appearance": { "color": "critical" },
+            "children": [ "\uEA39" ]
+          },
+          {
+            "id": "info-bar-text",
+            "el": "div",
+            "layout": { "mode": "vertical", "gap": "1", "grow": true, "width": "fill" },
+            "children": [
+              {
+                "id": "info-bar-title",
+                "el": "span",
+                "appearance": { "fontFamily": "body", "textStyle": "body", "color": "ink" },
+                "children": [ "{title}" ]
+              },
+              {
+                "id": "info-bar-message",
+                "el": "span",
+                "appearance": { "fontFamily": "body", "textStyle": "caption", "color": "muted" },
+                "children": [ "{message}" ]
+              }
+            ]
+          },
+          {
+            "id": "info-bar-close",
+            "el": "button",
+            "attrs": { "type": "button", "aria-label": "Close" },
+            "layout": { "mode": "horizontal", "align": "center", "justify": "center", "width": 30, "height": 30 },
+            "appearance": { "color": "muted", "background": "$none", "radius": "sm" },
+            "control": {
+              "chrome": "none",
+              "focus": { "kind": "outline", "color": "accent" }
+            },
+            "states": {
+              "hover": { "background": "subtleHover" },
+              "pressed": { "background": "subtlePressed" },
+              "hoverPressed": { "background": "subtlePressed" }
+            },
+            "children": [
+              {
+                "id": "info-bar-close-glyph",
+                "el": "span",
+                "attrs": {
+                  "aria-hidden": "true",
+                  "style": "font-family:'Segoe Fluent Icons','Segoe MDL2 Assets',sans-serif;font-size:11px"
+                },
+                "children": [ "\uE711" ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "ComposerPicker",
+      "note": "Subtle inline dropdown. Ships as a WinUI subtle DropDownButton (a transparent Button that opens a flyout), NOT a bordered ComboBox and NOT a Fluent-web pill/segmented control. Shows the current value in `muted` secondary text (TextFillColorSecondary) with a trailing `muted` chevron (Segoe Fluent \\uE70D, previewed ~10px). 32px min height; horizontal padding token `2`, gap token `1`; `sm` radius = WinUI ControlCornerRadius (4px). It is a real `button` whose browser chrome is removed with `control.chrome:none`, so the transparent WinUI rest state (SubtleFillColorTransparent, `$none`) shows with no web button border, and `control.focus` supplies the Windows accent focus rectangle instead of a web focus ring. Hover uses `subtleHover` (SubtleFillColorSecondary) and press uses `subtlePressed` (SubtleFillColorTertiary) through `states`, so the picker stays quiet in the composer toolbar and never competes with the primary Send action. When there is nothing to choose (for example the session picker with a single session) the picker is disabled and its value reads a shade lighter than the enabled muted text. Used for the model, reasoning-effort, and session selectors; `on.click` opens the picker flyout. Since #1459 the model picker is a native flyout with an AutoSuggestBox over a grouped, single-selection ListView, and the reasoning-effort picker is a native discrete slider with a compact gauge trigger (`ChatEffortGauge`, rendered with WinUI paths, not a font glyph) at narrow widths; a picker trigger value can tint with `ChatPickerAccentBrush`. The session selector stays a single-select flyout. ComposerPickerOptions is a representative shared option list because flyout targets take no props; the real per-picker option sets (sessions, models, effort levels) are supplied by the app and are a Reactor port note.",
+      "props": {
+        "label": "Model"
+      },
+      "root": {
+        "id": "composer-picker-root",
+        "el": "button",
+        "attrs": {
+          "type": "button",
+          "aria-haspopup": "listbox",
+          "aria-label": "{label}"
+        },
+        "layout": {
+          "mode": "horizontal",
+          "gap": "1",
+          "padding": {
+            "left": "2",
+            "right": "2"
+          },
+          "align": "center",
+          "height": 32,
+          "width": "hug"
+        },
+        "appearance": {
+          "fontFamily": "body",
+          "textStyle": "small",
+          "color": "muted",
+          "background": "$none",
+          "radius": "sm"
+        },
+        "control": {
+          "chrome": "none",
+          "focus": { "kind": "outline", "color": "accent" }
+        },
+        "states": {
+          "hover": { "background": "subtleHover" },
+          "pressed": { "background": "subtlePressed" },
+          "hoverPressed": { "background": "subtlePressed" },
+          "disabled": { "color": "muted", "background": "$none" }
+        },
+        "on": { "click": { "open": "ComposerPickerOptions" } },
+        "children": [
+          {
+            "id": "composer-picker-label",
+            "el": "span",
+            "children": [
+              "{label}"
+            ]
+          },
+          {
+            "id": "composer-picker-chevron",
+            "el": "svg",
+            "attrs": {
+              "width": "12",
+              "height": "12",
+              "viewBox": "0 0 24 24",
+              "fill": "none",
+              "aria-hidden": "true",
+              "stroke": "currentColor",
+              "stroke-width": "2",
+              "stroke-linecap": "round",
+              "stroke-linejoin": "round"
+            },
+            "appearance": {
+              "color": "muted"
+            },
+            "children": [
+              {
+                "id": "composer-picker-chevron-path",
+                "el": "path",
+                "attrs": {
+                  "d": "M6 9l6 6 6-6"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "ComposerPickerOptions",
+      "note": "Representative single-select flyout for the subtle composer pickers (model, session, reasoning-effort). Ships as a WinUI Flyout of RadioMenuItem rows on a `surface` (CardBackgroundFillColorDefault) sheet with 12px (`lg`) overlay corners (ChatPickerFlyoutStyle, #1459) and `md` shadow. Each row reserves a leading glyph column; the selected row shows an `accent` Segoe Fluent Icons CheckMark (glyph U+E73E, WinUI SymbolThemeFontFamily selection glyph, not a radio dot) while unselected rows keep the column empty so labels stay aligned. The check glyph carries a font-family-only raw style because the icon font is outside the display/body/mono token set (documented as the `icon` typography family in design.json); color stays token-bound to `accent`. Selecting a row closes the flyout; reopening restores defaults. Because `on.click.open` targets take no props, this shows a representative model list; the real model picker (AutoSuggestBox over a grouped ListView) and the effort slider/gauge are supplied by the app and are a Reactor port note.",
+      "root": {
+        "id": "composer-picker-options",
+        "el": "div",
+        "attrs": { "role": "menu", "aria-label": "Model" },
+        "layout": { "mode": "vertical", "gap": "1", "padding": "1", "width": "hug" },
+        "appearance": { "background": "surface", "color": "ink", "textStyle": "small", "radius": "lg", "shadow": "md" },
+        "children": [
+          {
+            "id": "composer-option-sonnet",
+            "el": "label",
+            "attrs": { "role": "menuitemradio", "aria-checked": "true" },
+            "layout": { "mode": "horizontal", "gap": "2", "align": "center", "padding": { "x": "2", "y": "1" } },
+            "children": [
+              { "id": "composer-option-sonnet-check", "el": "span", "attrs": { "aria-hidden": "true", "style": "font-family:'Segoe Fluent Icons','Segoe MDL2 Assets',sans-serif" }, "layout": { "width": 16 }, "appearance": { "color": "accent", "textAlign": "center" }, "children": ["\uE73E"] },
+              "Claude Sonnet 5"
+            ]
+          },
+          {
+            "id": "composer-option-opus",
+            "el": "label",
+            "attrs": { "role": "menuitemradio", "aria-checked": "false" },
+            "layout": { "mode": "horizontal", "gap": "2", "align": "center", "padding": { "x": "2", "y": "1" } },
+            "children": [
+              { "id": "composer-option-opus-check", "el": "span", "attrs": { "aria-hidden": "true" }, "layout": { "width": 16 } },
+              "Claude Opus 4.8"
+            ]
+          },
+          {
+            "id": "composer-option-gpt",
+            "el": "label",
+            "attrs": { "role": "menuitemradio", "aria-checked": "false" },
+            "layout": { "mode": "horizontal", "gap": "2", "align": "center", "padding": { "x": "2", "y": "1" } },
+            "children": [
+              { "id": "composer-option-gpt-check", "el": "span", "attrs": { "aria-hidden": "true" }, "layout": { "width": 16 } },
+              "GPT-5.6"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "ChatBubble",
+      "note": "Assistant chat turn: a 36×36 avatar (subtle `surface` fill, hairline `controlLine` border, `pill` radius) to the LEFT of plain prose that flows in the reading column with NO bubble, card, border, or fill (#1459). The refreshed assistant turn is bubbleless: only the user's own message rides a soft bubble (see ChatThread), so the transcript reads like a document rather than facing chat cards. Prose binds `ChatTextBrush` (`ink`) at body type (14/21 in-app); top-level blocks use one uniform 16px gap (token 3). Inline code and fenced code still get their own `ChatCardBrush` surfaces with `ChatSecondaryTextBrush` code text and a `bubble` (12px) radius, and the Copy action confirms with a `ChatCopySuccessBrush` checkmark that announces Copied and resets after two seconds. Footer reads timestamp · usage · Copy · Read aloud — Copy and Read aloud are hover-gated 20×20 subtle icon buttons in-app, and usage is the used/context (pct%) string ChatUsageFormatter produces. Mirrors ReactorChatTimeline's assistant row; ships via Reactor. Reading column max-width 768px, 16px prose inset, and the avatar hiding below 960px are Reactor port notes (no token equivalent). (This previews the assistant variant; the user variant rides the softer `ChatUserBrush` bubble on the right.)",
+      "props": {
+        "time": "2:14 PM",
+        "usage": "12.5K/200K (6%)",
+        "children": "Paired to the gateway — 6 Windows node capabilities are live."
+      },
+      "root": {
+        "id": "chat-bubble-root",
+        "el": "div",
+        "layout": {
+          "mode": "horizontal",
+          "gap": "2",
+          "align": "start"
+        },
+        "children": [
+          {
+            "id": "chat-bubble-avatar",
+            "el": "div",
+            "attrs": {
+              "aria-hidden": "true"
+            },
+            "layout": {
+              "mode": "horizontal",
+              "align": "center",
+              "justify": "center",
+              "width": 36,
+              "height": 36
+            },
+            "appearance": {
+              "background": "surface",
+              "borderColor": "controlLine",
+              "color": "muted",
+              "radius": "pill"
+            },
+            "children": [
+              {
+                "id": "chat-bubble-avatar-glyph",
+                "el": "svg",
+                "attrs": {
+                  "width": "18",
+                  "height": "18",
+                  "viewBox": "0 0 24 24",
+                  "fill": "currentColor",
+                  "aria-hidden": "true"
+                },
+                "children": [
+                  {
+                    "id": "chat-bubble-avatar-path",
+                    "el": "path",
+                    "attrs": {
+                      "d": "M12 2.5l1.7 5.1a4 4 0 0 0 2.7 2.7l5.1 1.7-5.1 1.7a4 4 0 0 0-2.7 2.7L12 21.5l-1.7-5.1a4 4 0 0 0-2.7-2.7L2.5 12l5.1-1.7a4 4 0 0 0 2.7-2.7L12 2.5z"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "chat-bubble-stack",
+            "el": "div",
+            "layout": {
+              "mode": "vertical",
+              "gap": "1",
+              "align": "start"
+            },
+            "children": [
+              {
+                "id": "chat-bubble-message",
+                "el": "div",
+                "layout": {
+                  "mode": "vertical",
+                  "gap": "3"
+                },
+                "appearance": {
+                  "fontFamily": "body",
+                  "textStyle": "body",
+                  "color": "ink"
+                },
+                "children": [
+                  "{children}"
+                ]
+              },
+              {
+                "id": "chat-bubble-footer",
+                "el": "div",
+                "layout": {
+                  "mode": "horizontal",
+                  "gap": "2",
+                  "padding": {
+                    "x": "2"
+                  },
+                  "align": "center"
+                },
+                "appearance": {
+                  "fontFamily": "body",
+                  "textStyle": "caption",
+                  "color": "muted"
+                },
+                "children": [
+                  {
+                    "id": "chat-bubble-time",
+                    "el": "span",
+                    "children": [
+                      "{time}"
+                    ]
+                  },
+                  {
+                    "id": "chat-bubble-dot",
+                    "el": "span",
+                    "attrs": {
+                      "aria-hidden": "true"
+                    },
+                    "children": [
+                      "·"
+                    ]
+                  },
+                  {
+                    "id": "chat-bubble-usage",
+                    "el": "span",
+                    "children": [
+                      "{usage}"
+                    ]
+                  },
+                  {
+                    "id": "chat-bubble-copy",
+                    "el": "div",
+                    "attrs": {
+                      "role": "button",
+                      "title": "Copy",
+                      "aria-label": "Copy message"
+                    },
+                    "layout": {
+                      "mode": "horizontal",
+                      "align": "center",
+                      "justify": "center",
+                      "width": 20,
+                      "height": 20
+                    },
+                    "appearance": {
+                      "color": "muted",
+                      "radius": "sm"
+                    },
+                    "children": [
+                      {
+                        "id": "chat-bubble-copy-glyph",
+                        "el": "svg",
+                        "attrs": {
+                          "width": "14",
+                          "height": "14",
+                          "viewBox": "0 0 24 24",
+                          "fill": "none",
+                          "aria-hidden": "true",
+                          "stroke": "currentColor",
+                          "stroke-width": "2",
+                          "stroke-linecap": "round",
+                          "stroke-linejoin": "round"
+                        },
+                        "children": [
+                          {
+                            "id": "chat-bubble-copy-rect",
+                            "el": "rect",
+                            "attrs": {
+                              "x": "9",
+                              "y": "9",
+                              "width": "11",
+                              "height": "11",
+                              "rx": "2"
+                            }
+                          },
+                          {
+                            "id": "chat-bubble-copy-path",
+                            "el": "path",
+                            "attrs": {
+                              "d": "M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "id": "chat-bubble-readaloud",
+                    "el": "div",
+                    "attrs": {
+                      "role": "button",
+                      "title": "Read aloud",
+                      "aria-label": "Read message aloud"
+                    },
+                    "layout": {
+                      "mode": "horizontal",
+                      "align": "center",
+                      "justify": "center",
+                      "width": 20,
+                      "height": 20
+                    },
+                    "appearance": {
+                      "color": "muted",
+                      "radius": "sm"
+                    },
+                    "children": [
+                      {
+                        "id": "chat-bubble-readaloud-glyph",
+                        "el": "svg",
+                        "attrs": {
+                          "width": "14",
+                          "height": "14",
+                          "viewBox": "0 0 24 24",
+                          "fill": "none",
+                          "aria-hidden": "true",
+                          "stroke": "currentColor",
+                          "stroke-width": "2",
+                          "stroke-linecap": "round",
+                          "stroke-linejoin": "round"
+                        },
+                        "children": [
+                          {
+                            "id": "chat-bubble-readaloud-poly",
+                            "el": "polygon",
+                            "attrs": {
+                              "points": "11 5 6 9 2 9 2 15 6 15 11 19 11 5"
+                            }
+                          },
+                          {
+                            "id": "chat-bubble-readaloud-path",
+                            "el": "path",
+                            "attrs": {
+                              "d": "M15.5 8.5a5 5 0 0 1 0 7M19 5a9 9 0 0 1 0 14"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "ChatComposer",
+      "note": "Chat input. A rounded `control` panel (`composer` radius, 20px) with a hairline `controlLine` border wrapping a borderless, transparent, auto-growing textarea over a toolbar. In-app it binds `ChatComposerBrush` (card fill) over the transparent chat canvas and `ChatStrokeBrush` for the hairline; Send is the Fluent ChatSubmit up glyph (U+E74A) that swaps to Stop (U+E71A) during an active turn, and Add uses ChatAttach (U+E710) (#1459). Left cluster = Add, session picker, model picker, reasoning-effort picker; right cluster = Voice (mic) and the primary Send/Stop. Production exposes only Voice and Send/Stop on the right (no separate Speaker or Settings composer buttons; read-aloud and chat preferences live in Settings, per docs/CHAT_VISUAL_DESIGN.md). Only Send spends the accent (it swaps to a subtle Stop while a turn is active, and reads disabled/greyed until the textarea has content); every other control ships as a WinUI subtle transparent Button (SubtleFillColorTransparent rest, SubtleFillColorSecondary hover, SubtleFillColorTertiary press, ControlCornerRadius) with a `muted` (TextFillColorSecondary) glyph, so the toolbar reads as quiet chrome. Each picker (see ComposerPicker) is a subtle borderless dropdown with muted value text; a picker with nothing to choose (for example the session picker when only one session exists) renders disabled, so its label reads a shade lighter than its enabled neighbours, as with `Main session` in the preview. Textarea min 56 / max 200px growth and the 12px outer margin are Reactor port notes; the app tightens top padding to 2px below token 1. The subtle icon controls are real `button`s whose browser chrome is removed via `control.chrome:none`, so the transparent WinUI rest state (SubtleFillColorTransparent, `$none`) shows with no web button border; each carries `states` for hover (`subtleHover`) and press (`subtlePressed`) and a `control.focus` accent focus rectangle, and only the filled Send spends the accent. The message input renders as a borderless, typeable `contenteditable` `role=textbox` showing the muted placeholder; `control.chrome:none` removes the browser field chrome and its `:focus` ring, and `control.focus` (kind underline, color accent) substitutes the Windows bottom accent underline a real WinUI TextBox shows. The hairline `controlLine` border belongs to the outer `control` panel only. (Preview shows the rest state with the placeholder visible; click to type.)",
+      "props": {
+        "placeholder": "Message Assistant (Enter to send)",
+        "session": "Main session",
+        "model": "Claude Sonnet 5",
+        "effort": "Default"
+      },
+      "root": {
+        "id": "chat-composer-root",
+        "el": "div",
+        "layout": {
+          "mode": "vertical",
+          "gap": "2",
+          "padding": "2",
+          "width": "fill"
+        },
+        "margin": "3",
+        "appearance": {
+          "background": "control",
+          "borderColor": "controlLine",
+          "radius": "composer"
+        },
+        "children": [
+          {
+            "id": "chat-composer-input",
+            "el": "div",
+            "attrs": {
+              "contenteditable": "true",
+              "role": "textbox",
+              "aria-multiline": "true",
+              "aria-label": "Message input"
+            },
+            "layout": {
+              "padding": "2",
+              "width": "fill",
+              "height": 56
+            },
+            "appearance": {
+              "fontFamily": "body",
+              "textStyle": "body",
+              "color": "muted"
+            },
+            "control": {
+              "chrome": "none",
+              "focus": { "kind": "underline", "color": "accent" }
+            },
+            "children": [
+              "{placeholder}"
+            ]
+          },
+          {
+            "id": "chat-composer-toolbar",
+            "el": "div",
+            "layout": {
+              "mode": "horizontal",
+              "gap": "2",
+              "align": "center",
+              "justify": "space-between",
+              "width": "fill"
+            },
+            "children": [
+              {
+                "id": "chat-composer-left",
+                "el": "div",
+                "layout": {
+                  "mode": "horizontal",
+                  "gap": "2",
+                  "align": "center"
+                },
+                "children": [
+                  {
+                    "id": "chat-composer-add",
+                    "el": "button",
+                    "attrs": {
+                      "type": "button",
+                      "title": "Add context",
+                      "aria-label": "Add context"
+                    },
+                    "layout": {
+                      "mode": "horizontal",
+                      "align": "center",
+                      "justify": "center",
+                      "width": 32,
+                      "height": 32
+                    },
+                    "appearance": {
+                      "color": "muted",
+                      "background": "$none",
+                      "radius": "sm"
+                    },
+                    "control": {
+                      "chrome": "none",
+                      "focus": { "kind": "outline", "color": "accent" }
+                    },
+                    "states": {
+                      "hover": { "background": "subtleHover" },
+                      "pressed": { "background": "subtlePressed" },
+                      "hoverPressed": { "background": "subtlePressed" }
+                    },
+                    "children": [
+                      {
+                        "id": "chat-composer-add-glyph",
+                        "el": "svg",
+                        "attrs": {
+                          "width": "18",
+                          "height": "18",
+                          "viewBox": "0 0 24 24",
+                          "fill": "none",
+                          "aria-hidden": "true",
+                          "stroke": "currentColor",
+                          "stroke-width": "2",
+                          "stroke-linecap": "round",
+                          "stroke-linejoin": "round"
+                        },
+                        "children": [
+                          {
+                            "id": "chat-composer-add-path",
+                            "el": "path",
+                            "attrs": {
+                              "d": "M12 5v14M5 12h14"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "id": "chat-composer-session",
+                    "component": "ComposerPicker",
+                    "props": {
+                      "label": "{session}"
+                    }
+                  },
+                  {
+                    "id": "chat-composer-model",
+                    "component": "ComposerPicker",
+                    "props": {
+                      "label": "{model}"
+                    }
+                  },
+                  {
+                    "id": "chat-composer-effort",
+                    "component": "ComposerPicker",
+                    "props": {
+                      "label": "{effort}"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "chat-composer-right",
+                "el": "div",
+                "layout": {
+                  "mode": "horizontal",
+                  "gap": "2",
+                  "align": "center"
+                },
+                "children": [
+                  {
+                    "id": "chat-composer-mic",
+                    "el": "button",
+                    "attrs": {
+                      "type": "button",
+                      "title": "Voice",
+                      "aria-label": "Voice"
+                    },
+                    "layout": {
+                      "mode": "horizontal",
+                      "align": "center",
+                      "justify": "center",
+                      "width": 32,
+                      "height": 32
+                    },
+                    "appearance": {
+                      "color": "muted",
+                      "background": "$none",
+                      "radius": "sm"
+                    },
+                    "control": {
+                      "chrome": "none",
+                      "focus": { "kind": "outline", "color": "accent" }
+                    },
+                    "states": {
+                      "hover": { "background": "subtleHover" },
+                      "pressed": { "background": "subtlePressed" },
+                      "hoverPressed": { "background": "subtlePressed" }
+                    },
+                    "children": [
+                      {
+                        "id": "chat-composer-mic-glyph",
+                        "el": "svg",
+                        "attrs": {
+                          "width": "18",
+                          "height": "18",
+                          "viewBox": "0 0 24 24",
+                          "fill": "none",
+                          "aria-hidden": "true",
+                          "stroke": "currentColor",
+                          "stroke-width": "2",
+                          "stroke-linecap": "round",
+                          "stroke-linejoin": "round"
+                        },
+                        "children": [
+                          {
+                            "id": "chat-composer-mic-rect",
+                            "el": "rect",
+                            "attrs": {
+                              "x": "9",
+                              "y": "3",
+                              "width": "6",
+                              "height": "11",
+                              "rx": "3"
+                            }
+                          },
+                          {
+                            "id": "chat-composer-mic-path",
+                            "el": "path",
+                            "attrs": {
+                              "d": "M5 11a7 7 0 0 0 14 0M12 18v3"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "id": "chat-composer-send",
+                    "el": "button",
+                    "class": "ds-btn",
+                    "attrs": {
+                      "type": "button",
+                      "title": "Send",
+                      "aria-label": "Send"
+                    },
+                    "layout": {
+                      "mode": "horizontal",
+                      "align": "center",
+                      "justify": "center",
+                      "width": 32,
+                      "height": 32
+                    },
+                    "appearance": {
+                      "background": "accent",
+                      "color": "accentInk",
+                      "radius": "sm"
+                    },
+                    "children": [
+                      {
+                        "id": "chat-composer-send-glyph",
+                        "el": "svg",
+                        "attrs": {
+                          "width": "18",
+                          "height": "18",
+                          "viewBox": "0 0 24 24",
+                          "fill": "none",
+                          "aria-hidden": "true",
+                          "stroke": "currentColor",
+                          "stroke-width": "2",
+                          "stroke-linecap": "round",
+                          "stroke-linejoin": "round"
+                        },
+                        "children": [
+                          {
+                            "id": "chat-composer-send-path",
+                            "el": "path",
+                            "attrs": {
+                              "d": "M12 19V5M5 12l7-7 7 7"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "ChatThread",
+      "note": "A short thread: the \"does chat hang together\" check — a user turn (softer `accentSubtle` bubble on the right, with a hover Copy) and a bubbleless assistant turn (avatar + plain prose + Copy / Read aloud / context-usage readout), then the composer. Only the user's own message rides a bubble; the assistant turn flows as plain prose in the reading column (#1459). In-app the user bubble binds `ChatUserBrush` (accent at low opacity) with `ChatUserTextBrush`, and the footer follows the refreshed model and reasoning-effort pickers. Thread max-width 768px and the user bubble cap 720px are Reactor port notes.",
+      "root": {
+        "id": "chat-thread-root",
+        "el": "div",
+        "layout": {
+          "mode": "vertical",
+          "gap": "3",
+          "width": "fill"
+        },
+        "children": [
+          {
+            "id": "chat-thread-user",
+            "el": "div",
+            "layout": {
+              "mode": "horizontal",
+              "justify": "end",
+              "width": "fill"
+            },
+            "children": [
+              {
+                "id": "chat-thread-user-stack",
+                "el": "div",
+                "layout": {
+                  "mode": "vertical",
+                  "gap": "1",
+                  "align": "end"
+                },
+                "children": [
+                  {
+                    "id": "chat-thread-user-bubble",
+                    "el": "div",
+                    "layout": {
+                      "mode": "vertical",
+                      "padding": {
+                        "x": "4",
+                        "y": "3"
+                      }
+                    },
+                    "appearance": {
+                      "fontFamily": "body",
+                      "textStyle": "body",
+                      "background": "accentSubtle",
+                      "color": "accentInk",
+                      "radius": "bubble"
+                    },
+                    "children": [
+                      "Can you list the Windows node capabilities?"
+                    ]
+                  },
+                  {
+                    "id": "chat-thread-user-footer",
+                    "el": "div",
+                    "layout": {
+                      "mode": "horizontal",
+                      "gap": "2",
+                      "padding": {
+                        "x": "2"
+                      },
+                      "align": "center"
+                    },
+                    "appearance": {
+                      "fontFamily": "body",
+                      "textStyle": "caption",
+                      "color": "muted"
+                    },
+                    "children": [
+                      {
+                        "id": "chat-thread-user-time",
+                        "el": "span",
+                        "children": [
+                          "2:14 PM"
+                        ]
+                      },
+                      {
+                        "id": "chat-thread-user-copy",
+                        "el": "div",
+                        "attrs": {
+                          "role": "button",
+                          "title": "Copy",
+                          "aria-label": "Copy message"
+                        },
+                        "layout": {
+                          "mode": "horizontal",
+                          "align": "center",
+                          "justify": "center",
+                          "width": 20,
+                          "height": 20
+                        },
+                        "appearance": {
+                          "color": "muted",
+                          "radius": "sm"
+                        },
+                        "children": [
+                          {
+                            "id": "chat-thread-user-copy-glyph",
+                            "el": "svg",
+                            "attrs": {
+                              "width": "14",
+                              "height": "14",
+                              "viewBox": "0 0 24 24",
+                              "fill": "none",
+                              "aria-hidden": "true",
+                              "stroke": "currentColor",
+                              "stroke-width": "2",
+                              "stroke-linecap": "round",
+                              "stroke-linejoin": "round"
+                            },
+                            "children": [
+                              {
+                                "id": "chat-thread-user-copy-rect",
+                                "el": "rect",
+                                "attrs": {
+                                  "x": "9",
+                                  "y": "9",
+                                  "width": "11",
+                                  "height": "11",
+                                  "rx": "2"
+                                }
+                              },
+                              {
+                                "id": "chat-thread-user-copy-path",
+                                "el": "path",
+                                "attrs": {
+                                  "d": "M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "chat-thread-assistant",
+            "component": "ChatBubble",
+            "props": {
+              "time": "2:14 PM",
+              "usage": "12.5K/200K (6%)",
+              "children": "Paired to the gateway — 6 capabilities are live, including system.run and clipboard access."
+            }
+          },
+          {
+            "id": "chat-thread-composer",
+            "component": "ChatComposer"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ChatCopyButton",
+      "note": "Chat control. The quiet copy affordance on assistant messages and code blocks (ChatCopyButton). A 32x32 subtle button (token `8` square target) with 4px (`1`) padding and `sm` radius, sharing the composer toolbar's subtle state set: transparent rest (SubtleFillColorTransparent), hover SubtleFillColorSecondary (`subtleHover`), pressed SubtleFillColorTertiary (`subtlePressed`). Idle glyph is Segoe Fluent Copy (U+E8C8) in `ChatSecondaryTextBrush` (`muted`). On copy it flips to the CheckMark (U+E73E) in `ChatCopySuccessBrush` (`positive`), announces \"Copied\" through a polite live region, and resets after 2 seconds; a failure shows SystemFillColorCritical (`critical`). Previewed in the idle state.",
+      "root": {
+        "id": "chat-copy-root",
+        "el": "button",
+        "attrs": {
+          "type": "button",
+          "title": "Copy",
+          "aria-label": "Copy"
+        },
+        "layout": {
+          "mode": "horizontal",
+          "align": "center",
+          "justify": "center",
+          "padding": "1",
+          "width": 32,
+          "height": 32
+        },
+        "appearance": {
+          "color": "muted",
+          "background": "$none",
+          "radius": "sm"
+        },
+        "control": {
+          "chrome": "none",
+          "focus": { "kind": "outline", "color": "accent" }
+        },
+        "states": {
+          "hover": { "background": "subtleHover" },
+          "pressed": { "background": "subtlePressed" },
+          "hoverPressed": { "background": "subtlePressed" }
+        },
+        "children": [
+          {
+            "id": "chat-copy-glyph",
+            "el": "span",
+            "attrs": {
+              "aria-hidden": "true",
+              "style": "font-family:'Segoe Fluent Icons','Segoe MDL2 Assets',sans-serif;font-size:16px"
+            },
+            "children": [ "\uE8C8" ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "AgentIdentityBadge",
+      "note": "Agent identity row from Controls/AgentIdentityBadge.xaml (#1541): a 32x32 PersonPicture avatar (circular, so `pill` radius) to the LEFT of a two-line stack — agent display name in body type over the agent id in caption `muted` (TextFillColorSecondary) — with a trailing `muted` ChevronDown (Segoe Fluent U+E70D, previewed ~12px) marking it as the assistant selector's dropdown trigger. It ships as a subtle transparent WinUI DropDownButton (SubtleFillColorTransparent rest via `control.chrome:none`, `subtleHover`/`subtlePressed` through `states`, and a `control.focus` accent focus rectangle), so it stays quiet chrome and spends no accent at rest. Column spacing 12px maps to token 3; MinHeight 40 and the PersonPicture initials/photo fallback are port notes. Used as the assistant selector trigger and anywhere an agent is named. In-app the avatar is a real PersonPicture (initials or gateway avatar), previewed here with a person glyph.",
+      "props": {
+        "name": "Aurora",
+        "handle": "agent-aurora"
+      },
+      "root": {
+        "id": "agent-badge-root",
+        "el": "button",
+        "attrs": {
+          "type": "button",
+          "aria-haspopup": "listbox",
+          "aria-label": "{name}"
+        },
+        "layout": {
+          "mode": "horizontal",
+          "gap": "3",
+          "align": "center",
+          "padding": "1",
+          "width": "fill"
+        },
+        "appearance": {
+          "background": "$none",
+          "radius": "sm"
+        },
+        "control": {
+          "chrome": "none",
+          "focus": { "kind": "outline", "color": "accent" }
+        },
+        "states": {
+          "hover": { "background": "subtleHover" },
+          "pressed": { "background": "subtlePressed" },
+          "hoverPressed": { "background": "subtlePressed" }
+        },
+        "children": [
+          {
+            "id": "agent-badge-avatar",
+            "el": "div",
+            "attrs": {
+              "aria-hidden": "true"
+            },
+            "layout": {
+              "mode": "horizontal",
+              "align": "center",
+              "justify": "center",
+              "width": 32,
+              "height": 32
+            },
+            "appearance": {
+              "background": "surface",
+              "borderColor": "controlLine",
+              "color": "muted",
+              "radius": "pill"
+            },
+            "children": [
+              {
+                "id": "agent-badge-avatar-glyph",
+                "el": "svg",
+                "attrs": {
+                  "width": "16",
+                  "height": "16",
+                  "viewBox": "0 0 24 24",
+                  "fill": "none",
+                  "stroke": "currentColor",
+                  "stroke-width": "2",
+                  "stroke-linecap": "round",
+                  "stroke-linejoin": "round",
+                  "aria-hidden": "true"
+                },
+                "children": [
+                  {
+                    "id": "agent-badge-avatar-head",
+                    "el": "circle",
+                    "attrs": {
+                      "cx": "12",
+                      "cy": "8",
+                      "r": "4"
+                    }
+                  },
+                  {
+                    "id": "agent-badge-avatar-body",
+                    "el": "path",
+                    "attrs": {
+                      "d": "M4 20a8 8 0 0 1 16 0"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "agent-badge-text",
+            "el": "div",
+            "layout": {
+              "mode": "vertical",
+              "align": "start",
+              "grow": true
+            },
+            "children": [
+              {
+                "id": "agent-badge-name",
+                "el": "span",
+                "appearance": {
+                  "fontFamily": "body",
+                  "textStyle": "body",
+                  "color": "ink",
+                  "textAlign": "left"
+                },
+                "children": [
+                  "{name}"
+                ]
+              },
+              {
+                "id": "agent-badge-id",
+                "el": "span",
+                "appearance": {
+                  "fontFamily": "body",
+                  "textStyle": "caption",
+                  "color": "muted",
+                  "textAlign": "left"
+                },
+                "children": [
+                  "{handle}"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "agent-badge-chevron",
+            "el": "svg",
+            "attrs": {
+              "width": "12",
+              "height": "12",
+              "viewBox": "0 0 24 24",
+              "fill": "none",
+              "stroke": "currentColor",
+              "stroke-width": "2",
+              "stroke-linecap": "round",
+              "stroke-linejoin": "round",
+              "aria-hidden": "true"
+            },
+            "appearance": {
+              "color": "muted"
+            },
+            "children": [
+              {
+                "id": "agent-badge-chevron-path",
+                "el": "path",
+                "attrs": {
+                  "d": "M6 9l6 6 6-6"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "UserIdentityBadge",
+      "note": "Owner / account identity from the Workspace PaneFooter (Windows/WorkspaceWindow.xaml #1541), and the sibling of AgentIdentityBadge: a 24px PersonPicture avatar to the LEFT of a two-line stack, the display name in body type over a connection-status line. Unlike AgentIdentityBadge, the status line pairs a small connection status dot with the caption `muted` label, dot on the LEFT of the status text. Reads the authenticated users.self profile (display name plus a live connection-status subtitle) with an honest Owner / Disconnected fallback; it never encodes authorization state. The dot follows connection state like the ConnectionStatusFlyout dots (`positive` connected, `warning` attention, `critical` error, `muted` unknown), never color alone. Ships as a subtle transparent WinUI Button that opens the Owner MenuFlyout: SubtleFillColorTransparent rest via `control.chrome:none`, `subtleHover`/`subtlePressed` through `states`, and a `control.focus` accent focus rectangle. In-app the avatar is a real PersonPicture (initials or account photo), previewed here with a person glyph.",
+      "props": {
+        "name": "Ada Lovelace",
+        "status": "Connected"
+      },
+      "root": {
+        "id": "user-badge-root",
+        "el": "button",
+        "attrs": {
+          "type": "button",
+          "aria-haspopup": "menu",
+          "aria-label": "{name}"
+        },
+        "layout": {
+          "mode": "horizontal",
+          "gap": "3",
+          "align": "center",
+          "padding": "1",
+          "width": "fill"
+        },
+        "appearance": {
+          "background": "$none",
+          "radius": "sm"
+        },
+        "control": {
+          "chrome": "none",
+          "focus": {
+            "kind": "outline",
+            "color": "accent"
+          }
+        },
+        "states": {
+          "hover": {
+            "background": "subtleHover"
+          },
+          "pressed": {
+            "background": "subtlePressed"
+          },
+          "hoverPressed": {
+            "background": "subtlePressed"
+          }
+        },
+        "children": [
+          {
+            "id": "user-badge-avatar",
+            "el": "div",
+            "attrs": {
+              "aria-hidden": "true"
+            },
+            "layout": {
+              "mode": "horizontal",
+              "align": "center",
+              "justify": "center",
+              "width": 24,
+              "height": 24
+            },
+            "appearance": {
+              "background": "surface",
+              "borderColor": "controlLine",
+              "color": "muted",
+              "radius": "pill"
+            },
+            "children": [
+              {
+                "id": "user-badge-avatar-glyph",
+                "el": "svg",
+                "attrs": {
+                  "width": "14",
+                  "height": "14",
+                  "viewBox": "0 0 24 24",
+                  "fill": "none",
+                  "stroke": "currentColor",
+                  "stroke-width": "2",
+                  "stroke-linecap": "round",
+                  "stroke-linejoin": "round",
+                  "aria-hidden": "true"
+                },
+                "children": [
+                  {
+                    "id": "user-badge-avatar-head",
+                    "el": "circle",
+                    "attrs": {
+                      "cx": "12",
+                      "cy": "8",
+                      "r": "4"
+                    }
+                  },
+                  {
+                    "id": "user-badge-avatar-body",
+                    "el": "path",
+                    "attrs": {
+                      "d": "M4 20a8 8 0 0 1 16 0"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "user-badge-text",
+            "el": "div",
+            "layout": {
+              "mode": "vertical",
+              "align": "start",
+              "grow": true
+            },
+            "children": [
+              {
+                "id": "user-badge-name",
+                "el": "span",
+                "appearance": {
+                  "fontFamily": "body",
+                  "textStyle": "body",
+                  "color": "ink",
+                  "textAlign": "left"
+                },
+                "children": [
+                  "{name}"
+                ]
+              },
+              {
+                "id": "user-badge-status",
+                "el": "div",
+                "layout": {
+                  "mode": "horizontal",
+                  "gap": "1",
+                  "align": "center"
+                },
+                "children": [
+                  {
+                    "id": "user-badge-status-dot",
+                    "el": "span",
+                    "attrs": {
+                      "aria-hidden": "true"
+                    },
+                    "layout": {
+                      "mode": "horizontal",
+                      "width": 8,
+                      "height": 8
+                    },
+                    "appearance": {
+                      "background": "positive",
+                      "radius": "pill"
+                    }
+                  },
+                  {
+                    "id": "user-badge-status-label",
+                    "el": "span",
+                    "appearance": {
+                      "fontFamily": "body",
+                      "textStyle": "caption",
+                      "color": "muted",
+                      "textAlign": "left"
+                    },
+                    "children": [
+                      "{status}"
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "ConnectionStatusFlyout",
+      "note": "Gateway/Operator/Node status flyout from Controls/GatewayStatusContent.xaml (#1541), opened from the Workspace connection affordance. A 304px column of three status rows split by 1px `line` (CardStrokeColorDefault) dividers, closing with an Open Connection link. Each row pairs a 10px status dot with a body-strong label over a caption `muted` detail; a trailing accent HyperlinkButton (Reconnect / Approve) appears only when that layer needs action. The dot binds the Fluent system fill that matches state: `positive` (SystemFillColorSuccess) connected, `warning` (SystemFillColorCaution) attention, `critical` (SystemFillColorCritical) error, `muted` (SystemFillColorNeutral) unknown. Row vertical padding 10px maps to token 2; column spacing 11px to token 3. The flyout sheet, `md` overlay radius and shadow are supplied by the WinUI Flyout presenter; previewed here as a `surface` sheet.",
+      "root": {
+        "id": "conn-status-root",
+        "el": "div",
+        "layout": {
+          "mode": "vertical",
+          "width": 304,
+          "padding": "3"
+        },
+        "appearance": {
+          "background": "surface",
+          "color": "ink",
+          "radius": "md",
+          "shadow": "md"
+        },
+        "children": [
+          {
+            "id": "conn-status-gateway",
+            "el": "div",
+            "layout": {
+              "mode": "horizontal",
+              "gap": "3",
+              "align": "center",
+              "padding": {
+                "y": "2"
+              },
+              "width": "fill"
+            },
+            "children": [
+              {
+                "id": "conn-status-gateway-dot",
+                "el": "span",
+                "attrs": {
+                  "aria-hidden": "true"
+                },
+                "layout": {
+                  "mode": "horizontal",
+                  "width": 10,
+                  "height": 10
+                },
+                "appearance": {
+                  "background": "positive",
+                  "radius": "pill"
+                }
+              },
+              {
+                "id": "conn-status-gateway-text",
+                "el": "div",
+                "layout": {
+                  "mode": "vertical",
+                  "grow": true
+                },
+                "children": [
+                  {
+                    "id": "conn-status-gateway-label",
+                    "el": "span",
+                    "appearance": {
+                      "fontFamily": "body",
+                      "textStyle": "body",
+                      "color": "ink"
+                    },
+                    "children": [
+                      "Gateway"
+                    ]
+                  },
+                  {
+                    "id": "conn-status-gateway-detail",
+                    "el": "span",
+                    "appearance": {
+                      "fontFamily": "body",
+                      "textStyle": "caption",
+                      "color": "muted"
+                    },
+                    "children": [
+                      "Connected · OpenClawGateway"
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "conn-status-divider-1",
+            "el": "div",
+            "layout": {
+              "mode": "horizontal",
+              "width": "fill",
+              "height": 1
+            },
+            "appearance": {
+              "background": "line"
+            }
+          },
+          {
+            "id": "conn-status-operator",
+            "el": "div",
+            "layout": {
+              "mode": "horizontal",
+              "gap": "3",
+              "align": "center",
+              "padding": {
+                "y": "2"
+              },
+              "width": "fill"
+            },
+            "children": [
+              {
+                "id": "conn-status-operator-dot",
+                "el": "span",
+                "attrs": {
+                  "aria-hidden": "true"
+                },
+                "layout": {
+                  "mode": "horizontal",
+                  "width": 10,
+                  "height": 10
+                },
+                "appearance": {
+                  "background": "positive",
+                  "radius": "pill"
+                }
+              },
+              {
+                "id": "conn-status-operator-text",
+                "el": "div",
+                "layout": {
+                  "mode": "vertical",
+                  "grow": true
+                },
+                "children": [
+                  {
+                    "id": "conn-status-operator-label",
+                    "el": "span",
+                    "appearance": {
+                      "fontFamily": "body",
+                      "textStyle": "body",
+                      "color": "ink"
+                    },
+                    "children": [
+                      "Operator"
+                    ]
+                  },
+                  {
+                    "id": "conn-status-operator-detail",
+                    "el": "span",
+                    "appearance": {
+                      "fontFamily": "body",
+                      "textStyle": "caption",
+                      "color": "muted"
+                    },
+                    "children": [
+                      "Authorized"
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "conn-status-divider-2",
+            "el": "div",
+            "layout": {
+              "mode": "horizontal",
+              "width": "fill",
+              "height": 1
+            },
+            "appearance": {
+              "background": "line"
+            }
+          },
+          {
+            "id": "conn-status-node",
+            "el": "div",
+            "layout": {
+              "mode": "horizontal",
+              "gap": "3",
+              "align": "center",
+              "padding": {
+                "y": "2"
+              },
+              "width": "fill"
+            },
+            "children": [
+              {
+                "id": "conn-status-node-dot",
+                "el": "span",
+                "attrs": {
+                  "aria-hidden": "true"
+                },
+                "layout": {
+                  "mode": "horizontal",
+                  "width": 10,
+                  "height": 10
+                },
+                "appearance": {
+                  "background": "warning",
+                  "radius": "pill"
+                }
+              },
+              {
+                "id": "conn-status-node-text",
+                "el": "div",
+                "layout": {
+                  "mode": "vertical",
+                  "grow": true
+                },
+                "children": [
+                  {
+                    "id": "conn-status-node-label",
+                    "el": "span",
+                    "appearance": {
+                      "fontFamily": "body",
+                      "textStyle": "body",
+                      "color": "ink"
+                    },
+                    "children": [
+                      "Node"
+                    ]
+                  },
+                  {
+                    "id": "conn-status-node-detail",
+                    "el": "span",
+                    "appearance": {
+                      "fontFamily": "body",
+                      "textStyle": "caption",
+                      "color": "muted"
+                    },
+                    "children": [
+                      "Waiting for approval"
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "conn-status-node-action",
+                "el": "button",
+                "attrs": {
+                  "type": "button"
+                },
+                "layout": {
+                  "mode": "horizontal",
+                  "align": "center",
+                  "padding": {
+                    "x": "2",
+                    "y": "1"
+                  },
+                  "width": "hug"
+                },
+                "appearance": {
+                  "fontFamily": "body",
+                  "textStyle": "caption",
+                  "color": "accent",
+                  "background": "$none",
+                  "radius": "sm"
+                },
+                "control": {
+                  "chrome": "none",
+                  "focus": { "kind": "outline", "color": "accent" }
+                },
+                "states": {
+                  "hover": { "background": "subtleHover" },
+                  "pressed": { "background": "subtlePressed" },
+                  "hoverPressed": { "background": "subtlePressed" }
+                },
+                "children": [
+                  "Approve…"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "conn-status-divider-3",
+            "el": "div",
+            "layout": {
+              "mode": "horizontal",
+              "width": "fill",
+              "height": 1
+            },
+            "appearance": {
+              "background": "line"
+            }
+          },
+          {
+            "id": "conn-status-open",
+            "el": "button",
+            "attrs": {
+              "type": "button"
+            },
+            "layout": {
+              "mode": "horizontal",
+              "align": "center",
+              "padding": {
+                "x": "2",
+                "y": "1"
+              },
+              "width": "hug"
+            },
+            "margin": {
+              "top": "2"
+            },
+            "appearance": {
+              "fontFamily": "body",
+              "textStyle": "body",
+              "color": "accent",
+              "background": "$none",
+              "radius": "sm"
+            },
+            "control": {
+              "chrome": "none",
+              "focus": { "kind": "outline", "color": "accent" }
+            },
+            "states": {
+              "hover": { "background": "subtleHover" },
+              "pressed": { "background": "subtlePressed" },
+              "hoverPressed": { "background": "subtlePressed" }
+            },
+            "children": [
+              "Open Connection"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "NotificationFlyout",
+      "note": "App notifications flyout from Controls/NotificationFlyoutContent.xaml (#1541), opened from the Workspace footer bell. A 352px column: a right-aligned Clear all link, a scrolling list of notification cards, and a footer pairing an Open notifications link with a tertiary active-count caption. Each card is a `surface` (CardBackgroundFillColorDefault) panel with a 1px `line` border, `md` (8px) radius and 12px (token 3) padding, laying out a leading severity glyph, a stack of body-strong title + caption message + caption `muted` metadata, and a trailing dismiss button. A recurrence count rides a `warning` Badge beside the title. An empty state swaps the list for a single centered card. Severity glyphs are Segoe Fluent Icons in-app; previewed here with a stroked alert glyph.",
+      "props": {
+        "title": "Approval required",
+        "message": "A Windows node capability is waiting for your approval.",
+        "metadata": "Just now · Node",
+        "count": "2×"
+      },
+      "root": {
+        "id": "notif-root",
+        "el": "div",
+        "layout": {
+          "mode": "vertical",
+          "gap": "2",
+          "width": 352
+        },
+        "children": [
+          {
+            "id": "notif-header",
+            "el": "div",
+            "layout": {
+              "mode": "horizontal",
+              "justify": "end",
+              "width": "fill"
+            },
+            "children": [
+              {
+                "id": "notif-clear",
+                "el": "button",
+                "attrs": {
+                  "type": "button"
+                },
+                "layout": {
+                  "mode": "horizontal",
+                  "align": "center",
+                  "padding": {
+                    "x": "2",
+                    "y": "1"
+                  },
+                  "width": "hug"
+                },
+                "appearance": {
+                  "fontFamily": "body",
+                  "textStyle": "body",
+                  "color": "accent",
+                  "background": "$none",
+                  "radius": "sm"
+                },
+                "control": {
+                  "chrome": "none",
+                  "focus": { "kind": "outline", "color": "accent" }
+                },
+                "states": {
+                  "hover": { "background": "subtleHover" },
+                  "pressed": { "background": "subtlePressed" },
+                  "hoverPressed": { "background": "subtlePressed" }
+                },
+                "children": [
+                  "Clear all"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "notif-card",
+            "el": "div",
+            "layout": {
+              "mode": "horizontal",
+              "gap": "3",
+              "padding": "3",
+              "align": "start",
+              "width": "fill"
+            },
+            "appearance": {
+              "background": "surface",
+              "borderColor": "line",
+              "color": "ink",
+              "radius": "md"
+            },
+            "children": [
+              {
+                "id": "notif-card-glyph",
+                "el": "svg",
+                "attrs": {
+                  "width": "16",
+                  "height": "16",
+                  "viewBox": "0 0 24 24",
+                  "fill": "none",
+                  "stroke": "currentColor",
+                  "stroke-width": "2",
+                  "stroke-linecap": "round",
+                  "stroke-linejoin": "round",
+                  "aria-hidden": "true"
+                },
+                "appearance": {
+                  "color": "warning"
+                },
+                "children": [
+                  {
+                    "id": "notif-card-glyph-tri",
+                    "el": "path",
+                    "attrs": {
+                      "d": "M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"
+                    }
+                  },
+                  {
+                    "id": "notif-card-glyph-line",
+                    "el": "path",
+                    "attrs": {
+                      "d": "M12 9v4"
+                    }
+                  },
+                  {
+                    "id": "notif-card-glyph-dot",
+                    "el": "path",
+                    "attrs": {
+                      "d": "M12 17h.01"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "notif-card-text",
+                "el": "div",
+                "layout": {
+                  "mode": "vertical",
+                  "gap": "1",
+                  "grow": true
+                },
+                "children": [
+                  {
+                    "id": "notif-card-titlerow",
+                    "el": "div",
+                    "layout": {
+                      "mode": "horizontal",
+                      "gap": "2",
+                      "align": "center"
+                    },
+                    "children": [
+                      {
+                        "id": "notif-card-title",
+                        "el": "span",
+                        "appearance": {
+                          "fontFamily": "body",
+                          "textStyle": "body",
+                          "color": "ink"
+                        },
+                        "children": [
+                          "{title}"
+                        ]
+                      },
+                      {
+                        "id": "notif-card-count",
+                        "component": "Badge",
+                        "props": {
+                          "tone": "warning",
+                          "children": "{count}"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "notif-card-message",
+                    "el": "p",
+                    "appearance": {
+                      "fontFamily": "body",
+                      "textStyle": "caption",
+                      "color": "ink"
+                    },
+                    "children": [
+                      "{message}"
+                    ]
+                  },
+                  {
+                    "id": "notif-card-meta",
+                    "el": "p",
+                    "appearance": {
+                      "fontFamily": "body",
+                      "textStyle": "caption",
+                      "color": "muted"
+                    },
+                    "children": [
+                      "{metadata}"
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "notif-card-dismiss",
+                "el": "div",
+                "attrs": {
+                  "role": "button",
+                  "title": "Dismiss",
+                  "aria-label": "Dismiss notification"
+                },
+                "layout": {
+                  "mode": "horizontal",
+                  "align": "center",
+                  "justify": "center",
+                  "width": 30,
+                  "height": 30
+                },
+                "appearance": {
+                  "color": "muted",
+                  "radius": "sm"
+                },
+                "children": [
+                  {
+                    "id": "notif-card-dismiss-glyph",
+                    "el": "svg",
+                    "attrs": {
+                      "width": "12",
+                      "height": "12",
+                      "viewBox": "0 0 24 24",
+                      "fill": "none",
+                      "stroke": "currentColor",
+                      "stroke-width": "2",
+                      "stroke-linecap": "round",
+                      "stroke-linejoin": "round",
+                      "aria-hidden": "true"
+                    },
+                    "children": [
+                      {
+                        "id": "notif-card-dismiss-path",
+                        "el": "path",
+                        "attrs": {
+                          "d": "M18 6L6 18M6 6l12 12"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "notif-footer",
+            "el": "div",
+            "layout": {
+              "mode": "horizontal",
+              "gap": "2",
+              "align": "center",
+              "justify": "space-between",
+              "width": "fill"
+            },
+            "children": [
+              {
+                "id": "notif-footer-open",
+                "el": "button",
+                "attrs": {
+                  "type": "button"
+                },
+                "layout": {
+                  "mode": "horizontal",
+                  "align": "center",
+                  "padding": {
+                    "x": "2",
+                    "y": "1"
+                  },
+                  "width": "hug"
+                },
+                "appearance": {
+                  "fontFamily": "body",
+                  "textStyle": "body",
+                  "color": "accent",
+                  "background": "$none",
+                  "radius": "sm"
+                },
+                "control": {
+                  "chrome": "none",
+                  "focus": { "kind": "outline", "color": "accent" }
+                },
+                "states": {
+                  "hover": { "background": "subtleHover" },
+                  "pressed": { "background": "subtlePressed" },
+                  "hoverPressed": { "background": "subtlePressed" }
+                },
+                "children": [
+                  "Open notifications"
+                ]
+              },
+              {
+                "id": "notif-footer-count",
+                "el": "span",
+                "appearance": {
+                  "fontFamily": "body",
+                  "textStyle": "caption",
+                  "color": "muted"
+                },
+                "children": [
+                  "1 active"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "WorkspaceShell",
+      "note": "The native Home and Sessions workspace shell from Windows/WorkspaceWindow.xaml (#1541): the landing window. A Mica window (previewed as `paper`) with a title bar, a 256px left NavigationView pane, and a content host that mounts the Reactor chat (see ChatThread). The pane stacks a Back/Forward toolbar and an assistant selector (transparent ComboBox over AgentIdentityBadge; a New agent option adds `add` glyph U+E710) in the PaneHeader; a Home item and a Sessions header with an inline add button, then reusable session rows, in the menu; and an Owner button plus a Notifications bell (with an InfoBadge count and the NotificationFlyout) in the PaneFooter. The Owner button reads the authenticated users.self profile (display name over a live connection-status caption, honest Owner / Disconnected fallback). Selection is single across the pane like a NavigationView: exactly one destination (Home or a session) is selected at a time (shown here on Home), using the native subtle selection background with a leading `accent` indicator; nav rows use `sm` (ControlCornerRadius) corners. Toolbar/selector/footer subtle buttons are transparent with `subtleHover`/`subtlePressed` states. Pane hide/reopen, exact-key Back/Forward history, and Owner MenuFlyout live in WorkspaceWindow/WindowManager and are port notes.",
+      "props": {
+        "owner": "Fixture Owner",
+        "status": "Connected"
+      },
+      "root": {
+        "id": "workspace-root",
+        "el": "div",
+        "layout": {
+          "mode": "vertical",
+          "width": "fill",
+          "height": 560
+        },
+        "appearance": {
+          "background": "paper",
+          "color": "ink"
+        },
+        "children": [
+          {
+            "id": "workspace-titlebar",
+            "el": "div",
+            "layout": {
+              "mode": "horizontal",
+              "align": "center",
+              "gap": "2",
+              "padding": {
+                "x": "3",
+                "y": "2"
+              },
+              "width": "fill"
+            },
+            "children": [
+              {
+                "id": "workspace-title",
+                "el": "span",
+                "appearance": {
+                  "fontFamily": "body",
+                  "textStyle": "caption",
+                  "color": "muted"
+                },
+                "children": [
+                  "OpenClaw"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "workspace-body",
+            "el": "div",
+            "layout": {
+              "mode": "horizontal",
+              "width": "fill",
+              "grow": true
+            },
+            "children": [
+              {
+                "id": "workspace-pane",
+                "el": "nav",
+                "layout": {
+                  "mode": "vertical",
+                  "gap": "3",
+                  "padding": "2",
+                  "width": 256,
+                  "height": "fill"
+                },
+                "appearance": {
+                  "borderColor": "line"
+                },
+                "children": [
+                  {
+                    "id": "workspace-pane-header",
+                    "el": "div",
+                    "layout": {
+                      "mode": "vertical",
+                      "gap": "2",
+                      "width": "fill"
+                    },
+                    "children": [
+                      {
+                        "id": "workspace-toolbar",
+                        "el": "div",
+                        "layout": {
+                          "mode": "horizontal",
+                          "gap": "2",
+                          "justify": "end",
+                          "width": "fill"
+                        },
+                        "children": [
+                          {
+                            "id": "workspace-back",
+                            "el": "div",
+                            "attrs": {
+                              "role": "button",
+                              "aria-label": "Back"
+                            },
+                            "layout": {
+                              "mode": "horizontal",
+                              "align": "center",
+                              "justify": "center",
+                              "width": 40,
+                              "height": 40
+                            },
+                            "appearance": {
+                              "color": "muted",
+                              "radius": "sm"
+                            },
+                            "children": [
+                              {
+                                "id": "workspace-back-glyph",
+                                "el": "svg",
+                                "attrs": {
+                                  "width": "16",
+                                  "height": "16",
+                                  "viewBox": "0 0 24 24",
+                                  "fill": "none",
+                                  "stroke": "currentColor",
+                                  "stroke-width": "2",
+                                  "stroke-linecap": "round",
+                                  "stroke-linejoin": "round",
+                                  "aria-hidden": "true"
+                                },
+                                "children": [
+                                  {
+                                    "id": "workspace-back-path",
+                                    "el": "path",
+                                    "attrs": {
+                                      "d": "M15 18l-6-6 6-6"
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
+                          },
+                          {
+                            "id": "workspace-forward",
+                            "el": "div",
+                            "attrs": {
+                              "role": "button",
+                              "aria-label": "Forward"
+                            },
+                            "layout": {
+                              "mode": "horizontal",
+                              "align": "center",
+                              "justify": "center",
+                              "width": 40,
+                              "height": 40
+                            },
+                            "appearance": {
+                              "color": "muted",
+                              "radius": "sm"
+                            },
+                            "children": [
+                              {
+                                "id": "workspace-forward-glyph",
+                                "el": "svg",
+                                "attrs": {
+                                  "width": "16",
+                                  "height": "16",
+                                  "viewBox": "0 0 24 24",
+                                  "fill": "none",
+                                  "stroke": "currentColor",
+                                  "stroke-width": "2",
+                                  "stroke-linecap": "round",
+                                  "stroke-linejoin": "round",
+                                  "aria-hidden": "true"
+                                },
+                                "children": [
+                                  {
+                                    "id": "workspace-forward-path",
+                                    "el": "path",
+                                    "attrs": {
+                                      "d": "M9 18l6-6-6-6"
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "id": "workspace-selector",
+                        "el": "div",
+                        "layout": {
+                          "mode": "horizontal",
+                          "align": "center",
+                          "width": "fill"
+                        },
+                        "children": [
+                          {
+                            "id": "workspace-selector-agent",
+                            "component": "AgentIdentityBadge",
+                            "props": {
+                              "name": "Aurora",
+                              "handle": "agent-aurora"
+                            },
+                            "layout": {
+                              "grow": true
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "id": "workspace-nav",
+                    "el": "div",
+                    "layout": {
+                      "mode": "vertical",
+                      "gap": "1",
+                      "width": "fill"
+                    },
+                    "children": [
+                      {
+                        "id": "workspace-home",
+                        "el": "div",
+                        "attrs": {
+                          "role": "button"
+                        },
+                        "layout": {
+                          "mode": "horizontal",
+                          "gap": "4",
+                          "align": "center",
+                          "padding": {
+                            "x": "3",
+                            "y": "2"
+                          },
+                          "width": "fill"
+                        },
+                        "appearance": {
+                          "background": "subtleHover",
+                          "radius": "sm"
+                        },
+                        "children": [
+                          {
+                            "id": "workspace-home-indicator",
+                            "el": "span",
+                            "attrs": {
+                              "aria-hidden": "true"
+                            },
+                            "layout": {
+                              "mode": "horizontal",
+                              "width": 3,
+                              "height": 16
+                            },
+                            "appearance": {
+                              "background": "accent",
+                              "radius": "pill"
+                            }
+                          },
+                          {
+                            "id": "workspace-home-label",
+                            "el": "span",
+                            "appearance": {
+                              "fontFamily": "body",
+                              "textStyle": "body",
+                              "color": "ink"
+                            },
+                            "children": [
+                              "Home"
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "id": "workspace-sessions-header",
+                        "el": "div",
+                        "layout": {
+                          "mode": "horizontal",
+                          "gap": "2",
+                          "align": "center",
+                          "justify": "space-between",
+                          "padding": {
+                            "x": "3"
+                          },
+                          "width": "fill"
+                        },
+                        "margin": {
+                          "top": "2"
+                        },
+                        "children": [
+                          {
+                            "id": "workspace-sessions-label",
+                            "el": "span",
+                            "appearance": {
+                              "fontFamily": "body",
+                              "textStyle": "caption",
+                              "color": "muted"
+                            },
+                            "children": [
+                              "Sessions"
+                            ]
+                          },
+                          {
+                            "id": "workspace-sessions-add",
+                            "el": "div",
+                            "attrs": {
+                              "role": "button",
+                              "aria-label": "New conversation"
+                            },
+                            "layout": {
+                              "mode": "horizontal",
+                              "align": "center",
+                              "justify": "center",
+                              "width": 32,
+                              "height": 32
+                            },
+                            "appearance": {
+                              "color": "muted",
+                              "radius": "sm"
+                            },
+                            "children": [
+                              {
+                                "id": "workspace-sessions-add-glyph",
+                                "el": "svg",
+                                "attrs": {
+                                  "width": "16",
+                                  "height": "16",
+                                  "viewBox": "0 0 24 24",
+                                  "fill": "none",
+                                  "stroke": "currentColor",
+                                  "stroke-width": "2",
+                                  "stroke-linecap": "round",
+                                  "stroke-linejoin": "round",
+                                  "aria-hidden": "true"
+                                },
+                                "children": [
+                                  {
+                                    "id": "workspace-sessions-add-path",
+                                    "el": "path",
+                                    "attrs": {
+                                      "d": "M12 5v14M5 12h14"
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "id": "workspace-session-1",
+                        "el": "div",
+                        "attrs": {
+                          "role": "button"
+                        },
+                        "layout": {
+                          "mode": "horizontal",
+                          "align": "center",
+                          "gap": "2",
+                          "padding": {
+                            "x": "3",
+                            "y": "2"
+                          },
+                          "width": "fill"
+                        },
+                        "children": [
+                          {
+                            "id": "workspace-session-1-title",
+                            "el": "span",
+                            "layout": {
+                              "grow": true
+                            },
+                            "appearance": {
+                              "fontFamily": "body",
+                              "textStyle": "body",
+                              "color": "ink"
+                            },
+                            "children": [
+                              "Pair the Windows node"
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "id": "workspace-session-2",
+                        "el": "div",
+                        "attrs": {
+                          "role": "button"
+                        },
+                        "layout": {
+                          "mode": "horizontal",
+                          "align": "center",
+                          "gap": "2",
+                          "padding": {
+                            "x": "3",
+                            "y": "2"
+                          },
+                          "width": "fill"
+                        },
+                        "children": [
+                          {
+                            "id": "workspace-session-2-title",
+                            "el": "span",
+                            "layout": {
+                              "grow": true
+                            },
+                            "appearance": {
+                              "fontFamily": "body",
+                              "textStyle": "body",
+                              "color": "ink"
+                            },
+                            "children": [
+                              "Draft the release notes"
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "id": "workspace-footer-spacer",
+                    "el": "div",
+                    "layout": {
+                      "mode": "vertical",
+                      "grow": true
+                    }
+                  },
+                  {
+                    "id": "workspace-footer",
+                    "el": "div",
+                    "layout": {
+                      "mode": "horizontal",
+                      "gap": "1",
+                      "align": "center",
+                      "width": "fill"
+                    },
+                    "children": [
+                      {
+                        "id": "workspace-owner",
+                        "component": "UserIdentityBadge",
+                        "props": {
+                          "name": "{owner}",
+                          "status": "{status}"
+                        },
+                        "layout": {
+                          "grow": true
+                        }
+                      },
+                      {
+                        "id": "workspace-bell",
+                        "el": "div",
+                        "attrs": {
+                          "role": "button",
+                          "aria-label": "Notifications"
+                        },
+                        "layout": {
+                          "mode": "horizontal",
+                          "align": "center",
+                          "justify": "center",
+                          "width": 40,
+                          "height": 40
+                        },
+                        "appearance": {
+                          "color": "muted",
+                          "radius": "sm"
+                        },
+                        "children": [
+                          {
+                            "id": "workspace-bell-glyph",
+                            "el": "svg",
+                            "attrs": {
+                              "width": "18",
+                              "height": "18",
+                              "viewBox": "0 0 24 24",
+                              "fill": "none",
+                              "stroke": "currentColor",
+                              "stroke-width": "2",
+                              "stroke-linecap": "round",
+                              "stroke-linejoin": "round",
+                              "aria-hidden": "true"
+                            },
+                            "children": [
+                              {
+                                "id": "workspace-bell-body",
+                                "el": "path",
+                                "attrs": {
+                                  "d": "M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"
+                                }
+                              },
+                              {
+                                "id": "workspace-bell-clapper",
+                                "el": "path",
+                                "attrs": {
+                                  "d": "M13.7 21a2 2 0 0 1-3.4 0"
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "workspace-content",
+                "el": "div",
+                "layout": {
+                  "mode": "vertical",
+                  "grow": true,
+                  "padding": "5",
+                  "width": "fill"
+                },
+                "children": [
+                  {
+                    "id": "workspace-content-thread",
+                    "component": "ChatThread"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "SetupProgressIndicator",
+      "note": "Setup control. The wizard step dots (SetupProgressIndicator.cs). Non-interactive, non-focusable, accessibility-hidden, so no hover/pressed states. The active step is a 20x8 pill in `accent` (SetupIndicatorAccentBrush = SystemAccentColorLight2 dark / Dark1 light); inactive steps are 8x8 dots in `muted` (SetupInactiveDotBrush = ControlStrongFill). Dot spacing is token `2` (8px); every dot uses the `sm` radius (4px).",
+      "root": {
+        "id": "setup-progress-root",
+        "el": "div",
+        "attrs": { "role": "img", "aria-label": "Step 2 of 4" },
+        "layout": { "mode": "horizontal", "gap": "2", "align": "center" },
+        "children": [
+          { "id": "setup-progress-d1", "el": "span", "layout": { "width": 8, "height": 8 }, "appearance": { "background": "muted", "radius": "sm" } },
+          { "id": "setup-progress-d2", "el": "span", "layout": { "width": 20, "height": 8 }, "appearance": { "background": "accent", "radius": "sm" } },
+          { "id": "setup-progress-d3", "el": "span", "layout": { "width": 8, "height": 8 }, "appearance": { "background": "muted", "radius": "sm" } },
+          { "id": "setup-progress-d4", "el": "span", "layout": { "width": 8, "height": 8 }, "appearance": { "background": "muted", "radius": "sm" } }
+        ]
+      }
+    },
+    {
+      "name": "RecommendedBadge",
+      "note": "Setup control. The small outlined \"Recommended\" tag beside a capability profile (Controls/RecommendedBadge.xaml). Non-interactive. An outline-only badge: 1px `accent` border (AccentTextFillColorPrimaryBrush), `accent` caption text, no fill, `sm` radius (4px), padding token `2` horizontal and `1` vertical (8,4). Disabled recolors border and text to `muted` (TextFillColorDisabled). This is a small `sm` badge, not the 999px `pill` Badge.",
+      "props": {
+        "children": "Recommended"
+      },
+      "root": {
+        "id": "recommended-badge-root",
+        "el": "span",
+        "layout": {
+          "mode": "horizontal",
+          "align": "center",
+          "padding": { "x": "2", "y": "1" },
+          "width": "hug"
+        },
+        "appearance": {
+          "fontFamily": "body",
+          "textStyle": "caption",
+          "color": "accent",
+          "background": "$none",
+          "borderColor": "accent",
+          "radius": "sm"
+        },
+        "children": [ "{children}" ]
+      }
+    },
+    {
+      "name": "ProviderArtwork",
+      "note": "Setup control. The square icon tile for an AI provider (Controls/ProviderArtwork.xaml). Non-interactive. A 40x40 tile: `surface` (SolidBackgroundFillColorBase) fill, 1px `line` (CardStrokeColorDefault) border, `sm` radius (ControlCornerRadius), token `2` (8px) padding around a 24x24 glyph or image. Previewed with a representative Segoe Fluent glyph.",
+      "root": {
+        "id": "provider-artwork-root",
+        "el": "span",
+        "layout": {
+          "mode": "horizontal",
+          "align": "center",
+          "justify": "center",
+          "padding": "2",
+          "width": 40,
+          "height": 40
+        },
+        "appearance": {
+          "background": "surface",
+          "borderColor": "line",
+          "radius": "sm"
+        },
+        "children": [
+          {
+            "id": "provider-artwork-glyph",
+            "el": "span",
+            "attrs": {
+              "aria-hidden": "true",
+              "style": "font-family:'Segoe Fluent Icons','Segoe MDL2 Assets',sans-serif;font-size:24px"
+            },
+            "appearance": { "color": "ink" },
+            "children": [ "\uE99A" ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "SetupOptionCard",
+      "note": "Setup composite. A clickable provider/mode choice row (AiSetupPage.xaml compact SettingsCard, IsClickEnabled). Built from the ProviderArtwork tile, a title + detail stack, and a trailing action/chevron. The row itself is transparent with a 1px `line` bottom divider (previewed here via a bottom-biased `line` border; the real card draws only the bottom edge), MinHeight 64px, and `md` radius on the enclosing group. Because it is clickable it carries the SettingsCard subtle states: hover = SubtleFillColorSecondary (`subtleHover`), pressed = SubtleFillColorTertiary (`subtlePressed`); disabled drops text to `muted`. Title is `body` BodyStrong, detail is `caption` in `muted`; the 32px artwork column and 12px gap map to tokens `6`/`3`. There is no XAML-defined selected indicator; selection is tracked by the parent ListView and is a port note.",
+      "props": {
+        "title": "Sign in with GitHub",
+        "detail": "Use your Copilot subscription. No API key needed."
+      },
+      "root": {
+        "id": "setup-option-root",
+        "el": "button",
+        "attrs": { "type": "button" },
+        "layout": {
+          "mode": "horizontal",
+          "gap": "3",
+          "padding": { "x": "4", "y": "3" },
+          "align": "center",
+          "width": "fill"
+        },
+        "appearance": {
+          "background": "$none",
+          "borderColor": "line"
+        },
+        "control": {
+          "chrome": "none",
+          "focus": { "kind": "outline", "color": "accent" }
+        },
+        "states": {
+          "hover": { "background": "subtleHover" },
+          "pressed": { "background": "subtlePressed" },
+          "hoverPressed": { "background": "subtlePressed" },
+          "disabled": { "color": "muted", "background": "$none" }
+        },
+        "children": [
+          { "id": "setup-option-art", "component": "ProviderArtwork" },
+          {
+            "id": "setup-option-text",
+            "el": "div",
+            "layout": { "mode": "vertical", "gap": "1", "grow": true, "width": "fill" },
+            "children": [
+              { "id": "setup-option-title", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "body", "color": "ink" }, "children": [ "{title}" ] },
+              { "id": "setup-option-detail", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "caption", "color": "muted" }, "children": [ "{detail}" ] }
+            ]
+          },
+          {
+            "id": "setup-option-chevron",
+            "el": "span",
+            "attrs": {
+              "aria-hidden": "true",
+              "style": "font-family:'Segoe Fluent Icons','Segoe MDL2 Assets',sans-serif;font-size:12px"
+            },
+            "appearance": { "color": "muted" },
+            "children": [ "\uE76C" ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "CapabilityOptionRow",
+      "note": "Setup composite. A single capability-profile choice (CapabilitiesPage.xaml ListViewItem). Rows live inside a `surface` group with a 1px `line` border and `md` radius; each row is padded token `4` horizontal and `3` vertical (16,12) with a title (`body` BodyStrong) over a wrapping `caption` description in `muted`, and the recommended profile carries the RecommendedBadge. Single-selection follows focus; because it is selectable it shows the Fluent ListViewItem states: hover = SubtleFillColorSecondary (`subtleHover`), pressed = SubtleFillColorTertiary (`subtlePressed`); the selected row's accent pill/left bar is a WinUI ListViewItem template part and is a port note (no custom setter in setup XAML).",
+      "props": {
+        "title": "Balanced",
+        "detail": "Recommended defaults for most Windows nodes."
+      },
+      "root": {
+        "id": "capability-row-root",
+        "el": "button",
+        "attrs": { "type": "button", "role": "option" },
+        "layout": {
+          "mode": "horizontal",
+          "gap": "2",
+          "padding": { "x": "4", "y": "3" },
+          "align": "center",
+          "width": "fill"
+        },
+        "appearance": {
+          "background": "$none",
+          "radius": "sm"
+        },
+        "control": {
+          "chrome": "none",
+          "focus": { "kind": "outline", "color": "accent" }
+        },
+        "states": {
+          "hover": { "background": "subtleHover" },
+          "pressed": { "background": "subtlePressed" },
+          "hoverPressed": { "background": "subtlePressed" }
+        },
+        "children": [
+          {
+            "id": "capability-row-text",
+            "el": "div",
+            "layout": { "mode": "vertical", "gap": "1", "grow": true, "width": "fill" },
+            "children": [
+              { "id": "capability-row-title", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "body", "color": "ink" }, "children": [ "{title}" ] },
+              { "id": "capability-row-detail", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "caption", "color": "muted" }, "children": [ "{detail}" ] }
+            ]
+          },
+          { "id": "capability-row-badge", "component": "RecommendedBadge" }
+        ]
+      }
+    },
+    {
+      "name": "SetupPhaseStatus",
+      "note": "Setup control. The inline phase result row (Controls/SetupPhaseStatus.xaml). Non-interactive. A horizontal row, token `2` (8px) gap, pairing a status indicator with `caption` text (max width 160px) in `muted`. Running shows a 20x20 ProgressRing; Complete shows the Segoe Fluent StatusOk check (U+E73E) in `positive` (SystemFillColorSuccess); Failed shows StatusErr (U+EA39) in `critical` (SystemFillColorCritical); Cancelled shows Exit (U+E711) in `muted`. Previewed in the Complete state.",
+      "props": {
+        "children": "Gateway connected"
+      },
+      "root": {
+        "id": "setup-phase-root",
+        "el": "div",
+        "attrs": { "role": "status" },
+        "layout": { "mode": "horizontal", "gap": "2", "align": "center" },
+        "children": [
+          {
+            "id": "setup-phase-glyph",
+            "el": "span",
+            "attrs": {
+              "aria-hidden": "true",
+              "style": "font-family:'Segoe Fluent Icons','Segoe MDL2 Assets',sans-serif;font-size:16px"
+            },
+            "appearance": { "color": "positive" },
+            "children": [ "\uE73E" ]
+          },
+          {
+            "id": "setup-phase-text",
+            "el": "span",
+            "appearance": { "fontFamily": "body", "textStyle": "caption", "color": "muted" },
+            "children": [ "{children}" ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "SetupWizardShell",
+      "note": "Setup composite. The onboarding wizard frame (Pages/WizardPage.xaml). A vertical page: a header (mascot + `title` TitleTextBlockStyle headline + `caption` status in `muted`), the active step surface, and a footer. Page padding is 40,4,40,24 (previewed with token `6` horizontal and `1`/`5` vertical; the 40px horizontals are off-grid port notes). The step card is a `surface` sheet with a 1px `line` border, `md` radius, and token `5` (24px) padding; its MinHeight (180/140/200/260) is a runtime port note. The footer places a standard (secondary) Button and the accent (primary) Button on the ends with the SetupProgressIndicator centered; footer column gap is token `2`. Composes Button and SetupProgressIndicator.",
+      "root": {
+        "id": "setup-wizard-root",
+        "el": "section",
+        "layout": {
+          "mode": "vertical",
+          "gap": "5",
+          "padding": { "left": "6", "right": "6", "top": "1", "bottom": "5" },
+          "width": "fill"
+        },
+        "appearance": { "background": "paper" },
+        "children": [
+          {
+            "id": "setup-wizard-header",
+            "el": "div",
+            "layout": { "mode": "vertical", "gap": "1", "align": "center" },
+            "children": [
+              { "id": "setup-wizard-title", "el": "h1", "appearance": { "fontFamily": "display", "textStyle": "title", "color": "ink", "textAlign": "center" }, "children": [ "Set up your Windows node" ] },
+              { "id": "setup-wizard-status", "el": "p", "appearance": { "fontFamily": "body", "textStyle": "caption", "color": "muted", "textAlign": "center" }, "children": [ "Step 2 of 4 · Choose capabilities" ] }
+            ]
+          },
+          {
+            "id": "setup-wizard-card",
+            "el": "div",
+            "layout": { "mode": "vertical", "gap": "4", "padding": "5", "width": "fill" },
+            "appearance": { "background": "surface", "borderColor": "line", "radius": "md" },
+            "children": [
+              { "id": "setup-wizard-card-title", "el": "h2", "appearance": { "fontFamily": "display", "textStyle": "heading", "color": "ink" }, "children": [ "Choose what this node can do" ] },
+              { "id": "setup-wizard-opt-1", "component": "CapabilityOptionRow" },
+              {
+                "id": "setup-wizard-opt-2",
+                "component": "CapabilityOptionRow",
+                "props": { "title": "Full access", "detail": "Expose every capability over MCP." }
+              }
+            ]
+          },
+          {
+            "id": "setup-wizard-footer",
+            "el": "div",
+            "layout": { "mode": "horizontal", "gap": "2", "align": "center", "justify": "space-between", "width": "fill" },
+            "children": [
+              { "id": "setup-wizard-back", "component": "Button", "props": { "children": "Back", "variant": "standard" } },
+              { "id": "setup-wizard-progress", "component": "SetupProgressIndicator" },
+              { "id": "setup-wizard-next", "component": "Button", "props": { "children": "Continue", "variant": "primary" } }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "SettingsSectionHeader",
+      "note": "Settings control. The group label above a stack of settings cards (used across SettingsPage / PermissionsPage / SandboxPage). Non-interactive. `body` BodyStrongTextBlockStyle in `ink`, with margin 4,18,4,4 (previewed as token `1` sides, `4` top, `1` bottom; the 18px top is off-grid and a port note).",
+      "props": { "children": "Permissions" },
+      "root": {
+        "id": "settings-section-header-root",
+        "el": "h2",
+        "margin": { "top": "4", "right": "1", "bottom": "1", "left": "1" },
+        "appearance": { "fontFamily": "body", "textStyle": "body", "color": "ink" },
+        "children": [ "{children}" ]
+      }
+    },
+    {
+      "name": "SettingsCard",
+      "note": "Settings composite. The canonical settings row (hand-rolled Border, not the toolkit SettingsCard). STATIC: the card itself has no hover/pressed; the trailing control owns interaction. A `surface`-less `paper` Border with a 1px `line` (CardStrokeColorDefault) stroke, `md` radius (8px), and token `4` (16px) padding (some cards use 16,14; the 14 is off-grid). Layout is an optional 36px leading icon column, a growing content column (title `body` BodyStrong in `ink` over a wrapping `caption` description in `muted`), and a trailing Auto control column. Cards stack with token `2` (8px) spacing.",
+      "props": {
+        "title": "Startup",
+        "detail": "Launch OpenClaw when you sign in to Windows."
+      },
+      "root": {
+        "id": "settings-card-root",
+        "el": "div",
+        "layout": { "mode": "horizontal", "gap": "3", "padding": "4", "align": "center", "width": "fill" },
+        "appearance": { "background": "paper", "borderColor": "line", "radius": "md" },
+        "children": [
+          {
+            "id": "settings-card-icon",
+            "el": "span",
+            "attrs": {
+              "aria-hidden": "true",
+              "style": "font-family:'Segoe Fluent Icons','Segoe MDL2 Assets',sans-serif;font-size:16px"
+            },
+            "layout": { "mode": "horizontal", "align": "center", "justify": "center", "width": 36 },
+            "appearance": { "color": "ink" },
+            "children": [ "\uE7E8" ]
+          },
+          {
+            "id": "settings-card-text",
+            "el": "div",
+            "layout": { "mode": "vertical", "gap": "1", "grow": true, "width": "fill" },
+            "children": [
+              { "id": "settings-card-title", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "body", "color": "ink" }, "children": [ "{title}" ] },
+              { "id": "settings-card-detail", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "caption", "color": "muted" }, "children": [ "{detail}" ] }
+            ]
+          },
+          { "id": "settings-card-action", "component": "Button", "props": { "children": "Change", "variant": "standard" } }
+        ]
+      }
+    },
+    {
+      "name": "SettingsToggleRow",
+      "note": "Settings composite. A SettingsCard whose trailing control is the Fluent ToggleSwitch (the most common settings row). Same static `paper` card: 1px `line` stroke, `md` radius, token `4` padding, token `1` title/detail stack. The ToggleSwitch owns the hover/pressed states (see ToggleSwitch); the card is static. Composes ToggleSwitch.",
+      "props": {
+        "title": "Run at startup",
+        "detail": "Start the OpenClaw tray automatically."
+      },
+      "root": {
+        "id": "settings-toggle-root",
+        "el": "div",
+        "layout": { "mode": "horizontal", "gap": "3", "padding": "4", "align": "center", "width": "fill" },
+        "appearance": { "background": "paper", "borderColor": "line", "radius": "md" },
+        "children": [
+          {
+            "id": "settings-toggle-text",
+            "el": "div",
+            "layout": { "mode": "vertical", "gap": "1", "grow": true, "width": "fill" },
+            "children": [
+              { "id": "settings-toggle-title", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "body", "color": "ink" }, "children": [ "{title}" ] },
+              { "id": "settings-toggle-detail", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "caption", "color": "muted" }, "children": [ "{detail}" ] }
+            ]
+          },
+          { "id": "settings-toggle-switch", "component": "ToggleSwitch" }
+        ]
+      }
+    },
+    {
+      "name": "SettingsExpanderRow",
+      "note": "Settings composite. An expandable settings group built on the stock WinUI Expander (SandboxPage.xaml), not the toolkit SettingsExpander. The header is an interactive row (ColumnSpacing 14, previewed token `3`; header padding 0,4) with an optional leading icon, a growing title (`body` BodyStrong) over `caption` description, and a trailing chevron (U+E70D) that rotates when open. The header carries stock Expander subtle states: hover = SubtleFillColorSecondary (`subtleHover`), pressed = SubtleFillColorTertiary (`subtlePressed`). The expanded content is a StackPanel, token `3` (12px) spacing, padding 0,4. Previewed expanded.",
+      "props": {
+        "title": "Advanced sandbox",
+        "detail": "Fine-tune the command execution sandbox."
+      },
+      "root": {
+        "id": "settings-expander-root",
+        "el": "div",
+        "layout": { "mode": "vertical", "width": "fill" },
+        "appearance": { "background": "paper", "borderColor": "line", "radius": "md" },
+        "children": [
+          {
+            "id": "settings-expander-header",
+            "el": "button",
+            "attrs": { "type": "button", "aria-expanded": "true" },
+            "layout": { "mode": "horizontal", "gap": "3", "padding": { "x": "4", "y": "3" }, "align": "center", "width": "fill" },
+            "appearance": { "background": "$none", "radius": "md" },
+            "control": {
+              "chrome": "none",
+              "focus": { "kind": "outline", "color": "accent" }
+            },
+            "states": {
+              "hover": { "background": "subtleHover" },
+              "pressed": { "background": "subtlePressed" },
+              "hoverPressed": { "background": "subtlePressed" }
+            },
+            "children": [
+              {
+                "id": "settings-expander-text",
+                "el": "div",
+                "layout": { "mode": "vertical", "gap": "1", "grow": true, "width": "fill" },
+                "children": [
+                  { "id": "settings-expander-title", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "body", "color": "ink" }, "children": [ "{title}" ] },
+                  { "id": "settings-expander-detail", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "caption", "color": "muted" }, "children": [ "{detail}" ] }
+                ]
+              },
+              {
+                "id": "settings-expander-chevron",
+                "el": "span",
+                "attrs": {
+                  "aria-hidden": "true",
+                  "style": "font-family:'Segoe Fluent Icons','Segoe MDL2 Assets',sans-serif;font-size:12px"
+                },
+                "appearance": { "color": "muted" },
+                "children": [ "\uE70D" ]
+              }
+            ]
+          },
+          {
+            "id": "settings-expander-content",
+            "el": "div",
+            "layout": { "mode": "vertical", "gap": "3", "padding": { "x": "4", "y": "3" }, "width": "fill" },
+            "children": [
+              { "id": "settings-expander-child", "component": "SettingsToggleRow", "props": { "title": "Allow network access", "detail": "Let sandboxed commands reach the network." } }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "SettingsWindowShell",
+      "note": "Settings composite. The Settings host window frame (Windows/HubWindow.xaml). MinWidth 1000, Mica backdrop, title bar captioned \"OpenClaw Settings\". A left NavigationView rail (pane toggle and the stock settings item hidden) sits beside a scrolling content column padded token `5` (24px) with a MaxWidth of 900px (port note). The bottom of the window hosts a 40px status pill and a 40x40 toolbar button cluster. Composes SettingsSectionHeader and SettingsToggleRow; the nav items reuse the subtle-button interaction model.",
+      "root": {
+        "id": "settings-window-root",
+        "el": "section",
+        "layout": { "mode": "horizontal", "width": "fill" },
+        "appearance": { "background": "paper" },
+        "children": [
+          {
+            "id": "settings-window-nav",
+            "el": "nav",
+            "layout": { "mode": "vertical", "gap": "1", "padding": "2", "width": 240 },
+            "appearance": { "background": "surface", "borderColor": "line" },
+            "children": [
+              {
+                "id": "settings-window-nav-general",
+                "el": "button",
+                "attrs": { "type": "button", "aria-current": "page" },
+                "layout": { "mode": "horizontal", "gap": "2", "padding": { "x": "2", "y": "2" }, "align": "center", "width": "fill" },
+                "appearance": { "background": "subtleHover", "radius": "sm", "color": "ink" },
+                "control": { "chrome": "none", "focus": { "kind": "outline", "color": "accent" } },
+                "states": {
+                  "hover": { "background": "subtleHover" },
+                  "pressed": { "background": "subtlePressed" },
+                  "hoverPressed": { "background": "subtlePressed" }
+                },
+                "children": [
+                  { "id": "settings-window-nav-general-glyph", "el": "span", "attrs": { "aria-hidden": "true", "style": "font-family:'Segoe Fluent Icons','Segoe MDL2 Assets',sans-serif;font-size:16px" }, "appearance": { "color": "ink" }, "children": [ "\uE713" ] },
+                  { "id": "settings-window-nav-general-label", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "body", "color": "ink" }, "children": [ "General" ] }
+                ]
+              },
+              {
+                "id": "settings-window-nav-perms",
+                "el": "button",
+                "attrs": { "type": "button" },
+                "layout": { "mode": "horizontal", "gap": "2", "padding": { "x": "2", "y": "2" }, "align": "center", "width": "fill" },
+                "appearance": { "background": "$none", "radius": "sm", "color": "ink" },
+                "control": { "chrome": "none", "focus": { "kind": "outline", "color": "accent" } },
+                "states": {
+                  "hover": { "background": "subtleHover" },
+                  "pressed": { "background": "subtlePressed" },
+                  "hoverPressed": { "background": "subtlePressed" }
+                },
+                "children": [
+                  { "id": "settings-window-nav-perms-glyph", "el": "span", "attrs": { "aria-hidden": "true", "style": "font-family:'Segoe Fluent Icons','Segoe MDL2 Assets',sans-serif;font-size:16px" }, "appearance": { "color": "ink" }, "children": [ "\uE72E" ] },
+                  { "id": "settings-window-nav-perms-label", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "body", "color": "ink" }, "children": [ "Permissions" ] }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "settings-window-content",
+            "el": "div",
+            "layout": { "mode": "vertical", "gap": "2", "padding": "5", "grow": true, "width": "fill" },
+            "children": [
+              { "id": "settings-window-section", "component": "SettingsSectionHeader", "props": { "children": "General" } },
+              { "id": "settings-window-row-1", "component": "SettingsToggleRow" },
+              { "id": "settings-window-row-2", "component": "SettingsExpanderRow" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "ExampleScreen",
+      "note": "A representative Connection screen composed from the pieces above — the \"does it hang together\" check for the whole system. The status board is a freeform layer so the two cards can overlap into a Fluent-style dashboard, exercising v3 absolute positioning alongside Auto Layout.",
+      "root": {
+        "id": "example-screen-root",
+        "el": "section",
+        "class": "ds-screen",
+        "layout": {
+          "mode": "vertical",
+          "gap": "5",
+          "width": "fill"
+        },
+        "children": [
+          {
+            "id": "example-screen-head",
+            "el": "header",
+            "class": "ds-screen-head",
+            "layout": {
+              "mode": "horizontal",
+              "gap": "4",
+              "align": "start",
+              "justify": "space-between",
+              "width": "fill"
+            },
+            "children": [
+              {
+                "id": "example-screen-heading",
+                "el": "div",
+                "layout": {
+                  "mode": "vertical",
+                  "gap": "1"
+                },
+                "children": [
+                  {
+                    "id": "example-screen-eyebrow",
+                    "el": "p",
+                    "class": "ds-eyebrow",
+                    "children": [
+                      "Connection"
+                    ]
+                  },
+                  {
+                    "id": "example-screen-title",
+                    "el": "h2",
+                    "class": "ds-screen-title",
+                    "children": [
+                      "OpenClaw Windows Hub"
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "example-screen-status",
+                "component": "Badge",
+                "props": {
+                  "tone": "positive",
+                  "children": "Connected"
+                }
+              }
+            ]
+          },
+          {
+            "id": "example-screen-board",
+            "el": "div",
+            "class": "ds-grid",
+            "layout": {
+              "mode": "horizontal",
+              "width": "fill",
+              "height": 176,
+              "gap": "3"
+            },
+            "children": [
+              {
+                "id": "example-screen-gateway",
+                "component": "Card",
+                "props": {
+                  "title": "Gateway",
+                  "body": "Paired to OpenClawGateway · last seen just now."
+                },
+                "layout": {
+                  "width": 280,
+                  "height": 148
+                }
+              },
+              {
+                "id": "example-screen-node",
+                "component": "Card",
+                "props": {
+                  "title": "Windows node",
+                  "body": "6 capabilities exposed over MCP."
+                },
+                "layout": {
+                  "width": 280,
+                  "height": 148
+                }
+              }
+            ]
+          },
+          {
+            "id": "example-screen-row",
+            "el": "div",
+            "class": "ds-row",
+            "layout": {
+              "mode": "horizontal",
+              "gap": "4",
+              "align": "end",
+              "wrap": true,
+              "width": "fill"
+            },
+            "children": [
+              {
+                "id": "example-screen-field",
+                "component": "Field",
+                "props": {
+                  "label": "Gateway address",
+                  "placeholder": "127.0.0.1:18789"
+                },
+                "layout": {
+                  "grow": true
+                }
+              },
+              {
+                "id": "example-screen-connect",
+                "component": "Button",
+                "props": {
+                  "children": "Connect",
+                  "variant": "primary"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
