@@ -8296,4 +8296,5 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>O Windows não conseguiu reproduzir o áudio. Verifique o dispositivo de saída. Não houve nova tentativa automática.</value></data>
   <data name="Onboarding_NativeConnection_Speech" xml:space="preserve"><value>Vamos verificar sua conexão.</value></data>
   <data name="Onboarding_Wizard_CompatibilitySpeech" xml:space="preserve"><value>Vamos terminar de conectar sua IA.</value></data>
+  <data name="Onboarding_AiSetup_Speech.Text" xml:space="preserve"><value>Escolha um cérebro para mim.</value></data>
 </root>

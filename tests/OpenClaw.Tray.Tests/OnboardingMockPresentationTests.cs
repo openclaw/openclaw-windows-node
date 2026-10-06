@@ -14,7 +14,6 @@ public sealed class OnboardingMockPresentationTests
     [InlineData("WelcomePage")]
     [InlineData("CapabilitiesPage")]
     [InlineData("AdvancedSetupPage")]
-    [InlineData("AiSetupPage")]
     public void NormalHeaders_KeepFullSizeArtworkAboveWrappedCenteredText(string name)
     {
         var document = Page(name);
@@ -70,7 +69,7 @@ public sealed class OnboardingMockPresentationTests
             Assert.Equal("Transparent", (string?)row.Attribute("Background"));
             Assert.Equal("0", (string?)row.Attribute("CornerRadius"));
         });
-        foreach (var name in new[] { "AiSetupPage", "AiReadyPage", "CompletePage" })
+        foreach (var name in new[] { "AiReadyPage", "CompletePage" })
         {
             var page = Page(name);
             Assert.DoesNotContain(page.Descendants(), element => element.Name.LocalName == "SetupPageShell");

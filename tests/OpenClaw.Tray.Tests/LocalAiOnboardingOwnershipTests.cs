@@ -194,7 +194,7 @@ public sealed class LocalAiOnboardingOwnershipTests
     }
 
     [Fact]
-    public void AiHeaderBand_UsesSharedCenteredArtworkAndDoesNotPromiseAContinueGate()
+    public void AiShell_UsesSharedArtworkAndDoesNotPromiseAContinueGate()
     {
         var document = System.Xml.Linq.XDocument.Parse(Read(@"src\OpenClaw.SetupEngine.UI\Pages\AiSetupPage.xaml"));
         System.Xml.Linq.XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
@@ -202,13 +202,17 @@ public sealed class LocalAiOnboardingOwnershipTests
         {
             var text = Assert.Single(document.Descendants(), element => (string?)element.Attribute(x + "Name") == name);
             Assert.Equal("Wrap", (string?)text.Attribute("TextWrapping"));
-            Assert.Equal("Center", (string?)text.Attribute("TextAlignment"));
+            Assert.Equal("Left", (string?)text.Attribute("TextAlignment"));
             Assert.Contains(text.Ancestors(), element => (string?)element.Attribute(x + "Name") == "AiHeader");
         }
         var header = Assert.Single(document.Descendants(), element => (string?)element.Attribute(x + "Name") == "AiHeader");
         Assert.Equal("StackPanel", header.Name.LocalName);
         Assert.Null(header.Attribute("Height"));
-        var mascot = Assert.Single(header.Descendants(), element => element.Name.LocalName == "OnboardingMascot");
+        var mascot = Assert.Single(document.Descendants(), element => element.Name.LocalName == "OnboardingMascot");
+        Assert.Contains(mascot.Ancestors(), element => element.Name.LocalName == "SetupPageShell.Hero");
+        Assert.Contains(header.Ancestors(), element => element.Name.LocalName == "SetupPageShell.Header");
+        var timeline = Assert.Single(document.Descendants(), element => (string?)element.Attribute(x + "Name") == "FlowProgress");
+        Assert.Equal("SetupStepIndicator", timeline.Name.LocalName);
         Assert.Equal("Center", (string?)mascot.Attribute("HorizontalAlignment"));
         Assert.Null(mascot.Attribute("Width"));
         Assert.Null(mascot.Attribute("Height"));

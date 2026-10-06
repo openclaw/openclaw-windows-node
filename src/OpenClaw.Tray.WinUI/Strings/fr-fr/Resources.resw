@@ -8244,4 +8244,5 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows n’a pas pu lire le son. Vérifiez le périphérique de sortie. Aucune nouvelle tentative automatique.</value></data>
   <data name="Onboarding_NativeConnection_Speech" xml:space="preserve"><value>Vérifions votre connexion.</value></data>
   <data name="Onboarding_Wizard_CompatibilitySpeech" xml:space="preserve"><value>Terminons la connexion de votre IA.</value></data>
+  <data name="Onboarding_AiSetup_Speech.Text" xml:space="preserve"><value>Choisissez mon cerveau.</value></data>
 </root>

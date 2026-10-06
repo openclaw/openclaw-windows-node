@@ -1,5 +1,20 @@
 # Onboarding Wizard
 
+### Connect your AI presentation
+
+`AiSetupPage` uses the native setup shell with a speech bubble, mascot and
+canonical route timeline on the left at wide sizes. The heading and runtime
+provider/model choices remain left-aligned on the right. At smaller sizes the
+same mounted controls stack inside the shell scroller; Refresh, compatibility
+and provider cancellation actions remain in the fixed footer.
+
+Provider rows use flat separators, not a fixed sign-in catalog. Discovery,
+optional conversation discovery, Local AI consent and recovery, hidden API-key
+inputs, and exact activation verification retain their existing owners.
+`ProviderSetupDialog` remains the single page-owned, secret-clearing native
+dialog for every Gateway-supplied prompt kind. Its device-code treatment does
+not assume a provider, authorization URL, code or expiry.
+
 The onboarding wizard can install an app-owned WSL gateway, acquire a native
 Gateway MSIX through Microsoft Store and configure it, or connect to an existing gateway.
 

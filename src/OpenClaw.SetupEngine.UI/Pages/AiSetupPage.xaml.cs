@@ -95,6 +95,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
     private string? ExpectedGatewayId => _localUse?.Expected?.GatewayId ?? _args?.ExpectedGatewayId;
     private readonly ProviderArtworkSession _artworkSession = new();
     private GatewayAiSetupClient? Client => _controller?.Client;
+    private ScrollViewer ChoicesScroller => AiShell.Scroller;
 
     public AiSetupPage()
     {

@@ -8244,4 +8244,5 @@
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows 无法播放语音音频。请检查输出设备。未进行自动重试。</value></data>
   <data name="Onboarding_NativeConnection_Speech" xml:space="preserve"><value>让我们检查你的连接。</value></data>
   <data name="Onboarding_Wizard_CompatibilitySpeech" xml:space="preserve"><value>让我们完成 AI 连接。</value></data>
+  <data name="Onboarding_AiSetup_Speech.Text" xml:space="preserve"><value>为我选一个大脑。</value></data>
 </root>

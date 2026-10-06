@@ -13,6 +13,8 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="CornerRadius" Value="0" />
             <Setter Property="BorderThickness" Value="0,0,0,1" />
+            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="Padding" Value="12,16" />
         </Style>
         <DataTemplate x:Key="ChoiceTemplate">
             <controls:SetupActionCard x:Name="ChoiceActionCard" IsClickEnabled="True" InvokeRequested="ChoiceAction_Click" Tag="{Binding}"
@@ -39,7 +41,7 @@
             <TextBlock Text="{Binding Label}" Style="{StaticResource BodyTextBlockStyle}" TextWrapping="Wrap" />
         </DataTemplate>
     </Page.Resources>
-    <Grid RowDefinitions="Auto,*,Auto" Padding="40,4,40,24">
+    <controls:SetupPageShell x:Name="AiShell">
         <VisualStateManager.VisualStateGroups>
             <VisualStateGroup>
                 <VisualState x:Name="ManualStacked">
@@ -56,25 +58,45 @@
                 <VisualState x:Name="ManualHorizontal" />
             </VisualStateGroup>
         </VisualStateManager.VisualStateGroups>
-        <StackPanel x:Name="AiHeader" Spacing="4" HorizontalAlignment="Stretch">
+        <controls:SetupPageShell.Hero>
+            <StackPanel Spacing="16" HorizontalAlignment="Stretch">
+                <Grid MaxWidth="280" HorizontalAlignment="Center" RowDefinitions="Auto,10">
+                    <Border Padding="16,12" CornerRadius="12"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                        <TextBlock x:Uid="Onboarding_AiSetup_Speech" Text="Pick a brain for me."
+                                   FontFamily="Segoe UI Variable" FontSize="18" FontWeight="SemiBold"
+                                   TextWrapping="Wrap" TextAlignment="Center" />
+                    </Border>
+                    <Path Grid.Row="1" Data="M0,0 L10,10 L20,0" HorizontalAlignment="Center"
+                          Fill="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                          Stroke="{ThemeResource CardStrokeColorDefaultBrush}"
+                          AutomationProperties.AccessibilityView="Raw" />
+                </Grid>
             <controls:OnboardingMascot x:Name="MascotHero" Mood="Curious" HorizontalAlignment="Center" />
-            <TextBlock x:Name="TitleText" Style="{StaticResource TitleTextBlockStyle}" TextWrapping="Wrap"
-                       TextAlignment="Center" />
-            <TextBlock x:Name="StatusText" Style="{StaticResource BodyTextBlockStyle}" TextWrapping="Wrap"
-                       TextAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" AutomationProperties.LiveSetting="Polite" />
+                <controls:SetupStepIndicator x:Name="FlowProgress" Margin="24,8,0,0" HorizontalAlignment="Stretch" />
+            </StackPanel>
+        </controls:SetupPageShell.Hero>
+        <controls:SetupPageShell.Header>
+        <StackPanel x:Name="AiHeader" Spacing="12" HorizontalAlignment="Stretch">
+            <TextBlock x:Name="TitleText" FontFamily="Segoe UI Variable" FontSize="40" FontWeight="SemiBold"
+                       AutomationProperties.HeadingLevel="Level1" TextWrapping="Wrap" TextAlignment="Left" />
+            <TextBlock x:Name="StatusText" FontFamily="Segoe UI Variable" FontSize="18" TextWrapping="Wrap"
+                       TextAlignment="Left" Foreground="{ThemeResource TextFillColorSecondaryBrush}" AutomationProperties.LiveSetting="Polite" />
             <TextBlock x:Uid="Onboarding_Ai_CompletionConsent"
-                       Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap" TextAlignment="Center"
+                       Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             <StackPanel x:Name="ProviderActivity" Spacing="16" Visibility="Collapsed">
                 <TextBlock x:Name="ProviderActivityStatus" Style="{StaticResource BodyTextBlockStyle}"
-                           TextWrapping="Wrap" TextAlignment="Center"
+                           TextWrapping="Wrap" TextAlignment="Left"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" AutomationProperties.LiveSetting="Polite" />
                 <ProgressBar x:Name="ProviderActivityProgress" IsIndeterminate="True" MaxWidth="320"
-                             HorizontalAlignment="Stretch" />
+                             HorizontalAlignment="Left" />
                 <InfoBar x:Name="ProviderActivityError" IsOpen="False" IsClosable="False" Severity="Error" />
             </StackPanel>
         </StackPanel>
-        <ScrollViewer x:Name="ChoicesScroller" Grid.Row="1" Margin="0,24,0,16" VerticalScrollBarVisibility="Auto">
+        </controls:SetupPageShell.Header>
+        <controls:SetupPageShell.Body>
             <StackPanel Spacing="12">
                 <InfoBar x:Name="ErrorBar" IsOpen="False" IsClosable="False" Severity="Error">
                     <InfoBar.ActionButton>
@@ -117,6 +139,7 @@
                 </StackPanel>
                 <StackPanel x:Name="LocalAiSection" Spacing="8">
                     <tk:SettingsCard x:Name="LocalAiCard" IsClickEnabled="False" Click="LocalAi_Click"
+                                     Style="{StaticResource CompactChoice}"
                                      AutomationProperties.AutomationId="OnboardingLocalAiCard">
                         <tk:SettingsCard.Header>
                             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" HorizontalAlignment="Left">
@@ -165,8 +188,7 @@
                     <StackPanel x:Name="SignInSection" Spacing="8">
                         <TextBlock x:Name="SignInHeading" Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
                         <TextBlock x:Name="CloudDescription" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap" />
-                        <Border x:Name="ProviderGroup" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                        <Border x:Name="ProviderGroup" Background="Transparent" CornerRadius="0" BorderThickness="0">
                         <StackPanel Spacing="0">
                         <ItemsControl x:Name="FeaturedSignInChoices" ItemTemplate="{StaticResource ChoiceTemplate}" />
                         <tk:SettingsExpander x:Name="MoreExpander" IsExpanded="False" HorizontalAlignment="Stretch"
@@ -179,8 +201,7 @@
                         </Border>
                     </StackPanel>
                     <StackPanel x:Name="ApiKeySection" Margin="0,12,0,0">
-                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                        <Border Background="Transparent" CornerRadius="0" BorderThickness="0">
                             <StackPanel Spacing="0">
                                 <controls:SetupActionCard x:Name="ApiKeysButton" IsClickEnabled="True" InvokeRequested="ApiKeys_Click"
                                                  Style="{StaticResource CompactChoice}">
@@ -258,16 +279,29 @@
                 </Expander>
                 <ProgressBar x:Name="BusyProgress" IsIndeterminate="True" Visibility="Collapsed" />
             </StackPanel>
-        </ScrollViewer>
-        <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-                <Button x:Name="RefreshButton" Click="Refresh_Click" />
-                <Button x:Name="LegacyButton" Click="Legacy_Click" Visibility="Collapsed" />
+        </controls:SetupPageShell.Body>
+        <controls:SetupPageShell.Footer>
+        <Grid x:Name="AiFooter" ColumnDefinitions="*,Auto" ColumnSpacing="12">
+            <Button x:Name="LegacyButton" Click="Legacy_Click" Visibility="Collapsed"
+                    MinWidth="100" MinHeight="40" HorizontalAlignment="Left">
+                <Button.ContentTemplate>
+                    <DataTemplate><TextBlock Text="{Binding}" TextWrapping="Wrap" MaxWidth="200" /></DataTemplate>
+                </Button.ContentTemplate>
+            </Button>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <Button x:Name="RefreshButton" Click="Refresh_Click" MinWidth="100" MinHeight="40">
+                    <Button.ContentTemplate>
+                        <DataTemplate><TextBlock Text="{Binding}" TextWrapping="Wrap" MaxWidth="160" /></DataTemplate>
+                    </Button.ContentTemplate>
+                </Button>
+                <Button x:Name="ProviderCancelButton" Click="Cancel_Click"
+                        MinWidth="100" MinHeight="40" Visibility="Collapsed">
+                    <Button.ContentTemplate>
+                        <DataTemplate><TextBlock Text="{Binding}" TextWrapping="Wrap" MaxWidth="160" /></DataTemplate>
+                    </Button.ContentTemplate>
+                </Button>
             </StackPanel>
-            <controls:SetupProgressIndicator x:Name="FlowProgress" Grid.Column="1"
-                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
-            <Button x:Name="ProviderCancelButton" Grid.Column="2" Click="Cancel_Click"
-                    MinWidth="100" HorizontalAlignment="Right" Visibility="Collapsed" />
         </Grid>
-    </Grid>
+        </controls:SetupPageShell.Footer>
+    </controls:SetupPageShell>
 </Page>

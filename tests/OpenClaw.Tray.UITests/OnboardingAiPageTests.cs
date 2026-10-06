@@ -18,7 +18,7 @@ using CommunityToolkit.WinUI.Controls;
 namespace OpenClaw.Tray.UITests;
 
 [Collection(UICollection.Name)]
-public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper output)
+public sealed partial class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper output)
 {
     private bool _nativeProof;
 
@@ -171,7 +171,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
     [InlineData(ElementTheme.Light)]
     [InlineData(ElementTheme.Dark)]
     [Trait("Category", "NativeOnboardingProof")]
-    public async Task FocusedAi_DefaultSetupWindowKeepsCenteredHeaderAndScrollableActions(ElementTheme theme)
+    public async Task FocusedAi_DefaultSetupWindowKeepsShellAndReachableActions(ElementTheme theme)
     {
         OnboardingNativeProof.AssertIsolatedRoots();
         using var directory = new TempDirectory("openclaw-ai-density-");
@@ -207,7 +207,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                     Find<SettingsCard>(page, "LocalAiCard").IsClickEnabled);
                 root.UpdateLayout();
                 await OnboardingNativeProof.NextCompositionAsync();
-                var scroll = Find<ScrollViewer>(page, "ChoicesScroller");
+                var scroll = Find<SetupPageShell>(page, "AiShell").Scroller;
                 var header = Find<StackPanel>(page, "AiHeader");
                 var rows = new[] { Find<SettingsCard>(page, "LocalAiCard") }
                     .Concat(new[] { "CandidateChoices", "PrepareChoices", "FeaturedSignInChoices" }
@@ -220,7 +220,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                 if (textScale <= 1)
                 {
                     Assert.True(scroll.ViewportHeight >= 280);
-                    Assert.InRange(header.ActualHeight, OnboardingMascot.HeroSize, 300);
+                    Assert.True(header.ActualHeight > 0);
                 }
                 OnboardingNativeProof.AssertHeroLayout(Find<OnboardingMascot>(page, "MascotHero"), output);
                 OnboardingNativeProof.AssertFullyVisible(header, root);
@@ -236,7 +236,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                     await TestSupport.WaitForRenderedConditionAsync(
                         () => Math.Abs(scroll.VerticalOffset - scroll.ScrollableHeight) < 0.5, "AI last viewport");
                     using (await OnboardingNativeProof.CaptureAsync(window, $"ai-focused-default-{theme}-last", output,
-                        ["Set up your AI", "API Keys", "Refresh"], new { textScale, scroll.VerticalOffset },
+                        ["API Keys", "Refresh"], new { textScale, scroll.VerticalOffset },
                         requiredContent: page)) { }
                 }
                 Assert.Equal(["openclaw.setup.detect"], transport.MethodCalls);
@@ -422,12 +422,14 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
     [InlineData(ElementTheme.Dark, 720)]
     [InlineData(ElementTheme.Light, 600)]
     [InlineData(ElementTheme.Dark, 600)]
+    [InlineData(ElementTheme.Light, 1120)]
+    [InlineData(ElementTheme.Dark, 1120)]
     public async Task ProviderPopup_PreservesBackdropSelectionScrollAndRestoresFocusAfterConfirmedCancel(
         ElementTheme theme, double width)
     {
         await WithPageAsync(async (page, transport, completed) =>
         {
-            var scroll = Find<ScrollViewer>(page, "ChoicesScroller");
+            var scroll = Find<SetupPageShell>(page, "AiShell").Scroller;
             var viewportSettled = true;
             scroll.ViewChanged += (_, e) => viewportSettled = !e.IsIntermediate;
             var more = Find<SettingsExpander>(page, "MoreExpander");
@@ -1248,25 +1250,25 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
     [InlineData(LocalAiOnboardingState.Use, ElementTheme.Light)]
     [InlineData(LocalAiOnboardingState.Use, ElementTheme.Dark)]
     [Trait("Category", "NativeOnboardingProof")]
-    public async Task LocalAi_FullWindowCentersHeadingAndShowsStateGroupsAndFooter(
+    public async Task LocalAi_FullWindowShowsShellStateGroupsAndFixedFooter(
         LocalAiOnboardingState state, ElementTheme theme)
     {
         var localHost = new PageLocalAiHost(state);
         await WithPageAsync(async (page, transport, completed) =>
         {
             var root = ui.Container;
-            var grid = Assert.IsType<Grid>(page.Content);
+            var shell = Assert.IsType<SetupPageShell>(page.Content);
             var heading = Find<TextBlock>(page, "TitleText");
             var subtitle = Find<TextBlock>(page, "StatusText");
             var mascot = Find<OnboardingMascot>(page, "MascotHero");
-            var scroll = Assert.Single(grid.Children.OfType<ScrollViewer>());
-            var footer = Assert.Single(grid.Children.OfType<Grid>(), child => Grid.GetRow(child) == 2);
+            var scroll = shell.Scroller;
+            var footer = Find<Grid>(page, "AiFooter");
             var card = Find<SettingsCard>(page, "LocalAiCard");
             var scale = root.XamlRoot.RasterizationScale;
             Windows.Foundation.Rect Bounds(FrameworkElement element) => element.TransformToVisual(root)
                 .TransformBounds(new Windows.Foundation.Rect(0, 0, element.ActualWidth, element.ActualHeight));
             var header = Find<StackPanel>(page, "AiHeader");
-            Assert.Same(header, mascot.Parent);
+            Assert.NotSame(header, mascot.Parent);
             Assert.Equal(HorizontalAlignment.Stretch, header.HorizontalAlignment);
             foreach (var text in new[] { heading, subtitle })
             {
@@ -1276,12 +1278,12 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             }
             OnboardingNativeProof.AssertHeroLayout(mascot, output);
             Assert.True(Bounds(mascot).Bottom <= Bounds(heading).Top);
-            Assert.Equal(TextAlignment.Center, heading.TextAlignment);
-            Assert.Equal(TextAlignment.Center, subtitle.TextAlignment);
+            Assert.Equal(TextAlignment.Left, heading.TextAlignment);
+            Assert.Equal(TextAlignment.Left, subtitle.TextAlignment);
             var textScale = new Windows.UI.ViewManagement.UISettings().TextScaleFactor;
             if (textScale <= 1)
             {
-                Assert.InRange(header.ActualHeight, OnboardingMascot.HeroSize, 300);
+                Assert.True(header.ActualHeight > 0);
                 Assert.True(scroll.ViewportHeight >= 280, $"Actual AI body: {scroll.ViewportHeight} DIPs.");
             }
             Assert.Equal(0, NativeProofLayout.PhysicalPixels(scroll.ScrollableWidth, scale));
@@ -1330,11 +1332,10 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                     if (sectionName == "CandidatesSection")
                         Assert.Equal("Detected AI choices", ((TextBlock)label).Text);
                     OnboardingNativeProof.AssertFullyVisible(label, scroll);
-                    OnboardingNativeProof.AssertFullyVisible(heading, root);
                     OnboardingNativeProof.AssertFullyVisible(footer, root);
                     using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow,
                         $"onboarding-ai-full-{state}-{theme}-{sectionName}", output,
-                        sectionName == "CandidatesSection" ? ["Set up your AI", "Refresh"] : ["Set up your AI", "API Keys", "Refresh"],
+                        [sectionName == "CandidatesSection" ? "Detected AI choices" : "API Keys", "Refresh"],
                         new { state, theme, sectionBounds = Bounds(label), footerBounds = Bounds(footer) },
                         requiredContent: page)) { }
                 }
@@ -2359,7 +2360,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
         string? expectedGatewayId = null, bool nativeProof = false, ElementTheme theme = ElementTheme.Light,
         double width = 720, LocalAiInstallAndUseIntent? installAndUse = null, Func<bool>? ready = null,
         Action<GatewayAiSetupCompletion>? completedProof = null, Action? closeSetupWindow = null,
-        bool prepareDiscovery = false, SetupLoadingProgress? loading = null)
+        bool prepareDiscovery = false, SetupLoadingProgress? loading = null, double height = 820)
     {
         await ui.ResetContainerAsync();
         await ui.RunOnUIAsync(async () =>
@@ -2397,7 +2398,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                     OnboardingNativeProof.ActivateOwned(ui.TestWindow);
                 }
                 else
-                    ui.TestWindow.AppWindow.Resize(new Windows.Graphics.SizeInt32(816, 944));
+                    ui.TestWindow.AppWindow.Resize(new Windows.Graphics.SizeInt32((int)width + 96, (int)height + 124));
                 await OnboardingNativeProof.ApplyThemeSurfaceAsync(ui.Container, theme);
                 var data = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR")
                     ?? throw new InvalidOperationException("Set isolated tray data before onboarding UI tests.");
@@ -2416,7 +2417,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                         completions++;
                         return Task.CompletedTask;
                     });
-                frame = nativeProof ? new Frame() : new Frame { Width = width, Height = 820 };
+                frame = nativeProof ? new Frame() : new Frame { Width = width, Height = height };
                 navigation = OnboardingNativeProof.TrackNavigation(frame);
                 ui.Container.Children.Add(frame);
                 frame.Navigate(typeof(AiSetupPage), args);
@@ -2578,6 +2579,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
         public bool IncludeMoreProvider { get; set; }
         public bool IncludeAdditionalCandidate { get; set; }
         public bool IncludeDensityChoices { get; set; }
+        public bool LongProviderLabels { get; set; }
         public Queue<GatewayAiSetupWizardStep> FollowingSteps { get; } = [];
         public GatewayAiSetupWizardStep? WizardStep { get; set; }
         public string CancelStatus { get; set; } = "cancelled";
@@ -2648,8 +2650,12 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                         .Take(EmptyCandidates ? 0 : IncludeAdditionalCandidate ? 2 : 1).ToArray(),
                     manualProviders = new[] { new { id = "openai-api-key", label = "OpenAI API key", brandId = "codex" } },
                     authOptions = IncludeDensityChoices
-                        ? new[] { new { id = "one", label = "First provider", featured = true },
-                            new { id = "two", label = "Second provider", featured = true } }
+                        ? new[] { new { id = "one", label = LongProviderLabels
+                                ? "Synthetic provider with a deliberately long organization and authorization label"
+                                : "First provider", featured = true },
+                            new { id = "two", label = "Second provider", featured = true },
+                            new { id = "three", label = "Additional synthetic provider", featured = false } }
+                            .Take(IncludeMoreProvider ? 3 : 2).ToArray()
                         : new[] { new { id = "provider-login", label = "Synthetic sign-in", featured = false } }
                             .Take(IncludeMoreProvider ? 1 : 0).ToArray(),
                     prepareOptions = new[] { new { id = "local-setup", label = "Local service", hint = "Set up and use" } }
