@@ -317,6 +317,22 @@ Assert-Contains `
     -Message "CI cancellation must apply only to pull_request runs."
 
 $classificationJob = Get-JobBlock "change-classification"
+$classificationGuard = [regex]::Match(
+    $classificationJob,
+    '(?ms)^        if \(\$impact\.classification -notin @\([^\r\n]+\)\) \{\r?\n.*?^        \}')
+if (-not $classificationGuard.Success) {
+    throw "Classification output must retain its fail-closed admission guard."
+}
+$guard = [scriptblock]::Create($classificationGuard.Value)
+foreach ($classification in @("docs_only", "fast_only", "targeted", "full", "", "unknown")) {
+    $impact = [pscustomobject]@{ classification = $classification }
+    $accepted = $true
+    try { & $guard } catch { $accepted = $false }
+    $expected = $classification -in @("docs_only", "fast_only", "targeted", "full")
+    if ($accepted -ne $expected) {
+        throw "Workflow classification guard expected '$classification' accepted=$expected."
+    }
+}
 foreach ($token in @(
         "fetch-depth: 0",
         "./scripts/Get-CiChangeClassification.ps1",
@@ -338,6 +354,14 @@ foreach ($token in @(
 }
 
 $fastValidationJob = Get-JobBlock "fast-validation"
+$triageStep = Get-StepBlock -Text $fastValidationJob -Name "Test repository triage automation and dashboard"
+Assert-Contains -Text $triageStep `
+    -Expected "run: node --test .github/scripts/repository-triage.test.cjs .github/extensions/openclaw-triage-dashboard/triage-state.test.mjs" `
+    -Message "The exact fast-only tooling suite must run in fast-validation."
+foreach ($token in @("if:", "continue-on-error:")) {
+    Assert-NotContains -Text $triageStep -Unexpected $token `
+        -Message "Fast-only tooling tests must not be conditional or tolerate failures."
+}
 foreach ($token in @(
         "Ensure .squad stays untracked",
         "node --test .github/scripts/repository-triage.test.cjs",
@@ -358,6 +382,12 @@ foreach ($token in @(
 }
 
 $proofJob = Get-JobBlock "proof-pool-contracts"
+foreach ($job in @($fastValidationJob, $proofJob)) {
+    $jobHeader = ($job -split '(?m)^    steps:\s*$', 2)[0]
+    if ($jobHeader -match '(?m)^    (?:if|needs|continue-on-error):') {
+        throw "Fast validation and proof-pool contracts must remain unconditional required jobs."
+    }
+}
 foreach ($token in @(
         "./scripts/Get-CiProofPoolRegressionDecision.ps1",
         "steps.proof_pool_regression.outcome != 'success' || steps.proof_pool_regression.outputs.run != 'false'",
@@ -800,6 +830,14 @@ foreach ($token in @(
         "if: `${{ always() }}",
         "needs: [change-classification, fast-validation, proof-pool-contracts, metadata, core-tests, tray-tests, ui-tests, setup-e2e, revocation-e2e, network-e2e, build-x64, build-arm64, build-msix, build-msix-bundle]",
         "./scripts/Assert-CiGateResults.ps1",
+        "CLASSIFICATION_RESULT: `${{ needs.change-classification.result }}",
+        "CLASSIFICATION: `${{ needs.change-classification.outputs.classification }}",
+        "FAST_VALIDATION_RESULT: `${{ needs.fast-validation.result }}",
+        "PROOF_POOL_CONTRACTS_RESULT: `${{ needs.proof-pool-contracts.result }}",
+        "-ClassificationResult `$env:CLASSIFICATION_RESULT",
+        "-Classification `$env:CLASSIFICATION",
+        "-FastValidationResult `$env:FAST_VALIDATION_RESULT",
+        "-ProofPoolContractsResult `$env:PROOF_POOL_CONTRACTS_RESULT",
         "-FullRequired `$env:FULL_REQUIRED",
         "-CoreRequired `$env:CORE_REQUIRED",
         "-TrayRequired `$env:TRAY_REQUIRED",
@@ -922,11 +960,36 @@ try {
     $unrelatedPath = Join-Path $tempRoot "docs\unrelated.md"
     New-Item -ItemType Directory -Path (Split-Path -Parent $unrelatedPath) -Force | Out-Null
     Set-Content -LiteralPath $unrelatedPath -Value "baseline"
+    $toolingPaths = @(
+        ".github/scripts/repository-triage.cjs",
+        ".github/scripts/repository-triage.test.cjs"
+    )
+    foreach ($toolingPath in $toolingPaths) {
+        $fullPath = Join-Path $tempRoot $toolingPath
+        New-Item -ItemType Directory -Path (Split-Path -Parent $fullPath) -Force | Out-Null
+        Set-Content -LiteralPath $fullPath -Value "tooling baseline"
+    }
 
     & git -C $tempRoot add .
     & git -C $tempRoot commit --quiet -m "baseline"
     if ($LASTEXITCODE -ne 0) {
         throw "Could not commit temporary baseline."
+    }
+
+    foreach ($toolingPath in $toolingPaths) {
+        $baseSha = (& git -C $tempRoot rev-parse HEAD).Trim()
+        Add-Content -LiteralPath (Join-Path $tempRoot $toolingPath) -Value "tooling change"
+        & git -C $tempRoot add .
+        & git -C $tempRoot commit --quiet -m "tooling-only change"
+        if ($LASTEXITCODE -ne 0) { throw "Could not commit tooling-only fixture." }
+        $headSha = (& git -C $tempRoot rev-parse HEAD).Trim()
+        $impact = (& (Join-Path $repoRootPath "scripts\Get-CiChangeClassification.ps1") `
+            -EventName pull_request -BaseSha $baseSha -HeadSha $headSha -RepoRoot $tempRoot) | ConvertFrom-Json
+        $decision = & $selectorPath -EventName pull_request `
+            -BaseSha $baseSha -HeadSha $headSha -RepoRoot $tempRoot
+        if ($impact.classification -ne "fast_only" -or $decision -ne "false") {
+            throw "Tooling-only diff must be fast_only without changing proof-boundary selection."
+        }
     }
 
     foreach ($triggerPath in $triggerPaths) {
@@ -944,6 +1007,21 @@ try {
             -RepoRoot $tempRoot
         if ($decision -ne "true") {
             throw "Proof-pool trigger '$triggerPath' produced decision '$decision'."
+        }
+        # Keep the same base so the next diff includes the boundary and tooling.
+        foreach ($toolingPath in $toolingPaths) {
+            Add-Content -LiteralPath (Join-Path $tempRoot $toolingPath) -Value "mixed tooling change"
+        }
+        & git -C $tempRoot add .
+        & git -C $tempRoot commit --quiet -m "mix tooling with $triggerPath"
+        if ($LASTEXITCODE -ne 0) { throw "Could not commit mixed boundary fixture." }
+        $headSha = (& git -C $tempRoot rev-parse HEAD).Trim()
+        $mixedDecision = & $selectorPath -EventName pull_request `
+            -BaseSha $baseSha -HeadSha $headSha -RepoRoot $tempRoot
+        $mixedImpact = (& (Join-Path $repoRootPath "scripts\Get-CiChangeClassification.ps1") `
+            -EventName pull_request -BaseSha $baseSha -HeadSha $headSha -RepoRoot $tempRoot) | ConvertFrom-Json
+        if ($mixedDecision -ne "true" -or $mixedImpact.classification -ne "full") {
+            throw "Tooling mixed with proof boundary '$triggerPath' must run full validation and proof regressions."
         }
     }
 

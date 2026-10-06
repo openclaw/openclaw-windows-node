@@ -110,8 +110,26 @@ proof must remain reported as blocked.
 The `change-classification` job emits explicit booleans for `core_tests`,
 `tray_tests`, `ui_tests`, `setup_e2e`, `revocation_e2e`, `network_e2e`,
 `x64_release`, `arm64_release`, and `full`. Jobs consume those outputs directly.
-The summary classification is `docs_only`, `targeted`, or `full`; it is not the
+The summary classification is `docs_only`, `fast_only`, `targeted`, or `full`; it is not the
 authority for individual job conditions.
+
+`fast_only` applies only to the exact repository-tooling paths
+`.github/scripts/repository-triage.cjs` and
+`.github/scripts/repository-triage.test.cjs`, optionally mixed with safe
+documentation. These files serve repository reports and ownership-label
+maintenance, not the shipped product, and their Node tests run in the
+always-on `fast-validation` job. All product and release lane outputs remain
+false; tooling code is not classified as documentation. This is not an
+allowlist for other scripts, actions, workflows, extensions, or untested tools.
+
+Mixed tooling and product changes retain the union of product lanes, including
+the WinNode skill's core-test requirement. Unknown paths and build, workflow,
+project, dependency, classifier, or gate infrastructure still select `full`.
+Non-PR events still require full validation including ARM64.
+`fast-validation` and `proof-pool-contracts` must both succeed even for
+`fast_only`. The proof-pool selector is unchanged: any changed proof boundary
+still runs its regression matrix, including when mixed with allowlisted tooling.
+Hosted timing savings are not verified until a tooling-only PR exercises this path.
 
 The classifier uses conservative project boundaries:
 
