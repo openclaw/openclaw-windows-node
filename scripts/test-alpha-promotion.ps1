@@ -376,3 +376,6 @@ try {
 } finally {
     Remove-Item -LiteralPath $temporaryRoot -Recurse -Force
 }
+
+# Expected gh failures must not become the Actions wrapper's exit status.
+$global:LASTEXITCODE = 0
