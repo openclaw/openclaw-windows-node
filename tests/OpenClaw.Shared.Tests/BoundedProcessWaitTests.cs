@@ -131,7 +131,6 @@ public sealed class BoundedProcessWaitTests
         using var observer = ObserveProcess(process);
         using var cancellation = new CancellationTokenSource();
         var scheduler = new HeldTaskScheduler();
-        var stopwatch = Stopwatch.StartNew();
         var wait = BoundedProcessWait.WaitAsync(
             process,
             cancel ? BoundedProcessWait.DefaultTimeout : TimeSpan.FromMilliseconds(200),
@@ -140,6 +139,7 @@ public sealed class BoundedProcessWaitTests
 
         try
         {
+            var stopwatch = Stopwatch.StartNew();
             if (cancel)
                 cancellation.Cancel();
 
