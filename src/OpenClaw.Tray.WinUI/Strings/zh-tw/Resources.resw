@@ -8243,4 +8243,5 @@
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway 語音失敗。請檢查其語音設定和供應商配額。未改用本機或自動重試。</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows 無法播放語音音訊。請檢查輸出裝置。未進行自動重試。</value></data>
   <data name="Onboarding_NativeConnection_Speech" xml:space="preserve"><value>讓我們檢查你的連線。</value></data>
+  <data name="Onboarding_Wizard_CompatibilitySpeech" xml:space="preserve"><value>讓我們完成 AI 連線。</value></data>
 </root>

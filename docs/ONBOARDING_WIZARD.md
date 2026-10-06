@@ -364,6 +364,15 @@ contract and offers classic setup explicitly. That compatibility path retains
 optional-tail handoff and native configured-Gateway summary. It is not entered
 for authentication errors, malformed responses or uncertain provider writes.
 
+The classic compatibility page uses the shared responsive setup shell, not a
+new provider flow. Gateway-returned questions, typed choices, security/provider
+consent, protected inputs, live output and terminal recovery remain dynamic.
+The shell owns vertical scrolling and keeps the existing explicit actions in a
+fixed wrapping footer. The named `MainScroller` remains a non-scrolling content
+host; active-question scrolling targets the shell so long transcripts and logs
+cannot hide the question or move the footer. Resizing preserves the mounted
+prompt, focus, draft answer and route milestones without restarting the wizard.
+
 For the isolated package, `clawctl gateway-service` owns the Gateway process,
 sign-in recovery and isolated session. Companion starts it through the package
 when connecting and stops it only when this Companion runtime started it; an
@@ -465,7 +474,8 @@ capabilities (`CapabilitiesPage`), alternative routes (`AdvancedSetupPage`),
 WSL review (`GatewaySetupPage`)
 and its details (`GatewaySetupDetailPage`), plus installation (`ProgressPage`
 and `NativeGatewaySetupPage`) and the native connection editor
-(`SetupNativeConnectionPage`), use `SetupPageShell`.
+(`SetupNativeConnectionPage`) and classic compatibility wizard (`WizardPage`)
+use `SetupPageShell`.
 Its four presentation slots hold the hero, header, body and fixed footer.
 At an actual shell width of at least 960 DIPs and height of at least 600 DIPs,
 the mascot, speech bubble and milestone rail sit beside the heading and content.

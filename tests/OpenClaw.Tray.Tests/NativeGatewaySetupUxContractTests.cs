@@ -38,7 +38,6 @@ public sealed class NativeGatewaySetupUxContractTests
 
     [Theory]
     [InlineData("NativeGatewaySetupPage.xaml", "ProgressMascot")]
-    [InlineData("WizardPage.xaml", "MascotHero")]
     public void NativePackagePages_UseSharedHeroAndSeparateProgressFromWrappingActions(string file, string hero)
     {
         var pages = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.SetupEngine.UI", "Pages");

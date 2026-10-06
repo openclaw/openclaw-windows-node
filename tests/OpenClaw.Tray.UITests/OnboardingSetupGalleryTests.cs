@@ -151,6 +151,32 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
         }
     }
 
+    [Theory]
+    [InlineData(ElementTheme.Light)]
+    [InlineData(ElementTheme.Dark)]
+    [Trait("Category", "NativeOnboardingProof")]
+    public async Task ConnectionAndCompatibilityProof(ElementTheme theme)
+    {
+        OnboardingNativeProof.AssertIsolatedRoots();
+        _directory = OnboardingNativeProof.RequireProofDirectory();
+        OnboardingNativeProof.AssertSourceUnchanged();
+        string[] ids = ["04-existing-empty", "04-existing-check-failed", "04-existing-next-failed",
+            "04-remote-empty", "04-remote-check-failed", "04-remote-next-failed", "04-remote-ssh-draft",
+            "17-compatibility-wizard", "17-compatibility-wizard-error"];
+        foreach (var id in ids)
+        {
+            var result = new SceneResult(Assert.Single(RequiredScenes, scene => scene.Id == id), theme);
+            _results.Add(result);
+            await CaptureSceneAsync(result, auditOwnedWindow: true);
+            Assert.True(result.AllViewportsCaptured);
+            Assert.NotEmpty(result.Frames);
+        }
+        OnboardingNativeProof.AssertSourceUnchanged();
+        _sourceVerifiedAfterCapture = true;
+        foreach (var result in _results) result.Status = "captured";
+        WriteManifest();
+    }
+
     private const string PreviewVariable = "OPENCLAW_SETUP_PREVIEW_PAGE";
     private readonly string _run = $"setup-gallery-{DateTime.UtcNow:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}";
     private readonly List<SceneResult> _results = [];
@@ -201,9 +227,11 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                     wizard ? OnboardingStage.AiSetup : OnboardingStage.Install);
                 if (wizard)
                 {
-                    var dots = Assert.IsType<SetupProgressIndicator>(progress);
-                    Assert.Equal(5, dots.Children.Count);
-                    Assert.Equal(20, Assert.IsType<Border>(dots.Children[4]).Width);
+                    var milestones = Assert.IsType<SetupStepIndicator>(progress);
+                    Assert.Equal("Step 5 of 5", AutomationProperties.GetName(milestones));
+                    Assert.Equal(3, TestSupport.FindDescendants<TextBlock>(milestones).Count(text => text.Name == "StepTitle"));
+                    var shell = Assert.IsType<SetupPageShell>(page.Content);
+                    Assert.Same(Find<Grid>(page, "NavigationFooter"), shell.Footer);
                 }
                 else
                 {
@@ -570,7 +598,7 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
         }
     }
 
-    private async Task CaptureSceneAsync(SceneResult result)
+    private async Task CaptureSceneAsync(SceneResult result, bool auditOwnedWindow = false)
     {
         foreach (var variable in new[] { PreviewVariable, "OPENCLAW_SETUP_TAILSCALE",
             "OPENCLAW_SETUP_TAILSCALE_TRUST_AUTH", "OPENCLAW_SETUP_TAILSCALE_AUTH_KEY" })
@@ -911,6 +939,20 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                         await CaptureViewportsAsync(window, page, result);
                         await ScanInstallationPageAsync(window, root, scene.Id + "-minimum");
                         result.Facts.Add("Current standard and actual minimum HWND viewports captured; Axe scans passed without additional rule exclusions.");
+                    }
+                    if (auditOwnedWindow)
+                    {
+                        Assert.True(scene.Family == "connection" ||
+                            scene.Family == "preview" && scene.State.StartsWith("wizard", StringComparison.Ordinal));
+                        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
+                        await Task.Run(() =>
+                        {
+                            AxeHelper.Initialize(Environment.ProcessId);
+                            AxeHelper.AssertNoAccessibilityErrors(hwnd,
+                                context: $"Setup {scene.Id} {result.Theme}, final captured viewport");
+                        });
+                        OnboardingNativeProof.AssertProductDpi(window);
+                        result.Facts.Add("Axe scanned only this owned HWND at its final captured viewport.");
                     }
                     if (scene.State == "models" && scene.Family == "local-review")
                         await CaptureModelChoicesAsync(window, page, result);

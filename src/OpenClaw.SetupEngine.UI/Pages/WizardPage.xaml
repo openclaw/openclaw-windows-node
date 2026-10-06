@@ -11,40 +11,62 @@
                        Style="{StaticResource BodyTextBlockStyle}" />
         </DataTemplate>
     </Page.Resources>
-    <Grid RowDefinitions="Auto,*,Auto" Padding="40,4,40,24">
-        <StackPanel Grid.Row="0" Spacing="4" HorizontalAlignment="Stretch">
-            <controls:OnboardingMascot x:Name="MascotHero" Mood="Thinking"
-                                      HorizontalAlignment="Center" />
-            <TextBlock Text="OpenClaw onboard"
-                       Style="{StaticResource TitleTextBlockStyle}" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
-            <TextBlock x:Name="StatusText" Text="Connecting to gateway..."
-                       Style="{StaticResource CaptionTextBlockStyle}"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                       HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
-        </StackPanel>
+    <controls:SetupPageShell x:Name="WizardShell">
+        <controls:SetupPageShell.Hero>
+            <StackPanel Spacing="16">
+                <Grid MaxWidth="280" HorizontalAlignment="Center" RowDefinitions="Auto,10">
+                    <Border Padding="16,12" CornerRadius="12" BorderThickness="1"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+                        <TextBlock x:Name="SpeechText" FontSize="16" TextWrapping="Wrap" TextAlignment="Center" />
+                    </Border>
+                    <Path Grid.Row="1" Data="M0,0 L10,10 L20,0" HorizontalAlignment="Center"
+                          Fill="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                          Stroke="{ThemeResource CardStrokeColorDefaultBrush}"
+                          AutomationProperties.AccessibilityView="Raw" />
+                </Grid>
+                <controls:OnboardingMascot x:Name="MascotHero" Mood="Thinking" HorizontalAlignment="Center" />
+                <controls:SetupStepIndicator x:Name="FlowProgress" Margin="24,8,0,0" />
+            </StackPanel>
+        </controls:SetupPageShell.Hero>
+        <controls:SetupPageShell.Header>
+            <StackPanel Spacing="12">
+                <TextBlock x:Name="HeadingText" Text="OpenClaw onboard"
+                           FontFamily="Segoe UI Variable" FontSize="40" FontWeight="SemiBold"
+                           AutomationProperties.HeadingLevel="Level1" TextWrapping="Wrap" />
+                <TextBlock x:Name="StatusText" Text="Connecting to gateway..."
+                           FontFamily="Segoe UI Variable" FontSize="18"
+                           AutomationProperties.LiveSetting="Polite"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+            </StackPanel>
+        </controls:SetupPageShell.Header>
 
-        <ScrollViewer x:Name="MainScroller" Grid.Row="1" Margin="0,24,0,20" VerticalScrollBarVisibility="Auto">
+        <controls:SetupPageShell.Body>
+        <ScrollViewer x:Name="MainScroller" VerticalScrollMode="Disabled" VerticalScrollBarVisibility="Disabled"
+                      HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled"
+                      HorizontalContentAlignment="Stretch" IsTabStop="False">
             <StackPanel Spacing="12">
             <StackPanel x:Name="TranscriptPanel" Spacing="6" />
             <Border x:Name="StepCard"
-                    CornerRadius="8"
-                    Padding="24"
+                    CornerRadius="0"
+                    Padding="0,16"
                     MinHeight="180"
-                    BorderThickness="1"
+                    BorderThickness="0,1,0,0"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                    Background="Transparent">
                 <StackPanel Spacing="16">
-                    <TextBlock x:Name="TitleText" Style="{StaticResource SubtitleTextBlockStyle}" TextWrapping="Wrap" />
+                    <TextBlock x:Name="TitleText" Style="{StaticResource SubtitleTextBlockStyle}"
+                               AutomationProperties.HeadingLevel="Level2" TextWrapping="Wrap" />
                     <RichTextBlock x:Name="MessageBlock" Visibility="Collapsed"
                                    IsTextSelectionEnabled="True" TextWrapping="Wrap"
                                    FontSize="14" Opacity="0.82" />
                     <StackPanel x:Name="MessageCodeRows" Spacing="8" />
                     <Border x:Name="ConsoleBanner"
                             Visibility="Collapsed"
-                            CornerRadius="6"
-                            Padding="12,10"
-                            Background="{ThemeResource SubtleFillColorSecondaryBrush}"
-                            BorderThickness="1"
+                            CornerRadius="0"
+                            Padding="0,12"
+                            Background="Transparent"
+                            BorderThickness="0,1,0,0"
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
                         <StackPanel Spacing="6">
                             <TextBlock Text="Live gateway output"
@@ -65,41 +87,44 @@
                                 AutomationProperties.AutomationId="WizardConsoleRecoveryTerminal"
                                 Click="OpenGatewayTerminal_Click" />
                     </StackPanel>
-                    <ListView x:Name="SelectOptions" Visibility="Collapsed" SelectionMode="Single" />
+                    <ListView x:Name="SelectOptions" Visibility="Collapsed" SelectionMode="Single"
+                              AutomationProperties.LabeledBy="{Binding ElementName=TitleText}" />
                     <StackPanel x:Name="MultiOptions" Visibility="Collapsed" Spacing="8" />
-                    <TextBox x:Name="TextInput" Visibility="Collapsed" PlaceholderText="Enter value" />
-                    <PasswordBox x:Name="SecretInput" Visibility="Collapsed" PlaceholderText="Enter value" />
+                    <TextBox x:Name="TextInput" Visibility="Collapsed" PlaceholderText="Enter value"
+                             AutomationProperties.LabeledBy="{Binding ElementName=TitleText}" />
+                    <PasswordBox x:Name="SecretInput" Visibility="Collapsed" PlaceholderText="Enter value"
+                                 AutomationProperties.LabeledBy="{Binding ElementName=TitleText}" />
                     <TextBlock x:Name="ErrorText"
                                Visibility="Collapsed"
                                Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                               AutomationProperties.LiveSetting="Assertive"
                                TextWrapping="Wrap"
                                IsTextSelectionEnabled="True" />
-                    <StackPanel x:Name="GatewayRecovery"
-                                Visibility="Collapsed"
-                                Orientation="Horizontal"
-                                Spacing="12">
+                    <Grid x:Name="GatewayRecovery" Visibility="Collapsed" ColumnDefinitions="*,*" ColumnSpacing="12">
                         <Button x:Name="OpenGatewayTerminalButton"
                                 Content="Open terminal"
-                                MinWidth="100"
+                                MinWidth="0" MinHeight="40" HorizontalAlignment="Stretch"
+                                ContentTemplate="{StaticResource WrappedFooterAction}"
                                 Click="OpenGatewayTerminal_Click" />
                         <Button x:Name="RestartGatewayButton"
+                                Grid.Column="1"
                                 Content="Restart gateway"
-                                MinWidth="100"
+                                MinWidth="0" MinHeight="40" HorizontalAlignment="Stretch"
+                                ContentTemplate="{StaticResource WrappedFooterAction}"
                                 Click="RestartGateway_Click" />
-                    </StackPanel>
+                    </Grid>
                     <ProgressRing x:Name="BusyRing" Width="32" Height="32" IsActive="True" HorizontalAlignment="Center" Foreground="{ThemeResource SetupIndicatorAccentBrush}" />
                 </StackPanel>
             </Border>
             </StackPanel>
         </ScrollViewer>
+        </controls:SetupPageShell.Body>
 
-        <Grid x:Name="NavigationFooter" Grid.Row="2" RowDefinitions="Auto,Auto"
-              ColumnDefinitions="*,*,*" ColumnSpacing="8" RowSpacing="12">
-            <controls:SetupProgressIndicator x:Name="FlowProgress" Grid.ColumnSpan="3"
-                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
-            <DropDownButton x:Name="MoreOptionsButton" Grid.Row="1"
+        <controls:SetupPageShell.Footer>
+        <Grid x:Name="NavigationFooter" ColumnDefinitions="*,*,*" ColumnSpacing="8">
+            <DropDownButton x:Name="MoreOptionsButton"
                             Content="More options"
-                            MinWidth="0" HorizontalAlignment="Stretch"
+                            MinWidth="0" MinHeight="40" HorizontalAlignment="Stretch"
                             ContentTemplate="{StaticResource WrappedFooterAction}"
                             Background="Transparent"
                             BorderBrush="Transparent"
@@ -120,15 +145,16 @@
                     </MenuFlyout>
                 </DropDownButton.Flyout>
             </DropDownButton>
-            <Button x:Name="SecondaryButton" Grid.Row="1" Grid.Column="1" Content="Skip"
-                    MinWidth="0" HorizontalAlignment="Stretch"
+            <Button x:Name="SecondaryButton" Grid.Column="1" Content="Skip"
+                    MinWidth="0" MinHeight="40" HorizontalAlignment="Stretch"
                     ContentTemplate="{StaticResource WrappedFooterAction}"
                     Click="Secondary_Click" IsEnabled="False" />
-            <Button x:Name="PrimaryButton" Grid.Row="1" Grid.Column="2" Content="Continue"
-                    MinWidth="0" HorizontalAlignment="Stretch"
+            <Button x:Name="PrimaryButton" Grid.Column="2" Content="Continue"
+                    MinWidth="0" MinHeight="40" HorizontalAlignment="Stretch"
                     ContentTemplate="{StaticResource WrappedFooterAction}"
                     Style="{StaticResource AccentButtonStyle}"
                     Click="Primary_Click" IsEnabled="False" />
         </Grid>
-    </Grid>
+        </controls:SetupPageShell.Footer>
+    </controls:SetupPageShell>
 </Page>
