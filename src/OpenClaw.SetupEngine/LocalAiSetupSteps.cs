@@ -47,9 +47,15 @@ public sealed class PreflightLocalAiHardwareStep : SetupStep
                 ex));
         }
 
-        LocalInferenceEligibilityResult eligibility = LocalInferenceEligibility.Evaluate(
-            hardware,
-            ctx.Config.LocalAi.SelectedModelId);
+        string? selectedModelId = ctx.Config.LocalAi.SelectedModelId;
+        LocalInferenceEligibilityResult eligibility =
+            !string.IsNullOrWhiteSpace(selectedModelId) &&
+            string.Equals(
+                selectedModelId,
+                ctx.Config.LocalAi.InstalledReceiptModelId,
+                StringComparison.OrdinalIgnoreCase)
+                ? LocalInferenceEligibility.EvaluateInstalled(hardware, selectedModelId)
+                : LocalInferenceEligibility.Evaluate(hardware, selectedModelId);
         ctx.LocalAiHardware = hardware;
         ctx.LocalAiEligibility = eligibility;
         ctx.Config.LocalAi.SelectedProfileId = eligibility.Plan?.Profile.Id;

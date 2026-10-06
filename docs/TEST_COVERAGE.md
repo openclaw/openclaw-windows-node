@@ -68,8 +68,32 @@ per-run artifacts. Existing MCP-only integration defaults remain unchanged.
 
 ### Additional projects
 
+The chat composer's real keyboard regression is opt-in because it uses Windows
+`SendInput` on a visible, focused proof window. Run it only on an isolated
+interactive desktop with no concurrent computer-use or human input, Caps Lock
+off, and a Latin keyboard layout:
+
+```powershell
+$env:OPENCLAW_RUN_KEYBOARD_PROOF = '1'
+$env:OPENCLAW_TRAY_DATA_DIR = '<dedicated isolated test data directory>'
+.\scripts\run-proof-tests.ps1 -Project 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' -Filter 'Category=NativeKeyboard' -ResultName 'composer-keyboard' -RuntimeIdentifier win-x64
+```
+
+The tests check foreground ownership before every key sequence and fail rather
+than inject into another window. They exercise Shift+Enter at the beginning,
+middle, and end, selection replacement, typing after the newline, repeated
+newlines, draft synchronization after rendering, zero sends for Shift+Enter,
+and exactly one send with no extra newline for plain Enter. Optional
+`OPENCLAW_VISUAL_TEST=1` and `OPENCLAW_VISUAL_TEST_DIR=<artifact directory>` save
+the active multiline composer through the existing capture harness.
+Ordinary CI skips this lane; a skip is not keyboard proof. On a proof host every
+selected case must pass with zero skips. This lane does not synthesize an IME
+composition: record actual IME commit behavior separately or report it blocked.
+Unset the opt-in after the run.
+
 - **OpenClaw.Connection.Tests** keeps connection architecture tests separate from tray UI concerns.
 - **OpenClaw.Tray.UITests** covers A2UI/native WinUI rendering behavior that is awkward to validate through pure unit tests.
+- Onboarding AI card-action tests wait up to 10 seconds for the target card to be loaded, enabled, click-enabled, and attached to the page's non-null XamlRoot. Readiness timeouts report each condition; regression tests hold each readiness flag false before releasing it and verify that a permanently blocked card never invokes its action. A dispatcher yield alone is not a control-loaded guarantee.
 - **OpenClaw.WinNode.Cli.Tests** covers the standalone Windows node CLI contract.
 - **OpenClaw.SetupEngine.Tests** covers gateway setup and local WSL installation policy.
 - **OpenClawTray.FunctionalUI.Tests** covers newer UI surfaces outside the main tray test project.
@@ -98,6 +122,7 @@ required closeout lane for code changes.
 | Migration preservation source checks | `dotnet test .\tests\OpenClaw.Tray.Tests\OpenClaw.Tray.Tests.csproj --filter FullyQualifiedName~InnoMigrationContractTests` | Protects completion/checker-failure exits and deletion authorization, including unsafe source mutations; not a substitute for real installer proof |
 | Migration record and cleanup scripts | `dotnet test .\tests\OpenClaw.Connection.Tests\OpenClaw.Connection.Tests.csproj --filter FullyQualifiedName~MigrationRecordTests` | Exercises real Windows PowerShell receipt checks and cleanup lock contention. The subprocess deadline defaults to 30 seconds so a genuine regression fails fast; the cleanup lock-contention theory overrides it to 120 seconds because its failure path writes log and result files that a loaded runner can stall on. Timeout handling attempts process-tree termination before fixture teardown and reports output, script logs, the observed process state, and cleanup failures without replacing the original timeout |
 | Migration startup admission | `dotnet test .\tests\OpenClaw.Connection.Tests\OpenClaw.Connection.Tests.csproj --filter "FullyQualifiedName~InnoInstallationDetectorTests\|FullyQualifiedName~StoreMigrationStartupCoordinatorTests\|FullyQualifiedName~MigrationStartupRecordReaderTests\|FullyQualifiedName~MigrationVersionPolicyTests"` | Read-only exact Inno discovery, version/architecture admission, pending-record precedence and preservation; pair with packaged preview guidance proof, not a claim of completed migration |
+| Local AI model fixture | `dotnet test .\tests\OpenClaw.Connection.Tests\OpenClaw.Connection.Tests.csproj --filter "FullyQualifiedName~SparseFixtureFileTests\|FullyQualifiedName~LocalAiPortLifecycleTests"` | Test-only sparse files preserve the catalog-sized logical length and readable zeros without model downloads. Checks cover Windows sparse allocation, independent mutation, overwrite refusal, and cleanup. Windows requires a sparse-capable filesystem and fails explicitly if marking the fixture sparse fails; Unix uses the holes created by `SetLength`. Production receipt, size, and hash checks remain unchanged |
 | Legacy installer runtime ordering | `.\tests\PackagingTests\Test-InnoUninstallOrdering.ps1` | Deprecated. It targets the old `[UninstallRun]` layout, while current cleanup is owned by `[Code]`; do not use it as current installer runtime proof |
 
 Capacity-dependent Windows validation is named in
@@ -110,8 +135,26 @@ proof must remain reported as blocked.
 The `change-classification` job emits explicit booleans for `core_tests`,
 `tray_tests`, `ui_tests`, `setup_e2e`, `revocation_e2e`, `network_e2e`,
 `x64_release`, `arm64_release`, and `full`. Jobs consume those outputs directly.
-The summary classification is `docs_only`, `targeted`, or `full`; it is not the
+The summary classification is `docs_only`, `fast_only`, `targeted`, or `full`; it is not the
 authority for individual job conditions.
+
+`fast_only` applies only to the exact repository-tooling paths
+`.github/scripts/repository-triage.cjs` and
+`.github/scripts/repository-triage.test.cjs`, optionally mixed with safe
+documentation. These files serve repository reports and ownership-label
+maintenance, not the shipped product, and their Node tests run in the
+always-on `fast-validation` job. All product and release lane outputs remain
+false; tooling code is not classified as documentation. This is not an
+allowlist for other scripts, actions, workflows, extensions, or untested tools.
+
+Mixed tooling and product changes retain the union of product lanes, including
+the WinNode skill's core-test requirement. Unknown paths and build, workflow,
+project, dependency, classifier, or gate infrastructure still select `full`.
+Non-PR events still require full validation including ARM64.
+`fast-validation` and `proof-pool-contracts` must both succeed even for
+`fast_only`. The proof-pool selector is unchanged: any changed proof boundary
+still runs its regression matrix, including when mixed with allowlisted tooling.
+Hosted timing savings are not verified until a tooling-only PR exercises this path.
 
 The classifier uses conservative project boundaries:
 

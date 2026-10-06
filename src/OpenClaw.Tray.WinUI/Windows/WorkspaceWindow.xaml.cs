@@ -2,6 +2,8 @@ using System.ComponentModel;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Shapes;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
 using OpenClawTray.Controls;
@@ -22,14 +24,22 @@ public sealed partial class WorkspaceWindow : WindowEx
     private readonly Action _openTimeline;
     private readonly AppNotificationService _notifications;
     private readonly WorkspaceIdentitySource _identity;
+    private readonly WorkspaceSessionMenuController _sessionMenu;
     private readonly WorkspaceNavigationHistory _navigation = new();
+    private readonly WorkspaceSessionOrder _sessionOrder = new();
     private readonly ChatPage _chat = new();
     private readonly GatewayStatusContent _gatewayStatusContent = new();
     private readonly Flyout _gatewayStatusFlyout = new() { Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.TopEdgeAlignedLeft };
     private readonly MenuFlyoutItem _connectionStatusItem = new();
     private readonly FontIcon _connectionStatusIcon = new();
+    // Sidebar rows keyed by session key; SyncSessionItems keeps MenuItems in step with these.
+    private readonly Dictionary<string, NavigationViewItem> _sessionItems = new(StringComparer.Ordinal);
     private bool _updating;
     private bool _creatingSession;
+    // Session switches commit sidebar/navigation state synchronously; the chat surface is
+    // applied on one later low-priority dispatcher turn so the click paints first, and rapid
+    // clicks coalesce onto the latest ChatPage.QueueSession value.
+    private bool _chatApplyQueued;
     private bool _showingAgentCreation;
     private IOperatorGatewayClient? _refreshingClient;
     private string? _agentId;
@@ -57,6 +67,16 @@ public sealed partial class WorkspaceWindow : WindowEx
         _openTimeline = openTimeline;
         _identity = new WorkspaceIdentitySource(UpdateOwnerIdentity,
             category => Logger.Warn($"[Workspace] users.self unavailable ({category}); using owner fallback."));
+        _sessionMenu = new WorkspaceSessionMenuController(
+            () => IsClosed ? null : CurrentApp.GatewayClient,
+            key => _state.Sessions.FirstOrDefault(s => s.Key == key),
+            () => _state.Sessions,
+            () => Root.XamlRoot,
+            () => WinRT.Interop.WindowNative.GetWindowHandle(this),
+            ForkSessionAsync,
+            LeaveSession,
+            ShowInfo,
+            ReportError);
         _gatewayStatusFlyout.Content = _gatewayStatusContent;
         _gatewayStatusFlyout.Opening += (_, _) => _gatewayStatusContent.Initialize(
             () => _gatewayStatusFlyout.Hide(),
@@ -163,17 +183,18 @@ public sealed partial class WorkspaceWindow : WindowEx
             var session = _state.Sessions.FirstOrDefault(session => session.Key == sessionKey)
                 ?? new SessionInfo { Key = sessionKey };
             _agentId = SessionDisplayResolver.Resolve(session).AgentId;
+            if (session.Unread)
+                _ = _sessionMenu.AcknowledgeReadAsync(session);
             RefreshSidebar();
             // Queue before initialization so history restores the existing chat host's session.
             _chat.QueueSession(sessionKey);
         }
         if (Destination.Page == WorkspacePageId.Home && ContentHost.Children.Contains(_chat))
         {
-            _chat.Initialize(this);
+            QueueChatApply();
             UpdateNavigationSelection();
             BackButton.IsEnabled = _navigation.CanGoBack;
             ForwardButton.IsEnabled = _navigation.CanGoForward;
-            SignalContentReady(_chat);
             return;
         }
         ContentHost.Children.Clear();
@@ -194,6 +215,23 @@ public sealed partial class WorkspaceWindow : WindowEx
         ForwardButton.IsEnabled = _navigation.CanGoForward;
         if (ContentHost.Children.FirstOrDefault() is FrameworkElement content)
             SignalContentReady(content);
+    }
+
+    private void QueueChatApply()
+    {
+        if (_chatApplyQueued) return;
+        // TryEnqueue fails only while the dispatcher shuts down; the window is closing then.
+        _chatApplyQueued = DispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, ApplyQueuedChat);
+    }
+
+    private void ApplyQueuedChat()
+    {
+        _chatApplyQueued = false;
+        if (IsClosed || Destination.Page != WorkspacePageId.Home || !ContentHost.Children.Contains(_chat))
+            return;
+        _chat.Initialize(this);
+        SignalContentReady(_chat);
     }
 
     private void UpdateNavigationSelection()
@@ -259,35 +297,14 @@ public sealed partial class WorkspaceWindow : WindowEx
         }
         desiredItems.Add(NewAgentOption);
         // Keep the open popup and selected container alive across independent roster/session responses.
-        for (var index = 0; index < desiredItems.Count; index++)
-        {
-            var item = desiredItems[index];
-            if (index < AssistantSelector.Items.Count && ReferenceEquals(AssistantSelector.Items[index], item))
-                continue;
-            AssistantSelector.Items.Remove(item);
-            AssistantSelector.Items.Insert(index, item);
-        }
+        WorkspaceItemsSync.Arrange(AssistantSelector.Items, 0, desiredItems.Cast<object>().ToList());
         while (AssistantSelector.Items.Count > desiredItems.Count)
             AssistantSelector.Items.RemoveAt(AssistantSelector.Items.Count - 1);
         _agentId = WorkspaceProjection.SelectedAgentId(_state.AgentsList, agents, _agentId);
         RestoreAssistantSelection();
         AssistantSelector.PlaceholderText = Text(agents.Count == 0 ? "NoAgents" : "SelectAssistant");
-        var sessions = WorkspaceProjection.Sessions(_state.Sessions, _agentId);
-        foreach (var item in NavView.MenuItems.OfType<NavigationViewItem>()
-            .Where(item => item.Tag is WorkspaceSession).ToArray())
-            NavView.MenuItems.Remove(item);
-        foreach (var session in sessions)
-        {
-            var item = new NavigationViewItem
-            {
-                Tag = session,
-                Content = new TextBlock { Text = session.Title, MaxLines = 1, TextTrimming = TextTrimming.CharacterEllipsis }
-            };
-            AutomationProperties.SetName(item, session.Title);
-            AutomationProperties.SetAutomationId(item, $"WorkspaceSession:{session.Key}");
-            ToolTipService.SetToolTip(item, session.Title);
-            NavView.MenuItems.Add(item);
-        }
+        var sessions = WorkspaceProjection.Sessions(_state.Sessions, _agentId, _sessionOrder);
+        SyncSessionItems(_sessionItems, sessions, "WorkspaceSession", NavView.MenuItems.IndexOf(SessionsEmpty) + 1);
         SessionsEmpty.Content = Text("NoSessions");
         SessionsEmpty.Visibility = sessions.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         NewAgentOption.IsEnabled = !_showingAgentCreation;
@@ -300,6 +317,118 @@ public sealed partial class WorkspaceWindow : WindowEx
         // Before layout, NavigationView is still minimal and selecting an item closes its pane.
         if (Root.IsLoaded)
             UpdateNavigationSelection();
+    }
+
+    /// <summary>
+    /// Reconciles one sidebar section in place. Rows are cached by session key so a reused
+    /// row keeps its container; destroying the selected row inside SelectionChanged forced
+    /// NavigationView to reselect and re-layout on every session switch.
+    /// </summary>
+    private void SyncSessionItems(
+        Dictionary<string, NavigationViewItem> cache, IReadOnlyList<WorkspaceSession> sessions,
+        string automationPrefix, int start)
+    {
+        var desired = new List<object>(sessions.Count);
+        var keys = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var session in sessions)
+        {
+            keys.Add(session.Key);
+            if (cache.TryGetValue(session.Key, out var item))
+            {
+                if (!Equals(item.Tag, session))
+                    ApplySessionItem(item, session);
+            }
+            else
+            {
+                item = CreateSessionItem(session, automationPrefix);
+                cache[session.Key] = item;
+            }
+            desired.Add(item);
+        }
+        foreach (var (key, item) in cache.Where(entry => !keys.Contains(entry.Key)).ToArray())
+        {
+            NavView.MenuItems.Remove(item);
+            cache.Remove(key);
+        }
+        WorkspaceItemsSync.Arrange(NavView.MenuItems, start, desired);
+    }
+
+    private NavigationViewItem CreateSessionItem(WorkspaceSession session, string automationPrefix)
+    {
+        var item = new NavigationViewItem();
+        AutomationProperties.SetAutomationId(item, $"{automationPrefix}:{session.Key}");
+        ApplySessionItem(item, session);
+        return item;
+    }
+
+    internal static Grid BuildSessionContent(WorkspaceSession session)
+    {
+        var grid = new Grid { ColumnSpacing = 6 };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
+        if (session.IsPinned)
+        {
+            var pin = FluentIconCatalog.Build(FluentIconCatalog.Pin, 12);
+            pin.Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
+            pin.VerticalAlignment = VerticalAlignment.Center;
+            AutomationProperties.SetAccessibilityView(pin, Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
+            Grid.SetColumn(pin, 0);
+            grid.Children.Add(pin);
+        }
+        var title = new TextBlock
+        {
+            Text = session.Title,
+            MaxLines = 1,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        Grid.SetColumn(title, 1);
+        grid.Children.Add(title);
+        if (session.IsWorking)
+        {
+            var busy = new ProgressRing
+            {
+                IsActive = true,
+                Width = 14,
+                Height = 14,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            AutomationProperties.SetAccessibilityView(busy, Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
+            Grid.SetColumn(busy, 2);
+            grid.Children.Add(busy);
+        }
+        else if (session.IsUnread)
+        {
+            var dot = new Ellipse
+            {
+                Width = 8,
+                Height = 8,
+                Fill = (Brush)Application.Current.Resources["AccentFillColorDefaultBrush"],
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            AutomationProperties.SetAccessibilityView(dot, Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
+            Grid.SetColumn(dot, 2);
+            grid.Children.Add(dot);
+        }
+        return grid;
+    }
+
+    private void ApplySessionItem(NavigationViewItem item, WorkspaceSession session)
+    {
+        item.Tag = session;
+        item.Content = BuildSessionContent(session);
+        item.ContextFlyout = _sessionMenu.CreateFlyout(session);
+        AutomationProperties.SetName(item, session.Title);
+        ToolTipService.SetToolTip(item, session.Title);
+        var statusParts = new[]
+        {
+            session.IsPinned ? Text("SessionPinned") : null,
+            session.IsWorking ? Text("SessionWorking") : null,
+            session.IsUnread ? Text("SessionUnread") : null,
+        }.Where(part => part is not null).ToArray();
+        // Always set: a reused row must clear a stale "Unread" or "Working" status.
+        AutomationProperties.SetItemStatus(item, string.Join(", ", statusParts));
     }
 
     internal async Task RefreshAsync()
@@ -346,17 +475,38 @@ public sealed partial class WorkspaceWindow : WindowEx
             return;
         }
 
+        await CreateAndSelectSessionAsync(
+            client, new SessionCreateRequest { AgentId = _agentId },
+            "create-session", "SessionFailed", "SessionUnsupported");
+    }
+
+    private Task ForkSessionAsync(SessionCreateRequest request)
+    {
+        if (_creatingSession)
+            return Task.CompletedTask;
+        if (CurrentApp.GatewayClient is not { IsConnectedToGateway: true } client)
+        {
+            ShowError(Text("ConnectionRequired"));
+            return Task.CompletedTask;
+        }
+        return CreateAndSelectSessionAsync(client, request, "fork-session", "ForkFailed", "ForkUnsupported");
+    }
+
+    private async Task CreateAndSelectSessionAsync(
+        IOperatorGatewayClient client, SessionCreateRequest request,
+        string operation, string failedKey, string unsupportedKey)
+    {
         _chat.InvalidateNativeSetupForNavigation();
         _creatingSession = true;
         RefreshSidebar();
         try
         {
-            var result = await client.CreateSessionAsync(new SessionCreateRequest { AgentId = _agentId });
+            var result = await client.CreateSessionAsync(request);
             if (IsClosed || !ReferenceEquals(client, CurrentApp.GatewayClient) || !client.IsConnectedToGateway)
                 return;
             if (!result.IsSupported || !result.Ok || string.IsNullOrWhiteSpace(result.Key))
             {
-                ShowError(result.Error ?? Text(result.IsSupported ? "SessionFailed" : "SessionUnsupported"));
+                ShowError(result.Error ?? Text(result.IsSupported ? failedKey : unsupportedKey));
                 return;
             }
             SelectSession(result.Key);
@@ -365,7 +515,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         catch (Exception ex)
         {
             if (!IsClosed && ReferenceEquals(client, CurrentApp.GatewayClient))
-                ReportError("create-session", ex);
+                ReportError(operation, ex);
         }
         finally
         {
@@ -374,10 +524,20 @@ public sealed partial class WorkspaceWindow : WindowEx
         }
     }
 
+    internal void ShowInfo(string message, InfoBarSeverity severity)
+    {
+        Logger.Info($"[Workspace] {message}");
+        if (IsClosed) return;
+        OperationInfo.Severity = severity;
+        OperationInfo.Message = message;
+        OperationInfo.IsOpen = true;
+    }
+
     internal void ShowError(string message)
     {
         Logger.Warn($"[Workspace] {message}");
         if (IsClosed) return;
+        OperationInfo.Severity = InfoBarSeverity.Error;
         OperationInfo.Message = message;
         OperationInfo.IsOpen = true;
     }
@@ -386,6 +546,21 @@ public sealed partial class WorkspaceWindow : WindowEx
     {
         Logger.Error($"[Workspace] {operation} failed: {ex}");
         ShowError(ex.Message);
+    }
+
+    private void LeaveSession(string key)
+    {
+        var next = WorkspaceProjection.Sessions(_state.Sessions, _agentId, _sessionOrder)
+            .FirstOrDefault(session => session.Key != key);
+        var wasChatDestination = _navigation.ChatDestination.SessionKey == key;
+        var wasCurrent = _navigation.RemoveSession(key, next?.Key);
+        if (wasChatDestination)
+            _chat.ClearRemovedSession(key);
+        if (wasCurrent)
+            RenderDestination();
+        UpdateNavigationSelection();
+        BackButton.IsEnabled = _navigation.CanGoBack;
+        ForwardButton.IsEnabled = _navigation.CanGoForward;
     }
 
     private void OnStateChanged(object? sender, PropertyChangedEventArgs e)

@@ -1,20 +1,13 @@
-using System.ComponentModel;
-using System.Diagnostics;
 using OpenClaw.Shared.Inference.Catalog;
 using OpenClaw.TestSupport;
-using Xunit.Abstractions;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace OpenClaw.SetupEngine.Tests;
 
 public sealed class WindowsLlamaRuntimeInspectorTests
 {
-    private readonly ITestOutputHelper _output;
-
-    public WindowsLlamaRuntimeInspectorTests(ITestOutputHelper output)
-    {
-        _output = output;
-    }
-
     [Fact]
     public void VcRuntimeStager_PrefersPackagedPayload_AndStagesEveryImportedDll()
     {
@@ -103,62 +96,116 @@ public sealed class WindowsLlamaRuntimeInspectorTests
     }
 
     [Fact]
-    public async Task InspectAsync_Win32StartFailure_ReturnsInvalidInspection()
+    public async Task InspectAsync_MissingImplementationLibrary_ReturnsInvalidWithoutLaunching()
     {
-        if (!OperatingSystem.IsWindows())
-            return;
-
         using var temp = new TempDirectory("openclaw-llama-inspector-");
-        string executable = temp.Combine(LlamaRuntimeCatalog.ServerExecutableName);
-        string[] requiredFiles =
-        [
-            executable,
-            temp.Combine("ggml-cuda.dll"),
-            temp.Combine("cudart64_13.dll"),
-            temp.Combine("cublas64_13.dll"),
-            temp.Combine("cublasLt64_13.dll"),
-        ];
-
-        foreach (string path in requiredFiles)
-            await File.WriteAllTextAsync(path, "not a Windows executable");
-        foreach (string fileName in LocalAiVcRuntimeStager.RequiredFiles)
-            await File.WriteAllTextAsync(temp.Combine(fileName), "not a Windows executable");
-
-        Assert.All(requiredFiles, path =>
-        {
-            Assert.True(File.Exists(path));
-            Assert.False((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0);
-        });
-
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = executable,
-            WorkingDirectory = temp.Path,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
-        startInfo.ArgumentList.Add("--version");
-
-        Win32Exception startException;
-        using (var process = new Process { StartInfo = startInfo })
-            startException = Assert.Throws<Win32Exception>(() => process.Start());
+        LlamaRuntimeVariant runtime = CreateRuntime(
+            Architecture.X64,
+            (LlamaRuntimeCatalog.ServerExecutableName, "launcher"),
+            (LlamaRuntimeCatalog.ServerImplementationLibraryName, "implementation"));
+        await File.WriteAllTextAsync(temp.Combine(LlamaRuntimeCatalog.ServerExecutableName), "launcher");
 
         var inspector = new WindowsLlamaRuntimeInspector();
         LlamaRuntimeInspection inspection = await inspector.InspectAsync(
             temp.Path,
+            runtime,
             CancellationToken.None);
 
         Assert.False(inspection.IsValid);
-        Assert.Null(inspection.VersionOutput);
-        Assert.StartsWith("llama-server --version failed:", inspection.Error, StringComparison.Ordinal);
-        Assert.Contains(startException.Message, inspection.Error, StringComparison.Ordinal);
+        Assert.Contains(LlamaRuntimeCatalog.ServerImplementationLibraryName, inspection.Error);
+    }
 
-        _output.WriteLine($"required_file_preconditions={requiredFiles.Length}");
-        _output.WriteLine($"process_start_exception={startException.GetType().FullName}");
-        _output.WriteLine($"inspection_is_valid={inspection.IsValid}");
-        _output.WriteLine($"inspection_version_output={(inspection.VersionOutput is null ? "<null>" : "<present>")}");
-        _output.WriteLine("inspection_error_prefix=llama-server --version failed:");
+    [Fact]
+    public async Task InspectAsync_CompletePinnedPayload_DoesNotExecuteLauncher()
+    {
+        using var temp = new TempDirectory("openclaw-llama-inspector-");
+        LlamaRuntimeVariant runtime = CreateRuntime(
+            Architecture.X64,
+            (LlamaRuntimeCatalog.ServerExecutableName, "not an executable"),
+            (LlamaRuntimeCatalog.ServerImplementationLibraryName, "not a library"));
+        await WriteRuntimeAsync(temp, runtime);
+
+        LlamaRuntimeInspection inspection = await new WindowsLlamaRuntimeInspector()
+            .InspectAsync(
+                temp.Path,
+                runtime,
+                CancellationToken.None);
+
+        Assert.True(inspection.IsValid, inspection.Error);
+        Assert.Null(inspection.Error);
+    }
+
+    [Theory]
+    [InlineData(Architecture.X64, "ggml-cpu-x64.dll")]
+    [InlineData(Architecture.Arm64, "ggml-cpu.dll")]
+    public async Task InspectAsync_MissingArchitectureBackend_ReturnsInvalid(
+        Architecture architecture,
+        string missingFile)
+    {
+        using var temp = new TempDirectory("openclaw-llama-inspector-");
+        LlamaRuntimeVariant runtime = CreateRuntime(
+            architecture,
+            (LlamaRuntimeCatalog.ServerExecutableName, "launcher"),
+            (missingFile, "backend"));
+        await File.WriteAllTextAsync(temp.Combine(LlamaRuntimeCatalog.ServerExecutableName), "launcher");
+
+        LlamaRuntimeInspection inspection = await new WindowsLlamaRuntimeInspector()
+            .InspectAsync(temp.Path, runtime, CancellationToken.None);
+
+        Assert.False(inspection.IsValid);
+        Assert.Contains(missingFile, inspection.Error);
+    }
+
+    [Fact]
+    public async Task InspectAsync_ReplacedFileWithSameSize_ReturnsInvalid()
+    {
+        using var temp = new TempDirectory("openclaw-llama-inspector-");
+        LlamaRuntimeVariant runtime = CreateRuntime(
+            Architecture.X64,
+            (LlamaRuntimeCatalog.ServerExecutableName, "expected"));
+        await File.WriteAllTextAsync(temp.Combine(LlamaRuntimeCatalog.ServerExecutableName), "replaced");
+
+        LlamaRuntimeInspection inspection = await new WindowsLlamaRuntimeInspector()
+            .InspectAsync(temp.Path, runtime, CancellationToken.None);
+
+        Assert.False(inspection.IsValid);
+        Assert.Contains("SHA-256", inspection.Error);
+    }
+
+    private static async Task WriteRuntimeAsync(TempDirectory temp, LlamaRuntimeVariant runtime)
+    {
+        foreach (LlamaRuntimeFile file in runtime.RequiredFiles)
+        {
+            string content = file.FileName == LlamaRuntimeCatalog.ServerExecutableName
+                ? "not an executable"
+                : "not a library";
+            await File.WriteAllTextAsync(temp.Combine(file.FileName), content);
+        }
+        foreach (string fileName in LocalAiVcRuntimeStager.RequiredFiles)
+            await File.WriteAllTextAsync(temp.Combine(fileName), "runtime");
+    }
+
+    private static LlamaRuntimeVariant CreateRuntime(
+        Architecture architecture,
+        params (string FileName, string Content)[] files)
+    {
+        var source = new GitHubReleaseSource("owner/repo", "v1", new string('b', 40));
+        var artifactHash = new Sha256Digest(new string('a', 64));
+        return new LlamaRuntimeVariant(
+            $"test-{architecture.ToString().ToLowerInvariant()}",
+            architecture,
+            new Version(13, 4),
+            [
+                new PinnedArtifact("runtime", ArtifactRole.RuntimeBinary, source, "runtime.zip", 1, artifactHash),
+                new PinnedArtifact("dependency", ArtifactRole.RuntimeDependency, source, "dependency.zip", 1, artifactHash),
+            ],
+            requiredFiles: files.Select(file =>
+            {
+                byte[] content = Encoding.UTF8.GetBytes(file.Content);
+                return new LlamaRuntimeFile(
+                    file.FileName,
+                    content.Length,
+                    new Sha256Digest(Convert.ToHexStringLower(SHA256.HashData(content))));
+            }).ToArray());
     }
 }

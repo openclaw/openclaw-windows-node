@@ -74,6 +74,7 @@ disconnect, replacement, or close. This cache is not used for authorization.
 | Concern | Canonical owner | Status |
 | --- | --- | --- |
 | Test temp directories | `OpenClaw.TestSupport.TempDirectory` | authoritative |
+| Bounded audio child-process wait and disposal | `BoundedProcessWait` owns the supplied `Process`, including deferred disposal after its kill worker finishes; callers must not dispose it on bounded cancellation return | authoritative |
 | Test env var save/restore | `OpenClaw.TestSupport.EnvironmentScope` | authoritative |
 | CLI stdout/stderr/env capture | `OpenClaw.TestSupport.CliHarness` | authoritative |
 | Loopback MCP server for tests | `OpenClaw.TestSupport.FakeMcpServer` | authoritative |
@@ -157,6 +158,7 @@ disconnect, replacement, or close. This cache is not used for authorization.
 | Settings Chat rail action | `HubWindow` forwards a non-selecting item invocation through `WorkspaceNavigation` to the existing Workspace; Settings never mounts Chat | authoritative |
 | Gateway dashboard management card | `ConnectionPage` owns the visible card and forwards to the existing `GatewayDashboardLauncher` path; `ChatPage` has no management banner | authoritative |
 | In-flight native chat navigation identity | `SetupNativeChatBinding` holds the exact request reference; `WorkspaceWindow` invalidates it at admitted agent/session navigation intent, before asynchronous creation. `ChatPage` checks identity and cancellation on ready and waiting paths; `SetupNativeHandoffLauncher` fences receipt consumption with the linked timeout | authoritative |
+| Setup-bound Chat warning and recovery presentation | `SetupNativeChatPresentation` retains the exact verified target through failed mounts; temporary unavailability and provider-confirmation waits hide but retain the host/draft and cannot satisfy handoff readiness. `SetupNativeChatRefresh` observes the existing manager with activation/request/manager fences and operator-only coalescing. `ChatPage` applies the InfoBar, releases the binding for composer navigation through `ChatComposerHostActions` as well as foreign-session queues, and performs the unchanged authority check before reuse. Hidden hosts cancel capture; pending voice starts only after successful evaluation | authoritative |
 | Native receipt acquisition classification and restart recovery settlement | `SetupDashboardHandoffStore` distinguishes acquired/busy/invalid/unavailable; `SetupNativeHandoffLauncher` retains recovery on busy/unavailable and clears it only after consumption or definitive rejection | authoritative |
 | Native completion startup readiness | `SetupNativeCompletionTiming` defines finite phase budgets; `SetupNativeCompletionVerifier` enforces both borrows, the existing Local AI recovery join and exact-model proof; `SetupDashboardHandoffStore` keeps five-minute unused admission and persists one non-renewable execution start/deadline under its exclusive lease; `SetupNativeHandoffLauncher` enforces navigation and total execution deadlines and does not redisplay settled retry failures on automatic activation | authoritative |
 | Pre-acquisition restart recovery deletion | `App.OpenNativeSetupCompletion`; deletion is delegated to the receipt outcome owner | closed |
@@ -187,6 +189,11 @@ disconnect, replacement, or close. This cache is not used for authorization.
 | Workspace-versus-companion dispatch and rejection of unknown prefixed routes before window side effects | `WorkspaceNavigation.Dispatch`; `WindowManager` and `HubWindow` supply native window actions; `AppCapability` propagates navigation error payloads as tool errors | authoritative |
 | Unvalidated Workspace-prefix forwarding and companion fallback | Closed in `HubWindow.NavigateTo` and `WindowManager.ShowHub`; delegate boundary dispatch to `WorkspaceNavigation` | closed |
 | Workspace agent/session identity, background-session filtering, and explicit assistant-selection readiness for conversation creation | `WorkspaceProjection`; `WorkspaceWindow` applies readiness to Sessions + and guards the mutation | authoritative |
+| Workspace sidebar session context menu: entries, patch payloads, fork request; flyout, dialogs, and gateway dispatch | `WorkspaceSessionMenu` (pure entries/patches/fork request), `WorkspaceSessionMenuController` (flyout, dialogs, gateway dispatch); `WorkspaceWindow` applies active rows and owns session creation/navigation | authoritative |
+| Archived session browsing and restoration | Settings `SessionsPage` owns the Archived section and response-confirmed Unarchive action; `ArchivedSessionsSource` owns the lazy, connection-bound snapshot | authoritative |
+| Archived dropdown, archived row cache, and archive-list fetching in the Workspace sidebar | Removed by design; archived conversations are managed from Settings Sessions, not `WorkspaceWindow` | closed |
+| Workspace response-confirmed patch/delete and dialog ownership | `WorkspaceSessionOperation` binds the original operator client and authenticated transport epoch; `OpenClawGatewayClient` uses `PendingRequestRegistry` for matching replies; the menu controller reports errors and refreshes accepted changes | authoritative |
+| Explicit Workspace conversation removal | `WorkspaceNavigationHistory.RemoveSession` prunes removed destinations; `ChatPage.ClearRemovedSession` disposes the mounted host and invalidates pending surface work; ordinary Home retains its draft-preserving behavior | authoritative |
 | Canonical background-session classification for Workspace sidebar and latest agent session | `SessionDisplayResolver.IsBackground`, consumed by `WorkspaceProjection`; nullable gateway flags must not bypass classification/key fallback | authoritative |
 | Native Workspace pane visibility, non-overlapping reopen row, and toggle focus handoff | `WorkspaceWindow` | authoritative |
 | Speculative Workspace management cards and responsive grids | removed with Home/Sessions-only navigation | closed |
@@ -219,6 +226,8 @@ disconnect, replacement, or close. This cache is not used for authorization.
 | Gateway request tracking | `PendingRequestRegistry` | authoritative |
 | Chat atomic runtime transaction lock and cross-domain commits | `ChatConversationState` | authoritative |
 | Chat queue collections, echo correlation, drain and retry commit mechanics | `ChatQueueState` under the `ChatConversationState` lock | authoritative |
+| Pending chat bubble presentation | `ReactorChatTimeline` projects the selected-thread queue after the current turn, using the normal user bubble and existing controller cancellation | authoritative |
+| Pending chat preview list inside the composer | Closed in `ReactorChatComposer`; the composer contains only the unsubmitted draft and attachments | closed |
 | Chat reset generations, gates, echoes and backfill state | `ChatResetState` under the `ChatConversationState` lock | authoritative |
 | Chat history identity, revisions and connection-generation tokens | `ChatHistoryState` under the `ChatConversationState` lock | authoritative |
 | Chat sessions, models, catalog and snapshot projection inputs | `ChatPresentationState` under the `ChatConversationState` lock | authoritative |
@@ -386,17 +395,20 @@ cannot authorize native onboarding.
 
 A positive result enables and initially selects the first **Install a local native
 gateway** card with the accent highlight and **Recommended** badge. A negative
-capability result offers Windows Update; reopening the page rechecks support. The pinned SDK documents
+capability result leaves that recommended choice visible but disabled after WSL and
+**Connect to an existing gateway**, with Windows Update guidance directly below the
+choice list; reopening the page rechecks support. The pinned SDK documents
 Insider build **26340.9212** as its baseline. This is update guidance, not a
 hardcoded admission floor or a promise that a particular feature is enabled.
 The native boolean cannot distinguish every OS API failure from missing support.
 Missing executables, malformed results and probe errors instead offer retry or
 Companion repair, not an assertion that Windows must be updated.
 
-The Welcome page always presents native Gateway first, WSL second and
-**Connect to an existing gateway** third in one single-selection list. WSL is
-visible and selectable during the native probe and for every probe outcome,
-without an expander. There is no Welcome-page **Check again** button.
+The Welcome page presents WSL, **Connect to an existing gateway**, then disabled native
+Gateway while support is being checked or unavailable. A positive result moves native
+to the first position, followed by WSL and the existing-Gateway choice. WSL is visible
+and selectable during the native probe and for every probe outcome, without an expander.
+There is no Welcome-page **Check again** button.
 WSL/Local AI discovery starts on page load; fresh WSL readiness and
 destructive-replacement confirmation still run before its capabilities page.
 WSL is never selected implicitly after a failed native probe. A late probe
@@ -682,7 +694,7 @@ lives in `NativeGatewayRuntimeTests`, `NativeGatewayWindowsProcessHostTests`,
 | --- | --- |
 | `src/OpenClaw.Tray.WinUI/App.xaml.cs` | use the authoritative `IWindowManager`, `ITrayController`, `ActivationRouter`, `SettingsChangeCoordinator`, and `AppShutdownCoordinator`; the remaining A3 extraction target is startup sequencing into `AppBootstrapper` (planned/deferred) |
 | `src/OpenClaw.Tray.WinUI/Windows/HubWindow.xaml.cs` | navigation/catalog policy → `HubPageRegistry`; notification banner projection → `AppNotificationInfoBarPresenter`; keep Frame, NavigationView, back-stack mutation, control application, and route side effects in the view |
-| `src/OpenClaw.Tray.WinUI/Windows/WorkspaceWindow.xaml.cs` | route/history policy → `WorkspaceNavigation`; agent/session projection → `WorkspaceProjection`; window lifetime → `WindowManager`; keep named-control application and existing page hosting in the view |
+| `src/OpenClaw.Tray.WinUI/Windows/WorkspaceWindow.xaml.cs` | route/history policy → `WorkspaceNavigation`; agent/session projection → `WorkspaceProjection`; window lifetime → `WindowManager`; session context menu → `WorkspaceSessionMenuController`; keep named-control application and existing page hosting in the view |
 | `src/OpenClaw.Tray.WinUI/Services/TrayMenuRenderer.cs` | semantic composition → `TrayMenuPresenter`; connection toggle projection → `ConnectionTogglePresenter`; keep WinUI control construction and callback application in the renderer |
 | `src/OpenClaw.Tray.WinUI/Chat/OpenClawChatDataProvider.cs` | Keep as the `IChatDataProvider` facade; atomic runtime coordination → `ChatConversationState`, lock-internal state mechanics → its queue/reset/history/presentation/lifecycle/approval substates, queue decisions → `ChatSendQueuePolicy`, history IO → `ChatHistoryLoader`, mapping → `ChatEventMapper`, native tool projection → `NativeToolProjector`, snapshots → `ChatSnapshotProjector`, metadata → `ChatMetadataStore`, persistence → `ChatStatePersistence` |
 | `src/OpenClaw.Tray.WinUI/Chat/ReactorChatTimeline.cs` | `ChatBubbleRenderer`, `PermissionRequestCard`, `AttachmentBubbleRenderer`; tool rendering stays in `ToolCallCardRenderer` |
@@ -723,6 +735,7 @@ leading and trailing pipe. Columns, in order:
 <!-- LEDGER:BEGIN -->
 | id | status | old_owner | closed_responsibility | new_owner | allowed_residue | invariant | guard_test | guard_type | retirement_condition |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| setup-chat-warning-recovery | authoritative | src/OpenClaw.Tray.WinUI/Pages/ChatPage.xaml.cs | setup warning lifetime and refresh admission | SetupNativeChatPresentation + SetupNativeChatRefresh | page applies localized InfoBar state, forwards dispatcher/lifecycle/composer navigation events and calls existing authority and renderer owners | clearing a binding clears only presentation; same-client recovery retains draft after full authority checks; composer /new releases the setup target before async creation; node-only events do not remount; visual recheck never retries or settles receipts | SetupNativeChatPresentationTests.SameClientRecoveryRetainsHostAndHealthyRefreshDoesNotReseed | behavioral | - |
 | setup-installation-overview | authoritative | src/OpenClaw.SetupEngine.UI/Pages/ProgressPage.xaml.cs | overview phase inference from visual row order | SetupInstallationProgress | page retains logs, download detail, dispatcher forwarding and pipeline lifetime; SetupPhaseStatus applies localized icon/text state | every real installation step has an explicit phase; failed state outranks running; skipped work is not claimed as installed | SetupInstallationProgressTests.EveryActualStep_HasAnExplicitPhaseInPipelineOrder | behavioral | - |
 | setup-native-window-lifetime | authoritative | src/OpenClaw.SetupEngine.UI/SetupWindow.xaml.cs | implicit classic Settings handoff for native routes | SetupNativeConnectionPage + ISetupNativeConnectionHost | SetupWindow owns typed mounting, same-draft routing, cancellation and drain; AdvancedSetupRequested remains explicit classic fallback only | only committed native results advance to access/privacy then AI; departed native pages drain before the setup lock is released | OnboardingPresentationContractTests.NativeEditor_IsTypedAndDrainedBeforeTheRunLockIsReleased | source-shape | when native setup mounting and close ordering have mounted UI lifecycle tests |
 | setup-access-draft | authoritative | src/OpenClaw.SetupEngine.UI/Pages/CapabilitiesPage.xaml.cs | capability preset detection and per-visit setup defaults | SetupAccessDraft + SetupCapabilityProfiles | page applies typed projections and forwards input; SetupWindow owns the draft lifetime | only bundled all-on placeholder defaults once; explicit profiles, consent and independent transports survive navigation without persistence | SetupAccessDraftTests.BundledPlaceholder_DefaultsOnlyAtDraftCreation | behavioral | - |

@@ -209,3 +209,6 @@ dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
 # Workspace owns native XAML dialogs independently of its embedded Reactor chat.
 [src/OpenClaw.Tray.WinUI/Windows/WorkspaceWindow.xaml.cs]
 dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
+
+[src/OpenClaw.Tray.WinUI/Windows/WorkspaceSessionMenuController.cs]
+dotnet_diagnostic.REACTOR_DIALOG_001.severity = none

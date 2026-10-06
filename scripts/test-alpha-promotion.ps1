@@ -39,6 +39,7 @@ function Reset-Fixture {
     $state.tag = $null
     $state.annotation = $null
     $state.release = $null
+    $state.extraReleases = @()
     $state.writes = 0
     $state.approval = $true
     $state.allowedBranch = 'main'
@@ -114,7 +115,17 @@ function Invoke-PromotionApi {
                 branch_policies = @([pscustomobject]@{ name = $state.allowedBranch; type = 'branch' })
             }
         }
-        '^releases/tags/v2026\.9\.5$' { return $state.release }
+        '^releases/tags/v2026\.9\.5$' {
+            if ($state.release -and -not $state.release.draft) { return $state.release }
+            if ($AllowNotFound) { return $null }
+            throw 'The by-tag endpoint cannot find an unpublished draft.'
+        }
+        '^releases\?per_page=100&page=(\d+)$' {
+            $releases = @($state.release | Where-Object { $null -ne $_ }) + $state.extraReleases
+            # Invoke-RestMethod emits a JSON array as one pipeline object.
+            return ,@($releases | Select-Object -Skip (([int]$Matches[1] - 1) * 100) -First 100)
+        }
+        '^releases/500$' { return $state.release }
         '^git/tags$' {
             Assert-Equal $Method 'POST'
             $state.annotation = $Body.message
@@ -136,7 +147,7 @@ function Invoke-PromotionApi {
             Assert-Equal $Body.draft $true
             Assert-Equal $Body.make_latest 'false'
             $state.release = [pscustomobject]@{
-                tag_name = $Body.tag_name; body = $Body.body; draft = $true; prerelease = $false
+                id = 500; tag_name = $Body.tag_name; body = $Body.body; draft = $true; prerelease = $false
                 published_at = $null; assets = @()
             }
             return $state.release
@@ -244,12 +255,23 @@ try {
         Assert-Equal $state.tag $null
     }
     Test-Case 'an unrelated draft is rejected before reservation' {
-        $state.release = [pscustomobject]@{ draft = $true; published_at = $null; body = 'Unrelated release' }
+        $state.release = [pscustomobject]@{
+            tag_name = 'v2026.9.5'; draft = $true; published_at = $null; body = 'Unrelated release'
+        }
         Assert-Throws { Candidate } 'unrelated draft'
         Assert-Equal $state.writes 0
     }
+    Test-Case 'duplicate target drafts across pages are rejected before reservation' {
+        $state.release = [pscustomobject]@{
+            tag_name = 'v2026.9.5'; draft = $true; published_at = $null; body = 'Unrelated release'
+        }
+        $state.extraReleases = @(1..99 | ForEach-Object { [pscustomobject]@{ tag_name = "v2026.8.$_" } }) +
+            @($state.release)
+        Assert-Throws { Candidate } 'Multiple releases'
+        Assert-Equal $state.writes 0
+    }
     Test-Case 'published release is immutable' {
-        $state.release = [pscustomobject]@{ draft = $false; published_at = '2026-10-06' }
+        $state.release = [pscustomobject]@{ tag_name = 'v2026.9.5'; draft = $false; published_at = '2026-10-06' }
         Assert-Throws { Candidate } 'already published'
     }
     Test-Case 'new pipeline cannot silently reuse the old reservation' {
@@ -276,7 +298,9 @@ try {
         $fixture = New-ArtifactFixture $record
         Publish-AlphaPromotion $record $fixture.directory '200' '1'
         Assert-Equal $state.release.draft $false
-        Assert-Equal $state.release.assets.Count 10
+        Assert-Equal $state.release.assets.Count 7
+        Assert-Equal $state.release.body.Contains('not Microsoft Store-signed') $true
+        Assert-Equal $state.release.body.Contains('actions/runs/200') $true
         Assert-Equal $state.currentTag 'v2026.9.5'
     }
     Test-Case 'partial upload retries the same private draft' {
@@ -328,6 +352,21 @@ try {
         'GitVersion_NoNormalizeEnabled: ${{ inputs.promotion_alpha != '''' && ''true'' || ''false'' }}',
         'GitVersion_NoFetchEnabled: ${{ inputs.promotion_alpha != '''' && ''true'' || ''false'' }}')) {
         if (-not $workflow.Contains($text)) { throw "Missing promotion contract: $text" }
+    }
+    foreach ($name in @('prepare-release-assets', 'release')) {
+        $job = [regex]::Match($workflow, "(?ms)^  ${name}:\r?`n.*?(?=^  [a-z][a-z-]+:|\z)").Value
+        if (-not $job.Contains("(startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '')")) {
+            throw "Release job $name must accept main-based promotions."
+        }
+        if ($name -eq 'release' -and -not $job.Contains('promotion_artifact_id: ${{ steps.promotion_artifact.outputs.artifact-id }}')) {
+            throw 'Promotion publication must consume the artifact ID from the release staging job.'
+        }
+    }
+    $expectedAssets = @('OpenClawCompanion-Setup-x64.exe', 'OpenClawCompanion-Setup-arm64.exe',
+        'OpenClawTray-2026.9.5-win-x64.zip', 'OpenClawTray-2026.9.5-win-arm64.zip',
+        'OpenClaw-Dev-x64.zip', 'OpenClaw-Dev-arm64.zip') | Sort-Object
+    if (@(Compare-Object $expectedAssets @(Get-PromotionAssetNames '2026.9.5' | Sort-Object)).Count -ne 0) {
+        throw 'Promotions must preserve the canonical public asset set. Store packages stay workflow-only.'
     }
     foreach ($text in @('default: false', '$env:GITHUB_REF -cne ''refs/heads/main''', 'uses: ./.github/workflows/ci.yml',
         'GH_TOKEN: ${{ github.token }}', 'if: inputs.prepare', 'persist-credentials: false')) {

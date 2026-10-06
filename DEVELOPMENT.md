@@ -442,12 +442,12 @@ Ordinary local builds that omit these options preserve their previous
 unallocated version calculation. Store distribution remains gated by #1375;
 this allocator does not submit packages to Partner Center.
 
-Canonical `vX.Y.Z-alpha.N` releases also attach the **unsigned Store** MSIX
-files and architecture-specific metadata, for manual upload to Partner Center.
-They do not attach the Dev-signed packages or certificates. These public
-pre-releases are not Latest and are not hidden from GitHub's Releases list.
-Stable releases retain only the existing EXE/ZIP downloads and do not mention
-MSIX submission assets in their generated download notes.
+Every canonical stable, correction, and prerelease tag attaches
+`OpenClaw-Dev-x64.zip` and `OpenClaw-Dev-arm64.zip`. Each archive contains the
+signed Dev MSIX, matching public certificate, provenance metadata, and
+installation instructions. Unsigned Store MSIX packages and the bundle remain
+Actions artifacts only for manual upload to Partner Center. Public
+prereleases are not Latest and are not hidden from GitHub's Releases list.
 
 To request a new alpha from current `main`, manually run **Daily Alpha
 Release**. Its existing checks choose the GitVersion alpha tag, skip a commit
@@ -457,8 +457,8 @@ tag. It does not release the feature branch selected in the UI. Running
 only. See [manual alpha releases](docs/RELEASING.md#manual-alpha-releases).
 
 Store distribution remains paused. This workflow neither submits to Partner
-Center nor retrieves or publishes Store-signed packages. An alpha release
-label does not change the Store package version or make the package installable.
+Center nor retrieves or publishes Store-signed packages. The published Dev
+packages require explicit trust of their included development certificate.
 
 #### The Store package alongside an existing Inno install
 
@@ -521,6 +521,9 @@ The first-run Windows gateway onboarding wizard lives in `OpenClaw.SetupEngine.U
 
 Useful local scripts:
 
+- `.\scripts\clean-uninstall.ps1` is a standalone demo-device cleanup script (Windows PowerShell 5.1, no build or Copilot required). Preview by default; repeat with `-ConfirmDestructive` to apply. `-All` enables shared cached-model, dev-state, and owned WSL cleanup together; add `-ExcludeCachedModels` to preserve external shared cached weights. Additional profile paths remain explicit. See the [standalone usage and safety limits](.agents/skills/uninstall/HARD-CLEAN.md#standalone-script-no-copilot-required).
+  Use `-RemoveIsolatedProfilePath` for explicitly identified leftover Windows isolated-profile registrations, including records whose folders were already deleted. This is not implied by `-All`; confirmed removal requires elevation and rejects loaded, special, and ordinary user profiles.
+- For a native Gateway/MXC and llama.cpp clean retest, use the [uninstall skill](.agents/skills/uninstall/SKILL.md) and its [hard-clean procedure](.agents/skills/uninstall/HARD-CLEAN.md). It includes package teardown, isolated profiles, shared-model consent, and post-clean verification; the WSL helpers below are not substitutes.
 - `.\scripts\dev-reset-rebuild-launch.ps1` resets tray data, rebuilds, and optionally launches the app; add `-WipeWslDistro` for a full local WSL gateway reset.
 - `.\scripts\validate-mxc-e2e.ps1` runs the formal WSL Gateway -> Windows node -> `system.run` MXC proof path for MXC-sensitive changes.
 

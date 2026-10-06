@@ -3051,6 +3051,9 @@ Utilisez l'une de ces options :
   <data name="Chat_Composer_QueuedMessageFailed" xml:space="preserve">
     <value>Échec</value>
   </data>
+  <data name="Chat_Timeline_Pending" xml:space="preserve">
+    <value>En attente</value>
+  </data>
   <data name="Chat_Composer_QueuedMessageCancel" xml:space="preserve">
     <value>Annuler le message en file d’attente</value>
   </data>
@@ -7215,24 +7218,26 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   <data name="Onboarding_AiSetup_InvalidInput" xml:space="preserve"><value>Le fournisseur n'a pas accepté cette réponse. Vérifiez l'étape actuelle et réessayez.</value></data>
   <data name="Onboarding_NativeConnection_Title" xml:space="preserve"><value>Se connecter à un Gateway</value></data>
   <data name="Onboarding_NativeConnection_Description" xml:space="preserve"><value>Vérifiez la connexion sans l'enregistrer. Suivant vérifie à nouveau et enregistre ce Gateway avant de revoir les accès de ce PC.</value></data>
-  <data name="Onboarding_Native_Address" xml:space="preserve"><value>Adresse du Gateway</value></data>
-  <data name="Onboarding_Native_Code" xml:space="preserve"><value>Code de configuration</value></data>
-  <data name="Onboarding_Native_Token" xml:space="preserve"><value>Token partagé (à la place du code)</value></data>
-  <data name="Onboarding_Native_Ssh" xml:space="preserve"><value>Tunnel SSH</value></data>
-  <data name="Onboarding_Native_SshDescription" xml:space="preserve"><value>Facultatif. Utilise vos clés et votre configuration OpenSSH. Conservez l'adresse du Gateway de votre connexion enregistrée ou de votre code de configuration. Le port distant du Gateway est redirigé depuis l'hôte SSH.</value></data>
-  <data name="Onboarding_Native_SshEnabled" xml:space="preserve"><value>Utiliser un tunnel SSH</value></data>
-  <data name="Onboarding_Native_SshHost" xml:space="preserve"><value>Hôte SSH</value></data>
-  <data name="Onboarding_Native_SshUser" xml:space="preserve"><value>Utilisateur SSH</value></data>
-  <data name="Onboarding_Native_SshPort" xml:space="preserve"><value>Port SSH</value></data>
-  <data name="Onboarding_Native_RemotePort" xml:space="preserve"><value>Port distant du Gateway</value></data>
-  <data name="Onboarding_Native_LocalPort" xml:space="preserve"><value>Port local du tunnel</value></data>
+  <data name="Onboarding_NativeConnection_Address" xml:space="preserve"><value>Adresse du Gateway</value></data>
+  <data name="Onboarding_NativeConnection_Code" xml:space="preserve"><value>Code de configuration</value></data>
+  <data name="Onboarding_NativeConnection_Token" xml:space="preserve"><value>Token partagé (à la place du code)</value></data>
+  <data name="Onboarding_NativeConnection_Ssh" xml:space="preserve"><value>Tunnel SSH</value></data>
+  <data name="Onboarding_NativeConnection_SshDescription" xml:space="preserve"><value>Facultatif. Utilise vos clés et votre configuration OpenSSH. Conservez l'adresse du Gateway de votre connexion enregistrée ou de votre code de configuration. Le port distant du Gateway est redirigé depuis l'hôte SSH.</value></data>
+  <data name="Onboarding_NativeConnection_SshEnabled" xml:space="preserve"><value>Utiliser un tunnel SSH</value></data>
+  <data name="Onboarding_NativeConnection_SshHost" xml:space="preserve"><value>Hôte SSH</value></data>
+  <data name="Onboarding_NativeConnection_SshUser" xml:space="preserve"><value>Utilisateur SSH</value></data>
+  <data name="Onboarding_NativeConnection_SshPort" xml:space="preserve"><value>Port SSH</value></data>
+  <data name="Onboarding_NativeConnection_RemotePort" xml:space="preserve"><value>Port distant du Gateway</value></data>
+  <data name="Onboarding_NativeConnection_LocalPort" xml:space="preserve"><value>Port local du tunnel</value></data>
   <data name="Onboarding_NativeConnection_Back" xml:space="preserve"><value>Retour</value></data>
-  <data name="Onboarding_Native_Check" xml:space="preserve"><value>Vérifier la connexion</value></data>
-  <data name="Onboarding_Native_Next" xml:space="preserve"><value>Suivant</value></data>
+  <data name="Onboarding_NativeConnection_Check" xml:space="preserve"><value>Vérifier la connexion</value></data>
+  <data name="Onboarding_NativeConnection_Next" xml:space="preserve"><value>Suivant</value></data>
   <data name="Onboarding_NativeConnection_Cancel" xml:space="preserve"><value>Annuler</value></data>
   <data name="Onboarding_Native_Checking" xml:space="preserve"><value>Vérification du package Gateway installé et de ses alias d'exécution...</value></data>
-  <data name="Onboarding_Native_Checked" xml:space="preserve"><value>Connexion vérifiée. Rien n'a été enregistré. Suivant vérifiera à nouveau et enregistrera ce Gateway.</value></data>
-  <data name="Onboarding_Native_Failed" xml:space="preserve"><value>Le résultat de la connexion n'a pas pu être confirmé. Vérifiez le Gateway actif dans Companion Settings avant de continuer.</value></data>
+  <data name="Onboarding_NativeConnection_Checking" xml:space="preserve"><value>Vérification de la connexion au Gateway...</value></data>
+  <data name="Onboarding_NativeConnection_Cancelled" xml:space="preserve"><value>Tentative de connexion annulée.</value></data>
+  <data name="Onboarding_NativeConnection_Checked" xml:space="preserve"><value>Connexion vérifiée. Rien n'a été enregistré. Suivant vérifiera à nouveau et enregistrera ce Gateway.</value></data>
+  <data name="Onboarding_NativeConnection_Failed" xml:space="preserve"><value>Le résultat de la connexion n'a pas pu être confirmé. Vérifiez le Gateway actif dans Companion Settings avant de continuer.</value></data>
   <data name="Onboarding_V2_AlternativesTitle.Text" xml:space="preserve"><value>Choisir un autre parcours de configuration</value></data>
   <data name="Onboarding_V2_ExistingRoute.Header" xml:space="preserve"><value>Gateway existant</value></data>
   <data name="Onboarding_V2_ExistingRoute.Description" xml:space="preserve"><value>Utilisez une connexion enregistrée ou existante. Aucune installation WSL.</value></data>
@@ -7820,6 +7825,44 @@ Vos paramètres, votre passerelle, vos fichiers et vos modèles restent en place
   <data name="WorkspaceShell_SessionUnsupported" xml:space="preserve"><value>This gateway does not support creating sessions. Update the gateway to use this action.</value></data>
   <data name="WorkspaceShell_TrayUnavailable" xml:space="preserve"><value>The Windows tray menu is not available.</value></data>
   <data name="WorkspaceShell_LinkFailed" xml:space="preserve"><value>Windows could not open the link.</value></data>
+  <data name="WorkspaceShell_SessionMenu_LastActiveFormat" xml:space="preserve"><value>Last active {0}</value></data>
+  <data name="WorkspaceShell_SessionMenu_Pin" xml:space="preserve"><value>Pin session</value></data>
+  <data name="WorkspaceShell_SessionMenu_Unpin" xml:space="preserve"><value>Unpin session</value></data>
+  <data name="WorkspaceShell_SessionMenu_Rename" xml:space="preserve"><value>Rename…</value></data>
+  <data name="WorkspaceShell_SessionMenu_MarkUnread" xml:space="preserve"><value>Mark as unread</value></data>
+  <data name="WorkspaceShell_SessionMenu_MarkRead" xml:space="preserve"><value>Mark as read</value></data>
+  <data name="WorkspaceShell_SessionMenu_Archive" xml:space="preserve"><value>Archive session</value></data>
+  <data name="WorkspaceShell_SessionMenu_Unarchive" xml:space="preserve"><value>Unarchive session</value></data>
+  <data name="WorkspaceShell_SessionMenu_Fork" xml:space="preserve"><value>Fork conversation</value></data>
+  <data name="WorkspaceShell_SessionMenu_Copy" xml:space="preserve"><value>Copy</value></data>
+  <data name="WorkspaceShell_SessionMenu_CopyKey" xml:space="preserve"><value>Copy session key</value></data>
+  <data name="WorkspaceShell_SessionMenu_CopyId" xml:space="preserve"><value>Copy session ID</value></data>
+  <data name="WorkspaceShell_SessionMenu_CopyMarkdown" xml:space="preserve"><value>Copy as Markdown</value></data>
+  <data name="WorkspaceShell_SessionMenu_Reset" xml:space="preserve"><value>Reset session…</value></data>
+  <data name="WorkspaceShell_SessionMenu_Compact" xml:space="preserve"><value>Compact session…</value></data>
+  <data name="WorkspaceShell_SessionMenu_Export" xml:space="preserve"><value>Export transcript…</value></data>
+  <data name="WorkspaceShell_SessionMenu_Delete" xml:space="preserve"><value>Delete…</value></data>
+  <data name="WorkspaceShell_SessionRename_Title" xml:space="preserve"><value>Rename session</value></data>
+  <data name="WorkspaceShell_SessionRename_Body" xml:space="preserve"><value>Leave blank to use the default title.</value></data>
+  <data name="WorkspaceShell_SessionRename_Save" xml:space="preserve"><value>Save</value></data>
+  <data name="WorkspaceShell_SessionPinned" xml:space="preserve"><value>Pinned</value></data>
+  <data name="WorkspaceShell_SessionUnread" xml:space="preserve"><value>Unread</value></data>
+  <data name="WorkspaceShell_SessionWorking" xml:space="preserve"><value>Working</value></data>
+  <data name="SessionsPage_Archived" xml:space="preserve"><value>Archivées</value></data>
+  <data name="SessionsPage_ArchivedEmpty" xml:space="preserve"><value>Aucune session archivée.</value></data>
+  <data name="SessionsPage_ArchivedUnavailable" xml:space="preserve"><value>Les sessions archivées ne sont pas disponibles sur cette passerelle.</value></data>
+  <data name="SessionsPage_Unarchive" xml:space="preserve"><value>Désarchiver la session</value></data>
+  <data name="WorkspaceShell_SessionActionFailed" xml:space="preserve"><value>The gateway didn't accept the request. Try again.</value></data>
+  <data name="WorkspaceShell_SessionConnectionChanged" xml:space="preserve"><value>The Gateway connection changed. Refresh sessions to check the outcome before trying again.</value></data>
+  <data name="WorkspaceShell_SessionActionTimedOut" xml:space="preserve"><value>The Gateway did not respond in time. The outcome is unknown. Refresh the session before trying again.</value></data>
+  <data name="WorkspaceShell_SelectConversation.Text" xml:space="preserve"><value>Select a conversation or create a new one to start chatting.</value></data>
+  <data name="WorkspaceShell_ForkFailed" xml:space="preserve"><value>The gateway could not fork this conversation.</value></data>
+  <data name="WorkspaceShell_ForkUnsupported" xml:space="preserve"><value>This gateway does not support forking conversations. Update the gateway to use this action.</value></data>
+  <data name="WorkspaceShell_CopyFailed" xml:space="preserve"><value>Windows could not copy to the clipboard.</value></data>
+  <data name="WorkspaceShell_CopyEmpty" xml:space="preserve"><value>This session has no messages to copy.</value></data>
+  <data name="WorkspaceShell_HistoryUnsupported" xml:space="preserve"><value>This gateway does not support reading transcripts. Update the gateway to use this action.</value></data>
+  <data name="WorkspaceShell_ExportEmpty" xml:space="preserve"><value>This session has no transcript yet.</value></data>
+  <data name="WorkspaceShell_ExportDone" xml:space="preserve"><value>Saved {0} messages to {1}.</value></data>
   <data name="WorkspaceShell_AgentsEmpty" xml:space="preserve"><value>Connect and refresh to load agents. Manage agent configuration in the companion.</value></data>
   <data name="WorkspaceShell_SelectAgentFirst" xml:space="preserve"><value>Select an agent from the Agents page to view its details.</value></data>
   <data name="WorkspaceShell_AgentSummary" xml:space="preserve"><value>{0} · {1} conversations</value></data>
@@ -7896,4 +7939,16 @@ Vos paramètres, votre passerelle, vos fichiers et vos modèles restent en place
   <data name="Onboarding_AiSetup_LocalOwnershipInvalid" xml:space="preserve"><value>La propriété enregistrée de l’IA locale, le modèle ou la configuration de la passerelle ne correspond plus. Dans le profil Companion d’origine, vérifiez la passerelle d’origine et ses paramètres de modèle, y compris les entrées modifiées de la liste des modèles autorisés. Conservez la preuve de propriété ; ne copiez pas les identifiants et ne remplacez pas le fournisseur.</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipUnavailable" xml:space="preserve"><value>La propriété ou la configuration de la passerelle d’origine n’a pas pu être vérifiée. Reconnectez cette passerelle et réessayez. Rien n’a été modifié.</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipFiles" xml:space="preserve"><value>Les fichiers de l’installation d’IA locale doivent être réparés. Dans les paramètres d’IA locale, arrêtez le moteur et résolvez son routage vers la passerelle d’origine avant de réparer les fichiers. Conservez la preuve de propriété.</value></data>
+  <data name="ChatPage_SetupUnavailable" xml:space="preserve">
+    <value>Le Gateway vérifié pendant la configuration n’est pas connecté. Consultez Connexion ou vérifiez à nouveau lorsqu’il est disponible.</value>
+  </data>
+  <data name="ChatPage_SetupAuthorityUnconfirmed" xml:space="preserve">
+    <value>Le Gateway et l’agent vérifiés pendant la configuration n’ont pas pu être confirmés. Ouvrez Connexion pour les vérifier.</value>
+  </data>
+  <data name="ChatPage_SetupRenderingFailed" xml:space="preserve">
+    <value>Chat n’a pas pu être affiché. Vérifiez à nouveau. Si le problème persiste, ouvrez Diagnostics.</value>
+  </data>
+  <data name="ChatPage_SetupCheckAgain.Content" xml:space="preserve">
+    <value>Vérifier à nouveau</value>
+  </data>
 </root>

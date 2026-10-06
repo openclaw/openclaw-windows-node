@@ -920,6 +920,67 @@ public class LocalizationValidationTests
     }
 
     [Fact]
+    public void NativeConnectionEditor_AllRuntimeReferencesResolveInEveryLocale()
+    {
+        var (prefix, suffixes) = ReadNativeConnectionReferences();
+        var failures = new List<string>();
+        foreach (var localeDir in Directory.GetDirectories(GetStringsDirectory()))
+        {
+            var locale = Path.GetFileName(localeDir);
+            var resources = LoadResw(Path.Combine(localeDir, "Resources.resw"));
+            foreach (var suffix in suffixes)
+            {
+                var key = prefix + suffix;
+                if (!resources.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value))
+                {
+                    failures.Add($"{locale}: missing {key}");
+                    continue;
+                }
+                Assert.DoesNotContain("Onboarding_", value);
+                Assert.DoesNotContain("\u2014", value);
+            }
+        }
+        Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
+        Assert.Equal("Onboarding_NativeConnection_", prefix);
+    }
+
+    [Theory]
+    [InlineData("en-us", "Checking the gateway connection...", "Connection attempt cancelled.")]
+    [InlineData("fr-fr", "Vérification de la connexion au Gateway...", "Tentative de connexion annulée.")]
+    [InlineData("nl-nl", "De verbinding met de Gateway controleren...", "Verbindingspoging geannuleerd.")]
+    [InlineData("pt-br", "Verificando a conexão com o Gateway...", "Tentativa de conexão cancelada.")]
+    [InlineData("zh-cn", "正在检查 Gateway 连接...", "连接尝试已取消。")]
+    [InlineData("zh-tw", "正在檢查 Gateway 連線...", "連線嘗試已取消。")]
+    public void NativeConnectionEditor_StatusCopyDoesNotDescribePackageInstallation(
+        string locale, string checking, string cancelled)
+    {
+        var (prefix, suffixes) = ReadNativeConnectionReferences();
+        Assert.Contains("Checking", suffixes);
+        Assert.Contains("Cancelled", suffixes);
+        var resources = LoadResw(Path.Combine(GetStringsDirectory(), locale, "Resources.resw"));
+        Assert.Equal(checking, resources[prefix + "Checking"]);
+        Assert.Equal(cancelled, resources[prefix + "Cancelled"]);
+        Assert.NotEqual(checking, resources["Onboarding_Native_Checking"]);
+        Assert.Contains("WinGet", resources["Onboarding_Native_Cancelled"]);
+    }
+
+    private static (string Prefix, string[] Suffixes) ReadNativeConnectionReferences()
+    {
+        var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.SetupEngine.UI", "Pages", "SetupNativeConnectionPage.xaml.cs"));
+        // Follow the page's actual helper and call sites so a renamed prefix or new label
+        // cannot escape validation through a separate list of expected resource keys.
+        var helper = Regex.Match(source,
+            """private static string S\(string key\) => SetupLocalization.GetString\("(?<prefix>[^"]+)" \+ key\);""");
+        Assert.True(helper.Success, "Update this source contract if the page's localization helper changes.");
+        var calls = Regex.Matches(source, """\bS\("(?<suffix>[^"]+)"\)""");
+        Assert.NotEmpty(calls);
+        Assert.Equal(Regex.Matches(source, @"\bS\(").Count - 1, calls.Count);
+        return (helper.Groups["prefix"].Value,
+            calls.Select(match => match.Groups["suffix"].Value).Distinct(StringComparer.Ordinal).ToArray());
+    }
+
+    [Fact]
     public void NoLocale_HasDuplicateKeys()
     {
         var stringsDir = GetStringsDirectory();

@@ -61,6 +61,220 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         });
     }
 
+    [Theory]
+    [InlineData("Waiting without history", "Waiting without history")]
+    [InlineData("\u200B📎 notes.txt", "notes.txt")]
+    public async Task QueuedMessages_WithoutHistoryStillRenderAndFollowSelectedThread(string message, string visibleText)
+    {
+        await WithChatAsync(800, async (surface, host, session, provider) =>
+        {
+            var snapshot = await provider.LoadAsync();
+            await ui.RunOnUIAsync(() => provider.Publish(snapshot with
+            {
+                Timelines = new Dictionary<string, ChatTimelineState>(),
+                QueuedMessagesByThread = new Dictionary<string, IReadOnlyList<ChatQueuedMessage>>
+                {
+                    ["proof"] = [new("empty-queue", message, DateTimeOffset.UnixEpoch, "empty-nonce")],
+                    ["other"] = [new("other-queue", "Another session's message", DateTimeOffset.UnixEpoch, "other-nonce")],
+                },
+            }));
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.NotNull(FindControl<StackPanel>(host, "ChatQueuedMessage_empty-queue"));
+                Assert.Contains(FindDescendants<TextBlock>(host), text => text.Text == visibleText);
+                Assert.DoesNotContain(RealizedTimelineText(host), text => text.Text == "Another session's message");
+                session.Controller.SelectChannel("other");
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.NotNull(FindControl<StackPanel>(host, "ChatQueuedMessage_other-queue"));
+                Assert.DoesNotContain(RealizedTimelineText(host), text => text.Text == visibleText);
+                Invoke(FindControl<Button>(host, "ChatQueuedMessageCancel_other-queue"));
+                Assert.Equal(("other", "other-queue"), provider.LastCanceledMessage);
+                Assert.Equal(Draft, FindControl<TextBox>(surface, "ChatComposerInput").Text);
+            });
+        });
+    }
+
+    [Theory]
+    [InlineData(320)]
+    [InlineData(800)]
+    public async Task QueuedMessages_RenderPendingBubblesAndPreserveSendLifecycle(int width)
+    {
+        const string first = "Please add a lunch break.\nKeep the afternoon flexible.";
+        const string second = "Then summarize the plan.";
+        string? copied = null;
+        await WithChatAsync(width, async (surface, host, session, provider) =>
+        {
+            Rect pendingBounds = default;
+            await ui.RunOnUIAsync(async () =>
+            {
+                var scale = surface.XamlRoot.RasterizationScale;
+                _captureWindow!.AppWindow.Resize(new Windows.Graphics.SizeInt32(
+                    (int)Math.Ceiling(surface.Width * scale) + 32,
+                    (int)Math.Ceiling(surface.Height * scale) + 80));
+                session.ViewModel.SetDraft(first);
+                Assert.True(await session.Controller.SendAsync());
+                Assert.Empty(session.ViewModel.Draft);
+                session.ViewModel.SetDraft(second);
+                Assert.True(await session.Controller.SendAsync());
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Collection(provider.SentMessages,
+                    sent => Assert.Equal(("proof", first), sent),
+                    sent => Assert.Equal(("proof", second), sent));
+                Assert.Empty(FindControl<TextBox>(surface, "ChatComposerInput").Text);
+                var transcript = Assert.Single(FindDescendants<ItemsView>(host));
+                var firstRow = FindControl<StackPanel>(transcript, "ChatQueuedMessage_pending-1");
+                var secondRow = FindControl<StackPanel>(transcript, "ChatQueuedMessage_pending-2");
+                Assert.Equal("Pending", AutomationProperties.GetItemStatus(firstRow));
+                Assert.Equal(AutomationLiveSetting.Polite, AutomationProperties.GetLiveSetting(firstRow));
+                Assert.Equal("Pending", FindControl<TextBlock>(firstRow, "ChatQueuedMessageStatus_pending-1").Text);
+                Assert.Equal(0, FindControl<StackPanel>(firstRow, "ChatQueuedMessageFooter_pending-1").Opacity);
+                Assert.Equal(0, FindControl<StackPanel>(secondRow, "ChatQueuedMessageFooter_pending-2").Opacity);
+                Assert.Equal(3, FindControl<StackPanel>(firstRow, "ChatQueuedMessageFooter_pending-1").Children.Count);
+                Assert.False(FindControl<StackPanel>(firstRow, "ChatQueuedMessageFooter_pending-1").IsHitTestVisible);
+                Assert.True(Bounds(firstRow, surface).Top < Bounds(secondRow, surface).Top);
+                Assert.True(Bounds(firstRow, surface).Top >= Bounds(transcript, surface).Top);
+                Assert.True(Bounds(secondRow, surface).Bottom <= Bounds(transcript, surface).Bottom + 1);
+                var text = Assert.Single(FindDescendants<TextBlock>(firstRow), text => text.Text == first);
+                Assert.True(text.IsTextSelectionEnabled);
+                var bubble = Ancestors(text).OfType<Border>().First();
+                pendingBounds = Bounds(bubble, surface);
+                Assert.Equal(ChatVisuals.SurfaceRadius, bubble.CornerRadius.TopLeft);
+                Assert.Equal(1, bubble.Opacity);
+                Assert.Equal(0, Assert.IsType<SolidColorBrush>(bubble.Background).Color.A);
+                Assert.Equal(new Thickness(1), bubble.BorderThickness);
+                var reference = (Border)Microsoft.UI.Xaml.Markup.XamlReader.Load(
+                    """<Border xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" Background="{ThemeResource ChatPendingUserBrush}" Width="0" Height="0"><TextBlock Foreground="{ThemeResource ChatSecondaryTextBrush}" /></Border>""");
+                var layout = Assert.IsType<Grid>(Assert.IsType<Border>(host.Content).Child);
+                layout.Children.Add(reference);
+                try
+                {
+                    Assert.Equal(Assert.IsType<SolidColorBrush>(reference.Background).Color,
+                        Assert.IsType<SolidColorBrush>(bubble.Background).Color);
+                    Assert.Equal(reference.Background.Opacity, bubble.Background.Opacity);
+                    Assert.Equal(Assert.IsType<SolidColorBrush>(Assert.IsType<TextBlock>(reference.Child).Foreground).Color,
+                        Assert.IsType<SolidColorBrush>(text.Foreground).Color);
+                }
+                finally
+                {
+                    layout.Children.Remove(reference);
+                }
+                AssertComposerBounds(surface);
+            });
+            await CaptureAsync(surface, $"PendingChat-Idle-{width}");
+            await ui.RunOnUIAsync(() =>
+            {
+                var firstRow = FindControl<StackPanel>(host, "ChatQueuedMessage_pending-1");
+                var copy = Assert.Single(FindDescendants<Button>(firstRow), button =>
+                    AutomationProperties.GetAutomationId(button).StartsWith("ChatCopy_", StringComparison.Ordinal));
+                Assert.True(copy.Focus(FocusState.Keyboard));
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                var firstRow = FindControl<StackPanel>(host, "ChatQueuedMessage_pending-1");
+                Assert.Equal(1, FindControl<StackPanel>(firstRow, "ChatQueuedMessageFooter_pending-1").Opacity);
+                Assert.True(FindControl<StackPanel>(firstRow, "ChatQueuedMessageFooter_pending-1").IsHitTestVisible);
+                Assert.Equal(0, FindControl<StackPanel>(host, "ChatQueuedMessageFooter_pending-2").Opacity);
+                var text = Assert.Single(FindDescendants<TextBlock>(firstRow), text => text.Text == first);
+                Assert.Equal(pendingBounds, Bounds(Ancestors(text).OfType<Border>().First(), surface));
+            });
+            await CaptureAsync(surface, $"PendingChat-Revealed-{width}");
+            await ui.RunOnUIAsync(() =>
+            {
+                var firstRow = FindControl<StackPanel>(host, "ChatQueuedMessage_pending-1");
+                Invoke(Assert.Single(FindDescendants<Button>(firstRow), button =>
+                    AutomationProperties.GetAutomationId(button).StartsWith("ChatCopy_", StringComparison.Ordinal)));
+                Assert.Equal(first, copied);
+                Assert.True(FindControl<Button>(firstRow, "ChatQueuedMessageCancel_pending-1").Focus(FocusState.Keyboard));
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Equal(1, FindControl<StackPanel>(host, "ChatQueuedMessageFooter_pending-1").Opacity);
+                Assert.True(FindControl<TextBox>(surface, "ChatComposerInput").Focus(FocusState.Keyboard));
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Equal(0, FindControl<StackPanel>(host, "ChatQueuedMessageFooter_pending-1").Opacity);
+                Assert.Equal("Pending", AutomationProperties.GetItemStatus(
+                    FindControl<StackPanel>(host, "ChatQueuedMessage_pending-1")));
+            });
+
+            var snapshot = await provider.LoadAsync();
+            var queue = snapshot.QueuedMessagesByThread!["proof"];
+            await ui.RunOnUIAsync(() =>
+            {
+                session.ViewModel.SetDraft("An unsubmitted draft");
+                provider.Publish(snapshot with
+                {
+                    QueuedMessagesByThread = new Dictionary<string, IReadOnlyList<ChatQueuedMessage>>
+                    {
+                        ["proof"] = [queue[0] with { SendState = ChatQueuedMessageSendState.Sending }, queue[1]],
+                    },
+                });
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Equal("Pending", FindControl<TextBlock>(host, "ChatQueuedMessageStatus_pending-1").Text);
+                Assert.Equal(2, FindControl<StackPanel>(host, "ChatQueuedMessageFooter_pending-1").Children.Count);
+                Assert.DoesNotContain(FindDescendants<Button>(host), button =>
+                    AutomationProperties.GetAutomationId(button) == "ChatQueuedMessageCancel_pending-1");
+                provider.Publish(snapshot with
+                {
+                    QueuedMessagesByThread = new Dictionary<string, IReadOnlyList<ChatQueuedMessage>>
+                    {
+                        ["proof"] = [queue[0] with { SendState = ChatQueuedMessageSendState.Failed, ErrorText = "Could not send." }, queue[1]],
+                    },
+                });
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Equal("Failed", FindControl<TextBlock>(host, "ChatQueuedMessageStatus_pending-1").Text);
+                Assert.Equal(1, FindControl<StackPanel>(host, "ChatQueuedMessageFooter_pending-1").Opacity);
+                Assert.Contains(FindDescendants<TextBlock>(host), text => text.Text == "Could not send.");
+                Invoke(FindControl<Button>(host, "ChatQueuedMessageRemoveFailed_pending-1"));
+                Assert.Equal(("proof", "pending-1"), provider.LastCanceledMessage);
+            });
+            await SettleAsync();
+            snapshot = await provider.LoadAsync();
+            await ui.RunOnUIAsync(() => provider.Publish(snapshot with
+            {
+                Timelines = new Dictionary<string, ChatTimelineState>
+                {
+                    ["proof"] = snapshot.Timelines["proof"] with
+                    {
+                        Entries = snapshot.Timelines["proof"].Entries.Add(new("accepted", ChatTimelineItemKind.User, second)),
+                    },
+                },
+                QueuedMessagesByThread = new Dictionary<string, IReadOnlyList<ChatQueuedMessage>>(),
+            }));
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Single(RealizedTimelineText(host), text => text.Text == second);
+                Assert.DoesNotContain(RealizedTimelineText(host), text => text.Text == first || text.Text == "Pending");
+                Assert.Equal("An unsubmitted draft", FindControl<TextBox>(surface, "ChatComposerInput").Text);
+            });
+            await CaptureAsync(surface, $"SentChat-{width}");
+        }, scenario: "pending", tryCopy: text => { copied = text; return true; });
+    }
+
+    private static IEnumerable<TextBlock> RealizedTimelineText(DependencyObject root) =>
+        FindDescendants<TextBlock>(Assert.Single(FindDescendants<ItemsView>(root)))
+            .Where(text => Ancestors(text).OfType<ItemContainer>().FirstOrDefault() is { } container
+                && VisualTreeHelper.GetParent(container) is ItemsRepeater repeater
+                && repeater.GetElementIndex(container) >= 0);
+
     [Fact]
     public async Task ProductionRoot_RevealsHostLayerAndUsesCardComposerFill()
     {
@@ -110,6 +324,10 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
             await ui.RunOnUIAsync(() =>
             {
                 AssertComposerBounds(surface);
+                var attachGlyph = Assert.Single(FindDescendants<TextBlock>(FindControl<Button>(surface, "ChatComposerAttach"))).Text;
+                Assert.True(FluentIconCatalog.IsPuaGlyph(attachGlyph));
+                // The "+" glyph means "new" (sessions, /new); attach must stay visually distinct.
+                Assert.NotEqual(FluentIconCatalog.Add, attachGlyph);
                 var input = FindControl<TextBox>(surface, "ChatComposerInput");
                 Assert.Equal(Draft, input.Text);
                 Assert.Equal(TextWrapping.Wrap, input.TextWrapping);
@@ -188,6 +406,107 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Assert.Contains("A second line.", originalInput.Text, StringComparison.Ordinal);
             });
         });
+    }
+
+    [Fact]
+    public async Task ComposerInput_ProgrammaticEditPreservesNativeSelectionAfterRender()
+    {
+        await WithChatAsync(480, async (surface, _, session, _) =>
+        {
+            var input = await ui.RunOnUIAsync(() => Task.FromResult(FindControl<TextBox>(surface, "ChatComposerInput")));
+            var selection = await ui.RunOnUIAsync(() =>
+            {
+                Assert.True(input.AcceptsReturn);
+                input.Text = "hello world";
+                input.Select(5, 0);
+                input.SelectedText = "\r";
+                return Task.FromResult((input.SelectionStart, input.SelectionLength));
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Same(input, FindControl<TextBox>(surface, "ChatComposerInput"));
+                Assert.Equal("hello\n world", NormalizeNewlines(input.Text));
+                Assert.Equal(input.Text, session.ViewModel.Draft);
+                Assert.True(selection.SelectionStart > 0);
+                Assert.Equal(selection, (input.SelectionStart, input.SelectionLength));
+            });
+        });
+    }
+
+    [NativeKeyboardTheory]
+    [Trait("Category", "NativeKeyboard")]
+    [InlineData(0, 0)]
+    [InlineData(5, 0)]
+    [InlineData(11, 0)]
+    [InlineData(5, 6)]
+    [InlineData(0, 11)]
+    public async Task ComposerInput_NativeKeyboardPreservesCaretAndEnterSends(int start, int length)
+    {
+        await WithChatAsync(480, async (surface, _, session, provider) =>
+        {
+            const string initial = "hello world";
+            var prefix = initial[..start] + "\n";
+            var suffix = initial[(start + length)..];
+            var input = await ui.RunOnUIAsync(() => Task.FromResult(FindControl<TextBox>(surface, "ChatComposerInput")));
+            await ui.RunOnUIAsync(() => input.Text = initial);
+            await SettleAsync();
+            nint window = 0;
+            await ui.RunOnUIAsync(() =>
+            {
+                window = WinRT.Interop.WindowNative.GetWindowHandle(_captureWindow!);
+            });
+            await NativeKeyboardProof.ActivateAsync(window);
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.True(input.Focus(FocusState.Keyboard));
+                input.Select(start, length);
+            });
+
+            async Task PressAsync(global::Windows.System.VirtualKey key, bool shift = false)
+            {
+                await ui.RunOnUIAsync(() =>
+                {
+                    Assert.Same(input, FocusManager.GetFocusedElement(input.XamlRoot));
+                    NativeKeyboardProof.Press(window, key, shift);
+                });
+                await SettleAsync();
+            }
+
+            async Task AssertDraftAsync(string expectedPrefix)
+            {
+                await ui.RunOnUIAsync(() =>
+                {
+                    Assert.Same(input, FindControl<TextBox>(surface, "ChatComposerInput"));
+                    Assert.Equal(expectedPrefix + suffix, NormalizeNewlines(input.Text));
+                    Assert.Equal(expectedPrefix + suffix, NormalizeNewlines(session.ViewModel.Draft));
+                    Assert.Equal(expectedPrefix, NormalizeNewlines(input.Text[..input.SelectionStart]));
+                    Assert.Equal(0, input.SelectionLength);
+                    Assert.Empty(provider.SentMessages);
+                });
+            }
+
+            await PressAsync(global::Windows.System.VirtualKey.Enter, shift: true);
+            await AssertDraftAsync(prefix);
+            await PressAsync(global::Windows.System.VirtualKey.X);
+            prefix += "x";
+            await AssertDraftAsync(prefix);
+            await PressAsync(global::Windows.System.VirtualKey.Enter, shift: true);
+            prefix += "\n";
+            await AssertDraftAsync(prefix);
+            if (start == 5 && length == 0)
+                await CaptureAsync(surface, "Composer-keyboard-newlines");
+
+            await PressAsync(global::Windows.System.VirtualKey.Enter);
+            await ui.RunOnUIAsync(() =>
+            {
+                var sent = Assert.Single(provider.SentMessages);
+                Assert.Equal("proof", sent.ThreadId);
+                Assert.Equal((prefix + suffix).Trim(), NormalizeNewlines(sent.Message));
+                Assert.Empty(input.Text);
+                Assert.Empty(session.ViewModel.Draft);
+            });
+        }, interactiveKeyboard: true);
     }
 
     [Theory]
@@ -1371,7 +1690,8 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         Func<Border, ReactorHostControl, ChatComposerSession, ProofProvider, Task> proof,
         string scenario = "standard",
         Func<string, bool>? tryCopy = null,
-        string? thinkingLevel = null)
+        string? thinkingLevel = null,
+        bool interactiveKeyboard = false)
     {
         await ui.ResetContainerAsync();
         ReactorHostControl? host = null;
@@ -1422,7 +1742,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 surface.Child = host;
                 proofWindow = new Window { Content = surface, SystemBackdrop = new MicaBackdrop() };
                 _captureWindow = proofWindow;
-                var windowPosition = ui.IsSlow ? 80 : -32000;
+                var windowPosition = ui.IsSlow || interactiveKeyboard ? 80 : -32000;
                 var captureHeight = Environment.GetEnvironmentVariable("OPENCLAW_NATIVE_COMPOSITOR_CAPTURE") == "1" ? 1100 : 900;
                 proofWindow.AppWindow.MoveAndResize(new Windows.Graphics.RectInt32(windowPosition, windowPosition, 1300, captureHeight));
                 proofWindow.Activate();
@@ -1547,6 +1867,9 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
 
     private static Rect Bounds(FrameworkElement control, UIElement root) =>
         control.TransformToVisual(root).TransformBounds(new Rect(0, 0, control.ActualWidth, control.ActualHeight));
+
+    private static string NormalizeNewlines(string value) =>
+        value.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
 
     private static void AssertCentered(Border surface, Border composer, Border prose)
     {
@@ -1694,6 +2017,10 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
 
     private sealed class ProofProvider(string scenario = "standard", string? thinkingLevel = null) : IChatDataProvider
     {
+        private ChatDataSnapshot? _snapshot;
+        private int _queuedMessageSequence;
+        public List<(string ThreadId, string Message)> SentMessages { get; } = [];
+        public (string ThreadId, string MessageId)? LastCanceledMessage { get; private set; }
         public string DisplayName => "Native component proof";
         public string? SelectedModel { get; private set; }
         public int SetModelCalls { get; private set; }
@@ -1701,13 +2028,19 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         public string? SelectedThinkingLevel { get; private set; }
         public int SetThinkingLevelCalls { get; private set; }
         public int ClearThinkingLevelCalls { get; private set; }
-        public void Publish(ChatDataSnapshot snapshot) => Changed?.Invoke(this, new(snapshot));
+        public void Publish(ChatDataSnapshot snapshot)
+        {
+            _snapshot = snapshot;
+            Changed?.Invoke(this, new(snapshot));
+        }
 #pragma warning disable CS0067
         public event EventHandler<ChatDataChangedEventArgs>? Changed;
         public event EventHandler<ChatProviderNotificationEventArgs>? NotificationRequested;
 #pragma warning restore CS0067
         public Task<ChatDataSnapshot> LoadAsync(CancellationToken cancellationToken = default)
         {
+            if (_snapshot is not null)
+                return Task.FromResult(_snapshot);
             var thread = new ChatThread
             {
                 Id = "proof",
@@ -1750,11 +2083,17 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 timeline = ChatTimelineState.Initial() with { HistoryLoaded = scenario == "empty" };
             if (scenario == "streaming")
                 timeline = timeline with { TurnActive = true, Entries = timeline.Entries.RemoveAt(1) };
+            if (scenario == "pending")
+                timeline = timeline with
+                {
+                    TurnActive = true,
+                    Entries = timeline.Entries.SetItem(1, new("assistant", ChatTimelineItemKind.Assistant, "I'm working on your plan.", IsStreaming: true)),
+                };
             if (scenario == "longtext")
                 timeline = timeline with { Entries = timeline.Entries.SetItem(1,
                     new ChatTimelineItem("assistant", ChatTimelineItemKind.Assistant,
                         AssistantMessage + "\n\n" + string.Join(" ", Enumerable.Repeat("A readable long paragraph.", 80)))) };
-            return Task.FromResult(new ChatDataSnapshot(
+            return Task.FromResult(_snapshot = new ChatDataSnapshot(
                 [thread, new ChatThread { Id = "other", Title = "Another session", TotalTokens = scenario == "menus" ? 1 : 0 }],
                 new Dictionary<string, ChatTimelineState> { [thread.Id] = timeline },
                 thread.Id,
@@ -1802,7 +2141,29 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                     }
                     : null));
         }
-        public Task SendMessageAsync(string threadId, string message, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public async Task SendMessageAsync(string threadId, string message, CancellationToken cancellationToken = default)
+        {
+            SentMessages.Add((threadId, message));
+            if (scenario != "pending")
+                return;
+            var snapshot = await LoadAsync(cancellationToken);
+            var queues = snapshot.QueuedMessagesByThread?.ToDictionary(pair => pair.Key, pair => pair.Value)
+                ?? new Dictionary<string, IReadOnlyList<ChatQueuedMessage>>();
+            var messages = queues.GetValueOrDefault(threadId)?.ToList() ?? [];
+            var id = $"pending-{++_queuedMessageSequence}";
+            messages.Add(new(id, message, DateTimeOffset.UtcNow, id));
+            queues[threadId] = messages;
+            Publish(snapshot with { QueuedMessagesByThread = queues });
+        }
+        public async Task<bool> CancelQueuedMessageAsync(string threadId, string queuedMessageId, CancellationToken cancellationToken = default)
+        {
+            LastCanceledMessage = (threadId, queuedMessageId);
+            var snapshot = await LoadAsync(cancellationToken);
+            var queues = snapshot.QueuedMessagesByThread!.ToDictionary(pair => pair.Key, pair => pair.Value);
+            queues[threadId] = queues[threadId].Where(message => message.Id != queuedMessageId).ToArray();
+            Publish(snapshot with { QueuedMessagesByThread = queues });
+            return true;
+        }
         public Task StopResponseAsync(string threadId, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task SetThreadSuspendedAsync(string threadId, bool suspended, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task DeleteThreadAsync(string threadId, CancellationToken cancellationToken = default) => Task.CompletedTask;

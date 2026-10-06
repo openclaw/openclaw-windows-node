@@ -1217,7 +1217,7 @@ public sealed class LocalAiInstallRecoveryTests
     }
 
     [Fact]
-    public async Task Reconciler_RecoveryWithValidModelStillPopulatesAdditionalAssetInstalls()
+    public async Task Reconciler_IncompleteRuntimeReacquiresWithoutRecoveryModeOrModelDownload()
     {
         // Regression: recovery for a broken runtime (model + additional assets
         // still verified valid) must give the caller everything it needs to
@@ -1300,8 +1300,7 @@ public sealed class LocalAiInstallRecoveryTests
                 temp.Path,
                 plan,
                 "GPU-0",
-                CancellationToken.None,
-                allowIncompleteInstallation: true);
+                CancellationToken.None);
 
         Assert.False(result.Reused);
         Assert.Null(result.RuntimeInstall);
@@ -1434,7 +1433,7 @@ public sealed class LocalAiInstallRecoveryTests
             new UpgradeCheckpointStep("after-persist", ctx =>
             {
                 LocalAiResolvedInstall upgraded = Assert.IsType<LocalAiResolvedInstall>(ctx.LocalAiResolvedInstall);
-                Assert.Equal("b11026", upgraded.Manifest.EngineVersion);
+                Assert.Equal(LlamaRuntimeCatalog.ReleaseTag, upgraded.Manifest.EngineVersion);
                 Assert.Equal(LocalAiInstallManifest.HubCacheReceiptSchemaVersion, upgraded.Manifest.SchemaVersion);
                 Assert.Equal(cacheRoot, upgraded.Manifest.ModelCacheRoot);
                 Assert.Equal(cachedModel, upgraded.ModelPath);
@@ -1463,7 +1462,7 @@ public sealed class LocalAiInstallRecoveryTests
         if (failureStage is null)
         {
             Assert.Equal(newExecutable, persisted.ExecutablePath);
-            Assert.Equal("b11026", persisted.Manifest.EngineVersion);
+            Assert.Equal(LlamaRuntimeCatalog.ReleaseTag, persisted.Manifest.EngineVersion);
         }
         else
         {
@@ -2517,28 +2516,31 @@ public sealed class LocalAiInstallRecoveryTests
     {
         public Task<LlamaRuntimeInspection> InspectAsync(
             string installDirectory,
+            LlamaRuntimeVariant runtime,
             CancellationToken cancellationToken) =>
-            Task.FromResult(new LlamaRuntimeInspection(true, "valid", null));
+            Task.FromResult(new LlamaRuntimeInspection(true, null));
     }
 
     private sealed class InvalidRuntimeInspector : ILlamaRuntimeInspector
     {
         public Task<LlamaRuntimeInspection> InspectAsync(
             string installDirectory,
+            LlamaRuntimeVariant runtime,
             CancellationToken cancellationToken) =>
-            Task.FromResult(new LlamaRuntimeInspection(false, "invalid", "simulated corrupted runtime"));
+            Task.FromResult(new LlamaRuntimeInspection(false, "simulated corrupted runtime"));
     }
 
     private sealed class VcRuntimeAssertingInspector : ILlamaRuntimeInspector
     {
         public Task<LlamaRuntimeInspection> InspectAsync(
             string installDirectory,
+            LlamaRuntimeVariant runtime,
             CancellationToken cancellationToken)
         {
             Assert.All(
                 LocalAiVcRuntimeStager.RequiredFiles,
                 fileName => Assert.True(File.Exists(Path.Combine(installDirectory, fileName))));
-            return Task.FromResult(new LlamaRuntimeInspection(true, "valid", null));
+            return Task.FromResult(new LlamaRuntimeInspection(true, null));
         }
     }
 
@@ -2546,12 +2548,13 @@ public sealed class LocalAiInstallRecoveryTests
     {
         public Task<LlamaRuntimeInspection> InspectAsync(
             string installDirectory,
+            LlamaRuntimeVariant runtime,
             CancellationToken cancellationToken)
         {
             Assert.DoesNotContain(
                 LocalAiVcRuntimeStager.RequiredFiles,
                 fileName => File.Exists(Path.Combine(installDirectory, fileName)));
-            return Task.FromResult(new LlamaRuntimeInspection(false, null, "missing VC runtime"));
+            return Task.FromResult(new LlamaRuntimeInspection(false, "missing VC runtime"));
         }
     }
 
@@ -2560,10 +2563,11 @@ public sealed class LocalAiInstallRecoveryTests
     {
         public Task<LlamaRuntimeInspection> InspectAsync(
             string installDirectory,
+            LlamaRuntimeVariant runtime,
             CancellationToken cancellationToken)
         {
             cancellation.Cancel();
-            return Task.FromResult(new LlamaRuntimeInspection(true, "valid", null));
+            return Task.FromResult(new LlamaRuntimeInspection(true, null));
         }
     }
 

@@ -66,6 +66,24 @@ function Assert-PromotionAncestry {
     }
 }
 
+function Get-PromotionRelease {
+    param([string]$Tag)
+
+    # The by-tag endpoint is for published releases, not draft discovery.
+    $found = @()
+    for ($page = 1; $page -le 10; $page++) {
+        $response = Invoke-PromotionApi -Path "releases?per_page=100&page=$page"
+        $releases = @($response)
+        $found += @($releases | Where-Object tag_name -CEQ $Tag)
+        if ($found.Count -gt 1) { throw 'Multiple releases occupy the stable target. Resolve duplicate drafts before retrying.' }
+        if ($releases.Count -lt 100) {
+            if ($found.Count -eq 1) { return $found[0] }
+            return $null
+        }
+    }
+    throw 'Release discovery pagination exceeded its limit.'
+}
+
 function Assert-PromotionApproval {
     $environment = Invoke-PromotionApi -Path 'environments/stable-release'
     $review = @($environment.protection_rules | Where-Object type -CEQ 'required_reviewers')
@@ -174,7 +192,7 @@ function Get-AlphaPromotion {
             throw 'The stable tag already exists with different promotion provenance. Never move it.'
         }
     } elseif ($RequireReservation) { throw 'The promotion tag has not been reserved.' }
-    $stable = Invoke-PromotionApi -Path "releases/tags/$stableTag" -AllowNotFound
+    $stable = Get-PromotionRelease -Tag $stableTag
     if ($stable -and ($stable.draft -ne $true -or $stable.published_at)) {
         throw 'The stable target is already published. Never replace a published release.'
     }
@@ -214,8 +232,7 @@ function Get-PromotionAssetNames {
     param([string]$Version)
     @('OpenClawCompanion-Setup-x64.exe', 'OpenClawCompanion-Setup-arm64.exe',
         "OpenClawTray-$Version-win-x64.zip", "OpenClawTray-$Version-win-arm64.zip",
-        'OpenClaw.msixbundle', 'OpenClaw-x64.msix', 'OpenClaw-arm64.msix',
-        'OpenClaw-x64.msix-metadata.json', 'OpenClaw-arm64.msix-metadata.json')
+        'OpenClaw-Dev-x64.zip', 'OpenClaw-Dev-arm64.zip')
 }
 
 function New-PromotionArtifactManifest {
@@ -265,7 +282,7 @@ function Publish-AlphaPromotion {
     $manifestHash = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
     $marker = "<!-- alpha-promotion:$manifestHash -->"
     $tag = $Record.stableTag
-    $release = Invoke-PromotionApi -Path "releases/tags/$tag" -AllowNotFound
+    $release = Get-PromotionRelease -Tag $tag
     if (-not $release) {
         $notes = Invoke-PromotionApi -Path 'releases/generate-notes' -Method POST -Body @{
             tag_name = $tag
@@ -279,10 +296,24 @@ function Publish-AlphaPromotion {
             draft = $true
             prerelease = $false
             make_latest = 'false'
-            body = "Promoted from $($Record.alphaTag) at $($Record.sourceSha).`n`n$($notes.body)`n`n$marker"
+            body = @"
+Promoted from $($Record.alphaTag) at $($Record.sourceSha).
+
+$($notes.body)
+
+### Signed Dev MSIX packages
+
+OpenClaw-Dev-x64.zip and OpenClaw-Dev-arm64.zip contain development-signed
+packages, matching public certificates, provenance, and installation instructions.
+These are not Microsoft Store-signed packages. Unsigned Store submission packages
+remain [workflow artifacts](https://github.com/openclaw/openclaw-windows-node/actions/runs/$RunId).
+
+$marker
+"@
         }
     }
-    if ($release.draft -ne $true -or $release.published_at -or -not $release.body.Contains($marker)) {
+    if ($release.tag_name -cne $tag -or $release.draft -ne $true -or
+        $release.published_at -or -not $release.body.Contains($marker)) {
         throw 'Existing release is not the draft for these exact prepared artifacts. Do not overwrite it.'
     }
     $files = @($manifest.files) + [pscustomobject]@{
@@ -297,8 +328,9 @@ function Publish-AlphaPromotion {
             throw 'A draft asset has different bytes. Refusing to overwrite it.'
         }
     }
-    $release = Invoke-PromotionApi -Path "releases/tags/$tag"
-    if ($release.draft -ne $true -or $release.published_at -or -not $release.body.Contains($marker) -or
+    $release = Invoke-PromotionApi -Path "releases/$($release.id)"
+    if ($release.tag_name -cne $tag -or $release.draft -ne $true -or
+        $release.published_at -or -not $release.body.Contains($marker) -or
         @($release.assets).Count -ne $files.Count) {
         throw 'Draft release state or asset set changed during upload.'
     }

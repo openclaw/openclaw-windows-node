@@ -17,7 +17,9 @@ public sealed class GatewayFixtureProfile : IDisposable
     public string RunId { get; } = Guid.NewGuid().ToString("N");
     public string RunDirectory => _directory.Path;
     public string DataDirectory => _directory.Combine("profile");
-    public string SetupDirectory => _directory.Combine("setup-local");
+    public string SetupDirectory => Path.Combine(LocalRoot, "OpenClawTray");
+    public string RoamingRoot => _directory.Combine("roaming");
+    public string LocalRoot => _directory.Combine("local");
     public string GatewayId { get; } = Guid.NewGuid().ToString();
     public Uri GatewayEndpoint { get; }
 
@@ -31,6 +33,8 @@ public sealed class GatewayFixtureProfile : IDisposable
         {
             Directory.CreateDirectory(DataDirectory);
             Directory.CreateDirectory(SetupDirectory);
+            Directory.CreateDirectory(RoamingRoot);
+            Directory.CreateDirectory(LocalRoot);
             var settings = new SettingsData
             {
                 GatewayUrl = endpoint.AbsoluteUri,
@@ -82,7 +86,7 @@ public sealed class GatewayFixtureProfile : IDisposable
         }
     }
 
-    public ProcessStartInfo CreateStartInfo(string appPath, int mcpPort)
+    public ProcessStartInfo CreateStartInfo(string appPath, int mcpPort, string? postSetupLaunch = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (mcpPort is < 1 or > 65535 || mcpPort == GatewayEndpoint.Port || mcpPort is 8765 or 18789)
@@ -99,11 +103,17 @@ public sealed class GatewayFixtureProfile : IDisposable
         start.Environment["OPENCLAW_GATEWAY_FIXTURE"] = "1";
         start.Environment["OPENCLAW_TRAY_DATA_DIR"] = DataDirectory;
         start.Environment["OPENCLAW_TRAY_LOCAL_DATA_DIR"] = SetupDirectory;
-        start.Environment["OPENCLAW_TRAY_APPDATA_DIR"] = _directory.Combine("roaming");
+        start.Environment["OPENCLAW_TRAY_APPDATA_DIR"] = RoamingRoot;
+        start.Environment["OPENCLAW_TRAY_LOCALAPPDATA_DIR"] = LocalRoot;
         start.Environment["OPENCLAW_MCP_PORT"] = mcpPort.ToString(CultureInfo.InvariantCulture);
         start.Environment["OPENCLAW_SKIP_UPDATE_CHECK"] = "1";
         start.Environment["OPENCLAW_SUPPRESS_EXTERNAL_BROWSER"] = "1";
         start.Environment["OPENCLAW_LANGUAGE"] = "en-US";
+        if (postSetupLaunch is not null)
+        {
+            start.ArgumentList.Add("--post-setup-launch");
+            start.ArgumentList.Add(postSetupLaunch);
+        }
         return start;
     }
 

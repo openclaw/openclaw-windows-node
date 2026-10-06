@@ -156,6 +156,12 @@ public static class LocalModelCatalog
     /// </summary>
     public const string Qwen9BModelId = "qwen3.5-9b-mtp-q4-k-m";
     /// <summary>RTX Spark 48GB-SKU recipe. Never offered on the generic dGPU path; see <c>RtxSparkInferenceSelector</c>.</summary>
+    public const string Qwen35B_Q4KSModelId = "qwen3.6-35b-a3b-mtp-ud-q4-k-s";
+    /// <summary>
+    /// Retired from new installs: the 2026-09-30 recipe set replaced this quantization
+    /// with <see cref="Qwen35B_Q4KSModelId"/>. Retained only so an already-installed
+    /// managed receipt keeps resolving and launching across upgrade.
+    /// </summary>
     public const string Qwen35B_IQ4XSModelId = "qwen3.6-35b-a3b-mtp-ud-iq4-xs";
     /// <summary>RTX Spark 128GB-SKU default recipe. Never offered on the generic dGPU path; see <c>RtxSparkInferenceSelector</c>.</summary>
     public const string Qwen38_27B_DFlashModelId = "qwen3.8-27b-dflash-ud-q4-k-m";
@@ -163,7 +169,7 @@ public static class LocalModelCatalog
     public const int IntermediateContextTokens = 196_608;
     public const int ReducedContextTokens = 131_072;
     public const int MinimumContextTokens = 65_536;
-    /// <summary>RTX Spark 48GB-SKU context tier (98,304 tokens); see <see cref="Qwen35B_IQ4XSModelId"/>.</summary>
+    /// <summary>RTX Spark 48GB-SKU context tier (98,304 tokens); see <see cref="Qwen35B_Q4KSModelId"/>.</summary>
     public const int RtxSpark48GbContextTokens = 98_304;
 
     // Measured-conservative allowances for compute buffers, recurrent state,
@@ -231,7 +237,8 @@ public static class LocalModelCatalog
                 Recipe(
                     fullAttentionLayerCount: 10,
                     keyValueHeadCount: 2,
-                    temperature: 0.6),
+                    temperature: 0.6,
+                    speculativeDraftMaxTokens: 2),
                 IsDefault: false,
                 IsExplicitAlternative: true,
                 SupportsVision: false,
@@ -264,16 +271,16 @@ public static class LocalModelCatalog
             // comment) so the always-alternative-only ones can't still win by
             // tie-break/fallback ordering among themselves.
             new LocalModelInfo(
-                Qwen35B_IQ4XSModelId,
-                "Qwen3.6 35B-A3B (UD-IQ4_XS)",
+                Qwen35B_Q4KSModelId,
+                "Qwen3.6 35B-A3B (UD-Q4_K_S)",
                 "Qwen3.6",
-                "UD-IQ4_XS",
+                "UD-Q4_K_S",
                 ModelArtifact(
-                    Qwen35B_IQ4XSModelId,
+                    Qwen35B_Q4KSModelId,
                     s_qwen35BSource,
-                    "Qwen3.6-35B-A3B-UD-IQ4_XS.gguf",
-                    18_209_036_576,
-                    "df27a780435b7b45c2597536112ea3cb091f8544c3d0c3318d9f4258b31f7adf"),
+                    "Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+                    21_388_319_008,
+                    "2bee952b218e4a481430c59d8d3bdc7bae20bed0eb501326340c5fca7ae95d42"),
                 Recipe(
                     fullAttentionLayerCount: 10,
                     keyValueHeadCount: 2,
@@ -340,16 +347,42 @@ public static class LocalModelCatalog
                 IsExplicitAlternative: false,
                 SupportsVision: false,
                 RecommendationPriority: 0),
+            new LocalModelInfo(
+                Qwen35B_IQ4XSModelId,
+                "Qwen3.6 35B-A3B (UD-IQ4_XS)",
+                "Qwen3.6",
+                "UD-IQ4_XS",
+                ModelArtifact(
+                    Qwen35B_IQ4XSModelId,
+                    s_qwen35BSource,
+                    "Qwen3.6-35B-A3B-UD-IQ4_XS.gguf",
+                    18_209_036_576,
+                    "df27a780435b7b45c2597536112ea3cb091f8544c3d0c3318d9f4258b31f7adf"),
+                Recipe(
+                    fullAttentionLayerCount: 10,
+                    keyValueHeadCount: 2,
+                    temperature: 0.6,
+                    speculativeDraftMaxTokens: 2),
+                IsDefault: false,
+                IsExplicitAlternative: false,
+                SupportsVision: false,
+                RecommendationPriority: 0),
         });
 
     private static readonly IReadOnlyDictionary<string, ReadOnlyCollection<LocalInferenceRunProfile>>
         s_profilesByModel = s_models
             .Select(model => (model, profiles: Array.AsReadOnly(
-                string.Equals(model.Id, Qwen35B_IQ4XSModelId, StringComparison.Ordinal)
+                string.Equals(model.Id, Qwen35B_Q4KSModelId, StringComparison.Ordinal)
                     ? CreateRtxSpark48GbProfiles(model)
                     : CreateProfiles(model))))
             .Concat(s_legacyModels
-                .Select(model => (model, profiles: Array.AsReadOnly(CreateLegacyProfiles(model)))))
+                .Select(model => (model, profiles: Array.AsReadOnly(
+                    // The retired 48GB-SKU quantization was only ever installed at that
+                    // SKU's fixed tier, not the pre-profile native/F16 one, so it keeps
+                    // the same profile set it was recorded under.
+                    string.Equals(model.Id, Qwen35B_IQ4XSModelId, StringComparison.Ordinal)
+                        ? CreateRtxSpark48GbProfiles(model)
+                        : CreateLegacyProfiles(model)))))
             .ToDictionary(
                 entry => entry.model.Id,
                 entry => entry.profiles,
@@ -415,9 +448,9 @@ public static class LocalModelCatalog
     /// Resolves a model that an existing installation receipt may reference,
     /// including retired entries that are no longer offered for new installs.
     /// Use this only on installed-receipt validation, launch, and display
-    /// paths. Selection, recommendation, and eligibility must keep using
+    /// paths. Fresh selection, recommendation, and eligibility must keep using
     /// <see cref="Find"/> and <see cref="Models"/> so retired models are never
-    /// offered again.
+    /// offered again; receipt-aware eligibility may resolve the installed model.
     /// </summary>
     public static LocalModelInfo? FindInstalled(string? id) =>
         Find(id) ??

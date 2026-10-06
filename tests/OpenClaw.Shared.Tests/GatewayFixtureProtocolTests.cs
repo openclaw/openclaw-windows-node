@@ -14,6 +14,42 @@ public sealed class GatewayFixtureProtocolTests
 {
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(20);
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SessionMutations_AuthenticatedAcceptanceIsOptInAndResponseBound(bool allow)
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(
+            GatewayScenario.CreateBrowse(allowSessionMutations: allow), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        var client = connected.Client;
+        var epoch = client.SessionMutationConnectionEpoch!.Value;
+        server.HoldSessionMutations();
+        var patch = client.PatchSessionConfirmedAsync(GatewayScenario.OtherSessionKey,
+            new SessionPatch { Archived = true }, epoch);
+        await server.WaitForRequestAsync("sessions.patch", GatewayScenario.OtherSessionKey);
+        // Drain an independent authenticated request while the mutation response is held.
+        await client.SendWizardRequestAsync("health");
+        Assert.False(patch.IsCompleted);
+        server.ReleaseSessionMutations();
+        if (!allow)
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() => patch);
+            return;
+        }
+        await patch.WaitAsync(Deadline);
+        var active = await client.SendWizardRequestAsync("sessions.list");
+        Assert.DoesNotContain(active.GetProperty("sessions").EnumerateArray(),
+            row => row.GetProperty("key").GetString() == GatewayScenario.OtherSessionKey);
+        var archived = await client.ListArchivedSessionsAsync();
+        Assert.Equal(GatewayScenario.OtherSessionKey, Assert.Single(archived.Sessions).Key);
+        await client.DeleteSessionConfirmedAsync(GatewayScenario.OtherSessionKey, epoch);
+        Assert.Empty((await client.ListArchivedSessionsAsync()).Sessions);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.DeleteSessionConfirmedAsync(GatewayScenario.MainSessionKey, epoch));
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
     [Fact]
     public void BrowseScenario_HasStableSingleSourceMetadataAndRejectsUnknownScenario()
     {

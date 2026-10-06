@@ -3051,6 +3051,9 @@
   <data name="Chat_Composer_QueuedMessageFailed" xml:space="preserve">
     <value>失敗</value>
   </data>
+  <data name="Chat_Timeline_Pending" xml:space="preserve">
+    <value>待傳送</value>
+  </data>
   <data name="Chat_Composer_QueuedMessageCancel" xml:space="preserve">
     <value>取消已排入佇列的訊息</value>
   </data>
@@ -7215,24 +7218,26 @@
   <data name="Onboarding_AiSetup_InvalidInput" xml:space="preserve"><value>提供者未接受此答案。請檢查目前步驟並重試。</value></data>
   <data name="Onboarding_NativeConnection_Title" xml:space="preserve"><value>連線至 Gateway</value></data>
   <data name="Onboarding_NativeConnection_Description" xml:space="preserve"><value>檢查連線而不儲存。下一步會再次檢查並儲存此 Gateway，然後檢視此電腦的存取權限。</value></data>
-  <data name="Onboarding_Native_Address" xml:space="preserve"><value>Gateway 位址</value></data>
-  <data name="Onboarding_Native_Code" xml:space="preserve"><value>設定代碼</value></data>
-  <data name="Onboarding_Native_Token" xml:space="preserve"><value>共用 Token（代替設定代碼）</value></data>
-  <data name="Onboarding_Native_Ssh" xml:space="preserve"><value>SSH 通道</value></data>
-  <data name="Onboarding_Native_SshDescription" xml:space="preserve"><value>選用。使用現有的 OpenSSH 金鑰和設定。保留已儲存連線或設定代碼中的 Gateway 位址。遠端 Gateway 連接埠將從 SSH 主機轉送。</value></data>
-  <data name="Onboarding_Native_SshEnabled" xml:space="preserve"><value>使用 SSH 通道</value></data>
-  <data name="Onboarding_Native_SshHost" xml:space="preserve"><value>SSH 主機</value></data>
-  <data name="Onboarding_Native_SshUser" xml:space="preserve"><value>SSH 使用者</value></data>
-  <data name="Onboarding_Native_SshPort" xml:space="preserve"><value>SSH 連接埠</value></data>
-  <data name="Onboarding_Native_RemotePort" xml:space="preserve"><value>遠端 Gateway 連接埠</value></data>
-  <data name="Onboarding_Native_LocalPort" xml:space="preserve"><value>本機通道連接埠</value></data>
+  <data name="Onboarding_NativeConnection_Address" xml:space="preserve"><value>Gateway 位址</value></data>
+  <data name="Onboarding_NativeConnection_Code" xml:space="preserve"><value>設定代碼</value></data>
+  <data name="Onboarding_NativeConnection_Token" xml:space="preserve"><value>共用 Token（代替設定代碼）</value></data>
+  <data name="Onboarding_NativeConnection_Ssh" xml:space="preserve"><value>SSH 通道</value></data>
+  <data name="Onboarding_NativeConnection_SshDescription" xml:space="preserve"><value>選用。使用現有的 OpenSSH 金鑰和設定。保留已儲存連線或設定代碼中的 Gateway 位址。遠端 Gateway 連接埠將從 SSH 主機轉送。</value></data>
+  <data name="Onboarding_NativeConnection_SshEnabled" xml:space="preserve"><value>使用 SSH 通道</value></data>
+  <data name="Onboarding_NativeConnection_SshHost" xml:space="preserve"><value>SSH 主機</value></data>
+  <data name="Onboarding_NativeConnection_SshUser" xml:space="preserve"><value>SSH 使用者</value></data>
+  <data name="Onboarding_NativeConnection_SshPort" xml:space="preserve"><value>SSH 連接埠</value></data>
+  <data name="Onboarding_NativeConnection_RemotePort" xml:space="preserve"><value>遠端 Gateway 連接埠</value></data>
+  <data name="Onboarding_NativeConnection_LocalPort" xml:space="preserve"><value>本機通道連接埠</value></data>
   <data name="Onboarding_NativeConnection_Back" xml:space="preserve"><value>返回</value></data>
-  <data name="Onboarding_Native_Check" xml:space="preserve"><value>檢查連線</value></data>
-  <data name="Onboarding_Native_Next" xml:space="preserve"><value>下一步</value></data>
+  <data name="Onboarding_NativeConnection_Check" xml:space="preserve"><value>檢查連線</value></data>
+  <data name="Onboarding_NativeConnection_Next" xml:space="preserve"><value>下一步</value></data>
   <data name="Onboarding_NativeConnection_Cancel" xml:space="preserve"><value>取消</value></data>
   <data name="Onboarding_Native_Checking" xml:space="preserve"><value>正在檢查已安裝的 Gateway 套件及其執行別名...</value></data>
-  <data name="Onboarding_Native_Checked" xml:space="preserve"><value>連線已檢查，未儲存任何內容。下一步將再次檢查並儲存此 Gateway。</value></data>
-  <data name="Onboarding_Native_Failed" xml:space="preserve"><value>無法確認連線結果。請先在 Companion Settings 中檢視目前的 Gateway，再繼續操作。</value></data>
+  <data name="Onboarding_NativeConnection_Checking" xml:space="preserve"><value>正在檢查 Gateway 連線...</value></data>
+  <data name="Onboarding_NativeConnection_Cancelled" xml:space="preserve"><value>連線嘗試已取消。</value></data>
+  <data name="Onboarding_NativeConnection_Checked" xml:space="preserve"><value>連線已檢查，未儲存任何內容。下一步將再次檢查並儲存此 Gateway。</value></data>
+  <data name="Onboarding_NativeConnection_Failed" xml:space="preserve"><value>無法確認連線結果。請先在 Companion Settings 中檢視目前的 Gateway，再繼續操作。</value></data>
   <data name="Onboarding_V2_AlternativesTitle.Text" xml:space="preserve"><value>選擇其他設定路徑</value></data>
   <data name="Onboarding_V2_ExistingRoute.Header" xml:space="preserve"><value>現有 Gateway</value></data>
   <data name="Onboarding_V2_ExistingRoute.Description" xml:space="preserve"><value>使用已儲存或現有連線。不安裝 WSL。</value></data>
@@ -7820,6 +7825,44 @@
   <data name="WorkspaceShell_SessionUnsupported" xml:space="preserve"><value>This gateway does not support creating sessions. Update the gateway to use this action.</value></data>
   <data name="WorkspaceShell_TrayUnavailable" xml:space="preserve"><value>The Windows tray menu is not available.</value></data>
   <data name="WorkspaceShell_LinkFailed" xml:space="preserve"><value>Windows could not open the link.</value></data>
+  <data name="WorkspaceShell_SessionMenu_LastActiveFormat" xml:space="preserve"><value>Last active {0}</value></data>
+  <data name="WorkspaceShell_SessionMenu_Pin" xml:space="preserve"><value>Pin session</value></data>
+  <data name="WorkspaceShell_SessionMenu_Unpin" xml:space="preserve"><value>Unpin session</value></data>
+  <data name="WorkspaceShell_SessionMenu_Rename" xml:space="preserve"><value>Rename…</value></data>
+  <data name="WorkspaceShell_SessionMenu_MarkUnread" xml:space="preserve"><value>Mark as unread</value></data>
+  <data name="WorkspaceShell_SessionMenu_MarkRead" xml:space="preserve"><value>Mark as read</value></data>
+  <data name="WorkspaceShell_SessionMenu_Archive" xml:space="preserve"><value>Archive session</value></data>
+  <data name="WorkspaceShell_SessionMenu_Unarchive" xml:space="preserve"><value>Unarchive session</value></data>
+  <data name="WorkspaceShell_SessionMenu_Fork" xml:space="preserve"><value>Fork conversation</value></data>
+  <data name="WorkspaceShell_SessionMenu_Copy" xml:space="preserve"><value>Copy</value></data>
+  <data name="WorkspaceShell_SessionMenu_CopyKey" xml:space="preserve"><value>Copy session key</value></data>
+  <data name="WorkspaceShell_SessionMenu_CopyId" xml:space="preserve"><value>Copy session ID</value></data>
+  <data name="WorkspaceShell_SessionMenu_CopyMarkdown" xml:space="preserve"><value>Copy as Markdown</value></data>
+  <data name="WorkspaceShell_SessionMenu_Reset" xml:space="preserve"><value>Reset session…</value></data>
+  <data name="WorkspaceShell_SessionMenu_Compact" xml:space="preserve"><value>Compact session…</value></data>
+  <data name="WorkspaceShell_SessionMenu_Export" xml:space="preserve"><value>Export transcript…</value></data>
+  <data name="WorkspaceShell_SessionMenu_Delete" xml:space="preserve"><value>Delete…</value></data>
+  <data name="WorkspaceShell_SessionRename_Title" xml:space="preserve"><value>Rename session</value></data>
+  <data name="WorkspaceShell_SessionRename_Body" xml:space="preserve"><value>Leave blank to use the default title.</value></data>
+  <data name="WorkspaceShell_SessionRename_Save" xml:space="preserve"><value>Save</value></data>
+  <data name="WorkspaceShell_SessionPinned" xml:space="preserve"><value>Pinned</value></data>
+  <data name="WorkspaceShell_SessionUnread" xml:space="preserve"><value>Unread</value></data>
+  <data name="WorkspaceShell_SessionWorking" xml:space="preserve"><value>Working</value></data>
+  <data name="SessionsPage_Archived" xml:space="preserve"><value>已封存</value></data>
+  <data name="SessionsPage_ArchivedEmpty" xml:space="preserve"><value>沒有已封存的工作階段。</value></data>
+  <data name="SessionsPage_ArchivedUnavailable" xml:space="preserve"><value>無法取得此閘道的已封存工作階段。</value></data>
+  <data name="SessionsPage_Unarchive" xml:space="preserve"><value>取消封存工作階段</value></data>
+  <data name="WorkspaceShell_SessionActionFailed" xml:space="preserve"><value>The gateway didn't accept the request. Try again.</value></data>
+  <data name="WorkspaceShell_SessionConnectionChanged" xml:space="preserve"><value>The Gateway connection changed. Refresh sessions to check the outcome before trying again.</value></data>
+  <data name="WorkspaceShell_SessionActionTimedOut" xml:space="preserve"><value>The Gateway did not respond in time. The outcome is unknown. Refresh the session before trying again.</value></data>
+  <data name="WorkspaceShell_SelectConversation.Text" xml:space="preserve"><value>Select a conversation or create a new one to start chatting.</value></data>
+  <data name="WorkspaceShell_ForkFailed" xml:space="preserve"><value>The gateway could not fork this conversation.</value></data>
+  <data name="WorkspaceShell_ForkUnsupported" xml:space="preserve"><value>This gateway does not support forking conversations. Update the gateway to use this action.</value></data>
+  <data name="WorkspaceShell_CopyFailed" xml:space="preserve"><value>Windows could not copy to the clipboard.</value></data>
+  <data name="WorkspaceShell_CopyEmpty" xml:space="preserve"><value>This session has no messages to copy.</value></data>
+  <data name="WorkspaceShell_HistoryUnsupported" xml:space="preserve"><value>This gateway does not support reading transcripts. Update the gateway to use this action.</value></data>
+  <data name="WorkspaceShell_ExportEmpty" xml:space="preserve"><value>This session has no transcript yet.</value></data>
+  <data name="WorkspaceShell_ExportDone" xml:space="preserve"><value>Saved {0} messages to {1}.</value></data>
   <data name="WorkspaceShell_AgentsEmpty" xml:space="preserve"><value>Connect and refresh to load agents. Manage agent configuration in the companion.</value></data>
   <data name="WorkspaceShell_SelectAgentFirst" xml:space="preserve"><value>Select an agent from the Agents page to view its details.</value></data>
   <data name="WorkspaceShell_AgentSummary" xml:space="preserve"><value>{0} · {1} conversations</value></data>
@@ -7896,4 +7939,16 @@
   <data name="Onboarding_AiSetup_LocalOwnershipInvalid" xml:space="preserve"><value>已儲存的本機 AI 擁有權、模型或閘道設定不再相符。請在原始 Companion 設定檔中檢查原始閘道及其模型設定，包括已修改的模型允許清單項目。保留擁有權憑據，不要複製驗證認證或取代提供者。</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipUnavailable" xml:space="preserve"><value>無法檢查原始閘道的擁有權或設定。請重新連線原始閘道並再次檢查。未進行任何變更。</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipFiles" xml:space="preserve"><value>受管理的本機 AI 安裝需要修復檔案。請先在本機 AI 設定中停止執行階段並解決原始閘道路由問題，再修復檔案。保留擁有權憑據。</value></data>
+  <data name="ChatPage_SetupUnavailable" xml:space="preserve">
+    <value>設定期間驗證的 Gateway 未連線。請檢查「連線」，或在其可用時再次檢查。</value>
+  </data>
+  <data name="ChatPage_SetupAuthorityUnconfirmed" xml:space="preserve">
+    <value>無法確認設定期間驗證的 Gateway 和代理程式。請開啟「連線」進行檢查。</value>
+  </data>
+  <data name="ChatPage_SetupRenderingFailed" xml:space="preserve">
+    <value>無法顯示聊天。請再次檢查。如果問題持續發生，請開啟「診斷」。</value>
+  </data>
+  <data name="ChatPage_SetupCheckAgain.Content" xml:space="preserve">
+    <value>再次檢查</value>
+  </data>
 </root>

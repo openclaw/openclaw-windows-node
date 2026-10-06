@@ -307,13 +307,16 @@ public sealed class LocalAiSetupUxContractTests
             "if (!availability.CanInstall || availability.Plan is null || availability.SelectedGpu is null)",
             "hardwareReason = DescribeLocalAiUnavailable(availability);",
             "LocalInferenceEligibilityResult selectedEligibility =",
+            "LocalInferenceEligibility.EvaluateInstalled(_localAiHardware, selectedModelId)",
             "LocalInferenceEligibility.Evaluate(_localAiHardware, selectedModelId);",
             "if (_localAiRecoveryModelPinned)",
             "eligibility = selectedEligibility;",
             "else if (!selectedEligibility.CanInstall)",
             "_config.LocalAi.SelectedModelId = null;",
             "_config.LocalAi.SelectedModelId ??= _localAiRecommendedModelId ?? availability.Plan.Model.Id;",
-            "eligibility ??= LocalInferenceEligibility.Evaluate(",
+            "eligibility ??= _localAiRecoveryModelPinned",
+            "LocalInferenceEligibility.EvaluateInstalled(",
+            "LocalInferenceEligibility.Evaluate(",
             "_config.LocalAi.SelectedModelId);");
     }
 

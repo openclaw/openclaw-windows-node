@@ -44,7 +44,10 @@ public sealed class LocalAiOnboardingRecoveryTests
 
     private sealed class NoRuntimeInspection : ILlamaRuntimeInspector
     {
-        public Task<LlamaRuntimeInspection> InspectAsync(string installDirectory, CancellationToken cancellationToken) =>
+        public Task<LlamaRuntimeInspection> InspectAsync(
+            string installDirectory,
+            LlamaRuntimeVariant runtime,
+            CancellationToken cancellationToken) =>
             throw new InvalidOperationException("No runtime exists to inspect.");
     }
 

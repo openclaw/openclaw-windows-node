@@ -51,7 +51,7 @@
     "date": "2026-06-23",
     "sessionsTsBlobSha": "d938f80f68cb285719e20801e83f74893aa04332",
     "commandsTsBlobSha": "a24972162dfbe4f95e05bf19211097707d30f9bb",
-    "result": "All enforced request fields, response envelopes, and the sessions.patch tri-state nullable (Union([value, Null])) contract match upstream main exactly. The snapshot is a deliberate SUBSET: the Windows client does not yet implement these upstream sessions.patch fields — label, agentId, spawnedBy, spawnedWorkspaceDir, spawnedCwd, spawnDepth, subagentRole, subagentControlScope, inheritedToolAllow, inheritedToolDeny (spawn/subagent orchestration); nor the compaction checkpoint preCompaction/postCompaction references. These are upstream fields the client does not implement yet, not drift."
+    "result": "All enforced request fields, response envelopes, and the sessions.patch tri-state nullable (Union([value, Null])) contract match upstream main exactly. The snapshot is a deliberate SUBSET: the Windows client does not yet implement these upstream sessions.patch fields — agentId, spawnedBy, spawnedWorkspaceDir, spawnedCwd, spawnDepth, subagentRole, subagentControlScope, inheritedToolAllow, inheritedToolDeny (spawn/subagent orchestration); nor the compaction checkpoint preCompaction/postCompaction references. These are upstream fields the client does not implement yet, not drift."
   },
   "clientFoundationCommit": "2cae69ba",
   "_clientFoundationCommitNote": "The commit on main that introduced the typed gateway protocol client (OpenClawGatewayClient.Protocol.cs + GatewayProtocolModels.cs) this guard cross-checks.",
@@ -62,7 +62,7 @@
       "method": "sessions.list",
       "kind": "request",
       "windowsUsage": "used",
-      "requestFields": ["agentId"],
+      "requestFields": ["agentId", "archived"],
       "responseEnvelope": ["sessions"],
       "responseEnvelopeSource": "TryGetSessionsPayload(JsonElement payload",
       "responseFields": [
@@ -71,7 +71,7 @@
         "space", "chatType", "execNode", "parentSessionKey", "spawnDepth", "origin",
         "worktree", "classification", "agentId", "accountId", "peerKind", "isBackground", "sessionId", "thinkingLevel", "verboseLevel",
         "systemSent", "abortedLastRun", "inputTokens", "outputTokens", "totalTokens",
-        "contextTokens", "updatedAt", "startedAt"
+        "contextTokens", "updatedAt", "startedAt", "pinned", "pinnedAt", "unread", "markedUnreadAt", "createdAt", "archived"
       ]
     },
     {
@@ -85,7 +85,7 @@
       "kind": "request",
       "windowsUsage": "used",
       "requestFields": [
-        "key", "agentId", "parentSessionKey", "emitCommandHooks", "succeedsParent"
+        "key", "agentId", "parentSessionKey", "emitCommandHooks", "succeedsParent", "fork", "forkFrom"
       ],
       "requestFieldsSource": "internal static Dictionary<string, object?> BuildSessionCreateParameters("
     },
@@ -108,7 +108,8 @@
       "requestFields": [
         "key", "model", "thinkingLevel", "fastMode", "verboseLevel", "traceLevel",
         "reasoningLevel", "responseUsage", "elevatedLevel", "execHost", "execSecurity",
-        "execAsk", "execNode", "sendPolicy", "groupActivation"
+        "execAsk", "execNode", "sendPolicy", "groupActivation", "label", "pinned",
+        "unread", "archived", "expectedMarkedUnreadAt"
       ],
       "requestFieldsSource": "ToPayload(string key",
       "_note": "Extended field set built by SessionPatch.ToPayload (strict additionalProperties:false upstream). The exact wire key allowlist is also asserted at runtime by GatewayProtocolModelsTests.SessionPatch_ToPayload_EmitsOnlyKnownGatewaySchemaFields.",

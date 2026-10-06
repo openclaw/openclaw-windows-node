@@ -55,10 +55,14 @@ function Assert-Impact {
     if ($actual.classification -ne $Classification) {
         throw "$Scenario classified as '$($actual.classification)' instead of '$Classification'."
     }
+    $expectedProperties = @("classification") + $laneNames
+    if (@(Compare-Object $expectedProperties @($actual.PSObject.Properties.Name)).Count -ne 0) {
+        throw "$Scenario returned an unexpected classifier output shape."
+    }
 
     foreach ($lane in $laneNames) {
         $expected = $Required -contains $lane
-        if ([bool]$actual.$lane -ne $expected) {
+        if ($actual.$lane -isnot [bool] -or $actual.$lane -ne $expected) {
             throw "$Scenario expected $lane=$expected but received $($actual.$lane)."
         }
     }
@@ -248,6 +252,58 @@ foreach ($case in $cases) {
     Assert-Impact @arguments
 }
 
+$fastOnlyPaths = @(
+    ".github/scripts/repository-triage.cjs",
+    ".github/scripts/repository-triage.test.cjs"
+)
+foreach ($path in $fastOnlyPaths) {
+    Assert-Impact -Scenario "Exact tooling path $path" -Paths @($path) -Classification fast_only
+    Assert-Impact -Scenario "Windows tooling path $path" -Paths @($path.Replace("/", "\")) -Classification fast_only
+    Assert-Impact -Scenario "Tooling with docs $path" -Paths @($path, "docs/TEST_COVERAGE.md") -Classification fast_only
+
+    # Adding tooling must never reduce any existing selection, in either order.
+    foreach ($case in $cases) {
+        $required = if ($case.ContainsKey("Required")) { $case.Required } else { @() }
+        $eventName = if ($case.ContainsKey("EventName")) { $case.EventName } else { "pull_request" }
+        $classification = if ($case.Classification -eq "docs_only" -and $eventName -eq "pull_request") {
+            "fast_only"
+        } else { $case.Classification }
+        foreach ($toolingFirst in @($true, $false)) {
+            $paths = if ($toolingFirst) { @($path) + $case.Paths } else { $case.Paths + @($path) }
+            Assert-Impact -Scenario "Tooling union: $($case.Scenario), toolingFirst=$toolingFirst" `
+                -Paths $paths -Classification $classification -Required $required -EventName $eventName
+        }
+    }
+}
+Assert-Impact -Scenario "Both tooling paths" -Paths $fastOnlyPaths -Classification fast_only
+foreach ($eventName in @("push", "workflow_dispatch", "schedule", "pull_request_target", "")) {
+    Assert-Impact -Scenario "Tooling on non-PR event '$eventName'" -Paths $fastOnlyPaths `
+        -EventName $eventName -Classification full -Required $allLanes
+}
+foreach ($path in @(
+        ".github/scripts/other.cjs",
+        ".github/scripts/repository-triage.cjs.bak",
+        ".github/scripts/repository-triage.test.mjs",
+        ".github/scripts/nested/repository-triage.cjs",
+        ".github/scripts/Repository-Triage.cjs",
+        ".github/scripts/package.json",
+        ".github/scripts/package-lock.json",
+        ".github/actions/triage/action.yml",
+        ".github/extensions/openclaw-triage-dashboard/triage-state.test.mjs",
+        "scripts/repository-triage.cjs",
+        "src/OpenClaw.Shared/OpenClaw.Shared.csproj",
+        "src/Directory.Build.props",
+        "NuGet.Config",
+        "/.github/scripts/repository-triage.cjs",
+        "../.github/scripts/repository-triage.cjs",
+        ".github//scripts/repository-triage.cjs",
+        ".github/scripts/../scripts/repository-triage.cjs",
+        ".github/scripts/repository-triage.cjs$([char]0)",
+        " ")) {
+    Assert-Impact -Scenario "Tooling does not exempt '$path'" -Paths (@($path) + $fastOnlyPaths) `
+        -Classification full -Required $fullPrLanes
+}
+
 $emptyImpact = Get-Impact -Paths @()
 if ($emptyImpact.classification -ne "full" -or -not $emptyImpact.full) {
     throw "An empty explicit path list must select full validation."
@@ -284,6 +340,39 @@ try {
         throw "A real skill-only git diff classified as '$($gitImpact.classification)'."
     }
 
+    $toolingPath = Join-Path $tempRoot ".github\scripts\repository-triage.cjs"
+    New-Item -ItemType Directory -Path (Split-Path -Parent $toolingPath) -Force | Out-Null
+    foreach ($operation in @("add", "modify", "delete-allowlisted", "readd", "rename", "delete-unknown")) {
+        $baseSha = (& git -C $tempRoot rev-parse HEAD).Trim()
+        switch ($operation) {
+            "add" { Set-Content -LiteralPath $toolingPath -Value "tooling baseline" }
+            "modify" { Add-Content -LiteralPath $toolingPath -Value "tooling changed" }
+            "delete-allowlisted" { Remove-Item -LiteralPath $toolingPath }
+            "readd" { Set-Content -LiteralPath $toolingPath -Value "tooling baseline" }
+            "rename" {
+                $renamedPath = Join-Path $tempRoot ".github\scripts\unreviewed-tool.cjs"
+                Move-Item -LiteralPath $toolingPath -Destination $renamedPath
+            }
+            "delete-unknown" { Remove-Item -LiteralPath $renamedPath }
+        }
+        & git -C $tempRoot add .
+        & git -C $tempRoot commit --quiet -m "tooling $operation"
+        if ($LASTEXITCODE -ne 0) { throw "Could not commit tooling $operation fixture." }
+        $headSha = (& git -C $tempRoot rev-parse HEAD).Trim()
+        $gitImpact = (& $classifierPath -EventName pull_request -BaseSha $baseSha `
+            -HeadSha $headSha -RepoRoot $tempRoot) | ConvertFrom-Json
+        $expected = if ($operation -in @("rename", "delete-unknown")) { "full" } else { "fast_only" }
+        if ($gitImpact.classification -ne $expected) {
+            throw "Real tooling $operation diff expected '$expected', got '$($gitImpact.classification)'."
+        }
+        foreach ($lane in $laneNames) {
+            $expectedLane = $expected -eq "full" -and $fullPrLanes -contains $lane
+            if ($gitImpact.$lane -ne $expectedLane) {
+                throw "Real tooling $operation diff expected $lane=$expectedLane."
+            }
+        }
+    }
+
     $emptyGitImpact = (& $classifierPath `
         -EventName pull_request `
         -BaseSha $headSha `
@@ -294,13 +383,17 @@ try {
     }
 
     foreach ($invalidBase in @("", "missing-base", ("f" * 40))) {
-        $invalidImpact = (& $classifierPath `
-            -EventName pull_request `
-            -BaseSha $invalidBase `
-            -HeadSha $headSha `
-            -RepoRoot $tempRoot) | ConvertFrom-Json
-        if ($invalidImpact.classification -ne "full" -or -not $invalidImpact.full) {
-            throw "Invalid revision '$invalidBase' did not select full validation."
+        foreach ($invalidSide in @("base", "head")) {
+            $base = if ($invalidSide -eq "base") { $invalidBase } else { $headSha }
+            $head = if ($invalidSide -eq "head") { $invalidBase } else { $headSha }
+            $invalidImpact = (& $classifierPath `
+                -EventName pull_request `
+                -BaseSha $base `
+                -HeadSha $head `
+                -RepoRoot $tempRoot) | ConvertFrom-Json
+            if ($invalidImpact.classification -ne "full" -or -not $invalidImpact.full) {
+                throw "Invalid revision '$invalidBase' did not select full validation."
+            }
         }
     }
 } finally {
@@ -309,4 +402,4 @@ try {
     }
 }
 
-Write-Host "CI impact classifier regressions passed: targeted project lanes and fail-closed full validation cases." -ForegroundColor Green
+Write-Host "CI impact classifier regressions passed: exact fast-only tooling, monotonic mixed lanes, real git diffs, and fail-closed full validation." -ForegroundColor Green

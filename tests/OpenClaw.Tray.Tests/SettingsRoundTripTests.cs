@@ -200,6 +200,7 @@ public class SettingsRoundTripTests
         Assert.False(settings.NodeOllamaInferenceEnabled);
         Assert.False(settings.NodeSttEnabled);
         Assert.Equal("auto", settings.SttLanguage);
+        Assert.False(settings.VoiceTtsEnabled);
         Assert.False(settings.NodeTtsEnabled);
         Assert.Equal("piper", settings.TtsProvider);
         Assert.Null(settings.TtsElevenLabsApiKey);

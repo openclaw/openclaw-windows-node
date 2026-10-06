@@ -182,12 +182,15 @@ public sealed class LlamaServerClient : ILlamaServerClient
     {
     }
 
-    internal LlamaServerClient(HttpMessageHandler handler, Func<string?>? getApiKey = null)
+    internal LlamaServerClient(
+        HttpMessageHandler handler,
+        Func<string?>? getApiKey = null,
+        TimeSpan? timeout = null)
     {
         _getApiKey = getApiKey;
         _client = new HttpClient(handler ?? throw new ArgumentNullException(nameof(handler)), disposeHandler: true)
         {
-            Timeout = TimeSpan.FromSeconds(3),
+            Timeout = timeout ?? TimeSpan.FromSeconds(3),
         };
     }
 
@@ -325,17 +328,21 @@ public sealed class LlamaServerClient : ILlamaServerClient
             Query = query ?? string.Empty,
         }.Uri;
 
-    private static async Task<byte[]> ReadBoundedAsync(HttpContent content, CancellationToken cancellationToken)
+    private async Task<byte[]> ReadBoundedAsync(HttpContent content, CancellationToken cancellationToken)
     {
         if (content.Headers.ContentLength is > MaxEvidenceResponseBytes)
             throw new InvalidDataException("The llama-server evidence response exceeds the size limit.");
 
-        await using Stream input = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using var readTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (_client.Timeout > TimeSpan.Zero && _client.Timeout != Timeout.InfiniteTimeSpan)
+            readTimeout.CancelAfter(_client.Timeout);
+
+        await using Stream input = await content.ReadAsStreamAsync(readTimeout.Token).ConfigureAwait(false);
         using var output = new MemoryStream();
         var buffer = new byte[16 * 1024];
         while (true)
         {
-            int read = await input.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false);
+            int read = await input.ReadAsync(buffer.AsMemory(), readTimeout.Token).ConfigureAwait(false);
             if (read == 0)
                 return output.ToArray();
             if (output.Length + read > MaxEvidenceResponseBytes)

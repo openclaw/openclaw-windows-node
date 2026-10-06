@@ -309,6 +309,14 @@ public class SessionInfo
     /// older Gateway did not provide the field, so callers may use legacy status.
     /// </summary>
     public bool? HasActiveRun { get; set; }
+    public bool Pinned { get; set; }
+    public long? PinnedAt { get; set; }
+    public bool Unread { get; set; }
+    public long? MarkedUnreadAt { get; set; }
+    /// <summary>Gateway session creation time (Unix ms). Write-once upstream; compact/sparse
+    /// rows may omit it, so a missing value means "not projected", not "cleared".</summary>
+    public long? CreatedAt { get; set; }
+    public bool Archived { get; set; }
     public long InputTokens { get; set; }
     public long OutputTokens { get; set; }
     public long TotalTokens { get; set; }

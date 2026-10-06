@@ -33,6 +33,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private readonly HashSet<string> _issuedApprovalIds = new(StringComparer.Ordinal);
     private readonly Dictionary<int, ActiveConnection> _authenticatedConnections = [];
     private readonly Dictionary<string, TaskCompletionSource> _historyGates = new(StringComparer.Ordinal);
+    private TaskCompletionSource? _sessionMutationGate;
     private readonly TaskCompletionSource _handshake = NewSignal();
     private readonly TaskCompletionSource _accepted = NewSignal();
     private TaskCompletionSource _requestChanged = NewSignal();
@@ -117,6 +118,27 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             if (!_historyGates.Remove(sessionKey, out var signal))
                 throw new InvalidOperationException("History is not held for this session.");
             signal.TrySetResult();
+        }
+    }
+
+    public void HoldSessionMutations()
+    {
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposal is not null, this);
+            if (_sessionMutationGate is not null)
+                throw new InvalidOperationException("Session mutations are already held.");
+            _sessionMutationGate = NewSignal();
+        }
+    }
+
+    public void ReleaseSessionMutations()
+    {
+        lock (_sync)
+        {
+            var gate = _sessionMutationGate ?? throw new InvalidOperationException("Session mutations are not held.");
+            _sessionMutationGate = null;
+            gate.TrySetResult();
         }
     }
 
@@ -354,8 +376,10 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
 
                     Task? gate;
                     lock (_sync)
-                        gate = method == "chat.history" && key is not null && _historyGates.TryGetValue(key, out var held)
-                            ? held.Task : null;
+                        gate = method is "sessions.patch" or "sessions.delete"
+                            ? _sessionMutationGate?.Task
+                            : method == "chat.history" && key is not null && _historyGates.TryGetValue(key, out var held)
+                                ? held.Task : null;
                     pending.RemoveAll(task => task.IsCompletedSuccessfully);
                     pending.Add(RespondAsync(socket, sendLock, id!, method!, parameters, requestIndex, connectionId, gate, connection.Token));
                 }
@@ -427,6 +451,8 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             }
             catch (FixtureRequestException ex)
             {
+                if (gate is not null)
+                    await gate.WaitAsync(cancellationToken);
                 Complete(requestIndex, $"error:{ex.Code}", ex.Unexpected);
                 await SendErrorAsync(socket, sendLock, id, ex.Code, ex.Message, cancellationToken);
                 return;
@@ -603,6 +629,8 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             foreach (var gate in _historyGates.Values)
                 gate.TrySetCanceled(_lifetime.Token);
             _historyGates.Clear();
+            _sessionMutationGate?.TrySetCanceled();
+            _sessionMutationGate = null;
         }
         await _acceptLoop;
         Task[] connections;
