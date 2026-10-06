@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.SetupEngine;
 using OpenClaw.SetupEngine.UI;
+using OpenClaw.SetupEngine.UI.Controls;
 using OpenClaw.SetupEngine.UI.Pages;
 using OpenClaw.TestSupport;
 using Xunit.Abstractions;
@@ -165,8 +166,8 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
                 }
                 root.UpdateLayout();
                 await OnboardingNativeProof.NextCompositionAsync(TimeSpan.FromMilliseconds(400));
-                var footer = page is CapabilitiesPage
-                    ? Assert.IsType<Grid>(Assert.IsType<OpenClaw.SetupEngine.UI.Controls.SetupPageShell>(page.Content).Footer)
+                var footer = page is CapabilitiesPage or NativeGatewaySetupPage
+                    ? Assert.IsType<Grid>(Assert.IsType<SetupPageShell>(page.Content).Footer)
                     : Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<Grid>(), child => Grid.GetRow(child) == 2);
                 OnboardingNativeProof.AssertFullyVisible(footer, root);
                 foreach (var action in TestSupport.FindDescendants<Button>(footer).Where(button => button.Visibility == Visibility.Visible))
@@ -252,7 +253,9 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
         ITestOutputHelper output, string name)
     {
         var root = Assert.IsAssignableFrom<FrameworkElement>(window.Content);
-        var scroll = Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<ScrollViewer>());
+        var scroll = page is NativeGatewaySetupPage
+            ? Assert.IsType<SetupPageShell>(page.Content).Scroller
+            : Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<ScrollViewer>());
         root.UpdateLayout();
         Assert.True(scroll.ViewportHeight >= 100, $"Scrollable content is a sliver: {scroll.ViewportHeight} DIPs");
         var offset = 0d;

@@ -7813,6 +7813,8 @@
   <data name="Onboarding_Native_InstallingPackageWaiting" xml:space="preserve"><value>仍在从 Microsoft Store 安装 Gateway。这可能需要几分钟（已用时 {0} 分钟）。</value></data>
   <data name="Onboarding_Native_VerifyingPackage" xml:space="preserve"><value>WinGet 已完成。正在验证 Gateway 注册和执行别名，然后继续...</value></data>
   <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>Companion 将准备您的 Gateway，然后帮助您连接 AI。</value></data>
+  <data name="Onboarding_Native_ProgressSpeech.Text" xml:space="preserve"><value>我们来设置您的 Gateway。</value></data>
+  <data name="Onboarding_Native_ProgressDeadline.Text" xml:space="preserve"><value>软件包安装和验证共用五分钟时限。取消后，Windows 仍可能完成部署。重试会再次检查注册状态。</value></data>
   <data name="Onboarding_Native_Recovery.Header" xml:space="preserve"><value>Gateway 恢复</value></data>
   <data name="Onboarding_Native_Terminal.Content" xml:space="preserve"><value>打开终端</value></data>
   <data name="Onboarding_Native_Restart.Content" xml:space="preserve"><value>重启 Gateway</value></data>

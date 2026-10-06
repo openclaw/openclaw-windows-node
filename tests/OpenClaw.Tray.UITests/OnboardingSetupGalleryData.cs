@@ -24,7 +24,8 @@ internal static class OnboardingSetupGalleryData
         "tailscale" => new(typeof(GatewaySetupDetailPage), "Tailscale Serve", "DetailTitle"),
         "local-review" => new(typeof(GatewaySetupDetailPage), "Local AI", "DetailTitle"),
         "networking" => new(typeof(GatewaySetupDetailPage), "WSL networking consent", "DetailTitle"),
-        "ai" or "ai-return" or "dialog" => new(typeof(AiSetupPage), "Set up your AI", "TitleText"),
+        "native-install" => new(typeof(NativeGatewaySetupPage), "Install a local native gateway", "TitleText"),
+        "ai" or "ai-return" or "dialog" => new(typeof(AiSetupPage), "Connect your AI", "TitleText"),
         "preview" when scene.State.StartsWith("wizard", StringComparison.Ordinal) =>
             new(typeof(WizardPage), "OpenClaw onboard"),
         "preview" when scene.State == "milestone" =>

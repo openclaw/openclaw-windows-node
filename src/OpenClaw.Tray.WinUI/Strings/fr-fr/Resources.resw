@@ -7813,6 +7813,8 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Onboarding_Native_InstallingPackageWaiting" xml:space="preserve"><value>L'installation du Gateway depuis Microsoft Store se poursuit. Cela peut prendre plusieurs minutes ({0} min écoulées).</value></data>
   <data name="Onboarding_Native_VerifyingPackage" xml:space="preserve"><value>WinGet a terminé. Vérification de l'enregistrement du Gateway et de ses alias d'exécution avant de continuer...</value></data>
   <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>Companion préparera votre Gateway, puis vous aidera à connecter votre IA.</value></data>
+  <data name="Onboarding_Native_ProgressSpeech.Text" xml:space="preserve"><value>Configurons votre Gateway.</value></data>
+  <data name="Onboarding_Native_ProgressDeadline.Text" xml:space="preserve"><value>L'installation et la vérification du paquet partagent une limite de cinq minutes. Windows peut terminer le déploiement après l'annulation. Réessayer vérifie à nouveau l'enregistrement.</value></data>
   <data name="Onboarding_Native_Recovery.Header" xml:space="preserve"><value>Récupération du Gateway</value></data>
   <data name="Onboarding_Native_Terminal.Content" xml:space="preserve"><value>Ouvrir le terminal</value></data>
   <data name="Onboarding_Native_Restart.Content" xml:space="preserve"><value>Redémarrer le Gateway</value></data>

@@ -67,7 +67,8 @@ readiness promptly instead of waiting for the full recovery deadline.
 
 Native installation keeps Back at the left and Cancel setup (or Retry setup) at
 the right, using the same content-sized, 100 px minimum buttons as earlier setup
-screens. Progress stays centered on its own row and action labels can wrap.
+screens. The canonical stage rail joins the shared responsive hero; action labels
+can wrap in the fixed footer. Terminal status scrolls into view without animation.
 
 The Gateway chooser shows Local AI availability in a subtle, transparent status row
 below all three choices and above "Remote, local MCP or set up later", not inside
@@ -293,7 +294,13 @@ An already installed healthy development/patch package skips installation. Store
 Retry checks registration again before invoking WinGet. Companion does not download Gateway packages directly,
 change certificate trust, or uninstall packages on cancellation.
 
-Progress reuses the WSL spinner/checkmark rows. Normal completion uses the same
+Native progress renders its existing support, package, profile and verification
+rows in the shared responsive shell. It shows only native installation facts,
+including the acquisition deadline and deployment-after-cancellation disclosure.
+Retry and Cancel stay reachable in the fixed footer. Terminal status scrolls
+into view without animation. The existing installer/session owners retain
+acquisition, cancellation, retry and automatic AI handoff.
+Normal completion uses the same
 verified-model heading and two destination choices as WSL, without a native-only
 Gateway/capabilities summary. Gateway details and Windows permissions remain in
 their existing Connection and Permissions settings. AI readiness does not imply
@@ -454,7 +461,8 @@ it is 720 x 560 physical pixels; at 150% it is 1080 x 840; at 200% it is
 1440 x 1120. Actual monitor/work-area constraints remain Windows-owned.
 
 The welcome/trust page (`SecurityNoticePage`), WSL review (`GatewaySetupPage`)
-and its details (`GatewaySetupDetailPage`), plus installation (`ProgressPage`),
+and its details (`GatewaySetupDetailPage`), plus installation (`ProgressPage`
+and `NativeGatewaySetupPage`),
 use `SetupPageShell`.
 Its four presentation slots hold the hero, header, body and fixed footer.
 At an actual shell width of at least 960 DIPs and height of at least 600 DIPs,

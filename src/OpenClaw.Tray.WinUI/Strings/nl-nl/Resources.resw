@@ -7814,6 +7814,8 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Onboarding_Native_InstallingPackageWaiting" xml:space="preserve"><value>De Gateway wordt nog steeds geïnstalleerd vanuit Microsoft Store. Dit kan enkele minuten duren ({0} min verstreken).</value></data>
   <data name="Onboarding_Native_VerifyingPackage" xml:space="preserve"><value>WinGet is klaar. Gateway-registratie en uitvoeringsaliassen controleren voordat wordt doorgegaan...</value></data>
   <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>Companion bereidt uw Gateway voor en helpt u daarna uw AI te verbinden.</value></data>
+  <data name="Onboarding_Native_ProgressSpeech.Text" xml:space="preserve"><value>Laten we uw Gateway instellen.</value></data>
+  <data name="Onboarding_Native_ProgressDeadline.Text" xml:space="preserve"><value>Installatie en verificatie van het pakket delen een limiet van vijf minuten. Windows kan de installatie na annulering toch voltooien. Opnieuw proberen controleert de registratie opnieuw.</value></data>
   <data name="Onboarding_Native_Recovery.Header" xml:space="preserve"><value>Gateway herstellen</value></data>
   <data name="Onboarding_Native_Terminal.Content" xml:space="preserve"><value>Terminal openen</value></data>
   <data name="Onboarding_Native_Restart.Content" xml:space="preserve"><value>Gateway opnieuw starten</value></data>

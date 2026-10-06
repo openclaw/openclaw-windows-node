@@ -114,6 +114,43 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
         WriteManifest();
     }
 
+    [Theory]
+    [InlineData(ElementTheme.Light)]
+    [InlineData(ElementTheme.Dark)]
+    [Trait("Category", "NativeOnboardingProof")]
+    public async Task InstallationPages_GalleryAndAxe_StandardAndMinimum(ElementTheme theme)
+    {
+        OnboardingNativeProof.AssertIsolatedRoots();
+        _directory = OnboardingNativeProof.RequireProofDirectory();
+        OnboardingNativeProof.AssertSourceUnchanged();
+        _scanInstallationPages = true;
+        var scenes = RequiredScenes.Where(scene => scene.Family is
+            "review" or "tailscale" or "local-review" or "networking" ||
+            scene.Family == "preview" && scene.State is "progress" or "progress-local-ai" or "milestone")
+            .Concat([new Scene("09-progress-overview", "preview", "progress-closed")])
+            .Concat(new[] { "pending", "running", "failed", "cancelled", "retry" }
+                .Select(state => new Scene($"09-native-package-{state}", "native-install", state)));
+        try
+        {
+            foreach (var scene in scenes)
+            {
+                var result = new SceneResult(scene, theme);
+                _results.Add(result);
+                await CaptureSceneAsync(result);
+                Assert.True(result.AllViewportsCaptured);
+                Assert.NotEmpty(result.Frames);
+            }
+            OnboardingNativeProof.AssertSourceUnchanged();
+            _sourceVerifiedAfterCapture = true;
+            foreach (var result in _results) result.Status = "captured";
+        }
+        finally
+        {
+            WriteManifest();
+            output.WriteLine($"gallery-manifest={Path.Combine(_directory, _run + ".json")}");
+        }
+    }
+
     private const string PreviewVariable = "OPENCLAW_SETUP_PREVIEW_PAGE";
     private readonly string _run = $"setup-gallery-{DateTime.UtcNow:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}";
     private readonly List<SceneResult> _results = [];
@@ -121,6 +158,7 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
     private bool _sourceVerifiedAfterCapture;
     private string? _failure;
     private bool _manualForegroundPending;
+    private bool _scanInstallationPages;
 
     [Theory]
     [InlineData(false, ElementTheme.Light, 480)]
@@ -157,11 +195,21 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                 await WaitAsync(() => page.IsLoaded, "native package preview Loaded");
                 var mascot = Find<OnboardingMascot>(page, wizard ? "MascotHero" : "ProgressMascot");
                 mascot.IsAnimationEnabled = false;
-                var progress = Find<SetupProgressIndicator>(page, "FlowProgress");
-                progress.Update(OnboardingFlowPolicy.GetStages(SetupGatewayRoute.Native, new SetupConfig(), includeReadyChoice: !wizard),
+                var progress = Assert.IsAssignableFrom<FrameworkElement>(page.FindName("FlowProgress"));
+                Assert.IsAssignableFrom<ISetupProgressIndicator>(progress).Update(
+                    OnboardingFlowPolicy.GetStages(SetupGatewayRoute.Native, new SetupConfig(), includeReadyChoice: !wizard),
                     wizard ? OnboardingStage.AiSetup : OnboardingStage.Install);
-                Assert.Equal(wizard ? 5 : 6, progress.Children.Count);
-                Assert.Equal(20, Assert.IsType<Border>(progress.Children[wizard ? 4 : 3]).Width);
+                if (wizard)
+                {
+                    var dots = Assert.IsType<SetupProgressIndicator>(progress);
+                    Assert.Equal(5, dots.Children.Count);
+                    Assert.Equal(20, Assert.IsType<Border>(dots.Children[4]).Width);
+                }
+                else
+                {
+                    Assert.IsType<SetupStepIndicator>(progress);
+                    Assert.Equal("Step 4 of 6", AutomationProperties.GetName(progress));
+                }
                 Assert.False(string.IsNullOrWhiteSpace(AutomationProperties.GetName(progress)));
                 string[] actions;
                 if (wizard)
@@ -208,7 +256,7 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                     }
                     Assert.True(bounds.Left >= previousRight - 0.1);
                     Assert.True(bounds.Right <= footer.ActualWidth + 0.1);
-                    Assert.True(progressBounds.Bottom <= bounds.Top);
+                    if (wizard) Assert.True(progressBounds.Bottom <= bounds.Top);
                     previousRight = bounds.Right;
                 }
                 OnboardingNativeProof.AssertFullyVisible(mascot, root);
@@ -763,7 +811,7 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                             Assert.Equal(scene.State == "checked", config.LocalAi.WslMirroredNetworkingConsent);
                             break;
                         case "preview":
-                            preview.Set(scene.State);
+                            preview.Set(scene.State == "progress-closed" ? "progress" : scene.State);
                             config.LocalAi.Enabled = scene.State == "progress-local-ai";
                             frame.Navigate(scene.State.StartsWith("wizard", StringComparison.Ordinal)
                                 ? typeof(WizardPage) : typeof(ProgressPage), config);
@@ -773,7 +821,7 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                                 Assert.Null(Field(progress, "_runCts"));
                                 Assert.Null(Field(progress, "_logger"));
                                 Assert.True(((Task)Field(progress, "_pipelineTask")!).IsCompletedSuccessfully);
-                                if (scene.State != "milestone")
+                                if (scene.State is not "milestone" and not "progress-closed")
                                 {
                                     await MountedAsync<ProgressPage>(frame);
                                     Assert.Single(TestSupport.FindDescendants<Expander>(progress)).IsExpanded = true;
@@ -818,6 +866,32 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                                 result.Facts.Add("Actual last setup page for this branch. Next exits into the host; not invoked. No invented completion screen or persisted settings.");
                             }
                             break;
+                        case "native-install":
+                            preview.Set("native");
+                            window.SelectGatewayRoute(SetupGatewayRoute.Native);
+                            Assert.True(frame.Navigate(typeof(NativeGatewaySetupPage), config));
+                            var nativeInstall = await MountedAsync<NativeGatewaySetupPage>(frame);
+                            Assert.Null(Field(nativeInstall, "_operation"));
+                            var nativeRows = Find<StackPanel>(nativeInstall, "StepsPanel").Children.Cast<SettingsCard>().ToArray();
+                            Assert.Equal(4, nativeRows.Length);
+                            var nativeTerminal = scene.State is "failed" or "cancelled" or "retry";
+                            Find<Button>(nativeInstall, "RetryButton").Visibility =
+                                nativeTerminal ? Visibility.Visible : Visibility.Collapsed;
+                            if (scene.State != "pending")
+                                InvokePrivate(nativeInstall, "SetCurrentStep", 1);
+                            if (nativeTerminal)
+                                Assert.IsType<SetupPhaseStatus>(nativeRows[1].Content).Apply(
+                                    scene.State == "cancelled" ? SetupInstallationStatus.Cancelled : SetupInstallationStatus.Failed);
+                            Find<TextBlock>(nativeInstall, "StatusText").Text = scene.State switch
+                            {
+                                "pending" => "Synthetic pending package verification. No installer or Gateway ran.",
+                                "running" => "Synthetic package acquisition in progress. No installer or Gateway ran.",
+                                "cancelled" => "Synthetic cancellation. Windows may still finish a previously started deployment.",
+                                _ => "Synthetic package acquisition failure. Retry checks registration again. No installer or Gateway ran.",
+                            };
+                            InvokePrivate(nativeInstall, "SetBusy", scene.State == "running");
+                            result.Facts.Add("Native package states use production rows and busy/action applicators with synthetic inputs. No package resolver, installer, session or Gateway ran.");
+                            break;
                         default:
                             throw new InvalidOperationException($"Required scene has no implementation: {scene.Id}");
                     }
@@ -830,6 +904,14 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                         await CaptureDialogAsync(window, page, result);
                     else
                         await CaptureViewportsAsync(window, page, result);
+                    if (_scanInstallationPages)
+                    {
+                        await ScanInstallationPageAsync(window, root, scene.Id + "-standard");
+                        await SetupWindowMinimumSizeTests.ResizeBelowMinimumAsync(window, ui, output, scene.Id + "-" + result.Theme);
+                        await CaptureViewportsAsync(window, page, result);
+                        await ScanInstallationPageAsync(window, root, scene.Id + "-minimum");
+                        result.Facts.Add("Current standard and actual minimum HWND viewports captured; Axe scans passed without additional rule exclusions.");
+                    }
                     if (scene.State == "models" && scene.Family == "local-review")
                         await CaptureModelChoicesAsync(window, page, result);
                     Assert.NotNull(Field(window, "_setupLock"));
@@ -862,6 +944,19 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
             });
         }
         finally { Directory.Delete(work, recursive: true); }
+    }
+
+    private static async Task ScanInstallationPageAsync(SetupWindow window, Grid root, string context)
+    {
+        root.UpdateLayout();
+        await OnboardingNativeProof.NextCompositionAsync();
+        var handle = WinRT.Interop.WindowNative.GetWindowHandle(window);
+        await Task.Run(() =>
+        {
+            AxeHelper.Initialize(Environment.ProcessId);
+            AxeHelper.AssertNoAccessibilityErrors(handle, context: context);
+        });
+        OnboardingNativeProof.AssertProductDpi(window);
     }
 
     private async Task PrepareAiAsync(SetupWindow window, Frame frame, SceneResult result, LocalHost local, PreviewScope preview)

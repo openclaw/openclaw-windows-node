@@ -49,12 +49,21 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.Equal("OnboardingMascot", Named(hero).Name.LocalName);
         Assert.DoesNotContain(document.Descendants(), element => element.Name.LocalName == "Image");
         var footer = Named("NavigationFooter");
-        Assert.Equal("Auto,Auto", (string?)footer.Attribute("RowDefinitions"));
-        Assert.Same(footer, Named("FlowProgress").Parent);
+        if (file == "NativeGatewaySetupPage.xaml")
+        {
+            Assert.Equal("SetupPageShell.Footer", footer.Parent!.Name.LocalName);
+            Assert.Equal("SetupStepIndicator", Named("FlowProgress").Name.LocalName);
+            Assert.Contains(Named("FlowProgress").Ancestors(), element => element.Name.LocalName == "SetupPageShell.Hero");
+        }
+        else
+        {
+            Assert.Equal("Auto,Auto", (string?)footer.Attribute("RowDefinitions"));
+            Assert.Same(footer, Named("FlowProgress").Parent);
+        }
         foreach (var action in footer.Elements().Where(element =>
                      element.Name.LocalName is "Button" or "DropDownButton"))
         {
-            Assert.Equal("1", (string?)action.Attribute("Grid.Row"));
+            Assert.Equal(file == "NativeGatewaySetupPage.xaml" ? null : "1", (string?)action.Attribute("Grid.Row"));
             Assert.Equal(file == "NativeGatewaySetupPage.xaml" ? "100" : "0", (string?)action.Attribute("MinWidth"));
             if (file == "NativeGatewaySetupPage.xaml")
                 Assert.Equal((string?)action.Attribute(names + "Name") == "BackButton" ? "Left" : "Right",
