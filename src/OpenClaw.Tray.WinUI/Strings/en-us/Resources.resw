@@ -7323,7 +7323,8 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_V2_HostUnavailable.Title" xml:space="preserve"><value>Connection editor is unavailable in this setup host</value></data>
   <data name="Onboarding_V2_HostUnavailable.Message" xml:space="preserve"><value>Open setup from the Companion app to use its native connection editor.</value></data>
   <data name="Onboarding_V2_Back.Content" xml:space="preserve"><value>Back</value></data>
-  <data name="Onboarding_V2_CapabilitiesTitle.Text" xml:space="preserve"><value>PC capabilities</value></data>
+  <data name="Onboarding_V2_CapabilitiesTitle.Text" xml:space="preserve"><value>What can your assistant use?</value></data>
+  <data name="Onboarding_Capabilities_Speech.Text" xml:space="preserve"><value>You choose what I can use.</value></data>
   <data name="Onboarding_V2_CapabilitiesIntro.Text" xml:space="preserve"><value>Choose what agents may use on this PC. These choices do not grant Windows privacy access or execution approval.</value></data>
   <data name="Onboarding_V2_NodeMode.Header" xml:space="preserve"><value>Node mode</value></data>
   <data name="Onboarding_V2_NodeMode.Description" xml:space="preserve"><value>Offer this PC's capabilities through a connected Gateway.</value></data>

@@ -1033,6 +1033,12 @@ Profiles use vertical, full-width native single-selection rows with the system
 selection indicator, selected background and keyboard behavior. Strict, Balanced
 (Recommended) and Open appear without a redundant section heading. The adjacent
 **Fine-tune** expander shows the selected-capability summary.
+`CapabilitiesPage` uses the responsive `SetupPageShell` with a mascot speech
+and canonical stage timeline beside the task in wide windows. Profiles and
+individual tools use flat, divided native rows. Compact windows scroll the
+mounted content while Back and the route-specific primary action remain fixed.
+Native installation disclosure and independent transport, sharing and startup
+choices remain on this page.
 Gateway choices, the Balanced preset and the final Chat choice share the
 `RecommendedBadge` control: a localized caption with an accent outline, 8 px
 horizontal and 4 px vertical padding, and disabled-state brushes inherited from

@@ -7255,7 +7255,8 @@
   <data name="Onboarding_V2_HostUnavailable.Title" xml:space="preserve"><value>此設定主機中無法使用連線編輯器</value></data>
   <data name="Onboarding_V2_HostUnavailable.Message" xml:space="preserve"><value>從 Companion 應用程式開啟設定以使用原生連線編輯器。</value></data>
   <data name="Onboarding_V2_Back.Content" xml:space="preserve"><value>返回</value></data>
-  <data name="Onboarding_V2_CapabilitiesTitle.Text" xml:space="preserve"><value>電腦功能</value></data>
+  <data name="Onboarding_V2_CapabilitiesTitle.Text" xml:space="preserve"><value>您的助理可以使用哪些功能？</value></data>
+  <data name="Onboarding_Capabilities_Speech.Text" xml:space="preserve"><value>您來選擇我能使用哪些功能。</value></data>
   <data name="Onboarding_V2_CapabilitiesIntro.Text" xml:space="preserve"><value>選擇代理可在此電腦上使用的功能。這些選擇不會授予 Windows 隱私存取權或執行核准。</value></data>
   <data name="Onboarding_V2_NodeMode.Header" xml:space="preserve"><value>Node mode</value></data>
   <data name="Onboarding_V2_NodeMode.Description" xml:space="preserve"><value>透過已連線的 Gateway 提供此電腦的功能。</value></data>

@@ -7307,7 +7307,8 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="Onboarding_V2_HostUnavailable.Title" xml:space="preserve"><value>O editor de conexão não está disponível neste host de configuração</value></data>
   <data name="Onboarding_V2_HostUnavailable.Message" xml:space="preserve"><value>Abra a configuração no aplicativo Companion para usar o editor de conexão nativo.</value></data>
   <data name="Onboarding_V2_Back.Content" xml:space="preserve"><value>Voltar</value></data>
-  <data name="Onboarding_V2_CapabilitiesTitle.Text" xml:space="preserve"><value>Recursos do PC</value></data>
+  <data name="Onboarding_V2_CapabilitiesTitle.Text" xml:space="preserve"><value>O que seu assistente pode usar?</value></data>
+  <data name="Onboarding_Capabilities_Speech.Text" xml:space="preserve"><value>Você escolhe o que posso usar.</value></data>
   <data name="Onboarding_V2_CapabilitiesIntro.Text" xml:space="preserve"><value>Escolha o que os agentes podem usar neste PC. Essas escolhas não concedem acesso de privacidade do Windows nem aprovação de execução.</value></data>
   <data name="Onboarding_V2_NodeMode.Header" xml:space="preserve"><value>Node mode</value></data>
   <data name="Onboarding_V2_NodeMode.Description" xml:space="preserve"><value>Ofereça os recursos deste PC por um Gateway conectado.</value></data>

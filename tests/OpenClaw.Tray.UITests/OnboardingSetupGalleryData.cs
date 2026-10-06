@@ -19,7 +19,7 @@ internal static class OnboardingSetupGalleryData
         "welcome" => new(typeof(WelcomePage), "Where should OpenClaw live?", "GatewayTitle"),
         "advanced" => new(typeof(AdvancedSetupPage), "Choose another setup route"),
         "connection" => new(typeof(SetupNativeConnectionPage), "Connect to a gateway", "TitleText"),
-        "capabilities" or "branch" => new(typeof(CapabilitiesPage), "PC capabilities"),
+        "capabilities" or "branch" => new(typeof(CapabilitiesPage), "What can your assistant use?", "CapabilitiesTitle"),
         "review" => new(typeof(GatewaySetupPage), "WSL Gateway setup"),
         "tailscale" => new(typeof(GatewaySetupDetailPage), "Tailscale Serve", "DetailTitle"),
         "local-review" => new(typeof(GatewaySetupDetailPage), "Local AI", "DetailTitle"),

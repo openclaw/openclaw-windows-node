@@ -30,10 +30,10 @@ public sealed class OnboardingMockPresentationTests
         Assert.Equal("StackPanel", header.Name.LocalName);
         Assert.Null(header.Attribute("Height"));
         Assert.Null(header.Attribute("MaxHeight"));
-        if (name == "WelcomePage")
+        if (name is "WelcomePage" or "CapabilitiesPage")
         {
             Assert.Equal("SetupPageShell.Hero", header.Parent!.Name.LocalName);
-            var gatewayTitle = Named(document, "GatewayTitle");
+            var gatewayTitle = Named(document, name == "WelcomePage" ? "GatewayTitle" : "CapabilitiesTitle");
             Assert.Equal("SetupPageShell.Header", gatewayTitle.Parent!.Parent!.Name.LocalName);
             Assert.Equal("40", (string?)gatewayTitle.Attribute("FontSize"));
             Assert.Equal("Wrap", (string?)gatewayTitle.Attribute("TextWrapping"));
@@ -69,7 +69,7 @@ public sealed class OnboardingMockPresentationTests
             Assert.Equal("Transparent", (string?)row.Attribute("Background"));
             Assert.Equal("0", (string?)row.Attribute("CornerRadius"));
         });
-        foreach (var name in new[] { "CapabilitiesPage", "GatewaySetupPage",
+        foreach (var name in new[] { "GatewaySetupPage",
                      "ProgressPage", "WizardPage", "AiSetupPage", "AiReadyPage", "CompletePage" })
         {
             var page = Page(name);
@@ -106,7 +106,10 @@ public sealed class OnboardingMockPresentationTests
         var selector = Named(page, "ProfileSelector");
         var fineTune = Named(page, "FineTuneExpander");
         Assert.Same(selector.Parent, fineTune.Parent);
-        Assert.Equal("Border", selector.Parent!.Parent!.Name.LocalName);
+        Assert.Equal("StackPanel", selector.Parent!.Parent!.Name.LocalName);
+        Assert.Contains(selector.Parent.Parent.Ancestors(), element => element.Name.LocalName == "SetupPageShell.Body");
+        Assert.All(selector.Elements().Where(row => row.Name.LocalName == "ListViewItem"),
+            row => Assert.Equal("0", (string?)row.Attribute("CornerRadius")));
         var order = page.Descendants().ToList();
         Assert.DoesNotContain(page.Descendants(), element => (string?)element.Attribute(X + "Name") == "WindowsAccess");
         Assert.True(order.IndexOf(selector) < order.IndexOf(Named(page, "NodeModeToggle")));

@@ -7255,7 +7255,8 @@
   <data name="Onboarding_V2_HostUnavailable.Title" xml:space="preserve"><value>此设置主机中无法使用连接编辑器</value></data>
   <data name="Onboarding_V2_HostUnavailable.Message" xml:space="preserve"><value>从 Companion 应用打开设置以使用原生连接编辑器。</value></data>
   <data name="Onboarding_V2_Back.Content" xml:space="preserve"><value>返回</value></data>
-  <data name="Onboarding_V2_CapabilitiesTitle.Text" xml:space="preserve"><value>电脑功能</value></data>
+  <data name="Onboarding_V2_CapabilitiesTitle.Text" xml:space="preserve"><value>你的助手可以使用哪些功能？</value></data>
+  <data name="Onboarding_Capabilities_Speech.Text" xml:space="preserve"><value>你来选择我能使用哪些功能。</value></data>
   <data name="Onboarding_V2_CapabilitiesIntro.Text" xml:space="preserve"><value>选择代理可在此电脑上使用的功能。这些选择不会授予 Windows 隐私访问权限或执行批准。</value></data>
   <data name="Onboarding_V2_NodeMode.Header" xml:space="preserve"><value>Node mode</value></data>
   <data name="Onboarding_V2_NodeMode.Description" xml:space="preserve"><value>通过已连接的 Gateway 提供此电脑的功能。</value></data>

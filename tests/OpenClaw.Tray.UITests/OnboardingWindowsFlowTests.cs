@@ -156,7 +156,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
             Assert.False(summary.IsTextTrimmed);
             AssertFixedPageChrome(root, page);
             using (await OnboardingNativeProof.CaptureAsync(window, $"onboarding-viewport-custom-{theme}", output,
-                ["PC capabilities", "Custom capabilities", "Back", "Next"], new
+                ["Custom capabilities", "Back", "Next"], new
                 {
                     selected = selector.SelectedIndex, fullRow = Bounds(full, root),
                     editorLabel = Bounds(label, root), viewport = Bounds(scroll, root), size = originalSize,
@@ -178,7 +178,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
                     AutomationProperties.GetAutomationId(toggle), toggle.IsOn, checkBox: false);
             }
             using (await OnboardingNativeProof.CaptureAsync(window, $"onboarding-viewport-custom-last-toggle-{theme}", output,
-                ["PC capabilities", "Back", "Next"], new { viewport = Bounds(scroll, root), lastToggle = Bounds(Capability(page, SetupCapability.Stt), root) })) { }
+                ["Back", "Next"], new { viewport = Bounds(scroll, root), lastToggle = Bounds(Capability(page, SetupCapability.Stt), root) })) { }
             Assert.Equal(originalSize, window.AppWindow.Size);
             OnboardingNativeProof.AssertSourceUnchanged();
         }, nativeProof: true, theme: theme);
@@ -1071,7 +1071,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
         if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENCLAW_UI_PROOF_DIR")))
             return;
         var root = Assert.IsType<Grid>(window.Content);
-        var scroll = Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<ScrollViewer>());
+        var scroll = PageScroll(page);
         root.UpdateLayout();
         Assert.True(scroll.ViewportHeight > 0);
         var originalOffset = scroll.VerticalOffset;
@@ -1102,8 +1102,9 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
     private static Task WaitAsync(Func<bool> predicate, string operation) =>
         TestSupport.WaitForRenderedConditionAsync(predicate, operation);
 
-    private static ScrollViewer PageScroll(Page page) =>
-        Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<ScrollViewer>());
+    private static ScrollViewer PageScroll(Page page) => page is CapabilitiesPage
+        ? Assert.IsType<SetupPageShell>(page.Content).Scroller
+        : Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<ScrollViewer>());
 
     private static Windows.Foundation.Rect Bounds(FrameworkElement element, FrameworkElement relativeTo) =>
         element.TransformToVisual(relativeTo).TransformBounds(new Windows.Foundation.Rect(0, 0, element.ActualWidth, element.ActualHeight));
@@ -1113,6 +1114,20 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
 
     private void AssertFixedPageChrome(Grid root, Page page)
     {
+        if (page is CapabilitiesPage)
+        {
+            var shell = Assert.IsType<SetupPageShell>(page.Content);
+            var capabilitiesFooter = Assert.IsType<Grid>(shell.Footer);
+            Assert.DoesNotContain(capabilitiesFooter, TestSupport.FindDescendants<Grid>(shell.Scroller));
+            AssertFullyVisible(capabilitiesFooter, root);
+            AssertFullyVisible(shell.Scroller, root);
+            Assert.All(capabilitiesFooter.Children.OfType<Button>(), button => AssertFullyVisible(button, root));
+            Assert.True(Bounds(shell.Scroller, root).Bottom <= Bounds(capabilitiesFooter, root).Top);
+            Assert.Equal(0, shell.Scroller.ScrollableWidth);
+            Assert.True(shell.Scroller.ViewportHeight > 0);
+            Assert.False(Find<TextBlock>(page, "CapabilitiesTitle").IsTextTrimmed);
+            return;
+        }
         var grid = Assert.IsType<Grid>(page.Content);
         var header = Assert.Single(grid.Children.OfType<StackPanel>(), panel => Grid.GetRow(panel) == 0);
         var footer = Assert.Single(grid.Children.OfType<Grid>(), panel => Grid.GetRow(panel) == 2);
@@ -1225,6 +1240,15 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
 
     private static void AssertProgress(Page page, int stageCount, int current)
     {
+        if (page is CapabilitiesPage)
+        {
+            var timeline = Find<SetupStepIndicator>(page, "FlowProgress");
+            Assert.Equal(Visibility.Visible, timeline.Visibility);
+            Assert.Equal($"Step {current + 1} of {stageCount}", AutomationProperties.GetName(timeline));
+            Assert.Single(TestSupport.FindDescendants<TextBlock>(timeline),
+                label => label.Name == "StepTitle" && AutomationProperties.GetName(label).EndsWith(", current step", StringComparison.Ordinal));
+            return;
+        }
         var progress = Find<SetupProgressIndicator>(page, "FlowProgress");
         Assert.Equal(Visibility.Visible, progress.Visibility);
         Assert.Equal(stageCount, progress.Children.Count);
@@ -1235,6 +1259,8 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
 
     private static Button FooterButton(Page page, bool next)
     {
+        if (page is CapabilitiesPage)
+            return Find<Button>(page, next ? "ContinueButton" : "BackButton");
         var footer = Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<Grid>(),
             grid => Grid.GetRow(grid) == 2);
         return Assert.Single(footer.Children.OfType<Button>(), button => Grid.GetColumn(button) == (next ? 1 : 0));

@@ -145,7 +145,10 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
                 if (compactViewport)
                 {
                     page.Width = 704;
-                    Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<ScrollViewer>()).Height = 170;
+                    var compactScroll = page is CapabilitiesPage
+                        ? Assert.IsType<OpenClaw.SetupEngine.UI.Controls.SetupPageShell>(page.Content).Scroller
+                        : Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<ScrollViewer>());
+                    compactScroll.Height = 170;
                 }
                 if (page is NativeGatewaySetupPage)
                 {
@@ -162,8 +165,9 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
                 }
                 root.UpdateLayout();
                 await OnboardingNativeProof.NextCompositionAsync(TimeSpan.FromMilliseconds(400));
-                var grid = Assert.IsType<Grid>(page.Content);
-                var footer = Assert.Single(grid.Children.OfType<Grid>(), child => Grid.GetRow(child) == 2);
+                var footer = page is CapabilitiesPage
+                    ? Assert.IsType<Grid>(Assert.IsType<OpenClaw.SetupEngine.UI.Controls.SetupPageShell>(page.Content).Footer)
+                    : Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<Grid>(), child => Grid.GetRow(child) == 2);
                 OnboardingNativeProof.AssertFullyVisible(footer, root);
                 foreach (var action in TestSupport.FindDescendants<Button>(footer).Where(button => button.Visibility == Visibility.Visible))
                     OnboardingNativeProof.AssertFullyVisible(action, root);
@@ -343,7 +347,7 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
         ITestOutputHelper output, string name)
     {
         var root = Assert.IsType<Grid>(window.Content);
-        var scroll = Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<ScrollViewer>());
+        var scroll = Assert.IsType<OpenClaw.SetupEngine.UI.Controls.SetupPageShell>(page.Content).Scroller;
         Assert.True(scroll.ViewportHeight >= 100);
         var profiles = Assert.IsType<ListView>(page.FindName("ProfileSelector"));
         var fineTune = Assert.IsType<SettingsExpander>(page.FindName("FineTuneExpander"));

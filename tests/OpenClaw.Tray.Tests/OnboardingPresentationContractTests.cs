@@ -107,7 +107,7 @@ public sealed class OnboardingPresentationContractTests
     {
         var xaml = Read($@"src\OpenClaw.SetupEngine.UI\Pages\{page}.xaml");
         Assert.Contains("controls:OnboardingMascot", xaml);
-        Assert.Contains(page is "SecurityNoticePage" or "WelcomePage" ? "controls:SetupStepIndicator" : "controls:SetupProgressIndicator", xaml);
+        Assert.Contains(page is "SecurityNoticePage" or "WelcomePage" or "CapabilitiesPage" ? "controls:SetupStepIndicator" : "controls:SetupProgressIndicator", xaml);
         Assert.DoesNotContain("of 6", xaml);
         Assert.DoesNotContain("OpenClawMascot.png", xaml);
     }
@@ -331,7 +331,14 @@ public sealed class OnboardingPresentationContractTests
             Assert.Equal("StackPanel", mascot.Parent!.Name.LocalName);
             Assert.Null(mascot.Parent.Attribute("Height"));
             var progress = Assert.Single(xaml.Descendants(), element => (string?)element.Attribute(x + "Name") == "FlowProgress");
-            Assert.Equal("2", (string?)progress.Parent!.Attribute("Grid.Row"));
+            if (page == "CapabilitiesPage")
+            {
+                Assert.Equal("SetupStepIndicator", progress.Name.LocalName);
+                Assert.Equal("SetupPageShell.Hero", progress.Parent!.Parent!.Name.LocalName);
+                Assert.Contains(xaml.Descendants(), element => element.Name.LocalName == "SetupPageShell.Footer");
+            }
+            else
+                Assert.Equal("2", (string?)progress.Parent!.Attribute("Grid.Row"));
             Assert.DoesNotContain(progress.Ancestors(), element => element.Name.LocalName == "ScrollViewer");
         }
     }
