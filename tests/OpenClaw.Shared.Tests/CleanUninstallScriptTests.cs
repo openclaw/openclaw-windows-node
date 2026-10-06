@@ -22,6 +22,9 @@ public sealed class CleanUninstallScriptTests
             RedirectStandardError = true,
             CreateNoWindow = true,
         };
+        // CI can pass PowerShell 7's incompatible modules through the .NET test host.
+        // Let Windows PowerShell construct its own module search path.
+        start.Environment.Remove("PSModulePath");
         foreach (var argument in new[]
         {
             "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
