@@ -7580,7 +7580,8 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_Ready_ChannelUnavailable" xml:space="preserve"><value>This Gateway did not offer the selected channel. Review its available channels or refresh after updating the Gateway.</value></data>
   <data name="Onboarding_Ready_ChannelUnconfirmed" xml:space="preserve"><value>Channel availability could not be confirmed. Refresh to retry. No channel sign-in or configuration was started.</value></data>
   <data name="Onboarding_Copy_SafetyLink.Content" xml:space="preserve"><value>Learn more about risks and safety</value></data>
-  <data name="Onboarding_Copy_GatewayTitle.Text" xml:space="preserve"><value>Set up OpenClaw</value></data>
+  <data name="Onboarding_Copy_GatewayTitle.Text" xml:space="preserve"><value>Where should OpenClaw live?</value></data>
+  <data name="Onboarding_Gateway_Speech.Text" xml:space="preserve"><value>Pick a home for me.</value></data>
   <data name="Onboarding_Copy_GatewayIntro.Text" xml:space="preserve"><value>The Gateway connects your AI assistant to your apps and tools. Choose where it runs. You can change this later.</value></data>
   <data name="Onboarding_Copy_GatewaySelector.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Gateway setup method</value></data>
   <data name="Onboarding_Copy_GatewaySelector.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve"><value>Choose one Gateway setup method.</value></data>

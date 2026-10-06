@@ -7512,7 +7512,8 @@ Controleer of de gateway actief is.</value>
   <data name="Onboarding_Ready_ChannelUnavailable" xml:space="preserve"><value>Deze Gateway bood het gekozen kanaal niet aan. Bekijk beschikbare kanalen of vernieuw na een Gateway-update.</value></data>
   <data name="Onboarding_Ready_ChannelUnconfirmed" xml:space="preserve"><value>Kanaalbeschikbaarheid kon niet worden bevestigd. Vernieuw om opnieuw te proberen. Er is geen kanaalaanmelding of configuratie gestart.</value></data>
   <data name="Onboarding_Copy_SafetyLink.Content" xml:space="preserve"><value>Meer informatie over risico’s en veiligheid</value></data>
-  <data name="Onboarding_Copy_GatewayTitle.Text" xml:space="preserve"><value>OpenClaw instellen</value></data>
+  <data name="Onboarding_Copy_GatewayTitle.Text" xml:space="preserve"><value>Waar moet OpenClaw wonen?</value></data>
+  <data name="Onboarding_Gateway_Speech.Text" xml:space="preserve"><value>Kies een thuis voor mij.</value></data>
   <data name="Onboarding_Copy_GatewayIntro.Text" xml:space="preserve"><value>De Gateway verbindt uw AI-assistent met uw apps en tools. Kies waar deze draait. U kunt dit later wijzigen.</value></data>
   <data name="Onboarding_Copy_GatewaySelector.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Gateway-installatiemethode</value></data>
   <data name="Onboarding_Copy_GatewaySelector.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve"><value>Kies één Gateway-installatiemethode.</value></data>

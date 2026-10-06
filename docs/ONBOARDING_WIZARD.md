@@ -78,6 +78,13 @@ redundant success line. The accent icon tile follows native availability: native
 uses it when available, otherwise WSL does. Unavailable/checking native support
 and Windows Update recovery remain visible in their existing support card.
 
+The Gateway chooser uses the responsive `SetupPageShell` and `SetupStepIndicator`.
+The wide layout places the mascot, speech and canonical stage timeline beside
+left-aligned task content. Compact windows scroll the mounted content while Back
+and Next remain outside the scroller. Native, WSL and existing Gateway choices,
+support recovery, Local AI status and alternative routes retain their existing
+behavior. Selection does not install anything or persist settings.
+
 ### Shortened local onboarding (native and WSL)
 
 The shared `WizardOnboardingPolicy` removes optional setup cards from both WinUI

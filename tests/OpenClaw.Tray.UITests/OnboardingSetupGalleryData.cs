@@ -16,7 +16,7 @@ internal static class OnboardingSetupGalleryData
     internal static HeaderContract HeaderFor(Scene scene) => scene.Family switch
     {
         "security" => new(typeof(SecurityNoticePage), "Meet your new sidekick.", "WelcomeTitle"),
-        "welcome" => new(typeof(WelcomePage), "Set up OpenClaw"),
+        "welcome" => new(typeof(WelcomePage), "Where should OpenClaw live?", "GatewayTitle"),
         "advanced" => new(typeof(AdvancedSetupPage), "Choose another setup route"),
         "connection" => new(typeof(SetupNativeConnectionPage), "Connect to a gateway", "TitleText"),
         "capabilities" or "branch" => new(typeof(CapabilitiesPage), "PC capabilities"),

@@ -1964,11 +1964,13 @@ public sealed class AppRefactorContractTests
         XNamespace names = "http://schemas.microsoft.com/winfx/2006/xaml";
         var choices = Assert.Single(page.Descendants(xaml + "ListView"),
             element => (string?)element.Attribute(names + "Name") == "GatewayChoiceSelector");
-        var viewport = choices.Ancestors(xaml + "ScrollViewer").Single();
-
-        Assert.Equal(xaml + "ScrollViewer", viewport.Name);
-        Assert.Equal("560", (string?)viewport.Attribute("MaxWidth"));
-        Assert.Equal("Stretch", (string?)viewport.Attribute("HorizontalAlignment"));
+        var body = Assert.Single(choices.Ancestors(), element => element.Name.LocalName == "SetupPageShell.Body");
+        Assert.Equal("SetupPageShell", body.Parent!.Name.LocalName);
+        Assert.Empty(page.Descendants(xaml + "ScrollViewer"));
+        var shell = XDocument.Load(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Controls", "SetupPageShell.xaml"));
+        var viewport = Assert.Single(shell.Descendants(xaml + "ScrollViewer"));
+        Assert.Equal("Disabled", (string?)viewport.Attribute("HorizontalScrollMode"));
+        Assert.Equal("Auto", (string?)viewport.Attribute("VerticalScrollBarVisibility"));
         Assert.Equal("Stretch", (string?)viewport.Attribute("HorizontalContentAlignment"));
         Assert.Null(choices.Attribute("MaxWidth"));
         Assert.Equal("Stretch", (string?)choices.Attribute("HorizontalAlignment"));
@@ -1985,8 +1987,7 @@ public sealed class AppRefactorContractTests
         var welcomePage = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WelcomePage.xaml.cs"));
         var setupWindow = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "SetupWindow.xaml.cs"));
 
-        Assert.Contains("<ScrollViewer Grid.Row=\"1\"", xaml);
-        Assert.Contains("VerticalScrollBarVisibility=\"Auto\"", xaml);
+        Assert.Contains("<controls:SetupPageShell x:Name=\"GatewayShell\"", xaml);
         Assert.Contains("<ListView x:Name=\"GatewayChoiceSelector\"", xaml);
         Assert.Contains("SelectionMode=\"Single\"", xaml);
         Assert.Contains("ScrollViewer.VerticalScrollMode=\"Disabled\"", xaml);
@@ -1998,7 +1999,7 @@ public sealed class AppRefactorContractTests
         Assert.DoesNotContain("x:Name=\"InstallCard\"", xaml);
         Assert.DoesNotContain("x:Name=\"ConnectCard\"", xaml);
         Assert.DoesNotContain("UpdateCardSelection", welcomePage);
-        AssertInOrder(xaml, "<ScrollViewer Grid.Row=\"1\"", "</ScrollViewer>", "<Grid Grid.Row=\"2\"");
+        AssertInOrder(xaml, "<controls:SetupPageShell.Body>", "</controls:SetupPageShell.Body>", "<controls:SetupPageShell.Footer>");
         Assert.DoesNotContain("GatewayChoiceSelector.SelectedIndex = 0;", welcomePage);
         Assert.Contains("_suppressSelectionWrite = true", welcomePage);
         Assert.Contains("SetupWindow.Active?.WelcomeGatewayChoice", welcomePage);

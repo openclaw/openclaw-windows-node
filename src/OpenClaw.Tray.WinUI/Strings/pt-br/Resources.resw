@@ -7563,7 +7563,8 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="Onboarding_Ready_ChannelUnavailable" xml:space="preserve"><value>Este Gateway não ofereceu o canal escolhido. Veja os canais disponíveis ou atualize a lista após atualizar o Gateway.</value></data>
   <data name="Onboarding_Ready_ChannelUnconfirmed" xml:space="preserve"><value>Não foi possível confirmar a disponibilidade dos canais. Atualize para tentar novamente. Nenhum login ou configuração de canal foi iniciado.</value></data>
   <data name="Onboarding_Copy_SafetyLink.Content" xml:space="preserve"><value>Saiba mais sobre riscos e segurança</value></data>
-  <data name="Onboarding_Copy_GatewayTitle.Text" xml:space="preserve"><value>Configurar o OpenClaw</value></data>
+  <data name="Onboarding_Copy_GatewayTitle.Text" xml:space="preserve"><value>Onde o OpenClaw deve morar?</value></data>
+  <data name="Onboarding_Gateway_Speech.Text" xml:space="preserve"><value>Escolha um lar para mim.</value></data>
   <data name="Onboarding_Copy_GatewayIntro.Text" xml:space="preserve"><value>O Gateway conecta seu assistente de IA aos seus aplicativos e ferramentas. Escolha onde ele será executado. Você pode alterar isso depois.</value></data>
   <data name="Onboarding_Copy_GatewaySelector.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Método de configuração do Gateway</value></data>
   <data name="Onboarding_Copy_GatewaySelector.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve"><value>Escolha um método de configuração do Gateway.</value></data>

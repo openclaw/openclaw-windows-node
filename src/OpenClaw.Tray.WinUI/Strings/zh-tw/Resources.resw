@@ -7511,7 +7511,8 @@
   <data name="Onboarding_Ready_ChannelUnavailable" xml:space="preserve"><value>此 Gateway 未提供所選頻道。請查看可用頻道，或更新 Gateway 後重新整理。</value></data>
   <data name="Onboarding_Ready_ChannelUnconfirmed" xml:space="preserve"><value>無法確認頻道是否可用。請重新整理以重試。未啟動任何頻道登入或設定。</value></data>
   <data name="Onboarding_Copy_SafetyLink.Content" xml:space="preserve"><value>深入瞭解風險與安全</value></data>
-  <data name="Onboarding_Copy_GatewayTitle.Text" xml:space="preserve"><value>設定 OpenClaw</value></data>
+  <data name="Onboarding_Copy_GatewayTitle.Text" xml:space="preserve"><value>OpenClaw 應該住在哪裡？</value></data>
+  <data name="Onboarding_Gateway_Speech.Text" xml:space="preserve"><value>為我選一個家吧。</value></data>
   <data name="Onboarding_Copy_GatewayIntro.Text" xml:space="preserve"><value>Gateway 將您的 AI 助理連接到應用程式與工具。請選擇執行位置，您可以稍後變更。</value></data>
   <data name="Onboarding_Copy_GatewaySelector.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Gateway 設定方式</value></data>
   <data name="Onboarding_Copy_GatewaySelector.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve"><value>選擇一種 Gateway 設定方式。</value></data>
