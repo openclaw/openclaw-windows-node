@@ -27,7 +27,7 @@ internal static class OnboardingSetupGalleryData
         "native-install" => new(typeof(NativeGatewaySetupPage), "Install a local native gateway", "TitleText"),
         "ai" or "ai-return" or "dialog" => new(typeof(AiSetupPage), "Connect your AI", "TitleText"),
         "preview" when scene.State.StartsWith("wizard", StringComparison.Ordinal) =>
-            new(typeof(WizardPage), "OpenClaw onboard"),
+            new(typeof(WizardPage), "OpenClaw onboard", "HeadingText"),
         "preview" when scene.State == "milestone" =>
             new(typeof(ProgressPage), "Gateway installed", "TitleText"),
         "preview" => new(typeof(ProgressPage), "Making room for your agent", "TitleText"),

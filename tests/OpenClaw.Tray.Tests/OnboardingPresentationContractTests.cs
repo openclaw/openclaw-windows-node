@@ -108,8 +108,7 @@ public sealed class OnboardingPresentationContractTests
     {
         var xaml = Read($@"src\OpenClaw.SetupEngine.UI\Pages\{page}.xaml");
         Assert.Contains("controls:OnboardingMascot", xaml);
-        Assert.Contains(page is "SecurityNoticePage" or "WelcomePage" or "CapabilitiesPage" or "AdvancedSetupPage" or "GatewaySetupPage" or "GatewaySetupDetailPage" or "ProgressPage" or "WizardPage" or "AiSetupPage" or "AiReadyPage"
-            ? "controls:SetupStepIndicator" : "controls:SetupProgressIndicator", xaml);
+        Assert.Contains("controls:SetupStepIndicator", xaml);
         Assert.DoesNotContain("of 6", xaml);
         Assert.DoesNotContain("OpenClawMascot.png", xaml);
     }

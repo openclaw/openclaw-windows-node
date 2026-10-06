@@ -114,35 +114,40 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
         WriteManifest();
     }
 
-    [Theory]
-    [InlineData(ElementTheme.Light)]
-    [InlineData(ElementTheme.Dark)]
-    [Trait("Category", "NativeOnboardingProof")]
-    public async Task InstallationPages_GalleryAndAxe_StandardAndMinimum(ElementTheme theme)
-    {
-        OnboardingNativeProof.AssertIsolatedRoots();
-        _directory = OnboardingNativeProof.RequireProofDirectory();
-        OnboardingNativeProof.AssertSourceUnchanged();
-        _scanInstallationPages = true;
-        var scenes = RequiredScenes.Where(scene => scene.Family is
+    private static IEnumerable<Scene> InstallationScenes() =>
+        RequiredScenes.Where(scene => scene.Family is
             "review" or "tailscale" or "local-review" or "networking" ||
             scene.Family == "preview" && scene.State is "progress" or "progress-local-ai" or "milestone")
             .Concat([new Scene("09-progress-overview", "preview", "progress-closed")])
             .Concat(new[] { "pending", "running", "failed", "cancelled", "retry" }
                 .Select(state => new Scene($"09-native-package-{state}", "native-install", state)));
+
+    public static IEnumerable<object[]> InstallationSceneData()
+    {
+        foreach (var scene in InstallationScenes())
+            foreach (var theme in new[] { ElementTheme.Light, ElementTheme.Dark })
+                yield return [scene.Id, theme];
+    }
+
+    [Theory]
+    [MemberData(nameof(InstallationSceneData))]
+    [Trait("Category", "NativeOnboardingProof")]
+    public async Task InstallationPages_GalleryAndAxe_StandardAndMinimum(string sceneId, ElementTheme theme)
+    {
+        OnboardingNativeProof.AssertIsolatedRoots();
+        _directory = OnboardingNativeProof.RequireProofDirectory();
+        OnboardingNativeProof.AssertSourceUnchanged();
+        _scanInstallationPages = true;
         try
         {
-            foreach (var scene in scenes)
-            {
-                var result = new SceneResult(scene, theme);
-                _results.Add(result);
-                await CaptureSceneAsync(result);
-                Assert.True(result.AllViewportsCaptured);
-                Assert.NotEmpty(result.Frames);
-            }
+            var result = new SceneResult(Assert.Single(InstallationScenes(), scene => scene.Id == sceneId), theme);
+            _results.Add(result);
+            await CaptureSceneAsync(result);
+            Assert.True(result.AllViewportsCaptured);
+            Assert.NotEmpty(result.Frames);
             OnboardingNativeProof.AssertSourceUnchanged();
             _sourceVerifiedAfterCapture = true;
-            foreach (var result in _results) result.Status = "captured";
+            result.Status = "captured";
         }
         finally
         {
@@ -857,7 +862,8 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                             }
                             else
                             {
-                                Assert.Null(Field(frame.Content, "_client"));
+                                Assert.Null(Field(frame.Content, "_connection"));
+                                Assert.Null(Field(frame.Content, "_startTask"));
                                 Assert.Null(Field(frame.Content, "_consoleTail"));
                             }
                             result.Facts.Add("Verified Debug preview returns before StartPipeline/StartWizard; no client, pipeline, logger or console tail.");
@@ -1164,8 +1170,9 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
     private async Task CaptureModelChoicesAsync(SetupWindow window, Page page, SceneResult result)
     {
         var picker = Find<ComboBox>(Find<LocalAiSetupControl>(page, "LocalAiOptions"), "LocalAiModelSelector");
-        picker.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
-        page.UpdateLayout();
+        picker.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false, VerticalAlignmentRatio = 0.5 });
+        Assert.IsAssignableFrom<FrameworkElement>(page.XamlRoot.Content).UpdateLayout();
+        await ui.YieldToRenderAsync();
         await OnboardingNativeProof.NextCompositionAsync();
         OnboardingNativeProof.AssertFullyVisible(picker, Assert.IsType<Grid>(window.Content));
         picker.IsDropDownOpen = true;
@@ -1175,10 +1182,29 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
             var popup = Assert.Single(VisualTreeHelper.GetOpenPopupsForXamlRoot(page.XamlRoot));
             var content = Assert.IsAssignableFrom<FrameworkElement>(popup.Child);
             await WaitAsync(() => content.IsLoaded && content.ActualHeight > 0, "model choices layout");
+            await OnboardingNativeProof.NextCompositionAsync(TimeSpan.FromMilliseconds(400));
             OnboardingNativeProof.AssertFullyVisible(content, Assert.IsType<Grid>(window.Content));
-            var scroller = Assert.Single(TestSupport.FindDescendants<ScrollViewer>(content), IsVisible);
-            await CaptureViewportsAsync(window, page, result, scroller);
-            result.Facts.Add($"Actual model picker popup captured with {picker.Items.Count} catalog entries. No model was downloaded.");
+            Assert.InRange(picker.Items.Count, 1, 48);
+            var selected = picker.SelectedItem;
+            for (var index = 0; index < picker.Items.Count; index++)
+            {
+                var item = Assert.IsType<ComboBoxItem>(picker.Items[index]);
+                item.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false, VerticalAlignmentRatio = 0.5 });
+                content.UpdateLayout();
+                await ui.YieldToRenderAsync();
+                await OnboardingNativeProof.NextCompositionAsync();
+                OnboardingNativeProof.AssertFullyVisible(item, content);
+                Assert.Same(selected, picker.SelectedItem);
+                var label = Assert.IsType<string>(item.Content);
+                var name = $"{_run}-{result.Scene.Id}-{result.Theme}-model-{index + 1:D2}";
+                var path = Path.Combine(_directory, name + ".png");
+                Assert.False(File.Exists(path));
+                using (await OnboardingNativeProof.CapturePopupAsync(window, content, name, output, [label],
+                    new { sceneId = result.Scene.Id, modelIndex = index, modelCount = picker.Items.Count,
+                        coverage = "Every real model option brought into view; not inferred from popup ScrollViewer extent." })) { }
+                RecordFrame(result, path, [label]);
+            }
+            result.Facts.Add($"Every actual model picker option captured: {picker.Items.Count} catalog entries. No model was downloaded.");
         }
         finally { picker.IsDropDownOpen = false; }
     }
@@ -1249,6 +1275,7 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
     {
         var root = Assert.IsType<Grid>(window.Content);
         var labels = new List<string>();
+        string? fallbackRegion = null;
         if (dialog is not null)
         {
             labels.Add("Provider input");
@@ -1271,10 +1298,12 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
             var headerInViewport = NativeProofLayout.ContainsPhysicalEdges(
                 (0, 0, root.ActualWidth, root.ActualHeight),
                 (headerBounds.Left, headerBounds.Top, headerBounds.Right, headerBounds.Bottom),
-                root.XamlRoot.RasterizationScale);
+                root.XamlRoot.RasterizationScale) &&
+                (page.Content is not SetupPageShell pageShell || IsFullyVisible(heading, pageShell.Scroller));
             if (headerInViewport)
             {
-                OnboardingNativeProof.AssertFullyVisible(heading, root);
+                OnboardingNativeProof.AssertFullyVisible(heading,
+                    page.Content is SetupPageShell headerShell ? headerShell.Scroller : root);
                 if (result.Scene.Id.StartsWith("followup-welcome-", StringComparison.Ordinal))
                 {
                     await OnboardingNativeProof.AssertNativeLabelAfterWpfLoadAsync(
@@ -1293,7 +1322,11 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
             if (page.Content is SetupPageShell shell)
             {
                 Assert.Equal(0, shell.Scroller.ScrollableWidth);
-                fixedChrome = [Assert.IsAssignableFrom<FrameworkElement>(shell.Footer)];
+                var footer = Assert.IsAssignableFrom<FrameworkElement>(shell.Footer);
+                var actions = TestSupport.FindDescendants<Button>(footer).Concat(
+                    footer is Button action ? [action] : []);
+                // Running installation intentionally has no footer action until its milestone.
+                fixedChrome = actions.Any(button => button.Visibility == Visibility.Visible) ? [footer] : [];
             }
             else
             {
@@ -1314,6 +1347,31 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                     }
             }
         }
+        if (labels.Count == 0)
+        {
+            var labelRoot = page.Content is SetupPageShell bodyShell
+                ? Assert.IsAssignableFrom<FrameworkElement>(bodyShell.Body) : page;
+            fallbackRegion = "body";
+            if (page.Content is SetupPageShell stackedShell)
+            {
+                var bodyBounds = labelRoot.TransformToVisual(root).TransformBounds(new(0, 0, labelRoot.ActualWidth, labelRoot.ActualHeight));
+                var viewBounds = stackedShell.Scroller.TransformToVisual(root).TransformBounds(
+                    new(0, 0, stackedShell.Scroller.ViewportWidth, stackedShell.Scroller.ViewportHeight));
+                var bodyInViewport = bodyBounds;
+                bodyInViewport.Intersect(viewBounds);
+                if (bodyInViewport.Width <= 0 || bodyInViewport.Height <= 0)
+                {
+                    labelRoot = Assert.IsAssignableFrom<FrameworkElement>(stackedShell.Hero);
+                    fallbackRegion = "hero-only; body lies outside this stacked viewport";
+                }
+            }
+            var visibleText = TestSupport.FindDescendants<TextBlock>(labelRoot)
+                .FirstOrDefault(text => !string.IsNullOrWhiteSpace(text.Text) &&
+                    AutomationProperties.GetAccessibilityView(text) != AccessibilityView.Raw &&
+                    IsFullyVisibleInWindow(text, root));
+            Assert.NotNull(visibleText);
+            labels.Add(visibleText.Text);
+        }
         Assert.NotEmpty(labels);
         var file = $"{_run}-{_results.IndexOf(result) + 1:D3}-{result.Scene.Id}-{result.Theme}-v{result.Frames.Count + 1:D2}";
         var path = Path.Combine(_directory, file + ".png");
@@ -1325,10 +1383,16 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
             classification = result.Classification, surface, horizontalOffset = x, verticalOffset = y,
             viewportWidth = scroll?.ViewportWidth, viewportHeight = scroll?.ViewportHeight,
             scrollableWidth = scroll?.ScrollableWidth, scrollableHeight = scroll?.ScrollableHeight,
+            fallbackRegion,
             animationDisabledByTest = true, syntheticSecretsOnly = true, result.Facts,
         };
         using (await OnboardingNativeProof.CaptureAsync(window, file, output, labels.Distinct().ToArray(), facts,
             requiredContent: dialog?.Content as FrameworkElement ?? page)) { }
+        RecordFrame(result, path, labels);
+    }
+
+    private void RecordFrame(SceneResult result, string path, IEnumerable<string> labels)
+    {
         using var metadata = JsonDocument.Parse(File.ReadAllText(Path.ChangeExtension(path, ".json")));
         result.Frames.Add(new(Path.GetFileName(path), Path.GetFileName(Path.ChangeExtension(path, ".json")),
             metadata.RootElement.Clone()));
@@ -1341,7 +1405,10 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
         var page = exact ? Assert.IsType<T>(frame.Content) : Assert.IsAssignableFrom<T>(frame.Content);
         await WaitAsync(() => page.IsLoaded, $"{page.GetType().Name} Loaded");
         foreach (var mascot in TestSupport.FindDescendants<OnboardingMascot>(page)) mascot.IsAnimationEnabled = false;
-        page.UpdateLayout();
+        Assert.IsAssignableFrom<FrameworkElement>(page.XamlRoot.Content).UpdateLayout();
+        await ui.YieldToRenderAsync();
+        await WaitAsync(() => page.ActualWidth > 0 && page.ActualHeight > 0,
+            $"{page.GetType().Name} mounted page layout");
         await OnboardingNativeProof.NextCompositionAsync();
         return page;
     }
@@ -1391,8 +1458,7 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
         if (!element.IsLoaded || element.ActualWidth <= 0 || element.ActualHeight <= 0) return false;
         for (DependencyObject? parent = element; parent is not null; parent = VisualTreeHelper.GetParent(parent))
             if (parent is UIElement uiElement &&
-                (uiElement.Visibility != Visibility.Visible || uiElement.Opacity <= 0 ||
-                 AutomationProperties.GetAccessibilityView(uiElement) == AccessibilityView.Raw) ||
+                (uiElement.Visibility != Visibility.Visible || uiElement.Opacity <= 0) ||
                 parent is OnboardingMascot) return false;
         return true;
     }
@@ -1420,6 +1486,19 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
         var bounds = element.TransformToVisual(scroll).TransformBounds(new(0, 0, element.ActualWidth, element.ActualHeight));
         return NativeProofLayout.ContainsPhysicalEdges((0, 0, scroll.ViewportWidth, scroll.ViewportHeight),
             (bounds.Left, bounds.Top, bounds.Right, bounds.Bottom), scroll.XamlRoot.RasterizationScale);
+    }
+
+    private static bool IsFullyVisibleInWindow(FrameworkElement element, FrameworkElement root)
+    {
+        if (!IsVisible(element)) return false;
+        var bounds = element.TransformToVisual(root).TransformBounds(new(0, 0, element.ActualWidth, element.ActualHeight));
+        if (!NativeProofLayout.ContainsPhysicalEdges((0, 0, root.ActualWidth, root.ActualHeight),
+            (bounds.Left, bounds.Top, bounds.Right, bounds.Bottom), root.XamlRoot.RasterizationScale))
+            return false;
+        for (DependencyObject? parent = VisualTreeHelper.GetParent(element); parent is not null;
+            parent = VisualTreeHelper.GetParent(parent))
+            if (parent is ScrollViewer scroll && !IsFullyVisible(element, scroll)) return false;
+        return true;
     }
 
     private static void Invoke(Window window, Button button)

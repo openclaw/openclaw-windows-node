@@ -794,12 +794,18 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
             AssertNativeConnectionLabels(editor);
             Find<Button>(editor, "CancelButton").Visibility = Visibility.Visible;
             var scale = editor.XamlRoot.RasterizationScale;
-            window.AppWindow.Resize(new((int)(480 * scale), (int)(820 * scale)));
+            window.AppWindow.Resize(new((int)(720 * scale), (int)(560 * scale)));
             await ui.YieldToRenderAsync();
             editor.UpdateLayout();
             var footer = Find<Grid>(editor, "NavigationFooter");
-            var dots = Find<SetupProgressIndicator>(editor, "FlowProgress");
-            Assert.True(dots.ActualWidth > 0 && dots.ActualHeight > 0);
+            var shell = Assert.IsType<SetupPageShell>(editor.Content);
+            var timeline = Find<SetupStepIndicator>(editor, "FlowProgress");
+            timeline.StartBringIntoView(new BringIntoViewOptions
+                { AnimationDesired = false, VerticalAlignmentRatio = 0.5 });
+            await ui.YieldToRenderAsync();
+            editor.UpdateLayout();
+            OnboardingNativeProof.AssertFullyVisible(timeline, shell.Scroller);
+            Assert.Equal(0, shell.Scroller.ScrollableWidth);
             var previousRight = 0d;
             foreach (var name in new[] { "BackButton", "CancelButton", "CheckButton", "NextButton" })
             {
@@ -809,7 +815,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
                 Assert.True(bounds.Width > 0 && bounds.Height > 0);
                 Assert.True(bounds.Left >= previousRight - 0.1);
                 Assert.True(bounds.Right <= footer.ActualWidth + 0.1);
-                Assert.True(Bounds(dots, footer).Bottom <= bounds.Top);
+                Assert.True(Bounds(shell.Scroller, footer).Bottom <= bounds.Top);
                 previousRight = bounds.Right;
             }
         }, new FailingNativeHost());
@@ -1251,30 +1257,23 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
 
     private static void AssertProgress(Page page, int stageCount, int current)
     {
-        if (page is CapabilitiesPage)
-        {
-            var timeline = Find<SetupStepIndicator>(page, "FlowProgress");
-            Assert.Equal(Visibility.Visible, timeline.Visibility);
-            Assert.Equal($"Step {current + 1} of {stageCount}", AutomationProperties.GetName(timeline));
-            Assert.Single(TestSupport.FindDescendants<TextBlock>(timeline),
-                label => label.Name == "StepTitle" && AutomationProperties.GetName(label).EndsWith(", current step", StringComparison.Ordinal));
-            return;
-        }
+        var timeline = Find<SetupStepIndicator>(page, "FlowProgress");
+        Assert.Equal(Visibility.Visible, timeline.Visibility);
+        Assert.Equal($"Step {current + 1} of {stageCount}", AutomationProperties.GetName(timeline));
+        Assert.Single(TestSupport.FindDescendants<TextBlock>(timeline),
+            label => label.Name == "StepTitle" && AutomationProperties.GetName(label).EndsWith(", current step", StringComparison.Ordinal));
         if (page is GatewaySetupPage)
         {
-            var rail = Find<SetupStepIndicator>(page, "FlowProgress");
-            Assert.Equal(Visibility.Visible, rail.Visibility);
-            Assert.Equal($"Step {current + 1} of {stageCount}", AutomationProperties.GetName(rail));
             Assert.Equal("Set up, current step", AutomationProperties.GetName(Assert.Single(
-                TestSupport.FindDescendants<TextBlock>(rail), label => label.Name == "StepTitle" && label.Text == "Set up")));
-            return;
+                TestSupport.FindDescendants<TextBlock>(timeline), label => label.Name == "StepTitle" && label.Text == "Set up")));
         }
-        var progress = Find<SetupProgressIndicator>(page, "FlowProgress");
-        Assert.Equal(Visibility.Visible, progress.Visibility);
-        Assert.Equal(stageCount, progress.Children.Count);
-        Assert.Equal(20, Assert.IsType<Border>(progress.Children[current]).Width);
-        Assert.Single(progress.Children.Cast<Border>(), dot => dot.Width == 20);
-        Assert.False(string.IsNullOrWhiteSpace(AutomationProperties.GetName(progress)));
+        else if (page is SetupNativeConnectionPage)
+        {
+            Assert.Equal("Choose your PC tools, current step", AutomationProperties.GetName(Assert.Single(
+                TestSupport.FindDescendants<TextBlock>(timeline), label => label.Name == "StepTitle" && label.Text == "Choose your PC tools")));
+            Assert.DoesNotContain(TestSupport.FindDescendants<TextBlock>(timeline),
+                label => label.Name == "StepTitle" && label.Text == "Set up");
+        }
     }
 
     private static Button FooterButton(Page page, bool next)

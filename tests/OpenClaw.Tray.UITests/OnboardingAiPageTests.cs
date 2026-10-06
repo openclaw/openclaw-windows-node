@@ -265,7 +265,7 @@ public sealed partial class OnboardingAiPageTests(UIThreadFixture ui, ITestOutpu
 
     [Fact]
     [Trait("Category", "NativeOnboardingProof")]
-    public async Task FocusedAi_RequiredNotesAndConfirmationStayInOneDialogThroughVerification()
+    public async Task FocusedAi_RequiredNotesAndConfirmationReuseOwnedDialogForVerificationRetry()
     {
         await WithPageAsync(async (page, transport, completed) =>
         {
@@ -291,14 +291,33 @@ public sealed partial class OnboardingAiPageTests(UIThreadFixture ui, ITestOutpu
                 requiredContent: Assert.IsType<ScrollViewer>(dialog.Content))) { }
             confirm.IsChecked = true;
             Invoke(DialogButton(dialog, "PrimaryButton"));
-            await WaitAsync(() => dialog.IsSecondaryButtonEnabled && transport.MethodCalls.Contains("openclaw.setup.verify"));
-            Assert.Equal(1, opened);
-            Assert.Equal(0, closed);
+            await WaitAsync(() => dialog.IsSecondaryButtonEnabled && opened == 2 && closed == 1 &&
+                transport.MethodCalls.Contains("openclaw.setup.verify"));
+            Assert.Equal(2, opened);
+            Assert.Equal(1, closed);
             Assert.Equal(2, transport.MethodCalls.Count(method => method == "wizard.next"));
+            var error = Assert.IsType<InfoBar>(dialog.FindName("DialogError"));
+            await TestSupport.WaitForRenderedConditionAsync(
+                () => error.IsOpen && error.ActualHeight > 0, "provider verification error layout");
+            await OnboardingNativeProof.NextCompositionAsync();
+            using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow, "ai-focused-provider-recheck", output,
+                ["Check again", error.Message], new { opened, closed },
+                requiredContent: Assert.IsType<ScrollViewer>(dialog.Content))) { }
+            var refreshRequests = 0;
+            dialog.RefreshRequested += () => refreshRequests++;
             transport.FailVerification = false;
             Invoke(DialogButton(dialog, "SecondaryButton"));
-            await WaitAsync(() => completed() == 1 && closed == 1);
-            Assert.Equal(1, opened);
+            try
+            {
+                await TestSupport.WaitForRenderedConditionAsync(() => refreshRequests == 1, "provider RefreshRequested");
+                await TestSupport.WaitForRenderedConditionAsync(() => completed() == 1, "provider verification completion");
+                await TestSupport.WaitForRenderedConditionAsync(() => closed == 2, "verified provider dialog Closed");
+            }
+            finally
+            {
+                output.WriteLine($"Provider final: completed={completed()}, opened={opened}, closed={closed}, refreshRequests={refreshRequests}; calls={string.Join(", ", transport.MethodCalls)}");
+            }
+            Assert.Equal(2, opened);
             Assert.Same(dialog, GetDialog(page));
             Assert.Equal(1, transport.MethodCalls.Count(method => method == "openclaw.setup.activate.start"));
         }, nativeProof: true, configure: transport =>

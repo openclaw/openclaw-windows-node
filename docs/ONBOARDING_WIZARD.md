@@ -512,11 +512,11 @@ it is 720 x 560 physical pixels; at 150% it is 1080 x 840; at 200% it is
 
 The welcome/trust page (`SecurityNoticePage`), gateway chooser (`WelcomePage`),
 capabilities (`CapabilitiesPage`), alternative routes (`AdvancedSetupPage`),
-WSL review (`GatewaySetupPage`)
-and its details (`GatewaySetupDetailPage`), plus installation (`ProgressPage`
-and `NativeGatewaySetupPage`) and the native connection editor
-(`SetupNativeConnectionPage`) and classic compatibility wizard (`WizardPage`)
-use `SetupPageShell`.
+WSL review (`GatewaySetupPage`) and its details (`GatewaySetupDetailPage`),
+installation (`ProgressPage` and `NativeGatewaySetupPage`),
+native connection (`SetupNativeConnectionPage`), classic compatibility
+(`WizardPage`), AI setup (`AiSetupPage`), verified destinations (`AiReadyPage`)
+and legacy completion (`CompletePage`) use `SetupPageShell`.
 Its four presentation slots hold the hero, header, body and fixed footer.
 At an actual shell width of at least 960 DIPs and height of at least 600 DIPs,
 the mascot, speech bubble and milestone rail sit beside the heading and content.
@@ -526,11 +526,37 @@ scroller. The complete safety warning and `https://trust.openclaw.ai` link remai
 reachable. **Get started** uses the existing gateway-chooser navigation action;
 showing the shell does not grant access, persist choices or start installation.
 
-The gateway chooser, capabilities, AI and completion pages
-retain their existing layouts and dot indicators at the wider initial size.
+The migrated pages use `SetupStepIndicator` with canonical route stages.
+`CompletePage` has no progress indicator because it has no canonical stage.
+The classic wizard retains its named `MainScroller` as a disabled content
+host; active-question scrolling uses the shell's single scroller.
 The 180-DIP mascot frame includes its motion/glow gutter;
 the title-bar mark is 24 DIPs. Theme-aware Mica/Fluent surfaces retain solid
 background and high-contrast fallbacks.
+
+Native proof captures standard and minimum HWND viewports with isolated data.
+Settings-card input waits for the actual `Click` event before assertions.
+Gallery label checks respect both the window bounds and shell scroll clipping.
+Scrolled frames without heading or footer text require a fully visible body
+label. A stacked viewport containing no body content is explicitly classified
+as hero-only; its label cannot substitute for later body-frame proof.
+Axe scans run in a separate test process because Axe.Windows excludes its own
+process. The scanner validates the exact target PID and HWND, uses the existing
+rule exclusions, and must write a success receipt.
+Capital-I/l OCR ambiguities remain explicitly marked as OCR failures.
+An otherwise exact OCR phrase, an exact visible native label, and human review
+of the original pixels are all required for that evidence split.
+Provider verification retains the existing inline-progress policy. Recovery
+reopens the same owned dialog; proof waits for its new `Opened` event and layout
+before invoking **Check again**, not a button from the closing template.
+The download progress bar uses its current download activity as its accessible
+label, so screen readers receive the same live measurement shown on the page.
+Model-picker proof brings each real model option into view and captures it.
+It does not infer coverage from a native popup's zero-valued scroll extent.
+Windowed model popups use their own raw `PrintWindow` capture. Proof validates
+their exact current PID, owning setup HWND, foreground owner and unobscured
+native bounds. These popup images are paired with full setup-window frames.
+No desktop fallback, unowned-window capture or image composition is used.
 
 Capabilities, installation review and AI provider setup use native controls.
 The [screen details](#screen-details) below own their behavior and consent rules;

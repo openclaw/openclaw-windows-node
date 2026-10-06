@@ -367,7 +367,8 @@ internal static class OnboardingNativeProof
         var height = viewport is ScrollViewer scroller ? scroller.ViewportHeight : viewport.ActualHeight;
         var view = viewport.TransformToVisual(root).TransformBounds(new Windows.Foundation.Rect(0, 0, width, height));
         var scale = viewport.XamlRoot.RasterizationScale;
-        Assert.True(bounds.Width > 0 && bounds.Height > 0 && view.Width > 0 && view.Height > 0);
+        Assert.True(bounds.Width > 0 && bounds.Height > 0 && view.Width > 0 && view.Height > 0,
+            $"{element.GetType().Name} '{element.Name}' has no rendered bounds: content={bounds}, viewport={view}.");
         Assert.True(NativeProofLayout.ContainsPhysicalEdges(
             (view.Left, view.Top, view.Right, view.Bottom), (bounds.Left, bounds.Top, bounds.Right, bounds.Bottom), scale),
             $"{element.GetType().Name} '{element.Name}' clipped: content={bounds}, viewport={view}, scale={scale:R}; " +
@@ -391,7 +392,16 @@ internal static class OnboardingNativeProof
             new NativeInput { Type = 1, Keyboard = new KeyboardInput { VirtualKey = 0x20 } },
             new NativeInput { Type = 1, Keyboard = new KeyboardInput { VirtualKey = 0x20, Flags = 2 } },
         };
-        Assert.Equal(2u, SendInput(2, inputs, Marshal.SizeOf<NativeInput>()));
+        var clicked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnClick(object sender, RoutedEventArgs args) => clicked.TrySetResult();
+        card.Click += OnClick;
+        try
+        {
+            Assert.Equal(2u, SendInput(2, inputs, Marshal.SizeOf<NativeInput>()));
+            await clicked.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await NextCompositionAsync();
+        }
+        finally { card.Click -= OnClick; }
     }
 
     internal static void InvokeButton(Window window, Button button)
@@ -533,6 +543,125 @@ internal static class OnboardingNativeProof
         {
             if (!retained) bitmap.Dispose();
         }
+    }
+
+    internal static async Task<Frame> CapturePopupAsync(Window owner, FrameworkElement content,
+        string name, ITestOutputHelper output, string[] requiredLabels, object channels)
+    {
+        AssertIsolatedRoots();
+        Assert.NotEmpty(requiredLabels);
+        AssertProductDpi(owner);
+        var directory = RequireProofDirectory();
+        var source = Source.Value;
+        var root = Assert.IsAssignableFrom<FrameworkElement>(owner.Content);
+        Assert.Same(root.XamlRoot, content.XamlRoot);
+        Assert.Single(VisualTreeHelper.GetOpenPopupsForXamlRoot(root.XamlRoot),
+            popup => ReferenceEquals(popup.Child, content));
+        AssertFullyVisible(content, root);
+        await NextCompositionAsync();
+        Assert.Equal(0, DwmFlush());
+        var ownerHandle = Handle(owner);
+        IntPtr handle;
+        Rectangle bounds;
+        Rectangle clientBounds;
+        Bitmap bitmap;
+        uint dpi;
+        using (var context = new DpiContext())
+        {
+            var point = TargetPoint(owner, content, content.ActualWidth / 2, content.ActualHeight / 2);
+            handle = GetAncestor(WindowFromPoint(point), 2);
+            Assert.NotEqual(ownerHandle, handle);
+            bounds = AssertOwnedPopupTarget(ownerHandle, handle);
+            Assert.True(AreDpiAwarenessContextsEqual(GetWindowDpiAwarenessContext(handle), new IntPtr(-4)));
+            dpi = GetDpiForWindow(handle);
+            Assert.Equal(GetDpiForWindow(ownerHandle), dpi);
+            Assert.True(GetClientRect(handle, out var client));
+            var origin = new NativePoint();
+            Assert.True(ClientToScreen(handle, ref origin));
+            clientBounds = Rectangle.FromLTRB(origin.X, origin.Y, origin.X + client.Right, origin.Y + client.Bottom);
+            Assert.True(bounds.Contains(clientBounds));
+            bitmap = new Bitmap(bounds.Width, bounds.Height);
+        }
+        var retained = false;
+        try
+        {
+            using (var context = new DpiContext())
+            {
+                Assert.Equal(bounds, AssertOwnedPopupTarget(ownerHandle, handle));
+                using var graphics = Graphics.FromImage(bitmap);
+                var dc = graphics.GetHdc();
+                try { Assert.True(PrintWindow(handle, dc, 2), "Owned popup PrintWindow failed. No owner-window or screen fallback."); }
+                finally { graphics.ReleaseHdc(dc); }
+                Assert.Equal(bounds, AssertOwnedPopupTarget(ownerHandle, handle));
+            }
+            var colors = new HashSet<int>();
+            for (var y = 0; y < bitmap.Height; y += Math.Max(1, bitmap.Height / 40))
+                for (var x = 0; x < bitmap.Width; x += Math.Max(1, bitmap.Width / 40))
+                    colors.Add(bitmap.GetPixel(x, y).ToArgb());
+            Assert.True(colors.Count >= 8, "Owned popup capture is blank or near-uniform.");
+            Directory.CreateDirectory(directory);
+            var path = Path.Combine(directory, name + ".png");
+            Assert.False(File.Exists(path));
+            Assert.False(File.Exists(Path.ChangeExtension(path, ".json")));
+            bitmap.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+            var sha = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
+            var timestamp = DateTimeOffset.UtcNow;
+            var ocr = await AssertLabelsAsync(path, requiredLabels);
+            var manualLabelEvidence = ocr.MissingLabels.Length == 0 ? [] :
+                await ReadExactVisibleLabelEvidenceAsync(handle, bounds, ocr.MissingLabels);
+            var metadata = new
+            {
+                runId = RunId, timestamp, hwnd = $"0x{handle:X}", ownerHwnd = $"0x{ownerHandle:X}",
+                processId = Environment.ProcessId, source.Head, source.ManifestSha256,
+                sourceManifest = Path.Combine(directory, $"source-{RunId}.json"),
+                dpi, rasterizationScale = root.XamlRoot.RasterizationScale, bounds, clientBounds,
+                sha256 = sha, requiredLabels, ocrEvidence = ocr, manualLabelEvidence, channels,
+                machineOcrPassed = ocr.MissingLabels.Length == 0,
+                reviewStatus = ocr.MissingLabels.Length == 0 ? "machine-labels-verified" : "machineOCR-unverified; manualreviewrequired",
+                method = "PrintWindow(PW_RENDERFULLCONTENT), explicitly bound owned popup HWND, no fallback or composition",
+            };
+            File.WriteAllText(metadata.sourceManifest, source.Json);
+            File.WriteAllText(Path.ChangeExtension(path, ".json"), JsonSerializer.Serialize(metadata,
+                new JsonSerializerOptions { WriteIndented = true }));
+            output.WriteLine($"owned-popup-proof={path}; sha256={sha}; hwnd=0x{handle:X}; owner=0x{ownerHandle:X}; source={source.Head}");
+            retained = true;
+            return new Frame(bitmap, bounds, clientBounds, clientBounds, dpi, root.XamlRoot.RasterizationScale);
+        }
+        finally { if (!retained) bitmap.Dispose(); }
+    }
+
+    private static Rectangle AssertOwnedPopupTarget(IntPtr owner, IntPtr popup)
+    {
+        AssertOwned(owner);
+        AssertOwned(popup);
+        Assert.Equal(owner, GetAncestor(popup, 3));
+        Assert.Equal(owner, GetForegroundWindow());
+        Assert.True(IsWindowVisible(popup) && !IsIconic(popup));
+        Assert.True(GetWindowRect(owner, out var ownerBounds));
+        Assert.True(GetWindowRect(popup, out var native));
+        var bounds = native.Rectangle;
+        Assert.True(bounds.Width > 0 && bounds.Height > 0 && ownerBounds.Rectangle.Contains(bounds));
+        var monitor = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+        Assert.True(GetMonitorInfo(MonitorFromWindow(popup, 2), ref monitor));
+        Assert.True(monitor.Work.Rectangle.Contains(bounds), "Owned popup is clipped by the monitor/work area.");
+        var found = false;
+        List<IntPtr> unreadable = [];
+        List<IntPtr> occluders = [];
+        EnumWindows((candidate, _) =>
+        {
+            if (candidate == popup) { found = true; return false; }
+            if (!IsWindowVisible(candidate) || IsIconic(candidate)) return true;
+            if (DwmGetWindowAttribute(candidate, 14, out int cloaked, sizeof(int)) != 0 ||
+                !GetWindowRect(candidate, out var other))
+                unreadable.Add(candidate);
+            else if (cloaked == 0 && bounds.IntersectsWith(other.Rectangle))
+                occluders.Add(candidate);
+            return true;
+        }, IntPtr.Zero);
+        Assert.True(found, "Owned popup is absent from native Z order.");
+        Assert.Empty(unreadable);
+        Assert.Empty(occluders);
+        return bounds;
     }
 
     internal static void AssertHeroLayout(FrameworkElement hero, ITestOutputHelper? output = null)
@@ -699,7 +828,12 @@ internal static class OnboardingNativeProof
         }, IntPtr.Zero);
         Assert.True(found, "Owned HWND missing from native Z order.");
         Assert.Empty(unreadable);
-        Assert.True(occluders.Count == 0, $"Proof HWND is occluded by {string.Join(", ", occluders.Select(h => $"0x{h:X}"))}.");
+        Assert.True(occluders.Count == 0, $"Proof HWND 0x{handle:X} (pid={Environment.ProcessId}) is occluded by " +
+            string.Join(", ", occluders.Select(h =>
+            {
+                GetWindowThreadProcessId(h, out var owner);
+                return $"0x{h:X} (pid={owner}, rootOwner=0x{GetAncestor(h, 3):X})";
+            })) + ".");
         return bounds;
     }
 
@@ -789,6 +923,7 @@ internal static class OnboardingNativeProof
 
         foreach (var label in missingLabels)
             Assert.True(label is "Set up your AI" or "Set up a local model" ||
+                IsCapitalIAmbiguity(label, scaledText) ||
                 label == "Set up OpenClaw" &&
                 HasWelcomeTitleAmbiguity(originalText) && HasWelcomeTitleAmbiguity(scaledText),
                 $"OCR did not verify expected label: {label}");
@@ -803,6 +938,13 @@ internal static class OnboardingNativeProof
         {
             throw new TimeoutException("Native-window proof OCR exceeded its 30-second pass deadline.");
         }
+    }
+
+    internal static bool IsCapitalIAmbiguity(string label, string ocrText)
+    {
+        static string Normalize(string text) => string.Concat(text.Where(char.IsLetterOrDigit)).ToLowerInvariant();
+        return label.Contains("AI", StringComparison.Ordinal) &&
+            Normalize(ocrText).Contains(Normalize(label.Replace("AI", "Al", StringComparison.Ordinal)), StringComparison.Ordinal);
     }
 
     private static SourceIdentity ReadSourceIdentity()
