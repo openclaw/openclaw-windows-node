@@ -15,6 +15,17 @@ inputs, and exact activation verification retain their existing owners.
 dialog for every Gateway-supplied prompt kind. Its device-code treatment does
 not assume a provider, authorization URL, code or expiry.
 
+### Verified AI destination presentation
+
+`AiReadyPage` uses the same responsive shell and canonical Ready milestone.
+The verified model summary comes from the current completion proof, never from
+design sample data. The three flat choices remain Chat, Channels and Skills.
+Selection still performs fresh, exact model and route verification through
+`SetupNativeCompletionCoordinator` before finalization or destination handoff.
+Loading feedback and the failure-only Back to AI setup action remain in the
+fixed footer. This page does not claim node pairing or command approval, and
+does not replace the separate legacy, failure or restart `CompletePage`.
+
 The onboarding wizard can install an app-owned WSL gateway, acquire a native
 Gateway MSIX through Microsoft Store and configure it, or connect to an existing gateway.
 

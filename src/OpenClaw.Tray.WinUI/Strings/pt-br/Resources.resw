@@ -8297,4 +8297,5 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Onboarding_NativeConnection_Speech" xml:space="preserve"><value>Vamos verificar sua conexão.</value></data>
   <data name="Onboarding_Wizard_CompatibilitySpeech" xml:space="preserve"><value>Vamos terminar de conectar sua IA.</value></data>
   <data name="Onboarding_AiSetup_Speech.Text" xml:space="preserve"><value>Escolha um cérebro para mim.</value></data>
+  <data name="Onboarding_Ready_Speech.Text" xml:space="preserve"><value>Pronto quando você estiver.</value></data>
 </root>

@@ -8246,4 +8246,5 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Onboarding_NativeConnection_Speech" xml:space="preserve"><value>Laten we uw verbinding controleren.</value></data>
   <data name="Onboarding_Wizard_CompatibilitySpeech" xml:space="preserve"><value>Laten we uw AI verder verbinden.</value></data>
   <data name="Onboarding_AiSetup_Speech.Text" xml:space="preserve"><value>Kies een brein voor mij.</value></data>
+  <data name="Onboarding_Ready_Speech.Text" xml:space="preserve"><value>Klaar wanneer jij dat bent.</value></data>
 </root>

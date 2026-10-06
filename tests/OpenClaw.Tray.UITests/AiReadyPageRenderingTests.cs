@@ -16,7 +16,7 @@ namespace OpenClaw.Tray.UITests;
 
 /// <summary>Synthetic rendering only. Never activates a destination, connects a Gateway, or finalizes setup.</summary>
 [Collection(UICollection.Name)]
-public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHelper output)
+public sealed partial class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHelper output)
 {
     [Theory]
     [InlineData(SetupNativeCompletionPhase.PageDrain, "Closing the previous AI setup page timed out.")]
@@ -201,7 +201,10 @@ public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHel
                 var frame = Assert.IsType<Frame>(window.Content);
                 using var navigation = OnboardingNativeProof.TrackNavigation(frame);
                 if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENCLAW_UI_PROOF_DIR")))
-                    window.Activate();
+                {
+                    window.AppWindow.Move(new(-32000, -32000));
+                    window.AppWindow.Show(activateWindow: false);
+                }
                 else
                     OnboardingNativeProof.ActivateOwned(window);
                 // Synthetic verification exercises rendering, not a live Gateway or inference.

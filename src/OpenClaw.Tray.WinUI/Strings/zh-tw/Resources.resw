@@ -8245,4 +8245,5 @@
   <data name="Onboarding_NativeConnection_Speech" xml:space="preserve"><value>讓我們檢查你的連線。</value></data>
   <data name="Onboarding_Wizard_CompatibilitySpeech" xml:space="preserve"><value>讓我們完成 AI 連線。</value></data>
   <data name="Onboarding_AiSetup_Speech.Text" xml:space="preserve"><value>為我選一個大腦。</value></data>
+  <data name="Onboarding_Ready_Speech.Text" xml:space="preserve"><value>準備好就開始吧。</value></data>
 </root>
