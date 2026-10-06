@@ -151,6 +151,8 @@ public sealed class ProgressPageShellTests(UIThreadFixture ui)
 
     private async Task BringAsync(FrameworkElement target, ProgressPage page)
     {
+        page.UpdateLayout();
+        await OnboardingNativeProof.NextCompositionAsync();
         target.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false, VerticalAlignmentRatio = 0.5 });
         await ui.YieldToRenderAsync();
         page.UpdateLayout();
