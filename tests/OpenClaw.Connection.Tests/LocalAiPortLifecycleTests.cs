@@ -3164,8 +3164,7 @@ public sealed class LocalAiPortLifecycleTests
                 Path.GetDirectoryName(executable)!,
                 LlamaRuntimeCatalog.ServerImplementationLibraryName),
             "test implementation library");
-        await using (var stream = new FileStream(model, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-            stream.SetLength(manifest.ModelAsset.SizeBytes);
+        SparseFixtureFile.Create(model, manifest.ModelAsset.SizeBytes);
         await new LocalAiManifestStore(paths).SaveAsync(manifest);
         return paths;
     }
