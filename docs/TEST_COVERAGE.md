@@ -70,6 +70,7 @@ per-run artifacts. Existing MCP-only integration defaults remain unchanged.
 
 - **OpenClaw.Connection.Tests** keeps connection architecture tests separate from tray UI concerns.
 - **OpenClaw.Tray.UITests** covers A2UI/native WinUI rendering behavior that is awkward to validate through pure unit tests.
+- Onboarding AI card-action tests wait up to 10 seconds for the target card to be loaded, enabled, click-enabled, and attached to the page's non-null XamlRoot. Readiness timeouts report each condition; regression tests hold each readiness flag false before releasing it and verify that a permanently blocked card never invokes its action. A dispatcher yield alone is not a control-loaded guarantee.
 - **OpenClaw.WinNode.Cli.Tests** covers the standalone Windows node CLI contract.
 - **OpenClaw.SetupEngine.Tests** covers gateway setup and local WSL installation policy.
 - **OpenClawTray.FunctionalUI.Tests** covers newer UI surfaces outside the main tray test project.
