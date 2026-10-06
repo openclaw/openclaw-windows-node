@@ -35,6 +35,44 @@ public sealed class LocalAiPortHandoffTests
     }
 
     [Fact]
+    public async Task Preflight_RetainedSparkReceiptUsesInstalledModelCatalogDuringRepair()
+    {
+        SetupContext context = CreateContext(new LocalAiConfig
+        {
+            Enabled = true,
+            Port = 0,
+            SelectedModelId = LocalModelCatalog.Qwen35B_IQ4XSModelId,
+            InstalledReceiptModelId = LocalModelCatalog.Qwen35B_IQ4XSModelId,
+        });
+        var step = new PreflightLocalAiHardwareStep(new FakeHardwareProbe(CreateSparkHardware()));
+
+        StepResult result = await step.ExecuteAsync(context, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Success, result.Outcome);
+        Assert.Equal(LocalModelCatalog.Qwen35B_IQ4XSModelId, context.LocalAiEligibility!.Plan!.Model.Id);
+        Assert.Equal(LocalModelCatalog.RtxSpark48GbContextTokens, context.LocalAiEligibility.Plan.Profile.ContextTokens);
+    }
+
+    [Fact]
+    public async Task Preflight_RetiredSparkModelWithoutMatchingReceiptProofRemainsUnavailable()
+    {
+        SetupContext context = CreateContext(new LocalAiConfig
+        {
+            Enabled = true,
+            Port = 0,
+            SelectedModelId = LocalModelCatalog.Qwen35B_IQ4XSModelId,
+        });
+        var step = new PreflightLocalAiHardwareStep(new FakeHardwareProbe(CreateSparkHardware()));
+
+        StepResult result = await step.ExecuteAsync(context, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Equal(
+            LocalInferenceSelectionFailureCode.UnknownModel,
+            context.LocalAiEligibility!.SelectionFailureCode);
+    }
+
+    [Fact]
     public async Task Preflight_StopsBeforeAnyDownloadWhenCapacityIsUnknown()
     {
         // A GPU whose CUDA memory could not be read has no

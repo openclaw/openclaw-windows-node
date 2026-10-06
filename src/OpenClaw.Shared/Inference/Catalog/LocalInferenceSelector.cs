@@ -83,7 +83,25 @@ public static class LocalInferenceSelector
 {
     public static LocalInferenceSelectionResult Select(
         HostHardwareInfo hardware,
-        string? requestedModelId = null)
+        string? requestedModelId = null) =>
+        Select(hardware, requestedModelId, includeRetiredInstalledModel: false);
+
+    /// <summary>
+    /// Resolves an explicit model from an existing installation receipt. Retired models
+    /// remain valid here, but are never admitted by the fresh-selection overload.
+    /// </summary>
+    internal static LocalInferenceSelectionResult SelectInstalled(
+        HostHardwareInfo hardware,
+        string installedModelId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(installedModelId);
+        return Select(hardware, installedModelId, includeRetiredInstalledModel: true);
+    }
+
+    private static LocalInferenceSelectionResult Select(
+        HostHardwareInfo hardware,
+        string? requestedModelId,
+        bool includeRetiredInstalledModel)
     {
         ArgumentNullException.ThrowIfNull(hardware);
 
@@ -138,7 +156,9 @@ public static class LocalInferenceSelector
         }
         else
         {
-            model = LocalModelCatalog.Find(requestedModelId);
+            model = includeRetiredInstalledModel
+                ? LocalModelCatalog.FindInstalled(requestedModelId)
+                : LocalModelCatalog.Find(requestedModelId);
             if (model is null)
                 return LocalInferenceSelectionResult.Unsupported(LocalInferenceSelectionFailureCode.UnknownModel);
             if (sparkPick is { } recommended &&

@@ -306,7 +306,7 @@ public class SettingsManager
         SttLanguage = "auto",
         SttModelName = "base",
         SttSilenceTimeout = 1.5f,
-        VoiceTtsEnabled = true,
+        VoiceTtsEnabled = false,
         VoiceAudioFeedback = true,
         NodeTtsEnabled = false,
         NodeOllamaInferenceEnabled = false,
