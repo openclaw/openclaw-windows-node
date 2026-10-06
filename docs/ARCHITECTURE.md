@@ -74,6 +74,7 @@ disconnect, replacement, or close. This cache is not used for authorization.
 | Concern | Canonical owner | Status |
 | --- | --- | --- |
 | Test temp directories | `OpenClaw.TestSupport.TempDirectory` | authoritative |
+| Bounded audio child-process wait and disposal | `BoundedProcessWait` owns the supplied `Process`, including deferred disposal after its kill worker finishes; callers must not dispose it on bounded cancellation return | authoritative |
 | Test env var save/restore | `OpenClaw.TestSupport.EnvironmentScope` | authoritative |
 | CLI stdout/stderr/env capture | `OpenClaw.TestSupport.CliHarness` | authoritative |
 | Loopback MCP server for tests | `OpenClaw.TestSupport.FakeMcpServer` | authoritative |

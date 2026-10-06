@@ -151,7 +151,7 @@ public sealed class PiperVoiceExtractionTests
         startInfo.ArgumentList.Add("-C");
         startInfo.ArgumentList.Add(sourceDirectory);
         startInfo.ArgumentList.Add(packageName);
-        using var process = Process.Start(startInfo)
+        var process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("Could not start tar archive fixture.");
 
         var result = await BoundedProcessWait.WaitAsync(process, TimeSpan.FromSeconds(15));
