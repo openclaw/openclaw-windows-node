@@ -621,10 +621,19 @@ public sealed partial class OnboardingAiPageTests(UIThreadFixture ui, ITestOutpu
                 Title = "Provider input", Message = "Synthetic provider prompt. No provider contacted.",
                 DeviceCode = new("TEST-CODE", 15, "Synthetic device code"),
             };
-            await InvokeChoiceAsync(page);
             var dialog = GetDialog(page);
-            await WaitAsync(() => dialog.CanSubmit && Assert.IsType<ScrollViewer>(dialog.Content).IsLoaded);
+            var opened = 0;
+            dialog.Opened += (_, _) => opened++;
+            await InvokeChoiceAsync(page);
+            await WaitAsync(() => opened == 1 && dialog.CanSubmit &&
+                Assert.IsType<ScrollViewer>(dialog.Content).IsLoaded);
+            // Layout readiness precedes the owned popup's finite fade-in.
+            await Task.Delay(400);
+            await OnboardingNativeProof.NextCompositionAsync();
+            dialog.UpdateLayout();
             Assert.Equal("TEST-CODE", Assert.IsType<TextBlock>(dialog.FindName("DeviceCode")).Text);
+            OnboardingNativeProof.AssertFullyVisible(Assert.IsType<TextBlock>(dialog.FindName("DeviceCode")),
+                Assert.IsType<ScrollViewer>(dialog.Content));
             using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow, $"followup-provider-input-{theme}", output,
                 ["Provider input", "TEST-CODE", "Cancel"],
                 requiredContent: Assert.IsType<ScrollViewer>(dialog.Content))) { }

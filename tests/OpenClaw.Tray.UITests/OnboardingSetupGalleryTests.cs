@@ -437,8 +437,10 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                 header.UpdateLayout();
                 await OnboardingNativeProof.NextCompositionAsync();
                 Assert.False(IsVisible(hidden));
-                Assert.False(IsVisible((TextBlock)decorative.Children[0]));
+                Assert.True(IsVisible((TextBlock)decorative.Children[0]));
                 Assert.Same(expected, SelectDirectHeader([header], "Expected title"));
+                Assert.ThrowsAny<Exception>(() => SelectDirectHeader([header], "z"));
+                Assert.ThrowsAny<Exception>(() => SelectDirectHeader([header], "Invisible title"));
                 Assert.ThrowsAny<Exception>(() => SelectDirectHeader([header], "Wrong page"));
             }
             finally { ui.Container.Children.Clear(); }
@@ -1304,6 +1306,7 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
             {
                 OnboardingNativeProof.AssertFullyVisible(heading,
                     page.Content is SetupPageShell headerShell ? headerShell.Scroller : root);
+                labels.Add(contract.Text);
                 if (result.Scene.Id.StartsWith("followup-welcome-", StringComparison.Ordinal))
                 {
                     await OnboardingNativeProof.AssertNativeLabelAfterWpfLoadAsync(
@@ -1313,8 +1316,6 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                     labels.Add("Connect to an existing Gateway");
                     labels.Add("Your PC supports Local AI");
                 }
-                else
-                    labels.Add(contract.Text);
             }
             else
                 Assert.Contains(contract.Text, result.OcrLabels); // A scrolling header must already be proven in its first viewport.

@@ -543,12 +543,15 @@ as hero-only; its label cannot substitute for later body-frame proof.
 Axe scans run in a separate test process because Axe.Windows excludes its own
 process. The scanner validates the exact target PID and HWND, uses the existing
 rule exclusions, and must write a success receipt.
+Exact label matches from either full-image OCR analysis are retained.
+A scaled retry cannot discard a label recognized in the original unchanged PNG.
 Capital-I/l OCR ambiguities remain explicitly marked as OCR failures.
 An otherwise exact OCR phrase, an exact visible native label, and human review
 of the original pixels are all required for that evidence split.
 Provider verification retains the existing inline-progress policy. Recovery
 reopens the same owned dialog; proof waits for its new `Opened` event and layout
 before invoking **Check again**, not a button from the closing template.
+Provider-input capture also waits for `Opened` and the finite native popup fade-in.
 The download progress bar uses its current download activity as its accessible
 label, so screen readers receive the same live measurement shown on the page.
 Model-picker proof brings each real model option into view and captures it.

@@ -15,4 +15,20 @@ public sealed class NativeLabelProofTests
     {
         Assert.Equal(admitted, OnboardingNativeProof.IsCapitalIAmbiguity(expected, observed));
     }
+
+    [Theory]
+    [InlineData("Where should OpenClaw live?", "Your PC supports Local AI", false, false)]
+    [InlineData("Where should OpenClaw live?", "Where should OpenCIaw live? Your PC supports Local Al", false, true)]
+    [InlineData("", "Where should OpenClaw live? Your PC supports Local AI", false, false)]
+    [InlineData("Where should OpenCIaw live?", "Your PC supports Local Al", true, true)]
+    [InlineData("", "", true, true)]
+    public void ExactLabelEvidence_RetainsMatchesFromEitherAnalysisOfTheSameCapture(
+        string originalText, string scaledText, bool missingHeading, bool missingAi)
+    {
+        const string heading = "Where should OpenClaw live?";
+        const string ai = "Your PC supports Local AI";
+        var missing = OnboardingNativeProof.MissingOcrLabels([heading, ai], originalText, scaledText);
+        Assert.Equal(missingHeading, missing.Contains(heading));
+        Assert.Equal(missingAi, missing.Contains(ai));
+    }
 }

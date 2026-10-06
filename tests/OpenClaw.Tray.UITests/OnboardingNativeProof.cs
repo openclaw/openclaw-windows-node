@@ -881,10 +881,9 @@ internal static class OnboardingNativeProof
         var file = await Windows.Storage.StorageFile.GetFileFromPathAsync(path);
         using var stream = await file.OpenAsync(Windows.Storage.FileAccessMode.Read);
         var decoder = await BitmapDecoder.CreateAsync(stream);
-        static string Normalize(string text) => string.Concat(text.Where(char.IsLetterOrDigit)).ToLowerInvariant();
         using var originalBitmap = await decoder.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore);
         var original = await RunOcrPassAsync(ct => engine.RecognizeAsync(originalBitmap).AsTask(ct));
-        if (labels.All(label => Normalize(original.Text).Contains(Normalize(label), StringComparison.Ordinal)))
+        if (labels.All(label => NormalizeOcrText(original.Text).Contains(NormalizeOcrText(label), StringComparison.Ordinal)))
             return new(original.Text, original.Text, 1, decoder.PixelWidth, decoder.PixelHeight,
                 decoder.PixelWidth, decoder.PixelHeight, []);
         // OCR operates on the entire immutable capture at a bounded analysis resolution.
@@ -901,7 +900,7 @@ internal static class OnboardingNativeProof
         using var bitmap = await decoder.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore,
             transform, ExifOrientationMode.IgnoreExifOrientation, ColorManagementMode.DoNotColorManage);
         var result = await RunOcrPassAsync(ct => engine.RecognizeAsync(bitmap).AsTask(ct));
-        var missing = labels.Where(label => !Normalize(result.Text).Contains(Normalize(label), StringComparison.Ordinal)).ToArray();
+        var missing = MissingOcrLabels(labels, original.Text, result.Text);
         File.WriteAllText(Path.ChangeExtension(path, ".ocr.json"), JsonSerializer.Serialize(new
         {
             image = path, sha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))),
@@ -942,10 +941,24 @@ internal static class OnboardingNativeProof
 
     internal static bool IsCapitalIAmbiguity(string label, string ocrText)
     {
-        static string Normalize(string text) => string.Concat(text.Where(char.IsLetterOrDigit)).ToLowerInvariant();
         return label.Contains("AI", StringComparison.Ordinal) &&
-            Normalize(ocrText).Contains(Normalize(label.Replace("AI", "Al", StringComparison.Ordinal)), StringComparison.Ordinal);
+            NormalizeOcrText(ocrText).Contains(NormalizeOcrText(label.Replace("AI", "Al", StringComparison.Ordinal)), StringComparison.Ordinal);
     }
+
+    internal static string[] MissingOcrLabels(string[] labels, string originalText, string scaledText)
+    {
+        var original = NormalizeOcrText(originalText);
+        var scaled = NormalizeOcrText(scaledText);
+        return labels.Where(label =>
+        {
+            var expected = NormalizeOcrText(label);
+            return !original.Contains(expected, StringComparison.Ordinal) &&
+                !scaled.Contains(expected, StringComparison.Ordinal);
+        }).ToArray();
+    }
+
+    private static string NormalizeOcrText(string text) =>
+        string.Concat(text.Where(char.IsLetterOrDigit)).ToLowerInvariant();
 
     private static SourceIdentity ReadSourceIdentity()
     {
