@@ -54,8 +54,12 @@ public sealed class GatewayReviewShellTests(UIThreadFixture ui)
             foreach (var target in new FrameworkElement[]
                      { consent, Assert.IsType<TextBlock>(page.FindName("ExactCommandsText")) })
             {
+                page.UpdateLayout();
+                await OnboardingNativeProof.NextCompositionAsync();
                 target.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false, VerticalAlignmentRatio = 0.5 });
                 await ui.YieldToRenderAsync();
+                page.UpdateLayout();
+                await OnboardingNativeProof.NextCompositionAsync();
                 page.UpdateLayout();
                 OnboardingNativeProof.AssertFullyVisible(target, shell.Scroller);
                 OnboardingNativeProof.AssertFullyVisible(back, shell);
