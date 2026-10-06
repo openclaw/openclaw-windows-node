@@ -1,0 +1,25 @@
+<UserControl
+    x:Class="OpenClaw.SetupEngine.UI.Controls.SetupPageShell"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    IsTabStop="False">
+    <Grid Padding="40,16,40,24" RowDefinitions="*,Auto">
+        <ScrollViewer x:Name="ContentScroll" HorizontalScrollMode="Disabled"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto" HorizontalContentAlignment="Stretch"
+                      IsTabStop="False">
+            <Grid x:Name="Composition" MaxWidth="1120" HorizontalAlignment="Stretch"
+                  ColumnDefinitions="Auto,Auto,*" RowDefinitions="Auto,Auto,Auto">
+                <ContentPresenter x:Name="HeroPresenter" Content="{x:Bind Hero, Mode=OneWay}"
+                                  HorizontalContentAlignment="Stretch" />
+                <ContentPresenter x:Name="HeaderPresenter" Content="{x:Bind Header, Mode=OneWay}"
+                                  HorizontalContentAlignment="Stretch" />
+                <ContentPresenter x:Name="BodyPresenter" Content="{x:Bind Body, Mode=OneWay}"
+                                  HorizontalContentAlignment="Stretch" />
+            </Grid>
+        </ScrollViewer>
+        <ContentPresenter x:Name="FooterPresenter" Grid.Row="1" Margin="0,20,0,0"
+                          Content="{x:Bind Footer, Mode=OneWay}"
+                          HorizontalContentAlignment="Stretch" />
+    </Grid>
+</UserControl>

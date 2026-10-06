@@ -1003,7 +1003,9 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
                     if (!recovery)
                     {
                         var welcome = await MountedPageAsync<SecurityNoticePage>(window, frame);
-                        AssertProgress(welcome, stageCount: 7, current: 0);
+                        var progress = Find<SetupStepIndicator>(welcome, "FlowProgress");
+                        Assert.Equal(4, TestSupport.FindDescendants<TextBlock>(progress).Count(label => label.Name == "StepTitle"));
+                        Assert.Equal("Step 1 of 7", AutomationProperties.GetName(progress));
                         Assert.False(string.IsNullOrWhiteSpace(Find<TextBlock>(welcome, "WelcomeDescription").Text));
                         Assert.DoesNotContain("Onboarding_", Find<TextBlock>(welcome, "WelcomeDescription").Text);
                     }

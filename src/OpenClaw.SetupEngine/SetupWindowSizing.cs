@@ -5,8 +5,8 @@ public static class SetupWindowSizing
 {
     public const int MinimumWidth = 720;
     public const int MinimumHeight = 560;
-    public const int InitialWidth = 720;
-    public const int InitialHeight = 820;
+    public const int InitialWidth = 1120;
+    public const int InitialHeight = 720;
 
     public static (int Width, int Height) MinimumPixels(uint dpi) =>
         (Pixels(MinimumWidth, dpi), Pixels(MinimumHeight, dpi));

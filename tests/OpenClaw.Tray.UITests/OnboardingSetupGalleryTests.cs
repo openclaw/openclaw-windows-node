@@ -89,6 +89,31 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
         WriteManifest();
     }
 
+    [Theory]
+    [InlineData(ElementTheme.Light)]
+    [InlineData(ElementTheme.Dark)]
+    [Trait("Category", "NativeOnboardingProof")]
+    public async Task WelcomeShellProof(ElementTheme theme)
+    {
+        OnboardingNativeProof.AssertIsolatedRoots();
+        _directory = OnboardingNativeProof.RequireProofDirectory();
+        OnboardingNativeProof.AssertSourceUnchanged();
+        string[] ids = ["01-welcome-trust", "02-gateway-install", "05-capabilities-standard-fine-tune",
+            "07-review-replacement-unchecked", "09-progress-gateway", "12-ai-providers", "18-complete-error"];
+        foreach (var id in ids)
+        {
+            var result = new SceneResult(Assert.Single(RequiredScenes, scene => scene.Id == id), theme);
+            _results.Add(result);
+            await CaptureSceneAsync(result);
+            Assert.True(result.AllViewportsCaptured);
+            Assert.NotEmpty(result.Frames);
+        }
+        OnboardingNativeProof.AssertSourceUnchanged();
+        _sourceVerifiedAfterCapture = true;
+        foreach (var result in _results) result.Status = "captured";
+        WriteManifest();
+    }
+
     private const string PreviewVariable = "OPENCLAW_SETUP_PREVIEW_PAGE";
     private readonly string _run = $"setup-gallery-{DateTime.UtcNow:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}";
     private readonly List<SceneResult> _results = [];
@@ -381,8 +406,8 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                 var handle = WinRT.Interop.WindowNative.GetWindowHandle(ui.TestWindow);
                 OnboardingNativeProof.AssertProductDpi(ui.TestWindow);
                 using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow, $"{_run}-shared-fixture-dpi",
-                    output, ["Welcome to OpenClaw", "Continue"])) { }
-                await OnboardingNativeProof.AssertNativeLabelAfterWpfLoadAsync(handle, "Welcome to OpenClaw");
+                    output, ["Meet your new sidekick.", "Get started"])) { }
+                await OnboardingNativeProof.AssertNativeLabelAfterWpfLoadAsync(handle, "Meet your new sidekick.");
                 await ui.YieldToRenderAsync();
                 await ui.RunOnUIAsync(async () =>
                 {
@@ -390,7 +415,7 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                     OnboardingNativeProof.AssertProductDpi(ui.TestWindow);
                     OnboardingNativeProof.TraceDpiContext("Regression: same HWND after MTA WPF/UIA and next callback", ui.TestWindow);
                     using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow, $"{_run}-shared-fixture-after-uia",
-                        output, ["Welcome to OpenClaw", "Continue"])) { }
+                        output, ["Meet your new sidekick.", "Get started"])) { }
                 });
             }
             finally
@@ -554,7 +579,9 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                         OnboardingNativeProof.ActivateOwned(window);
                     await WaitAsync(() => root.IsLoaded, "gallery window Loaded");
                     var scale = root.XamlRoot.RasterizationScale;
-                    var proofSize = result.Scene.State == "simplified-local" ? (Width: 1200, Height: 900) : (Width: 720, Height: 820);
+                    var proofSize = result.Scene.State == "simplified-local"
+                        ? (Width: 1200, Height: 900)
+                        : (Width: SetupWindowSizing.InitialWidth, Height: SetupWindowSizing.InitialHeight);
                     window.AppWindow.Resize(new(NativeProofLayout.PhysicalPixels(proofSize.Width, scale),
                         NativeProofLayout.PhysicalPixels(proofSize.Height, scale)));
                     var area = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(window.AppWindow.Id,
@@ -1025,8 +1052,9 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
         var root = Assert.IsType<Grid>(window.Content);
         root.UpdateLayout();
         await OnboardingNativeProof.NextCompositionAsync();
-        var grid = Assert.IsType<Grid>(page.Content);
-        var outer = dialogScroll ?? grid.Children.OfType<ScrollViewer>().SingleOrDefault(IsVisible);
+        var outer = dialogScroll ?? (page.Content is SetupPageShell shell
+            ? shell.Scroller
+            : Assert.IsType<Grid>(page.Content).Children.OfType<ScrollViewer>().SingleOrDefault(IsVisible));
         if (outer is null)
             await CaptureAsync(window, page, result, "page", 0, 0, null, dialog);
         else
@@ -1083,7 +1111,6 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
         double x, double y, ScrollViewer? scroll, ProviderSetupDialog? dialog)
     {
         var root = Assert.IsType<Grid>(window.Content);
-        var grid = Assert.IsType<Grid>(page.Content);
         var labels = new List<string>();
         if (dialog is not null)
         {
@@ -1125,12 +1152,24 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
             }
             else
                 Assert.Contains(contract.Text, result.OcrLabels); // A scrolling header must already be proven in its first viewport.
-            var footerRow = grid.RowDefinitions.Count - 1;
-            foreach (var chrome in grid.Children.OfType<FrameworkElement>().Where(element => IsVisible(element) &&
-                element is not ScrollViewer && (Grid.GetRow(element) == 0 || Grid.GetRow(element) == footerRow)))
+            IEnumerable<FrameworkElement> fixedChrome;
+            if (page.Content is SetupPageShell shell)
+            {
+                Assert.Equal(0, shell.Scroller.ScrollableWidth);
+                fixedChrome = [Assert.IsAssignableFrom<FrameworkElement>(shell.Footer)];
+            }
+            else
+            {
+                var grid = Assert.IsType<Grid>(page.Content);
+                var footerRow = grid.RowDefinitions.Count - 1;
+                fixedChrome = grid.Children.OfType<FrameworkElement>().Where(element => IsVisible(element) &&
+                    element is not ScrollViewer && (Grid.GetRow(element) == 0 || Grid.GetRow(element) == footerRow));
+            }
+            foreach (var chrome in fixedChrome)
             {
                 OnboardingNativeProof.AssertFullyVisible(chrome, root);
-                foreach (var button in TestSupport.FindDescendants<Button>(chrome).Where(IsVisible))
+                foreach (var button in TestSupport.FindDescendants<Button>(chrome).Concat(
+                    chrome is Button action ? [action] : []).Where(IsVisible))
                     if (button.Content is string label && !string.IsNullOrWhiteSpace(label))
                     {
                         OnboardingNativeProof.AssertFullyVisible(button, root);

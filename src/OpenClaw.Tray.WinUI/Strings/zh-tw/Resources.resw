@@ -7136,6 +7136,15 @@
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>更快</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>更深入</value></data>
   <data name="Onboarding_Flow_Position" xml:space="preserve"><value>第 {0} 步，共 {1} 步</value></data>
+  <data name="Onboarding_Milestone_Tools" xml:space="preserve"><value>選擇電腦工具</value></data>
+  <data name="Onboarding_Milestone_ToolsDescription" xml:space="preserve"><value>從適合您的存取權限開始。</value></data>
+  <data name="Onboarding_Milestone_Setup" xml:space="preserve"><value>設定</value></data>
+  <data name="Onboarding_Milestone_SetupDescription" xml:space="preserve"><value>OpenClaw 正在安裝。您可以繼續使用電腦。</value></data>
+  <data name="Onboarding_Milestone_Ai" xml:space="preserve"><value>連接您的 AI</value></data>
+  <data name="Onboarding_Milestone_Chat" xml:space="preserve"><value>開始聊天</value></data>
+  <data name="Onboarding_Milestone_Current" xml:space="preserve"><value>{0}，目前步驟</value></data>
+  <data name="Onboarding_Milestone_Complete" xml:space="preserve"><value>{0}，已完成</value></data>
+  <data name="Onboarding_Milestone_Upcoming" xml:space="preserve"><value>{0}，即將開始</value></data>
   <data name="Onboarding_Flow_CompletionUnavailable" xml:space="preserve"><value>設定無法開啟 Chat。請關閉設定並重新開啟 OpenClaw。</value></data>
   <data name="Onboarding_Flow_AiNavigationFailed" xml:space="preserve"><value>閘道已安裝，但無法開啟 AI 設定。請重新開啟設定以繼續，無需重新安裝。</value></data>
   <data name="Onboarding_Flow_AccessTitle" xml:space="preserve"><value>你的電腦，你的權限</value></data>
@@ -7146,8 +7155,8 @@
   <data name="Onboarding_Flow_AutoStartToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>登入時啟動 OpenClaw</value></data>
   <data name="ChatDashboardButton.Content" xml:space="preserve"><value>Dashboard</value></data>
   <data name="ChatDashboardHint.Text" xml:space="preserve"><value>頻道、整合與閘道設定</value></data>
-  <data name="Onboarding_Flow_WelcomeDescription.Text" xml:space="preserve"><value>OpenClaw 是協助您在電腦上完成工作的 AI 助理。</value></data>
-  <data name="Onboarding_AiSetup_Title.Text" xml:space="preserve"><value>設定你的 AI</value></data>
+  <data name="Onboarding_Flow_WelcomeDescription.Text" xml:space="preserve"><value>OpenClaw 將 AI 助理與電腦上的工具連結起來。您可以決定它能做什麼，並隨時變更。</value></data>
+  <data name="Onboarding_AiSetup_Title.Text" xml:space="preserve"><value>連接你的 AI</value></data>
   <data name="Onboarding_AiSetup_CatalogOptIn" xml:space="preserve"><value>探索現有提供者對話（選用）</value></data>
   <data name="Onboarding_AiSetup_Starting" xml:space="preserve"><value>正在啟動提供者設定…</value></data>
   <data name="Onboarding_AiSetup_WorkingProvider" xml:space="preserve"><value>正在等候提供者…</value></data>
@@ -7283,7 +7292,9 @@
   <data name="Onboarding_V2_ReviewRequired.Title" xml:space="preserve"><value>檢閱必要選項</value></data>
   <data name="Onboarding_V2_ReviewRequired.Message" xml:space="preserve"><value>安裝前請檢閱所選 Local AI 和 Tailscale 的先決條件，並確認任何 WSL 取代。</value></data>
   <data name="Onboarding_V2_Install.Content" xml:space="preserve"><value>安裝</value></data>
-  <data name="Onboarding_V2_WelcomeTitle.Text" xml:space="preserve"><value>歡迎使用 OpenClaw</value></data>
+  <data name="Onboarding_V2_WelcomeTitle.Text" xml:space="preserve"><value>認識您的新夥伴。</value></data>
+  <data name="Onboarding_Welcome_GetStarted.Content" xml:space="preserve"><value>開始設定</value></data>
+  <data name="Onboarding_Welcome_Speech.Text" xml:space="preserve"><value>您好。我們來完成設定吧。</value></data>
   <data name="Onboarding_V2_WelcomeChat.Header" xml:space="preserve"><value>與您的 AI 聊天</value></data>
   <data name="Onboarding_V2_WelcomeChat.Description" xml:space="preserve"><value>在原生 Chat 中使用您選擇的 AI 提供者。</value></data>
   <data name="Onboarding_V2_WelcomePc.Header" xml:space="preserve"><value>讓代理在此電腦上提供協助</value></data>

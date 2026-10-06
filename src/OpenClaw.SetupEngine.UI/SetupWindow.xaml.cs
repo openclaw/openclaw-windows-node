@@ -948,7 +948,7 @@ public sealed partial class SetupWindow : Window
     internal void RefreshFlowProgress()
     {
         if (RootFrame.Content is not FrameworkElement page ||
-            page.FindName("FlowProgress") is not SetupProgressIndicator progress)
+            page.FindName("FlowProgress") is not ISetupProgressIndicator progress)
             return;
 
         var stage = page switch

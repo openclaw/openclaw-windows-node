@@ -7137,6 +7137,15 @@ Controleer of de gateway actief is.</value>
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Sneller</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Grondiger</value></data>
   <data name="Onboarding_Flow_Position" xml:space="preserve"><value>Stap {0} van {1}</value></data>
+  <data name="Onboarding_Milestone_Tools" xml:space="preserve"><value>Kies uw pc-hulpmiddelen</value></data>
+  <data name="Onboarding_Milestone_ToolsDescription" xml:space="preserve"><value>Begin met de toegang die bij u past.</value></data>
+  <data name="Onboarding_Milestone_Setup" xml:space="preserve"><value>Instellen</value></data>
+  <data name="Onboarding_Milestone_SetupDescription" xml:space="preserve"><value>OpenClaw wordt geïnstalleerd. U kunt uw pc blijven gebruiken.</value></data>
+  <data name="Onboarding_Milestone_Ai" xml:space="preserve"><value>Verbind uw AI</value></data>
+  <data name="Onboarding_Milestone_Chat" xml:space="preserve"><value>Begin met chatten</value></data>
+  <data name="Onboarding_Milestone_Current" xml:space="preserve"><value>{0}, huidige stap</value></data>
+  <data name="Onboarding_Milestone_Complete" xml:space="preserve"><value>{0}, voltooid</value></data>
+  <data name="Onboarding_Milestone_Upcoming" xml:space="preserve"><value>{0}, aankomende stap</value></data>
   <data name="Onboarding_Flow_CompletionUnavailable" xml:space="preserve"><value>Chat kon niet worden geopend. Sluit de installatie en open OpenClaw opnieuw.</value></data>
   <data name="Onboarding_Flow_AiNavigationFailed" xml:space="preserve"><value>De gateway is geïnstalleerd, maar AI-instelling kon niet worden geopend. Open de installatie opnieuw om door te gaan zonder opnieuw te installeren.</value></data>
   <data name="Onboarding_Flow_AccessTitle" xml:space="preserve"><value>Jouw pc, jouw machtigingen</value></data>
@@ -7147,8 +7156,8 @@ Controleer of de gateway actief is.</value>
   <data name="Onboarding_Flow_AutoStartToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>OpenClaw starten bij aanmelden</value></data>
   <data name="ChatDashboardButton.Content" xml:space="preserve"><value>Dashboard</value></data>
   <data name="ChatDashboardHint.Text" xml:space="preserve"><value>Kanalen, integraties en gateway-instellingen</value></data>
-  <data name="Onboarding_Flow_WelcomeDescription.Text" xml:space="preserve"><value>OpenClaw is uw AI-assistent om dingen gedaan te krijgen op uw pc.</value></data>
-  <data name="Onboarding_AiSetup_Title.Text" xml:space="preserve"><value>Stel je AI in</value></data>
+  <data name="Onboarding_Flow_WelcomeDescription.Text" xml:space="preserve"><value>OpenClaw verbindt een AI-assistent met de hulpmiddelen op uw pc. U kiest wat de assistent kan doen en kunt dat op elk moment wijzigen.</value></data>
+  <data name="Onboarding_AiSetup_Title.Text" xml:space="preserve"><value>Verbind je AI</value></data>
   <data name="Onboarding_AiSetup_CatalogOptIn" xml:space="preserve"><value>Bestaande providergesprekken ontdekken (optioneel)</value></data>
   <data name="Onboarding_AiSetup_Starting" xml:space="preserve"><value>Provider instellen…</value></data>
   <data name="Onboarding_AiSetup_WorkingProvider" xml:space="preserve"><value>Wachten op je provider…</value></data>
@@ -7284,7 +7293,9 @@ Controleer of de gateway actief is.</value>
   <data name="Onboarding_V2_ReviewRequired.Title" xml:space="preserve"><value>Controleer de vereiste keuzes</value></data>
   <data name="Onboarding_V2_ReviewRequired.Message" xml:space="preserve"><value>Controleer de vereisten voor geselecteerde Local AI en Tailscale en bevestig WSL-vervanging vóór installatie.</value></data>
   <data name="Onboarding_V2_Install.Content" xml:space="preserve"><value>Installeren</value></data>
-  <data name="Onboarding_V2_WelcomeTitle.Text" xml:space="preserve"><value>Welkom bij OpenClaw</value></data>
+  <data name="Onboarding_V2_WelcomeTitle.Text" xml:space="preserve"><value>Maak kennis met uw nieuwe maatje.</value></data>
+  <data name="Onboarding_Welcome_GetStarted.Content" xml:space="preserve"><value>Aan de slag</value></data>
+  <data name="Onboarding_Welcome_Speech.Text" xml:space="preserve"><value>Hallo. Laten we alles voor u instellen.</value></data>
   <data name="Onboarding_V2_WelcomeChat.Header" xml:space="preserve"><value>Chat met uw AI</value></data>
   <data name="Onboarding_V2_WelcomeChat.Description" xml:space="preserve"><value>Gebruik de ingebouwde Chat met een AI-provider naar keuze.</value></data>
   <data name="Onboarding_V2_WelcomePc.Header" xml:space="preserve"><value>Laat agents helpen op deze pc</value></data>

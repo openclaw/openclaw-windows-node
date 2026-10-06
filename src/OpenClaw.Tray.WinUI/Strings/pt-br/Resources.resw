@@ -7188,6 +7188,15 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Mais rápido</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Mais detalhado</value></data>
   <data name="Onboarding_Flow_Position" xml:space="preserve"><value>Etapa {0} de {1}</value></data>
+  <data name="Onboarding_Milestone_Tools" xml:space="preserve"><value>Escolha as ferramentas do seu PC</value></data>
+  <data name="Onboarding_Milestone_ToolsDescription" xml:space="preserve"><value>Comece com o acesso que combina com você.</value></data>
+  <data name="Onboarding_Milestone_Setup" xml:space="preserve"><value>Configurar</value></data>
+  <data name="Onboarding_Milestone_SetupDescription" xml:space="preserve"><value>O OpenClaw está sendo instalado. Você pode continuar usando seu PC.</value></data>
+  <data name="Onboarding_Milestone_Ai" xml:space="preserve"><value>Conecte sua IA</value></data>
+  <data name="Onboarding_Milestone_Chat" xml:space="preserve"><value>Comece a conversar</value></data>
+  <data name="Onboarding_Milestone_Current" xml:space="preserve"><value>{0}, etapa atual</value></data>
+  <data name="Onboarding_Milestone_Complete" xml:space="preserve"><value>{0}, etapa concluída</value></data>
+  <data name="Onboarding_Milestone_Upcoming" xml:space="preserve"><value>{0}, a seguir</value></data>
   <data name="Onboarding_Flow_CompletionUnavailable" xml:space="preserve"><value>Não foi possível abrir o Chat. Feche a configuração e abra o OpenClaw novamente.</value></data>
   <data name="Onboarding_Flow_AiNavigationFailed" xml:space="preserve"><value>O gateway está instalado, mas a configuração de IA não abriu. Abra a configuração novamente para continuar sem reinstalar.</value></data>
   <data name="Onboarding_Flow_AccessTitle" xml:space="preserve"><value>Seu PC, suas permissões</value></data>
@@ -7198,8 +7207,8 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="Onboarding_Flow_AutoStartToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Iniciar o OpenClaw ao entrar</value></data>
   <data name="ChatDashboardButton.Content" xml:space="preserve"><value>Dashboard</value></data>
   <data name="ChatDashboardHint.Text" xml:space="preserve"><value>Canais, integrações e configurações do gateway</value></data>
-  <data name="Onboarding_Flow_WelcomeDescription.Text" xml:space="preserve"><value>O OpenClaw é seu assistente de IA para realizar tarefas no seu PC.</value></data>
-  <data name="Onboarding_AiSetup_Title.Text" xml:space="preserve"><value>Configure sua IA</value></data>
+  <data name="Onboarding_Flow_WelcomeDescription.Text" xml:space="preserve"><value>O OpenClaw conecta um assistente de IA às ferramentas do seu PC. Você escolhe o que ele pode fazer e pode mudar isso a qualquer momento.</value></data>
+  <data name="Onboarding_AiSetup_Title.Text" xml:space="preserve"><value>Conecte sua IA</value></data>
   <data name="Onboarding_AiSetup_CatalogOptIn" xml:space="preserve"><value>Descobrir conversas existentes dos provedores (opcional)</value></data>
   <data name="Onboarding_AiSetup_Starting" xml:space="preserve"><value>Iniciando a configuração do provedor…</value></data>
   <data name="Onboarding_AiSetup_WorkingProvider" xml:space="preserve"><value>Aguardando seu provedor…</value></data>
@@ -7335,7 +7344,9 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="Onboarding_V2_ReviewRequired.Title" xml:space="preserve"><value>Revise as escolhas obrigatórias</value></data>
   <data name="Onboarding_V2_ReviewRequired.Message" xml:space="preserve"><value>Revise os pré-requisitos selecionados de Local AI e Tailscale e confirme qualquer substituição do WSL antes de instalar.</value></data>
   <data name="Onboarding_V2_Install.Content" xml:space="preserve"><value>Instalar</value></data>
-  <data name="Onboarding_V2_WelcomeTitle.Text" xml:space="preserve"><value>Boas-vindas ao OpenClaw</value></data>
+  <data name="Onboarding_V2_WelcomeTitle.Text" xml:space="preserve"><value>Conheça seu novo parceiro.</value></data>
+  <data name="Onboarding_Welcome_GetStarted.Content" xml:space="preserve"><value>Começar</value></data>
+  <data name="Onboarding_Welcome_Speech.Text" xml:space="preserve"><value>Olá. Vamos configurar tudo para você.</value></data>
   <data name="Onboarding_V2_WelcomeChat.Header" xml:space="preserve"><value>Converse com sua IA</value></data>
   <data name="Onboarding_V2_WelcomeChat.Description" xml:space="preserve"><value>Use o Chat nativo com um provedor de IA de sua escolha.</value></data>
   <data name="Onboarding_V2_WelcomePc.Header" xml:space="preserve"><value>Deixe os agentes ajudarem neste PC</value></data>

@@ -1,0 +1,7 @@
+namespace OpenClaw.SetupEngine.UI.Controls;
+
+/// <summary>Presentation of the host's canonical route stages. Indicators never own navigation.</summary>
+public interface ISetupProgressIndicator
+{
+    void Update(IReadOnlyList<OnboardingStage> stages, OnboardingStage current);
+}

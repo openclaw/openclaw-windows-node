@@ -433,21 +433,32 @@ supported and retains the classic OpenClaw onboard wizard for older gateways.
 
 ### Native presentation
 
-The shared Setup window starts at 720 x 820 DIPs and has a native presenter
+The shared Setup window starts at 1120 x 720 DIPs and has a native presenter
 minimum of 720 x 560 DIPs. `SetupWindowSizing` rounds those dimensions up to
 physical pixels using the actual HWND DPI. `SetupWindow` reapplies the minimum
 when its XamlRoot, monitor position or presenter changes and detaches the
 subscriptions on close. DPI updates do not call Resize or reset the user's size.
 The window remains movable, resizable and maximizable; page content scrolls
-between its fixed header/footer at the minimum. This is a window constraint,
+between its fixed footer and page-specific header at the minimum. This is a window constraint,
 not a root-Grid minimum that would merely clip a smaller HWND.
 
 The preferred minimum is not silently weakened for a smaller monitor. At 100%
 it is 720 x 560 physical pixels; at 150% it is 1080 x 840; at 200% it is
 1440 x 1120. Actual monitor/work-area constraints remain Windows-owned.
 
-Setup uses a 720-by-820 window with a scrolling body, centered vector mascot
-and wrapping heading. The 180-DIP mascot frame includes its motion/glow gutter;
+Only the first welcome/trust page (`SecurityNoticePage`) uses `SetupPageShell`.
+Its four presentation slots hold the hero, header, body and fixed footer.
+At an actual shell width of at least 960 DIPs and height of at least 600 DIPs,
+the mascot, speech bubble and milestone rail sit beside the heading and content.
+Below either threshold, the hero, header and body stack inside the same scroller.
+The slots remain mounted while resizing, and **Get started** stays outside the
+scroller. The complete safety warning and `https://trust.openclaw.ai` link remain
+reachable. **Get started** uses the existing gateway-chooser navigation action;
+showing the shell does not grant access, persist choices or start installation.
+
+The gateway chooser, capabilities, review, installation, AI and completion pages
+retain their existing layouts and dot indicators at the wider initial size.
+The 180-DIP mascot frame includes its motion/glow gutter;
 the title-bar mark is 24 DIPs. Theme-aware Mica/Fluent surfaces retain solid
 background and high-contrast fallbacks.
 
@@ -751,6 +762,52 @@ not the normal native route. Connection verification, credentials and commit
 remain native host responsibilities. Progress indicators
 come from `OnboardingFlowPolicy`, not a fixed six-page count. Local AI recovery
 does not replay the introductory pages.
+
+The welcome/trust rail is the standalone `SetupStepIndicator` component. It
+groups only stages supplied by that policy. Welcome,
+Gateway and Capabilities form **Choose your PC tools**; GatewayReview and Install
+form **Set up**; AiSetup forms **Connect your AI**; Ready forms **Start chatting**.
+Groups absent from the selected route are omitted, including AI/chat for
+MCP-only and deferred routes. Current/completed labels derive from the supplied
+stage position, not a second completion model. The accessible progress
+announcement retains the underlying stage count rather than the milestone count.
+The dot indicator remains a separate `SetupProgressIndicator` component.
+Both satisfy `ISetupProgressIndicator`, so the host supplies the same route
+without knowing their layouts. No other page adopts the timeline yet.
+
+The reusable timeline also accepts `SetupStepItem` records with a title,
+an `Upcoming`, `Current` or `Completed` state, and optional helper text.
+Completed steps form a prefix, at most one step is current, and upcoming
+steps follow it. Invalid state combinations are rejected before changing the
+mounted content. Callers own the status and helper copy; the component does
+not query installation or connection services.
+
+The native template follows the Figma timeline: small outlined future nodes,
+a semantic success check for completed nodes, and an accent current node
+with a soft glow. Title/helper sizes are 13/12 DIPs, with wrapping instead of
+fixed screenshot coordinates. Control-local `ThemeResource` setters follow
+the window's requested theme, including a light window on a dark system.
+Meaningful helper text retains native readable contrast instead of reproducing
+the design's low-opacity completed caption.
+
+Step changes use one finite 280ms pop/connector-fill transition. Windows
+reduced motion, `IsAnimationEnabled=false`, hidden hosts, off-viewport content,
+and unload settle the indicator immediately. Repeated identical updates do
+not restart the transition. Unload releases composition glow resources and
+Windows preference subscriptions. `SetupStepIndicatorTests` covers both
+supplied states, generic reuse, wrapping, invalid-input atomicity and lifecycle.
+
+`SetupWelcomeShellTests` covers native default/minimum reachability, stable
+controls and focus across layout thresholds, route-specific milestones, unchanged
+dot rendering, and the existing welcome action. Its native accessibility proof
+scans the actual setup HWND; the general Accessibility category scans Hub pages
+and does not substitute for this check. `OnboardingSetupGalleryTests.WelcomeShellProof`
+captures the production Welcome and representative unmigrated pages in light/dark
+at the new size, using the existing source/build freeze and foreground gates.
+Gallery inputs are synthetic, not installation or real Gateway evidence.
+Actual monitor DPI, Windows text scaling, high contrast and reduced-motion
+settings need separate host-supported proof. A fixed-size XAML root is only
+layout evidence, not monitor-DPI evidence.
 
 The injected `ISetupNativeConnectionHost` owns connection checks and commits.
 The editor draft is not serialized into `SetupConfig`; see
