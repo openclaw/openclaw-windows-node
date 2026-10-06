@@ -72,7 +72,7 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
                 Assert.Equal(errorText.Text, errorText.SelectedText);
                 root.UpdateLayout();
                 OnboardingNativeProof.AssertFullyVisible(Assert.IsType<Button>(page.FindName("LaunchButton")), root);
-                Assert.True(Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<ScrollViewer>()).ViewportHeight > 100);
+                Assert.True(Assert.IsType<SetupPageShell>(page.Content).Scroller.ViewportHeight > 100);
                 await SaveViewportsAsync(window, page, ui, output, $"setup-minimum-config-error-{theme}");
                 window.AppWindow.Resize(new(minimum.Width + 120, minimum.Height + 120));
                 await ui.YieldToRenderAsync();
@@ -146,9 +146,7 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
                 if (compactViewport)
                 {
                     page.Width = 704;
-                    var compactScroll = page is CapabilitiesPage
-                        ? Assert.IsType<OpenClaw.SetupEngine.UI.Controls.SetupPageShell>(page.Content).Scroller
-                        : Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<ScrollViewer>());
+                    var compactScroll = Assert.IsType<SetupPageShell>(page.Content).Scroller;
                     compactScroll.Height = 170;
                 }
                 if (page is NativeGatewaySetupPage)
@@ -166,9 +164,7 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
                 }
                 root.UpdateLayout();
                 await OnboardingNativeProof.NextCompositionAsync(TimeSpan.FromMilliseconds(400));
-                var footer = page is CapabilitiesPage or NativeGatewaySetupPage
-                    ? Assert.IsType<Grid>(Assert.IsType<SetupPageShell>(page.Content).Footer)
-                    : Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<Grid>(), child => Grid.GetRow(child) == 2);
+                var footer = Assert.IsType<Grid>(Assert.IsType<SetupPageShell>(page.Content).Footer);
                 OnboardingNativeProof.AssertFullyVisible(footer, root);
                 foreach (var action in TestSupport.FindDescendants<Button>(footer).Where(button => button.Visibility == Visibility.Visible))
                     OnboardingNativeProof.AssertFullyVisible(action, root);
@@ -253,9 +249,7 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
         ITestOutputHelper output, string name)
     {
         var root = Assert.IsAssignableFrom<FrameworkElement>(window.Content);
-        var scroll = page is NativeGatewaySetupPage
-            ? Assert.IsType<SetupPageShell>(page.Content).Scroller
-            : Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<ScrollViewer>());
+        var scroll = Assert.IsType<SetupPageShell>(page.Content).Scroller;
         root.UpdateLayout();
         Assert.True(scroll.ViewportHeight >= 100, $"Scrollable content is a sliver: {scroll.ViewportHeight} DIPs");
         var offset = 0d;
@@ -350,7 +344,7 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
         ITestOutputHelper output, string name)
     {
         var root = Assert.IsType<Grid>(window.Content);
-        var scroll = Assert.IsType<OpenClaw.SetupEngine.UI.Controls.SetupPageShell>(page.Content).Scroller;
+        var scroll = Assert.IsType<SetupPageShell>(page.Content).Scroller;
         Assert.True(scroll.ViewportHeight >= 100);
         var profiles = Assert.IsType<ListView>(page.FindName("ProfileSelector"));
         var fineTune = Assert.IsType<SettingsExpander>(page.FindName("FineTuneExpander"));

@@ -11,7 +11,7 @@ namespace OpenClaw.Tray.UITests;
 internal static class OnboardingSetupGalleryData
 {
     internal sealed record Scene(string Id, string Family, string State);
-    internal sealed record HeaderContract(Type PageType, string Text, string? ControlName = null, string? ContainerName = null);
+    internal sealed record HeaderContract(Type PageType, string Text, string ControlName);
 
     internal static HeaderContract HeaderFor(Scene scene) => scene.Family switch
     {

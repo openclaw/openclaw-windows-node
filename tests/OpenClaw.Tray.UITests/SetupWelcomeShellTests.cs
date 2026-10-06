@@ -218,8 +218,7 @@ public sealed class SetupWelcomeShellTests(UIThreadFixture ui, ITestOutputHelper
                     Assert.NotNull(item);
                     Assert.False(item.Current.IsOffscreen);
                 }
-                AxeHelper.Initialize(Environment.ProcessId);
-                AxeHelper.AssertNoAccessibilityErrors(hwnd, context: "Setup Welcome");
+                ExternalAxeScanTests.AssertOwnedWindowHasNoAccessibilityErrors(hwnd, null, "Setup Welcome");
             });
             var shell = Assert.IsType<SetupPageShell>(page.Content);
             var safety = Assert.IsType<HyperlinkButton>(page.FindName("SafetyLink"));

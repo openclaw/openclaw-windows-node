@@ -70,13 +70,6 @@ public static class AxeHelper
             throw new InvalidOperationException(
                 "AxeHelper.Initialize() must be called before scanning.");
 
-        if (processId == Environment.ProcessId)
-        {
-            ExternalAxeScanTests.AssertOwnedWindowHasNoAccessibilityErrors(
-                hubWindowHandle, pageRuleExclusions, context);
-            return;
-        }
-
         var excludedRules = new HashSet<RuleId>(GloballyExcludedRules);
         if (pageRuleExclusions != null)
             excludedRules.UnionWith(pageRuleExclusions);

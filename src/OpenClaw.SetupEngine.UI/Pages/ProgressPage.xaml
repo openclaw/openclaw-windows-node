@@ -40,10 +40,7 @@
         </controls:SetupPageShell.Header>
         <controls:SetupPageShell.Body>
         <Grid>
-        <ScrollViewer x:Name="InstallContent" VerticalScrollBarVisibility="Disabled" VerticalScrollMode="Disabled"
-                      HorizontalScrollBarVisibility="Disabled" HorizontalScrollMode="Disabled"
-                      HorizontalContentAlignment="Stretch" IsTabStop="False">
-            <StackPanel Spacing="16" VerticalAlignment="Top">
+            <StackPanel x:Name="InstallContent" Spacing="16" VerticalAlignment="Top">
                     <StackPanel Spacing="0">
                         <tk:SettingsCard x:Name="PreparePhase" x:Uid="Onboarding_V4_PhasePrepare"
                                          Header="Prepare your PC" Background="Transparent" BorderThickness="0,1,0,0" CornerRadius="0" Padding="0,14">
@@ -124,7 +121,6 @@
                 </Expander>
 
             </StackPanel>
-        </ScrollViewer>
 
         <StackPanel x:Name="MilestonePanel" Visibility="Collapsed" Spacing="16">
                 <TextBlock x:Name="MilestoneStatusText"

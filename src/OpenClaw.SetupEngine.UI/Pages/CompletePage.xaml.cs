@@ -67,8 +67,6 @@ public sealed partial class CompletePage : Page
                     NativeFeaturesNote.Visibility = Visibility.Visible;
                     NodeModeBanner.Visibility = Visibility.Collapsed;
                     SubtitleText.Text = SetupLocalization.Format("Onboarding_Native_Configured", nativeUrl);
-                    SubtitleText.TextWrapping = TextWrapping.Wrap;
-                    SubtitleText.TextAlignment = TextAlignment.Left;
                     LaunchButton.Content = SetupLocalization.GetString("Onboarding_Native_Open.Content");
                 }
             }
@@ -83,8 +81,6 @@ public sealed partial class CompletePage : Page
                     RestartIcon.Visibility = Visibility.Visible;
                     TitleText.Text = "Restart required";
                     SubtitleText.Text = "OpenClaw needs to restart Windows to continue the installation. Would you like to restart now?";
-                    SubtitleText.TextWrapping = TextWrapping.Wrap;
-                    SubtitleText.TextAlignment = TextAlignment.Left;
                     SubtitleText.Visibility = Visibility.Visible;
                     NodeModeBanner.Visibility = Visibility.Collapsed;
                     StartupRow.Visibility = Visibility.Collapsed;

@@ -138,14 +138,14 @@ public sealed class OnboardingCopyRefinementTests
     }
 
     [Theory]
-    [InlineData("en-us", "Continue", "Step {0} of {1}")]
-    [InlineData("fr-fr", "Continuer", "Étape {0} sur {1}")]
-    [InlineData("nl-nl", "Doorgaan", "Stap {0} van {1}")]
-    [InlineData("pt-br", "Continuar", "Etapa {0} de {1}")]
-    [InlineData("zh-cn", "继续", "第 {0} 步，共 {1} 步")]
-    [InlineData("zh-tw", "繼續", "第 {0} 步，共 {1} 步")]
-    public void WelcomeCopyIsLocalizedWithoutChangingSharedContinueOrStageAnnouncement(
-        string locale, string continueText, string stageAnnouncement)
+    [InlineData("en-us", "Step {0} of {1}")]
+    [InlineData("fr-fr", "Étape {0} sur {1}")]
+    [InlineData("nl-nl", "Stap {0} van {1}")]
+    [InlineData("pt-br", "Etapa {0} de {1}")]
+    [InlineData("zh-cn", "第 {0} 步，共 {1} 步")]
+    [InlineData("zh-tw", "第 {0} 步，共 {1} 步")]
+    public void WelcomeCopyIsLocalizedWithCanonicalStageAnnouncement(
+        string locale, string stageAnnouncement)
     {
         var strings = Strings(locale);
         var english = Strings("en-us");
@@ -177,7 +177,6 @@ public sealed class OnboardingCopyRefinementTests
             Assert.DoesNotContain("{", announcement);
             Assert.DoesNotContain("}", announcement);
         }
-        Assert.Equal(continueText, strings["Onboarding_V2_Continue.Content"]);
         Assert.Equal(stageAnnouncement, strings["Onboarding_Flow_Position"]);
     }
 

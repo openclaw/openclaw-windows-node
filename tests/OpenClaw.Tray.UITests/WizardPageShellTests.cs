@@ -38,8 +38,7 @@ public sealed class WizardPageShellTests(UIThreadFixture ui)
             Assert.Equal(18, Find<TextBlock>(page, "StatusText").FontSize);
             Assert.Equal(AutomationHeadingLevel.Level1,
                 AutomationProperties.GetHeadingLevel(Find<TextBlock>(page, "HeadingText")));
-            Assert.Equal(ScrollMode.Disabled, Find<ScrollViewer>(page, "MainScroller").VerticalScrollMode);
-            Assert.Equal(ScrollBarVisibility.Disabled, Find<ScrollViewer>(page, "MainScroller").VerticalScrollBarVisibility);
+            Assert.IsType<StackPanel>(page.FindName("MainScroller"));
             Assert.Equal("Step 5 of 5", AutomationProperties.GetName(indicator));
             Assert.DoesNotContain(TestSupport.FindDescendants<TextBlock>(indicator),
                 text => text.Text == "Start chatting");

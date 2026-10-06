@@ -131,8 +131,7 @@ public sealed class OnboardingPresentationContractTests
             Assert.Equal("40", (string?)action.Attribute("MinHeight"));
             Assert.Equal("{StaticResource WrappedFooterAction}", (string?)action.Attribute("ContentTemplate"));
         }
-        Assert.Equal("Disabled", (string?)Named("MainScroller").Attribute("VerticalScrollMode"));
-        Assert.Equal("Disabled", (string?)Named("MainScroller").Attribute("VerticalScrollBarVisibility"));
+        Assert.Equal("StackPanel", Named("MainScroller").Name.LocalName);
         Assert.Equal("40", (string?)Named("HeadingText").Attribute("FontSize"));
         Assert.Equal("18", (string?)Named("StatusText").Attribute("FontSize"));
         Assert.Equal("PasswordBox", Named("SecretInput").Name.LocalName);

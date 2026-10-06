@@ -142,7 +142,6 @@ public sealed partial class SetupStepIndicator : UserControl, ISetupProgressIndi
         if (position < 0)
         {
             Update(Array.Empty<SetupStepItem>());
-            AutomationProperties.SetName(this, "");
             return;
         }
         var groups = stages.Select((stage, index) => (Key: StepKey(stage), Index: index)).GroupBy(stage => stage.Key);

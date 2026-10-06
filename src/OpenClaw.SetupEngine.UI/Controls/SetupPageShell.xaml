@@ -15,7 +15,7 @@
                 <ContentPresenter x:Name="HeaderPresenter" Content="{x:Bind Header, Mode=OneWay}"
                                   HorizontalContentAlignment="Stretch" />
                 <ContentPresenter x:Name="BodyPresenter" Content="{x:Bind Body, Mode=OneWay}"
-                                  HorizontalContentAlignment="Stretch" />
+                                  HorizontalContentAlignment="Stretch" Margin="0,24,0,0" />
             </Grid>
         </ScrollViewer>
         <ContentPresenter x:Name="FooterPresenter" Grid.Row="1" Margin="0,20,0,0"

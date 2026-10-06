@@ -205,11 +205,8 @@ public sealed class SetupAdvancedRoutesPresentationTests(UIThreadFixture ui, ITe
             await BringIntoViewAsync(page, error);
             using (await OnboardingNativeProof.CaptureAsync(window, $"advanced-{theme}-{width}-host-unavailable", output,
                 [error.Title, "Back"], requiredContent: error)) { }
-            await Task.Run(() =>
-            {
-                AxeHelper.Initialize(Environment.ProcessId);
-                AxeHelper.AssertNoAccessibilityErrors(handle, context: $"Advanced setup {theme} {width}x{height}");
-            });
+            await Task.Run(() => ExternalAxeScanTests.AssertOwnedWindowHasNoAccessibilityErrors(
+                handle, null, $"Advanced setup {theme} {width}x{height}"));
         }, nativeProof: true);
         OnboardingNativeProof.AssertSourceUnchanged();
     }

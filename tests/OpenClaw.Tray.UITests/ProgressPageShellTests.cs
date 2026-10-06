@@ -98,7 +98,7 @@ public sealed class ProgressPageShellTests(UIThreadFixture ui)
             {
                 Assert.Equal("Gateway installed", title.Text);
                 Assert.Equal(OnboardingMascotMood.Happy, mascot.Mood);
-                Assert.Equal(Visibility.Collapsed, Find<ScrollViewer>(page, "InstallContent").Visibility);
+                Assert.Equal(Visibility.Collapsed, Find<StackPanel>(page, "InstallContent").Visibility);
                 Assert.Equal(Visibility.Visible, Find<StackPanel>(page, "MilestonePanel").Visibility);
                 Assert.Equal(Visibility.Visible, primary.Visibility);
                 OnboardingNativeProof.AssertFullyVisible(primary, shell);
@@ -115,7 +115,7 @@ public sealed class ProgressPageShellTests(UIThreadFixture ui)
             {
                 Assert.Equal("Making room for your agent", title.Text);
                 Assert.Equal(Visibility.Collapsed, primary.Visibility);
-                Assert.Equal(ScrollMode.Disabled, Find<ScrollViewer>(page, "InstallContent").VerticalScrollMode);
+                Assert.Equal(Visibility.Visible, Find<StackPanel>(page, "InstallContent").Visibility);
                 var details = Find<Expander>(page, "DetailedActivity");
                 Assert.False(details.IsExpanded);
                 Assert.True(Find<TextBlock>(page, "LogText").IsTextSelectionEnabled);
@@ -132,7 +132,6 @@ public sealed class ProgressPageShellTests(UIThreadFixture ui)
                 var logAction = Find<HyperlinkButton>(page, "OpenLogButton");
                 await BringAsync(logAction, page);
                 OnboardingNativeProof.AssertFullyVisible(logAction, shell.Scroller);
-                Assert.Equal(0, Find<ScrollViewer>(page, "InstallContent").ScrollableHeight);
                 var overview = Find<ProgressBar>(page, "OverallProgress");
                 Assert.InRange(overview.Value, 0, 1);
             }

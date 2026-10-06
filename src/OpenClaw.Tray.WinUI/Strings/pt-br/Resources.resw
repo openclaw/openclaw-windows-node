@@ -7360,7 +7360,6 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="Onboarding_V2_WelcomeGateway.Description" xml:space="preserve"><value>Execute um Gateway WSL privado aqui ou conecte-se a um existente.</value></data>
   <data name="Onboarding_V2_WelcomeTrust.Title" xml:space="preserve"><value>Antes de começar</value></data>
   <data name="Onboarding_V2_WelcomeTrust.Message" xml:space="preserve"><value>Os agentes de IA são poderosos e dar acesso ao seu PC envolve riscos. Eles podem cometer erros, alterar ou excluir arquivos ou expor informações privadas.&#x0a;&#x0a;Você pode controlar e limitar o acesso do OpenClaw ao seu PC.</value></data>
-  <data name="Onboarding_V2_Continue.Content" xml:space="preserve"><value>Continuar</value></data>
   <data name="Onboarding_V2_Retry.Content" xml:space="preserve"><value>Tentar novamente</value></data>
   <data name="Onboarding_V2_AlternativeRoutes.Content" xml:space="preserve"><value>Remoto, MCP local ou configurar depois</value></data>
   <data name="Onboarding_V2_LocalAiCard.Header" xml:space="preserve"><value>Local AI</value></data>

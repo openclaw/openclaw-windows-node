@@ -36,37 +36,27 @@ public sealed class NativeGatewaySetupUxContractTests
         }
     }
 
-    [Theory]
-    [InlineData("NativeGatewaySetupPage.xaml", "ProgressMascot")]
-    public void NativePackagePages_UseSharedHeroAndSeparateProgressFromWrappingActions(string file, string hero)
+    [Fact]
+    public void NativePackagePage_UsesSharedHeroAndFixedWrappingActions()
     {
         var pages = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.SetupEngine.UI", "Pages");
-        var document = XDocument.Load(Path.Combine(pages, file));
+        var document = XDocument.Load(Path.Combine(pages, "NativeGatewaySetupPage.xaml"));
         XNamespace names = "http://schemas.microsoft.com/winfx/2006/xaml";
         XElement Named(string name) => document.Descendants().Single(
             element => (string?)element.Attribute(names + "Name") == name);
-        Assert.Equal("OnboardingMascot", Named(hero).Name.LocalName);
+        Assert.Equal("OnboardingMascot", Named("ProgressMascot").Name.LocalName);
         Assert.DoesNotContain(document.Descendants(), element => element.Name.LocalName == "Image");
         var footer = Named("NavigationFooter");
-        if (file == "NativeGatewaySetupPage.xaml")
-        {
-            Assert.Equal("SetupPageShell.Footer", footer.Parent!.Name.LocalName);
-            Assert.Equal("SetupStepIndicator", Named("FlowProgress").Name.LocalName);
-            Assert.Contains(Named("FlowProgress").Ancestors(), element => element.Name.LocalName == "SetupPageShell.Hero");
-        }
-        else
-        {
-            Assert.Equal("Auto,Auto", (string?)footer.Attribute("RowDefinitions"));
-            Assert.Same(footer, Named("FlowProgress").Parent);
-        }
+        Assert.Equal("SetupPageShell.Footer", footer.Parent!.Name.LocalName);
+        Assert.Equal("SetupStepIndicator", Named("FlowProgress").Name.LocalName);
+        Assert.Contains(Named("FlowProgress").Ancestors(), element => element.Name.LocalName == "SetupPageShell.Hero");
         foreach (var action in footer.Elements().Where(element =>
                      element.Name.LocalName is "Button" or "DropDownButton"))
         {
-            Assert.Equal(file == "NativeGatewaySetupPage.xaml" ? null : "1", (string?)action.Attribute("Grid.Row"));
-            Assert.Equal(file == "NativeGatewaySetupPage.xaml" ? "100" : "0", (string?)action.Attribute("MinWidth"));
-            if (file == "NativeGatewaySetupPage.xaml")
-                Assert.Equal((string?)action.Attribute(names + "Name") == "BackButton" ? "Left" : "Right",
-                    (string?)action.Attribute("HorizontalAlignment"));
+            Assert.Null(action.Attribute("Grid.Row"));
+            Assert.Equal("100", (string?)action.Attribute("MinWidth"));
+            Assert.Equal((string?)action.Attribute(names + "Name") == "BackButton" ? "Left" : "Right",
+                (string?)action.Attribute("HorizontalAlignment"));
             Assert.Equal("{StaticResource WrappedFooterAction}", (string?)action.Attribute("ContentTemplate"));
         }
         var source = File.ReadAllText(Path.Combine(pages, "NativeGatewaySetupPage.xaml.cs"));

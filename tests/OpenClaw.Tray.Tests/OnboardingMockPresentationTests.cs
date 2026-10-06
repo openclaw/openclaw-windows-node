@@ -14,7 +14,7 @@ public sealed class OnboardingMockPresentationTests
     [InlineData("WelcomePage")]
     [InlineData("CapabilitiesPage")]
     [InlineData("AdvancedSetupPage")]
-    public void NormalHeaders_KeepFullSizeArtworkAboveWrappedCenteredText(string name)
+    public void NormalHeaders_KeepFullSizeArtworkAndWrappedShellHeadings(string name)
     {
         var document = Page(name);
         var mascot = Named(document, "MascotHero");
@@ -25,27 +25,17 @@ public sealed class OnboardingMockPresentationTests
         Assert.Equal("StackPanel", header.Name.LocalName);
         Assert.Null(header.Attribute("Height"));
         Assert.Null(header.Attribute("MaxHeight"));
-        if (name is "WelcomePage" or "CapabilitiesPage" or "AdvancedSetupPage")
+        Assert.Equal("SetupPageShell.Hero", header.Parent!.Name.LocalName);
+        var title = Named(document, name switch
         {
-            Assert.Equal("SetupPageShell.Hero", header.Parent!.Name.LocalName);
-            var gatewayTitle = Named(document, name switch
-            {
-                "WelcomePage" => "GatewayTitle",
-                "CapabilitiesPage" => "CapabilitiesTitle",
-                _ => "AdvancedTitle",
-            });
-            Assert.Equal("SetupPageShell.Header", gatewayTitle.Parent!.Parent!.Name.LocalName);
-            Assert.Equal("40", (string?)gatewayTitle.Attribute("FontSize"));
-            Assert.Equal("Wrap", (string?)gatewayTitle.Attribute("TextWrapping"));
-            Assert.Null(gatewayTitle.Attribute("TextAlignment"));
-            return;
-        }
-        var title = Assert.Single(header.Elements(), element =>
-            (string?)element.Attribute("Style") == "{StaticResource TitleTextBlockStyle}");
-        Assert.Contains(mascot, header.Elements().TakeWhile(element => element != title));
-        Assert.Equal("Center", (string?)title.Attribute("TextAlignment"));
+            "WelcomePage" => "GatewayTitle",
+            "CapabilitiesPage" => "CapabilitiesTitle",
+            _ => "AdvancedTitle",
+        });
+        Assert.Equal("SetupPageShell.Header", title.Parent!.Parent!.Name.LocalName);
+        Assert.Equal("40", (string?)title.Attribute("FontSize"));
         Assert.Equal("Wrap", (string?)title.Attribute("TextWrapping"));
-        Assert.Null(title.Attribute("Height"));
+        Assert.Null(title.Attribute("TextAlignment"));
     }
 
     [Fact]

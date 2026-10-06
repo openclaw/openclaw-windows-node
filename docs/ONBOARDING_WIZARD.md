@@ -1,5 +1,8 @@
 # Onboarding Wizard
 
+The onboarding wizard can install an app-owned WSL gateway, acquire a native
+Gateway MSIX through Microsoft Store and configure it, or connect to an existing gateway.
+
 ### Connect your AI presentation
 
 `AiSetupPage` uses the native setup shell with a speech bubble, mascot and
@@ -40,9 +43,6 @@ work. Yes, restart now remains an explicit action through the existing launcher;
 No, I'm not ready yet still closes setup without restarting. Startup preference,
 completion persistence, native handoff and all existing health gates retain
 their current owners.
-
-The onboarding wizard can install an app-owned WSL gateway, acquire a native
-Gateway MSIX through Microsoft Store and configure it, or connect to an existing gateway.
 
 Native Local AI setup displays the current phase and completed steps while checking
 GPU readiness, verifying cached runtime/model files, starting the model, publishing
@@ -409,8 +409,7 @@ The classic compatibility page uses the shared responsive setup shell, not a
 new provider flow. Gateway-returned questions, typed choices, security/provider
 consent, protected inputs, live output and terminal recovery remain dynamic.
 The shell owns vertical scrolling and keeps the existing explicit actions in a
-fixed wrapping footer. The named `MainScroller` remains a non-scrolling content
-host; active-question scrolling targets the shell so long transcripts and logs
+fixed wrapping footer. Active-question scrolling targets the shell so long transcripts and logs
 cannot hide the question or move the footer. Resizing preserves the mounted
 prompt, focus, draft answer and route milestones without restarting the wizard.
 
@@ -528,8 +527,7 @@ showing the shell does not grant access, persist choices or start installation.
 
 The migrated pages use `SetupStepIndicator` with canonical route stages.
 `CompletePage` has no progress indicator because it has no canonical stage.
-The classic wizard retains its named `MainScroller` as a disabled content
-host; active-question scrolling uses the shell's single scroller.
+Active wizard-question scrolling uses the shell's single scroller.
 The 180-DIP mascot frame includes its motion/glow gutter;
 the title-bar mark is 24 DIPs. Theme-aware Mica/Fluent surfaces retain solid
 background and high-contrast fallbacks.
@@ -575,7 +573,7 @@ Showing the page creates no pending handoff and performs no finalization.
 The final screen has exactly two choices: **Talk to my agent**, with a visible
 Recommended badge, opens Chat; **Connect channels** opens Channels (WhatsApp,
 Telegram, and more).
-There are no bottom Return or Skip buttons; the progress dots remain. Selecting
+There are no bottom Return or Skip buttons; the canonical timeline remains. Selecting
 a card is the final action, with no extra Finish button. These are navigation
 choices, never automatic sign-in, channel configuration, or skill installation.
 Legacy WhatsApp/Telegram receipt destinations retain their numeric mappings and
@@ -904,11 +902,11 @@ Windows preference subscriptions. `SetupStepIndicatorTests` covers both
 supplied states, generic reuse, wrapping, invalid-input atomicity and lifecycle.
 
 `SetupWelcomeShellTests` covers native default/minimum reachability, stable
-controls and focus across layout thresholds, route-specific milestones, unchanged
-dot rendering, and the existing welcome action. Its native accessibility proof
+controls and focus across layout thresholds, route-specific milestones, legacy
+dot compatibility, and the existing welcome action. Its native accessibility proof
 scans the actual setup HWND; the general Accessibility category scans Hub pages
 and does not substitute for this check. `OnboardingSetupGalleryTests.WelcomeShellProof`
-captures the production Welcome and representative unmigrated pages in light/dark
+captures the production Welcome and other adopted setup pages in light/dark
 at the new size, using the existing source/build freeze and foreground gates.
 Gallery inputs are synthetic, not installation or real Gateway evidence.
 Actual monitor DPI, Windows text scaling, high contrast and reduced-motion
@@ -1100,11 +1098,6 @@ replacement is reviewed on the WSL setup page before Install; explicit
 consent is bound to the exact distro name, and unproven ownership still requires
 the engine's destructive confirmation. External saved Gateways stay untouched.
 
-The gateway-choice scroll viewport owns the 560-DIP maximum width and stretches
-its list content. Keep the width constraint on the viewport, not on the nested
-ListView, so the choices share the header's center line as the window resizes.
-Back, Next, and the step indicator remain outside the scrolling area.
-
 ### Local setup progress
 `SetupInstallationProgress` maps real pipeline events to prepare, install and
 connect/check phases. Local AI recovery uses its own install label. Counts include
@@ -1115,7 +1108,7 @@ download progress remain visible outside it.
 Installation uses the shared responsive shell and canonical stage rail with flat
 phase rows. The overview bar counts actual completed or skipped steps, not elapsed
 time or an estimated download percentage. The shell owns vertical page scrolling;
-the retained `InstallContent` is a non-scrolling presentation container, while logs
+`InstallContent` is a presentation panel, while logs
 keep their bounded native scroller. The installed/resume milestone uses the same
 mounted hero and heading, with its existing onboard action in the fixed footer.
 Restart-required and terminal pipeline failures keep their existing completion route;

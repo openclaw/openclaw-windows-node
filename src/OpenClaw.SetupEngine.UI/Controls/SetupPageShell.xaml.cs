@@ -34,14 +34,11 @@ public sealed partial class SetupPageShell : UserControl
         Composition.ColumnDefinitions[0].Width = wide ? new GridLength(320) : new GridLength(1, GridUnitType.Star);
         Composition.ColumnDefinitions[1].Width = new GridLength(wide ? 40 : 0);
         Composition.ColumnDefinitions[2].Width = wide ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
-        Grid.SetColumn(HeroPresenter, 0);
-        Grid.SetRow(HeroPresenter, 0);
         Grid.SetRowSpan(HeroPresenter, wide ? 3 : 1);
         Grid.SetColumn(HeaderPresenter, wide ? 2 : 0);
         Grid.SetRow(HeaderPresenter, wide ? 0 : 1);
         Grid.SetColumn(BodyPresenter, wide ? 2 : 0);
         Grid.SetRow(BodyPresenter, wide ? 1 : 2);
         HeroPresenter.Margin = new Thickness(0, 0, 0, wide ? 0 : 24);
-        BodyPresenter.Margin = new Thickness(0, 24, 0, 0);
     }
 }

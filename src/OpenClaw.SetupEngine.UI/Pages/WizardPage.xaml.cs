@@ -1123,7 +1123,6 @@ public sealed partial class WizardPage : Page
 
     private void ScrollActiveIntoView()
     {
-        // MainScroller remains the named content host; the shell owns vertical scrolling.
         var scroller = WizardShell.Scroller;
         scroller.UpdateLayout();
         // Bring the active step card's TITLE into view (just below the last answered

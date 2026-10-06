@@ -42,10 +42,7 @@
         </controls:SetupPageShell.Header>
 
         <controls:SetupPageShell.Body>
-        <ScrollViewer x:Name="MainScroller" VerticalScrollMode="Disabled" VerticalScrollBarVisibility="Disabled"
-                      HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled"
-                      HorizontalContentAlignment="Stretch" IsTabStop="False">
-            <StackPanel Spacing="12">
+            <StackPanel x:Name="MainScroller" Spacing="12">
             <StackPanel x:Name="TranscriptPanel" Spacing="6" />
             <Border x:Name="StepCard"
                     CornerRadius="0"
@@ -117,7 +114,6 @@
                 </StackPanel>
             </Border>
             </StackPanel>
-        </ScrollViewer>
         </controls:SetupPageShell.Body>
 
         <controls:SetupPageShell.Footer>

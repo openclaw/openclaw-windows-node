@@ -104,11 +104,11 @@ public sealed class NativeGatewayInstallationShellTests(UIThreadFixture ui)
             var back = Find<Button>(page, "BackButton");
             var cancel = Find<Button>(page, "CancelButton");
             var retry = Find<Button>(page, "RetryButton");
-            foreach (var state in new[] { "pending", "running", "failed", "cancelled", "retry" })
+            foreach (var state in new[] { "pending", "running", "failed", "cancelled" })
             {
                 foreach (var row in rows) Assert.IsType<SetupPhaseStatus>(row.Content).Apply(SetupInstallationStatus.Pending);
                 var running = state == "running";
-                var terminal = state is "failed" or "cancelled" or "retry";
+                var terminal = state is "failed" or "cancelled";
                 retry.Visibility = terminal ? Visibility.Visible : Visibility.Collapsed;
                 status.Text = $"Synthetic native package state: {state}. No installer or Gateway ran.";
                 if (state != "pending") InvokePrivate(page, "SetCurrentStep", 1);

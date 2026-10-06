@@ -1108,9 +1108,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
     private static Task WaitAsync(Func<bool> predicate, string operation) =>
         TestSupport.WaitForRenderedConditionAsync(predicate, operation);
 
-    private static ScrollViewer PageScroll(Page page) => page is CapabilitiesPage or GatewaySetupPage or GatewaySetupDetailPage
-        ? Assert.IsType<SetupPageShell>(page.Content).Scroller
-        : Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<ScrollViewer>());
+    private static ScrollViewer PageScroll(Page page) => Assert.IsType<SetupPageShell>(page.Content).Scroller;
 
     private static Windows.Foundation.Rect Bounds(FrameworkElement element, FrameworkElement relativeTo) =>
         element.TransformToVisual(relativeTo).TransformBounds(new Windows.Foundation.Rect(0, 0, element.ActualWidth, element.ActualHeight));
@@ -1120,51 +1118,17 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
 
     private void AssertFixedPageChrome(Grid root, Page page)
     {
-        if (page is CapabilitiesPage)
-        {
-            var shell = Assert.IsType<SetupPageShell>(page.Content);
-            var capabilitiesFooter = Assert.IsType<Grid>(shell.Footer);
-            Assert.DoesNotContain(capabilitiesFooter, TestSupport.FindDescendants<Grid>(shell.Scroller));
-            AssertFullyVisible(capabilitiesFooter, root);
-            AssertFullyVisible(shell.Scroller, root);
-            Assert.All(capabilitiesFooter.Children.OfType<Button>(), button => AssertFullyVisible(button, root));
-            Assert.True(Bounds(shell.Scroller, root).Bottom <= Bounds(capabilitiesFooter, root).Top);
-            Assert.Equal(0, shell.Scroller.ScrollableWidth);
-            Assert.True(shell.Scroller.ViewportHeight > 0);
-            Assert.False(Find<TextBlock>(page, "CapabilitiesTitle").IsTextTrimmed);
-            return;
-        }
-        if (page is GatewaySetupPage)
-        {
-            var shell = Assert.IsType<SetupPageShell>(page.Content);
-            var reviewFooter = Assert.IsType<Grid>(shell.Footer);
-            AssertFullyVisible(reviewFooter, root);
-            foreach (var button in reviewFooter.Children.OfType<Button>()) AssertFullyVisible(button, root);
-            Assert.True(shell.Scroller.ViewportHeight > 0);
-            Assert.Equal(0, shell.Scroller.ScrollableWidth);
-            Assert.False(Find<TextBlock>(page, "ReviewTitle").IsTextTrimmed);
-            return;
-        }
-        var grid = Assert.IsType<Grid>(page.Content);
-        var header = Assert.Single(grid.Children.OfType<StackPanel>(), panel => Grid.GetRow(panel) == 0);
-        var footer = Assert.Single(grid.Children.OfType<Grid>(), panel => Grid.GetRow(panel) == 2);
-        var scroll = PageScroll(page);
-        Assert.Same(grid, header.Parent);
-        Assert.Same(grid, footer.Parent);
-        Assert.DoesNotContain(header, TestSupport.FindDescendants<StackPanel>(scroll));
-        Assert.DoesNotContain(footer, TestSupport.FindDescendants<Grid>(scroll));
-        var hero = Find<OnboardingMascot>(page, "MascotHero");
-        OnboardingNativeProof.AssertHeroLayout(hero, output);
-        var heading = Assert.Single(header.Children.OfType<TextBlock>());
-        Assert.False(string.IsNullOrWhiteSpace(heading.Text));
+        var shell = Assert.IsType<SetupPageShell>(page.Content);
+        var footer = Assert.IsType<Grid>(shell.Footer);
+        Assert.DoesNotContain(footer, TestSupport.FindDescendants<Grid>(shell.Scroller));
+        AssertFullyVisible(footer, root);
+        AssertFullyVisible(shell.Scroller, root);
+        Assert.All(footer.Children.OfType<Button>(), button => AssertFullyVisible(button, root));
+        Assert.True(Bounds(shell.Scroller, root).Bottom <= Bounds(footer, root).Top);
+        Assert.Equal(0, shell.Scroller.ScrollableWidth);
+        Assert.True(shell.Scroller.ViewportHeight > 0);
+        var heading = Find<TextBlock>(page, page is CapabilitiesPage ? "CapabilitiesTitle" : "ReviewTitle");
         Assert.False(heading.IsTextTrimmed);
-        foreach (var element in new FrameworkElement[] { header, hero, heading, footer, scroll })
-            AssertFullyVisible(element, root);
-        foreach (var button in footer.Children.OfType<Button>())
-            AssertFullyVisible(button, root);
-        Assert.True(Bounds(header, root).Bottom <= Bounds(scroll, root).Top);
-        Assert.True(Bounds(scroll, root).Bottom <= Bounds(footer, root).Top);
-        Assert.True(scroll.ViewportHeight > 0);
     }
 
     private async Task BringIntoViewportAsync(Page page, FrameworkElement element, double alignment = 0.5)
@@ -1280,9 +1244,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
     {
         if (page is CapabilitiesPage)
             return Find<Button>(page, next ? "ContinueButton" : "BackButton");
-        var footer = page is GatewaySetupPage or GatewaySetupDetailPage
-            ? Assert.IsType<Grid>(Assert.IsType<SetupPageShell>(page.Content).Footer)
-            : Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<Grid>(), grid => Grid.GetRow(grid) == 2);
+        var footer = Assert.IsType<Grid>(Assert.IsType<SetupPageShell>(page.Content).Footer);
         return Assert.Single(footer.Children.OfType<Button>(), button => Grid.GetColumn(button) == (next ? 1 : 0));
     }
 
