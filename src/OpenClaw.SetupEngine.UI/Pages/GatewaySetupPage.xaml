@@ -3,29 +3,47 @@
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
       xmlns:controls="using:OpenClaw.SetupEngine.UI.Controls"
       xmlns:tk="using:CommunityToolkit.WinUI.Controls">
-    <Grid Padding="40,4,40,24" RowDefinitions="Auto,*,Auto">
-        <StackPanel Spacing="4" HorizontalAlignment="Stretch">
-            <controls:OnboardingMascot x:Name="MascotHero" Mood="Curious" HorizontalAlignment="Center" />
-            <TextBlock x:Uid="Onboarding_V2_ReviewTitle" Text="WSL Gateway setup" Style="{StaticResource TitleTextBlockStyle}"
-                       TextAlignment="Center" TextWrapping="Wrap" />
-            <TextBlock x:Uid="Onboarding_V2_ReviewIntro" Text="Review what will change before installation starts."
-                       Style="{StaticResource BodyTextBlockStyle}" TextWrapping="Wrap" TextAlignment="Center"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-        </StackPanel>
-        <ScrollViewer Grid.Row="1" Margin="0,24,0,16" MaxWidth="600" HorizontalContentAlignment="Stretch">
+    <controls:SetupPageShell x:Name="ReviewShell">
+        <controls:SetupPageShell.Hero>
+            <StackPanel Spacing="16">
+                <Grid MaxWidth="280" HorizontalAlignment="Center" RowDefinitions="Auto,10">
+                    <Border Padding="16,12" CornerRadius="12" BorderThickness="1"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+                        <TextBlock x:Name="ReviewSpeech" x:Uid="Onboarding_V2_ReviewSpeech"
+                                   Text="Here's the plan." FontSize="16" TextWrapping="Wrap" TextAlignment="Center" />
+                    </Border>
+                    <Path Grid.Row="1" Data="M0,0 L10,10 L20,0" HorizontalAlignment="Center"
+                          Fill="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                          Stroke="{ThemeResource CardStrokeColorDefaultBrush}"
+                          AutomationProperties.AccessibilityView="Raw" />
+                </Grid>
+                <controls:OnboardingMascot x:Name="MascotHero" Mood="Curious" HorizontalAlignment="Center" />
+                <controls:SetupStepIndicator x:Name="FlowProgress" Margin="24,8,0,0" />
+            </StackPanel>
+        </controls:SetupPageShell.Hero>
+        <controls:SetupPageShell.Header>
+            <StackPanel Spacing="12">
+                <TextBlock x:Name="ReviewTitle" x:Uid="Onboarding_V2_ReviewTitle" Text="Ready to install"
+                           FontFamily="Segoe UI Variable" FontSize="40" FontWeight="SemiBold"
+                           AutomationProperties.HeadingLevel="Level1" TextWrapping="Wrap" />
+                <TextBlock x:Uid="Onboarding_V2_ReviewIntro" Text="Here's what will happen on this PC."
+                           FontFamily="Segoe UI Variable" FontSize="18" TextWrapping="Wrap"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
+        </controls:SetupPageShell.Header>
+        <controls:SetupPageShell.Body>
             <StackPanel Spacing="16">
                 <InfoBar x:Name="ReviewRequired" IsOpen="True" IsClosable="False" Severity="Warning"
                          AutomationProperties.LiveSetting="Polite" />
-                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
-                    <StackPanel Spacing="0">
-                        <tk:SettingsCard x:Name="DistroCard" Background="Transparent" BorderThickness="0" CornerRadius="0" />
+                <StackPanel Spacing="0">
+                        <tk:SettingsCard x:Name="DistroCard" Background="Transparent" Padding="0,14"
+                                         BorderThickness="0,1,0,0" CornerRadius="0" />
                         <tk:SettingsCard x:Name="CliCard" x:Uid="Onboarding_V2_CliCard" Header="OpenClaw CLI"
-                                         Background="Transparent" BorderThickness="0,1,0,0" CornerRadius="0" />
+                                         Background="Transparent" Padding="0,14" BorderThickness="0,1,0,0" CornerRadius="0" />
                         <tk:SettingsCard x:Name="GatewayCard" x:Uid="Onboarding_V2_GatewayCard" Header="Local Gateway service"
-                                         Background="Transparent" BorderThickness="0,1,0,0" CornerRadius="0" />
-                    </StackPanel>
-                </Border>
+                                         Background="Transparent" Padding="0,14" BorderThickness="0,1,0,0" CornerRadius="0" />
+                </StackPanel>
                 <StackPanel x:Name="ReplacementOptions" Spacing="12" Visibility="Collapsed">
                     <InfoBar x:Name="ReplacementWarning" x:Uid="Onboarding_V2_ReplacementWarning" IsOpen="True" IsClosable="False" Severity="Warning"
                              Title="This replacement can permanently delete WSL data"
@@ -39,14 +57,21 @@
                     </CheckBox>
                 </StackPanel>
                 <tk:SettingsCard x:Name="LocalAiCard" x:Uid="Onboarding_V2_LocalAiReview" Header="Local AI"
+                                 Background="Transparent" BorderThickness="0,1,0,0" CornerRadius="0" Padding="0,14"
                                  IsClickEnabled="True" Click="LocalAi_Click" />
                 <controls:TailscaleSetupControl x:Name="TailscaleOptions" />
-                <tk:SettingsCard x:Name="StartupPreferenceRow" x:Uid="Onboarding_V2_StartupCard" Header="Launch OpenClaw at sign-in">
+                <tk:SettingsCard x:Name="StartupPreferenceRow" x:Uid="Onboarding_V2_StartupCard" Header="Launch OpenClaw at sign-in"
+                                 Background="Transparent" BorderThickness="0,1,0,0" CornerRadius="0" Padding="0,14">
                     <ToggleSwitch x:Name="StartupPreferenceToggle" x:Uid="Onboarding_Flow_AutoStartToggle"
                                   AutomationProperties.Name="Launch OpenClaw at sign-in"
                                   OnContent="" OffContent="" MinWidth="0" Toggled="Startup_Toggled" />
                 </tk:SettingsCard>
-                <tk:SettingsExpander x:Uid="Onboarding_V2_ExactCommands" Header="Exact commands and files">
+                <TextBlock x:Uid="Onboarding_V2_ReviewRestartNotice" TextWrapping="Wrap"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Text="Windows may ask for administrator approval, and a restart may be needed. Save your work first." />
+                <tk:SettingsExpander x:Name="ExactCommandsExpander" x:Uid="Onboarding_V2_ExactCommands"
+                                     Header="Exact commands and files" Background="Transparent"
+                                     BorderThickness="0,1,0,0" CornerRadius="0" Padding="0,12">
                     <tk:SettingsExpander.Items>
                         <tk:SettingsCard>
                             <tk:SettingsCard.Header>
@@ -57,12 +82,14 @@
                     </tk:SettingsExpander.Items>
                 </tk:SettingsExpander>
             </StackPanel>
-        </ScrollViewer>
-        <Grid Grid.Row="2" ColumnDefinitions="*,Auto">
-            <controls:SetupProgressIndicator x:Name="FlowProgress" Grid.ColumnSpan="2" HorizontalAlignment="Center" VerticalAlignment="Center" />
-            <Button x:Uid="Onboarding_V2_Back" Content="Back" MinWidth="100" HorizontalAlignment="Left" Click="Back_Click" />
+        </controls:SetupPageShell.Body>
+        <controls:SetupPageShell.Footer>
+        <Grid x:Name="NavigationFooter" ColumnDefinitions="*,Auto">
+            <Button x:Name="BackButton" x:Uid="Onboarding_V2_Back" Content="Back" MinWidth="100" MinHeight="40"
+                    HorizontalAlignment="Left" Click="Back_Click" />
             <Button Grid.Column="1" x:Name="PrimaryButton" Content="Install"
-                    MinWidth="100" Click="Install_Click" Style="{StaticResource AccentButtonStyle}" />
+                    MinWidth="100" MinHeight="40" Click="Install_Click" Style="{StaticResource AccentButtonStyle}" />
         </Grid>
-    </Grid>
+        </controls:SetupPageShell.Footer>
+    </controls:SetupPageShell>
 </Page>

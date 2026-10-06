@@ -13,7 +13,6 @@ public sealed class OnboardingMockPresentationTests
     [Theory]
     [InlineData("WelcomePage")]
     [InlineData("CapabilitiesPage")]
-    [InlineData("GatewaySetupPage")]
     [InlineData("GatewaySetupDetailPage")]
     [InlineData("AdvancedSetupPage")]
     [InlineData("SetupNativeConnectionPage")]
@@ -74,7 +73,7 @@ public sealed class OnboardingMockPresentationTests
             Assert.Equal("Transparent", (string?)row.Attribute("Background"));
             Assert.Equal("0", (string?)row.Attribute("CornerRadius"));
         });
-        foreach (var name in new[] { "GatewaySetupPage",
+        foreach (var name in new[] {
                      "ProgressPage", "WizardPage", "AiSetupPage", "AiReadyPage", "CompletePage" })
         {
             var page = Page(name);

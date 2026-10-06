@@ -198,7 +198,7 @@ new attempt. This boundary does not change release signing or Windows policy.
 | Exact Gateway wizard terminal-restart compatibility and bounded retry policy | `GatewayWizardRestartRecoveryPolicy` | authoritative |
 | Interactive onboarding routes and installation-step selection | `OnboardingFlowPolicy` | authoritative |
 | Accessible provider/model and completion-card invocation | `SetupActionCard` supplies the native Invoke provider; `AiSetupPage` and `AiReadyPage` retain their guarded selection and completion actions | authoritative |
-| Welcome-only responsive hero/header/body/footer composition | `SetupPageShell` owns presentation slots and scrolling; `SecurityNoticePage` owns copy and its existing action. Slots remain mounted across viewport changes; all other pages retain their current layouts | authoritative |
+| Welcome and WSL-review responsive hero/header/body/footer composition | `SetupPageShell` owns presentation slots and scrolling; `SecurityNoticePage` and `GatewaySetupPage` retain copy and existing actions. Slots remain mounted across viewport changes; other pages retain their current layouts | authoritative |
 | Setup progress host seam | `ISetupProgressIndicator` accepts canonical route stages from `SetupWindow`; `OnboardingFlowPolicy` remains the canonical stage owner | authoritative |
 | Reusable step timeline presentation | `SetupStepIndicator` owns explicit step states, helper text, native template, semantic colors, glow and reduced-motion-safe transitions; Welcome uses it without adding completion or navigation authority | authoritative |
 | Legacy dot progress presentation | `SetupProgressIndicator` renders dots only; existing unmigrated pages retain it | authoritative |

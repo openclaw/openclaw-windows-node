@@ -7283,8 +7283,10 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="Onboarding_V2_ReplacementWarning.Title" xml:space="preserve"><value>Ce remplacement peut supprimer définitivement les données WSL</value></data>
   <data name="Onboarding_V2_ReplacementWarning.Message" xml:space="preserve"><value>Seule l'installation WSL nommée est remplacée. Les autres connexions Gateway enregistrées restent disponibles.</value></data>
   <data name="Onboarding_V2_ReturnToReview.Content" xml:space="preserve"><value>Revenir à la vérification</value></data>
-  <data name="Onboarding_V2_ReviewTitle.Text" xml:space="preserve"><value>Configuration du Gateway WSL</value></data>
-  <data name="Onboarding_V2_ReviewIntro.Text" xml:space="preserve"><value>Vérifiez les modifications avant le début de l'installation.</value></data>
+  <data name="Onboarding_V2_ReviewTitle.Text" xml:space="preserve"><value>Prêt pour l'installation</value></data>
+  <data name="Onboarding_V2_ReviewIntro.Text" xml:space="preserve"><value>Voici ce qui va se passer sur ce PC.</value></data>
+  <data name="Onboarding_V2_ReviewSpeech.Text" xml:space="preserve"><value>Voici le plan.</value></data>
+  <data name="Onboarding_V2_ReviewRestartNotice.Text" xml:space="preserve"><value>Windows peut demander une autorisation administrateur et un redémarrage peut être nécessaire. Enregistrez d'abord votre travail.</value></data>
   <data name="Onboarding_V2_CliCard.Header" xml:space="preserve"><value>OpenClaw CLI</value></data>
   <data name="Onboarding_V2_GatewayCard.Header" xml:space="preserve"><value>Service Gateway local</value></data>
   <data name="Onboarding_V2_LocalAiReview.Header" xml:space="preserve"><value>Local AI</value></data>

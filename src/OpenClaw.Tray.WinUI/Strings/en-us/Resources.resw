@@ -7351,8 +7351,10 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_V2_ReplacementWarning.Title" xml:space="preserve"><value>This replacement can permanently delete WSL data</value></data>
   <data name="Onboarding_V2_ReplacementWarning.Message" xml:space="preserve"><value>Only the named WSL installation is replaced. Other saved Gateway connections stay available.</value></data>
   <data name="Onboarding_V2_ReturnToReview.Content" xml:space="preserve"><value>Return to review</value></data>
-  <data name="Onboarding_V2_ReviewTitle.Text" xml:space="preserve"><value>WSL Gateway setup</value></data>
-  <data name="Onboarding_V2_ReviewIntro.Text" xml:space="preserve"><value>Review what will change before installation starts.</value></data>
+  <data name="Onboarding_V2_ReviewTitle.Text" xml:space="preserve"><value>Ready to install</value></data>
+  <data name="Onboarding_V2_ReviewIntro.Text" xml:space="preserve"><value>Here's what will happen on this PC.</value></data>
+  <data name="Onboarding_V2_ReviewSpeech.Text" xml:space="preserve"><value>Here's the plan.</value></data>
+  <data name="Onboarding_V2_ReviewRestartNotice.Text" xml:space="preserve"><value>Windows may ask for administrator approval, and a restart may be needed. Save your work first.</value></data>
   <data name="Onboarding_V2_CliCard.Header" xml:space="preserve"><value>OpenClaw CLI</value></data>
   <data name="Onboarding_V2_GatewayCard.Header" xml:space="preserve"><value>Local Gateway service</value></data>
   <data name="Onboarding_V2_LocalAiReview.Header" xml:space="preserve"><value>Local AI</value></data>

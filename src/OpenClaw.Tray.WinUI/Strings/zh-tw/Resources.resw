@@ -7283,8 +7283,10 @@
   <data name="Onboarding_V2_ReplacementWarning.Title" xml:space="preserve"><value>此取代可能永久刪除 WSL 資料</value></data>
   <data name="Onboarding_V2_ReplacementWarning.Message" xml:space="preserve"><value>僅取代指定名稱的 WSL 安裝。其他已儲存的 Gateway 連線仍然可用。</value></data>
   <data name="Onboarding_V2_ReturnToReview.Content" xml:space="preserve"><value>返回檢閱</value></data>
-  <data name="Onboarding_V2_ReviewTitle.Text" xml:space="preserve"><value>WSL Gateway 設定</value></data>
-  <data name="Onboarding_V2_ReviewIntro.Text" xml:space="preserve"><value>在安裝開始前檢閱將發生的變更。</value></data>
+  <data name="Onboarding_V2_ReviewTitle.Text" xml:space="preserve"><value>準備安裝</value></data>
+  <data name="Onboarding_V2_ReviewIntro.Text" xml:space="preserve"><value>以下是這台電腦上將發生的變更。</value></data>
+  <data name="Onboarding_V2_ReviewSpeech.Text" xml:space="preserve"><value>這是我們的計畫。</value></data>
+  <data name="Onboarding_V2_ReviewRestartNotice.Text" xml:space="preserve"><value>Windows 可能會要求系統管理員核准，並且可能需要重新啟動。請先儲存工作。</value></data>
   <data name="Onboarding_V2_CliCard.Header" xml:space="preserve"><value>OpenClaw CLI</value></data>
   <data name="Onboarding_V2_GatewayCard.Header" xml:space="preserve"><value>本機 Gateway 服務</value></data>
   <data name="Onboarding_V2_LocalAiReview.Header" xml:space="preserve"><value>Local AI</value></data>

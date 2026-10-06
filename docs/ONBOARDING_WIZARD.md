@@ -453,7 +453,8 @@ The preferred minimum is not silently weakened for a smaller monitor. At 100%
 it is 720 x 560 physical pixels; at 150% it is 1080 x 840; at 200% it is
 1440 x 1120. Actual monitor/work-area constraints remain Windows-owned.
 
-Only the first welcome/trust page (`SecurityNoticePage`) uses `SetupPageShell`.
+The welcome/trust page (`SecurityNoticePage`) and WSL review (`GatewaySetupPage`)
+use `SetupPageShell`.
 Its four presentation slots hold the hero, header, body and fixed footer.
 At an actual shell width of at least 960 DIPs and height of at least 600 DIPs,
 the mascot, speech bubble and milestone rail sit beside the heading and content.
@@ -463,7 +464,7 @@ scroller. The complete safety warning and `https://trust.openclaw.ai` link remai
 reachable. **Get started** uses the existing gateway-chooser navigation action;
 showing the shell does not grant access, persist choices or start installation.
 
-The gateway chooser, capabilities, review, installation, AI and completion pages
+The gateway chooser, capabilities, installation, AI and completion pages
 retain their existing layouts and dot indicators at the wider initial size.
 The 180-DIP mascot frame includes its motion/glow gutter;
 the title-bar mark is 24 DIPs. Theme-aware Mica/Fluent surfaces retain solid
@@ -1093,8 +1094,12 @@ probe. WSL browser/auth-key sign-in is distinct from Windows sign-in and from th
 separate, default-off identity-trust toggle. Auth keys remain session-only.
 Serve is private tailnet access, not Funnel.
 
-The WSL review shows its current installation blocker directly below the
-centered heading, before optional choices. `SetupAccessDraft.GetInstallRequirements`
+The WSL review uses a left-aligned **Ready to install** heading and flat native
+installation rows beside the mascot and canonical stage rail in wide layouts.
+At compact sizes, the same mounted content scrolls above the fixed Back/Install
+footer. Exact commands expand inside the shell scroller without hiding the actions.
+The current installation blocker precedes installation rows and optional choices.
+`SetupAccessDraft.GetInstallRequirements`
 is the shared source for both `CanInstall` and this presentation, including
 incomplete or stale inspection, exact-target replacement consent, Local AI,
 networking consent and Tailscale readiness. When replacement is required, the

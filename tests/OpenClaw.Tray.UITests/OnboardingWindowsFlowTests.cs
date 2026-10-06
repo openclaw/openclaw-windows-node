@@ -214,7 +214,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
             AssertFullyVisible(summary, scroll);
             AssertFixedPageChrome(root, page);
             using (await OnboardingNativeProof.CaptureAsync(window, $"onboarding-viewport-replacement-summary-{theme}", output,
-                ["WSL Gateway setup", window.AccessDraft.Config.DistroName, "Back", "Install"],
+                ["Ready to install", window.AccessDraft.Config.DistroName, "Back", "Install"],
                 new { summary = summary.Message, summaryBounds = Bounds(summary, root), viewport = Bounds(scroll, root), size = originalSize })) { }
             await BringIntoViewportAsync(page, consent);
             AssertFullyVisible(consent, scroll);
@@ -231,7 +231,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
             Assert.False(Find<Button>(page, "PrimaryButton").IsEnabled);
             Assert.Empty(VisualTreeHelper.GetOpenPopupsForXamlRoot(root.XamlRoot));
             using (await OnboardingNativeProof.CaptureAsync(window, $"onboarding-viewport-inline-consent-{theme}", output,
-                ["WSL Gateway setup", window.AccessDraft.Config.DistroName, "Back", "Install"],
+                ["Ready to install", window.AccessDraft.Config.DistroName, "Back", "Install"],
                 new { exactAccessibleName = name, consentBounds = Bounds(consent, root), viewport = Bounds(scroll, root) })) { }
             Assert.Same(page, frame.Content);
             Assert.Equal(originalSize, window.AppWindow.Size);
@@ -1102,7 +1102,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
     private static Task WaitAsync(Func<bool> predicate, string operation) =>
         TestSupport.WaitForRenderedConditionAsync(predicate, operation);
 
-    private static ScrollViewer PageScroll(Page page) => page is CapabilitiesPage
+    private static ScrollViewer PageScroll(Page page) => page is CapabilitiesPage or GatewaySetupPage
         ? Assert.IsType<SetupPageShell>(page.Content).Scroller
         : Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<ScrollViewer>());
 
@@ -1126,6 +1126,17 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
             Assert.Equal(0, shell.Scroller.ScrollableWidth);
             Assert.True(shell.Scroller.ViewportHeight > 0);
             Assert.False(Find<TextBlock>(page, "CapabilitiesTitle").IsTextTrimmed);
+            return;
+        }
+        if (page is GatewaySetupPage)
+        {
+            var shell = Assert.IsType<SetupPageShell>(page.Content);
+            var reviewFooter = Assert.IsType<Grid>(shell.Footer);
+            AssertFullyVisible(reviewFooter, root);
+            foreach (var button in reviewFooter.Children.OfType<Button>()) AssertFullyVisible(button, root);
+            Assert.True(shell.Scroller.ViewportHeight > 0);
+            Assert.Equal(0, shell.Scroller.ScrollableWidth);
+            Assert.False(Find<TextBlock>(page, "ReviewTitle").IsTextTrimmed);
             return;
         }
         var grid = Assert.IsType<Grid>(page.Content);
@@ -1249,6 +1260,15 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
                 label => label.Name == "StepTitle" && AutomationProperties.GetName(label).EndsWith(", current step", StringComparison.Ordinal));
             return;
         }
+        if (page is GatewaySetupPage)
+        {
+            var rail = Find<SetupStepIndicator>(page, "FlowProgress");
+            Assert.Equal(Visibility.Visible, rail.Visibility);
+            Assert.Equal($"Step {current + 1} of {stageCount}", AutomationProperties.GetName(rail));
+            Assert.Equal("Set up, current step", AutomationProperties.GetName(Assert.Single(
+                TestSupport.FindDescendants<TextBlock>(rail), label => label.Name == "StepTitle" && label.Text == "Set up")));
+            return;
+        }
         var progress = Find<SetupProgressIndicator>(page, "FlowProgress");
         Assert.Equal(Visibility.Visible, progress.Visibility);
         Assert.Equal(stageCount, progress.Children.Count);
@@ -1261,8 +1281,9 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
     {
         if (page is CapabilitiesPage)
             return Find<Button>(page, next ? "ContinueButton" : "BackButton");
-        var footer = Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<Grid>(),
-            grid => Grid.GetRow(grid) == 2);
+        var footer = page is GatewaySetupPage
+            ? Assert.IsType<Grid>(Assert.IsType<SetupPageShell>(page.Content).Footer)
+            : Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<Grid>(), grid => Grid.GetRow(grid) == 2);
         return Assert.Single(footer.Children.OfType<Button>(), button => Grid.GetColumn(button) == (next ? 1 : 0));
     }
 

@@ -20,7 +20,7 @@ internal static class OnboardingSetupGalleryData
         "advanced" => new(typeof(AdvancedSetupPage), "Choose another setup route", "AdvancedTitle"),
         "connection" => new(typeof(SetupNativeConnectionPage), "Connect to a gateway", "TitleText"),
         "capabilities" or "branch" => new(typeof(CapabilitiesPage), "What can your assistant use?", "CapabilitiesTitle"),
-        "review" => new(typeof(GatewaySetupPage), "WSL Gateway setup"),
+        "review" => new(typeof(GatewaySetupPage), "Ready to install", "ReviewTitle"),
         "tailscale" => new(typeof(GatewaySetupDetailPage), "Tailscale Serve", "DetailTitle"),
         "local-review" => new(typeof(GatewaySetupDetailPage), "Local AI", "DetailTitle"),
         "networking" => new(typeof(GatewaySetupDetailPage), "WSL networking consent", "DetailTitle"),

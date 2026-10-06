@@ -7284,8 +7284,10 @@ Controleer of de gateway actief is.</value>
   <data name="Onboarding_V2_ReplacementWarning.Title" xml:space="preserve"><value>Deze vervanging kan WSL-gegevens permanent verwijderen</value></data>
   <data name="Onboarding_V2_ReplacementWarning.Message" xml:space="preserve"><value>Alleen de genoemde WSL-installatie wordt vervangen. Andere opgeslagen Gateway-verbindingen blijven beschikbaar.</value></data>
   <data name="Onboarding_V2_ReturnToReview.Content" xml:space="preserve"><value>Terug naar overzicht</value></data>
-  <data name="Onboarding_V2_ReviewTitle.Text" xml:space="preserve"><value>WSL Gateway instellen</value></data>
-  <data name="Onboarding_V2_ReviewIntro.Text" xml:space="preserve"><value>Controleer wat er verandert voordat de installatie begint.</value></data>
+  <data name="Onboarding_V2_ReviewTitle.Text" xml:space="preserve"><value>Klaar voor installatie</value></data>
+  <data name="Onboarding_V2_ReviewIntro.Text" xml:space="preserve"><value>Dit gaat er op deze pc gebeuren.</value></data>
+  <data name="Onboarding_V2_ReviewSpeech.Text" xml:space="preserve"><value>Dit is het plan.</value></data>
+  <data name="Onboarding_V2_ReviewRestartNotice.Text" xml:space="preserve"><value>Windows kan om beheerdersgoedkeuring vragen en opnieuw opstarten kan nodig zijn. Sla eerst uw werk op.</value></data>
   <data name="Onboarding_V2_CliCard.Header" xml:space="preserve"><value>OpenClaw CLI</value></data>
   <data name="Onboarding_V2_GatewayCard.Header" xml:space="preserve"><value>Lokale Gateway-service</value></data>
   <data name="Onboarding_V2_LocalAiReview.Header" xml:space="preserve"><value>Local AI</value></data>
