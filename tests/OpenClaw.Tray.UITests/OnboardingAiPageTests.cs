@@ -276,6 +276,8 @@ public sealed partial class OnboardingAiPageTests(UIThreadFixture ui, ITestOutpu
             dialog.Closed += (_, _) => closed++;
             await InvokeChoiceAsync(page);
             await WaitAsync(() => dialog.CanSubmit && opened == 1);
+            await Task.Delay(400);
+            await OnboardingNativeProof.NextCompositionAsync();
             Assert.Equal("Continue", dialog.PrimaryButtonText);
             Assert.Equal("", dialog.SecondaryButtonText);
             using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow, "ai-focused-provider-note", output,
@@ -299,6 +301,7 @@ public sealed partial class OnboardingAiPageTests(UIThreadFixture ui, ITestOutpu
             var error = Assert.IsType<InfoBar>(dialog.FindName("DialogError"));
             await TestSupport.WaitForRenderedConditionAsync(
                 () => error.IsOpen && error.ActualHeight > 0, "provider verification error layout");
+            await Task.Delay(400);
             await OnboardingNativeProof.NextCompositionAsync();
             using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow, "ai-focused-provider-recheck", output,
                 ["Check again", error.Message], new { opened, closed },
