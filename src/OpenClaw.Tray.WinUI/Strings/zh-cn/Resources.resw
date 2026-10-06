@@ -7713,7 +7713,7 @@
   <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>安装本地 WSL Gateway</value></data>
   <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>正在检查原生 Gateway 支持情况...</value></data>
   <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>此设备支持原生 Gateway。</value></data>
-  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>目前不支持原生 Gateway。请通过 Windows 更新安装 Windows Insider 内部版本 {0} 或更新的受支持版本，然后重新打开此页面。功能可用性可能因设备而异。</value></data>
+  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>请将 Windows 更新到支持原生 Gateway 的版本。如果更新尚不可用，请加入 Windows 预览体验计划，并选择 Beta 或 Experimental 渠道的 Windows 11 版本 26H1。更新可能需要几分钟才会显示在 Windows 更新中。</value></data>
   <data name="Onboarding_Native_SupportCheckFailed" xml:space="preserve"><value>无法验证原生 Gateway 支持情况。请重新打开此页面以重试。如果检查持续失败，请更新或修复 Companion。</value></data>
   <data name="Onboarding_Native_UnsupportedPlatform" xml:space="preserve"><value>原生 Gateway 设置需要受支持的 Windows 客户端系统。不支持 Windows Server。</value></data>
   <data name="Onboarding_Native_WindowsUpdate.Content" xml:space="preserve"><value>打开 Windows 更新</value></data>

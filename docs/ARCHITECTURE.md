@@ -397,10 +397,13 @@ A positive result enables and initially selects the first **Install a local nati
 gateway** card with the accent highlight and **Recommended** badge. A negative
 capability result leaves that recommended choice visible but disabled after WSL and
 **Connect to an existing gateway**, with Windows Update guidance directly below the
-choice list; reopening the page rechecks support. The pinned SDK documents
-Insider build **26340.9212** as its baseline. This is update guidance, not a
-hardcoded admission floor or a promise that a particular feature is enabled.
-The native boolean cannot distinguish every OS API failure from missing support.
+choice list; reopening the page rechecks support. The guidance tells users to
+update Windows to a version that supports the native Gateway. If the update is
+not available yet, users can join the Windows Insider Program and select
+Windows 11, version 26H1 with the Beta or Experimental channel. The update may
+take a few minutes to appear in Windows Update. The live probe remains
+authoritative, and feature rollout can vary by device even after updating. The
+native boolean cannot distinguish every OS API failure from missing support.
 Missing executables, malformed results and probe errors instead offer retry or
 Companion repair, not an assertion that Windows must be updated.
 
