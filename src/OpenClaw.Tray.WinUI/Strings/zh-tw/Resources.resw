@@ -7244,6 +7244,8 @@
   <data name="Onboarding_NativeConnection_Checked" xml:space="preserve"><value>連線已檢查，未儲存任何內容。下一步將再次檢查並儲存此 Gateway。</value></data>
   <data name="Onboarding_NativeConnection_Failed" xml:space="preserve"><value>無法確認連線結果。請先在 Companion Settings 中檢視目前的 Gateway，再繼續操作。</value></data>
   <data name="Onboarding_V2_AlternativesTitle.Text" xml:space="preserve"><value>選擇其他設定路徑</value></data>
+  <data name="Onboarding_Advanced_Speech.Text" xml:space="preserve"><value>還有其他方式。</value></data>
+  <data name="Onboarding_Advanced_Help.Text" xml:space="preserve"><value>透過其他方式連線，或在沒有 Gateway 的情況下繼續。</value></data>
   <data name="Onboarding_V2_ExistingRoute.Header" xml:space="preserve"><value>現有 Gateway</value></data>
   <data name="Onboarding_V2_ExistingRoute.Description" xml:space="preserve"><value>使用已儲存或現有連線。不安裝 WSL。</value></data>
   <data name="Onboarding_V2_RemoteRoute.Header" xml:space="preserve"><value>遠端 Gateway</value></data>

@@ -30,10 +30,15 @@ public sealed class OnboardingMockPresentationTests
         Assert.Equal("StackPanel", header.Name.LocalName);
         Assert.Null(header.Attribute("Height"));
         Assert.Null(header.Attribute("MaxHeight"));
-        if (name is "WelcomePage" or "CapabilitiesPage")
+        if (name is "WelcomePage" or "CapabilitiesPage" or "AdvancedSetupPage")
         {
             Assert.Equal("SetupPageShell.Hero", header.Parent!.Name.LocalName);
-            var gatewayTitle = Named(document, name == "WelcomePage" ? "GatewayTitle" : "CapabilitiesTitle");
+            var gatewayTitle = Named(document, name switch
+            {
+                "WelcomePage" => "GatewayTitle",
+                "CapabilitiesPage" => "CapabilitiesTitle",
+                _ => "AdvancedTitle",
+            });
             Assert.Equal("SetupPageShell.Header", gatewayTitle.Parent!.Parent!.Name.LocalName);
             Assert.Equal("40", (string?)gatewayTitle.Attribute("FontSize"));
             Assert.Equal("Wrap", (string?)gatewayTitle.Attribute("TextWrapping"));

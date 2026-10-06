@@ -7245,6 +7245,8 @@ Controleer of de gateway actief is.</value>
   <data name="Onboarding_NativeConnection_Checked" xml:space="preserve"><value>Verbinding gecontroleerd. Er is niets opgeslagen. Volgende controleert opnieuw en slaat deze Gateway op.</value></data>
   <data name="Onboarding_NativeConnection_Failed" xml:space="preserve"><value>Het resultaat van de verbinding kon niet worden bevestigd. Controleer de actieve Gateway in Companion Settings voordat u doorgaat.</value></data>
   <data name="Onboarding_V2_AlternativesTitle.Text" xml:space="preserve"><value>Kies een andere instelroute</value></data>
+  <data name="Onboarding_Advanced_Speech.Text" xml:space="preserve"><value>Er is meer dan één manier.</value></data>
+  <data name="Onboarding_Advanced_Help.Text" xml:space="preserve"><value>Maak op een andere manier verbinding of ga verder zonder Gateway.</value></data>
   <data name="Onboarding_V2_ExistingRoute.Header" xml:space="preserve"><value>Bestaande Gateway</value></data>
   <data name="Onboarding_V2_ExistingRoute.Description" xml:space="preserve"><value>Gebruik een opgeslagen of bestaande verbinding. Geen WSL-installatie.</value></data>
   <data name="Onboarding_V2_RemoteRoute.Header" xml:space="preserve"><value>Externe Gateway</value></data>

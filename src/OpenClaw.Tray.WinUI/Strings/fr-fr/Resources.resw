@@ -7244,6 +7244,8 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="Onboarding_NativeConnection_Checked" xml:space="preserve"><value>Connexion vérifiée. Rien n'a été enregistré. Suivant vérifiera à nouveau et enregistrera ce Gateway.</value></data>
   <data name="Onboarding_NativeConnection_Failed" xml:space="preserve"><value>Le résultat de la connexion n'a pas pu être confirmé. Vérifiez le Gateway actif dans Companion Settings avant de continuer.</value></data>
   <data name="Onboarding_V2_AlternativesTitle.Text" xml:space="preserve"><value>Choisir un autre parcours de configuration</value></data>
+  <data name="Onboarding_Advanced_Speech.Text" xml:space="preserve"><value>Il y a plusieurs façons de faire.</value></data>
+  <data name="Onboarding_Advanced_Help.Text" xml:space="preserve"><value>Connectez-vous autrement ou continuez sans Gateway.</value></data>
   <data name="Onboarding_V2_ExistingRoute.Header" xml:space="preserve"><value>Gateway existant</value></data>
   <data name="Onboarding_V2_ExistingRoute.Description" xml:space="preserve"><value>Utilisez une connexion enregistrée ou existante. Aucune installation WSL.</value></data>
   <data name="Onboarding_V2_RemoteRoute.Header" xml:space="preserve"><value>Gateway distant</value></data>

@@ -7296,6 +7296,8 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="Onboarding_NativeConnection_Checked" xml:space="preserve"><value>Conexão verificada. Nada foi salvo. Avançar verificará novamente e salvará este Gateway.</value></data>
   <data name="Onboarding_NativeConnection_Failed" xml:space="preserve"><value>Não foi possível confirmar o resultado da conexão. Revise o Gateway ativo em Companion Settings antes de continuar.</value></data>
   <data name="Onboarding_V2_AlternativesTitle.Text" xml:space="preserve"><value>Escolha outra forma de configuração</value></data>
+  <data name="Onboarding_Advanced_Speech.Text" xml:space="preserve"><value>Há mais de uma maneira.</value></data>
+  <data name="Onboarding_Advanced_Help.Text" xml:space="preserve"><value>Conecte-se de outra forma ou continue sem um Gateway.</value></data>
   <data name="Onboarding_V2_ExistingRoute.Header" xml:space="preserve"><value>Gateway existente</value></data>
   <data name="Onboarding_V2_ExistingRoute.Description" xml:space="preserve"><value>Use uma conexão salva ou existente. Sem instalação do WSL.</value></data>
   <data name="Onboarding_V2_RemoteRoute.Header" xml:space="preserve"><value>Gateway remoto</value></data>

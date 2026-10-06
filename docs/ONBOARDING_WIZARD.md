@@ -770,6 +770,12 @@ remain native host responsibilities. Progress indicators
 come from `OnboardingFlowPolicy`, not a fixed six-page count. Local AI recovery
 does not replay the introductory pages.
 
+`AdvancedSetupPage` applies the same responsive shell and timeline to its existing
+four route actions. Existing Gateway, Remote Gateway, Local MCP only and deferred
+setup remain immediate native card actions, not a new selection or confirmation
+flow. Connection-host errors and the explicit classic Settings fallback remain
+visible and scrollable, with Back fixed outside the content.
+
 The welcome/trust rail is the standalone `SetupStepIndicator` component. It
 groups only stages supplied by that policy. Welcome,
 Gateway and Capabilities form **Choose your PC tools**; GatewayReview and Install
@@ -780,7 +786,8 @@ stage position, not a second completion model. The accessible progress
 announcement retains the underlying stage count rather than the milestone count.
 The dot indicator remains a separate `SetupProgressIndicator` component.
 Both satisfy `ISetupProgressIndicator`, so the host supplies the same route
-without knowing their layouts. No other page adopts the timeline yet.
+without knowing their layouts. The Gateway chooser, capabilities and alternative
+routes also adopt that timeline through the shared shell.
 
 The reusable timeline also accepts `SetupStepItem` records with a title,
 an `Upcoming`, `Current` or `Completed` state, and optional helper text.

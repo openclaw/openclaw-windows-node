@@ -17,7 +17,7 @@ internal static class OnboardingSetupGalleryData
     {
         "security" => new(typeof(SecurityNoticePage), "Meet your new sidekick.", "WelcomeTitle"),
         "welcome" => new(typeof(WelcomePage), "Where should OpenClaw live?", "GatewayTitle"),
-        "advanced" => new(typeof(AdvancedSetupPage), "Choose another setup route"),
+        "advanced" => new(typeof(AdvancedSetupPage), "Choose another setup route", "AdvancedTitle"),
         "connection" => new(typeof(SetupNativeConnectionPage), "Connect to a gateway", "TitleText"),
         "capabilities" or "branch" => new(typeof(CapabilitiesPage), "What can your assistant use?", "CapabilitiesTitle"),
         "review" => new(typeof(GatewaySetupPage), "WSL Gateway setup"),

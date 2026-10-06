@@ -7312,6 +7312,8 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_NativeConnection_Checked" xml:space="preserve"><value>Connection checked. Nothing was saved. Next will check again and save this gateway.</value></data>
   <data name="Onboarding_NativeConnection_Failed" xml:space="preserve"><value>The connection outcome could not be confirmed. Review the active gateway in Companion Settings before continuing.</value></data>
   <data name="Onboarding_V2_AlternativesTitle.Text" xml:space="preserve"><value>Choose another setup route</value></data>
+  <data name="Onboarding_Advanced_Speech.Text" xml:space="preserve"><value>There's more than one way.</value></data>
+  <data name="Onboarding_Advanced_Help.Text" xml:space="preserve"><value>Connect another way or continue without a Gateway.</value></data>
   <data name="Onboarding_V2_ExistingRoute.Header" xml:space="preserve"><value>Existing Gateway</value></data>
   <data name="Onboarding_V2_ExistingRoute.Description" xml:space="preserve"><value>Use a saved or existing connection. No WSL installation.</value></data>
   <data name="Onboarding_V2_RemoteRoute.Header" xml:space="preserve"><value>Remote Gateway</value></data>
