@@ -23,6 +23,8 @@ public sealed class ProgressPageShellTests(UIThreadFixture ui)
             var progress = new SetupInstallationProgress(steps, false);
             Field("_installationProgress").SetValue(page, progress);
             Render(page);
+            Assert.Same(Find<TextBlock>(page, "DownloadActivity"),
+                AutomationProperties.GetLabeledBy(Find<ProgressBar>(page, "DownloadProgress")));
             AssertCount(page, 0, steps.Count);
             Assert.Equal("Waiting", PhaseText(page, "PrepareStatus"));
             Assert.Equal("Waiting", PhaseText(page, "InstallStatus"));

@@ -79,7 +79,8 @@
                 <StackPanel Spacing="8">
                     <TextBlock x:Name="DownloadActivity" Style="{StaticResource CaptionTextBlockStyle}"
                                TextWrapping="Wrap" Visibility="Collapsed" />
-                    <ProgressBar x:Name="DownloadProgress" Minimum="0" Maximum="1" Visibility="Collapsed" />
+                    <ProgressBar x:Name="DownloadProgress" Minimum="0" Maximum="1" Visibility="Collapsed"
+                                 AutomationProperties.LabeledBy="{x:Bind DownloadActivity}" />
                 </StackPanel>
 
                 <InfoBar x:Name="TailscaleAuthorizationPanel" Visibility="Collapsed" IsOpen="True" IsClosable="False"
