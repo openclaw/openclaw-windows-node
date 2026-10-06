@@ -453,8 +453,8 @@ The preferred minimum is not silently weakened for a smaller monitor. At 100%
 it is 720 x 560 physical pixels; at 150% it is 1080 x 840; at 200% it is
 1440 x 1120. Actual monitor/work-area constraints remain Windows-owned.
 
-The welcome/trust page (`SecurityNoticePage`) and WSL review (`GatewaySetupPage`)
-use `SetupPageShell`.
+The welcome/trust page (`SecurityNoticePage`), WSL review (`GatewaySetupPage`)
+and its details (`GatewaySetupDetailPage`) use `SetupPageShell`.
 Its four presentation slots hold the hero, header, body and fixed footer.
 At an actual shell width of at least 960 DIPs and height of at least 600 DIPs,
 the mascot, speech bubble and milestone rail sit beside the heading and content.
@@ -1117,6 +1117,11 @@ Networking review returns to its caller: review to networking to review, or
 Local AI to networking to Local AI. Recovery mode, pinned model and explicit
 networking consent remain intact. Reviewing a requirement performs no WSL
 changes; installation remains the separate mutation boundary.
+Local AI, Tailscale and networking details retain their separate existing routes.
+They use the shared responsive hero, left-aligned title and fixed action footer.
+Local AI and Tailscale controls use flat themed rows; their required consent,
+hardware/model diagnostics, Windows sign-in status and session-only auth key
+remain in the scrollable body. Resizing does not recreate the controls or draft.
 
 ### Connect your AI
 

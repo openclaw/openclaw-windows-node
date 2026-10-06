@@ -7408,6 +7408,8 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_V2_ConsentRecorded" xml:space="preserve"><value>Confirmation recorded for this WSL installation.</value></data>
   <data name="Onboarding_V2_ConsentRequired" xml:space="preserve"><value>Explicit confirmation is required before replacement.</value></data>
   <data name="Onboarding_V2_DetailLocalAi" xml:space="preserve"><value>Local AI</value></data>
+  <data name="Onboarding_V2_DetailSpeech.Text" xml:space="preserve"><value>Let's review the details.</value></data>
+  <data name="Onboarding_V2_DetailIntro.Text" xml:space="preserve"><value>Review these settings before you continue.</value></data>
   <data name="Onboarding_V2_DetailTailscale" xml:space="preserve"><value>Tailscale Serve</value></data>
   <data name="Onboarding_V2_DetailNetworking" xml:space="preserve"><value>WSL networking consent</value></data>
   <data name="Onboarding_V2_DetailReplacement" xml:space="preserve"><value>Replace the WSL Gateway</value></data>

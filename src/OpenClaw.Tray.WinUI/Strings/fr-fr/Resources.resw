@@ -7340,6 +7340,8 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="Onboarding_V2_ConsentRecorded" xml:space="preserve"><value>Confirmation enregistrée pour cette installation WSL.</value></data>
   <data name="Onboarding_V2_ConsentRequired" xml:space="preserve"><value>Une confirmation explicite est requise avant le remplacement.</value></data>
   <data name="Onboarding_V2_DetailLocalAi" xml:space="preserve"><value>Local AI</value></data>
+  <data name="Onboarding_V2_DetailSpeech.Text" xml:space="preserve"><value>Vérifions les détails.</value></data>
+  <data name="Onboarding_V2_DetailIntro.Text" xml:space="preserve"><value>Vérifiez ces paramètres avant de continuer.</value></data>
   <data name="Onboarding_V2_DetailTailscale" xml:space="preserve"><value>Tailscale Serve</value></data>
   <data name="Onboarding_V2_DetailNetworking" xml:space="preserve"><value>Consentement réseau WSL</value></data>
   <data name="Onboarding_V2_DetailReplacement" xml:space="preserve"><value>Remplacer le Gateway WSL</value></data>

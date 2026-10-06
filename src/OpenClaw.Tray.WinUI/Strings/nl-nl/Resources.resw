@@ -7341,6 +7341,8 @@ Controleer of de gateway actief is.</value>
   <data name="Onboarding_V2_ConsentRecorded" xml:space="preserve"><value>Bevestiging vastgelegd voor deze WSL-installatie.</value></data>
   <data name="Onboarding_V2_ConsentRequired" xml:space="preserve"><value>Expliciete bevestiging is vereist vóór vervanging.</value></data>
   <data name="Onboarding_V2_DetailLocalAi" xml:space="preserve"><value>Local AI</value></data>
+  <data name="Onboarding_V2_DetailSpeech.Text" xml:space="preserve"><value>Laten we de details bekijken.</value></data>
+  <data name="Onboarding_V2_DetailIntro.Text" xml:space="preserve"><value>Controleer deze instellingen voordat u doorgaat.</value></data>
   <data name="Onboarding_V2_DetailTailscale" xml:space="preserve"><value>Tailscale Serve</value></data>
   <data name="Onboarding_V2_DetailNetworking" xml:space="preserve"><value>WSL-netwerktoestemming</value></data>
   <data name="Onboarding_V2_DetailReplacement" xml:space="preserve"><value>De WSL Gateway vervangen</value></data>

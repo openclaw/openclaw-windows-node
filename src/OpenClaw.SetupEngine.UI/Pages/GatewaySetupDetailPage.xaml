@@ -7,15 +7,39 @@
             <TextBlock Text="{Binding}" TextWrapping="Wrap" MaxWidth="480" Style="{StaticResource BodyTextBlockStyle}" />
         </DataTemplate>
     </Page.Resources>
-    <Grid Padding="40,4,40,24" RowDefinitions="Auto,*,Auto">
-        <StackPanel Spacing="4" HorizontalAlignment="Stretch">
-            <controls:OnboardingMascot x:Name="MascotHero" Mood="Curious" HorizontalAlignment="Center" />
-            <TextBlock x:Name="DetailTitle" Style="{StaticResource TitleTextBlockStyle}" TextWrapping="Wrap" TextAlignment="Center" />
-        </StackPanel>
-        <ScrollViewer Grid.Row="1" Margin="0,24,0,16" MaxWidth="600" HorizontalContentAlignment="Stretch">
+    <controls:SetupPageShell x:Name="DetailShell">
+        <controls:SetupPageShell.Hero>
+            <StackPanel Spacing="16">
+                <Grid MaxWidth="280" HorizontalAlignment="Center" RowDefinitions="Auto,10">
+                    <Border Padding="16,12" CornerRadius="12" BorderThickness="1"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+                        <TextBlock x:Uid="Onboarding_V2_DetailSpeech" Text="Let's review the details."
+                                   FontSize="16" TextWrapping="Wrap" TextAlignment="Center" />
+                    </Border>
+                    <Path Grid.Row="1" Data="M0,0 L10,10 L20,0" HorizontalAlignment="Center"
+                          Fill="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                          Stroke="{ThemeResource CardStrokeColorDefaultBrush}"
+                          AutomationProperties.AccessibilityView="Raw" />
+                </Grid>
+                <controls:OnboardingMascot x:Name="MascotHero" Mood="Curious" HorizontalAlignment="Center" />
+                <controls:SetupStepIndicator x:Name="FlowProgress" Margin="24,8,0,0" />
+            </StackPanel>
+        </controls:SetupPageShell.Hero>
+        <controls:SetupPageShell.Header>
+            <StackPanel Spacing="12">
+                <TextBlock x:Name="DetailTitle" FontFamily="Segoe UI Variable" FontSize="40" FontWeight="SemiBold"
+                           AutomationProperties.HeadingLevel="Level1" TextWrapping="Wrap" />
+                <TextBlock x:Uid="Onboarding_V2_DetailIntro" Text="Review these settings before you continue."
+                           FontFamily="Segoe UI Variable" FontSize="18" TextWrapping="Wrap"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
+        </controls:SetupPageShell.Header>
+        <controls:SetupPageShell.Body>
             <StackPanel Spacing="12">
                 <controls:LocalAiSetupControl x:Name="LocalAiOptions" Visibility="Collapsed" />
-                <InfoBar x:Name="LocalAiReviewError" IsOpen="False" IsClosable="False" Severity="Error" />
+                <InfoBar x:Name="LocalAiReviewError" IsOpen="False" IsClosable="False" Severity="Error"
+                         AutomationProperties.LiveSetting="Polite" />
                 <controls:TailscaleSetupControl x:Name="TailscaleOptions" Visibility="Collapsed" />
                 <StackPanel x:Name="NetworkingOptions" Spacing="16" Visibility="Collapsed">
                     <TextBlock x:Uid="Onboarding_V2_NetworkExplanation" TextWrapping="Wrap" Style="{StaticResource BodyTextBlockStyle}"
@@ -27,12 +51,14 @@
                               Checked="NetworkConsent_Changed" Unchecked="NetworkConsent_Changed" />
                 </StackPanel>
             </StackPanel>
-        </ScrollViewer>
-        <Grid Grid.Row="2" ColumnDefinitions="*,Auto">
-            <controls:SetupProgressIndicator x:Name="FlowProgress" Grid.ColumnSpan="2" HorizontalAlignment="Center" VerticalAlignment="Center" />
-            <Button x:Uid="Onboarding_V2_Back" Content="Back" MinWidth="100" HorizontalAlignment="Left" Click="Back_Click" />
+        </controls:SetupPageShell.Body>
+        <controls:SetupPageShell.Footer>
+        <Grid x:Name="NavigationFooter" ColumnDefinitions="*,Auto">
+            <Button x:Name="BackButton" x:Uid="Onboarding_V2_Back" Content="Back" MinWidth="100" MinHeight="40"
+                    HorizontalAlignment="Left" Click="Back_Click" />
             <Button x:Name="PrimaryButton" Grid.Column="1" x:Uid="Onboarding_V2_ReturnToReview" Content="Return to review" MinWidth="100"
-                    Click="Primary_Click" Style="{StaticResource AccentButtonStyle}" />
+                    MinHeight="40" Click="Primary_Click" Style="{StaticResource AccentButtonStyle}" />
         </Grid>
-    </Grid>
+        </controls:SetupPageShell.Footer>
+    </controls:SetupPageShell>
 </Page>

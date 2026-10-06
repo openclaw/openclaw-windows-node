@@ -13,7 +13,6 @@ public sealed class OnboardingMockPresentationTests
     [Theory]
     [InlineData("WelcomePage")]
     [InlineData("CapabilitiesPage")]
-    [InlineData("GatewaySetupDetailPage")]
     [InlineData("AdvancedSetupPage")]
     [InlineData("SetupNativeConnectionPage")]
     [InlineData("WizardPage")]

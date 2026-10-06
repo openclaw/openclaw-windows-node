@@ -10,6 +10,7 @@
     </UserControl.Resources>
     <StackPanel Spacing="12">
         <tk:SettingsCard x:Uid="Onboarding_V2_TailscaleCard" Header="Tailscale Serve"
+                         Background="Transparent" BorderThickness="0,1,0,0" CornerRadius="0" Padding="0,14"
                          Description="Private tailnet access, not public Funnel access. Optional and off by default.">
             <ToggleSwitch x:Name="TailscaleToggle" x:Uid="Onboarding_V2_TailscaleToggle"
                           AutomationProperties.Name="Set up Tailscale Serve"
@@ -31,6 +32,7 @@
                          Header="Tailscale auth key" Visibility="Collapsed"
                          PlaceholderText="Kept only for this setup session" PasswordChanged="AuthKey_Changed" />
             <tk:SettingsCard x:Uid="Onboarding_V2_TailscaleTrust"
+                             Background="Transparent" BorderThickness="0,1,0,0" CornerRadius="0" Padding="0,14"
                              Header="Trust Tailscale identities for Gateway authentication"
                              Description="Off by default. Enable only if your tailnet ACLs should participate in Gateway access control.">
                 <ToggleSwitch x:Name="TailscaleTrustAuthToggle" x:Uid="Onboarding_V2_TailscaleTrustToggle"

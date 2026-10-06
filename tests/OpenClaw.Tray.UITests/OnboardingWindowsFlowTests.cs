@@ -1102,7 +1102,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
     private static Task WaitAsync(Func<bool> predicate, string operation) =>
         TestSupport.WaitForRenderedConditionAsync(predicate, operation);
 
-    private static ScrollViewer PageScroll(Page page) => page is CapabilitiesPage or GatewaySetupPage
+    private static ScrollViewer PageScroll(Page page) => page is CapabilitiesPage or GatewaySetupPage or GatewaySetupDetailPage
         ? Assert.IsType<SetupPageShell>(page.Content).Scroller
         : Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<ScrollViewer>());
 
@@ -1281,7 +1281,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
     {
         if (page is CapabilitiesPage)
             return Find<Button>(page, next ? "ContinueButton" : "BackButton");
-        var footer = page is GatewaySetupPage
+        var footer = page is GatewaySetupPage or GatewaySetupDetailPage
             ? Assert.IsType<Grid>(Assert.IsType<SetupPageShell>(page.Content).Footer)
             : Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<Grid>(), grid => Grid.GetRow(grid) == 2);
         return Assert.Single(footer.Children.OfType<Button>(), button => Grid.GetColumn(button) == (next ? 1 : 0));

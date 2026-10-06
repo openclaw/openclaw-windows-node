@@ -7340,6 +7340,8 @@
   <data name="Onboarding_V2_ConsentRecorded" xml:space="preserve"><value>已记录此 WSL 安装的确认。</value></data>
   <data name="Onboarding_V2_ConsentRequired" xml:space="preserve"><value>替换前需要明确确认。</value></data>
   <data name="Onboarding_V2_DetailLocalAi" xml:space="preserve"><value>Local AI</value></data>
+  <data name="Onboarding_V2_DetailSpeech.Text" xml:space="preserve"><value>我们来查看详细信息。</value></data>
+  <data name="Onboarding_V2_DetailIntro.Text" xml:space="preserve"><value>继续之前，请检查这些设置。</value></data>
   <data name="Onboarding_V2_DetailTailscale" xml:space="preserve"><value>Tailscale Serve</value></data>
   <data name="Onboarding_V2_DetailNetworking" xml:space="preserve"><value>WSL 网络同意</value></data>
   <data name="Onboarding_V2_DetailReplacement" xml:space="preserve"><value>替换 WSL Gateway</value></data>
