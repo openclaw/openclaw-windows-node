@@ -697,8 +697,9 @@ public sealed class LocalAiPortLifecycleTests
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var headersSent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var stalled = new CancellationTokenSource();
-        Task accept = AcceptAndHoldBodyAsync(listener, stalled.Token);
+        Task accept = AcceptAndHoldBodyAsync(listener, stalled.Token, headersSent);
         using var temp = new TempDirectory("local-ai-port-");
         LocalAiPaths paths = await PrepareInstallAsync(temp);
         var events = new SynchronizedEventLog();
@@ -711,7 +712,7 @@ public sealed class LocalAiPortLifecycleTests
                 AllowAutoRedirect = false,
                 ConnectTimeout = TimeSpan.FromSeconds(2),
             },
-            timeout: TimeSpan.FromMilliseconds(400));
+            timeout: TimeSpan.FromSeconds(30));
         await using var runtime = CreateRuntime(
             paths,
             host,
@@ -731,6 +732,9 @@ public sealed class LocalAiPortLifecycleTests
                 port);
             Assert.Equal(LocalAiRuntimeState.Failed, snapshot.State);
             Assert.Contains("startup timeout", snapshot.Detail, StringComparison.OrdinalIgnoreCase);
+            Assert.True(headersSent.Task.IsCompletedSuccessfully);
+            Assert.False(accept.IsCompleted);
+            Assert.True(host.Process!.HasExited);
             Assert.True(started.Elapsed < TimeSpan.FromSeconds(8));
         }
         finally
@@ -849,9 +853,8 @@ public sealed class LocalAiPortLifecycleTests
             new FakeLifecycle(events),
             startupTimeout: TimeSpan.FromSeconds(30));
         Task<LocalAiRuntimeSnapshot> starting = runtime.EnsureStartedAsync();
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
-        while (DateTime.UtcNow < deadline && !events.Any(item => item.StartsWith("probe:", StringComparison.Ordinal)))
-            await Task.Delay(10);
+        await client.ProbeEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(starting.IsCompleted);
 
         var disposeStarted = System.Diagnostics.Stopwatch.StartNew();
         await runtime.DisposeAsync();
@@ -2297,15 +2300,11 @@ public sealed class LocalAiPortLifecycleTests
         using var temp = new TempDirectory("local-ai-port-");
         LocalAiPaths paths = await PrepareInstallAsync(temp);
         var events = new SynchronizedEventLog();
-        FakeProcessHost? host = null;
-        var platform = new FakePlatform
-        {
-            AfterDelay = () => host!.Process!.StopException =
-                new IOException("process shutdown failed"),
-        };
-        host = new FakeProcessHost(platform, events, selectedPort: 28_793)
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_793)
         {
             SuppressListener = true,
+            InitialStopException = new IOException("process shutdown failed"),
         };
         await using var runtime = CreateRuntime(
             paths,
@@ -2313,7 +2312,7 @@ public sealed class LocalAiPortLifecycleTests
             platform,
             new FakeClient(events),
             new FakeLifecycle(events),
-            startupTimeout: TimeSpan.FromMilliseconds(2));
+            startupTimeout: TimeSpan.FromSeconds(1));
 
         IOException error = await Assert.ThrowsAsync<IOException>(() => runtime.EnsureStartedAsync());
 
@@ -3538,6 +3537,8 @@ public sealed class LocalAiPortLifecycleTests
 
         public bool ImmediateExit { get; init; }
 
+        public Exception? InitialStopException { get; init; }
+
         public Action<LocalAiProcessStartSpec>? BeforeStart { get; init; }
 
         public Task<ILocalAiManagedProcess> StartProcessAsync(
@@ -3552,7 +3553,10 @@ public sealed class LocalAiPortLifecycleTests
             BeforeStart?.Invoke(spec);
             events.Add("start");
             LastExitCallback = exited;
-            Process = new FakeProcess(4201, platform.UtcNow, platform, events);
+            Process = new FakeProcess(4201, platform.UtcNow, platform, events)
+            {
+                StopException = InitialStopException,
+            };
             if (ImmediateExit)
             {
                 Process.MarkExited();
@@ -3618,6 +3622,9 @@ public sealed class LocalAiPortLifecycleTests
 
         public bool WaitForCancellation { get; init; }
 
+        public TaskCompletionSource ProbeEntered { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         public async Task<LlamaServerRouterProbeResult> ProbeManagedModelAsync(
             Uri endpoint,
             string modelAlias,
@@ -3625,6 +3632,7 @@ public sealed class LocalAiPortLifecycleTests
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            ProbeEntered.TrySetResult();
             if (WaitForCancellation)
                 await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
             ProbedPorts.Add(endpoint.Port);
