@@ -46,7 +46,7 @@ jobs:
           -BaseSha $env:PR_BASE_SHA `
           -HeadSha $env:PR_HEAD_SHA
         $impact = $impactJson | ConvertFrom-Json
-        if ($impact.classification -notin @("docs_only", "targeted", "full")) {
+        if ($impact.classification -notin @("docs_only", "fast_only", "targeted", "full")) {
           throw "Unexpected CI change classification '$($impact.classification)'."
         }
         "classification=$($impact.classification)" >> $env:GITHUB_OUTPUT
