@@ -8242,4 +8242,5 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>La voix Gateway a expiré. La synthèse a pu aboutir. Vérifiez la Gateway avant de réessayer. Aucune nouvelle tentative automatique.</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>La voix Gateway a échoué. Vérifiez sa configuration et le quota du fournisseur. Aucun repli local ni nouvelle tentative automatique.</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows n’a pas pu lire le son. Vérifiez le périphérique de sortie. Aucune nouvelle tentative automatique.</value></data>
+  <data name="Onboarding_NativeConnection_Speech" xml:space="preserve"><value>Vérifions votre connexion.</value></data>
 </root>

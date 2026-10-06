@@ -460,10 +460,12 @@ The preferred minimum is not silently weakened for a smaller monitor. At 100%
 it is 720 x 560 physical pixels; at 150% it is 1080 x 840; at 200% it is
 1440 x 1120. Actual monitor/work-area constraints remain Windows-owned.
 
-The welcome/trust page (`SecurityNoticePage`), WSL review (`GatewaySetupPage`)
+The welcome/trust page (`SecurityNoticePage`), gateway chooser (`WelcomePage`),
+capabilities (`CapabilitiesPage`), alternative routes (`AdvancedSetupPage`),
+WSL review (`GatewaySetupPage`)
 and its details (`GatewaySetupDetailPage`), plus installation (`ProgressPage`
-and `NativeGatewaySetupPage`),
-use `SetupPageShell`.
+and `NativeGatewaySetupPage`) and the native connection editor
+(`SetupNativeConnectionPage`), use `SetupPageShell`.
 Its four presentation slots hold the hero, header, body and fixed footer.
 At an actual shell width of at least 960 DIPs and height of at least 600 DIPs,
 the mascot, speech bubble and milestone rail sit beside the heading and content.
@@ -1437,8 +1439,12 @@ gateway address, a setup code or shared token, and optional SSH host, user and
 ports. SSH uses existing OpenSSH keys/configuration, not a separate key store.
 The browser-only profile route is not implemented through native credentials.
 
-The connection editor shows the Gateway-stage progress indicator above a
-separate row of wrapping Back, Cancel, Check and Next actions.
+The connection editor uses the shared responsive shell with a mascot, speech
+bubble and route-aware Gateway milestone rail. The address, protected setup-code
+and token inputs and optional SSH rows share one vertical
+scroller. Flat native rows retain their existing labels and input controls.
+Back, Cancel, Check and Next remain in a fixed, wrapping footer. Resizing keeps
+the same controls, focus and in-memory draft; it does not recheck or save a connection.
 Connection results stay outside the scrollable form, above the navigation
 actions, so a failed check and its retry guidance remain visible without
 scrolling on shorter windows.

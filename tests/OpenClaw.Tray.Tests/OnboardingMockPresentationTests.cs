@@ -14,7 +14,6 @@ public sealed class OnboardingMockPresentationTests
     [InlineData("WelcomePage")]
     [InlineData("CapabilitiesPage")]
     [InlineData("AdvancedSetupPage")]
-    [InlineData("SetupNativeConnectionPage")]
     [InlineData("WizardPage")]
     [InlineData("AiSetupPage")]
     public void NormalHeaders_KeepFullSizeArtworkAboveWrappedCenteredText(string name)

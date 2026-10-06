@@ -2,6 +2,26 @@ namespace OpenClaw.SetupEngine.Tests;
 
 public sealed class SetupNativeConnectionPageContractTests
 {
+    [Theory]
+    [InlineData("en-us")]
+    [InlineData("fr-fr")]
+    [InlineData("nl-nl")]
+    [InlineData("pt-br")]
+    [InlineData("zh-cn")]
+    [InlineData("zh-tw")]
+    public void EditorStrings_AreLocalizedForEverySupportedLanguage(string language)
+    {
+        var resources = System.Xml.Linq.XDocument.Parse(ReadSource(Path.Combine(
+            "..", "OpenClaw.Tray.WinUI", "Strings", language, "Resources.resw")));
+        foreach (var suffix in new[] { "Title", "Description", "Back", "Cancel", "Speech", "Checking", "Cancelled" })
+        {
+            var key = "Onboarding_NativeConnection_" + suffix;
+            var entry = Assert.Single(resources.Descendants("data"), item => (string?)item.Attribute("name") == key);
+            Assert.False(string.IsNullOrWhiteSpace(entry.Element("value")?.Value));
+            Assert.Contains("\"" + key + "\"", ReadPage());
+        }
+    }
+
     [Fact]
     public void Editor_RevalidatesNextAndRejectsStaleOrPartialCommitSuccess()
     {

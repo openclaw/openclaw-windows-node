@@ -8242,4 +8242,5 @@
   <data name="GatewayVoice_TimedOut" xml:space="preserve"><value>Gateway 语音已超时。合成可能已完成。再次尝试前请检查 Gateway；未进行自动重试。</value></data>
   <data name="GatewayVoice_SynthesisFailed" xml:space="preserve"><value>Gateway 语音失败。请检查其语音配置和提供商配额。未回退到本地或自动重试。</value></data>
   <data name="GatewayVoice_PlaybackFailed" xml:space="preserve"><value>Windows 无法播放语音音频。请检查输出设备。未进行自动重试。</value></data>
+  <data name="Onboarding_NativeConnection_Speech" xml:space="preserve"><value>让我们检查你的连接。</value></data>
 </root>
