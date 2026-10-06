@@ -351,8 +351,53 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.Contains("VisualStateManager.GoToState(this, \"WslRecommendedState\", false)", source);
         Assert.Contains("available ? \"NativeRecommendedState\" : \"WslRecommendedState\"", source);
         Assert.Contains("NativeSupportStatusPanel.Visibility = available ? Visibility.Collapsed : Visibility.Visible", source);
-        Assert.Contains("NativeSupportStatus.Text = available ? \"\" : NativeGatewayEligibilityText.Get(eligibility)", source);
+        Assert.Contains("NativeGatewayEligibilityText.Apply(NativeSupportStatus, eligibility)", source);
+        Assert.Equal(3, source.Split("NativeGatewayEligibilityText.ApplyPlain(", StringSplitOptions.None).Length - 1);
         Assert.Contains("CreatePeerForElement(NativeSupportStatus)", source);
+        var eligibilityText = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.SetupEngine.UI", "NativeGatewayEligibilityText.cs"));
+        Assert.Contains("AutomationProperties.SetName(target, text)", eligibilityText);
+        Assert.Contains("target.ClearValue(AutomationProperties.NameProperty)", eligibilityText);
+    }
+
+    [Fact]
+    public void Welcome_NativeUnavailableEmphasisTokensRemainLocalizedSubstrings()
+    {
+        var stringsDir = Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Strings");
+
+        foreach (var directory in Directory.GetDirectories(stringsDir))
+        {
+            var resources = XDocument.Load(Path.Combine(directory, "Resources.resw"))
+                .Descendants("data")
+                .ToDictionary(
+                    element => (string)element.Attribute("name")!,
+                    element => element.Element("value")?.Value ?? "");
+            string guidance = resources["Onboarding_Native_SupportUnavailable"];
+            var ranges = new List<(int Start, int Length)>();
+
+            foreach (var suffix in new[]
+                     {
+                         "Lead",
+                         "ComingSoon",
+                         "InsiderProgram",
+                         "Channels",
+                         "WindowsVersion",
+                         "WindowsUpdate",
+                     })
+            {
+                string emphasis = resources[$"Onboarding_Native_SupportUnavailable{suffix}"];
+                Assert.False(string.IsNullOrWhiteSpace(emphasis));
+                int start = guidance.IndexOf(emphasis, StringComparison.Ordinal);
+                Assert.True(start >= 0, $"{suffix} is not a substring in {directory}");
+                ranges.Add((start, emphasis.Length));
+            }
+
+            ranges.Sort((left, right) => left.Start.CompareTo(right.Start));
+            Assert.All(ranges.Zip(ranges.Skip(1)), pair =>
+                Assert.True(pair.First.Start + pair.First.Length <= pair.Second.Start));
+        }
     }
 
     [Fact]

@@ -805,11 +805,13 @@ outside the disabled native option so the Windows Update action stays usable.
 The support card is hidden when native capability is available.
 
 When capability is unavailable, **Open Windows Update** opens
-`ms-settings:windowsupdate`. Guidance tells users to update Windows to a version
-that supports the native Gateway. If the update is not available yet, users can
-join the Windows Insider Program and select Windows 11, version 26H1 with the
-Beta or Experimental channel. The update may take a few minutes to appear in
-Windows Update. Reopening the page reruns the check; the Welcome page has no
+`ms-settings:windowsupdate`. Guidance tells users to update to a Windows version
+that supports the native Gateway. It says support is coming soon to all devices
+and, until broad availability, directs users to join the Windows Insider
+Program and select the Beta or Experimental channel for Windows 11, version
+26H1. After enrolling, users return to **Settings > Windows Update**, check for
+updates, and may need to wait a few minutes for the update to appear. Reopening
+the page reruns the check; the Welcome page has no
 **Check again** button.
 Feature rollout varies; a negative native API result is not proof
 that the build alone is the cause. Probe failures or missing/invalid metadata

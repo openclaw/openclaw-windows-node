@@ -7713,7 +7713,17 @@ Vos paramètres, votre passerelle, vos fichiers et vos modèles restent en place
   <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>Installer un Gateway WSL local</value></data>
   <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>Vérification de la prise en charge du Gateway natif...</value></data>
   <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>Le Gateway natif est pris en charge sur cet appareil.</value></data>
-  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>Mettez Windows à jour vers une version compatible avec le Gateway natif. Si la mise à jour n'est pas encore disponible, rejoignez le programme Windows Insider et sélectionnez Windows 11, version 26H1 avec le canal Bêta ou Expérimental. L'affichage de la mise à jour dans Windows Update peut prendre quelques minutes.</value></data>
+  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>Pour utiliser le Gateway natif, mettez votre appareil à jour vers une version de Windows compatible.
+
+La prise en charge du Gateway natif sera bientôt disponible sur tous les appareils. En attendant sa disponibilité générale, rejoignez le programme Windows Insider et sélectionnez le canal Bêta ou Expérimental pour Windows 11 version 26H1.
+
+Après votre inscription, revenez dans Paramètres &gt; Windows Update et recherchez les mises à jour. L'affichage de la mise à jour peut prendre quelques minutes.</value></data>
+  <data name="Onboarding_Native_SupportUnavailableLead" xml:space="preserve"><value>Pour utiliser le Gateway natif, mettez votre appareil à jour vers une version de Windows compatible.</value></data>
+  <data name="Onboarding_Native_SupportUnavailableComingSoon" xml:space="preserve"><value>sera bientôt disponible sur tous les appareils.</value></data>
+  <data name="Onboarding_Native_SupportUnavailableInsiderProgram" xml:space="preserve"><value>programme Windows Insider</value></data>
+  <data name="Onboarding_Native_SupportUnavailableChannels" xml:space="preserve"><value>Bêta ou Expérimental</value></data>
+  <data name="Onboarding_Native_SupportUnavailableWindowsVersion" xml:space="preserve"><value>Windows 11 version 26H1.</value></data>
+  <data name="Onboarding_Native_SupportUnavailableWindowsUpdate" xml:space="preserve"><value>Paramètres &gt; Windows Update</value></data>
   <data name="Onboarding_Native_SupportCheckFailed" xml:space="preserve"><value>Impossible de vérifier la prise en charge du Gateway natif. Rouvrez cette page pour réessayer. Si la vérification échoue à nouveau, mettez à jour ou réparez Companion.</value></data>
   <data name="Onboarding_Native_UnsupportedPlatform" xml:space="preserve"><value>La configuration du Gateway natif nécessite une version cliente de Windows prise en charge. Windows Server n'est pas pris en charge.</value></data>
   <data name="Onboarding_Native_WindowsUpdate.Content" xml:space="preserve"><value>Ouvrir Windows Update</value></data>

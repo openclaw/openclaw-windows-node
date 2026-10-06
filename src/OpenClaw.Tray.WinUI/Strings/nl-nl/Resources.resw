@@ -7714,7 +7714,17 @@ Uw instellingen, gateway, bestanden en modellen blijven op hun plaats.</value>
   <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>Een lokale WSL Gateway installeren</value></data>
   <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>Ondersteuning voor de native Gateway controleren...</value></data>
   <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>De native Gateway wordt ondersteund op dit apparaat.</value></data>
-  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>Werk Windows bij naar een versie die de native Gateway ondersteunt. Als de update nog niet beschikbaar is, neem dan deel aan het Windows Insider-programma en selecteer Windows 11, versie 26H1 met het Beta- of Experimental-kanaal. Het kan enkele minuten duren voordat de update in Windows Update wordt weergegeven.</value></data>
+  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>Als u de native Gateway wilt gebruiken, werkt u uw apparaat bij naar een Windows-versie die dit ondersteunt.
+
+Ondersteuning voor de native Gateway is binnenkort beschikbaar op alle apparaten. Totdat deze algemeen beschikbaar is, neemt u deel aan het Windows Insider-programma en selecteert u het Beta- of Experimental-kanaal voor Windows 11, versie 26H1.
+
+Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op updates. Het kan enkele minuten duren voordat de update wordt weergegeven.</value></data>
+  <data name="Onboarding_Native_SupportUnavailableLead" xml:space="preserve"><value>Als u de native Gateway wilt gebruiken, werkt u uw apparaat bij naar een Windows-versie die dit ondersteunt.</value></data>
+  <data name="Onboarding_Native_SupportUnavailableComingSoon" xml:space="preserve"><value>is binnenkort beschikbaar op alle apparaten.</value></data>
+  <data name="Onboarding_Native_SupportUnavailableInsiderProgram" xml:space="preserve"><value>Windows Insider-programma</value></data>
+  <data name="Onboarding_Native_SupportUnavailableChannels" xml:space="preserve"><value>Beta- of Experimental</value></data>
+  <data name="Onboarding_Native_SupportUnavailableWindowsVersion" xml:space="preserve"><value>Windows 11, versie 26H1.</value></data>
+  <data name="Onboarding_Native_SupportUnavailableWindowsUpdate" xml:space="preserve"><value>Instellingen &gt; Windows Update</value></data>
   <data name="Onboarding_Native_SupportCheckFailed" xml:space="preserve"><value>De ondersteuning voor de native Gateway kon niet worden gecontroleerd. Open deze pagina opnieuw om het nogmaals te proberen. Als de controle blijft mislukken, werk Companion dan bij of herstel de app.</value></data>
   <data name="Onboarding_Native_UnsupportedPlatform" xml:space="preserve"><value>Voor het instellen van de native Gateway is een ondersteunde Windows-client vereist. Windows Server wordt niet ondersteund.</value></data>
   <data name="Onboarding_Native_WindowsUpdate.Content" xml:space="preserve"><value>Windows Update openen</value></data>

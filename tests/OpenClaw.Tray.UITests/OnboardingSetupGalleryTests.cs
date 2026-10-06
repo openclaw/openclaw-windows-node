@@ -534,7 +534,10 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                                     available ? Visibility.Collapsed : Visibility.Visible;
                                 Find<StackPanel>(welcome, "NativeSupportStatusPanel").Visibility =
                                     available ? Visibility.Collapsed : Visibility.Visible;
-                                Find<TextBlock>(welcome, "NativeSupportStatus").Text =
+                                var nativeStatus = Find<TextBlock>(welcome, "NativeSupportStatus");
+                                nativeStatus.Inlines.Clear();
+                                nativeStatus.ClearValue(AutomationProperties.NameProperty);
+                                nativeStatus.Text =
                                     available ? "" : "Synthetic unavailable host. Windows update required.";
                                 Assert.True(VisualStateManager.GoToState(welcome,
                                     available ? "NativeRecommendedState" : "WslRecommendedState", false));
