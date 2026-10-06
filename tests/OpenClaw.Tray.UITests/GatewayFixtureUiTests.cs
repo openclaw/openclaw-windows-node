@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text.Json;
 using System.Windows.Automation;
 using OpenClaw.GatewayFixtureHost;
@@ -21,7 +20,7 @@ public sealed class GatewayFixtureUiFactAttribute : FactAttribute
 }
 
 [Collection("Gateway fixture UI")]
-public sealed class GatewayFixtureUiTests(ITestOutputHelper output)
+public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
 {
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
@@ -352,19 +351,21 @@ public sealed class GatewayFixtureUiTests(ITestOutputHelper output)
     }
 
     private async Task WithAppAsync(Func<GatewayFixtureRun, Task> test, bool allowAgentCreation = false,
-        bool requireAgentSelection = false)
+        bool requireAgentSelection = false, GatewayScenario? scenario = null,
+        Func<GatewayFixtureProfile, string>? prepareSetupHandoff = null)
     {
         var appPath = Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_APP")
             ?? throw new InvalidOperationException("Set OPENCLAW_GATEWAY_FIXTURE_APP to the freshly built app. No installed-app fallback is allowed.");
         await using var run = await GatewayFixtureRun.StartAsync(appPath,
             Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS"),
-            allowAgentCreation: allowAgentCreation, requireAgentSelection: requireAgentSelection);
+            allowAgentCreation: allowAgentCreation, requireAgentSelection: requireAgentSelection,
+            scenario: scenario, prepareSetupHandoff: prepareSetupHandoff);
         output.WriteLine($"Fixture run {run.Profile.RunId}, PID {run.AppProcessId}, artifacts: {run.ArtifactsDirectory}");
         try
         {
             // UIA is synchronous and can block inside a hung app. Keep the deadline
             // outside that worker so failure reporting and owned-process cleanup still run.
-            await Task.Run(() => test(run)).WaitAsync(TimeSpan.FromSeconds(90)).ConfigureAwait(false);
+            await Task.Run(() => test(run)).WaitAsync(TimeSpan.FromSeconds(150)).ConfigureAwait(false);
             run.EnsureRunning();
             Assert.Empty(run.Gateway.UnexpectedRequests);
             var crashLog = Path.Combine(run.Profile.DataDirectory, "crash.log");
@@ -526,29 +527,12 @@ public sealed class GatewayFixtureUiTests(ITestOutputHelper output)
         }, description);
     }
 
-    private static async Task CaptureIfRequestedAsync(GatewayFixtureRun run, string name)
+    private static Task CaptureIfRequestedAsync(GatewayFixtureRun run, string name)
     {
         if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") != "1")
-            return;
-        var path = Path.Combine(run.ArtifactsDirectory, name);
-        var start = new ProcessStartInfo("winapp")
-        {
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true
-        };
-        foreach (var argument in new[] { "ui", "screenshot", "-a", run.AppProcessId.ToString(), "-o", path })
-            start.ArgumentList.Add(argument);
-        using var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start winapp screenshot capture.");
-        var stdout = process.StandardOutput.ReadToEndAsync();
-        var stderr = process.StandardError.ReadToEndAsync();
-        try { await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(20)); }
-        catch (TimeoutException)
-        {
-            process.Kill(entireProcessTree: true);
-            throw;
-        }
-        Assert.True(process.ExitCode == 0 && File.Exists(path),
-            $"Screenshot failed: {await stdout} {await stderr}");
+            return Task.CompletedTask;
+        OwnedWindowCapture.Save(run, AppWindows(run).OrderByDescending(window =>
+            window.Current.BoundingRectangle.Width * window.Current.BoundingRectangle.Height).First(), name);
+        return Task.CompletedTask;
     }
 }

@@ -385,6 +385,20 @@ public sealed class AccessibilityAppFixture : IDisposable
         await WaitForPageMarkerAsync("chat", "WorkspaceNavigation");
     }
 
+    /// <summary>Waits until the current Hub window owns the foreground so synthesized keyboard input reaches it.</summary>
+    internal async Task EnsureHubForegroundAsync()
+    {
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            if (GetForegroundWindow() == HubWindowHandle) return;
+            _ = BringWindowToTop(HubWindowHandle);
+            _ = SetForegroundWindow(HubWindowHandle);
+            await Task.Delay(100);
+        }
+        if (GetForegroundWindow() != HubWindowHandle)
+            throw new InvalidOperationException("Could not foreground the Hub window for keyboard input.");
+    }
+
     private Process StartProcess(string? deepLink)
     {
         var startInfo = new ProcessStartInfo(_executablePath)

@@ -13,9 +13,10 @@ infrastructure changes. Those fail-closed pull requests run the x64 publish
 smoke only; ARM64 portable publish remains required on `main` and tags.
 When either release-build lane is selected, CI also builds both architectures
 of Dev-signed and unsigned Store MSIX **workflow artifacts**. CI Gate requires
-that MSIX job to succeed. Every tag release also attaches the unsigned Store
-MSIX bundle, standalone packages, and metadata for manual Partner Center
-submission. Dev-signed packages stay in Actions.
+that MSIX job to succeed. Every tag release also attaches the signed Dev MSIX
+packages with their matching public certificates, provenance metadata, and
+installation instructions. Unsigned Store packages stay in Actions for manual
+Partner Center submission.
 
 ## Inno-to-Store migration foundation
 
@@ -395,7 +396,7 @@ migration proof.
      "Verify Release Binary Signing Policy", `
      "OpenClaw.Tray.WinUI.exe", `
      "build-msix:", `
-     "Stage Store MSIX release assets"
+     "Stage signed Dev MSIX release assets"
    ```
 
 3. Create a new stable, stable correction, or prerelease tag from `origin/main`.
@@ -458,9 +459,9 @@ Stable, stable-correction, and alpha tags use the same signed CI release pipelin
   numeric-suffix tag, including malformed ones such as `-0` and `-03`, is routed
   through the validator rather than silently classified by GitVersion.
 - `vX.Y.Z-alpha.N` creates a prerelease that stable updater checks do not offer.
-  It also includes unsigned x64/ARM64 Store submission MSIX files and their
-  metadata, not Dev-signed installers. The pre-release is visible on GitHub's
-  Releases page but is not promoted as Latest.
+  Like every canonical tag, it includes signed x64/ARM64 Dev MSIX ZIPs with
+  their matching public certificates and instructions. The pre-release is
+  visible on GitHub's Releases page but is not promoted as Latest.
   The daily workflow evaluates the default branch at 2:00 PM Pacific, skips a
   head already represented by a published release, and defers while an
   unpublished non-alpha tag points at the head. After each successful alpha
@@ -533,22 +534,19 @@ Current release artifacts are:
 
 Every stable, correction, and prerelease additionally contains:
 
-- `OpenClaw.msixbundle` (recommended Partner Center submission input)
-- `OpenClaw-x64.msix` and `OpenClaw-arm64.msix`
-- `OpenClaw-x64.msix-metadata.json` and
-  `OpenClaw-arm64.msix-metadata.json`
+- `OpenClaw-Dev-x64.zip`
+- `OpenClaw-Dev-arm64.zip`
 
-These are **unsigned Store submission inputs, not installers**. Upload the
-bundle to Partner Center for one architecture-selecting submission. The
-standalone packages remain available for inspection or fallback. Microsoft
-signs accepted Store submissions. The release step checks both
-architectures' clean source provenance, identity, version, and package hashes,
-then proves that the bundle embeds those exact bytes. It fails rather than
-publishing a partial or mismatched set.
+Each archive contains the signed Dev-identity MSIX, its matching public
+certificate, `msix-metadata.json`, and `INSTALL.txt`. These packages are
+development-signed for sideloading, not Microsoft Store-signed. Testers must
+extract the matching architecture archive and follow its instructions,
+including explicitly trusting the included public certificate.
 
-Dev-signed tester MSIX packages, public certificates, and instructions remain
-Actions artifacts only. No production signing step is applied to the unsigned
-Store packages.
+Unsigned Store submission packages, the multi-architecture bundle, and their
+metadata remain Actions artifacts only. Upload the unsigned bundle to Partner
+Center for one architecture-selecting submission. No production signing step
+is applied to those Store inputs.
 
 Store distribution remains paused: automatic Partner Center submission,
 Store-signed retrieval and publication, and official lifecycle acceptance
@@ -625,14 +623,16 @@ Preview candidates never reserve a number and can change between reruns;
 they must not be treated as official Store submissions.
 
 The release stager requires `-VersionInfoPath` for the exact reserved result. It
-checks the app version, source commit, reserved allocation, package
-version, and both architectures' metadata before copying any assets:
+checks the app version, source commit, workflow run, reserved allocation,
+package and certificate hashes, Dev identity, signature presence, version, and
+both architectures' metadata before creating any release ZIPs:
 
 ```powershell
-.\scripts\Stage-StoreMsixReleaseAssets.ps1 `
+.\scripts\Stage-DevMsixReleaseAssets.ps1 `
   -ArtifactDirectory 'artifacts\msix-release' `
   -OutputDirectory 'msix-release' `
   -Version $appVersion -ExpectedSourceCommit $sourceCommit `
+  -ExpectedRevision $runNumber -ExpectedWorkflowRunId $runId `
   -VersionInfoPath $reservedVersionInfoPath
 ```
 
@@ -768,8 +768,9 @@ validation. Release tags cannot enter the `release` job until **CI Gate**
 confirms classification, fast validation, tests, E2E, and release builds all
 succeeded. The `build-msix` and `build-msix-bundle` jobs must also succeed
 whenever release metadata is required. The release job downloads and attaches
-its unsigned Store bundle, standalone packages, and metadata for every
-canonical tag. Dev tester distribution stays workflow-only.
+its signed x64 and ARM64 Dev packages, public certificates, metadata, and
+instructions for every canonical tag. Unsigned Store distribution stays
+workflow-only.
 
 The release job should:
 
@@ -780,10 +781,10 @@ The release job should:
 5. Create the portable x64 and ARM64 ZIPs.
 6. Build Inno installers.
 7. Sign installers.
-8. Stage the validated unsigned Store MSIX
-   bundle, standalone packages, and metadata.
+8. Stage the validated signed Dev MSIX packages and their public-only support
+   files into architecture-specific ZIPs.
 9. Create a GitHub release whose prerelease flag matches the tag, with installer
-   and portable ZIP assets plus the Store submission assets.
+   and portable ZIP assets plus the signed Dev MSIX ZIPs.
 
 ## Post-release verification
 
@@ -801,6 +802,9 @@ Expected:
 - Stable tags: `isPrerelease` is `false`.
 - Alpha tags: `isPrerelease` is `true` and `isLatest` is `false`.
 - Installer EXEs are signed.
+- `OpenClaw-Dev-x64.zip` and `OpenClaw-Dev-arm64.zip` are present, and each
+  contains the signed MSIX, matching public certificate, metadata, and
+  `INSTALL.txt`.
 - In ZIP payload:
   - `OpenClaw.Tray.WinUI.exe` is OpenClaw-signed.
   - All listed OpenClaw-owned DLLs are OpenClaw-signed.

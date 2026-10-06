@@ -1392,6 +1392,76 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
     }
 
     [Fact]
+    public async Task LocalAi_ReadinessTimeoutReportsCardStateWithoutInvoking()
+    {
+        var host = new PageLocalAiHost(LocalAiOnboardingState.Use);
+        await WithPageAsync(async (page, _, completed) =>
+        {
+            var card = Find<SettingsCard>(page, "LocalAiCard");
+            await TestSupport.WaitForSettingsCardReadyAsync(page, card);
+            card.IsClickEnabled = false;
+            var error = await Assert.ThrowsAnyAsync<Xunit.Sdk.XunitException>(() => InvokeLocalAiAsync(page));
+            Assert.Contains("AiSetupPage.LocalAiCard ready for invocation", error.Message);
+            Assert.Contains("IsLoaded=True", error.Message);
+            Assert.Contains("IsEnabled=True", error.Message);
+            Assert.Contains("IsClickEnabled=False", error.Message);
+            Assert.Contains("PageHasXamlRoot=True", error.Message);
+            Assert.Contains("SameXamlRoot=True", error.Message);
+            Assert.Equal(0, host.Actions);
+            Assert.Equal(0, completed());
+        }, localAiHost: host);
+    }
+
+    [Theory]
+    [InlineData("IsLoaded")]
+    [InlineData("IsEnabled")]
+    [InlineData("IsClickEnabled")]
+    public async Task LocalAi_InvocationWaitsForCardReadiness(string condition)
+    {
+        var host = new PageLocalAiHost(LocalAiOnboardingState.Use);
+        await WithPageAsync(async (page, _, completed) =>
+        {
+            var card = Find<SettingsCard>(page, "LocalAiCard");
+            var section = Find<StackPanel>(page, "LocalAiSection");
+            await TestSupport.WaitForSettingsCardReadyAsync(page, card);
+            var index = section.Children.IndexOf(card);
+            Task? invocation = null;
+            try
+            {
+                switch (condition)
+                {
+                    case "IsLoaded":
+                        section.Children.RemoveAt(index);
+                        await TestSupport.WaitForRenderedConditionAsync(() => !card.IsLoaded, "Local AI card Unloaded");
+                        break;
+                    case "IsEnabled":
+                        card.IsEnabled = false;
+                        break;
+                    case "IsClickEnabled":
+                        card.IsClickEnabled = false;
+                        break;
+                }
+                invocation = InvokeCardAsync(card);
+                await ui.YieldToRenderAsync();
+                Assert.False(invocation.IsCompleted, $"Invocation must wait for {condition}.");
+                Assert.Equal(0, host.Actions);
+                Assert.Equal(0, completed());
+            }
+            finally
+            {
+                if (!section.Children.Contains(card))
+                    section.Children.Insert(index, card);
+                card.IsEnabled = true;
+                card.IsClickEnabled = true;
+                if (invocation is not null)
+                    await invocation;
+            }
+            await WaitAsync(() => completed() == 1);
+            Assert.Equal(1, host.Actions);
+        }, localAiHost: host);
+    }
+
+    [Fact]
     public async Task LocalAi_PreStartTargetRejectionRestoresChoicesInsteadOfVerificationOnly()
     {
         var host = new PageLocalAiHost(LocalAiOnboardingState.StartAndUse)
@@ -1740,8 +1810,14 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             "RecommendedInstallCard" => "RecommendedInstall_Click",
             _ => throw new InvalidOperationException($"Unsupported AI setup card: {card.Name}")
         };
+        return InvokeReadyCardAsync(page, card, handler);
+    }
+
+    private async Task InvokeReadyCardAsync(AiSetupPage page, SettingsCard card, string handler)
+    {
+        await TestSupport.WaitForSettingsCardReadyAsync(page, card);
         TestSupport.InvokeSettingsCardAction(page, card, handler);
-        return ui.YieldToRenderAsync();
+        await ui.YieldToRenderAsync();
     }
 
     private sealed class PageTransport(bool focusedSupported) : IGatewayAiSetupTransport

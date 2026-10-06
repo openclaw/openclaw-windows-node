@@ -244,5 +244,5 @@ public sealed partial class SetupNativeConnectionPage : Page, IAsyncDisposable
             throw new InvalidOperationException(_incompleteCommitError);
     }
 
-    private static string S(string key) => SetupLocalization.GetString("Onboarding_Native_" + key);
+    private static string S(string key) => SetupLocalization.GetString("Onboarding_NativeConnection_" + key);
 }

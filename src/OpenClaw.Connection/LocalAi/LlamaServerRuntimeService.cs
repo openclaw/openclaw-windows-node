@@ -24,7 +24,17 @@ public sealed record LlamaServerRuntimeOptions
     public ILocalAiEndpointLifecycle EndpointLifecycle { get; init; } = NullLocalAiEndpointLifecycle.Instance;
     public Func<string?>? GetApiKey { get; init; }
     public Func<LocalAiResolvedInstall, int?>? GetRecoveryPort { get; init; }
-    public TimeSpan StartupTimeout { get; init; } = TimeSpan.FromSeconds(15);
+    /// <summary>
+    /// Maps Companion-visible paths to the physical paths visible to the native child.
+    /// Persisted Local AI paths remain canonical and logical.
+    /// </summary>
+    public Func<string, string> ResolveChildProcessPath { get; init; } = LocalAiChildProcessPathResolver.Resolve;
+    /// <summary>
+    /// The first start after an install pays a Windows Defender scan of the freshly
+    /// extracted ~700 MB CUDA runtime (measured 26.0 s cold, 0.17 s once cached), and a
+    /// later signature update can invalidate that cache and charge it again.
+    /// </summary>
+    public TimeSpan StartupTimeout { get; init; } = TimeSpan.FromSeconds(90);
     public TimeSpan HealthPollInterval { get; init; } = TimeSpan.FromMilliseconds(250);
     public TimeSpan ShutdownTimeout { get; init; } = TimeSpan.FromSeconds(10);
     public TimeSpan RestartDelay { get; init; } = TimeSpan.FromSeconds(2);
@@ -114,6 +124,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
     private readonly ILlamaServerClient _client;
     private readonly ILocalAiModelFileVerifier _modelFileVerifier;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
+    private readonly CancellationTokenSource _lifetime = new();
     private readonly object _exitTasksGate = new();
     private readonly HashSet<Task> _exitTasks = [];
     private readonly object _snapshotGate = new();
@@ -484,16 +495,20 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                 .ConfigureAwait(false);
         }
 
-        LlamaServerRouterLaunchPlan launchPlan;
+        LocalAiProcessStartSpec spec;
         try
         {
             await ValidateInstalledFilesAsync(install, cancellationToken).ConfigureAwait(false);
             LocalAiPortPolicy.Validate(requestedPort);
-            launchPlan = LlamaServerRouterConfiguration.BuildForVerifiedRuntime(
+            _runtimeModelPath = ResolveChildProcessPath(GetRuntimeModelPath(install));
+            string? draftModelPath = GetRuntimeDraftModelPath();
+            if (draftModelPath is not null)
+                draftModelPath = ResolveChildProcessPath(draftModelPath);
+            LlamaServerRouterLaunchPlan launchPlan = LlamaServerRouterConfiguration.BuildForVerifiedRuntime(
                 _options.Paths,
                 install,
-                GetRuntimeModelPath(install),
-                GetRuntimeDraftModelPath(),
+                _runtimeModelPath,
+                draftModelPath,
                 requestedPort);
             if (_options.GetApiKey?.Invoke() is { } apiKey)
                 launchPlan = launchPlan with
@@ -502,6 +517,17 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                         "LLAMA_API_KEY", LocalAiApiCredentialStore.RequireApiKey(apiKey)),
                 };
             await WritePresetAtomicallyAsync(launchPlan, cancellationToken).ConfigureAwait(false);
+            launchPlan = ResolveChildProcessLaunchPlan(launchPlan);
+            spec = new LocalAiProcessStartSpec(
+                ResolveChildProcessPath(install.ExecutablePath),
+                ResolveChildProcessPath(Path.GetDirectoryName(install.ExecutablePath)!),
+                launchPlan.Arguments,
+                launchPlan.Environment,
+                _options.Paths.StandardOutputLogPath,
+                _options.Paths.StandardErrorLogPath,
+                _options.MaxLogBytes,
+                _options.LogBackupCount,
+                _options.MaxLogLineCharacters);
         }
         catch (OperationCanceledException)
         {
@@ -521,29 +547,24 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
 
         long generation = ++_generation;
         Publish(LocalAiRuntimeState.Starting, LocalAiOwnership.CompanionManaged, "Starting the local AI router.");
-        var spec = new LocalAiProcessStartSpec(
-            install.ExecutablePath,
-            Path.GetDirectoryName(install.ExecutablePath)!,
-            launchPlan.Arguments,
-            launchPlan.Environment,
-            _options.Paths.StandardOutputLogPath,
-            _options.Paths.StandardErrorLogPath,
-            _options.MaxLogBytes,
-            _options.LogBackupCount,
-            _options.MaxLogLineCharacters);
 
         try
         {
+            using var startupTimeout = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                _lifetime.Token);
+            startupTimeout.CancelAfter(_options.StartupTimeout);
+            CancellationToken startToken = startupTimeout.Token;
             _managedProcess = await _processHost.StartProcessAsync(
                     spec,
                     exit => OnManagedProcessExited(generation, exit),
-                    cancellationToken)
+                    startToken)
                 .ConfigureAwait(false);
 
             DateTimeOffset deadline = _platform.UtcNow + _options.StartupTimeout;
             while (_platform.UtcNow < deadline)
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                startToken.ThrowIfCancellationRequested();
                 if (_managedProcess.HasExited)
                     throw new InvalidOperationException("Managed llama-server exited during startup.");
 
@@ -573,7 +594,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                             ownership.Endpoint,
                             install.Manifest.ModelAlias,
                             runtimeModelPath,
-                            cancellationToken)
+                            startToken)
                         .ConfigureAwait(false);
                     if (probe.IsReadyForManagedModel(runtimeModelPath))
                     {
@@ -601,13 +622,23 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                     }
                 }
 
-                await _platform.DelayAsync(_options.HealthPollInterval, cancellationToken).ConfigureAwait(false);
+                await _platform.DelayAsync(_options.HealthPollInterval, startToken).ConfigureAwait(false);
             }
 
             return await FailStartupAsync(
                     LocalAiRuntimeState.Failed,
                     "The local AI router did not become healthy before the startup timeout.",
                     install)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (
+            !cancellationToken.IsCancellationRequested &&
+            !_lifetime.IsCancellationRequested)
+        {
+            return await FailStartupAsync(
+                    LocalAiRuntimeState.Failed,
+                    "The local AI router did not become healthy before the startup timeout.",
+                    _install ?? install)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -627,6 +658,29 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                     _install ?? install)
                 .ConfigureAwait(false);
         }
+    }
+
+    private LlamaServerRouterLaunchPlan ResolveChildProcessLaunchPlan(LlamaServerRouterLaunchPlan launchPlan)
+    {
+        string physicalPresetPath = ResolveChildProcessPath(launchPlan.PresetPath);
+        var arguments = launchPlan.Arguments.ToBuilder();
+        int presetFlag = arguments.IndexOf("--models-preset");
+        if (presetFlag < 0 || presetFlag + 1 >= arguments.Count)
+            throw new InvalidDataException("The llama-server launch plan is missing its models preset path.");
+        arguments[presetFlag + 1] = physicalPresetPath;
+        return launchPlan with
+        {
+            Arguments = arguments.MoveToImmutable(),
+            PresetPath = physicalPresetPath,
+        };
+    }
+
+    private string ResolveChildProcessPath(string path)
+    {
+        string resolved = _options.ResolveChildProcessPath(path);
+        if (string.IsNullOrWhiteSpace(resolved) || !Path.IsPathFullyQualified(resolved))
+            throw new InvalidDataException("A Local AI child-process path did not resolve to an absolute path.");
+        return Path.GetFullPath(resolved);
     }
 
     private async Task<LocalAiRuntimeSnapshot> RefreshCoreAsync(CancellationToken cancellationToken)
@@ -1040,6 +1094,15 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
     {
         if (!File.Exists(install.ExecutablePath))
             throw new InvalidDataException("The managed llama-server executable is missing.");
+        string implementationLibrary = Path.Combine(
+            Path.GetDirectoryName(install.ExecutablePath)!,
+            LlamaRuntimeCatalog.ServerImplementationLibraryName);
+        if (!File.Exists(implementationLibrary) ||
+            (File.GetAttributes(implementationLibrary) & FileAttributes.ReparsePoint) != 0)
+        {
+            throw new InvalidDataException(
+                "The managed llama-server implementation library is missing or unsafe.");
+        }
         if (install.Manifest.UsesHubCache)
         {
             if (!File.Exists(install.ModelPath))
@@ -1538,7 +1601,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                     LocalAiRuntimeSnapshot restarted;
                     try
                     {
-                        restarted = await EnsureStartedCoreAsync(CancellationToken.None)
+                        restarted = await EnsureStartedCoreAsync(_lifetime.Token)
                             .ConfigureAwait(false);
                     }
                     catch
@@ -1763,6 +1826,8 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         if (Interlocked.Exchange(ref _disposeStarted, 1) != 0)
             return;
 
+        _lifetime.Cancel();
+
         Task[] exitTasks;
         lock (_exitTasksGate)
         {
@@ -1811,6 +1876,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         {
             await Task.WhenAll(exitTasks).ConfigureAwait(false);
             _operationGate.Dispose();
+            _lifetime.Dispose();
         }
     }
 
@@ -1848,6 +1914,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(options.Paths);
+        ArgumentNullException.ThrowIfNull(options.ResolveChildProcessPath);
         ArgumentNullException.ThrowIfNull(options.EndpointLifecycle);
         if (!options.InitialEndpoint.IsAbsoluteUri ||
             options.InitialEndpoint.Scheme != Uri.UriSchemeHttp ||

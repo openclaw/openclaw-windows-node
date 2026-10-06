@@ -83,7 +83,7 @@ static class FluentIconCatalog
     public const string ChevronDown = "\uE70D";    // ChevronDown
     public const string Stop = "\uE71A";           // Stop
     public const string ChatSubmit = "\uE74A";     // Up, specific to sending a chat turn
-    public const string ChatAttach = Add;         // Add, opens the existing attachment picker
+    public const string ChatAttach = "\uE723";     // Paperclip, opens the existing attachment picker
     public const string Check = "\uE73E";          // CheckMark
 
     // ── Diagnostics page glyphs ────────────────────────────────────

@@ -25,7 +25,7 @@ internal sealed record SetupNativeNavigationRequest(SetupNativeCompletion Comple
         var client = manager?.OperatorClient;
         var snapshot = manager?.CurrentSnapshot;
         if (manager is null || client is null || snapshot is null)
-            throw new InvalidOperationException("The verified Gateway is not connected.");
+            throw new SetupNativeConnectionUnavailableException();
         RequireCurrent(active, snapshot.GatewayId, client.MainSessionKey,
             client.IsConnectedToGateway && snapshot.OperatorState == RoleConnectionState.Connected);
         if (registry is null || string.IsNullOrWhiteSpace(client.AuthenticatedSigningDeviceId) ||
@@ -48,11 +48,14 @@ internal sealed record SetupNativeNavigationRequest(SetupNativeCompletion Comple
             GatewayDashboardBinding.Capture(active) != Completion.Verification.EndpointBinding ||
             !Completion.Target.Matches(Completion.Verification))
             throw new SetupNativeOwnershipException();
-        if (!connected) throw new InvalidOperationException("The verified Gateway is not connected.");
+        if (!connected) throw new SetupNativeConnectionUnavailableException();
         if (connectedGatewayId != Completion.Verification.GatewayId || sessionKey != Completion.Target.SessionKey)
             throw new SetupNativeOwnershipException();
     }
 }
+
+internal sealed class SetupNativeConnectionUnavailableException()
+    : InvalidOperationException("The verified Gateway is not connected.");
 
 internal sealed class SetupNativeChatBinding
 {

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Validates a signed Dev MSIX and stages a public-only CI tester download.
+    Validates a signed Dev MSIX and stages a public tester download.
 .DESCRIPTION
     Requires exactly one package from the current build. Verifies its Dev
     identity, architecture, version, and trusted signature before exporting
@@ -124,7 +124,7 @@ $certificateHash = (Get-FileHash -LiteralPath $certificatePath -Algorithm SHA256
 
 $allocationNote = if ($versionInfo) { $versionInfo.allocation } else { 'unallocated local build' }
 @"
-OpenClaw (Dev) CI tester package ($Architecture)
+OpenClaw (Dev) signed tester package ($Architecture)
 
 This is NOT a Microsoft Store-signed release. Install only from a workflow
 and source revision you trust. Pull request builds can contain unreviewed code.
@@ -168,7 +168,8 @@ installed package still relies on it:
 Remove-Item -LiteralPath 'Cert:\LocalMachine\TrustedPeople\$($certificate.Thumbprint)'
 
 Store submission artifacts are separate unsigned CI downloads, not installers.
-Unsigned Store packages may also appear on alpha GitHub pre-releases for
-Partner Center submission. This signed Dev tester package stays workflow-only.
+Tagged releases publish this signed Dev tester package with its matching public
+certificate and instructions. Unsigned Store packages stay workflow-only for
+Partner Center submission.
 "@ | Set-Content -LiteralPath (Join-Path $OutputDirectory 'INSTALL.txt') -Encoding utf8
 Write-Host "Staged signed Dev tester artifact: $OutputDirectory"

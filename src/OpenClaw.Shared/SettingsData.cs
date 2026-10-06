@@ -94,8 +94,8 @@ public record class SettingsData
     public string SttModelName { get; set; } = "base";
     /// <summary>Seconds of silence before auto-submit in voice chat mode.</summary>
     public float SttSilenceTimeout { get; set; } = 2.5f;
-    /// <summary>Enable TTS playback of responses during voice sessions.</summary>
-    public bool VoiceTtsEnabled { get; set; } = true;
+    /// <summary>Opt in to automatic read-aloud of chat responses. Manual Read aloud is independent.</summary>
+    public bool VoiceTtsEnabled { get; set; } = false;
     /// <summary>Show tool-call and usage chips inline in the chat timeline.</summary>
     public bool ShowChatToolCalls { get; set; } = true;
     /// <summary>Play audio feedback chimes on listen start/stop.</summary>

@@ -169,10 +169,12 @@ It does not suppress that exception or repair the upstream full-wizard finalizer
 See the [implementation results and limitations](GATEWAY_SETUP_RESPONSIBILITIES.md#package-aware-implementation-results)
 for launch, shutdown, verification details and the pre-assignment crash window.
 
-**Install a local native gateway** is the first Welcome choice and retains its
-**Recommended** badge even while disabled, with WinUI disabled brushes for the
-title, description, badge and icon instead of active accent colors. Only a successful native capability
-check enables it. The separate isolation warning and acknowledgment checkbox
+**Install a local native gateway** remains visible with **Recommended** while support
+is checked. WSL and **Connect to an existing gateway** appear before the disabled
+native choice until the capability check succeeds. A successful check enables native
+and moves it to the first position. Unsupported or failed checks leave native disabled
+in the last position with the support card and Windows Update recovery directly below
+the choice list. The separate isolation warning and acknowledgment checkbox
 remain removed; the general security notice and provider/onboarding consent
 remain explicit. With an isolated-session Gateway package, the package provisions
 and runs the agent account; the known legacy proof package retains its original
@@ -180,8 +182,9 @@ same-user runtime. The UI capability gate alone never proves isolation.
 Native and WSL use the **same focused `AiSetupPage` and three-choice `AiReadyPage`**,
 not separate normal provider/model wizards. The classic `WizardPage` is an explicit
 compatibility option only when the required setup methods are unavailable.
-WSL is always shown as the second Welcome choice after native,
-followed by **Connect to an existing gateway**.
+WSL is always visible. It is first when native is unavailable and second after a
+supported native choice, with **Connect to an existing gateway** between WSL and a
+disabled native choice.
 
 Companion checks current-user registration for the Store package
 `OpenClawFoundation.OpenClawGateway` and publisher
@@ -365,10 +368,11 @@ and verifies endpoint ownership. See [Welcome](#welcome) for the current UI.
   number or the presence of `IsolationProxy.exe`.
 - **Recommendation order:** Recommend the MXC native Gateway when the OS
   supports sessions and the Gateway session integration is available. If the
-  OS is unsupported, first recommend updating Windows to a supported version,
-  with a capability recheck after updating. Present WSL as the secondary
-  fallback, not the initial recommendation. Do not automatically change the
-  Windows update channel or enable preview features.
+  OS is unsupported, present WSL first as the immediately available recommendation.
+  Keep native Gateway visible as a disabled recommended option after the existing-
+  Gateway choice, with Windows Update guidance and a capability recheck after
+  updating. Do not automatically change the Windows update channel or enable
+  preview features.
 - **Actionable failures:** Distinguish an unsupported OS from a failed probe,
   disabled/unavailable session features, and a missing Gateway package/runtime.
   A probe error offers retry and diagnostics rather than asserting that an OS
@@ -1206,6 +1210,11 @@ The browser-only profile route is not implemented through native credentials.
 
 The connection editor shows the Gateway-stage progress indicator above a
 separate row of wrapping Back, Cancel, Check and Next actions.
+Both the Welcome existing-Gateway choice and Advanced existing/remote routes
+use this editor. Its labels, accessible names and status messages use
+`Onboarding_NativeConnection_*` resources in every supported locale.
+Connection checking and cancellation copy is separate from the native
+installer's package-check and WinGet cancellation messages.
 
 Check connection authenticates with an isolated identity copy and optional
 temporary owned SSH listener, without saving a gateway or changing the active

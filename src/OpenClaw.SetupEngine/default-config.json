@@ -107,7 +107,9 @@
     "Port": 0,
     // The setup UI sets this only after explaining that applying mirrored mode stops running WSL distros once.
     "WslMirroredNetworkingConsent": false,
-    "HealthTimeoutSeconds": 15,
+    // The first router start after an install pays a Windows Defender scan of the
+    // freshly extracted ~700 MB CUDA runtime (measured 26.0 s cold, 0.17 s once cached).
+    "HealthTimeoutSeconds": 90,
     "AcquisitionTimeoutSeconds": 7200,
     // Includes first-request model load and a short verification completion.
     "InferenceTimeoutSeconds": 600

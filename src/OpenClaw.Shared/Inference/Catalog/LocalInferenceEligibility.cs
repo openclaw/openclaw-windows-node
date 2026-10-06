@@ -84,7 +84,25 @@ public static class LocalInferenceEligibility
     {
         ArgumentNullException.ThrowIfNull(hardware);
 
-        LocalInferenceSelectionResult selection = LocalInferenceSelector.Select(hardware, requestedModelId);
+        return Evaluate(hardware, LocalInferenceSelector.Select(hardware, requestedModelId));
+    }
+
+    /// <summary>
+    /// Evaluates the explicit model recorded by an existing installation receipt,
+    /// including a retired model that is no longer offered for fresh selection.
+    /// </summary>
+    public static LocalInferenceEligibilityResult EvaluateInstalled(
+        HostHardwareInfo hardware,
+        string installedModelId)
+    {
+        ArgumentNullException.ThrowIfNull(hardware);
+        return Evaluate(hardware, LocalInferenceSelector.SelectInstalled(hardware, installedModelId));
+    }
+
+    private static LocalInferenceEligibilityResult Evaluate(
+        HostHardwareInfo hardware,
+        LocalInferenceSelectionResult selection)
+    {
         if (!selection.IsSelected || selection.Plan is null)
         {
             return Unsupported(

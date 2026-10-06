@@ -120,7 +120,9 @@ internal sealed class SetupLocalAiHost(
         catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException) { damaged = true; }
         progress?.Report(LocalAiSetupStage.CheckingHardware);
         var hardware = await probeHardware(ct);
-        var eligibility = LocalInferenceEligibility.Evaluate(hardware, install?.Manifest.ModelCatalogId);
+        var eligibility = install is null
+            ? LocalInferenceEligibility.Evaluate(hardware)
+            : LocalInferenceEligibility.EvaluateInstalled(hardware, install.Manifest.ModelCatalogId);
         bool verified = false;
         if (install is not null)
         {

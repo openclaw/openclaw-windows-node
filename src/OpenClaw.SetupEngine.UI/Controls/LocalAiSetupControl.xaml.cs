@@ -125,7 +125,9 @@ public sealed partial class LocalAiSetupControl : UserControl
                 if (_config.LocalAi.SelectedModelId is { } selectedModelId)
                 {
                     LocalInferenceEligibilityResult selectedEligibility =
-                        LocalInferenceEligibility.Evaluate(_localAiHardware, selectedModelId);
+                        _localAiRecoveryModelPinned
+                            ? LocalInferenceEligibility.EvaluateInstalled(_localAiHardware, selectedModelId)
+                            : LocalInferenceEligibility.Evaluate(_localAiHardware, selectedModelId);
                     if (_localAiRecoveryModelPinned)
                     {
                         eligibility = selectedEligibility;
@@ -137,7 +139,11 @@ public sealed partial class LocalAiSetupControl : UserControl
                 }
                 _config.LocalAi.SelectedModelId ??= _localAiRecommendedModelId ?? availability.Plan.Model.Id;
 
-                eligibility ??= LocalInferenceEligibility.Evaluate(
+                eligibility ??= _localAiRecoveryModelPinned
+                    ? LocalInferenceEligibility.EvaluateInstalled(
+                        _localAiHardware,
+                        _config.LocalAi.SelectedModelId!)
+                    : LocalInferenceEligibility.Evaluate(
                         _localAiHardware,
                         _config.LocalAi.SelectedModelId);
                 if (_localAiRecoveryModelPinned && !eligibility.CanInstall)

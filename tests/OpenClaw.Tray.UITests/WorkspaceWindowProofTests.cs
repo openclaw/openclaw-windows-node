@@ -441,13 +441,9 @@ public sealed class WorkspaceWindowProofTests
             var item = Find(root, $"WorkspaceSession:{key}");
             Assert.False(item.Current.IsOffscreen);
             ((SelectionItemPattern)item.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
-            await WaitUntilAsync(() => ((SelectionItemPattern)Find(root, $"WorkspaceSession:{key}")
-                .GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected);
+            await WaitUntilAsync(() => SelectionState(root, $"WorkspaceSession:{key}") == true);
             Assert.Equal(composerIdentity, Find(root, "ChatComposerInput").GetRuntimeId());
-            Assert.True(((SelectionItemPattern)Find(root, $"WorkspaceSession:{key}")
-                .GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected);
-            Assert.False(((SelectionItemPattern)Find(root, "WorkspaceNavHome")
-                .GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected);
+            await WaitUntilAsync(() => SelectionState(root, "WorkspaceNavHome") == false);
         }
         var input = Find(root, "ChatComposerInput");
         const string draft = "Keep the selected session draft while opening Settings";
@@ -456,12 +452,13 @@ public sealed class WorkspaceWindowProofTests
         Assert.NotEqual(workspace, app.HubWindowHandle);
         await app.RefocusWorkspaceAsync();
         Assert.Equal(workspace, app.HubWindowHandle);
-        Assert.True(((SelectionItemPattern)Find(root, "WorkspaceSession:agent:main:fork")
-            .GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected);
+        await WaitUntilAsync(() => SelectionState(root, "WorkspaceSession:agent:main:fork") == true);
         Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
         var composerId = Find(root, "ChatComposerInput").GetRuntimeId();
-        Find(root, "WorkspaceTogglePane").SetFocus();
-        System.Windows.Forms.SendKeys.SendWait(" ");
+        await FocusForKeyboardAsync(app, root, "WorkspaceTogglePane");
+        // This test covers session/draft preservation. NativePagesAndOwnerLinks_KeepCompanionIndependent
+        // separately requires Space activation and keyboard focus transfer after the Settings round-trip.
+        Invoke(Find(root, "WorkspaceTogglePane"));
         await WaitUntilAsync(() => IsVisible(root, "WorkspaceReopenPane"));
         Capture(app, theme, "sidebar-hidden");
         await app.NavigateAsync("chat", "ChatPage", "ChatComposerInput");
@@ -471,15 +468,13 @@ public sealed class WorkspaceWindowProofTests
             Find(root, "WorkspaceReopenPane").Current.BoundingRectangle.Bottom);
         Invoke(Find(root, "WorkspaceReopenPane"));
         await WaitUntilAsync(() => IsVisible(root, "WorkspaceOwner"));
-        Assert.True(((SelectionItemPattern)Find(root, "WorkspaceSession:agent:main:fork")
-            .GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected);
+        await WaitUntilAsync(() => SelectionState(root, "WorkspaceSession:agent:main:fork") == true);
         Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
         await app.NavigateAsync("chat", "ChatPage", "ChatComposerInput");
         // Reopening the isolated Sessions companion republishes its snapshot.
         await app.NavigateAsync("sessions", "SessionsPage", "SessionsPageMarker");
         await app.RefocusWorkspaceAsync();
-        Assert.True(((SelectionItemPattern)Find(root, "WorkspaceSession:agent:main:fork")
-            .GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected);
+        await WaitUntilAsync(() => SelectionState(root, "WorkspaceSession:agent:main:fork") == true);
         await WaitUntilAsync(() => IsVisible(root, "WorkspaceNotifications"));
         Invoke(Find(root, "WorkspaceNotifications"));
         await WaitUntilAsync(() => FindPopup(root, "WorkspaceNotificationsOpenPage") is not null);
@@ -507,12 +502,14 @@ public sealed class WorkspaceWindowProofTests
         await WaitUntilAsync(() => IsVisible(root, "NotificationsPageMarker"));
         Invoke(Find(root, "WorkspaceBack"));
         await WaitUntilAsync(() => IsVisible(root, "ChatComposerInput"));
-        Assert.True(((SelectionItemPattern)Find(root, "WorkspaceSession:agent:main:fork")
-            .GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected);
+        await WaitUntilAsync(() => SelectionState(root, "WorkspaceSession:agent:main:fork") == true);
         await app.NavigateAsync("chat", "ChatPage", "ChatComposerInput");
+        // Same-page chat navigation can acknowledge the existing composer while an adaptive
+        // NavigationView transition has temporarily closed the pane. Restore it before querying
+        // pane-owned controls so UI Automation does not race the NavigationView subtree.
+        await EnsureWorkspacePaneOpenAsync(root);
         ((SelectionItemPattern)Find(root, "WorkspaceNavHome").GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
-        Assert.True(((SelectionItemPattern)Find(root, "WorkspaceNavHome")
-            .GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected);
+        await WaitUntilAsync(() => SelectionState(root, "WorkspaceNavHome") == true);
         Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
     }
 
@@ -690,9 +687,7 @@ public sealed class WorkspaceWindowProofTests
         Assert.InRange(reopenBounds.Left - nativeNavigation.Current.BoundingRectangle.Left, 0, 12);
         await app.NavigateAsync("workspace:notifications", "NotificationsPage", "WorkspaceReopenPane");
         Assert.Equal(workspace, app.HubWindowHandle);
-        var reopenButton = Find(workspaceElement, "WorkspaceReopenPane");
-        reopenButton.SetFocus();
-        Assert.True(reopenButton.Current.HasKeyboardFocus);
+        await FocusForKeyboardAsync(app, workspaceElement, "WorkspaceReopenPane");
         System.Windows.Forms.SendKeys.SendWait(" ");
         await WaitUntilAsync(() => IsVisible(workspaceElement, "WorkspaceOwner") &&
             IsVisible(workspaceElement, "WorkspaceNotifications") &&
@@ -718,7 +713,7 @@ public sealed class WorkspaceWindowProofTests
         Invoke(WaitForMenuItem(pid, "Settings"));
         Assert.NotNull(await WaitForMarkerAsync(pid, "SettingsPageMarker", workspace));
         await app.RefocusWorkspaceAsync();
-        Find(workspaceElement, "WorkspaceTogglePane").SetFocus();
+        await FocusForKeyboardAsync(app, workspaceElement, "WorkspaceTogglePane");
         System.Windows.Forms.SendKeys.SendWait(" ");
         await WaitUntilAsync(() => IsVisible(workspaceElement, "WorkspaceReopenPane") &&
             Find(workspaceElement, "WorkspaceReopenPane").Current.HasKeyboardFocus);
@@ -731,7 +726,7 @@ public sealed class WorkspaceWindowProofTests
             var bounds = nativeNavigation.Current.BoundingRectangle;
             return Math.Abs((content.Left + content.Right) / 2 - (bounds.Left + bounds.Right) / 2) <= 2;
         });
-        Find(workspaceElement, "WorkspaceReopenPane").SetFocus();
+        await FocusForKeyboardAsync(app, workspaceElement, "WorkspaceReopenPane");
         System.Windows.Forms.SendKeys.SendWait("{TAB}");
         Assert.NotEqual("WorkspaceReopenPane", AutomationElement.FocusedElement.Current.AutomationId);
         Assert.DoesNotContain(AutomationElement.FocusedElement.Current.AutomationId,
@@ -740,11 +735,38 @@ public sealed class WorkspaceWindowProofTests
         await WaitUntilAsync(() => IsVisible(workspaceElement, "WorkspaceOwner"));
     }
 
-    private static bool IsVisible(AutomationElement root, string id)
+    private static bool IsVisible(AutomationElement root, string id) =>
+        FindOrNull(root, id) is { } element && !element.Current.IsOffscreen && element.Current.BoundingRectangle.Width > 0;
+
+    /// <summary>Returns null while the item is missing or stale, e.g. while the sidebar rebuilds session items.</summary>
+    private static bool? SelectionState(AutomationElement root, string id)
     {
-        var element = root.FindFirst(TreeScope.Descendants,
-            new PropertyCondition(AutomationElement.AutomationIdProperty, id));
-        return element is not null && !element.Current.IsOffscreen && element.Current.BoundingRectangle.Width > 0;
+        try
+        {
+            return FindOrNull(root, id) is { } element &&
+                element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var pattern)
+                ? ((SelectionItemPattern)pattern).Current.IsSelected
+                : null;
+        }
+        catch (ElementNotAvailableException) { return null; }
+    }
+
+    /// <summary>SendKeys targets the foreground window, so focus the control only after the Hub owns the foreground.</summary>
+    private static async Task FocusForKeyboardAsync(AccessibilityAppFixture app, AutomationElement root, string id)
+    {
+        await app.EnsureHubForegroundAsync();
+        // Let WinUI finish restoring activation focus before moving it.
+        await Task.Delay(250);
+        Find(root, id).SetFocus();
+        await WaitUntilAsync(() =>
+        {
+            try
+            {
+                return GetForegroundWindow() == app.HubWindowHandle &&
+                    FindOrNull(root, id)?.Current.HasKeyboardFocus == true;
+            }
+            catch (ElementNotAvailableException) { return false; }
+        });
     }
 
     private static async Task WaitUntilAsync(Func<bool> predicate)
@@ -758,9 +780,40 @@ public sealed class WorkspaceWindowProofTests
         Assert.True(predicate(), "Native navigation did not reach the expected state.");
     }
 
+    private static async Task EnsureWorkspacePaneOpenAsync(AutomationElement root)
+    {
+        var timeout = Stopwatch.StartNew();
+        TimeSpan? visibleSince = null;
+        var reopenInvoked = false;
+        while (timeout.Elapsed < TimeSpan.FromSeconds(10))
+        {
+            if (IsVisible(root, "WorkspaceNavHome"))
+            {
+                reopenInvoked = false;
+                visibleSince ??= timeout.Elapsed;
+                if (timeout.Elapsed - visibleSince >= TimeSpan.FromMilliseconds(500)) return;
+            }
+            else
+            {
+                visibleSince = null;
+                if (!reopenInvoked && IsVisible(root, "WorkspaceReopenPane"))
+                {
+                    Invoke(Find(root, "WorkspaceReopenPane"));
+                    reopenInvoked = true;
+                }
+            }
+
+            await Task.Delay(100);
+        }
+
+        Assert.Fail("The workspace pane did not remain open after navigation.");
+    }
+
+    private static AutomationElement? FindOrNull(AutomationElement root, string id) =>
+        root.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, id));
+
     private static AutomationElement Find(AutomationElement root, string id) =>
-        root.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, id))
-        ?? throw new InvalidOperationException($"Missing native control '{id}'.");
+        FindOrNull(root, id) ?? throw new InvalidOperationException($"Missing native control '{id}'.");
 
     private static AutomationElement FindHeading(AutomationElement root, string name) =>
         root.FindFirst(TreeScope.Descendants, new AndCondition(

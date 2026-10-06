@@ -4,6 +4,8 @@ using OpenClaw.Shared.Inference.Catalog;
 using OpenClaw.TestSupport;
 using System.Collections.Immutable;
 using System.Net;
+using System.Net.Http;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -12,6 +14,23 @@ namespace OpenClaw.Connection.Tests;
 
 public sealed class LocalAiPortLifecycleTests
 {
+    [Fact]
+    public async Task ChildProcessPathResolver_ResolvesExistingFileAndDirectoryPaths()
+    {
+        using var temp = new TempDirectory("local-ai-child-path-resolver-");
+        string file = temp.Combine("runtime", "llama-server.exe");
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        await File.WriteAllTextAsync(file, "launcher");
+
+        string resolvedDirectory = LocalAiChildProcessPathResolver.Resolve(Path.GetDirectoryName(file)!);
+        string resolvedFile = LocalAiChildProcessPathResolver.Resolve(file);
+
+        Assert.True(Path.IsPathFullyQualified(resolvedDirectory));
+        Assert.True(Path.IsPathFullyQualified(resolvedFile));
+        Assert.True(Directory.Exists(resolvedDirectory));
+        Assert.True(File.Exists(resolvedFile));
+    }
+
     [Theory]
     [InlineData(0, true)]
     [InlineData(1, true)]
@@ -178,6 +197,11 @@ public sealed class LocalAiPortLifecycleTests
         Directory.CreateDirectory(Path.GetDirectoryName(executable)!);
         Directory.CreateDirectory(Path.GetDirectoryName(cachedModelPath)!);
         await File.WriteAllTextAsync(executable, "test executable");
+        await File.WriteAllTextAsync(
+            Path.Combine(
+                Path.GetDirectoryName(executable)!,
+                LlamaRuntimeCatalog.ServerImplementationLibraryName),
+            "test implementation library");
         await File.WriteAllBytesAsync(cachedModelPath, tampered);
         await new LocalAiManifestStore(paths).SaveAsync(manifest);
         var events = new SynchronizedEventLog();
@@ -237,6 +261,11 @@ public sealed class LocalAiPortLifecycleTests
         Directory.CreateDirectory(Path.GetDirectoryName(cachedModelPath)!);
         Directory.CreateDirectory(Path.GetDirectoryName(blobPath)!);
         await File.WriteAllTextAsync(executable, "test executable");
+        await File.WriteAllTextAsync(
+            Path.Combine(
+                Path.GetDirectoryName(executable)!,
+                LlamaRuntimeCatalog.ServerImplementationLibraryName),
+            "test implementation library");
         await File.WriteAllBytesAsync(blobPath, content);
         File.CreateSymbolicLink(
             cachedModelPath,
@@ -313,6 +342,40 @@ public sealed class LocalAiPortLifecycleTests
         LocalAiResolvedInstall? saved = await new LocalAiManifestStore(paths).LoadAsync();
         Assert.Equal(0, saved!.Manifest.RequestedPort);
         Assert.Equal(28_765, saved.Endpoint!.Port);
+    }
+
+    [Fact]
+    public async Task Start_UsesChildVisiblePhysicalExecutableWorkingDirectoryAndPresetPaths()
+    {
+        using var temp = new TempDirectory("local-ai-child-paths-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        string physicalRoot = temp.Combine("physical-local-ai");
+        string ResolveForChild(string path) => Path.Combine(
+            physicalRoot,
+            Path.GetRelativePath(paths.RootDirectory, path));
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_765);
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            new FakeClient(events),
+            new FakeLifecycle(events),
+            resolveChildProcessPath: ResolveForChild);
+
+        LocalAiRuntimeSnapshot snapshot = await runtime.EnsureStartedAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Healthy, snapshot.State);
+        LocalAiResolvedInstall install = (await new LocalAiManifestStore(paths).LoadAsync())!;
+        Assert.Equal(ResolveForChild(install.ExecutablePath), host.LastSpec!.ExecutablePath);
+        Assert.Equal(ResolveForChild(Path.GetDirectoryName(install.ExecutablePath)!), host.LastSpec.WorkingDirectory);
+        Assert.Equal(ResolveForChild(paths.RouterPresetPath), ArgumentAfter(host.LastSpec.Arguments, "--models-preset"));
+        Assert.Contains(
+            $"model = {ResolveForChild(install.ModelPath)}",
+            await File.ReadAllTextAsync(paths.RouterPresetPath),
+            StringComparison.OrdinalIgnoreCase);
+        Assert.True(File.Exists(paths.RouterPresetPath));
     }
 
     [Fact]
@@ -590,6 +653,214 @@ public sealed class LocalAiPortLifecycleTests
         Assert.Equal(
             ["quiesce:EndpointCycle", "start", "probe:28771", "publish:28771"],
             events);
+    }
+
+    [Fact]
+    public async Task Startup_HungProbeEndsAtTheStartupTimeout()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var store = new LocalAiManifestStore(paths);
+        LocalAiResolvedInstall install = (await store.LoadAsync())!;
+        await store.SaveAsync(install.Manifest with { Endpoint = "http://127.0.0.1:28765/v1" });
+
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        platform.Listeners.Add(new WindowsTcpListenerInfo(
+            IPAddress.Loopback,
+            28_765,
+            9001,
+            "other-process",
+            @"C:\other\server.exe",
+            platform.UtcNow.UtcDateTime));
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_771);
+        var client = new FakeClient(events) { WaitForCancellation = true };
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            client,
+            new FakeLifecycle(events),
+            startupTimeout: TimeSpan.FromMilliseconds(200));
+        var started = System.Diagnostics.Stopwatch.StartNew();
+
+        LocalAiRuntimeSnapshot snapshot = await runtime.EnsureStartedAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Failed, snapshot.State);
+        Assert.Contains("startup timeout", snapshot.Detail, StringComparison.OrdinalIgnoreCase);
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task Startup_RealStalledLoopbackBodyEndsAtTheBudget()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var headersSent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var stalled = new CancellationTokenSource();
+        Task accept = AcceptAndHoldBodyAsync(listener, stalled.Token, headersSent);
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: port);
+        using var http = new LlamaServerClient(
+            new SocketsHttpHandler
+            {
+                UseProxy = false,
+                AllowAutoRedirect = false,
+                ConnectTimeout = TimeSpan.FromSeconds(2),
+            },
+            timeout: TimeSpan.FromSeconds(30));
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            http,
+            new FakeLifecycle(events),
+            startupTimeout: TimeSpan.FromSeconds(1));
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            LocalAiRuntimeSnapshot snapshot = await runtime.EnsureStartedAsync();
+            Console.WriteLine(
+                "real-transport startup state={0} elapsed_ms={1} detail={2} port={3}",
+                snapshot.State,
+                started.ElapsedMilliseconds,
+                snapshot.Detail,
+                port);
+            Assert.Equal(LocalAiRuntimeState.Failed, snapshot.State);
+            Assert.Contains("startup timeout", snapshot.Detail, StringComparison.OrdinalIgnoreCase);
+            Assert.True(headersSent.Task.IsCompletedSuccessfully);
+            Assert.False(accept.IsCompleted);
+            Assert.True(host.Process!.HasExited);
+            Assert.True(started.Elapsed < TimeSpan.FromSeconds(8));
+        }
+        finally
+        {
+            stalled.Cancel();
+            listener.Stop();
+            try
+            {
+                await accept.WaitAsync(TimeSpan.FromSeconds(2));
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Dispose_RealStalledLoopbackBodyDoesNotWaitOutTheBudget()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var headersSent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var stalled = new CancellationTokenSource();
+        Task accept = AcceptAndHoldBodyAsync(listener, stalled.Token, headersSent);
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: port);
+        using var http = new LlamaServerClient(
+            new SocketsHttpHandler
+            {
+                UseProxy = false,
+                AllowAutoRedirect = false,
+                ConnectTimeout = TimeSpan.FromSeconds(2),
+            },
+            timeout: TimeSpan.FromSeconds(30));
+        var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            http,
+            new FakeLifecycle(events),
+            startupTimeout: TimeSpan.FromSeconds(30));
+        Task<LocalAiRuntimeSnapshot> starting = runtime.EnsureStartedAsync();
+        await headersSent.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var disposeStarted = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            await runtime.DisposeAsync();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => starting);
+            Console.WriteLine(
+                "real-transport dispose elapsed_ms={0} port={1}",
+                disposeStarted.ElapsedMilliseconds,
+                port);
+            Assert.True(disposeStarted.Elapsed < TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            stalled.Cancel();
+            listener.Stop();
+        }
+    }
+
+    private static async Task AcceptAndHoldBodyAsync(
+        TcpListener listener,
+        CancellationToken cancellationToken,
+        TaskCompletionSource? headersSent = null)
+    {
+        try
+        {
+            using TcpClient client = await listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
+            await using NetworkStream stream = client.GetStream();
+            byte[] headers = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n"u8.ToArray();
+            await stream.WriteAsync(headers, cancellationToken).ConfigureAwait(false);
+            await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            headersSent?.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            headersSent?.TrySetCanceled(cancellationToken);
+        }
+        catch (ObjectDisposedException)
+        {
+            headersSent?.TrySetCanceled();
+        }
+    }
+
+    [Fact]
+    public async Task Dispose_DuringHungStartupDoesNotWaitForTheProbe()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var store = new LocalAiManifestStore(paths);
+        LocalAiResolvedInstall install = (await store.LoadAsync())!;
+        await store.SaveAsync(install.Manifest with { Endpoint = "http://127.0.0.1:28765/v1" });
+
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        platform.Listeners.Add(new WindowsTcpListenerInfo(
+            IPAddress.Loopback,
+            28_765,
+            9001,
+            "other-process",
+            @"C:\other\server.exe",
+            platform.UtcNow.UtcDateTime));
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_771);
+        var client = new FakeClient(events) { WaitForCancellation = true };
+        var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            client,
+            new FakeLifecycle(events),
+            startupTimeout: TimeSpan.FromSeconds(30));
+        Task<LocalAiRuntimeSnapshot> starting = runtime.EnsureStartedAsync();
+        await client.ProbeEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(starting.IsCompleted);
+
+        var disposeStarted = System.Diagnostics.Stopwatch.StartNew();
+        await runtime.DisposeAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => starting);
+
+        Assert.True(disposeStarted.Elapsed < TimeSpan.FromSeconds(5));
     }
 
     [Fact]
@@ -1808,6 +2079,33 @@ public sealed class LocalAiPortLifecycleTests
     }
 
     [Fact]
+    public async Task MissingImplementationLibrary_FailsBeforeStartingNativeProcess()
+    {
+        using var temp = new TempDirectory("local-ai-missing-impl-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        LocalAiResolvedInstall install = (await new LocalAiManifestStore(paths).LoadAsync())!;
+        File.Delete(Path.Combine(
+            Path.GetDirectoryName(install.ExecutablePath)!,
+            LlamaRuntimeCatalog.ServerImplementationLibraryName));
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_772);
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            new FakeClient(events),
+            new FakeLifecycle(events));
+
+        LocalAiRuntimeSnapshot snapshot = await runtime.EnsureStartedAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Failed, snapshot.State);
+        Assert.Contains("implementation library", snapshot.Detail, StringComparison.Ordinal);
+        Assert.Equal(["quiesce:EndpointCycle", "quiesce:Teardown"], events);
+        Assert.Null(host.LastSpec);
+    }
+
+    [Fact]
     public async Task AutomaticPort_RejectsWildcardChildListenerWithoutProbing()
     {
         using var temp = new TempDirectory("local-ai-port-");
@@ -2002,15 +2300,11 @@ public sealed class LocalAiPortLifecycleTests
         using var temp = new TempDirectory("local-ai-port-");
         LocalAiPaths paths = await PrepareInstallAsync(temp);
         var events = new SynchronizedEventLog();
-        FakeProcessHost? host = null;
-        var platform = new FakePlatform
-        {
-            AfterDelay = () => host!.Process!.StopException =
-                new IOException("process shutdown failed"),
-        };
-        host = new FakeProcessHost(platform, events, selectedPort: 28_793)
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_793)
         {
             SuppressListener = true,
+            InitialStopException = new IOException("process shutdown failed"),
         };
         await using var runtime = CreateRuntime(
             paths,
@@ -2018,7 +2312,7 @@ public sealed class LocalAiPortLifecycleTests
             platform,
             new FakeClient(events),
             new FakeLifecycle(events),
-            startupTimeout: TimeSpan.FromMilliseconds(2));
+            startupTimeout: TimeSpan.FromSeconds(1));
 
         IOException error = await Assert.ThrowsAsync<IOException>(() => runtime.EnsureStartedAsync());
 
@@ -2828,20 +3122,22 @@ public sealed class LocalAiPortLifecycleTests
         LocalAiPaths paths,
         FakeProcessHost host,
         FakePlatform platform,
-        FakeClient client,
+        ILlamaServerClient client,
         ILocalAiEndpointLifecycle lifecycle,
         TimeSpan? startupTimeout = null,
         int maxRestartAttempts = 2,
         TimeSpan? shutdownTimeout = null,
         ILocalAiModelFileVerifier? modelFileVerifier = null,
         Func<string>? getApiKey = null,
-        Func<LocalAiResolvedInstall, int?>? getRecoveryPort = null) => new(
+        Func<LocalAiResolvedInstall, int?>? getRecoveryPort = null,
+        Func<string, string>? resolveChildProcessPath = null) => new(
             new LlamaServerRuntimeOptions
             {
                 Paths = paths,
                 EndpointLifecycle = lifecycle,
                 GetApiKey = getApiKey,
                 GetRecoveryPort = getRecoveryPort,
+                ResolveChildProcessPath = resolveChildProcessPath ?? (static path => path),
                 HealthPollInterval = TimeSpan.FromMilliseconds(1),
                 StartupTimeout = startupTimeout ?? TimeSpan.FromSeconds(1),
                 ShutdownTimeout = shutdownTimeout ?? TimeSpan.FromSeconds(10),
@@ -2863,8 +3159,12 @@ public sealed class LocalAiPortLifecycleTests
         Directory.CreateDirectory(Path.GetDirectoryName(executable)!);
         Directory.CreateDirectory(Path.GetDirectoryName(model)!);
         await File.WriteAllTextAsync(executable, "test executable");
-        await using (var stream = new FileStream(model, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-            stream.SetLength(manifest.ModelAsset.SizeBytes);
+        await File.WriteAllTextAsync(
+            Path.Combine(
+                Path.GetDirectoryName(executable)!,
+                LlamaRuntimeCatalog.ServerImplementationLibraryName),
+            "test implementation library");
+        SparseFixtureFile.Create(model, manifest.ModelAsset.SizeBytes);
         await new LocalAiManifestStore(paths).SaveAsync(manifest);
         return paths;
     }
@@ -3236,6 +3536,8 @@ public sealed class LocalAiPortLifecycleTests
 
         public bool ImmediateExit { get; init; }
 
+        public Exception? InitialStopException { get; init; }
+
         public Action<LocalAiProcessStartSpec>? BeforeStart { get; init; }
 
         public Task<ILocalAiManagedProcess> StartProcessAsync(
@@ -3250,7 +3552,10 @@ public sealed class LocalAiPortLifecycleTests
             BeforeStart?.Invoke(spec);
             events.Add("start");
             LastExitCallback = exited;
-            Process = new FakeProcess(4201, platform.UtcNow, platform, events);
+            Process = new FakeProcess(4201, platform.UtcNow, platform, events)
+            {
+                StopException = InitialStopException,
+            };
             if (ImmediateExit)
             {
                 Process.MarkExited();
@@ -3314,21 +3619,29 @@ public sealed class LocalAiPortLifecycleTests
 
         public List<int> ProbedPorts { get; } = [];
 
-        public Task<LlamaServerRouterProbeResult> ProbeManagedModelAsync(
+        public bool WaitForCancellation { get; init; }
+
+        public TaskCompletionSource ProbeEntered { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<LlamaServerRouterProbeResult> ProbeManagedModelAsync(
             Uri endpoint,
             string modelAlias,
             string expectedModelPath,
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            ProbeEntered.TrySetResult();
+            if (WaitForCancellation)
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
             ProbedPorts.Add(endpoint.Port);
             events.Add($"probe:{endpoint.Port}");
             int probeNumber = ++_probeCount;
-            return Task.FromResult(probeFactory?.Invoke(expectedModelPath, probeNumber) ?? new LlamaServerRouterProbeResult(
+            return probeFactory?.Invoke(expectedModelPath, probeNumber) ?? new LlamaServerRouterProbeResult(
                 true,
                 LocalAiModelAvailabilityState.Verified,
                 expectedModelPath,
-                null));
+                null);
         }
 
         public void Dispose() { }

@@ -74,6 +74,7 @@ disconnect, replacement, or close. This cache is not used for authorization.
 | Concern | Canonical owner | Status |
 | --- | --- | --- |
 | Test temp directories | `OpenClaw.TestSupport.TempDirectory` | authoritative |
+| Bounded audio child-process wait and disposal | `BoundedProcessWait` owns the supplied `Process`, including deferred disposal after its kill worker finishes; callers must not dispose it on bounded cancellation return | authoritative |
 | Test env var save/restore | `OpenClaw.TestSupport.EnvironmentScope` | authoritative |
 | CLI stdout/stderr/env capture | `OpenClaw.TestSupport.CliHarness` | authoritative |
 | Loopback MCP server for tests | `OpenClaw.TestSupport.FakeMcpServer` | authoritative |
@@ -157,6 +158,7 @@ disconnect, replacement, or close. This cache is not used for authorization.
 | Settings Chat rail action | `HubWindow` forwards a non-selecting item invocation through `WorkspaceNavigation` to the existing Workspace; Settings never mounts Chat | authoritative |
 | Gateway dashboard management card | `ConnectionPage` owns the visible card and forwards to the existing `GatewayDashboardLauncher` path; `ChatPage` has no management banner | authoritative |
 | In-flight native chat navigation identity | `SetupNativeChatBinding` holds the exact request reference; `WorkspaceWindow` invalidates it at admitted agent/session navigation intent, before asynchronous creation. `ChatPage` checks identity and cancellation on ready and waiting paths; `SetupNativeHandoffLauncher` fences receipt consumption with the linked timeout | authoritative |
+| Setup-bound Chat warning and recovery presentation | `SetupNativeChatPresentation` retains the exact verified target through failed mounts; temporary unavailability and provider-confirmation waits hide but retain the host/draft and cannot satisfy handoff readiness. `SetupNativeChatRefresh` observes the existing manager with activation/request/manager fences and operator-only coalescing. `ChatPage` applies the InfoBar, releases the binding for composer navigation through `ChatComposerHostActions` as well as foreign-session queues, and performs the unchanged authority check before reuse. Hidden hosts cancel capture; pending voice starts only after successful evaluation | authoritative |
 | Native receipt acquisition classification and restart recovery settlement | `SetupDashboardHandoffStore` distinguishes acquired/busy/invalid/unavailable; `SetupNativeHandoffLauncher` retains recovery on busy/unavailable and clears it only after consumption or definitive rejection | authoritative |
 | Native completion startup readiness | `SetupNativeCompletionTiming` defines finite phase budgets; `SetupNativeCompletionVerifier` enforces both borrows, the existing Local AI recovery join and exact-model proof; `SetupDashboardHandoffStore` keeps five-minute unused admission and persists one non-renewable execution start/deadline under its exclusive lease; `SetupNativeHandoffLauncher` enforces navigation and total execution deadlines and does not redisplay settled retry failures on automatic activation | authoritative |
 | Pre-acquisition restart recovery deletion | `App.OpenNativeSetupCompletion`; deletion is delegated to the receipt outcome owner | closed |
@@ -219,6 +221,8 @@ disconnect, replacement, or close. This cache is not used for authorization.
 | Gateway request tracking | `PendingRequestRegistry` | authoritative |
 | Chat atomic runtime transaction lock and cross-domain commits | `ChatConversationState` | authoritative |
 | Chat queue collections, echo correlation, drain and retry commit mechanics | `ChatQueueState` under the `ChatConversationState` lock | authoritative |
+| Pending chat bubble presentation | `ReactorChatTimeline` projects the selected-thread queue after the current turn, using the normal user bubble and existing controller cancellation | authoritative |
+| Pending chat preview list inside the composer | Closed in `ReactorChatComposer`; the composer contains only the unsubmitted draft and attachments | closed |
 | Chat reset generations, gates, echoes and backfill state | `ChatResetState` under the `ChatConversationState` lock | authoritative |
 | Chat history identity, revisions and connection-generation tokens | `ChatHistoryState` under the `ChatConversationState` lock | authoritative |
 | Chat sessions, models, catalog and snapshot projection inputs | `ChatPresentationState` under the `ChatConversationState` lock | authoritative |
@@ -386,17 +390,20 @@ cannot authorize native onboarding.
 
 A positive result enables and initially selects the first **Install a local native
 gateway** card with the accent highlight and **Recommended** badge. A negative
-capability result offers Windows Update; reopening the page rechecks support. The pinned SDK documents
+capability result leaves that recommended choice visible but disabled after WSL and
+**Connect to an existing gateway**, with Windows Update guidance directly below the
+choice list; reopening the page rechecks support. The pinned SDK documents
 Insider build **26340.9212** as its baseline. This is update guidance, not a
 hardcoded admission floor or a promise that a particular feature is enabled.
 The native boolean cannot distinguish every OS API failure from missing support.
 Missing executables, malformed results and probe errors instead offer retry or
 Companion repair, not an assertion that Windows must be updated.
 
-The Welcome page always presents native Gateway first, WSL second and
-**Connect to an existing gateway** third in one single-selection list. WSL is
-visible and selectable during the native probe and for every probe outcome,
-without an expander. There is no Welcome-page **Check again** button.
+The Welcome page presents WSL, **Connect to an existing gateway**, then disabled native
+Gateway while support is being checked or unavailable. A positive result moves native
+to the first position, followed by WSL and the existing-Gateway choice. WSL is visible
+and selectable during the native probe and for every probe outcome, without an expander.
+There is no Welcome-page **Check again** button.
 WSL/Local AI discovery starts on page load; fresh WSL readiness and
 destructive-replacement confirmation still run before its capabilities page.
 WSL is never selected implicitly after a failed native probe. A late probe
@@ -723,6 +730,7 @@ leading and trailing pipe. Columns, in order:
 <!-- LEDGER:BEGIN -->
 | id | status | old_owner | closed_responsibility | new_owner | allowed_residue | invariant | guard_test | guard_type | retirement_condition |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| setup-chat-warning-recovery | authoritative | src/OpenClaw.Tray.WinUI/Pages/ChatPage.xaml.cs | setup warning lifetime and refresh admission | SetupNativeChatPresentation + SetupNativeChatRefresh | page applies localized InfoBar state, forwards dispatcher/lifecycle/composer navigation events and calls existing authority and renderer owners | clearing a binding clears only presentation; same-client recovery retains draft after full authority checks; composer /new releases the setup target before async creation; node-only events do not remount; visual recheck never retries or settles receipts | SetupNativeChatPresentationTests.SameClientRecoveryRetainsHostAndHealthyRefreshDoesNotReseed | behavioral | - |
 | setup-installation-overview | authoritative | src/OpenClaw.SetupEngine.UI/Pages/ProgressPage.xaml.cs | overview phase inference from visual row order | SetupInstallationProgress | page retains logs, download detail, dispatcher forwarding and pipeline lifetime; SetupPhaseStatus applies localized icon/text state | every real installation step has an explicit phase; failed state outranks running; skipped work is not claimed as installed | SetupInstallationProgressTests.EveryActualStep_HasAnExplicitPhaseInPipelineOrder | behavioral | - |
 | setup-native-window-lifetime | authoritative | src/OpenClaw.SetupEngine.UI/SetupWindow.xaml.cs | implicit classic Settings handoff for native routes | SetupNativeConnectionPage + ISetupNativeConnectionHost | SetupWindow owns typed mounting, same-draft routing, cancellation and drain; AdvancedSetupRequested remains explicit classic fallback only | only committed native results advance to access/privacy then AI; departed native pages drain before the setup lock is released | OnboardingPresentationContractTests.NativeEditor_IsTypedAndDrainedBeforeTheRunLockIsReleased | source-shape | when native setup mounting and close ordering have mounted UI lifecycle tests |
 | setup-access-draft | authoritative | src/OpenClaw.SetupEngine.UI/Pages/CapabilitiesPage.xaml.cs | capability preset detection and per-visit setup defaults | SetupAccessDraft + SetupCapabilityProfiles | page applies typed projections and forwards input; SetupWindow owns the draft lifetime | only bundled all-on placeholder defaults once; explicit profiles, consent and independent transports survive navigation without persistence | SetupAccessDraftTests.BundledPlaceholder_DefaultsOnlyAtDraftCreation | behavioral | - |
