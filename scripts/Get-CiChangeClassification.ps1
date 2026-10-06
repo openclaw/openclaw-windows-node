@@ -303,11 +303,19 @@ if ($paths.Count -eq 0) {
 
 $impact = New-Impact "targeted"
 $hasProductChange = $false
+$hasFastOnlyChange = $false
 foreach ($changedPath in $paths) {
     $normalizedPath = ConvertTo-NormalizedPath ([string]$changedPath)
     if ($null -eq $normalizedPath) {
         Complete-Impact (New-FullImpact)
         return
+    }
+    # These repository-only tools are exercised by always-on fast-validation.
+    if ($normalizedPath -cin @(
+            ".github/scripts/repository-triage.cjs",
+            ".github/scripts/repository-triage.test.cjs")) {
+        $hasFastOnlyChange = $true
+        continue
     }
     if ($normalizedPath.Equals(
             ".agents/skills/winnode/SKILL.md",
@@ -332,7 +340,8 @@ foreach ($changedPath in $paths) {
 }
 
 if (-not $hasProductChange) {
-    Complete-Impact (New-Impact "docs_only")
+    $classification = if ($hasFastOnlyChange) { "fast_only" } else { "docs_only" }
+    Complete-Impact (New-Impact $classification)
     return
 }
 

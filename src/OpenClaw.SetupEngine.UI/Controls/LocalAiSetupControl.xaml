@@ -1,0 +1,64 @@
+<UserControl
+    x:Class="OpenClaw.SetupEngine.UI.Controls.LocalAiSetupControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:tk="using:CommunityToolkit.WinUI.Controls">
+    <StackPanel Spacing="12">
+        <InfoBar x:Name="LocalAiUnavailablePanel"
+                 AutomationProperties.AutomationId="LocalAiUnavailablePanel"
+                 AutomationProperties.LiveSetting="Polite"
+                 IsOpen="True" IsClosable="False" Severity="Informational" Visibility="Collapsed"
+                 Title="Local AI is not available"
+                 Message="This PC does not meet one or more Local AI requirements.">
+            <InfoBar.ActionButton>
+                <HyperlinkButton x:Name="LocalAiUnavailableDetailsButton"
+                                 x:Uid="Onboarding_LocalAi_UnavailableDetailsButton"
+                                 AutomationProperties.AutomationId="LocalAiUnavailableDetailsButton"
+                                 Content="See why" Click="LocalAiUnavailableDetails_Click" />
+            </InfoBar.ActionButton>
+        </InfoBar>
+        <TextBlock x:Name="LocalAiUnavailableReasonText" Visibility="Collapsed" TextWrapping="Wrap"
+                   IsTextSelectionEnabled="True" Style="{StaticResource BodyTextBlockStyle}" />
+        <StackPanel x:Name="LocalAiAvailabilityRecoveryPanel" Orientation="Horizontal" Spacing="8" Visibility="Collapsed">
+            <ProgressRing x:Name="LocalAiAvailabilityProgressRing" Width="16" Height="16"
+                          IsActive="False" AutomationProperties.AccessibilityView="Raw" />
+            <HyperlinkButton x:Name="LocalAiRecheckAvailabilityButton"
+                             x:Uid="Onboarding_LocalAi_RecheckAvailabilityButton"
+                             AutomationProperties.AutomationId="LocalAiRecheckAvailabilityButton"
+                             Content="Recheck" Click="LocalAiRecheckAvailability_Click" />
+        </StackPanel>
+        <StackPanel x:Name="LocalAiOptionContent" Spacing="12">
+            <tk:SettingsCard x:Name="LocalAiInstallReviewCard" x:Uid="Onboarding_V2_LocalAiCard"
+                             AutomationProperties.AutomationId="LocalAiInstallReviewCard"
+                             Header="Local AI" Description="Optional managed llama-server for Windows. This is separate from Ollama sharing.">
+                <ToggleSwitch x:Name="LocalAiToggle" x:Uid="Onboarding_V2_LocalAiToggle"
+                              AutomationProperties.AutomationId="LocalAiSetupToggle"
+                              AutomationProperties.Name="Set up Local AI"
+                              OnContent="" OffContent="" MinWidth="0" Toggled="LocalAiToggle_Toggled" />
+            </tk:SettingsCard>
+            <StackPanel x:Name="LocalAiDetailsPanel" Spacing="12" Visibility="Collapsed">
+                <TextBlock x:Name="LocalAiHardwareStatusText" TextWrapping="Wrap"
+                           AutomationProperties.AutomationId="LocalAiHardwareStatus"
+                           AutomationProperties.LiveSetting="Polite"
+                           Style="{StaticResource CaptionTextBlockStyle}" />
+                <ComboBox x:Name="LocalAiModelSelector" x:Uid="Onboarding_V2_LocalAiModel"
+                          Header="Model" HorizontalAlignment="Stretch"
+                          AutomationProperties.AutomationId="LocalAiModelSelector"
+                          AutomationProperties.Name="Local AI model"
+                          SelectionChanged="LocalAiModelSelector_SelectionChanged" />
+                <TextBlock x:Name="LocalAiEngineDetailText" TextWrapping="Wrap"
+                           Style="{StaticResource CaptionTextBlockStyle}" />
+                <TextBlock x:Name="LocalAiModelDetailText" TextWrapping="Wrap"
+                           Style="{StaticResource CaptionTextBlockStyle}" />
+                <InfoBar x:Name="LocalAiNetworkingConsentPanel" x:Uid="Onboarding_V2_NetworkRequired"
+                         AutomationProperties.AutomationId="LocalAiNetworkingConsentPanel"
+                         IsOpen="True" IsClosable="False" Severity="Warning" Visibility="Collapsed"
+                         Title="WSL networking change required">
+                    <HyperlinkButton x:Name="NetworkingButton" Click="Networking_Click" />
+                </InfoBar>
+                <InfoBar x:Name="LocalAiNetworkingInspectionError"
+                         IsOpen="True" IsClosable="False" Severity="Error" Visibility="Collapsed" />
+            </StackPanel>
+        </StackPanel>
+    </StackPanel>
+</UserControl>

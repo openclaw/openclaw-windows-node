@@ -44,6 +44,14 @@ internal sealed class WslGatewayKeepAliveService(
             if (settings is null) return;
 
             var activeRecord = _getRegistry()?.GetActive();
+            // An isolated profile has no authority to adopt the normal user's
+            // default distro or clean up keepalives discovered outside its records.
+            if (!WslKeepAlivePolicy.CanManageGateway(activeRecord, AppIdentity.IsIsolated))
+            {
+                Logger.Info("[WslKeepAlive] Isolated profile has no explicitly managed gateway; skipping lifecycle actions.");
+                return;
+            }
+
             if (!WslKeepAlivePolicy.ShouldStart(activeRecord, settings.GetEffectiveGatewayUrl()))
             {
                 await StopStaleLocalGatewayKeepAliveAsync();

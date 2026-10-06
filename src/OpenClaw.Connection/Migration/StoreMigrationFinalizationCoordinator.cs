@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Security;
+using System.Security.Cryptography;
 using OpenClaw.Shared;
 
 namespace OpenClaw.Connection.Migration;
@@ -17,7 +18,18 @@ public enum StoreMigrationFinalizationState
     Finalized
 }
 
-public sealed record StoreMigrationFinalizationDecision(StoreMigrationFinalizationState State)
+/// <param name="State">What finalization concluded.</param>
+/// <param name="SourceRemoved">
+/// Whether finalization got past verifying that the Inno source is gone. Once it is, no outcome
+/// may refuse launch. The completion receipt exists to stop two live installations sharing one
+/// data directory, and with the source removed there is no second installation left to stop.
+/// Blocking past that point strands the user: the receipt blocks the app that is already
+/// uninstalled, and the migration window will not hand over to the app that remains. Every such
+/// outcome keeps the receipt, so the failed step is still retried on the next launch.
+/// </param>
+public sealed record StoreMigrationFinalizationDecision(
+    StoreMigrationFinalizationState State,
+    bool SourceRemoved = false)
 {
     /// <summary>
     /// A refused startup preference still finalizes the migration: Windows gave a durable answer,
@@ -136,8 +148,16 @@ public sealed class InnoSourceRemovalVerifier : IInnoSourceRemovalVerifier
             var uninstaller = Path.Combine(_sourceDirectory, "unins000.exe");
             MigrationRecordCodec.RejectReparsePoints(executable);
             MigrationRecordCodec.RejectReparsePoints(uninstaller);
-            if (File.Exists(executable) || File.Exists(uninstaller))
+            // This is the last gate before records are cleaned and the handoff is declared
+            // finished, so absence has to be proved rather than assumed. File.Exists answers
+            // false for a denied probe, an invalid path, and a directory of the same name alike,
+            // which would report a source that is merely unreadable as removed.
+            var executableState = ProbeSourceObject(executable);
+            var uninstallerState = ProbeSourceObject(uninstaller);
+            if (executableState == SourceObjectState.Present || uninstallerState == SourceObjectState.Present)
                 return InnoSourceRemovalStatus.SourcePresent;
+            if (executableState == SourceObjectState.Unknown || uninstallerState == SourceObjectState.Unknown)
+                return InnoSourceRemovalStatus.InspectionFailed;
 
             var activity = new InnoSourceActivityVerifier(executable, _processes).VerifyStopped();
             if (activity == InnoSourceActivityStatus.Running)
@@ -149,8 +169,8 @@ public sealed class InnoSourceRemovalVerifier : IInnoSourceRemovalVerifier
             return createdNew ? InnoSourceRemovalStatus.Removed : InnoSourceRemovalStatus.SourcePresent;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
-                                         SecurityException or Win32Exception or
-                                         InvalidOperationException or ArgumentException)
+                                         SecurityException or Win32Exception or InvalidDataException or
+                                         InvalidOperationException or ArgumentException or NotSupportedException)
         {
             return InnoSourceRemovalStatus.InspectionFailed;
         }
@@ -161,6 +181,32 @@ public sealed class InnoSourceRemovalVerifier : IInnoSourceRemovalVerifier
         if (string.IsNullOrWhiteSpace(directory) || !Path.IsPathFullyQualified(directory))
             throw new ArgumentException("Source installation directory must be absolute.", nameof(directory));
         return Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
+    }
+
+    private enum SourceObjectState { Absent, Present, Unknown }
+
+    /// <summary>
+    /// Any object at the path counts as present, whatever its shape: the question here is whether
+    /// the source is gone, and something occupying the executable's name is not gone. Only a
+    /// not-found result proves absence; anything that merely could not be probed is unknown and
+    /// must leave the caller blocking.
+    /// </summary>
+    private static SourceObjectState ProbeSourceObject(string path)
+    {
+        try
+        {
+            _ = File.GetAttributes(path);
+            return SourceObjectState.Present;
+        }
+        catch (Exception exception) when (exception is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return SourceObjectState.Absent;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
+                                          SecurityException or ArgumentException or NotSupportedException)
+        {
+            return SourceObjectState.Unknown;
+        }
     }
 }
 
@@ -311,6 +357,7 @@ public sealed class MigrationInventoryCapture(MigrationBinding binding) : IMigra
 
 /// <summary>
 /// Reparse-safe final cleanup that keeps the completion receipt until all earlier cleanup succeeds.
+/// The caller must hold prepare.lock while consent, intent, then completion are removed.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class MigrationFinalizationRecordCleaner(MigrationBinding binding) : IStoreMigrationRecordCleaner
@@ -319,10 +366,14 @@ public sealed class MigrationFinalizationRecordCleaner(MigrationBinding binding)
     {
         ArgumentNullException.ThrowIfNull(receipt);
         var directory = Path.Combine(binding.RoamingDirectory, MigrationRecordCodec.DirectoryName);
+        var consentLockPath = Path.Combine(directory, InnoMigrationConsentStore.WriterLockFileName);
+        var consentPath = Path.Combine(directory, MigrationRecordCodec.ConsentFileName);
         var intentPath = Path.Combine(directory, MigrationRecordCodec.IntentFileName);
         var completionPath = Path.Combine(directory, MigrationRecordCodec.CompletionFileName);
 
         MigrationRecordCodec.RejectReparsePoints(directory);
+        MigrationRecordCodec.RejectReparsePoints(consentLockPath);
+        MigrationRecordCodec.RejectReparsePoints(consentPath);
         MigrationRecordCodec.RejectReparsePoints(intentPath);
         MigrationRecordCodec.RejectReparsePoints(completionPath);
         var durable = MigrationRecordCodec.ReadCompletion(
@@ -331,6 +382,8 @@ public sealed class MigrationFinalizationRecordCleaner(MigrationBinding binding)
             throw new InvalidDataException("Completion receipt changed before cleanup.");
 
         // The receipt is the recovery anchor, so it is always deleted last.
+        File.Delete(consentLockPath);
+        File.Delete(consentPath);
         File.Delete(intentPath);
         File.Delete(completionPath);
     }
@@ -373,7 +426,12 @@ public sealed class StoreMigrationFinalizationCoordinator(
             return new(StoreMigrationFinalizationState.AwaitingInnoRemoval);
         if (detected.Status is InnoInstallationStatus.Unsupported or InnoInstallationStatus.InspectionFailed)
             return new(StoreMigrationFinalizationState.InspectionFailed);
-        if (detected.Status != InnoInstallationStatus.NotInstalled)
+        // An orphaned registration is admitted here for the same reason admission allows it: the
+        // payload is proved gone and only the registry key remains. It is not taken as permission
+        // to finalize. The removal verifier below still has to return Removed on its own probes,
+        // so a surviving executable, uninstaller, process, or mutex continues to block.
+        if (detected.Status is not (InnoInstallationStatus.NotInstalled or
+                                    InnoInstallationStatus.OrphanedRegistration))
             throw new InvalidOperationException("Unknown Inno installation detection result.");
 
         var sourceRemovalStatus = sourceRemoval.VerifyRemoved();
@@ -394,7 +452,7 @@ public sealed class StoreMigrationFinalizationCoordinator(
 
             var durable = records.Read();
             if (durable.Status != MigrationStartupRecordStatus.Completed || durable.Record is null)
-                return new(StoreMigrationFinalizationState.InspectionFailed);
+                return new(StoreMigrationFinalizationState.InspectionFailed, SourceRemoved: true);
 
             MigrationInventory current;
             try
@@ -405,13 +463,13 @@ public sealed class StoreMigrationFinalizationCoordinator(
                                              InvalidDataException)
             {
                 logger.Error($"Store migration finalization inventory failed: {exception.Message}");
-                return new(StoreMigrationFinalizationState.InspectionFailed);
+                return new(StoreMigrationFinalizationState.InspectionFailed, SourceRemoved: true);
             }
 
             if (!string.Equals(current.Fingerprint, durable.Record.Fingerprint, StringComparison.Ordinal))
             {
                 logger.Warn("Store migration finalization inventory no longer matches the completion receipt.");
-                return new(StoreMigrationFinalizationState.InspectionFailed);
+                return new(StoreMigrationFinalizationState.InspectionFailed, SourceRemoved: true);
             }
 
             var startupRefused = false;
@@ -428,7 +486,7 @@ public sealed class StoreMigrationFinalizationCoordinator(
                                              UnauthorizedAccessException or InvalidOperationException)
             {
                 logger.Error($"Store migration startup preference finalization failed: {exception.Message}");
-                return new(StoreMigrationFinalizationState.StartupPreferenceFailed);
+                return new(StoreMigrationFinalizationState.StartupPreferenceFailed, SourceRemoved: true);
             }
 
             try
@@ -436,22 +494,23 @@ public sealed class StoreMigrationFinalizationCoordinator(
                 cleaner.ClearCompleted(durable.Record);
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
-                                             InvalidDataException)
+                                             InvalidDataException or FormatException or
+                                             CryptographicException)
             {
                 logger.Error($"Store migration record cleanup failed: {exception.Message}");
-                return new(StoreMigrationFinalizationState.RecordCleanupFailed);
+                return new(StoreMigrationFinalizationState.RecordCleanupFailed, SourceRemoved: true);
             }
 
             logger.Info($"Store migration finalized: {durable.Record.MigrationId}.");
             return new(startupRefused
                 ? StoreMigrationFinalizationState.StartupPreferenceRefused
-                : StoreMigrationFinalizationState.Finalized);
+                : StoreMigrationFinalizationState.Finalized, SourceRemoved: true);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
                                          InvalidDataException)
         {
             logger.Error($"Store migration finalization could not acquire the preparation lock: {exception.Message}");
-            return new(StoreMigrationFinalizationState.RecordCleanupFailed);
+            return new(StoreMigrationFinalizationState.RecordCleanupFailed, SourceRemoved: true);
         }
     }
 }

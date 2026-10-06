@@ -2356,6 +2356,12 @@ Gebruik een van deze opties:
   <data name="Onboarding_Wizard_ErrorGatewayDisconnected" xml:space="preserve">
     <value>Gatewayverbinding verbroken</value>
   </data>
+  <data name="Onboarding_Wizard_GatewayConsoleGap" xml:space="preserve">
+    <value>Sommige Gateway-consoleberichten zijn overgeslagen. Open de Gateway-terminal voor ontbrekende aanmeldinstructies.</value>
+  </data>
+  <data name="Onboarding_Wizard_GatewayConsoleUnavailable" xml:space="preserve">
+    <value>Updates van de Gateway-console zijn niet beschikbaar. Open de Gateway-terminal voor aanmeldinstructies voor de provider.</value>
+  </data>
   <data name="Onboarding_Wizard_ErrorGatewayDisconnectedDetail" xml:space="preserve">
     <value>Verbinding met gateway verloren. Klik op Volgende om de wizard over te slaan of wacht op opnieuw verbinden.</value>
   </data>
@@ -2438,7 +2444,7 @@ Gebruik een van deze opties:
     <value>Typ een opdracht...</value>
   </data>
   <data name="HubWindow_winexWindowEx_2.Title" xml:space="preserve">
-    <value>OpenClaw</value>
+    <value>OpenClaw-instellingen</value>
   </data>
   <data name="TitleSearchBox.PlaceholderText" xml:space="preserve">
     <value>Zoeken… (Ctrl+E)</value>
@@ -3046,6 +3052,9 @@ Gebruik een van deze opties:
   <data name="Chat_Composer_QueuedMessageFailed" xml:space="preserve">
     <value>Mislukt</value>
   </data>
+  <data name="Chat_Timeline_Pending" xml:space="preserve">
+    <value>In afwachting</value>
+  </data>
   <data name="Chat_Composer_QueuedMessageCancel" xml:space="preserve">
     <value>Bericht in wachtrij annuleren</value>
   </data>
@@ -3463,18 +3472,6 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
   </data>
   <data name="PermissionsPage_RulesCount_ManyFormat" xml:space="preserve">
     <value>{0} vermeldingen</value>
-  </data>
-  <data name="PermissionsPage_ExecRuleScope_Main" xml:space="preserve">
-    <value>deze agent</value>
-  </data>
-  <data name="PermissionsPage_ExecRuleScope_Wildcard" xml:space="preserve">
-    <value>alle agents</value>
-  </data>
-  <data name="PermissionsPage_RemoveRuleAutomationNameFormat" xml:space="preserve">
-    <value>Vermelding {1} uit de toestaanlijst voor {0} verwijderen</value>
-  </data>
-  <data name="PermissionsPage_ExecRuleAction_Inactive" xml:space="preserve">
-    <value>inactief</value>
   </data>
   <data name="PermissionsPage_Allowlist_NoConfig" xml:space="preserve">
     <value>No allowlist data available. Connect to a gateway first.</value>
@@ -4290,7 +4287,7 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Lokale poort</value>
   </data>
   <data name="ConnectionPage_SaveAmpConnect.Content" xml:space="preserve">
-    <value>Opslaan &amp;amp; verbinden</value>
+    <value>Opslaan &amp; verbinden</value>
   </data>
   <data name="ConnectionPage_Cancel.Content" xml:space="preserve">
     <value>Annuleren</value>
@@ -4551,7 +4548,7 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Windows-privacy</value>
   </data>
   <data name="PermissionsPage_CameraMicrophoneAmpScreen.Text" xml:space="preserve">
-    <value>Toegang tot camera, microfoon &amp;amp; scherm</value>
+    <value>Toegang tot camera, microfoon &amp; scherm</value>
   </data>
   <data name="PermissionsPage_SystemLevelPrivacyPermissions.Text" xml:space="preserve">
     <value>Privacymachtigingen op systeemniveau worden beheerd door Windows. Open Windows-privacyinstellingen om OpenClaw toegang te verlenen of in te trekken.</value>
@@ -4629,7 +4626,7 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Alleen-lezen</value>
   </data>
   <data name="SandboxPage_ReadAmpWrite.Content" xml:space="preserve">
-    <value>Lezen &amp;amp; schrijven</value>
+    <value>Lezen &amp; schrijven</value>
   </data>
   <data name="SandboxPage_Downloads.Text" xml:space="preserve">
     <value>Downloadmap</value>
@@ -4641,7 +4638,7 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Alleen-lezen</value>
   </data>
   <data name="SandboxPage_ReadAmpWrite2.Content" xml:space="preserve">
-    <value>Lezen &amp;amp; schrijven</value>
+    <value>Lezen &amp; schrijven</value>
   </data>
   <data name="SandboxPage_Desktop.Text" xml:space="preserve">
     <value>Bureaublad</value>
@@ -4653,7 +4650,7 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Alleen-lezen</value>
   </data>
   <data name="SandboxPage_ReadAmpWrite3.Content" xml:space="preserve">
-    <value>Lezen &amp;amp; schrijven</value>
+    <value>Lezen &amp; schrijven</value>
   </data>
   <data name="SandboxPage_ToolDirectoriesOnYour.Text" xml:space="preserve">
     <value>Mapdirectory's op uw PATH krijgen ook alleen-lezen toegang binnen de sandbox, zodat opdrachtregelhulpprogramma's zoals git, node, python en dotnet bruikbaar zijn. Stationswortels worden nooit toegekend.</value>
@@ -4671,7 +4668,7 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Alleen-lezen</value>
   </data>
   <data name="SandboxPage_ReadAmpWrite4.Content" xml:space="preserve">
-    <value>Lezen &amp;amp; schrijven</value>
+    <value>Lezen &amp; schrijven</value>
   </data>
   <data name="SandboxPage_NoCustomFoldersAdded.Text" xml:space="preserve">
     <value>Geen aangepaste mappen toegevoegd.</value>
@@ -4695,7 +4692,7 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Schrijven: agent kan uw klembord vervangen (kan het niet lezen)</value>
   </data>
   <data name="SandboxPage_ReadAmpWrite5.Content" xml:space="preserve">
-    <value>Lezen &amp;amp; schrijven</value>
+    <value>Lezen &amp; schrijven</value>
   </data>
   <data name="SandboxPage_Network.Text" xml:space="preserve">
     <value>📡 Netwerk</value>
@@ -4993,7 +4990,7 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>MSIX-installatie gedetecteerd</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Message" xml:space="preserve">
-    <value>OpenClaw verwijderen via Windows Instellingen &amp;amp;#x2192; Apps zal de lokale gateway NIET opruimen (WSL-distributie, schijfafbeelding). Gebruik EERST Lokale gateway verwijderen hieronder, en verwijder daarna OpenClaw.</value>
+    <value>OpenClaw verwijderen via Windows Instellingen → Apps zal de lokale gateway NIET opruimen (WSL-distributie, schijfafbeelding). Gebruik EERST Lokale gateway verwijderen hieronder, en verwijder daarna OpenClaw.</value>
   </data>
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>Verwijdert de WSL-distributie (OpenClawGateway), de schijfafbeelding, het item voor automatisch starten en wist de gateway-referenties. Uw MCP-token blijft behouden. Onboarding wordt gereset.</value>
@@ -7123,12 +7120,391 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   <data name="LocalAi_Reason_UnknownDriverVersion" xml:space="preserve"><value>onbekend</value></data>
   <data name="LocalAi_Reason_UnknownMemoryAmount" xml:space="preserve"><value>een onbekende hoeveelheid</value></data>
   <data name="LocalAi_Reason_GigabytesFormat" xml:space="preserve"><value>{0:0.#} GiB</value></data>
-  <data name="Onboarding_Welcome_LocalAiAvailableBadge.Text" xml:space="preserve"><value>Lokale AI ondersteund</value></data>
-  <data name="Onboarding_Welcome_LocalAiAvailabilityDetail" xml:space="preserve"><value>Uw {0} kan lokale AI op deze pc uitvoeren.</value></data>
+  <data name="Onboarding_Welcome_LocalAiAvailableBadge.Text" xml:space="preserve"><value>Uw pc ondersteunt lokale AI</value></data>
+  <data name="Onboarding_Welcome_LocalAiAvailabilityDetail" xml:space="preserve"><value>Voer lokaal een model uit met uw {0}.</value></data>
   <data name="Onboarding_LocalAi_WslConfigReadFailureReason" xml:space="preserve"><value>OpenClaw kan het globale .wslconfig-bestand niet veilig lezen. Controleer of het bestand geldig en leesbaar is en probeer de installatie opnieuw.</value></data>
   <data name="LocalAiPage_UnavailableProbeTitle" xml:space="preserve"><value>Beschikbaarheid van lokale AI kon niet worden geverifieerd</value></data>
   <data name="LocalAiPage_CheckingTitle" xml:space="preserve"><value>Beschikbaarheid van lokale AI controleren</value></data>
   <data name="LocalAiPage_CheckingMessage" xml:space="preserve"><value>OpenClaw controleert of dit apparaat lokale AI kan uitvoeren. Dit duurt slechts een moment.</value></data>
+  <data name="Chat_Code_Copy" xml:space="preserve"><value>Code kopiëren</value></data>
+  <data name="Chat_Code_Label" xml:space="preserve"><value>Codeblok</value></data>
+  <data name="Chat_Model_Current" xml:space="preserve"><value>Huidig model</value></data>
+  <data name="Chat_Model_Other" xml:space="preserve"><value>Andere modellen</value></data>
+  <data name="Chat_Model_NoMatches" xml:space="preserve"><value>Geen overeenkomende modellen</value></data>
+  <data name="Chat_Model_Search" xml:space="preserve"><value>Modellen zoeken</value></data>
+  <data name="Chat_Attachment_Remove" xml:space="preserve"><value>Bijlage verwijderen</value></data>
+  <data name="Chat_Timeline_Loading" xml:space="preserve"><value>Berichten laden...</value></data>
+  <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 bericht in wachtrij</value></data>
+  <data name="Chat_Copy_Copied" xml:space="preserve"><value>Gekopieerd</value></data>
+  <data name="Chat_Copy_Failed" xml:space="preserve"><value>Kopiëren mislukt</value></data>
+  <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>Denkinspanning</value></data>
+  <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Sneller</value></data>
+  <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Grondiger</value></data>
+  <data name="Onboarding_Flow_Position" xml:space="preserve"><value>Stap {0} van {1}</value></data>
+  <data name="Onboarding_Flow_CompletionUnavailable" xml:space="preserve"><value>Chat kon niet worden geopend. Sluit de installatie en open OpenClaw opnieuw.</value></data>
+  <data name="Onboarding_Flow_AiNavigationFailed" xml:space="preserve"><value>De gateway is geïnstalleerd, maar AI-instelling kon niet worden geopend. Open de installatie opnieuw om door te gaan zonder opnieuw te installeren.</value></data>
+  <data name="Onboarding_Flow_AccessTitle" xml:space="preserve"><value>Jouw pc, jouw machtigingen</value></data>
+  <data name="Onboarding_Flow_InstallAction" xml:space="preserve"><value>Installeren en instellen</value></data>
+  <data name="Onboarding_Flow_Permissions.Header" xml:space="preserve"><value>Windows-machtigingen</value></data>
+  <data name="Onboarding_Flow_InstallReview.Text" xml:space="preserve"><value>Wat er wordt geïnstalleerd</value></data>
+  <data name="Onboarding_Flow_AutoStart.Text" xml:space="preserve"><value>OpenClaw starten bij aanmelden</value></data>
+  <data name="Onboarding_Flow_AutoStartToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>OpenClaw starten bij aanmelden</value></data>
+  <data name="ChatDashboardButton.Content" xml:space="preserve"><value>Dashboard</value></data>
+  <data name="ChatDashboardHint.Text" xml:space="preserve"><value>Kanalen, integraties en gateway-instellingen</value></data>
+  <data name="Onboarding_Flow_WelcomeDescription.Text" xml:space="preserve"><value>OpenClaw is uw AI-assistent om dingen gedaan te krijgen op uw pc.</value></data>
+  <data name="Onboarding_AiSetup_Title.Text" xml:space="preserve"><value>Verbind je AI</value></data>
+  <data name="Onboarding_AiSetup_CatalogOptIn" xml:space="preserve"><value>Bestaande providergesprekken ontdekken (optioneel)</value></data>
+  <data name="Onboarding_AiSetup_Starting" xml:space="preserve"><value>Provider instellen…</value></data>
+  <data name="Onboarding_AiSetup_WorkingProvider" xml:space="preserve"><value>Wachten op je provider…</value></data>
+  <data name="Onboarding_AiSetup_Reconnecting" xml:space="preserve"><value>Wachten tot de Gateway opnieuw verbindt, daarna dit model controleren…</value></data>
+  <data name="Onboarding_AiSetup_PreparedChanged" xml:space="preserve"><value>Het model is voorbereid maar niet geactiveerd. De Gateway-verbinding is gewijzigd of kan dit model niet activeren. Annuleer om terug te keren naar de keuzes.</value></data>
+  <data name="Onboarding_AiSetup_Submit" xml:space="preserve"><value>Verzenden</value></data>
+  <data name="Onboarding_AiSetup_SignedIn" xml:space="preserve"><value>Ik ben aangemeld</value></data>
+  <data name="Onboarding_AiSetup_CopyCode" xml:space="preserve"><value>Code kopiëren</value></data>
+  <data name="Onboarding_AiSetup_CopyFailed" xml:space="preserve"><value>De code kon niet worden gekopieerd. Selecteer en kopieer deze handmatig.</value></data>
+  <data name="Onboarding_AiSetup_Recheck" xml:space="preserve"><value>Opnieuw controleren</value></data>
+  <data name="Onboarding_AiSetup_More.Header" xml:space="preserve"><value>Meer aanmeldopties</value></data>
+  <data name="Onboarding_AiSetup_Candidates" xml:space="preserve"><value>Gedetecteerde AI-toegang</value></data>
+  <data name="Onboarding_AiSetup_Recommended" xml:space="preserve"><value>Aanbevolen installaties</value></data>
+  <data name="Onboarding_AiSetup_RecommendedDetail" xml:space="preserve"><value>Open de website van een provider om te installeren of aan te melden en controleer opnieuw. Deze pagina installeert niets.</value></data>
+  <data name="Onboarding_AiSetup_Unavailable" xml:space="preserve"><value>Gedetecteerd, maar niet klaar om te testen</value></data>
+  <data name="Onboarding_AiSetup_Prepare" xml:space="preserve"><value>Een lokaal model voorbereiden</value></data>
+  <data name="Onboarding_AiSetup_SignIn" xml:space="preserve"><value>Aanmelden bij een provider</value></data>
+  <data name="Onboarding_AiSetup_ApiKeys" xml:space="preserve"><value>API-sleutels</value></data>
+  <data name="Onboarding_AiSetup_ManualHeading" xml:space="preserve"><value>Verbinden met een API-sleutel of token</value></data>
+  <data name="Onboarding_AiSetup_ManualConnect" xml:space="preserve"><value>Verbinden</value></data>
+  <data name="Onboarding_AiSetup_ManualHelp" xml:space="preserve"><value>Kies een provider en voer de API-sleutel of het token in. Verbinden stuurt deze naar je Gateway om die provider te configureren en te verifiëren.</value></data>
+  <data name="Onboarding_AiSetup_ApiProvider" xml:space="preserve"><value>Provider voor API-sleutel</value></data>
+  <data name="Onboarding_AiSetup_CheckAgain" xml:space="preserve"><value>Opnieuw controleren</value></data>
+  <data name="Onboarding_AiSetup_NoUsableCandidates" xml:space="preserve"><value>Geen bruikbare AI-toegang gedetecteerd. Kies een aanmeldmethode of voer hieronder een API-sleutel in.</value></data>
+  <data name="Onboarding_AiSetup_DiscoveryFailed" xml:space="preserve"><value>AI-detectie is mislukt. Controleer de gatewayverbinding en probeer opnieuw.</value></data>
+  <data name="Onboarding_AiSetup_Cancelling" xml:space="preserve"><value>Wachten tot de gateway de annulering bevestigt. Opgeslagen providergegevens kunnen behouden blijven.</value></data>
+  <data name="Onboarding_AiSetup_ApiKey.Header" xml:space="preserve"><value>API-sleutel of token</value></data>
+  <data name="Onboarding_AiSetup_Catalog.Header" xml:space="preserve"><value>Bestaande gesprekken van de provider zoeken?</value></data>
+  <data name="Onboarding_AiSetup_CatalogYes.Content" xml:space="preserve"><value>Ja, gesprekken zoeken</value></data>
+  <data name="Onboarding_AiSetup_CatalogNo.Content" xml:space="preserve"><value>Nee, gesprekken gescheiden houden</value></data>
+  <data name="Onboarding_AiSetup_OpenLink.Content" xml:space="preserve"><value>Aanmeldpagina openen</value></data>
+  <data name="Onboarding_AiSetup_Confirm.Content" xml:space="preserve"><value>Ja</value></data>
+  <data name="Onboarding_AiSetup_Refresh.Content" xml:space="preserve"><value>Vernieuwen</value></data>
+  <data name="Onboarding_AiSetup_Cancel.Content" xml:space="preserve"><value>Annuleren</value></data>
+  <data name="Onboarding_AiSetup_Legacy.Content" xml:space="preserve"><value>Klassieke installatie</value></data>
+  <data name="Onboarding_AiSetup_Continue.Content" xml:space="preserve"><value>Doorgaan</value></data>
+  <data name="Onboarding_AiSetup_Connecting" xml:space="preserve"><value>Verbinding maken met je Gateway...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_CheckingHardware" xml:space="preserve"><value>NVIDIA GPU-geheugen en CUDA-ondersteuning controleren...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_CheckingFiles" xml:space="preserve"><value>llama.cpp en gedownloade modelbestanden controleren. Grote modellen kunnen een minuut of langer duren; intacte bestanden hoeven niet opnieuw te worden gedownload.</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_PreparingGateway" xml:space="preserve"><value>De geselecteerde Gateway en de lokale AI-configuratie controleren...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_StartingRuntime" xml:space="preserve"><value>llama-server starten en het model controleren. Het laden in GPU-geheugen kan even duren...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_PublishingProvider" xml:space="preserve"><value>De lokale AI-provider en het primaire model in je Gateway bevestigen...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_Verifying" xml:space="preserve"><value>Een echt antwoord van het geselecteerde model via je Gateway testen...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_Detecting" xml:space="preserve"><value>Geconfigureerde modellen en AI-providers zoeken...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_Console" xml:space="preserve"><value>De diagnostische console van de geïsoleerde Gateway openen...</value></data>
+  <data name="Onboarding_AiSetup_Choose" xml:space="preserve"><value>Kies een model of verbind een AI-provider.</value></data>
+  <data name="Onboarding_AiSetup_Running" xml:space="preserve"><value>Volg de stappen van je provider.</value></data>
+  <data name="Onboarding_AiSetup_Verifying" xml:space="preserve"><value>Model opgeslagen. De huidige Gateway-verbinding wordt gecontroleerd.</value></data>
+  <data name="Onboarding_AiSetup_Verified" xml:space="preserve"><value>Je AI is klaar. Chat wordt geopend...</value></data>
+  <data name="Onboarding_AiSetup_Prepared" xml:space="preserve"><value>Je model is voorbereid, maar nog niet geactiveerd. Activeer het om precies dit model te testen.</value></data>
+  <data name="Onboarding_AiSetup_ActivatePrepared" xml:space="preserve"><value>Model activeren</value></data>
+  <data name="Onboarding_AiSetup_Cancelled" xml:space="preserve"><value>Installatie geannuleerd. Vernieuw om opnieuw te kiezen. Opgeslagen providergegevens kunnen behouden blijven.</value></data>
+  <data name="Onboarding_AiSetup_Rejected" xml:space="preserve"><value>De provider kon dit model niet activeren. Vernieuw om opnieuw te kiezen.</value></data>
+  <data name="Onboarding_AiSetup_Unsupported" xml:space="preserve"><value>Deze Gateway ondersteunt geen gerichte AI-installatie. Gebruik de klassieke installatie.</value></data>
+  <data name="Onboarding_AiSetup_Uncertain" xml:space="preserve"><value>Het resultaat is niet bevestigd. Vernieuw na herstel van de Gateway-verbinding of annuleer de sessie. Er wordt geen nieuwe activering gestart.</value></data>
+  <data name="Onboarding_AiSetup_AdminRequired" xml:space="preserve"><value>AI-installatie vereist een verbonden operator met beheerdersrechten. Voltooi de koppeling en vernieuw.</value></data>
+  <data name="Onboarding_AiSetup_Failed" xml:space="preserve"><value>AI-installatie kan niet doorgaan. Controleer de Gateway-verbinding en vernieuw.</value></data>
+  <data name="Onboarding_AiSetup_VerificationFailed" xml:space="preserve"><value>De controle van het geselecteerde model is mislukt. De installatie is niet voltooid.</value></data>
+  <data name="Onboarding_AiSetup_NavigationFailed" xml:space="preserve"><value>Klassieke installatie kon niet worden geopend. Houd dit venster open en probeer opnieuw.</value></data>
+  <data name="Onboarding_AiSetup_InvalidLink" xml:space="preserve"><value>De providerlink kon niet worden geopend. Alleen HTTP- of HTTPS-links worden ondersteund.</value></data>
+  <data name="Onboarding_AiSetup_NoChoices" xml:space="preserve"><value>De Gateway heeft geen ondersteunde opties geretourneerd. Controleer de providerconfiguratie en vernieuw.</value></data>
+  <data name="Onboarding_AiSetup_Value" xml:space="preserve"><value>Voer een waarde in</value></data>
+  <data name="Onboarding_AiSetup_CodeExpiry" xml:space="preserve"><value>Deze code verloopt over {0} minuten.</value></data>
+  <data name="Onboarding_AiSetup_InvalidInput" xml:space="preserve"><value>De provider heeft dit antwoord niet geaccepteerd. Controleer de huidige stap en probeer opnieuw.</value></data>
+  <data name="Onboarding_NativeConnection_Title" xml:space="preserve"><value>Verbinding maken met een Gateway</value></data>
+  <data name="Onboarding_NativeConnection_Description" xml:space="preserve"><value>Controleer de verbinding zonder op te slaan. Volgende controleert opnieuw en slaat deze Gateway op voordat u de toegang van deze pc bekijkt.</value></data>
+  <data name="Onboarding_NativeConnection_Address" xml:space="preserve"><value>Gateway-adres</value></data>
+  <data name="Onboarding_NativeConnection_Code" xml:space="preserve"><value>Installatiecode</value></data>
+  <data name="Onboarding_NativeConnection_Token" xml:space="preserve"><value>Gedeeld Token (in plaats van een installatiecode)</value></data>
+  <data name="Onboarding_NativeConnection_Ssh" xml:space="preserve"><value>SSH-tunnel</value></data>
+  <data name="Onboarding_NativeConnection_SshDescription" xml:space="preserve"><value>Optioneel. Gebruikt uw bestaande OpenSSH-sleutels en configuratie. Behoud het Gateway-adres uit uw opgeslagen verbinding of installatiecode. De externe Gateway-poort wordt doorgestuurd vanaf de SSH-host.</value></data>
+  <data name="Onboarding_NativeConnection_SshEnabled" xml:space="preserve"><value>Een SSH-tunnel gebruiken</value></data>
+  <data name="Onboarding_NativeConnection_SshHost" xml:space="preserve"><value>SSH-host</value></data>
+  <data name="Onboarding_NativeConnection_SshUser" xml:space="preserve"><value>SSH-gebruiker</value></data>
+  <data name="Onboarding_NativeConnection_SshPort" xml:space="preserve"><value>SSH-poort</value></data>
+  <data name="Onboarding_NativeConnection_RemotePort" xml:space="preserve"><value>Externe Gateway-poort</value></data>
+  <data name="Onboarding_NativeConnection_LocalPort" xml:space="preserve"><value>Lokale tunnelpoort</value></data>
+  <data name="Onboarding_NativeConnection_Back" xml:space="preserve"><value>Terug</value></data>
+  <data name="Onboarding_NativeConnection_Check" xml:space="preserve"><value>Verbinding controleren</value></data>
+  <data name="Onboarding_NativeConnection_Next" xml:space="preserve"><value>Volgende</value></data>
+  <data name="Onboarding_NativeConnection_Cancel" xml:space="preserve"><value>Annuleren</value></data>
+  <data name="Onboarding_Native_Checking" xml:space="preserve"><value>Het geïnstalleerde Gateway-pakket en de uitvoeringsaliassen controleren...</value></data>
+  <data name="Onboarding_NativeConnection_Checking" xml:space="preserve"><value>De verbinding met de Gateway controleren...</value></data>
+  <data name="Onboarding_NativeConnection_Cancelled" xml:space="preserve"><value>Verbindingspoging geannuleerd.</value></data>
+  <data name="Onboarding_NativeConnection_Checked" xml:space="preserve"><value>Verbinding gecontroleerd. Er is niets opgeslagen. Volgende controleert opnieuw en slaat deze Gateway op.</value></data>
+  <data name="Onboarding_NativeConnection_Failed" xml:space="preserve"><value>Het resultaat van de verbinding kon niet worden bevestigd. Controleer de actieve Gateway in Companion Settings voordat u doorgaat.</value></data>
+  <data name="Onboarding_V2_AlternativesTitle.Text" xml:space="preserve"><value>Kies een andere instelroute</value></data>
+  <data name="Onboarding_V2_ExistingRoute.Header" xml:space="preserve"><value>Bestaande Gateway</value></data>
+  <data name="Onboarding_V2_ExistingRoute.Description" xml:space="preserve"><value>Gebruik een opgeslagen of bestaande verbinding. Geen WSL-installatie.</value></data>
+  <data name="Onboarding_V2_RemoteRoute.Header" xml:space="preserve"><value>Externe Gateway</value></data>
+  <data name="Onboarding_V2_RemoteRoute.Description" xml:space="preserve"><value>Gebruik de ingebouwde editor voor adres, instelcode of SSH-verbinding.</value></data>
+  <data name="Onboarding_V2_McpRoute.Header" xml:space="preserve"><value>Alleen lokale MCP</value></data>
+  <data name="Onboarding_V2_McpRoute.Description" xml:space="preserve"><value>Schakel lokale MCP in zonder Gateway. Controleer daarna de pc-mogelijkheden.</value></data>
+  <data name="Onboarding_V2_DeferredRoute.Header" xml:space="preserve"><value>Gateway later instellen</value></data>
+  <data name="Onboarding_V2_DeferredRoute.Description" xml:space="preserve"><value>Controleer uw keuzes zonder WSL te installeren of opgeslagen Gateways te wijzigen.</value></data>
+  <data name="Onboarding_V2_HostUnavailable.Title" xml:space="preserve"><value>Verbindingseditor is niet beschikbaar in deze instelhost</value></data>
+  <data name="Onboarding_V2_HostUnavailable.Message" xml:space="preserve"><value>Open de installatie vanuit de Companion-app om de ingebouwde verbindingseditor te gebruiken.</value></data>
+  <data name="Onboarding_V2_Back.Content" xml:space="preserve"><value>Terug</value></data>
+  <data name="Onboarding_V2_CapabilitiesTitle.Text" xml:space="preserve"><value>Pc-mogelijkheden</value></data>
+  <data name="Onboarding_V2_CapabilitiesIntro.Text" xml:space="preserve"><value>Kies wat agents op deze pc mogen gebruiken. Deze keuzes verlenen geen Windows-privacytoegang of toestemming voor uitvoering.</value></data>
+  <data name="Onboarding_V2_NodeMode.Header" xml:space="preserve"><value>Node mode</value></data>
+  <data name="Onboarding_V2_NodeMode.Description" xml:space="preserve"><value>Bied de mogelijkheden van deze pc aan via een verbonden Gateway.</value></data>
+  <data name="Onboarding_V2_NodeModeToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Node mode</value></data>
+  <data name="Onboarding_V2_Mcp.Header" xml:space="preserve"><value>Lokale MCP-server</value></data>
+  <data name="Onboarding_V2_Mcp.Description" xml:space="preserve"><value>Gebruik lokale MCP-clients zonder Gateway.</value></data>
+  <data name="Onboarding_V2_McpToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Lokale MCP-server</value></data>
+  <data name="Onboarding_V2_ReadOnly.Content" xml:space="preserve"><value>Strikt: Canvas en schermopname. Opdrachtuitvoering is uitgeschakeld.</value></data>
+  <data name="Onboarding_V2_Standard.Content" xml:space="preserve"><value>Gebalanceerd (aanbevolen): opdrachten, Canvas, schermopname en spraak.</value></data>
+  <data name="Onboarding_V2_Full.Content" xml:space="preserve"><value>Open: alle acht capaciteiten, waaronder camera, locatie en browserbesturing.</value></data>
+  <data name="Onboarding_V2_Custom.Text" xml:space="preserve"><value>Aangepaste mogelijkheden</value></data>
+  <data name="Onboarding_V2_BrowserRequired.Title" xml:space="preserve"><value>Browserbesturing vereist Node mode en een Gateway</value></data>
+  <data name="Onboarding_V2_BrowserRequired.Message" xml:space="preserve"><value>Uw keuze voor browserbesturing blijft behouden. Deze wordt beschikbaar zodra een Gateway-verbinding gereed is.</value></data>
+  <data name="Onboarding_V2_DeviceFixed.Text" xml:space="preserve"><value>Basisapparaatinformatie en status blijven beschikbaar zolang een nodeservice draait. Ze zijn geen profielschakelaar.</value></data>
+  <data name="Onboarding_V2_Ollama.Header" xml:space="preserve"><value>Ollama delen</value></data>
+  <data name="Onboarding_V2_Ollama.Description" xml:space="preserve"><value>Deel een bestaande Windows Ollama-service. Dit installeert Local AI niet en wijzigt uw mogelijkhedenprofiel niet.</value></data>
+  <data name="Onboarding_V2_OllamaToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Ollama delen</value></data>
+  <data name="Onboarding_V2_NativeSettings.Text" xml:space="preserve"><value>Uitvoeringsgoedkeuringen, sandboxrechten, onthouden opnametoestemming, MCP-tokens en spraakconfiguratie blijven in Companion Settings.</value></data>
+  <data name="Onboarding_V2_Next.Content" xml:space="preserve"><value>Volgende</value></data>
+  <data name="Onboarding_V2_NetworkExplanation.Text" xml:space="preserve"><value>Local AI vereist gespiegelde WSL-netwerken. De installatie wijzigt het globale .wslconfig-bestand en stopt alle draaiende WSL-distributies één keer. Er worden geen distributies verwijderd. Sla eerst uw WSL-werk op.</value></data>
+  <data name="Onboarding_V2_NetworkConsent.Content" xml:space="preserve"><value>Ik sta deze globale netwerkwijziging en eenmalige WSL-afsluiting toe.</value></data>
+  <data name="Onboarding_V2_ReplacementWarning.Title" xml:space="preserve"><value>Deze vervanging kan WSL-gegevens permanent verwijderen</value></data>
+  <data name="Onboarding_V2_ReplacementWarning.Message" xml:space="preserve"><value>Alleen de genoemde WSL-installatie wordt vervangen. Andere opgeslagen Gateway-verbindingen blijven beschikbaar.</value></data>
+  <data name="Onboarding_V2_ReturnToReview.Content" xml:space="preserve"><value>Terug naar overzicht</value></data>
+  <data name="Onboarding_V2_ReviewTitle.Text" xml:space="preserve"><value>WSL Gateway instellen</value></data>
+  <data name="Onboarding_V2_ReviewIntro.Text" xml:space="preserve"><value>Controleer wat er verandert voordat de installatie begint.</value></data>
+  <data name="Onboarding_V2_CliCard.Header" xml:space="preserve"><value>OpenClaw CLI</value></data>
+  <data name="Onboarding_V2_GatewayCard.Header" xml:space="preserve"><value>Lokale Gateway-service</value></data>
+  <data name="Onboarding_V2_LocalAiReview.Header" xml:space="preserve"><value>Local AI</value></data>
+  <data name="Onboarding_V2_TailscaleReview.Header" xml:space="preserve"><value>Tailscale Serve</value></data>
+  <data name="Onboarding_V2_ReplacementCard.Header" xml:space="preserve"><value>WSL-vervanging controleren</value></data>
+  <data name="Onboarding_V2_StartupCard.Header" xml:space="preserve"><value>OpenClaw starten bij aanmelden</value></data>
+  <data name="Onboarding_V2_ExactCommands.Header" xml:space="preserve"><value>Exacte opdrachten en bestanden</value></data>
+  <data name="Onboarding_V2_ReviewRequired.Title" xml:space="preserve"><value>Controleer de vereiste keuzes</value></data>
+  <data name="Onboarding_V2_ReviewRequired.Message" xml:space="preserve"><value>Controleer de vereisten voor geselecteerde Local AI en Tailscale en bevestig WSL-vervanging vóór installatie.</value></data>
+  <data name="Onboarding_V2_Install.Content" xml:space="preserve"><value>Installeren</value></data>
+  <data name="Onboarding_V2_WelcomeTitle.Text" xml:space="preserve"><value>Welkom bij OpenClaw</value></data>
+  <data name="Onboarding_V2_WelcomeChat.Header" xml:space="preserve"><value>Chat met uw AI</value></data>
+  <data name="Onboarding_V2_WelcomeChat.Description" xml:space="preserve"><value>Gebruik de ingebouwde Chat met een AI-provider naar keuze.</value></data>
+  <data name="Onboarding_V2_WelcomePc.Header" xml:space="preserve"><value>Laat agents helpen op deze pc</value></data>
+  <data name="Onboarding_V2_WelcomePc.Description" xml:space="preserve"><value>Kies welke pc-mogelijkheden u inschakelt. Windows-machtigingen en uitvoeringsgoedkeuringen blijven apart.</value></data>
+  <data name="Onboarding_V2_WelcomeGateway.Header" xml:space="preserve"><value>Houd controle over uw Gateway</value></data>
+  <data name="Onboarding_V2_WelcomeGateway.Description" xml:space="preserve"><value>Draai hier een privé-WSL Gateway of verbind met een bestaande.</value></data>
+  <data name="Onboarding_V2_WelcomeTrust.Title" xml:space="preserve"><value>Voordat u begint</value></data>
+  <data name="Onboarding_V2_WelcomeTrust.Message" xml:space="preserve"><value>AI-agents zijn krachtig en toegang tot uw pc geven brengt risico’s met zich mee. Ze kunnen fouten maken, bestanden wijzigen of verwijderen, of privégegevens blootstellen.&#x0a;&#x0a;U kunt de toegang van OpenClaw tot uw pc beheren en beperken.</value></data>
+  <data name="Onboarding_V2_Continue.Content" xml:space="preserve"><value>Doorgaan</value></data>
+  <data name="Onboarding_V2_Retry.Content" xml:space="preserve"><value>Opnieuw proberen</value></data>
+  <data name="Onboarding_V2_AlternativeRoutes.Content" xml:space="preserve"><value>Extern, lokale MCP of later instellen</value></data>
+  <data name="Onboarding_V2_LocalAiCard.Header" xml:space="preserve"><value>Local AI</value></data>
+  <data name="Onboarding_V2_LocalAiCard.Description" xml:space="preserve"><value>Optionele beheerde llama-server voor Windows. Dit staat los van Ollama delen.</value></data>
+  <data name="Onboarding_V2_LocalAiToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Local AI instellen</value></data>
+  <data name="Onboarding_V2_LocalAiModel.Header" xml:space="preserve"><value>Model</value></data>
+  <data name="Onboarding_V2_LocalAiModel.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Local AI-model</value></data>
+  <data name="Onboarding_V2_NetworkRequired.Title" xml:space="preserve"><value>WSL-netwerkwijziging vereist</value></data>
+  <data name="Onboarding_V2_TailscaleCard.Header" xml:space="preserve"><value>Tailscale Serve</value></data>
+  <data name="Onboarding_V2_TailscaleCard.Description" xml:space="preserve"><value>Privétoegang tot het tailnet, geen openbare Funnel-toegang. Optioneel en standaard uit.</value></data>
+  <data name="Onboarding_V2_TailscaleToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Tailscale Serve instellen</value></data>
+  <data name="Onboarding_V2_TailscalePrerequisite.Text" xml:space="preserve"><value>Installeer Tailscale eerst op Windows en meld u aan met MagicDNS ingeschakeld. De WSL Gateway meldt zich apart aan.</value></data>
+  <data name="Onboarding_V2_TailscaleAuthMode.Header" xml:space="preserve"><value>Aanmelden bij de WSL Gateway</value></data>
+  <data name="Onboarding_V2_TailscaleBrowser.Content" xml:space="preserve"><value>Tijdens installatie aanmelden met een browser</value></data>
+  <data name="Onboarding_V2_TailscaleKey.Content" xml:space="preserve"><value>Een eenmalige verificatiesleutel gebruiken</value></data>
+  <data name="Onboarding_V2_TailscaleKeyInput.Header" xml:space="preserve"><value>Tailscale-verificatiesleutel</value></data>
+  <data name="Onboarding_V2_TailscaleKeyInput.PlaceholderText" xml:space="preserve"><value>Alleen bewaard voor deze instelsessie</value></data>
+  <data name="Onboarding_V2_TailscaleTrust.Header" xml:space="preserve"><value>Tailscale-identiteiten vertrouwen voor Gateway-verificatie</value></data>
+  <data name="Onboarding_V2_TailscaleTrust.Description" xml:space="preserve"><value>Standaard uit. Schakel alleen in als de ACL's van uw tailnet moeten deelnemen aan Gateway-toegangscontrole.</value></data>
+  <data name="Onboarding_V2_TailscaleTrustToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Tailscale-identiteiten vertrouwen</value></data>
+  <data name="Onboarding_V2_WindowTitle.Text" xml:space="preserve"><value>OpenClaw instellen</value></data>
+  <data name="Onboarding_V2_NetworkConsentRecorded" xml:space="preserve"><value>WSL-netwerktoestemming vastgelegd</value></data>
+  <data name="Onboarding_V2_ReviewNetworking" xml:space="preserve"><value>WSL-netwerkwijzigingen controleren</value></data>
+  <data name="Onboarding_V2_TailscaleChecking" xml:space="preserve"><value>Windows Tailscale controleren...</value></data>
+  <data name="Onboarding_V2_TailscaleConnected" xml:space="preserve"><value>Windows Tailscale verbonden als {0}.</value></data>
+  <data name="Onboarding_V2_TailscaleRequired" xml:space="preserve"><value>Windows Tailscale moet geïnstalleerd en aangemeld zijn en MagicDNS moet aanstaan.</value></data>
+  <data name="Onboarding_V2_SelectedReview" xml:space="preserve"><value>Geselecteerd. Controleer details en vereisten.</value></data>
+  <data name="Onboarding_V2_OptionalOff" xml:space="preserve"><value>Optioneel. Uit.</value></data>
+  <data name="Onboarding_V2_ConsentRecorded" xml:space="preserve"><value>Bevestiging vastgelegd voor deze WSL-installatie.</value></data>
+  <data name="Onboarding_V2_ConsentRequired" xml:space="preserve"><value>Expliciete bevestiging is vereist vóór vervanging.</value></data>
+  <data name="Onboarding_V2_DetailLocalAi" xml:space="preserve"><value>Local AI</value></data>
+  <data name="Onboarding_V2_DetailTailscale" xml:space="preserve"><value>Tailscale Serve</value></data>
+  <data name="Onboarding_V2_DetailNetworking" xml:space="preserve"><value>WSL-netwerktoestemming</value></data>
+  <data name="Onboarding_V2_DetailReplacement" xml:space="preserve"><value>De WSL Gateway vervangen</value></data>
+  <data name="Onboarding_V2_ReplaceDistro" xml:space="preserve"><value>Ik bevestig de vervanging van WSL-installatie '{0}' en begrijp dat de gegevens permanent kunnen worden verwijderd.</value></data>
+  <data name="Onboarding_V2_WslNotReady" xml:space="preserve"><value>WSL2 is niet gereed</value></data>
+  <data name="Onboarding_V2_WslInspectFailure" xml:space="preserve"><value>WSL kon niet worden geïnspecteerd</value></data>
+  <data name="Onboarding_V2_Recommended" xml:space="preserve"><value>Aanbevolen</value></data>
+  <data name="Onboarding_V2_ModelNotQualified" xml:space="preserve"><value>Dit model is niet geschikt voor de gedetecteerde hardware.</value></data>
+  <data name="Onboarding_V2_HardwareMemory" xml:space="preserve"><value>{0} vereist. {1} zichtbaar voor CUDA op {2}.</value></data>
+  <data name="Onboarding_V2_EngineDownload" xml:space="preserve"><value>llama-server voor Windows. {0} geverifieerde download. Laadt bij het eerste verzoek.</value></data>
+  <data name="Onboarding_V2_ModelDownload" xml:space="preserve"><value>{0}, {1} van Hugging Face</value></data>
+  <data name="Onboarding_V2_Tokens" xml:space="preserve"><value>{0:N0} tokens</value></data>
+  <data name="Onboarding_V2_ClassicSettings.Content" xml:space="preserve"><value>Klassieke verbindingsinstellingen openen</value></data>
+  <data name="Onboarding_V2_SaveChoicesFailed" xml:space="preserve"><value>Uw instelkeuzes konden niet worden opgeslagen. Bekijk de fout en probeer opnieuw: {0}</value></data>
+  <data name="Onboarding_V2_ProfileSelector.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Capaciteitenprofiel</value></data>
+  <data name="Onboarding_V2_ProfileReadOnly.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Strikt: Canvas en schermopname. Opdrachtuitvoering is uitgeschakeld.</value></data>
+  <data name="Onboarding_V2_ProfileStandard.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Gebalanceerd (aanbevolen): opdrachten, Canvas, schermopname en spraak.</value></data>
+  <data name="Onboarding_V2_ProfileFull.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Open: alle acht capaciteiten, waaronder camera, locatie en browserbesturing.</value></data>
+  <data name="Onboarding_V2_ProfileReadOnlyTitle.Text" xml:space="preserve"><value>Strikt</value></data>
+  <data name="Onboarding_V2_ProfileReadOnlyDescription.Text" xml:space="preserve"><value>Canvas en schermopname. Opdrachtuitvoering is uitgeschakeld.</value></data>
+  <data name="Onboarding_V2_ProfileStandardTitle.Text" xml:space="preserve"><value>Gebalanceerd</value></data>
+  <data name="Onboarding_V2_ProfileStandardDescription.Text" xml:space="preserve"><value>Opdrachten, Canvas, schermopname en spraak.</value></data>
+  <data name="Onboarding_V2_ProfileFullTitle.Text" xml:space="preserve"><value>Open</value></data>
+  <data name="Onboarding_V2_ProfileFullDescription.Text" xml:space="preserve"><value>Alle acht capaciteiten, waaronder camera, locatie en browserbesturing.</value></data>
+  <data name="Onboarding_V2_CustomizeCapabilities.Header" xml:space="preserve"><value>Capaciteiten aanpassen</value></data>
+  <data name="Onboarding_V2_NoCapabilities" xml:space="preserve"><value>Geen optionele capaciteiten geselecteerd.</value></data>
+  <data name="Onboarding_V2_BrowserPrerequisite" xml:space="preserve"><value>Vereist Node mode en een gereedstaande Gateway. Je selectie blijft bewaard.</value></data>
+  <data name="Onboarding_V2_BlockerManagedWslRoute" xml:space="preserve"><value>Kies een Gateway-route</value></data>
+  <data name="Onboarding_V2_BlockerWslInspection" xml:space="preserve"><value>De WSL-inspectie is niet voltooid</value></data>
+  <data name="Onboarding_V2_BlockerReplacement" xml:space="preserve"><value>Vervanging vereist je bevestiging</value></data>
+  <data name="Onboarding_V2_BlockerLocalAi" xml:space="preserve"><value>Lokale AI is niet gereed</value></data>
+  <data name="Onboarding_V2_BlockerNetworkingConsent" xml:space="preserve"><value>Lokale AI vereist netwerktoestemming</value></data>
+  <data name="Onboarding_V2_BlockerTailscale" xml:space="preserve"><value>Er ontbreken Tailscale-vereisten</value></data>
+  <data name="Onboarding_V2_RequirementManagedWslRoute" xml:space="preserve"><value>Deze controle bereidt de installatie van een beheerde WSL-Gateway voor. Kies een bestaande Gateway om verbinding te maken zonder iets te vervangen.</value></data>
+  <data name="Onboarding_V2_RequirementWslInspection" xml:space="preserve"><value>Voltooi of herhaal de Gateway-inspectie voor {0}. Installatie blijft geblokkeerd totdat de inspectie voor precies dit doel slaagt.</value></data>
+  <data name="Onboarding_V2_RequirementReplacement" xml:space="preserve"><value>De installatie vervangt de bestaande configuratie voor {0}. Bekijk de gevolgen en vink hieronder het toestemmingsvak aan. Ga Terug en kies een bestaande Gateway om je configuratie te behouden.</value></data>
+  <data name="Onboarding_V2_RequirementLocalAi" xml:space="preserve"><value>Controleer de beschikbaarheid van lokale AI en het geselecteerde model. Buiten herstel kun je lokale AI uitschakelen; voor herstel moet deze gereed zijn.</value></data>
+  <data name="Onboarding_V2_RequirementNetworkingConsent" xml:space="preserve"><value>Bekijk de globale wijziging van .wslconfig en het eenmalig afsluiten van alle WSL-distributies. Er verandert niets totdat je expliciet toestemming geeft en installeert.</value></data>
+  <data name="Onboarding_V2_RequirementTailscale" xml:space="preserve"><value>Controleer de aanmelding in Windows, MagicDNS en de gekozen verificatiemethode, of schakel Tailscale uit.</value></data>
+  <data name="Onboarding_V2_ActionManagedWslRoute" xml:space="preserve"><value>Gateway kiezen</value></data>
+  <data name="Onboarding_V2_ActionWslInspection" xml:space="preserve"><value>Gateway controleren</value></data>
+  <data name="Onboarding_V2_ActionReplacement" xml:space="preserve"><value>Vervanging bekijken</value></data>
+  <data name="Onboarding_V2_ActionLocalAi" xml:space="preserve"><value>Lokale AI bekijken</value></data>
+  <data name="Onboarding_V2_ActionNetworkingConsent" xml:space="preserve"><value>Netwerk bekijken</value></data>
+  <data name="Onboarding_V2_ActionTailscale" xml:space="preserve"><value>Tailscale bekijken</value></data>
+  <data name="Onboarding_AiSetup_ArtworkAction_Pair" xml:space="preserve"><value>Koppelen</value></data>
+  <data name="Onboarding_AiSetup_ArtworkAction_Setup" xml:space="preserve"><value>Instellen…</value></data>
+  <data name="Onboarding_AiSetup_ArtworkAction_Configure" xml:space="preserve"><value>Configureren…</value></data>
+  <data name="Onboarding_AiSetup_ArtworkAction_Connect" xml:space="preserve"><value>Verbinden</value></data>
+  <data name="Onboarding_AiSetup_ArtworkAction_SignIn" xml:space="preserve"><value>Aanmelden</value></data>
+  <data name="Onboarding_AiSetup_ArtworkAction_Prepare" xml:space="preserve"><value>Verbinden / Instellen</value></data>
+  <data name="Onboarding_AiSetup_ArtworkUnavailable" xml:space="preserve"><value>Providerlogo niet beschikbaar ({0}). Het instellen van de provider blijft beschikbaar.</value></data>
+  <data name="Onboarding_V3_ProfileHeading.Text" xml:space="preserve"><value>Wat je agent kan doen</value></data>
+  <data name="Onboarding_V3_ProfileHelp.Text" xml:space="preserve"><value>Kies een profiel. Open Fijn afstellen om afzonderlijke capaciteiten te bekijken of wijzigen.</value></data>
+  <data name="Onboarding_V3_FineTune.Text" xml:space="preserve"><value>Fijn afstellen</value></data>
+  <data name="Onboarding_V3_TransportRequired.Title" xml:space="preserve"><value>Capaciteiten zijn niet beschikbaar</value></data>
+  <data name="Onboarding_V3_TransportRequired.Message" xml:space="preserve"><value>Schakel Node mode of Local MCP Server in om deze capaciteiten te gebruiken. Je keuzes blijven bewaard.</value></data>
+  <data name="Onboarding_V3_ProfileCustom.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Aangepast: kies afzonderlijke capaciteiten</value></data>
+  <data name="Onboarding_V3_ProfileCustomTitle.Text" xml:space="preserve"><value>Aangepast</value></data>
+  <data name="Onboarding_V3_ProfileCustomDescription.Text" xml:space="preserve"><value>Begin met je huidige keuzes en pas ze hieronder aan.</value></data>
+  <data name="Onboarding_AiSetup_OnThisPc" xml:space="preserve"><value>Op deze pc</value></data>
+  <data name="Onboarding_AiSetup_LocalTitle" xml:space="preserve"><value>Lokale AI op deze pc</value></data>
+  <data name="Onboarding_AiSetup_LocalExplanation" xml:space="preserve"><value>De beheerde Windows llama-server gebruikt de GPU van deze pc. Dit staat los van de gehoste API van NVIDIA.</value></data>
+  <data name="Onboarding_AiSetup_GatewayModels" xml:space="preserve"><value>Beschikbaar op je Gateway</value></data>
+  <data name="Onboarding_AiSetup_ConnectProvider" xml:space="preserve"><value>Een AI-provider verbinden</value></data>
+  <data name="Onboarding_AiSetup_OtherLocal" xml:space="preserve"><value>Een lokaal model instellen</value></data>
+  <data name="Onboarding_AiSetup_OtherLocalDetail" xml:space="preserve"><value>Stel een model in en gebruik het via je Gateway. Controleer download- en toestemmingsverzoeken voordat je doorgaat.</value></data>
+  <data name="Onboarding_AiSetup_UtilityNotice" xml:space="preserve"><value>Je Gateway biedt ook installatie- of hulpmodellen. Deze pagina verbindt alleen de hoofdassistent; keuzes voor alleen hulptaken worden niet getoond.</value></data>
+  <data name="Onboarding_AiSetup_LocalSetUp" xml:space="preserve"><value>Lokale AI instellen</value></data>
+  <data name="Onboarding_AiSetup_LocalStartAndUse" xml:space="preserve"><value>Starten en gebruiken</value></data>
+  <data name="Onboarding_AiSetup_LocalUse" xml:space="preserve"><value>Dit model gebruiken</value></data>
+  <data name="Onboarding_AiSetup_LocalRepair" xml:space="preserve"><value>Lokale AI herstellen</value></data>
+  <data name="Onboarding_AiSetup_LocalReconcile" xml:space="preserve"><value>Lokale AI herstellen en gebruiken</value></data>
+  <data name="Onboarding_AiSetup_LocalState_Reconcile" xml:space="preserve"><value>De gekoppelde gatewayroute moet worden hersteld.</value></data>
+  <data name="LocalAiPage_ReleaseOwnershipButton.Content" xml:space="preserve"><value>Gatewaykoppeling vrijgeven</value></data>
+  <data name="Onboarding_AiSetup_LocalInstall" xml:space="preserve"><value>Lokale AI installeren en gebruiken</value></data>
+  <data name="Onboarding_AiSetup_LocalInstalling" xml:space="preserve"><value>Lokale AI instellen</value></data>
+  <data name="Onboarding_AiSetup_LocalChanged" xml:space="preserve"><value>De Gateway of de status van lokale AI is gewijzigd. Ga terug naar AI verbinden en controleer opnieuw voordat je installeert.</value></data>
+  <data name="Onboarding_AiSetup_LocalStartFailed" xml:space="preserve"><value>Lokale AI kon niet starten. Het opruimen is voltooid. Herstel lokale AI of kies een andere provider.</value></data>
+  <data name="Onboarding_AiSetup_LocalState_Checking" xml:space="preserve"><value>Deze pc wordt gecontroleerd. Je kunt nog steeds een AI-provider kiezen.</value></data>
+  <data name="Onboarding_AiSetup_LocalState_SetUp" xml:space="preserve"><value>Compatibele pc. Controleer de instellingen vóór installatie.</value></data>
+  <data name="Onboarding_AiSetup_LocalState_StartAndUse" xml:space="preserve"><value>Geïnstalleerd, niet actief</value></data>
+  <data name="Onboarding_AiSetup_LocalState_Use" xml:space="preserve"><value>Actief op deze pc</value></data>
+  <data name="Onboarding_AiSetup_LocalState_Repair" xml:space="preserve"><value>De beheerde installatie heeft aandacht nodig. Bekijk het herstel zonder de Gateway opnieuw te installeren.</value></data>
+  <data name="Onboarding_AiSetup_LocalState_BusyGpu" xml:space="preserve"><value>Compatibele GPU, maar momenteel onvoldoende vrij GPU-geheugen. Sluit andere GPU-taken en controleer opnieuw.</value></data>
+  <data name="Onboarding_AiSetup_LocalState_Unsupported" xml:space="preserve"><value>Deze pc voldoet niet aan de vereisten voor beheerde lokale AI. Je kunt nog steeds een AI-provider verbinden.</value></data>
+  <data name="Onboarding_AiSetup_LocalState_Unknown" xml:space="preserve"><value>De status van lokale AI kon niet worden bevestigd. Controleer opnieuw of kies een andere AI-provider.</value></data>
+  <data name="Onboarding_AiSetup_LocalState_UnsupportedGateway" xml:space="preserve"><value>Beheerde lokale AI vereist één door de app beheerde lokale Gateway die op deze pc is geselecteerd. Externe of onduidelijke Gateways worden niet ondersteund.</value></data>
+  <data name="Onboarding_AiSetup_LocalState_Working" xml:space="preserve"><value>Lokale AI wordt gestart of gestopt. Controleer opnieuw wanneer dit klaar is.</value></data>
+  <data name="Onboarding_DashboardLaunchFailed" xml:space="preserve"><value>Dashboard kan niet worden geopend. Controleer de verbinding met de geverifieerde gateway en probeer het opnieuw.</value></data>
+  <data name="Onboarding_V4_ConnectionOptions.Text" xml:space="preserve"><value>Verbindingsopties</value></data>
+  <data name="Onboarding_V4_OllamaDisclosure.Header" xml:space="preserve"><value>Ollama delen</value></data>
+  <data name="Onboarding_V4_OllamaDisclosure.Description" xml:space="preserve"><value>Optioneel</value></data>
+  <data name="Onboarding_V4_TailscaleDisclosure.Header" xml:space="preserve"><value>Tailscale</value></data>
+  <data name="Onboarding_V4_TailscaleDisclosure.Description" xml:space="preserve"><value>Optioneel</value></data>
+  <data name="Onboarding_V4_DetectedAi.Text" xml:space="preserve"><value>Gedetecteerde AI-opties</value></data>
+  <data name="Onboarding_V4_PhasePrepare.Header" xml:space="preserve"><value>Uw pc voorbereiden</value></data>
+  <data name="Onboarding_V4_PhaseInstall.Header" xml:space="preserve"><value>De Gateway installeren</value></data>
+  <data name="Onboarding_V4_PhaseConnect.Header" xml:space="preserve"><value>Starten en verbinding controleren</value></data>
+  <data name="Onboarding_V4_DetailedActivity.Header" xml:space="preserve"><value>Gedetailleerde activiteit</value></data>
+  <data name="Onboarding_V4_InstallationTitle" xml:space="preserve"><value>Ruimte maken voor uw agent</value></data>
+  <data name="Onboarding_V4_InstallationSubtitle" xml:space="preserve"><value>Stap voor stap. Volg de details hieronder.</value></data>
+  <data name="Onboarding_V4_RecoveryTitle" xml:space="preserve"><value>Lokale AI herstellen</value></data>
+  <data name="Onboarding_V4_RecoveryInstall" xml:space="preserve"><value>Lokale AI voorbereiden en controleren</value></data>
+  <data name="Onboarding_V4_StatusPending" xml:space="preserve"><value>Wachten</value></data>
+  <data name="Onboarding_V4_StatusRunning" xml:space="preserve"><value>Bezig</value></data>
+  <data name="Onboarding_V4_StatusComplete" xml:space="preserve"><value>Voltooid</value></data>
+  <data name="Onboarding_V4_StatusSkipped" xml:space="preserve"><value>Niet nodig</value></data>
+  <data name="Onboarding_V4_StatusFailed" xml:space="preserve"><value>Aandacht nodig</value></data>
+  <data name="Onboarding_V4_StepCount" xml:space="preserve"><value>{0} van {1} stappen voltooid</value></data>
+  <data name="Onboarding_V4_StatusCancelled" xml:space="preserve"><value>Geannuleerd</value></data>
+  <data name="Onboarding_V5_DownloadMeasurement" xml:space="preserve"><value>{0} van {1}</value></data>
+  <data name="Onboarding_Ready_Heading.Text" xml:space="preserve"><value>Uw AI is klaar</value></data>
+  <data name="Onboarding_Ready_Prompt.Text" xml:space="preserve"><value>Wat wilt u eerst doen?</value></data>
+  <data name="Onboarding_Ready_Chat.Header" xml:space="preserve"><value>Met mijn agent praten</value></data>
+  <data name="Onboarding_Ready_Chat.Description" xml:space="preserve"><value>Open Chat met je agent.</value></data>
+  <data name="Onboarding_Ready_Chat.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Met mijn agent praten, aanbevolen</value></data>
+  <data name="Onboarding_Ready_Skills.Header" xml:space="preserve"><value>Vaardigheden verkennen</value></data>
+  <data name="Onboarding_Ready_Skills.Description" xml:space="preserve"><value>Bekijk vaardigheden voor je agent. Er wordt niets automatisch geïnstalleerd.</value></data>
+  <data name="Onboarding_Ready_Channels.Header" xml:space="preserve"><value>Kanalen verbinden</value></data>
+  <data name="Onboarding_Ready_Channels.Description" xml:space="preserve"><value>WhatsApp, Telegram en meer. Jij kiest wanneer je je aanmeldt.</value></data>
+  <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>Terug naar AI</value></data>
+  <data name="Onboarding_Ready_Model" xml:space="preserve"><value>Geverifieerd model: {0}</value></data>
+  <data name="Onboarding_Ready_Verifying" xml:space="preserve"><value>Dezelfde Gateway, agent en hetzelfde model opnieuw controleren...</value></data>
+  <data name="Onboarding_Ready_Finalizing" xml:space="preserve"><value>Uw Windows-instellingen afronden...</value></data>
+  <data name="Onboarding_Ready_Opening" xml:space="preserve"><value>Uw gekozen app-pagina openen...</value></data>
+  <data name="Onboarding_Ready_OwnershipChanged" xml:space="preserve"><value>De Gateway, agent of het primaire model kon niet worden geverifieerd. Ga terug naar AI-instellingen en controleer opnieuw.</value></data>
+  <data name="Onboarding_Ready_Timeout" xml:space="preserve"><value>De verificatie duurde te lang of is geannuleerd. Kies opnieuw om te proberen of ga terug naar AI-instellingen.</value></data>
+  <data name="Onboarding_Ready_TimeoutPageDrain" xml:space="preserve"><value>Het sluiten van de vorige AI-instellingenpagina duurde te lang. Probeer opnieuw of ga terug naar AI-instellingen.</value></data>
+  <data name="Onboarding_Ready_TimeoutConnection" xml:space="preserve"><value>Verbinding maken met de native Gateway duurde te lang. Controleer of de Gateway gereed is en probeer opnieuw.</value></data>
+  <data name="Onboarding_Ready_TimeoutModelRecovery" xml:space="preserve"><value>Het wachten op herstel van lokale AI duurde te lang. Controleer de status van lokale AI en probeer opnieuw.</value></data>
+  <data name="Onboarding_Ready_TimeoutModelVerification" xml:space="preserve"><value>Het verifiëren van het geselecteerde AI-model duurde te lang. Controleer of het model kan reageren en probeer opnieuw.</value></data>
+  <data name="Onboarding_Ready_TimeoutGatewayStartup" xml:space="preserve"><value>Het starten van de native Gateway of het bevestigen van de luisterpoort duurde te lang. Controleer de Gateway-status en probeer opnieuw.</value></data>
+  <data name="Onboarding_Ready_VerifyingFailed" xml:space="preserve"><value>AI-verificatie is momenteel niet beschikbaar. Controleer de Gateway-verbinding en het model en probeer opnieuw of ga terug naar AI-instellingen.</value></data>
+  <data name="Onboarding_Ready_FinalizingFailed" xml:space="preserve"><value>Windows-configuratie kon niet worden afgerond. Uw bestemming is niet geopend. Probeer opnieuw of ga terug naar AI-instellingen.</value></data>
+  <data name="Onboarding_Ready_OpeningFailed" xml:space="preserve"><value>De app kon uw bestemming niet openen. Kies opnieuw om te proberen. Er is geen kanaalaanmelding gestart.</value></data>
+  <data name="Onboarding_Ready_LaunchFailedTitle" xml:space="preserve"><value>Uw gekozen bestemming kon niet worden geopend</value></data>
+  <data name="Onboarding_Ready_LaunchInvalid" xml:space="preserve"><value>Deze configuratieoverdracht is verlopen, al gebruikt of niet beschikbaar. Open de configuratie opnieuw en verifieer uw AI.</value></data>
+  <data name="Onboarding_Ready_LaunchChanged" xml:space="preserve"><value>De geverifieerde Gateway of agent is gewijzigd. Ga terug naar de oorspronkelijke Gateway en open AI-instellingen opnieuw. Er is geen ander account geopend.</value></data>
+  <data name="Onboarding_Ready_LaunchUnavailable" xml:space="preserve"><value>De geverifieerde Gateway of app-pagina is niet klaar. Controleer Connection en probeer expliciet opnieuw.</value></data>
+  <data name="Onboarding_Ready_Retry" xml:space="preserve"><value>Opnieuw proberen</value></data>
+  <data name="Onboarding_Ready_Close" xml:space="preserve"><value>Sluiten</value></data>
+  <data name="Onboarding_Ready_ChannelUnavailable" xml:space="preserve"><value>Deze Gateway bood het gekozen kanaal niet aan. Bekijk beschikbare kanalen of vernieuw na een Gateway-update.</value></data>
+  <data name="Onboarding_Ready_ChannelUnconfirmed" xml:space="preserve"><value>Kanaalbeschikbaarheid kon niet worden bevestigd. Vernieuw om opnieuw te proberen. Er is geen kanaalaanmelding of configuratie gestart.</value></data>
+  <data name="Onboarding_Copy_SafetyLink.Content" xml:space="preserve"><value>Meer informatie over risico’s en veiligheid</value></data>
+  <data name="Onboarding_Copy_GatewayTitle.Text" xml:space="preserve"><value>OpenClaw instellen</value></data>
+  <data name="Onboarding_Copy_GatewayIntro.Text" xml:space="preserve"><value>De Gateway verbindt uw AI-assistent met uw apps en tools. Kies waar deze draait. U kunt dit later wijzigen.</value></data>
+  <data name="Onboarding_Copy_GatewaySelector.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Gateway-installatiemethode</value></data>
+  <data name="Onboarding_Copy_GatewaySelector.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve"><value>Kies één Gateway-installatiemethode.</value></data>
+  <data name="Onboarding_Copy_GatewayLocalChoice.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Een lokale Gateway installeren (WSL), aanbevolen</value></data>
+  <data name="Onboarding_Copy_GatewayLocalTitle.Text" xml:space="preserve"><value>Een lokale Gateway installeren (WSL)</value></data>
+  <data name="Onboarding_Copy_GatewayLocalDescription.Text" xml:space="preserve"><value>Installeer een privé-OpenClaw Gateway in WSL.</value></data>
+  <data name="Onboarding_Copy_Recommended.Text" xml:space="preserve"><value>Aanbevolen</value></data>
+  <data name="Onboarding_Copy_GatewayExistingChoice.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Verbinden met een bestaande Gateway</value></data>
+  <data name="Onboarding_Copy_GatewayExistingTitle.Text" xml:space="preserve"><value>Verbinden met een bestaande Gateway</value></data>
+  <data name="Onboarding_Copy_GatewayExistingDescription.Text" xml:space="preserve"><value>Verbind zonder een Gateway of lokale AI op deze pc te installeren.</value></data>
+  <data name="Onboarding_StartupWarning_Title" xml:space="preserve"><value>Windows opstarten</value></data>
+  <data name="Onboarding_StartupWarning_Message" xml:space="preserve"><value>De installatie is voltooid, maar de Windows-opstartvoorkeur kon niet volledig worden toegepast. OpenClaw wordt opnieuw gestart. Je kunt deze voorkeur opnieuw proberen in Companion Settings.</value></data>
+  <data name="Onboarding_RegistryRecovery_Title" xml:space="preserve"><value>Gateway-herstel vereist aandacht</value></data>
+  <data name="Onboarding_RegistryRecovery_Message" xml:space="preserve"><value>De opgeslagen gatewaywijzigingen konden niet worden verwerkt. Niet-opgeslagen wijzigingen zijn niet vastgelegd. Sluit OpenClaw en open het opnieuw om opgeslagen gateways te laden voordat je het opnieuw probeert.</value></data>
+  <data name="Onboarding_RestartRecovery_Title" xml:space="preserve"><value>OpenClaw openen voltooien</value></data>
+  <data name="Onboarding_RestartRecovery_Waiting" xml:space="preserve"><value>Een andere OpenClaw-instantie voltooit de installatie. Opnieuw proberen wacht tot die de controle vrijgeeft. Je gekozen pagina blijft bewaard. Met Annuleren kun je de andere instantie sluiten en OpenClaw opnieuw openen om te hervatten.</value></data>
+  <data name="Onboarding_RestartRecovery_Storage" xml:space="preserve"><value>OpenClaw kon de gekozen pagina niet veilig bewaren. Probeer het opnieuw. Annuleren stopt deze start; mogelijk moet je de installatie opnieuw openen en kiezen.</value></data>
+  <data name="Onboarding_RestartRecovery_Invalid" xml:space="preserve"><value>De opgeslagen start kon niet worden gelezen. OpenClaw wordt normaal geopend. Open de installatie opnieuw om een bestemming te kiezen.</value></data>
+  <data name="PermissionsPage_ExecRuleScope_Main" xml:space="preserve">
+    <value>deze agent</value>
+  </data>
+  <data name="PermissionsPage_ExecRuleScope_Wildcard" xml:space="preserve">
+    <value>alle agents</value>
+  </data>
+  <data name="PermissionsPage_RemoveRuleAutomationNameFormat" xml:space="preserve">
+    <value>Vermelding {1} uit de toestaanlijst voor {0} verwijderen</value>
+  </data>
+  <data name="PermissionsPage_ExecRuleAction_Inactive" xml:space="preserve">
+    <value>inactief</value>
+  </data>
   <data name="Migration_InnoCompleted" xml:space="preserve">
     <value>Uw OpenClaw-configuratie is gemigreerd naar de Store-versie. Sluit dit bericht om deze app af te sluiten. Verwijder daarna de vorige OpenClaw Companion-app via Windows-instellingen &gt; Apps &gt; Geïnstalleerde apps en open de Store-versie. Uw gemigreerde configuratie en gateway blijven behouden.</value>
   </data>
@@ -7169,9 +7545,6 @@ Kies {1} om dit voorbeeld te sluiten zonder de migratie te starten en de vorige 
   <data name="Migration_StoreValidationFailed" xml:space="preserve">
     <value>OpenClaw kon de vorige configuratie niet veilig valideren voor migratie. Er is geen voltooiing vastgelegd en de vorige app is niet gewijzigd. Sluit dit voorbeeld en probeer het later opnieuw. Verwijder de vorige app of migratiegegevens niet en voer geen gatewayopruiming uit.</value>
   </data>
-  <data name="Migration_StoreCredentialUnavailable" xml:space="preserve">
-    <value>OpenClaw kon geen referentie voor de actieve gateway oplossen. Er is geen voltooiing vastgelegd en de vorige app is niet gewijzigd. Sluit dit voorbeeld en herstel de configuratie van de actieve gateway voordat u het opnieuw probeert. Verwijder de vorige app of migratiegegevens niet en voer geen gatewayopruiming uit.</value>
-  </data>
   <data name="Migration_StoreAwaitingInnoRemoval" xml:space="preserve">
     <value>OpenClaw heeft de voltooiing van de migratie vastgelegd en uw configuratie behouden. Sluit dit voorbeeld, verwijder de vorige OpenClaw Companion-app via Windows-instellingen en open daarna de Store-versie. Verwijder geen migratiegegevens en voer geen gatewayopruiming uit.</value>
   </data>
@@ -7199,18 +7572,346 @@ Kies {1} om dit voorbeeld te sluiten zonder de migratie te starten en de vorige 
   <data name="Migration_StorePending" xml:space="preserve">
     <value>Een vorige migratie moet worden hersteld of afgerond. Deze testversie kan die migratie niet voortzetten of normaal starten. Sluit dit voorbeeld. Verwijder de vorige app of migratiegegevens niet en voer geen gatewayopruiming uit.</value>
   </data>
-  <data name="Chat_Code_Copy" xml:space="preserve"><value>Code kopiëren</value></data>
-  <data name="Chat_Code_Label" xml:space="preserve"><value>Codeblok</value></data>
-  <data name="Chat_Model_Current" xml:space="preserve"><value>Huidig model</value></data>
-  <data name="Chat_Model_Other" xml:space="preserve"><value>Andere modellen</value></data>
-  <data name="Chat_Model_NoMatches" xml:space="preserve"><value>Geen overeenkomende modellen</value></data>
-  <data name="Chat_Model_Search" xml:space="preserve"><value>Modellen zoeken</value></data>
-  <data name="Chat_Attachment_Remove" xml:space="preserve"><value>Bijlage verwijderen</value></data>
-  <data name="Chat_Timeline_Loading" xml:space="preserve"><value>Berichten laden...</value></data>
-  <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 bericht in wachtrij</value></data>
-  <data name="Chat_Copy_Copied" xml:space="preserve"><value>Gekopieerd</value></data>
-  <data name="Chat_Copy_Failed" xml:space="preserve"><value>Kopiëren mislukt</value></data>
-  <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>Denkinspanning</value></data>
-  <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Sneller</value></data>
-  <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Grondiger</value></data>
+  <data name="Migration2_Title" xml:space="preserve">
+    <value>Overstappen naar de Store-versie</value>
+  </data>
+  <data name="Migration2_Consent" xml:space="preserve">
+    <value>Behoud uw instellingen, gateway, bestanden en modellen op hun huidige plek.</value>
+  </data>
+  <data name="Migration2_PrepareStepTitle" xml:space="preserve">
+    <value>We bereiden uw configuratie voor</value>
+  </data>
+  <data name="Migration2_PrepareStepBody" xml:space="preserve">
+    <value>We sluiten de vorige app veilig af, controleren uw installatie en instellingen en slaan beveiligde migratiegegevens op.</value>
+  </data>
+  <data name="Migration2_RemoveStepTitle" xml:space="preserve">
+    <value>U verwijdert de vorige app</value>
+  </data>
+  <data name="Migration2_RemoveStepBody" xml:space="preserve">
+    <value>Verwijder de app handmatig wanneer daarom wordt gevraagd. Er wordt niets automatisch verwijderd.</value>
+  </data>
+  <data name="Migration2_FinishStepTitle" xml:space="preserve">
+    <value>Gebruik daarna de Store-versie</value>
+  </data>
+  <data name="Migration2_FinishStepBody" xml:space="preserve">
+    <value>We verifiëren de verwijdering voordat we de Store-versie starten.</value>
+  </data>
+  <data name="Migration2_ConsentHint" xml:space="preserve">
+    <value>Kies Nu niet om af te sluiten zonder de migratie te starten. De Store-versie blijft gesloten zolang de vorige app is geïnstalleerd.</value>
+  </data>
+  <data name="Migration2_ConsentWarningTitle" xml:space="preserve">
+    <value>Voordat u doorgaat</value>
+  </data>
+  <data name="Migration2_ConsentWarning" xml:space="preserve">
+    <value>Als de validatie slaagt, kan de vorige app niet meer normaal starten.</value>
+  </data>
+  <data name="Migration2_Closing" xml:space="preserve">
+    <value>De vorige app wordt gevraagd veilig af te sluiten...</value>
+  </data>
+  <data name="Migration2_Preparing" xml:space="preserve">
+    <value>Uw bestaande configuratie wordt gevalideerd...</value>
+  </data>
+  <data name="Migration2_Completing" xml:space="preserve">
+    <value>De voltooiing van de migratie wordt vastgelegd...</value>
+  </data>
+  <data name="Migration2_Finalizing" xml:space="preserve">
+    <value>De verwijdering wordt gecontroleerd en de migratie wordt afgerond...</value>
+  </data>
+  <data name="Migration2_CloseInno" xml:space="preserve">
+    <value>Sluit OpenClaw Companion via het menu in het systeemvak en kies daarna Opnieuw proberen.</value>
+  </data>
+  <data name="Migration2_CloseInnoTitle" xml:space="preserve">
+    <value>Sluit de vorige app</value>
+  </data>
+  <data name="Migration2_CloseInnoWarningTitle" xml:space="preserve">
+    <value>Verwijder de app nog niet</value>
+  </data>
+  <data name="Migration2_CloseInnoWarning" xml:space="preserve">
+    <value>Forceer het afsluiten niet en verwijder de app nog niet. We laten u weten wanneer u de app veilig kunt verwijderen.</value>
+  </data>
+  <data name="Migration2_AwaitingRemoval" xml:space="preserve">
+    <value>Uw configuratie is gevalideerd en de voltooiing van de migratie is vastgelegd.
+
+1. Open Geïnstalleerde apps en verwijder alleen de vorige OpenClaw Companion-app. Behoud de Store-versie.
+
+2. Keer hier terug en kies Opnieuw proberen om de verwijdering te verifiëren en af te ronden.
+
+Uw instellingen, gateway, bestanden en modellen blijven op hun plaats.</value>
+  </data>
+  <data name="Migration2_RemovalTitle" xml:space="preserve">
+    <value>Verwijder de vorige app</value>
+  </data>
+  <data name="Migration2_RemovalWarningTitle" xml:space="preserve">
+    <value>Behoud uw configuratie</value>
+  </data>
+  <data name="Migration2_RemovalWarning" xml:space="preserve">
+    <value>Verwijder geen migratiegegevens en voer geen gatewayopruiming uit.</value>
+  </data>
+  <data name="Migration2_ValidationFailed" xml:space="preserve">
+    <value>OpenClaw kon de migratie niet veilig voltooien. Verwijder de vorige app niet en voer geen gatewayopruiming uit. Bekijk het applogboek, los het probleem op en probeer het opnieuw.</value>
+  </data>
+  <data name="Migration2_UpdateRequired" xml:space="preserve">
+    <value>Werk de vorige app eerst bij naar een ondersteunde versie met migratieondersteuning. Uw configuratie is niet gewijzigd. Deze app blijft inactief zolang de vorige app is geïnstalleerd.</value>
+  </data>
+  <data name="Migration2_Unsupported" xml:space="preserve">
+    <value>Deze installatie kan niet veilig worden gemigreerd. Alleen de standaardinstallatie voor dezelfde Windows-gebruiker met een overeenkomende architectuur wordt ondersteund. Uw configuratie is niet gewijzigd. Deze app blijft inactief zolang de vorige app is geïnstalleerd.</value>
+  </data>
+  <data name="Migration2_InspectionFailed" xml:space="preserve">
+    <value>OpenClaw kon de installatie of migratierecords niet veilig controleren. Bekijk het applogboek voordat u het opnieuw probeert. Verwijder geen migratiegegevens en voer geen gatewayopruiming uit.</value>
+  </data>
+  <data name="Migration2_Recovery" xml:space="preserve">
+    <value>Deze migratie moet worden hersteld. Bekijk het applogboek. Als de vorige app nog is geïnstalleerd, verwijder deze via Geïnstalleerde apps en kies Opnieuw proberen. Verwijder migratiegegevens niet handmatig en voer geen gatewayopruiming uit.</value>
+  </data>
+  <data name="Migration2_FinalizationFailed" xml:space="preserve">
+    <value>OpenClaw kon de migratie niet afronden. Het voltooiingsbewijs is bewaard voor herstel. Bekijk het applogboek en probeer het opnieuw. Verwijder geen migratiegegevens en voer geen gatewayopruiming uit.</value>
+  </data>
+  <data name="Migration2_InstalledApps" xml:space="preserve">
+    <value>Geïnstalleerde apps openen</value>
+  </data>
+  <data name="Migration2_DiscardRecords" xml:space="preserve">
+    <value>Onleesbare migratiegegevens verwijderen</value>
+  </data>
+  <data name="Migration2_DiscardFailed" xml:space="preserve">
+    <value>OpenClaw kon de migratiegegevens niet verwijderen. Als de vorige OpenClaw-app actief is, sluit deze dan en probeer het opnieuw. Bekijk het applogboek voor meer informatie.</value>
+  </data>
+  <data name="Migration2_LaunchFailed" xml:space="preserve">
+    <value>Windows kon de gevraagde pagina niet openen. Probeer het opnieuw of open Windows-instellingen &gt; Apps &gt; Geïnstalleerde apps handmatig als de migratie is voltooid.</value>
+  </data>
+  <data name="Migration2_InnoRecommendation.Text" xml:space="preserve">
+    <value>Aanbevolen</value>
+  </data>
+  <data name="Migration2_InnoCardTitle.Text" xml:space="preserve">
+    <value>Overstappen naar de Microsoft Store-versie</value>
+  </data>
+  <data name="Migration2_InnoCardDescription.Text" xml:space="preserve">
+    <value>Ontvang toekomstige OpenClaw-updates via de Microsoft Store. Uw bestaande OpenClaw-configuratie blijft behouden.</value>
+  </data>
+  <data name="Migration2_InnoAction" xml:space="preserve">
+    <value>Store-versie installeren en migreren</value>
+  </data>
+  <data name="Migration2_InnoConsentTitle" xml:space="preserve">
+    <value>Overstappen naar de Store-versie?</value>
+  </data>
+  <data name="Migration2_InnoConsent" xml:space="preserve">
+    <value>De Microsoft Store wordt geopend zodat u de Store-versie kunt installeren. Wanneer u die opent, kan deze app worden gesloten en de overstap worden voltooid zonder opnieuw om toestemming te vragen.
+
+Uw instellingen, gateway, bestanden en modellen blijven op hun plaats.</value>
+  </data>
+  <data name="Migration2_InnoGranted" xml:space="preserve">
+    <value>De toestemming voor migratie is opgeslagen. Installeer en open de Store-versie om door te gaan. Laat deze app geïnstalleerd totdat de voltooiing van de migratie is bevestigd.</value>
+  </data>
+  <data name="Migration2_InnoFailed" xml:space="preserve">
+    <value>OpenClaw kon de toestemming voor migratie niet opslaan of de Store-pagina niet openen. Bekijk het applogboek en probeer het opnieuw. Verwijder deze app niet.</value>
+  </data>
+  <data name="Migration2_Close" xml:space="preserve">
+    <value>Sluiten</value>
+  </data>
+  <data name="Migration2_Busy" xml:space="preserve">
+    <value>Wacht totdat deze stap is voltooid.</value>
+  </data>
+  <data name="Onboarding_Native_Title.Text" xml:space="preserve"><value>Een lokale native Gateway installeren</value></data>
+  <data name="Onboarding_Native_Description.Text" xml:space="preserve"><value>Een OpenClaw Gateway op dit apparaat installeren en instellen</value></data>
+  <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>Een lokale WSL Gateway installeren</value></data>
+  <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>Ondersteuning voor de native Gateway controleren...</value></data>
+  <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>De native Gateway wordt ondersteund op dit apparaat.</value></data>
+  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>De native Gateway wordt niet ondersteund. Installeer Windows Insider-build {0} of een nieuwere ondersteunde build via Windows Update en open deze pagina opnieuw. De beschikbaarheid van deze functie kan per apparaat verschillen.</value></data>
+  <data name="Onboarding_Native_SupportCheckFailed" xml:space="preserve"><value>De ondersteuning voor de native Gateway kon niet worden gecontroleerd. Open deze pagina opnieuw om het nogmaals te proberen. Als de controle blijft mislukken, werk Companion dan bij of herstel de app.</value></data>
+  <data name="Onboarding_Native_UnsupportedPlatform" xml:space="preserve"><value>Voor het instellen van de native Gateway is een ondersteunde Windows-client vereist. Windows Server wordt niet ondersteund.</value></data>
+  <data name="Onboarding_Native_WindowsUpdate.Content" xml:space="preserve"><value>Windows Update openen</value></data>
+  <data name="Onboarding_Native_Recommended.Text" xml:space="preserve"><value>Aanbevolen</value></data>
+  <data name="Onboarding_Native_Alternatives.Header" xml:space="preserve"><value>Andere Gateway-opties</value></data>
+  <data name="Onboarding_Native_UpdateLaunchFailed" xml:space="preserve"><value>Windows Update kon niet worden geopend. Open Windows-instellingen en vervolgens Windows Update.</value></data>
+  <data name="Onboarding_Native_Lifecycle.Text" xml:space="preserve"><value>Ga verder met dezelfde Gateway-wizard als voor WSL, hier in Companion. Configuratie en gezondheid worden vóór het verbinden gecontroleerd. Bestaande WSL-Gateways en uw standaard OpenClaw-profiel worden niet vervangen.</value></data>
+  <data name="Onboarding_Native_Acquisition.Text" xml:space="preserve"><value>Als de Gateway niet is geïnstalleerd, installeert de instelling deze vanuit Microsoft Store met WinGet en controleert het pakket voordat automatisch wordt doorgegaan.</value></data>
+  <data name="Onboarding_Native_InstallingPackage" xml:space="preserve"><value>De Gateway installeren vanuit Microsoft Store met WinGet...</value></data>
+  <data name="Onboarding_Native_VerifyingPackage" xml:space="preserve"><value>WinGet is klaar. Gateway-registratie en uitvoeringsaliassen controleren voordat wordt doorgegaan...</value></data>
+  <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>Companion bereidt uw Gateway voor en helpt u daarna uw AI te verbinden.</value></data>
+  <data name="Onboarding_Native_Recovery.Header" xml:space="preserve"><value>Gateway herstellen</value></data>
+  <data name="Onboarding_Native_Terminal.Content" xml:space="preserve"><value>Terminal openen</value></data>
+  <data name="Onboarding_Native_Restart.Content" xml:space="preserve"><value>Gateway opnieuw starten</value></data>
+  <data name="Onboarding_Native_RetryAi.Content" xml:space="preserve"><value>AI-configuratie opnieuw starten</value></data>
+  <data name="Onboarding_Native_StepSupport" xml:space="preserve"><value>Apparaatondersteuning controleren</value></data>
+  <data name="Onboarding_Native_StepPackage" xml:space="preserve"><value>Gateway-pakket installeren of controleren</value></data>
+  <data name="Onboarding_Native_StepPrepare" xml:space="preserve"><value>Uw Gateway-profiel voorbereiden</value></data>
+  <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>De Gateway starten en controleren</value></data>
+  <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>Instelling opnieuw proberen</value></data>
+  <data name="Onboarding_Native_Preview" xml:space="preserve"><value>Alleen een voorbeeld. Er wordt geen pakket geïnstalleerd of Gateway gestart.</value></data>
+  <data name="Onboarding_Native_Review.Text" xml:space="preserve"><value>Door Gateway instellen te selecteren, machtigt u WinGet om het ontbrekende Gateway-pakket vanuit Microsoft Store te installeren en accepteert u de pakket- en Store-bronovereenkomsten. Als WinGet nog niet gereed is, kan de installatie App Installer herstellen voordat opnieuw wordt geprobeerd. Companion controleert vervolgens het pakket, bereidt een apart profiel voor en opent de Gateway-instelling. Aanmelding bij de provider blijft interactief. Deze methode installeert geen WSL, lokale AI of Tailscale.</value></data>
+  <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>Deze Windows-functies zijn bruikbaar nadat de nodemodus verbinding heeft gemaakt en met de Gateway is gekoppeld. Windows-machtigingen en opdrachtgoedkeuringen blijven van toepassing.</value></data>
+  <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>Native Gateway geconfigureerd</value></data>
+  <data name="Onboarding_Native_CapabilitySummary" xml:space="preserve"><value>{0}. U kunt deze keuzes wijzigen in de instellingen van Companion.</value></data>
+  <data name="Onboarding_Native_ReviewTitle" xml:space="preserve"><value>Klaar om uw native Gateway in te stellen</value></data>
+  <data name="Onboarding_Native_Start.Content" xml:space="preserve"><value>Gateway instellen</value></data>
+  <data name="Onboarding_Native_Cancel.Content" xml:space="preserve"><value>Instelling annuleren</value></data>
+  <data name="Onboarding_Native_Back.Content" xml:space="preserve"><value>Terug</value></data>
+  <data name="Onboarding_Native_Open.Content" xml:space="preserve"><value>Companion openen om te verbinden</value></data>
+  <data name="Onboarding_Native_Available" xml:space="preserve"><value>Gateway-pakket {0} is geïnstalleerd.</value></data>
+  <data name="Onboarding_Native_InProgress" xml:space="preserve"><value>De native Gateway wordt voorbereid. Verbind daarna uw AI in Companion.</value></data>
+  <data name="Onboarding_Native_Cancelled" xml:space="preserve"><value>Instelling geannuleerd. Het WinGet-verzoek is geannuleerd, maar Windows kan de implementatie nog voltooien. Ingevoerde configuratie blijft bewaard in het aparte native profiel. Er is geen Gateway-pakket verwijderd.</value></data>
+  <data name="Onboarding_Native_Configured" xml:space="preserve"><value>Gateway-configuratie en geauthenticeerde gezondheid gecontroleerd op {0}. Open Companion om de Gateway te starten en het apparaat te koppelen in de verbindingsinstellingen. Uw geselecteerde Windows-functies zijn opgeslagen.</value></data>
+  <data name="Onboarding_Native_ReplaceDraftTitle" xml:space="preserve"><value>Onvoltooide Gateway-instelling vervangen?</value></data>
+  <data name="Onboarding_Native_ReplaceDraftContent" xml:space="preserve"><value>Hiermee wordt alleen het Companion-instellingsconcept gewist. Bestaande werkruimtebestanden, configuratie en referenties blijven behouden. De nieuwe installatie gebruikt een nieuw profiel en importeert of wijzigt geen oude Gateway-gegevens, WSL-instellingen of pakketbeheerd profiel.</value></data>
+  <data name="Onboarding_Native_ReplaceDraftPrimary" xml:space="preserve"><value>Verwijderen en opnieuw instellen</value></data>
+  <data name="Onboarding_Native_ReplaceDraftClose" xml:space="preserve"><value>Concept behouden</value></data>
+  <data name="Settings_PersistenceConflict_Title" xml:space="preserve"><value>Instellingen konden niet worden opgeslagen</value></data>
+  <data name="Settings_PersistenceConflict_Message" xml:space="preserve"><value>Een ander proces heeft uw instellingen gewijzigd. Uw laatste wijzigingen zijn niet opgeslagen. Sluit OpenClaw via het systeemvakmenu en open het opnieuw. Probeer uw wijzigingen daarna opnieuw. De door het andere proces opgeslagen instellingen zijn behouden.</value></data>
+
+  <!-- Workspace: English fallback until translations are reviewed. -->
+  <data name="WorkspaceShell_AutomationMissing" xml:space="preserve"><value>This automation is no longer available. Return to Automations and refresh.</value></data>
+  <data name="WorkspaceShell_Connected" xml:space="preserve"><value>Gateway connected</value></data>
+  <data name="WorkspaceShell_ThisComputer" xml:space="preserve"><value>This computer</value></data>
+  <data name="WorkspaceShell_SystemMissing" xml:space="preserve"><value>System unavailable</value></data>
+  <data name="WorkspaceShell_SelectSystemFirst" xml:space="preserve"><value>Select an available system from Systems to view its details.</value></data>
+  <data name="WorkspaceShell_GatewayInsights" xml:space="preserve"><value>View usage and activity reported by the connected gateway.</value></data>
+  <data name="WorkspaceShell_ProjectMetrics" xml:space="preserve"><value>Project metrics</value></data>
+  <data name="WorkspaceShell_Priorities" xml:space="preserve"><value>Priorities</value></data>
+  <data name="WorkspaceShell_Title" xml:space="preserve"><value>Workspace</value></data>
+  <data name="WorkspaceShell_Home" xml:space="preserve"><value>Home</value></data>
+  <data name="WorkspaceShell_Agents" xml:space="preserve"><value>Agents</value></data>
+  <data name="WorkspaceShell_AgentDetail" xml:space="preserve"><value>Agent</value></data>
+  <data name="WorkspaceShell_WriterDetail" xml:space="preserve"><value>Agent</value></data>
+  <data name="WorkspaceShell_Dashboards" xml:space="preserve"><value>Dashboards</value></data>
+  <data name="WorkspaceShell_DashboardDetail" xml:space="preserve"><value>Dashboard details</value></data>
+  <data name="WorkspaceShell_Canvas" xml:space="preserve"><value>Canvas</value></data>
+  <data name="WorkspaceShell_Systems" xml:space="preserve"><value>Systems</value></data>
+  <data name="WorkspaceShell_SystemDetail" xml:space="preserve"><value>System details</value></data>
+  <data name="WorkspaceShell_Automations" xml:space="preserve"><value>Automations</value></data>
+  <data name="WorkspaceShell_AutomationDetail" xml:space="preserve"><value>Automation details</value></data>
+  <data name="WorkspaceShell_Plugins" xml:space="preserve"><value>Plugins</value></data>
+  <data name="WorkspaceShell_Skills" xml:space="preserve"><value>Skills</value></data>
+  <data name="WorkspaceShell_Sessions" xml:space="preserve"><value>Sessions</value></data>
+  <data name="WorkspaceShell_Usage" xml:space="preserve"><value>Usage</value></data>
+  <data name="WorkspaceShell_Activity" xml:space="preserve"><value>Activity</value></data>
+  <data name="WorkspaceShell_Tasks" xml:space="preserve"><value>Tasks</value></data>
+  <data name="WorkspaceShell_Meetings" xml:space="preserve"><value>Meetings</value></data>
+  <data name="WorkspaceShell_Apps" xml:space="preserve"><value>Apps</value></data>
+  <data name="WorkspaceShell_Portals" xml:space="preserve"><value>Portals</value></data>
+  <data name="WorkspaceShell_Notifications" xml:space="preserve"><value>Notifications</value></data>
+  <data name="WorkspaceShell_More" xml:space="preserve"><value>More</value></data>
+  <data name="WorkspaceShell_Connection" xml:space="preserve"><value>Connection</value></data>
+  <data name="WorkspaceShell_Channels" xml:space="preserve"><value>Channels</value></data>
+  <data name="WorkspaceShell_Instances" xml:space="preserve"><value>Instances</value></data>
+  <data name="WorkspaceShell_Cron" xml:space="preserve"><value>Cron</value></data>
+  <data name="WorkspaceShell_AgentEvents" xml:space="preserve"><value>Agent events</value></data>
+  <data name="WorkspaceShell_Bindings" xml:space="preserve"><value>Bindings</value></data>
+  <data name="WorkspaceShell_Config" xml:space="preserve"><value>Configuration</value></data>
+  <data name="WorkspaceShell_LocalAi" xml:space="preserve"><value>Local AI</value></data>
+  <data name="WorkspaceShell_Voice" xml:space="preserve"><value>Voice</value></data>
+  <data name="WorkspaceShell_Permissions" xml:space="preserve"><value>Permissions</value></data>
+  <data name="WorkspaceShell_Sandbox" xml:space="preserve"><value>Sandbox</value></data>
+  <data name="WorkspaceShell_Debug" xml:space="preserve"><value>Diagnostics</value></data>
+  <data name="WorkspaceShell_Settings" xml:space="preserve"><value>Settings</value></data>
+  <data name="WorkspaceShell_About" xml:space="preserve"><value>About OpenClaw</value></data>
+  <data name="WorkspaceShell_AgentsDescription" xml:space="preserve"><value>Your gateway agents and their recent conversations.</value></data>
+  <data name="WorkspaceShell_AgentDetailDescription" xml:space="preserve"><value>Agent workspace and recent work.</value></data>
+  <data name="WorkspaceShell_WriterDetailDescription" xml:space="preserve"><value>Agent workspace and recent work.</value></data>
+  <data name="WorkspaceShell_DashboardsDescription" xml:space="preserve"><value>Projects, priorities, and gateway insights.</value></data>
+  <data name="WorkspaceShell_DashboardDetailDescription" xml:space="preserve"><value>Dashboard data is provided by your gateway.</value></data>
+  <data name="WorkspaceShell_CanvasDescription" xml:space="preserve"><value>Gateway-managed visual workspaces.</value></data>
+  <data name="WorkspaceShell_SystemsDescription" xml:space="preserve"><value>This computer, your gateway, and paired devices.</value></data>
+  <data name="WorkspaceShell_SystemDetailDescription" xml:space="preserve"><value>Connection and access for your systems.</value></data>
+  <data name="WorkspaceShell_PluginsDescription" xml:space="preserve"><value>Extensions and tools available to your gateway.</value></data>
+  <data name="WorkspaceShell_ActivityDescription" xml:space="preserve"><value>Live events from the current gateway connection.</value></data>
+  <data name="WorkspaceShell_MoreDescription" xml:space="preserve"><value>Explore your workspace and companion tools.</value></data>
+  <data name="WorkspaceShell_AppsDescription" xml:space="preserve"><value>Manage this companion or learn about other OpenClaw apps.</value></data>
+  <data name="WorkspaceShell_PortalsDescription" xml:space="preserve"><value>Open your configured gateway dashboard or documentation.</value></data>
+  <data name="WorkspaceShell_TasksDescription" xml:space="preserve"><value>Task workflows provided by your gateway.</value></data>
+  <data name="WorkspaceShell_MeetingsDescription" xml:space="preserve"><value>Meeting workflows provided by your gateway.</value></data>
+  <data name="WorkspaceShell_NoAgents" xml:space="preserve"><value>No agents loaded</value></data>
+  <data name="WorkspaceShell_SelectAssistant" xml:space="preserve"><value>Select assistant</value></data>
+  <data name="WorkspaceShell_NoSessions" xml:space="preserve"><value>No conversations to show.</value></data>
+  <data name="WorkspaceShell_ConnectionRequired" xml:space="preserve"><value>Connect a gateway to load agents and conversations.</value></data>
+  <data name="WorkspaceShell_ConnectionInfo.Message" xml:space="preserve"><value>Connect a gateway to load live workspace data.</value></data>
+  <data name="WorkspaceShell_SessionFailed" xml:space="preserve"><value>The gateway could not create a new session. Refresh the list before retrying.</value></data>
+  <data name="WorkspaceShell_SessionUnsupported" xml:space="preserve"><value>This gateway does not support creating sessions. Update the gateway to use this action.</value></data>
+  <data name="WorkspaceShell_TrayUnavailable" xml:space="preserve"><value>The Windows tray menu is not available.</value></data>
+  <data name="WorkspaceShell_LinkFailed" xml:space="preserve"><value>Windows could not open the link.</value></data>
+  <data name="WorkspaceShell_AgentsEmpty" xml:space="preserve"><value>Connect and refresh to load agents. Manage agent configuration in the companion.</value></data>
+  <data name="WorkspaceShell_SelectAgentFirst" xml:space="preserve"><value>Select an agent from the Agents page to view its details.</value></data>
+  <data name="WorkspaceShell_AgentSummary" xml:space="preserve"><value>{0} · {1} conversations</value></data>
+  <data name="WorkspaceShell_WorkspaceNotReported" xml:space="preserve"><value>The gateway has not reported a workspace path.</value></data>
+  <data name="WorkspaceShell_RecentWork" xml:space="preserve"><value>Recent work</value></data>
+  <data name="WorkspaceShell_Gateway" xml:space="preserve"><value>Gateway</value></data>
+  <data name="WorkspaceShell_DeviceAccess" xml:space="preserve"><value>Device access</value></data>
+  <data name="WorkspaceShell_DeviceAccessDescription" xml:space="preserve"><value>Manage permissions and pairing in the native companion.</value></data>
+  <data name="WorkspaceShell_MetricsUnavailable" xml:space="preserve"><value>CPU, memory, and storage utilization are not reported by the current node API.</value></data>
+  <data name="WorkspaceShell_DashboardsUnavailable" xml:space="preserve"><value>No native dashboard catalog</value></data>
+  <data name="WorkspaceShell_DashboardsUnavailableDescription" xml:space="preserve"><value>The current gateway client does not expose a dashboard catalog or project metrics. Open the real gateway dashboard instead.</value></data>
+  <data name="WorkspaceShell_NoDashboardSelected" xml:space="preserve"><value>No dashboard data is available. Usage and activity remain available from the gateway.</value></data>
+  <data name="WorkspaceShell_Installed" xml:space="preserve"><value>Installed</value></data>
+  <data name="WorkspaceShell_Discover" xml:space="preserve"><value>Discover</value></data>
+  <data name="WorkspaceShell_Install" xml:space="preserve"><value>Install</value></data>
+  <data name="WorkspaceShell_PluginInventoryUnavailable" xml:space="preserve"><value>Plugin inventory unavailable</value></data>
+  <data name="WorkspaceShell_PluginsUnavailableDescription" xml:space="preserve"><value>The current gateway client has no plugin inventory API. Configuration and Skills show the supported gateway workflows.</value></data>
+  <data name="WorkspaceShell_PluginCatalogUnavailable" xml:space="preserve"><value>Plugin catalog unavailable</value></data>
+  <data name="WorkspaceShell_PluginMutationsUnavailable" xml:space="preserve"><value>Plugin installation and removal are unavailable because this client has no supported plugin management API.</value></data>
+  <data name="WorkspaceShell_NotAvailable" xml:space="preserve"><value>Not available in this companion</value></data>
+  <data name="WorkspaceShell_NoNativeWorkflow" xml:space="preserve"><value>The current gateway client does not expose this workflow. Check your gateway dashboard for supported extensions.</value></data>
+  <data name="WorkspaceShell_NoActivity" xml:space="preserve"><value>No recent activity</value></data>
+  <data name="WorkspaceShell_ActivityEmpty" xml:space="preserve"><value>Agent events will appear here as the connected gateway sends them.</value></data>
+  <data name="WorkspaceShell_CompanionApp" xml:space="preserve"><value>OpenClaw Windows companion</value></data>
+  <data name="WorkspaceShell_OpenChat" xml:space="preserve"><value>Open chat</value></data>
+  <data name="WorkspaceShell_Details" xml:space="preserve"><value>View details</value></data>
+  <data name="WorkspaceShell_AgentSettings" xml:space="preserve"><value>Agent settings</value></data>
+  <data name="WorkspaceShell_AgentFiles" xml:space="preserve"><value>Workspace files</value></data>
+  <data name="WorkspaceShell_ManageConnection" xml:space="preserve"><value>Manage connection</value></data>
+  <data name="WorkspaceShell_ConnectionTimeline" xml:space="preserve"><value>Connection event timeline</value></data>
+  <data name="WorkspaceShell_PairedDevices" xml:space="preserve"><value>Paired devices</value></data>
+  <data name="WorkspaceShell_PairDevice" xml:space="preserve"><value>Pair device</value></data>
+  <data name="WorkspaceShell_OpenDashboard" xml:space="preserve"><value>Open gateway dashboard</value></data>
+  <data name="WorkspaceShell_Help" xml:space="preserve"><value>Help</value></data>
+  <data name="WorkspaceShell_Documentation" xml:space="preserve"><value>Documentation</value></data>
+  <data name="WorkspaceShell_Support" xml:space="preserve"><value>Get help</value></data>
+  <data name="WorkspaceShell_Community" xml:space="preserve"><value>Community</value></data>
+  <data name="WorkspaceShell_ReleaseNotes" xml:space="preserve"><value>Release notes</value></data>
+  <data name="WorkspaceShell_GetApps" xml:space="preserve"><value>Get apps</value></data>
+  <data name="WorkspaceShell_CommandCenter" xml:space="preserve"><value>Command center</value></data>
+  <data name="WorkspaceShell_SearchPages" xml:space="preserve"><value>Search companion pages</value></data>
+  <data name="WorkspaceShell_Tray" xml:space="preserve"><value>Windows tray menu</value></data>
+  <data name="WorkspaceShell_Setup" xml:space="preserve"><value>Setup and onboarding</value></data>
+  <data name="WorkspaceShell_Owner.Text" xml:space="preserve"><value>Owner</value></data>
+  <data name="WorkspaceShell_PersonalWorkspace.Text" xml:space="preserve"><value>Personal workspace</value></data>
+  <data name="WorkspaceShell_Pages.Text" xml:space="preserve"><value>Pages</value></data>
+  <data name="WorkspaceShell_SessionsLabel.Text" xml:space="preserve"><value>Sessions</value></data>
+  <data name="WorkspaceShell_MoreButton.Content" xml:space="preserve"><value>More</value></data>
+  <data name="WorkspaceShell_Refresh.Content" xml:space="preserve"><value>Refresh</value></data>
+  <data name="WorkspaceShell_OpenConnection.Content" xml:space="preserve"><value>Open Connection</value></data>
+  <data name="WorkspaceShell_Assistant.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Assistant</value></data>
+  <data name="WorkspaceShell_NewConversation.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>New conversation</value></data>
+  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Notifications</value></data>
+  <data name="WorkspaceShell_Forward.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Vooruit</value></data>
+  <data name="WorkspaceShell_Forward.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Vooruit</value></data>
+  <data name="WorkspaceShell_Back.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Back</value></data>
+  <data name="WorkspaceShell_TogglePane.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Toggle sidebar</value></data>
+  <data name="WorkspaceShell_AutomationSendFailed" xml:space="preserve">
+    <value>The automation could not be sent. Your changes are still in the editor. Check the gateway connection and try again.</value>
+  </data>
+  <data name="WorkspaceShell_AutomationSubmitted" xml:space="preserve">
+    <value>Changes sent. The list will update when the gateway confirms them.</value>
+  </data>
+  <data name="AgentCreation_Title" xml:space="preserve"><value>Nieuwe agent</value></data>
+  <data name="AgentCreation_Creating" xml:space="preserve"><value>Agent wordt op de gateway gemaakt. Wacht op bevestiging.</value></data>
+  <data name="AgentCreation_Create" xml:space="preserve"><value>Agent maken</value></data>
+  <data name="AgentCreation_Name" xml:space="preserve"><value>Naam</value></data>
+  <data name="AgentCreation_Workspace" xml:space="preserve"><value>Werkruimtepad op de gateway</value></data>
+  <data name="AgentCreation_Description" xml:space="preserve"><value>Maak een agent en werkruimte op de verbonden gateway. Dit maakt geen gesprek en wijzigt uw huidige chat niet.</value></data>
+  <data name="AgentCreation_PermissionRequired" xml:space="preserve"><value>Maak verbinding met een gateway met operator.admin-machtiging om een agent te maken.</value></data>
+  <data name="AgentCreation_Failed" xml:space="preserve"><value>Het maken van de agent kon niet worden bevestigd. Sluit dit dialoogvenster en vernieuw de agents voordat u het opnieuw probeert.</value></data>
+  <data name="Onboarding_AiSetup_LocalState_ManagementBlocked" xml:space="preserve"><value>Beheer door Companion is niet beschikbaar.</value></data>
+  <data name="Onboarding_AiSetup_LocalOwnershipMissing" xml:space="preserve"><value>Dit profiel heeft geen eigendomsbewijs voor de bestaande lokale AI-provider. Als Companion deze bij een eerdere installatiepoging heeft gemaakt, open dan het oorspronkelijke Companion-profiel en kies Lokale AI herstellen en gebruiken. Er is niets gewijzigd. Een gedetecteerd model gebruiken herstelt het beheer door Companion niet.</value></data>
+  <data name="Onboarding_AiSetup_LocalOwnershipInvalid" xml:space="preserve"><value>Het opgeslagen eigendom van lokale AI, het model of de gatewayconfiguratie komt niet meer overeen. Controleer in het oorspronkelijke Companion-profiel de oorspronkelijke gateway en de modelinstellingen, inclusief gewijzigde vermeldingen in de lijst met toegestane modellen. Bewaar het eigendomsbewijs; kopieer geen referenties en vervang de provider niet.</value></data>
+  <data name="Onboarding_AiSetup_LocalOwnershipUnavailable" xml:space="preserve"><value>Het eigendom of de configuratie van de oorspronkelijke gateway kon niet worden gecontroleerd. Verbind deze gateway opnieuw en controleer nogmaals. Er is niets gewijzigd.</value></data>
+  <data name="Onboarding_AiSetup_LocalOwnershipFiles" xml:space="preserve"><value>De bestanden van de beheerde lokale AI-installatie moeten worden hersteld. Stop de runtime in de instellingen voor lokale AI en los de route naar de oorspronkelijke gateway op voordat u bestanden herstelt. Bewaar het eigendomsbewijs.</value></data>
+  <data name="ChatPage_SetupUnavailable" xml:space="preserve">
+    <value>De Gateway die tijdens de installatie is geverifieerd, is niet verbonden. Controleer Verbinding of controleer opnieuw wanneer deze beschikbaar is.</value>
+  </data>
+  <data name="ChatPage_SetupAuthorityUnconfirmed" xml:space="preserve">
+    <value>De Gateway en agent die tijdens de installatie zijn geverifieerd, konden niet worden bevestigd. Open Verbinding om ze te controleren.</value>
+  </data>
+  <data name="ChatPage_SetupRenderingFailed" xml:space="preserve">
+    <value>Chat kon niet worden weergegeven. Controleer opnieuw. Open Diagnostiek als het probleem aanhoudt.</value>
+  </data>
+  <data name="ChatPage_SetupCheckAgain.Content" xml:space="preserve">
+    <value>Opnieuw controleren</value>
+  </data>
 </root>

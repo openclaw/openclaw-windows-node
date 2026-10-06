@@ -20,6 +20,11 @@ public interface IGatewayConnectionManager : IDisposable, IAsyncDisposable
 
     // ─── Lifecycle ───
     Task ConnectAsync(string? gatewayId = null);
+    Task ConnectAsync(string? gatewayId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ConnectAsync(gatewayId);
+    }
     Task ConnectNodeOnlyAsync(string? gatewayId = null);
     Task DisconnectAsync();
     Task DisconnectByUserAsync();
@@ -66,6 +71,12 @@ public interface IGatewayConnectionManager : IDisposable, IAsyncDisposable
     Task EnsureNodeConnectedAsync(CancellationToken cancellationToken = default);
 
     // ─── Setup ───
+    Task<SetupCodeResult> ValidateConnectionAsync(
+        GatewayRecord candidate, GatewayValidationIdentity identity,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(new SetupCodeResult(
+            SetupCodeOutcome.ConnectionFailed, "Native connection validation is unavailable."));
+
     Task<SetupCodeResult> ApplySetupCodeAsync(string setupCode, SshTunnelConfig? sshTunnel = null);
     Task<SetupCodeResult> ConnectWithSharedTokenAsync(string gatewayUrl, string token, SshTunnelConfig? sshTunnel = null);
 

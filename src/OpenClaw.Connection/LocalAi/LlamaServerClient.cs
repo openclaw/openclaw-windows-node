@@ -171,21 +171,26 @@ public sealed class LlamaServerClient : ILlamaServerClient
 {
     private const int MaxEvidenceResponseBytes = 1024 * 1024;
     private readonly HttpClient _client;
+    private readonly Func<string?>? _getApiKey;
 
-    public LlamaServerClient() : this(new SocketsHttpHandler
+    public LlamaServerClient(Func<string?>? getApiKey = null) : this(new SocketsHttpHandler
     {
         UseProxy = false,
         AllowAutoRedirect = false,
         ConnectTimeout = TimeSpan.FromSeconds(2),
-    })
+    }, getApiKey)
     {
     }
 
-    internal LlamaServerClient(HttpMessageHandler handler)
+    internal LlamaServerClient(
+        HttpMessageHandler handler,
+        Func<string?>? getApiKey = null,
+        TimeSpan? timeout = null)
     {
+        _getApiKey = getApiKey;
         _client = new HttpClient(handler ?? throw new ArgumentNullException(nameof(handler)), disposeHandler: true)
         {
-            Timeout = TimeSpan.FromSeconds(3),
+            Timeout = timeout ?? TimeSpan.FromSeconds(3),
         };
     }
 
@@ -236,8 +241,9 @@ public sealed class LlamaServerClient : ILlamaServerClient
     {
         try
         {
-            using var response = await _client.GetAsync(
-                    BuildEndpointUri(endpoint, "/health"),
+            using var request = CreateRequest(BuildEndpointUri(endpoint, "/health"));
+            using var response = await _client.SendAsync(
+                    request,
                     HttpCompletionOption.ResponseHeadersRead,
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -267,8 +273,9 @@ public sealed class LlamaServerClient : ILlamaServerClient
         string expectedModelPath,
         CancellationToken cancellationToken)
     {
-        using var response = await _client.GetAsync(
-                BuildEndpointUri(endpoint, "/models", "autoload=false"),
+        using var request = CreateRequest(BuildEndpointUri(endpoint, "/models", "autoload=false"));
+        using var response = await _client.SendAsync(
+                request,
                 HttpCompletionOption.ResponseHeadersRead,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -288,6 +295,15 @@ public sealed class LlamaServerClient : ILlamaServerClient
             evidence.State,
             evidence.ModelPath,
             $"llama-server reports the model as {evidence.ServerStatus}.");
+    }
+
+    private HttpRequestMessage CreateRequest(Uri uri)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, uri);
+        if (_getApiKey?.Invoke() is { } apiKey)
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+                "Bearer", LocalAiApiCredentialStore.RequireApiKey(apiKey));
+        return request;
     }
 
     private static void ValidateManagedEndpoint(Uri endpoint)
@@ -312,17 +328,21 @@ public sealed class LlamaServerClient : ILlamaServerClient
             Query = query ?? string.Empty,
         }.Uri;
 
-    private static async Task<byte[]> ReadBoundedAsync(HttpContent content, CancellationToken cancellationToken)
+    private async Task<byte[]> ReadBoundedAsync(HttpContent content, CancellationToken cancellationToken)
     {
         if (content.Headers.ContentLength is > MaxEvidenceResponseBytes)
             throw new InvalidDataException("The llama-server evidence response exceeds the size limit.");
 
-        await using Stream input = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using var readTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (_client.Timeout > TimeSpan.Zero && _client.Timeout != Timeout.InfiniteTimeSpan)
+            readTimeout.CancelAfter(_client.Timeout);
+
+        await using Stream input = await content.ReadAsStreamAsync(readTimeout.Token).ConfigureAwait(false);
         using var output = new MemoryStream();
         var buffer = new byte[16 * 1024];
         while (true)
         {
-            int read = await input.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false);
+            int read = await input.ReadAsync(buffer.AsMemory(), readTimeout.Token).ConfigureAwait(false);
             if (read == 0)
                 return output.ToArray();
             if (output.Length + read > MaxEvidenceResponseBytes)

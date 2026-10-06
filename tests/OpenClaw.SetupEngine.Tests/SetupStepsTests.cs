@@ -1,6 +1,8 @@
 using OpenClaw.Connection;
 using OpenClaw.TestSupport;
 using OpenClaw.Shared;
+using OpenClaw.Shared.Inference;
+using OpenClaw.Shared.Inference.Catalog;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
@@ -14,33 +16,40 @@ public class SetupStepsTests : IDisposable
 {
     private readonly string _tempDir;
     private readonly string _localTempDir;
+    private readonly string _localTempRoot;
     private readonly string? _prevDataDir;
     private readonly string? _prevLocalDataDir;
+    private readonly string? _prevLocalAppDataRoot;
     private readonly ITestOutputHelper _output;
     private const string DevicePairPluginNotFoundOutput = "plugins.entries.device-pair: plugin not found: device-pair";
     private const string OtherPluginNotFoundOutput = "plugins.entries.other-plugin: plugin not found: other-plugin";
+    private const string PairingSocketDeviceId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
     public SetupStepsTests(ITestOutputHelper output)
     {
         _output = output;
         _tempDir = Path.Combine(Path.GetTempPath(), $"steps-test-{Guid.NewGuid():N}");
-        _localTempDir = Path.Combine(Path.GetTempPath(), $"steps-local-test-{Guid.NewGuid():N}");
+        _localTempRoot = Path.Combine(Path.GetTempPath(), $"steps-local-test-{Guid.NewGuid():N}");
+        _localTempDir = Path.Combine(_localTempRoot, "OpenClawTray");
         Directory.CreateDirectory(_tempDir);
         Directory.CreateDirectory(_localTempDir);
         _prevDataDir = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR");
         _prevLocalDataDir = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR");
+        _prevLocalAppDataRoot = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR");
         Environment.SetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR", _tempDir);
         Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR", _localTempDir);
+        Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR", _localTempRoot);
     }
 
     public void Dispose()
     {
         Environment.SetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR", _prevDataDir);
         Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR", _prevLocalDataDir);
+        Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR", _prevLocalAppDataRoot);
         // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
         try { Directory.Delete(_tempDir, recursive: true); } catch { }
         // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
-        try { Directory.Delete(_localTempDir, recursive: true); } catch { }
+        try { Directory.Delete(_localTempRoot, recursive: true); } catch { }
     }
 
     private SetupContext CreateContext(SetupConfig? config = null, ICommandRunner? commands = null)
@@ -3209,6 +3218,113 @@ public class SetupStepsTests : IDisposable
         Assert.Equal(2, Volatile.Read(ref inspectionCount));
     }
 
+    // A 48GB-SKU RTX Spark (the hardware-verified cuMemGetInfo total), which the fixed
+    // SKU table routes to a recommended model, so complete facts evaluate as eligible.
+    private static HostHardwareInfo CreateCompleteProbeHardware() => new(
+        Architecture.Arm64,
+        128L * 1024 * 1024 * 1024,
+        100L * 1024 * 1024 * 1024,
+        [
+            new GpuInfo(
+                GpuVendor.Nvidia,
+                "NVIDIA RTX Spark N1X (6144-core Blackwell RTX GPU)",
+                GpuVisibleMemoryBytes: 48_585_498_624,
+                FreeGpuVisibleMemoryBytes: 48_585_498_624,
+                DriverVersion: "616.00",
+                CudaMajorVersion: 13,
+                StableId: "GPU-SPARK"),
+        ],
+        VulkanAvailable: false);
+
+    private static HostHardwareInfo CreateIncompleteProbeHardware() => new(
+        Architecture.Arm64,
+        128L * 1024 * 1024 * 1024,
+        100L * 1024 * 1024 * 1024,
+        [
+            new GpuInfo(
+                GpuVendor.Nvidia,
+                "NVIDIA RTX Spark N1X (6144-core Blackwell RTX GPU)",
+                CudaMajorVersion: 13,
+                StableId: "GPU-SPARK"),
+        ],
+        VulkanAvailable: false);
+
+    [Fact]
+    public async Task LocalAiHardwareProbeCache_ReusesCompleteProbeUntilForcedRefresh()
+    {
+        var probeCount = 0;
+        var cache = new LocalAiHardwareProbeCache(() =>
+        {
+            Interlocked.Increment(ref probeCount);
+            return CreateCompleteProbeHardware();
+        });
+
+        Task<HostHardwareInfo> first = cache.GetAsync();
+        Task<HostHardwareInfo> second = cache.GetAsync();
+
+        Assert.Same(first, second);
+        HostHardwareInfo firstResult = await first;
+        Assert.Equal(1, Volatile.Read(ref probeCount));
+
+        Task<HostHardwareInfo> refreshed = cache.GetAsync(forceRefresh: true);
+
+        Assert.NotSame(first, refreshed);
+        await refreshed;
+        Assert.Equal(2, Volatile.Read(ref probeCount));
+    }
+
+    [Fact]
+    public async Task LocalAiHardwareProbeCache_ReprobesAfterIncompleteFacts()
+    {
+        var probeCount = 0;
+        var cache = new LocalAiHardwareProbeCache(() =>
+            Interlocked.Increment(ref probeCount) == 1
+                ? CreateIncompleteProbeHardware()
+                : CreateCompleteProbeHardware());
+
+        Task<HostHardwareInfo> first = cache.GetAsync();
+
+        Assert.Equal(
+            LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete,
+            LocalInferenceEligibility.Evaluate(await first).FailureCode);
+
+        Task<HostHardwareInfo> second = cache.GetAsync();
+        HostHardwareInfo secondResult = await second;
+
+        Assert.Equal(
+            LocalInferenceEligibilityFailureCode.None,
+            LocalInferenceEligibility.Evaluate(secondResult).FailureCode);
+        Assert.NotSame(first, second);
+        Assert.Equal(2, Volatile.Read(ref probeCount));
+
+        Task<HostHardwareInfo> third = cache.GetAsync();
+
+        Assert.Same(second, third);
+        Assert.Equal(2, Volatile.Read(ref probeCount));
+    }
+
+    [Fact]
+    public async Task LocalAiHardwareProbeCache_ReprobesAfterFault()
+    {
+        var probeCount = 0;
+        var cache = new LocalAiHardwareProbeCache(() =>
+        {
+            if (Interlocked.Increment(ref probeCount) == 1)
+                throw new InvalidOperationException("Transient CUDA read failure.");
+            return CreateCompleteProbeHardware();
+        });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => cache.GetAsync());
+
+        Task<HostHardwareInfo> second = cache.GetAsync();
+        HostHardwareInfo secondResult = await second;
+
+        Assert.Equal(
+            LocalInferenceEligibilityFailureCode.None,
+            LocalInferenceEligibility.Evaluate(secondResult).FailureCode);
+        Assert.Equal(2, Volatile.Read(ref probeCount));
+    }
+
     [Fact]
     public void LocalAiAvailabilityReasons_CombinesOnlyLocalAiFailures()
     {
@@ -4309,6 +4425,92 @@ public class SetupStepsTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task SetupWizard_RestartIntentContentionReverifiesOwnershipBeforeOneRetry()
+    {
+        var restarts = 0;
+        var inspections = 0;
+        var delays = new List<(TimeSpan Delay, CancellationToken CancellationToken)>();
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command switch
+            {
+                var value when value.Contains("config set gateway.reload.mode") => Ok(),
+                var value when value.Contains("openclaw gateway restart") => Restart(),
+                var value when value.Contains("curl -s") => Ok("200"),
+                _ => Fail($"Unexpected command: {command}"),
+            });
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        ctx.EndpointProvenanceProbe = (_, _) =>
+        {
+            inspections++;
+            return Task.FromResult(new GatewayEndpointProvenance(
+                GatewayEndpointProvenanceKind.ExpectedManagedGateway,
+                ctx.Config.GatewayPort));
+        };
+
+        var runner = new SetupWizardRunner(
+            ctx,
+            (delay, cancellationToken) =>
+            {
+                delays.Add((delay, cancellationToken));
+                return Task.CompletedTask;
+            });
+
+        var result = await runner.RestoreReloadModeAsync();
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Equal(2, restarts);
+        Assert.Equal(2, inspections);
+        var retryDelay = Assert.Single(delays);
+        Assert.Equal(
+            GatewayWizardRestartRecoveryPolicy.RestartIntentContentionRetryDelay,
+            retryDelay.Delay);
+        Assert.True(retryDelay.CancellationToken.CanBeCanceled);
+        Assert.DoesNotContain(commands.WslCalls, call => call.Command.Contains("systemctl"));
+        return;
+
+        CommandResult Restart()
+        {
+            if (++restarts == 1)
+            {
+                return Fail(
+                    $"{GatewayWizardRestartRecoveryPolicy.RestartIntentCoordinatorContentionError}. " +
+                    GatewayWizardRestartRecoveryPolicy.RestartIntentRecordingRefusal);
+            }
+
+            Assert.Equal(1, inspections);
+            return Ok();
+        }
+    }
+
+    [Theory]
+    [InlineData(GatewayEndpointProvenanceKind.UnknownListener)]
+    [InlineData(GatewayEndpointProvenanceKind.ConflictingOpenClawGateway)]
+    public async Task SetupWizard_RestartIntentContentionDoesNotRetryAnUntrustedListener(
+        GatewayEndpointProvenanceKind kind)
+    {
+        var restartFailure =
+            $"{GatewayWizardRestartRecoveryPolicy.RestartIntentCoordinatorContentionError}. " +
+            GatewayWizardRestartRecoveryPolicy.RestartIntentRecordingRefusal;
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command.Contains("config set gateway.reload.mode")
+                ? Ok()
+                : Fail(restartFailure));
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        ctx.EndpointProvenanceProbe = (_, _) => Task.FromResult(
+            new GatewayEndpointProvenance(kind, ctx.Config.GatewayPort));
+
+        var result = await new SetupWizardRunner(ctx).RestoreReloadModeAsync();
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("ownership verification failed", result.Message);
+        Assert.Single(commands.WslCalls, call => call.Command.Contains("openclaw gateway restart"));
+    }
+
     [Theory]
     [InlineData(GatewayEndpointProvenanceKind.UnknownListener)]
     [InlineData(GatewayEndpointProvenanceKind.ConflictingOpenClawGateway)]
@@ -4335,7 +4537,7 @@ public class SetupStepsTests : IDisposable
     [Theory]
     [InlineData(SetupWizardRunner.RestartServingOwnerDiagnostic, 2)]
     [InlineData("GATEWAY_RESTART_PREPARATION_REFUSED: Cannot verify the selected service command.", 1)]
-    [InlineData("StateDatabaseCoordinatorContentionError: another OpenClaw process owns state-lifecycle. GATEWAY_RESTART_PREPARATION_REFUSED: Cannot record restart intent for the serving Gateway. Gateway was not signaled.", 1)]
+    [InlineData("StateDatabaseCoordinatorContentionError: another OpenClaw process owns state-lifecycle. GATEWAY_RESTART_PREPARATION_REFUSED: Cannot record restart intent for the serving Gateway. Gateway was not signaled.", 2)]
     [InlineData("Unrelated restart failure", 1)]
     public async Task SetupWizard_RestartRetryRemainsBoundedAndSpecific(string error, int expectedRestarts)
     {
@@ -5306,6 +5508,283 @@ public class SetupStepsTests : IDisposable
     // in docs/ARCHITECTURE.md).
 
     [Fact]
+    public async Task WslPathPrefixScripts_UseStdinSoWslExeDoesNotExpandPath()
+    {
+        var deviceLists = 0;
+        var nodeLists = 0;
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) =>
+            {
+                if (command.Contains("openclaw qr --json", StringComparison.Ordinal))
+                    return Ok("""{"bootstrapToken":"test-token-placeholder"}""");
+                if (command.Contains("devices list --json", StringComparison.Ordinal))
+                    return Ok(++deviceLists == 2
+                        ? $$"""{"pending":[{"requestId":"device-req-1","deviceId":"{{PairingSocketDeviceId}}","role":"operator"}]}"""
+                        : """{"pending":[]}""");
+                if (command.Contains("nodes list --json", StringComparison.Ordinal))
+                    return Ok(++nodeLists == 2
+                        ? $$"""{"pending":[{"requestId":"node-req-1","nodeId":"{{PairingSocketDeviceId}}","role":"node"}]}"""
+                        : """{"pending":[]}""");
+                if (command.Contains("GATEWAY_CONFIGURED", StringComparison.Ordinal))
+                    return Ok("GATEWAY_CONFIGURED");
+                if (command.Contains("curl -s", StringComparison.Ordinal))
+                    return Ok("200");
+                return Ok("""{"requestId":"device-req-1"}""");
+            });
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        ctx.SharedGatewayToken = "test-auth-token";
+        ctx.Config.Gateway.ReloadMode = "hybrid";
+        ctx.OperatorDeviceId = PairingSocketDeviceId;
+        ctx.CurrentDeviceApprovalBaseline = await ApprovalRequestHelper.CaptureSetupBaselineOnceAsync(
+            ctx, ApprovalRequestKind.Device, CancellationToken.None);
+        ctx.CurrentNodeApprovalBaseline = await ApprovalRequestHelper.CaptureSetupBaselineOnceAsync(
+            ctx, ApprovalRequestKind.Node, CancellationToken.None);
+
+        Assert.True((await new InstallGatewayServiceStep().ExecuteAsync(ctx, CancellationToken.None)).IsSuccess);
+        await new InstallGatewayServiceStep().RollbackAsync(ctx, CancellationToken.None);
+        Assert.True((await new MintBootstrapTokenStep().ExecuteAsync(ctx, CancellationToken.None)).IsSuccess, "mint");
+        Assert.True((await PairOperatorStep.AutoApprovePairing(ctx, requestId: null, CancellationToken.None)).IsSuccess, "operator approve");
+        Assert.True((await PairNodeStep.AutoApproveNodePairing(ctx, requestId: null, CancellationToken.None)).IsSuccess, "node approve");
+        Assert.True((await StartGatewayStep.RestartAndWaitForHealthAsync(ctx, CancellationToken.None)).IsSuccess, "restart");
+        Assert.True((await VerifyEndToEndStep.DrainPendingDeviceApprovalsAsync(ctx, CancellationToken.None)).IsSuccess, "drain");
+        Assert.True((await new ConfigureGatewayStep().ExecuteAsync(ctx, CancellationToken.None)).IsSuccess, "configure");
+        TrustManagedEndpoint(ctx);
+        Assert.True((await new SetupWizardRunner(ctx).SuspendReloadModeAsync()).IsSuccess, "suspend reload");
+        Assert.True((await new SetupWizardRunner(ctx).RestoreReloadModeAsync()).IsSuccess, "restore reload");
+
+        var pathScripts = commands.WslCalls.Where(call => call.Command.Contains("$PATH", StringComparison.Ordinal)).ToList();
+        Assert.Contains(pathScripts, call => call.Command.Contains("gateway install --force", StringComparison.Ordinal));
+        Assert.Contains(pathScripts, call => call.Command.Contains("gateway uninstall", StringComparison.Ordinal));
+        Assert.Contains(pathScripts, call => call.Command.Contains("openclaw qr --json", StringComparison.Ordinal));
+        Assert.Contains(pathScripts, call => call.Command.Contains("devices approve", StringComparison.Ordinal));
+        Assert.Contains(pathScripts, call => call.Command.Contains("nodes list --json", StringComparison.Ordinal));
+        Assert.Contains(pathScripts, call => call.Command.Contains("nodes approve", StringComparison.Ordinal));
+        Assert.Contains(pathScripts, call => call.Command.Contains("gateway restart", StringComparison.Ordinal));
+        Assert.Contains(pathScripts, call => call.Command.Contains("GATEWAY_CONFIGURED", StringComparison.Ordinal));
+        Assert.Contains(pathScripts, call => call.Command.Contains("gateway.reload.mode off", StringComparison.Ordinal));
+        Assert.Contains(pathScripts, call => call.Command.Contains("gateway.reload.mode 'hybrid'", StringComparison.Ordinal));
+        Assert.All(pathScripts, call => Assert.True(call.InputViaStdin, call.Command));
+    }
+
+    [Fact]
+    public async Task AutoApprovePairing_WithoutRequestId_ApprovesOnlyNewRequestForOpenedSocket()
+    {
+        const string socketDeviceId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        const string otherDeviceId = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        const string staleRequestId = "stale-socket-req";
+        const string socketRequestId = "setup-socket-req";
+        const string newerRequestId = "attacker-latest-req";
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) =>
+            {
+                if (command.Contains("devices list", StringComparison.Ordinal))
+                {
+                    return Ok(
+                        "{\"pending\":[" +
+                        "{\"requestId\":\"" + staleRequestId + "\",\"deviceId\":\"" + socketDeviceId + "\",\"role\":\"operator\",\"ts\":0}," +
+                        "{\"requestId\":\"" + socketRequestId + "\",\"deviceId\":\"" + socketDeviceId + "\",\"role\":\"operator\",\"ts\":1}," +
+                        "{\"requestId\":\"" + newerRequestId + "\",\"deviceId\":\"" + otherDeviceId + "\",\"role\":\"operator\",\"ts\":2}" +
+                        "]}");
+                }
+
+                if (command.Contains("approve --latest", StringComparison.Ordinal))
+                    return Ok("{\"selected\":{\"requestId\":\"" + newerRequestId + "\",\"role\":\"operator\"}}");
+                if (command.Contains("devices approve", StringComparison.Ordinal))
+                    return Ok("{\"requestId\":\"" + socketRequestId + "\"}");
+
+                return Fail($"unexpected wsl command: {command}");
+            });
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        ctx.SharedGatewayToken = "test-auth-token";
+        ctx.OperatorDeviceId = socketDeviceId;
+        var requestBaseline = PendingRequestBaseline.SuccessResult([staleRequestId]);
+        ctx.CurrentDeviceApprovalBaseline = requestBaseline;
+
+        var result = await PairOperatorStep.AutoApprovePairing(ctx, requestId: null, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Contains(socketRequestId, result.Message);
+        Assert.DoesNotContain(newerRequestId, result.Message);
+        Assert.DoesNotContain(staleRequestId, result.Message);
+        Assert.DoesNotContain(
+            commands.WslCalls,
+            call => call.Command.Contains("approve --latest", StringComparison.Ordinal));
+        var approve = Assert.Single(
+            commands.WslCalls.Select((call, index) => (call, index)),
+            item => item.call.Command.Contains("devices approve", StringComparison.Ordinal));
+        Assert.Equal(
+            socketRequestId,
+            commands.WslEnvironments[approve.index]! [ApprovalRequestHelper.RequestIdEnvironmentVariable]);
+    }
+
+    [Fact]
+    public async Task AutoApprovePairing_WithoutRequestIdOrBaseline_FailsWithoutListing()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, _, _) => Ok("""{"pending":[{"requestId":"unowned-request"}]}"""));
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        ctx.SharedGatewayToken = "test-auth-token";
+
+        var result = await PairOperatorStep.AutoApprovePairing(
+            ctx,
+            requestId: null,
+            CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("no pre-connect approval baseline", result.Message);
+        Assert.Empty(commands.WslCalls);
+    }
+
+    [Fact]
+    public async Task LaterDrain_DoesNotApproveADifferentPendingRequest()
+    {
+        const string socketDeviceId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        const string otherDeviceId = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        const string socketRequestId = "setup-socket-req";
+        const string staleSocketRequestId = "stale-setup-socket-req";
+        const string otherRequestId = "attacker-latest-req";
+        const string socketNodeRequestId = "setup-node-req";
+        const string staleSocketNodeRequestId = "stale-setup-node-req";
+        const string otherNodeRequestId = "attacker-node-req";
+        var deviceLists = 0;
+        var nodeLists = 0;
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) =>
+            {
+                if (command.Contains("devices list", StringComparison.Ordinal))
+                {
+                    deviceLists++;
+                    var pending = deviceLists == 1
+                        ? "{\"pending\":[" +
+                          "{\"requestId\":\"" + staleSocketRequestId + "\",\"deviceId\":\"" + socketDeviceId + "\",\"role\":\"operator\"}," +
+                          "{\"requestId\":\"" + socketRequestId + "\",\"deviceId\":\"" + socketDeviceId + "\",\"role\":\"operator\"}," +
+                          "{\"requestId\":\"" + otherRequestId + "\",\"deviceId\":\"" + otherDeviceId + "\",\"role\":\"operator\"}" +
+                          "],\"paired\":[{\"displayName\":\"No pending device approvals\"}]}"
+                        : "{\"pending\":[" +
+                          "{\"requestId\":\"" + staleSocketRequestId + "\",\"deviceId\":\"" + socketDeviceId + "\",\"role\":\"operator\"}," +
+                          "{\"requestId\":\"" + otherRequestId + "\",\"deviceId\":\"" + otherDeviceId + "\",\"role\":\"operator\"}" +
+                          "],\"paired\":[{\"displayName\":\"No pending device approvals\"}]}";
+                    return Ok(pending);
+                }
+
+                if (command.Contains("nodes list", StringComparison.Ordinal))
+                {
+                    nodeLists++;
+                    var pending = nodeLists == 1
+                        ? "{\"pending\":[" +
+                          "{\"requestId\":\"" + staleSocketNodeRequestId + "\",\"nodeId\":\"" + socketDeviceId + "\",\"role\":\"node\"}," +
+                          "{\"requestId\":\"" + socketNodeRequestId + "\",\"nodeId\":\"" + socketDeviceId + "\",\"role\":\"node\"}," +
+                          "{\"requestId\":\"" + otherNodeRequestId + "\",\"nodeId\":\"" + otherDeviceId + "\",\"role\":\"node\"}" +
+                          "],\"paired\":[{\"displayName\":\"No pending node approvals\"}]}"
+                        : "{\"pending\":[" +
+                          "{\"requestId\":\"" + staleSocketNodeRequestId + "\",\"nodeId\":\"" + socketDeviceId + "\",\"role\":\"node\"}," +
+                          "{\"requestId\":\"" + otherNodeRequestId + "\",\"nodeId\":\"" + otherDeviceId + "\",\"role\":\"node\"}" +
+                          "],\"paired\":[{\"displayName\":\"No pending node approvals\"}]}";
+                    return Ok(pending);
+                }
+
+                if (command.Contains("approve --latest", StringComparison.Ordinal))
+                    return Ok("{\"selected\":{\"requestId\":\"" + otherRequestId + "\"}}");
+
+                if (command.Contains("devices approve", StringComparison.Ordinal) ||
+                    command.Contains("nodes approve", StringComparison.Ordinal))
+                {
+                    return Ok("{}");
+                }
+
+                return Fail($"unexpected wsl command: {command}");
+            });
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        ctx.SharedGatewayToken = "test-auth-token";
+        ctx.OperatorDeviceId = socketDeviceId;
+        ctx.SetupDeviceApprovalBaseline = PendingRequestBaseline.SuccessResult([staleSocketRequestId]);
+        ctx.SetupNodeApprovalBaseline = PendingRequestBaseline.SuccessResult([staleSocketNodeRequestId]);
+
+        var result = await VerifyEndToEndStep.DrainPendingApprovalsAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.DoesNotContain(
+            commands.WslCalls,
+            call => call.Command.Contains("approve --latest", StringComparison.Ordinal));
+        AssertApprovedRequest(commands, "devices approve", socketRequestId);
+        AssertApprovedRequest(commands, "nodes approve", socketNodeRequestId);
+        Assert.DoesNotContain(
+            commands.WslEnvironments,
+            env => env is not null &&
+                env.TryGetValue(ApprovalRequestHelper.RequestIdEnvironmentVariable, out var requestId) &&
+                (requestId == staleSocketRequestId ||
+                 requestId == staleSocketNodeRequestId ||
+                 requestId == otherRequestId ||
+                 requestId == otherNodeRequestId));
+    }
+
+    [Fact]
+    public async Task LaterDrain_DoesNotIgnoreNoPendingTextFromFailedDeviceList()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command.Contains("devices list", StringComparison.Ordinal)
+                ? new CommandResult(1, "No pending device approvals", "gateway unavailable", TimeSpan.Zero, TimedOut: false)
+                : Fail($"unexpected wsl command: {command}"));
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        ctx.SharedGatewayToken = "test-auth-token";
+        ctx.OperatorDeviceId = PairingSocketDeviceId;
+        ctx.SetupDeviceApprovalBaseline = PendingRequestBaseline.SuccessResult([]);
+        ctx.SetupNodeApprovalBaseline = PendingRequestBaseline.SuccessResult([]);
+
+        var result = await VerifyEndToEndStep.DrainPendingApprovalsAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("Could not list pending device approvals (exit 1)", result.Message);
+    }
+
+    [Fact]
+    public async Task LaterDrain_DoesNotIgnoreNoPendingTextFromFailedNodeList()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) =>
+            {
+                if (command.Contains("devices list", StringComparison.Ordinal))
+                    return Ok("""{"pending":[]}""");
+
+                return command.Contains("nodes list", StringComparison.Ordinal)
+                    ? new CommandResult(1, "No pending node approvals", "gateway unavailable", TimeSpan.Zero, TimedOut: false)
+                    : Fail($"unexpected wsl command: {command}");
+            });
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        ctx.SharedGatewayToken = "test-auth-token";
+        ctx.OperatorDeviceId = PairingSocketDeviceId;
+        ctx.SetupDeviceApprovalBaseline = PendingRequestBaseline.SuccessResult([]);
+        ctx.SetupNodeApprovalBaseline = PendingRequestBaseline.SuccessResult([]);
+
+        var result = await VerifyEndToEndStep.DrainPendingApprovalsAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("Could not list pending node approvals (exit 1)", result.Message);
+    }
+
+    private static void AssertApprovedRequest(FakeCommandRunner commands, string commandText, string requestId)
+    {
+        var approve = Assert.Single(
+            commands.WslCalls.Select((call, index) => (call, index)),
+            item => item.call.Command.Contains(commandText, StringComparison.Ordinal));
+        Assert.Equal(
+            requestId,
+            commands.WslEnvironments[approve.index]! [ApprovalRequestHelper.RequestIdEnvironmentVariable]);
+    }
+
+    [Fact]
     public async Task AutoApprovePairing_ReturnsTerminalForDevicePairPluginNotFound()
     {
         var ctx = CreatePairingContext(DevicePairPluginNotFoundOutput);
@@ -5329,9 +5808,143 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public async Task AutoApproveNodePairing_WithoutRequestId_RejectsSoleForeignNode()
+    {
+        const string foreignDeviceId = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        var commands = NodePairingCommands($$"""
+            {"pending":[{"requestId":"foreign-request","nodeId":"{{foreignDeviceId}}","role":"node"}]}
+            """);
+        var ctx = CreateNodePairingContext(commands);
+        ctx.NodeDeviceId = foreignDeviceId[..16];
+        ctx.CurrentNodeApprovalBaseline = PendingRequestBaseline.SuccessResult([]);
+
+        var result = await PairNodeStep.AutoApproveNodePairing(ctx, requestId: null, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("No new pending approval request matched", result.Message);
+        Assert.Single(commands.WslCalls);
+    }
+
+    [Theory]
+    [InlineData("nodeId", false)]
+    [InlineData("nodeId", true)]
+    [InlineData("deviceId", false)]
+    [InlineData("deviceId", true)]
+    public async Task AutoApproveNodePairing_WithoutRequestId_SelectsFullSetupIdentity(
+        string identityField, bool includeForeign)
+    {
+        var foreign = includeForeign
+            ? """,{"requestId":"foreign-request","nodeId":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","role":"node"}"""
+            : "";
+        var commands = NodePairingCommands($$"""
+            {"pending":[{"requestId":"setup-request","{{identityField}}":"{{PairingSocketDeviceId}}","role":"node"}{{foreign}}]}
+            """);
+        var ctx = CreateNodePairingContext(commands);
+        ctx.NodeDeviceId = "bbbbbbbbbbbbbbbb";
+        ctx.CurrentNodeApprovalBaseline = PendingRequestBaseline.SuccessResult([]);
+
+        var result = await PairNodeStep.AutoApproveNodePairing(ctx, requestId: null, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Equal(2, commands.WslCalls.Count);
+        Assert.Contains("nodes list --json", commands.WslCalls[0].Command);
+        AssertApprovedRequest(commands, "nodes approve", "setup-request");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" ")]
+    public async Task AutoApproveNodePairing_WithoutRequestId_RejectsMissingSetupIdentity(string? deviceId)
+    {
+        var commands = NodePairingCommands($$"""
+            {"pending":[{"requestId":"setup-request","nodeId":"{{PairingSocketDeviceId}}","role":"node"}]}
+            """);
+        var ctx = CreateNodePairingContext(commands);
+        ctx.OperatorDeviceId = deviceId;
+        ctx.NodeDeviceId = PairingSocketDeviceId[..16];
+        ctx.CurrentNodeApprovalBaseline = PendingRequestBaseline.SuccessResult([]);
+
+        var result = await PairNodeStep.AutoApproveNodePairing(ctx, requestId: null, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("device ID is missing", result.Message);
+        Assert.Single(commands.WslCalls);
+    }
+
+    [Theory]
+    [InlineData("""{"pending":[{"requestId":"short-id-request","nodeId":"aaaaaaaaaaaaaaaa"}]}""", "No new pending approval request matched")]
+    [InlineData("""{"pending":[{"requestId":"missing-id-request"}]}""", "No new pending approval request matched")]
+    [InlineData("""{"pending":[{"requestId":"one","nodeId":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},{"requestId":"two","nodeId":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}""", "Multiple new pending approval requests match")]
+    [InlineData("""{"pending":[{"requestId":"unsafe;request","nodeId":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}""", "unsafe characters")]
+    public async Task AutoApproveNodePairing_WithoutRequestId_RejectsUnboundOrAmbiguousRequest(
+        string pendingJson, string expectedError)
+    {
+        var commands = NodePairingCommands(pendingJson);
+        var ctx = CreateNodePairingContext(commands);
+        ctx.CurrentNodeApprovalBaseline = PendingRequestBaseline.SuccessResult([]);
+
+        var result = await PairNodeStep.AutoApproveNodePairing(ctx, requestId: null, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains(expectedError, result.Message);
+        Assert.Single(commands.WslCalls);
+    }
+
+    [Fact]
+    public async Task AutoApproveNodePairing_WithSocketRequestId_ApprovesExactDeviceRequestWithoutListing()
+    {
+        var commands = NodePairingCommands("""{"pending":[]}""");
+        var ctx = CreateNodePairingContext(commands);
+        ctx.OperatorDeviceId = null;
+
+        var result = await PairNodeStep.AutoApproveNodePairing(ctx, "socket-request", CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Single(commands.WslCalls);
+        AssertApprovedRequest(commands, "devices approve", "socket-request");
+    }
+
+    [Fact]
+    public async Task AutoApproveNodePairing_WithUnsafeSocketRequestId_DoesNotListOrApprove()
+    {
+        var commands = NodePairingCommands("""{"pending":[]}""");
+        var ctx = CreateNodePairingContext(commands);
+
+        var result = await PairNodeStep.AutoApproveNodePairing(ctx, "unsafe;request", CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("unsafe characters", result.Message);
+        Assert.Empty(commands.WslCalls);
+    }
+
+    private static FakeCommandRunner NodePairingCommands(string pendingJson) =>
+        new(
+            _ => Fail("unexpected RunAsync"),
+            (_, command, _) => command.Contains("nodes list --json", StringComparison.Ordinal)
+                ? Ok(pendingJson)
+                : command.Contains(" approve ", StringComparison.Ordinal)
+                    ? Ok("{}")
+                    : Fail($"unexpected wsl command: {command}"));
+
+    private SetupContext CreateNodePairingContext(FakeCommandRunner commands)
+    {
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        ctx.SharedGatewayToken = "test-auth-token";
+        ctx.OperatorDeviceId = PairingSocketDeviceId;
+        return ctx;
+    }
+
+    [Fact]
     public async Task AutoApproveNodePairing_ReturnsTerminalWhenPendingListReportsDevicePairPluginNotFound()
     {
         var ctx = CreatePairingContext(DevicePairPluginNotFoundOutput);
+        var requestBaseline = await ApprovalRequestHelper.CapturePendingRequestBaselineAsync(
+            ctx,
+            ApprovalRequestKind.Node,
+            CancellationToken.None);
+        ctx.CurrentNodeApprovalBaseline = requestBaseline;
 
         var result = await PairNodeStep.AutoApproveNodePairing(ctx, requestId: null, CancellationToken.None);
 
@@ -5343,12 +5956,191 @@ public class SetupStepsTests : IDisposable
     public async Task AutoApproveNodePairing_KeepsOtherPendingListMissingPluginRetriable()
     {
         var ctx = CreatePairingContext(OtherPluginNotFoundOutput);
+        var requestBaseline = await ApprovalRequestHelper.CapturePendingRequestBaselineAsync(
+            ctx,
+            ApprovalRequestKind.Node,
+            CancellationToken.None);
+        ctx.CurrentNodeApprovalBaseline = requestBaseline;
 
         var result = await PairNodeStep.AutoApproveNodePairing(ctx, requestId: null, CancellationToken.None);
 
         Assert.Equal(StepOutcome.Failed, result.Outcome);
-        Assert.Contains("Could not list pending node pairing requests", result.Message);
+        Assert.Contains("Could not capture pending nodes", result.Message);
         Assert.DoesNotContain(ApprovalRequestHelper.PluginNotFoundMessage, result.Message);
+    }
+
+    [Fact]
+    public async Task CapturePendingRequestBaseline_ParsesJsonBeforeCheckingNoPendingMetadata()
+    {
+        const string requestId = "stale-request";
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, _, _) => Ok("""
+                {
+                  "pending": [{ "requestId": "stale-request" }],
+                  "paired": [{ "displayName": "No pending device approvals" }]
+                }
+                """));
+        var ctx = CreateNodePairingContext(commands);
+
+        var baseline = await ApprovalRequestHelper.CapturePendingRequestBaselineAsync(
+            ctx,
+            ApprovalRequestKind.Node,
+            CancellationToken.None);
+
+        Assert.True(baseline.Success, baseline.Error);
+        Assert.Contains(requestId, baseline.RequestIds);
+    }
+
+    [Fact]
+    public async Task CapturePendingRequestBaseline_DoesNotTreatFailedNoPendingOutputAsSuccess()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, _, _) => new CommandResult(1, "No pending node approvals", "gateway unavailable", TimeSpan.Zero, TimedOut: false));
+        var ctx = CreateNodePairingContext(commands);
+
+        var baseline = await ApprovalRequestHelper.CapturePendingRequestBaselineAsync(
+            ctx,
+            ApprovalRequestKind.Node,
+            CancellationToken.None);
+
+        Assert.False(baseline.Success);
+        Assert.Contains("exit 1", baseline.Error);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CaptureSetupBaselineOnce_RetryApprovesRefreshedRequestButNotPreexistingRequest(
+        bool node)
+    {
+        var kind = node ? ApprovalRequestKind.Node : ApprovalRequestKind.Device;
+        var noun = kind == ApprovalRequestKind.Device ? "devices" : "nodes";
+        var identityField = kind == ApprovalRequestKind.Device ? "deviceId" : "nodeId";
+        var role = kind == ApprovalRequestKind.Device ? "operator" : "node";
+        var listCalls = 0;
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) =>
+            {
+                if (command.Contains($"{noun} list --json", StringComparison.Ordinal))
+                {
+                    return ++listCalls switch
+                    {
+                        1 => Ok("""{"pending":[{"requestId":"preexisting-request"}]}"""),
+                        2 => Fail("transient list failure"),
+                        3 => Ok($$"""
+                            {"pending":[
+                              {"requestId":"preexisting-request","{{identityField}}":"{{PairingSocketDeviceId}}","role":"{{role}}"},
+                              {"requestId":"refreshed-request","{{identityField}}":"{{PairingSocketDeviceId}}","role":"{{role}}"}
+                            ]}
+                            """),
+                        _ => Fail("unexpected list")
+                    };
+                }
+
+                return command.Contains($"{noun} approve ", StringComparison.Ordinal)
+                    ? Ok("{}")
+                    : Fail($"unexpected wsl command: {command}");
+            });
+        var ctx = CreateNodePairingContext(commands);
+        var initial = await ApprovalRequestHelper.CaptureSetupBaselineOnceAsync(ctx, kind, CancellationToken.None);
+        if (kind == ApprovalRequestKind.Device)
+            ctx.CurrentDeviceApprovalBaseline = initial;
+        else
+            ctx.CurrentNodeApprovalBaseline = initial;
+
+        var firstApproval = kind == ApprovalRequestKind.Device
+            ? await PairOperatorStep.AutoApprovePairing(ctx, requestId: null, CancellationToken.None)
+            : await PairNodeStep.AutoApproveNodePairing(ctx, requestId: null, CancellationToken.None);
+        Assert.False(firstApproval.IsSuccess);
+
+        var retry = await ApprovalRequestHelper.CaptureSetupBaselineOnceAsync(ctx, kind, CancellationToken.None);
+        Assert.Same(initial, retry);
+        if (kind == ApprovalRequestKind.Device)
+            ctx.CurrentDeviceApprovalBaseline = retry;
+        else
+            ctx.CurrentNodeApprovalBaseline = retry;
+        var retryApproval = kind == ApprovalRequestKind.Device
+            ? await PairOperatorStep.AutoApprovePairing(ctx, requestId: null, CancellationToken.None)
+            : await PairNodeStep.AutoApproveNodePairing(ctx, requestId: null, CancellationToken.None);
+
+        Assert.True(retryApproval.IsSuccess, retryApproval.Message);
+        Assert.Equal(3, listCalls);
+        AssertApprovedRequest(commands, $"{noun} approve", "refreshed-request");
+        Assert.DoesNotContain(
+            commands.WslEnvironments,
+            env => env is not null &&
+                env.TryGetValue(ApprovalRequestHelper.RequestIdEnvironmentVariable, out var requestId) &&
+                requestId == "preexisting-request");
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task CaptureSetupBaselineOnce_FailedFirstCaptureRecapturesSafelyOnRetry(
+        bool node, bool firstAttemptMintedRequest)
+    {
+        var kind = node ? ApprovalRequestKind.Node : ApprovalRequestKind.Device;
+        var noun = node ? "nodes" : "devices";
+        var identityField = node ? "nodeId" : "deviceId";
+        var role = node ? "node" : "operator";
+        var baselineAtRetry = firstAttemptMintedRequest
+            ? """{"pending":[{"requestId":"first-attempt-request"}]}"""
+            : """{"pending":[]}""";
+        var pendingAfterConnect = firstAttemptMintedRequest
+            ? $$"""{"pending":[{"requestId":"first-attempt-request","{{identityField}}":"{{PairingSocketDeviceId}}","role":"{{role}}"}]}"""
+            : $$"""{"pending":[{"requestId":"retry-request","{{identityField}}":"{{PairingSocketDeviceId}}","role":"{{role}}"}]}""";
+        var listCalls = 0;
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) =>
+            {
+                if (command.Contains($"{noun} list --json", StringComparison.Ordinal))
+                {
+                    return ++listCalls switch
+                    {
+                        1 => Fail("initial baseline unavailable"),
+                        2 => Ok(baselineAtRetry),
+                        3 => Ok(pendingAfterConnect),
+                        _ => Fail("unexpected list")
+                    };
+                }
+
+                return command.Contains($"{noun} approve ", StringComparison.Ordinal)
+                    ? Ok("{}")
+                    : Fail($"unexpected wsl command: {command}");
+            });
+        var ctx = CreateNodePairingContext(commands);
+
+        var initial = await ApprovalRequestHelper.CaptureSetupBaselineOnceAsync(ctx, kind, CancellationToken.None);
+        var retry = await ApprovalRequestHelper.CaptureSetupBaselineOnceAsync(ctx, kind, CancellationToken.None);
+        if (kind == ApprovalRequestKind.Device)
+            ctx.CurrentDeviceApprovalBaseline = retry;
+        else
+            ctx.CurrentNodeApprovalBaseline = retry;
+        var retryApproval = kind == ApprovalRequestKind.Device
+            ? await PairOperatorStep.AutoApprovePairing(ctx, requestId: null, CancellationToken.None)
+            : await PairNodeStep.AutoApproveNodePairing(ctx, requestId: null, CancellationToken.None);
+
+        Assert.False(initial.Success);
+        Assert.True(retry.Success, retry.Error);
+        Assert.NotSame(initial, retry);
+        Assert.Equal(3, listCalls);
+        if (firstAttemptMintedRequest)
+        {
+            Assert.Contains("first-attempt-request", retry.RequestIds);
+            Assert.False(retryApproval.IsSuccess);
+            Assert.DoesNotContain(commands.WslCalls, call => call.Command.Contains(" approve ", StringComparison.Ordinal));
+        }
+        else
+        {
+            Assert.True(retryApproval.IsSuccess, retryApproval.Message);
+            AssertApprovedRequest(commands, $"{noun} approve", "retry-request");
+        }
     }
 
     [Fact]

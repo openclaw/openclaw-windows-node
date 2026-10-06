@@ -46,7 +46,7 @@ jobs:
           -BaseSha $env:PR_BASE_SHA `
           -HeadSha $env:PR_HEAD_SHA
         $impact = $impactJson | ConvertFrom-Json
-        if ($impact.classification -notin @("docs_only", "targeted", "full")) {
+        if ($impact.classification -notin @("docs_only", "fast_only", "targeted", "full")) {
           throw "Unexpected CI change classification '$($impact.classification)'."
         }
         "classification=$($impact.classification)" >> $env:GITHUB_OUTPUT
@@ -98,6 +98,10 @@ jobs:
       shell: pwsh
       run: ./scripts/test-agent-skills-validator.ps1
 
+    - name: Test native Gateway source build safety
+      shell: pwsh
+      run: ./scripts/test-native-gateway-source-build.ps1
+
     - name: Validate CI change classifier
       shell: pwsh
       run: ./scripts/test-ci-change-classifier.ps1
@@ -114,6 +118,20 @@ jobs:
       shell: pwsh
       run: ./scripts/test-msix-ci-artifacts.ps1
 
+    - name: Validate developer migration test package
+      shell: pwsh
+      run: ./scripts/test-migration-test-msix.ps1
+
+    # installer.iss is only compiled for real in the tag-only release job, so a
+    # Pascal Script error would otherwise be found at release time. The runner image
+    # does not ship Inno Setup; the release job installs it the same way.
+    - name: Install Inno Setup
+      run: choco install innosetup -y --no-progress
+
+    - name: Compile installer script
+      shell: pwsh
+      run: ./scripts/Test-InstallerScriptCompiles.ps1 -RequireCompiler
+
     - name: Validate Store MSIX bundle construction
       shell: pwsh
       run: ./scripts/test-msix-bundle.ps1
@@ -126,9 +144,9 @@ jobs:
       shell: pwsh
       run: ./scripts/test-msix-preview-source-version.ps1
 
-    - name: Validate Store MSIX alpha release assets
+    - name: Validate signed Dev MSIX release assets
       shell: pwsh
-      run: ./scripts/test-msix-alpha-release.ps1
+      run: ./scripts/test-dev-msix-release.ps1
 
     - name: Validate stable correction release ordering regressions
       shell: pwsh
@@ -468,6 +486,8 @@ jobs:
       OPENCLAW_CI_COLLECT_COVERAGE: ${{ github.event_name != 'pull_request' }}
       OPENCLAW_REPO_ROOT: ${{ github.workspace }}
       OPENCLAW_TRAY_DATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests
+      OPENCLAW_TRAY_APPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests-Roaming
+      OPENCLAW_TRAY_LOCALAPPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests-Local
     steps:
     - uses: actions/checkout@v7
       with:
@@ -534,13 +554,15 @@ jobs:
         -Runtime win-x64
 
     - name: Run Tray UI Tests
+      timeout-minutes: 15
       run: >
         ./scripts/Invoke-CiTest.ps1
         -Project tests/OpenClaw.Tray.UITests
         -ResultsDirectory TestResults\TrayUI
         -TrxFileName OpenClaw.Tray.UITests.trx
         -Runtime win-x64
-        -Filter Category!=Accessibility
+        -Filter "Category!=Accessibility&Category!=NativeOnboardingProof"
+        -HangTimeoutSeconds 300
 
     # Accessibility Insights CI pass: scans each page in the real app process.
     - name: Run Accessibility Tests (Axe.Windows)
@@ -877,7 +899,7 @@ jobs:
     name: MSIX artifacts (${{ matrix.architecture }})
     needs: [change-classification, metadata, reserve-msix-version]
     if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.metadata.result == 'success' && (needs.reserve-msix-version.result == 'success' || needs.reserve-msix-version.result == 'skipped') && (needs.change-classification.outputs.x64_release == 'true' || needs.change-classification.outputs.arm64_release == 'true') }}
-    # Unsigned Store packages may publish to alpha releases only. Dev packages stay workflow-only.
+    # Dev-signed packages publish on tag releases. Unsigned Store packages stay workflow-only.
     runs-on: ${{ matrix.architecture == 'arm64' && 'windows-11-arm' || 'windows-latest' }}
     env:
       OPENCLAW_BUILD_VERSION: ${{ needs.metadata.outputs.semVer }}
@@ -933,6 +955,50 @@ jobs:
           artifacts/msix/${{ matrix.architecture }}/OpenClaw-${{ matrix.architecture }}.msix
           artifacts/msix/${{ matrix.architecture }}/msix-metadata.json
         if-no-files-found: error
+
+    - name: Resolve migration build switch
+      id: migration-switch
+      shell: pwsh
+      run: |
+        $override = $env:MigrationProductionEnabled
+        if ([string]::IsNullOrWhiteSpace($override)) {
+          $propsPath = Join-Path $env:GITHUB_WORKSPACE 'src\OpenClaw.Tray.WinUI\Migration.Build.props'
+          [xml]$props = Get-Content -LiteralPath $propsPath -Raw
+          $node = $props.SelectSingleNode('/Project/PropertyGroup/MigrationProductionEnabled')
+          if ($null -eq $node) {
+            throw "MigrationProductionEnabled is not declared in $propsPath."
+          }
+          $override = $node.InnerText
+        }
+        $value = $override.Trim().ToLowerInvariant()
+        if ($value -ne 'true' -and $value -ne 'false') {
+          throw "MigrationProductionEnabled must be true or false, got '$override'."
+        }
+        "enabled=$value" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+    - name: Stage developer migration test package
+      if: steps.migration-switch.outputs.enabled == 'true'
+      shell: pwsh
+      run: >
+        .\scripts\Export-MigrationTestMsix.ps1 -Architecture ${{ matrix.architecture }}
+        -PackageDirectory "artifacts\msix\${{ matrix.architecture }}"
+        -OutputDirectory "artifacts\msix-migration-test\${{ matrix.architecture }}"
+        -VersionInfoPath "$env:RUNNER_TEMP\openclaw-msix-version.json"
+
+    - name: Upload developer migration test artifact
+      if: steps.migration-switch.outputs.enabled == 'true'
+      uses: actions/upload-artifact@v7
+      with:
+        name: openclaw-msix-dev-migration-test-${{ matrix.architecture }}
+        path: |
+          artifacts/msix-migration-test/${{ matrix.architecture }}/OpenClaw-MigrationTest-${{ matrix.architecture }}.msix
+          artifacts/msix-migration-test/${{ matrix.architecture }}/OpenClaw-MigrationTest.cer
+          artifacts/msix-migration-test/${{ matrix.architecture }}/msix-metadata.json
+          artifacts/msix-migration-test/${{ matrix.architecture }}/INSTALL.txt
+        if-no-files-found: error
+        # The disposable signer is valid for 30 days and the package is not timestamped,
+        # so a longer retention would only offer an artifact that can no longer install.
+        retention-days: 30
 
     - name: Provision disposable Dev MSIX certificate
       shell: pwsh
@@ -1092,17 +1158,19 @@ jobs:
           -MsixBundleResult $env:MSIX_BUNDLE_RESULT
         "CI Gate passed $validatedMode validation." >> $env:GITHUB_STEP_SUMMARY
 
-  release:
-    needs: [change-classification, metadata, reserve-msix-version, build-x64, build-arm64, build-msix-bundle, ci-gate]
-    if: startsWith(github.ref, 'refs/tags/v') && needs.ci-gate.result == 'success' && needs.change-classification.outputs.full == 'true' && needs.metadata.result == 'success' && needs.reserve-msix-version.result == 'success' && needs.build-x64.result == 'success' && needs.build-arm64.result == 'success' && needs.build-msix-bundle.result == 'success' && !cancelled()
+  # Sign and package after the early release-critical suites pass so this work can
+  # overlap the long UI and E2E tail. Publication remains gated by ci-gate below.
+  prepare-release-assets:
+    needs: [change-classification, metadata, reserve-msix-version, proof-pool-contracts, core-tests, tray-tests, build-x64, build-arm64]
+    if: startsWith(github.ref, 'refs/tags/v') && needs.change-classification.outputs.full == 'true' && needs.metadata.result == 'success' && needs.reserve-msix-version.result == 'success' && needs.proof-pool-contracts.result == 'success' && needs.core-tests.result == 'success' && needs.tray-tests.result == 'success' && needs.build-x64.result == 'success' && needs.build-arm64.result == 'success' && !cancelled()
     runs-on: windows-latest
     environment: release-signing
     permissions:
       actions: read
-      contents: write
+      contents: read
       id-token: write
     concurrency:
-      group: openclaw-windows-node-release
+      group: openclaw-windows-node-release-preparation
       cancel-in-progress: false
 
     steps:
@@ -1286,6 +1354,41 @@ jobs:
         timestamp-rfc3161: http://timestamp.acs.microsoft.com
         timestamp-digest: SHA256
 
+    - name: Upload prepared release assets
+      uses: actions/upload-artifact@v7
+      with:
+        name: openclaw-release-assets
+        path: |
+          Output/OpenClawCompanion-Setup-x64.exe
+          Output/OpenClawCompanion-Setup-arm64.exe
+          OpenClawTray-${{ needs.metadata.outputs.semVer }}-win-x64.zip
+          OpenClawTray-${{ needs.metadata.outputs.semVer }}-win-arm64.zip
+        compression-level: 0
+        if-no-files-found: error
+
+  release:
+    needs: [change-classification, metadata, reserve-msix-version, prepare-release-assets, build-msix-bundle, ci-gate]
+    if: startsWith(github.ref, 'refs/tags/v') && needs.ci-gate.result == 'success' && needs.change-classification.outputs.full == 'true' && needs.metadata.result == 'success' && needs.reserve-msix-version.result == 'success' && needs.prepare-release-assets.result == 'success' && needs.build-msix-bundle.result == 'success' && !cancelled()
+    runs-on: windows-latest
+    environment: release-signing
+    permissions:
+      actions: read
+      contents: write
+    concurrency:
+      group: openclaw-windows-node-release
+      cancel-in-progress: false
+
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
+
+    - name: Download prepared release assets
+      uses: actions/download-artifact@v8
+      with:
+        name: openclaw-release-assets
+        path: .
+
     - name: Revalidate stable correction release ordering
       if: needs.metadata.outputs.isStableCorrection == 'true'
       shell: pwsh
@@ -1297,36 +1400,189 @@ jobs:
         -Tag $env:RELEASE_TAG
         -GitHubToken $env:GH_TOKEN
 
-    - name: Download Store MSIX release artifacts
+    - name: Download x64 signed Dev MSIX release artifact
       uses: actions/download-artifact@v8
       with:
-        pattern: openclaw-msix-store-unsigned-*
-        path: artifacts/msix-release
+        name: openclaw-msix-dev-x64
+        path: artifacts/msix-release/openclaw-msix-dev-x64
 
-    - name: Stage Store MSIX release assets
+    - name: Download ARM64 signed Dev MSIX release artifact
+      uses: actions/download-artifact@v8
+      with:
+        name: openclaw-msix-dev-arm64
+        path: artifacts/msix-release/openclaw-msix-dev-arm64
+
+    - name: Trust signed Dev MSIX certificates for validation
+      shell: pwsh
+      run: |
+        # setup-dev-msix-cert.ps1 validates these self-signed packages through
+        # LocalMachine trust. Use the same store after artifact download so
+        # Get-AuthenticodeSignature evaluates the package as Valid.
+        $storePath = 'Cert:\LocalMachine\TrustedPeople'
+        $thumbprintsPath = "$env:RUNNER_TEMP\openclaw-dev-msix-imported-certs.txt"
+        [IO.File]::WriteAllText($thumbprintsPath, '')
+        foreach ($architecture in @('x64', 'arm64')) {
+          $certificatePath = "artifacts\msix-release\openclaw-msix-dev-$architecture\OpenClaw-Dev.cer"
+          $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new($certificatePath)
+          try {
+            $existing = @(Get-ChildItem -LiteralPath $storePath | Where-Object Thumbprint -EQ $certificate.Thumbprint)
+            if ($existing.Count -eq 0) {
+              Import-Certificate -FilePath $certificatePath -CertStoreLocation $storePath | Out-Null
+              Add-Content -LiteralPath $thumbprintsPath -Value $certificate.Thumbprint
+            }
+          }
+          finally { $certificate.Dispose() }
+        }
+
+    - name: Stage signed Dev MSIX release assets
       id: msix_release
       shell: pwsh
       env:
         RELEASE_VERSION: ${{ needs.metadata.outputs.semVer }}
         MSIX_VERSION_INFO: ${{ needs.reserve-msix-version.outputs.versionInfo }}
+        DEV_MSIX_REVISION: ${{ github.run_number }}
       run: |
         if ([string]::IsNullOrWhiteSpace($env:MSIX_VERSION_INFO)) {
           throw 'Missing official MSIX reservation.'
         }
         $env:MSIX_VERSION_INFO | Set-Content -LiteralPath "$env:RUNNER_TEMP\openclaw-msix-version.json" -Encoding utf8
-        $assets = .\scripts\Stage-StoreMsixReleaseAssets.ps1 `
+        $assets = .\scripts\Stage-DevMsixReleaseAssets.ps1 `
           -ArtifactDirectory 'artifacts\msix-release' `
           -OutputDirectory 'msix-release' `
           -Version $env:RELEASE_VERSION `
+          -ExpectedRevision $env:DEV_MSIX_REVISION `
+          -ExpectedWorkflowRunId $env:GITHUB_RUN_ID `
           -VersionInfoPath "$env:RUNNER_TEMP\openclaw-msix-version.json" `
           -ExpectedSourceCommit $env:GITHUB_SHA
         @('files<<MSIX_RELEASE_FILES'; $assets.Files; 'MSIX_RELEASE_FILES') >> $env:GITHUB_OUTPUT
         @('notes<<MSIX_RELEASE_NOTES'; $assets.Notes; 'MSIX_RELEASE_NOTES') >> $env:GITHUB_OUTPUT
 
+    - name: Remove trusted Dev MSIX certificates
+      if: ${{ always() }}
+      shell: pwsh
+      run: |
+        $thumbprintsPath = "$env:RUNNER_TEMP\openclaw-dev-msix-imported-certs.txt"
+        if (Test-Path -LiteralPath $thumbprintsPath) {
+          foreach ($thumbprint in @(Get-Content -LiteralPath $thumbprintsPath)) {
+            Get-ChildItem -LiteralPath 'Cert:\LocalMachine\TrustedPeople' |
+              Where-Object Thumbprint -EQ $thumbprint |
+              Remove-Item -Force
+          }
+        }
+
+    - name: Generate alpha release notes from previous published alpha
+      if: needs.metadata.outputs.isPrerelease == 'true' && contains(github.ref_name, '-alpha.')
+      id: alpha_release_notes
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
+        RELEASE_TAG: ${{ github.ref_name }}
+      run: |
+        $releasesJson = gh api "repos/$env:GITHUB_REPOSITORY/releases?per_page=100"
+        if ($LASTEXITCODE -ne 0) {
+          throw 'Could not list published releases for alpha release notes.'
+        }
+
+        $releases = @($releasesJson | ConvertFrom-Json)
+        $previousTag = $null
+        foreach ($release in $releases) {
+          if ($release.draft -or -not $release.published_at -or
+              $release.tag_name -eq $env:RELEASE_TAG -or
+              $release.tag_name -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+$') {
+            continue
+          }
+
+          git merge-base --is-ancestor $release.tag_name $env:RELEASE_TAG
+          if ($LASTEXITCODE -eq 0) {
+            $previousTag = $release.tag_name
+            break
+          }
+          if ($LASTEXITCODE -ne 1) {
+            throw "Could not compare alpha tag $($release.tag_name) with $env:RELEASE_TAG."
+          }
+        }
+
+        $arguments = @(
+          'api',
+          '--method', 'POST',
+          "repos/$env:GITHUB_REPOSITORY/releases/generate-notes",
+          '-f', "tag_name=$env:RELEASE_TAG"
+        )
+        if ($previousTag) {
+          $arguments += @('-f', "previous_tag_name=$previousTag")
+          "Generating release notes from $previousTag to $env:RELEASE_TAG."
+        } else {
+          'No previous published alpha is reachable; using GitHub release-note fallback selection.'
+        }
+
+        $notesJson = gh @arguments
+        if ($LASTEXITCODE -ne 0) {
+          throw 'Could not generate alpha release notes.'
+        }
+        $notes = $notesJson | ConvertFrom-Json
+        $notesBody = [string]$notes.body
+        if ($previousTag) {
+          $comparePath = 'repos/{0}/compare/{1}...{2}?per_page=100' -f `
+            $env:GITHUB_REPOSITORY, $previousTag, $env:RELEASE_TAG
+          $compareJson = gh api --paginate --slurp $comparePath
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not load the chronological commit order from $previousTag to $env:RELEASE_TAG."
+          }
+
+          $pullOrder = @{}
+          $commitOrder = 0
+          foreach ($page in @($compareJson | ConvertFrom-Json)) {
+            foreach ($commit in @($page.commits)) {
+              if ($commit.commit.message -match '(?m)\(#(?<number>[0-9]+)\)\s*$' -and
+                  -not $pullOrder.ContainsKey($Matches.number)) {
+                $pullOrder[$Matches.number] = $commitOrder
+              }
+              $commitOrder++
+            }
+          }
+
+          $lines = @($notesBody -split '\r?\n')
+          $sortedLines = [Collections.Generic.List[string]]::new()
+          for ($lineIndex = 0; $lineIndex -lt $lines.Count;) {
+            if ($lines[$lineIndex] -notmatch '^\* .*?/pull/(?<number>[0-9]+)(?:\s|$)') {
+              $sortedLines.Add($lines[$lineIndex])
+              $lineIndex++
+              continue
+            }
+
+            $entries = [Collections.Generic.List[object]]::new()
+            while ($lineIndex -lt $lines.Count -and
+                   $lines[$lineIndex] -match '^\* .*?/pull/(?<number>[0-9]+)(?:\s|$)') {
+              $number = $Matches.number
+              $order = if ($pullOrder.ContainsKey($number)) {
+                $pullOrder[$number]
+              } else {
+                [int]::MaxValue
+              }
+              $entries.Add([pscustomobject]@{
+                Line = $lines[$lineIndex]
+                CommitOrder = $order
+                OriginalIndex = $lineIndex
+              })
+              $lineIndex++
+            }
+
+            foreach ($entry in @($entries | Sort-Object CommitOrder, OriginalIndex)) {
+              $sortedLines.Add($entry.Line)
+            }
+          }
+          $notesBody = $sortedLines -join "`n"
+        }
+
+        $delimiter = [Guid]::NewGuid().ToString('N')
+        "body<<$delimiter" >> $env:GITHUB_OUTPUT
+        $notesBody >> $env:GITHUB_OUTPUT
+        $delimiter >> $env:GITHUB_OUTPUT
+
     - name: Create Release
       uses: softprops/action-gh-release@v3
       with:
-        generate_release_notes: true
+        generate_release_notes: ${{ ! contains(github.ref_name, '-alpha.') }}
         files: |
           Output/OpenClawCompanion-Setup-x64.exe
           Output/OpenClawCompanion-Setup-arm64.exe
@@ -1361,6 +1617,8 @@ jobs:
           1. Run the installer for your architecture
           2. Launch from Start Menu or system tray
           3. Right-click tray icon → Settings to configure
+
+          ${{ steps.alpha_release_notes.outputs.body }}
 
     - name: Retain alpha releases for 30 days
       if: needs.metadata.outputs.isPrerelease == 'true' && contains(github.ref_name, '-alpha.')

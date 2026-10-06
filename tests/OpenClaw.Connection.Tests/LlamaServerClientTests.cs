@@ -11,6 +11,50 @@ public sealed class LlamaServerClientTests
     private static readonly Uri s_endpoint = new("http://127.0.0.1:18803/v1");
     private static readonly string s_modelPath = Path.GetFullPath("managed-model.gguf");
 
+    [Fact]
+    public async Task AuthenticatedProbe_UsesBearerForHealthAndLazyModelInspection()
+    {
+        var requests = new List<string>();
+        using var client = new LlamaServerClient(new DelegateHandler((request, _) =>
+        {
+            Assert.Equal("Bearer", request.Headers.Authorization?.Scheme);
+            Assert.Equal("local-test-credential", request.Headers.Authorization?.Parameter);
+            requests.Add(request.RequestUri!.PathAndQuery);
+            return request.RequestUri.AbsolutePath == "/health"
+                ? Task.FromResult(JsonResponse("{\"status\":\"ok\"}")) : ModelResponseAsync(ProbeCase.Verified);
+        }), () => "local-test-credential");
+        var result = await client.ProbeManagedModelAsync(s_endpoint, ModelAlias, s_modelPath);
+        Assert.True(result.IsHealthy);
+        Assert.Equal(["/health", "/models?autoload=false"], requests);
+    }
+
+    [Fact]
+    public async Task StalledHealthBodyTimesOutInsteadOfWaitingForEof()
+    {
+        using var client = new LlamaServerClient(
+            new StalledBodyHandler(),
+            timeout: TimeSpan.FromMilliseconds(200));
+        var started = System.Diagnostics.Stopwatch.StartNew();
+
+        LlamaServerRouterProbeResult result = await client.ProbeManagedModelAsync(
+            s_endpoint,
+            ModelAlias,
+            s_modelPath);
+
+        Assert.False(result.IsHealthy);
+        Assert.Contains("health check", result.Detail, StringComparison.OrdinalIgnoreCase);
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(2));
+    }
+
+    [Fact]
+    public async Task UnauthorizedProbeNeverReportsAReadyModel()
+    {
+        using var client = new LlamaServerClient(new DelegateHandler((_, _) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.Unauthorized))), () => "wrong-credential");
+        var result = await client.ProbeManagedModelAsync(s_endpoint, ModelAlias, s_modelPath);
+        Assert.False(result.IsHealthy);
+    }
+
     [Theory]
     [InlineData(ProbeCase.Timeout, LocalAiModelAvailabilityState.Unknown, false)]
     [InlineData(ProbeCase.InvalidResponse, LocalAiModelAvailabilityState.Unknown, false)]
@@ -82,6 +126,54 @@ public sealed class LlamaServerClientTests
         WrongPath,
         Verified,
         Loaded,
+    }
+
+    private sealed class StalledBodyHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StreamContent(new StalledBodyStream()),
+            });
+    }
+
+    private sealed class StalledBodyStream : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override void Flush()
+        {
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) =>
+            throw new NotSupportedException();
+
+        public override long Seek(long offset, SeekOrigin origin) =>
+            throw new NotSupportedException();
+
+        public override void SetLength(long value) =>
+            throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) =>
+            throw new NotSupportedException();
+
+        public override async ValueTask<int> ReadAsync(
+            Memory<byte> buffer,
+            CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
+            return 0;
+        }
     }
 
     private sealed class DelegateHandler(

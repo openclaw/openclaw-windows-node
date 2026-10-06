@@ -94,6 +94,21 @@ public sealed class LocalAiSetupAvailabilityCoordinatorTests
     }
 
     [Fact]
+    public void StartingANewProbeClearsAvailableStateAndRejectsOldSuccess()
+    {
+        var coordinator = new LocalAiSetupAvailabilityCoordinator();
+        var old = coordinator.StartProbe();
+        Assert.True(coordinator.TryApplyAvailable(old.Generation, out _));
+        var current = coordinator.StartProbe();
+        Assert.False(coordinator.Current.IsAvailable);
+        Assert.True(coordinator.Current.IsChecking);
+        Assert.False(coordinator.TryApplyAvailable(old.Generation, out _));
+        Assert.True(coordinator.TryApplyProbeFailure(current.Generation, "Unknown", out var unknown));
+        Assert.True(unknown.IsUnknown);
+        Assert.False(unknown.IsAvailable);
+    }
+
+    [Fact]
     public void RecheckAfterConfirmedUnsupported_DoesNotStartProbe()
     {
         var coordinator = new LocalAiSetupAvailabilityCoordinator();

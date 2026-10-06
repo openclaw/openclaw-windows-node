@@ -1,11 +1,14 @@
 using System.Net;
 using System.Net.Http;
+using System.Net.Sockets;
+using System.Text;
 using System.Text.Json;
 using OpenClawTray.Services;
+using Xunit.Abstractions;
 
 namespace OpenClaw.Tray.Tests;
 
-public class ElevenLabsTextToSpeechClientTests
+public class ElevenLabsTextToSpeechClientTests(ITestOutputHelper output)
 {
     [Fact]
     public async Task SynthesizeAsync_PostsExpectedRequest()
@@ -132,6 +135,94 @@ public class ElevenLabsTextToSpeechClientTests
         using var client = new ElevenLabsTextToSpeechClient(handler, "https://example.test");
 
         Assert.Equal(ElevenLabsTextToSpeechClient.DefaultTimeout, client.Timeout);
+    }
+
+    [Fact]
+    public void CreateSocketsHandler_does_not_follow_redirects()
+    {
+        using var handler = ElevenLabsTextToSpeechClient.CreateSocketsHandler();
+        Assert.False(handler.AllowAutoRedirect);
+    }
+
+    [Fact]
+    public async Task SynthesizeAsync_RedirectDoesNotReachTheOtherHost()
+    {
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var origin = new TcpListener(IPAddress.Loopback, 0);
+        using var other = new TcpListener(IPAddress.Loopback, 0);
+        origin.Start();
+        other.Start();
+        var originPort = ((IPEndPoint)origin.LocalEndpoint).Port;
+        var otherPort = ((IPEndPoint)other.LocalEndpoint).Port;
+
+        async Task<string> ReplyFromOriginAsync()
+        {
+            using var tcp = await origin.AcceptTcpClientAsync(deadline.Token);
+            var head = await ReadHeadAsync(tcp, deadline.Token);
+            var reply = Encoding.ASCII.GetBytes(
+                "HTTP/1.1 302 Found\r\n" +
+                $"Location: http://127.0.0.1:{otherPort}/stolen\r\n" +
+                "Content-Length: 0\r\n" +
+                "Connection: close\r\n\r\n");
+            await tcp.GetStream().WriteAsync(reply, deadline.Token);
+            return head;
+        }
+
+        var originTask = ReplyFromOriginAsync();
+        try
+        {
+            using var client = new ElevenLabsTextToSpeechClient(
+                ElevenLabsTextToSpeechClient.CreateSocketsHandler(),
+                $"http://127.0.0.1:{originPort}");
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => client.SynthesizeAsync(
+                new ElevenLabsSynthesisRequest
+                {
+                    ApiKey = "test-auth-token",
+                    VoiceId = "voice-1",
+                    Text = "Hello"
+                }, deadline.Token));
+
+            Assert.Contains("302", ex.Message, StringComparison.Ordinal);
+            var head = await originTask.WaitAsync(deadline.Token);
+            Assert.Contains("xi-api-key: test-auth-token\r\n", head, StringComparison.Ordinal);
+            // The request has completed with the origin's 302, so a redirect connection
+            // would already be queued on the second listener.
+            Assert.False(other.Pending());
+            output.WriteLine($"PROVIDER_FAILURE={ex.Message}");
+            output.WriteLine("ORIGIN_HAS_KEY=True\nOTHER_CONNECTED=False\nOTHER_HAS_KEY=False");
+        }
+        finally
+        {
+            await deadline.CancelAsync();
+            try
+            {
+                await originTask;
+            }
+            catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+            {
+                // Observe the fixture task even when synthesis fails before connecting.
+            }
+        }
+    }
+
+    private static async Task<string> ReadHeadAsync(TcpClient client, CancellationToken cancellationToken)
+    {
+        var stream = client.GetStream();
+        var buffer = new List<byte>();
+        var chunk = new byte[512];
+        while (buffer.Count < 4096)
+        {
+            var read = await stream.ReadAsync(chunk, cancellationToken);
+            if (read == 0)
+                break;
+            for (var i = 0; i < read; i++)
+                buffer.Add(chunk[i]);
+            var text = Encoding.ASCII.GetString(buffer.ToArray());
+            if (text.Contains("\r\n\r\n", StringComparison.Ordinal))
+                return text;
+        }
+
+        return Encoding.ASCII.GetString(buffer.ToArray());
     }
 
     private sealed class CapturingHandler : HttpMessageHandler

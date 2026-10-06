@@ -21,7 +21,7 @@ public sealed class FluentIconCatalogTests
         "Browser", "Camera", "Canvas", "Screen", "Location", "Voice", "Speech", "System", "Terminal", "Operator",
         "Dashboard", "OpenInBrowser", "Chat", "CanvasAct", "VoiceAct", "Settings",
         "Setup", "About", "Notifications", "Exit",
-        "Add", "Back", "Sync", "Lock", "Plug", "MoreOverflow",
+        "Add", "Back", "Sync", "Lock", "Key", "Plug", "MoreOverflow",
         "People", "Money", "ServerEnvironment", "CapabilityOff", "Channels",
         "ChevronR", "Check",
         // Diagnostics surface (see src/OpenClaw.Tray.WinUI/Pages/DebugPage.xaml).

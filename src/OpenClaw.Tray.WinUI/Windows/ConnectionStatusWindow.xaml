@@ -19,7 +19,7 @@
         </Grid.ColumnDefinitions>
 
         <!-- Title in the title bar area -->
-        <TextBlock x:Uid="ConnectionStatusWindow_ConnectionStatus" Grid.ColumnSpan="2" Text="Connection Status" FontSize="12" FontWeight="SemiBold"
+        <TextBlock x:Uid="ConnectionStatusWindow_ConnectionStatus" AutomationProperties.AutomationId="ConnectionTimelineHeading" Grid.ColumnSpan="2" Text="Connection Status" FontSize="12" FontWeight="SemiBold"
                    VerticalAlignment="Top" Margin="4,-28,0,0" Opacity="0.8"/>
 
         <!-- LEFT COLUMN: State Machine + Gateways + Credentials -->

@@ -122,6 +122,8 @@ public sealed partial class LocalAiPage : Page
         LocalAiRecheckAvailabilityButton.IsEnabled = _viewModel.CanRecheckAvailability;
         StartButton.IsEnabled = _viewModel.CanStart;
         StopButton.IsEnabled = _viewModel.CanStop;
+        ReleaseOwnershipButton.Visibility = _viewModel.ShowReleaseOwnership ? Visibility.Visible : Visibility.Collapsed;
+        ReleaseOwnershipButton.IsEnabled = _viewModel.CanReleaseOwnership;
         RestartButton.IsEnabled = _viewModel.CanRestart;
         OpenLogsButton.IsEnabled = _viewModel.CanOpenLogs;
         RetrySetupButton.IsEnabled = _viewModel.CanRetrySetup;
@@ -134,6 +136,7 @@ public sealed partial class LocalAiPage : Page
 
     private void OnStart(object sender, RoutedEventArgs e) => RunAction(() => _viewModel?.StartAsync() ?? Task.FromResult(false), nameof(OnStart));
     private void OnStop(object sender, RoutedEventArgs e) => RunAction(() => _viewModel?.StopAsync() ?? Task.FromResult(false), nameof(OnStop));
+    private void OnReleaseOwnership(object sender, RoutedEventArgs e) => RunAction(() => _viewModel?.ReleaseOwnershipAsync() ?? Task.FromResult(false), nameof(OnReleaseOwnership));
     private void OnRestart(object sender, RoutedEventArgs e) => RunAction(() => _viewModel?.RestartAsync() ?? Task.FromResult(false), nameof(OnRestart));
     private void OnOpenLogs(object sender, RoutedEventArgs e) => _viewModel?.OpenLogs();
     private void OnRetrySetup(object sender, RoutedEventArgs e) => _viewModel?.RetrySetup();

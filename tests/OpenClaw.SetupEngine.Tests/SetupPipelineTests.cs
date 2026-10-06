@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using OpenClaw.Connection.LocalAi;
+using OpenClaw.TestSupport;
 
 namespace OpenClaw.SetupEngine.Tests;
 
@@ -7,13 +8,13 @@ public class SetupPipelineTests
 {
     private SetupLogger CreateLogger() => new(filePath: null, LogLevel.Trace);
 
-    private SetupContext CreateContext(SetupConfig? config = null, CancellationToken ct = default)
+    private SetupContext CreateContext(SetupConfig? config = null, CancellationToken ct = default, string? localDataDir = null)
     {
         var cfg = config ?? new SetupConfig();
         var logger = CreateLogger();
         var journal = new TransactionJournal(filePath: null);
         var commands = new CommandRunner(logger);
-        return new SetupContext(cfg, logger, journal, commands, ct);
+        return new SetupContext(cfg, logger, journal, commands, ct, localDataDir: localDataDir);
     }
 
     // A mock step for testing
@@ -75,6 +76,50 @@ public class SetupPipelineTests
 
         Assert.Equal(PipelineOutcome.Failed, result.Outcome);
         Assert.Equal(GatewayCompatibilityFailureKind.ProtocolMismatch, result.CompatibilityFailure);
+    }
+
+    [Fact]
+    public async Task RunAsync_FailureDiagnosticRunsBeforeRollback_WithoutChangingFailure()
+    {
+        var order = new List<string>();
+        var pipeline = new SetupPipeline(
+            [new MockStep(
+                "wizard",
+                (_, _) => Task.FromResult(StepResult.Fail("original failure")),
+                (_, _) => { order.Add("failed-step-rollback"); return Task.CompletedTask; })],
+            rollbackOnFailureOverride: true,
+            (_, stepId, result) =>
+            {
+                Assert.Equal("wizard", stepId);
+                Assert.Equal("original failure", result.Message);
+                order.Add("diagnostic");
+                return Task.CompletedTask;
+            });
+
+        var result = await pipeline.RunAsync(CreateContext());
+
+        Assert.Equal(["diagnostic", "failed-step-rollback"], order);
+        Assert.Equal(PipelineOutcome.Failed, result.Outcome);
+        Assert.Equal("original failure", result.Message);
+    }
+
+    [Fact]
+    public async Task RunAsync_FailingDiagnosticStillRollsBackAndPreservesOriginalFailure()
+    {
+        var rolledBack = false;
+        var pipeline = new SetupPipeline(
+            [new MockStep(
+                "wizard",
+                (_, _) => Task.FromResult(StepResult.Fail("original failure")),
+                (_, _) => { rolledBack = true; return Task.CompletedTask; })],
+            rollbackOnFailureOverride: true,
+            (_, _, _) => throw new InvalidOperationException("diagnostic failure"));
+
+        var result = await pipeline.RunAsync(CreateContext());
+
+        Assert.True(rolledBack);
+        Assert.Equal(PipelineOutcome.Failed, result.Outcome);
+        Assert.Equal("original failure", result.Message);
     }
 
     [Fact]
@@ -347,7 +392,8 @@ public class SetupPipelineTests
     [Fact]
     public async Task PreserveLocalAiRecoveryGateway_PreservesReplacementReceiptWhenOriginalEndpointUnhealthy()
     {
-        var context = CreateContext(LocalAiRecoveryConfig());
+        using var temp = new TempDirectory("local-ai-recovery-rollback-");
+        var context = CreateContext(LocalAiRecoveryConfig(), localDataDir: temp.Path);
         LocalAiResolvedInstall originalInstall = CreateLocalAiResolvedInstall(context.LocalDataDir, port: 18801);
         LocalAiResolvedInstall replacementInstall = CreateLocalAiResolvedInstall(context.LocalDataDir, port: 18802);
         context.LocalAiRecoveryOriginalInstall = originalInstall;
@@ -373,7 +419,8 @@ public class SetupPipelineTests
     [Fact]
     public async Task PreserveLocalAiRecoveryGateway_RestoresReceiptWhenOriginalEndpointHealthy()
     {
-        var context = CreateContext(LocalAiRecoveryConfig());
+        using var temp = new TempDirectory("local-ai-recovery-rollback-");
+        var context = CreateContext(LocalAiRecoveryConfig(), localDataDir: temp.Path);
         LocalAiResolvedInstall originalInstall = CreateLocalAiResolvedInstall(context.LocalDataDir, port: 18801);
         context.LocalAiRecoveryOriginalInstall = originalInstall;
         context.LocalAiRecoveryReceiptRollbackAllowed = true;
@@ -395,6 +442,8 @@ public class SetupPipelineTests
 
         public LocalAiRuntimeSnapshot Snapshot => throw new NotSupportedException();
 
+        public Task<LocalAiRuntimeSnapshot> ResumeAsync(CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
         public Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 

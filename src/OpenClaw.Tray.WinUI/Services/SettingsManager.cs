@@ -8,6 +8,9 @@ using OpenClaw.Shared.Capabilities;
 
 namespace OpenClawTray.Services;
 
+internal sealed class SettingsPersistenceConflictException()
+    : InvalidOperationException("Settings changed in another writer. Reload before saving.");
+
 /// <summary>
 /// Manages application settings with JSON persistence.
 /// </summary>
@@ -17,6 +20,7 @@ public class SettingsManager
     // instance can run alongside the user's real tray without clobbering settings.
     private readonly string _settingsDirectory;
     private readonly string _settingsFilePath;
+    private string? _persistedJson;
     private const string ProtectedSecretPrefix = "dpapi:";
     private const int CurrentSettingsSchemaVersion = 1;
     private static readonly byte[] ProtectedSecretEntropy = Encoding.UTF8.GetBytes("OpenClawTray.Settings.v1");
@@ -30,6 +34,10 @@ public class SettingsManager
 
     /// <summary>Raised after settings are persisted to disk.</summary>
     public event EventHandler? Saved;
+
+    internal event EventHandler? PersistenceStateChanged;
+    internal bool HasPersistenceConflict => _hasPersistenceConflict;
+    private volatile bool _hasPersistenceConflict;
 
     private readonly object _saveLock = new();
     private SettingsData _data = CreateDefaultData();
@@ -213,6 +221,12 @@ public class SettingsManager
 
     public void Load()
     {
+        var loadSucceeded = false;
+        var conflictCleared = false;
+        lock (_saveLock)
+        {
+        using var lease = PersistenceFileLease.Acquire(_settingsFilePath);
+        _persistedJson = null;
         LegacyToken = null;
         LegacyBootstrapToken = null;
         _data = CreateDefaultData();
@@ -222,6 +236,7 @@ public class SettingsManager
             if (File.Exists(_settingsFilePath))
             {
                 var json = File.ReadAllText(_settingsFilePath);
+                _persistedJson = json;
                 LoadLegacyGatewayCredentials(json);
                 var loaded = SettingsData.FromJson(json);
                 if (loaded != null)
@@ -229,6 +244,7 @@ public class SettingsManager
                     _data = NormalizeLoadedData(loaded, json);
                 }
             }
+            loadSucceeded = true;
         }
         catch (Exception ex)
         {
@@ -236,6 +252,13 @@ public class SettingsManager
             LegacyToken = null;
             LegacyBootstrapToken = null;
         }
+        if (loadSucceeded && _hasPersistenceConflict)
+        {
+            _hasPersistenceConflict = false;
+            conflictCleared = true;
+        }
+        }
+        if (conflictCleared) NotifyPersistenceStateChanged();
     }
 
     private static SettingsData CreateDefaultData() => new()
@@ -283,7 +306,7 @@ public class SettingsManager
         SttLanguage = "auto",
         SttModelName = "base",
         SttSilenceTimeout = 1.5f,
-        VoiceTtsEnabled = true,
+        VoiceTtsEnabled = false,
         VoiceAudioFeedback = true,
         NodeTtsEnabled = false,
         NodeOllamaInferenceEnabled = false,
@@ -478,6 +501,47 @@ public class SettingsManager
     {
         lock (_saveLock)
         {
+            try
+            {
+                SaveCore();
+                SetPersistenceConflict(false);
+            }
+            catch (SettingsPersistenceConflictException)
+            {
+                SetPersistenceConflict(true);
+                throw;
+            }
+        }
+    }
+
+    private void SetPersistenceConflict(bool conflict)
+    {
+        lock (_saveLock)
+        {
+            if (!conflict && !_hasPersistenceConflict) return;
+            _hasPersistenceConflict = conflict;
+        }
+        NotifyPersistenceStateChanged();
+    }
+
+    private void NotifyPersistenceStateChanged()
+    {
+        try { PersistenceStateChanged?.Invoke(this, EventArgs.Empty); }
+        catch (Exception)
+        {
+            Logger.Warn("A settings persistence notification subscriber failed.");
+        }
+    }
+
+    private void SaveCore()
+    {
+        lock (_saveLock)
+        {
+            using (PersistenceFileLease.Acquire(_settingsFilePath))
+            {
+            var current = File.Exists(_settingsFilePath) ? File.ReadAllText(_settingsFilePath) : null;
+            if (current != _persistedJson)
+                throw new SettingsPersistenceConflictException();
             Directory.CreateDirectory(_settingsDirectory);
             // Lock the tray data dir to current user + SYSTEM + Administrators —
             // it co-locates the MCP bearer token, settings.json (which embeds
@@ -491,7 +555,40 @@ public class SettingsManager
             data.TtsMiniMaxApiKey = ProtectSettingSecret(data.TtsMiniMaxApiKey);
 
             var json = data.ToJson();
-            File.WriteAllText(_settingsFilePath, json);
+            if (current is not null)
+            {
+                try
+                {
+                    using var existing = JsonDocument.Parse(current);
+                    if (existing.RootElement.ValueKind != JsonValueKind.Object)
+                        throw new JsonException("The saved settings root must be an object.");
+                    var known = JsonSerializer.SerializeToElement(data).EnumerateObject()
+                        .Select(property => property.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    var output = System.Text.Json.Nodes.JsonNode.Parse(json)!.AsObject();
+                    foreach (var property in existing.RootElement.EnumerateObject())
+                        if (!known.Contains(property.Name) &&
+                            !property.Name.Equals("Token", StringComparison.OrdinalIgnoreCase) &&
+                            !property.Name.Equals("BootstrapToken", StringComparison.OrdinalIgnoreCase))
+                            output[property.Name] = System.Text.Json.Nodes.JsonNode.Parse(property.Value.GetRawText());
+                    json = output.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+                }
+                catch (JsonException)
+                {
+                    Logger.Warn("Replacing unchanged invalid settings JSON with current settings.");
+                }
+            }
+            var temp = _settingsFilePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                File.WriteAllText(temp, json);
+                File.Move(temp, _settingsFilePath, overwrite: true);
+                _persistedJson = json;
+            }
+            finally
+            {
+                if (File.Exists(temp)) File.Delete(temp);
+            }
+            }
 
             Logger.Info("Settings saved");
             try
@@ -502,6 +599,17 @@ public class SettingsManager
             {
                 Logger.Warn($"Settings saved, but a notification subscriber failed: {ex.Message}");
             }
+        }
+
+    }
+
+    internal void UpdateAndSave(Action edit)
+    {
+        lock (_saveLock)
+        {
+            var before = ToSettingsData();
+            try { edit(); SaveOrThrow(); }
+            catch { _data = before; throw; }
         }
     }
 

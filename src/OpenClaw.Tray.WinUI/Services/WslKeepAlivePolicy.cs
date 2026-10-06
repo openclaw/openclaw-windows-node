@@ -8,6 +8,9 @@ internal static class WslKeepAlivePolicy
     private static string DefaultSetupManagedDistroName => AppIdentity.SetupDistroName;
     private static string DefaultSetupManagedFriendlyName => $"Local ({AppIdentity.SetupDistroName})";
 
+    public static bool CanManageGateway(GatewayRecord? activeRecord, bool isIsolated) =>
+        !isIsolated || !string.IsNullOrWhiteSpace(activeRecord?.SetupManagedDistroName);
+
     public static bool ShouldStart(GatewayRecord? activeRecord, string? legacyGatewayUrl)
     {
         if (GatewayFixtureIsolation.IsEnabled)

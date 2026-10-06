@@ -93,7 +93,7 @@ public sealed class PairingApprovalDialog : WindowEx
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // body
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // buttons
 
-        // Header: shield glyph + heading + queue chip
+        // Header: lock glyph + heading + queue chip
         var header = new Grid { ColumnSpacing = 12 };
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -101,7 +101,7 @@ public sealed class PairingApprovalDialog : WindowEx
 
         var shield = new FontIcon
         {
-            Glyph = "\uE72E", // shield
+            Glyph = "\uE72E",
             FontSize = 28,
             Foreground = ResolveBrush("SystemFillColorCautionBrush"),
             VerticalAlignment = VerticalAlignment.Center,
@@ -317,15 +317,25 @@ public sealed class PairingApprovalDialog : WindowEx
             });
             foreach (var label in PairingScopeDescriptions.DescribeAll(approval.Scopes))
             {
-                var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+                var row = new Grid { ColumnSpacing = 8 };
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 row.Children.Add(new FontIcon
                 {
-                    Glyph = "\uE73E",
+                    Glyph = FluentIconCatalog.StatusOk,
                     FontSize = 12,
                     Foreground = ResolveBrush("TextFillColorSecondaryBrush"),
                     VerticalAlignment = VerticalAlignment.Center,
                 });
-                row.Children.Add(new TextBlock { Text = label, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center });
+                var scopeText = new TextBlock
+                {
+                    Text = label,
+                    TextWrapping = TextWrapping.Wrap,
+                    Style = (Style)Application.Current.Resources["BodyTextBlockStyle"],
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+                Grid.SetColumn(scopeText, 1);
+                row.Children.Add(scopeText);
                 stack.Children.Add(row);
             }
         }

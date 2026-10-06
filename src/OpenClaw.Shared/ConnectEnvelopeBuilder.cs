@@ -252,6 +252,7 @@ internal sealed class PreparedConnectEnvelope
     }
 
     internal long SignedAt => SigningArguments.SignedAtMs;
+    internal string SigningDeviceId => _signer.DeviceId;
     internal string? Nonce => _serializedNonce;
     internal bool CanSign =>
         _profile == ConnectEnvelopeProfile.Operator ||

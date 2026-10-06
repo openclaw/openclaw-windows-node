@@ -46,6 +46,19 @@ internal static class CliRunner
     internal const long MaxResponseContentBytes = 16L * 1024 * 1024; // 16 MiB
     internal const int MaxStderrEchoBytes = 4 * 1024; // 4 KiB cap on echoed error bodies
 
+    // A loopback call carries the local bearer, so that host skips the
+    // process proxy. An explicit remote URL keeps the proxy. Redirects
+    // stay off because this client does not follow them.
+    internal static SocketsHttpHandler CreateMcpSocketsHandler(Uri endpoint)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+        return new SocketsHttpHandler
+        {
+            AllowAutoRedirect = false,
+            UseProxy = !endpoint.IsLoopback,
+        };
+    }
+
     public static async Task<int> RunAsync(
         string[] args,
         TextWriter stdout,
@@ -228,9 +241,9 @@ internal static class CliRunner
         var httpTimeoutMs = (long)options.InvokeTimeoutMs + 5000L;
         var httpTimeout = TimeSpan.FromMilliseconds(httpTimeoutMs);
 
-        // F-02: explicit handler with AllowAutoRedirect=false. The local MCP
-        // server never redirects, so any 30x is an anomaly worth surfacing
-        // rather than silently following.
+        // F-02: explicit handler with AllowAutoRedirect=false. UseProxy is
+        // false only for a loopback URL, so the local bearer is not delivered
+        // to HTTP_PROXY or ALL_PROXY. An explicit remote URL still uses the proxy.
         // F-03: cap response buffer at 16 MiB; the only legitimately-large
         // response is a screen capture, which the server already caps below
         // this ceiling.
@@ -238,7 +251,7 @@ internal static class CliRunner
         SocketsHttpHandler? ownedHandler = null;
         if (httpHandler is null)
         {
-            ownedHandler = new SocketsHttpHandler { AllowAutoRedirect = false };
+            ownedHandler = CreateMcpSocketsHandler(endpointUri);
             http = new HttpClient(ownedHandler, disposeHandler: true)
             {
                 Timeout = httpTimeout,

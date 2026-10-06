@@ -152,6 +152,7 @@ public static class TrayArtifactCleanup
 
         try
         {
+            using var lease = OpenClaw.Shared.PersistenceFileLease.Acquire(settingsPath);
             var json = File.ReadAllText(settingsPath);
             using var doc = System.Text.Json.JsonDocument.Parse(json);
             var root = doc.RootElement;

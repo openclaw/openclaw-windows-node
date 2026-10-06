@@ -17,6 +17,8 @@ internal sealed class ActivationRouter : IAsyncDisposable
     private static readonly TimeSpan ForwardRetryDelay = TimeSpan.FromMilliseconds(100);
     private readonly string _protocolScheme;
     private readonly string _pipeName;
+    private const string MigrationShutdownMessage = "OpenClaw.Migration.Shutdown.v1";
+    private readonly Action? _migrationShutdown;
     private readonly object _lifecycleGate = new();
     private readonly object _dispatchGate = new();
     private readonly HashSet<DispatchOperation> _pendingDispatches = new();
@@ -32,29 +34,30 @@ internal sealed class ActivationRouter : IAsyncDisposable
         public Task<bool>? Task { get; set; }
     }
 
-    public ActivationRouter(string protocolScheme, string pipeName)
+    public ActivationRouter(string protocolScheme, string pipeName, Action? migrationShutdown = null)
     {
         _protocolScheme = protocolScheme;
         _pipeName = pipeName;
+        _migrationShutdown = migrationShutdown;
     }
 
     public ActivationPlan PlanLaunch(LaunchActivationInput input)
     {
-        if (input.SetupShownDuringStartup)
-            return new ActivationPlan.Ignore();
-
-        var candidate = ResolveExplicitLaunchCandidate(input);
+        var candidate = ResolveLaunchCandidate(input);
         return candidate == null ? new ActivationPlan.Ignore() : PlanFromUri(candidate);
     }
+
+    internal Task<bool> CheckOrdinaryStartupUpdateAsync(LaunchActivationInput input, Func<Task<bool>> check) =>
+        PlanLaunch(input) is ActivationPlan.Dispatch { Route: ActivationRoute.CompleteAiSetup { Handle: not null } }
+            ? Task.FromResult(true)
+            : check();
 
     [SupportedOSPlatform("windows")]
     public async Task<bool> ForwardLaunchToPrimaryAsync(
         LaunchActivationInput input,
         CancellationToken cancellationToken)
     {
-        var candidate = ResolveExplicitLaunchCandidate(input);
-        if (candidate == null && IsNoArgumentLaunch(input))
-            candidate = $"{_protocolScheme}://hub";
+        var candidate = ResolveLaunchCandidate(input);
 
         if (candidate == null)
             return false;
@@ -71,20 +74,37 @@ internal sealed class ActivationRouter : IAsyncDisposable
         return false;
     }
 
-    private string? ResolveExplicitLaunchCandidate(LaunchActivationInput input)
+    private string? ResolveLaunchCandidate(LaunchActivationInput input)
     {
+        if (input.SetupShownDuringStartup)
+            return null;
+
         if (!string.IsNullOrEmpty(input.ProtocolUri))
             return input.ProtocolUri;
 
         if (input.CommandLineArguments.Count > 1 && IsDeepLinkArg(input.CommandLineArguments[1]))
             return input.CommandLineArguments[1];
 
-        return string.Equals(input.PostSetupLaunch, "chat", StringComparison.OrdinalIgnoreCase)
-            ? $"{_protocolScheme}://chat"
-            : null;
+        if (SetupDashboardHandoff.IsHandoffArgument(input.PostSetupLaunch))
+            return $"{_protocolScheme}://{SetupDashboardHandoff.Route}?handle={Uri.EscapeDataString(
+                SetupDashboardHandoff.ParseHandle(input.PostSetupLaunch) ?? "invalid")}";
+
+        if (GetPostSetupLaunchPath(input.PostSetupLaunch) is { } path)
+            return $"{_protocolScheme}://{path}";
+
+        return IsNoArgumentLaunch(input) ? $"{_protocolScheme}://hub" : null;
     }
 
+    internal static string? GetPostSetupLaunchPath(string? target) => target?.ToLowerInvariant() switch
+    {
+        "chat" => "chat",
+        "settings" => "settings",
+        "connection" => "commandcenter",
+        _ => null,
+    };
+
     private static bool IsNoArgumentLaunch(LaunchActivationInput input) =>
+        input.Kind == LaunchActivationKind.Launch &&
         string.IsNullOrEmpty(input.ProtocolUri) &&
         input.CommandLineArguments.Count <= 1 &&
         string.IsNullOrEmpty(input.PostSetupLaunch);
@@ -210,6 +230,16 @@ internal sealed class ActivationRouter : IAsyncDisposable
                     outBufferSize: 0);
                 await pipe.WaitForConnectionAsync(token);
                 var uri = await ReadIpcPayloadAsync(pipe, token);
+                if (uri == MigrationShutdownMessage)
+                {
+                    // This is not a URI route. Only the preview Inno host supplies a
+                    // callback, which revalidates protected consent before graceful exit.
+                    if (_migrationShutdown is null)
+                        Logger.Warn("Migration shutdown is not enabled for this host.");
+                    else
+                        _migrationShutdown();
+                    continue;
+                }
                 if (!string.IsNullOrEmpty(uri))
                 {
                     Logger.Info($"Received deep link via IPC: {DeepLinkSecurityPolicy.RedactForLog(uri)}");
@@ -268,6 +298,28 @@ internal sealed class ActivationRouter : IAsyncDisposable
         catch (Exception ex)
         {
             Logger.Error($"ActivationRouter: forwarded activation dispatch failed: {ex.Message}");
+        }
+    }
+
+    [SupportedOSPlatform("windows")]
+    public async Task<bool> RequestMigrationShutdownAsync(CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(2));
+        try
+        {
+            using var pipe = new NamedPipeClientStream(".", _pipeName, PipeDirection.Out,
+                PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+            await pipe.ConnectAsync(timeout.Token).ConfigureAwait(false);
+            await pipe.WriteAsync(Encoding.UTF8.GetBytes(MigrationShutdownMessage), timeout.Token).ConfigureAwait(false);
+            await pipe.FlushAsync(timeout.Token).ConfigureAwait(false);
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or OperationCanceledException)
+        {
+            Logger.Warn($"Migration shutdown request unavailable: {exception.Message}");
+            cancellationToken.ThrowIfCancellationRequested();
+            return false;
         }
     }
 
@@ -407,6 +459,10 @@ internal sealed class ActivationRouter : IAsyncDisposable
             Logger.Warn($"Rejected invalid deep link: {redacted}");
             return new ActivationPlan.Ignore();
         }
+
+        if (string.Equals(result.Path, SetupDashboardHandoff.Route, StringComparison.OrdinalIgnoreCase))
+            return new ActivationPlan.Dispatch(new ActivationRoute.CompleteAiSetup(
+                SetupDashboardHandoff.ParseHandle(result.Parameters.GetValueOrDefault("handle"))));
 
         var route = DeepLinkHandler.PlanRoute(uri, _protocolScheme);
         if (route == null)

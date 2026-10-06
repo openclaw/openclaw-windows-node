@@ -442,12 +442,12 @@ Ordinary local builds that omit these options preserve their previous
 unallocated version calculation. Store distribution remains gated by #1375;
 this allocator does not submit packages to Partner Center.
 
-Canonical `vX.Y.Z-alpha.N` releases also attach the **unsigned Store** MSIX
-files and architecture-specific metadata, for manual upload to Partner Center.
-They do not attach the Dev-signed packages or certificates. These public
-pre-releases are not Latest and are not hidden from GitHub's Releases list.
-Stable releases retain only the existing EXE/ZIP downloads and do not mention
-MSIX submission assets in their generated download notes.
+Every canonical stable, correction, and prerelease tag attaches
+`OpenClaw-Dev-x64.zip` and `OpenClaw-Dev-arm64.zip`. Each archive contains the
+signed Dev MSIX, matching public certificate, provenance metadata, and
+installation instructions. Unsigned Store MSIX packages and the bundle remain
+Actions artifacts only for manual upload to Partner Center. Public
+prereleases are not Latest and are not hidden from GitHub's Releases list.
 
 To request a new alpha from current `main`, manually run **Daily Alpha
 Release**. Its existing checks choose the GitVersion alpha tag, skip a commit
@@ -457,8 +457,8 @@ tag. It does not release the feature branch selected in the UI. Running
 only. See [manual alpha releases](docs/RELEASING.md#manual-alpha-releases).
 
 Store distribution remains paused. This workflow neither submits to Partner
-Center nor retrieves or publishes Store-signed packages. An alpha release
-label does not change the Store package version or make the package installable.
+Center nor retrieves or publishes Store-signed packages. The published Dev
+packages require explicit trust of their included development certificate.
 
 #### The Store package alongside an existing Inno install
 

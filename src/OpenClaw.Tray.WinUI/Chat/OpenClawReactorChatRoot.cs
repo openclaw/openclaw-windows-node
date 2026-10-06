@@ -29,7 +29,8 @@ public sealed record OpenClawReactorChatRootProps(
     Action? OnStopSpeaking = null,
     Action<string>? OnOpenCheckpoints = null,
     bool IsCompact = false,
-    Func<string, bool>? TryCopyText = null);
+    Func<string, bool>? TryCopyText = null,
+    bool ShowSessionPicker = true);
 
 /// <summary>
 /// Production Reactor root for the native chat surface. It owns the provider
@@ -182,7 +183,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
         }
 
         var showThinking = timeline.TurnActive && !currentTurnHasAssistant;
-        var isEmptyConversation = entries.Count == 0 && !showThinking && timeline.PendingPermission is null;
+        var isEmptyConversation = entries.Count == 0 && queuedMessages.Count == 0
+            && !showThinking && timeline.PendingPermission is null;
         var isComposeOnly = effectiveThread is not null && selectedMaterializedThread is null;
         var hasRealThreads = snapshot.Threads.Length > 0;
         var welcomeEligible = isEmptyConversation
@@ -260,7 +262,9 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             effectiveThread is { } permissionThread
                 ? (requestId, action) => OnPermission(permissionThread.Id, requestId, action)
                 : null,
-            mediaResolver);
+            mediaResolver,
+            queuedMessages,
+            props.ComposerSession.Controller.CancelQueuedMessage);
 
         void SelectThread(string threadId)
         {
@@ -326,7 +330,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 composerInputs,
                 snapshot,
                 () => setScrollToBottomToken(scrollToBottomToken + 1),
-                props.IsCompact));
+                props.IsCompact,
+                props.ShowSessionPicker));
         }
 
         return Grid(

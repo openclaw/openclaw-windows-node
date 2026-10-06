@@ -42,7 +42,9 @@ public static class ReactorChatHostExtensions
         Action? onAttachClick,
         Action? onSettingsClick,
         Action<bool>? onSpeakerMuteChanged,
-        bool initialMuted)
+        bool initialMuted,
+        Action? onSessionNavigationStarting = null,
+        Action<string>? onSessionSelected = null)
     {
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(composerFactory);
@@ -80,7 +82,9 @@ public static class ReactorChatHostExtensions
             onAttachClick,
             onVoiceRequest,
             onSettingsClick,
-            onSpeakerMuteChanged);
+            onSpeakerMuteChanged,
+            onSessionNavigationStarting,
+            onSessionSelected);
         return composerFactory.Create(provider, hostActions, initialMuted);
     }
 
@@ -93,7 +97,8 @@ public static class ReactorChatHostExtensions
         Func<string, Task>? onReadAloud = null,
         Action? onStopSpeaking = null,
         Action<string>? onOpenCheckpoints = null,
-        bool isCompact = false)
+        bool isCompact = false,
+        bool showSessionPicker = true)
     {
         ArgumentNullException.ThrowIfNull(window);
         ArgumentNullException.ThrowIfNull(target);
@@ -118,7 +123,8 @@ public static class ReactorChatHostExtensions
             onReadAloud,
             onStopSpeaking,
             onOpenCheckpoints,
-            isCompact);
+            isCompact,
+            ShowSessionPicker: showSessionPicker);
         var host = new ReactorHostControl();
         host.Mount(_ => Component<OpenClawReactorChatRoot, OpenClawReactorChatRootProps>(props));
         target.Child = host;
@@ -140,6 +146,10 @@ public sealed class MountedReactorChat(
     ChatComposerSession session) : IDisposable
 {
     private int _disposed;
+
+    internal bool TrySelectSession(string sessionKey) => session.Controller.TrySelectChannel(sessionKey);
+
+    internal void CancelVoiceRecording() => session.Controller.CancelVoiceRecording();
 
     public void AttachFile(ChatAttachment attachment) => AttachFiles(new[] { attachment });
 

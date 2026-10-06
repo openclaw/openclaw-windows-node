@@ -9,8 +9,6 @@ public enum StoreMigrationCompletionState
     InnoRunning,
     SourceChanged,
     IntentUnavailable,
-    NoActiveGateway,
-    CredentialUnavailable,
     ValidationFailed,
     Completed
 }
@@ -21,15 +19,15 @@ public sealed record StoreMigrationCompletionDecision(
 
 /// <summary>
 /// Revalidates prepared source state under exclusive ownership and records completion.
-/// It only proves a canonical active-gateway credential can resolve. It never starts,
-/// repairs, or provisions gateway, node, or MCP services.
+/// It never inspects gateway credentials: migration leaves gateway state in place, and
+/// inventory capture has already rejected damaged identities before completion is reached.
+/// It never starts, repairs, or provisions gateway, node, or MCP services.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class StoreMigrationCompletionCoordinator(
     IMigrationSourceLeaseProvider leaseProvider,
     IInnoInstallationDetector detector,
     MigrationBinding binding,
-    ICredentialResolver credentialResolver,
     IOpenClawLogger logger,
     TimeProvider? timeProvider = null,
     IInnoSourceActivityVerifier? sourceActivity = null)
@@ -75,16 +73,6 @@ public sealed class StoreMigrationCompletionCoordinator(
             {
                 return new(StoreMigrationCompletionState.SourceChanged);
             }
-            var registry = new GatewayRegistry(binding.RoamingDirectory, logger: logger);
-            registry.Load();
-            var active = registry.GetActive();
-            if (active is null)
-                return new(StoreMigrationCompletionState.NoActiveGateway);
-
-            var resolution = credentialResolver.ResolveOperatorDetailed(
-                active, registry.GetIdentityDirectory(active.Id));
-            if (resolution.Credential is null)
-                return new(StoreMigrationCompletionState.CredentialUnavailable);
 
             var receipt = new MigrationRecord
             {
@@ -109,7 +97,7 @@ public sealed class StoreMigrationCompletionCoordinator(
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
                                           InvalidDataException or InvalidOperationException or
-                                          CryptographicException)
+                                          FormatException or CryptographicException)
         {
             logger.Error($"Store migration completion failed: {exception.Message}");
             return new(StoreMigrationCompletionState.ValidationFailed);

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl x:Class="OpenClawTray.Controls.AgentIdentityBadge"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid ColumnSpacing="12" MinHeight="40">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <PersonPicture x:Name="Picture" Width="32" Height="32" VerticalAlignment="Center"
+                       IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw"/>
+        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+            <TextBlock x:Name="AgentName" Style="{StaticResource BodyTextBlockStyle}" MaxLines="1" TextTrimming="CharacterEllipsis"/>
+            <TextBlock x:Name="AgentId" Style="{StaticResource CaptionTextBlockStyle}" MaxLines="1"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
+        </StackPanel>
+    </Grid>
+</UserControl>

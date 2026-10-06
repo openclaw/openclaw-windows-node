@@ -1,8 +1,11 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Navigation;
+using OpenClaw.SetupEngine;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
+using OpenClawTray.Presentation;
 using OpenClawTray.Services;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -16,6 +19,34 @@ public sealed partial class SkillsPage : Page
     private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private AppState? _appState;
     private List<SkillData> _allSkills = new();
+    private SetupNativeNavigationRequest? _nativeSetupRequest;
+    private CancellationTokenSource? _nativeLifetime;
+    private Task? _nativeLoad;
+    private Exception? _nativeLoadError;
+
+    protected override void OnNavigatedTo(NavigationEventArgs e)
+    {
+        _nativeSetupRequest = e.Parameter as SetupNativeNavigationRequest;
+        base.OnNavigatedTo(e);
+    }
+
+    private IOperatorGatewayClient RequireNativeClient() =>
+        _nativeSetupRequest!.GetConnectedClient(CurrentApp.Registry, CurrentApp.ConnectionManager);
+
+    internal async Task WaitForNativeSetupAsync(SetupNativeNavigationRequest request, CancellationToken ct)
+    {
+        while (_nativeLoad is null || !IsLoaded)
+        {
+            RequireNativeClient();
+            if (!ReferenceEquals(_nativeSetupRequest, request)) throw new SetupNativeOwnershipException();
+            await Task.Delay(50, ct);
+        }
+        await _nativeLoad.WaitAsync(ct);
+        RequireNativeClient();
+        if (!ReferenceEquals(_nativeSetupRequest, request) || CurrentAgentId != request.Completion.Verification.AgentId)
+            throw new SetupNativeOwnershipException();
+        if (_nativeLoadError is { } error) throw error;
+    }
 
     public string? CurrentAgentId => GetSelectedAgentId();
 
@@ -24,12 +55,24 @@ public sealed partial class SkillsPage : Page
         InitializeComponent();
         Unloaded += (_, _) =>
         {
+            _nativeLifetime?.Cancel();
+            _nativeLifetime?.Dispose();
+            _nativeLifetime = null;
             if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
         };
     }
 
     public void Initialize()
     {
+        if (_nativeSetupRequest is { } request)
+        {
+            _nativeLifetime?.Cancel();
+            _nativeLifetime?.Dispose();
+            _nativeLifetime = new();
+            PopulateAgentFilter();
+            _nativeLoad = LoadNativeAsync(request, _nativeLifetime.Token);
+            return;
+        }
         _appState = CurrentApp.AppState!;
         _appState.PropertyChanged += OnAppStateChanged;
         PopulateAgentFilter();
@@ -56,8 +99,35 @@ public sealed partial class SkillsPage : Page
         }
     }
 
+    private async Task LoadNativeAsync(SetupNativeNavigationRequest request, CancellationToken ct)
+    {
+        _nativeLoadError = null;
+        NativeSetupError.IsOpen = false;
+        NativeSetupError.Visibility = Visibility.Collapsed;
+        LoadingState.Visibility = Visibility.Visible;
+        SkillsGroups.Visibility = EmptyState.Visibility = Visibility.Collapsed;
+        try
+        {
+            var data = await SetupNativeSkills.LoadAsync(request, RequireNativeClient, ct);
+            ct.ThrowIfCancellationRequested();
+            if (!ReferenceEquals(request, _nativeSetupRequest)) throw new SetupNativeOwnershipException();
+            UpdateFromGateway(data);
+        }
+        catch (Exception error)
+        {
+            _nativeLoadError = error;
+            if (ct.IsCancellationRequested) return;
+            LoadingState.Visibility = Visibility.Collapsed;
+            NativeSetupError.Message = LocalizationHelper.GetString(error is SetupNativeOwnershipException
+                ? "Onboarding_Ready_LaunchChanged" : "Onboarding_Ready_LaunchUnavailable");
+            NativeSetupError.Visibility = Visibility.Visible;
+            NativeSetupError.IsOpen = true;
+        }
+    }
+
     private void OnAppStateChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (_nativeSetupRequest is not null) return;
         switch (e.PropertyName)
         {
             case nameof(AppState.SkillsData):
@@ -70,6 +140,15 @@ public sealed partial class SkillsPage : Page
     {
         AgentFilterCombo.SelectionChanged -= OnAgentFilterChanged;
         AgentFilterCombo.Items.Clear();
+        if (_nativeSetupRequest is { } request)
+        {
+            var agent = request.Completion.Verification.AgentId!;
+            AgentFilterCombo.Items.Add(new ComboBoxItem { Content = agent, Tag = agent });
+            AgentFilterCombo.SelectedIndex = 0;
+            AgentFilterCombo.IsEnabled = false;
+            return;
+        }
+        AgentFilterCombo.IsEnabled = true;
         AgentFilterCombo.Items.Add(new ComboBoxItem { Content = "All Agents", Tag = "" });
         foreach (var id in CurrentApp.AppState?.GetAgentIds() ?? new List<string> { "main" })
             AgentFilterCombo.Items.Add(new ComboBoxItem { Content = id, Tag = id });
@@ -103,15 +182,18 @@ public sealed partial class SkillsPage : Page
     private async Task OnToggleSkillClickAsync(object sender)
     {
         if (sender is not Button btn || btn.Tag is not string skillKey) return;
-        if (CurrentApp.GatewayClient == null) return;
+        var client = _nativeSetupRequest is null ? CurrentApp.GatewayClient : RequireNativeClient();
+        if (client == null) return;
 
         var skill = _allSkills.FirstOrDefault(s => s.SkillKey == skillKey);
         if (skill == null) return;
 
         bool newState = !skill.IsEnabled;
         btn.IsEnabled = false;
-        var success = await CurrentApp.GatewayClient.SetSkillEnabledAsync(skillKey, newState);
+        var success = await client.SetSkillEnabledAsync(skillKey, newState);
         btn.IsEnabled = true;
+        if (_nativeSetupRequest is not null && !ReferenceEquals(client, RequireNativeClient()))
+            throw new SetupNativeOwnershipException();
 
         if (success)
         {

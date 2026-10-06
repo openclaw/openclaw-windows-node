@@ -9,11 +9,13 @@
     <AssemblyName>OpenClaw.SetupEngine.UI</AssemblyName>
     <Platforms>x64;ARM64</Platforms>
     <DefaultLanguage>en-US</DefaultLanguage>
+    <DefineConstants>$(DefineConstants);OPENCLAW_SETUP_UI</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="$(MicrosoftWindowsAppSDKVersion)" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="$(MicrosoftWindowsSdkBuildToolsVersion)" />
+    <PackageReference Include="CommunityToolkit.WinUI.Controls.SettingsControls" Version="8.3.260402-preview2" />
   </ItemGroup>
 
   <ItemGroup>
@@ -22,6 +24,9 @@
   </ItemGroup>
 
   <!-- Reuse Setup assets from the Tray project -->
+  <ItemGroup>
+    <Compile Include="..\OpenClaw.Tray.WinUI\Helpers\FluentIconCatalog.cs" Link="FluentIconCatalog.cs" />
+  </ItemGroup>
   <ItemGroup>
     <Content Include="..\OpenClaw.Tray.WinUI\Assets\Setup\**\*"
              Link="Assets\Setup\%(RecursiveDir)%(Filename)%(Extension)"

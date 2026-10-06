@@ -63,7 +63,8 @@ public sealed class AccessibilityThemeResourceSourceTests
         Assert.Contains("Theme.Ref(\"CardBackgroundFillColorDefaultBrush\")", timeline);
         Assert.Contains("Theme.Ref(\"ControlStrokeColorDefaultBrush\")", timeline);
         Assert.Contains("ConnectionCapabilityPillSuccessBrush", connectionXaml);
-        Assert.Contains("ImageIcon Source=\"{StaticResource Chat_Icon}\"", hubXaml);
+        Assert.Contains("Source=\"{StaticResource Chat_Icon}\"", hubXaml);
+        Assert.Contains("MicaBackdrop", ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml"));
         Assert.Contains("new ImageIcon", hub);
         Assert.Contains("NavView.Resources[\"Agents_Icon\"]", hub);
         Assert.Contains("ApplyHighContrastFallbackIfNeeded", hub);

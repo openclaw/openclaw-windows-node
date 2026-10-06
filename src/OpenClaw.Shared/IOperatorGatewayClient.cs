@@ -32,6 +32,8 @@ public interface IOperatorGatewayClient
     event EventHandler<DevicePairingListInfo>? DevicePairListUpdated;
     event EventHandler<ModelsListInfo>? ModelsListUpdated;
     event EventHandler<PresenceEntry[]>? PresenceUpdated;
+    /// <summary>The authenticated profile changed; consumers should reload users.self.</summary>
+    event EventHandler? SelfProfileChanged { add { } remove { } }
     event EventHandler<JsonElement>? AgentsListUpdated;
     event EventHandler<JsonElement>? AgentFilesListUpdated;
     event EventHandler<JsonElement>? AgentFileContentUpdated;
@@ -39,6 +41,7 @@ public interface IOperatorGatewayClient
 
     // ─── Query ───
     string? OperatorDeviceId { get; }
+    string? AuthenticatedSigningDeviceId => null;
     IReadOnlyList<string> GrantedOperatorScopes { get; }
     bool IsConnectedToGateway { get; }
     /// <summary>Canonical main session key resolved from hello-ok; <c>null</c> until handshake.</summary>

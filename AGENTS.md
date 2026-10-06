@@ -1,5 +1,9 @@
 # AGENTS.md
 
+## Gateway MSIX Packaging
+
+For Gateway MSIX packaging, use [openclaw-windows-packaging](https://github.com/openclaw/openclaw-windows-packaging).
+
 ## Required Validation After Every Change
 
 All agents working in this repository must run validation after each code change before marking work complete.

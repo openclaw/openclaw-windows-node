@@ -177,6 +177,8 @@ public sealed class LocalAiGpuRestartEndpointTests
         public int RestartCalls { get; private set; }
         public event EventHandler<LocalAiRuntimeSnapshotChangedEventArgs>? StateChanged;
 
+        public Task<LocalAiRuntimeSnapshot> ResumeAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(Snapshot);
         public Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(Snapshot);
 

@@ -57,6 +57,7 @@ aliases. Global Send and Quick Send metaphors are unchanged.
 | `ChatTextBrush` | `TextFillColorPrimary` |
 | `ChatSecondaryTextBrush` | `TextFillColorSecondary` |
 | `ChatUserBrush` | Windows accent at low opacity; full system highlight in HC |
+| `ChatPendingUserBrush` | Transparent in every theme, revealing the conversation background |
 | `ChatUserTextBrush` | Primary text; system highlight text in HC |
 | `ChatRichTextStyle` | Native rich-text Foreground binding to `ChatTextBrush` |
 | `ChatCodeTextStyle` | Native code Foreground binding to `ChatSecondaryTextBrush` |
@@ -75,6 +76,33 @@ content resource once below its header, including disconnected/loading states.
 The composer and code cards use the card fill above that content layer.
 
 ## Controls and states
+
+Queued submissions leave the textbox and remain after the current turn as normal
+right-aligned user bubbles. A transparent `ChatPendingUserBrush`, subtle `ChatStrokeBrush`
+outline, and slightly faded `ChatSecondaryTextBrush` distinguish them from sent messages without
+reducing whole-bubble opacity. **Pending**, Copy, and Cancel appear underneath only
+while the message is hovered or contains keyboard focus. The footer reserves its
+space so revealing it never moves the message. Hidden actions do not accept
+pointer taps, but remain keyboard-focusable. Accessible item status stays
+available even when the visual footer is hidden.
+Text remains selectable and attachment chips remain visible.
+Cancel stays available until dispatch; failures keep their error and removal
+action visible without hovering. Provider promotion replaces the pending row with the normal sent message,
+without adding queue-only rows to history. This applies to both ChatPage and
+ChatWindow. See the [pending-message concept](design/reference/concepts/states/pending-chat-message.md).
+
+Chat responses are not read aloud by default. Enabling the Text-to-speech
+capability permits playback but does not enable automatic spoken replies.
+Settings > Voice > "Read responses aloud" opts in to automatic playback;
+manual "Read aloud" remains available independently when the capability is
+enabled. Existing saved read-aloud preferences are preserved.
+
+Welcome quick-start suggestions use borderless native buttons with a quiet gray
+`ControlAltFillColorSecondaryBrush` backplate and the shared subtle toolbar
+hover/pressed resources. Disabled and keyboard-focus states remain native.
+Gateway dashboard management lives in a Connection settings card rather than
+occupying a row above the chat surface. Settings' Chat rail action opens Workspace
+without changing the selected Settings page or discarding the chat draft.
 
 The footer has a leading Attach/session group, model/reasoning selectors, and
 quiet secondary actions beside the primary Send/Stop action. Every control stays

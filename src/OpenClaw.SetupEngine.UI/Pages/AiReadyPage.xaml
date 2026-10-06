@@ -1,0 +1,47 @@
+<Page x:Class="OpenClaw.SetupEngine.UI.Pages.AiReadyPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:controls="using:OpenClaw.SetupEngine.UI.Controls"
+      xmlns:tk="using:CommunityToolkit.WinUI.Controls">
+    <Page.Resources>
+        <DataTemplate x:Key="WrappedAction">
+            <TextBlock Text="{Binding}" TextWrapping="Wrap" MaxWidth="160" Style="{StaticResource BodyTextBlockStyle}" />
+        </DataTemplate>
+    </Page.Resources>
+    <Grid Padding="40,4,40,24" RowDefinitions="Auto,*,Auto">
+        <StackPanel Spacing="4">
+            <controls:OnboardingMascot x:Name="MascotHero" Mood="Celebrating" HorizontalAlignment="Center" />
+            <TextBlock x:Uid="Onboarding_Ready_Heading" Text="Your AI is ready"
+                       Style="{StaticResource TitleTextBlockStyle}" TextAlignment="Center" TextWrapping="Wrap" />
+            <TextBlock x:Uid="Onboarding_Ready_Prompt" Text="What would you like to do first?"
+                       Style="{StaticResource BodyTextBlockStyle}" TextAlignment="Center" TextWrapping="Wrap" />
+            <TextBlock x:Name="ModelSummary" Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextAlignment="Center" TextWrapping="Wrap" />
+        </StackPanel>
+        <ScrollViewer Grid.Row="1" Margin="0,24,0,16" HorizontalContentAlignment="Stretch">
+            <StackPanel Spacing="8">
+                <InfoBar x:Name="ErrorBar" IsOpen="False" IsClosable="False" Severity="Error">
+                    <InfoBar.ActionButton>
+                        <Button x:Name="RecoveryButton" x:Uid="Onboarding_Ready_Return" Content="Back to AI setup"
+                                Click="Return_Click" ContentTemplate="{StaticResource WrappedAction}" />
+                    </InfoBar.ActionButton>
+                </InfoBar>
+                <StackPanel x:Name="Choices" Spacing="8">
+                    <tk:SettingsCard x:Name="ChatChoice" x:Uid="Onboarding_Ready_Chat" Header="Talk to my agent"
+                                     Description="Open Chat with your agent." Tag="Chat" IsClickEnabled="True" Click="Choose_Click"
+                                     AutomationProperties.Name="Talk to my agent, recommended">
+                        <controls:RecommendedBadge x:Name="RecommendedBadge" />
+                    </tk:SettingsCard>
+                    <tk:SettingsCard x:Name="ChannelsChoice" x:Uid="Onboarding_Ready_Channels" Header="Connect channels"
+                                     Description="WhatsApp, Telegram, and more. You choose when to sign in." Tag="Channels" IsClickEnabled="True" Click="Choose_Click" />
+                    <tk:SettingsCard x:Name="SkillsChoice" x:Uid="Onboarding_Ready_Skills" Header="Explore skills"
+                                     Description="Browse skills for your agent. Nothing is installed automatically." Tag="Skills" IsClickEnabled="True" Click="Choose_Click" />
+                </StackPanel>
+                <ProgressBar x:Name="BusyProgress" IsIndeterminate="True" Visibility="Collapsed" />
+                <TextBlock x:Name="StatusText" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap"
+                           AutomationProperties.LiveSetting="Polite" Visibility="Collapsed" />
+            </StackPanel>
+        </ScrollViewer>
+        <controls:SetupProgressIndicator x:Name="FlowProgress" Grid.Row="2" HorizontalAlignment="Center" VerticalAlignment="Center" />
+    </Grid>
+</Page>

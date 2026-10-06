@@ -45,7 +45,7 @@ public static class MigrationOperationLock
             info.Create(security);
         else
         {
-            if (RequiresHardening(info, owner))
+            if (RequiresDirectoryHardening(info, owner))
                 info.SetAccessControl(security);
             ScrubExistingEntries(info, owner);
         }
@@ -60,7 +60,7 @@ public static class MigrationOperationLock
     /// launch can lack on a roaming or administratively hardened profile. Reading is cheap and
     /// always permitted to the owner, so only correct a directory that actually drifted.
     /// </summary>
-    private static bool RequiresHardening(DirectoryInfo info, SecurityIdentifier owner)
+    internal static bool RequiresDirectoryHardening(DirectoryInfo info, SecurityIdentifier owner)
     {
         try
         {

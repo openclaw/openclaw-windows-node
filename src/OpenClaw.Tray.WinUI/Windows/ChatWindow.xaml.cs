@@ -24,6 +24,9 @@ namespace OpenClawTray.Windows;
 
 public sealed partial class ChatWindow : WindowEx
 {
+    private void OnOpenDashboard(object sender, RoutedEventArgs e) =>
+        ((IAppCommands)Application.Current).OpenDashboard();
+
     private string _gatewayUrl;
     private string _token;
     private string? _chatUrl;

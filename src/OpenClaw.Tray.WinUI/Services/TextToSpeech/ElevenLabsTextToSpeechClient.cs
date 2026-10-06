@@ -37,8 +37,16 @@ public sealed class ElevenLabsTextToSpeechClient : IDisposable
 
     internal TimeSpan Timeout => _httpClient.Timeout;
 
+    // A redirect to another host would keep xi-api-key. This client does not
+    // follow redirects, so that header stays on the ElevenLabs request.
+    internal static SocketsHttpHandler CreateSocketsHandler()
+        => new()
+        {
+            AllowAutoRedirect = false,
+        };
+
     public ElevenLabsTextToSpeechClient()
-        : this(new HttpClient(), ownsHttpClient: true, baseUrl: DefaultBaseUrl)
+        : this(CreateSocketsHandler())
     {
     }
 

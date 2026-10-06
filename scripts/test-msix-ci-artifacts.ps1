@@ -57,7 +57,10 @@ function New-Package {
         foreach ($name in @(
             'AppxManifest.xml', 'AppxSignature.p7x', 'OpenClaw.Tray.WinUI.exe', 'OpenClaw.Tray.WinUI.dll',
             'coreclr.dll', 'hostfxr.dll', 'hostpolicy.dll', 'System.Private.CoreLib.dll', 'Microsoft.ui.xaml.dll',
-            'OpenClaw.SetupEngine.dll', 'OpenClaw.SetupEngine.UI.dll', "tools/mxc/$Architecture/wxc-exec.exe"
+            'OpenClaw.SetupEngine.dll', 'OpenClaw.SetupEngine.UI.dll', "tools/mxc/$Architecture/wxc-exec.exe",
+            'tools/local-ai-vc-runtime/msvcp140.dll',
+            'tools/local-ai-vc-runtime/vcruntime140.dll',
+            'tools/local-ai-vc-runtime/vcruntime140_1.dll'
         )) {
             if ($name -eq $Omit) { continue }
             $writer = [IO.StreamWriter]::new($zip.CreateEntry($name).Open())

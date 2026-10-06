@@ -13,6 +13,9 @@ internal static class InnoMigrationStartupGuard
     public static bool ShouldStopLaunch(out IDisposable? runtimeLease)
     {
         runtimeLease = null;
+#if !INNO_MIGRATION_PREVIEW && !PRODUCTION_MIGRATION
+        return false;
+#else
         if (AppIdentity.IsDev || PackageHelper.IsPackaged || GatewayFixtureIsolation.IsEnabled)
             return false;
 
@@ -27,6 +30,9 @@ internal static class InnoMigrationStartupGuard
         };
         // Acquisition must precede the receipt check, including when no receipt exists yet.
         // App retains this handle until process exit, even if startup or shutdown fails.
+        // An unavailable lock says nothing about whether migration completed, so it must not
+        // block startup on its own. InnoSourceActivityVerifier still detects this process by
+        // image path, so the Store side keeps its interlock without a lease.
         try
         {
             runtimeLease = MigrationOperationLock.AcquireRuntime(binding);
@@ -60,7 +66,8 @@ internal static class InnoMigrationStartupGuard
         catch (FileNotFoundException) { return false; }
         catch (DirectoryNotFoundException) { return false; }
         catch (Exception ex) when (ex is InvalidDataException or CryptographicException or
-                                   EndOfStreamException or ArgumentException or DecoderFallbackException)
+                                   EndOfStreamException or ArgumentException or FormatException or
+                                   DecoderFallbackException)
         {
             Logger.Warn($"Migration completion receipt rejected ({ex.GetType().Name}).");
             return false;
@@ -72,6 +79,7 @@ internal static class InnoMigrationStartupGuard
         }
 
         return ShowGuidance(resourceKey);
+#endif
     }
 
     private static bool ShowGuidance(string resourceKey)

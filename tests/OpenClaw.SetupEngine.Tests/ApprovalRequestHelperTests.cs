@@ -15,6 +15,8 @@ public class ApprovalRequestHelperTests
     [InlineData("-starts-with-dash")]
     [InlineData("bad;rm -rf")]
     [InlineData("bad id")]
+    [InlineData("latest")]
+    [InlineData("LATEST")]
     public void IsSafeRequestId_RejectsUnsafeIds(string requestId)
     {
         Assert.False(ApprovalRequestHelper.IsSafeRequestId(requestId));
@@ -61,6 +63,41 @@ public class ApprovalRequestHelperTests
 
         Assert.False(result.Success);
         Assert.Contains("unsafe", result.Error);
+    }
+
+    [Fact]
+    public void TrySelectPendingRequestForDevice_SelectsOnlyRequestCreatedAfterConnect()
+    {
+        const string deviceId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        var result = ApprovalRequestHelper.TrySelectPendingRequestForDevice(
+            $$"""
+            {"pending":[
+              {"requestId":"stale-request","deviceId":"{{deviceId}}","role":"operator"},
+              {"requestId":"current-request","deviceId":"{{deviceId}}","role":"operator"}
+            ]}
+            """,
+            deviceId,
+            new HashSet<string>(["stale-request"], StringComparer.Ordinal),
+            matchNodeId: false);
+
+        Assert.True(result.Success, result.Error);
+        Assert.Equal("current-request", result.RequestId);
+    }
+
+    [Fact]
+    public void TrySelectPendingRequestForDevice_RejectsStaleSameIdentityRequest()
+    {
+        const string deviceId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        var result = ApprovalRequestHelper.TrySelectPendingRequestForDevice(
+            $$"""
+            {"pending":[{"requestId":"stale-request","deviceId":"{{deviceId}}","role":"operator"}]}
+            """,
+            deviceId,
+            new HashSet<string>(["stale-request"], StringComparer.Ordinal),
+            matchNodeId: false);
+
+        Assert.False(result.Success);
+        Assert.Contains("No new pending approval request matched", result.Error);
     }
 
     [Fact]

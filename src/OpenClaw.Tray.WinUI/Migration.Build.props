@@ -1,0 +1,79 @@
+<Project>
+  <PropertyGroup>
+    <MigrationStoreProductId Condition="'$(MigrationStoreProductId)' == ''">9NFPR3BGDRR5</MigrationStoreProductId>
+    <!-- Selected first coordinated Inno/Store release. Verify its artifacts before
+         enabling migration; never derive this floor from the current Version. -->
+    <MigrationMinimumSourceVersion Condition="'$(MigrationMinimumSourceVersion)' == ''">2026.9.5.0</MigrationMinimumSourceVersion>
+    <!-- Enabled for the coordinated 2026.9.5 Inno/Store release. Release non-Dev builds
+         ship both migration surfaces; Debug, Dev, and preview builds stay excluded below.
+         Set this to false to build a release without migration. -->
+    <MigrationProductionEnabled Condition="'$(MigrationProductionEnabled)' == ''">true</MigrationProductionEnabled>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(MigrationProductionEnabled)' == 'true' and '$(Configuration)' == 'Release' and '$(DevBuild)' != 'true'">
+    <DefineConstants>$(DefineConstants);PRODUCTION_MIGRATION</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(MigrationProductionEnabled)' == 'true' and '$(Configuration)' == 'Release' and '$(DevBuild)' != 'true'">
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>MigrationStoreProductId</_Parameter1>
+      <_Parameter2>$(MigrationStoreProductId)</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>MigrationMinimumSourceVersion</_Parameter1>
+      <_Parameter2>$(MigrationMinimumSourceVersion)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <PropertyGroup Condition="'$(InnoMigrationPreview)' == 'true'">
+    <DefineConstants>$(DefineConstants);INNO_MIGRATION_PREVIEW</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(InnoMigrationPreview)' == 'true'">
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>MigrationPreviewStoreProductId</_Parameter1>
+      <_Parameter2>$(MigrationPreviewStoreProductId)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+  <PropertyGroup Condition="'$(StoreMigrationPreview)' == 'true'">
+    <DefineConstants>$(DefineConstants);STORE_MIGRATION_PREVIEW</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(StoreMigrationPreview)' == 'true'">
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>StoreMigrationPreviewMinimumSourceVersion</_Parameter1>
+      <_Parameter2>$(StoreMigrationPreviewMinimumSourceVersion)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <Target Name="ValidateMigrationBuild" BeforeTargets="CoreCompile"
+          DependsOnTargets="ValidateMigrationSwitch;ValidateProductionMigration;ValidateInnoMigrationPreview;ValidateStoreMigrationPreview" />
+
+  <Target Name="ValidateMigrationSwitch">
+    <Error Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('$(MigrationProductionEnabled)', '^(?i:true|false)$'))"
+           Text="MigrationProductionEnabled must be true or false." />
+  </Target>
+  <Target Name="ValidateProductionMigration"
+          Condition="'$(MigrationProductionEnabled)' == 'true' and '$(Configuration)' == 'Release' and '$(DevBuild)' != 'true'">
+    <Error Condition="'$(RuntimeIdentifier)' != 'win-x64' and '$(RuntimeIdentifier)' != 'win-arm64'"
+           Text="Production migration requires a win-x64 or win-arm64 release build." />
+    <Error Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('$(MigrationStoreProductId)', '^[A-Z0-9]{12}$'))"
+           Text="Production migration requires the assigned 12-character MigrationStoreProductId." />
+    <Error Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('$(MigrationMinimumSourceVersion)', '^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$'))"
+           Text="Production migration requires a pinned numeric MigrationMinimumSourceVersion from the first verified migration-enabled Inno release." />
+    <PropertyGroup>
+      <_ValidatedMigrationMinimumSourceVersion>$([System.Version]::Parse('$(MigrationMinimumSourceVersion)').ToString())</_ValidatedMigrationMinimumSourceVersion>
+    </PropertyGroup>
+    <Error Condition="'$(_ValidatedMigrationMinimumSourceVersion)' == '0.0.0' or '$(_ValidatedMigrationMinimumSourceVersion)' == '0.0.0.0'"
+           Text="MigrationMinimumSourceVersion cannot be an unspecified zero version." />
+  </Target>
+  <Target Name="ValidateInnoMigrationPreview" Condition="'$(InnoMigrationPreview)' == 'true'">
+    <Error Condition="'$(Configuration)' != 'Debug' or '$(PackageMsix)' == 'true' or '$(DevBuild)' == 'true'"
+           Text="Inno migration preview is restricted to Debug unpackaged builds with the production identity. It must not ship." />
+    <Error Condition="'$(MigrationPreviewStoreProductId)' != '' and !$([System.Text.RegularExpressions.Regex]::IsMatch('$(MigrationPreviewStoreProductId)', '^[A-Z0-9]{12}$'))"
+           Text="MigrationPreviewStoreProductId must be an explicit 12-character Store product ID." />
+  </Target>
+  <Target Name="ValidateStoreMigrationPreview" Condition="'$(StoreMigrationPreview)' == 'true'">
+    <Error Condition="'$(Configuration)' != 'Debug' or '$(PackageMsix)' != 'true' or '$(DevBuild)' == 'true'"
+           Text="Store migration preview is restricted to Debug MSIX builds with the production identity. It must not ship." />
+    <Error Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('$(StoreMigrationPreviewMinimumSourceVersion)', '^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$'))"
+           Text="Store migration preview requires an explicit numeric StoreMigrationPreviewMinimumSourceVersion." />
+  </Target>
+</Project>

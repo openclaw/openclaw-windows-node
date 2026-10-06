@@ -384,6 +384,21 @@
                 </StackPanel>
             </Border>
 
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                    BorderThickness="1" CornerRadius="8" Padding="16"
+                    AutomationProperties.AutomationId="ConnectionDashboardCard">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                    <TextBlock x:Uid="ChatDashboardHint"
+                               Text="Channels, integrations and gateway settings"
+                               Style="{StaticResource BodyTextBlockStyle}"
+                               TextWrapping="Wrap" VerticalAlignment="Center" />
+                    <Button x:Uid="ChatDashboardButton" Grid.Column="1"
+                            Content="Dashboard" Click="OnOpenDashboard"
+                            AutomationProperties.AutomationId="ConnectionDashboardButton" />
+                </Grid>
+            </Border>
+
             <!-- ═════════════════════════════════════════════════════════
                  NODE CARD — the "expose this machine" banner
                  ═════════════════════════════════════════════════════════ -->

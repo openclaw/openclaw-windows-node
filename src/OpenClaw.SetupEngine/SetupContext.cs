@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -36,6 +37,8 @@ public sealed class SetupConfig
     public bool UsesBundledDefaultConfig { get; set; }
     [JsonIgnore]
     public string? LocalAiRecoveryGatewayId { get; set; }
+    [JsonIgnore]
+    public bool NativeLocalAiAcquisition { get; set; }
 
     // Nested config sections — everything is configurable
     public WslConfig Wsl { get; set; } = new();
@@ -147,10 +150,22 @@ public sealed class LocalAiConfig
     /// <summary>Runtime-only effective profile selected from detected GPU capacity.</summary>
     [JsonIgnore]
     public string? SelectedProfileId { get; set; }
+    /// <summary>
+    /// Runtime-only model ID proven by the existing installation receipt for a pinned
+    /// recovery. It authorizes retired-catalog lookup only for that exact selection.
+    /// </summary>
+    [JsonIgnore]
+    internal string? InstalledReceiptModelId { get; set; }
     /// <summary>Managed llama-server port. Zero selects a free loopback port during setup.</summary>
     public int Port { get; set; }
     public bool WslMirroredNetworkingConsent { get; set; }
-    public int HealthTimeoutSeconds { get; set; } = 15;
+    /// <summary>
+    /// How long the managed llama-server router may take to report healthy. The first
+    /// start after an install pays a Windows Defender scan of the freshly extracted
+    /// ~700 MB CUDA runtime (measured 26.0 s cold, 0.17 s once cached), so this has to
+    /// clear that comfortably or a clean install fails the race non-deterministically.
+    /// </summary>
+    public int HealthTimeoutSeconds { get; set; } = 90;
     public int AcquisitionTimeoutSeconds { get; set; } = 7_200;
     public int InferenceTimeoutSeconds { get; set; } = 600;
 }
@@ -246,6 +261,8 @@ public sealed class CapabilitiesConfig
 public sealed class TraySettingsConfig
 {
     public bool EnableNodeMode { get; set; } = true;
+    public bool? EnableMcpServer { get; set; }
+    public bool? NodeOllamaInferenceEnabled { get; set; }
     public bool? EnableManagedLocalGatewayAutoRepair { get; set; }
     public bool AutoStart { get; set; } = false;
     public bool NodeSystemRunEnabled { get; set; } = true;
@@ -257,12 +274,48 @@ public sealed class TraySettingsConfig
     public bool NodeTtsEnabled { get; set; } = true;
     public bool NodeSttEnabled { get; set; } = true;
 
+    public IReadOnlyDictionary<string, bool> CreatePatch(bool? startup, bool startupOnly = false)
+    {
+        var patch = new Dictionary<string, bool>();
+        if (startup is { } selected) patch["AutoStart"] = selected;
+        if (startupOnly) return patch;
+        patch["EnableNodeMode"] = EnableNodeMode;
+        patch["NodeSystemRunEnabled"] = NodeSystemRunEnabled;
+        patch["NodeCanvasEnabled"] = NodeCanvasEnabled;
+        patch["NodeScreenEnabled"] = NodeScreenEnabled;
+        patch["NodeCameraEnabled"] = NodeCameraEnabled;
+        patch["NodeLocationEnabled"] = NodeLocationEnabled;
+        patch["NodeBrowserProxyEnabled"] = NodeBrowserProxyEnabled;
+        patch["NodeTtsEnabled"] = NodeTtsEnabled;
+        patch["NodeSttEnabled"] = NodeSttEnabled;
+        if (EnableMcpServer is { } mcp) patch["EnableMcpServer"] = mcp;
+        if (NodeOllamaInferenceEnabled is { } ollama) patch["NodeOllamaInferenceEnabled"] = ollama;
+        if (EnableManagedLocalGatewayAutoRepair is { } repair) patch["EnableManagedLocalGatewayAutoRepair"] = repair;
+        return patch;
+    }
+
     /// <summary>
     /// Merges these settings into an existing settings.json (or creates a new one).
     /// Only overwrites the fields we control — preserves all other user settings.
     /// </summary>
-    public void MergeIntoSettingsFile(string settingsPath)
+    public void MergeIntoSettingsFile(
+        string settingsPath, bool includeAutoStart = true, bool defaultManagedAutoRepair = true)
+        => MergeSettingsFile(settingsPath, CreatePatch(includeAutoStart ? AutoStart : null),
+            defaultManagedAutoRepair);
+
+    public void MergeCapabilitiesIntoSettingsFile(string settingsPath)
     {
+        var patch = CreatePatch(null)
+            .Where(setting => setting.Key is not (
+                "EnableMcpServer" or "NodeOllamaInferenceEnabled" or "EnableManagedLocalGatewayAutoRepair"))
+            .ToDictionary(setting => setting.Key, setting => setting.Value);
+        MergeSettingsFile(settingsPath, patch, defaultManagedAutoRepair: false);
+    }
+
+    private void MergeSettingsFile(
+        string settingsPath, IReadOnlyDictionary<string, bool> setupOwnedSettings, bool defaultManagedAutoRepair)
+    {
+        using var lease = PersistenceFileLease.Acquire(settingsPath);
         Dictionary<string, JsonElement>? existing = null;
 
         if (File.Exists(settingsPath))
@@ -278,20 +331,6 @@ public sealed class TraySettingsConfig
             }
         }
 
-        var setupOwnedSettings = new Dictionary<string, object>
-        {
-            ["EnableNodeMode"] = EnableNodeMode,
-            ["AutoStart"] = AutoStart,
-            ["NodeSystemRunEnabled"] = NodeSystemRunEnabled,
-            ["NodeCanvasEnabled"] = NodeCanvasEnabled,
-            ["NodeScreenEnabled"] = NodeScreenEnabled,
-            ["NodeCameraEnabled"] = NodeCameraEnabled,
-            ["NodeLocationEnabled"] = NodeLocationEnabled,
-            ["NodeBrowserProxyEnabled"] = NodeBrowserProxyEnabled,
-            ["NodeTtsEnabled"] = NodeTtsEnabled,
-            ["NodeSttEnabled"] = NodeSttEnabled
-        };
-
         var settings = new Dictionary<string, object>();
         if (existing != null)
         {
@@ -303,9 +342,7 @@ public sealed class TraySettingsConfig
             settings[kvp.Key] = kvp.Value;
 
         const string autoRepairKey = "EnableManagedLocalGatewayAutoRepair";
-        if (EnableManagedLocalGatewayAutoRepair is { } configuredAutoRepair)
-            settings[autoRepairKey] = configuredAutoRepair;
-        else if (!settings.ContainsKey(autoRepairKey))
+        if (defaultManagedAutoRepair && !settings.ContainsKey(autoRepairKey))
             settings[autoRepairKey] = true;
 
         Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
@@ -315,6 +352,7 @@ public sealed class TraySettingsConfig
 
     public static void UpdateAutoStartInSettingsFile(string settingsPath, bool autoStart)
     {
+        using var lease = PersistenceFileLease.Acquire(settingsPath);
         Dictionary<string, JsonElement>? existing = null;
 
         if (File.Exists(settingsPath))
@@ -470,6 +508,8 @@ public sealed record StepResult(
     LocalAiFailureDetail? Detail = null)
 {
     public bool RequiresRestart { get; init; }
+    internal bool GatewayRestartServingOwnerUnavailable { get; init; }
+    internal bool GatewayRestartIntentContention { get; init; }
 
     public static StepResult Ok(string? message = null) => new(StepOutcome.Success, message);
     public static StepResult Skip(string reason) => new(StepOutcome.Skipped, reason);
@@ -499,8 +539,35 @@ public sealed class SetupContext
     public string? SharedGatewayToken { get; set; }
     public string? BootstrapToken { get; set; }
     public string? GatewayRecordId { get; set; }
+    [JsonIgnore]
+    public GatewayRegistrySnapshot? ExpectedGatewayRegistry { get; set; }
+    [JsonIgnore]
+    public Action<TraySettingsConfig>? PersistTraySettings { get; set; }
+
+    /// <summary>Checks the prior operation-owned state before a pipeline registry mutation.</summary>
+    public GatewayRegistry LoadSetupRegistry()
+    {
+        var registry = new GatewayRegistry(DataDir, logger: new SetupOpenClawLogger(Logger));
+        registry.Load();
+        if (ExpectedGatewayRegistry is { } expected &&
+            !GatewayRegistry.HasSameSetupAuthority(registry.CapturePersistedSnapshot(), expected))
+            throw new InvalidOperationException("The Gateway registry changed outside the setup operation.");
+        return registry;
+    }
+
+    public void SaveSetupRegistry(GatewayRegistry registry)
+    {
+        var written = registry.GetSnapshot();
+        registry.Save(ExpectedGatewayRegistry);
+        if (ExpectedGatewayRegistry is not null)
+            ExpectedGatewayRegistry = written;
+    }
     public string? OperatorDeviceId { get; set; }
     public string? NodeDeviceId { get; set; }
+    internal PendingRequestBaseline? SetupDeviceApprovalBaseline { get; set; }
+    internal PendingRequestBaseline? SetupNodeApprovalBaseline { get; set; }
+    internal PendingRequestBaseline? CurrentDeviceApprovalBaseline { get; set; }
+    internal PendingRequestBaseline? CurrentNodeApprovalBaseline { get; set; }
     public GatewaySelfInfo? ObservedGatewaySelf { get; set; }
     public GatewayCompatibilityException? GatewayCompatibilityFailure { get; set; }
     public string? WindowsTailnetDnsSuffix { get; set; }
@@ -515,8 +582,19 @@ public sealed class SetupContext
     public int? LocalAiPort { get; set; }
     internal LlamaRuntimeInstallResult? LocalAiRuntimeInstall { get; set; }
     internal HuggingFaceModelInstallResult? LocalAiModelInstall { get; set; }
+    /// <summary>
+    /// Verified additional model assets (a DFlash draft checkpoint and/or
+    /// in catalog order. Empty for every recipe
+    /// that has neither.
+    /// </summary>
+    internal ImmutableArray<HuggingFaceAdditionalAssetInstallResult> LocalAiAdditionalModelInstalls { get; set; } =
+        ImmutableArray<HuggingFaceAdditionalAssetInstallResult>.Empty;
     internal LocalAiResolvedInstall? LocalAiResolvedInstall { get; set; }
+    public string? ResolvedLocalAiModelRef => LocalAiResolvedInstall is { } install
+        ? LocalAiGatewayProviderDefinition.BuildPrimaryModel(install)
+        : null;
     internal LocalAiResolvedInstall? LocalAiRecoveryOriginalInstall { get; set; }
+    internal LocalAiResolvedInstall? LocalAiUpgradeOriginalInstall { get; set; }
     internal bool LocalAiRecoveryProviderTransition { get; set; }
     internal bool LocalAiRecoveryReceiptRollbackAllowed { get; set; }
     internal bool LocalAiManifestCreatedThisRun { get; set; }

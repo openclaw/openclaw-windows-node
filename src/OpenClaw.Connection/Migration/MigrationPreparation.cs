@@ -59,21 +59,7 @@ public sealed class MigrationPreparation(MigrationBinding binding, TimeProvider?
             InventoryJson = JsonSerializer.Serialize(inventory)
         };
         var bytes = MigrationRecordCodec.Encode(record, now);
-        var temporaryPath = Path.Combine(directory, $".{Guid.NewGuid():N}.tmp");
-        try
-        {
-            using (var stream = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-            {
-                stream.Write(bytes);
-                stream.Flush(flushToDisk: true);
-            }
-            File.Move(temporaryPath, intentPath, overwrite: true);
-        }
-        finally
-        {
-            if (File.Exists(temporaryPath))
-                File.Delete(temporaryPath);
-        }
+        MigrationRecordStorage.WriteAtomic(intentPath, bytes);
         return record;
     }
 }

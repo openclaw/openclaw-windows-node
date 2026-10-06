@@ -33,11 +33,140 @@ public sealed class InnoInstallationDetectorTests
         Assert.Empty(fixture.Logger.Warnings);
     }
 
+    /// <summary>
+    /// A machine-wide payload never lives in the canonical per-user directory, so falling back to
+    /// it would answer for a different installation. An absent answer must read as "no payload".
+    /// </summary>
+    [Fact]
+    public void AMachineRegistrationNamingNoPath_IsNotAnsweredByThePerUserDirectory()
+    {
+        using var fixture = new Fixture();
+        var registration = fixture.Registration;
+        fixture.Source.Registrations.Clear();
+        fixture.Source.Registrations[(RegistryHive.LocalMachine, RegistryView.Registry64)] =
+            registration with { InstallLocation = null };
+
+        var result = fixture.Detect();
+
+        Assert.Equal(InnoInstallationStatus.Unsupported, result.Status);
+        Assert.False(result.SourcePayloadPresent);
+    }
+
+    [Fact]
+    public void AMachineRegistrationWithItsOwnPayload_ReportsItPresent()
+    {
+        using var fixture = new Fixture();
+        var registration = fixture.Registration;
+        var machineDirectory = fixture.Temp.Combine("Machine");
+        Directory.CreateDirectory(machineDirectory);
+        File.WriteAllText(Path.Combine(machineDirectory, "OpenClaw.Tray.WinUI.exe"), "fixture only");
+        fixture.Source.Registrations.Clear();
+        fixture.Source.Registrations[(RegistryHive.LocalMachine, RegistryView.Registry64)] =
+            registration with { InstallLocation = machineDirectory };
+
+        Assert.True(fixture.Detect().SourcePayloadPresent);
+    }
+
+    /// <summary>
+    /// Presence is a question about the machine, not about one registry view. An orphan beside a
+    /// live registration must not answer for both, or the Store app starts next to a real client.
+    /// </summary>
+    [Fact]
+    public void AnOrphanBesideALiveMachineRegistration_StillReportsThePayloadPresent()
+    {
+        using var fixture = new Fixture();
+        var registration = fixture.Registration;
+        var liveDirectory = fixture.Temp.Combine("Machine32");
+        Directory.CreateDirectory(liveDirectory);
+        File.WriteAllText(Path.Combine(liveDirectory, "OpenClaw.Tray.WinUI.exe"), "fixture only");
+        fixture.Source.Registrations.Clear();
+        fixture.Source.Registrations[(RegistryHive.LocalMachine, RegistryView.Registry64)] =
+            registration with { InstallLocation = fixture.Temp.Combine("GoneForever") };
+        fixture.Source.Registrations[(RegistryHive.LocalMachine, RegistryView.Registry32)] =
+            registration with { InstallLocation = liveDirectory };
+
+        Assert.True(fixture.Detect().SourcePayloadPresent);
+    }
+
+    [Fact]
+    public void AnOrphanBesideALiveUserRegistration_StillReportsThePayloadPresent()
+    {
+        using var fixture = new Fixture();
+        var registration = fixture.Registration;
+        fixture.Source.Registrations[(RegistryHive.CurrentUser, RegistryView.Registry64)] =
+            registration with { InstallLocation = fixture.Temp.Combine("GoneForever") };
+        fixture.Source.Registrations[(RegistryHive.CurrentUser, RegistryView.Registry32)] =
+            registration;
+
+        var result = fixture.Detect();
+
+        Assert.Equal(InnoInstallationStatus.Unsupported, result.Status);
+        Assert.True(result.SourcePayloadPresent);
+    }
+
+    /// <summary>
+    /// A registration is ordinary user-writable data, and a fully qualified path may still be
+    /// malformed. Probing it must read as "no payload" rather than taking down startup admission.
+    /// </summary>
+    [Fact]
+    public void AMalformedInstallLocation_ReadsAsNoPayloadRatherThanThrowing()
+    {
+        using var fixture = new Fixture();
+        var registration = fixture.Registration;
+        fixture.Source.Registrations.Clear();
+        fixture.Source.Registrations[(RegistryHive.LocalMachine, RegistryView.Registry64)] =
+            registration with { InstallLocation = "C:\\unusable\0location" };
+
+        var result = fixture.Detect();
+
+        Assert.Equal(InnoInstallationStatus.Unsupported, result.Status);
+        Assert.False(result.SourcePayloadPresent);
+    }
+
+    /// <summary>
+    /// An installed app whose identity marker is malformed still has to block startup. The
+    /// validation failure says the installation is unsupportable, not that it is absent, and a
+    /// user can cause this by appending bytes to a file in the previous install directory.
+    /// </summary>
+    [Fact]
+    public void AnInstalledSourceThatFailsValidation_StillReportsItsPayloadPresent()
+    {
+        using var fixture = new Fixture();
+        File.WriteAllText(fixture.Payload("app-identity.txt"), new string('r', 64));
+
+        var result = fixture.Detect();
+
+        Assert.Equal(InnoInstallationStatus.Unsupported, result.Status);
+        Assert.True(result.SourcePayloadPresent);
+    }
+
+    /// <summary>
+    /// An unreadable registration must not hide a live sibling. Probing is per registration, so a
+    /// failure on one contributes no evidence instead of abandoning the whole inspection.
+    /// </summary>
+    [Fact]
+    public void AnUnreadableRegistration_DoesNotMaskALiveSibling()
+    {
+        using var fixture = new Fixture();
+        var registration = fixture.Registration;
+        var unreadable = Path.Combine(fixture.Temp.Path, "unreadable");
+        // user64 is probed first, so the unreadable registration has to sit there: were it second
+        // the live sibling would short-circuit the OR and the masking would go unobserved.
+        fixture.Source.Registrations[(RegistryHive.CurrentUser, RegistryView.Registry32)] = registration;
+        fixture.Registration = registration with { InstallLocation = unreadable + "\\" };
+        fixture.Source.FileError = new UnauthorizedAccessException("denied");
+        fixture.Source.FileErrorPath = unreadable;
+
+        var result = fixture.Detect();
+
+        Assert.Equal(InnoInstallationStatus.Unsupported, result.Status);
+        Assert.True(result.SourcePayloadPresent);
+    }
+
     [Theory]
     [InlineData(Machine.Amd64, "x64")]
     [InlineData(Machine.Arm64, "arm64")]
-    public void DefaultProductionInstallation_IsDetected(Machine machine, string architecture)
-    {
+    public void DefaultProductionInstallation_IsDetected(Machine machine, string architecture)    {
         using var fixture = new Fixture();
         fixture.Source.Binary = new(machine, "2026.9.17.0");
 
@@ -131,6 +260,87 @@ public sealed class InnoInstallationDetectorTests
     }
 
     [Fact]
+    public void MissingPayload_CarriesTheRegisteredVersionSoAdmissionCanAskForAnUpdate()
+    {
+        using var fixture = new Fixture();
+        File.Delete(fixture.Payload("MigrationRecordCodec.cs"));
+
+        var result = fixture.Detect();
+
+        Assert.Equal(InnoInstallationStatus.Unsupported, result.Status);
+        Assert.Equal(Version.Parse("2026.9.17.0"), result.RegisteredVersion);
+    }
+
+    /// <summary>
+    /// The payload loop cannot tell an old install from an orphan on its own, so admission needs
+    /// the executable itself as the discriminator. A canonical install that merely predates the
+    /// migration payload is still a real, runnable client.
+    /// </summary>
+    [Theory]
+    [InlineData("MigrationRecordCodec.cs")]
+    [InlineData("Test-InnoMigration.ps1")]
+    [InlineData("Uninstall-LocalGateway.ps1")]
+    public void AnInstallMissingOnlyTheMigrationPayload_StillReportsItsSourcePresent(string name)
+    {
+        using var fixture = new Fixture();
+        File.Delete(fixture.Payload(name));
+
+        var result = fixture.Detect();
+
+        Assert.Equal(InnoInstallationStatus.Unsupported, result.Status);
+        Assert.True(result.SourcePayloadPresent);
+    }
+
+    /// <summary>
+    /// The opposite case, and the reason the signal exists: an interrupted uninstall can leave the
+    /// registration behind with the app gone. Reporting a source here would let startup policy
+    /// block a user who has no working app left.
+    /// </summary>
+    [Fact]
+    public void ARegistrationWhoseExecutableIsGone_ReportsNoSourcePresent()
+    {
+        using var fixture = new Fixture();
+        File.Delete(fixture.Payload("OpenClaw.Tray.WinUI.exe"));
+
+        var result = fixture.Detect();
+
+        Assert.Equal(InnoInstallationStatus.Unsupported, result.Status);
+        Assert.False(result.SourcePayloadPresent);
+    }
+
+    [Fact]
+    public void ADetectedInstallation_ReportsItsSourcePresent()
+    {
+        using var fixture = new Fixture();
+
+        var result = fixture.Detect();
+
+        Assert.Equal(InnoInstallationStatus.Detected, result.Status);
+        Assert.True(result.SourcePayloadPresent);
+    }
+
+    [Fact]
+    public void AnAbsentRegistration_ReportsNoSourcePresent()
+    {
+        using var fixture = new Fixture();
+        fixture.Source.Registrations.Clear();
+
+        var result = fixture.Detect();
+
+        Assert.Equal(InnoInstallationStatus.NotInstalled, result.Status);
+        Assert.False(result.SourcePayloadPresent);
+    }
+
+    [Fact]
+    public void UnsupportableShape_CarriesNoRegisteredVersion()
+    {
+        using var fixture = new Fixture();
+        File.WriteAllText(fixture.Payload("app-identity.txt"), "dev");
+
+        Assert.Null(fixture.Detect().RegisteredVersion);
+    }
+
+    [Fact]
     public void DirectoryInsteadOfPayload_IsUnsupported()
     {
         using var fixture = new Fixture();
@@ -154,6 +364,46 @@ public sealed class InnoInstallationDetectorTests
         using var fixture = new Fixture();
         fixture.Registration = fixture.Registration with { DisplayVersion = version };
         fixture.AssertUnsupported();
+    }
+
+    /// <summary>
+    /// A prerelease source is refused for its version, not for its location, Windows user, or
+    /// architecture. Startup policy needs that distinction to ask for an update instead of
+    /// sending the user to verify settings that are already correct. Prerelease Inno installers
+    /// are published on the releases page, so this is a shipped path, not a theoretical one.
+    /// </summary>
+    [Theory]
+    [InlineData("2026.9.5-alpha.19")]
+    [InlineData("2026.9.4-alpha.1")]
+    [InlineData("1.2.3-beta")]
+    [InlineData("")]
+    [InlineData(null)]
+    public void AnUnreadableRegisteredVersion_IsReportedAsAVersionRefusal(string? version)
+    {
+        using var fixture = new Fixture();
+        fixture.Registration = fixture.Registration with { DisplayVersion = version };
+
+        var result = fixture.Detect();
+
+        Assert.Equal(InnoInstallationStatus.Unsupported, result.Status);
+        Assert.True(result.RegisteredVersionUnsupported);
+        Assert.Null(result.RegisteredVersion);
+    }
+
+    /// <summary>
+    /// The counterpart: a refusal that has nothing to do with the version must not borrow the
+    /// update guidance, or every unsupported installation would be told to update.
+    /// </summary>
+    [Fact]
+    public void ARefusalUnrelatedToTheVersion_IsNotReportedAsAVersionRefusal()
+    {
+        using var fixture = new Fixture();
+        fixture.Source.Binary = fixture.Source.Binary with { Version = "2026.9.18" };
+
+        var result = fixture.Detect();
+
+        Assert.Equal(InnoInstallationStatus.Unsupported, result.Status);
+        Assert.False(result.RegisteredVersionUnsupported);
     }
 
     [Theory]
@@ -373,7 +623,19 @@ public sealed class InnoInstallationDetectorTests
         using var process = Process.Start(start)!;
         process.WaitForExit();
         Assert.Equal(0, process.ExitCode);
-        try { fixture.AssertUnsupported(); }
+        try
+        {
+            var result = fixture.Detect();
+
+            Assert.Equal(InnoInstallationStatus.Unsupported, result.Status);
+            Assert.Null(result.Installation);
+            // The probe and the payload loop each reject the junction, so the reason is logged
+            // alongside the probe's own warning rather than on its own.
+            Assert.Contains("Migration paths must not contain reparse points.", fixture.Logger.Warnings);
+            // A path the migration refuses to traverse yields no usable evidence, so it cannot
+            // assert the source is installed.
+            Assert.False(result.SourcePayloadPresent);
+        }
         finally { Directory.Delete(fixture.InstallDirectory); }
     }
 
@@ -477,6 +739,113 @@ public sealed class InnoInstallationDetectorTests
         }
     }
 
+    /// <summary>
+    /// An uninstall that removed the payload but left its registration behind. The registration
+    /// is otherwise canonical, so the only thing separating it from an absent source is a stale
+    /// registry key, and refusing on that alone leaves the user with no app at all.
+    /// </summary>
+    [Fact]
+    public void ACanonicalRegistrationWithNoPayloadAtAll_IsOrphanedRatherThanUnsupported()
+    {
+        using var fixture = new Fixture();
+        File.Delete(fixture.Payload("OpenClaw.Tray.WinUI.exe"));
+        File.Delete(fixture.Payload("unins000.exe"));
+
+        var result = fixture.Detect();
+
+        Assert.Equal(InnoInstallationStatus.OrphanedRegistration, result.Status);
+        Assert.Null(result.Installation);
+        Assert.False(result.SourcePayloadPresent);
+        Assert.Equal(new Version(2026, 9, 17, 0), result.RegisteredVersion);
+    }
+
+    /// <summary>
+    /// Half a payload is not a removed source. Either remnant can still be executed or resumed,
+    /// so both must be gone before the registration can be treated as an orphan.
+    /// </summary>
+    [Theory]
+    [InlineData("OpenClaw.Tray.WinUI.exe")]
+    [InlineData("unins000.exe")]
+    public void ARegistrationWithASurvivingRemnant_IsNotOrphaned(string survivor)
+    {
+        using var fixture = new Fixture();
+        foreach (var name in new[] { "OpenClaw.Tray.WinUI.exe", "unins000.exe" })
+        {
+            if (!string.Equals(name, survivor, StringComparison.Ordinal))
+                File.Delete(fixture.Payload(name));
+        }
+
+        Assert.Equal(InnoInstallationStatus.Unsupported, fixture.Detect().Status);
+    }
+
+    /// <summary>
+    /// Absence has to be proved. A probe that could not answer is unknown, and treating unknown
+    /// as removed is what would let the Store app start beside a source that is really there.
+    /// </summary>
+    [Fact]
+    public void APayloadProbeThatCannotAnswer_DoesNotQualifyAsOrphaned()
+    {
+        using var fixture = new Fixture();
+        File.Delete(fixture.Payload("OpenClaw.Tray.WinUI.exe"));
+        File.Delete(fixture.Payload("unins000.exe"));
+        fixture.Source.FileError = new UnauthorizedAccessException("Access is denied.");
+        fixture.Source.FileErrorPath = fixture.InstallDirectory;
+
+        Assert.Equal(InnoInstallationStatus.InspectionFailed, fixture.Detect().Status);
+    }
+
+    /// <summary>
+    /// The second probe is reached only because the first proved absence, so it is the one that
+    /// can still be answered wrongly. A refusal there must fail the whole inspection rather than
+    /// letting a half-proved payload qualify as removed.
+    /// </summary>
+    [Fact]
+    public void AnUninstallerProbeThatCannotAnswer_DoesNotQualifyAsOrphaned()
+    {
+        using var fixture = new Fixture();
+        File.Delete(fixture.Payload("OpenClaw.Tray.WinUI.exe"));
+        File.Delete(fixture.Payload("unins000.exe"));
+        fixture.Source.FileError = new UnauthorizedAccessException("Access is denied.");
+        fixture.Source.FileErrorPath = fixture.Payload("unins000.exe");
+
+        Assert.Equal(InnoInstallationStatus.InspectionFailed, fixture.Detect().Status);
+    }
+
+    /// <summary>
+    /// The orphan outcome is admitted only after the registration itself is established as the
+    /// canonical current-user source. A registration that fails those checks stays unsupported
+    /// however little payload it has, so an empty directory cannot launder a bad registration.
+    /// </summary>
+    [Theory]
+    [InlineData("publisher")]
+    [InlineData("location")]
+    [InlineData("uninstall")]
+    [InlineData("machine")]
+    public void ANonCanonicalRegistrationWithNoPayload_StaysUnsupported(string defect)
+    {
+        using var fixture = new Fixture();
+        File.Delete(fixture.Payload("OpenClaw.Tray.WinUI.exe"));
+        File.Delete(fixture.Payload("unins000.exe"));
+        var registration = fixture.Registration;
+        switch (defect)
+        {
+            case "publisher":
+                fixture.Registration = registration with { Publisher = "Someone Else" };
+                break;
+            case "location":
+                fixture.Registration = registration with { InstallLocation = fixture.Temp.Combine("Elsewhere") };
+                break;
+            case "uninstall":
+                fixture.Registration = registration with { UninstallString = "cmd.exe /c whatever" };
+                break;
+            case "machine":
+                fixture.Source.Registrations[(RegistryHive.LocalMachine, RegistryView.Registry64)] = registration;
+                break;
+        }
+
+        Assert.Equal(InnoInstallationStatus.Unsupported, fixture.Detect().Status);
+    }
+
     private sealed class Fixture : IDisposable
     {
         public TempDirectory Temp { get; } = new();
@@ -523,6 +892,7 @@ public sealed class InnoInstallationDetectorTests
         public Exception? RegistryError { get; set; }
         public RegistryHive? ErrorHive { get; set; }
         public Exception? FileError { get; set; }
+        public string? FileErrorPath { get; set; }
         public bool InspectRealBinary { get; set; }
         public InnoInstallationReadSource? RegistrySource { get; set; }
 
@@ -538,9 +908,19 @@ public sealed class InnoInstallationDetectorTests
         public bool IsOrdinaryFile(string path)
         {
             FileReads.Add(path);
-            if (FileError is not null)
+            if (FileError is not null &&
+                (FileErrorPath is null || path.StartsWith(FileErrorPath, StringComparison.OrdinalIgnoreCase)))
                 throw FileError;
             return _files.IsOrdinaryFile(path);
+        }
+
+        public bool IsDefinitelyAbsent(string path)
+        {
+            FileReads.Add(path);
+            if (FileError is not null &&
+                (FileErrorPath is null || path.StartsWith(FileErrorPath, StringComparison.OrdinalIgnoreCase)))
+                throw FileError;
+            return _files.IsDefinitelyAbsent(path);
         }
 
         public string ReadIdentity(string path)

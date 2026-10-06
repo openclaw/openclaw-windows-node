@@ -24,7 +24,9 @@ public class OpenClawGatewayClientTests
             bool tokenIsBootstrapToken = false,
             bool bootstrapPairAsNode = false,
             string gatewayUrl = "ws://localhost:18789",
-            string? identityPath = null)
+            string? identityPath = null,
+            bool persistHandshakeDeviceTokens = true,
+            DeviceTokenReceivedEventArgs? ephemeralOperatorCredential = null)
         {
             // Isolate test identities because other test classes can construct
             // gateway clients concurrently under the same AppData root.
@@ -36,7 +38,9 @@ public class OpenClawGatewayClientTests
                 new TestLogger(),
                 tokenIsBootstrapToken,
                 bootstrapPairAsNode,
-                identityPath);
+                identityPath,
+                persistHandshakeDeviceTokens: persistHandshakeDeviceTokens,
+                ephemeralOperatorCredential: ephemeralOperatorCredential);
         }
 
         public GatewayClientTestHelper(IOpenClawLogger logger)
@@ -1398,6 +1402,7 @@ public class OpenClawGatewayClientTests
                 "nonce": "old-socket",
                 "ts": 1785824000000
               }
+
             }
             """);
         await authorizationStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
@@ -1415,6 +1420,56 @@ public class OpenClawGatewayClientTests
                 System.Reflection.BindingFlags.NonPublic)!
             .GetValue(client)!;
         Assert.True(isConnected);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AuthenticatedSigningIdentity_ComesFromConnectNotOptionalHelloEcho(bool spoofEcho)
+    {
+        using var server = new LoopbackWebSocketServer();
+        await server.StartAsync();
+        var identityPath = CreateTempIdentityPath();
+        using var client = new OpenClawGatewayClient(server.WebSocketUrl, "synthetic",
+            new TestLogger(), identityPath: identityPath);
+        var handshake = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.HandshakeSucceeded += (_, _) => handshake.TrySetResult();
+        await client.ConnectAsync();
+        await server.WaitForAcceptedCountAsync(1, TimeSpan.FromSeconds(2));
+        await server.SendTextAsync("""{"type":"event","event":"connect.challenge","payload":{"nonce":"schema-fixture","ts":1785824000000}}""");
+        using var connect = JsonDocument.Parse(await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2)));
+        var signedId = connect.RootElement.GetProperty("params").GetProperty("device").GetProperty("id").GetString();
+        Assert.Null(client.AuthenticatedSigningDeviceId);
+        // HelloOkSchema + SnapshotSchema at upstream 63f1dec2 declare no device/deviceId echo.
+        var payload = System.Text.Json.Nodes.JsonNode.Parse("""
+            {"type":"hello-ok","protocol":4,"server":{"version":"2026.9.25","connId":"fixture"},
+             "features":{"methods":[],"events":[]},"snapshot":{"presence":[],"health":{},
+             "stateVersion":{"presence":0,"health":0},"uptimeMs":0,
+             "sessionDefaults":{"defaultAgentId":"main","mainKey":"main","mainSessionKey":"agent:main:main"}},
+             "auth":{"deviceToken":"authenticated-token","role":"operator","scopes":["operator.admin"]},
+             "policy":{"maxPayload":1048576,"maxBufferedBytes":1048576,"tickIntervalMs":30000}}
+            """)!;
+        if (spoofEcho) payload["deviceId"] = "not-the-signing-device";
+        await server.SendTextAsync(new System.Text.Json.Nodes.JsonObject
+        {
+            ["type"] = "res", ["id"] = connect.RootElement.GetProperty("id").GetString(),
+            ["ok"] = true, ["payload"] = payload,
+        }.ToJsonString());
+        await handshake.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.True(client.IsConnectedToGateway);
+        Assert.Equal("agent:main:main", client.MainSessionKey);
+        Assert.Equal(signedId, client.AuthenticatedSigningDeviceId);
+        if (!spoofEcho) Assert.Null(client.OperatorDeviceId);
+        else Assert.Equal("not-the-signing-device", client.OperatorDeviceId);
+        var replacementPath = CreateTempIdentityPath();
+        var replacement = new DeviceIdentity(replacementPath);
+        replacement.Initialize();
+        Assert.NotEqual(signedId, replacement.DeviceId);
+        File.Copy(Path.Combine(replacementPath, "device-key-ed25519.json"),
+            Path.Combine(identityPath, "device-key-ed25519.json"), true);
+        Assert.Equal(signedId, client.AuthenticatedSigningDeviceId);
+        await client.DisconnectAsync();
+        Assert.Null(client.AuthenticatedSigningDeviceId);
     }
 
     [Fact]
@@ -1493,6 +1548,55 @@ public class OpenClawGatewayClientTests
         Assert.True(handshakeSucceeded);
         Assert.Equal("operator-token", receivedToken?.Token);
         Assert.Equal("operator", receivedToken?.Role);
+    }
+
+    [Fact]
+    public void NonpersistentBootstrapHandshake_PublishesCredentialWithoutWritingIdentity()
+    {
+        using var directory = new TempDirectory();
+        var helper = new GatewayClientTestHelper(
+            tokenIsBootstrapToken: true, identityPath: directory.Path,
+            persistHandshakeDeviceTokens: false);
+        using var client = helper.Client;
+        var path = Path.Combine(directory.Path, "device-key-ed25519.json");
+        var before = File.ReadAllBytes(path);
+        DeviceTokenReceivedEventArgs? received = null;
+        client.DeviceTokenReceived += (_, token) => received = token;
+        helper.TrackPendingRequest("ephemeral-bootstrap", "connect");
+        helper.ProcessRawMessage("""
+            {"type":"res","id":"ephemeral-bootstrap","payload":{
+              "type":"hello-ok","protocol":4,
+              "auth":{"deviceToken":"issued-operator","role":"operator","scopes":["operator.read"]}
+            }}
+            """);
+        Assert.True(client.HasHandshakeSnapshot);
+        Assert.Equal("issued-operator", received?.Token);
+        Assert.Equal(before, File.ReadAllBytes(path));
+        Assert.Null(DeviceIdentity.TryReadStoredDeviceToken(directory.Path));
+    }
+
+    [Fact]
+    public void EphemeralOperatorCredential_UsesDeviceAuthAndScopesWithoutWritingIdentity()
+    {
+        using var directory = new TempDirectory();
+        var identity = new DeviceIdentity(directory.Path);
+        identity.Initialize();
+        var path = Path.Combine(directory.Path, "device-key-ed25519.json");
+        var before = File.ReadAllBytes(path);
+        var helper = new GatewayClientTestHelper(
+            tokenIsBootstrapToken: true, identityPath: directory.Path,
+            persistHandshakeDeviceTokens: false,
+            ephemeralOperatorCredential: new("issued-operator", ["operator.read"], "operator"));
+        using var client = helper.Client;
+        var auth = helper.BuildAuthPayload();
+        Assert.Equal("issued-operator", auth["deviceToken"]);
+        Assert.False(auth.ContainsKey("bootstrapToken"));
+        Assert.False(auth.ContainsKey("token"));
+        var scopesMethod = typeof(OpenClawGatewayClient).GetMethod("GetRequestedScopes",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        var scopes = Assert.IsType<string[]>(scopesMethod!.Invoke(client, ["operator"]));
+        Assert.Equal(["operator.read"], scopes);
+        Assert.Equal(before, File.ReadAllBytes(path));
     }
 
     [Theory]

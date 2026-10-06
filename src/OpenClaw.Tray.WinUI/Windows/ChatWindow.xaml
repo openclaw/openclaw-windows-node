@@ -16,7 +16,7 @@
         </Grid.RowDefinitions>
 
         <!-- Thin popup header -->
-        <Grid x:Name="ChatTitleBar" Grid.Row="0" Height="36" Padding="12,0">
+        <Grid x:Name="ChatTitleBar" Grid.Row="0" MinHeight="36" Padding="12,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
@@ -30,6 +30,11 @@
             </StackPanel>
 
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                <Button x:Name="DashboardButton" x:Uid="ChatDashboardButton"
+                        Content="Dashboard" Click="OnOpenDashboard"
+                        AutomationProperties.AutomationId="ChatFlyoutDashboardButton"
+                        MinHeight="28" Padding="8,0" VerticalAlignment="Center"
+                        Background="Transparent" BorderThickness="0" />
                 <Button x:Name="PopoutButton" Click="OnPopout"
                         AutomationProperties.Name="Open in Companion app"
                         Width="28" Height="28" Padding="0" Background="Transparent" BorderThickness="0">

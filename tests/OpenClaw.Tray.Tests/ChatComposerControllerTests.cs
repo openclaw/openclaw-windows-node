@@ -99,6 +99,28 @@ public sealed class ChatComposerControllerTests
     }
 
     [Fact]
+    public async Task SendAsync_ActiveTurn_AcceptedFollowUpClearsComposerAndAllowsAnotherDraft()
+    {
+        var (vm, controller, port, _) = MakeController();
+        vm.ApplyInputs(MakeInputs(revision: 2) with { TurnActive = true });
+        var attachment = new ChatAttachment { FileName = "notes.txt" };
+        vm.AddAttachments([attachment]);
+        vm.SetDraft("next message");
+
+        Assert.True(await controller.SendAsync());
+        Assert.Equal(string.Empty, vm.Draft);
+        Assert.Empty(vm.PendingAttachments);
+        Assert.False(vm.IsSending);
+        Assert.Equal(1, port.SendMessageCallCount);
+
+        vm.SetDraft("another message");
+        Assert.True(vm.CanSend);
+        Assert.True(await controller.SendAsync());
+        Assert.Equal(string.Empty, vm.Draft);
+        Assert.Equal(2, port.SendMessageCallCount);
+    }
+
+    [Fact]
     public async Task SendAsync_AttachmentOnlySubmission_SendsEmptyMessageAndClearsAttachment()
     {
         var (vm, controller, port, _) = MakeController();
@@ -251,6 +273,22 @@ public sealed class ChatComposerControllerTests
     }
 
     [Fact]
+    public void TrySelectChannel_RequiresLiveRootAndPreservesDraft()
+    {
+        var (vm, controller, _, _) = MakeController();
+        vm.SetDraft("Unsent sidebar draft");
+        Assert.False(controller.TrySelectChannel("agent:main:main"));
+        string? selected = null;
+        controller.BindSelectionHandoff(key => selected = key);
+        Assert.True(controller.TrySelectChannel("agent:research:thread"));
+        Assert.Equal("agent:research:thread", selected);
+        Assert.Equal("Unsent sidebar draft", vm.Draft);
+        controller.Dispose();
+        Assert.False(controller.TrySelectChannel("agent:main:main"));
+        Assert.Equal("agent:research:thread", selected);
+    }
+
+    [Fact]
     public async Task SendAsync_NewCommand_HandsCanonicalSessionKeyToBoundSelection()
     {
         var (vm, controller, port, _) = MakeController();
@@ -270,6 +308,119 @@ public sealed class ChatComposerControllerTests
         Assert.Equal(ChatLifecycleCommandKind.New, port.LastLifecycleCall!.Value.Command);
         Assert.Equal("new-session-key", handedOff);
         Assert.Equal(0, port.SendMessageCallCount);
+    }
+
+    [Fact]
+    public async Task NewNavigationReleasesSetupBindingBeforeAwaitAndReconnectCannotRestoreOldTarget()
+    {
+        var binding = new OpenClawTray.Presentation.SetupNativeChatBinding();
+        var request = new OpenClawTray.Presentation.SetupNativeNavigationRequest(new(
+            new(OpenClaw.SetupEngine.SetupCompletionIntent.CustodianOnboarding,
+                "test", "endpoint", "provider/model", "main", 1,
+                IdentityBinding: new string('A', 64), SessionKey: "session-1"),
+            new(OpenClaw.SetupEngine.SetupNativeDestination.Chat, "session-1")));
+        binding.Bind(request);
+        var presentation = new OpenClawTray.Presentation.SetupNativeChatPresentation();
+        presentation.Bind(request);
+        string mountedThread = "session-1";
+        var actions = new ChatComposerHostActions(null, null, null, null, null,
+            SessionNavigationStarting: () =>
+            {
+                binding.Invalidate();
+                presentation.Bind(binding.Request);
+            },
+            SessionSelected: key => mountedThread = key);
+        var (vm, controller, port, _) = MakeController(actions);
+        using (controller)
+        using (vm)
+        {
+            controller.BindSelectionHandoff(key =>
+            {
+                Assert.Null(binding.Request);
+                Assert.Equal("session-1", mountedThread);
+                vm.ApplyInputs(MakeInputs(2, MakeThread(key)));
+            });
+            vm.SetDraft("/new");
+            port.ExecuteLifecycleGate = new();
+            var send = controller.SendAsync();
+            Assert.False(send.IsCompleted);
+            Assert.Null(binding.Request);
+            port.ExecuteLifecycleGate.SetResult(new(ChatLifecycleCommandKind.New, true, "session-B"));
+            Assert.True(await send);
+            Assert.Equal("session-B", mountedThread);
+
+            // Any already-queued setup refresh must be inert after admitted navigation.
+            presentation.Evaluate(() => throw new InvalidOperationException("Must not check old owner"),
+                _ => throw new InvalidOperationException(), _ => throw new InvalidOperationException(),
+                () => Assert.Fail("Must not dispose B"), () => Assert.Fail("Must not hide B"));
+            vm.SetDraft("Send to the new conversation");
+            Assert.True(await controller.SendAsync());
+            Assert.Equal("session-B", port.LastSendMessageCall!.Value.ThreadId);
+        }
+    }
+
+    [Fact]
+    public async Task DisposedNewNavigationDoesNotNotifyHostSelection()
+    {
+        var selected = 0;
+        var actions = new ChatComposerHostActions(null, null, null, null, null,
+            SessionSelected: _ => selected++);
+        var (vm, controller, port, _) = MakeController(actions);
+        using (vm)
+        {
+            controller.BindSelectionHandoff(_ => Assert.Fail("Stale root handoff"));
+            vm.SetDraft("/new");
+            port.ExecuteLifecycleGate = new();
+            var send = controller.SendAsync();
+            controller.Dispose();
+            port.ExecuteLifecycleGate.SetResult(new(ChatLifecycleCommandKind.New, true, "session-B"));
+            Assert.False(await send);
+            Assert.Equal(0, selected);
+        }
+    }
+
+    [Fact]
+    public void SelectionDisposedDuringRootHandoffDoesNotNotifyHost()
+    {
+        var notifications = 0;
+        var actions = new ChatComposerHostActions(null, null, null, null, null,
+            SessionSelected: _ => notifications++);
+        var (vm, controller, _, _) = MakeController(actions);
+        using (vm)
+        {
+            controller.BindSelectionHandoff(_ => controller.Dispose());
+            Assert.False(controller.TrySelectChannel("session-B"));
+            Assert.Equal(0, notifications);
+        }
+    }
+
+    [Fact]
+    public async Task HiddenHostCancelsVoiceWithoutLosingDraftOrAcceptingLateTranscript()
+    {
+        var capture = new TaskCompletionSource<string?>();
+        var cleanedUp = new TaskCompletionSource();
+        CancellationToken token = default;
+        var actions = new ChatComposerHostActions(null, null,
+            (ct, _) => { token = ct; return capture.Task; }, null, null);
+        var (vm, controller, _, _) = MakeController(actions);
+        using (controller)
+        using (vm)
+        {
+            vm.SetDraft("Keep this draft");
+            var attachment = new ChatAttachment { FileName = "keep.png" };
+            vm.AddAttachments([attachment]);
+            controller.TestOnlyVoiceOperationCleanedUp = () => cleanedUp.TrySetResult();
+            controller.StartVoiceRecording();
+            Assert.True(vm.IsRecording);
+            controller.CancelVoiceRecording();
+            Assert.True(token.IsCancellationRequested);
+            Assert.False(vm.IsRecording);
+            capture.SetResult("Late hidden transcript");
+            await cleanedUp.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal("Keep this draft", vm.Draft);
+            Assert.Same(attachment, Assert.Single(vm.PendingAttachments));
+            Assert.False(controller.IsDisposed);
+        }
     }
 
     [Fact]

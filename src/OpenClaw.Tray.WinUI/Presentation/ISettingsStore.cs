@@ -92,6 +92,7 @@ public interface ISettingsEditor
     bool NodeTtsEnabled { set; }
     bool NodeSttEnabled { set; }
     bool NodeOllamaInferenceEnabled { set; }
+    bool EnableManagedLocalGatewayAutoRepair { set; }
 
     bool ScreenRecordingConsentGiven { set; }
     bool CameraRecordingConsentGiven { set; }
@@ -137,6 +138,7 @@ public sealed record SettingsSnapshot
     public bool NodeTtsEnabled { get; init; }
     public bool NodeSttEnabled { get; init; }
     public bool NodeOllamaInferenceEnabled { get; init; }
+    public bool EnableManagedLocalGatewayAutoRepair { get; init; }
     public string SttModelName { get; init; } = "base";
     public string TtsProvider { get; init; } = "";
     public string TtsPiperVoiceId { get; init; } = "";

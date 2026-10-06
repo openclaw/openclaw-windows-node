@@ -85,6 +85,15 @@ internal sealed record HubCommandContext(
 
 internal static class HubPageRegistry
 {
+    internal static string GetNativeSetupPage(OpenClaw.SetupEngine.SetupNativeDestination destination) => destination switch
+    {
+        OpenClaw.SetupEngine.SetupNativeDestination.Chat => "chat",
+        OpenClaw.SetupEngine.SetupNativeDestination.Skills => "skills",
+        OpenClaw.SetupEngine.SetupNativeDestination.WhatsApp or OpenClaw.SetupEngine.SetupNativeDestination.Telegram or
+            OpenClaw.SetupEngine.SetupNativeDestination.Channels => "channels",
+        _ => throw new ArgumentOutOfRangeException(nameof(destination)),
+    };
+
     public static ImmutableArray<string> CommandResourceKeys { get; } =
     [
         "Command_GoToConnection_Title",

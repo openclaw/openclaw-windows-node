@@ -124,12 +124,20 @@ internal sealed partial class ChatComposerController : IDisposable
     /// <summary>Handles a session-picker selection. Reuses the same handoff delegate
     /// the lifecycle "/new" flow uses to select a freshly created session. No-ops
     /// after disposal.</summary>
-    public void SelectChannel(string threadId)
-    {
-        if (_disposed)
-            return;
+    public void SelectChannel(string threadId) => TrySelectChannel(threadId);
 
-        _selectedSessionHandoff?.Invoke(threadId);
+    /// <summary>Returns false until the root is ready, or after disposal, so an
+    /// external host can retain its initial-selection handoff instead.</summary>
+    internal bool TrySelectChannel(string threadId)
+    {
+        if (_disposed || _selectedSessionHandoff is null)
+            return false;
+
+        _selectedSessionHandoff(threadId);
+        if (_disposed)
+            return false;
+        _hostActions.SessionSelected?.Invoke(threadId);
+        return true;
     }
 
     /// <summary>Full composer send workflow: local admission first, snapshot of draft
@@ -256,11 +264,16 @@ internal sealed partial class ChatComposerController : IDisposable
                     return false;
             }
 
+            if (command == ChatLifecycleCommandKind.New)
+                _hostActions.SessionNavigationStarting?.Invoke();
+            if (!StillLive())
+                return false;
+
             var result = await _port.ExecuteLifecycleCommandAsync(threadId, command).ConfigureAwait(true);
             if (!StillLive())
                 return false;
             if (result.Succeeded && result.NewSessionKey is { } sessionKey)
-                _selectedSessionHandoff?.Invoke(sessionKey);
+                TrySelectChannel(sessionKey);
             return result.Succeeded;
         }
 
@@ -460,6 +473,24 @@ internal sealed partial class ChatComposerController : IDisposable
             cancellation = _voiceCancellation;
         }
 
+        TryCancel(cancellation);
+    }
+
+    /// <summary>Suspends hidden-host capture without accepting a late transcript
+    /// or discarding the composer's existing draft and attachments.</summary>
+    internal void CancelVoiceRecording()
+    {
+        CancellationTokenSource? cancellation;
+        lock (_operationGate)
+        {
+            if (_disposed)
+                return;
+            cancellation = _voiceCancellation;
+            _voiceCancellation = null;
+            _voiceOperation++;
+            _voiceStopOperation = 0;
+            _vm.SetRecording(false);
+        }
         TryCancel(cancellation);
     }
 

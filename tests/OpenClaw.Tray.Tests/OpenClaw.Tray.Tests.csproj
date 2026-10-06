@@ -39,6 +39,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\IChatGatewayBridge.cs" Link="Chat\IChatGatewayBridge.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatSurfaceResolver.cs" Link="Chat\ChatSurfaceResolver.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\GatewayFixtureRenderObservation.cs" Link="Chat\GatewayFixtureRenderObservation.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\PendingVoiceActivation.cs" Link="Chat\PendingVoiceActivation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\DebugChatSurfaceOverrides.cs" Link="Chat\DebugChatSurfaceOverrides.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatEntryMetadata.cs" Link="Chat\ChatEntryMetadata.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatAssistantContentPresentation.cs" Link="Chat\ChatAssistantContentPresentation.cs" />
@@ -93,16 +94,34 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ActivationRoute.cs" Link="Services\ActivationRoute.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ActivationPlan.cs" Link="Services\ActivationPlan.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ActivationRouter.cs" Link="Services\ActivationRouter.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\StoreMigrationWorkflow.cs" Link="Services\StoreMigrationWorkflow.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\StoreMigrationListing.cs" Link="Services\StoreMigrationListing.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SetupDashboardHandoff.cs" Link="Services\SetupDashboardHandoff.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SetupDashboardHandoffStore.cs" Link="Services\SetupDashboardHandoffStore.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SetupDashboardLiveFacts.cs" Link="Services\SetupDashboardLiveFacts.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\GatewayDashboardLauncher.cs" Link="Services\GatewayDashboardLauncher.cs" />
+    <Compile Include="..\..\src\OpenClaw.SetupEngine\GatewayAiSetupCompletion.cs" Link="GatewayAiSetupCompletion.cs" />
+    <Compile Include="..\..\src\OpenClaw.SetupEngine\GatewayAiSetupModels.cs" Link="GatewayAiSetupModels.cs" />
+    <Compile Include="..\..\src\OpenClaw.SetupEngine\NativeLocalAiGatewayTarget.cs" Link="NativeLocalAiGatewayTarget.cs" />
+    <Compile Include="..\..\src\OpenClaw.SetupEngine\SetupNativeCompletion.cs" Link="SetupNativeCompletion.cs" />
+    <Compile Include="..\..\src\OpenClaw.SetupEngine\SetupNativeCompletionTiming.cs" Link="SetupNativeCompletionTiming.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SetupNativeHandoffLauncher.cs" Link="Services\SetupNativeHandoffLauncher.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\SetupNativeNavigationRequest.cs" Link="Presentation\SetupNativeNavigationRequest.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\SetupNativeChatPresentation.cs" Link="Presentation\SetupNativeChatPresentation.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\SetupNativeSkills.cs" Link="Presentation\SetupNativeSkills.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SettingsChangeEffects.cs" Link="Services\SettingsChangeEffects.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SettingsChangeCoordinator.cs" Link="Services\SettingsChangeCoordinator.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AppShutdownPlan.cs" Link="Services\AppShutdownPlan.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AppShutdownCoordinator.cs" Link="Services\AppShutdownCoordinator.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\LocalAiGatewayDistroResolver.cs" Link="Services\LocalAiGatewayDistroResolver.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\LocalAiGatewayProviderCoordinator.cs" Link="Services\LocalAiGatewayProviderCoordinator.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\LocalAiGatewayConfigurationTransport.cs" Link="Services\LocalAiGatewayConfigurationTransport.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\LocalAiGatewayRpcConfigurationTransport.cs" Link="Services\LocalAiGatewayRpcConfigurationTransport.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SettingsDataExtensions.cs" Link="Services\SettingsDataExtensions.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ConfigEditorModel.cs" Link="Services\ConfigEditorModel.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\JsonDiffFormatter.cs" Link="Services\JsonDiffFormatter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AppState.cs" Link="Services\AppState.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AgentCreationService.cs" Link="Services\AgentCreationService.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\Logger.cs" Link="Services\Logger.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DiagnosticsJsonlService.cs" Link="Services\DiagnosticsJsonlService.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DiagnosticsExportSanitizer.cs" Link="Services\DiagnosticsExportSanitizer.cs" />
@@ -111,6 +130,9 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SettingsManager.cs" Link="Services\SettingsManager.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AutoStartReconciliation.cs" Link="Services\AutoStartReconciliation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AutoStartSettingsApplier.cs" Link="Services\AutoStartSettingsApplier.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SetupStartupPolicy.cs" Link="Services\SetupStartupPolicy.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\NativeRestartAdmission.cs" Link="Services\NativeRestartAdmission.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\NativeRestartRecoveryStore.cs" Link="Services\NativeRestartRecoveryStore.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\OpenTelemetryEndpointProtocol.cs" Link="Services\OpenTelemetryEndpointProtocol.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\OpenTelemetryEndpointOptions.cs" Link="Services\OpenTelemetryEndpointOptions.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\OpenTelemetryLogPolicy.cs" Link="Services\OpenTelemetryLogPolicy.cs" />
@@ -128,6 +150,8 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ManagedLocalGatewayRepairAdapters.cs" Link="Services\ManagedLocalGatewayRepairAdapters.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\GatewayConnectorInterfaces.cs" Link="Services\GatewayConnectorInterfaces.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\GatewayDirectConnectService.cs" Link="Services\GatewayDirectConnectService.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SetupNativeConnectionHost.cs" Link="Services\SetupNativeConnectionHost.cs" />
+    <Compile Include="..\..\src\OpenClaw.SetupEngine\SetupNativeConnection.cs" Link="SetupNativeConnection.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ActivityStreamService.cs" Link="Services\ActivityStreamService.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AsyncListLoadingState.cs" Link="Services\AsyncListLoadingState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\CronRunHistoryDisplay.cs" Link="Services\CronRunHistoryDisplay.cs" />
@@ -161,6 +185,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\TrayTooltipFormatter.cs" Link="Helpers\TrayTooltipFormatter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\GatewayDashboardUrlBuilder.cs" Link="Helpers\GatewayDashboardUrlBuilder.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\CommandCenterTextHelper.cs" Link="Helpers\CommandCenterTextHelper.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\ChatReadinessClient.cs" Link="Helpers\ChatReadinessClient.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\StatusBadgeIconFactory.cs" Link="Helpers\StatusBadgeIconFactory.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\Win32FilePickerHelper.cs" Link="Helpers\Win32FilePickerHelper.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\AppIdentity.cs" Link="AppIdentity.cs" />
@@ -214,11 +239,17 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\LocalAiPageViewModel.cs" Link="Presentation\LocalAiPageViewModel.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\ISettingsStore.cs" Link="Presentation\ISettingsStore.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\SettingsStore.cs" Link="Presentation\SettingsStore.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\SettingsPersistenceNotification.cs" Link="Presentation\SettingsPersistenceNotification.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\SetupSettingsWriter.cs" Link="Presentation\SetupSettingsWriter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\SettingsAppInfoProjection.cs" Link="Presentation\SettingsAppInfoProjection.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\TrayMenuPresentation.cs" Link="Presentation\TrayMenuPresentation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\ConnectionTogglePresenter.cs" Link="Presentation\ConnectionTogglePresenter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\TrayMenuPresenter.cs" Link="Presentation\TrayMenuPresenter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\HubPageRegistry.cs" Link="Presentation\HubPageRegistry.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceNavigation.cs" Link="Presentation\WorkspaceNavigation.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\ChatVisibilityPolicy.cs" Link="Presentation\ChatVisibilityPolicy.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceProjection.cs" Link="Presentation\WorkspaceProjection.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\WorkspaceIdentitySource.cs" Link="Services\WorkspaceIdentitySource.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppNotificationInfoBarPresenter.cs" Link="Presentation\AppNotificationInfoBarPresenter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppServiceContext.cs" Link="Presentation\AppServiceContext.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppServiceRegistration.cs" Link="Presentation\AppServiceRegistration.cs" />

@@ -62,8 +62,10 @@ public sealed class SetupAssetPublishTests
         }
 
         Assert.True(process.ExitCode == 0, $"{await stdout}\n{await stderr}");
-        var images = Directory.GetFiles(sourceDirectory, "*.png", SearchOption.AllDirectories);
+        var images = Directory.GetFiles(sourceDirectory, "*", SearchOption.AllDirectories);
         Assert.NotEmpty(images);
+        Assert.Contains(images, path => path.EndsWith("ProviderIcon-claude.svg", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(images, path => path.EndsWith("ProviderIcons" + Path.DirectorySeparatorChar + "NOTICE.md", StringComparison.OrdinalIgnoreCase));
         foreach (var source in images)
         {
             var relativePath = Path.GetRelativePath(sourceDirectory, source);

@@ -77,16 +77,33 @@ public static class SetupReviewSummaryBuilder
             LocalModelCatalog.Find(config.LocalAi.SelectedModelId) ?? LocalModelCatalog.Default;
         LocalInferenceRunProfile? localAiProfile =
             LocalModelCatalog.FindProfile(localAiModel, config.LocalAi.SelectedProfileId);
-        string[] localAiCommands = config.LocalAi.Enabled
-            ?
-            [
+        string[] localAiCommands;
+        if (config.LocalAi.Enabled)
+        {
+            var commands = new List<string>
+            {
                 "download verified llama-server + CUDA runtime for Windows",
                 $"download {localAiModel.Weights.RelativePath} from Hugging Face revision " +
                     ((HuggingFaceRevisionSource)localAiModel.Weights.Source).RevisionSha,
-                $"llama-server router on dynamic 127.0.0.1 port; model loads on first request",
-                $"openclaw provider llamacpp -> /v1; primary llamacpp/{localAiModel.Id}",
-            ]
-            : [];
+            };
+            // Additional pinned artifacts (a DFlash draft checkpoint) are
+            // separate downloads the user is consenting
+            // to alongside the primary weights -- list each one explicitly
+            // rather than letting the consent screen understate what's fetched.
+            foreach (PinnedArtifact artifact in LocalModelCatalog.AdditionalArtifacts(localAiModel))
+            {
+                commands.Add(
+                    $"download {artifact.RelativePath} from Hugging Face revision " +
+                        ((HuggingFaceRevisionSource)artifact.Source).RevisionSha);
+            }
+            commands.Add("llama-server router on dynamic 127.0.0.1 port; model loads on first request");
+            commands.Add($"openclaw provider llamacpp -> /v1; primary llamacpp/{localAiModel.Id}");
+            localAiCommands = commands.ToArray();
+        }
+        else
+        {
+            localAiCommands = [];
+        }
 
         var summary = new SetupReviewSummary(
             DistroTitle: $"Install {baseDistro.Replace('-', ' ')} in WSL",

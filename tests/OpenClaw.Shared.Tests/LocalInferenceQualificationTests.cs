@@ -298,7 +298,7 @@ public class LocalInferenceQualificationTests
     }
 
     [Theory]
-    [InlineData(RuntimeArchitecture.X64, "NVIDIA RTX Spark N1X", LlamaRuntimeCatalog.X64RuntimeId)]
+    [InlineData(RuntimeArchitecture.X64, "NVIDIA GeForce RTX 5080", LlamaRuntimeCatalog.X64RuntimeId)]
     [InlineData(RuntimeArchitecture.Arm64, "NVIDIA GeForce RTX 5090", LlamaRuntimeCatalog.Arm64RuntimeId)]
     public void Evaluate_RoutesRuntimeByArchitectureWithoutGpuSkuPairing(
         RuntimeArchitecture architecture,
@@ -313,6 +313,265 @@ public class LocalInferenceQualificationTests
         Assert.Equal(LocalModelCatalog.Qwen38_27BModelId, result.Plan?.Model.Id);
         Assert.Equal(LocalModelCatalog.IntermediateContextTokens, result.Plan?.Profile.ContextTokens);
         Assert.Equal(KvCachePrecision.Q8_0, result.Plan?.Profile.KeyCachePrecision);
+    }
+
+    // Boundaries verified against real hardware: a real 48GB-SKU RTX Spark
+    // reads ~45.25 GiB (48,585,498,624 bytes) via cuMemGetInfo, matching the
+    // "Gb48" case below almost exactly.
+    [Theory]
+    [InlineData(30, null)] // 32GB SKU: no local AI recommended
+    [InlineData(45, LocalModelCatalog.Qwen35B_Q4KSModelId)] // 48GB SKU -> Qwen3.6-35B-A3B (Q4_K_S)
+    [InlineData(62, LocalModelCatalog.Qwen38_27BModelId)] // 64GB SKU -> 28GB recipe
+    [InlineData(120, LocalModelCatalog.Qwen38_27B_DFlashModelId)] // 128GB SKU -> 48GB recipe (default)
+    public void Evaluate_RoutesRtxSparkByFixedSkuTable(long totalGiB, string? expectedModelId)
+    {
+        LocalInferenceEligibilityResult result = LocalInferenceEligibility.Evaluate(
+            Hardware(RuntimeArchitecture.Arm64, Gpu("NVIDIA RTX Spark N1X", "GPU-spark", totalGiB, totalGiB)));
+
+        if (expectedModelId is null)
+        {
+            Assert.Equal(LocalInferenceEligibilityStatus.Unsupported, result.Status);
+            Assert.Equal(LocalInferenceEligibilityFailureCode.CatalogSelectionFailed, result.FailureCode);
+            Assert.Equal(LocalInferenceSelectionFailureCode.NotRecommendedForSku, result.SelectionFailureCode);
+            Assert.Null(result.Plan);
+        }
+        else
+        {
+            Assert.Equal(LocalInferenceEligibilityStatus.Eligible, result.Status);
+            Assert.Equal(expectedModelId, result.Plan?.Model.Id);
+        }
+    }
+
+    [Fact]
+    public void Evaluate_Rtx5090WithSparkSizedMemoryIgnoresSkuTable()
+    {
+        // A non-Spark GPU that happens to have Spark-sized memory must still
+        // take the generic priority/fit-test path -- SKU routing is keyed
+        // strictly off the RTX Spark name, not memory size.
+        LocalInferenceEligibilityResult result = LocalInferenceEligibility.Evaluate(
+            Hardware(RuntimeArchitecture.X64, Gpu("NVIDIA GeForce RTX 5090", "GPU-5090", totalGiB: 45, freeGiB: 45)));
+
+        Assert.Equal(LocalInferenceEligibilityStatus.Eligible, result.Status);
+        Assert.Equal(LocalModelCatalog.Qwen38_27BModelId, result.Plan?.Model.Id);
+    }
+
+    [Fact]
+    public void Evaluate_SparkRecipeIsBoundToTheSparkGpuOnMixedHosts()
+    {
+        // The SKU table answers "what should THIS Spark run", so the recipe and the
+        // GPU that runs it must be the same adapter. A discrete GPU with more free
+        // memory must not win the eligibility ranking and end up running a recipe
+        // that was chosen for the Spark.
+        LocalInferenceEligibilityResult result = LocalInferenceEligibility.Evaluate(
+            Hardware(
+                RuntimeArchitecture.Arm64,
+                Gpu("NVIDIA RTX Spark N1X", "GPU-spark", totalGiB: 45, freeGiB: 45),
+                Gpu("NVIDIA GeForce RTX 5090", "GPU-5090", totalGiB: 80, freeGiB: 80)));
+
+        Assert.Equal(LocalInferenceEligibilityStatus.Eligible, result.Status);
+        Assert.Equal(LocalModelCatalog.Qwen35B_Q4KSModelId, result.Plan?.Model.Id);
+        Assert.Equal("GPU-spark", result.SelectedGpu?.StableId);
+        Assert.Equal("GPU-spark", result.Plan?.BoundGpuStableId);
+    }
+
+    [Fact]
+    public void Evaluate_UnrecommendedSparkSkuStillQualifiesADiscreteGpuOnTheSameHost()
+    {
+        // A 32 GB Spark has no recommended model, but that is a statement about the
+        // Spark, not about the host. An eligible discrete GPU beside it must still
+        // qualify through the generic path instead of the whole host being rejected.
+        LocalInferenceEligibilityResult result = LocalInferenceEligibility.Evaluate(
+            Hardware(
+                RuntimeArchitecture.X64,
+                Gpu("NVIDIA RTX Spark N1X", "GPU-spark32", totalGiB: 30, freeGiB: 30),
+                Gpu("NVIDIA GeForce RTX 5090", "GPU-5090", totalGiB: 32, freeGiB: 32)));
+
+        Assert.Equal(LocalInferenceEligibilityStatus.Eligible, result.Status);
+        Assert.Equal(LocalModelCatalog.Qwen38_27BModelId, result.Plan?.Model.Id);
+        Assert.Equal("GPU-5090", result.SelectedGpu?.StableId);
+        Assert.Null(result.Plan?.BoundGpuStableId);
+    }
+
+    [Fact]
+    public void Evaluate_UnrecommendedSparkSkuAloneStillReportsNotRecommended()
+    {
+        LocalInferenceEligibilityResult result = LocalInferenceEligibility.Evaluate(
+            Hardware(RuntimeArchitecture.Arm64, Gpu("NVIDIA RTX Spark N1X", "GPU-spark32", 30, 30)));
+
+        Assert.Equal(LocalInferenceEligibilityStatus.Unsupported, result.Status);
+        Assert.Equal(
+            LocalInferenceSelectionFailureCode.NotRecommendedForSku,
+            result.SelectionFailureCode);
+    }
+
+    [Theory]
+    [InlineData(45)]
+    [InlineData(62)]
+    [InlineData(120)]
+    public void Evaluate_SparkRecommendationRoundTrippedBySetupKeepsItsSkuProfile(long totalGiB)
+    {
+        // Normal setup persists the recommended model id and passes it back as an
+        // explicit request, so the recommendation must resolve identically both ways.
+        // Otherwise the SKU's pinned profile (the 64 GB tier's reduced context is not
+        // the largest that merely fits) is silently replaced by the generic fit-test.
+        HostHardwareInfo hardware = Hardware(
+            RuntimeArchitecture.Arm64,
+            Gpu("NVIDIA RTX Spark N1X", "GPU-spark", totalGiB, totalGiB));
+
+        LocalInferenceEligibilityResult recommended = LocalInferenceEligibility.Evaluate(hardware);
+        LocalInferenceEligibilityResult roundTripped = LocalInferenceEligibility.Evaluate(
+            hardware,
+            recommended.Plan!.Model.Id);
+
+        Assert.Equal(recommended.Plan!.Model.Id, roundTripped.Plan?.Model.Id);
+        Assert.Equal(recommended.Plan!.Profile.Id, roundTripped.Plan?.Profile.Id);
+        Assert.Equal("GPU-spark", roundTripped.Plan?.BoundGpuStableId);
+        Assert.Equal(recommended.SelectedGpu?.StableId, roundTripped.SelectedGpu?.StableId);
+    }
+
+    [Fact]
+    public void Evaluate_ExplicitNonRecommendedModelOnSparkStillUsesTheGenericFitTest()
+    {
+        // A real user override must not be forced onto the SKU recipe.
+        HostHardwareInfo hardware = Hardware(
+            RuntimeArchitecture.Arm64,
+            Gpu("NVIDIA RTX Spark N1X", "GPU-spark", 62, 62));
+
+        LocalInferenceEligibilityResult result = LocalInferenceEligibility.Evaluate(
+            hardware,
+            LocalModelCatalog.Qwen27BModelId);
+
+        Assert.Equal(LocalModelCatalog.Qwen27BModelId, result.Plan?.Model.Id);
+        Assert.Null(result.Plan?.BoundGpuStableId);
+    }
+
+    [Fact]
+    public void EvaluateForConfiguredAvailability_KeepsAValidSavedModelOn32GbSpark()
+    {
+        // A 32 GB Spark has no recommended default, but it still runs a model that was
+        // already configured. Rerunning setup must not switch Local AI off on that machine.
+        HostHardwareInfo hardware = Hardware(
+            RuntimeArchitecture.Arm64, Gpu("NVIDIA RTX Spark N1X", "GPU-spark32", 30, 30));
+
+        LocalInferenceEligibilityResult result =
+            LocalInferenceEligibility.EvaluateForConfiguredAvailability(
+                hardware,
+                LocalModelCatalog.Qwen38_27BModelId);
+
+        Assert.True(result.CanInstall);
+        Assert.Equal(LocalModelCatalog.Qwen38_27BModelId, result.Plan?.Model.Id);
+        Assert.NotNull(result.SelectedGpu);
+    }
+
+    [Fact]
+    public void EvaluateForConfiguredAvailability_PreservesTheRecoveryPinnedModelAndProfileOn32GbSpark()
+    {
+        // Recovery pins the configured model and reuses its resolved plan. On a SKU with no
+        // recommended default that selection must survive the availability gate with the same
+        // model and the same profile the explicit path resolves, so a recovery rerun does not
+        // silently move an existing install to a different context or KV precision.
+        HostHardwareInfo hardware = Hardware(
+            RuntimeArchitecture.Arm64, Gpu("NVIDIA RTX Spark N1X", "GPU-spark32", 30, 30));
+        const string pinnedModelId = LocalModelCatalog.Qwen38_27BModelId;
+
+        LocalInferenceEligibilityResult availability =
+            LocalInferenceEligibility.EvaluateForConfiguredAvailability(hardware, pinnedModelId);
+        LocalInferenceEligibilityResult pinned =
+            LocalInferenceEligibility.Evaluate(hardware, pinnedModelId);
+
+        Assert.True(availability.CanInstall);
+        Assert.Equal(pinnedModelId, availability.Plan?.Model.Id);
+        Assert.Equal(pinned.Plan?.Profile.Id, availability.Plan?.Profile.Id);
+        Assert.Equal(pinned.Plan?.Profile.ContextTokens, availability.Plan?.Profile.ContextTokens);
+        Assert.Equal(pinned.Plan?.Profile.KeyCachePrecision, availability.Plan?.Profile.KeyCachePrecision);
+        Assert.Equal(pinned.SelectedGpu?.StableId, availability.SelectedGpu?.StableId);
+    }
+
+    [Fact]
+    public void EvaluateForConfiguredAvailability_WithNoSavedModelStillReportsNotRecommended()
+    {
+        HostHardwareInfo hardware = Hardware(
+            RuntimeArchitecture.Arm64, Gpu("NVIDIA RTX Spark N1X", "GPU-spark32", 30, 30));
+
+        LocalInferenceEligibilityResult result =
+            LocalInferenceEligibility.EvaluateForConfiguredAvailability(hardware, configuredModelId: null);
+
+        Assert.False(result.CanInstall);
+        Assert.Equal(
+            LocalInferenceSelectionFailureCode.NotRecommendedForSku,
+            result.SelectionFailureCode);
+    }
+
+    [Fact]
+    public void EvaluateForConfiguredAvailability_UnknownSavedModelReportsThatModelsFailure()
+    {
+        // The reason must name what is wrong with the saved selection, not fall back to the
+        // SKU's generic no-recommendation message, or setup offers no path to recovery.
+        HostHardwareInfo hardware = Hardware(
+            RuntimeArchitecture.Arm64, Gpu("NVIDIA RTX Spark N1X", "GPU-spark32", 30, 30));
+
+        LocalInferenceEligibilityResult result =
+            LocalInferenceEligibility.EvaluateForConfiguredAvailability(hardware, "no-such-model-id");
+
+        Assert.False(result.CanInstall);
+        Assert.Equal(LocalInferenceSelectionFailureCode.UnknownModel, result.SelectionFailureCode);
+        Assert.Equal(
+            LocalInferenceUnavailableReasonKind.UnknownModel,
+            LocalInferenceEligibilityDiagnostics.GetUnavailableReason(result).Kind);
+    }
+
+    [Fact]
+    public void EvaluateForConfiguredAvailability_OversizedSavedModelReportsCapacityNotSkuPolicy()
+    {
+        // A saved model that no longer fits must report the capacity shortfall, including the
+        // model name and the required and detected memory the setup page renders.
+        HostHardwareInfo hardware = Hardware(
+            RuntimeArchitecture.Arm64, Gpu("NVIDIA RTX Spark N1X", "GPU-sparkSmall", 12, 12));
+
+        LocalInferenceEligibilityResult result =
+            LocalInferenceEligibility.EvaluateForConfiguredAvailability(
+                hardware,
+                LocalModelCatalog.Qwen38_27BModelId);
+
+        Assert.False(result.CanInstall);
+        Assert.Equal(
+            LocalInferenceEligibilityFailureCode.InsufficientGpuMemory,
+            result.FailureCode);
+        LocalInferenceUnavailableReason reason =
+            LocalInferenceEligibilityDiagnostics.GetUnavailableReason(result);
+        Assert.Equal(LocalInferenceUnavailableReasonKind.InsufficientGpuMemory, reason.Kind);
+        Assert.False(string.IsNullOrWhiteSpace(reason.ModelDisplayName));
+    }
+
+    [Fact]
+    public void EvaluateForConfiguredAvailability_LeavesNonSparkDevicesUnchanged()
+    {
+        HostHardwareInfo hardware = Hardware(
+            RuntimeArchitecture.X64, Gpu("NVIDIA GeForce RTX 5090", "GPU-5090", 32, 32));
+
+        LocalInferenceEligibilityResult withSaved =
+            LocalInferenceEligibility.EvaluateForConfiguredAvailability(
+                hardware, LocalModelCatalog.Qwen27BModelId);
+        LocalInferenceEligibilityResult device = LocalInferenceEligibility.Evaluate(hardware);
+
+        Assert.True(withSaved.CanInstall);
+        Assert.Equal(device.Plan?.Model.Id, withSaved.Plan?.Model.Id);
+    }
+
+    [Fact]
+    public void Evaluate_HugeNonSparkGpuStillDefaultsToTheRecommendedModel()
+    {
+        // A priority-0, IsExplicitAlternative model must never win the generic
+        // default/fallback pick regardless of available memory. The guard in
+        // SelectDefaultModelAndProfile keeps that true as the catalog grows.
+        LocalInferenceEligibilityResult result = LocalInferenceEligibility.Evaluate(
+            Hardware(RuntimeArchitecture.X64, Gpu("NVIDIA arbitrary huge adapter", "GPU-huge", totalGiB: 200, freeGiB: 200)));
+
+        Assert.Equal(LocalInferenceEligibilityStatus.Eligible, result.Status);
+        Assert.Equal(LocalModelCatalog.Qwen38_27BModelId, result.Plan?.Model.Id);
+        Assert.DoesNotContain(
+            LocalModelCatalog.Models,
+            m => m.RecommendationPriority == 0 && m.IsExplicitAlternative && m.Id == result.Plan!.Model.Id);
     }
 
     [Fact]
@@ -565,4 +824,163 @@ public class LocalInferenceQualificationTests
             CudaMajorVersion: 13,
             StableId: stableId);
 
+    /// <summary>
+    /// Every Qwen3.6-35B-A3B recipe in the 2026-09-30 set runs MTP with n=2, not the
+    /// catalog-wide default of 3. Both offered quantizations have to agree with it.
+    /// </summary>
+    [Theory]
+    [InlineData(LocalModelCatalog.Qwen35BModelId)]
+    [InlineData(LocalModelCatalog.Qwen35B_Q4KSModelId)]
+    public void Qwen35BRecipes_UseTwoSpeculativeDraftTokens(string modelId)
+    {
+        LocalModelInfo model = LocalModelCatalog.Find(modelId)!;
+
+        Assert.Equal(SpeculativeDecodingMode.DraftMtp, model.Recipe.SpeculativeDecoding);
+        Assert.Equal(2, model.Recipe.SpeculativeDraftMaxTokens);
+    }
+
+    /// <summary>
+    /// The retired 48GB-SKU quantization was only ever installed at that SKU's fixed
+    /// 98,304-token tier. Retiring it must keep that profile, not collapse it onto the
+    /// pre-profile native/F16 set, or an existing receipt stops resolving its profile.
+    /// </summary>
+    [Fact]
+    public void RetiredSpark48GbModel_KeepsTheProfileItWasInstalledUnder()
+    {
+        LocalModelInfo? retired = LocalModelCatalog.FindInstalled(LocalModelCatalog.Qwen35B_IQ4XSModelId);
+
+        Assert.NotNull(retired);
+        Assert.True(LocalModelCatalog.IsLegacy(LocalModelCatalog.Qwen35B_IQ4XSModelId));
+
+        LocalInferenceRunProfile profile = Assert.Single(LocalModelCatalog.GetProfiles(retired));
+        Assert.Equal(LocalModelCatalog.RtxSpark48GbContextTokens, profile.ContextTokens);
+    }
+
+    [Fact]
+    public void InstalledRetiredSpark48GbModel_RemainsEligibleWithoutRestoringFreshSelection()
+    {
+        HostHardwareInfo hardware = Hardware(
+            RuntimeArchitecture.Arm64,
+            Gpu("NVIDIA RTX Spark N1X", "GPU-spark", 45, 45));
+
+        LocalInferenceEligibilityResult fresh = LocalInferenceEligibility.Evaluate(
+            hardware,
+            LocalModelCatalog.Qwen35B_IQ4XSModelId);
+        LocalInferenceEligibilityResult installed = LocalInferenceEligibility.EvaluateInstalled(
+            hardware,
+            LocalModelCatalog.Qwen35B_IQ4XSModelId);
+
+        Assert.Equal(LocalInferenceSelectionFailureCode.UnknownModel, fresh.SelectionFailureCode);
+        Assert.True(installed.CanInstall);
+        Assert.Equal(LocalModelCatalog.Qwen35B_IQ4XSModelId, installed.Plan!.Model.Id);
+        Assert.Equal(LocalModelCatalog.RtxSpark48GbContextTokens, installed.Plan.Profile.ContextTokens);
+    }
+
+    /// <summary>
+    /// The 48GB SKU is picked from a fixed table, so no capacity fit-test backstops it.
+    /// Pin the recipe's required memory so a future quantization change cannot silently
+    /// grow past what a 48GB-SKU Spark (~48.6e9 bytes visible) can actually hold.
+    /// </summary>
+    [Fact]
+    public void Spark48GbRecipe_RequiredMemoryStaysWithinTheSku()
+    {
+        LocalInferenceEligibilityResult result = LocalInferenceEligibility.Evaluate(
+            Hardware(RuntimeArchitecture.Arm64, Gpu("NVIDIA RTX Spark N1X", "GPU-spark", 45, 45)));
+
+        Assert.Equal(LocalModelCatalog.Qwen35B_Q4KSModelId, result.Plan!.Model.Id);
+        Assert.Equal(28_971_620_640L, result.RequiredTotalMemoryBytes);
+
+        // 45 GiB (48.32e9) under-states what a real 48GB-SKU Spark reports through
+        // cuMemGetInfo (48.72e9 measured), so a fit here is the conservative check that
+        // keeps this test honest if the pinned figure above is ever raised.
+        Assert.NotNull(result.DetectedTotalMemoryBytes);
+        Assert.True(result.RequiredTotalMemoryBytes <= result.DetectedTotalMemoryBytes);
+    }
+
+    [Theory]
+    [InlineData("b10655-cuda13-x64", "b10655")]
+    [InlineData("b10655-cuda13-arm64", "b10655")]
+    [InlineData("b11026-cuda13-x64", "b11026")]
+    [InlineData("b11026-cuda13-arm64", "b11026")]
+    public void FindInstalled_ResolvesRetiredRuntimeSoExistingInstallsStayLaunchable(
+        string runtimeId,
+        string expectedReleaseTag)
+    {
+        // An installation recorded before the runtime bump must keep resolving its own
+        // receipt, otherwise updating the app strands it until setup repairs it.
+        LlamaRuntimeVariant? installed = LlamaRuntimeCatalog.FindInstalled(runtimeId);
+
+        Assert.NotNull(installed);
+        Assert.Equal(runtimeId, installed.Id);
+        Assert.Equal(expectedReleaseTag, installed.ReleaseTag);
+        Assert.False(string.Equals(LlamaRuntimeCatalog.ReleaseTag, installed.ReleaseTag, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void RetiredRuntimeIsNeverOfferedForNewInstalls()
+    {
+        Assert.DoesNotContain(
+            LlamaRuntimeCatalog.Variants,
+            variant => variant.ReleaseTag != LlamaRuntimeCatalog.ReleaseTag);
+        Assert.All(
+            LlamaRuntimeCatalog.Variants,
+            variant => Assert.Equal(LlamaRuntimeCatalog.ReleaseTag, variant.ReleaseTag));
+    }
+
+    [Fact]
+    public void CurrentRuntimesPinEveryRequiredFileBySizeAndDigest()
+    {
+        foreach (LlamaRuntimeVariant runtime in LlamaRuntimeCatalog.Variants)
+        {
+            Assert.NotEmpty(runtime.RequiredFiles);
+            Assert.Equal(
+                runtime.RequiredFiles.Count,
+                runtime.RequiredFiles.Select(file => file.FileName).Distinct(StringComparer.Ordinal).Count());
+            Assert.Contains(
+                runtime.RequiredFiles,
+                file => file.FileName == LlamaRuntimeCatalog.ServerImplementationLibraryName);
+            Assert.Contains(
+                runtime.RequiredFiles,
+                file => file.FileName == (runtime.Architecture == RuntimeArchitecture.X64
+                    ? "ggml-cpu-x64.dll"
+                    : "ggml-cpu.dll"));
+            Assert.All(runtime.RequiredFiles, file =>
+            {
+                Assert.True(file.SizeBytes > 0);
+                Assert.Equal(64, file.Sha256.Value.Length);
+            });
+        }
+    }
+
+    [Fact]
+    public void FindInstalled_RejectsUnknownRuntimeId()
+    {
+        Assert.Null(LlamaRuntimeCatalog.FindInstalled("b00000-cuda13-x64"));
+        Assert.Null(LlamaRuntimeCatalog.FindInstalled(null));
+    }
+
+    /// <summary>
+    /// The receipt published alpha.78 actually writes, read back off an x64 install of
+    /// that build. Both halves have to resolve together: the reconciler looks the
+    /// runtime up by <c>runtimeId</c> and the model up by <c>modelCatalogId</c>, and
+    /// rejects the install outright if either lookup comes back empty. Pruning one of
+    /// these entries would strand every published install behind a recipe-mismatch
+    /// error, so pin the pair rather than the two ids separately.
+    /// </summary>
+    [Fact]
+    public void PublishedAlphaReceipt_StillResolvesAfterTheRuntimeBump()
+    {
+        LlamaRuntimeVariant? runtime = LlamaRuntimeCatalog.FindInstalled("b11026-cuda13-x64");
+        LocalModelInfo? model = LocalModelCatalog.FindInstalled(LocalModelCatalog.Qwen38_27BModelId);
+
+        Assert.NotNull(runtime);
+        Assert.Equal("b11026", runtime.ReleaseTag);
+        Assert.NotNull(model);
+
+        // The model is still the current recommendation for a dGPU box, so only the
+        // runtime half is an upgrade. That asymmetry is the point: the install is
+        // reusable as-is, and the 16.5 GB weights never need re-acquiring.
+        Assert.NotEqual(LlamaRuntimeCatalog.ReleaseTag, runtime.ReleaseTag);
+        Assert.False(LocalModelCatalog.IsLegacy(LocalModelCatalog.Qwen38_27BModelId));
+    }
 }

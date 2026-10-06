@@ -317,6 +317,22 @@ Assert-Contains `
     -Message "CI cancellation must apply only to pull_request runs."
 
 $classificationJob = Get-JobBlock "change-classification"
+$classificationGuard = [regex]::Match(
+    $classificationJob,
+    '(?ms)^        if \(\$impact\.classification -notin @\([^\r\n]+\)\) \{\r?\n.*?^        \}')
+if (-not $classificationGuard.Success) {
+    throw "Classification output must retain its fail-closed admission guard."
+}
+$guard = [scriptblock]::Create($classificationGuard.Value)
+foreach ($classification in @("docs_only", "fast_only", "targeted", "full", "", "unknown")) {
+    $impact = [pscustomobject]@{ classification = $classification }
+    $accepted = $true
+    try { & $guard } catch { $accepted = $false }
+    $expected = $classification -in @("docs_only", "fast_only", "targeted", "full")
+    if ($accepted -ne $expected) {
+        throw "Workflow classification guard expected '$classification' accepted=$expected."
+    }
+}
 foreach ($token in @(
         "fetch-depth: 0",
         "./scripts/Get-CiChangeClassification.ps1",
@@ -338,6 +354,14 @@ foreach ($token in @(
 }
 
 $fastValidationJob = Get-JobBlock "fast-validation"
+$triageStep = Get-StepBlock -Text $fastValidationJob -Name "Test repository triage automation and dashboard"
+Assert-Contains -Text $triageStep `
+    -Expected "run: node --test .github/scripts/repository-triage.test.cjs .github/extensions/openclaw-triage-dashboard/triage-state.test.mjs" `
+    -Message "The exact fast-only tooling suite must run in fast-validation."
+foreach ($token in @("if:", "continue-on-error:")) {
+    Assert-NotContains -Text $triageStep -Unexpected $token `
+        -Message "Fast-only tooling tests must not be conditional or tolerate failures."
+}
 foreach ($token in @(
         "Ensure .squad stays untracked",
         "node --test .github/scripts/repository-triage.test.cjs",
@@ -347,6 +371,8 @@ foreach ($token in @(
         "./scripts/test-ci-change-classifier.ps1",
         "./scripts/test-ci-gate-results.ps1",
         "./scripts/test-ci-workflow-contract.ps1",
+        "./scripts/Test-InstallerScriptCompiles.ps1 -RequireCompiler",
+        "choco install innosetup -y --no-progress",
         "./scripts/test-stable-correction-release-validator.ps1"
     )) {
     Assert-Contains `
@@ -356,6 +382,12 @@ foreach ($token in @(
 }
 
 $proofJob = Get-JobBlock "proof-pool-contracts"
+foreach ($job in @($fastValidationJob, $proofJob)) {
+    $jobHeader = ($job -split '(?m)^    steps:\s*$', 2)[0]
+    if ($jobHeader -match '(?m)^    (?:if|needs|continue-on-error):') {
+        throw "Fast validation and proof-pool contracts must remain unconditional required jobs."
+    }
+}
 foreach ($token in @(
         "./scripts/Get-CiProofPoolRegressionDecision.ps1",
         "steps.proof_pool_regression.outcome != 'success' || steps.proof_pool_regression.outputs.run != 'false'",
@@ -507,11 +539,22 @@ foreach ($token in @(
 $uiJob = Get-JobBlock "ui-tests"
 foreach ($token in @(
         "Install WindowsAppRuntime",
-        "-Filter Category!=Accessibility",
         "--filter Category=Accessibility",
         "Verify DevBuild identity marker"
     )) {
     Assert-Contains -Text $uiJob -Expected $token -Message "UI lane is missing '$token'."
+}
+
+$trayUiStep = Get-StepBlock -Text $uiJob -Name "Run Tray UI Tests"
+Assert-Contains -Text $trayUiStep -Expected '-Filter "Category!=Accessibility&Category!=NativeOnboardingProof"' `
+    -Message "Tray UI tests must exclude accessibility and native-onboarding proof cases."
+Assert-Contains -Text $trayUiStep -Expected "timeout-minutes: 15" `
+    -Message "Tray UI tests must have an outer timeout rather than consuming the six-hour job limit."
+Assert-Contains -Text $trayUiStep -Expected "-HangTimeoutSeconds 300" `
+    -Message "Tray UI tests must collect the interrupted test sequence on a five-minute hang."
+foreach ($token in @('"--blame-hang"', '"--blame-hang-timeout"', '"--blame-hang-dump-type"', '"none"')) {
+    Assert-Contains -Text $runner -Expected $token `
+        -Message "CI test runner is missing hang diagnostic argument '$token'."
 }
 
 $runnerUses = [regex]::Matches(
@@ -667,6 +710,12 @@ foreach ($token in @(
         '-MsixRevision $env:DEV_MSIX_REVISION',
         '-MsixOutputDirectory "$env:RUNNER_TEMP\openclaw-dev-appx"',
         '.\scripts\Export-DevMsixArtifact.ps1',
+        '.\scripts\Export-MigrationTestMsix.ps1 -Architecture',
+        'id: migration-switch',
+        "if: steps.migration-switch.outputs.enabled == 'true'",
+        'name: openclaw-msix-dev-migration-test-${{ matrix.architecture }}',
+        'artifacts/msix-migration-test/${{ matrix.architecture }}/OpenClaw-MigrationTest-${{ matrix.architecture }}.msix',
+        'OpenClaw-MigrationTest.cer',
         'MSIX_VERSION_INFO: ${{ needs.reserve-msix-version.outputs.versionInfo || needs.metadata.outputs.msixVersionInfo }}',
         'MSIX_SOURCE_VERSION: ${{ needs.reserve-msix-version.outputs.sourceVersion || needs.metadata.outputs.msixSourceVersion }}',
         '-ExpectedVersion $info.packageBaseVersion',
@@ -781,6 +830,14 @@ foreach ($token in @(
         "if: `${{ always() }}",
         "needs: [change-classification, fast-validation, proof-pool-contracts, metadata, core-tests, tray-tests, ui-tests, setup-e2e, revocation-e2e, network-e2e, build-x64, build-arm64, build-msix, build-msix-bundle]",
         "./scripts/Assert-CiGateResults.ps1",
+        "CLASSIFICATION_RESULT: `${{ needs.change-classification.result }}",
+        "CLASSIFICATION: `${{ needs.change-classification.outputs.classification }}",
+        "FAST_VALIDATION_RESULT: `${{ needs.fast-validation.result }}",
+        "PROOF_POOL_CONTRACTS_RESULT: `${{ needs.proof-pool-contracts.result }}",
+        "-ClassificationResult `$env:CLASSIFICATION_RESULT",
+        "-Classification `$env:CLASSIFICATION",
+        "-FastValidationResult `$env:FAST_VALIDATION_RESULT",
+        "-ProofPoolContractsResult `$env:PROOF_POOL_CONTRACTS_RESULT",
         "-FullRequired `$env:FULL_REQUIRED",
         "-CoreRequired `$env:CORE_REQUIRED",
         "-TrayRequired `$env:TRAY_REQUIRED",
@@ -799,10 +856,28 @@ foreach ($token in @(
     Assert-Contains -Text $ciGateJob -Expected $token -Message "Stable CI Gate is missing '$token'."
 }
 
+$releasePreparationJob = Get-JobBlock "prepare-release-assets"
+foreach ($token in @(
+        "needs: [change-classification, metadata, reserve-msix-version, proof-pool-contracts, core-tests, tray-tests, build-x64, build-arm64]",
+        "needs.reserve-msix-version.result == 'success'",
+        "needs.proof-pool-contracts.result == 'success'",
+        "needs.core-tests.result == 'success'",
+        "needs.tray-tests.result == 'success'",
+        "group: openclaw-windows-node-release-preparation",
+        "name: Upload prepared release assets",
+        "name: openclaw-release-assets",
+        "compression-level: 0",
+        "if-no-files-found: error"
+    )) {
+    Assert-Contains -Text $releasePreparationJob -Expected $token -Message "Release preparation is missing '$token'."
+}
+Assert-NotContains -Text $releasePreparationJob -Unexpected "ci-gate" -Message "Release preparation must overlap the long CI tail."
+
 $releaseJob = Get-JobBlock "release"
 foreach ($token in @(
-        "needs: [change-classification, metadata, reserve-msix-version, build-x64, build-arm64, build-msix-bundle, ci-gate]",
+        "needs: [change-classification, metadata, reserve-msix-version, prepare-release-assets, build-msix-bundle, ci-gate]",
         "needs.reserve-msix-version.result == 'success'",
+        "needs.prepare-release-assets.result == 'success'",
         "needs.build-msix-bundle.result == 'success'",
         "needs.ci-gate.result == 'success'",
         "needs.metadata.outputs.semVer",
@@ -811,24 +886,40 @@ foreach ($token in @(
     )) {
     Assert-Contains -Text $releaseJob -Expected $token -Message "Tag release is missing '$token'."
 }
-$msixDownload = Get-StepBlock -Text $releaseJob -Name 'Download Store MSIX release artifacts'
-$msixStage = Get-StepBlock -Text $releaseJob -Name 'Stage Store MSIX release assets'
-foreach ($step in @($msixDownload, $msixStage)) {
-    Assert-NotContains -Text $step -Unexpected 'if:' -Message "Every tag release must publish Store MSIX assets."
+$preparedAssetsDownload = Get-StepBlock -Text $releaseJob -Name 'Download prepared release assets'
+Assert-Contains -Text $preparedAssetsDownload -Expected 'name: openclaw-release-assets' -Message 'Publication must consume the prepared signed assets.'
+Assert-Contains -Text $preparedAssetsDownload -Expected 'path: .' -Message 'Prepared assets must retain the release action paths.'
+$msixX64Download = Get-StepBlock -Text $releaseJob -Name 'Download x64 signed Dev MSIX release artifact'
+$msixArm64Download = Get-StepBlock -Text $releaseJob -Name 'Download ARM64 signed Dev MSIX release artifact'
+$msixTrust = Get-StepBlock -Text $releaseJob -Name 'Trust signed Dev MSIX certificates for validation'
+$msixStage = Get-StepBlock -Text $releaseJob -Name 'Stage signed Dev MSIX release assets'
+$msixUntrust = Get-StepBlock -Text $releaseJob -Name 'Remove trusted Dev MSIX certificates'
+foreach ($step in @($msixX64Download, $msixArm64Download, $msixTrust, $msixStage)) {
+    Assert-NotContains -Text $step -Unexpected 'if:' -Message "Every tag release must publish signed Dev MSIX assets."
 }
-Assert-Contains -Text $msixDownload -Expected 'pattern: openclaw-msix-store-unsigned-*' -Message "Tag releases must use unsigned Store inputs."
-Assert-NotContains -Text $msixDownload -Unexpected 'openclaw-msix-dev-' -Message "Dev packages must stay workflow-only."
+Assert-Contains -Text $msixX64Download -Expected 'name: openclaw-msix-dev-x64' -Message 'Tag releases must use the signed x64 Dev artifact.'
+Assert-Contains -Text $msixArm64Download -Expected 'name: openclaw-msix-dev-arm64' -Message 'Tag releases must use the signed ARM64 Dev artifact.'
+foreach ($step in @($msixX64Download, $msixArm64Download)) {
+    Assert-NotContains -Text $step -Unexpected 'openclaw-msix-store-unsigned-' -Message 'Unsigned Store packages must stay workflow-only.'
+}
 Assert-Contains -Text $msixStage -Expected '-ExpectedSourceCommit $env:GITHUB_SHA' -Message "Release staging must bind artifacts to the tag's source."
 Assert-Contains -Text $msixStage -Expected '-Version $env:RELEASE_VERSION' -Message "Release staging must validate the release version."
+Assert-Contains -Text $msixStage -Expected '-ExpectedRevision $env:DEV_MSIX_REVISION' -Message 'Release staging must bind the Dev package revision.'
+Assert-Contains -Text $msixStage -Expected '-ExpectedWorkflowRunId $env:GITHUB_RUN_ID' -Message 'Release staging must bind artifacts to the publishing run.'
 Assert-Contains -Text $msixStage -Expected '-VersionInfoPath "$env:RUNNER_TEMP\openclaw-msix-version.json"' -Message 'Release staging must require its exact reserved MSIX version.'
 Assert-Contains -Text $msixStage -Expected 'MSIX_VERSION_INFO: ${{ needs.reserve-msix-version.outputs.versionInfo }}' -Message 'Release staging must not accept a preview.'
+Assert-Contains -Text $msixTrust -Expected 'Import-Certificate' -Message 'Release staging must trust the public Dev signer before Authenticode validation.'
+Assert-Contains -Text $msixTrust -Expected '$existing.Count -eq 0' -Message 'Release staging must preserve pre-existing certificate trust.'
+Assert-Contains -Text $msixTrust -Expected 'Add-Content -LiteralPath $thumbprintsPath' -Message 'Release staging must record each imported certificate before continuing.'
+Assert-Contains -Text $msixUntrust -Expected 'if: ${{ always() }}' -Message 'Release staging must clean up imported trust after failures.'
+Assert-Contains -Text $msixUntrust -Expected 'Remove-Item -Force' -Message 'Release staging must remove only its recorded temporary trust.'
 $createRelease = Get-StepBlock -Text $releaseJob -Name 'Create Release'
 Assert-Contains -Text $createRelease -Expected '${{ steps.msix_release.outputs.files }}' -Message "Every tag release must add validated MSIX release files."
-Assert-Contains -Text $createRelease -Expected '${{ steps.msix_release.outputs.notes }}' -Message "Every tag release must include MSIX submission notes."
+Assert-Contains -Text $createRelease -Expected '${{ steps.msix_release.outputs.notes }}' -Message "Every tag release must include signed Dev MSIX notes."
 Assert-Contains -Text $createRelease -Expected 'fail_on_unmatched_files: true' -Message "Missing release files must fail publication."
 Assert-Contains -Text $createRelease -Expected "make_latest: `${{ needs.metadata.outputs.isPrerelease == 'true' && 'false' || 'true' }}" -Message "Alpha releases must not become Latest."
 Assert-Contains -Text $workflow -Expected "./scripts/test-msix-ci-artifacts.ps1" -Message "Fast validation must exercise the Dev artifact contracts."
-Assert-Contains -Text $workflow -Expected "./scripts/test-msix-alpha-release.ps1" -Message "Fast validation must exercise Store release staging."
+Assert-Contains -Text $workflow -Expected "./scripts/test-dev-msix-release.ps1" -Message "Fast validation must exercise signed Dev release staging."
 Assert-Contains -Text $workflow -Expected "./scripts/test-msix-versioning.ps1" -Message 'Fast validation must exercise allocation races and boundaries.'
 Assert-Contains -Text $workflow -Expected "./scripts/test-msix-preview-source-version.ps1" -Message 'Fast validation must exercise latest-stable MSIX preview selection.'
 
@@ -869,11 +960,36 @@ try {
     $unrelatedPath = Join-Path $tempRoot "docs\unrelated.md"
     New-Item -ItemType Directory -Path (Split-Path -Parent $unrelatedPath) -Force | Out-Null
     Set-Content -LiteralPath $unrelatedPath -Value "baseline"
+    $toolingPaths = @(
+        ".github/scripts/repository-triage.cjs",
+        ".github/scripts/repository-triage.test.cjs"
+    )
+    foreach ($toolingPath in $toolingPaths) {
+        $fullPath = Join-Path $tempRoot $toolingPath
+        New-Item -ItemType Directory -Path (Split-Path -Parent $fullPath) -Force | Out-Null
+        Set-Content -LiteralPath $fullPath -Value "tooling baseline"
+    }
 
     & git -C $tempRoot add .
     & git -C $tempRoot commit --quiet -m "baseline"
     if ($LASTEXITCODE -ne 0) {
         throw "Could not commit temporary baseline."
+    }
+
+    foreach ($toolingPath in $toolingPaths) {
+        $baseSha = (& git -C $tempRoot rev-parse HEAD).Trim()
+        Add-Content -LiteralPath (Join-Path $tempRoot $toolingPath) -Value "tooling change"
+        & git -C $tempRoot add .
+        & git -C $tempRoot commit --quiet -m "tooling-only change"
+        if ($LASTEXITCODE -ne 0) { throw "Could not commit tooling-only fixture." }
+        $headSha = (& git -C $tempRoot rev-parse HEAD).Trim()
+        $impact = (& (Join-Path $repoRootPath "scripts\Get-CiChangeClassification.ps1") `
+            -EventName pull_request -BaseSha $baseSha -HeadSha $headSha -RepoRoot $tempRoot) | ConvertFrom-Json
+        $decision = & $selectorPath -EventName pull_request `
+            -BaseSha $baseSha -HeadSha $headSha -RepoRoot $tempRoot
+        if ($impact.classification -ne "fast_only" -or $decision -ne "false") {
+            throw "Tooling-only diff must be fast_only without changing proof-boundary selection."
+        }
     }
 
     foreach ($triggerPath in $triggerPaths) {
@@ -891,6 +1007,21 @@ try {
             -RepoRoot $tempRoot
         if ($decision -ne "true") {
             throw "Proof-pool trigger '$triggerPath' produced decision '$decision'."
+        }
+        # Keep the same base so the next diff includes the boundary and tooling.
+        foreach ($toolingPath in $toolingPaths) {
+            Add-Content -LiteralPath (Join-Path $tempRoot $toolingPath) -Value "mixed tooling change"
+        }
+        & git -C $tempRoot add .
+        & git -C $tempRoot commit --quiet -m "mix tooling with $triggerPath"
+        if ($LASTEXITCODE -ne 0) { throw "Could not commit mixed boundary fixture." }
+        $headSha = (& git -C $tempRoot rev-parse HEAD).Trim()
+        $mixedDecision = & $selectorPath -EventName pull_request `
+            -BaseSha $baseSha -HeadSha $headSha -RepoRoot $tempRoot
+        $mixedImpact = (& (Join-Path $repoRootPath "scripts\Get-CiChangeClassification.ps1") `
+            -EventName pull_request -BaseSha $baseSha -HeadSha $headSha -RepoRoot $tempRoot) | ConvertFrom-Json
+        if ($mixedDecision -ne "true" -or $mixedImpact.classification -ne "full") {
+            throw "Tooling mixed with proof boundary '$triggerPath' must run full validation and proof regressions."
         }
     }
 

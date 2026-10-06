@@ -16,7 +16,7 @@ namespace OpenClaw.Shared.Mxc;
 ///   reports a usable isolation tier on this host. This is the source of truth
 ///   for "does this machine support the sandbox".</item>
 /// <item><see cref="IsWxcExecResolvable"/> — wxc-exec.exe found in the shipped tray output layout or via override.</item>
-/// <item><see cref="IsIsolationSessionAvailable"/> — requires a supported host plus IsolationProxy.exe in System32.</item>
+/// <item><see cref="IsIsolationSessionAvailable"/>: requires an explicit native isolation-session capability verdict.</item>
 /// </list>
 /// </remarks>
 public sealed class MxcAvailability
@@ -43,6 +43,12 @@ public sealed class MxcAvailability
 
     public bool IsAppContainerAvailable { get; }
     public bool IsIsolationSessionAvailable { get; }
+    /// <summary>
+    /// Validated <c>probes.isolationSessionAvailable</c> value reported by
+    /// <c>wxc-exec --probe</c>, or null when missing, invalid, or unavailable.
+    /// This describes OS capability, not a provisioned isolation session.
+    /// </summary>
+    public bool? IsolationSessionCapability { get; }
     public bool IsWxcExecResolvable { get; }
     public string? WxcExecPath { get; }
     public bool ProbeSuppressedBySkuGate { get; }
@@ -140,10 +146,12 @@ public sealed class MxcAvailability
         string? isolationTier = null,
         bool needsDaclAugmentation = false,
         IReadOnlyList<string>? warnings = null,
-        bool probeSuppressedBySkuGate = false)
+        bool probeSuppressedBySkuGate = false,
+        bool? isolationSessionCapability = null)
     {
         IsAppContainerAvailable = isAppContainerAvailable;
         IsIsolationSessionAvailable = isIsolationSessionAvailable;
+        IsolationSessionCapability = isolationSessionCapability;
         IsWxcExecResolvable = isWxcExecResolvable;
         WxcExecPath = wxcExecPath;
         UnsupportedReasons = unsupportedReasons;
@@ -230,12 +238,7 @@ public sealed class MxcAvailability
         if (!isAppContainerSupported)
             reasons.Add(probe.FailureReason ?? "This Windows host does not support the MXC sandbox (wxc-exec --probe reported no usable tier).");
 
-        // isolation_session additionally requires Feature_IsoBrokerSessionApis on the OS
-        // and IsolationProxy.exe in System32. We currently only check file presence.
-        var isolationProxyPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.System),
-            "IsolationProxy.exe");
-        var isIsolationSessionSupported = isAppContainerSupported && File.Exists(isolationProxyPath);
+        var isIsolationSessionSupported = isAppContainerSupported && probe.IsolationSessionCapability == true;
 
         var probeErrored = probe.Outcome == MxcProbeOutcome.ProbeError;
 
@@ -257,7 +260,8 @@ public sealed class MxcAvailability
             probeErrored: probeErrored,
             isolationTier: probe.Tier,
             needsDaclAugmentation: probe.NeedsDaclAugmentation,
-            warnings: probe.Warnings);
+            warnings: probe.Warnings,
+            isolationSessionCapability: probe.IsolationSessionCapability);
     }
 
     internal static bool? DetectWindowsServerSku()
@@ -422,7 +426,22 @@ public sealed class MxcAvailability
 
             var needsDacl = d.ValueKind == JsonValueKind.True;
 
-            return new MxcProbeResult(MxcProbeOutcome.Supported, tierEl.GetString(), needsDacl, warnings, null);
+            bool? isolationSessionCapability = null;
+            if (root.TryGetProperty("probes", out var probes)
+                && probes.ValueKind == JsonValueKind.Object
+                && probes.TryGetProperty("isolationSessionAvailable", out var session)
+                && session.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            {
+                isolationSessionCapability = session.GetBoolean();
+            }
+
+            return new MxcProbeResult(
+                MxcProbeOutcome.Supported,
+                tierEl.GetString(),
+                needsDacl,
+                warnings,
+                null,
+                isolationSessionCapability);
         }
         catch (JsonException ex)
         {
@@ -649,7 +668,8 @@ internal sealed record MxcProbeResult(
     string? Tier,
     bool NeedsDaclAugmentation,
     IReadOnlyList<string> Warnings,
-    string? FailureReason)
+    string? FailureReason,
+    bool? IsolationSessionCapability = null)
 {
     /// <summary>Convenience: true only for <see cref="MxcProbeOutcome.Supported"/>.</summary>
     public bool Supported => Outcome == MxcProbeOutcome.Supported;

@@ -64,18 +64,20 @@ public sealed partial class LlamaServerInferenceClient : ILlamaServerInferenceCl
     private const int MaximumErrorBytes = 8 * 1024;
     private const int MaximumErrorDetailLength = 400;
     private readonly HttpClient _client;
+    private readonly Func<string>? _getApiKey;
 
-    public LlamaServerInferenceClient() : this(new SocketsHttpHandler
+    public LlamaServerInferenceClient(Func<string>? getApiKey = null) : this(new SocketsHttpHandler
     {
         UseProxy = false,
         AllowAutoRedirect = false,
         ConnectTimeout = TimeSpan.FromSeconds(3),
-    })
+    }, getApiKey)
     {
     }
 
-    internal LlamaServerInferenceClient(HttpMessageHandler handler)
+    internal LlamaServerInferenceClient(HttpMessageHandler handler, Func<string>? getApiKey = null)
     {
+        _getApiKey = getApiKey;
         _client = new HttpClient(handler ?? throw new ArgumentNullException(nameof(handler)), disposeHandler: true)
         {
             Timeout = Timeout.InfiniteTimeSpan,
@@ -114,6 +116,9 @@ public sealed partial class LlamaServerInferenceClient : ILlamaServerInferenceCl
                 stream = false,
             }),
         };
+        var apiKey = _getApiKey is null ? null : LocalAiApiCredentialStore.RequireApiKey(_getApiKey());
+        if (apiKey is not null)
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
 
         using HttpResponseMessage response = await _client.SendAsync(
                 request,
@@ -122,7 +127,7 @@ public sealed partial class LlamaServerInferenceClient : ILlamaServerInferenceCl
             .ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
-            string? serverError = await ReadErrorDetailAsync(response.Content, cancellationToken)
+            string? serverError = await ReadErrorDetailAsync(response.Content, cancellationToken, apiKey)
                 .ConfigureAwait(false);
             throw new LlamaServerInferenceException(
                 serverError is null
@@ -247,7 +252,8 @@ public sealed partial class LlamaServerInferenceClient : ILlamaServerInferenceCl
     /// </summary>
     private static async Task<string?> ReadErrorDetailAsync(
         HttpContent content,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? apiKey)
     {
         byte[] payload;
         try
@@ -270,11 +276,11 @@ public sealed partial class LlamaServerInferenceClient : ILlamaServerInferenceCl
                 document.RootElement.TryGetProperty("error", out JsonElement error))
             {
                 if (error.ValueKind == JsonValueKind.String)
-                    return Sanitize(error.GetString());
+                    return Sanitize(error.GetString(), apiKey);
                 if (error.ValueKind == JsonValueKind.Object)
                 {
-                    return Sanitize(ReadStringProperty(error, "message"))
-                        ?? Sanitize(ReadStringProperty(error, "type"));
+                    return Sanitize(ReadStringProperty(error, "message"), apiKey)
+                        ?? Sanitize(ReadStringProperty(error, "type"), apiKey);
                 }
             }
         }
@@ -292,13 +298,15 @@ public sealed partial class LlamaServerInferenceClient : ILlamaServerInferenceCl
             ? property.GetString()
             : null;
 
-    private static string? Sanitize(string? value)
+    private static string? Sanitize(string? value, string? apiKey)
     {
         if (string.IsNullOrWhiteSpace(value))
             return null;
         if (VerbosePayloadRecordPattern().IsMatch(value))
             return null;
 
+        if (apiKey is not null)
+            value = value.Replace(apiKey, "[REDACTED]", StringComparison.Ordinal);
         value = TokenSanitizer.SanitizeLogMessage(value);
         var builder = new StringBuilder(value.Length);
         bool pendingSpace = false;

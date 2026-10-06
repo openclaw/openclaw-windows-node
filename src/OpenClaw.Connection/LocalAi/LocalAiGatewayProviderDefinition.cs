@@ -20,6 +20,7 @@ public static class LocalAiGatewayProviderDefinition
     private const string ApiType = "openai-completions";
     public const string CliRedactedApiKey = "__OPENCLAW_REDACTED__";
     public const string ProviderPath = "models.providers.llamacpp";
+    public const string ProviderModelsPath = ProviderPath + ".models";
     public const string PrimaryModelPath = "agents.defaults.model.primary";
     public const int ProviderTimeoutSeconds = 300;
     public const int MaximumOutputTokens = 8_192;
@@ -35,7 +36,7 @@ public static class LocalAiGatewayProviderDefinition
     /// so the API key may be either its written value or the documented
     /// redaction marker; every routing and model field must still match.
     /// </summary>
-    public static bool MatchesProviderJson(string providerJson, LocalAiResolvedInstall install)
+    public static bool MatchesProviderJson(string providerJson, LocalAiResolvedInstall install, string? apiKey = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(providerJson);
         ArgumentNullException.ThrowIfNull(install);
@@ -43,7 +44,7 @@ public static class LocalAiGatewayProviderDefinition
         try
         {
             using JsonDocument actual = JsonDocument.Parse(providerJson);
-            using JsonDocument expected = JsonDocument.Parse(BuildProviderJson(install));
+            using JsonDocument expected = JsonDocument.Parse(BuildProviderJson(install, apiKey ?? "llama-local"));
             if (JsonEquals(actual.RootElement, expected.RootElement))
                 return true;
 
@@ -94,9 +95,10 @@ public static class LocalAiGatewayProviderDefinition
         return JsonElement.DeepEquals(left, right);
     }
 
-    private static string BuildProviderJson(LocalAiResolvedInstall install, string apiKey)
+    public static string BuildProviderJson(LocalAiResolvedInstall install, string apiKey)
     {
         ArgumentNullException.ThrowIfNull(install);
+        _ = LocalAiApiCredentialStore.RequireApiKey(apiKey);
         LocalModelInfo model = GetQualifiedModel(install);
         Uri endpoint = install.Endpoint
             ?? throw new InvalidOperationException("The verified Local AI endpoint is required.");

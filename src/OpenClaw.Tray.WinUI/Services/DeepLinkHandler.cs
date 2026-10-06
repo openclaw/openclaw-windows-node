@@ -12,6 +12,12 @@ public static class DeepLinkHandler
     [SupportedOSPlatform("windows")]
     public static void RegisterUriScheme()
     {
+        if (AppIdentity.IsIsolated)
+        {
+            Logger.Info("URI scheme registration skipped for an isolated app instance.");
+            return;
+        }
+
         // MSIX-packaged apps declare the protocol in Package.appxmanifest — skip registry
         if (IsPackagedApp())
         {

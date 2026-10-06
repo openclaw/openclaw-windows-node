@@ -7,6 +7,23 @@ namespace OpenClawTray.Services;
 
 internal static class AutoStartSettingsApplier
 {
+    internal static async Task ApplyExplicitAsync(SemaphoreSlim mutationGate, bool requested,
+        Func<bool> readPreference, Func<bool, Task> apply, CancellationToken ct)
+    {
+        await mutationGate.WaitAsync(ct);
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            if (readPreference() != requested)
+                throw new InvalidOperationException("The startup preference changed. Review it before continuing.");
+            await apply(requested);
+            ct.ThrowIfCancellationRequested();
+            if (readPreference() != requested)
+                throw new InvalidOperationException("The startup preference changed while Windows was applying it.");
+        }
+        finally { mutationGate.Release(); }
+    }
+
     internal static async Task ApplyLatestAsync(
         SemaphoreSlim mutationGate,
         Func<bool> readPreference,

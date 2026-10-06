@@ -1,5 +1,6 @@
 using OpenClaw.Shared;
 using System.Runtime.Versioning;
+using System.Security.Cryptography;
 
 namespace OpenClaw.Connection.Migration;
 
@@ -67,7 +68,9 @@ public sealed class StoreMigrationAdoptionPreparationCoordinator(
             logger.Info("Store migration preparation is blocked by an active runtime or migration operation.");
             return new(StoreMigrationPreparationState.InnoRunning);
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
+                                          InvalidDataException or InvalidOperationException or
+                                          FormatException or CryptographicException)
         {
             logger.Error($"Store migration preparation failed: {exception.Message}");
             return new(StoreMigrationPreparationState.ValidationFailed);

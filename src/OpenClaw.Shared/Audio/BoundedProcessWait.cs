@@ -12,6 +12,8 @@ internal sealed record BoundedProcessResult(
 /// Waits for a short-lived child process and its redirected output using one deadline.
 /// Timeout and cancellation cleanup is best effort, bounded, and observes any
 /// read failures caused by closing inherited pipe handles.
+/// Takes ownership of the process. Callers must not dispose it: a cleanup worker
+/// may still need it after the bounded wait returns.
 /// </summary>
 internal static class BoundedProcessWait
 {
@@ -21,46 +23,75 @@ internal static class BoundedProcessWait
     internal static async Task<BoundedProcessResult> WaitAsync(
         Process process,
         TimeSpan timeout,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        TaskScheduler? cleanupScheduler = null)
     {
         ArgumentNullException.ThrowIfNull(process);
-        if (timeout <= TimeSpan.Zero)
-            throw new ArgumentOutOfRangeException(nameof(timeout), "Timeout must be positive.");
-
-        var stdoutTask = StartDrain(process, standardOutput: true);
-        var stderrTask = StartDrain(process, standardOutput: false);
-        var exitTask = process.WaitForExitAsync(CancellationToken.None);
-        var completionTask = Task.WhenAll(exitTask, stdoutTask, stderrTask);
-
-        using var timeoutSource = new CancellationTokenSource(timeout);
-        using var deadlineSource = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken,
-            timeoutSource.Token);
-
+        Task killTask = Task.CompletedTask;
         try
         {
-            await completionTask.WaitAsync(deadlineSource.Token).ConfigureAwait(false);
+            if (timeout <= TimeSpan.Zero)
+                throw new ArgumentOutOfRangeException(nameof(timeout), "Timeout must be positive.");
+
+            var stdoutTask = StartDrain(process, standardOutput: true);
+            var stderrTask = StartDrain(process, standardOutput: false);
+            var exitTask = process.WaitForExitAsync(CancellationToken.None);
+            var completionTask = Task.WhenAll(exitTask, stdoutTask, stderrTask);
+            ObserveFault(completionTask);
+
+            using var timeoutSource = new CancellationTokenSource(timeout);
+            using var deadlineSource = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                timeoutSource.Token);
+
+            try
+            {
+                await completionTask.WaitAsync(deadlineSource.Token).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                killTask = Task.Factory.StartNew(
+                    () => TryKillTree(process),
+                    CancellationToken.None,
+                    TaskCreationOptions.DenyChildAttach,
+                    cleanupScheduler ?? TaskScheduler.Default);
+                await CleanupAsync(process, killTask, exitTask, stdoutTask, stderrTask).ConfigureAwait(false);
+
+                if (ex is OperationCanceledException &&
+                    (cancellationToken.IsCancellationRequested || timeoutSource.IsCancellationRequested))
+                {
+                    if (cancellationToken.IsCancellationRequested)
+                        throw new OperationCanceledException(cancellationToken);
+
+                    throw new TimeoutException($"Process did not exit and drain output within {timeout.TotalMilliseconds:F0}ms.");
+                }
+
+                throw;
+            }
+
+            return new BoundedProcessResult(
+                process.ExitCode,
+                await stdoutTask.ConfigureAwait(false),
+                await stderrTask.ConfigureAwait(false));
         }
-        catch (OperationCanceledException) when (
-            cancellationToken.IsCancellationRequested || timeoutSource.IsCancellationRequested)
+        finally
         {
-            await CleanupAsync(process, exitTask, stdoutTask, stderrTask).ConfigureAwait(false);
-
-            if (cancellationToken.IsCancellationRequested)
-                throw new OperationCanceledException(cancellationToken);
-
-            throw new TimeoutException($"Process did not exit and drain output within {timeout.TotalMilliseconds:F0}ms.");
+            // Both the waiter and the worker must release the process before
+            // disposal. Awaiting this here would make cancellation unbounded.
+            ObserveFault(DisposeAfterKillAsync(process, killTask));
         }
-        catch
+    }
+
+    private static async Task DisposeAfterKillAsync(Process process, Task killTask)
+    {
+        try
         {
-            await CleanupAsync(process, exitTask, stdoutTask, stderrTask).ConfigureAwait(false);
-            throw;
+            await killTask.ConfigureAwait(false);
         }
-
-        return new BoundedProcessResult(
-            process.ExitCode,
-            await stdoutTask.ConfigureAwait(false),
-            await stderrTask.ConfigureAwait(false));
+        finally
+        {
+            process.Dispose();
+        }
     }
 
     private static Task<string> StartDrain(Process process, bool standardOutput)
@@ -79,11 +110,11 @@ internal static class BoundedProcessWait
 
     private static async Task CleanupAsync(
         Process process,
+        Task killTask,
         Task exitTask,
         Task stdoutTask,
         Task stderrTask)
     {
-        var killTask = Task.Run(() => TryKillTree(process));
         ObserveFault(killTask);
         ObserveFault(exitTask);
         ObserveFault(stdoutTask);

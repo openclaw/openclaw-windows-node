@@ -10,19 +10,18 @@ namespace OpenClaw.Connection.Tests;
 public sealed class StoreMigrationCompletionCoordinatorTests
 {
     [Fact]
-    public void NoActiveGateway_FailsClosedWithoutWritingReceipt()
+    public void NoActiveGateway_CompletesBecauseNothingNeedsPreserving()
     {
         using var fixture = new Fixture();
         fixture.Prepare();
 
         var result = fixture.Complete();
 
-        Assert.Equal(StoreMigrationCompletionState.NoActiveGateway, result.State);
-        fixture.AssertNoReceipt();
+        Assert.Equal(StoreMigrationCompletionState.Completed, result.State);
     }
 
     [Fact]
-    public void UnresolvedActiveGateway_FailsClosedWithoutWritingReceipt()
+    public void UnpairedActiveGateway_CompletesWithoutACredential()
     {
         using var fixture = new Fixture();
         fixture.AddActiveGateway();
@@ -30,7 +29,35 @@ public sealed class StoreMigrationCompletionCoordinatorTests
 
         var result = fixture.Complete();
 
-        Assert.Equal(StoreMigrationCompletionState.CredentialUnavailable, result.State);
+        Assert.Equal(StoreMigrationCompletionState.Completed, result.State);
+    }
+
+    [Fact]
+    public void DamagedDeviceIdentity_FailsClosedDuringPreparation()
+    {
+        using var fixture = new Fixture();
+        fixture.AddActiveGateway();
+        fixture.DamageActiveGatewayIdentity();
+
+        // Inventory capture rejects damaged identities before completion is ever
+        // reachable, so completion never has to re-judge readable credential state.
+        var exception = Assert.Throws<InvalidDataException>(() => fixture.Prepare());
+
+        Assert.Equal("Device identity is malformed or unreadable.", exception.Message);
+        fixture.AssertNoReceipt();
+    }
+
+    [Fact]
+    public void DeviceIdentityDamagedAfterPreparation_FailsClosedDuringCompletion()
+    {
+        using var fixture = new Fixture();
+        fixture.AddActiveGateway();
+        fixture.Prepare();
+        fixture.DamageActiveGatewayIdentity();
+
+        var result = fixture.Complete();
+
+        Assert.Equal(StoreMigrationCompletionState.ValidationFailed, result.State);
         fixture.AssertNoReceipt();
     }
 
@@ -139,9 +166,12 @@ public sealed class StoreMigrationCompletionCoordinatorTests
     public void FailedCompletion_ReleasesLockForUninstall()
     {
         using var fixture = new Fixture();
+        fixture.AddActiveGateway();
         fixture.Prepare();
 
-        Assert.Equal(StoreMigrationCompletionState.NoActiveGateway, fixture.Complete().State);
+        var result = fixture.Complete(activity: new Activity(() => InnoSourceActivityStatus.InspectionFailed));
+
+        Assert.Equal(StoreMigrationCompletionState.ValidationFailed, result.State);
         using var uninstall = fixture.OpenUninstallLock();
         fixture.AssertNoReceipt();
     }
@@ -232,6 +262,22 @@ public sealed class StoreMigrationCompletionCoordinatorTests
             }
         }
 
+        /// <summary>
+        /// Writes well-formed identity JSON whose key material cannot be decoded, so the
+        /// file survives JSON capture but reads as damaged rather than absent.
+        /// </summary>
+        public void DamageActiveGatewayIdentity()
+        {
+            const string gatewayId = "12345678-1234-1234-1234-123456789abc";
+            var registry = new GatewayRegistry(Binding.RoamingDirectory);
+            registry.Load();
+            var directory = registry.GetIdentityDirectory(gatewayId);
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(
+                Path.Combine(directory, "device-key-ed25519.json"),
+                """{"PrivateKeyBase64":"not-base64!!","PublicKeyBase64":"not-base64!!","DeviceId":"d","DeviceToken":"t","Algorithm":"Ed25519"}""");
+        }
+
         public MigrationRecord Prepare() =>
             new MigrationPreparation(Binding).Prepare(_installation.Version.ToString());
 
@@ -241,7 +287,6 @@ public sealed class StoreMigrationCompletionCoordinatorTests
                 new LeaseProvider(),
                 detector ?? new Detector(_installation),
                 Binding,
-                new CredentialResolver(DeviceIdentityFileReader.Instance),
                 NullLogger.Instance,
                 sourceActivity: activity ?? new Activity(() => InnoSourceActivityStatus.Stopped))
             .Complete(_installation, "2026.9.18.0");

@@ -38,6 +38,14 @@ The one write-shaped exception is `exec.approval.resolve`: the fixture validates
 the fixture-owned approval ID and decision, records only that safe correlation,
 and returns a synthetic acknowledgement without executing a command.
 
+The native agent-creation UI test explicitly opts into a separate `agent-creation`
+scenario. Only that scenario grants administrator scope and accepts one
+`agents.create` request into an in-memory catalog. It validates name/workspace
+fields, returns a server-assigned ID, and exposes it through subsequent
+`agents.list` responses. It creates no files or real agents; other mutations
+remain rejected. The test verifies the refreshed selector while retaining the
+existing session and unsent draft. Normal interactive browse runs remain read-only.
+
 The host is `tests\OpenClaw.GatewayFixtureHost`, a plain .NET console app, not a
 test container. The request-driven server and scenario live in
 `tests\OpenClaw.TestSupport\Gateway`. Repeated reads and different request
@@ -49,7 +57,7 @@ orders work; this is deliberately not sequential packet playback.
 .\scripts\test-gateway-fixture.ps1 -AppPath $app
 ```
 
-For screenshots, use the already installed Windows App CLI:
+For screenshots, use owned-window native capture (no Windows App CLI installation is needed):
 
 ```powershell
 .\scripts\test-gateway-fixture.ps1 -AppPath $app -Screenshots
@@ -61,7 +69,7 @@ a Windows desktop and the same WinUI prerequisites as the existing UI suite.
 There is no skip-as-success fallback when the desktop is unavailable.
 
 The tests use local MCP for discovery, startup state and page navigation, and
-UI Automation for the actual session-picker flyout, scrolling and settings
+UI Automation for the actual agent selector, Workspace session sidebar, scrolling and settings
 controls. They verify:
 
 - Real operator connection and populated sessions with node execution off.
@@ -79,7 +87,7 @@ controls. They verify:
 returns only the last 30 entries and does not prove the mounted UI selection.
 The UI smoke checks the actual selected control and final text bounds within
 the transcript viewport, rather than merely checking the current scroll extent.
-For the delayed-history test, a passive `ChatComposerSessionPicker` UI Automation
+For the delayed-history test, a passive `ChatComposerInput` UI Automation
 `ItemStatus` acknowledgement records which loaded-history keys the render
 consumed. It contains no messages, is empty outside explicit fixture mode,
 and never changes chat state. The test waits for this render acknowledgement
@@ -134,10 +142,36 @@ The important controls are:
 | --- | --- |
 | `OPENCLAW_GATEWAY_FIXTURE=1` | Explicit host-side-effect suppression; normal isolated runs retain normal behavior. |
 | `OPENCLAW_TRAY_DATA_DIR` | Synthetic settings, registry, identities, MCP token, logs, caches and instance mutex. |
-| `OPENCLAW_TRAY_LOCAL_DATA_DIR` | Separate synthetic setup/Local AI state. |
+| `OPENCLAW_TRAY_LOCALAPPDATA_DIR` | Isolated local root; setup appends `OpenClawTray`. |
+| `OPENCLAW_TRAY_LOCAL_DATA_DIR` | Legacy direct setup path, matching the local root with `OpenClawTray` appended. |
 | `OPENCLAW_TRAY_APPDATA_DIR` | Isolated roaming fallback root. |
 | `OPENCLAW_MCP_PORT` | Dedicated, non-default MCP port. |
 | Runtimeconfig `OpenClaw.GatewayFixtureIsolationVersion=1` | Preflight rejects old binaries before they can execute unguarded startup paths. |
+
+The fixture guard validates the effective local path using SetupEngine's root
+precedence. A supplied modern local root must be absolute and resolve to the same
+directory as the validated legacy direct path; mismatches fail before startup.
+Legacy launchers without a modern root still require an absolute direct path.
+These checks do not change path resolution or side effects outside explicit fixture
+mode. The launcher retains ownership and reparse-point cleanup checks.
+
+The opt-in native setup warning regression uses a synthetic `native-setup`
+scenario and an actual disposable signing identity and handoff receipt.
+`--post-setup-launch` exercises the product authority check and model-verification
+protocol, then connection loss, recovery with the same unsent composer draft,
+changed identity, and ordinary navigation.
+Model replies are synthetic; this is not real Gateway or inference proof.
+Captured frames use `PrintWindow(PW_RENDERFULLCONTENT)` on the owned App HWND,
+reject blank content and cropped asserted controls, and record SHA256 plus UIA
+evidence beside each PNG.
+
+Composer/controller tests separately cover `/new` releasing the setup binding
+before async session creation, reporting the selected session back to the page,
+and keeping the subsequent send on that session. Mounted UI tests cover
+binding invalidation and voice activation waiting for visible, verified readiness.
+Temporary unavailability retains draft/attachments but cancels capture; actual
+authority failure still disposes the host. The synthetic full-app scenario does
+not claim a real Gateway session-creation or microphone proof.
 
 WSL keepalive/startup cleanup and Windows autostart writes are explicitly
 guarded. A loopback URL alone is not enough to prevent the regular keepalive

@@ -58,7 +58,7 @@ public sealed class TrayExecutableResolverTests : IDisposable
         Assert.Contains("/SC", psi.ArgumentList);
         Assert.Contains("ONLOGON", psi.ArgumentList);
         Assert.Contains("OpenClaw Companion", psi.ArgumentList);
-        Assert.Contains("\"" + trayPath + "\"", psi.ArgumentList);
+        Assert.Contains("\"" + trayPath + "\" --background", psi.ArgumentList);
     }
 
     [Fact]
