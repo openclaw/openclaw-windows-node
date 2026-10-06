@@ -7450,6 +7450,14 @@ Controleer of de gateway actief is.</value>
   <data name="Onboarding_V4_PhaseConnect.Header" xml:space="preserve"><value>Starten en verbinding controleren</value></data>
   <data name="Onboarding_V4_DetailedActivity.Header" xml:space="preserve"><value>Gedetailleerde activiteit</value></data>
   <data name="Onboarding_V4_InstallationTitle" xml:space="preserve"><value>Ruimte maken voor uw agent</value></data>
+  <data name="Onboarding_V4_InstallationSpeech.Text" xml:space="preserve"><value>Ik ben ermee bezig...</value></data>
+  <data name="Onboarding_V4_InstalledTitle" xml:space="preserve"><value>Gateway geïnstalleerd</value></data>
+  <data name="Onboarding_V4_InstalledSubtitle" xml:space="preserve"><value>Uw privé OpenClaw-gateway draait op deze pc.</value></data>
+  <data name="Onboarding_V4_InstalledSpeech" xml:space="preserve"><value>Gateway geïnstalleerd.</value></data>
+  <data name="Onboarding_V4_MilestoneNext.Text" xml:space="preserve"><value>Hierna: OpenClaw onboard</value></data>
+  <data name="Onboarding_V4_MilestoneNextDescription.Text" xml:space="preserve"><value>Een paar korte vragen. Kies uw AI-provider, model en sleutel om uw agent te verbinden.</value></data>
+  <data name="Onboarding_V4_MilestoneContinue.Content" xml:space="preserve"><value>OpenClaw onboard starten</value></data>
+  <data name="Onboarding_V4_MilestoneUnavailable" xml:space="preserve"><value>Een andere installatietaak is nog actief. Wacht tot deze klaar is en start daarna OpenClaw onboard.</value></data>
   <data name="Onboarding_V4_InstallationSubtitle" xml:space="preserve"><value>Stap voor stap. Volg de details hieronder.</value></data>
   <data name="Onboarding_V4_RecoveryTitle" xml:space="preserve"><value>Lokale AI herstellen</value></data>
   <data name="Onboarding_V4_RecoveryInstall" xml:space="preserve"><value>Lokale AI voorbereiden en controleren</value></data>

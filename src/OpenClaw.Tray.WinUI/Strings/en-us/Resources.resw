@@ -7518,6 +7518,14 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_V4_PhaseConnect.Header" xml:space="preserve"><value>Start and check connection</value></data>
   <data name="Onboarding_V4_DetailedActivity.Header" xml:space="preserve"><value>Detailed activity</value></data>
   <data name="Onboarding_V4_InstallationTitle" xml:space="preserve"><value>Making room for your agent</value></data>
+  <data name="Onboarding_V4_InstallationSpeech.Text" xml:space="preserve"><value>Working on it...</value></data>
+  <data name="Onboarding_V4_InstalledTitle" xml:space="preserve"><value>Gateway installed</value></data>
+  <data name="Onboarding_V4_InstalledSubtitle" xml:space="preserve"><value>Your private OpenClaw gateway is up and running on this PC.</value></data>
+  <data name="Onboarding_V4_InstalledSpeech" xml:space="preserve"><value>Gateway installed.</value></data>
+  <data name="Onboarding_V4_MilestoneNext.Text" xml:space="preserve"><value>Up next: OpenClaw onboard</value></data>
+  <data name="Onboarding_V4_MilestoneNextDescription.Text" xml:space="preserve"><value>A few quick questions. Choose your AI provider, model, and key to connect your agent.</value></data>
+  <data name="Onboarding_V4_MilestoneContinue.Content" xml:space="preserve"><value>Start OpenClaw onboard</value></data>
+  <data name="Onboarding_V4_MilestoneUnavailable" xml:space="preserve"><value>Another setup task is still active. Wait for it to finish, then start OpenClaw onboard.</value></data>
   <data name="Onboarding_V4_InstallationSubtitle" xml:space="preserve"><value>One step at a time. You can follow the details below.</value></data>
   <data name="Onboarding_V4_RecoveryTitle" xml:space="preserve"><value>Restoring Local AI</value></data>
   <data name="Onboarding_V4_RecoveryInstall" xml:space="preserve"><value>Prepare and check Local AI</value></data>

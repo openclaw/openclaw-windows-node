@@ -7501,6 +7501,14 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="Onboarding_V4_PhaseConnect.Header" xml:space="preserve"><value>Iniciar e verificar a conexão</value></data>
   <data name="Onboarding_V4_DetailedActivity.Header" xml:space="preserve"><value>Atividade detalhada</value></data>
   <data name="Onboarding_V4_InstallationTitle" xml:space="preserve"><value>Preparando espaço para seu agente</value></data>
+  <data name="Onboarding_V4_InstallationSpeech.Text" xml:space="preserve"><value>Estou cuidando disso...</value></data>
+  <data name="Onboarding_V4_InstalledTitle" xml:space="preserve"><value>Gateway instalado</value></data>
+  <data name="Onboarding_V4_InstalledSubtitle" xml:space="preserve"><value>Seu Gateway OpenClaw privado está em execução neste PC.</value></data>
+  <data name="Onboarding_V4_InstalledSpeech" xml:space="preserve"><value>Gateway instalado.</value></data>
+  <data name="Onboarding_V4_MilestoneNext.Text" xml:space="preserve"><value>A seguir: OpenClaw onboard</value></data>
+  <data name="Onboarding_V4_MilestoneNextDescription.Text" xml:space="preserve"><value>Algumas perguntas rápidas. Escolha seu provedor de IA, modelo e chave para conectar seu agente.</value></data>
+  <data name="Onboarding_V4_MilestoneContinue.Content" xml:space="preserve"><value>Iniciar OpenClaw onboard</value></data>
+  <data name="Onboarding_V4_MilestoneUnavailable" xml:space="preserve"><value>Outra tarefa de configuração ainda está ativa. Aguarde a conclusão e inicie OpenClaw onboard.</value></data>
   <data name="Onboarding_V4_InstallationSubtitle" xml:space="preserve"><value>Uma etapa de cada vez. Acompanhe os detalhes abaixo.</value></data>
   <data name="Onboarding_V4_RecoveryTitle" xml:space="preserve"><value>Restaurando a IA local</value></data>
   <data name="Onboarding_V4_RecoveryInstall" xml:space="preserve"><value>Preparar e verificar a IA local</value></data>

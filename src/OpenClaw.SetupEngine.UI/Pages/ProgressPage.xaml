@@ -7,29 +7,46 @@
     xmlns:tk="using:CommunityToolkit.WinUI.Controls"
     NavigationCacheMode="Disabled">
 
-    <Grid RowDefinitions="Auto,*,Auto">
-
-        <StackPanel x:Name="InstallHeader" Grid.Row="0" Padding="40,4,40,0" Spacing="4">
-            <controls:OnboardingMascot x:Name="ProgressMascot" Mood="Working"
-                                      HorizontalAlignment="Center" />
+    <controls:SetupPageShell x:Name="InstallationShell">
+        <controls:SetupPageShell.Hero>
+            <StackPanel Spacing="16">
+                <Grid MaxWidth="280" HorizontalAlignment="Center" RowDefinitions="Auto,10">
+                    <Border Padding="16,12" CornerRadius="12" BorderThickness="1"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+                        <TextBlock x:Name="ProgressSpeech" x:Uid="Onboarding_V4_InstallationSpeech"
+                                   Text="Working on it..." FontSize="16" TextWrapping="Wrap" TextAlignment="Center" />
+                    </Border>
+                    <Path Grid.Row="1" Data="M0,0 L10,10 L20,0" HorizontalAlignment="Center"
+                          Fill="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                          Stroke="{ThemeResource CardStrokeColorDefaultBrush}"
+                          AutomationProperties.AccessibilityView="Raw" />
+                </Grid>
+                <controls:OnboardingMascot x:Name="ProgressMascot" Mood="Working" HorizontalAlignment="Center" />
+                <controls:SetupStepIndicator x:Name="FlowProgress" Margin="24,8,0,0" />
+            </StackPanel>
+        </controls:SetupPageShell.Hero>
+        <controls:SetupPageShell.Header>
+        <StackPanel x:Name="InstallHeader" Spacing="12">
             <TextBlock x:Name="TitleText" Text="Setting up OpenClaw"
-                       Style="{StaticResource TitleTextBlockStyle}"
-                       HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
+                       FontFamily="Segoe UI Variable" FontSize="40" FontWeight="SemiBold"
+                       AutomationProperties.HeadingLevel="Level1" TextWrapping="Wrap" />
             <TextBlock x:Name="SubtitleText"
-                       Style="{StaticResource BodyTextBlockStyle}"
+                       FontFamily="Segoe UI Variable" FontSize="18"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        AutomationProperties.LiveSetting="Polite"
-                       HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
+                       TextWrapping="Wrap" />
         </StackPanel>
-
-        <ScrollViewer x:Name="InstallContent" Grid.Row="1" VerticalScrollBarVisibility="Auto">
-            <StackPanel Padding="40,24,40,16" Spacing="16" VerticalAlignment="Top">
-
-                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+        </controls:SetupPageShell.Header>
+        <controls:SetupPageShell.Body>
+        <Grid>
+        <ScrollViewer x:Name="InstallContent" VerticalScrollBarVisibility="Disabled" VerticalScrollMode="Disabled"
+                      HorizontalScrollBarVisibility="Disabled" HorizontalScrollMode="Disabled"
+                      HorizontalContentAlignment="Stretch" IsTabStop="False">
+            <StackPanel Spacing="16" VerticalAlignment="Top">
                     <StackPanel Spacing="0">
                         <tk:SettingsCard x:Name="PreparePhase" x:Uid="Onboarding_V4_PhasePrepare"
-                                         Header="Prepare your PC" Background="Transparent" BorderThickness="0" CornerRadius="0">
+                                         Header="Prepare your PC" Background="Transparent" BorderThickness="0,1,0,0" CornerRadius="0" Padding="0,14">
                             <tk:SettingsCard.Description>
                                 <TextBlock x:Name="PrepareActivity" Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -39,7 +56,7 @@
                             <controls:SetupPhaseStatus x:Name="PrepareStatus" />
                         </tk:SettingsCard>
                         <tk:SettingsCard x:Name="InstallPhase" x:Uid="Onboarding_V4_PhaseInstall"
-                                         Header="Install the Gateway" Background="Transparent" BorderThickness="0,1,0,0" CornerRadius="0">
+                                         Header="Install the Gateway" Background="Transparent" BorderThickness="0,1,0,0" CornerRadius="0" Padding="0,14">
                             <tk:SettingsCard.Description>
                                 <TextBlock x:Name="InstallActivity" Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -49,7 +66,7 @@
                             <controls:SetupPhaseStatus x:Name="InstallStatus" />
                         </tk:SettingsCard>
                         <tk:SettingsCard x:Name="ConnectPhase" x:Uid="Onboarding_V4_PhaseConnect"
-                                         Header="Start and check connection" Background="Transparent" BorderThickness="0,1,0,0" CornerRadius="0">
+                                         Header="Start and check connection" Background="Transparent" BorderThickness="0,1,0,0" CornerRadius="0" Padding="0,14">
                             <tk:SettingsCard.Description>
                                 <TextBlock x:Name="ConnectActivity" Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -59,7 +76,6 @@
                             <controls:SetupPhaseStatus x:Name="ConnectStatus" />
                         </tk:SettingsCard>
                     </StackPanel>
-                </Border>
                 <StackPanel Spacing="8">
                     <TextBlock x:Name="DownloadActivity" Style="{StaticResource CaptionTextBlockStyle}"
                                TextWrapping="Wrap" Visibility="Collapsed" />
@@ -77,6 +93,7 @@
 
                 <Expander x:Name="DetailedActivity" x:Uid="Onboarding_V4_DetailedActivity" IsExpanded="False"
                           HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" MinHeight="48"
+                          Background="Transparent" BorderThickness="0"
                           Header="Detailed activity">
                     <Expander.HeaderTemplate>
                         <DataTemplate>
@@ -108,61 +125,37 @@
             </StackPanel>
         </ScrollViewer>
 
-        <StackPanel x:Name="MilestonePanel" Grid.Row="1" Visibility="Collapsed"
-                    VerticalAlignment="Center" HorizontalAlignment="Center"
-                    Spacing="16" MaxWidth="480" Padding="48,0">
-            <Grid Width="{x:Bind controls:OnboardingMascot.HeroSize}" Height="{x:Bind controls:OnboardingMascot.HeroSize}"
-                  HorizontalAlignment="Center" Margin="0,0,0,4">
-                <controls:OnboardingMascot Mood="Happy" />
-                <Border Width="36" Height="36" CornerRadius="18"
-                        HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                        Background="{ThemeResource SystemFillColorSuccessBrush}"
-                        BorderBrush="{ThemeResource SolidBackgroundFillColorBaseBrush}" BorderThickness="3">
-                    <FontIcon Glyph="&#xE73E;" FontSize="16" IsTextScaleFactorEnabled="False"
-                              Foreground="#FFFFFF"
-                              HorizontalAlignment="Center" VerticalAlignment="Center"
-                              AutomationProperties.AccessibilityView="Raw" />
-                </Border>
-            </Grid>
-            <StackPanel Spacing="6">
-                <TextBlock Text="Gateway installed"
-                           Style="{StaticResource TitleTextBlockStyle}"
-                           HorizontalAlignment="Center" TextAlignment="Center"
-                           AutomationProperties.LiveSetting="Assertive" />
-                <TextBlock Text="Your private OpenClaw gateway is up and running on this PC."
-                           Style="{StaticResource BodyTextBlockStyle}"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                           HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
+        <StackPanel x:Name="MilestonePanel" Visibility="Collapsed" Spacing="16">
                 <TextBlock x:Name="MilestoneStatusText"
                            Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource SystemFillColorCriticalBrush}"
                            AutomationProperties.LiveSetting="Assertive"
-                           HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
-            </StackPanel>
-            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
-                    CornerRadius="4" Padding="16,14" HorizontalAlignment="Stretch">
+                           TextWrapping="Wrap" />
+            <Border BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0"
+                    Padding="0,14" HorizontalAlignment="Stretch">
                 <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
                     <FontIcon Grid.Column="0" Glyph="&#xE72A;" FontSize="18" IsTextScaleFactorEnabled="False"
                               Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Center" />
                     <StackPanel Grid.Column="1" Spacing="2">
-                        <TextBlock Text="Up next: OpenClaw onboard" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                        <TextBlock Text="A few quick questions. Choose your AI provider, model, and key to connect your agent."
+                        <TextBlock x:Uid="Onboarding_V4_MilestoneNext" Text="Up next: OpenClaw onboard"
+                                   Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
+                        <TextBlock x:Uid="Onboarding_V4_MilestoneNextDescription"
+                                   Text="A few quick questions. Choose your AI provider, model, and key to connect your agent."
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
                     </StackPanel>
                 </Grid>
             </Border>
         </StackPanel>
-
-        <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="0,12,0,16">
-            <controls:SetupProgressIndicator x:Name="FlowProgress" Grid.ColumnSpan="2"
-                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
-            <Button x:Name="OnboardButton" Grid.Column="1" Content="Start OpenClaw onboard"
-                    Visibility="Collapsed" MinWidth="100" HorizontalAlignment="Right"
-                    Margin="48,0" Style="{StaticResource AccentButtonStyle}"
+        </Grid>
+        </controls:SetupPageShell.Body>
+        <controls:SetupPageShell.Footer>
+        <Grid x:Name="NavigationFooter" ColumnDefinitions="*,Auto">
+            <Button x:Name="OnboardButton" x:Uid="Onboarding_V4_MilestoneContinue" Grid.Column="1" Content="Start OpenClaw onboard"
+                    Visibility="Collapsed" MinWidth="100" MinHeight="40" HorizontalAlignment="Right"
+                    Style="{StaticResource AccentButtonStyle}"
                     Click="Onboard_Click" />
         </Grid>
-
-    </Grid>
+        </controls:SetupPageShell.Footer>
+    </controls:SetupPageShell>
 </Page>

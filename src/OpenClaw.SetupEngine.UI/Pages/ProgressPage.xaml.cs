@@ -413,7 +413,10 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
     private void ShowGatewayInstalledMilestone()
     {
         _loading?.Dispose();
-        InstallHeader.Visibility = Visibility.Collapsed;
+        TitleText.Text = SetupLocalization.GetString("Onboarding_V4_InstalledTitle");
+        SubtitleText.Text = SetupLocalization.GetString("Onboarding_V4_InstalledSubtitle");
+        ProgressSpeech.Text = SetupLocalization.GetString("Onboarding_V4_InstalledSpeech");
+        ProgressMascot.Mood = OnboardingMascotMood.Happy;
         InstallContent.Visibility = Visibility.Collapsed;
         MilestonePanel.Visibility = Visibility.Visible;
         OnboardButton.Visibility = Visibility.Visible;
@@ -424,7 +427,7 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
         if (SetupWindow.Active?.TryNavigateToWizard() == true)
             return;
 
-        MilestoneStatusText.Text = "Another setup task is still active. Wait for it to finish, then start OpenClaw onboard.";
+        MilestoneStatusText.Text = SetupLocalization.GetString("Onboarding_V4_MilestoneUnavailable");
     }
 
     private static List<SetupStep> BuildSteps(SetupConfig config, bool localAiRecoveryOnly = false)

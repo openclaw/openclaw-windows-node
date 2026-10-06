@@ -7449,6 +7449,14 @@
   <data name="Onboarding_V4_PhaseConnect.Header" xml:space="preserve"><value>啟動並檢查連線</value></data>
   <data name="Onboarding_V4_DetailedActivity.Header" xml:space="preserve"><value>詳細活動</value></data>
   <data name="Onboarding_V4_InstallationTitle" xml:space="preserve"><value>為您的代理程式做好準備</value></data>
+  <data name="Onboarding_V4_InstallationSpeech.Text" xml:space="preserve"><value>正在處理...</value></data>
+  <data name="Onboarding_V4_InstalledTitle" xml:space="preserve"><value>Gateway 已安裝</value></data>
+  <data name="Onboarding_V4_InstalledSubtitle" xml:space="preserve"><value>您的私人 OpenClaw Gateway 已在這台電腦上執行。</value></data>
+  <data name="Onboarding_V4_InstalledSpeech" xml:space="preserve"><value>Gateway 已安裝。</value></data>
+  <data name="Onboarding_V4_MilestoneNext.Text" xml:space="preserve"><value>下一步：OpenClaw onboard</value></data>
+  <data name="Onboarding_V4_MilestoneNextDescription.Text" xml:space="preserve"><value>回答幾個簡短問題。選擇 AI 提供者、模型和金鑰來連接您的代理程式。</value></data>
+  <data name="Onboarding_V4_MilestoneContinue.Content" xml:space="preserve"><value>啟動 OpenClaw onboard</value></data>
+  <data name="Onboarding_V4_MilestoneUnavailable" xml:space="preserve"><value>另一個設定工作仍在執行。請等待該工作完成，然後啟動 OpenClaw onboard。</value></data>
   <data name="Onboarding_V4_InstallationSubtitle" xml:space="preserve"><value>一步一步進行。您可以在下方查看詳細資料。</value></data>
   <data name="Onboarding_V4_RecoveryTitle" xml:space="preserve"><value>正在還原本機 AI</value></data>
   <data name="Onboarding_V4_RecoveryInstall" xml:space="preserve"><value>準備並檢查本機 AI</value></data>

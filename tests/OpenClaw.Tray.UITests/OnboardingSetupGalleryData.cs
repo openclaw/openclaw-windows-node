@@ -28,7 +28,7 @@ internal static class OnboardingSetupGalleryData
         "preview" when scene.State.StartsWith("wizard", StringComparison.Ordinal) =>
             new(typeof(WizardPage), "OpenClaw onboard"),
         "preview" when scene.State == "milestone" =>
-            new(typeof(ProgressPage), "Gateway installed", ContainerName: "MilestonePanel"),
+            new(typeof(ProgressPage), "Gateway installed", "TitleText"),
         "preview" => new(typeof(ProgressPage), "Making room for your agent", "TitleText"),
         "complete" => new(typeof(CompletePage), scene.State switch
         {

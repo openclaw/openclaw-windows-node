@@ -454,7 +454,8 @@ it is 720 x 560 physical pixels; at 150% it is 1080 x 840; at 200% it is
 1440 x 1120. Actual monitor/work-area constraints remain Windows-owned.
 
 The welcome/trust page (`SecurityNoticePage`), WSL review (`GatewaySetupPage`)
-and its details (`GatewaySetupDetailPage`) use `SetupPageShell`.
+and its details (`GatewaySetupDetailPage`), plus installation (`ProgressPage`),
+use `SetupPageShell`.
 Its four presentation slots hold the hero, header, body and fixed footer.
 At an actual shell width of at least 960 DIPs and height of at least 600 DIPs,
 the mascot, speech bubble and milestone rail sit beside the heading and content.
@@ -464,7 +465,7 @@ scroller. The complete safety warning and `https://trust.openclaw.ai` link remai
 reachable. **Get started** uses the existing gateway-chooser navigation action;
 showing the shell does not grant access, persist choices or start installation.
 
-The gateway chooser, capabilities, installation, AI and completion pages
+The gateway chooser, capabilities, AI and completion pages
 retain their existing layouts and dot indicators at the wider initial size.
 The 180-DIP mascot frame includes its motion/glow gutter;
 the title-bar mark is 24 DIPs. Theme-aware Mica/Fluent surfaces retain solid
@@ -1021,6 +1022,14 @@ completed and skipped steps, not estimated percentages; only a running phase
 spins. Unknown step IDs require an explicit phase mapping and test coverage.
 Detailed activity is collapsed by default; actionable authorization and real
 download progress remain visible outside it.
+Installation uses the shared responsive shell and canonical stage rail with flat
+phase rows. The overview bar counts actual completed or skipped steps, not elapsed
+time or an estimated download percentage. The shell owns vertical page scrolling;
+the retained `InstallContent` is a non-scrolling presentation container, while logs
+keep their bounded native scroller. The installed/resume milestone uses the same
+mounted hero and heading, with its existing onboard action in the fixed footer.
+Restart-required and terminal pipeline failures keep their existing completion route;
+the progress page does not add a Windows-restart action or change cancellation.
 
 Installs and connects a new app-owned `OpenClawGateway` WSL instance from a clean WSL baseline. If the WSL platform is missing or its optional component is not initialized, setup requests administrator approval to install it, re-inspects readiness, and reports when a Windows restart is required. Setup does not export from or mutate an existing user Ubuntu distro; if WSL cannot create the named app-owned distro directly, setup fails with an actionable update message. Cleanup automatically unregisters a distro only when durable OpenClaw evidence is paired with exactly one readable current-user WSL registration whose canonical base path matches the expected managed install path. Automatic orphan-directory cleanup requires a marker bound to that exact path. An unproven same-named distro or leftover data directory is preserved unless the user explicitly confirms its permanent replacement in the setup UI or passes `--confirm-destructive`. When replacing an app-owned local gateway, the removal step is shown as part of progress and can be retried on failure.
 
