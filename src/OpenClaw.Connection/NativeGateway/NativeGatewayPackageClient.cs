@@ -330,18 +330,27 @@ public sealed class NativeGatewayPackageClient
             start.ArgumentList.Add(argument);
         using Process process = Process.Start(start)
             ?? throw new InvalidOperationException("The Gateway package's clawctl alias could not be started.");
-        if (standardInput is not null)
-        {
-            await process.StandardInput.WriteLineAsync(standardInput.AsMemory(), cancellationToken)
-                .ConfigureAwait(false);
-            process.StandardInput.Close();
-        }
+        return await CompleteInvocationAsync(process, standardInput, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    internal static async Task<NativeGatewayCommandResult> CompleteInvocationAsync(
+        Process process,
+        string? standardInput,
+        CancellationToken cancellationToken)
+    {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromMinutes(3));
         Task<string> output = process.StandardOutput.ReadToEndAsync(timeout.Token);
         Task<string> error = process.StandardError.ReadToEndAsync(timeout.Token);
         try
         {
+            if (standardInput is not null)
+            {
+                await process.StandardInput.WriteLineAsync(standardInput.AsMemory(), timeout.Token)
+                    .ConfigureAwait(false);
+                process.StandardInput.Close();
+            }
             await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
             string stdout = await output.ConfigureAwait(false);
             _ = await error.ConfigureAwait(false);

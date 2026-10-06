@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using OpenClaw.Connection.NativeGateway;
 
@@ -84,6 +85,42 @@ public sealed class NativeGatewayPackageClientTests
 
         Assert.Equal(19001, config.Port);
         Assert.Equal("saved-companion-token", config.Token);
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task CancellationDuringStandardInputTerminatesThePackageProcess()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var start = new ProcessStartInfo(
+            Environment.GetEnvironmentVariable("COMSPEC") ?? "cmd.exe")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        start.ArgumentList.Add("/d");
+        start.ArgumentList.Add("/s");
+        start.ArgumentList.Add("/c");
+        start.ArgumentList.Add("ping -t 127.0.0.1 >nul");
+        using Process process = Process.Start(start)
+            ?? throw new InvalidOperationException("Cancellation fixture failed to start.");
+        using var cancellation = new CancellationTokenSource();
+
+        Task<NativeGatewayCommandResult> pending =
+            NativeGatewayPackageClient.CompleteInvocationAsync(
+                process,
+                new string('x', 1_000_000),
+                cancellation.Token);
+        Assert.False(pending.IsCompleted);
+
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
+        Assert.True(process.HasExited);
     }
 
     [Theory]
