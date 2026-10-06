@@ -91,6 +91,12 @@ action visible without hovering. Provider promotion replaces the pending row wit
 without adding queue-only rows to history. This applies to both ChatPage and
 ChatWindow. See the [pending-message concept](design/reference/concepts/states/pending-chat-message.md).
 
+Chat responses are not read aloud by default. Enabling the Text-to-speech
+capability permits playback but does not enable automatic spoken replies.
+Settings > Voice > "Read responses aloud" opts in to automatic playback;
+manual "Read aloud" remains available independently when the capability is
+enabled. Existing saved read-aloud preferences are preserved.
+
 Welcome quick-start suggestions use borderless native buttons with a quiet gray
 `ControlAltFillColorSecondaryBrush` backplate and the shared subtle toolbar
 hover/pressed resources. Disabled and keyboard-focus states remain native.

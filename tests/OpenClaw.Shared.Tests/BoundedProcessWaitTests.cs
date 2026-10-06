@@ -10,19 +10,21 @@ public sealed class BoundedProcessWaitTests
     [Fact]
     public async Task WaitAsync_ReturnsCompleteOutput_WhenProcessSucceeds()
     {
-        using var process = StartFixture("success");
+        var process = StartFixture("success");
 
         var result = await BoundedProcessWait.WaitAsync(process, TimeSpan.FromSeconds(5));
 
         Assert.Equal(0, result.ExitCode);
         Assert.Equal("stdout-first-stdout-last", result.StandardOutput);
         Assert.Equal("stderr-first-stderr-last", result.StandardError);
+        Assert.True(process.Disposal.IsCompleted);
     }
 
     [Fact]
     public async Task WaitAsync_TimesOutAndKillsProcess()
     {
-        using var process = StartFixture("hold", "30000");
+        var process = StartFixture("hold", "30000");
+        using var observer = ObserveProcess(process);
         var stopwatch = Stopwatch.StartNew();
 
         await Assert.ThrowsAsync<TimeoutException>(
@@ -32,13 +34,14 @@ public sealed class BoundedProcessWaitTests
         Assert.True(
             stopwatch.Elapsed < TimeSpan.FromSeconds(3),
             $"Timeout cleanup took {stopwatch.ElapsedMilliseconds} ms.");
-        await AssertExitsEventuallyAsync(process);
+        await AssertExitsEventuallyAsync(observer);
     }
 
     [Fact]
     public async Task WaitAsync_CancellationKillsProcessWithoutUsingTimeoutBudget()
     {
-        using var process = StartFixture("hold", "30000");
+        var process = StartFixture("hold", "30000");
+        using var observer = ObserveProcess(process);
         using var cancellation = new CancellationTokenSource();
         var wait = BoundedProcessWait.WaitAsync(
             process,
@@ -54,13 +57,14 @@ public sealed class BoundedProcessWaitTests
         Assert.True(
             stopwatch.Elapsed < TimeSpan.FromSeconds(3),
             $"Cancellation cleanup took {stopwatch.ElapsedMilliseconds} ms.");
-        await AssertExitsEventuallyAsync(process);
+        await AssertExitsEventuallyAsync(observer);
     }
 
     [Fact]
     public async Task WaitAsync_AlreadyCanceledTokenStillKillsStartedProcess()
     {
-        using var process = StartFixture("hold", "30000");
+        var process = StartFixture("hold", "30000");
+        using var observer = ObserveProcess(process);
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 
@@ -70,13 +74,13 @@ public sealed class BoundedProcessWaitTests
                 BoundedProcessWait.DefaultTimeout,
                 cancellation.Token));
 
-        await AssertExitsEventuallyAsync(process);
+        await AssertExitsEventuallyAsync(observer);
     }
 
     [Fact]
     public async Task WaitAsync_PreservesOutputWrittenLateWithinDeadline()
     {
-        using var process = StartFixture("late-output", "250");
+        var process = StartFixture("late-output", "250");
 
         var result = await BoundedProcessWait.WaitAsync(process, TimeSpan.FromSeconds(3));
 
@@ -91,13 +95,14 @@ public sealed class BoundedProcessWaitTests
         var childPid = 0;
         try
         {
-            using var process = StartFixture("inherit-handles", "30000", pidFile);
+            var process = StartFixture("inherit-handles", "30000", pidFile);
+            using var observer = ObserveProcess(process);
             using var cancellation = new CancellationTokenSource();
             var wait = BoundedProcessWait.WaitAsync(
                 process,
                 BoundedProcessWait.DefaultTimeout,
                 cancellation.Token);
-            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            await observer.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
             Assert.False(wait.IsCompleted);
             childPid = await ReadChildPidAsync(pidFile);
             var stopwatch = Stopwatch.StartNew();
@@ -117,7 +122,97 @@ public sealed class BoundedProcessWaitTests
         }
     }
 
-    private static Process StartFixture(params string[] arguments)
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task WaitAsync_DelayedKillOwnsProcessAfterBoundedReturn(bool cancel)
+    {
+        var process = StartFixture("hold", "30000");
+        using var observer = ObserveProcess(process);
+        using var cancellation = new CancellationTokenSource();
+        var scheduler = new HeldTaskScheduler();
+        var wait = BoundedProcessWait.WaitAsync(
+            process,
+            cancel ? BoundedProcessWait.DefaultTimeout : TimeSpan.FromMilliseconds(200),
+            cancellation.Token,
+            scheduler);
+
+        try
+        {
+            var stopwatch = Stopwatch.StartNew();
+            if (cancel)
+                cancellation.Cancel();
+
+            await scheduler.Queued.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            if (cancel)
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(
+                    () => wait.WaitAsync(TimeSpan.FromSeconds(5)));
+            else
+                await Assert.ThrowsAsync<TimeoutException>(
+                    () => wait.WaitAsync(TimeSpan.FromSeconds(5)));
+
+            Assert.True(
+                stopwatch.Elapsed < TimeSpan.FromSeconds(3),
+                $"Delayed-worker cleanup took {stopwatch.ElapsedMilliseconds} ms.");
+            Assert.False(process.Disposal.IsCompleted);
+            Assert.False(observer.HasExited);
+
+            scheduler.RunQueuedTask();
+            await AssertExitsEventuallyAsync(observer);
+            await process.Disposal.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            scheduler.RunQueuedTask();
+            if (!observer.HasExited)
+                observer.Kill(entireProcessTree: true);
+            await AssertExitsEventuallyAsync(observer);
+        }
+    }
+
+    private static Process ObserveProcess(Process process)
+    {
+        var observer = Process.GetProcessById(process.Id);
+        // Pin the original Windows process identity before it can exit.
+        _ = observer.SafeHandle;
+        return observer;
+    }
+
+    private sealed class HeldTaskScheduler : TaskScheduler
+    {
+        internal TaskCompletionSource<Task> Queued { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        protected override void QueueTask(Task task) => Queued.SetResult(task);
+
+        protected override bool TryExecuteTaskInline(Task task, bool taskWasPreviouslyQueued) => false;
+
+        protected override IEnumerable<Task>? GetScheduledTasks() =>
+            Queued.Task.IsCompletedSuccessfully ? [Queued.Task.Result] : [];
+
+        internal void RunQueuedTask()
+        {
+            if (Queued.Task.IsCompletedSuccessfully)
+                TryExecuteTask(Queued.Task.Result);
+        }
+    }
+
+    private sealed class TrackedProcess : Process
+    {
+        private readonly TaskCompletionSource _disposed =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        internal Task Disposal => _disposed.Task;
+
+        protected override void Dispose(bool disposing)
+        {
+            base.Dispose(disposing);
+            if (disposing)
+                _disposed.TrySetResult();
+        }
+    }
+
+    private static TrackedProcess StartFixture(params string[] arguments)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -131,8 +226,9 @@ public sealed class BoundedProcessWaitTests
         foreach (var argument in arguments)
             startInfo.ArgumentList.Add(argument);
 
-        return Process.Start(startInfo)
-            ?? throw new InvalidOperationException("Could not start process fixture.");
+        var process = new TrackedProcess { StartInfo = startInfo };
+        Assert.True(process.Start(), "Could not start process fixture.");
+        return process;
     }
 
     private static string FindTestHost()

@@ -390,9 +390,10 @@ public class McpHttpServerTests
                 catch { /* socket may close on shutdown; not what we're testing */ }
             });
 
-            // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
-            var entered = await Task.WhenAny(cap.Entered, Task.Delay(2000));
-            Assert.Equal(cap.Entered, entered);
+            // This request can be delayed when Shared and Tray validation run
+            // concurrently on a constrained Windows runner. Preserve a bounded
+            // failure while allowing the handler enough time to be scheduled.
+            await cap.Entered.WaitAsync(TimeSpan.FromSeconds(10));
 
             // Dispose while the handler is alive. Drain awaits in-flight
             // handler tasks; the linked CT inside the handler causes the
@@ -449,9 +450,7 @@ public class McpHttpServerTests
                 catch { /* socket may close on shutdown; not what we're testing */ }
             });
 
-            // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
-            var entered = await Task.WhenAny(cap.Entered, Task.Delay(2000));
-            Assert.Equal(cap.Entered, entered);
+            await cap.Entered.WaitAsync(TimeSpan.FromSeconds(10));
 
             var disposeTask = server.DisposeAsync().AsTask();
             release.TrySetResult(true);

@@ -74,6 +74,7 @@ disconnect, replacement, or close. This cache is not used for authorization.
 | Concern | Canonical owner | Status |
 | --- | --- | --- |
 | Test temp directories | `OpenClaw.TestSupport.TempDirectory` | authoritative |
+| Bounded audio child-process wait and disposal | `BoundedProcessWait` owns the supplied `Process`, including deferred disposal after its kill worker finishes; callers must not dispose it on bounded cancellation return | authoritative |
 | Test env var save/restore | `OpenClaw.TestSupport.EnvironmentScope` | authoritative |
 | CLI stdout/stderr/env capture | `OpenClaw.TestSupport.CliHarness` | authoritative |
 | Loopback MCP server for tests | `OpenClaw.TestSupport.FakeMcpServer` | authoritative |
@@ -388,17 +389,20 @@ cannot authorize native onboarding.
 
 A positive result enables and initially selects the first **Install a local native
 gateway** card with the accent highlight and **Recommended** badge. A negative
-capability result offers Windows Update; reopening the page rechecks support. The pinned SDK documents
+capability result leaves that recommended choice visible but disabled after WSL and
+**Connect to an existing gateway**, with Windows Update guidance directly below the
+choice list; reopening the page rechecks support. The pinned SDK documents
 Insider build **26340.9212** as its baseline. This is update guidance, not a
 hardcoded admission floor or a promise that a particular feature is enabled.
 The native boolean cannot distinguish every OS API failure from missing support.
 Missing executables, malformed results and probe errors instead offer retry or
 Companion repair, not an assertion that Windows must be updated.
 
-The Welcome page always presents native Gateway first, WSL second and
-**Connect to an existing gateway** third in one single-selection list. WSL is
-visible and selectable during the native probe and for every probe outcome,
-without an expander. There is no Welcome-page **Check again** button.
+The Welcome page presents WSL, **Connect to an existing gateway**, then disabled native
+Gateway while support is being checked or unavailable. A positive result moves native
+to the first position, followed by WSL and the existing-Gateway choice. WSL is visible
+and selectable during the native probe and for every probe outcome, without an expander.
+There is no Welcome-page **Check again** button.
 WSL/Local AI discovery starts on page load; fresh WSL readiness and
 destructive-replacement confirmation still run before its capabilities page.
 WSL is never selected implicitly after a failed native probe. A late probe

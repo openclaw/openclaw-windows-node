@@ -77,6 +77,19 @@ public sealed class SetupWindowArgumentProjectionTests
         }
     }
 
+    [Theory]
+    [InlineData("-Embedding")]
+    [InlineData("-embedding")]
+    public void Project_RemovesPackagedComEmbeddingArgument(string argument)
+    {
+        var projected = SetupWindowArgumentProjection.Project(
+            ["OpenClaw.Tray.WinUI.exe", argument, "--config=custom.json"],
+            _ => false,
+            currentProcessId: 1000);
+
+        Assert.Equal(["--config=custom.json"], projected);
+    }
+
     [Fact]
     public void Project_PreservesDeepLinkShapedConfigValue()
     {
