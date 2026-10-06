@@ -8315,4 +8315,8 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Onboarding_Wizard_CompatibilitySpeech" xml:space="preserve"><value>Let's finish connecting your AI.</value></data>
   <data name="Onboarding_AiSetup_Speech.Text" xml:space="preserve"><value>Pick a brain for me.</value></data>
   <data name="Onboarding_Ready_Speech.Text" xml:space="preserve"><value>Ready when you are.</value></data>
+  <data name="Onboarding_Complete_SuccessSpeech.Text" xml:space="preserve"><value>All set.</value></data>
+  <data name="Onboarding_Complete_FailureSpeech.Text" xml:space="preserve"><value>Let's sort this out.</value></data>
+  <data name="Onboarding_Complete_RestartSpeech.Text" xml:space="preserve"><value>Almost there.</value></data>
+  <data name="Onboarding_Complete_RestartGuidance.Text" xml:space="preserve"><value>Save your work first. Restarting Windows restarts this computer, not just OpenClaw. You can choose not to restart now and reopen OpenClaw after you restart.</value></data>
 </root>

@@ -69,14 +69,6 @@ public sealed class OnboardingMockPresentationTests
             Assert.Equal("Transparent", (string?)row.Attribute("Background"));
             Assert.Equal("0", (string?)row.Attribute("CornerRadius"));
         });
-        foreach (var name in new[] { "CompletePage" })
-        {
-            var page = Page(name);
-            Assert.DoesNotContain(page.Descendants(), element => element.Name.LocalName == "SetupPageShell");
-            Assert.All(page.Descendants().Where(element => element.Name.LocalName == "SetupProgressIndicator"),
-                progress => Assert.Null(progress.Attribute("Presentation")));
-            Assert.DoesNotContain(page.Descendants(), element => element.Name.LocalName == "SetupStepIndicator");
-        }
     }
 
     [Fact]

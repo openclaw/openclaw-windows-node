@@ -26,6 +26,21 @@ Loading feedback and the failure-only Back to AI setup action remain in the
 fixed footer. This page does not claim node pairing or command approval, and
 does not replace the separate legacy, failure or restart `CompletePage`.
 
+### Legacy, failure and Windows restart completion presentation
+
+`CompletePage` uses the responsive setup shell, with state-specific speech and
+the existing success, failure or restart mascot. It has no canonical route
+timeline because these outcomes do not supply a Ready stage. The legacy summary
+uses flat rows; real setup errors, fallback retry, setup logs and Local AI server
+diagnostics remain visible and scrollable. Actions stay in the fixed footer.
+
+The restart state follows the restart design, not the verified AI chooser.
+It explains that Windows restarts the whole computer and asks the user to save
+work. Yes, restart now remains an explicit action through the existing launcher;
+No, I'm not ready yet still closes setup without restarting. Startup preference,
+completion persistence, native handoff and all existing health gates retain
+their current owners.
+
 The onboarding wizard can install an app-owned WSL gateway, acquire a native
 Gateway MSIX through Microsoft Store and configure it, or connect to an existing gateway.
 

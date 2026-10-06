@@ -8247,4 +8247,8 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Onboarding_Wizard_CompatibilitySpeech" xml:space="preserve"><value>Laten we uw AI verder verbinden.</value></data>
   <data name="Onboarding_AiSetup_Speech.Text" xml:space="preserve"><value>Kies een brein voor mij.</value></data>
   <data name="Onboarding_Ready_Speech.Text" xml:space="preserve"><value>Klaar wanneer jij dat bent.</value></data>
+  <data name="Onboarding_Complete_SuccessSpeech.Text" xml:space="preserve"><value>Alles is klaar.</value></data>
+  <data name="Onboarding_Complete_FailureSpeech.Text" xml:space="preserve"><value>Laten we dit oplossen.</value></data>
+  <data name="Onboarding_Complete_RestartSpeech.Text" xml:space="preserve"><value>Bijna klaar.</value></data>
+  <data name="Onboarding_Complete_RestartGuidance.Text" xml:space="preserve"><value>Sla eerst je werk op. Windows opnieuw starten start deze computer opnieuw op, niet alleen OpenClaw. Je kunt ervoor kiezen nu niet opnieuw te starten en OpenClaw na het opnieuw starten weer te openen.</value></data>
 </root>

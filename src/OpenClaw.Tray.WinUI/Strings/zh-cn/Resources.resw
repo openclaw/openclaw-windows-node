@@ -8246,4 +8246,8 @@
   <data name="Onboarding_Wizard_CompatibilitySpeech" xml:space="preserve"><value>让我们完成 AI 连接。</value></data>
   <data name="Onboarding_AiSetup_Speech.Text" xml:space="preserve"><value>为我选一个大脑。</value></data>
   <data name="Onboarding_Ready_Speech.Text" xml:space="preserve"><value>准备好就开始吧。</value></data>
+  <data name="Onboarding_Complete_SuccessSpeech.Text" xml:space="preserve"><value>一切就绪。</value></data>
+  <data name="Onboarding_Complete_FailureSpeech.Text" xml:space="preserve"><value>让我们解决这个问题。</value></data>
+  <data name="Onboarding_Complete_RestartSpeech.Text" xml:space="preserve"><value>就快好了。</value></data>
+  <data name="Onboarding_Complete_RestartGuidance.Text" xml:space="preserve"><value>请先保存工作。重启 Windows 会重启整台电脑，而不只是 OpenClaw。你可以选择暂不重启，并在重启后重新打开 OpenClaw。</value></data>
 </root>

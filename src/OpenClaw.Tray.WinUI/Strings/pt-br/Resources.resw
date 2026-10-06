@@ -8298,4 +8298,8 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Onboarding_Wizard_CompatibilitySpeech" xml:space="preserve"><value>Vamos terminar de conectar sua IA.</value></data>
   <data name="Onboarding_AiSetup_Speech.Text" xml:space="preserve"><value>Escolha um cérebro para mim.</value></data>
   <data name="Onboarding_Ready_Speech.Text" xml:space="preserve"><value>Pronto quando você estiver.</value></data>
+  <data name="Onboarding_Complete_SuccessSpeech.Text" xml:space="preserve"><value>Tudo pronto.</value></data>
+  <data name="Onboarding_Complete_FailureSpeech.Text" xml:space="preserve"><value>Vamos resolver isso.</value></data>
+  <data name="Onboarding_Complete_RestartSpeech.Text" xml:space="preserve"><value>Quase lá.</value></data>
+  <data name="Onboarding_Complete_RestartGuidance.Text" xml:space="preserve"><value>Salve seu trabalho primeiro. Reiniciar o Windows reinicia este computador, não apenas o OpenClaw. Você pode optar por não reiniciar agora e reabrir o OpenClaw após reiniciar.</value></data>
 </root>

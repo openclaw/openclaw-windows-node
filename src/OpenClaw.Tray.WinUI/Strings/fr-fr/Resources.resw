@@ -8246,4 +8246,8 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Onboarding_Wizard_CompatibilitySpeech" xml:space="preserve"><value>Terminons la connexion de votre IA.</value></data>
   <data name="Onboarding_AiSetup_Speech.Text" xml:space="preserve"><value>Choisissez mon cerveau.</value></data>
   <data name="Onboarding_Ready_Speech.Text" xml:space="preserve"><value>Prêt quand vous l'êtes.</value></data>
+  <data name="Onboarding_Complete_SuccessSpeech.Text" xml:space="preserve"><value>Tout est prêt.</value></data>
+  <data name="Onboarding_Complete_FailureSpeech.Text" xml:space="preserve"><value>Réglons cela ensemble.</value></data>
+  <data name="Onboarding_Complete_RestartSpeech.Text" xml:space="preserve"><value>On y est presque.</value></data>
+  <data name="Onboarding_Complete_RestartGuidance.Text" xml:space="preserve"><value>Enregistrez d'abord votre travail. Le redémarrage de Windows redémarre cet ordinateur, pas seulement OpenClaw. Vous pouvez refuser de redémarrer maintenant et rouvrir OpenClaw après le redémarrage.</value></data>
 </root>
