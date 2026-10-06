@@ -145,9 +145,11 @@ public sealed class BoundedProcessWaitTests
 
             await scheduler.Queued.Task.WaitAsync(TimeSpan.FromSeconds(5));
             if (cancel)
-                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => wait);
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(
+                    () => wait.WaitAsync(TimeSpan.FromSeconds(5)));
             else
-                await Assert.ThrowsAsync<TimeoutException>(() => wait);
+                await Assert.ThrowsAsync<TimeoutException>(
+                    () => wait.WaitAsync(TimeSpan.FromSeconds(5)));
 
             Assert.True(
                 stopwatch.Elapsed < TimeSpan.FromSeconds(3),
