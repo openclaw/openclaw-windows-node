@@ -68,6 +68,29 @@ per-run artifacts. Existing MCP-only integration defaults remain unchanged.
 
 ### Additional projects
 
+The chat composer's real keyboard regression is opt-in because it uses Windows
+`SendInput` on a visible, focused proof window. Run it only on an isolated
+interactive desktop with no concurrent computer-use or human input, Caps Lock
+off, and a Latin keyboard layout:
+
+```powershell
+$env:OPENCLAW_RUN_KEYBOARD_PROOF = '1'
+$env:OPENCLAW_TRAY_DATA_DIR = '<dedicated isolated test data directory>'
+.\scripts\run-proof-tests.ps1 -Project 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' -Filter 'Category=NativeKeyboard' -ResultName 'composer-keyboard' -RuntimeIdentifier win-x64
+```
+
+The tests check foreground ownership before every key sequence and fail rather
+than inject into another window. They exercise Shift+Enter at the beginning,
+middle, and end, selection replacement, typing after the newline, repeated
+newlines, draft synchronization after rendering, zero sends for Shift+Enter,
+and exactly one send with no extra newline for plain Enter. Optional
+`OPENCLAW_VISUAL_TEST=1` and `OPENCLAW_VISUAL_TEST_DIR=<artifact directory>` save
+the active multiline composer through the existing capture harness.
+Ordinary CI skips this lane; a skip is not keyboard proof. On a proof host every
+selected case must pass with zero skips. This lane does not synthesize an IME
+composition: record actual IME commit behavior separately or report it blocked.
+Unset the opt-in after the run.
+
 - **OpenClaw.Connection.Tests** keeps connection architecture tests separate from tray UI concerns.
 - **OpenClaw.Tray.UITests** covers A2UI/native WinUI rendering behavior that is awkward to validate through pure unit tests.
 - **OpenClaw.WinNode.Cli.Tests** covers the standalone Windows node CLI contract.

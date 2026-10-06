@@ -191,30 +191,104 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
     }
 
     [Fact]
-    public async Task ComposerInput_AcceptsNativeReturnAtCaretWithoutSelectionResetToStart()
+    public async Task ComposerInput_ProgrammaticEditPreservesNativeSelectionAfterRender()
     {
-        await WithChatAsync(480, async (surface, _, _, _) =>
+        await WithChatAsync(480, async (surface, _, session, _) =>
         {
-            TextBox? input = null;
-            await ui.RunOnUIAsync(() =>
+            var input = await ui.RunOnUIAsync(() => Task.FromResult(FindControl<TextBox>(surface, "ChatComposerInput")));
+            var selection = await ui.RunOnUIAsync(() =>
             {
-                input = FindControl<TextBox>(surface, "ChatComposerInput");
                 Assert.True(input.AcceptsReturn);
-                Assert.True(input.Focus(FocusState.Keyboard));
                 input.Text = "hello world";
-                input.SelectionStart = 5;
-                input.SelectionLength = 0;
+                input.Select(5, 0);
                 input.SelectedText = "\r";
+                return Task.FromResult((input.SelectionStart, input.SelectionLength));
             });
             await SettleAsync();
             await ui.RunOnUIAsync(() =>
             {
-                input ??= FindControl<TextBox>(surface, "ChatComposerInput");
+                Assert.Same(input, FindControl<TextBox>(surface, "ChatComposerInput"));
                 Assert.Equal("hello\n world", NormalizeNewlines(input.Text));
-                Assert.NotEqual(0, input.SelectionStart);
-                Assert.Equal("hello".Length, NormalizeNewlines(input.Text[..input.SelectionStart]).Length);
+                Assert.Equal(input.Text, session.ViewModel.Draft);
+                Assert.True(selection.SelectionStart > 0);
+                Assert.Equal(selection, (input.SelectionStart, input.SelectionLength));
             });
         });
+    }
+
+    [NativeKeyboardTheory]
+    [Trait("Category", "NativeKeyboard")]
+    [InlineData(0, 0)]
+    [InlineData(5, 0)]
+    [InlineData(11, 0)]
+    [InlineData(5, 6)]
+    [InlineData(0, 11)]
+    public async Task ComposerInput_NativeKeyboardPreservesCaretAndEnterSends(int start, int length)
+    {
+        await WithChatAsync(480, async (surface, _, session, provider) =>
+        {
+            const string initial = "hello world";
+            var prefix = initial[..start] + "\n";
+            var suffix = initial[(start + length)..];
+            var input = await ui.RunOnUIAsync(() => Task.FromResult(FindControl<TextBox>(surface, "ChatComposerInput")));
+            await ui.RunOnUIAsync(() => input.Text = initial);
+            await SettleAsync();
+            nint window = 0;
+            await ui.RunOnUIAsync(() =>
+            {
+                window = WinRT.Interop.WindowNative.GetWindowHandle(_captureWindow!);
+            });
+            await NativeKeyboardProof.ActivateAsync(window);
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.True(input.Focus(FocusState.Keyboard));
+                input.Select(start, length);
+            });
+
+            async Task PressAsync(global::Windows.System.VirtualKey key, bool shift = false)
+            {
+                await ui.RunOnUIAsync(() =>
+                {
+                    Assert.Same(input, FocusManager.GetFocusedElement(input.XamlRoot));
+                    NativeKeyboardProof.Press(window, key, shift);
+                });
+                await SettleAsync();
+            }
+
+            async Task AssertDraftAsync(string expectedPrefix)
+            {
+                await ui.RunOnUIAsync(() =>
+                {
+                    Assert.Same(input, FindControl<TextBox>(surface, "ChatComposerInput"));
+                    Assert.Equal(expectedPrefix + suffix, NormalizeNewlines(input.Text));
+                    Assert.Equal(expectedPrefix + suffix, NormalizeNewlines(session.ViewModel.Draft));
+                    Assert.Equal(expectedPrefix, NormalizeNewlines(input.Text[..input.SelectionStart]));
+                    Assert.Equal(0, input.SelectionLength);
+                    Assert.Empty(provider.SentMessages);
+                });
+            }
+
+            await PressAsync(global::Windows.System.VirtualKey.Enter, shift: true);
+            await AssertDraftAsync(prefix);
+            await PressAsync(global::Windows.System.VirtualKey.X);
+            prefix += "x";
+            await AssertDraftAsync(prefix);
+            await PressAsync(global::Windows.System.VirtualKey.Enter, shift: true);
+            prefix += "\n";
+            await AssertDraftAsync(prefix);
+            if (start == 5 && length == 0)
+                await CaptureAsync(surface, "Composer-keyboard-newlines");
+
+            await PressAsync(global::Windows.System.VirtualKey.Enter);
+            await ui.RunOnUIAsync(() =>
+            {
+                var sent = Assert.Single(provider.SentMessages);
+                Assert.Equal("proof", sent.ThreadId);
+                Assert.Equal((prefix + suffix).Trim(), NormalizeNewlines(sent.Message));
+                Assert.Empty(input.Text);
+                Assert.Empty(session.ViewModel.Draft);
+            });
+        }, interactiveKeyboard: true);
     }
 
     [Theory]
@@ -1415,7 +1489,8 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         Func<Border, ReactorHostControl, ChatComposerSession, ProofProvider, Task> proof,
         string scenario = "standard",
         Func<string, bool>? tryCopy = null,
-        string? thinkingLevel = null)
+        string? thinkingLevel = null,
+        bool interactiveKeyboard = false)
     {
         await ui.ResetContainerAsync();
         ReactorHostControl? host = null;
@@ -1466,7 +1541,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 surface.Child = host;
                 proofWindow = new Window { Content = surface, SystemBackdrop = new MicaBackdrop() };
                 _captureWindow = proofWindow;
-                var windowPosition = ui.IsSlow ? 80 : -32000;
+                var windowPosition = ui.IsSlow || interactiveKeyboard ? 80 : -32000;
                 var captureHeight = Environment.GetEnvironmentVariable("OPENCLAW_NATIVE_COMPOSITOR_CAPTURE") == "1" ? 1100 : 900;
                 proofWindow.AppWindow.MoveAndResize(new Windows.Graphics.RectInt32(windowPosition, windowPosition, 1300, captureHeight));
                 proofWindow.Activate();
@@ -1707,6 +1782,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
 
     private sealed class ProofProvider(string scenario = "standard", string? thinkingLevel = null) : IChatDataProvider
     {
+        public List<(string ThreadId, string Message)> SentMessages { get; } = [];
         public string DisplayName => "Native component proof";
         public string? SelectedModel { get; private set; }
         public int SetModelCalls { get; private set; }
@@ -1815,7 +1891,11 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                     }
                     : null));
         }
-        public Task SendMessageAsync(string threadId, string message, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task SendMessageAsync(string threadId, string message, CancellationToken cancellationToken = default)
+        {
+            SentMessages.Add((threadId, message));
+            return Task.CompletedTask;
+        }
         public Task StopResponseAsync(string threadId, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task SetThreadSuspendedAsync(string threadId, bool suspended, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task DeleteThreadAsync(string threadId, CancellationToken cancellationToken = default) => Task.CompletedTask;
