@@ -29,7 +29,10 @@ public sealed record IsolatedGatewayStatus(
     string State,
     int? Port,
     string? AgentUserSid,
-    IReadOnlyList<IsolatedGatewayListener> Listeners);
+    IReadOnlyList<IsolatedGatewayListener> Listeners,
+    string? SessionState = null,
+    string? ReadinessState = null,
+    string? ReadinessReason = null);
 
 /// <summary>No matching trusted package is registered. Other validation failures are not install requests.</summary>
 public sealed class NativeGatewayPackageNotInstalledException : InvalidOperationException
