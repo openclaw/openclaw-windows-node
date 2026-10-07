@@ -3,6 +3,8 @@ using OpenClaw.Shared;
 using OpenClaw.Shared.Telemetry;
 using OpenClaw.TestSupport.Gateway;
 using OpenClawTray.Chat;
+using OpenClawTray.Presentation;
+using OpenClawTray.Services;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
@@ -808,7 +810,10 @@ public class OpenClawChatDataProviderTests
             bridge.RaiseStatus(ConnectionStatus.Connected);
             await provider.SendMessageAsync("main", "first");
             bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
-            using var composer = new ChatComposerFactory(new Presentation.RecordingUiDispatcher()).Create(
+            var dispatcher = new Presentation.RecordingUiDispatcher();
+            using var temp = new OpenClaw.TestSupport.TempDirectory();
+            using var store = new SettingsStore(new SettingsManager(temp.Path), dispatcher);
+            using var composer = new ChatComposerFactory(dispatcher, store).Create(
                 provider, new ChatComposerHostActions(null, null, null, null, null), initialSpeakerMuted: false);
             composer.ApplyInputs(new ChatComposerInputs(
                 "connected", true, snapshots[^1].Threads.Single(thread => thread.Id == "main"),

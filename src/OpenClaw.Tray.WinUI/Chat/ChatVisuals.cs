@@ -58,6 +58,12 @@ internal static class ChatVisuals
     internal static void StylePickerAccent(TextBlock text) =>
         text.Style = (Style)Application.Current.Resources["ChatPickerAccentTextStyle"];
 
+    internal static void StyleFlyoutHeading(TextBlock text) =>
+        text.Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"];
+
+    internal static void StyleFlyoutCaption(TextBlock text) =>
+        text.Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"];
+
     private static readonly ConditionalWeakTable<FrameworkElement, SizeChangedEventHandler> Observers = new();
 
     internal static void Observe(FrameworkElement element, Action<double> changed)

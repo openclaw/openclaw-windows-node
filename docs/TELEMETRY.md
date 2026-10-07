@@ -403,10 +403,10 @@ Reviewed attributes are:
   reason: `direct_argv_unsupported`, `custom_environment_unsupported`,
   `effective_shell_changed`, `fallback_shell_unapproved`, or
   `unsupported_sandbox_request`
-- `openclaw.node.tool.sandbox.fallback.target`: `unsandboxed` when an unavailable
-  MXC backend caused compatibility fallback
-- `openclaw.node.tool.sandbox.fallback.reason`: `mxc_unavailable` for that
-  fallback
+- `openclaw.node.tool.sandbox.fallback.target`: historical `unsandboxed` value
+  for compatibility fallback; current sandbox-enabled execution fails closed
+- `openclaw.node.tool.sandbox.fallback.reason`: historical `mxc_unavailable`
+  reason retained for telemetry readers
 - `error.type`: exception type only
 
 Failure categories are `invalid_request`, `unsupported_command`, `node_busy`,

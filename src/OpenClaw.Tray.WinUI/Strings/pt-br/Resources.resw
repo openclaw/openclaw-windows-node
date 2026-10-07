@@ -3231,7 +3231,7 @@ Os comandos serão executados no host sem proteção de sandbox enquanto o sandb
   <data name="AppNotification_SandboxUnavailableBlocked_MessageFormat" xml:space="preserve">
     <value>{0}
 
-Os comandos são bloqueados enquanto o sandboxing está indisponível porque o bloqueio de contingência estrita está ativado.</value>
+O Sandbox do Node está ativado. Os comandos são bloqueados até que a contenção esteja disponível.</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_DefaultReason" xml:space="preserve">
     <value>Os mecanismos de sandboxing do MXC não estão disponíveis nesta máquina.</value>
@@ -6534,7 +6534,7 @@ Certifique-se de que o Gateway está em execução.</value>
     <value>Sandbox do Node indisponível: comandos bloqueados</value>
   </data>
   <data name="SandboxPage_StatusUnavailableBlockedSubtext" xml:space="preserve">
-    <value>A contenção não está disponível neste PC, e o bloqueio de contingência estrita está ativado, então comandos iniciados pelo agente são bloqueados.</value>
+    <value>O Sandbox do Node está ativado. A contenção não está disponível neste PC, então os comandos iniciados pelo agente são bloqueados.</value>
   </data>
   <data name="SandboxPage_StatusUnavailableOffTitle" xml:space="preserve">
     <value>O Sandbox do Node está desativado: execução no host</value>
@@ -6564,7 +6564,7 @@ Certifique-se de que o Gateway está em execução.</value>
     <value>Os comandos serão executados no host sem proteção de sandbox enquanto o sandboxing estiver indisponível.</value>
   </data>
   <data name="SandboxPage_UnavailableBehaviorBlocked" xml:space="preserve">
-    <value>Os comandos são bloqueados enquanto o sandboxing está indisponível porque o bloqueio de contingência estrita está ativado.</value>
+    <value>O Sandbox do Node está ativado. Os comandos são bloqueados até que a contenção esteja disponível.</value>
   </data>
   <data name="SandboxPage_ProbeErrorTitle" xml:space="preserve">
     <value>Não foi possível verificar a disponibilidade do sandbox</value>
@@ -7993,6 +7993,30 @@ Suas configurações, gateway, arquivos e modelos permanecem onde estão.</value
   <data name="Onboarding_AiSetup_LocalOwnershipInvalid" xml:space="preserve"><value>A propriedade salva da IA local, o modelo ou a configuração do gateway não corresponde mais. No perfil original do Companion, revise o gateway original e suas configurações de modelo, incluindo entradas alteradas na lista de modelos permitidos. Mantenha o comprovante de propriedade; não copie credenciais nem substitua o provedor.</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipUnavailable" xml:space="preserve"><value>Não foi possível verificar a propriedade ou a configuração do gateway original. Reconecte esse gateway e verifique novamente. Nada foi alterado.</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipFiles" xml:space="preserve"><value>Os arquivos da instalação de IA local gerenciada precisam de reparo. Nas configurações de IA local, pare o runtime e resolva a rota do gateway original antes de reparar os arquivos. Mantenha o comprovante de propriedade.</value></data>
+  <data name="Chat_Composer_Sandbox_On" xml:space="preserve">
+    <value>Configuração do Sandbox do Node: ativada</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Off" xml:space="preserve">
+    <value>Configuração do Sandbox do Node: desativada</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_OffDescription" xml:space="preserve">
+    <value>Os comandos neste nó Windows são executados sem sandbox.</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_OnDescription" xml:space="preserve">
+    <value>Os comandos neste nó Windows são executados em uma sandbox.</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
+    <value>Sandbox do Node</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_StateOn" xml:space="preserve">
+    <value>Ativado</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_StateOff" xml:space="preserve">
+    <value>Desativado</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_OpenSettings" xml:space="preserve">
+    <value>Configurações do ambiente restrito</value>
+  </data>
   <data name="ChatPage_SetupUnavailable" xml:space="preserve">
     <value>O Gateway verificado durante a configuração não está conectado. Confira Conexão ou verifique novamente quando ele estiver disponível.</value>
   </data>

@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using OpenClawTray.Presentation;
 
 namespace OpenClawTray.Chat;
 
@@ -21,15 +22,20 @@ public sealed class ChatComposerSession : IDisposable
 {
     private int _disposed;
     private long _inputRevision;
+    private readonly ISettingsStore _settingsStore;
 
     internal ChatComposerSession(
         ChatComposerViewModel viewModel,
         ChatComposerController controller,
-        ChatComposerHostActions hostActions)
+        ChatComposerHostActions hostActions,
+        ISettingsStore settingsStore)
     {
         ViewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
         Controller = controller ?? throw new ArgumentNullException(nameof(controller));
         HostActions = hostActions ?? throw new ArgumentNullException(nameof(hostActions));
+        _settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
+        _settingsStore.Changed += OnSettingsChanged;
+        ViewModel.ApplySandboxSettings(_settingsStore.Current);
     }
 
     internal ChatComposerViewModel ViewModel { get; }
@@ -37,6 +43,9 @@ public sealed class ChatComposerSession : IDisposable
     internal ChatComposerController Controller { get; }
 
     internal ChatComposerHostActions HostActions { get; }
+
+    private void OnSettingsChanged(object? sender, SettingsChangedEventArgs args) =>
+        ViewModel.ApplySandboxSettings(args.Snapshot);
 
     /// <summary>Applies the latest committed immutable projection with a
     /// session-monotonic revision that survives composer view remounts.</summary>
@@ -53,6 +62,7 @@ public sealed class ChatComposerSession : IDisposable
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
             return;
 
+        _settingsStore.Changed -= OnSettingsChanged;
         Controller.Dispose();
         ViewModel.Dispose();
     }

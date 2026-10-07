@@ -63,6 +63,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         // detail: it is not a second copy of composer state, only a re-render token.
         var (renderRevision, setRenderRevision) = UseState(vm.RenderRevision, threadSafe: true);
         var inputControl = UseRef<TextBox?>(null);
+        var sandboxAnchor = UseRef<Button?>(null);
         var slashPopup = UseRef<Microsoft.UI.Xaml.Controls.Primitives.Popup?>(null);
         var slashPopupContentRef = UseRef<(string Key, FrameworkElement? Content)>((string.Empty, null));
         var controllerRef = UseRef(controller);
@@ -176,15 +177,17 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             Action onClick,
             bool enabled = true,
             string? automationId = null,
-            string? itemStatus = null)
+            string? itemStatus = null,
+            string? foreground = null)
         {
-            return Button(
-                    TextBlock(glyph)
-                        .AccessibilityView(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw)
-                        .FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
-                        .FontSize(16)
-                        .Set(text => text.IsTextScaleFactorEnabled = false),
-                    onClick)
+            var icon = TextBlock(glyph)
+                .AccessibilityView(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw)
+                .FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
+                .FontSize(16)
+                .Set(text => text.IsTextScaleFactorEnabled = false);
+            if (foreground is not null)
+                icon = icon.Foreground(Theme.Ref(foreground));
+            return Button(icon, onClick)
                 .AutomationName(automationName)
                 .Foreground(Theme.Ref("ChatSecondaryTextBrush"))
                 .Resources(ChatVisuals.ToolbarButtonResources)
@@ -577,6 +580,68 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             () => props.Session.HostActions.AttachmentPickerRequest?.Invoke(),
             props.Session.HostActions.AttachmentPickerRequest is not null,
             "ChatComposerAttach");
+        var sandboxTitle = vm.SandboxEnabled
+            ? Localized("Chat_Composer_Sandbox_On", "Node Sandbox setting: On")
+            : Localized("Chat_Composer_Sandbox_Off", "Node Sandbox setting: Off");
+        var sandboxDescription = vm.SandboxEnabled
+            ? Localized("Chat_Composer_Sandbox_OnDescription",
+                "Commands on this Windows node run in a sandbox.")
+            : Localized("Chat_Composer_Sandbox_OffDescription",
+                "Commands on this Windows node run without a sandbox.");
+        var sandboxState = vm.SandboxEnabled
+            ? Localized("Chat_Composer_Sandbox_StateOn", "On")
+            : Localized("Chat_Composer_Sandbox_StateOff", "Off");
+        var sandboxForeground = vm.SandboxEnabled ? "ChatSandboxOnBrush" : "ChatSecondaryTextBrush";
+        var sandboxSettingsLabel = Localized("Chat_Composer_Sandbox_OpenSettings", "Sandbox settings");
+        var sandboxButton = Flyout(
+            IconButton(FluentIconCatalog.Sandbox, sandboxTitle, () => { },
+                automationId: "ChatComposerSandbox",
+                foreground: sandboxForeground)
+                .OnMountAdd(control => sandboxAnchor.Current = (Button)control),
+            VStack(0,
+                VStack(8,
+                    Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+                        TextBlock(Localized("Chat_Composer_Sandbox_Title", "Node Sandbox"))
+                            .TextWrapping(TextWrapping.Wrap)
+                            .Set(ChatVisuals.StyleFlyoutHeading),
+                        TextBlock(sandboxState)
+                            .Set(ChatVisuals.StyleFlyoutCaption)
+                            .Foreground(Theme.Ref(sandboxForeground))
+                            .Margin(12, 0, 0, 0)
+                            .VAlign(VerticalAlignment.Center)
+                            .AutomationId("ChatSandboxStatus")
+                            .Grid(column: 1)),
+                    TextBlock(sandboxDescription).TextWrapping(TextWrapping.Wrap)
+                        .Set(ChatVisuals.StyleFlyoutCaption)
+                        .Foreground(Theme.Ref("ChatSecondaryTextBrush"))
+                        .AutomationId("ChatSandboxDescription"))
+                    .Padding(16),
+                Border(null).Height(1).Background(Theme.Ref("ChatStrokeBrush")),
+                Button(Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+                        TextBlock(sandboxSettingsLabel).TextWrapping(TextWrapping.Wrap)
+                            .Set(ChatVisuals.StyleFlyoutCaption),
+                        TextBlock(FluentIconCatalog.ChevronR)
+                            .FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
+                            .FontSize(12)
+                            .AccessibilityView(AccessibilityView.Raw)
+                            .Set(text => text.IsTextScaleFactorEnabled = false)
+                            .Margin(12, 0, 0, 0)
+                            .VAlign(VerticalAlignment.Center)
+                            .Grid(column: 1)), () =>
+                    {
+                        sandboxAnchor.Current?.Flyout?.Hide();
+                        props.Session.HostActions.SandboxSettingsNavigation?.Invoke();
+                    })
+                    .SubtleButton().MinHeight(36).Padding(12, 8).CornerRadius(8).Margin(4)
+                    .AutomationId("ChatSandboxOpenSettings")
+                    .AutomationName(sandboxSettingsLabel)
+                    .IsEnabled(props.Session.HostActions.SandboxSettingsNavigation is not null)
+                    .HAlign(HorizontalAlignment.Stretch)
+                    .HorizontalContentAlignment(HorizontalAlignment.Stretch))
+                .Width(Math.Min(280, Math.Max(200, viewportWidth - 24)))
+                .AutomationId("ChatSandboxPopup")
+                .AutomationName(sandboxTitle))
+            .Set(ChatVisuals.StylePicker);
         var voiceButton = IconButton(
             isRecording
                 ? FluentIconCatalog.Stop
@@ -637,7 +702,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             Grid([GridSize.Star()], [GridSize.Auto], reasoningPicker).Grid(column: 1))
             .MaxWidth(320)
             .HAlign(HorizontalAlignment.Right).VAlign(VerticalAlignment.Center);
-        var rightToolbar = HStack(4, voiceButton, primaryAction)
+        var rightToolbar = HStack(4, sandboxButton, voiceButton, primaryAction)
             .HAlign(HorizontalAlignment.Right)
             .VAlign(VerticalAlignment.Center);
         var toolbar = Grid(

@@ -3329,6 +3329,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
     private void PublishSandboxRiskNotification(MxcAvailability availability)
     {
+        // A completed probe must not replace the explicit off-state notification.
+        if (_settings is not { SystemRunSandboxEnabled: true })
+            return;
+
         if (availability.CanRunSystemRunSandbox)
         {
             ClearSandboxRiskNotification();
@@ -3338,17 +3342,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         var reasonText = availability.SystemRunSandboxUnsupportedReasons.Count > 0
             ? string.Join("  ·  ", availability.SystemRunSandboxUnsupportedReasons)
             : LocalizationHelper.GetString("AppNotification_SandboxUnavailable_DefaultReason");
-        var blockHostFallback = _settings?.SystemRunBlockHostFallbackWhenMxcUnavailable == true;
-        var mode = blockHostFallback ? "blocked" : "host-fallback";
-        var title = blockHostFallback
-            ? LocalizationHelper.GetString("AppNotification_SandboxUnavailableBlocked_Title")
-            : LocalizationHelper.GetString("AppNotification_SandboxUnavailable_Title");
-        var message = blockHostFallback
-            ? LocalizationHelper.Format("AppNotification_SandboxUnavailableBlocked_MessageFormat", reasonText)
-            : LocalizationHelper.Format("AppNotification_SandboxUnavailable_MessageFormat", reasonText);
+        var title = LocalizationHelper.GetString("AppNotification_SandboxUnavailableBlocked_Title");
+        var message = LocalizationHelper.Format("AppNotification_SandboxUnavailableBlocked_MessageFormat", reasonText);
 
         PublishSandboxRiskNotification(
-            $"unavailable:{mode}:{reasonText}",
+            $"unavailable:blocked:{reasonText}",
             title,
             message);
     }

@@ -9,6 +9,8 @@ using OpenClaw.Shared;
 using OpenClawTray.Chat;
 using OpenClawTray.Presentation;
 using OpenClawTray.Presentation.Adapters;
+using OpenClaw.TestSupport;
+using OpenClawTray.Services;
 using OpenClawTray.Pages;
 using OpenClaw.SetupEngine;
 using OpenClaw.Connection;
@@ -62,7 +64,9 @@ public sealed class MountedReactorChatDisposalProofTests
         await _ui.RunOnUIAsync(() =>
         {
             var dispatcher = new WinUIDispatcher(_ui.Dispatcher);
-            var factory = new ChatComposerFactory(dispatcher);
+            using var temp = new TempDirectory();
+            using var store = new SettingsStore(new SettingsManager(temp.Path), dispatcher);
+            var factory = new ChatComposerFactory(dispatcher, store);
             var provider = new NoopChatDataProvider();
             var hostActions = new ChatComposerHostActions(null, null, null, null, null);
             var session = factory.Create(provider, hostActions, initialSpeakerMuted: false);
@@ -101,6 +105,84 @@ public sealed class MountedReactorChatDisposalProofTests
     }
 
     [Fact]
+    public async Task CreateComposerSession_PreservesSandboxAndSessionNavigationActions()
+    {
+        await _ui.RunOnUIAsync(() =>
+        {
+            var dispatcher = new WinUIDispatcher(_ui.Dispatcher);
+            using var temp = new TempDirectory();
+            using var store = new SettingsStore(new SettingsManager(temp.Path), dispatcher);
+            var sandboxNavigations = 0;
+            var sessionNavigations = 0;
+            string? selectedSession = null;
+            using var session = ReactorChatHostExtensions.CreateComposerSession(
+                new Border(),
+                new ChatComposerFactory(dispatcher, store),
+                new NoopChatDataProvider(),
+                onVoiceRequest: null,
+                onAttachClick: null,
+                onSettingsClick: null,
+                onSpeakerMuteChanged: null,
+                initialMuted: false,
+                onSandboxSettingsClick: () => sandboxNavigations++,
+                onSessionNavigationStarting: () => sessionNavigations++,
+                onSessionSelected: key => selectedSession = key);
+
+            session.HostActions.SandboxSettingsNavigation!();
+            Assert.Equal(1, sandboxNavigations);
+            Assert.Equal(0, sessionNavigations);
+            Assert.Null(selectedSession);
+
+            session.HostActions.SessionNavigationStarting!();
+            session.HostActions.SessionSelected!("agent:main:selected");
+            Assert.Equal(1, sandboxNavigations);
+            Assert.Equal(1, sessionNavigations);
+            Assert.Equal("agent:main:selected", selectedSession);
+        });
+    }
+
+    [Theory]
+    [InlineData("window")]
+    [InlineData("target")]
+    [InlineData("provider")]
+    public async Task FailedMount_DisposesSessionAndLeavesExistingContent(string invalidArgument)
+    {
+        await _ui.RunOnUIAsync(() =>
+        {
+            var dispatcher = new WinUIDispatcher(_ui.Dispatcher);
+            using var temp = new TempDirectory();
+            var settings = new SettingsManager(temp.Path) { SystemRunSandboxEnabled = true };
+            using var store = new SettingsStore(settings, dispatcher);
+            var provider = new NoopChatDataProvider();
+            using var session = new ChatComposerFactory(dispatcher, store).Create(
+                provider, new ChatComposerHostActions(null, null, null, null, null), false);
+            var existingContent = new TextBlock { Text = "Keep existing content" };
+            var target = new Border { Child = existingContent };
+            var window = new Microsoft.UI.Xaml.Window();
+            try
+            {
+                Assert.Throws<ArgumentNullException>(() => ReactorChatHostExtensions.MountReactorChat(
+                    invalidArgument == "window" ? null! : window,
+                    invalidArgument == "target" ? null! : target,
+                    invalidArgument == "provider" ? null! : provider,
+                    session));
+
+                Assert.True(session.ViewModel.IsDisposed);
+                Assert.True(session.Controller.IsDisposed);
+                Assert.Same(existingContent, target.Child);
+                var revision = session.ViewModel.RenderRevision;
+                settings.SystemRunSandboxEnabled = false;
+                settings.Save();
+                Assert.Equal(revision, session.ViewModel.RenderRevision);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
     public async Task SetupVoiceWaitsForVisibleReadySurfaceInsteadOfHiddenRetainedHost()
     {
         await _ui.RunOnUIAsync(() =>
@@ -110,7 +192,10 @@ public sealed class MountedReactorChatDisposalProofTests
             var target = Assert.IsType<Border>(page.FindName("ChatHost"));
             var capture = new TaskCompletionSource<string?>();
             CancellationToken captureToken = default;
-            var session = new ChatComposerFactory(new WinUIDispatcher(_ui.Dispatcher)).Create(
+            var dispatcher = new WinUIDispatcher(_ui.Dispatcher);
+            using var temp = new TempDirectory();
+            using var store = new SettingsStore(new SettingsManager(temp.Path), dispatcher);
+            var session = new ChatComposerFactory(dispatcher, store).Create(
                 new NoopChatDataProvider(),
                 new(null, null, (ct, _) => { captureToken = ct; return capture.Task; }, null, null), false);
             var reactor = new ReactorHostControl();

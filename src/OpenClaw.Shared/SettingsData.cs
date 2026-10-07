@@ -190,8 +190,7 @@ public record class SettingsData
     // ── MXC sandbox ─────────────────────────────────────────────────────
     /// <summary>
     /// Master switch for system.run containment. When <c>true</c> (default),
-    /// system.run uses MXC containment when available and uses the compatibility
-    /// host fallback when MXC is unavailable unless strict blocking is enabled. Unsupported
+    /// system.run requires MXC containment and blocks if MXC is unavailable. Unsupported
     /// sandbox request features are rejected while sandboxing remains enabled.
     /// When <c>false</c>, system.run always runs on the host as it did before
     /// MXC support was added.
@@ -199,10 +198,8 @@ public record class SettingsData
     public bool SystemRunSandboxEnabled { get; set; } = true;
 
     /// <summary>
-    /// When sandboxing is enabled but MXC is unavailable, block system.run
-    /// instead of using the compatibility host fallback. Default <c>false</c>
-    /// preserves the pre-MXC host fallback unless the operator opts into strict
-    /// fail-closed behavior.
+    /// Legacy persisted preference retained for file compatibility. No longer affects
+    /// execution: enabled sandboxing always blocks when containment is unavailable.
     /// </summary>
     public bool SystemRunBlockHostFallbackWhenMxcUnavailable { get; set; } = false;
 

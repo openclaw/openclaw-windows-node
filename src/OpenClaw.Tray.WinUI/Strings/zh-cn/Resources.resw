@@ -3188,7 +3188,7 @@
   <data name="AppNotification_SandboxUnavailableBlocked_MessageFormat" xml:space="preserve">
     <value>{0}
 
-由于已启用严格回退阻止，沙盒不可用期间命令会被阻止。</value>
+节点沙盒已开启。命令会被阻止，直到隔离可用。</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_DefaultReason" xml:space="preserve">
     <value>此计算机上没有可用的 MXC 沙盒基元。</value>
@@ -6556,7 +6556,7 @@
     <value>节点沙盒不可用: 命令已阻止</value>
   </data>
   <data name="SandboxPage_StatusUnavailableBlockedSubtext" xml:space="preserve">
-    <value>此电脑上无法使用隔离，并且已启用严格回退阻止，因此代理启动的命令会被阻止。</value>
+    <value>节点沙盒已开启。此电脑上无法使用隔离，因此代理启动的命令会被阻止。</value>
   </data>
   <data name="SandboxPage_StatusUnavailableOffTitle" xml:space="preserve">
     <value>节点沙盒已关闭: 主机执行</value>
@@ -6586,7 +6586,7 @@
     <value>在沙盒不可用期间，命令将在主机上运行，且没有沙盒保护。</value>
   </data>
   <data name="SandboxPage_UnavailableBehaviorBlocked" xml:space="preserve">
-    <value>由于已启用严格回退阻止，沙盒不可用期间命令会被阻止。</value>
+    <value>节点沙盒已开启。命令会被阻止，直到隔离可用。</value>
   </data>
   <data name="SandboxPage_ProbeErrorTitle" xml:space="preserve">
     <value>无法验证沙盒可用性</value>
@@ -7939,6 +7939,30 @@
   <data name="Onboarding_AiSetup_LocalOwnershipInvalid" xml:space="preserve"><value>已保存的本地 AI 所有权、模型或网关配置不再匹配。请在原始 Companion 配置文件中检查原始网关及其模型设置，包括已修改的模型允许列表条目。保留所有权凭据，不要复制身份验证凭据或替换提供程序。</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipUnavailable" xml:space="preserve"><value>无法检查原始网关的所有权或配置。请重新连接原始网关并再次检查。未进行任何更改。</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipFiles" xml:space="preserve"><value>受管理的本地 AI 安装需要修复文件。请先在本地 AI 设置中停止运行时并解决原始网关路由问题，再修复文件。保留所有权凭据。</value></data>
+  <data name="Chat_Composer_Sandbox_On" xml:space="preserve">
+    <value>节点沙盒设置：开启</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Off" xml:space="preserve">
+    <value>节点沙盒设置：关闭</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_OffDescription" xml:space="preserve">
+    <value>此 Windows 节点上的命令在沙盒外运行。</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_OnDescription" xml:space="preserve">
+    <value>此 Windows 节点上的命令在沙盒中运行。</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
+    <value>节点沙盒</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_StateOn" xml:space="preserve">
+    <value>开启</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_StateOff" xml:space="preserve">
+    <value>关闭</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_OpenSettings" xml:space="preserve">
+    <value>沙盒设置</value>
+  </data>
   <data name="ChatPage_SetupUnavailable" xml:space="preserve">
     <value>设置期间验证的 Gateway 未连接。请检查“连接”，或在其可用时再次检查。</value>
   </data>

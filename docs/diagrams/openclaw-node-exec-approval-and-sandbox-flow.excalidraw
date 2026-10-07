@@ -309,7 +309,7 @@
       "y": 785,
       "width": 390,
       "height": 85,
-      "text": "MxcCommandRunner\nMXC AppContainer, strict deny,\nor approved host fallback",
+      "text": "MxcCommandRunner\nOn: MXC or block\nOff: host execution",
       "fontSize": 17,
       "fontFamily": 1,
       "strokeColor": "#000000",

@@ -173,6 +173,7 @@ internal sealed class SettingsStore : ISettingsStore
         CameraRecordingConsentGiven = _settings.CameraRecordingConsentGiven,
         LocationConsentGiven = _settings.LocationConsentGiven,
         ShowChatToolCalls = _settings.ShowChatToolCalls,
+        SystemRunSandboxEnabled = _settings.SystemRunSandboxEnabled,
     };
 
     private void ThrowIfDisposed()

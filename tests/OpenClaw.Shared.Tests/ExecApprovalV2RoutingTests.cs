@@ -357,7 +357,7 @@ public class ExecApprovalV2RoutingTests
 
     // -------------------------------------------------------------------------
     // Sandbox flag matrix: the V2 path against the real MXC runner, driven by
-    // SystemRunSandboxEnabled / availability / strict fallback blocking.
+    // SystemRunSandboxEnabled / availability / ignored legacy fallback setting.
     // -------------------------------------------------------------------------
 
     private static ExecApprovedExecution ApprovedEchoNoEnv()
@@ -380,8 +380,8 @@ public class ExecApprovalV2RoutingTests
     [InlineData(false, true, false, true)]
     [InlineData(true, true, false, true)]    // sandbox on + available → direct MXC argv transport
     [InlineData(true, true, true, true)]
-    [InlineData(true, false, false, true)]   // on + unavailable + fallback → host honors argv
-    [InlineData(true, false, true, true)]    // on + unavailable + strict → runner denies on its own
+    [InlineData(true, false, false, true)]   // on + unavailable → runner denies on its own
+    [InlineData(true, false, true, true)]
     public void MxcRunner_CanExecuteDirectArgv_FollowsSandboxFlags(
         bool sandboxEnabled, bool sandboxAvailable, bool strictBlock, bool expected)
     {
@@ -422,7 +422,7 @@ public class ExecApprovalV2RoutingTests
     }
 
     [Fact]
-    public async Task V2Allow_SandboxUnavailable_FallbackAllowed_ExecutesApprovedArgvOnHost()
+    public async Task V2Allow_SandboxUnavailable_LegacyFallbackAllowed_DeniesWithoutExecuting()
     {
         var settings = new SettingsData
         {
@@ -440,10 +440,9 @@ public class ExecApprovalV2RoutingTests
 
         Assert.True(res.Ok);
         Assert.Equal(0, sandbox.Calls);
-        Assert.NotNull(host.LastRequest);
-        Assert.Equal(approved.Argv, host.LastRequest!.Argv);
-        Assert.Equal(approved.Cwd, host.LastRequest.Cwd);
-        Assert.Equal(approved.TimeoutMs, host.LastRequest.TimeoutMs);
+        Assert.Null(host.LastRequest);
+        var payload = JsonSerializer.Serialize(res.Payload);
+        Assert.Contains("\"exitCode\":-1", payload);
     }
 
     [Fact]

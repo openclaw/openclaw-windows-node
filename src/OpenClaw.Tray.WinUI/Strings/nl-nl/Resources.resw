@@ -3189,7 +3189,7 @@ Opdrachten worden op de host uitgevoerd zonder sandboxbescherming zolang sandbox
   <data name="AppNotification_SandboxUnavailableBlocked_MessageFormat" xml:space="preserve">
     <value>{0}
 
-Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strikte fallbackblokkering is ingeschakeld.</value>
+Node-sandbox is ingeschakeld. Opdrachten worden geblokkeerd totdat isolatie beschikbaar is.</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_DefaultReason" xml:space="preserve">
     <value>MXC-sandboxprimitieven zijn niet beschikbaar op deze machine.</value>
@@ -6557,7 +6557,7 @@ Controleer of de gateway actief is.</value>
     <value>Node-sandbox niet beschikbaar: opdrachten geblokkeerd</value>
   </data>
   <data name="SandboxPage_StatusUnavailableBlockedSubtext" xml:space="preserve">
-    <value>Containment is niet beschikbaar op deze pc en strikte fallbackblokkering staat aan, dus opdrachten die de agent start, worden geblokkeerd.</value>
+    <value>Node-sandbox is ingeschakeld. Isolatie is niet beschikbaar op deze pc, dus opdrachten die de agent start, worden geblokkeerd.</value>
   </data>
   <data name="SandboxPage_StatusUnavailableOffTitle" xml:space="preserve">
     <value>Node-sandbox is uitgeschakeld: hostuitvoering</value>
@@ -6587,7 +6587,7 @@ Controleer of de gateway actief is.</value>
     <value>Opdrachten worden op de host uitgevoerd zonder sandboxbescherming zolang sandboxing niet beschikbaar is.</value>
   </data>
   <data name="SandboxPage_UnavailableBehaviorBlocked" xml:space="preserve">
-    <value>Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strikte fallbackblokkering is ingeschakeld.</value>
+    <value>Node-sandbox is ingeschakeld. Opdrachten worden geblokkeerd totdat isolatie beschikbaar is.</value>
   </data>
   <data name="SandboxPage_ProbeErrorTitle" xml:space="preserve">
     <value>Kan de beschikbaarheid van de sandbox niet verifiëren</value>
@@ -7940,6 +7940,30 @@ Uw instellingen, gateway, bestanden en modellen blijven op hun plaats.</value>
   <data name="Onboarding_AiSetup_LocalOwnershipInvalid" xml:space="preserve"><value>Het opgeslagen eigendom van lokale AI, het model of de gatewayconfiguratie komt niet meer overeen. Controleer in het oorspronkelijke Companion-profiel de oorspronkelijke gateway en de modelinstellingen, inclusief gewijzigde vermeldingen in de lijst met toegestane modellen. Bewaar het eigendomsbewijs; kopieer geen referenties en vervang de provider niet.</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipUnavailable" xml:space="preserve"><value>Het eigendom of de configuratie van de oorspronkelijke gateway kon niet worden gecontroleerd. Verbind deze gateway opnieuw en controleer nogmaals. Er is niets gewijzigd.</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipFiles" xml:space="preserve"><value>De bestanden van de beheerde lokale AI-installatie moeten worden hersteld. Stop de runtime in de instellingen voor lokale AI en los de route naar de oorspronkelijke gateway op voordat u bestanden herstelt. Bewaar het eigendomsbewijs.</value></data>
+  <data name="Chat_Composer_Sandbox_On" xml:space="preserve">
+    <value>Node-sandboxinstelling: aan</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Off" xml:space="preserve">
+    <value>Node-sandboxinstelling: uit</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_OffDescription" xml:space="preserve">
+    <value>Opdrachten op deze Windows-node worden zonder sandbox uitgevoerd.</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_OnDescription" xml:space="preserve">
+    <value>Opdrachten op deze Windows-node worden in een sandbox uitgevoerd.</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
+    <value>Node-sandbox</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_StateOn" xml:space="preserve">
+    <value>Aan</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_StateOff" xml:space="preserve">
+    <value>Uit</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_OpenSettings" xml:space="preserve">
+    <value>Instellingen voor sandboxomgeving</value>
+  </data>
   <data name="ChatPage_SetupUnavailable" xml:space="preserve">
     <value>De Gateway die tijdens de installatie is geverifieerd, is niet verbonden. Controleer Verbinding of controleer opnieuw wanneer deze beschikbaar is.</value>
   </data>

@@ -150,4 +150,5 @@ public sealed record SettingsSnapshot
     public bool LocationConsentGiven { get; init; }
 
     public bool ShowChatToolCalls { get; init; }
+    public bool SystemRunSandboxEnabled { get; init; }
 }

@@ -11,12 +11,11 @@ namespace OpenClaw.Shared.Mxc;
 /// Implementations:
 /// <list type="bullet">
 /// <item><see cref="DirectAppContainerExecutor"/> — per-call AppContainer via direct wxc-exec.exe spawn.</item>
-/// <item><c>HostFallbackExecutor</c> — when containment unavailable in BestEffort mode.</item>
 /// </list>
 /// All implementations are expected to throw <see cref="SandboxUnavailableException"/>
 /// when they cannot serve the request because of a missing backend (e.g. unsupported
-/// Windows build, missing wxc-exec.exe). Callers in fail-closed mode translate that
-/// into a denied invocation; callers in best-effort mode swap to a host runner.
+/// Windows build, missing wxc-exec.exe). The system.run caller translates that
+/// into a denied invocation while Node Sandbox is enabled.
 /// </remarks>
 public interface ISandboxExecutor
 {
@@ -74,7 +73,7 @@ public sealed record SandboxExecutionResult(
 /// <summary>
 /// Thrown by an <see cref="ISandboxExecutor"/> when its backend cannot serve a
 /// request (e.g. unsupported Windows build, missing wxc-exec.exe, OS feature off).
-/// Caller policy decides whether to fail-closed or fall back.
+/// Node Sandbox blocks the invocation rather than retrying outside containment.
 /// </summary>
 public sealed class SandboxUnavailableException : Exception
 {

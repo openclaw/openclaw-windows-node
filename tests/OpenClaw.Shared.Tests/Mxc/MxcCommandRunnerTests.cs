@@ -62,7 +62,7 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
-    public void ResolveEffectiveShell_DelegatesToHost_WhenMxcUnavailableAndCompatibilityFallbackEnabled()
+    public void ResolveEffectiveShell_UsesSandboxShell_WhenLegacyFallbackAllowedButMxcUnavailable()
     {
         var fallback = new FakeCommandRunner { EffectiveShellForNull = "pwsh" };
         var runner = NewRunner(
@@ -73,7 +73,7 @@ public class MxcCommandRunnerTests
                 blockHostFallbackWhenMxcUnavailable: false),
             sandboxAvailable: false);
 
-        Assert.Equal("pwsh", runner.ResolveEffectiveShell(null));
+        Assert.Equal("cmd", runner.ResolveEffectiveShell(null));
         Assert.Equal("powershell", runner.ResolveEffectiveShell(" powershell "));
         Assert.Equal("powershell", runner.ResolveEffectiveShell("bash"));
     }
@@ -96,7 +96,7 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
-    public async Task RunAsync_SandboxEnabled_FallsBackWhenExecutorIsUnavailableAndCompatibilityFallbackEnabled()
+    public async Task RunAsync_SandboxEnabled_BlocksUnavailableExecutorEvenWithLegacyFallbackAllowed()
     {
         var executor = new FakeSandboxExecutor { ThrowsUnavailable = true, UnavailableReason = "test reason" };
         var fallback = new FakeCommandRunner
@@ -112,16 +112,15 @@ public class MxcCommandRunnerTests
 
         var result = await runner.RunAsync(new CommandRequest { Command = "echo hi", Shell = "powershell" });
 
-        Assert.Equal(0, result.ExitCode);
-        Assert.Equal("host-ran", result.Stdout);
-        Assert.Equal(NodeToolExecutionMode.HostFallback, result.ExecutionMode);
-        Assert.Equal(NodeToolErrorCategory.None, result.ErrorCategory);
-        Assert.NotNull(fallback.LastRequest);
-        Assert.Equal("powershell", fallback.LastRequest!.Shell);
+        Assert.Equal(-1, result.ExitCode);
+        Assert.Empty(result.Stdout);
+        Assert.Equal(NodeToolExecutionMode.Sandbox, result.ExecutionMode);
+        Assert.Equal(NodeToolErrorCategory.SandboxUnavailable, result.ErrorCategory);
+        Assert.Null(fallback.LastRequest);
     }
 
     [Fact]
-    public async Task RunAsync_SandboxEnabled_OmittedShellFallsBackToApprovedHostDefaultWhenExecutorIsUnavailable()
+    public async Task RunAsync_SandboxEnabled_BlocksEvenPreviouslyApprovedHostFallback()
     {
         var executor = new FakeSandboxExecutor { ThrowsUnavailable = true, UnavailableReason = "test reason" };
         var fallback = new FakeCommandRunner
@@ -142,10 +141,9 @@ public class MxcCommandRunnerTests
             ApprovedHostFallbackShell = "powershell",
         });
 
-        Assert.Equal(0, result.ExitCode);
-        Assert.Equal("host-ran", result.Stdout);
-        Assert.NotNull(fallback.LastRequest);
-        Assert.Equal("powershell", fallback.LastRequest!.Shell);
+        Assert.Equal(-1, result.ExitCode);
+        Assert.Equal(NodeToolErrorCategory.SandboxUnavailable, result.ErrorCategory);
+        Assert.Null(fallback.LastRequest);
     }
 
     [Fact]
@@ -166,10 +164,8 @@ public class MxcCommandRunnerTests
         var result = await runner.RunAsync(new CommandRequest { Command = "echo hi" });
 
         Assert.Equal(-1, result.ExitCode);
-        Assert.Contains("without prior approval", result.Stderr);
-        Assert.Equal(
-            NodeToolSandboxDenialReason.FallbackShellUnapproved,
-            result.SandboxDenialReason);
+        Assert.Contains("The command was blocked", result.Stderr);
+        Assert.Equal(NodeToolErrorCategory.SandboxUnavailable, result.ErrorCategory);
         Assert.Null(fallback.LastRequest);
     }
 
@@ -304,7 +300,7 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
-    public async Task RunAsync_MxcUnavailable_RoutesToHost_WhenCompatibilityFallbackEnabled()
+    public async Task RunAsync_MxcUnavailable_Blocks_WhenLegacyFallbackAllowed()
     {
         var executor = new FakeSandboxExecutor { ThrowsUnavailable = true, UnavailableReason = "MXC missing" };
         var fallback = new FakeCommandRunner
@@ -321,11 +317,11 @@ public class MxcCommandRunnerTests
 
         var result = await runner.RunAsync(new CommandRequest { Command = "echo hi" });
 
-        Assert.Equal(0, result.ExitCode);
-        Assert.Equal("host", result.Stdout);
-        Assert.Equal(NodeToolExecutionMode.HostFallback, result.ExecutionMode);
-        Assert.NotNull(fallback.LastRequest);
-        Assert.Equal("powershell", fallback.LastRequest!.Shell);
+        Assert.Equal(-1, result.ExitCode);
+        Assert.Empty(result.Stdout);
+        Assert.Equal(NodeToolExecutionMode.Sandbox, result.ExecutionMode);
+        Assert.Equal(NodeToolErrorCategory.SandboxUnavailable, result.ErrorCategory);
+        Assert.Null(fallback.LastRequest);
         Assert.Null(executor.LastRequest);
     }
 
@@ -347,7 +343,7 @@ public class MxcCommandRunnerTests
         Assert.Equal(-1, result.ExitCode);
         Assert.Equal(NodeToolExecutionMode.Sandbox, result.ExecutionMode);
         Assert.Equal(NodeToolErrorCategory.SandboxUnavailable, result.ErrorCategory);
-        Assert.Contains("host fallback is blocked", result.Stderr);
+        Assert.Contains("The command was blocked", result.Stderr);
         Assert.Null(executor.LastRequest);
         Assert.Null(fallback.LastRequest);
     }
@@ -444,11 +440,10 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
-    public async Task RunAsync_SandboxUnavailableException_InvalidatesAvailabilityCacheAndFallsBack()
+    public async Task RunAsync_SandboxUnavailableException_InvalidatesAvailabilityCacheAndBlocks()
     {
         // When the executor throws SandboxUnavailableException at runtime the
-        // runner invokes its invalidate-availability callback and preserves
-        // the compatible host fallback path for this call.
+        // runner invokes its invalidate-availability callback without retrying on the host.
         var executor = new FakeSandboxExecutor { ThrowsUnavailable = true, UnavailableReason = "wxc-exec went missing" };
         var fallback = new FakeCommandRunner
         {
@@ -468,11 +463,10 @@ public class MxcCommandRunnerTests
 
         var result = await runner.RunAsync(new CommandRequest { Command = "echo hi", Shell = "powershell" });
 
-        Assert.Equal(0, result.ExitCode);
-        Assert.Equal("host", result.Stdout);
+        Assert.Equal(-1, result.ExitCode);
+        Assert.Empty(result.Stdout);
         Assert.Equal(1, invalidationCount);
-        Assert.NotNull(fallback.LastRequest);
-        Assert.Equal("powershell", fallback.LastRequest!.Shell);
+        Assert.Null(fallback.LastRequest);
     }
 
     [Fact]
@@ -531,7 +525,7 @@ public class MxcCommandRunnerTests
         var result = await runner.RunAsync(new CommandRequest { Command = "echo hi" });
 
         Assert.Equal(-1, result.ExitCode);
-        Assert.Contains("host fallback is blocked", result.Stderr);
+        Assert.Contains("The command was blocked", result.Stderr);
         Assert.Equal(1, invalidationCount);
         Assert.Null(fallback.LastRequest);
     }
@@ -691,10 +685,8 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
-    public async Task RunAsync_SandboxUnavailable_DirectArgv_FallsBackToHostThatHonorsArgv()
+    public async Task RunAsync_SandboxUnavailable_DirectArgv_IsBlocked()
     {
-        // When the sandbox is unavailable the request routes to the host runner,
-        // which preserves the same direct argv.
         var executor = new FakeSandboxExecutor();
         var fallback = new FakeCommandRunner { Result = new CommandResult { ExitCode = 0, Stdout = "host" } };
         var runner = NewRunner(
@@ -703,9 +695,9 @@ public class MxcCommandRunnerTests
         var argv = new[] { @"C:\Windows\System32\whoami.exe" };
         var result = await runner.RunAsync(new CommandRequest { Argv = argv });
 
-        Assert.Equal("host", result.Stdout);
-        Assert.NotNull(fallback.LastRequest);
-        Assert.Same(argv, fallback.LastRequest!.Argv);
+        Assert.Equal(-1, result.ExitCode);
+        Assert.Equal(NodeToolErrorCategory.SandboxUnavailable, result.ErrorCategory);
+        Assert.Null(fallback.LastRequest);
         Assert.Null(executor.LastRequest);
     }
 
@@ -736,8 +728,8 @@ public class MxcCommandRunnerTests
     }
 
     [Theory]
-    [InlineData(false)]  // compatibility host fallback honors argv
-    [InlineData(true)]   // strict blocking denies with its own explicit result
+    [InlineData(false)]  // Legacy preference cannot bypass containment.
+    [InlineData(true)]
     public void CanExecuteDirectArgv_SandboxEnabledButUnavailable_True(bool strictBlocking)
     {
         var runner = NewRunner(new FakeSandboxExecutor(), new FakeCommandRunner(),
@@ -776,7 +768,7 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
-    public void CanExecuteDirectArgv_ProbesAvailability_OnlyWhenSandboxEnabled()
+    public void CanExecuteDirectArgv_DoesNotProbeAvailability()
     {
         var availabilityChecks = 0;
         var enabled = new MxcCommandRunner(
@@ -786,7 +778,7 @@ public class MxcCommandRunnerTests
             () => { availabilityChecks++; return true; },
             invalidateAvailability: null, NullLogger.Instance);
         enabled.CanExecuteDirectArgv();
-        Assert.Equal(1, availabilityChecks);
+        Assert.Equal(0, availabilityChecks);
 
         availabilityChecks = 0;
         var disabled = new MxcCommandRunner(
@@ -830,7 +822,7 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
-    public async Task DirectArgv_GateSaidTrueThenSandboxDropped_RunAsyncHonorsApprovedArgvOnHost()
+    public async Task DirectArgv_GateSaidTrueThenSandboxDropped_RunAsyncBlocks()
     {
         var available = true;
         var executor = new FakeSandboxExecutor();
@@ -847,18 +839,16 @@ public class MxcCommandRunnerTests
         var argv = new[] { @"C:\Windows\System32\whoami.exe" };
         var result = await runner.RunAsync(new CommandRequest { Argv = argv });
 
-        // The compatibility host fallback executes exactly the approved argv,
-        // never legacy fields re-derived from the raw request.
-        Assert.Equal("host", result.Stdout);
-        Assert.NotNull(fallback.LastRequest);
-        Assert.Same(argv, fallback.LastRequest!.Argv);
+        Assert.Equal(-1, result.ExitCode);
+        Assert.Equal(NodeToolErrorCategory.SandboxUnavailable, result.ErrorCategory);
+        Assert.Null(fallback.LastRequest);
         Assert.Null(executor.LastRequest);
     }
 
     private sealed class FakeSandboxExecutor : ISandboxExecutor
     {
         public string Name => "fake";
-        public bool IsContained => true;
+        public bool IsContained { get; set; } = true;
 
         public SandboxExecutionRequest? LastRequest { get; private set; }
         public SandboxExecutionResult Result { get; set; } =
@@ -1004,14 +994,14 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
-    public async Task RunAsync_HostFallbackUsesNormalizedEffectiveShellForUnsupportedExplicitShell()
+    public async Task RunAsync_HostOptOutUsesNormalizedEffectiveShellForUnsupportedExplicitShell()
     {
         var executor = new FakeSandboxExecutor();
         var fallback = new FakeCommandRunner();
         var runner = NewRunner(
             executor,
             fallback,
-            NewSettings(sandboxEnabled: true, blockHostFallbackWhenMxcUnavailable: false),
+            NewSettings(sandboxEnabled: false),
             sandboxAvailable: false);
 
         await runner.RunAsync(new CommandRequest { Command = "echo hi", Shell = "bash" });
@@ -1105,7 +1095,7 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
-    public async Task RunAsync_UnavailableExecutor_FallsBackToHost_WhenCompatibilityFallbackEnabled()
+    public async Task RunAsync_UnavailableExecutor_Blocks_WhenLegacyFallbackAllowed()
     {
         var executor = new FakeSandboxExecutor
         {
@@ -1125,9 +1115,69 @@ public class MxcCommandRunnerTests
 
         var result = await runner.RunAsync(new CommandRequest { Command = "echo hi", Shell = "powershell" });
 
-        Assert.Equal(0, result.ExitCode);
-        Assert.Equal("host", result.Stdout);
-        Assert.NotNull(fallback.LastRequest);
-        Assert.Equal("powershell", fallback.LastRequest!.Shell);
+        Assert.Equal(-1, result.ExitCode);
+        Assert.Empty(result.Stdout);
+        Assert.Equal(NodeToolErrorCategory.SandboxUnavailable, result.ErrorCategory);
+        Assert.Null(fallback.LastRequest);
+    }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, false, true)]
+    [InlineData(false, true, false)]
+    [InlineData(false, true, true)]
+    [InlineData(true, false, false)]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, false)]
+    [InlineData(true, true, true)]
+    public async Task RunAsync_SandboxOn_NeverUsesHostAcrossLegacyFlagsAndRequestShapes(
+        bool legacyBlocking, bool runtimeFailure, bool directArgv)
+    {
+        var executor = new FakeSandboxExecutor { ThrowsUnavailable = runtimeFailure };
+        var host = new FakeCommandRunner();
+        var settings = NewSettings(blockHostFallbackWhenMxcUnavailable: legacyBlocking);
+        var logger = new CapturingLogger();
+        var runner = NewRunner(executor, host, settings, sandboxAvailable: runtimeFailure, logger: logger);
+        var request = directArgv
+            ? new CommandRequest { Argv = [@"C:\Windows\System32\whoami.exe"] }
+            : new CommandRequest { Command = "echo hi", Shell = "cmd" };
+
+        var result = await runner.RunAsync(request);
+
+        Assert.Equal(-1, result.ExitCode);
+        Assert.Equal(NodeToolErrorCategory.SandboxUnavailable, result.ErrorCategory);
+        Assert.Null(host.LastRequest);
+        Assert.True(settings.SystemRunSandboxEnabled);
+        Assert.Null(runner.ResolveHostFallbackShellForApproval(null, "cmd"));
+    }
+
+    [Fact]
+    public async Task RunAsync_SandboxOn_RejectsUncontainedExecutor()
+    {
+        var executor = new FakeSandboxExecutor { IsContained = false };
+        var host = new FakeCommandRunner();
+        var runner = NewRunner(executor, host, NewSettings());
+
+        var result = await runner.RunAsync(new CommandRequest { Command = "echo hi" });
+
+        Assert.Equal(NodeToolErrorCategory.SandboxUnavailable, result.ErrorCategory);
+        Assert.Null(executor.LastRequest);
+        Assert.Null(host.LastRequest);
+    }
+
+    [Fact]
+    public async Task RunAsync_UsesOneSettingsSnapshotForShellAndContainment()
+    {
+        var reads = 0;
+        var executor = new FakeSandboxExecutor();
+        var host = new FakeCommandRunner { EffectiveShellForNull = "pwsh" };
+        var runner = new MxcCommandRunner(executor, host,
+            () => NewSettings(sandboxEnabled: ++reads == 1), () => @"C:\test\settings", () => true);
+
+        await runner.RunAsync(new CommandRequest { Command = "echo hi" });
+
+        Assert.Equal(1, reads);
+        Assert.Equal("cmd", executor.LastRequest!.Args.GetProperty("shell").GetString());
+        Assert.Null(host.LastRequest);
     }
 }

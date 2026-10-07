@@ -122,7 +122,7 @@ and an allow on Windows does not authorize the Mac.
 | Node Mode and locally advertised Windows capabilities | Windows app | Local, because they decide what this Windows machine offers. |
 | Windows `system.run` kill switch | Windows app | Local and enforced before local exec approval. |
 | Windows exec approvals | Windows `exec-approvals.json` | Local and authoritative for Windows process execution. |
-| Windows MXC filesystem, network, clipboard, timeout, and fallback settings | Windows app | Local and enforced by the Windows command runner. |
+| Windows MXC filesystem, network, clipboard, timeout, and sandbox settings | Windows app | Local and enforced by the Windows command runner. |
 | Agent sandbox backend and workspace access | Gateway agent config | Gateway-side execution concern, separate from Windows MXC. |
 
 The design rule is: gateway-owned state should be observed or changed through
@@ -345,8 +345,8 @@ The Windows path is:
 9. The approved payload contains the resolved absolute executable path and
    canonical argv. The runner must execute that payload, not reconstruct it
    from untrusted raw text.
-10. `MxcCommandRunner` either uses MXC, denies because strict no-fallback mode is
-    enabled, or uses the explicitly permitted host fallback.
+10. `MxcCommandRunner` requires MXC while Node Sandbox is on and denies if containment
+    is unavailable. It uses the host runner only when Node Sandbox is explicitly off.
 11. The node returns stdout, stderr, exit code, timeout, duration, and diagnostic
     execution mode to the gateway.
 
@@ -604,7 +604,7 @@ SystemCapability
   -> Windows V2 exec approval
   -> MxcCommandRunner
      -> DirectAppContainerExecutor -> wxc-exec.exe -> AppContainer process
-     -> or approved LocalCommandRunner fallback
+     -> LocalCommandRunner only when Node Sandbox is off
 ```
 
 The Windows app knows:
@@ -612,7 +612,7 @@ The Windows app knows:
 - whether MXC is available on this host;
 - whether Windows sandboxing is enabled;
 - local filesystem, network, clipboard, Windows UI API, timeout, and output policies;
-- whether uncontained host fallback is allowed when MXC is unavailable.
+- whether the saved Off preference permits host execution.
 
 The gateway knows that it routed `system.run` to a Windows node and receives the
 result. It does not build the Windows MXC policy. The Windows node does.
@@ -653,10 +653,15 @@ explicitly rather than passing quietly, and it never tolerates any other
 nonzero exit code. See `Diagnostic_SystemRun_SpawnsChildExecutableInSandbox`
 and `AssertApprovedCommandRan` in `tests/OpenClaw.E2ETests/Setup/MxcSetupAndConnectTests.cs`.
 
-By default, Windows enables sandboxing but preserves a compatibility host
-fallback if MXC is unavailable. Enabling **block host fallback when MXC is
-unavailable** changes that case to a deny. The actual result reports whether
-execution used sandbox, host fallback, or host mode.
+By default, Windows enables sandboxing and blocks commands if MXC is unavailable,
+including loss of containment at runtime. Availability checks do not clear the
+enabled preference. Host execution requires the saved Node Sandbox preference to be
+Off. Existing Off values remain unchanged, including ones earlier versions saved
+automatically on unsupported hosts; review those settings because historical intent
+cannot be distinguished from a deliberate opt-out.
+The legacy `SystemRunBlockHostFallbackWhenMxcUnavailable` field no longer affects
+policy, including when older profiles contain `false`. Results report sandbox or
+host mode; host-fallback values remain historical telemetry only.
 
 MXC also blocks Win32k system calls by default. PowerShell (all versions) and
 some console programs initialize Windows UI APIs even when they do not show a
@@ -796,8 +801,7 @@ is:
 7. Windows has **Run system tools** enabled;
 8. Windows V2 policy allows or obtains local approval;
 9. Windows policy is still current at the execution boundary;
-10. MXC policy allows the operation, or an explicitly permitted host fallback is
-    used;
+10. MXC containment and policy allow the operation, or Node Sandbox is explicitly off;
 11. process launch succeeds with the approved executable, argv, cwd, timeout,
     and supported environment.
 

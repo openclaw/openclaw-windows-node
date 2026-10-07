@@ -32,6 +32,7 @@ static class FluentIconCatalog
     public const string Devices = "\uE772";        // Devices (two devices — section header)
     public const string Hostname = "\uE977";       // Devices/IT — single hostname/system info pill
     public const string Permissions = "\uEA18";    // Shield
+    public const string Sandbox = Permissions;    // Shared protection metaphor.
 
     // ── Capabilities (per-permission glyphs) ───────────────────────
     public const string Browser = "\uE774";        // Globe

@@ -450,7 +450,8 @@ public sealed partial class ChatWindow : WindowEx
             onAttachClick: OnAttachClicked,
             onSettingsClick: () => appInstance?.ShowHub("voice"),
             onSpeakerMuteChanged: muted => _ = OnSpeakerMuteChangedAsync(muted),
-            initialMuted: ShouldStartSpeakerMuted(appInstance?.Settings));
+            initialMuted: ShouldStartSpeakerMuted(appInstance?.Settings),
+            onSandboxSettingsClick: () => appInstance?.ShowHub("sandbox"));
         _reactorHost = ((Window)this).MountReactorChat(
             ChatHost,
             provider,

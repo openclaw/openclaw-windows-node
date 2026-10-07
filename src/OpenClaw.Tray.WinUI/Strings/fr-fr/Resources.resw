@@ -3188,7 +3188,7 @@ Les commandes s'exécuteront sur l'hôte sans protection de sandbox tant que le 
   <data name="AppNotification_SandboxUnavailableBlocked_MessageFormat" xml:space="preserve">
     <value>{0}
 
-Les commandes sont bloquées tant que le sandboxing est indisponible, car le blocage strict du repli est activé.</value>
+Le Sandbox du nœud est activé. Les commandes sont bloquées jusqu'à ce que le confinement soit disponible.</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_DefaultReason" xml:space="preserve">
     <value>Les primitives de sandboxing MXC ne sont pas disponibles sur cette machine.</value>
@@ -6556,7 +6556,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Sandbox du nœud indisponible: commandes bloquées</value>
   </data>
   <data name="SandboxPage_StatusUnavailableBlockedSubtext" xml:space="preserve">
-    <value>Le confinement n'est pas disponible sur ce PC et le blocage strict du repli est activé ; les commandes lancées par l'agent sont donc bloquées.</value>
+    <value>Le Sandbox du nœud est activé. Le confinement n'est pas disponible sur ce PC ; les commandes lancées par l'agent sont donc bloquées.</value>
   </data>
   <data name="SandboxPage_StatusUnavailableOffTitle" xml:space="preserve">
     <value>Le Sandbox du nœud est désactivé: exécution sur l'hôte</value>
@@ -6586,7 +6586,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Les commandes s'exécuteront sur l'hôte sans protection de sandbox tant que le sandboxing est indisponible.</value>
   </data>
   <data name="SandboxPage_UnavailableBehaviorBlocked" xml:space="preserve">
-    <value>Les commandes sont bloquées tant que le sandboxing est indisponible, car le blocage strict du repli est activé.</value>
+    <value>Le Sandbox du nœud est activé. Les commandes sont bloquées jusqu'à ce que le confinement soit disponible.</value>
   </data>
   <data name="SandboxPage_ProbeErrorTitle" xml:space="preserve">
     <value>Impossible de vérifier la disponibilité du sandbox</value>
@@ -7939,6 +7939,30 @@ Vos paramètres, votre passerelle, vos fichiers et vos modèles restent en place
   <data name="Onboarding_AiSetup_LocalOwnershipInvalid" xml:space="preserve"><value>La propriété enregistrée de l’IA locale, le modèle ou la configuration de la passerelle ne correspond plus. Dans le profil Companion d’origine, vérifiez la passerelle d’origine et ses paramètres de modèle, y compris les entrées modifiées de la liste des modèles autorisés. Conservez la preuve de propriété ; ne copiez pas les identifiants et ne remplacez pas le fournisseur.</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipUnavailable" xml:space="preserve"><value>La propriété ou la configuration de la passerelle d’origine n’a pas pu être vérifiée. Reconnectez cette passerelle et réessayez. Rien n’a été modifié.</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipFiles" xml:space="preserve"><value>Les fichiers de l’installation d’IA locale doivent être réparés. Dans les paramètres d’IA locale, arrêtez le moteur et résolvez son routage vers la passerelle d’origine avant de réparer les fichiers. Conservez la preuve de propriété.</value></data>
+  <data name="Chat_Composer_Sandbox_On" xml:space="preserve">
+    <value>Paramètre du Sandbox du nœud : activé</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Off" xml:space="preserve">
+    <value>Paramètre du Sandbox du nœud : désactivé</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_OffDescription" xml:space="preserve">
+    <value>Les commandes de ce nœud Windows s'exécutent sans sandbox.</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_OnDescription" xml:space="preserve">
+    <value>Les commandes de ce nœud Windows s'exécutent dans une sandbox.</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
+    <value>Sandbox du nœud</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_StateOn" xml:space="preserve">
+    <value>Activé</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_StateOff" xml:space="preserve">
+    <value>Désactivé</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_OpenSettings" xml:space="preserve">
+    <value>Paramètres du bac à sable</value>
+  </data>
   <data name="ChatPage_SetupUnavailable" xml:space="preserve">
     <value>Le Gateway vérifié pendant la configuration n’est pas connecté. Consultez Connexion ou vérifiez à nouveau lorsqu’il est disponible.</value>
   </data>

@@ -650,9 +650,8 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     /// Build the <see cref="ICommandRunner"/> for system.run. Returns an
     /// <see cref="MxcCommandRunner"/> wrapping <see cref="DirectAppContainerExecutor"/>.
     /// The runner honors <see cref="SettingsData.SystemRunSandboxEnabled"/>
-    /// by attempting MXC containment when available, preserving compatibility
-    /// host fallback when MXC is unavailable unless strict fallback blocking is
-    /// enabled, and rejecting unsupported sandbox request features while
+    /// by requiring MXC containment when enabled, blocking if it is unavailable,
+    /// and rejecting unsupported sandbox request features while
     /// sandboxing remains enabled.
     /// </summary>
     private ICommandRunner BuildSystemRunRunner()
@@ -681,15 +680,11 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         }
         else
         {
-            // Supported BaseContainer process containment is unavailable. The runner's top-level
-            // !_isSandboxAvailable() guard will either block or use the
-            // compatibility host fallback, depending on settings. The executor is
-            // constructed only to satisfy the constructor contract and is never
-            // invoked.
+            // An enabled sandbox denies execution until containment recovers.
             var reason = string.Join("; ", peeked.SystemRunSandboxUnsupportedReasons);
-            var unavailableMode = (_settings?.SystemRunBlockHostFallbackWhenMxcUnavailable ?? false)
-                ? "commands will be blocked by strict fallback settings"
-                : "commands will run through host fallback";
+            var unavailableMode = (_settings?.SystemRunSandboxEnabled ?? true)
+                ? "commands will be blocked while Node Sandbox is on"
+                : "commands will run on the host because Node Sandbox is off";
             _logger.Info($"[mxc] system.run runner = MxcCommandRunner (BaseContainer unavailable, {unavailableMode}: {reason})");
         }
 
@@ -718,7 +713,6 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             return new SettingsData
             {
                 SystemRunSandboxEnabled = true,
-                SystemRunBlockHostFallbackWhenMxcUnavailable = false,
                 SystemRunAllowOutbound = false,
                 SystemRunAllowWindowsUi = false,
             };
@@ -726,7 +720,6 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         return new SettingsData
         {
             SystemRunSandboxEnabled = _settings.SystemRunSandboxEnabled,
-            SystemRunBlockHostFallbackWhenMxcUnavailable = _settings.SystemRunBlockHostFallbackWhenMxcUnavailable,
             SystemRunAllowOutbound = _settings.SystemRunAllowOutbound,
             SystemRunAllowWindowsUi = _settings.SystemRunAllowWindowsUi,
             // Sandbox page fields — read by MxcPolicyBuilder.ForSystemRun.
@@ -762,7 +755,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     /// (supported / host-unsupported) are cached for the process lifetime; a transient
     /// probe error (<see cref="MxcAvailability.ProbeErrored"/>) is NOT cached
     /// permanently — once the retry window opens we re-probe so a momentary glitch
-    /// doesn't pin the whole process to uncontained execution.
+    /// doesn't keep commands blocked after containment has recovered.
     /// </summary>
     /// <remarks>
     /// The blocking probe (<c>wxc-exec --probe</c>, up to ~15s) is NEVER run while
@@ -781,7 +774,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             if (_mxcAvailability is { ProbeErrored: false } definitive)
                 return definitive;
 
-            // Transient error — keep serving it (routes to uncontained) until the
+            // Transient error — keep serving it (blocks sandboxed commands) until the
             // retry window opens, so we don't re-probe on every command.
             if (_mxcAvailability is { ProbeErrored: true } errored
                 && _mxcProbeInFlight is null

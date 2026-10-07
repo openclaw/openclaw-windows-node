@@ -63,6 +63,7 @@ aliases. Global Send and Quick Send metaphors are unchanged.
 | `ChatCodeTextStyle` | Native code Foreground binding to `ChatSecondaryTextBrush` |
 | `ChatCopySuccessBrush` | `SystemFillColorSuccess`; system window text in HC |
 | `ChatPickerAccentBrush` | Light/dark system accent variants; system window text in HC |
+| `ChatSandboxOnBrush` | Fixed blue: `#005FB8` in Light, `#60CDFF` in Dark; system window text in HC |
 
 HC maps surfaces, strokes and text to system window/button/highlight colors.
 An HC resource simulation is not evidence that Windows HC mode was enabled.
@@ -110,7 +111,16 @@ in one bottom row: model text shrinks rather than moving the selectors above
 the actions. At viewport widths of 560 pixels or less, effort uses a gauge and
 chevron with a 44-pixel target, retaining the full textual automation name and
 tooltip. Below 400 pixels the session trigger uses its existing Sessions icon,
-so Attach, session, model, effort, voice and Send all remain reachable.
+so Attach, Node Sandbox, session, model, effort, voice and Send all remain reachable.
+The [Node Sandbox icon](design/reference/concepts/states/node-sandbox.md) beside
+the microphone in the right-hand action group is blue when the saved setting is
+on and gray when off. It opens a compact native flyout with an On/Off header,
+one short explanation, and a Sandbox settings action, not a toggle.
+The flyout says "Commands on this Windows node run in a sandbox" when On and
+"Commands on this Windows node run without a sandbox" when Off. Enabled
+`system.run` requires containment and blocks if it is unavailable; it never
+falls back to host execution. This does not describe Gateway tools. Settings changes
+refresh both mounted native composers without replacing drafts or attachments.
 The compact effort trigger has a transparent idle background and the same
 4-pixel interaction corners as the other toolbar controls. Its gauge and
 chevron are vertically centered within the 44-pixel target. The shared toolbar

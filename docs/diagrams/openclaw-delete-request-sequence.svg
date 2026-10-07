@@ -60,7 +60,7 @@
   <path d="M1310 1280 H1555" fill="none" stroke="#D13438" stroke-width="3" marker-end="url(#arrow)"/><text x="1432" y="1268" class="msg">forward system.run</text>
   <path d="M1555 1330 H1805" fill="none" stroke="#0C8599" stroke-width="2" marker-end="url(#arrow)"/><text x="1680" y="1318" class="msg">Windows V2 live policy</text>
   <path d="M1805 1370 V1440" fill="none" stroke="#0C8599" stroke-width="2" marker-end="url(#arrow)"/>
-  <text x="1780" y="1385" class="note" text-anchor="end"><tspan x="1780">prompt if needed; revalidate</tspan><tspan x="1780" dy="20">MXC, strict deny, or host fallback</tspan></text>
+  <text x="1780" y="1385" class="note" text-anchor="end"><tspan x="1780">prompt if needed; revalidate</tspan><tspan x="1780" dy="20">On: MXC or block; Off: host</tspan></text>
   <path d="M1805 1480 H575" fill="none" stroke="#107C10" stroke-width="3" marker-end="url(#arrow)"/><text x="1190" y="1468" class="msg">stdout/stderr/exit/diagnostic -> gateway -> agent</text>
   <path d="M575 1540 H335" fill="none" stroke="#107C10" stroke-width="2" marker-end="url(#arrow)"/><text x="455" y="1528" class="msg">report actual outcome</text>
   <path d="M335 1590 H115" fill="none" stroke="#0078D4" stroke-width="2" marker-end="url(#arrow)"/><text x="225" y="1578" class="msg">success, denial, or failure</text>

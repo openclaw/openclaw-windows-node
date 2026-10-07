@@ -419,7 +419,7 @@ node.invoke system.run
   -> local Run system tools gate
   -> Windows V2 exec approval
   -> resolved absolute executable + canonical argv
-  -> MXC AppContainer, strict deny, or approved host fallback
+  -> MXC AppContainer or deny (host execution only with Node Sandbox off)
   -> Process.Start with UseShellExecute=false
 ```
 

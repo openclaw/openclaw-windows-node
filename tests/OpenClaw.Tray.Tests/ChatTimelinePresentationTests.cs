@@ -4,6 +4,40 @@ namespace OpenClaw.Tray.Tests;
 
 public sealed class ChatTimelinePresentationTests
 {
+    [Theory]
+    [InlineData("Light", "#005FB8", "#F3F3F3")]
+    [InlineData("Default", "#60CDFF", "#333333")]
+    public void SandboxOnBrush_IsFixedBlueWithReadableCaptionContrast(string theme, string expected, string background)
+    {
+        var document = System.Xml.Linq.XDocument.Load(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Themes", "ChatResources.xaml"));
+        System.Xml.Linq.XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var dictionary = document.Descendants().Single(element =>
+            element.Name.LocalName == "ResourceDictionary" && (string?)element.Attribute(x + "Key") == theme);
+        var brush = dictionary.Elements().Single(element => (string?)element.Attribute(x + "Key") == "ChatSandboxOnBrush");
+        Assert.Equal(expected, (string?)brush.Attribute("Color"));
+
+        static double Luminance(string color)
+        {
+            double Linear(int offset)
+            {
+                var channel = Convert.ToInt32(color.Substring(offset, 2), 16) / 255d;
+                return channel <= 0.04045 ? channel / 12.92 : Math.Pow((channel + 0.055) / 1.055, 2.4);
+            }
+            return 0.2126 * Linear(1) + 0.7152 * Linear(3) + 0.0722 * Linear(5);
+        }
+        var foregroundLuminance = Luminance(expected);
+        var backgroundLuminance = Luminance(background);
+        var contrast = (Math.Max(foregroundLuminance, backgroundLuminance) + 0.05)
+            / (Math.Min(foregroundLuminance, backgroundLuminance) + 0.05);
+        Assert.True(contrast >= 4.5, $"Sandbox caption contrast was {contrast:F2}:1.");
+        var highContrast = document.Descendants().Single(element =>
+            element.Name.LocalName == "ResourceDictionary" && (string?)element.Attribute(x + "Key") == "HighContrast");
+        Assert.Equal("{ThemeResource SystemColorWindowTextColor}",
+            (string?)highContrast.Elements().Single(element =>
+                (string?)element.Attribute(x + "Key") == "ChatSandboxOnBrush").Attribute("Color"));
+    }
+
     [Fact]
     public void GatewayDashboard_StaysInConnectionCardNotChat()
     {

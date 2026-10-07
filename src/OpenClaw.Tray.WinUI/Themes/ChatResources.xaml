@@ -4,6 +4,7 @@
     <ResourceDictionary.ThemeDictionaries>
         <ResourceDictionary x:Key="Default">
             <SolidColorBrush x:Key="ChatPickerAccentBrush" Color="{ThemeResource SystemAccentColorLight2}" />
+            <SolidColorBrush x:Key="ChatSandboxOnBrush" Color="#60CDFF" />
             <SolidColorBrush x:Key="ChatCanvasBrush" Color="Transparent" />
             <SolidColorBrush x:Key="ChatComposerBrush" Color="{ThemeResource CardBackgroundFillColorDefault}" />
             <SolidColorBrush x:Key="ChatCardBrush" Color="{ThemeResource CardBackgroundFillColorDefault}" />
@@ -41,6 +42,7 @@
         </ResourceDictionary>
         <ResourceDictionary x:Key="Light">
             <SolidColorBrush x:Key="ChatPickerAccentBrush" Color="{ThemeResource SystemAccentColorDark1}" />
+            <SolidColorBrush x:Key="ChatSandboxOnBrush" Color="#005FB8" />
             <SolidColorBrush x:Key="ChatCanvasBrush" Color="Transparent" />
             <SolidColorBrush x:Key="ChatComposerBrush" Color="{ThemeResource CardBackgroundFillColorDefault}" />
             <SolidColorBrush x:Key="ChatCardBrush" Color="{ThemeResource CardBackgroundFillColorDefault}" />
@@ -78,6 +80,7 @@
         </ResourceDictionary>
         <ResourceDictionary x:Key="HighContrast">
             <SolidColorBrush x:Key="ChatPickerAccentBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="ChatSandboxOnBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatCanvasBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="ChatComposerBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="ChatCardBrush" Color="{ThemeResource SystemColorWindowColor}" />

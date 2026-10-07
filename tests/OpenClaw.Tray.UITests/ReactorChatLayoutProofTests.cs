@@ -15,6 +15,9 @@ using OpenClaw.Chat;
 using OpenClawTray.Chat;
 using OpenClawTray.Helpers;
 using OpenClawTray.Presentation.Adapters;
+using OpenClawTray.Presentation;
+using OpenClawTray.Services;
+using OpenClaw.TestSupport;
 using Windows.Foundation;
 using static Microsoft.UI.Reactor.Factories;
 using static OpenClaw.Tray.UITests.TestSupport;
@@ -33,6 +36,112 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         "Keep space. Leave a short break between meetings and keep the afternoon flexible.\n\n" +
         "```text\n09:00  Focus time\n11:00  Messages and reviews\n14:00  Collaborative work\n```\n\n" +
         "Would you like me to turn this into a schedule?";
+
+    [Theory]
+    [InlineData(320, true)]
+    [InlineData(480, true)]
+    [InlineData(800, false)]
+    public async Task SandboxFlyout_ReflectsSettingsWithoutChangingDraftAndOpensSettings(int width, bool showSessionPicker)
+    {
+        using var temp = new TempDirectory();
+        var settings = new SettingsManager(temp.Path) { SystemRunSandboxEnabled = true };
+        var navigationCount = 0;
+        var saveCount = 0;
+        settings.Saved += (_, _) => saveCount++;
+        await WithChatAsync(width, async (surface, _, session, _) =>
+        {
+            TextBox? originalInput = null;
+            Windows.UI.Color onColor = default;
+            FrameworkElement? popupContent = null;
+            FrameworkElement? composerContent = null;
+            await ui.RunOnUIAsync(() =>
+            {
+                originalInput = FindControl<TextBox>(surface, "ChatComposerInput");
+                composerContent = Ancestors(originalInput).OfType<Border>()
+                    .First(border => border.CornerRadius.TopLeft == ChatVisuals.ComposerRadius);
+                var button = FindControl<Button>(surface, "ChatComposerSandbox");
+                Assert.Equal("Node Sandbox setting: On", AutomationProperties.GetName(button));
+                var icon = Assert.Single(FindDescendants<TextBlock>(button));
+                Assert.Equal(FluentIconCatalog.Sandbox, icon.Text);
+                onColor = Assert.IsType<SolidColorBrush>(icon.Foreground).Color;
+                if (Environment.GetEnvironmentVariable("OPENCLAW_PROOF_THEME") is not "HighContrast")
+                {
+                    var expected = Environment.GetEnvironmentVariable("OPENCLAW_PROOF_THEME") == "Dark"
+                        ? Windows.UI.Color.FromArgb(255, 0x60, 0xCD, 0xFF)
+                        : Windows.UI.Color.FromArgb(255, 0x00, 0x5F, 0xB8);
+                    Assert.Equal(expected, onColor);
+                }
+                AssertComposerBounds(surface, showSessionPicker);
+                Assert.True(Bounds(button, surface).Left >= Bounds(
+                    FindControl<Button>(surface, "ChatComposerReasoningPicker"), surface).Right);
+                Assert.True(Bounds(button, surface).Right <= Bounds(
+                    FindControl<Button>(surface, "ChatComposerVoice"), surface).Left);
+                button.Flyout.ShowAt(button);
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                var button = FindControl<Button>(surface, "ChatComposerSandbox");
+                var popup = Assert.IsAssignableFrom<FrameworkElement>(Assert.IsType<Flyout>(button.Flyout).Content);
+                Assert.Equal("Commands on this Windows node run in a sandbox.",
+                    FindControl<TextBlock>(popup, "ChatSandboxDescription").Text);
+                Assert.InRange(popup.ActualWidth, 1, 280);
+                Assert.InRange(popup.ActualHeight, 1, 220);
+                Assert.Equal(0, saveCount);
+                Assert.Equal(Draft, session.ViewModel.Draft);
+                settings.SystemRunSandboxEnabled = false;
+                settings.Save();
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                var button = FindControl<Button>(surface, "ChatComposerSandbox");
+                var popup = Assert.IsAssignableFrom<FrameworkElement>(Assert.IsType<Flyout>(button.Flyout).Content);
+                Assert.Equal("Node Sandbox setting: Off", AutomationProperties.GetName(button));
+                var offColor = Assert.IsType<SolidColorBrush>(
+                    Assert.Single(FindDescendants<TextBlock>(button)).Foreground).Color;
+                if (Environment.GetEnvironmentVariable("OPENCLAW_PROOF_THEME") != "HighContrast")
+                    Assert.NotEqual(onColor, offColor);
+                Assert.Equal("Off", FindControl<TextBlock>(popup, "ChatSandboxStatus").Text);
+                Assert.Equal("Commands on this Windows node run without a sandbox.",
+                    FindControl<TextBlock>(popup, "ChatSandboxDescription").Text);
+                Assert.Same(originalInput, FindControl<TextBox>(surface, "ChatComposerInput"));
+                Assert.Equal(Draft, session.ViewModel.Draft);
+                popupContent = popup;
+            });
+            await CaptureAsync(composerContent!, $"Sandbox-off-composer-{width}");
+            await CaptureAsync(popupContent!, $"Sandbox-off-flyout-{width}");
+            await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(popupContent!, "ChatSandboxOpenSettings")));
+            await SettleAsync();
+            Assert.Equal(1, navigationCount);
+            Assert.Equal(1, saveCount);
+
+            await ui.RunOnUIAsync(() =>
+            {
+                settings.SystemRunSandboxEnabled = true;
+                settings.Save();
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                var button = FindControl<Button>(surface, "ChatComposerSandbox");
+                button.Flyout.ShowAt(button);
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                var popup = Assert.IsAssignableFrom<FrameworkElement>(
+                    Assert.IsType<Flyout>(FindControl<Button>(surface, "ChatComposerSandbox").Flyout).Content);
+                Assert.Equal("Commands on this Windows node run in a sandbox.",
+                    FindControl<TextBlock>(popup, "ChatSandboxDescription").Text);
+                AssertComposerBounds(surface, showSessionPicker);
+                popupContent = popup;
+            });
+            await CaptureAsync(composerContent!, $"Sandbox-on-composer-{width}");
+            await CaptureAsync(popupContent!, $"Sandbox-on-flyout-{width}");
+            await ui.RunOnUIAsync(() => FindControl<Button>(surface, "ChatComposerSandbox").Flyout.Hide());
+        }, sandboxSettings: settings, onSandboxSettings: () => navigationCount++, showSessionPicker: showSessionPicker);
+    }
 
     [Fact]
     public async Task SessionPicker_FixtureObservationSurvivesCompactLayoutChanges()
@@ -1691,9 +1800,16 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         string scenario = "standard",
         Func<string, bool>? tryCopy = null,
         string? thinkingLevel = null,
+        SettingsManager? sandboxSettings = null,
+        Action? onSandboxSettings = null,
+        bool showSessionPicker = true,
         bool interactiveKeyboard = false)
     {
         await ui.ResetContainerAsync();
+        using var settingsDirectory = new TempDirectory();
+        using var settingsStore = new SettingsStore(
+            sandboxSettings ?? new SettingsManager(settingsDirectory.Path),
+            new WinUIDispatcher(ui.Dispatcher));
         ReactorHostControl? host = null;
         ChatComposerSession? session = null;
         Border? surface = null;
@@ -1709,9 +1825,10 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
             {
                 themeScope = new ChatThemeProofScope(Environment.GetEnvironmentVariable("OPENCLAW_PROOF_THEME") ?? "Light");
                 Application.Current.UnhandledException += reportException;
-                session = new ChatComposerFactory(new WinUIDispatcher(ui.Dispatcher)).Create(
+                session = new ChatComposerFactory(new WinUIDispatcher(ui.Dispatcher), settingsStore).Create(
                     provider,
-                    new ChatComposerHostActions(null, () => { }, (_, _) => Task.FromResult<string?>(null), () => { }, _ => { }),
+                    new ChatComposerHostActions(null, () => { }, (_, _) => Task.FromResult<string?>(null), () => { }, _ => { },
+                        SandboxSettingsNavigation: onSandboxSettings ?? (() => { })),
                     initialSpeakerMuted: false);
                 session.ViewModel.SetDraft(Draft);
                 if (scenario == "queue")
@@ -1730,7 +1847,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                     session.ViewModel.SetDraft(string.Join("\n", Enumerable.Repeat(Draft, 8)));
                 host = new ReactorHostControl(logger: renderErrors) { RequestedTheme = themeScope.ElementTheme };
                 host.Mount(_ => Component<OpenClawReactorChatRoot, OpenClawReactorChatRootProps>(
-                    new(provider, session, IsCompact: width < 640, TryCopyText: tryCopy)));
+                    new(provider, session, IsCompact: width < 640, TryCopyText: tryCopy, ShowSessionPicker: showSessionPicker)));
                 surface = (Border)Microsoft.UI.Xaml.Markup.XamlReader.Load(
                     "<Border xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" " +
                     "Background=\"{ThemeResource NavigationViewContentBackground}\" />");
@@ -1889,12 +2006,13 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 $"Copy target {Bounds(button, surface)} overlaps navigation {railBounds}");
     }
 
-    private static void AssertComposerBounds(Border surface)
+    private static void AssertComposerBounds(Border surface, bool showSessionPicker = true)
     {
         var controls = FindDescendants<Button>(surface)
             .Where(button => AutomationProperties.GetAutomationId(button).StartsWith("ChatComposer", StringComparison.Ordinal))
             .ToArray();
-        Assert.Equal(6, controls.Length);
+        Assert.Equal(showSessionPicker ? 7 : 6, controls.Length);
+        Assert.Contains(controls, button => AutomationProperties.GetAutomationId(button) == "ChatComposerSandbox");
         Assert.DoesNotContain(controls, button => AutomationProperties.GetAutomationId(button) == "ChatComposerMore");
         foreach (var control in controls)
         {

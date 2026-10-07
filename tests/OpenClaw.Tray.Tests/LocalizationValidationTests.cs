@@ -1144,4 +1144,19 @@ public class LocalizationValidationTests
             "Resources identical to en-us in every non-English locale need an invariant/deferred rationale. Entries: " +
             string.Join("; ", identicalWithoutRationale.Take(20)));
     }
+
+    [Fact]
+    public void SandboxComposer_UsesExistingLocalizedSurfaceNames()
+    {
+        foreach (var localeDirectory in Directory.EnumerateDirectories(GetStringsDirectory()))
+        {
+            var resources = LoadResw(Path.Combine(localeDirectory, "Resources.resw"));
+            var title = resources["Chat_Composer_Sandbox_Title"];
+            Assert.Contains(title, resources["SandboxPage_StatusOnTitle"], StringComparison.OrdinalIgnoreCase);
+            Assert.Contains(title, resources["Chat_Composer_Sandbox_On"], StringComparison.OrdinalIgnoreCase);
+            Assert.Contains(title, resources["Chat_Composer_Sandbox_Off"], StringComparison.OrdinalIgnoreCase);
+            Assert.Contains(resources["HubWindow_NavigationViewItem_Sandbox.Content"],
+                resources["Chat_Composer_Sandbox_OpenSettings"], StringComparison.OrdinalIgnoreCase);
+        }
+    }
 }
