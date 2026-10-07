@@ -7715,9 +7715,9 @@
   <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>此设备支持原生 Gateway。</value></data>
   <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>若要使用原生 Gateway，请将设备更新到支持该功能的 Windows 版本。
 
-原生 Gateway 支持即将在所有设备上推出。在全面推出之前，请加入 Windows 预览体验计划，并为 Windows 11 版本 26H1 选择 Beta 或 Experimental 渠道。
+原生 Gateway 支持即将在所有设备上推出。在全面推出之前，请加入 Windows 预览体验计划，选择 Beta 或 Experimental 渠道，并在加入时通过“高级选项”选择 Windows 11 版本 26H1。若要返回 Windows 11 版本 25H2/26H2，必须全新安装系统。
 
-加入后，请返回“设置 &gt; Windows 更新”并检查更新。更新可能需要几分钟才会显示。</value></data>
+加入后，请返回“设置 &gt; Windows 更新”并检查更新。更新可能需要几分钟才会显示。功能可用性可能因设备而异。更新后，请重新打开此页面以再次检查支持情况。</value></data>
   <data name="Onboarding_Native_SupportUnavailableLead" xml:space="preserve"><value>若要使用原生 Gateway，请将设备更新到支持该功能的 Windows 版本。</value></data>
   <data name="Onboarding_Native_SupportUnavailableComingSoon" xml:space="preserve"><value>即将在所有设备上推出。</value></data>
   <data name="Onboarding_Native_SupportUnavailableInsiderProgram" xml:space="preserve"><value>Windows 预览体验计划</value></data>

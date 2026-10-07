@@ -400,6 +400,32 @@ public sealed class NativeGatewaySetupUxContractTests
         }
     }
 
+    [Theory]
+    [InlineData("en-us", "Advanced options", "clean reinstall", "vary by device", "reopen this page")]
+    [InlineData("fr-fr", "Options avancées", "réinstallation complète", "varier selon l'appareil", "rouvrez cette page")]
+    [InlineData("nl-nl", "Geavanceerde opties", "schone herinstallatie", "per apparaat verschillen", "Open deze pagina")]
+    [InlineData("pt-br", "Opções avançadas", "reinstalação limpa", "variar conforme o dispositivo", "reabra esta página")]
+    [InlineData("zh-cn", "高级选项", "全新安装系统", "因设备而异", "重新打开此页面")]
+    [InlineData("zh-tw", "進階選項", "全新安裝系統", "因裝置而異", "重新開啟此頁面")]
+    public void Welcome_NativeUnavailableGuidanceIncludesEnrollmentTradeoffAndRecheck(
+        string locale, string advancedOptions, string cleanReinstall, string rollout, string reopen)
+    {
+        var document = XDocument.Load(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI",
+            "Strings", locale, "Resources.resw"));
+        string guidance = document.Descendants("data")
+            .Single(element => (string?)element.Attribute("name") == "Onboarding_Native_SupportUnavailable")
+            .Element("value")!.Value;
+
+        Assert.Contains(advancedOptions, guidance);
+        Assert.Contains("26H1", guidance);
+        Assert.Contains("25H2/26H2", guidance);
+        Assert.Contains(cleanReinstall, guidance);
+        Assert.Contains(rollout, guidance);
+        Assert.Contains(reopen, guidance);
+        Assert.Equal(3, guidance.Split("\n\n", StringSplitOptions.None).Length);
+    }
+
     [Fact]
     public void NativeWizard_UsesSharedPageAndRpc_WithFailClosedStagedAuthorization()
     {

@@ -400,12 +400,15 @@ capability result leaves that recommended choice visible but disabled after WSL 
 choice list; reopening the page rechecks support. The guidance tells users to
 update to a Windows version that supports the native Gateway. The guidance says
 support is coming soon to all devices and, until broad availability, directs
-users to join the Windows Insider Program and select the Beta or Experimental
-channel for Windows 11, version 26H1. After enrolling, users return to
+users to join the Windows Insider Program, select the Beta or Experimental
+channel, and choose Windows 11, version 26H1 under **Advanced options** during
+enrollment. It warns that returning to Windows 11, version 25H2/26H2 requires
+a clean reinstall. After enrolling, users return to
 **Settings > Windows Update** and check for updates; the update may take a few
-minutes to appear. The live probe remains authoritative, and feature rollout
-can vary by device even after updating. The
-native boolean cannot distinguish every OS API failure from missing support.
+minutes to appear. The guidance notes that feature availability can vary by
+device and tells users to reopen the page after updating to check support again.
+The live probe remains authoritative. The native boolean cannot distinguish
+every OS API failure from missing support.
 Missing executables, malformed results and probe errors instead offer retry or
 Companion repair, not an assertion that Windows must be updated.
 

@@ -808,11 +808,17 @@ When capability is unavailable, **Open Windows Update** opens
 `ms-settings:windowsupdate`. Guidance tells users to update to a Windows version
 that supports the native Gateway. It says support is coming soon to all devices
 and, until broad availability, directs users to join the Windows Insider
-Program and select the Beta or Experimental channel for Windows 11, version
-26H1. After enrolling, users return to **Settings > Windows Update**, check for
-updates, and may need to wait a few minutes for the update to appear. Reopening
-the page reruns the check; the Welcome page has no
-**Check again** button.
+Program, select the Beta or Experimental channel, and choose Windows 11, version
+26H1 under **Advanced options** during enrollment. The guidance warns that
+returning to Windows 11, version 25H2/26H2 requires a clean reinstall, as described
+in [Microsoft's Windows core version guidance](https://learn.microsoft.com/en-us/windows-insider/flighting#understanding-windows-core-versions).
+After enrolling, users return to **Settings > Windows Update**, check for
+updates, and may need to wait a few minutes for the update to appear. The copy
+notes that feature availability can vary by device and tells users to reopen
+the page after updating to check support again. The Welcome page has no
+**Check again** button. `NativeGatewayEligibilityTextTests` exercises the production
+rich-text renderer, complete automation name, and repeated rich/plain transitions
+on real WinUI `TextBlock` controls; the gallery also uses that renderer.
 Feature rollout varies; a negative native API result is not proof
 that the build alone is the cause. Probe failures or missing/invalid metadata
 offer retry/Companion repair rather than misleading update advice. Windows Server
