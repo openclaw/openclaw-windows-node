@@ -54,6 +54,7 @@ function Reset-Fixture {
     $state.extraReleases = @()
     $state.writes = 0
     $state.approval = $true
+    $state.reviewers = @([pscustomobject]@{ type = 'User'; reviewer = [pscustomobject]@{ id = 1 } })
     $state.allowedBranch = 'main'
     $state.ancestry = 'ahead'
     $state.runSha = $sourceSha
@@ -121,7 +122,7 @@ function Invoke-PromotionApi {
                 can_admins_bypass = $false
                 deployment_branch_policy = [pscustomobject]@{ custom_branch_policies = $true }
                 protection_rules = @([pscustomobject]@{
-                    type = 'required_reviewers'; reviewers = @('maintainer'); prevent_self_review = $state.approval
+                    type = 'required_reviewers'; reviewers = $state.reviewers; prevent_self_review = $state.approval
                 })
             }
         }
@@ -251,7 +252,7 @@ try {
     Test-Case 'missing approval blocks before ref creation' {
         $record = Candidate
         $state.approval = $false
-        Assert-Throws { New-AlphaPromotionTag $record } 'required reviewers'
+        Assert-Throws { New-AlphaPromotionTag $record } 'only required reviewer'
         Assert-Equal $state.writes 0
     }
     Test-Case 'environment must restrict deployment to exact main' {
@@ -448,8 +449,29 @@ try {
     Test-Case 'lost approval protection blocks publication before tag creation' {
         $record = Candidate; $fixture = New-ArtifactFixture $record
         $state.approval = $false
-        Assert-Throws { Publish-AlphaPromotion $record $fixture.directory '200' '1' } 'required reviewers'
+        Assert-Throws { Publish-AlphaPromotion $record $fixture.directory '200' '1' } 'only required reviewer'
         Assert-Equal $state.tag $null
+        Assert-Equal $state.writes 0
+    }
+    Test-Case 'release managers may self-approve without a separate reviewer' {
+        $record = Candidate; $fixture = New-ArtifactFixture $record
+        $state.approval = $false
+        $state.reviewers = @([pscustomobject]@{ type = 'Team'; reviewer = [pscustomobject]@{ id = 16590423 } })
+        Publish-AlphaPromotion $record $fixture.directory '200' '1'
+        Assert-Equal $state.release.draft $false
+    }
+    Test-Case 'another team cannot acquire release-manager self-review authority' {
+        $record = Candidate; $fixture = New-ArtifactFixture $record
+        $state.approval = $false
+        $state.reviewers = @([pscustomobject]@{ type = 'Team'; reviewer = [pscustomobject]@{ id = 17511377 } })
+        Assert-Throws { Publish-AlphaPromotion $record $fixture.directory '200' '1' } 'only required reviewer'
+        Assert-Equal $state.writes 0
+    }
+    Test-Case 'extra reviewers cannot broaden self-review authority' {
+        $record = Candidate; $fixture = New-ArtifactFixture $record
+        $state.approval = $false
+        $state.reviewers += [pscustomobject]@{ type = 'Team'; reviewer = [pscustomobject]@{ id = 16590423 } }
+        Assert-Throws { Publish-AlphaPromotion $record $fixture.directory '200' '1' } 'only required reviewer'
         Assert-Equal $state.writes 0
     }
     Test-Case 'another stable publication invalidates the pending approval' {

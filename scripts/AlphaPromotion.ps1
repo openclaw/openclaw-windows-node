@@ -88,9 +88,17 @@ function Get-PromotionRelease {
 function Assert-PromotionApproval {
     $environment = Invoke-PromotionApi -Path 'environments/stable-release'
     $review = @($environment.protection_rules | Where-Object type -CEQ 'required_reviewers')
-    if ($review.Count -ne 1 -or @($review[0].reviewers).Count -eq 0 -or
-        $review[0].prevent_self_review -ne $true -or $environment.can_admins_bypass -ne $false) {
-        throw 'Configure stable-release with required reviewers, prevent self-review, and no admin bypass before preparing a promotion.'
+    if ($review.Count -ne 1 -or @($review[0].reviewers).Count -eq 0 -or $environment.can_admins_bypass -ne $false) {
+        throw 'Configure stable-release with required reviewers and no admin bypass before preparing a promotion.'
+    }
+    if ($review[0].prevent_self_review -ne $true) {
+        $reviewers = @($review[0].reviewers)
+        # GitHub enforces active membership in this required team. Its immutable
+        # ID identifies openclaw/release-managers-openclaw, not another org team.
+        if ($reviewers.Count -ne 1 -or $reviewers[0].type -cne 'Team' -or
+            $reviewers[0].reviewer.id -ne 16590423) {
+            throw 'Self-review requires the OpenClaw release managers team as the only required reviewer.'
+        }
     }
     if (-not $environment.deployment_branch_policy -or
         $environment.deployment_branch_policy.custom_branch_policies -ne $true) {

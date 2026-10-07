@@ -402,9 +402,16 @@ gh workflow run promote-alpha-release.yml `
 ```
 
 Before preparing a release, a repository administrator must create the
-**stable-release** environment with required reviewers, **Prevent self-review**
-enabled, and administrator bypass disabled. Missing or weaker protection fails
-before any tag is created. Restrict its deployment branches to `main`.
+**stable-release** environment with required reviewers and administrator bypass
+disabled. Restrict its deployment branches to `main`. For normal reviewers,
+enable **Prevent self-review**. To let OpenClaw release managers publish without
+a separate reviewer, set the only required reviewer to
+`openclaw/release-managers-openclaw` (team ID `16590423`) and disable
+**Prevent self-review**. GitHub enforces team membership for approval; members
+may approve their own run, including through their authorized release agent.
+Other teams, individual reviewers, or additional reviewers cannot use this
+self-review exception. Missing or weaker protection fails before any tag is
+created.
 The existing `release-signing` environment is still used for Azure OIDC signing;
 it is not a substitute for this final acceptance approval.
 
