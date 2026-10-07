@@ -67,6 +67,7 @@ public interface ISettingsEditor
     bool GlobalHotkeyEnabled { set; }
     bool UseLegacyWebChat { set; }
     bool ShowNotifications { set; }
+    bool ShowDesktopCompanion { set; }
     string NotificationSound { set; }
     string AppTheme { set; }
 
@@ -121,6 +122,7 @@ public sealed record SettingsSnapshot
     public bool GlobalHotkeyEnabled { get; init; }
     public bool UseLegacyWebChat { get; init; }
     public bool ShowNotifications { get; init; }
+    public bool ShowDesktopCompanion { get; init; }
     public string NotificationSound { get; init; } = "Default";
     public string AppTheme { get; init; } = "System";
 

@@ -194,6 +194,8 @@ public partial class App
 
         steps.Add(new AppShutdownStep("app state observers", () =>
         {
+            _desktopCompanion?.Dispose();
+            _desktopCompanion = null;
             _settingsPersistenceNotification?.Dispose();
             _settingsPersistenceNotification = null;
             if (_appState != null)

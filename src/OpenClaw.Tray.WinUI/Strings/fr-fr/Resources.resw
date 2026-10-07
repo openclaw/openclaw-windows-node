@@ -17,6 +17,17 @@
       </xs:complexType>
     </xs:element>
   </xs:schema>
+  <data name="DesktopCompanion_Label.Text" xml:space="preserve"><value>Homard de bureau</value></data>
+  <data name="DesktopCompanion_Description.Text" xml:space="preserve"><value>Gardez un homard animé sur votre bureau. Les notifications apparaissent dans des bulles, même quand OpenClaw est en arrière-plan. Faites-le glisser pour le déplacer ; faites un clic droit pour les options.</value></data>
+  <data name="DesktopCompanion_Name" xml:space="preserve"><value>Homard de bureau OpenClaw</value></data>
+  <data name="DesktopCompanion_Dismiss" xml:space="preserve"><value>Fermer la bulle</value></data>
+  <data name="DesktopCompanion_Notifications" xml:space="preserve"><value>Ouvrir les notifications</value></data>
+  <data name="DesktopCompanion_Open" xml:space="preserve"><value>Ouvrir OpenClaw</value></data>
+  <data name="DesktopCompanion_Preview" xml:space="preserve"><value>Aperçu d'une notification</value></data>
+  <data name="DesktopCompanion_Hide" xml:space="preserve"><value>Masquer le homard de bureau</value></data>
+  <data name="DesktopCompanion_PreviewTitle" xml:space="preserve"><value>Bonjour d'OpenClaw</value></data>
+  <data name="DesktopCompanion_PreviewMessage" xml:space="preserve"><value>Je suis là quand vous avez besoin de moi. Les nouvelles notifications apparaissent ici. Vous pouvez me déplacer à l'endroit qui vous convient sur votre bureau.</value></data>
+  <data name="DesktopCompanion_Failed" xml:space="preserve"><value>Le homard de bureau n'a pas pu être affiché. Désactivez puis réactivez Homard de bureau dans les paramètres pour réessayer. Vos notifications restent disponibles dans OpenClaw.</value></data>
   <data name="SettingsConnectionHeader.Text" xml:space="preserve">
     <value>CONNEXION</value>
   </data>
