@@ -826,7 +826,7 @@ public sealed partial class ChatPage : Page
             // Capture on the UI thread (continuation resumes here); resolve off it.
             var registry = CurrentApp.Registry;
             var authorizer = CurrentApp.InteractiveEndpointAuthorizer;
-            var gatewayUrl = settings.GetEffectiveGatewayUrl();
+            var gatewayUrl = settings.GetLegacyCredentialGatewayUrlOrNull();
             var legacyToken = settings.LegacyToken;
             var legacyBootstrapToken = settings.LegacyBootstrapToken;
             credential = await Task.Run(() => ResolveChatCredential(

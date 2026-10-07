@@ -793,6 +793,12 @@ On first startup with a `GatewayRegistry`, if no active gateway record exists, t
 - `LegacyBootstrapToken` → `GatewayRecord.BootstrapToken`
 - Old identity file copied into per-gateway identity directory
 
+Legacy credential and identity migration requires a non-empty `GatewayUrl`
+persisted in `settings.json`. The in-memory default loopback URL is not a saved
+gateway target and never receives a URL-less legacy token or root identity.
+Profiles left in that state by an older uninstaller fail closed and must be
+reconnected explicitly from the Connection page.
+
 Migration is idempotent and deduplicates by URL.
 
 ## Signature protocol

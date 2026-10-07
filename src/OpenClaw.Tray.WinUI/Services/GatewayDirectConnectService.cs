@@ -695,7 +695,9 @@ internal sealed class GatewayDirectConnectService
     {
         public static ConnectionSettingsSnapshot Capture(SettingsManager settings) =>
             new(
-                settings.GatewayUrl,
+                // The getter substitutes the setup default. Snapshot only a URL
+                // the user saved, so rollback cannot persist that default.
+                settings.PersistedGatewayUrl ?? "",
                 settings.UseSshTunnel,
                 settings.SshTunnelUser,
                 settings.SshTunnelHost,

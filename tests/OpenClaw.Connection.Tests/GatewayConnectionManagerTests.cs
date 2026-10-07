@@ -3397,7 +3397,9 @@ public class GatewayConnectionManagerTests : IDisposable
         await nodeConnector.DisconnectStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
         var disconnect = manager.DisconnectAsync();
 
-        await nodeStart.WaitAsync(TimeSpan.FromSeconds(3));
+        // The coordinator gives the previous disconnect 2 seconds. This wait
+        // has to outlive that budget when the runner is busy.
+        await nodeStart.WaitAsync(TimeSpan.FromSeconds(10));
         nodeConnector.AllowDisconnect.SetResult(true);
         await disconnect.WaitAsync(TimeSpan.FromSeconds(2));
 
