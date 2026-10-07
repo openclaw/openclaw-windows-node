@@ -435,7 +435,12 @@ PAT or dispatch CI on the old candidate tag: that would execute the historical
 workflow instead of the selected pipeline.
 
 The existing MSIX allocator reserves a new package version for the stable tag,
-shared by both architectures. Neither the alpha package version nor an existing
+shared by both architectures. Promotion rechecks candidate eligibility and
+approval protection, then the allocator verifies the existing same-base alpha
+tag resolves to the exact source SHA on every allocation attempt. Its metadata
+records the future stable ref without requiring that public tag during
+preparation. Ordinary release allocations still require their exact public
+source tag. Neither the alpha package version nor an existing
 published stable release is reused. The result is the same **source**, not
 identical bytes: versions, signatures, build tools, and restored dependencies
 can differ. Use the recorded pipeline revision and build logs when investigating

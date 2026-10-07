@@ -354,7 +354,7 @@ try {
         Assert-Equal $state.tag $null
         Assert-Equal $state.writes 0
     }
-    Test-Case 'another stable publication invalidates the pending approval'  {
+    Test-Case 'another stable publication invalidates the pending approval' {
         $record = Candidate; $fixture = New-ArtifactFixture $record
         $state.currentTag = 'v2026.10.1'
         Assert-Throws { Publish-AlphaPromotion $record $fixture.directory '200' '1' } 'advance'
@@ -387,6 +387,11 @@ try {
     }
     if ($entry.Contains('New-AlphaPromotionTag') -or $entry.Contains('Reserve-AlphaPromotion') -or
         $workflow.Contains('-RequireReservation')) { throw 'Preparation must not require or create a public stable tag.' }
+    $reservation = [regex]::Match($workflow, '(?ms)^  reserve-msix-version:.*?(?=^  core-tests:)').Value
+    foreach ($text in @('Get-AlphaPromotion', '-RequireApproval', '$record.version -cne $env:SOURCE_VERSION',
+        '$promotionArguments.PromotionAlphaTag = $record.alphaTag', 'Resolve-MsixPackageVersion.ps1 @promotionArguments')) {
+        if (-not $reservation.Contains($text)) { throw "MSIX promotion reservation must retain policy validation: $text" }
+    }
     $publication = [regex]::Match($workflow, '(?ms)^  publish-promotion:.*').Value
     if (-not $publication.Contains('name: stable-release') -or
         -not $publication.Contains('Publish-AlphaPromotion')) { throw 'Publication must remain approval-gated.' }

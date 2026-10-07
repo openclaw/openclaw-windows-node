@@ -350,6 +350,7 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
+      actions: read
     outputs:
       versionInfo: ${{ steps.reserve.outputs.versionInfo }}
       sourceVersion: ${{ steps.reserve.outputs.sourceVersion }}
@@ -363,10 +364,24 @@ jobs:
       id: reserve
       shell: pwsh
       env:
+        PROMOTION_ALPHA: ${{ inputs.promotion_alpha }}
+        PROMOTION_RECORD: ${{ needs.change-classification.outputs.promotion_record }}
         SOURCE_VERSION: ${{ needs.metadata.outputs.semVer }}
         GH_TOKEN: ${{ github.token }}
       run: |
-        $info = .\scripts\Resolve-MsixPackageVersion.ps1 `
+        $promotionArguments = @{}
+        if ($env:PROMOTION_ALPHA) {
+          . ./scripts/AlphaPromotion.ps1
+          $record = Get-AlphaPromotion -AlphaTag $env:PROMOTION_ALPHA -PipelineSha $env:GITHUB_SHA `
+            -ExpectedSourceSha $env:OPENCLAW_RELEASE_SOURCE_SHA -RequireApproval
+          if (($record | ConvertTo-Json -Compress) -cne $env:PROMOTION_RECORD -or
+              $record.version -cne $env:SOURCE_VERSION -or
+              "refs/tags/$($record.stableTag)" -cne $env:OPENCLAW_RELEASE_REF) {
+            throw 'Promotion provenance changed before MSIX reservation.'
+          }
+          $promotionArguments.PromotionAlphaTag = $record.alphaTag
+        }
+        $info = .\scripts\Resolve-MsixPackageVersion.ps1 @promotionArguments `
           -SourceVersion $env:SOURCE_VERSION -SourceCommit $env:OPENCLAW_RELEASE_SOURCE_SHA `
           -SourceRef $env:OPENCLAW_RELEASE_REF -Repository $env:GITHUB_REPOSITORY -Reserve
         "sourceVersion=$($info.sourceVersion)" >> $env:GITHUB_OUTPUT
