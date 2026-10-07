@@ -133,6 +133,8 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
         if (staleSession)
             await _client.SetupAsync(package, cancellationToken).ConfigureAwait(false);
 
+        // A superseded attempt must not reach the package's persistent credential write.
+        cancellationToken.ThrowIfCancellationRequested();
         IsolatedGatewayConfiguration restored = await _client.RestoreAsync(
             package, endpoint.Port, record.SharedGatewayToken, cancellationToken).ConfigureAwait(false);
         if (restored.Port != endpoint.Port ||
