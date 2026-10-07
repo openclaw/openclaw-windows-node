@@ -37,8 +37,12 @@ Local AI payload. Its protected intent is stored under
 `%APPDATA%\OpenClawTray\store-migration\intent.dpapi`. Repeating preparation with
 unchanged state reuses the unexpired intent. Intent expires after 30 days; only
 new consent may renew it. Corrupt records require explicit recovery rather than
-silent replacement. Preparation is serialized and writes via a flushed sibling
-temporary file followed by atomic rename.
+silent replacement. The inventory includes saved Gateway identity directories and
+the credential-free `gateways\native-setup-draft.json` recovery descriptor; other
+unexpected files in that directory fail closed. Atomic-write temporary siblings
+for that descriptor are non-state and ignored only when their names contain the
+expected 32-digit hexadecimal identifier. Preparation is serialized and writes
+via a flushed sibling temporary file followed by atomic rename.
 
 `completed.dpapi` is a separate receipt, written only after exclusive source
 ownership, a fresh strict inventory matching the protected intent, and canonical

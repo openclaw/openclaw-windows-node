@@ -63,6 +63,10 @@ public sealed record MigrationInventory(
             var autoStart = settings is not null && ValidateSettings(settings.Value);
             var registry = capture.ReadJson("roaming", roaming, "gateways.json");
             var gatewayIds = ValidateRegistry(registry);
+            var nativeSetupDraft = Path.Combine(
+                "gateways", OpenClawAppIdentity.NativeGatewaySetupDraftFileName);
+            if (Path.Exists(Path.Combine(roaming, nativeSetupDraft)))
+                capture.ReadJson("roaming", roaming, nativeSetupDraft);
             var directories = GetGatewayDirectories(roaming);
             // Removing a saved gateway deliberately leaves its identity directory behind.
             // Inventory that state without reinstating the record or selecting a gateway.
@@ -156,14 +160,37 @@ public sealed record MigrationInventory(
         var names = new List<string>();
         foreach (var child in Directory.EnumerateFileSystemEntries(path))
         {
+            var name = Path.GetFileName(child);
+            if (string.Equals(
+                name, OpenClawAppIdentity.NativeGatewaySetupDraftFileName, StringComparison.OrdinalIgnoreCase))
+            {
+                CheckPath(child, directory: false);
+                continue;
+            }
+            if (IsNativeSetupDraftTemporaryFile(name))
+            {
+                CheckPath(child, directory: false);
+                continue;
+            }
             if (names.Count >= MaximumGateways)
                 throw new InvalidDataException("Too many gateway identity directories.");
             CheckPath(child, directory: true);
-            var name = Path.GetFileName(child);
             ValidateSegment(name);
             names.Add(name);
         }
         return names.Order(StringComparer.Ordinal).ToArray();
+    }
+
+    private static bool IsNativeSetupDraftTemporaryFile(string name)
+    {
+        var prefix = $".{OpenClawAppIdentity.NativeGatewaySetupDraftFileName}.";
+        const string suffix = ".tmp";
+        if (!name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ||
+            !name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var id = name.AsSpan(prefix.Length, name.Length - prefix.Length - suffix.Length);
+        return id.Length == 32 && id.IndexOfAnyExcept("0123456789abcdefABCDEF") < 0;
     }
 
     private static void CaptureIdentities(CaptureSession capture, string root, string directory, string relativeDirectory)

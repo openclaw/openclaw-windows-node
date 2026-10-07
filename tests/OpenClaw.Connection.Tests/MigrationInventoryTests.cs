@@ -311,6 +311,61 @@ public sealed class MigrationInventoryTests : IDisposable
     }
 
     [Fact]
+    public void Capture_NativeSetupDraft_IsInventoriedWithoutTreatingItAsAnIdentityDirectory()
+    {
+        var registry = WriteRegistry();
+        new DeviceIdentity(registry.GetIdentityDirectory(GatewayId)).Initialize();
+        var path = Write(
+            Path.Combine(Roaming, "gateways"),
+            OpenClawAppIdentity.NativeGatewaySetupDraftFileName,
+            """{"GatewayId":"draft-gateway","Port":18789,"PackageFamilyName":"OpenClawGateway","PreviousPort":null,"Contract":1}""");
+
+        var inventory = Capture();
+
+        Assert.Contains(inventory.Entries, entry =>
+            entry.CanonicalPath == path &&
+            entry.RelativeName == Path.Combine("gateways", OpenClawAppIdentity.NativeGatewaySetupDraftFileName) &&
+            entry.Exists);
+        Assert.Contains(inventory.Entries, entry =>
+            entry.RelativeName == Path.Combine("gateways", GatewayId, "device-key-ed25519.json") &&
+            entry.Exists);
+        File.WriteAllText(
+            path,
+            """{"GatewayId":"draft-gateway","Port":18790,"PackageFamilyName":"OpenClawGateway","PreviousPort":null,"Contract":1}""");
+        Assert.NotEqual(inventory.Fingerprint, Capture().Fingerprint);
+    }
+
+    [Fact]
+    public void Capture_NativeSetupDraftAtomicTemporaryFile_IsIgnored()
+    {
+        Write(
+            Path.Combine(Roaming, "gateways"),
+            $".{OpenClawAppIdentity.NativeGatewaySetupDraftFileName}.{Guid.NewGuid():N}.tmp",
+            """{"GatewayId":"draft-gateway"}""");
+
+        var inventory = Capture();
+
+        Assert.DoesNotContain(inventory.Entries, entry => entry.RelativeName.EndsWith(".tmp"));
+    }
+
+    [Fact]
+    public void Capture_DirectoryAtNativeSetupDraftPath_IsRejected()
+    {
+        Directory.CreateDirectory(Path.Combine(
+            Roaming, "gateways", OpenClawAppIdentity.NativeGatewaySetupDraftFileName));
+
+        Assert.Throws<InvalidDataException>(() => Capture());
+    }
+
+    [Fact]
+    public void Capture_UnexpectedFileInGatewayIdentityDirectory_IsRejected()
+    {
+        Write(Path.Combine(Roaming, "gateways"), "unexpected.json", "{}");
+
+        Assert.Throws<InvalidDataException>(() => Capture());
+    }
+
+    [Fact]
     public void Capture_DuplicateGatewayIds_IsRejected()
     {
         var record = new { id = GatewayId, url = "wss://example.test" };
