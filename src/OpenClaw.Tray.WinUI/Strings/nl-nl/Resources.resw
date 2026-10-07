@@ -17,6 +17,17 @@
       </xs:complexType>
     </xs:element>
   </xs:schema>
+  <data name="DesktopCompanion_Label.Text" xml:space="preserve"><value>Bureaubladkreeft</value></data>
+  <data name="DesktopCompanion_Description.Text" xml:space="preserve"><value>Houd een geanimeerde kreeft op je bureaublad. Meldingen verschijnen in tekstballonnen, ook als OpenClaw op de achtergrond draait. Sleep om te verplaatsen; klik met de rechtermuisknop voor opties.</value></data>
+  <data name="DesktopCompanion_Name" xml:space="preserve"><value>OpenClaw-bureaubladkreeft</value></data>
+  <data name="DesktopCompanion_Dismiss" xml:space="preserve"><value>Tekstballon sluiten</value></data>
+  <data name="DesktopCompanion_Notifications" xml:space="preserve"><value>Meldingen openen</value></data>
+  <data name="DesktopCompanion_Open" xml:space="preserve"><value>OpenClaw openen</value></data>
+  <data name="DesktopCompanion_Preview" xml:space="preserve"><value>Voorbeeldmelding</value></data>
+  <data name="DesktopCompanion_Hide" xml:space="preserve"><value>Bureaubladkreeft verbergen</value></data>
+  <data name="DesktopCompanion_PreviewTitle" xml:space="preserve"><value>Hallo van OpenClaw</value></data>
+  <data name="DesktopCompanion_PreviewMessage" xml:space="preserve"><value>Ik ben er als je me nodig hebt. Nieuwe meldingen verschijnen hier. Je kunt me naar een prettige plek op je bureaublad slepen.</value></data>
+  <data name="DesktopCompanion_Failed" xml:space="preserve"><value>De bureaubladkreeft kon niet worden weergegeven. Schakel Bureaubladkreeft uit en weer in via Instellingen om het opnieuw te proberen. Je meldingen blijven beschikbaar in OpenClaw.</value></data>
   <data name="SettingsConnectionHeader.Text" xml:space="preserve">
     <value>VERBINDING</value>
   </data>

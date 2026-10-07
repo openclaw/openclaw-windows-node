@@ -17,6 +17,17 @@
       </xs:complexType>
     </xs:element>
   </xs:schema>
+  <data name="DesktopCompanion_Label.Text" xml:space="preserve"><value>桌面龙虾</value></data>
+  <data name="DesktopCompanion_Description.Text" xml:space="preserve"><value>在桌面上显示一只动画龙虾。即使 OpenClaw 在后台运行，通知文字也会显示在对话气泡中。拖动可移动位置，右键单击可查看选项。</value></data>
+  <data name="DesktopCompanion_Name" xml:space="preserve"><value>OpenClaw 桌面龙虾</value></data>
+  <data name="DesktopCompanion_Dismiss" xml:space="preserve"><value>关闭气泡</value></data>
+  <data name="DesktopCompanion_Notifications" xml:space="preserve"><value>打开通知</value></data>
+  <data name="DesktopCompanion_Open" xml:space="preserve"><value>打开 OpenClaw</value></data>
+  <data name="DesktopCompanion_Preview" xml:space="preserve"><value>预览通知</value></data>
+  <data name="DesktopCompanion_Hide" xml:space="preserve"><value>隐藏桌面龙虾</value></data>
+  <data name="DesktopCompanion_PreviewTitle" xml:space="preserve"><value>来自 OpenClaw 的问候</value></data>
+  <data name="DesktopCompanion_PreviewMessage" xml:space="preserve"><value>需要我的时候，我就在这里。新通知会显示在这里。你可以把我拖到桌面上方便的位置。</value></data>
+  <data name="DesktopCompanion_Failed" xml:space="preserve"><value>无法显示桌面龙虾。请在设置中关闭再打开“桌面龙虾”以重试。你仍然可以在 OpenClaw 中查看通知。</value></data>
   <data name="SettingsConnectionHeader.Text" xml:space="preserve">
     <value>连接</value>
   </data>

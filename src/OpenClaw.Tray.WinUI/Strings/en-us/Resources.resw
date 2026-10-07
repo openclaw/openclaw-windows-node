@@ -17,6 +17,17 @@
       </xsd:complexType>
     </xsd:element>
   </xsd:schema>
+  <data name="DesktopCompanion_Label.Text" xml:space="preserve"><value>Desktop lobster</value></data>
+  <data name="DesktopCompanion_Description.Text" xml:space="preserve"><value>Keep an animated lobster on your desktop. Notification text appears in speech bubbles, even when OpenClaw is in the background. Drag to move; right-click for options.</value></data>
+  <data name="DesktopCompanion_Name" xml:space="preserve"><value>OpenClaw desktop lobster</value></data>
+  <data name="DesktopCompanion_Dismiss" xml:space="preserve"><value>Dismiss bubble</value></data>
+  <data name="DesktopCompanion_Notifications" xml:space="preserve"><value>Open notifications</value></data>
+  <data name="DesktopCompanion_Open" xml:space="preserve"><value>Open OpenClaw</value></data>
+  <data name="DesktopCompanion_Preview" xml:space="preserve"><value>Preview notification</value></data>
+  <data name="DesktopCompanion_Hide" xml:space="preserve"><value>Hide desktop lobster</value></data>
+  <data name="DesktopCompanion_PreviewTitle" xml:space="preserve"><value>Hello from OpenClaw</value></data>
+  <data name="DesktopCompanion_PreviewMessage" xml:space="preserve"><value>I'm here when you need me. New notifications appear here. You can drag me to a comfortable spot on your desktop.</value></data>
+  <data name="DesktopCompanion_Failed" xml:space="preserve"><value>The desktop lobster could not be shown. Turn Desktop lobster off and on again in Settings to retry. Your notifications are still available in OpenClaw.</value></data>
   <!-- ==================== SettingsWindow.xaml ==================== -->
   <!-- Section headers -->
   <data name="SettingsConnectionHeader.Text" xml:space="preserve">
