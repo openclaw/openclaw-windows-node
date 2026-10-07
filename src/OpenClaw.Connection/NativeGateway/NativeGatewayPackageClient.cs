@@ -10,7 +10,7 @@ public sealed class NativeGatewayPackageClient
 {
     public const string IsolatedContract = "isolated-session-v1";
 
-    private readonly Func<NativeGatewayPackage, IReadOnlyList<string>, CancellationToken,
+    private readonly Func<NativeGatewayPackage, IReadOnlyList<string>, string?, CancellationToken,
         Task<NativeGatewayCommandResult>> _invoke;
 
     public NativeGatewayPackageClient()
@@ -20,13 +20,19 @@ public sealed class NativeGatewayPackageClient
 
     internal NativeGatewayPackageClient(
         Func<NativeGatewayPackage, IReadOnlyList<string>, CancellationToken,
+            Task<NativeGatewayCommandResult>> invoke) =>
+        _invoke = (package, arguments, _, cancellationToken) =>
+            invoke(package, arguments, cancellationToken);
+
+    internal NativeGatewayPackageClient(
+        Func<NativeGatewayPackage, IReadOnlyList<string>, string?, CancellationToken,
             Task<NativeGatewayCommandResult>> invoke) => _invoke = invoke;
 
     public async Task<NativeGatewayContract> DetectAsync(
         NativeGatewayPackage package, CancellationToken cancellationToken)
     {
         NativeGatewayCommandResult result = await _invoke(
-            package, ["status", "--json"], cancellationToken).ConfigureAwait(false);
+            package, ["status", "--json"], null, cancellationToken).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(result.StandardOutput))
         {
             if (IsLegacyProofVersion(package.Version))
@@ -64,8 +70,20 @@ public sealed class NativeGatewayPackageClient
     {
         NativeGatewayCommandResult result = await _invoke(
             package, ["companion", "prepare", "--port", port.ToString(
-                System.Globalization.CultureInfo.InvariantCulture), "--json"], cancellationToken)
+                System.Globalization.CultureInfo.InvariantCulture), "--json"], null, cancellationToken)
             .ConfigureAwait(false);
+        return ReadCompanionConfiguration(result);
+    }
+
+    public async Task<IsolatedGatewayConfiguration> RestoreAsync(
+        NativeGatewayPackage package, int port, string token, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(token) || token.Length > 4096 || token.Any(char.IsControl))
+            throw new InvalidOperationException("Companion's saved Gateway token cannot be restored safely.");
+        NativeGatewayCommandResult result = await _invoke(
+            package, ["companion", "prepare", "--port", port.ToString(
+                System.Globalization.CultureInfo.InvariantCulture), "--restore-token-stdin", "--json"],
+            token, cancellationToken).ConfigureAwait(false);
         return ReadCompanionConfiguration(result);
     }
 
@@ -73,7 +91,7 @@ public sealed class NativeGatewayPackageClient
         NativeGatewayPackage package, CancellationToken cancellationToken)
     {
         NativeGatewayCommandResult result = await _invoke(
-            package, ["companion", "prepare", "--check", "--json"], cancellationToken)
+            package, ["companion", "prepare", "--check", "--json"], null, cancellationToken)
             .ConfigureAwait(false);
         return ReadCompanionConfiguration(result);
     }
@@ -96,7 +114,7 @@ public sealed class NativeGatewayPackageClient
     public async Task SetupAsync(NativeGatewayPackage package, CancellationToken cancellationToken)
     {
         NativeGatewayCommandResult result = await _invoke(
-            package, ["setup", "--json"], cancellationToken).ConfigureAwait(false);
+            package, ["setup", "--json"], null, cancellationToken).ConfigureAwait(false);
         using JsonDocument document = Parse(result.StandardOutput);
         JsonElement root = document.RootElement;
         RequireIntegration(root, "setup");
@@ -112,7 +130,7 @@ public sealed class NativeGatewayPackageClient
         NativeGatewayPackage package, CancellationToken cancellationToken)
     {
         NativeGatewayCommandResult result = await _invoke(
-            package, ["gateway-service", "status", "--json"], cancellationToken).ConfigureAwait(false);
+            package, ["gateway-service", "status", "--json"], null, cancellationToken).ConfigureAwait(false);
         using JsonDocument document = Parse(result.StandardOutput);
         JsonElement root = document.RootElement;
         RequireIntegration(root, "gateway-service status");
@@ -122,8 +140,14 @@ public sealed class NativeGatewayPackageClient
             throw new InvalidOperationException("The Gateway package reported an unsupported lifecycle state.");
         if (state == "running" && result.ExitCode != 0)
             throw PackageError(root);
+        string? sessionState = OptionalState(root, "session",
+            ["not-configured", "running", "stale", "unavailable", "failed", "unusable", "unknown"]);
+        string? readinessState = OptionalState(gateway, "readiness",
+            ["absent", "not-ready", "startup-eligible", "unavailable", "unknown"]);
+        string? readinessReason = OptionalString(gateway, "readiness", "reason");
         if (state != "running")
-            return new IsolatedGatewayStatus(state, null, null, []);
+            return new IsolatedGatewayStatus(
+                state, null, null, [], sessionState, readinessState, readinessReason);
 
         int port = RequiredInt(gateway, "port");
         if (!gateway.TryGetProperty("ownership", out JsonElement ownership) ||
@@ -153,7 +177,8 @@ public sealed class NativeGatewayPackageClient
         }
         if (!listeners.Any(listener => listener.Port == port))
             throw new InvalidOperationException("The Gateway package did not attribute the observed port to its session.");
-        return new IsolatedGatewayStatus(state, port, sid, listeners);
+        return new IsolatedGatewayStatus(
+            state, port, sid, listeners, sessionState, readinessState, readinessReason);
     }
 
     public async Task StartAsync(NativeGatewayPackage package, CancellationToken cancellationToken) =>
@@ -166,7 +191,7 @@ public sealed class NativeGatewayPackageClient
         NativeGatewayPackage package, string operation, CancellationToken cancellationToken)
     {
         NativeGatewayCommandResult result = await _invoke(
-            package, ["gateway-service", operation, "--json"], cancellationToken).ConfigureAwait(false);
+            package, ["gateway-service", operation, "--json"], null, cancellationToken).ConfigureAwait(false);
         using JsonDocument document = Parse(result.StandardOutput);
         RequireIntegration(document.RootElement, $"gateway-service {operation}");
         RequireSuccess(document.RootElement, result.ExitCode);
@@ -234,6 +259,31 @@ public sealed class NativeGatewayPackageClient
         return value.GetString()!;
     }
 
+    private static string? OptionalState(
+        JsonElement parent, string objectName, string[] supported)
+    {
+        if (!parent.TryGetProperty(objectName, out JsonElement value))
+            return null;
+        if (value.ValueKind != JsonValueKind.Object)
+            throw Unsupported();
+        string state = RequiredString(value, "state");
+        return supported.Contains(state)
+            ? state
+            : throw new InvalidOperationException(
+                $"The Gateway package reported an unsupported {objectName} state.");
+    }
+
+    private static string? OptionalString(JsonElement parent, string objectName, string propertyName)
+    {
+        if (!parent.TryGetProperty(objectName, out JsonElement value))
+            return null;
+        if (value.ValueKind != JsonValueKind.Object)
+            throw Unsupported();
+        if (!value.TryGetProperty(propertyName, out JsonElement property))
+            return null;
+        return property.ValueKind == JsonValueKind.String ? property.GetString() : throw Unsupported();
+    }
+
     private static int RequiredInt(JsonElement element, string name)
     {
         if (!element.TryGetProperty(name, out JsonElement value) ||
@@ -264,6 +314,7 @@ public sealed class NativeGatewayPackageClient
     private static async Task<NativeGatewayCommandResult> InvokePackageAsync(
         NativeGatewayPackage package,
         IReadOnlyList<string> arguments,
+        string? standardInput,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -272,18 +323,34 @@ public sealed class NativeGatewayPackageClient
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardOutput = true,
-            RedirectStandardError = true
+            RedirectStandardError = true,
+            RedirectStandardInput = standardInput is not null
         };
         foreach (string argument in arguments)
             start.ArgumentList.Add(argument);
         using Process process = Process.Start(start)
             ?? throw new InvalidOperationException("The Gateway package's clawctl alias could not be started.");
+        return await CompleteInvocationAsync(process, standardInput, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    internal static async Task<NativeGatewayCommandResult> CompleteInvocationAsync(
+        Process process,
+        string? standardInput,
+        CancellationToken cancellationToken)
+    {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromMinutes(3));
         Task<string> output = process.StandardOutput.ReadToEndAsync(timeout.Token);
         Task<string> error = process.StandardError.ReadToEndAsync(timeout.Token);
         try
         {
+            if (standardInput is not null)
+            {
+                await process.StandardInput.WriteLineAsync(standardInput.AsMemory(), timeout.Token)
+                    .ConfigureAwait(false);
+                process.StandardInput.Close();
+            }
             await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
             string stdout = await output.ConfigureAwait(false);
             _ = await error.ConfigureAwait(false);

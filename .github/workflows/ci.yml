@@ -7,9 +7,29 @@ on:
   pull_request:
     branches: [ main, master ]
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      promotion_alpha:
+        type: string
+        required: true
+      promotion_source_sha:
+        type: string
+        required: true
+      promotion_stable_tag:
+        type: string
+        required: true
 
 permissions:
   contents: read
+  actions: read
+
+env:
+  OPENCLAW_RELEASE_SOURCE_SHA: ${{ inputs.promotion_source_sha || github.sha }}
+  OPENCLAW_RELEASE_REF: ${{ inputs.promotion_stable_tag && format('refs/tags/{0}', inputs.promotion_stable_tag) || github.ref }}
+  OPENCLAW_RELEASE_TAG: ${{ inputs.promotion_stable_tag || github.ref_name }}
+  # GitVersion.MsBuild must not normalize a candidate checkout to the caller's main ref.
+  GitVersion_NoNormalizeEnabled: ${{ inputs.promotion_alpha != '' && 'true' || 'false' }}
+  GitVersion_NoFetchEnabled: ${{ inputs.promotion_alpha != '' && 'true' || 'false' }}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('{0}-{1}', github.ref, github.sha) }}
@@ -29,10 +49,37 @@ jobs:
       x64_release: ${{ steps.classify.outputs.x64_release }}
       arm64_release: ${{ steps.classify.outputs.arm64_release }}
       full: ${{ steps.classify.outputs.full }}
+      promotion_record: ${{ steps.promotion.outputs.record }}
     steps:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
+
+    - name: Bind alpha promotion to the approved source and pipeline
+      id: promotion
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
+        ALPHA_TAG: ${{ inputs.promotion_alpha }}
+        INPUT_SOURCE_SHA: ${{ inputs.promotion_source_sha }}
+        INPUT_STABLE_TAG: ${{ inputs.promotion_stable_tag }}
+      run: |
+        if ([string]::IsNullOrEmpty($env:ALPHA_TAG)) {
+          if ($env:INPUT_SOURCE_SHA -or $env:INPUT_STABLE_TAG) { throw 'Partial promotion inputs are not allowed.' }
+          exit 0
+        }
+        if ($env:INPUT_SOURCE_SHA -cnotmatch '\A[0-9a-f]{40}\z' -or -not $env:INPUT_STABLE_TAG) {
+          throw 'Promotion requires an exact source SHA and stable tag.'
+        }
+        if ($env:GITHUB_REPOSITORY -cne 'openclaw/openclaw-windows-node' -or
+            $env:GITHUB_REF -cne 'refs/heads/main' -or $env:GITHUB_EVENT_NAME -cne 'workflow_dispatch') {
+          throw 'Alpha promotion must be dispatched from canonical main.'
+        }
+        . ./scripts/AlphaPromotion.ps1
+        $record = Get-AlphaPromotion -AlphaTag $env:ALPHA_TAG -PipelineSha $env:GITHUB_SHA `
+          -ExpectedSourceSha $env:OPENCLAW_RELEASE_SOURCE_SHA -RequireApproval
+        if ($record.stableTag -cne $env:OPENCLAW_RELEASE_TAG) { throw 'Unexpected stable target.' }
+        "record=$($record | ConvertTo-Json -Compress)" >> $env:GITHUB_OUTPUT
 
     - name: Classify changed paths
       id: classify
@@ -152,6 +199,17 @@ jobs:
       shell: pwsh
       run: ./scripts/test-stable-correction-release-validator.ps1
 
+    - name: Validate alpha promotion policy and workflow
+      shell: pwsh
+      run: ./scripts/test-alpha-promotion.ps1
+
+    - name: Validate alpha promotion GitVersion behavior
+      shell: pwsh
+      run: |
+        dotnet tool restore
+        if ($LASTEXITCODE -ne 0) { throw 'GitVersion restore failed.' }
+        ./scripts/test-alpha-promotion-versioning.ps1
+
   proof-pool-contracts:
     name: Proof-pool contracts
     runs-on: windows-latest
@@ -198,6 +256,21 @@ jobs:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
+        ref: ${{ inputs.promotion_source_sha || github.sha }}
+        persist-credentials: false
+
+    - &promotion-version-tag
+      name: Create checkout-only stable tag for candidate versioning
+      if: inputs.promotion_alpha != ''
+      shell: pwsh
+      run: |
+        $existing = git rev-parse --verify --quiet "$($env:OPENCLAW_RELEASE_TAG)^{commit}"
+        if ($LASTEXITCODE -eq 0) {
+          if ($existing -cne $env:OPENCLAW_RELEASE_SOURCE_SHA) { throw 'Stable tag points to another candidate.' }
+        } else {
+          git -c tag.gpgsign=false tag $env:OPENCLAW_RELEASE_TAG $env:OPENCLAW_RELEASE_SOURCE_SHA
+          if ($LASTEXITCODE -ne 0) { throw 'Could not create the checkout-only versioning tag.' }
+        }
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
@@ -212,6 +285,8 @@ jobs:
     - name: Determine Version
       id: gitversion
       uses: gittools/actions/gitversion/execute@v4
+      with:
+        disableNormalization: ${{ inputs.promotion_alpha != '' }}
 
     - name: Resolve release version
       id: release_version
@@ -226,8 +301,8 @@ jobs:
         $isPrerelease = $semVer.Contains("-")
         $isStableCorrection = $false
 
-        if ($env:GITHUB_REF.StartsWith("refs/tags/v", [StringComparison]::Ordinal)) {
-          $tagVersion = $env:GITHUB_REF_NAME -replace '^v', ''
+        if ($env:OPENCLAW_RELEASE_REF.StartsWith("refs/tags/v", [StringComparison]::Ordinal)) {
+          $tagVersion = $env:OPENCLAW_RELEASE_TAG -replace '^v', ''
           # Match every numeric suffix, including malformed ones such as -0 and
           # -03, so the correction validator is the single authority that can
           # accept or reject them.
@@ -237,7 +312,7 @@ jobs:
 
           if ($correction.Success) {
             $validation = .\scripts\Test-OpenClawStableCorrectionRelease.ps1 `
-              -Tag $env:GITHUB_REF_NAME `
+              -Tag $env:OPENCLAW_RELEASE_TAG `
               -GitHubToken $env:GH_TOKEN
             $semVer = $tagVersion
             $majorMinorPatch = $validation.BaseVersion
@@ -254,7 +329,7 @@ jobs:
         "isStableCorrection=$($isStableCorrection.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
     - name: Resolve MSIX preview version
       id: msix_preview
-      if: ${{ !(github.repository == 'openclaw/openclaw-windows-node' && startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) }}
+      if: ${{ inputs.promotion_alpha == '' && !(github.repository == 'openclaw/openclaw-windows-node' && startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) }}
       shell: pwsh
       env:
         GH_TOKEN: ${{ github.token }}
@@ -262,8 +337,8 @@ jobs:
         $sourceVersion = .\scripts\Get-OpenClawMsixPreviewSourceVersion.ps1 `
           -GitHubToken $env:GH_TOKEN
         $info = .\scripts\Resolve-MsixPackageVersion.ps1 `
-          -SourceVersion $sourceVersion -SourceCommit $env:GITHUB_SHA `
-          -SourceRef $env:GITHUB_REF -Repository openclaw/openclaw-windows-node `
+          -SourceVersion $sourceVersion -SourceCommit $env:OPENCLAW_RELEASE_SOURCE_SHA `
+          -SourceRef $env:OPENCLAW_RELEASE_REF -Repository openclaw/openclaw-windows-node `
           -GitHubToken $env:GH_TOKEN
         "sourceVersion=$sourceVersion" >> $env:GITHUB_OUTPUT
         "versionInfo=$($info | ConvertTo-Json -Depth 4 -Compress)" >> $env:GITHUB_OUTPUT
@@ -271,10 +346,11 @@ jobs:
   reserve-msix-version:
     name: Reserve official MSIX version
     needs: [change-classification, metadata]
-    if: ${{ !cancelled() && needs.metadata.result == 'success' && github.repository == 'openclaw/openclaw-windows-node' && startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    if: ${{ !cancelled() && needs.metadata.result == 'success' && github.repository == 'openclaw/openclaw-windows-node' && (startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     runs-on: windows-latest
     permissions:
       contents: write
+      actions: read
     outputs:
       versionInfo: ${{ steps.reserve.outputs.versionInfo }}
       sourceVersion: ${{ steps.reserve.outputs.sourceVersion }}
@@ -288,12 +364,26 @@ jobs:
       id: reserve
       shell: pwsh
       env:
+        PROMOTION_ALPHA: ${{ inputs.promotion_alpha }}
+        PROMOTION_RECORD: ${{ needs.change-classification.outputs.promotion_record }}
         SOURCE_VERSION: ${{ needs.metadata.outputs.semVer }}
         GH_TOKEN: ${{ github.token }}
       run: |
-        $info = .\scripts\Resolve-MsixPackageVersion.ps1 `
-          -SourceVersion $env:SOURCE_VERSION -SourceCommit $env:GITHUB_SHA `
-          -SourceRef $env:GITHUB_REF -Repository $env:GITHUB_REPOSITORY -Reserve
+        $promotionArguments = @{}
+        if ($env:PROMOTION_ALPHA) {
+          . ./scripts/AlphaPromotion.ps1
+          $record = Get-AlphaPromotion -AlphaTag $env:PROMOTION_ALPHA -PipelineSha $env:GITHUB_SHA `
+            -ExpectedSourceSha $env:OPENCLAW_RELEASE_SOURCE_SHA -RequireApproval
+          if (($record | ConvertTo-Json -Compress) -cne $env:PROMOTION_RECORD -or
+              $record.version -cne $env:SOURCE_VERSION -or
+              "refs/tags/$($record.stableTag)" -cne $env:OPENCLAW_RELEASE_REF) {
+            throw 'Promotion provenance changed before MSIX reservation.'
+          }
+          $promotionArguments.PromotionAlphaTag = $record.alphaTag
+        }
+        $info = .\scripts\Resolve-MsixPackageVersion.ps1 @promotionArguments `
+          -SourceVersion $env:SOURCE_VERSION -SourceCommit $env:OPENCLAW_RELEASE_SOURCE_SHA `
+          -SourceRef $env:OPENCLAW_RELEASE_REF -Repository $env:GITHUB_REPOSITORY -Reserve
         "sourceVersion=$($info.sourceVersion)" >> $env:GITHUB_OUTPUT
         "versionInfo=$($info | ConvertTo-Json -Depth 4 -Compress)" >> $env:GITHUB_OUTPUT
 
@@ -309,6 +399,10 @@ jobs:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
+        ref: ${{ inputs.promotion_source_sha || github.sha }}
+        persist-credentials: false
+
+    - *promotion-version-tag
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
@@ -409,6 +503,10 @@ jobs:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
+        ref: ${{ inputs.promotion_source_sha || github.sha }}
+        persist-credentials: false
+
+    - *promotion-version-tag
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
@@ -492,6 +590,10 @@ jobs:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
+        ref: ${{ inputs.promotion_source_sha || github.sha }}
+        persist-credentials: false
+
+    - *promotion-version-tag
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
@@ -631,6 +733,10 @@ jobs:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
+        ref: ${{ inputs.promotion_source_sha || github.sha }}
+        persist-credentials: false
+
+    - *promotion-version-tag
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
@@ -685,6 +791,10 @@ jobs:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
+        ref: ${{ inputs.promotion_source_sha || github.sha }}
+        persist-credentials: false
+
+    - *promotion-version-tag
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
@@ -739,6 +849,10 @@ jobs:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
+        ref: ${{ inputs.promotion_source_sha || github.sha }}
+        persist-credentials: false
+
+    - *promotion-version-tag
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
@@ -793,6 +907,10 @@ jobs:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
+        ref: ${{ inputs.promotion_source_sha || github.sha }}
+        persist-credentials: false
+
+    - *promotion-version-tag
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
@@ -849,6 +967,10 @@ jobs:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
+        ref: ${{ inputs.promotion_source_sha || github.sha }}
+        persist-credentials: false
+
+    - *promotion-version-tag
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
@@ -915,6 +1037,10 @@ jobs:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
+        ref: ${{ inputs.promotion_source_sha || github.sha }}
+        persist-credentials: false
+
+    - *promotion-version-tag
 
     - name: Setup .NET from global.json
       uses: actions/setup-dotnet@v6
@@ -937,7 +1063,7 @@ jobs:
         }
         . .\scripts\MsixVersioning.ps1
         $info = Assert-MsixVersionInfo -VersionInfo ($env:MSIX_VERSION_INFO | ConvertFrom-Json) `
-          -SourceCommit $env:GITHUB_SHA -SourceVersion $env:MSIX_SOURCE_VERSION
+          -SourceCommit $env:OPENCLAW_RELEASE_SOURCE_SHA -SourceVersion $env:MSIX_SOURCE_VERSION
         $info | ConvertTo-Json -Depth 4 |
           Set-Content -LiteralPath "$env:RUNNER_TEMP\openclaw-msix-version.json" -Encoding utf8
 
@@ -1076,7 +1202,7 @@ jobs:
         }
         . .\scripts\MsixVersioning.ps1
         $info = Assert-MsixVersionInfo -VersionInfo ($env:MSIX_VERSION_INFO | ConvertFrom-Json) `
-          -SourceCommit $env:GITHUB_SHA -SourceVersion $env:MSIX_SOURCE_VERSION
+          -SourceCommit $env:OPENCLAW_RELEASE_SOURCE_SHA -SourceVersion $env:MSIX_SOURCE_VERSION
         "packageVersion=$($info.storePackageVersion)" >> $env:GITHUB_OUTPUT
 
     - name: Compose unsigned multi-architecture Store MSIX bundle
@@ -1162,7 +1288,7 @@ jobs:
   # overlap the long UI and E2E tail. Publication remains gated by ci-gate below.
   prepare-release-assets:
     needs: [change-classification, metadata, reserve-msix-version, proof-pool-contracts, core-tests, tray-tests, build-x64, build-arm64]
-    if: startsWith(github.ref, 'refs/tags/v') && needs.change-classification.outputs.full == 'true' && needs.metadata.result == 'success' && needs.reserve-msix-version.result == 'success' && needs.proof-pool-contracts.result == 'success' && needs.core-tests.result == 'success' && needs.tray-tests.result == 'success' && needs.build-x64.result == 'success' && needs.build-arm64.result == 'success' && !cancelled()
+    if: (startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '') && needs.change-classification.outputs.full == 'true' && needs.metadata.result == 'success' && needs.reserve-msix-version.result == 'success' && needs.proof-pool-contracts.result == 'success' && needs.core-tests.result == 'success' && needs.tray-tests.result == 'success' && needs.build-x64.result == 'success' && needs.build-arm64.result == 'success' && !cancelled()
     runs-on: windows-latest
     environment: release-signing
     permissions:
@@ -1172,9 +1298,26 @@ jobs:
     concurrency:
       group: openclaw-windows-node-release-preparation
       cancel-in-progress: false
-
     steps:
     - uses: actions/checkout@v7
+      with:
+        persist-credentials: false
+
+    - name: Check out candidate installer sources
+      if: inputs.promotion_alpha != ''
+      uses: actions/checkout@v7
+      with:
+        ref: ${{ inputs.promotion_source_sha }}
+        path: candidate-source
+        persist-credentials: false
+
+    - name: Select installer source
+      shell: pwsh
+      env:
+        IS_PROMOTION: ${{ inputs.promotion_alpha != '' }}
+      run: |
+        $installer = if ($env:IS_PROMOTION -eq 'true') { 'candidate-source\installer.iss' } else { 'installer.iss' }
+        "OPENCLAW_INSTALLER_SCRIPT=$installer" >> $env:GITHUB_ENV
 
     - name: Download win-x64 tray artifact
       uses: actions/download-artifact@v8
@@ -1328,7 +1471,8 @@ jobs:
         copy artifacts/tray-win-x64/* publish-x64/ -Recurse
         .\scripts\Test-ReleaseNativeDependencies.ps1 -PayloadPath publish-x64 -RequireAppLocalVCRuntime -RequireInstallerVCRedist -InstallerVCRedistPath vc_redist.x64.exe
         # Build installer
-        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ needs.metadata.outputs.semVer }} /DMyAppArch=x64 /Dpublish=publish-x64 /DvcRedist=vc_redist.x64.exe installer.iss
+        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ needs.metadata.outputs.semVer }} /DMyAppArch=x64 "/Dpublish=$env:GITHUB_WORKSPACE\publish-x64" "/DvcRedist=$env:GITHUB_WORKSPACE\vc_redist.x64.exe" "/O$env:GITHUB_WORKSPACE\Output" $env:OPENCLAW_INSTALLER_SCRIPT
+        if ($LASTEXITCODE -ne 0) { throw 'x64 installer compilation failed.' }
 
     - name: Build arm64 Installer
       run: |
@@ -1340,7 +1484,8 @@ jobs:
         #                             LoadLibrary an arm64 DLL.
         .\scripts\Test-ReleaseNativeDependencies.ps1 -PayloadPath publish-arm64 -RequireAppLocalVCRuntime -RequireInstallerVCRedist -InstallerVCRedistPath vc_redist.arm64.exe -SkipNativeLoadProbe
         # Build installer
-        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ needs.metadata.outputs.semVer }} /DMyAppArch=arm64 /Dpublish=publish-arm64 /DvcRedist=vc_redist.arm64.exe installer.iss
+        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ needs.metadata.outputs.semVer }} /DMyAppArch=arm64 "/Dpublish=$env:GITHUB_WORKSPACE\publish-arm64" "/DvcRedist=$env:GITHUB_WORKSPACE\vc_redist.arm64.exe" "/O$env:GITHUB_WORKSPACE\Output" $env:OPENCLAW_INSTALLER_SCRIPT
+        if ($LASTEXITCODE -ne 0) { throw 'ARM64 installer compilation failed.' }
 
     - name: Sign Installers
       uses: azure/artifact-signing-action@v2
@@ -1368,7 +1513,7 @@ jobs:
 
   release:
     needs: [change-classification, metadata, reserve-msix-version, prepare-release-assets, build-msix-bundle, ci-gate]
-    if: startsWith(github.ref, 'refs/tags/v') && needs.ci-gate.result == 'success' && needs.change-classification.outputs.full == 'true' && needs.metadata.result == 'success' && needs.reserve-msix-version.result == 'success' && needs.prepare-release-assets.result == 'success' && needs.build-msix-bundle.result == 'success' && !cancelled()
+    if: (startsWith(github.ref, 'refs/tags/v') || inputs.promotion_alpha != '') && needs.ci-gate.result == 'success' && needs.change-classification.outputs.full == 'true' && needs.metadata.result == 'success' && needs.reserve-msix-version.result == 'success' && needs.prepare-release-assets.result == 'success' && needs.build-msix-bundle.result == 'success' && !cancelled()
     runs-on: windows-latest
     environment: release-signing
     permissions:
@@ -1377,11 +1522,15 @@ jobs:
     concurrency:
       group: openclaw-windows-node-release
       cancel-in-progress: false
+    outputs:
+      promotion_artifact_id: ${{ steps.promotion_artifact.outputs.artifact-id }}
+      prepared_attempt: ${{ steps.promotion_manifest.outputs.prepared_attempt }}
 
     steps:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
+        persist-credentials: false
 
     - name: Download prepared release assets
       uses: actions/download-artifact@v8
@@ -1453,10 +1602,50 @@ jobs:
           -ExpectedRevision $env:DEV_MSIX_REVISION `
           -ExpectedWorkflowRunId $env:GITHUB_RUN_ID `
           -VersionInfoPath "$env:RUNNER_TEMP\openclaw-msix-version.json" `
-          -ExpectedSourceCommit $env:GITHUB_SHA
+          -ExpectedSourceCommit $env:OPENCLAW_RELEASE_SOURCE_SHA
         @('files<<MSIX_RELEASE_FILES'; $assets.Files; 'MSIX_RELEASE_FILES') >> $env:GITHUB_OUTPUT
         @('notes<<MSIX_RELEASE_NOTES'; $assets.Notes; 'MSIX_RELEASE_NOTES') >> $env:GITHUB_OUTPUT
 
+    - name: Prepare immutable promotion artifact
+      if: inputs.promotion_alpha != ''
+      id: promotion_manifest
+      shell: pwsh
+      env:
+        PROMOTION_RECORD: ${{ needs.change-classification.outputs.promotion_record }}
+        MSIX_VERSION_INFO: ${{ needs.reserve-msix-version.outputs.versionInfo }}
+      run: |
+        . ./scripts/AlphaPromotion.ps1
+        $record = $env:PROMOTION_RECORD | ConvertFrom-Json
+        New-Item -ItemType Directory -Path promotion-assets | Out-Null
+        foreach ($name in (Get-PromotionAssetNames $record.version)) {
+          $source = if ($name.EndsWith('.exe')) { Join-Path Output $name }
+            elseif ($name.StartsWith('OpenClawTray-')) { $name }
+            else { Join-Path msix-release $name }
+          Copy-Item -LiteralPath $source -Destination (Join-Path promotion-assets $name)
+        }
+        $manifest = New-PromotionArtifactManifest -Record $record -Directory promotion-assets `
+          -VersionInfo ($env:MSIX_VERSION_INFO | ConvertFrom-Json) `
+          -RunId $env:GITHUB_RUN_ID -RunAttempt $env:GITHUB_RUN_ATTEMPT
+        $manifest | ConvertTo-Json -Depth 10 | Set-Content promotion-assets\promotion.json -Encoding utf8
+        "prepared_attempt=$env:GITHUB_RUN_ATTEMPT" >> $env:GITHUB_OUTPUT
+        @(
+          "## Stable publication approval"
+          "Review docs/RELEASING.md acceptance gates against these exact artifacts, including both architectures."
+          "Record acceptance evidence in the environment review. Do not approve missing proof."
+          '```json'
+          ($manifest | ConvertTo-Json -Depth 10)
+          '```'
+        ) >> $env:GITHUB_STEP_SUMMARY
+
+    - name: Upload prepared promotion artifact
+      if: inputs.promotion_alpha != ''
+      id: promotion_artifact
+      uses: actions/upload-artifact@v7
+      with:
+        name: alpha-promotion-${{ github.run_attempt }}
+        path: promotion-assets/
+        if-no-files-found: error
+        retention-days: 30
     - name: Remove trusted Dev MSIX certificates
       if: ${{ always() }}
       shell: pwsh
@@ -1578,8 +1767,8 @@ jobs:
         "body<<$delimiter" >> $env:GITHUB_OUTPUT
         $notesBody >> $env:GITHUB_OUTPUT
         $delimiter >> $env:GITHUB_OUTPUT
-
     - name: Create Release
+      if: inputs.promotion_alpha == ''
       uses: softprops/action-gh-release@v3
       with:
         generate_release_notes: ${{ ! contains(github.ref_name, '-alpha.') }}
@@ -1676,3 +1865,38 @@ jobs:
             | @tsv
           ' <<< "$releases_json"
         )
+
+  publish-promotion:
+    needs: [change-classification, release]
+    if: inputs.promotion_alpha != '' && needs.release.result == 'success'
+    runs-on: windows-latest
+    environment:
+      name: stable-release
+      url: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    permissions:
+      contents: write
+      actions: read
+    concurrency:
+      group: openclaw-windows-node-release
+      cancel-in-progress: false
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        persist-credentials: false
+    - name: Download exact prepared promotion artifact
+      uses: actions/download-artifact@v8
+      with:
+        artifact-ids: ${{ needs.release.outputs.promotion_artifact_id }}
+        merge-multiple: true
+        path: promotion-assets
+    - name: Publish approved stable release
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
+        STABLE_RELEASE_TOKEN: ${{ secrets.STABLE_RELEASE_TOKEN }}
+        PROMOTION_RECORD: ${{ needs.change-classification.outputs.promotion_record }}
+        PREPARED_ATTEMPT: ${{ needs.release.outputs.prepared_attempt }}
+      run: |
+        . ./scripts/AlphaPromotion.ps1
+        Publish-AlphaPromotion -Record ($env:PROMOTION_RECORD | ConvertFrom-Json) `
+          -Directory promotion-assets -RunId $env:GITHUB_RUN_ID -PreparedAttempt $env:PREPARED_ATTEMPT

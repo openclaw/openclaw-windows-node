@@ -722,7 +722,7 @@ foreach ($token in @(
         '-MsixBaseVersion $info.packageBaseVersion',
         '-VersionInfoPath "$env:RUNNER_TEMP\openclaw-msix-version.json"',
         'Assert-MsixVersionInfo',
-        '-SourceCommit $env:GITHUB_SHA -SourceVersion $env:MSIX_SOURCE_VERSION',
+        '-SourceCommit $env:OPENCLAW_RELEASE_SOURCE_SHA -SourceVersion $env:MSIX_SOURCE_VERSION',
         'refusing to build with a fallback version',
         '-CertificateThumbprint $thumbprint',
         'name: openclaw-msix-store-unsigned-${{ matrix.architecture }}',
@@ -754,7 +754,7 @@ foreach ($token in @(
     'name: openclaw-msix-store-unsigned-bundle',
     'path: artifacts/msix/bundle/OpenClaw.msixbundle',
     'Assert-MsixVersionInfo',
-    '-SourceCommit $env:GITHUB_SHA -SourceVersion $env:MSIX_SOURCE_VERSION',
+    '-SourceCommit $env:OPENCLAW_RELEASE_SOURCE_SHA -SourceVersion $env:MSIX_SOURCE_VERSION',
     'refusing to bundle with a fallback version'
 )) {
     Assert-Contains -Text $buildMsixBundleJob -Expected $token -Message "MSIX bundle lane is missing '$token'."
@@ -773,7 +773,7 @@ foreach ($token in @(
     'contents: write', 'persist-credentials: false',
     'versionInfo: ${{ steps.reserve.outputs.versionInfo }}',
     'sourceVersion: ${{ steps.reserve.outputs.sourceVersion }}',
-    '-SourceRef $env:GITHUB_REF -Repository $env:GITHUB_REPOSITORY -Reserve'
+    '-SourceRef $env:OPENCLAW_RELEASE_REF -Repository $env:GITHUB_REPOSITORY -Reserve'
 )) {
     Assert-Contains -Text $reserveMsixJob -Expected $token -Message "Official MSIX allocation is missing '$token'."
 }
@@ -802,11 +802,16 @@ function Convert-MsixGuard {
         Replace('needs.metadata.result', '$metadataResult').
         Replace('github.repository', '$repository').
         Replace('github.event_name', '$eventName').
-        Replace('==', '-eq').Replace('&&', '-and').Replace('||', '-or').Replace('!(', '-not (')
-    [scriptblock]::Create('param($repository,$ref,$eventName,$metadataResult,$cancelled)' + "`n($condition)")
+        Replace('inputs.promotion_alpha', '$promotionAlpha').
+        Replace('!=', '-ne').Replace('==', '-eq').Replace('&&', '-and').Replace('||', '-or').Replace('!(', '-not (')
+    [scriptblock]::Create('param($repository,$ref,$eventName,$metadataResult,$cancelled,$promotionAlpha = '''')' + "`n($condition)")
 }
 $reserveGuard = Convert-MsixGuard $reserveMsixJob
 $previewGuard = Convert-MsixGuard $previewStep
+if (-not (& $reserveGuard 'openclaw/openclaw-windows-node' 'refs/heads/main' 'workflow_dispatch' 'success' $false 'v2026.9.5-alpha.93') -or
+    (& $previewGuard 'openclaw/openclaw-windows-node' 'refs/heads/main' 'workflow_dispatch' 'success' $false 'v2026.9.5-alpha.93')) {
+    throw 'Validated main-based promotion must reserve an official version, not use a preview.'
+}
 foreach ($repository in @('openclaw/openclaw-windows-node', 'contributor/openclaw-windows-node')) {
     foreach ($ref in @('refs/tags/v2026.9.4', 'refs/tags/v2026.9.4-1', 'refs/tags/v2026.9.4-alpha.1', 'refs/heads/main', 'refs/pull/1/merge', 'refs/tags/msix-package/2026.9.4/401')) {
         foreach ($eventName in @('push', 'workflow_dispatch', 'pull_request', 'pull_request_target')) {
@@ -902,7 +907,7 @@ Assert-Contains -Text $msixArm64Download -Expected 'name: openclaw-msix-dev-arm6
 foreach ($step in @($msixX64Download, $msixArm64Download)) {
     Assert-NotContains -Text $step -Unexpected 'openclaw-msix-store-unsigned-' -Message 'Unsigned Store packages must stay workflow-only.'
 }
-Assert-Contains -Text $msixStage -Expected '-ExpectedSourceCommit $env:GITHUB_SHA' -Message "Release staging must bind artifacts to the tag's source."
+Assert-Contains -Text $msixStage -Expected '-ExpectedSourceCommit $env:OPENCLAW_RELEASE_SOURCE_SHA' -Message "Release staging must bind artifacts to the tag's source."
 Assert-Contains -Text $msixStage -Expected '-Version $env:RELEASE_VERSION' -Message "Release staging must validate the release version."
 Assert-Contains -Text $msixStage -Expected '-ExpectedRevision $env:DEV_MSIX_REVISION' -Message 'Release staging must bind the Dev package revision.'
 Assert-Contains -Text $msixStage -Expected '-ExpectedWorkflowRunId $env:GITHUB_RUN_ID' -Message 'Release staging must bind artifacts to the publishing run.'

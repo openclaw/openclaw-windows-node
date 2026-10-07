@@ -521,6 +521,9 @@ The first-run Windows gateway onboarding wizard lives in `OpenClaw.SetupEngine.U
 
 Useful local scripts:
 
+- `.\scripts\clean-uninstall.ps1` is a standalone demo-device cleanup script (Windows PowerShell 5.1, no build or Copilot required). Preview by default; repeat with `-ConfirmDestructive` to apply. `-All` enables shared cached-model, dev-state, and owned WSL cleanup together; add `-ExcludeCachedModels` to preserve external shared cached weights. Additional profile paths remain explicit. See the [standalone usage and safety limits](.agents/skills/uninstall/HARD-CLEAN.md#standalone-script-no-copilot-required).
+  Use `-RemoveIsolatedProfilePath` for explicitly identified leftover Windows isolated-profile registrations, including records whose folders were already deleted. This is not implied by `-All`; confirmed removal requires elevation and rejects loaded, special, and ordinary user profiles.
+- For a native Gateway/MXC and llama.cpp clean retest, use the [uninstall skill](.agents/skills/uninstall/SKILL.md) and its [hard-clean procedure](.agents/skills/uninstall/HARD-CLEAN.md). It includes package teardown, isolated profiles, shared-model consent, and post-clean verification; the WSL helpers below are not substitutes.
 - `.\scripts\dev-reset-rebuild-launch.ps1` resets tray data, rebuilds, and optionally launches the app; add `-WipeWslDistro` for a full local WSL gateway reset.
 - `.\scripts\validate-mxc-e2e.ps1` runs the formal WSL Gateway -> Windows node -> `system.run` MXC proof path for MXC-sensitive changes.
 
