@@ -4,8 +4,9 @@ Set-StrictMode -Version Latest
 function Invoke-PromotionApi {
     param(
         [Parameter(Mandatory)][string]$Path,
-        [ValidateSet('GET', 'POST')][string]$Method = 'GET',
+        [ValidateSet('GET', 'POST', 'PATCH')][string]$Method = 'GET',
         [object]$Body,
+        [string]$Token = $env:GH_TOKEN,
         [switch]$AllowNotFound
     )
 
@@ -14,7 +15,7 @@ function Invoke-PromotionApi {
         Method = $Method
         Headers = @{
             Accept = 'application/vnd.github+json'
-            Authorization = [string]::Concat('Bearer ', $env:GH_TOKEN)
+            Authorization = [string]::Concat('Bearer ', $Token)
             'X-GitHub-Api-Version' = '2022-11-28'
         }
         UserAgent = 'OpenClaw-AlphaPromotion'
@@ -22,7 +23,7 @@ function Invoke-PromotionApi {
         TimeoutSec = 60
         ErrorAction = 'Stop'
     }
-    if ($Method -eq 'POST') {
+    if ($Method -ne 'GET') {
         $arguments.ContentType = 'application/json'
         $arguments.Body = $Body | ConvertTo-Json -Depth 10 -Compress
     }
@@ -271,8 +272,15 @@ function Assert-PromotionArtifactManifest {
 }
 
 function Publish-AlphaPromotion {
-    param([object]$Record, [string]$Directory, [string]$RunId, [string]$PreparedAttempt)
+    param([object]$Record, [string]$Directory, [string]$RunId, [string]$PreparedAttempt,
+        [string]$ReleaseToken = $env:STABLE_RELEASE_TOKEN)
 
+    # Historical workflow revisions require Workflows:write for release mutations.
+    # Keep this protected token away from tag creation and candidate execution.
+    if ([string]::IsNullOrWhiteSpace($ReleaseToken) -or $ReleaseToken -match '\p{Cc}' -or
+        $ReleaseToken -ceq $env:GH_TOKEN) {
+        throw 'Configure a distinct STABLE_RELEASE_TOKEN in stable-release with Contents and Workflows write permission for this repository.'
+    }
     $fresh = Get-AlphaPromotion -AlphaTag $Record.alphaTag -PipelineSha $Record.pipelineSha `
         -ExpectedSourceSha $Record.sourceSha -RequireApproval
     if (($fresh | ConvertTo-Json -Compress) -cne ($Record | ConvertTo-Json -Compress)) { throw 'Promotion provenance changed.' }
@@ -291,7 +299,7 @@ function Publish-AlphaPromotion {
             target_commitish = $Record.sourceSha
             previous_tag_name = $Record.previousStableTag
         }
-        $release = Invoke-PromotionApi -Path 'releases' -Method POST -Body @{
+        $release = Invoke-PromotionApi -Path 'releases' -Method POST -Token $ReleaseToken -Body @{
             tag_name = $tag
             target_commitish = $Record.sourceSha
             name = $tag
@@ -345,8 +353,13 @@ $marker
     }
     Get-AlphaPromotion -AlphaTag $Record.alphaTag -PipelineSha $Record.pipelineSha `
         -ExpectedSourceSha $Record.sourceSha -RequireApproval -RequireReservation | Out-Null
-    & gh release edit $tag --repo openclaw/openclaw-windows-node --draft=false --prerelease=false --latest
-    if ($LASTEXITCODE -ne 0) { throw 'Stable publication failed. Inspect release state before retrying.' }
+    try {
+        Invoke-PromotionApi -Path "releases/$($release.id)" -Method PATCH -Token $ReleaseToken -Body @{
+            draft = $false
+            prerelease = $false
+            make_latest = 'true'
+        } | Out-Null
+    } catch { throw 'Stable publication failed. Inspect release state before retrying.' }
     $published = Invoke-PromotionApi -Path "releases/tags/$tag"
     $latest = Invoke-PromotionApi -Path 'releases/latest'
     if ($published.draft -ne $false -or $published.prerelease -ne $false -or

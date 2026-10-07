@@ -1893,6 +1893,7 @@ jobs:
       shell: pwsh
       env:
         GH_TOKEN: ${{ github.token }}
+        STABLE_RELEASE_TOKEN: ${{ secrets.STABLE_RELEASE_TOKEN }}
         PROMOTION_RECORD: ${{ needs.change-classification.outputs.promotion_record }}
         PREPARED_ATTEMPT: ${{ needs.release.outputs.prepared_attempt }}
       run: |

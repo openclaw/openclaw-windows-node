@@ -15,6 +15,9 @@ $tagSha = 'd' * 40
 $alpha = 'v2026.9.5-alpha.93'
 $state = @{}
 $cases = 0
+$publicationToken = 'test-publication-token'
+$previousPublicationToken = $env:STABLE_RELEASE_TOKEN
+$env:STABLE_RELEASE_TOKEN = $publicationToken
 $temporaryRoot = Join-Path ([IO.Path]::GetTempPath()) "openclaw-promotion-$([guid]::NewGuid().ToString('N'))"
 New-Item -ItemType Directory -Path $temporaryRoot | Out-Null
 
@@ -33,6 +36,7 @@ function Assert-Throws([scriptblock]$Action, [string]$Message) {
 }
 function Reset-Fixture {
     $state.Clear()
+    $env:STABLE_RELEASE_TOKEN = $publicationToken
     $state.alphaSha = $sourceSha
     $state.published = $true
     $state.currentTag = 'v2026.9.4'
@@ -63,7 +67,7 @@ function Candidate {
 
 # No HTTP or real GitHub mutations are allowed beyond this seam.
 function Invoke-PromotionApi {
-    param([string]$Path, [string]$Method = 'GET', [object]$Body, [switch]$AllowNotFound)
+    param([string]$Path, [string]$Method = 'GET', [object]$Body, [string]$Token, [switch]$AllowNotFound)
     if ($Method -ne 'GET') { $state.writes++ }
     switch -Regex ($Path) {
         '^releases/tags/v2026\.9\.5-alpha\.93$' {
@@ -125,13 +129,26 @@ function Invoke-PromotionApi {
             # Invoke-RestMethod emits a JSON array as one pipeline object.
             return ,@($releases | Select-Object -Skip (([int]$Matches[1] - 1) * 100) -First 100)
         }
-        '^releases/500$' { return $state.release }
+        '^releases/500$' {
+            if ($Method -ceq 'PATCH') {
+                Assert-Equal $Token $publicationToken
+                Assert-Equal $Body.draft $false
+                Assert-Equal $Body.prerelease $false
+                Assert-Equal $Body.make_latest 'true'
+                $state.release.draft = $false
+                $state.release.published_at = '2026-10-06'
+                $state.currentTag = 'v2026.9.5'
+            }
+            return $state.release
+        }
         '^git/tags$' {
+            Assert-Equal $Token ''
             Assert-Equal $Method 'POST'
             $state.annotation = $Body.message
             return [pscustomobject]@{ sha = $tagSha }
         }
         '^git/refs$' {
+            Assert-Equal $Token ''
             Assert-Equal $Method 'POST'
             if ($state.tag -or $state.collision) { throw 'Ref creation collision.' }
             $state.tag = $sourceSha
@@ -144,6 +161,7 @@ function Invoke-PromotionApi {
             return [pscustomobject]@{ body = 'Only candidate changes.' }
         }
         '^releases$' {
+            Assert-Equal $Token $publicationToken
             Assert-Equal $Body.draft $true
             Assert-Equal $Body.make_latest 'false'
             $state.release = [pscustomobject]@{
@@ -169,12 +187,6 @@ function gh {
             name = $file.Name; digest = "sha256:$((Get-FileHash $file.FullName).Hash.ToLowerInvariant())"
             size = $file.Length; state = 'uploaded'
         }
-    } elseif ($args[1] -ceq 'edit') {
-        Assert-Equal ($args -contains '--draft=false') $true
-        Assert-Equal ($args -contains '--latest') $true
-        $state.release.draft = $false
-        $state.release.published_at = '2026-10-06'
-        $state.currentTag = 'v2026.9.5'
     } else { throw 'Unexpected gh mutation.' }
     $global:LASTEXITCODE = 0
 }
@@ -333,6 +345,29 @@ try {
         $state.failUpload = $false
         Assert-Throws { Publish-AlphaPromotion $record $fixture.directory '200' '2' } 'exact prepared artifacts'
     }
+    Test-Case 'missing publication credential fails before tag or release I/O' {
+        $record = Candidate; $fixture = New-ArtifactFixture $record
+        $env:STABLE_RELEASE_TOKEN = ''
+        Assert-Throws { Publish-AlphaPromotion $record $fixture.directory '200' '1' } 'distinct STABLE_RELEASE_TOKEN'
+        Assert-Equal $state.tag $null
+        Assert-Equal $state.writes 0
+    }
+    Test-Case 'invalid publication credential fails before tag or release I/O' {
+        $record = Candidate; $fixture = New-ArtifactFixture $record
+        Assert-Throws { Publish-AlphaPromotion $record $fixture.directory '200' '1' -ReleaseToken "synthetic`n" } 'distinct STABLE_RELEASE_TOKEN'
+        Assert-Equal $state.tag $null
+        Assert-Equal $state.writes 0
+    }
+    Test-Case 'workflow token cannot substitute for publication credential' {
+        $record = Candidate; $fixture = New-ArtifactFixture $record
+        $savedToken = $env:GH_TOKEN
+        try {
+            $env:GH_TOKEN = 'synthetic-workflow-token'
+            Assert-Throws { Publish-AlphaPromotion $record $fixture.directory '200' '1' -ReleaseToken $env:GH_TOKEN } 'distinct STABLE_RELEASE_TOKEN'
+            Assert-Equal $state.tag $null
+            Assert-Equal $state.writes 0
+        } finally { $env:GH_TOKEN = $savedToken }
+    }
     Test-Case 'cancelled preparation leaves stable target available' {
         $record = Get-AlphaPromotion -AlphaTag $alpha -PipelineSha $pipelineSha -RequireApproval
         $fixture = New-ArtifactFixture $record
@@ -394,7 +429,8 @@ try {
     }
     $publication = [regex]::Match($workflow, '(?ms)^  publish-promotion:.*').Value
     if (-not $publication.Contains('name: stable-release') -or
-        -not $publication.Contains('Publish-AlphaPromotion')) { throw 'Publication must remain approval-gated.' }
+        -not $publication.Contains('Publish-AlphaPromotion') -or
+        -not $publication.Contains('STABLE_RELEASE_TOKEN: ${{ secrets.STABLE_RELEASE_TOKEN }}')) { throw 'Publication must remain approval-gated.' }
     $expectedAssets = @('OpenClawCompanion-Setup-x64.exe', 'OpenClawCompanion-Setup-arm64.exe',
         'OpenClawTray-2026.9.5-win-x64.zip', 'OpenClawTray-2026.9.5-win-arm64.zip',
         'OpenClaw-Dev-x64.zip', 'OpenClaw-Dev-arm64.zip') | Sort-Object
@@ -407,6 +443,7 @@ try {
     }
     Write-Host "Passed $cases alpha promotion cases and workflow source/publication contracts."
 } finally {
+    $env:STABLE_RELEASE_TOKEN = $previousPublicationToken
     Remove-Item -LiteralPath $temporaryRoot -Recurse -Force
 }
 

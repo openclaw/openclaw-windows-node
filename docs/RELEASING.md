@@ -459,6 +459,17 @@ For `v2026.9.5`, this includes the coordinated migration proof above on exact
 signed x64 and ARM64 packages. A Store listing or a green CI badge is not that
 proof. Do not approve a run with missing acceptance.
 
+Configure `STABLE_RELEASE_TOKEN` as an environment secret in `stable-release`.
+Use a GitHub App installation token or fine-grained token restricted to this
+repository with **Contents: write** and **Workflows: write**. GitHub's
+[release API authorization contract](https://docs.github.com/en/rest/releases/releases#update-a-release)
+requires workflow-write authorization when a historical target's workflow files
+differ from default main; `GITHUB_TOKEN` cannot receive it. The protected token
+is used only for draft creation and final release publication, never for Git
+refs, candidate builds, or eligibility checks. Tag creation and asset uploads
+continue to use `GITHUB_TOKEN`, so historical tag workflows are not triggered.
+Missing or malformed credentials, or substituted workflow tokens, block before tag creation.
+
 Approval publishes the exact prepared artifact ID, not a rebuild. Under the
 shared release-publication lock, CI rechecks source tags, Latest ordering,
 approval protection, and hashes, uploads to a private draft, verifies the
