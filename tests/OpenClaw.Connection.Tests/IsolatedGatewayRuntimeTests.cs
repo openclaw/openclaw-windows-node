@@ -47,6 +47,10 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
     private Func<CancellationToken, Task>? _duringStart;
     private Func<CancellationToken, Task>? _duringStatus;
     private int _reportedPort = Port;
+    private string? _sessionState;
+    private bool _configMissing;
+    private string _restoredToken = "fixture-token";
+    private Action? _duringSetup;
 
     public IsolatedGatewayRuntimeTests()
     {
@@ -77,6 +81,27 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
                     _listeners = [.. _listeners.Where(l => l.Port != port),
                         new(IPAddress.Loopback, port, processId, "fixture", null)];
             }
+            if (args.SequenceEqual(["setup", "--json"]))
+            {
+                _sessionState = "running";
+                _duringSetup?.Invoke();
+                return new NativeGatewayCommandResult(0,
+                    """{"ok":true,"schemaVersion":1,"command":"setup","integration":{"kind":"isolated-session","version":1},"session":{"state":"ready","sandboxId":"iso:fixture"}}""");
+            }
+            if (args.SequenceEqual(
+                ["companion", "prepare", "--port", Port.ToString(), "--restore-token-stdin", "--json"]))
+            {
+                _configMissing = false;
+                return new NativeGatewayCommandResult(0,
+                    JsonSerializer.Serialize(new
+                    {
+                        ok = true,
+                        schemaVersion = 1,
+                        command = "companion prepare",
+                        integration = new { kind = "isolated-session", version = 1 },
+                        companion = new { port = Port, token = _restoredToken }
+                    }));
+            }
             if (args.SequenceEqual(["gateway-service", "stop", "--json"]))
             {
                 if (_stopFailure is not null)
@@ -102,21 +127,108 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
                             processStartTimeUtc = s_startTime, sequenceNumber = other ? (ulong)88 : 77 } }
                     }
                 }
-                : new { state };
-            return new NativeGatewayCommandResult(0,
-                JsonSerializer.Serialize(new
-                {
-                    ok = true,
-                    schemaVersion = 1,
-                    command = string.Join(" ", args.Take(2)),
-                    integration = new { kind = "isolated-session", version = 1 },
-                    gateway
-                }));
+                : _configMissing
+                    ? new { state, readiness = new
+                        { state = "absent", reason = "config-file-missing" } }
+                    : new { state };
+            var response = new Dictionary<string, object?>
+            {
+                ["ok"] = _sessionState != "stale",
+                ["schemaVersion"] = 1,
+                ["command"] = string.Join(" ", args.Take(2)),
+                ["integration"] = new { kind = "isolated-session", version = 1 },
+                ["gateway"] = gateway
+            };
+            if (_sessionState is not null)
+                response["session"] = new { state = _sessionState };
+            if (_sessionState == "stale")
+                response["error"] = new { message = "The isolated session is stale." };
+            return new NativeGatewayCommandResult(_sessionState == "stale" ? 1 : 0,
+                JsonSerializer.Serialize(response));
         });
         _runtime = new IsolatedGatewayRuntime(new Resolver(_package, FixturePackage(OtherFamily)), client,
             () => new WindowsTcpListenerSnapshotResult(_listeners, _snapshotComplete, true),
             () => new Dictionary<int, ulong> { [ProcessId] = _hostSequence, [4567] = 88 },
             _ => true, timeProvider: _clock);
+    }
+
+    [Fact]
+    public async Task StaleSessionIsReprovisionedAndCredentialRestoredBeforeStart()
+    {
+        _state = "not-started";
+        _sessionState = "stale";
+        _configMissing = true;
+        _listeners = [];
+        _listenOnStart = true;
+
+        await _runtime.EnsureRunningAsync(_record, default);
+
+        Assert.Equal(
+            [
+                "gateway-service status --json",
+                "setup --json",
+                $"companion prepare --port {Port} --restore-token-stdin --json",
+                "gateway-service status --json",
+                "gateway-service start --json",
+                "gateway-service status --json"
+            ],
+            _calls);
+        Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway,
+            _runtime.Inspect(_record).Kind);
+    }
+
+    [Fact]
+    public async Task MissingConfigIsRestoredWithoutReprovisioningTheHealthySession()
+    {
+        _state = "not-started";
+        _sessionState = "running";
+        _configMissing = true;
+        _listeners = [];
+        _listenOnStart = true;
+
+        await _runtime.EnsureRunningAsync(_record, default);
+
+        Assert.DoesNotContain("setup --json", _calls);
+        Assert.Contains(
+            $"companion prepare --port {Port} --restore-token-stdin --json", _calls);
+        Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway,
+            _runtime.Inspect(_record).Kind);
+    }
+
+    [Fact]
+    public async Task PackagePreservingANewerTokenBlocksStartWithSupersededCredential()
+    {
+        _state = "not-started";
+        _sessionState = "running";
+        _configMissing = true;
+        _listeners = [];
+        _restoredToken = "newer-token";
+
+        await Assert.ThrowsAsync<NativeGatewayContractException>(
+            () => _runtime.EnsureRunningAsync(_record, default));
+
+        Assert.Single(_calls, $"companion prepare --port {Port} --restore-token-stdin --json");
+        Assert.DoesNotContain("gateway-service start --json", _calls);
+        Assert.NotEqual(GatewayEndpointProvenanceKind.ExpectedManagedGateway,
+            _runtime.Inspect(_record).Kind);
+    }
+
+    [Fact]
+    public async Task CancellationDuringReprovisioningNeverRestoresTheSavedCredential()
+    {
+        _state = "not-started";
+        _sessionState = "stale";
+        _configMissing = true;
+        _listeners = [];
+        using var cancellation = new CancellationTokenSource();
+        _duringSetup = cancellation.Cancel;
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => _runtime.EnsureRunningAsync(_record, cancellation.Token));
+
+        Assert.Contains("setup --json", _calls);
+        Assert.DoesNotContain($"companion prepare --port {Port} --restore-token-stdin --json", _calls);
+        Assert.DoesNotContain("gateway-service start --json", _calls);
     }
 
     [Fact]
