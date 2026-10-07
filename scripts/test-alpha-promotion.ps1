@@ -16,7 +16,9 @@ $alpha = 'v2026.9.5-alpha.93'
 $state = @{}
 $cases = 0
 $publicationToken = 'test-publication-token'
+$workflowToken = 'test-workflow-token'
 $previousPublicationToken = $env:STABLE_RELEASE_TOKEN
+$previousWorkflowToken = $env:GH_TOKEN
 $env:STABLE_RELEASE_TOKEN = $publicationToken
 $temporaryRoot = Join-Path ([IO.Path]::GetTempPath()) "openclaw-promotion-$([guid]::NewGuid().ToString('N'))"
 New-Item -ItemType Directory -Path $temporaryRoot | Out-Null
@@ -37,6 +39,12 @@ function Assert-Throws([scriptblock]$Action, [string]$Message) {
 function Reset-Fixture {
     $state.Clear()
     $env:STABLE_RELEASE_TOKEN = $publicationToken
+    $env:GH_TOKEN = $workflowToken
+    $state.mainSha = $pipelineSha
+    $state.releaseToken = $workflowToken
+    $state.treeTruncated = $false
+    $state.sourceFiles = @([pscustomobject]@{ path = '.github/workflows/ci.yml'; type = 'blob'; mode = '100644'; sha = 'f' * 40 })
+    $state.mainFiles = @([pscustomobject]@{ path = '.github/workflows/ci.yml'; type = 'blob'; mode = '100644'; sha = 'f' * 40 })
     $state.alphaSha = $sourceSha
     $state.published = $true
     $state.currentTag = 'v2026.9.4'
@@ -88,7 +96,11 @@ function Invoke-PromotionApi {
         '^git/tags/' {
             return [pscustomobject]@{ message = $state.annotation; object = [pscustomobject]@{ sha = $state.tag; type = 'commit' } }
         }
-        '^git/ref/heads/main$' { return [pscustomobject]@{ object = [pscustomobject]@{ sha = $pipelineSha } } }
+        '^git/ref/heads/main$' { return [pscustomobject]@{ object = [pscustomobject]@{ sha = $state.mainSha } } }
+        '^git/trees/([a-f0-9]{40})\?recursive=1$' {
+            $files = if ($Matches[1] -ceq $sourceSha) { $state.sourceFiles } else { $state.mainFiles }
+            return [pscustomobject]@{ tree = @($files); truncated = $state.treeTruncated }
+        }
         '^compare/' { return [pscustomobject]@{ status = $state.ancestry } }
         '^actions/workflows/ci.yml$' { return [pscustomobject]@{ id = 7 } }
         '^actions/workflows/ci.yml/runs\?' {
@@ -131,7 +143,7 @@ function Invoke-PromotionApi {
         }
         '^releases/500$' {
             if ($Method -ceq 'PATCH') {
-                Assert-Equal $Token $publicationToken
+                Assert-Equal $Token $state.releaseToken
                 Assert-Equal $Body.draft $false
                 Assert-Equal $Body.prerelease $false
                 Assert-Equal $Body.make_latest 'true'
@@ -161,7 +173,7 @@ function Invoke-PromotionApi {
             return [pscustomobject]@{ body = 'Only candidate changes.' }
         }
         '^releases$' {
-            Assert-Equal $Token $publicationToken
+            Assert-Equal $Token $state.releaseToken
             Assert-Equal $Body.draft $true
             Assert-Equal $Body.make_latest 'false'
             $state.release = [pscustomobject]@{
@@ -345,8 +357,37 @@ try {
         $state.failUpload = $false
         Assert-Throws { Publish-AlphaPromotion $record $fixture.directory '200' '2' } 'exact prepared artifacts'
     }
-    Test-Case 'missing publication credential fails before tag or release I/O' {
+    Test-Case 'matching workflow files use workflow token without an extra secret' {
         $record = Candidate; $fixture = New-ArtifactFixture $record
+        $env:STABLE_RELEASE_TOKEN = ''
+        Publish-AlphaPromotion $record $fixture.directory '200' '1'
+        Assert-Equal $state.release.draft $false
+    }
+    Test-Case 'current main candidate needs no workflow tree inspection or extra secret' {
+        $record = Candidate; $fixture = New-ArtifactFixture $record
+        $state.mainSha = $sourceSha
+        $state.treeTruncated = $true
+        $env:STABLE_RELEASE_TOKEN = ''
+        Publish-AlphaPromotion $record $fixture.directory '200' '1'
+        Assert-Equal $state.release.draft $false
+    }
+    Test-Case 'workflow deletions alone do not require extra authority' {
+        $record = Candidate; $fixture = New-ArtifactFixture $record
+        $state.sourceFiles = @()
+        $env:STABLE_RELEASE_TOKEN = ''
+        Publish-AlphaPromotion $record $fixture.directory '200' '1'
+        Assert-Equal $state.release.draft $false
+    }
+    Test-Case 'changed historical workflow uses the protected publication token' {
+        $record = Candidate; $fixture = New-ArtifactFixture $record
+        $state.sourceFiles[0].sha = 'e' * 40
+        $state.releaseToken = $publicationToken
+        Publish-AlphaPromotion $record $fixture.directory '200' '1'
+        Assert-Equal $state.release.draft $false
+    }
+    Test-Case 'missing historical workflow credential fails before tag or release I/O' {
+        $record = Candidate; $fixture = New-ArtifactFixture $record
+        $state.sourceFiles[0].sha = 'e' * 40
         $env:STABLE_RELEASE_TOKEN = ''
         Assert-Throws { Publish-AlphaPromotion $record $fixture.directory '200' '1' } 'distinct STABLE_RELEASE_TOKEN'
         Assert-Equal $state.tag $null
@@ -354,12 +395,14 @@ try {
     }
     Test-Case 'invalid publication credential fails before tag or release I/O' {
         $record = Candidate; $fixture = New-ArtifactFixture $record
+        $state.sourceFiles[0].sha = 'e' * 40
         Assert-Throws { Publish-AlphaPromotion $record $fixture.directory '200' '1' -ReleaseToken "synthetic`n" } 'distinct STABLE_RELEASE_TOKEN'
         Assert-Equal $state.tag $null
         Assert-Equal $state.writes 0
     }
     Test-Case 'workflow token cannot substitute for publication credential' {
         $record = Candidate; $fixture = New-ArtifactFixture $record
+        $state.sourceFiles[0].sha = 'e' * 40
         $savedToken = $env:GH_TOKEN
         try {
             $env:GH_TOKEN = 'synthetic-workflow-token'
@@ -367,6 +410,26 @@ try {
             Assert-Equal $state.tag $null
             Assert-Equal $state.writes 0
         } finally { $env:GH_TOKEN = $savedToken }
+    }
+    Test-Case 'workflow additions are checked with case-sensitive paths' {
+        $record = Candidate; $fixture = New-ArtifactFixture $record
+        $state.sourceFiles[0].path = '.github/workflows/CI.yml'
+        $env:STABLE_RELEASE_TOKEN = ''
+        Assert-Throws { Publish-AlphaPromotion $record $fixture.directory '200' '1' } 'distinct STABLE_RELEASE_TOKEN'
+        Assert-Equal $state.writes 0
+    }
+    Test-Case 'workflow mode changes require workflow-write authority' {
+        $record = Candidate; $fixture = New-ArtifactFixture $record
+        $state.sourceFiles[0].mode = '100755'
+        $env:STABLE_RELEASE_TOKEN = ''
+        Assert-Throws { Publish-AlphaPromotion $record $fixture.directory '200' '1' } 'distinct STABLE_RELEASE_TOKEN'
+        Assert-Equal $state.writes 0
+    }
+    Test-Case 'truncated workflow inspection fails before public mutation' {
+        $record = Candidate; $fixture = New-ArtifactFixture $record
+        $state.treeTruncated = $true
+        Assert-Throws { Publish-AlphaPromotion $record $fixture.directory '200' '1' } 'complete Git tree'
+        Assert-Equal $state.writes 0
     }
     Test-Case 'cancelled preparation leaves stable target available' {
         $record = Get-AlphaPromotion -AlphaTag $alpha -PipelineSha $pipelineSha -RequireApproval
@@ -444,6 +507,7 @@ try {
     Write-Host "Passed $cases alpha promotion cases and workflow source/publication contracts."
 } finally {
     $env:STABLE_RELEASE_TOKEN = $previousPublicationToken
+    $env:GH_TOKEN = $previousWorkflowToken
     Remove-Item -LiteralPath $temporaryRoot -Recurse -Force
 }
 

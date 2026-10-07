@@ -271,19 +271,52 @@ function Assert-PromotionArtifactManifest {
     }
 }
 
+function Get-PromotionWorkflowFiles {
+    param([string]$Commit)
+
+    $tree = Invoke-PromotionApi -Path "git/trees/${Commit}?recursive=1"
+    if ($tree.truncated) { throw 'Workflow permission check requires a complete Git tree.' }
+    $files = [Collections.Generic.Dictionary[string, string]]::new([StringComparer]::Ordinal)
+    foreach ($entry in $tree.tree) {
+        if ($entry.type -cne 'tree' -and $entry.path.StartsWith('.github/workflows/', [StringComparison]::Ordinal)) {
+            $files.Add($entry.path, "$($entry.mode):$($entry.type):$($entry.sha)")
+        }
+    }
+    return $files
+}
+
+function Resolve-PromotionReleaseToken {
+    param([object]$Record, [string]$ReleaseToken)
+
+    $main = Invoke-PromotionApi -Path 'git/ref/heads/main'
+    if ($Record.sourceSha -cne $main.object.sha) {
+        $sourceFiles = Get-PromotionWorkflowFiles $Record.sourceSha
+        $mainFiles = Get-PromotionWorkflowFiles $main.object.sha
+        foreach ($file in $sourceFiles.GetEnumerator()) {
+            # GitHub requires workflow-write authority for additions/modifications,
+            # not for older product code or workflow deletions alone.
+            if (-not $mainFiles.ContainsKey($file.Key) -or $mainFiles[$file.Key] -cne $file.Value) {
+                if ([string]::IsNullOrWhiteSpace($ReleaseToken) -or $ReleaseToken -match '\p{Cc}' -or
+                    $ReleaseToken -ceq $env:GH_TOKEN) {
+                    throw 'Candidate workflow files differ from main. Configure a distinct STABLE_RELEASE_TOKEN with Contents and Workflows write permission for this repository.'
+                }
+                return $ReleaseToken
+            }
+        }
+    }
+    return $env:GH_TOKEN
+}
+
 function Publish-AlphaPromotion {
     param([object]$Record, [string]$Directory, [string]$RunId, [string]$PreparedAttempt,
         [string]$ReleaseToken = $env:STABLE_RELEASE_TOKEN)
 
-    # Historical workflow revisions require Workflows:write for release mutations.
-    # Keep this protected token away from tag creation and candidate execution.
-    if ([string]::IsNullOrWhiteSpace($ReleaseToken) -or $ReleaseToken -match '\p{Cc}' -or
-        $ReleaseToken -ceq $env:GH_TOKEN) {
-        throw 'Configure a distinct STABLE_RELEASE_TOKEN in stable-release with Contents and Workflows write permission for this repository.'
-    }
     $fresh = Get-AlphaPromotion -AlphaTag $Record.alphaTag -PipelineSha $Record.pipelineSha `
         -ExpectedSourceSha $Record.sourceSha -RequireApproval
     if (($fresh | ConvertTo-Json -Compress) -cne ($Record | ConvertTo-Json -Compress)) { throw 'Promotion provenance changed.' }
+    # Ordinary same-repository releases use GITHUB_TOKEN. Resolve the historical
+    # workflow exception before any public tag or release mutation.
+    $ReleaseToken = Resolve-PromotionReleaseToken $Record $ReleaseToken
     $manifestPath = Join-Path $Directory 'promotion.json'
     $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
     Assert-PromotionArtifactManifest $manifest $Record $Directory $RunId $PreparedAttempt

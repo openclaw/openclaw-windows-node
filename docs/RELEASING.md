@@ -459,16 +459,23 @@ For `v2026.9.5`, this includes the coordinated migration proof above on exact
 signed x64 and ARM64 packages. A Store listing or a green CI badge is not that
 proof. Do not approve a run with missing acceptance.
 
-Configure `STABLE_RELEASE_TOKEN` as an environment secret in `stable-release`.
-Use a GitHub App installation token or fine-grained token restricted to this
-repository with **Contents: write** and **Workflows: write**. GitHub's
+Ordinary same-repository publication uses `GITHUB_TOKEN` with **Contents: write**.
+An extra publication credential is needed only when the candidate adds or
+modifies files under `.github/workflows/` relative to current main. Older product
+code or workflow deletions alone do not require it. The publication owner checks
+complete Git trees before creating any public tag and fails closed if that
+permission check cannot complete. GitHub's
 [release API authorization contract](https://docs.github.com/en/rest/releases/releases#update-a-release)
-requires workflow-write authorization when a historical target's workflow files
-differ from default main; `GITHUB_TOKEN` cannot receive it. The protected token
-is used only for draft creation and final release publication, never for Git
-refs, candidate builds, or eligibility checks. Tag creation and asset uploads
-continue to use `GITHUB_TOKEN`, so historical tag workflows are not triggered.
-Missing or malformed credentials, or substituted workflow tokens, block before tag creation.
+requires **Workflows: write** for that historical-workflow exception, which
+`GITHUB_TOKEN` cannot receive. For those candidates only, configure
+`STABLE_RELEASE_TOKEN` as an environment secret in `stable-release`, using a
+GitHub App installation token or fine-grained token restricted to this repository
+with **Contents: write** and **Workflows: write**. The protected token is used
+only for draft creation and final release publication, never for Git refs,
+candidate builds, or eligibility checks. Tag creation and asset uploads continue
+to use `GITHUB_TOKEN`, so historical tag workflows are not triggered. Missing or
+malformed exception credentials, or substituted workflow tokens, block before
+tag creation. Protected publication approval is required in both cases.
 
 Approval publishes the exact prepared artifact ID, not a rebuild. Under the
 shared release-publication lock, CI rechecks source tags, Latest ordering,
