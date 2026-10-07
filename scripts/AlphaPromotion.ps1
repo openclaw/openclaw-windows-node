@@ -203,7 +203,7 @@ function Get-AlphaPromotion {
     return $record
 }
 
-function Reserve-AlphaPromotion {
+function New-AlphaPromotionTag {
     param([Parameter(Mandatory)][object]$Record)
 
     $fresh = Get-AlphaPromotion -AlphaTag $Record.alphaTag -PipelineSha $Record.pipelineSha `
@@ -274,13 +274,15 @@ function Publish-AlphaPromotion {
     param([object]$Record, [string]$Directory, [string]$RunId, [string]$PreparedAttempt)
 
     $fresh = Get-AlphaPromotion -AlphaTag $Record.alphaTag -PipelineSha $Record.pipelineSha `
-        -ExpectedSourceSha $Record.sourceSha -RequireApproval -RequireReservation
+        -ExpectedSourceSha $Record.sourceSha -RequireApproval
     if (($fresh | ConvertTo-Json -Compress) -cne ($Record | ConvertTo-Json -Compress)) { throw 'Promotion provenance changed.' }
     $manifestPath = Join-Path $Directory 'promotion.json'
     $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
     Assert-PromotionArtifactManifest $manifest $Record $Directory $RunId $PreparedAttempt
     $manifestHash = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
     $marker = "<!-- alpha-promotion:$manifestHash -->"
+    # This function runs only after protected approval. Preparation uses local refs.
+    New-AlphaPromotionTag -Record $Record | Out-Null
     $tag = $Record.stableTag
     $release = Get-PromotionRelease -Tag $tag
     if (-not $release) {

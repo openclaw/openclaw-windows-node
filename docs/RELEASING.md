@@ -424,12 +424,15 @@ pipeline revision. No main product files are copied into the candidate tree.
 Incompatible historical source fails normally; do not silently patch the alpha
 or replace its SHA with main to make it pass.
 
-Preparation creates an annotated stable tag with immutable promotion provenance.
-It uses `GITHUB_TOKEN`, whose ref creation does not trigger another tag-push
-workflow. Do not replace it with a PAT or dispatch CI on the old candidate tag:
-that would execute the historical workflow instead of the selected pipeline.
-The full CI Gate remains mandatory. GitVersion must resolve the exact stable
-tag; there is no manual project-version fallback.
+Preparation creates a checkout-only stable tag in each candidate build/test
+workspace so GitVersion resolves the stable version without project-version
+overrides. These refs are never pushed and do not change versioning on main.
+The full CI Gate remains mandatory. Only after protected publication approval
+and artifact verification does publication create the public annotated stable
+tag with immutable promotion provenance. It uses `GITHUB_TOKEN`, whose ref
+creation does not trigger another tag-push workflow. Do not replace it with a
+PAT or dispatch CI on the old candidate tag: that would execute the historical
+workflow instead of the selected pipeline.
 
 The existing MSIX allocator reserves a new package version for the stable tag,
 shared by both architectures. Neither the alpha package version nor an existing
@@ -467,10 +470,13 @@ modify, resubmit, or claim acceptance of the package already in Microsoft Store.
   candidate, previous stable, and pipeline provenance. Resume the original
   workflow run if main has advanced. A new pipeline cannot silently adopt an
   older reservation. Published targets are never replaced or moved.
-- Failed or cancelled runs retain their stable tag and MSIX reservation. These
-  public tags affect GitVersion immediately, even before release publication:
-  subsequent main alphas can advance to the next patch. Do not remove or move
-  tags to undo that effect.
+- Failed or cancelled preparation, or rejected/cancelled approval, creates no
+  public stable tag and does not advance subsequent main alphas. The separate
+  MSIX package-version reservation remains consumed to preserve monotonicity.
+- Once approval is granted and publication starts, the public stable tag is
+  created immediately before draft creation and uploads. A failure or cancellation
+  in that publication window retains the tag and any partial draft for an exact
+  retry; main alphas can then advance. Do not remove or move a publication tag.
 - Rerun failed jobs to reuse the exact prepared artifact after a partial upload.
   A rerun that rebuilds outputs creates a new attempt artifact and requires new
   approval. An existing draft bound to different bytes blocks publication;

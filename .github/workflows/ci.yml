@@ -77,7 +77,7 @@ jobs:
         }
         . ./scripts/AlphaPromotion.ps1
         $record = Get-AlphaPromotion -AlphaTag $env:ALPHA_TAG -PipelineSha $env:GITHUB_SHA `
-          -ExpectedSourceSha $env:OPENCLAW_RELEASE_SOURCE_SHA -RequireApproval -RequireReservation
+          -ExpectedSourceSha $env:OPENCLAW_RELEASE_SOURCE_SHA -RequireApproval
         if ($record.stableTag -cne $env:OPENCLAW_RELEASE_TAG) { throw 'Unexpected stable target.' }
         "record=$($record | ConvertTo-Json -Compress)" >> $env:GITHUB_OUTPUT
 
@@ -259,6 +259,19 @@ jobs:
         ref: ${{ inputs.promotion_source_sha || github.sha }}
         persist-credentials: false
 
+    - &promotion-version-tag
+      name: Create checkout-only stable tag for candidate versioning
+      if: inputs.promotion_alpha != ''
+      shell: pwsh
+      run: |
+        $existing = git rev-parse --verify --quiet "$($env:OPENCLAW_RELEASE_TAG)^{commit}"
+        if ($LASTEXITCODE -eq 0) {
+          if ($existing -cne $env:OPENCLAW_RELEASE_SOURCE_SHA) { throw 'Stable tag points to another candidate.' }
+        } else {
+          git -c tag.gpgsign=false tag $env:OPENCLAW_RELEASE_TAG $env:OPENCLAW_RELEASE_SOURCE_SHA
+          if ($LASTEXITCODE -ne 0) { throw 'Could not create the checkout-only versioning tag.' }
+        }
+
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
       with:
@@ -374,6 +387,8 @@ jobs:
         ref: ${{ inputs.promotion_source_sha || github.sha }}
         persist-credentials: false
 
+    - *promotion-version-tag
+
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
       with:
@@ -476,6 +491,8 @@ jobs:
         ref: ${{ inputs.promotion_source_sha || github.sha }}
         persist-credentials: false
 
+    - *promotion-version-tag
+
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
       with:
@@ -560,6 +577,8 @@ jobs:
         fetch-depth: 0
         ref: ${{ inputs.promotion_source_sha || github.sha }}
         persist-credentials: false
+
+    - *promotion-version-tag
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
@@ -702,6 +721,8 @@ jobs:
         ref: ${{ inputs.promotion_source_sha || github.sha }}
         persist-credentials: false
 
+    - *promotion-version-tag
+
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
       with:
@@ -757,6 +778,8 @@ jobs:
         fetch-depth: 0
         ref: ${{ inputs.promotion_source_sha || github.sha }}
         persist-credentials: false
+
+    - *promotion-version-tag
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
@@ -814,6 +837,8 @@ jobs:
         ref: ${{ inputs.promotion_source_sha || github.sha }}
         persist-credentials: false
 
+    - *promotion-version-tag
+
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
       with:
@@ -869,6 +894,8 @@ jobs:
         fetch-depth: 0
         ref: ${{ inputs.promotion_source_sha || github.sha }}
         persist-credentials: false
+
+    - *promotion-version-tag
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
@@ -927,6 +954,8 @@ jobs:
         fetch-depth: 0
         ref: ${{ inputs.promotion_source_sha || github.sha }}
         persist-credentials: false
+
+    - *promotion-version-tag
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
@@ -995,6 +1024,8 @@ jobs:
         fetch-depth: 0
         ref: ${{ inputs.promotion_source_sha || github.sha }}
         persist-credentials: false
+
+    - *promotion-version-tag
 
     - name: Setup .NET from global.json
       uses: actions/setup-dotnet@v6

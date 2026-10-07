@@ -221,26 +221,26 @@ try {
     Test-Case 'moved alpha rejected after preview' {
         $record = Candidate
         $state.alphaSha = $pipelineSha
-        Assert-Throws { Reserve-AlphaPromotion $record } 'moved'
+        Assert-Throws { New-AlphaPromotionTag $record } 'moved'
         Assert-Equal $state.writes 0
     }
     Test-Case 'missing approval blocks before ref creation' {
         $record = Candidate
         $state.approval = $false
-        Assert-Throws { Reserve-AlphaPromotion $record } 'required reviewers'
+        Assert-Throws { New-AlphaPromotionTag $record } 'required reviewers'
         Assert-Equal $state.writes 0
     }
     Test-Case 'environment must restrict deployment to exact main' {
         $record = Candidate
         $state.allowedBranch = '*'
-        Assert-Throws { Reserve-AlphaPromotion $record } 'exact main'
+        Assert-Throws { New-AlphaPromotionTag $record } 'exact main'
         Assert-Equal $state.writes 0
     }
     Test-Case 'reserve is immutable and repeatable' {
         $record = Candidate
-        Reserve-AlphaPromotion $record | Out-Null
+        New-AlphaPromotionTag $record | Out-Null
         Assert-Equal $state.writes 2
-        Reserve-AlphaPromotion $record | Out-Null
+        New-AlphaPromotionTag $record | Out-Null
         Assert-Equal $state.writes 2
         Assert-Equal (Candidate).sourceSha $sourceSha
     }
@@ -251,7 +251,7 @@ try {
     Test-Case 'concurrent ref collision cannot overwrite another tag' {
         $record = Candidate
         $state.collision = $true
-        Assert-Throws { Reserve-AlphaPromotion $record } 'collision'
+        Assert-Throws { New-AlphaPromotionTag $record } 'collision'
         Assert-Equal $state.tag $null
     }
     Test-Case 'an unrelated draft is rejected before reservation' {
@@ -276,7 +276,7 @@ try {
     }
     Test-Case 'new pipeline cannot silently reuse the old reservation' {
         $record = Candidate
-        Reserve-AlphaPromotion $record | Out-Null
+        New-AlphaPromotionTag $record | Out-Null
         Assert-Throws { Get-AlphaPromotion $alpha ('e' * 40) } 'different promotion provenance'
     }
     Test-Case 'artifact manifest roundtrip and altered bytes' {
@@ -293,18 +293,19 @@ try {
         Set-Content (Join-Path $fixture.directory 'unexpected.exe') 'extra'
         Assert-Throws { Assert-PromotionArtifactManifest $fixture.manifest $record $fixture.directory '200' '1' } 'Unexpected files'
     }
-    Test-Case 'full publication preserves exact prepared bytes' {
-        $record = Reserve-AlphaPromotion (Candidate)
+    Test-Case 'approved publication creates the tag and preserves exact prepared bytes' {
+        $record = Candidate
         $fixture = New-ArtifactFixture $record
         Publish-AlphaPromotion $record $fixture.directory '200' '1'
         Assert-Equal $state.release.draft $false
+        Assert-Equal $state.tag $sourceSha
         Assert-Equal $state.release.assets.Count 7
         Assert-Equal $state.release.body.Contains('not Microsoft Store-signed') $true
         Assert-Equal $state.release.body.Contains('actions/runs/200') $true
         Assert-Equal $state.currentTag 'v2026.9.5'
     }
     Test-Case 'partial upload retries the same private draft' {
-        $record = Reserve-AlphaPromotion (Candidate); $fixture = New-ArtifactFixture $record
+        $record = Candidate; $fixture = New-ArtifactFixture $record
         $state.failUpload = $true
         $state.uploadsBeforeFailure = 3
         Assert-Throws { Publish-AlphaPromotion $record $fixture.directory '200' '1' } 'Could not upload'
@@ -315,7 +316,7 @@ try {
         Assert-Equal $state.release.draft $false
     }
     Test-Case 'changed draft bytes cannot be overwritten' {
-        $record = Reserve-AlphaPromotion (Candidate); $fixture = New-ArtifactFixture $record
+        $record = Candidate; $fixture = New-ArtifactFixture $record
         $state.failUpload = $true; $state.uploadsBeforeFailure = 3
         Assert-Throws { Publish-AlphaPromotion $record $fixture.directory '200' '1' } 'Could not upload'
         $state.release.assets[0].digest = 'sha256:' + ('0' * 64)
@@ -324,7 +325,7 @@ try {
         Assert-Equal $state.release.draft $true
     }
     Test-Case 'rebuilt outputs do not silently adopt the old draft' {
-        $record = Reserve-AlphaPromotion (Candidate); $fixture = New-ArtifactFixture $record
+        $record = Candidate; $fixture = New-ArtifactFixture $record
         $state.failUpload = $true
         Assert-Throws { Publish-AlphaPromotion $record $fixture.directory '200' '1' } 'Could not upload'
         $newManifest = New-PromotionArtifactManifest $record $fixture.directory $fixture.manifest.msixVersionAllocation '200' '2'
@@ -332,8 +333,29 @@ try {
         $state.failUpload = $false
         Assert-Throws { Publish-AlphaPromotion $record $fixture.directory '200' '2' } 'exact prepared artifacts'
     }
-    Test-Case 'another stable publication invalidates the pending approval' {
-        $record = Reserve-AlphaPromotion (Candidate); $fixture = New-ArtifactFixture $record
+    Test-Case 'cancelled preparation leaves stable target available' {
+        $record = Get-AlphaPromotion -AlphaTag $alpha -PipelineSha $pipelineSha -RequireApproval
+        $fixture = New-ArtifactFixture $record
+        Assert-Equal $state.tag $null
+        Assert-Equal $state.writes 0
+        Assert-Equal (Candidate).stableTag $record.stableTag
+    }
+    Test-Case 'altered artifact blocks publication before tag creation' {
+        $record = Candidate; $fixture = New-ArtifactFixture $record
+        Add-Content (Join-Path $fixture.directory 'OpenClawCompanion-Setup-x64.exe') 'tamper'
+        Assert-Throws { Publish-AlphaPromotion $record $fixture.directory '200' '1' } 'approved manifest'
+        Assert-Equal $state.tag $null
+        Assert-Equal $state.writes 0
+    }
+    Test-Case 'lost approval protection blocks publication before tag creation' {
+        $record = Candidate; $fixture = New-ArtifactFixture $record
+        $state.approval = $false
+        Assert-Throws { Publish-AlphaPromotion $record $fixture.directory '200' '1' } 'required reviewers'
+        Assert-Equal $state.tag $null
+        Assert-Equal $state.writes 0
+    }
+    Test-Case 'another stable publication invalidates the pending approval'  {
+        $record = Candidate; $fixture = New-ArtifactFixture $record
         $state.currentTag = 'v2026.10.1'
         Assert-Throws { Publish-AlphaPromotion $record $fixture.directory '200' '1' } 'advance'
     }
@@ -344,7 +366,8 @@ try {
         'network-e2e', 'build-x64', 'build-arm64', 'build-msix')) {
         $job = [regex]::Match($workflow, "(?ms)^  ${name}:\r?`n.*?(?=^  [a-z][a-z-]+:|\z)").Value
         if (-not $job.Contains('ref: ${{ inputs.promotion_source_sha || github.sha }}') -or
-            -not $job.Contains('persist-credentials: false')) { throw "Source job $name is not SHA-bound." }
+            -not $job.Contains('persist-credentials: false') -or
+            -not ($job.Contains('&promotion-version-tag') -or $job.Contains('*promotion-version-tag'))) { throw "Source job $name is not SHA-bound." }
     }
     foreach ($text in @('name: stable-release', 'artifact-ids: ${{ needs.release.outputs.promotion_artifact_id }}',
         "if: inputs.promotion_alpha == ''", 'disableNormalization: ${{ inputs.promotion_alpha != '''' }}',
@@ -362,6 +385,11 @@ try {
             throw 'Promotion publication must consume the artifact ID from the release staging job.'
         }
     }
+    if ($entry.Contains('New-AlphaPromotionTag') -or $entry.Contains('Reserve-AlphaPromotion') -or
+        $workflow.Contains('-RequireReservation')) { throw 'Preparation must not require or create a public stable tag.' }
+    $publication = [regex]::Match($workflow, '(?ms)^  publish-promotion:.*').Value
+    if (-not $publication.Contains('name: stable-release') -or
+        -not $publication.Contains('Publish-AlphaPromotion')) { throw 'Publication must remain approval-gated.' }
     $expectedAssets = @('OpenClawCompanion-Setup-x64.exe', 'OpenClawCompanion-Setup-arm64.exe',
         'OpenClawTray-2026.9.5-win-x64.zip', 'OpenClawTray-2026.9.5-win-arm64.zip',
         'OpenClaw-Dev-x64.zip', 'OpenClaw-Dev-arm64.zip') | Sort-Object

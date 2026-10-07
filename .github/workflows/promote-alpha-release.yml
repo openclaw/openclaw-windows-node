@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       prepare:
-        description: "Reserve the stable tag, rebuild, and request publication approval (false is preview only)"
+        description: "Rebuild the candidate and request publication approval (false is preview only)"
         type: boolean
         default: false
 
@@ -65,7 +65,7 @@ jobs:
             "Preview does not create tags, reserve MSIX versions, sign, or publish."
           ) >> $env:GITHUB_STEP_SUMMARY
 
-  reserve:
+  validate:
     needs: preview
     if: inputs.prepare
     runs-on: ubuntu-latest
@@ -76,17 +76,22 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: Reserve immutable promotion tag
+      - name: Recheck candidate and approval protection
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
           PROMOTION_RECORD: ${{ needs.preview.outputs.record }}
         run: |
           . ./scripts/AlphaPromotion.ps1
-          Reserve-AlphaPromotion -Record ($env:PROMOTION_RECORD | ConvertFrom-Json) | Out-Null
+          $record = $env:PROMOTION_RECORD | ConvertFrom-Json
+          $fresh = Get-AlphaPromotion -AlphaTag $record.alphaTag -PipelineSha $record.pipelineSha `
+            -ExpectedSourceSha $record.sourceSha -RequireApproval
+          if (($fresh | ConvertTo-Json -Compress) -cne $env:PROMOTION_RECORD) {
+            throw 'Promotion eligibility changed after preview.'
+          }
 
   build:
-    needs: [preview, reserve]
+    needs: [preview, validate]
     uses: ./.github/workflows/ci.yml
     permissions:
       contents: write
