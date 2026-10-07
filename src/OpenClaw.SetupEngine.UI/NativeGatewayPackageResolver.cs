@@ -107,5 +107,21 @@ public sealed class NativeGatewayPackageResolver : INativeGatewayPackageResolver
         return NativeGatewayPackageIdentity.TryGetDevPatch(family![..separator], out patch);
     }
 
-    public string ResolveDataPath(string path) => LogFileLauncher.ResolveRealPath(path);
+    public string ResolveDataPath(string path) => NativeGatewayDataPathMapper.Resolve(
+        path,
+        TryGetCurrentPackageFamilyName(),
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData));
+
+    private static string? TryGetCurrentPackageFamilyName()
+    {
+        try
+        {
+            return Windows.ApplicationModel.Package.Current.Id.FamilyName;
+        }
+        catch
+        {
+            return null; // Unpackaged Companion retains its original paths.
+        }
+    }
 }

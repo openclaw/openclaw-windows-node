@@ -614,5 +614,7 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.Contains("\"Microsoft\", \"WindowsApps\", family", source);
         Assert.DoesNotContain("AddPackageAsync", source);
         Assert.DoesNotContain("Add-AppxPackage", source);
+        Assert.Contains("NativeGatewayDataPathMapper.Resolve(", source);
+        Assert.DoesNotContain("LogFileLauncher.ResolveRealPath", source);
     }
 }

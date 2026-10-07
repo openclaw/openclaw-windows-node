@@ -107,6 +107,7 @@ disconnect, replacement, or close. This cache is not used for authorization.
 | Native Gateway fixed-product WinGet installation from Microsoft Store and bounded App Installer bootstrap | `NativeGatewayMsixInstaller` | authoritative |
 | Trusted Store and existing development Gateway registration identities | `NativeGatewayPackageIdentity` | authoritative |
 | Current-user Gateway package registration, health and package-qualified alias discovery | `NativeGatewayPackageResolver` | authoritative |
+| Prospective Companion-to-native-Gateway state/config/workspace path mapping | `NativeGatewayDataPathMapper`; `NativeGatewayPackageResolver` supplies package and known-folder context. Independent of existing-log resolution | authoritative |
 | Missing-package acquisition, one installation attempt and bounded registration verification | `NativeGatewayPackageAcquisition` | authoritative |
 | Shared Windows capability and permission selection, with runtime-specific install review | `CapabilitiesPage` | authoritative |
 | Native profile draft creation and canonical state/config launch paths | `NativeGatewaySetupService` + `NativeGatewayPaths` | authoritative |
