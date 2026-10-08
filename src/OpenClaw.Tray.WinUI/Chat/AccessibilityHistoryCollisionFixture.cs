@@ -238,7 +238,7 @@ internal static class AccessibilityHistoryCollisionFixture
             add { }
             remove { }
         }
-        public event EventHandler<SessionInfo[]>? SessionUsageSnapshotUpdated
+        public event EventHandler<SessionUsageSnapshot>? SessionUsageSnapshotUpdated
         {
             add { }
             remove { }

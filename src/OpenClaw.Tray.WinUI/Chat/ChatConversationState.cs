@@ -368,7 +368,7 @@ internal sealed class ChatConversationState
     }
 
     internal ChatDataSnapshot? ApplyAuthoritativeSessionUsage(
-        SessionInfo[] sessions,
+        SessionUsageSnapshot usage,
         ChatProjectionContext context)
     {
         lock (_gate)
@@ -376,14 +376,15 @@ internal sealed class ChatConversationState
             if (_disposed)
                 return null;
             var changed = false;
-            foreach (var session in sessions)
+            foreach (var session in usage.Sessions)
             {
                 if (string.IsNullOrEmpty(session.Key))
                     continue;
                 changed |= SnapshotLatestAssistantUsageLocked(
                     session,
                     _presentation.ResolveTimelineKey(session, _timelines),
-                    authoritative: true);
+                    authoritative: true,
+                    snapshotTimestamp: usage.Timestamp);
             }
             return changed ? BuildSnapshotLocked(context) : null;
         }
@@ -506,7 +507,8 @@ internal sealed class ChatConversationState
     private bool SnapshotLatestAssistantUsageLocked(
         SessionInfo session,
         string threadId,
-        bool authoritative)
+        bool authoritative,
+        long? snapshotTimestamp = null)
     {
         if (string.IsNullOrEmpty(session.Key))
             return false;
@@ -525,6 +527,11 @@ internal sealed class ChatConversationState
                 continue;
             var metadata = GetOrCreateThreadMetaLocked(threadId);
             metadata.TryGetValue(timeline.Entries[i].Id, out var existing);
+            if (authoritative && existing?.UsageSnapshotTimestamp is { } latest &&
+                (snapshotTimestamp is null || snapshotTimestamp < latest))
+                return false;
+            if (!authoritative && existing?.UsageSnapshotIsAuthoritative == true)
+                return false;
             if (!authoritative &&
                 existing?.UsageContributionTokens is > 0)
             {
@@ -559,7 +566,9 @@ internal sealed class ChatConversationState
                 existing.ResponseTokens == usageTokens &&
                 existing.ContextTokens == contextTokens &&
                 existing.ContextPercent == contextPercent &&
-                existing.UsageContributionTokens == usageContributionTokens)
+                existing.UsageContributionTokens == usageContributionTokens &&
+                existing.UsageSnapshotTimestamp == (snapshotTimestamp ?? existing.UsageSnapshotTimestamp) &&
+                existing.UsageSnapshotIsAuthoritative == (authoritative || existing.UsageSnapshotIsAuthoritative))
             {
                 return false;
             }
@@ -572,6 +581,8 @@ internal sealed class ChatConversationState
                 ContextTokens = contextTokens,
                 ContextPercent = contextPercent,
                 UsageContributionTokens = usageContributionTokens,
+                UsageSnapshotTimestamp = snapshotTimestamp ?? existing?.UsageSnapshotTimestamp,
+                UsageSnapshotIsAuthoritative = authoritative || existing?.UsageSnapshotIsAuthoritative == true,
             };
             return true;
         }
@@ -2274,8 +2285,15 @@ internal sealed class ChatConversationState
                 continue;
             var threadMetadata = GetOrCreateThreadMetaLocked(threadId);
             threadMetadata.TryGetValue(entry.Id, out var existing);
-            if (existing?.UsageContributionTokens == currentUsage &&
-                existing.ResponseTokens != currentUsage)
+            var usageTimestamp = metadata.UsageSnapshotTimestamp;
+            if (existing?.UsageSnapshotIsAuthoritative == true &&
+                usageTimestamp is null &&
+                existing.UsageContributionTokens == currentUsage)
+                return false;
+            if (existing?.UsageSnapshotTimestamp is { } latest &&
+                (usageTimestamp < latest ||
+                 (existing.UsageSnapshotIsAuthoritative &&
+                  (usageTimestamp is null || usageTimestamp == latest))))
                 return false;
             var usageSnapshot = currentUsage.Value;
             var contextPercent = metadata.ContextPercent;
@@ -2287,7 +2305,8 @@ internal sealed class ChatConversationState
             }
             if (existing?.ResponseTokens == usageSnapshot &&
                 existing.UsageContributionTokens == currentUsage &&
-                existing.ContextTokens == contextTokens)
+                existing.ContextTokens == contextTokens &&
+                existing.UsageSnapshotTimestamp == usageTimestamp)
             {
                 return false;
             }
@@ -2299,6 +2318,8 @@ internal sealed class ChatConversationState
                 ContextPercent = contextPercent,
                 ContextTokens = contextTokens ?? existing?.ContextTokens,
                 UsageContributionTokens = currentUsage,
+                UsageSnapshotTimestamp = usageTimestamp ?? existing?.UsageSnapshotTimestamp,
+                UsageSnapshotIsAuthoritative = false,
             };
             return true;
         }
@@ -2651,7 +2672,10 @@ internal sealed class ChatConversationState
             IsLocalQueuedSend: isLocalQueuedSend,
             LocalQueuedMessageId: localQueuedMessageId,
             Attachments: attachments,
-            AssistantContent: assistantContent);
+            AssistantContent: assistantContent)
+        {
+            UsageSnapshotTimestamp = tsMs is > 0 ? tsMs : null,
+        };
     }
 
     private ChatOpenedLifecycleTransition? AddResetAcceptedRunIdLocked(

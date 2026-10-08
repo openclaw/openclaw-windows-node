@@ -12,6 +12,8 @@ using System.Threading.Tasks;
 
 namespace OpenClaw.Shared;
 
+public sealed record SessionUsageSnapshot(SessionInfo[] Sessions, long? Timestamp);
+
 public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
 {
     private const string OperatorClientId = "cli";
@@ -257,7 +259,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// <see cref="SessionsUpdated"/>, this event is not raised when a tool or
     /// job activity update republishes the cached session collection.
     /// </summary>
-    public event EventHandler<SessionInfo[]>? SessionUsageSnapshotUpdated;
+    public event EventHandler<SessionUsageSnapshot>? SessionUsageSnapshotUpdated;
     public event EventHandler<GatewayUsageInfo>? UsageUpdated;
     public event EventHandler<GatewayUsageStatusInfo>? UsageStatusUpdated;
     public event EventHandler<GatewayCostUsageInfo>? UsageCostUpdated;
@@ -4439,6 +4441,12 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         try
         {
             SessionInfo[] snapshot;
+            var timestamp = sessions.ValueKind == JsonValueKind.Object &&
+                sessions.TryGetProperty("ts", out var ts) &&
+                ts.ValueKind == JsonValueKind.Number &&
+                ts.TryGetInt64(out var value) && value > 0
+                    ? (long?)value
+                    : null;
             lock (_sessionsLock)
             {
                 var envelope = sessions;
@@ -4528,7 +4536,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             }
 
             SessionsUpdated?.Invoke(this, snapshot);
-            SessionUsageSnapshotUpdated?.Invoke(this, snapshot);
+            SessionUsageSnapshotUpdated?.Invoke(this, new(snapshot, timestamp));
         }
         catch (Exception ex)
         {

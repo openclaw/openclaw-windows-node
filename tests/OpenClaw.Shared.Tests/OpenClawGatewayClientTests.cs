@@ -3691,10 +3691,14 @@ public class OpenClawGatewayClientTests
         var sessionUpdates = 0;
         var usageSnapshots = 0;
         client.SessionsUpdated += (_, _) => sessionUpdates++;
-        client.SessionUsageSnapshotUpdated += (_, _) => usageSnapshots++;
+        client.SessionUsageSnapshotUpdated += (_, usage) =>
+        {
+            usageSnapshots++;
+            Assert.Equal(1714600005000, usage.Timestamp);
+        };
 
         helper.ParseSessionsPayload(
-            """[{"key":"agent:main:main","totalTokens":1000}]""");
+            """{"ts":1714600005000,"sessions":[{"key":"agent:main:main","totalTokens":1000}]}""");
         var update = typeof(OpenClawGatewayClient).GetMethod(
             "UpdateTrackedSession",
             System.Reflection.BindingFlags.NonPublic |
