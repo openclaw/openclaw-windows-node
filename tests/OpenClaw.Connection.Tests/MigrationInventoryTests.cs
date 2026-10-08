@@ -348,6 +348,33 @@ public sealed class MigrationInventoryTests : IDisposable
         Assert.DoesNotContain(inventory.Entries, entry => entry.RelativeName.EndsWith(".tmp"));
     }
 
+    [Theory]
+    [InlineData(".native-setup-draft.json.0123456789abcdef0123456789abcde.tmp")]
+    [InlineData(".native-setup-draft.json.0123456789abcdef0123456789abcdef0.tmp")]
+    [InlineData(".native-setup-draft.json.0123456789abcdef0123456789abcdeg.tmp")]
+    [InlineData(".native-setup-draft.json.0123456789ABCDEF0123456789ABCDEF.tmp")]
+    [InlineData(".Native-setup-draft.json.0123456789abcdef0123456789abcdef.tmp")]
+    [InlineData(".native-setup-draft.json.0123456789abcdef0123456789abcdef.TMP")]
+    [InlineData("native-setup-draft.json.0123456789abcdef0123456789abcdef.tmp")]
+    [InlineData(".other.json.0123456789abcdef0123456789abcdef.tmp")]
+    [InlineData("Native-setup-draft.json")]
+    public void Capture_MalformedNativeSetupDraftTemporaryFile_IsRejected(string name)
+    {
+        Write(Path.Combine(Roaming, "gateways"), name, "{}");
+
+        Assert.Throws<InvalidDataException>(() => Capture());
+    }
+
+    [Fact]
+    public void Capture_DirectoryAtNativeSetupDraftTemporaryPath_IsRejected()
+    {
+        Directory.CreateDirectory(Path.Combine(
+            Roaming, "gateways",
+            $".{OpenClawAppIdentity.NativeGatewaySetupDraftFileName}.{Guid.NewGuid():N}.tmp"));
+
+        Assert.Throws<InvalidDataException>(() => Capture());
+    }
+
     [Fact]
     public void Capture_DirectoryAtNativeSetupDraftPath_IsRejected()
     {
@@ -355,6 +382,48 @@ public sealed class MigrationInventoryTests : IDisposable
             Roaming, "gateways", OpenClawAppIdentity.NativeGatewaySetupDraftFileName));
 
         Assert.Throws<InvalidDataException>(() => Capture());
+    }
+
+    [ConnectionSymbolicLinkFact]
+    public void Capture_ReparsePointAtNativeSetupDraftPath_IsRejected()
+    {
+        var target = Write(Roaming, "draft-target.json", "{}");
+        Directory.CreateDirectory(Path.Combine(Roaming, "gateways"));
+        File.CreateSymbolicLink(
+            Path.Combine(Roaming, "gateways", OpenClawAppIdentity.NativeGatewaySetupDraftFileName),
+            target);
+
+        Assert.Throws<InvalidDataException>(() => Capture());
+    }
+
+    [ConnectionSymbolicLinkFact]
+    public void Capture_ReparsePointAtNativeSetupDraftTemporaryPath_IsRejected()
+    {
+        var target = Write(Roaming, "draft-temp-target.json", "{}");
+        Directory.CreateDirectory(Path.Combine(Roaming, "gateways"));
+        File.CreateSymbolicLink(
+            Path.Combine(
+                Roaming,
+                "gateways",
+                $".{OpenClawAppIdentity.NativeGatewaySetupDraftFileName}.{Guid.NewGuid():N}.tmp"),
+            target);
+
+        Assert.Throws<InvalidDataException>(() => Capture());
+    }
+
+    [Fact]
+    public void Capture_NativeSetupDraftCreatedDuringCapture_IsRejected()
+    {
+        var path = Path.Combine(
+            Roaming, "gateways", OpenClawAppIdentity.NativeGatewaySetupDraftFileName);
+
+        Assert.Throws<IOException>(() => MigrationInventory.Capture(
+            Roaming,
+            Local,
+            afterGatewaySnapshot: () => Write(
+                Path.GetDirectoryName(path)!,
+                Path.GetFileName(path),
+                """{"GatewayId":"draft-gateway"}""")));
     }
 
     [Fact]

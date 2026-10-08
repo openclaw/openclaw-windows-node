@@ -41,7 +41,7 @@ silent replacement. The inventory includes saved Gateway identity directories an
 the credential-free `gateways\native-setup-draft.json` recovery descriptor; other
 unexpected files in that directory fail closed. Atomic-write temporary siblings
 for that descriptor are non-state and ignored only when their names contain the
-expected 32-digit hexadecimal identifier. Preparation is serialized and writes
+expected 32-digit lowercase hexadecimal identifier. Preparation is serialized and writes
 via a flushed sibling temporary file followed by atomic rename.
 
 `completed.dpapi` is a separate receipt, written only after exclusive source
@@ -228,10 +228,15 @@ continue to normal startup, because refusing to launch cannot repair either one.
 Still confirm before the tag that the released Inno installer registers
 `DisplayVersion` `2026.9.5` and `DisplayName` `OpenClaw Companion version 2026.9.5`.
 Both are refused, and each produces a different message, so check for the right one.
-A prerelease suffix is a version refusal: that user is told to update the previous app
-to a supported version first. A mismatched name is an unsupported installation: that
-user is told migration is unavailable. Neither is offered migration, so the registered
-values still have to be exact.
+An alpha or other unsupported prerelease suffix is a version refusal: that user is told
+to update the previous app to a supported version first. The repository's numeric
+stable-correction form, such as `2026.9.8-1`, is accepted and ordered after its
+unsuffixed base; its executable file version remains the base numeric version
+(`2026.9.8.0`) while its product version must identify the exact correction.
+Build properties remain numeric, so pin a correction as `X.Y.Z.N` when a correction
+must be the minimum source (for example, `2026.9.8.1` for `2026.9.8-1`). A mismatched
+name is an unsupported installation: that user is told migration is unavailable.
+Refused sources are not offered migration, so the registered values still have to be exact.
 
 ### Developer migration test package
 
