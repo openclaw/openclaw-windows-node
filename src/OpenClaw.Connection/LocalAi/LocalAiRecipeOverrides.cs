@@ -25,37 +25,56 @@ public static partial class LocalAiRecipeOverrides
     internal const int MaximumFileBytes = 64 * 1024;
 
     /// <summary>
-    /// Keys the override file may not touch. Model and draft identity are pinned and
-    /// hash-verified by setup; file and URL keys would let the preset read or write arbitrary
-    /// paths; host, port, api-key, web UI, CORS, and router keys are owned by the launch
-    /// arguments; RPC, MCP, and built-in tool or agent keys would let llama-server reach other
-    /// hosts or run host commands; and <c>ctx-size</c>, <c>fit</c>, <c>parallel</c>, the
-    /// unified-KV keys, and <c>n-predict</c> must keep the per-request context equal to
-    /// <see cref="LocalAiInstallManifest.ContextLength"/> and the output limit equal to
-    /// <see cref="LocalAiGatewayProviderDefinition.GetMaximumOutputTokens"/>, which
-    /// <see cref="LocalAiGatewayProviderDefinition"/> publishes to the gateway and which the
-    /// capacity fit-test sized. Model-source and path-valued options whose names lack a
-    /// recognizable prefix or suffix are listed by name from the pinned llama.cpp <c>common/arg.cpp</c>.
-    /// A <c>no-</c> negation is checked against the same rules, so <c>no-webui</c> is denied too.
+    /// The only keys the override file may set, as canonical long llama-server option
+    /// names from the pinned runtimes' <c>common/arg.cpp</c> (b11026 and b11320 have
+    /// identical alias tables). This is an allowlist, not a deny-list: llama.cpp
+    /// registers many aliases beyond the two-character ones (<c>-ag</c> is
+    /// <c>--agent</c>, <c>-hft</c> is <c>--hf-token</c>), and its preset parser
+    /// (<c>common/preset.cpp</c>) resolves every alias, so name-based deny rules can
+    /// be bypassed. Only tuning keys that are safe for an authenticated local user
+    /// are permitted; a leading <c>no-</c> is accepted only for options llama.cpp
+    /// defines a negated form for. Model identity, paths, network endpoints,
+    /// credentials, agent/MCP/tool keys, and the capacity-fit keys
+    /// (<c>ctx-size</c>, <c>fit</c>, <c>parallel</c>, <c>n-predict</c>, unified KV)
+    /// are excluded on purpose: those are owned by the pinned receipt, the launch
+    /// arguments, or <see cref="LocalAiGatewayProviderDefinition"/> publishing.
     /// </summary>
-    private static readonly FrozenSet<string> DeniedKeys = FrozenSet.ToFrozenSet(
+    private static readonly FrozenSet<string> AllowedKeys = FrozenSet.ToFrozenSet(
         [
-            "model", "model-url", "model-draft", "spec-draft-model", "spec-draft-hf", "docker-repo",
-            "mmproj", "mmproj-url",
-            "lora", "lora-scaled", "control-vector", "control-vector-scaled",
-            "host", "port", "path", "api-key", "api-prefix", "alias", "server-base",
-            "models-preset", "models-dir", "models-max", "models-autoload", "load-on-startup",
-            "ctx-size", "fit", "fit-ctx", "parallel", "kv-unified", "kv-unified-per-slot",
-            "n-predict", "predict",
-            "offline", "webui", "ui",
-            "rpc", "tools", "agent",
-            "lookup-cache-static", "lookup-cache-dynamic", "prompt-cache", "file", "output",
-            "save-all-logits", "kl-divergence-base", "image", "audio", "video",
+            // CPU scheduling
+            "threads", "threads-batch", "cpu-mask", "cpu-range", "cpu-strict", "prio", "poll",
+            // Batch and prompt processing
+            "batch-size", "ubatch-size",
+            // Attention, KV cache, and memory shape
+            "flash-attn", "swa-full", "cache-type-k", "cache-type-v",
+            "cache-reuse", "cache-idle-slots", "context-shift", "kv-offload", "repack",
+            "cont-batching", "cache-prompt", "defrag-thold",
+            // Speculative decoding tuning (model identity stays pinned)
+            "spec-type", "spec-draft-n-max", "spec-draft-backend-sampling",
+            // Sampling
+            "temp", "top-k", "top-p", "min-p", "typical", "xtc-threshold", "xtc-probability",
+            "repeat-penalty", "presence-penalty", "frequency-penalty",
+            "dry-multiplier", "dry-base", "dry-allowed-length", "dry-penalty-last-n",
+            "samplers", "dynatemp-range",
+            // Reasoning output
+            "reasoning", "reasoning-budget", "reasoning-format", "reasoning-preserve",
+            // RoPE / YaRN
+            "rope-scaling", "rope-scale", "rope-freq-base", "rope-freq-scale",
+            "yarn-orig-ctx", "yarn-ext-factor", "yarn-attn-factor", "yarn-beta-fast", "yarn-beta-slow",
+            // GPU placement
+            "gpu-layers", "main-gpu", "tensor-split", "split-mode",
         ],
         StringComparer.Ordinal);
 
-    private static readonly string[] DeniedPrefixes = ["hf-", "ssl-", "ui-", "webui-", "cors-", "mcp-", "tools-"];
-    private static readonly string[] DeniedSuffixes = ["-file", "-path", "-dir", "-url", "-repo"];
+    /// <summary>Options llama.cpp defines a negated <c>no-</c> form for, so a leading
+    /// <c>no-</c> is accepted for exactly these and for nothing else.</summary>
+    private static readonly FrozenSet<string> NegatableKeys = FrozenSet.ToFrozenSet(
+        [
+            "cache-idle-slots", "context-shift", "kv-offload", "repack", "cont-batching",
+            "cache-prompt", "flash-attn", "swa-full", "cache-reuse", "reasoning",
+            "reasoning-preserve", "spec-draft-backend-sampling",
+        ],
+        StringComparer.Ordinal);
 
     /// <summary>
     /// Reads the override file for <paramref name="modelId"/>. Empty when the file does not
@@ -145,18 +164,23 @@ public static partial class LocalAiRecipeOverrides
     {
         if (!OptionNamePattern().IsMatch(key))
             throw LineError(lineNumber, $"'{key}' is not a llama-server option name.");
-        if (key.Length <= 2)
-            throw LineError(lineNumber, $"'{key}' is a short alias. Use the long llama-server option name.");
-        if (IsDenied(key))
-            throw LineError(lineNumber, $"'{key}' cannot be overridden.");
-    }
 
-    private static bool IsDenied(string key)
-    {
-        string option = key.StartsWith("no-", StringComparison.Ordinal) ? key[3..] : key;
-        return DeniedKeys.Contains(option)
-            || DeniedPrefixes.Any(prefix => option.StartsWith(prefix, StringComparison.Ordinal))
-            || DeniedSuffixes.Any(suffix => option.EndsWith(suffix, StringComparison.Ordinal));
+        // Resolve exactly like llama.cpp's preset parser: strip a leading 'no-' and
+        // flip the boolean. Short aliases and every other name resolve only through
+        // the allowlist, so an unknown or denied option is rejected regardless of the
+        // name it was written under ('ag', 'no-ag', 'hft' all fail here).
+        string option = key;
+        bool negated = false;
+        if (key.StartsWith("no-", StringComparison.Ordinal))
+        {
+            option = key[3..];
+            negated = true;
+        }
+
+        if (!AllowedKeys.Contains(option))
+            throw LineError(lineNumber, $"'{key}' is not an allowed llama-server tuning option.");
+        if (negated && !NegatableKeys.Contains(option))
+            throw LineError(lineNumber, $"'{key}' cannot be negated. Write '{option} = true|false' instead.");
     }
 
     private static InvalidDataException LineError(int lineNumber, string detail) =>

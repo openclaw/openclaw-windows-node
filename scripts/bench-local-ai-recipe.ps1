@@ -67,32 +67,38 @@ $ErrorActionPreference = "Stop"
 
 $invariant = [Globalization.CultureInfo]::InvariantCulture
 # Mirrors LocalAiRecipeOverrides (src/OpenClaw.Connection/LocalAi/LocalAiRecipeOverrides.cs), the
-# source of truth, so a grid cannot recommend a key the tray refuses at startup.
-$deniedOverrideKeys = @(
-    "model", "model-url", "model-draft", "spec-draft-model", "spec-draft-hf", "docker-repo",
-    "mmproj", "mmproj-url",
-    "lora", "lora-scaled", "control-vector", "control-vector-scaled",
-    "host", "port", "path", "api-key", "api-prefix", "alias", "server-base",
-    "models-preset", "models-dir", "models-max", "models-autoload", "load-on-startup",
-    "ctx-size", "fit", "fit-ctx", "parallel", "kv-unified", "kv-unified-per-slot",
-    "n-predict", "predict",
-    "offline", "webui", "ui",
-    "rpc", "tools", "agent",
-    "lookup-cache-static", "lookup-cache-dynamic", "prompt-cache", "file", "output",
-    "save-all-logits", "kl-divergence-base", "image", "audio", "video")
-$deniedOverridePrefixes = @("hf-", "ssl-", "ui-", "webui-", "cors-", "mcp-", "tools-")
-$deniedOverrideSuffixes = @("-file", "-path", "-dir", "-url", "-repo")
+# source of truth, so a grid cannot recommend a key the tray refuses at startup. It is an
+# allowlist of canonical long llama-server option names: llama.cpp registers aliases beyond the
+# two-character ones (-ag is --agent, -hft is --hf-token) and its preset parser resolves every
+# alias, so name-based deny rules can be bypassed.
+$allowedOverrideKeys = @(
+    "threads", "threads-batch", "cpu-mask", "cpu-range", "cpu-strict", "prio", "poll",
+    "batch-size", "ubatch-size",
+    "flash-attn", "swa-full", "cache-type-k", "cache-type-v",
+    "cache-reuse", "cache-idle-slots", "context-shift", "kv-offload", "repack",
+    "cont-batching", "cache-prompt", "defrag-thold",
+    "spec-type", "spec-draft-n-max", "spec-draft-backend-sampling",
+    "temp", "top-k", "top-p", "min-p", "typical", "xtc-threshold", "xtc-probability",
+    "repeat-penalty", "presence-penalty", "frequency-penalty",
+    "dry-multiplier", "dry-base", "dry-allowed-length", "dry-penalty-last-n",
+    "samplers", "dynatemp-range",
+    "reasoning", "reasoning-budget", "reasoning-format", "reasoning-preserve",
+    "rope-scaling", "rope-scale", "rope-freq-base", "rope-freq-scale",
+    "yarn-orig-ctx", "yarn-ext-factor", "yarn-attn-factor", "yarn-beta-fast", "yarn-beta-slow",
+    "gpu-layers", "main-gpu", "tensor-split", "split-mode")
+$negatableOverrideKeys = @(
+    "cache-idle-slots", "context-shift", "kv-offload", "repack", "cont-batching",
+    "cache-prompt", "flash-attn", "swa-full", "cache-reuse", "reasoning",
+    "reasoning-preserve", "spec-draft-backend-sampling")
 
 function Assert-OverridableKey {
     param([string]$Key)
     if ($Key -cnotmatch '^[a-z0-9]+(-[a-z0-9]+)*$') { throw "The grid key '$Key' is not a llama-server option name." }
-    if ($Key.Length -le 2) { throw "The grid key '$Key' is a short alias. Use the long llama-server option name." }
     $option = $Key
-    if ($option.StartsWith("no-", [StringComparison]::Ordinal)) { $option = $option.Substring(3) }
-    $denied = $deniedOverrideKeys -ccontains $option
-    foreach ($prefix in $deniedOverridePrefixes) { if ($option.StartsWith($prefix, [StringComparison]::Ordinal)) { $denied = $true } }
-    foreach ($suffix in $deniedOverrideSuffixes) { if ($option.EndsWith($suffix, [StringComparison]::Ordinal)) { $denied = $true } }
-    if ($denied) { throw "The grid cannot change '$Key' because recipe-overrides.ini does not allow it." }
+    $negated = $false
+    if ($option.StartsWith("no-", [StringComparison]::Ordinal)) { $option = $option.Substring(3); $negated = $true }
+    if ($allowedOverrideKeys -cnotcontains $option) { throw "The grid key '$Key' is not an allowed llama-server tuning option." }
+    if ($negated -and ($negatableOverrideKeys -cnotcontains $option)) { throw "The grid key '$Key' cannot be negated. Write '$option = true|false' instead." }
 }
 
 function Test-ChangesBaseline {

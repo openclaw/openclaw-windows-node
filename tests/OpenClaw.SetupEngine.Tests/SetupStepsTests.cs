@@ -6966,6 +6966,71 @@ public class SetupStepsTests : IDisposable
         Assert.Contains("exit 1", baseline.Error);
     }
 
+
+    /// <summary>
+    /// #1523: the finalization socket must take its own pending-request snapshot, not reuse
+    /// the setup-wide baseline. A request minted after initial pairing but before finalization
+    /// is absent from the setup-wide baseline, so reusing it would let the ID-less approval
+    /// fallback treat that stale request as new and approve it. The fresh finalization capture
+    /// must include it, and the fallback must then refuse to approve it.
+    /// </summary>
+    [Fact]
+    public async Task FinalizationBaseline_ExcludesRequestsThatPredateTheFinalizationSocket()
+    {
+        const string socketDeviceId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        const string midSetupRequestId = "mid-setup-request";
+        const string finalizationRequestId = "finalization-request";
+        var listCalls = 0;
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) =>
+            {
+                if (command.Contains("devices list --json", StringComparison.Ordinal))
+                {
+                    // First list: setup-wide capture, before any setup socket opened.
+                    // Second list: finalization capture, after the mid-setup request appeared.
+                    return ++listCalls == 1
+                        ? Ok("""{"pending":[]}""")
+                        : Ok($$"""
+                            {"pending":[
+                              {"requestId":"{{midSetupRequestId}}","deviceId":"{{socketDeviceId}}","role":"operator","ts":0},
+                              {"requestId":"{{finalizationRequestId}}","deviceId":"{{socketDeviceId}}","role":"operator","ts":1}
+                            ]}
+                            """);
+                }
+
+                return command.Contains("devices approve ", StringComparison.Ordinal)
+                    ? Ok("{}")
+                    : Fail($"unexpected wsl command: {command}");
+            });
+        var ctx = CreateNodePairingContext(commands);
+        ctx.OperatorDeviceId = socketDeviceId;
+
+        // Initial operator pairing captured the (empty) setup-wide baseline.
+        ctx.SetupDeviceApprovalBaseline = await ApprovalRequestHelper.CaptureSetupBaselineOnceAsync(
+            ctx, new CliPairingRequests(ctx), ApprovalRequestKind.Device, CancellationToken.None);
+
+        // The finalization socket takes its own snapshot.
+        var finalizationBaseline = await VerifyEndToEndStep.CaptureFinalizationApprovalBaselineAsync(
+            ctx, CancellationToken.None);
+        ctx.CurrentDeviceApprovalBaseline = finalizationBaseline;
+
+        Assert.Equal(2, listCalls);
+        Assert.NotSame(ctx.SetupDeviceApprovalBaseline, finalizationBaseline);
+        Assert.Contains(midSetupRequestId, finalizationBaseline.RequestIds);
+        Assert.DoesNotContain(midSetupRequestId, ctx.SetupDeviceApprovalBaseline.RequestIds);
+
+        // With the finalization baseline in place, the ID-less fallback must refuse: every
+        // pending request predates the finalization socket, so nothing new can be approved.
+        var approval = await PairOperatorStep.AutoApprovePairing(
+            ctx, new CliPairingRequests(ctx), requestId: null, CancellationToken.None);
+        Assert.False(approval.IsSuccess);
+        Assert.DoesNotContain(
+            commands.WslEnvironments,
+            env => env is not null &&
+                env.TryGetValue(ApprovalRequestHelper.RequestIdEnvironmentVariable, out var requestId) &&
+                requestId == midSetupRequestId);
+    }
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

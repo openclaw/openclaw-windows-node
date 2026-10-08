@@ -229,9 +229,7 @@ public sealed class VerifyEndToEndStep : SetupStep
         if (string.IsNullOrEmpty(deviceToken))
             return (StepResult.Fail("No device token available for operator finalization"), null);
 
-        // Fail closed: the setup-wide pre-connect baseline excludes requests that existed
-        // before setup opened its sockets; ambiguous or missing baselines refuse approval.
-        ctx.CurrentDeviceApprovalBaseline = ctx.SetupDeviceApprovalBaseline;
+        ctx.CurrentDeviceApprovalBaseline = await CaptureFinalizationApprovalBaselineAsync(ctx, ct);
 
         OpenClawGatewayClient CreateClient(string credential)
         {
@@ -314,6 +312,22 @@ public sealed class VerifyEndToEndStep : SetupStep
             }
         }
     }
+
+    /// <summary>
+    /// Fail closed for the finalization socket specifically (#1523): capture the pending
+    /// request list immediately before the finalization socket opens, so the ID-less
+    /// fallback in <see cref="PairOperatorStep.AutoApprovePairing"/> can only ever approve
+    /// a request this finalization produced. The setup-wide baseline is deliberately NOT
+    /// reused here: a request that appeared after initial pairing but before finalization
+    /// is absent from it, and the fallback would treat that stale request as new.
+    /// </summary>
+    internal static Task<PendingRequestBaseline> CaptureFinalizationApprovalBaselineAsync(
+        SetupContext ctx,
+        CancellationToken ct)
+        => ApprovalRequestHelper.CapturePendingRequestBaselineAsync(
+            new CliPairingRequests(ctx),
+            ApprovalRequestKind.Device,
+            ct);
 
     private static async Task WriteSetupStateAsync(SetupContext ctx, CancellationToken ct)
     {
