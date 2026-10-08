@@ -1433,12 +1433,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 IsStreaming: !message.IsFinal),
             preparation.Metadata);
 
-        var hasUsage = message.InputTokens is not null ||
-                       message.OutputTokens is not null ||
-                       message.ResponseTokens is not null ||
-                       message.ContextPercent is not null;
-        if (hasUsage &&
-            _state.SnapshotAssistantUsageContribution(
+        if (_state.SnapshotAssistantUsageFrame(
                 threadId,
                 preparation.Metadata,
                 ProjectionContext()) is { } usageSnapshot)

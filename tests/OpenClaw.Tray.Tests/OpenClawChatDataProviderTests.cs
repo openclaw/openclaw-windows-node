@@ -11706,6 +11706,47 @@ public class OpenClawChatDataProviderTests
         Assert.Equal(800, provider.GetEntryMetadata("main")[entry.Id].ResponseTokens);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task SessionUsageSnapshot_StreamedUsageFreeFinalAdvancesFreshness(bool deltaHasUsage)
+    {
+        var session = MainSession();
+        session.TotalTokens = 1_500;
+        session.ContextTokens = 5_000;
+        var (bridge, provider, _, _) = CreateProvider([session]);
+        await provider.LoadAsync();
+        const long deltaTimestamp = 1714600005000;
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main", Role = "assistant", Text = "streamed",
+            State = "delta", Ts = deltaTimestamp,
+            ResponseTokens = deltaHasUsage ? 1_500 : null,
+        });
+        var entry = Assert.Single((await provider.LoadAsync()).Timelines["main"].Entries);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main", Role = "assistant", Text = "streamed final",
+            State = "final", Ts = deltaTimestamp + 5,
+        });
+        Assert.Equal(entry.Id, Assert.Single((await provider.LoadAsync()).Timelines["main"].Entries).Id);
+        Assert.Equal(1_500, provider.GetEntryMetadata("main")[entry.Id].ResponseTokens);
+
+        session.TotalTokens = 1_000;
+        bridge.RaiseSessions([session], timestamp: deltaTimestamp + 3);
+        Assert.Equal(1_500, provider.GetEntryMetadata("main")[entry.Id].ResponseTokens);
+
+        session.TotalTokens = 800;
+        bridge.RaiseSessions([session], timestamp: deltaTimestamp + 6);
+        Assert.Equal(800, provider.GetEntryMetadata("main")[entry.Id].ResponseTokens);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main", Role = "assistant", Text = "streamed final",
+            State = "final", Ts = deltaTimestamp + 5,
+        });
+        Assert.Equal(800, provider.GetEntryMetadata("main")[entry.Id].ResponseTokens);
+    }
+
     [Fact]
     public async Task SessionsUpdated_ActivityOnlyCachedUsageDoesNotReplaceContributionOrCorrection()
     {

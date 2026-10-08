@@ -2252,26 +2252,25 @@ internal sealed class ChatConversationState
         }
     }
 
-    internal ChatDataSnapshot? SnapshotAssistantUsageContribution(
+    internal ChatDataSnapshot? SnapshotAssistantUsageFrame(
         string threadId,
         ChatEntryMetadata metadata,
         ChatProjectionContext context)
     {
         lock (_gate)
         {
-            return SnapshotAssistantUsageContributionLocked(threadId, metadata)
+            return SnapshotAssistantUsageFrameLocked(threadId, metadata)
                 ? BuildSnapshotLocked(context)
                 : null;
         }
     }
 
-    private bool SnapshotAssistantUsageContributionLocked(
+    private bool SnapshotAssistantUsageFrameLocked(
         string threadId,
         ChatEntryMetadata metadata)
     {
         var currentUsage = UsageValue(metadata);
-        if (currentUsage is null || currentUsage <= 0 ||
-            !_timelines.TryGetValue(threadId, out var timeline))
+        if (!_timelines.TryGetValue(threadId, out var timeline))
         {
             return false;
         }
@@ -2286,6 +2285,19 @@ internal sealed class ChatConversationState
             var threadMetadata = GetOrCreateThreadMetaLocked(threadId);
             threadMetadata.TryGetValue(entry.Id, out var existing);
             var usageTimestamp = metadata.UsageSnapshotTimestamp;
+            if (currentUsage is null || currentUsage <= 0)
+            {
+                // Final frames may only finish streamed text. Their server time
+                // still fences listings prepared before the reconciled final.
+                if (usageTimestamp is not { } frameTimestamp ||
+                    existing?.UsageSnapshotTimestamp >= frameTimestamp)
+                    return false;
+                threadMetadata[entry.Id] = (existing ?? metadata) with
+                {
+                    UsageSnapshotTimestamp = frameTimestamp,
+                };
+                return true;
+            }
             if (existing?.UsageSnapshotIsAuthoritative == true &&
                 usageTimestamp is null &&
                 existing.UsageContributionTokens == currentUsage)
