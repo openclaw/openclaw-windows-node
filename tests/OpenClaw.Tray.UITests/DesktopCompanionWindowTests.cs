@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Windows.Graphics;
 using OpenClaw.SetupEngine;
 using OpenClaw.SetupEngine.UI.Controls;
 using OpenClawTray.Presentation;
@@ -216,6 +217,202 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
             Assert.False(mascot.IsAnimationEnabled);
         });
 
+    private sealed class NativePointerTheoryAttribute : TheoryAttribute
+    {
+        public NativePointerTheoryAttribute()
+        {
+            if (Environment.GetEnvironmentVariable("OPENCLAW_DESKTOP_COMPANION_POINTER_PROOF") != "1")
+                Skip = "Requires an interactive desktop and explicitly enabled native pointer proof.";
+        }
+    }
+
+    [NativePointerTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public Task Drag_MovesWithPointer_WithoutOpeningMenu_AndPreservesClick(bool showBubble) =>
+        WithWindowAsync(async window =>
+        {
+            await PositionForPointerProofAsync(window);
+            var root = (FrameworkElement)window.Content;
+            var target = Control<Button>(root, "DesktopCompanionMascot");
+            if (showBubble)
+            {
+                window.Present(new() { Title = "Move me", Message = "The bubble follows the lobster." });
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => Control<StackPanel>(root, "DesktopCompanionBubble").ActualHeight > 0, "draggable bubble");
+            }
+            var origin = window.AppWindow.Position;
+            await DragAsync(window, target, -120, -60);
+            Assert.Equal(new PointInt32(origin.X - 120, origin.Y - 60), window.AppWindow.Position);
+            Assert.Empty(VisualTreeHelper.GetOpenPopupsForXamlRoot(root.XamlRoot));
+            Assert.True(target.PointerCaptures is not { Count: > 0 });
+
+            await DragAsync(window, target, 60, 30);
+            Assert.Equal(new PointInt32(origin.X - 60, origin.Y - 30), window.AppWindow.Position);
+            Assert.Empty(VisualTreeHelper.GetOpenPopupsForXamlRoot(root.XamlRoot));
+            Assert.Equal(showBubble ? Visibility.Visible : Visibility.Collapsed,
+                Control<StackPanel>(root, "DesktopCompanionBubble").Visibility);
+
+            var peer = FrameworkElementAutomationPeer.CreatePeerForElement(target);
+            ((IInvokeProvider)peer.GetPattern(PatternInterface.Invoke)).Invoke();
+            await TestSupport.WaitForRenderedConditionAsync(
+                () => VisualTreeHelper.GetOpenPopupsForXamlRoot(root.XamlRoot).Count > 0, "menu after dragging");
+        });
+
+    [NativePointerTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public Task Click_OpensMenu_WithoutRepositioning(bool rightClick) =>
+        WithWindowAsync(async window =>
+        {
+            await PositionForPointerProofAsync(window);
+            var root = (FrameworkElement)window.Content;
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
+            var origin = window.AppWindow.Position;
+            var point = MascotCenter(window);
+            Assert.True(GetCursorPos(out var saved));
+            var release = rightClick ? 0x0010u : 0x0004u;
+            var pressed = false;
+            try
+            {
+                MoveOwnedPointer(hwnd, point);
+                await Task.Delay(50);
+                SendMouseButton(rightClick ? 0x0008u : 0x0002u);
+                pressed = true;
+                await Task.Delay(50);
+                point.X += 2;
+                point.Y += 2;
+                MoveOwnedPointer(hwnd, point);
+                await Task.Delay(50);
+                SendMouseButton(release);
+                pressed = false;
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => VisualTreeHelper.GetOpenPopupsForXamlRoot(root.XamlRoot).Count > 0, "pointer menu");
+                Assert.Equal(origin, window.AppWindow.Position);
+            }
+            finally
+            {
+                if (pressed) SendMouseButton(release);
+                Assert.True(SetCursorPos(saved.X, saved.Y));
+            }
+        });
+
+    [NativePointerTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public Task LostPointerCapture_StopsMoving_AndPreservesClick(bool moveBeforeCaptureLoss) =>
+        WithWindowAsync(async window =>
+        {
+            await PositionForPointerProofAsync(window);
+            var root = (FrameworkElement)window.Content;
+            var target = Control<Button>(root, "DesktopCompanionMascot");
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
+            Assert.True(GetCursorPos(out var saved));
+            var point = MascotCenter(window);
+            var pressed = false;
+            try
+            {
+                MoveOwnedPointer(hwnd, point);
+                await Task.Delay(50);
+                SendMouseButton(0x0002);
+                pressed = true;
+                await TestSupport.WaitForRenderedConditionAsync(() => target.PointerCaptures is { Count: > 0 }, "pointer capture");
+                if (moveBeforeCaptureLoss)
+                {
+                    var origin = window.AppWindow.Position;
+                    point.X -= 12;
+                    MoveOwnedPointer(hwnd, point);
+                    await TestSupport.WaitForRenderedConditionAsync(
+                        () => window.AppWindow.Position.X == origin.X - 12, "drag before capture loss");
+                }
+                target.ReleasePointerCaptures();
+                await Task.Delay(100);
+                var stopped = window.AppWindow.Position;
+                point.X -= 12;
+                MoveOwnedPointer(hwnd, point);
+                await Task.Delay(100);
+                Assert.Equal(stopped, window.AppWindow.Position);
+                SendMouseButton(0x0004);
+                pressed = false;
+                await Task.Delay(100);
+                Assert.Empty(VisualTreeHelper.GetOpenPopupsForXamlRoot(root.XamlRoot));
+                var peer = FrameworkElementAutomationPeer.CreatePeerForElement(target);
+                ((IInvokeProvider)peer.GetPattern(PatternInterface.Invoke)).Invoke();
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => VisualTreeHelper.GetOpenPopupsForXamlRoot(root.XamlRoot).Count > 0, "menu after canceled drag");
+            }
+            finally
+            {
+                if (pressed) SendMouseButton(0x0004);
+                Assert.True(SetCursorPos(saved.X, saved.Y));
+            }
+        });
+
+    private static async Task PositionForPointerProofAsync(DesktopCompanionWindow window)
+    {
+        OnboardingNativeProof.ActivateOwned(window);
+        // Avoid the shell's bottom-right notification surface without interacting with it.
+        var work = DisplayArea.GetFromWindowId(window.AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
+        window.AppWindow.Move(new(work.X + (work.Width - window.AppWindow.Size.Width) / 2,
+            work.Y + (work.Height - window.AppWindow.Size.Height) / 2));
+        await OnboardingNativeProof.NextCompositionAsync(TimeSpan.FromMilliseconds(150));
+    }
+
+    private static async Task DragAsync(DesktopCompanionWindow window, Button target, int dx, int dy)
+    {
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
+        var origin = window.AppWindow.Position;
+        var point = MascotCenter(window);
+        Assert.True(GetCursorPos(out var saved));
+        var pressed = false;
+        try
+        {
+            MoveOwnedPointer(hwnd, point);
+            await Task.Delay(50);
+            SendMouseButton(0x0002);
+            pressed = true;
+            await TestSupport.WaitForRenderedConditionAsync(() => target.PointerCaptures is { Count: > 0 }, "drag capture");
+            for (var step = 1; step <= 10; step++)
+            {
+                MoveOwnedPointer(hwnd, new() { X = point.X + dx * step / 10, Y = point.Y + dy * step / 10 });
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => window.AppWindow.Position == new PointInt32(origin.X + dx * step / 10, origin.Y + dy * step / 10),
+                    $"drag step {step}");
+            }
+            SendMouseButton(0x0004);
+            pressed = false;
+            await Task.Delay(150);
+            Assert.True(target.PointerCaptures is not { Count: > 0 });
+        }
+        finally
+        {
+            if (pressed) SendMouseButton(0x0004);
+            Assert.True(SetCursorPos(saved.X, saved.Y));
+        }
+    }
+
+    private static NativePoint MascotCenter(DesktopCompanionWindow window)
+    {
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
+        Assert.True(GetWindowRect(hwnd, out var rect));
+        var half = (int)Math.Round(90 * ((FrameworkElement)window.Content).XamlRoot.RasterizationScale);
+        return new() { X = rect.Right - half, Y = rect.Bottom - half };
+    }
+
+    private static void MoveOwnedPointer(IntPtr hwnd, NativePoint point)
+    {
+        var at = WindowFromPoint(point);
+        Assert.True(hwnd == GetAncestor(at, 2 /* GA_ROOT */),
+            $"The owned overlay is obscured at ({point.X},{point.Y}); no pointer input was sent.");
+        Assert.True(SetCursorPos(point.X, point.Y));
+    }
+
+    private static void SendMouseButton(uint flags)
+    {
+        NativeInput[] inputs = [new() { Mouse = new() { Flags = flags } }];
+        Assert.Equal(1u, SendInput(1, inputs, Marshal.SizeOf<NativeInput>()));
+    }
+
     private Task WithWindowAsync(Func<DesktopCompanionWindow, Task> test, Action? openNotifications = null) =>
         ui.RunOnUIAsync(async () =>
         {
@@ -240,7 +437,24 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
 
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
     [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint { public int X, Y; }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MouseInput
+    {
+        public int X, Y;
+        public uint Data, Flags, Time;
+        public UIntPtr Extra;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeInput { public uint Type; public MouseInput Mouse; }
+    [DllImport("user32.dll")] private static extern bool GetCursorPos(out NativePoint point);
+    [DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(NativePoint point);
+    [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
+    [DllImport("user32.dll")] private static extern uint SendInput(uint count, NativeInput[] inputs, int size);
+    [StructLayout(LayoutKind.Sequential)]
     private struct Rect { public int Left, Top, Right, Bottom; }
+    [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hwnd, out Rect rect);
     [DllImport("user32.dll")] private static extern bool GetClientRect(IntPtr hwnd, out Rect rect);
     [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(IntPtr hwnd, int attribute, out int value, int size);
     [DllImport("user32.dll")] private static extern int GetWindowRgn(IntPtr hwnd, IntPtr region);

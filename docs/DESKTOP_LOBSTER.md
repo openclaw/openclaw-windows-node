@@ -6,6 +6,11 @@ right-click for options, or focus it and use Enter/F10 for its native menu.
 **Hide desktop lobster** persists the off setting. Closing Workspace does not
 close the lobster; exiting Companion does.
 
+Hold the left mouse button on the lobster, move it, and release to reposition
+the overlay. Its speech bubble follows it. Releasing a drag does not open the
+menu; a normal click or right-click still does. Placement stays within the
+monitor work area and is not saved across app restarts.
+
 New app notifications, including Gateway notifications and `system.notify`,
 appear as plain text in a speech bubble. Informational/success notifications
 produce a happy hop, warnings an attentive expression, and errors a sad sigh.
@@ -96,6 +101,11 @@ preventing the classic border that the presenter's retained dialog-frame styles
 would otherwise paint. The handler is disposed with the window. The speech
 bubble's own rounded corners and the mascot's glow remain.
 
+The input adapter observes handled pointer events because the native WinUI
+`Button` consumes them before ordinary event subscriptions run. It retains the
+button's pointer capture and accessibility behavior, clears dragging when capture
+is lost or canceled, and suppresses only the drag gesture's click.
+
 `DesktopCompanionController` owns the opt-in lifetime and observes the canonical
 `AppNotificationService` plus `ISettingsStore`. `DesktopCompanionState` recognizes
 new/coalesced arrivals without replaying selection, dismissal, startup backlog,
@@ -118,3 +128,9 @@ real `system.notify` through an isolated local MCP endpoint. Confirm happy
 arrival, readable text, dismiss/timeout, drag, hide/re-enable, and no foreground
 activation on arrival. No Gateway is necessary for the local notification path;
 Gateway notification delivery needs a connected Gateway for end-to-end proof.
+
+On an interactive desktop, set `OPENCLAW_DESKTOP_COMPANION_POINTER_PROOF=1` for
+the focused UI tests to also exercise real mouse input: repeated dragging with
+and without a bubble, release without a menu, capture-loss cancellation, and
+subsequent accessible menu invocation. These opt-in tests move the mouse only
+over the test-owned overlay and restore its original position afterward.

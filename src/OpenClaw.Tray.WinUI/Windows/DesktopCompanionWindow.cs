@@ -172,10 +172,13 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
     {
         _mascotTarget = (Button)element;
         _mascotTarget.Click += OnMascotClick;
-        _mascotTarget.PointerPressed += OnMascotPressed;
-        _mascotTarget.PointerMoved += OnMascotMoved;
-        _mascotTarget.PointerReleased += OnMascotReleased;
-        _mascotTarget.PointerCaptureLost += OnMascotCaptureLost;
+        // Button handles these before routed instance handlers. Observe handled events
+        // while retaining its native keyboard, accessibility and pointer capture behavior.
+        _mascotTarget.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(OnMascotPressed), true);
+        _mascotTarget.AddHandler(UIElement.PointerMovedEvent, new PointerEventHandler(OnMascotMoved), true);
+        _mascotTarget.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(OnMascotReleased), true);
+        _mascotTarget.AddHandler(UIElement.PointerCaptureLostEvent, new PointerEventHandler(OnMascotCaptureLost), true);
+        _mascotTarget.AddHandler(UIElement.PointerCanceledEvent, new PointerEventHandler(OnMascotCaptureLost), true);
         _mascotTarget.RightTapped += OnMascotRightTapped;
     }
 
@@ -212,6 +215,10 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
     {
         _dragStart = null;
         PositionInWorkArea();
+        // Button can raise Click after releasing capture. Suppress only that gesture,
+        // then allow keyboard/UI Automation invocation and subsequent ordinary clicks.
+        if (!DispatcherQueue.TryEnqueue(() => { if (_dragStart is null) _dragged = false; }))
+            Logger.Warn("Desktop lobster could not finish its drag gesture.");
     }
 
     private void OnMascotRightTapped(object sender, RightTappedRoutedEventArgs args)
@@ -280,10 +287,11 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
         if (_mascotTarget is { } target)
         {
             target.Click -= OnMascotClick;
-            target.PointerPressed -= OnMascotPressed;
-            target.PointerMoved -= OnMascotMoved;
-            target.PointerReleased -= OnMascotReleased;
-            target.PointerCaptureLost -= OnMascotCaptureLost;
+            target.RemoveHandler(UIElement.PointerPressedEvent, new PointerEventHandler(OnMascotPressed));
+            target.RemoveHandler(UIElement.PointerMovedEvent, new PointerEventHandler(OnMascotMoved));
+            target.RemoveHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(OnMascotReleased));
+            target.RemoveHandler(UIElement.PointerCaptureLostEvent, new PointerEventHandler(OnMascotCaptureLost));
+            target.RemoveHandler(UIElement.PointerCanceledEvent, new PointerEventHandler(OnMascotCaptureLost));
             target.RightTapped -= OnMascotRightTapped;
         }
         _host.Dispose();
