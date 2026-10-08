@@ -735,6 +735,80 @@ public sealed class WorkspaceWindowProofTests
         await WaitUntilAsync(() => IsVisible(workspaceElement, "WorkspaceOwner"));
     }
 
+    [Fact]
+    public async Task ChatComposer_EnterSendsAndShiftEnterInsertsNewline()
+    {
+        using var app = new AccessibilityAppFixture(initializeAxe: false, syntheticData: true, initialRoute: null);
+        await app.NavigateAsync("chat", "ChatPage", "ChatComposerInput");
+        var root = AutomationElement.FromHandle(app.HubWindowHandle);
+        string Value() => ((ValuePattern)Find(root, "ChatComposerInput")
+            .GetCurrentPattern(ValuePattern.Pattern)).Current.Value;
+        void SetValue(string value) => ((ValuePattern)Find(root, "ChatComposerInput")
+            .GetCurrentPattern(ValuePattern.Pattern)).SetValue(value);
+
+        // SendKeys targets the foreground window, so transient foreground contention
+        // can drop or scramble a batch. Each attempt is one full real-keyboard pass
+        // from a clean state; a deterministic product defect fails every attempt the
+        // same way and still fails the test.
+        for (var attempt = 1; ; attempt++)
+        {
+            SetValue(string.Empty);
+            var failure = await AttemptAsync(attempt);
+            if (failure is null)
+                return;
+            if (attempt == 4)
+                Assert.Fail($"Real-keyboard composer pass failed after {attempt} attempts. Last failure: {failure}");
+            await Task.Delay(500);
+        }
+
+        async Task<string?> AttemptAsync(int attempt)
+        {
+            try
+            {
+                // A background window can lose foreground permanently (minimized or
+                // stolen), which focus polling alone cannot recover from.
+                var window = (WindowPattern)root.GetCurrentPattern(WindowPattern.Pattern);
+                if (window.Current.WindowVisualState != WindowVisualState.Normal)
+                    window.SetWindowVisualState(WindowVisualState.Normal);
+                await FocusForKeyboardAsync(app, root, "ChatComposerInput");
+                System.Windows.Forms.SendKeys.SendWait("first line");
+                if (!await WaitBrieflyAsync(() => Value() == "first line"))
+                    return $"attempt {attempt}: typing did not land; value was '{Escape(Value())}'";
+
+                await FocusForKeyboardAsync(app, root, "ChatComposerInput");
+                System.Windows.Forms.SendKeys.SendWait("+{ENTER}");
+                System.Windows.Forms.SendKeys.SendWait("second line");
+                if (!await WaitBrieflyAsync(
+                        () => Value().ReplaceLineEndings("\n") == "first line\nsecond line"))
+                    return $"attempt {attempt}: Shift+Enter did not produce two lines; value was '{Escape(Value())}'";
+
+                await FocusForKeyboardAsync(app, root, "ChatComposerInput");
+                System.Windows.Forms.SendKeys.SendWait("{ENTER}");
+                if (!await WaitBrieflyAsync(() => Value().Length == 0))
+                    return $"attempt {attempt}: Enter did not clear the composer; value was '{Escape(Value())}'";
+                return null;
+            }
+            catch (Exception ex)
+            {
+                return $"attempt {attempt}: {ex.GetType().Name}: {ex.Message}";
+            }
+        }
+    }
+
+    private static string Escape(string value) =>
+        value.Replace("\r", "{CR}").Replace("\n", "{LF}");
+
+    private static async Task<bool> WaitBrieflyAsync(Func<bool> predicate)
+    {
+        var timeout = Stopwatch.StartNew();
+        while (timeout.Elapsed < TimeSpan.FromSeconds(2))
+        {
+            if (predicate()) return true;
+            await Task.Delay(100);
+        }
+        return predicate();
+    }
+
     private static bool IsVisible(AutomationElement root, string id) =>
         FindOrNull(root, id) is { } element && !element.Current.IsOffscreen && element.Current.BoundingRectangle.Width > 0;
 

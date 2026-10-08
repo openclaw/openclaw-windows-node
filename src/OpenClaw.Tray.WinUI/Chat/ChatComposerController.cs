@@ -164,7 +164,7 @@ internal sealed partial class ChatComposerController : IDisposable
         var thread = inputs.CurrentThread;
         var draft = _vm.Draft;
         var attachments = _vm.PendingAttachments;
-        var message = draft.Trim();
+        var message = draft.Trim().Replace("\r\n", "\n").Replace('\r', '\n');
         if ((message.Length == 0 && attachments.Count == 0)
             || _vm.SlashDisplay.IsLoading
             || inputs.ConnectionState != "connected")
