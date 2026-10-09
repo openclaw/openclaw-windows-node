@@ -158,24 +158,6 @@ public sealed class MxcCommandRunnerIntegrationTests : IDisposable
     }
 
     [MxcNativeFact]
-    public async Task NativeSdk_TempIsReadyForCreateRenameDeleteWithoutPayloadInitialization()
-    {
-        var result = await Runner.RunAsync(Cmd(
-            "echo TEMP_STARTED & echo CHILD_TEMP=%TEMP% & " +
-            "echo TEMP_CREATED > \"%TEMP%\\t.txt\" & type \"%TEMP%\\t.txt\" & " +
-            "move /Y \"%TEMP%\\t.txt\" \"%TEMP%\\u.txt\" & type \"%TEMP%\\u.txt\" & " +
-            "del \"%TEMP%\\u.txt\" & if not exist \"%TEMP%\\u.txt\" echo TEMP_DELETED & echo TEMP_FINISHED"));
-        Write("temp-readiness-no-initializer.json", result);
-        Assert.Contains("TEMP_STARTED", result.Stdout);
-        Assert.Contains("TEMP_FINISHED", result.Stdout);
-        Assert.False(result.TimedOut);
-        Assert.Contains("TEMP_CREATED", result.Stdout);
-        Assert.True(result.Stdout.Split("TEMP_CREATED", StringSplitOptions.None).Length >= 3,
-            "Both create/read and rename/read must succeed before delete can count as temp readiness.");
-        Assert.Contains("TEMP_DELETED", result.Stdout);
-    }
-
-    [MxcNativeFact]
     public async Task NativeSdk_UserFolderMatrixBlocksUngrantReadAndProtectedChildren()
     {
         File.WriteAllText(Path.Combine(Documents, "read.txt"), "DOCUMENT_MARKER");

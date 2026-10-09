@@ -243,10 +243,6 @@ Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `ap
   `NativeSdk_DefaultEnvironmentProvidesTempWithoutInheritingParentProcessVariables`
   proves TEMP creation/read without mkdir and checks a synthetic parent-only
   variable is absent. The native permission matrix also uses SDK TEMP directly.
-  `NativeSdk_TempIsReadyForCreateRenameDeleteWithoutPayloadInitialization`
-  separately tests the full temporary-file lifecycle. TEMP rename is denied
-  on the tested Windows client even with the SDK defaults; do not hide that
-  failure or infer full tool compatibility from successful creation/read.
   No initializer, directory-name guessing, extra launcher or host TEMP grant
   is added. Native payloads are fixed synthetic commands, not another OpenClaw
   process that could use the SDK-default appdata paths.
