@@ -404,35 +404,27 @@ public sealed class InstallerIssAssertionTests
     public void MxcSdk_IsRestoredCopiedValidatedAndIncludedInInstallerPayload()
     {
         var repositoryRoot = TestRepositoryPaths.GetRepositoryRoot();
-        var packageJson = File.ReadAllText(Path.Combine(repositoryRoot, "package.json"));
-        var packageLock = File.ReadAllText(Path.Combine(repositoryRoot, "package-lock.json"));
+        var sharedProject = File.ReadAllText(Path.Combine(
+            repositoryRoot, "src", "OpenClaw.Shared", "OpenClaw.Shared.csproj"));
         var trayProject = File.ReadAllText(Path.Combine(
             repositoryRoot, "src", "OpenClaw.Tray.WinUI", "OpenClaw.Tray.WinUI.csproj"));
         var iss = File.ReadAllText(Path.Combine(repositoryRoot, "installer.iss"));
 
-        Assert.Contains(@"""@microsoft/mxc-sdk""", packageJson);
-        Assert.Contains(@"""@microsoft/mxc-sdk"": ""^0.8.0""", packageJson);
-        Assert.Contains(@"""node_modules/@microsoft/mxc-sdk""", packageLock);
-        Assert.Contains(@"""version"": ""0.8.0""", packageLock);
-        Assert.Contains("RestoreMxcNodeBridge", trayProject);
-        Assert.Contains(@"Inputs=""$(OpenClawRepoRoot)package-lock.json""", trayProject);
-        Assert.Contains(@"<MxcSdkRestoreStamp>$(OpenClawRepoRoot)node_modules\.openclaw-mxc-sdk-$(MxcSdkExpectedVersion).stamp</MxcSdkRestoreStamp>", trayProject);
-        Assert.Contains(@"Outputs=""$(MxcSdkRestoreStamp)""", trayProject);
-        Assert.Contains(@"<Touch Files=""$(MxcSdkRestoreStamp)"" AlwaysCreate=""true"" />", trayProject);
-        Assert.Contains("npm ci --no-audit --no-fund", trayProject);
-        Assert.Contains("CopyWxcExecToOutput", trayProject);
-        Assert.Contains("CopyWxcExecToPublish", trayProject);
-        Assert.Contains("ValidateWxcExecShipped", trayProject);
-        Assert.Contains("ValidateWxcExecPublished", trayProject);
-        Assert.Contains(@"tools\mxc\$(MxcArch)\wxc-exec.exe", trayProject);
-
-        // The Inno payload recurses through the prepared publish directory, so
-        // publish-time tools\mxc\<arch>\wxc-exec.exe is shipped with the app.
+        Assert.Contains(@"PackageReference Include=""Microsoft.Mxc.Sdk"" Version=""1.0.0""", sharedProject);
+        Assert.False(File.Exists(Path.Combine(repositoryRoot, "package.json")));
+        Assert.False(File.Exists(Path.Combine(repositoryRoot, "package-lock.json")));
+        Assert.DoesNotContain("RestoreMxcNodeBridge", trayProject);
+        Assert.Contains("RemoveLegacyMxcOutput", trayProject);
+        Assert.Contains("Remove-LegacyMxcPayload.ps1", trayProject);
+        Assert.Contains("System.IO.Path]::Combine('$(TargetDir)', '.')", trayProject);
+        Assert.Contains("System.IO.Path]::Combine('$(PublishDir)', '.')", trayProject);
+        Assert.DoesNotContain("CopyMxc", trayProject);
+        Assert.DoesNotContain("npm ci", trayProject);
         Assert.Contains(@"Source: ""{#publish}\*""; DestDir: ""{app}""; Flags: ignoreversion recursesubdirs", iss);
     }
 
     [Fact]
-    public void MxcRuntime_ProbesShippedWxcExecAndSystemRunUsesIt()
+    public void MxcRuntime_UsesTypedSdkAndOnlyPositiveWindowsCompatibility()
     {
         var repositoryRoot = TestRepositoryPaths.GetRepositoryRoot();
         var availability = File.ReadAllText(Path.Combine(
@@ -440,16 +432,40 @@ public sealed class InstallerIssAssertionTests
         var nodeService = File.ReadAllText(Path.Combine(
             repositoryRoot, "src", "OpenClaw.Tray.WinUI", "Services", "NodeService.cs"));
 
-        Assert.Contains(@"Path.Combine(root, ""tools"", ""mxc"", arch, ""wxc-exec.exe"")", availability);
-        Assert.Contains("WxcExecOverrideEnvVar", availability);
-        Assert.Contains("node_modules", availability);
-        Assert.Contains("@microsoft", availability);
-        Assert.Contains("mxc-sdk", availability);
+        Assert.Contains("MxcContainer.Probe()", availability);
+        Assert.DoesNotContain("wxc-exec", availability);
+        Assert.DoesNotContain("node_modules", availability);
 
         Assert.Contains("private ICommandRunner BuildSystemRunRunner()", nodeService);
         Assert.Contains("MxcAvailability.Probe(_logger)", nodeService);
-        Assert.Contains("new DirectAppContainerExecutor(GetOrProbeMxcAvailability, _logger)", nodeService);
+        Assert.DoesNotContain("new LocalCommandRunner", nodeService);
+        Assert.DoesNotContain("new DirectAppContainerExecutor", nodeService);
         Assert.Contains("return new MxcCommandRunner(", nodeService);
+        var runner = File.ReadAllText(Path.Combine(repositoryRoot,
+            "src", "OpenClaw.Shared", "Mxc", "MxcCommandRunner.cs"));
+        Assert.Contains("if (availability.IsWindowsUnsupported)", runner);
+        Assert.Contains("UnsupportedWindowsCommandExecutor.RunAsync", runner);
+        Assert.DoesNotContain("LocalCommandRunner", runner);
     }
 
+    [Fact]
+    public void UpgradeCleanup_CoversInnoAndCopyOverZipStartupWithoutTouchingUserState()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var iss = File.ReadAllText(Path.Combine(root, "installer.iss"));
+        foreach (var arch in new[] { "x64", "arm64" })
+        {
+            Assert.Contains($@"Type: files; Name: ""{{app}}\tools\mxc\{arch}\wxc-exec.exe""", iss);
+            Assert.Contains($@"Type: files; Name: ""{{app}}\tools\mxc\{arch}\wslcsdk.dll""", iss);
+            Assert.Contains($@"Type: dirifempty; Name: ""{{app}}\tools\mxc\{arch}""", iss);
+        }
+        var app = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
+        Assert.Contains("LegacyMxcFiles.Cleanup(AppContext.BaseDirectory, PackageHelper.IsPackaged)", app);
+        var cleanup = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Shared", "Mxc", "LegacyMxcFiles.cs"));
+        Assert.Contains("if (isPackaged) return []", cleanup);
+        Assert.Contains("FileAttributes.ReparsePoint", cleanup);
+        Assert.DoesNotContain("recursive: true", cleanup);
+        Assert.DoesNotContain("settings.json", cleanup);
+        Assert.DoesNotContain("gateways.json", cleanup);
+    }
 }

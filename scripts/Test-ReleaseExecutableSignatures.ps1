@@ -5,7 +5,7 @@
 .DESCRIPTION
     Classifies every .exe and .dll in a release payload. OpenClaw-owned binaries
     must be signed when -RequireSignedOpenClaw is passed. Third-party binaries,
-    including wxc-exec.exe, must not be signed by the OpenClaw release signer.
+    including the official MXC helpers, must not be signed by the OpenClaw release signer.
     Unknown executables and unknown OpenClaw-named binaries fail closed.
 
 .PARAMETER PayloadPath
@@ -45,6 +45,7 @@ function Get-BinaryClassification {
     param([Parameter(Mandatory = $true)][string]$RelativePath)
 
     switch -Regex ($RelativePath) {
+        '^tools\\mxc\\(x64|arm64)\\(wxc-exec\.exe|wslcsdk\.dll)$' { return "ObsoleteMxc" }
         '^OpenClaw\.Tray\.WinUI\.exe$' { return "OpenClawOwned" }
         '^OpenClaw\.Tray\.WinUI\.dll$' { return "OpenClawOwned" }
         '^OpenClaw\.Chat\.dll$' { return "OpenClawOwned" }
@@ -55,7 +56,7 @@ function Get-BinaryClassification {
         '^OpenClawTray\.FunctionalUI\.dll$' { return "OpenClawOwned" }
         '(^|\\)createdump\.exe$' { return "ThirdPartyExcluded" }
         '(^|\\)RestartAgent\.exe$' { return "ThirdPartyExcluded" }
-        '^tools\\mxc\\[^\\]+\\wxc-exec\.exe$' { return "ThirdPartyExcluded" }
+        '^(plm|wxc-wslc-daemon)\.exe$' { return "ThirdPartyExcluded" }
         '(^|\\)OpenClaw[^\\]*\.(exe|dll)$' { return "UnknownOpenClaw" }
         '\.dll$' { return "ThirdPartyExcluded" }
         default { return "UnknownExecutable" }
@@ -89,6 +90,9 @@ $errors = New-Object System.Collections.Generic.List[string]
 
 foreach ($binary in $binaries) {
     switch ($binary.Classification) {
+        "ObsoleteMxc" {
+            $errors.Add("Obsolete MXC binary in release payload: $($binary.RelativePath)")
+        }
         "OpenClawOwned" {
             if ($RequireSignedOpenClaw -and $binary.SignatureStatus -ne "Valid") {
                 $errors.Add("OpenClaw binary is not validly signed: $($binary.RelativePath) [$($binary.SignatureStatus)]")
@@ -140,8 +144,10 @@ if ($binaries | Where-Object RelativePath -eq "SetupEngine\OpenClaw.SetupEngine.
 if ($binaries | Where-Object RelativePath -eq "SetupEngine\OpenClaw.SetupEngine.exe") {
     $errors.Add("SetupEngine\OpenClaw.SetupEngine.exe should not be present in the release payload.")
 }
-if (-not ($binaries | Where-Object RelativePath -match '^tools\\mxc\\[^\\]+\\wxc-exec\.exe$')) {
-    $errors.Add("Missing tools\mxc\<arch>\wxc-exec.exe third-party executable.")
+foreach ($helper in @("plm.exe", "wxc-wslc-daemon.exe")) {
+    if (-not ($binaries | Where-Object RelativePath -eq $helper)) {
+        $errors.Add("Missing $helper third-party MXC executable.")
+    }
 }
 
 if ($errors.Count -gt 0) {

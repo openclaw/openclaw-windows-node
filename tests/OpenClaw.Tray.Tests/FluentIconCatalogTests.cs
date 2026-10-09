@@ -17,7 +17,7 @@ public sealed class FluentIconCatalogTests
     private static readonly string[] ExpectedConstants =
     {
         "StatusOk", "StatusWarn", "StatusErr",
-        "Sessions", "Approvals", "Devices", "Hostname", "Permissions",
+        "Sessions", "Approvals", "Devices", "Hostname", "Permissions", "SandboxStrict",
         "Browser", "Camera", "Canvas", "Screen", "Location", "Voice", "Speech", "System", "Terminal", "Operator",
         "Dashboard", "OpenInBrowser", "Chat", "CanvasAct", "VoiceAct", "Settings",
         "Setup", "About", "Notifications", "Exit",
@@ -51,6 +51,12 @@ public sealed class FluentIconCatalogTests
             map[m.Groups["name"].Value] = Regex.Unescape(m.Groups["value"].Value);
         }
         return map;
+    }
+
+    [Fact]
+    public void StrictPreset_UsesPublishedLockGlyph()
+    {
+        Assert.Equal("\uE72E", ParseConstants(ReadCatalogSource())["SandboxStrict"]);
     }
 
     [Fact]

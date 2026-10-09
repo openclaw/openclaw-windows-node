@@ -393,20 +393,20 @@ Reviewed attributes are:
   `legacy` remains a finite historical value for backward-compatible telemetry
   readers, but the runtime no longer selects the legacy approval path. Present
   only for `system.run` traces and failure/cancellation logs
-- `openclaw.node.tool.sandbox.requested`: whether sandboxing was configured
+- `openclaw.node.tool.sandbox.requested`: whether MXC execution was requested;
+  Windows `system.run` always requests containment
 - `openclaw.node.tool.sandbox.applied`: whether the command was known to run
-  inside the sandbox; omitted when an infrastructure failure makes that unknown
+  inside the sandbox; omitted for infrastructure failure or a deadline that
+  may have interrupted a still-pending native launch
 - `openclaw.node.tool.sandbox.provider`: `mxc` when MXC was selected
-- `openclaw.node.tool.sandbox.technology`: `windows_appcontainer` for the
-  currently wired MXC backend
+- `openclaw.node.tool.sandbox.technology`: `windows_basecontainer` for an
+  admitted SDK execution result; omitted on blocked/unknown execution
 - `openclaw.node.tool.sandbox.denial.reason`: a finite host-side pre-execution
   reason: `direct_argv_unsupported`, `custom_environment_unsupported`,
   `effective_shell_changed`, `fallback_shell_unapproved`, or
   `unsupported_sandbox_request`
-- `openclaw.node.tool.sandbox.fallback.target`: `unsandboxed` when an unavailable
-  MXC backend caused compatibility fallback
-- `openclaw.node.tool.sandbox.fallback.reason`: `mxc_unavailable` for that
-  fallback
+- Sandbox fallback attributes are retired from current execution. There is no
+  host fallback.
 - `error.type`: exception type only
 
 Failure categories are `invalid_request`, `unsupported_command`, `node_busy`,
@@ -438,6 +438,12 @@ nonzero exit is `command_failed` with `sandbox.requested=true` and
 cannot distinguish a command failure caused by an in-container policy from
 other nonzero process exits without unsafe message parsing or a sandbox
 protocol change.
+
+The public SDK exposes capture metadata, not an applied-tier readback. Native
+request admission is not post-launch telemetry. Local MXC logs keep applied
+tier `unknown` and include only operation, requested mode, grant counts,
+exit/timeout and coarse error type. Raw config and full-secret logging are
+removed. SDK-native telemetry is explicitly disabled for owned spawns.
 
 The tray exports one structured log only for a failed or canceled invocation.
 Forwarding uses a nonblocking queue capped at 256 entries. Full queues drop the

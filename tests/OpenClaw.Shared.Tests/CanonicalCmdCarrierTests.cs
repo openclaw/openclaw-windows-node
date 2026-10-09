@@ -257,7 +257,7 @@ public class CanonicalCmdCarrierTests
             "src",
             "OpenClaw.Shared",
             "Mxc",
-            "MxcConfigBuilder.cs");
+            "MxcRequestBuilder.cs");
         Assert.True(File.Exists(path), $"MxcConfigBuilder source not found: {path}");
         return File.ReadAllText(path);
     }

@@ -2,6 +2,23 @@ namespace OpenClaw.SetupEngine.Tests;
 
 public sealed class SetupAccessDraftTests
 {
+    [Theory]
+    [InlineData(SetupCapabilityProfile.ReadOnly, OpenClaw.Shared.SystemRunAccessPreset.Strict)]
+    [InlineData(SetupCapabilityProfile.Standard, OpenClaw.Shared.SystemRunAccessPreset.Balanced)]
+    [InlineData(SetupCapabilityProfile.Full, OpenClaw.Shared.SystemRunAccessPreset.Open)]
+    public void ExplicitPersona_SelectsFileIntentWithoutChangingCapabilityMembership(
+        SetupCapabilityProfile profile, OpenClaw.Shared.SystemRunAccessPreset preset)
+    {
+        var draft = new SetupAccessDraft(new SetupConfig());
+        draft.ApplyProfile(profile);
+        Assert.Equal(preset, draft.Config.Settings.SystemRunPreset);
+        Assert.True(draft.Config.Settings.SystemRunPresetIsExplicit);
+        if (profile == SetupCapabilityProfile.ReadOnly) Assert.False(draft.GetCapability(SetupCapability.System));
+        draft.SetCapability(SetupCapability.Canvas, false);
+        Assert.Equal(SetupCapabilityProfile.Custom, draft.Profile);
+        Assert.Equal(preset, draft.Config.Settings.SystemRunPreset);
+    }
+
     [Fact]
     public void ExistingNativeLocalAi_BindsExactGatewayWithoutWslFinalizationOrSettingsReplacement()
     {
@@ -145,10 +162,14 @@ public sealed class SetupAccessDraftTests
         var draft = new SetupAccessDraft(config);
         Assert.Same(config, draft.Config);
         Assert.Equal(SetupCapabilityProfile.Standard, draft.Profile);
+        Assert.Equal(OpenClaw.Shared.SystemRunAccessPreset.Balanced, config.Settings.SystemRunPreset);
+        Assert.False(config.Settings.SystemRunPresetIsExplicit);
         draft.ApplyProfile(SetupCapabilityProfile.Full);
         draft.SelectRoute(SetupGatewayRoute.Remote);
         draft.SelectRoute(SetupGatewayRoute.ManagedWsl);
         Assert.Equal(SetupCapabilityProfile.Full, draft.Profile);
+        Assert.Equal(OpenClaw.Shared.SystemRunAccessPreset.Open, config.Settings.SystemRunPreset);
+        Assert.Equal(SetupCapabilityProfile.Full, new SetupAccessDraft(config).Profile);
         Assert.Equal(SetupCapabilityProfile.Full, new SetupAccessDraft(new SetupConfig()).Profile);
     }
 

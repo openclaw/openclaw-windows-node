@@ -40,8 +40,7 @@ public enum NodeToolErrorCategory
 public enum NodeToolExecutionMode
 {
     Host,
-    Sandbox,
-    HostFallback
+    Sandbox
 }
 
 public enum NodeToolApprovalPipeline
@@ -274,17 +273,13 @@ public sealed class NodeToolInvocation : IDisposable
                     NodeToolErrorCategory.SandboxDenied => false,
                     NodeToolErrorCategory.SandboxUnavailable => false,
                     NodeToolErrorCategory.SandboxFailure => null,
+                    NodeToolErrorCategory.Timeout => null,
                     _ => true,
                 },
                 Provider: "mxc",
-                Technology: "windows_appcontainer"),
-            NodeToolExecutionMode.HostFallback => new NodeToolSandboxTelemetry(
-                Requested: true,
-                Applied: false,
-                Provider: "mxc",
-                Technology: "windows_appcontainer",
-                FallbackTarget: "unsandboxed",
-                FallbackReason: "mxc_unavailable"),
+                Technology: errorCategory is NodeToolErrorCategory.SandboxDenied or
+                    NodeToolErrorCategory.SandboxUnavailable or NodeToolErrorCategory.SandboxFailure or
+                    NodeToolErrorCategory.Timeout ? null : "windows_basecontainer"),
             _ => null,
         };
     }
@@ -382,8 +377,7 @@ public static class NodeToolTelemetryValues
         {
             NodeToolExecutionMode.Host => "host",
             NodeToolExecutionMode.Sandbox => "sandbox",
-            NodeToolExecutionMode.HostFallback => "host_fallback",
-            _ => "host"
+            _ => "unknown"
         };
 
     public static string ToTelemetryValue(this NodeToolApprovalPipeline value) =>

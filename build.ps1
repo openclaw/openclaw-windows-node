@@ -326,29 +326,6 @@ if (-not $git) {
     Ensure-GitVersionRepositoryHistory
 }
 
-# Check Node.js + npm (WinUI build runs `npm ci` to restore @microsoft/mxc-sdk
-# so it can copy wxc-exec.exe into the build output)
-$nodeVersion = $null
-try { $nodeVersion = & node --version 2>$null } catch {}
-if (-not $nodeVersion) {
-    Write-Error "Node.js not found (required by WinUI build to restore @microsoft/mxc-sdk)"
-    Write-Info "Install via: winget install OpenJS.NodeJS.LTS"
-    Write-Info "Or download from: https://nodejs.org/"
-    $issues += "Missing Node.js"
-} else {
-    Write-Success "Node.js: $nodeVersion"
-
-    $npmVersion = $null
-    try { $npmVersion = & npm --version 2>$null } catch {}
-    if (-not $npmVersion) {
-        Write-Error "npm not found on PATH (WinUI build invokes `npm ci`)"
-        Write-Info "npm normally ships with Node.js - reinstall Node.js or repair the install"
-        $issues += "Missing npm"
-    } else {
-        Write-Success "npm: $npmVersion"
-    }
-}
-
 # Check Windows SDK (for WinUI)
 $windowsSdkPath = "${env:ProgramFiles(x86)}\Windows Kits\10\Include"
 if (Test-Path $windowsSdkPath) {

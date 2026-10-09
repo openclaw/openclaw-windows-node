@@ -186,7 +186,8 @@ public sealed class ExecApprovalsStore : IExecApprovalsPresentationStore, IDispo
     // every reader ignores a generated rule that has no argument binding, so writing
     // one without a pattern would silently produce a rule that never matches.
     public Task<bool> AddAllowlistEntryAsync(
-        string? agentId, string pattern, string? argPattern, string? commandText)
+        string? agentId, string pattern, string? argPattern, string? commandText,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(argPattern))
         {
@@ -194,13 +195,14 @@ public sealed class ExecApprovalsStore : IExecApprovalsPresentationStore, IDispo
             return Task.FromResult(false);
         }
         return AddAllowlistEntryCoreAsync(
-            agentId, pattern, argPattern, commandText, ExecAllowlistMatcher.AllowAlwaysSource);
+            agentId, pattern, argPattern, commandText, ExecAllowlistMatcher.AllowAlwaysSource, cancellationToken);
     }
 
     // Dedup is keyed on (pattern, argPattern) so a bound rule and an unbound rule for
     // the same executable stay distinct records.
     private async Task<bool> AddAllowlistEntryCoreAsync(
-        string? agentId, string pattern, string? argPattern, string? commandText, string? source)
+        string? agentId, string pattern, string? argPattern, string? commandText, string? source,
+        CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
 
@@ -242,7 +244,7 @@ public sealed class ExecApprovalsStore : IExecApprovalsPresentationStore, IDispo
                 // RecordAllowlistUseAsync stamps it on first successful use.
             });
             return true;
-        }).ConfigureAwait(false);
+        }, cancellationToken).ConfigureAwait(false);
 
         return wrote || alreadyPresent;
     }
@@ -895,7 +897,7 @@ public sealed class ExecApprovalsStore : IExecApprovalsPresentationStore, IDispo
     private static ExecApprovalsResolved UnmigratedLegacyFallback(string? agentId) =>
         ResolveFromFile(UnmigratedLegacyFallbackFile(), agentId);
 
-    private async Task<string> SaveFileAsync(ExecApprovalsFile file)
+    private async Task<string> SaveFileAsync(ExecApprovalsFile file, CancellationToken cancellationToken = default)
     {
         var dir = Path.GetDirectoryName(_filePath)!;
         if (!Directory.Exists(dir))
@@ -919,7 +921,8 @@ public sealed class ExecApprovalsStore : IExecApprovalsPresentationStore, IDispo
         try
         {
             var json = JsonSerializer.Serialize(file, JsonOptions);
-            await File.WriteAllTextAsync(tmp, json).ConfigureAwait(false);
+            await File.WriteAllTextAsync(tmp, json, cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
             File.Move(tmp, _filePath, overwrite: true);
             return ComputeRawHash(json);
         }
@@ -994,12 +997,13 @@ public sealed class ExecApprovalsStore : IExecApprovalsPresentationStore, IDispo
             };
     }
 
-    private async Task<bool> UpdateFileAsync(Func<ExecApprovalsFile, bool> mutate)
+    private async Task<bool> UpdateFileAsync(Func<ExecApprovalsFile, bool> mutate,
+        CancellationToken cancellationToken = default)
     {
         ExecApprovalsChangedEventArgs? change = null;
         var wrote = false;
 
-        await _lock.WaitAsync().ConfigureAwait(false);
+        await _lock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             if (TryMigrateLegacyFile() == LegacyMigrationStatus.Blocked)
@@ -1025,10 +1029,12 @@ public sealed class ExecApprovalsStore : IExecApprovalsPresentationStore, IDispo
                 return false;
             }
 
-            var savedHash = await SaveFileAsync(file).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            var savedHash = await SaveFileAsync(file, cancellationToken).ConfigureAwait(false);
             change = RecordManagedSnapshot(CreateSnapshot(file, exists: true, savedHash), origin: null);
             wrote = true;
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
             _logger.Warn($"[EXEC-APPROVALS] exec-approvals.json write failed ({ex.Message}); side effect skipped");

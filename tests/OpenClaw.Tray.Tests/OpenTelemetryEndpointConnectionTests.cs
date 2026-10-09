@@ -445,12 +445,12 @@ public sealed class OpenTelemetryEndpointConnectionTests
     }
 
     [Fact]
-    public void NodeToolLogAttributes_DescribeUnsandboxedFallback()
+    public void NodeToolLogAttributes_DescribeBlockedMxcWithoutHostFallback()
     {
         var completion = FailureCompletion() with
         {
-            ErrorCategory = NodeToolErrorCategory.Timeout,
-            ExecutionMode = NodeToolExecutionMode.HostFallback,
+            ErrorCategory = NodeToolErrorCategory.SandboxUnavailable,
+            ExecutionMode = NodeToolExecutionMode.Sandbox,
         };
 
         var attributes = OpenTelemetryOtlpProbeSink.CreateNodeToolLogAttributes(completion)
@@ -459,15 +459,9 @@ public sealed class OpenTelemetryEndpointConnectionTests
         Assert.Equal(true, attributes[NodeToolInvocation.SandboxRequestedTag]);
         Assert.Equal(false, attributes[NodeToolInvocation.SandboxAppliedTag]);
         Assert.Equal("mxc", attributes[NodeToolInvocation.SandboxProviderTag]);
-        Assert.Equal(
-            "windows_appcontainer",
-            attributes[NodeToolInvocation.SandboxTechnologyTag]);
-        Assert.Equal(
-            "unsandboxed",
-            attributes[NodeToolInvocation.SandboxFallbackTargetTag]);
-        Assert.Equal(
-            "mxc_unavailable",
-            attributes[NodeToolInvocation.SandboxFallbackReasonTag]);
+        Assert.DoesNotContain(NodeToolInvocation.SandboxTechnologyTag, attributes.Keys);
+        Assert.DoesNotContain(NodeToolInvocation.SandboxFallbackTargetTag, attributes.Keys);
+        Assert.DoesNotContain(NodeToolInvocation.SandboxFallbackReasonTag, attributes.Keys);
     }
 
     [Fact]

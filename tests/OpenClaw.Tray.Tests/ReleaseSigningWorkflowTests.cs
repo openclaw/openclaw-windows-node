@@ -61,7 +61,8 @@ public sealed class ReleaseSigningWorkflowTests
         Assert.Contains("SetupEngine\\OpenClaw.SetupEngine.UI.exe should not be present", verifier);
         Assert.Contains(@"(^|\\)createdump\.exe$", verifier);
         Assert.Contains(@"(^|\\)RestartAgent\.exe$", verifier);
-        Assert.Contains(@"^tools\\mxc\\[^\\]+\\wxc-exec\.exe$", verifier);
+        Assert.Contains(@"^(plm|wxc-wslc-daemon)\.exe$", verifier);
+        Assert.Contains("@(\"plm.exe\", \"wxc-wslc-daemon.exe\")", verifier);
         Assert.Contains("Unknown executable in release payload", verifier);
         Assert.Contains("Unknown OpenClaw binary in release payload", verifier);
         Assert.Contains("$OpenClawSignerSubject", verifier);

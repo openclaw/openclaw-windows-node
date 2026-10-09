@@ -21,9 +21,8 @@ namespace OpenClaw.Shared.ExecApprovals;
 /// recognized canonical cmd carrier they differ: the identity looks through the
 /// carrier to the inner executable so the operator approves what really runs, while
 /// the transport stays the original validated carrier. Substituting the bound direct
-/// argv for the carrier would drop the carrier's in-band PATH/TEMP bootstrap, which
-/// is the only environment contract MXC currently accepts (MxcConfigBuilder rejects
-/// a non-empty process.env), so the transport must be preserved verbatim.
+/// argv for the carrier would rewrite the approved shell transport. The SDK receives
+/// its environment separately; canonical carrier identity and pinning remain intact.
 /// </summary>
 public sealed class ExecReusableCommand
 {

@@ -19,7 +19,7 @@ A comprehensive guide for building, running, and contributing to the OpenClaw Wi
 
 - **.NET SDK 10.0.400 or newer** - [Download here](https://dotnet.microsoft.com/download)
 - **Windows 10/11** - WinUI 3 and Windows App SDK require Windows 10 version 1903 or later
-- **Node.js LTS with npm** - Required by the WinUI build to restore JavaScript build assets
+- **Node.js LTS with npm** - Used by selected CI, documentation and frontend helpers. MXC and the WinUI execution path are restored through NuGet, not a root npm bridge.
 - **Windows 10 SDK** - Required for WinUI builds
 - **WebView2 Runtime** - Usually pre-installed on Windows 10+ ([Manual download](https://developer.microsoft.com/microsoft-edge/webview2/))
 - **Visual Studio 2022** (optional) - For easier development and debugging with WinUI 3 designer support
@@ -300,8 +300,8 @@ the tree was dirty, the package version, publisher, and the package SHA-256.
 architecture must match, the version must be four `uint16` components ending in
 `.0` because Partner Center reserves the revision field, exactly one `.msix`
 must be produced, required content must be present (the app host, the .NET
-runtime, the in-process SetupEngine UI, and the architecture-matched
-`wxc-exec.exe`), and forbidden content must be absent (`AppxSignature.p7x` and
+runtime, the in-process SetupEngine UI, and the architecture-matched MXC SDK
+native assets), and forbidden content must be absent (`AppxSignature.p7x` and
 the loose Visual C++ runtime files that the Inno payload ships but the MSIX
 resolves through its VCLibs framework dependency).
 
@@ -526,6 +526,25 @@ Useful local scripts:
 - For a native Gateway/MXC and llama.cpp clean retest, use the [uninstall skill](.agents/skills/uninstall/SKILL.md) and its [hard-clean procedure](.agents/skills/uninstall/HARD-CLEAN.md). It includes package teardown, isolated profiles, shared-model consent, and post-clean verification; the WSL helpers below are not substitutes.
 - `.\scripts\dev-reset-rebuild-launch.ps1` resets tray data, rebuilds, and optionally launches the app; add `-WipeWslDistro` for a full local WSL gateway reset.
 - `.\scripts\validate-mxc-e2e.ps1` runs the formal WSL Gateway -> Windows node -> `system.run` MXC proof path for MXC-sensitive changes.
+
+MXC development uses the exact `Microsoft.Mxc.Sdk` 1.0.0 package in Shared.
+The SDK remains the only contained production path. Positively unsupported
+Windows selects a narrow direct-argv compatibility executor, not a failure
+fallback. Tests must distinguish that OS verdict from missing DLLs, unknown/
+failed probes and request/spawn errors. Node Sandbox disables permission controls
+and warns that file/network/clipboard/UI restrictions are not enforced in
+uncontained mode. Command approvals, deadlines and output bounds remain active.
+Companion's own OS minimum is unchanged.
+Unit tests inject the public `IMxcProcess` and a narrow spawn delegate, never a
+second production runner. Native isolated SDK proofs require
+`OPENCLAW_RUN_MXC_NATIVE_PROOF=1`; skipped proofs are not containment validation.
+The formal E2E script provisions WSL/Gateway resources. Run it only on a host
+where that exact runtime mutation is authorized. Balanced/Open use OS-resolved
+user-folder scope, never volume roots. Run
+`.\scripts\validate-mxc-userfolders-native.ps1 -ArtifactDirectory <owned-path-outside-repo> -SourceManifest <current-manifest>`
+for authorized product-runner proof against synthetic profiles only. It does
+not provision a Gateway, WSL, tray, listener or elevated resource. Native skips
+fail this proof. Keep real-appdata and fixture/ancestor ACL before/after evidence.
 
 ## Architecture Overview
 

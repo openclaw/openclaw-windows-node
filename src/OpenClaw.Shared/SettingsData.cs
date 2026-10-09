@@ -189,22 +189,11 @@ public record class SettingsData
 
     // ── MXC sandbox ─────────────────────────────────────────────────────
     /// <summary>
-    /// Master switch for system.run containment. When <c>true</c> (default),
-    /// system.run uses MXC containment when available and uses the compatibility
-    /// host fallback when MXC is unavailable unless strict blocking is enabled. Unsupported
-    /// sandbox request features are rejected while sandboxing remains enabled.
-    /// When <c>false</c>, system.run always runs on the host as it did before
-    /// MXC support was added.
+    /// Personal-file scope. Missing legacy values retain only existing selected grants.
+    /// Broad scopes are explicit intent, not permission to bypass containment.
     /// </summary>
-    public bool SystemRunSandboxEnabled { get; set; } = true;
-
-    /// <summary>
-    /// When sandboxing is enabled but MXC is unavailable, block system.run
-    /// instead of using the compatibility host fallback. Default <c>false</c>
-    /// preserves the pre-MXC host fallback unless the operator opts into strict
-    /// fail-closed behavior.
-    /// </summary>
-    public bool SystemRunBlockHostFallbackWhenMxcUnavailable { get; set; } = false;
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public SystemRunFilesystemScope? SystemRunFilesystemScope { get; set; }
 
     /// <summary>
     /// When sandboxed, allow system.run commands to reach the public internet.
@@ -228,7 +217,7 @@ public record class SettingsData
     /// <summary>
     /// Per-folder access grants. Each well-known user folder can be
     /// individually opened to the sandbox in read-only or read-write mode.
-    /// Default for all: <c>null</c> (blocked).
+    /// Default for all: <c>null</c> (no additional grant beyond the selected scope).
     /// </summary>
     public SandboxFolderAccess? SandboxDocumentsAccess { get; set; }
     public SandboxFolderAccess? SandboxDownloadsAccess { get; set; }

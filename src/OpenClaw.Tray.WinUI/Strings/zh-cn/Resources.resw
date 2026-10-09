@@ -3168,27 +3168,13 @@
   <data name="AppNotification_ChannelNeedsAttention_StatusMessageFormat" xml:space="preserve">
     <value>网关报告 {0} 为 {1}。</value>
   </data>
-  <data name="AppNotification_SandboxDisabled_Title" xml:space="preserve">
-    <value>节点沙盒已关闭: 命令将不受限制地运行</value>
-  </data>
-  <data name="AppNotification_SandboxDisabled_Message" xml:space="preserve">
-    <value>在重新启用节点沙盒之前，代理启动的 Windows 命令将在没有沙盒隔离的情况下运行。</value>
-  </data>
-  <data name="AppNotification_SandboxUnavailable_Title" xml:space="preserve">
-    <value>沙盒不可用: 回退到主机</value>
-  </data>
-  <data name="AppNotification_SandboxUnavailable_MessageFormat" xml:space="preserve">
-    <value>{0}
-
-在沙盒不可用期间，命令将在主机上运行，且没有沙盒保护。</value>
-  </data>
   <data name="AppNotification_SandboxUnavailableBlocked_Title" xml:space="preserve">
     <value>沙盒不可用: 命令已阻止</value>
   </data>
   <data name="AppNotification_SandboxUnavailableBlocked_MessageFormat" xml:space="preserve">
     <value>{0}
 
-由于已启用严格回退阻止，沙盒不可用期间命令会被阻止。</value>
+无法验证 MXC。命令将被阻止。请修复安装或重试。仅已确认不支持隔离的 Windows 允许未隔离执行。</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_DefaultReason" xml:space="preserve">
     <value>此计算机上没有可用的 MXC 沙盒基元。</value>
@@ -4585,9 +4571,6 @@
   <data name="SandboxPage_SecurityLevel.Text" xml:space="preserve">
     <value>安全级别</value>
   </data>
-  <data name="SandboxPage_OneClickToSet.Text" xml:space="preserve">
-    <value>一键设置下面的每个控件。自定义文件夹保持您的设置。</value>
-  </data>
   <data name="SandboxPage_LockedDown.Text" xml:space="preserve">
     <value>🔒 锁定</value>
   </data>
@@ -4613,13 +4596,13 @@
     <value>📁 文件</value>
   </data>
   <data name="SandboxPage_ByDefaultTheAgent.Text" xml:space="preserve">
-    <value>默认情况下,代理只有一个可读写的临时工作区文件夹。在下方授予对用户文件夹的访问权限。SSH 密钥、浏览器配置文件和 OpenClaw 自身的设置始终被阻止。</value>
+    <value>所选范围决定文件访问权限。这些选项添加文件夹授权；使用范围保留文件夹已有的范围权限。选择“所选文件夹”可将访问限制为明确授权的文件夹。受保护的文件夹始终被阻止。</value>
   </data>
   <data name="SandboxPage_Documents.Text" xml:space="preserve">
     <value>文档</value>
   </data>
   <data name="SandboxPage_Blocked.Content" xml:space="preserve">
-    <value>已阻止</value>
+    <value>使用范围</value>
   </data>
   <data name="SandboxPage_ReadOnly.Content" xml:space="preserve">
     <value>只读</value>
@@ -4631,7 +4614,7 @@
     <value>下载</value>
   </data>
   <data name="SandboxPage_Blocked2.Content" xml:space="preserve">
-    <value>已阻止</value>
+    <value>使用范围</value>
   </data>
   <data name="SandboxPage_ReadOnly2.Content" xml:space="preserve">
     <value>只读</value>
@@ -4643,7 +4626,7 @@
     <value>桌面</value>
   </data>
   <data name="SandboxPage_Blocked3.Content" xml:space="preserve">
-    <value>已阻止</value>
+    <value>使用范围</value>
   </data>
   <data name="SandboxPage_ReadOnly3.Content" xml:space="preserve">
     <value>只读</value>
@@ -4652,16 +4635,16 @@
     <value>读取与写入</value>
   </data>
   <data name="SandboxPage_ToolDirectoriesOnYour.Text" xml:space="preserve">
-    <value>PATH 上的工具目录在沙盒内也以只读方式授予,因此 git、node、python 和 dotnet 等命令行工具可用。从不授予驱动器根目录。</value>
+    <value>Windows 运行时文件夹可用。其他工具必须位于所选范围或明确授权的文件夹内。出现在 PATH 中不会授予文件访问权限。</value>
   </data>
   <data name="SandboxPage_CustomFolders.Text" xml:space="preserve">
     <value>自定义文件夹</value>
   </data>
   <data name="SandboxPage_CustomGrantsAreAdded.Text" xml:space="preserve">
-    <value>自定义授权将在上述规则之上添加。在“文档/下载/桌面”内添加具有更宽访问权限的文件夹,将覆盖该路径的行级设置。</value>
+    <value>自定义授权向所选范围添加访问权限。删除授权不会阻止范围已允许的访问。受保护的文件夹始终被阻止。</value>
   </data>
   <data name="SandboxPage_Blocked4.Content" xml:space="preserve">
-    <value>已阻止</value>
+    <value>移除授权</value>
   </data>
   <data name="SandboxPage_ReadOnly4.Content" xml:space="preserve">
     <value>只读</value>
@@ -6556,7 +6539,7 @@
     <value>节点沙盒不可用: 命令已阻止</value>
   </data>
   <data name="SandboxPage_StatusUnavailableBlockedSubtext" xml:space="preserve">
-    <value>此电脑上无法使用隔离，并且已启用严格回退阻止，因此代理启动的命令会被阻止。</value>
+    <value>无法验证 MXC。请修复安装或重试。SDK 或策略错误绝不会触发未隔离执行。</value>
   </data>
   <data name="SandboxPage_StatusUnavailableOffTitle" xml:space="preserve">
     <value>节点沙盒已关闭: 主机执行</value>
@@ -6591,11 +6574,6 @@
   <data name="SandboxPage_ProbeErrorTitle" xml:space="preserve">
     <value>无法验证沙盒可用性</value>
   </data>
-  <data name="SandboxPage_ProbeErrorMessageFormat" xml:space="preserve">
-    <value>{0}
-
-{1} 沙盒功能检查未完成。这通常是暂时性的（检查缓慢或被阻止）… 请重试；如果问题仍然存在，请检查安全软件是否阻止了 wxc-exec。</value>
-  </data>
   <data name="SandboxPage_Retry" xml:space="preserve">
     <value>重试</value>
   </data>
@@ -6612,11 +6590,6 @@
   </data>
   <data name="SandboxPage_ComponentsMissingTitle" xml:space="preserve">
     <value>缺少沙盒组件</value>
-  </data>
-  <data name="SandboxPage_ComponentsMissingMessageFormat" xml:space="preserve">
-    <value>{0}
-
-找不到 wxc-exec 二进制文件。{1} 如果这是开发者版本，请生成托盘应用，以便将 wxc-exec.exe 复制到输出文件夹。否则请重新安装伴侣应用以恢复沙盒。</value>
   </data>
   <data name="SandboxPage_ShowInstallInstructions" xml:space="preserve">
     <value>显示安装说明</value>
@@ -6973,13 +6946,13 @@
     <value>沙盒操作</value>
   </data>
   <data name="SandboxPage_PresetLockedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>锁定预设：无互联网、无剪贴板、无标准用户文件夹</value>
+    <value>严格预设：无个人文件或互联网访问</value>
   </data>
   <data name="SandboxPage_PresetBalancedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>推荐预设：启用互联网，文档、下载和桌面为只读</value>
+    <value>平衡预设：用户文件夹只读，互联网开启</value>
   </data>
   <data name="SandboxPage_PresetPermissiveButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>不受保护预设：启用互联网，可读写文档、下载和桌面</value>
+    <value>开放预设：用户文件夹可读写，互联网开启</value>
   </data>
   <data name="SandboxPage_DocsAccessCombo.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>文档访问级别</value>
@@ -7951,4 +7924,31 @@
   <data name="ChatPage_SetupCheckAgain.Content" xml:space="preserve">
     <value>再次检查</value>
   </data>
+  <data name="SandboxPage_PresetHelp.Text" xml:space="preserve"><value>预设会替换文件授权和互联网访问。剪贴板、Windows 界面和命令审批保持独立。</value></data>
+  <data name="SandboxPage_CustomPreset.Text" xml:space="preserve"><value>自定义权限</value></data>
+  <data name="SandboxPage_ApplyPreset" xml:space="preserve"><value>应用预设</value></data>
+  <data name="SandboxPage_PresetStrict.Text" xml:space="preserve"><value>严格</value></data>
+  <data name="SandboxPage_PresetBalanced.Text" xml:space="preserve"><value>平衡（默认）</value></data>
+  <data name="SandboxPage_PresetOpen.Text" xml:space="preserve"><value>开放</value></data>
+  <data name="SandboxPage_PresetStrictText.Text" xml:space="preserve"><value>不访问个人文件或互联网。仅允许运行时访问和私有工作目录。</value></data>
+  <data name="SandboxPage_PresetBalancedText.Text" xml:space="preserve"><value>读取用户配置目录和已解析的重定向个人文件夹。不写入个人文件。互联网开启。排除受保护文件夹。</value></data>
+  <data name="SandboxPage_PresetOpenText.Text" xml:space="preserve"><value>读写用户配置目录和已解析的重定向个人文件夹。互联网开启。排除受保护文件夹。</value></data>
+  <data name="SandboxPage_FileScope.Header" xml:space="preserve"><value>文件访问范围</value></data>
+  <data name="SandboxPage_SelectedFolders.Content" xml:space="preserve"><value>选定文件夹</value></data>
+  <data name="SandboxPage_UserFilesReadOnly.Content" xml:space="preserve"><value>用户文件夹：只读</value></data>
+  <data name="SandboxPage_UserFilesReadWrite.Content" xml:space="preserve"><value>用户文件夹：读写</value></data>
+  <data name="SandboxPage_CheckingTitle" xml:space="preserve"><value>正在检查 MXC 可用性</value></data>
+  <data name="SandboxPage_CheckingText" xml:space="preserve"><value>正在验证命令隔离支持。此检查不会更改权限。</value></data>
+  <data name="SandboxPage_ScopeResolutionBlockedTitle" xml:space="preserve"><value>用户文件夹解析不完整</value></data>
+  <data name="SandboxPage_ScopeResolutionBlockedText" xml:space="preserve"><value>所需用户文件夹无法解析或访问。此范围的命令被阻止。请检查所列位置、重试，或选择“选定文件夹”并授权可用的非根目录位置。受保护根目录和审批始终适用。</value></data>
+  <data name="SandboxPage_TimeoutFormat" xml:space="preserve"><value>命令超时：{0} 秒</value></data>
+  <data name="Onboarding_MxcFileScope.Title" xml:space="preserve"><value>命令文件权限</value></data>
+  <data name="Onboarding_MxcFileScope.Message" xml:space="preserve"><value>新的隔离配置：严格不授权个人文件，关闭互联网。平衡读取用户配置目录以及已解析的“文档”“桌面”“下载”和可用 OneDrive 文件夹，不写入个人文件。开放读写相同范围。平衡/开放开启互联网。不包括其他用户和整个驱动器。范围之外的项目需明确自定义授权。受保护文件夹在隔离时适用，命令审批始终有效。已确认不支持隔离的 Windows 将显示警告、禁用沙盒控件并使用未隔离执行。除非明确重新应用预设，否则保留现有 Custom 设置。剪贴板和 Windows 界面保持独立。Node Sandbox 显示已解析位置和错误。</value></data>
+  <data name="SandboxPage_LegacyBlockedTitle" xml:space="preserve"><value>需要检查旧文件夹授权</value></data>
+  <data name="SandboxPage_LegacyBlockedText" xml:space="preserve"><value>此前已过滤或冲突的授权保持阻止状态，避免在不知情的情况下扩大访问。请检查“阻止”行，明确选择受支持的访问或其他文件夹。受保护根目录始终排除。</value></data>
+  <data name="SandboxPage_IncludedUserFolders" xml:space="preserve"><value>Windows 解析的用户文件夹根目录（排除受保护后代）：</value></data>
+  <data name="SandboxPage_CheckingUserFolders" xml:space="preserve"><value>正在解析用户文件夹位置...</value></data>
+  <data name="SandboxPage_OneDriveNotIncluded" xml:space="preserve"><value>未解析到已配置且可用的 OneDrive 根目录。不包括额外的 OneDrive 位置。</value></data>
+  <data name="SandboxPage_WindowsCompatibilityTitle" xml:space="preserve"><value>Windows 隔离不可用：命令将在未隔离环境中运行</value></data>
+  <data name="SandboxPage_WindowsCompatibilityText" xml:space="preserve"><value>此 Windows 版本无法提供所需的 MXC 隔离。已批准的命令将直接在此计算机上运行。沙盒文件、网络、剪贴板和 Windows 界面限制不会生效。已保存的权限会保留，命令审批仍然有效。请更新 Windows 以启用隔离。Companion 自身的最低 Windows 版本要求仍然适用。</value></data>
 </root>

@@ -3211,27 +3211,13 @@ Use uma destas opções:
   <data name="AppNotification_ChannelNeedsAttention_StatusMessageFormat" xml:space="preserve">
     <value>O Gateway reporta {0} como {1}.</value>
   </data>
-  <data name="AppNotification_SandboxDisabled_Title" xml:space="preserve">
-    <value>O Sandbox do Node está desativado: comandos são executados sem contenção</value>
-  </data>
-  <data name="AppNotification_SandboxDisabled_Message" xml:space="preserve">
-    <value>Comandos do Windows iniciados pelo agente serão executados sem contenção de sandbox até que o Sandbox do Node seja reativado.</value>
-  </data>
-  <data name="AppNotification_SandboxUnavailable_Title" xml:space="preserve">
-    <value>Sandbox indisponível: contingência no host</value>
-  </data>
-  <data name="AppNotification_SandboxUnavailable_MessageFormat" xml:space="preserve">
-    <value>{0}
-
-Os comandos serão executados no host sem proteção de sandbox enquanto o sandboxing estiver indisponível.</value>
-  </data>
   <data name="AppNotification_SandboxUnavailableBlocked_Title" xml:space="preserve">
     <value>Sandbox indisponível: comandos bloqueados</value>
   </data>
   <data name="AppNotification_SandboxUnavailableBlocked_MessageFormat" xml:space="preserve">
     <value>{0}
 
-Os comandos são bloqueados enquanto o sandboxing está indisponível porque o bloqueio de contingência estrita está ativado.</value>
+Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instalação ou tente novamente. Apenas um Windows confirmado como incompatível permite execução sem isolamento.</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_DefaultReason" xml:space="preserve">
     <value>Os mecanismos de sandboxing do MXC não estão disponíveis nesta máquina.</value>
@@ -4604,9 +4590,6 @@ Os comandos são bloqueados enquanto o sandboxing está indisponível porque o b
   <data name="SandboxPage_SecurityLevel.Text" xml:space="preserve">
     <value>Nível de segurança</value>
   </data>
-  <data name="SandboxPage_OneClickToSet.Text" xml:space="preserve">
-    <value>Um clique para definir todos os controles abaixo. As pastas personalizadas permanecem como você as configurou.</value>
-  </data>
   <data name="SandboxPage_LockedDown.Text" xml:space="preserve">
     <value>🔒 Restrito</value>
   </data>
@@ -4632,13 +4615,13 @@ Os comandos são bloqueados enquanto o sandboxing está indisponível porque o b
     <value>📁 Arquivos</value>
   </data>
   <data name="SandboxPage_ByDefaultTheAgent.Text" xml:space="preserve">
-    <value>Por padrão, o agente só tem uma pasta de espaço de trabalho temporária na qual pode ler e escrever. Conceda acesso a pastas do usuário abaixo. Chaves SSH, perfis de navegador e as próprias configurações do OpenClaw são sempre bloqueados.</value>
+    <value>O escopo selecionado controla o acesso aos arquivos. Estas linhas adicionam permissões; Usar escopo mantém as permissões existentes da pasta. Escolha Pastas selecionadas para limitar o acesso às permissões explícitas. Pastas protegidas continuam bloqueadas.</value>
   </data>
   <data name="SandboxPage_Documents.Text" xml:space="preserve">
     <value>Documentos</value>
   </data>
   <data name="SandboxPage_Blocked.Content" xml:space="preserve">
-    <value>Bloqueado</value>
+    <value>Usar escopo</value>
   </data>
   <data name="SandboxPage_ReadOnly.Content" xml:space="preserve">
     <value>Somente leitura</value>
@@ -4650,7 +4633,7 @@ Os comandos são bloqueados enquanto o sandboxing está indisponível porque o b
     <value>Pasta de Downloads</value>
   </data>
   <data name="SandboxPage_Blocked2.Content" xml:space="preserve">
-    <value>Bloqueado</value>
+    <value>Usar escopo</value>
   </data>
   <data name="SandboxPage_ReadOnly2.Content" xml:space="preserve">
     <value>Somente leitura</value>
@@ -4662,7 +4645,7 @@ Os comandos são bloqueados enquanto o sandboxing está indisponível porque o b
     <value>Área de Trabalho</value>
   </data>
   <data name="SandboxPage_Blocked3.Content" xml:space="preserve">
-    <value>Bloqueado</value>
+    <value>Usar escopo</value>
   </data>
   <data name="SandboxPage_ReadOnly3.Content" xml:space="preserve">
     <value>Somente leitura</value>
@@ -4671,16 +4654,16 @@ Os comandos são bloqueados enquanto o sandboxing está indisponível porque o b
     <value>Leitura e escrita</value>
   </data>
   <data name="SandboxPage_ToolDirectoriesOnYour.Text" xml:space="preserve">
-    <value>Os diretórios de ferramentas no seu PATH também recebem acesso somente leitura dentro do sandbox, para que ferramentas de linha de comando como git, node, python e dotnet possam ser usadas. As raízes de unidades nunca são concedidas.</value>
+    <value>As pastas de execução do Windows estão disponíveis. Outras ferramentas devem estar no escopo selecionado ou em uma pasta explicitamente permitida. Estar no PATH não concede acesso a arquivos.</value>
   </data>
   <data name="SandboxPage_CustomFolders.Text" xml:space="preserve">
     <value>Pastas personalizadas</value>
   </data>
   <data name="SandboxPage_CustomGrantsAreAdded.Text" xml:space="preserve">
-    <value>As concessões personalizadas são adicionadas às regras acima. Adicionar uma pasta dentro de Documentos/Downloads/Área de Trabalho com acesso mais amplo substituirá a configuração de nível de linha para esse caminho.</value>
+    <value>Permissões personalizadas adicionam acesso ao escopo selecionado. Remover uma permissão não bloqueia o acesso já permitido pelo escopo. Pastas protegidas continuam bloqueadas.</value>
   </data>
   <data name="SandboxPage_Blocked4.Content" xml:space="preserve">
-    <value>Bloqueado</value>
+    <value>Remover permissão</value>
   </data>
   <data name="SandboxPage_ReadOnly4.Content" xml:space="preserve">
     <value>Somente leitura</value>
@@ -6534,7 +6517,7 @@ Certifique-se de que o Gateway está em execução.</value>
     <value>Sandbox do Node indisponível: comandos bloqueados</value>
   </data>
   <data name="SandboxPage_StatusUnavailableBlockedSubtext" xml:space="preserve">
-    <value>A contenção não está disponível neste PC, e o bloqueio de contingência estrita está ativado, então comandos iniciados pelo agente são bloqueados.</value>
+    <value>Não foi possível verificar o MXC. Repare a instalação ou tente novamente. Falhas do SDK ou da política nunca acionam execução sem isolamento.</value>
   </data>
   <data name="SandboxPage_StatusUnavailableOffTitle" xml:space="preserve">
     <value>O Sandbox do Node está desativado: execução no host</value>
@@ -6569,11 +6552,6 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="SandboxPage_ProbeErrorTitle" xml:space="preserve">
     <value>Não foi possível verificar a disponibilidade do sandbox</value>
   </data>
-  <data name="SandboxPage_ProbeErrorMessageFormat" xml:space="preserve">
-    <value>{0}
-
-{1} A verificação de capacidade do sandbox não foi concluída. Isso geralmente é transitório (uma verificação lenta ou bloqueada): tente novamente e, se persistir, verifique se algum software de segurança está bloqueando o wxc-exec.</value>
-  </data>
   <data name="SandboxPage_Retry" xml:space="preserve">
     <value>Tentar novamente</value>
   </data>
@@ -6590,11 +6568,6 @@ Certifique-se de que o Gateway está em execução.</value>
   </data>
   <data name="SandboxPage_ComponentsMissingTitle" xml:space="preserve">
     <value>Faltam componentes do sandbox</value>
-  </data>
-  <data name="SandboxPage_ComponentsMissingMessageFormat" xml:space="preserve">
-    <value>{0}
-
-O binário wxc-exec não pôde ser localizado. {1} Se esta for uma build de desenvolvedor, compile o aplicativo de bandeja para que o wxc-exec.exe seja copiado para a pasta de saída. Caso contrário, reinstale o aplicativo complementar para restaurar o sandboxing.</value>
   </data>
   <data name="SandboxPage_ShowInstallInstructions" xml:space="preserve">
     <value>Mostrar instruções de instalação</value>
@@ -6993,13 +6966,13 @@ O binário wxc-exec não pôde ser localizado. {1} Se esta for uma build de dese
     <value>Ação do sandbox</value>
   </data>
   <data name="SandboxPage_PresetLockedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Predefinição Bloqueado: sem internet, sem área de transferência, sem pastas padrão do usuário</value>
+    <value>Predefinição Estrita: sem arquivos pessoais ou internet</value>
   </data>
   <data name="SandboxPage_PresetBalancedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Predefinição Recomendada: internet ativada, somente leitura em Documentos, Downloads e Área de Trabalho</value>
+    <value>Predefinição Equilibrada: pastas do usuário somente leitura, internet ativada</value>
   </data>
   <data name="SandboxPage_PresetPermissiveButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Predefinição Desprotegido: internet ativada, leitura e escrita em Documentos, Downloads e Área de Trabalho</value>
+    <value>Predefinição Aberta: leitura e escrita nas pastas do usuário, internet ativada</value>
   </data>
   <data name="SandboxPage_DocsAccessCombo.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Nível de acesso a Documentos</value>
@@ -8005,4 +7978,31 @@ Suas configurações, gateway, arquivos e modelos permanecem onde estão.</value
   <data name="ChatPage_SetupCheckAgain.Content" xml:space="preserve">
     <value>Verificar novamente</value>
   </data>
+  <data name="SandboxPage_PresetHelp.Text" xml:space="preserve"><value>Predefinições substituem permissões de arquivos e acesso à internet. Área de transferência, interface do Windows e aprovações continuam independentes.</value></data>
+  <data name="SandboxPage_CustomPreset.Text" xml:space="preserve"><value>Permissões personalizadas</value></data>
+  <data name="SandboxPage_ApplyPreset" xml:space="preserve"><value>Aplicar predefinição</value></data>
+  <data name="SandboxPage_PresetStrict.Text" xml:space="preserve"><value>Estrito</value></data>
+  <data name="SandboxPage_PresetBalanced.Text" xml:space="preserve"><value>Equilibrado (padrão)</value></data>
+  <data name="SandboxPage_PresetOpen.Text" xml:space="preserve"><value>Aberto</value></data>
+  <data name="SandboxPage_PresetStrictText.Text" xml:space="preserve"><value>Sem arquivos pessoais ou internet. Apenas acesso de execução e pasta de trabalho privada.</value></data>
+  <data name="SandboxPage_PresetBalancedText.Text" xml:space="preserve"><value>Leia seu perfil e pastas pessoais redirecionadas resolvidas. Sem escrita pessoal. Internet ativada. Pastas protegidas excluídas.</value></data>
+  <data name="SandboxPage_PresetOpenText.Text" xml:space="preserve"><value>Leia e escreva seu perfil e pastas pessoais redirecionadas resolvidas. Internet ativada. Pastas protegidas excluídas.</value></data>
+  <data name="SandboxPage_FileScope.Header" xml:space="preserve"><value>Escopo de acesso a arquivos</value></data>
+  <data name="SandboxPage_SelectedFolders.Content" xml:space="preserve"><value>Pastas selecionadas</value></data>
+  <data name="SandboxPage_UserFilesReadOnly.Content" xml:space="preserve"><value>Pastas do usuário: somente leitura</value></data>
+  <data name="SandboxPage_UserFilesReadWrite.Content" xml:space="preserve"><value>Pastas do usuário: leitura e escrita</value></data>
+  <data name="SandboxPage_CheckingTitle" xml:space="preserve"><value>Verificando disponibilidade do MXC</value></data>
+  <data name="SandboxPage_CheckingText" xml:space="preserve"><value>Verificando suporte à contenção de comandos. As permissões não são alteradas.</value></data>
+  <data name="SandboxPage_ScopeResolutionBlockedTitle" xml:space="preserve"><value>Resolução de pastas do usuário incompleta</value></data>
+  <data name="SandboxPage_ScopeResolutionBlockedText" xml:space="preserve"><value>Uma pasta necessária não foi resolvida ou está inacessível. Comandos desse escopo são bloqueados. Revise as localizações, tente novamente ou escolha Pastas selecionadas e uma pasta disponível que não seja raiz. Raízes protegidas e aprovações sempre se aplicam.</value></data>
+  <data name="SandboxPage_TimeoutFormat" xml:space="preserve"><value>Tempo limite de comando: {0} s</value></data>
+  <data name="Onboarding_MxcFileScope.Title" xml:space="preserve"><value>Permissões de arquivos dos comandos</value></data>
+  <data name="Onboarding_MxcFileScope.Message" xml:space="preserve"><value>Novos perfis isolados: Estrito não concede arquivos pessoais ou internet. Equilibrado lê seu perfil e pastas Documentos, Área de Trabalho, Downloads e OneDrive disponíveis resolvidas, sem escrita pessoal. Aberto lê e escreve o mesmo escopo. Equilibrado/Aberto ativam a internet. Outros usuários e unidades inteiras não são incluídos. Projetos fora dessas raízes precisam de permissões personalizadas. Pastas protegidas se aplicam com isolamento; aprovações continuam ativas. Windows confirmado como incompatível executa sem isolamento, com aviso e controles de sandbox desativados. Configurações Custom existentes são preservadas, exceto ao reaplicar explicitamente. Área de transferência e interface do Windows continuam independentes. Node Sandbox mostra localizações resolvidas e erros.</value></data>
+  <data name="SandboxPage_LegacyBlockedTitle" xml:space="preserve"><value>Permissões antigas de pastas precisam de revisão</value></data>
+  <data name="SandboxPage_LegacyBlockedText" xml:space="preserve"><value>Permissões filtradas ou conflitantes continuam bloqueadas para não ampliar o acesso silenciosamente. Revise as linhas bloqueadas e escolha explicitamente acesso compatível ou outra pasta. As raízes protegidas permanecem excluídas.</value></data>
+  <data name="SandboxPage_IncludedUserFolders" xml:space="preserve"><value>Raízes do usuário resolvidas pelo Windows (descendentes protegidos excluídos):</value></data>
+  <data name="SandboxPage_CheckingUserFolders" xml:space="preserve"><value>Resolvendo localizações de pastas do usuário...</value></data>
+  <data name="SandboxPage_OneDriveNotIncluded" xml:space="preserve"><value>Nenhuma raiz OneDrive configurada disponível foi resolvida. Nenhuma localização OneDrive adicional foi incluída.</value></data>
+  <data name="SandboxPage_WindowsCompatibilityTitle" xml:space="preserve"><value>Isolamento do Windows indisponível: comandos sem isolamento</value></data>
+  <data name="SandboxPage_WindowsCompatibilityText" xml:space="preserve"><value>Esta versão do Windows não oferece o isolamento MXC necessário. Os comandos aprovados são executados diretamente neste computador. As restrições de arquivos, rede, área de transferência e interface do Windows não são aplicadas. As permissões salvas são preservadas e as aprovações de comandos continuam ativas. Atualize o Windows para habilitar o isolamento. A versão mínima do Windows exigida pelo Companion continua válida.</value></data>
 </root>

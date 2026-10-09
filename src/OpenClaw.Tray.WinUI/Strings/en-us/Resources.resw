@@ -3239,27 +3239,13 @@ Use one of these options:
   <data name="AppNotification_ChannelNeedsAttention_StatusMessageFormat" xml:space="preserve">
     <value>The gateway reports {0} as {1}.</value>
   </data>
-  <data name="AppNotification_SandboxDisabled_Title" xml:space="preserve">
-    <value>Node Sandbox is off: commands run uncontained</value>
-  </data>
-  <data name="AppNotification_SandboxDisabled_Message" xml:space="preserve">
-    <value>Agent-started Windows commands will run without sandbox containment until Node Sandbox is turned back on.</value>
-  </data>
-  <data name="AppNotification_SandboxUnavailable_Title" xml:space="preserve">
-    <value>Sandbox unavailable: host fallback</value>
-  </data>
-  <data name="AppNotification_SandboxUnavailable_MessageFormat" xml:space="preserve">
-    <value>{0}
-
-Commands will run on the host without sandbox protection while sandboxing is unavailable.</value>
-  </data>
   <data name="AppNotification_SandboxUnavailableBlocked_Title" xml:space="preserve">
     <value>Sandbox unavailable: commands blocked</value>
   </data>
   <data name="AppNotification_SandboxUnavailableBlocked_MessageFormat" xml:space="preserve">
     <value>{0}
 
-Commands are blocked while sandboxing is unavailable because strict fallback blocking is enabled.</value>
+MXC could not be verified. Commands are blocked. Repair the installation or retry. Only positively unsupported Windows permits uncontained compatibility execution.</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_DefaultReason" xml:space="preserve">
     <value>MXC sandboxing primitives are not available on this machine.</value>
@@ -4632,9 +4618,6 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
   <data name="SandboxPage_SecurityLevel.Text" xml:space="preserve">
     <value>Security level</value>
   </data>
-  <data name="SandboxPage_OneClickToSet.Text" xml:space="preserve">
-    <value>One click to set every control below. Custom folders stay as you set them.</value>
-  </data>
   <data name="SandboxPage_LockedDown.Text" xml:space="preserve">
     <value>🔒 Locked Down</value>
   </data>
@@ -4660,13 +4643,13 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>📁 Files</value>
   </data>
   <data name="SandboxPage_ByDefaultTheAgent.Text" xml:space="preserve">
-    <value>By default the agent only has a temporary workspace folder it can read and write. Grant access to user folders below. SSH keys, browser profiles, and OpenClaw's own settings are always blocked.</value>
+    <value>The selected scope controls file access. These rows add folder grants; Use scope keeps that folder's existing scope permissions. Choose Selected folders to limit access to explicit grants. Protected folders remain blocked.</value>
   </data>
   <data name="SandboxPage_Documents.Text" xml:space="preserve">
     <value>Documents</value>
   </data>
   <data name="SandboxPage_Blocked.Content" xml:space="preserve">
-    <value>Blocked</value>
+    <value>Use scope</value>
   </data>
   <data name="SandboxPage_ReadOnly.Content" xml:space="preserve">
     <value>Read only</value>
@@ -4678,7 +4661,7 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>Downloads</value>
   </data>
   <data name="SandboxPage_Blocked2.Content" xml:space="preserve">
-    <value>Blocked</value>
+    <value>Use scope</value>
   </data>
   <data name="SandboxPage_ReadOnly2.Content" xml:space="preserve">
     <value>Read only</value>
@@ -4690,7 +4673,7 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>Desktop</value>
   </data>
   <data name="SandboxPage_Blocked3.Content" xml:space="preserve">
-    <value>Blocked</value>
+    <value>Use scope</value>
   </data>
   <data name="SandboxPage_ReadOnly3.Content" xml:space="preserve">
     <value>Read only</value>
@@ -4699,16 +4682,16 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>Read &amp; write</value>
   </data>
   <data name="SandboxPage_ToolDirectoriesOnYour.Text" xml:space="preserve">
-    <value>Tool directories on your PATH are also granted read-only inside the sandbox, so command-line tools like git, node, python, and dotnet are usable. Drive roots are never granted.</value>
+    <value>Windows runtime folders are available. Other tools must be inside the selected scope or an explicitly granted folder. Being on PATH does not grant file access.</value>
   </data>
   <data name="SandboxPage_CustomFolders.Text" xml:space="preserve">
     <value>Custom folders</value>
   </data>
   <data name="SandboxPage_CustomGrantsAreAdded.Text" xml:space="preserve">
-    <value>Custom grants are added on top of the rules above. Adding a folder inside Documents/Downloads/Desktop with broader access will override the row-level setting for that path.</value>
+    <value>Custom grants add access to the selected scope. Removing a grant does not block access already allowed by the scope. Protected folders remain blocked.</value>
   </data>
   <data name="SandboxPage_Blocked4.Content" xml:space="preserve">
-    <value>Blocked</value>
+    <value>Remove grant</value>
   </data>
   <data name="SandboxPage_ReadOnly4.Content" xml:space="preserve">
     <value>Read only</value>
@@ -6560,7 +6543,7 @@ Make sure the gateway is running.</value>
     <value>Node Sandbox unavailable: commands blocked</value>
   </data>
   <data name="SandboxPage_StatusUnavailableBlockedSubtext" xml:space="preserve">
-    <value>Containment isn't available on this PC, and strict fallback blocking is on, so agent-started commands are blocked.</value>
+    <value>MXC could not be verified. Repair the installation or retry. SDK and policy failures never trigger uncontained execution.</value>
   </data>
   <data name="SandboxPage_StatusUnavailableOffTitle" xml:space="preserve">
     <value>Node Sandbox is off: host execution</value>
@@ -6595,9 +6578,6 @@ Make sure the gateway is running.</value>
   <data name="SandboxPage_ProbeErrorTitle" xml:space="preserve">
     <value>Couldn't verify sandbox availability</value>
   </data>
-  <data name="SandboxPage_ProbeErrorMessageFormat" xml:space="preserve">
-    <value>{0}&#x0A;&#x0A;{1} The sandbox capability check didn't complete. This is usually transient (a slow or blocked check): retry, and if it persists check whether security software is blocking wxc-exec.</value>
-  </data>
   <data name="SandboxPage_Retry" xml:space="preserve">
     <value>Retry</value>
   </data>
@@ -6612,9 +6592,6 @@ Make sure the gateway is running.</value>
   </data>
   <data name="SandboxPage_ComponentsMissingTitle" xml:space="preserve">
     <value>Sandboxing components are missing</value>
-  </data>
-  <data name="SandboxPage_ComponentsMissingMessageFormat" xml:space="preserve">
-    <value>{0}&#x0A;&#x0A;The wxc-exec binary couldn't be located. {1} If this is a developer build, build the tray app so wxc-exec.exe is copied into the output folder. Otherwise reinstall the companion app to restore sandboxing.</value>
   </data>
   <data name="SandboxPage_ShowInstallInstructions" xml:space="preserve">
     <value>Show install instructions</value>
@@ -7013,13 +6990,13 @@ Make sure the gateway is running.</value>
     <value>Sandbox action</value>
   </data>
   <data name="SandboxPage_PresetLockedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Locked Down preset: No internet, no clipboard, no standard user folders</value>
+    <value>Strict preset: no personal files or internet</value>
   </data>
   <data name="SandboxPage_PresetBalancedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Recommended preset: Internet on, read-only on Documents, Downloads, Desktop</value>
+    <value>Balanced preset: user folders read-only, internet on</value>
   </data>
   <data name="SandboxPage_PresetPermissiveButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Unprotected preset: Internet on, read and write on Documents, Downloads, Desktop</value>
+    <value>Open preset: user folders read and write, internet on</value>
   </data>
   <data name="SandboxPage_DocsAccessCombo.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Documents access level</value>
@@ -8014,4 +7991,31 @@ Your settings, gateway, files, and models stay where they are.</value>
   <data name="ChatPage_SetupCheckAgain.Content" xml:space="preserve">
     <value>Check again</value>
   </data>
+  <data name="SandboxPage_PresetHelp.Text" xml:space="preserve"><value>Presets replace file grants and internet access. Clipboard, UI and command approvals stay independent.</value></data>
+  <data name="SandboxPage_CustomPreset.Text" xml:space="preserve"><value>Custom permissions</value></data>
+  <data name="SandboxPage_ApplyPreset" xml:space="preserve"><value>Apply preset</value></data>
+  <data name="SandboxPage_PresetStrict.Text" xml:space="preserve"><value>Strict</value></data>
+  <data name="SandboxPage_PresetBalanced.Text" xml:space="preserve"><value>Balanced (Default)</value></data>
+  <data name="SandboxPage_PresetOpen.Text" xml:space="preserve"><value>Open</value></data>
+  <data name="SandboxPage_PresetStrictText.Text" xml:space="preserve"><value>No personal files or internet. Runtime access and private scratch only.</value></data>
+  <data name="SandboxPage_PresetBalancedText.Text" xml:space="preserve"><value>Read your profile and resolved redirected personal folders. No personal writes. Internet on. Protected folders excluded.</value></data>
+  <data name="SandboxPage_PresetOpenText.Text" xml:space="preserve"><value>Read and write your profile and resolved redirected personal folders. Internet on. Protected folders excluded.</value></data>
+  <data name="SandboxPage_FileScope.Header" xml:space="preserve"><value>File access scope</value></data>
+  <data name="SandboxPage_SelectedFolders.Content" xml:space="preserve"><value>Selected folders</value></data>
+  <data name="SandboxPage_UserFilesReadOnly.Content" xml:space="preserve"><value>User folders: read only</value></data>
+  <data name="SandboxPage_UserFilesReadWrite.Content" xml:space="preserve"><value>User folders: read and write</value></data>
+  <data name="SandboxPage_CheckingTitle" xml:space="preserve"><value>Checking MXC availability</value></data>
+  <data name="SandboxPage_CheckingText" xml:space="preserve"><value>Verifying contained command support. Permissions are not changed by this check.</value></data>
+  <data name="SandboxPage_ScopeResolutionBlockedTitle" xml:space="preserve"><value>User folder resolution incomplete</value></data>
+  <data name="SandboxPage_ScopeResolutionBlockedText" xml:space="preserve"><value>A required user-folder location could not be resolved or accessed. Commands requiring this scope are blocked. Review the listed locations, retry, or choose Selected folders and grant an available non-root location. Protected roots and approvals always apply.</value></data>
+  <data name="SandboxPage_TimeoutFormat" xml:space="preserve"><value>Command timeout: {0} sec</value></data>
+  <data name="Onboarding_MxcFileScope.Title" xml:space="preserve"><value>Command file permissions</value></data>
+  <data name="Onboarding_MxcFileScope.Message" xml:space="preserve"><value>New contained profiles: Strict grants no personal files, internet off. Balanced reads your user profile and resolved Documents, Desktop, Downloads and available OneDrive folders, without personal writes. Open reads and writes that same scope. Balanced/Open internet is on. Other users and whole drives are not included. Projects outside these roots need explicit custom grants. Protected folders apply when contained; command approvals always apply. Positively unsupported Windows runs uncontained with a warning and disabled sandbox controls. Existing Custom settings are preserved unless you explicitly reapply a preset. Clipboard and Windows UI stay independent. Node Sandbox shows resolved scope locations and resolution errors.</value></data>
+  <data name="SandboxPage_LegacyBlockedTitle" xml:space="preserve"><value>Legacy folder grants need review</value></data>
+  <data name="SandboxPage_LegacyBlockedText" xml:space="preserve"><value>Previously filtered or conflicting grants remain Blocked to avoid silently widening access. Review the Blocked rows and explicitly choose supported access or a different folder. Protected roots always remain excluded.</value></data>
+  <data name="SandboxPage_IncludedUserFolders" xml:space="preserve"><value>OS-resolved user-folder roots (protected descendants excluded):</value></data>
+  <data name="SandboxPage_CheckingUserFolders" xml:space="preserve"><value>Resolving user-folder locations...</value></data>
+  <data name="SandboxPage_OneDriveNotIncluded" xml:space="preserve"><value>No available configured OneDrive root was resolved. No additional OneDrive location is included.</value></data>
+  <data name="SandboxPage_WindowsCompatibilityTitle" xml:space="preserve"><value>Windows containment unavailable: commands run uncontained</value></data>
+  <data name="SandboxPage_WindowsCompatibilityText" xml:space="preserve"><value>This Windows version cannot provide the required MXC containment. Approved commands run directly on this computer. Sandbox file, network, clipboard and Windows UI restrictions are not enforced. Saved permissions are preserved and command approvals remain active. Update Windows to enable containment. Companion's own minimum Windows version still applies.</value></data>
 </root>

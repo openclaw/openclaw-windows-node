@@ -108,7 +108,7 @@ public sealed class NodeToolTelemetryTests
         Assert.Equal(true, root.GetTagItem(NodeToolInvocation.SandboxAppliedTag));
         Assert.Equal("mxc", root.GetTagItem(NodeToolInvocation.SandboxProviderTag));
         Assert.Equal(
-            "windows_appcontainer",
+            "windows_basecontainer",
             root.GetTagItem(NodeToolInvocation.SandboxTechnologyTag));
 
         var invocationMeasurement = Assert.Single(
@@ -341,16 +341,14 @@ public sealed class NodeToolTelemetryTests
     }
 
     [Fact]
-    public async Task SystemRun_V2DirectArgvGate_ReportsCapabilityUnavailable()
+    public async Task SystemRun_V2Unavailable_ReportsCapabilityUnavailable()
     {
         using var activities = new ActivityCollector();
         using var invocation = new NodeToolInvocation(NodeToolTransport.Gateway);
         invocation.SetCommand("system.run");
         var execute = invocation.StartChild(NodeToolInvocation.ExecuteSpanName);
         var capability = new SystemCapability(NullLogger.Instance);
-        capability.SetCommandRunner(new DirectArgvUnsupportedRunner());
-        capability.SetV2Handler(new FixedV2Handler(ExecApprovalV2Result.Allow(
-            new ExecApprovedExecution([@"C:\tools\test.exe"], null, 1000, null))));
+        capability.SetV2Handler(new FixedV2Handler(ExecApprovalV2Result.Unavailable("runner unavailable")));
         using var args = JsonDocument.Parse("""{"command":"ignored"}""");
 
         var response = await capability.ExecuteAsync(new NodeInvokeRequest
@@ -399,19 +397,9 @@ public sealed class NodeToolTelemetryTests
             Task.FromResult(result);
     }
 
-    private sealed class DirectArgvUnsupportedRunner : IDirectArgvSupportAwareCommandRunner
-    {
-        public string Name => "unsupported";
-
-        public bool CanExecuteDirectArgv() => false;
-
-        public Task<CommandResult> RunAsync(CommandRequest request, CancellationToken ct = default) =>
-            throw new InvalidOperationException("The direct-argv gate must prevent execution.");
-    }
-
     private sealed class FixedV2Handler(ExecApprovalV2Result result) : IExecApprovalV2Handler
     {
-        public Task<ExecApprovalV2Result> HandleAsync(NodeInvokeRequest request, string correlationId) =>
+        public Task<ExecApprovalV2Result> HandleAsync(NodeInvokeRequest request, string correlationId, CancellationToken cancellationToken = default) =>
             Task.FromResult(result);
 
         public ValueTask<ExecApprovalRevalidationResult> RevalidateAsync(

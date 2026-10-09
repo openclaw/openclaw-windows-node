@@ -1,378 +1,334 @@
+using System.Diagnostics;
 using System.Text.Json;
-using Xunit;
-using OpenClaw.Shared;
+using System.Security.AccessControl;
+using Microsoft.Mxc.Sdk.V1;
 using OpenClaw.Shared.Mxc;
+using Xunit;
 
 namespace OpenClaw.Shared.Tests.Mxc;
 
-/// <summary>
-/// End-to-end smoke test for the MxcCommandRunner pipeline. Actually spawns
-/// wxc-exec.exe to run a real shell payload inside an AppContainer. Gated by
-/// OPENCLAW_RUN_INTEGRATION=1 so it doesn't run by default on CI; matches the
-/// existing LocalCommandRunnerIntegrationTests pattern.
-///
-/// Additionally skips (passes without running) when MXC is not available on the
-/// host (e.g. older Windows UBR or wxc-exec.exe missing). Hosts with MXC enabled
-/// will exercise the real sandbox; hosts without it will see a clear skip log.
-/// </summary>
-public class MxcCommandRunnerIntegrationTests
+public sealed class MxcNativeFactAttribute : FactAttribute
 {
-    private static MxcCommandRunner? TryBuildRunner(bool sandboxEnabled = true, Action<SettingsData>? configure = null)
+    public MxcNativeFactAttribute()
     {
-        if (IsGitHubActions())
-        {
-            Console.WriteLine(
-                "[mxc-integration] SKIPPING: GitHub Actions does not provide the required local sandbox environment.");
-            return null;
-        }
-
-        var availability = MxcAvailability.Probe(NullLogger.Instance);
-        if (!availability.CanRunSystemRunSandbox)
-        {
-            Console.WriteLine(
-                $"[mxc-integration] SKIPPING: MXC BaseContainer not available. Reasons: " +
-                string.Join("; ", availability.SystemRunSandboxUnsupportedReasons));
-            return null;
-        }
-
-        if (!HasSupportedSandboxPath(AppContext.BaseDirectory))
-        {
-            Console.WriteLine(
-                "[mxc-integration] SKIPPING: test output path is not in a supported local sandbox location.");
-            return null;
-        }
-
-        if (!string.IsNullOrWhiteSpace(availability.WxcExecPath)
-            && !HasSupportedSandboxPath(availability.WxcExecPath))
-        {
-            Console.WriteLine(
-                "[mxc-integration] SKIPPING: sandbox helper path is not in a supported local sandbox location.");
-            return null;
-        }
-
-        var executor = new DirectAppContainerExecutor(() => availability, new ConsoleLogger());
-
-        var settings = new SettingsData
-        {
-            SystemRunSandboxEnabled = sandboxEnabled,
-            SystemRunAllowOutbound = false,
-        };
-        configure?.Invoke(settings);
-
-        var hostFallback = new LocalCommandRunner(NullLogger.Instance);
-
-        return new MxcCommandRunner(
-            executor,
-            hostFallback,
-            () => settings,
-            () => Path.Combine(Path.GetTempPath(), "openclaw-mxc-smoke-test-settings"),
-            () => true, // integration test runs only when MXC is available
-            invalidateAvailability: null,
-            new ConsoleLogger());
+        if (Environment.GetEnvironmentVariable("OPENCLAW_RUN_MXC_NATIVE_PROOF") != "1")
+            Skip = "Set OPENCLAW_RUN_MXC_NATIVE_PROOF=1 only for an authorized isolated native containment proof.";
+        else if (!MxcAvailability.Probe().CanRunSystemRunSandbox)
+            Skip = "The official SDK cannot admit native-deny BaseContainer. Native containment was not exercised.";
     }
+}
 
-    [IntegrationFact]
-    public async Task SystemRun_EchoCmd_ExecutesInsideAppContainer()
+/// <summary>Real product runner proof using only synthetic user roots and synthetic sensitive files.</summary>
+[Collection("MxcOwnership")]
+public sealed class MxcCommandRunnerIntegrationTests : IDisposable
+{
+    private readonly string _root;
+    private readonly string _runId = "n-" + Guid.NewGuid().ToString("N");
+    private readonly MxcRequestContext _context;
+    private readonly SettingsData _settings = new() { SystemRunAllowWindowsUi = true };
+    private readonly List<object> _processes = [];
+    private readonly List<object> _checks = [];
+    private readonly List<string> _junctions = [];
+    private readonly Dictionary<string, string> _acls = new(StringComparer.OrdinalIgnoreCase);
+    private string? _lastScratch;
+    private string Profile => _context.RequireFolder("Profile");
+    private string Documents => _context.RequireFolder("Documents");
+    private string Project => Path.Combine(Profile, "Projects");
+    private string Outside => Path.Combine(_root, "outside");
+    private string SettingsDirectory => _context.ProtectedPaths[1];
+
+    public MxcCommandRunnerIntegrationTests()
     {
-        var runner = TryBuildRunner();
-        if (runner is null) return; // skip — MXC unavailable on this host
-
-        var result = await runner.RunAsync(new CommandRequest
+        var artifacts = Environment.GetEnvironmentVariable("OPENCLAW_MXC_PROOF_ROOT")
+            ?? throw new InvalidOperationException("Native proof requires an explicit owned artifact root outside the repository.");
+        var repo = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT") ?? Directory.GetCurrentDirectory();
+        if (!Path.IsPathFullyQualified(artifacts) ||
+            Path.GetFullPath(artifacts).StartsWith(Path.TrimEndingDirectorySeparator(Path.GetFullPath(repo)) + Path.DirectorySeparatorChar,
+                StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Native proof scratch must be outside the source checkout.");
+        foreach (var key in new[] { "OPENCLAW_TRAY_DATA_DIR", "OPENCLAW_TRAY_APPDATA_DIR", "OPENCLAW_TRAY_LOCALAPPDATA_DIR" })
+            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(key)))
+                throw new InvalidOperationException($"Native proof requires isolated {key} before process creation.");
+        _root = Directory.CreateDirectory(Path.Combine(artifacts, _runId[..14])).FullName;
+        _context = MxcSyntheticContext.Create(_root);
+        Directory.CreateDirectory(Project);
+        Directory.CreateDirectory(Outside);
+        var aclPaths = _context.UserFolders.Select(f => f.Path!).Concat(_context.ProtectedPaths)
+            .Concat(new[] { _root, Project, Outside, _context.WindowsDirectory, _context.SystemDirectory });
+        foreach (var path in aclPaths)
+            for (var current = path; current is not null; current = Path.GetDirectoryName(current))
+                if (Directory.Exists(current) && !_acls.ContainsKey(current))
+                    _acls.Add(current, Acl(current));
+        Write("acl-before.json", _acls);
+        using var testHost = Process.GetCurrentProcess();
+        Write("ownership.json", new
         {
-            Command = "echo hello-from-mxc",
-            Shell = "cmd",
-            TimeoutMs = 30_000,
-        });
-
-        // Surface full result on assertion failure for diagnosis.
-        Assert.True(
-            result.ExitCode == 0 && result.Stdout.Contains("hello-from-mxc"),
-            $"ExitCode={result.ExitCode}\nStdout={result.Stdout}\nStderr={result.Stderr}\nTimedOut={result.TimedOut}\nDurationMs={result.DurationMs}");
-    }
-
-    [IntegrationFact]
-    public async Task SystemRun_DefaultShell_ExecutesInsideAppContainer()
-    {
-        var runner = TryBuildRunner();
-        if (runner is null) return; // skip — MXC unavailable on this host
-
-        var result = await runner.RunAsync(new CommandRequest
-        {
-            Command = "echo hello-default-mxc",
-            TimeoutMs = 30_000,
-        });
-
-        Assert.True(
-            result.ExitCode == 0 && result.Stdout.Contains("hello-default-mxc"),
-            $"ExitCode={result.ExitCode}\nStdout={result.Stdout}\nStderr={result.Stderr}\nTimedOut={result.TimedOut}\nDurationMs={result.DurationMs}");
-    }
-
-    [IntegrationFact]
-    public async Task SystemRun_DirectArgvWithWindowsUiAccess_ExecutesInsideAppContainer()
-    {
-        var runner = TryBuildRunner(configure: settings => settings.SystemRunAllowWindowsUi = true);
-        if (runner is null) return;
-
-        var result = await runner.RunAsync(new CommandRequest
-        {
-            Argv = [Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "whoami.exe")],
-            TimeoutMs = 30_000,
-        });
-
-        Assert.True(
-            result.ExitCode == 0 && !string.IsNullOrWhiteSpace(result.Stdout),
-            $"ExitCode={result.ExitCode}\nStdout={result.Stdout}\nStderr={result.Stderr}\nTimedOut={result.TimedOut}\nDurationMs={result.DurationMs}");
-    }
-
-    [IntegrationFact]
-    public async Task SystemRun_PipelineSmokeTest_WithDenyPaths_ReturnsResult()
-    {
-        // NOTE: This is a SMOKE TEST, not a deny-paths assertion. The actual
-        // semantics of MXC's deniedPaths (does deny win over allow? subtractive
-        // vs strict-deny?) are not yet validated against the alpha SDK; observed
-        // behavior so far is that `dir` on a denied directory returns Access
-        // Denied but a file under %TEMP% appears not denied even when its parent
-        // is in deniedPaths. Possible causes:
-        //   - %TEMP% has implicit AppContainer access (default capabilities)
-        //   - deniedPaths is strict-subtract: only effective against paths
-        //     otherwise granted by readonly/readwrite
-        //   - nested-AppContainer / per-capability composition may change this
-        //
-        // For now we only assert the runner returns SOMETHING (not a crash).
-        // A proper deny-paths integration test needs a controlled allow-grant +
-        // deny-of-child scenario which the alpha SDK doesn't yet support cleanly.
-        var runner = TryBuildRunner();
-        if (runner is null) return; // skip — MXC unavailable on this host
-
-        var result = await runner.RunAsync(new CommandRequest
-        {
-            Command = "echo deny-semantics-test",
-            Shell = "cmd",
-            TimeoutMs = 30_000,
-        });
-
-        // Pipeline returned. Detailed deny-paths assertions are out of scope here.
-        Assert.True(result.DurationMs > 0, $"Result should have measurable duration: {result.DurationMs}ms");
-        Assert.False(result.TimedOut, "Should not have timed out");
-    }
-
-    [IntegrationFact]
-    public async Task SystemRun_CmdDir_ReadsGrantedCustomFolder()
-    {
-        var dir = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "openclaw-mxc-grant-smoke-" + Guid.NewGuid().ToString("N"))).FullName;
-        await File.WriteAllTextAsync(Path.Combine(dir, "sentinel.txt"), "hello");
-
-        try
-        {
-            if (!HasSupportedSandboxPath(dir))
+            RunId = _runId, Worktree = repo, SourceManifest = Environment.GetEnvironmentVariable("OPENCLAW_MXC_SOURCE_MANIFEST"),
+            Lane = "product runner, synthetic user folders", DataRoots = IsolationRoots(), Processes = _processes,
+            TestHost = new
             {
-                Console.WriteLine(
-                    "[mxc-integration] SKIPPING: custom grant path is not in a supported local sandbox location.");
-                return;
-            }
-
-            var runner = TryBuildRunner(configure: settings =>
-            {
-                settings.SandboxCustomFolders = new List<SandboxCustomFolder>
-                {
-                    new() { Path = dir, Access = SandboxFolderAccess.ReadWrite },
-                };
-            });
-            if (runner is null) return; // skip — MXC unavailable on this host
-
-            var result = await runner.RunAsync(new CommandRequest
-            {
-                Command = "dir",
-                Shell = "cmd",
-                Cwd = dir,
-                TimeoutMs = 30_000,
-            });
-
-            Assert.True(
-                result.ExitCode == 0 && result.Stdout.Contains("sentinel.txt", StringComparison.OrdinalIgnoreCase),
-                $"ExitCode={result.ExitCode}\nStdout={result.Stdout}\nStderr={result.Stderr}\nTimedOut={result.TimedOut}\nDurationMs={result.DurationMs}\nDir={dir}");
-        }
-        finally
-        {
-            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
-            try { Directory.Delete(dir, recursive: true); } catch { }
-        }
-    }
-
-    [IntegrationFact]
-    public async Task SystemRun_FilesystemAccessMatrix_EnforcesReadwriteAndReadonlyPaths()
-    {
-        var root = Directory.CreateDirectory(Path.Combine(AppContext.BaseDirectory, "openclaw-mxc-fs-matrix-" + Guid.NewGuid().ToString("N"))).FullName;
-        var rwDir = Directory.CreateDirectory(Path.Combine(root, "rw")).FullName;
-        var roDir = Directory.CreateDirectory(Path.Combine(root, "ro")).FullName;
-
-        var roInput = Path.Combine(roDir, "input.txt");
-        var rwOutput = Path.Combine(rwDir, "rw_marker.tmp");
-        var roForbidden = Path.Combine(roDir, "forbidden.tmp");
-
-        await File.WriteAllTextAsync(roInput, "readonly test data");
-
-        try
-        {
-            if (!HasSupportedSandboxPath(root))
-            {
-                Console.WriteLine(
-                    "[mxc-integration] SKIPPING: filesystem matrix path is not in a supported local sandbox location.");
-                return;
-            }
-
-            var runner = TryBuildRunner(
-                configure: settings =>
-                {
-                    settings.SandboxCustomFolders = new List<SandboxCustomFolder>
-                    {
-                        new() { Path = rwDir, Access = SandboxFolderAccess.ReadWrite },
-                        new() { Path = roDir, Access = SandboxFolderAccess.ReadOnly },
-                    };
-                });
-            if (runner is null) return; // skip — MXC unavailable on this host
-
-            var command = string.Join(" & ", new[]
-            {
-                $"(echo RW_WRITE_VALUE > {CmdQuote(rwOutput)} && echo RW_WRITE=PASS || echo RW_WRITE=FAIL)",
-                $"(type {CmdQuote(rwOutput)} > nul && echo RW_READ=PASS || echo RW_READ=FAIL)",
-                $"(type {CmdQuote(roInput)} > nul && echo RO_READ=PASS || echo RO_READ=FAIL)",
-                $"(echo RO_WRITE_VALUE > {CmdQuote(roForbidden)} && echo RO_WRITE=PASS || echo RO_WRITE=FAIL)",
-            });
-
-            var result = await runner.RunAsync(new CommandRequest
-            {
-                Command = command,
-                Shell = "cmd",
-                TimeoutMs = 30_000,
-            });
-
-            Assert.False(result.TimedOut, $"Filesystem matrix timed out.\nStdout={result.Stdout}\nStderr={result.Stderr}");
-            var matrix = ParseMatrix(result.Stdout);
-            AssertMatrix(matrix, "RW_WRITE", "PASS", result);
-            AssertMatrix(matrix, "RW_READ", "PASS", result);
-            AssertMatrix(matrix, "RO_READ", "PASS", result);
-            AssertMatrix(matrix, "RO_WRITE", "FAIL", result);
-
-            Assert.True(File.Exists(rwOutput), $"RW output should exist on host: {rwOutput}");
-            Assert.False(File.Exists(roForbidden), $"RO output should not exist on host: {roForbidden}");
-        }
-        finally
-        {
-            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
-            try { Directory.Delete(root, recursive: true); } catch { }
-        }
-    }
-
-    [IntegrationFact]
-    public async Task SystemRun_CustomEnv_DeniesBeforeMxcUnavailableHostFallback()
-    {
-        var executor = new ThrowIfCalledSandboxExecutor();
-        var hostFallback = new LocalCommandRunner(NullLogger.Instance);
-        var settings = new SettingsData
-        {
-            SystemRunSandboxEnabled = true,
-            SystemRunBlockHostFallbackWhenMxcUnavailable = false,
-        };
-        var runner = new MxcCommandRunner(
-            executor,
-            hostFallback,
-            () => settings,
-            () => Path.Combine(Path.GetTempPath(), "openclaw-mxc-smoke-test-settings"),
-            () => false,
-            invalidateAvailability: null,
-            new ConsoleLogger());
-
-        var result = await runner.RunAsync(new CommandRequest
-        {
-            Command = "echo %OPENCLAW_MXC_ENV_FALLBACK_MARKER%",
-            Shell = "cmd",
-            Env = new Dictionary<string, string>
-            {
-                ["OPENCLAW_MXC_ENV_FALLBACK_MARKER"] = "OPENCLAW_ENV_FALLBACK_SHOULD_NOT_RUN",
+                Pid = Environment.ProcessId, StartTimeUtc = testHost.StartTime.ToUniversalTime().ToString("O"),
+                Executable = Environment.ProcessPath, CommandLine = string.Join(" ", Environment.GetCommandLineArgs()),
             },
-            TimeoutMs = 30_000,
         });
-
-        Console.WriteLine(
-            "[mxc-integration] custom-env-deny " +
-            $"exitCode={result.ExitCode}; " +
-            $"fallbackMarkerSeen={result.Stdout.Contains("OPENCLAW_ENV_FALLBACK_SHOULD_NOT_RUN", StringComparison.Ordinal)}; " +
-            $"stderrContainsCustomEnv={result.Stderr.Contains("custom environment variables", StringComparison.OrdinalIgnoreCase)}");
-
-        Assert.Equal(-1, result.ExitCode);
-        Assert.Contains("custom environment variables", result.Stderr);
-        Assert.DoesNotContain("OPENCLAW_ENV_FALLBACK_SHOULD_NOT_RUN", result.Stdout);
-        Assert.Equal(0, executor.CallCount);
+        Register("running");
     }
 
-    private static bool HasSupportedSandboxPath(string path)
+    private MxcCommandRunner Runner => new(() => _settings, () => SettingsDirectory,
+        spawn: async request =>
+        {
+            Assert.DoesNotContain(request.Filesystem!.ReadonlyPaths.Concat(request.Filesystem.ReadwritePaths),
+                p => Path.TrimEndingDirectorySeparator(p).Equals(
+                    Path.TrimEndingDirectorySeparator(Path.GetPathRoot(p)!), StringComparison.OrdinalIgnoreCase));
+            Assert.False(request.InheritDefaultEnvironment);
+            Assert.Null(request.Environment);
+            _lastScratch = request.WorkingDirectory;
+            var process = await MxcContainer.SpawnAsync(request,
+                new SpawnOptions { Telemetry = new() { Enabled = false } }, CancellationToken.None);
+            using var osProcess = Process.GetProcessById((int)process.Id);
+            _processes.Add(new
+            {
+                Pid = process.Id, StartTimeUtc = osProcess.StartTime.ToUniversalTime().ToString("O"),
+                Executable = Path.Combine(Environment.SystemDirectory, "cmd.exe"),
+                CommandLine = request.Command, DataDirectories = IsolationRoots(), RunId = _runId,
+                WorkingDirectory = request.WorkingDirectory, EnvironmentSource = "MXC SDK default user-profile environment",
+            });
+            Write("processes.json", _processes);
+            return process;
+        },
+        probe: request =>
+        {
+            var probe = MxcContainer.Probe(request);
+            Write($"probe-{_processes.Count}.json", probe);
+            return probe;
+        },
+        scratchRoot: Path.Combine(_root, "s"), contextProvider: () => _context);
+
+    private CommandRequest Cmd(string payload) => new()
     {
+        Argv =
+        [
+            Path.Combine(Environment.SystemDirectory, "cmd.exe"), "/d", "/s", "/c",
+            "(for /L %i in (1,1,20000) do @set MXC_PROOF_WAIT=%i) & " + payload,
+        ],
+        TimeoutMs = 30_000,
+    };
+
+    [MxcNativeFact]
+    public async Task NativeSdk_CapturesStdoutStderrAndNonzeroExit()
+    {
+        var result = await Runner.RunAsync(Cmd(
+            "echo native-output & echo PROOF_TEMP=%TEMP% & echo PROOF_CWD=%CD% & echo native-error 1>&2 & exit /b 42"));
+        Write("output.json", result);
+        Assert.Equal(42, result.ExitCode);
+        Assert.Contains("native-output", result.Stdout);
+        Assert.Contains("native-error", result.Stderr);
+        Assert.False(result.TimedOut);
+        Assert.Contains("PROOF_TEMP=", result.Stdout);
+        Assert.Contains("PROOF_CWD=" + _lastScratch, result.Stdout, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [MxcNativeFact]
+    public async Task NativeSdk_DefaultEnvironmentProvidesTempWithoutInheritingParentProcessVariables()
+    {
+        var sentinel = "OPENCLAW_MXC_PARENT_ONLY_" + Guid.NewGuid().ToString("N");
+        Environment.SetEnvironmentVariable(sentinel, "synthetic-parent-value");
         try
         {
-            var root = Path.GetPathRoot(Path.GetFullPath(path)) ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(root))
-                return false;
-
-            var drive = new DriveInfo(root);
-            if (!drive.IsReady)
-                return false;
-
-            return string.Equals(drive.DriveFormat, "NTFS", StringComparison.OrdinalIgnoreCase);
+            var result = await Runner.RunAsync(Cmd(
+                "echo TEMP_STARTED & " +
+                "(if exist \"%TEMP%\\.\" (echo TEMP_EXISTS) else (echo TEMP_MISSING)) & " +
+                $"(if defined {sentinel} (echo PARENT_INHERITED) else (echo PARENT_ABSENT)) & " +
+                "(echo TEMP_MARKER > \"%TEMP%\\ready.txt\") && type \"%TEMP%\\ready.txt\" & echo TEMP_FINISHED"));
+            Write("default-environment-temp.json", result);
+            var lines = result.Stdout.Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries)
+                .Select(line => line.Trim()).ToArray();
+            Assert.False(result.TimedOut);
+            Assert.Contains("TEMP_STARTED", lines);
+            Assert.Contains("TEMP_FINISHED", lines);
+            Assert.Contains("TEMP_EXISTS", lines);
+            Assert.Contains("TEMP_MARKER", lines);
+            Assert.Contains("PARENT_ABSENT", lines);
+            Assert.DoesNotContain("PARENT_INHERITED", lines);
         }
-        catch
+        finally
         {
-            return false;
+            Environment.SetEnvironmentVariable(sentinel, null);
         }
     }
 
-    private static bool IsGitHubActions()
-        => string.Equals(Environment.GetEnvironmentVariable("GITHUB_ACTIONS"), "true", StringComparison.OrdinalIgnoreCase);
-
-    private static Dictionary<string, string> ParseMatrix(string stdout)
+    [MxcNativeFact]
+    public async Task NativeSdk_TempIsReadyForCreateRenameDeleteWithoutPayloadInitialization()
     {
-        var matrix = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var rawLine in stdout.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries))
-        {
-            var line = rawLine.Trim();
-            var separator = line.IndexOf('=');
-            if (separator <= 0)
-                continue;
-
-            var key = line[..separator];
-            var value = line[(separator + 1)..];
-            if (value is "PASS" or "FAIL")
-                matrix[key] = value;
-        }
-
-        return matrix;
+        var result = await Runner.RunAsync(Cmd(
+            "echo TEMP_STARTED & echo CHILD_TEMP=%TEMP% & " +
+            "echo TEMP_CREATED > \"%TEMP%\\t.txt\" & type \"%TEMP%\\t.txt\" & " +
+            "move /Y \"%TEMP%\\t.txt\" \"%TEMP%\\u.txt\" & type \"%TEMP%\\u.txt\" & " +
+            "del \"%TEMP%\\u.txt\" & if not exist \"%TEMP%\\u.txt\" echo TEMP_DELETED & echo TEMP_FINISHED"));
+        Write("temp-readiness-no-initializer.json", result);
+        Assert.Contains("TEMP_STARTED", result.Stdout);
+        Assert.Contains("TEMP_FINISHED", result.Stdout);
+        Assert.False(result.TimedOut);
+        Assert.Contains("TEMP_CREATED", result.Stdout);
+        Assert.True(result.Stdout.Split("TEMP_CREATED", StringSplitOptions.None).Length >= 3,
+            "Both create/read and rename/read must succeed before delete can count as temp readiness.");
+        Assert.Contains("TEMP_DELETED", result.Stdout);
     }
 
-    private static void AssertMatrix(
-        IReadOnlyDictionary<string, string> matrix,
-        string key,
-        string expected,
-        CommandResult result)
+    [MxcNativeFact]
+    public async Task NativeSdk_UserFolderMatrixBlocksUngrantReadAndProtectedChildren()
     {
-        Assert.True(matrix.TryGetValue(key, out var actual),
-            $"Missing matrix key {key}.\nStdout={result.Stdout}\nStderr={result.Stderr}\nExitCode={result.ExitCode}");
-        Assert.Equal(expected, actual);
+        File.WriteAllText(Path.Combine(Documents, "read.txt"), "DOCUMENT_MARKER");
+        File.WriteAllText(Path.Combine(Outside, "read.txt"), "OUTSIDE_MARKER");
+        var downloads = _context.RequireFolder("Downloads");
+        var oneDrive = _context.RequireFolder("OneDrive");
+        File.WriteAllText(Path.Combine(downloads, "read.txt"), "DOWNLOADS_MARKER");
+        File.WriteAllText(Path.Combine(oneDrive, "read.txt"), "ONEDRIVE_MARKER");
+        for (var i = 0; i < _context.ProtectedPaths.Count; i++)
+            File.WriteAllText(Path.Combine(_context.ProtectedPaths[i], "synthetic-secret.txt"), $"PROTECTED_{i}");
+        var secretAlias = Path.Combine(Documents, "secret-link");
+        var outsideAlias = Path.Combine(Documents, "outside-link");
+        CreateJunction(secretAlias, _context.ProtectedPaths[0]);
+        CreateJunction(outsideAlias, Outside);
+
+        foreach (var name in new[] { "strict", "balanced", "selected-write", "open" })
+        {
+            _settings.SystemRunFilesystemScope = name switch
+            {
+                "strict" => SystemRunFilesystemScope.SelectedFolders,
+                "open" => SystemRunFilesystemScope.UserFilesReadWrite,
+                _ => SystemRunFilesystemScope.UserFilesReadOnly,
+            };
+            _settings.SandboxCustomFolders = name == "selected-write"
+                ? [new() { Path = Project, Access = SandboxFolderAccess.ReadWrite }] : [];
+            var docWrite = Path.Combine(Documents, name + ".txt");
+            var projectWrite = Path.Combine(Project, name + ".txt");
+            var outsideWrite = Path.Combine(Outside, name + ".txt");
+            var newChild = Path.Combine(Project, name, "child.txt");
+            var commands = new[]
+            {
+                "echo WORKLOAD_STARTED",
+                $"type \"{Path.Combine(Documents, "read.txt")}\"",
+                $"type \"{Path.Combine(downloads, "read.txt")}\"",
+                $"type \"{Path.Combine(oneDrive, "read.txt")}\"",
+                $"echo CREATED > \"{docWrite}\"",
+                $"echo CREATED > \"{projectWrite}\"",
+                $"mkdir \"{Path.GetDirectoryName(newChild)}\"",
+                $"echo CREATED > \"{newChild}\"",
+                "echo SCRATCH_CREATED > \"%TEMP%\\t.txt\"",
+                "type \"%TEMP%\\t.txt\"",
+                $"type \"{Path.Combine(Outside, "read.txt")}\"",
+                $"echo CREATED > \"{outsideWrite}\"",
+                $"type \"{Path.Combine(secretAlias, "synthetic-secret.txt")}\"",
+                $"echo ALIAS_CREATED > \"{Path.Combine(secretAlias, name + "-alias.txt")}\"",
+                $"type \"{Path.Combine(outsideAlias, "read.txt")}\"",
+                $"echo ALIAS_CREATED > \"{Path.Combine(outsideAlias, name + "-alias.txt")}\"",
+                "echo WORKLOAD_FINISHED",
+            };
+            var result = await Runner.RunAsync(Cmd(string.Join(" & ", commands)));
+            Write(name + "-output.json", result);
+            Check(name, "workload-ran", result.Stdout.Contains("WORKLOAD_STARTED") && result.Stdout.Contains("WORKLOAD_FINISHED") && !result.TimedOut);
+            Check(name, "personal-read", result.Stdout.Contains("DOCUMENT_MARKER") == (name != "strict"));
+            Check(name, "redirected-downloads-read", result.Stdout.Contains("DOWNLOADS_MARKER") == (name != "strict"));
+            Check(name, "redirected-onedrive-read", result.Stdout.Contains("ONEDRIVE_MARKER") == (name != "strict"));
+            Check(name, "documents-write", File.Exists(docWrite) == (name == "open"));
+            Check(name, "selected-project-write", File.Exists(projectWrite) == (name is "selected-write" or "open"));
+            Check(name, "new-descendant-write", File.Exists(newChild) == (name is "selected-write" or "open"));
+            Check(name, "sdk-temp-usable-without-initialization", result.Stdout.Contains("SCRATCH_CREATED"));
+            Check(name, "ungranted-sibling-read-denied", !result.Stdout.Contains("OUTSIDE_MARKER"));
+            Check(name, "ungranted-sibling-write-denied", !File.Exists(outsideWrite));
+            Check(name, "protected-alias-read-denied", !result.Stdout.Contains("PROTECTED_0"));
+            Check(name, "protected-alias-write-denied", !File.Exists(Path.Combine(_context.ProtectedPaths[0], name + "-alias.txt")));
+            Check(name, "outside-alias-write-denied", !File.Exists(Path.Combine(Outside, name + "-alias.txt")));
+
+            for (var i = 0; i < _context.ProtectedPaths.Count; i++)
+            {
+                var protectedRoot = _context.ProtectedPaths[i];
+                var secret = Path.Combine(protectedRoot, "synthetic-secret.txt");
+                var created = Path.Combine(protectedRoot, name + ".txt");
+                var denial = await Runner.RunAsync(Cmd(
+                    $"echo PROTECTED_STARTED & type \"{secret}\" & echo MUTATED > \"{secret}\" & " +
+                    $"echo CREATED > \"{created}\" & echo PROTECTED_FINISHED"));
+                Write($"{name}-protected-{i}-output.json", denial);
+                Check(name, $"protected-{i}-workload-ran", denial.Stdout.Contains("PROTECTED_STARTED") && denial.Stdout.Contains("PROTECTED_FINISHED") && !denial.TimedOut);
+                Check(name, $"protected-{i}-read-write-create-denied", !denial.Stdout.Contains("PROTECTED_" + i) &&
+                    File.ReadAllText(secret) == "PROTECTED_" + i && !File.Exists(created));
+            }
+        }
+        Write("summary.json", new { Passed = _checks.Count, Failed = 0, Scenarios = 4 });
     }
 
-    private static string CmdQuote(string value) => "\"" + value.Replace("\"", "\"\"") + "\"";
-
-    private sealed class ThrowIfCalledSandboxExecutor : ISandboxExecutor
+    private void Check(string scenario, string check, bool passed)
     {
-        public string Name => "throw-if-called";
-        public bool IsContained => true;
-        public int CallCount { get; private set; }
+        _checks.Add(new { Scenario = scenario, Check = check, Passed = passed });
+        Write("checks.json", _checks);
+        Assert.True(passed, $"{scenario}: {check}. Native observations, not absence alone, determine the result.");
+    }
 
-        public Task<SandboxExecutionResult> ExecuteAsync(
-            SandboxExecutionRequest request,
-            CancellationToken ct = default)
+    private void CreateJunction(string path, string target)
+    {
+        var executable = Path.Combine(Environment.SystemDirectory, "cmd.exe");
+        var info = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true };
+        foreach (var argument in new[] { "/d", "/c", "mklink", "/J", path, target }) info.ArgumentList.Add(argument);
+        using var process = Process.Start(info)!;
+        _processes.Add(new
         {
-            CallCount++;
-            throw new InvalidOperationException("Custom-env denial should happen before sandbox execution.");
+            Pid = process.Id, StartTimeUtc = process.StartTime.ToUniversalTime().ToString("O"),
+            Executable = executable, CommandLine = string.Join(" ", info.ArgumentList),
+            DataDirectories = IsolationRoots(), RunId = _runId,
+        });
+        Write("processes.json", _processes);
+        process.WaitForExit(10_000);
+        Assert.Equal(0, process.ExitCode);
+        _junctions.Add(path);
+    }
+
+    private static string?[] IsolationRoots() =>
+        new[] { "OPENCLAW_TRAY_DATA_DIR", "OPENCLAW_TRAY_APPDATA_DIR", "OPENCLAW_TRAY_LOCALAPPDATA_DIR" }
+            .Select(Environment.GetEnvironmentVariable).ToArray();
+    private void Write(string name, object value) =>
+        File.WriteAllText(Path.Combine(_root, name), JsonSerializer.Serialize(value, new JsonSerializerOptions { WriteIndented = true }));
+    private void Register(string state)
+    {
+        var registry = Environment.GetEnvironmentVariable("OPENCLAW_MXC_LAB_REGISTRY");
+        if (registry is not null)
+            File.AppendAllText(registry, JsonSerializer.Serialize(new { RunId = _runId, State = state, Manifest = Path.Combine(_root, "ownership.json") }) + Environment.NewLine);
+    }
+    private static string Acl(string path)
+    {
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Native ACL proof requires Windows.");
+        return new DirectoryInfo(path).GetAccessControl()
+            .GetSecurityDescriptorSddlForm(AccessControlSections.Access | AccessControlSections.Owner | AccessControlSections.Group);
+    }
+    public void Dispose()
+    {
+        foreach (var record in _processes)
+        {
+            var identity = JsonSerializer.SerializeToElement(record);
+            try
+            {
+                using var process = Process.GetProcessById(identity.GetProperty("Pid").GetInt32());
+                if (process.StartTime.ToUniversalTime().ToString("O") == identity.GetProperty("StartTimeUtc").GetString() &&
+                    !process.HasExited)
+                {
+                    Register("cleanup-blocked");
+                    throw new InvalidOperationException("An owned process is still live. Its fixture and evidence were retained.");
+                }
+            }
+            catch (ArgumentException) { /* The recorded process no longer exists. */ }
         }
+        var after = _acls.ToDictionary(pair => pair.Key, pair => Acl(pair.Key), StringComparer.OrdinalIgnoreCase);
+        Write("acl-after.json", after);
+        if (_acls.Any(pair => pair.Value != after[pair.Key]))
+        {
+            Register("cleanup-blocked/acl-changed");
+            throw new InvalidOperationException("A fixture or ancestor ACL changed. Evidence and fixtures retained.");
+        }
+        foreach (var junction in _junctions) if (Directory.Exists(junction)) Directory.Delete(junction);
+        foreach (var directory in new[] { Profile, Outside, Path.Combine(_root, "s"),
+            _context.RequireFolder("Downloads"), _context.RequireFolder("OneDrive") })
+            if (Directory.Exists(directory)) Directory.Delete(directory, true);
+        Write("cleanup.json", new { FixturesRemoved = true, RunId = _runId });
+        Register("stopped/fixtures-cleaned");
     }
 }

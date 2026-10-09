@@ -179,23 +179,28 @@ public class SettingsManager
     public string? PreferredGatewayId { get => _data.PreferredGatewayId; set => _data = _data with { PreferredGatewayId = value }; }
 
     // ── MXC sandbox ─────────────────────────────────────────────────────
-    /// <summary>Master switch for system.run containment. When true (default), system.run uses MXC when available and falls back to host execution when unavailable unless strict fallback blocking is enabled. When false, system.run runs on host like before.</summary>
-    public bool SystemRunSandboxEnabled { get => _data.SystemRunSandboxEnabled; set => _data = _data with { SystemRunSandboxEnabled = value }; }
-    /// <summary>When true, sandbox-enabled system.run blocks instead of using the compatibility host fallback if MXC is unavailable. Default false.</summary>
-    public bool SystemRunBlockHostFallbackWhenMxcUnavailable { get => _data.SystemRunBlockHostFallbackWhenMxcUnavailable; set => _data = _data with { SystemRunBlockHostFallbackWhenMxcUnavailable = value }; }
+    /// <summary>Personal-file scope enforced during MXC execution; null allows first-run preset initialization.</summary>
+    public SystemRunFilesystemScope? SystemRunFilesystemScope { get => _data.SystemRunFilesystemScope; set => _data = _data with { SystemRunFilesystemScope = value }; }
+    public void ApplySystemRunPreset(SystemRunAccessPreset preset) => _data = SystemRunPermissionPresets.Apply(_data, preset);
+    public SettingsData SnapshotSystemRunSettings() => OpenClaw.Shared.Mxc.MxcRequestBuilder.Snapshot(_data);
+    public string SystemRunPolicyFingerprint => OpenClaw.Shared.Mxc.MxcRequestBuilder.Fingerprint(SnapshotSystemRunSettings());
     /// <summary>When sandboxed, allow system.run commands to reach the public internet. Default false.</summary>
     public bool SystemRunAllowOutbound { get => _data.SystemRunAllowOutbound; set => _data = _data with { SystemRunAllowOutbound = value }; }
     /// <summary>When sandboxed, allow Windows UI system calls required by PowerShell and some console utilities. Default false.</summary>
     public bool SystemRunAllowWindowsUi { get => _data.SystemRunAllowWindowsUi; set => _data = _data with { SystemRunAllowWindowsUi = value }; }
     // ── MXC sandbox: additional knobs (Sandbox page) ─────────────────
     public SandboxClipboardMode SandboxClipboard { get => _data.SandboxClipboard; set => _data = _data with { SandboxClipboard = value }; }
-    public SandboxFolderAccess? SandboxDocumentsAccess { get => _data.SandboxDocumentsAccess; set => _data = _data with { SandboxDocumentsAccess = value }; }
-    public SandboxFolderAccess? SandboxDownloadsAccess { get => _data.SandboxDownloadsAccess; set => _data = _data with { SandboxDownloadsAccess = value }; }
-    public SandboxFolderAccess? SandboxDesktopAccess { get => _data.SandboxDesktopAccess; set => _data = _data with { SandboxDesktopAccess = value }; }
+    public SandboxFolderAccess? SandboxDocumentsAccess { get => _data.SandboxDocumentsAccess; set => _data = _data with { SandboxDocumentsAccess = value, SystemRunFilesystemScope = _data.SystemRunFilesystemScope ?? OpenClaw.Shared.SystemRunFilesystemScope.SelectedFolders }; }
+    public SandboxFolderAccess? SandboxDownloadsAccess { get => _data.SandboxDownloadsAccess; set => _data = _data with { SandboxDownloadsAccess = value, SystemRunFilesystemScope = _data.SystemRunFilesystemScope ?? OpenClaw.Shared.SystemRunFilesystemScope.SelectedFolders }; }
+    public SandboxFolderAccess? SandboxDesktopAccess { get => _data.SandboxDesktopAccess; set => _data = _data with { SandboxDesktopAccess = value, SystemRunFilesystemScope = _data.SystemRunFilesystemScope ?? OpenClaw.Shared.SystemRunFilesystemScope.SelectedFolders }; }
     public List<SandboxCustomFolder> SandboxCustomFolders
     {
-        get => _data.SandboxCustomFolders ??= new();
-        set => _data = _data with { SandboxCustomFolders = value ?? new() };
+        get => CloneSandboxCustomFolders(_data.SandboxCustomFolders);
+        set => _data = _data with
+        {
+            SandboxCustomFolders = CloneSandboxCustomFolders(value),
+            SystemRunFilesystemScope = _data.SystemRunFilesystemScope ?? OpenClaw.Shared.SystemRunFilesystemScope.SelectedFolders,
+        };
     }
     public int SandboxTimeoutMs { get => _data.SandboxTimeoutMs > 0 ? _data.SandboxTimeoutMs : 30_000; set => _data = _data with { SandboxTimeoutMs = value }; }
     public long SandboxMaxOutputBytes { get => _data.SandboxMaxOutputBytes > 0 ? _data.SandboxMaxOutputBytes : 4 * 1024 * 1024; set => _data = _data with { SandboxMaxOutputBytes = value }; }
@@ -326,8 +331,7 @@ public class SettingsManager
         HasSeenActivityStreamTip = false,
         SkippedUpdateTag = "",
         PreferredGatewayId = null,
-        SystemRunSandboxEnabled = true,
-        SystemRunBlockHostFallbackWhenMxcUnavailable = false,
+        SystemRunFilesystemScope = null,
         SystemRunAllowOutbound = false,
         SystemRunAllowWindowsUi = false,
         SandboxClipboard = SandboxClipboardMode.None,
@@ -339,8 +343,11 @@ public class SettingsManager
         SandboxMaxOutputBytes = 4 * 1024 * 1024
     };
 
-    private static SettingsData NormalizeLoadedData(SettingsData loaded, string? rawJson = null)
+    private SettingsData NormalizeLoadedData(SettingsData loaded, string? rawJson = null)
     {
+        using var document = rawJson is null ? null : JsonDocument.Parse(rawJson);
+        var legacyScope = document is null ||
+            !document.RootElement.TryGetProperty(nameof(SettingsData.SystemRunFilesystemScope), out _);
         var defaults = CreateDefaultData();
         var data = loaded with
         {
@@ -374,11 +381,37 @@ public class SettingsManager
             OpenTelemetryProtocol = OpenTelemetryEndpointProtocol.Normalize(loaded.OpenTelemetryProtocol),
             UserRules = loaded.UserRules != null ? new List<UserNotificationRule>(loaded.UserRules) : new(),
             SandboxCustomFolders = CloneSandboxCustomFolders(loaded.SandboxCustomFolders),
-            SystemRunBlockHostFallbackWhenMxcUnavailable = loaded.SystemRunBlockHostFallbackWhenMxcUnavailable,
+            SystemRunFilesystemScope = loaded.SystemRunFilesystemScope is { } scope && Enum.IsDefined(scope)
+                ? scope : legacyScope || loaded.SystemRunFilesystemScope is not null
+                    ? OpenClaw.Shared.SystemRunFilesystemScope.SelectedFolders : null,
             SandboxTimeoutMs = loaded.SandboxTimeoutMs > 0 ? loaded.SandboxTimeoutMs : defaults.SandboxTimeoutMs,
             SandboxMaxOutputBytes = loaded.SandboxMaxOutputBytes > 0 ? loaded.SandboxMaxOutputBytes : defaults.SandboxMaxOutputBytes,
             McpOnlyMode = null
         };
+
+        if (legacyScope)
+        {
+            foreach (var folder in data.SandboxCustomFolders ?? [])
+                if (OpenClaw.Shared.Mxc.MxcRequestBuilder.LegacyGrantWasFiltered(folder.Path, _settingsDirectory))
+                    folder.Access = SandboxFolderAccess.Blocked;
+            data.SandboxDocumentsAccess = PreserveLegacyFolder(Environment.SpecialFolder.MyDocuments, data.SandboxDocumentsAccess);
+            data.SandboxDesktopAccess = PreserveLegacyFolder(Environment.SpecialFolder.Desktop, data.SandboxDesktopAccess);
+            if (data.SandboxDownloadsAccess is not null)
+            {
+                try
+                {
+                    if (OpenClaw.Shared.Mxc.MxcRequestBuilder.LegacyGrantWasFiltered(
+                        OpenClaw.Shared.Mxc.MxcRequestBuilder.ResolveDownloadsFolder(), _settingsDirectory))
+                        data.SandboxDownloadsAccess = SandboxFolderAccess.Blocked;
+                }
+                catch (Exception ex) when (ex is NotSupportedException or DllNotFoundException or EntryPointNotFoundException)
+                { data.SandboxDownloadsAccess = SandboxFolderAccess.Blocked; }
+            }
+        }
+
+        SandboxFolderAccess? PreserveLegacyFolder(Environment.SpecialFolder folder, SandboxFolderAccess? access) =>
+            access is not null && OpenClaw.Shared.Mxc.MxcRequestBuilder.LegacyGrantWasFiltered(
+                Environment.GetFolderPath(folder), _settingsDirectory) ? SandboxFolderAccess.Blocked : access;
 
         // Legacy McpOnlyMode migration:
         //   true  -> node off (no gateway), MCP on
@@ -568,7 +601,9 @@ public class SettingsManager
                     foreach (var property in existing.RootElement.EnumerateObject())
                         if (!known.Contains(property.Name) &&
                             !property.Name.Equals("Token", StringComparison.OrdinalIgnoreCase) &&
-                            !property.Name.Equals("BootstrapToken", StringComparison.OrdinalIgnoreCase))
+                            !property.Name.Equals("BootstrapToken", StringComparison.OrdinalIgnoreCase) &&
+                            !property.Name.Equals("SystemRunSandboxEnabled", StringComparison.OrdinalIgnoreCase) &&
+                            !property.Name.Equals("SystemRunBlockHostFallbackWhenMxcUnavailable", StringComparison.OrdinalIgnoreCase))
                             output[property.Name] = System.Text.Json.Nodes.JsonNode.Parse(property.Value.GetRawText());
                     json = output.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
                 }

@@ -1995,90 +1995,93 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
-    public void AppNotifications_SandboxRiskMessageReflectsStrictFallbackBlocking()
+    public void AppNotifications_DistinguishConfirmedUnsupportedWindowsFromRepairFailures()
     {
         var source = ReadAppSources();
         var method = ExtractMethod(source, "PublishSandboxRiskNotification", parameterHint: "MxcAvailability");
 
-        Assert.Contains("SystemRunBlockHostFallbackWhenMxcUnavailable", method);
+        Assert.DoesNotContain("SystemRunBlockHostFallbackWhenMxcUnavailable", method);
         Assert.Contains("AppNotification_SandboxUnavailableBlocked_Title", method);
         Assert.Contains("AppNotification_SandboxUnavailableBlocked_MessageFormat", method);
-        Assert.Contains("host-fallback", method);
+        Assert.DoesNotContain("host-fallback", method);
         Assert.Contains("blocked", method);
+        Assert.Contains("availability.IsWindowsUnsupported", method);
+        Assert.Contains("uncontained-compatibility", method);
+        Assert.Contains("SandboxPage_WindowsCompatibilityText", method);
     }
 
     [Fact]
-    public void SandboxPage_NormalizesDefinitiveUnavailableMxcOff()
+    public void SandboxPage_ProbeNeverMutatesPermissions()
     {
         var source = ReadSandboxPageSource();
         var refresh = ExtractMethod(source, "RefreshAvailabilityAsync");
-        var loadState = ExtractMethod(source, "LoadState");
-        var definitiveUnavailable = ExtractMethod(source, "IsSandboxDefinitivelyUnavailable");
-        var normalize = ExtractMethod(source, "NormalizeSandboxToggleForAvailability");
-
-        AssertInOrder(
-            refresh,
-            "NormalizeSandboxToggleForAvailability();",
-            "UpdateSandboxStatusCard();",
-            "UpdateControlsEnabledState();");
-        AssertInOrder(
-            loadState,
-            "NormalizeSandboxToggleForAvailability();",
-            "UpdatePresetHighlight();",
-            "UpdateSandboxStatusCard();",
-            "UpdateControlsEnabledState();");
-        Assert.Contains("CanRunSystemRunSandbox: false", definitiveUnavailable);
-        Assert.Contains("ProbeErrored: false", definitiveUnavailable);
-        Assert.Contains("ProbeSuppressedBySkuGate: false", definitiveUnavailable);
-        AssertInOrder(
-            normalize,
-            "settings.SystemRunSandboxEnabled",
-            "settings.SystemRunBlockHostFallbackWhenMxcUnavailable",
-            "settings.SystemRunSandboxEnabled = false");
-        Assert.Contains("settings.SystemRunSandboxEnabled = false", normalize);
-        Assert.Contains("SandboxEnabledToggle.IsOn = false", normalize);
-        Assert.Contains("Save();", normalize);
+        Assert.Contains("MxcAvailability.Probe", refresh);
+        Assert.DoesNotContain("Settings.Save", refresh);
+        Assert.DoesNotContain("Save(", refresh);
+        Assert.DoesNotContain("NormalizeSandboxToggleForAvailability", source);
     }
 
     [Fact]
-    public void SandboxPage_SkuSuppressionIsNotClassifiedAsMissingComponents()
+    public void SandboxPage_ResolvedUserScopesAndErrorsAreVisibleAndEditable()
     {
         var source = ReadSandboxPageSource();
-        var actionBar = ExtractMethod(source, "UpdateUnavailableActionBar");
-        var windowsCapability = ExtractMethod(source, "IsWindowsSandboxCapabilityUnavailable");
-
-        AssertInOrder(
-            actionBar,
-            "var isSetupIssue",
-            "!availability.ProbeSuppressedBySkuGate",
-            "!availability.IsWxcExecResolvable");
-        Assert.Contains("IsWindowsSandboxCapabilityUnavailable(availability)", actionBar);
-        Assert.Contains("!availability.ProbeErrored", windowsCapability);
-        Assert.Contains("availability.IsWxcExecResolvable", windowsCapability);
-        Assert.Contains("!availability.CanRunSystemRunSandbox", windowsCapability);
+        var status = ExtractMethod(source, "UpdateStatus");
+        Assert.Contains("SandboxPage_ScopeResolutionBlockedTitle", status);
+        Assert.Contains("SandboxPage_ScopeResolutionBlockedText", status);
+        Assert.Contains("ScopeDetails.Text", status);
+        Assert.DoesNotContain("BroadBlocked", status);
+        Assert.Contains("SandboxControlsContainer.IsHitTestVisible = true", status);
     }
 
     [Fact]
-    public void SandboxPage_RejectsTurningOnWhenMxcIsDefinitivelyUnavailable()
+    public void SandboxPage_HasNoOffToggleAndDisablesPermissionsOnlyForConfirmedUnsupportedWindows()
     {
         var source = ReadSandboxPageSource();
-        var toggle = ExtractMethod(source, "OnSandboxEnabledToggledAsync");
-        var reject = ExtractMethod(source, "RejectSandboxEnableWhenUnavailableAsync");
+        Assert.DoesNotContain("SandboxEnabledToggle", source);
+        Assert.DoesNotContain("SystemRunSandboxEnabled", source);
+        Assert.DoesNotContain("HostFallback", source);
+        Assert.Contains("settings.ApplySystemRunPreset(preset)", source);
+        Assert.Contains("SandboxPermissionsControls.IsEnabled = !unsupported", source);
+        Assert.Contains("PresetLockedButton.IsEnabled = !unsupported", source);
+        Assert.Contains("PresetBalancedButton.IsEnabled = !unsupported", source);
+        Assert.Contains("PresetPermissiveButton.IsEnabled = !unsupported", source);
+        Assert.Contains("SandboxPage_WindowsCompatibilityText", source);
+    }
 
-        AssertInOrder(
-            toggle,
-            "newValue",
-            "!oldValue",
-            "IsSandboxDefinitivelyUnavailable()",
-            "!s.SystemRunBlockHostFallbackWhenMxcUnavailable",
-            "await RejectSandboxEnableWhenUnavailableAsync();",
-            "return;");
-        Assert.Contains("SandboxEnabledToggle.IsOn = false", reject);
-        Assert.Contains("Node Sandbox unavailable", reject);
-        Assert.Contains("IsWindowsSandboxCapabilityUnavailable(availability)", reject);
-        Assert.Contains("SandboxPage_WindowsUnsupportedTitle", reject);
-        Assert.Contains("SandboxPage_WindowsUnsupportedMessageFormat", reject);
-        Assert.Contains("SandboxPage_UnavailableBehaviorHostFallback", reject);
+    [Fact]
+    public void SandboxPage_ShowsCustomAndDescribesAdditionalGrants()
+    {
+        var source = ReadSandboxPageSource();
+        Assert.Contains("SystemRunPermissionPresets.Detect", source);
+        Assert.Contains("CustomPresetLabel.Visibility", source);
+        Assert.Contains("if (await dialog.ShowAsync() == ContentDialogResult.Primary)", source);
+        Assert.Contains("DefaultButton = ContentDialogButton.Close", source);
+        var xaml = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Pages", "SandboxPage.xaml"));
+        Assert.Contains("Content=\"Use scope\" Tag=\"None\"", xaml);
+        Assert.DoesNotContain("Content=\"Blocked\" Tag=\"None\"", xaml);
+        Assert.DoesNotContain("PATH are also granted", xaml);
+    }
+
+    [Theory]
+    [InlineData("PresetLockedButton", "PresetStrictIcon", "SandboxStrict")]
+    [InlineData("PresetBalancedButton", "PresetBalancedIcon", "Permissions")]
+    [InlineData("PresetPermissiveButton", "PresetOpenIcon", "StatusWarn")]
+    public void SandboxPage_PresetIconsUseCatalogWithoutChangingAccessibleNames(
+        string buttonName, string iconName, string glyph)
+    {
+        var xaml = XDocument.Load(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Pages", "SandboxPage.xaml"));
+        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var button = Assert.Single(xaml.Descendants(), element =>
+            element.Name.LocalName == "Button" && (string?)element.Attribute(x + "Name") == buttonName);
+        var icon = Assert.Single(button.Descendants(), element => element.Name.LocalName == "FontIcon");
+        Assert.Equal(iconName, (string?)icon.Attribute(x + "Name"));
+        Assert.Equal($"{{x:Bind helpers:FluentIconCatalog.{glyph}, Mode=OneTime}}", (string?)icon.Attribute("Glyph"));
+        Assert.Equal("{ThemeResource SymbolThemeFontFamily}", (string?)icon.Attribute("FontFamily"));
+        Assert.Equal("False", (string?)icon.Attribute("IsTextScaleFactorEnabled"));
+        Assert.Equal("Raw", (string?)icon.Attribute("AutomationProperties.AccessibilityView"));
+        Assert.Equal("SandboxPage_" + buttonName, (string?)button.Attribute(x + "Uid"));
     }
 
     private static string ReadCoordinatorSource()

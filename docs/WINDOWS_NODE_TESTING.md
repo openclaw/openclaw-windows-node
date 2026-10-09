@@ -224,13 +224,42 @@ Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `ap
 - Packaged MSIX builds will show the system consent prompt automatically
 
 ### Local sandbox validation
-- Sandbox integration tests are intended for local Windows development machines and may skip when the required local sandbox prerequisites are unavailable.
-- Build the tray app before running local sandbox validation so the required sandbox helper binaries are present in the app output.
-- MXC path grants use absolute Windows paths. OpenClaw adds each granted volume root as read-only only when the host probe selects BaseContainer and the exact emitted config remains BaseContainer-compatible: no backend `deniedPaths`, proxy/directional networking, denial capture, or least-privilege mode. MXC 0.8's request selector keeps that policy on BaseContainer, whose root grants are documented not to cascade. This supplies the root metadata access needed by common Windows path APIs without exposing child directories.
-- OpenClaw supports MXC sandboxing for `system.run` only when `wxc-exec --probe` reports `tier: "base-container"` and `needsDaclAugmentation: false`. BFS, DACL, unknown, and augmented tiers are treated as unavailable for the Node Sandbox. General MXC and `isolation_session` diagnostics remain separate from this process-containment decision.
-- OpenClaw classifies the Windows SKU before resolving or launching `wxc-exec`. Windows Server is explicitly unsupported because the current MXC probe can crash there. An indeterminate SKU check also fails closed and skips the native probe. This suppression does not erase the user's sandbox preference, so the existing host-fallback or strict-block policy remains visible and recoverable after an OS/runtime fix.
-- OpenClaw never invokes `wxc-host-prep` and never adds a volume-root policy grant to BFS or the DACL fallback. DACL directory grants intentionally propagate, and [microsoft/mxc#648](https://github.com/microsoft/mxc/issues/648) documents unsafe descendant ACL rewriting in the current privileged helper.
-- The upstream BaseContainer readiness and root-grant behavior is tracked in [microsoft/mxc#1109](https://github.com/microsoft/mxc/issues/1109).
+- Shared unit tests inject the official SDK's `IMxcProcess` and typed native probe. They prove the managed contract, not OS containment.
+- The exact `Microsoft.Mxc.Sdk` 1.0.0 NuGet dependency supplies native assets. No root npm bridge or `wxc-exec` discovery is used.
+- On supported Windows, every `system.run` requires a complete typed request to admit BaseContainer, native sensitive-path denial, and `needsDaclAugmentation=false`. Unknown, failed or augmented admission blocks execution. Only a positively unsupported Windows SKU or successful known weaker-tier probe with the BaseContainer API absent selects direct uncontained compatibility execution. SDK loading, request policy and spawn errors never do. Approvals, pinned argv/cwd, output limits, cancellation and deadlines remain enforced; sandbox file/network/clipboard/UI permissions do not. OS IsolationSession capability is independent, read from the official DLL's probe facts. Companion's OS minimum still applies.
+- The Windows client SKU is checked before FFI. Server and unknown SKU fail closed. Availability never changes saved permissions.
+- Non-root directory grants cover descendants. **No readonly or readwrite volume-root entries are emitted.** Native Windows proof found readonly roots permitted unrelated sibling reads; they are not treated as harmless metadata. The same no-root restriction applies to runtime roots, explicit grants and cwd authority.
+- Balanced/Open cover the OS user profile and resolved Documents/Desktop/Downloads/available configured OneDrive roots, including redirected roots outside the profile. Other users, whole drives and arbitrary projects outside the declared scope are not included. Custom grants remain explicit; user-folder RO plus selected RW children is supported.
+- `MxcRequestContext` is the small injectable OS snapshot used by the product builder. Native tests replace its personal/sensitive roots with synthetic fixtures, never real user-profile grants. Missing/inaccessible required roots block with diagnostics. Optional unavailable OneDrive is explicitly not included. Grant/cwd reparse roots remain rejected; native child-alias checks do not imply every alias topology is supported.
+- Protected roots include active/default OpenClaw settings, `.openclaw`, `.ssh`, supported browser profiles and PSReadLine. Existing legacy grants previously filtered for protected-root conflicts stay blocked until explicitly reviewed.
+- Cwd outside effective grants is blocked; omitted cwd uses private working scratch.
+  The SDK owns the child environment and package-private temporary storage:
+  `ContainerRequest.Environment` is omitted. OpenClaw does not replace
+  TEMP/TMP, APPDATA/LOCALAPPDATA, PATH or other Windows environment values.
+  The SDK builds the Windows user-profile environment without copying the
+  parent process environment; persisted user variables can still be present.
+  File-path exclusions are not an environment-secret filter. Caller-supplied
+  env remains rejected by approval identity validation.
+  `NativeSdk_DefaultEnvironmentProvidesTempWithoutInheritingParentProcessVariables`
+  proves TEMP creation/read without mkdir and checks a synthetic parent-only
+  variable is absent. The native permission matrix also uses SDK TEMP directly.
+  `NativeSdk_TempIsReadyForCreateRenameDeleteWithoutPayloadInitialization`
+  separately tests the full temporary-file lifecycle. TEMP rename is denied
+  on the tested Windows client even with the SDK defaults; do not hide that
+  failure or infer full tool compatibility from successful creation/read.
+  No initializer, directory-name guessing, extra launcher or host TEMP grant
+  is added. Native payloads are fixed synthetic commands, not another OpenClaw
+  process that could use the SDK-default appdata paths.
+- Output retains bounded UTF-8 bytes per stream, including truncation markers; BOMs can be fragmented and discarded bytes continue to drain.
+- One command deadline covers launch/wait/drains. Cancellation returns promptly while a late launch or blocked kill remains owned. Capacity (eight owners) is held until native tasks and scratch cleanup finish. Running commands retain their immutable policy; pending commands revalidate settings and approvals before spawn.
+- Never run `wxc-host-prep`, mutate host DACLs or force a native tier as proof.
+- Native tests are separately opt-in with `OPENCLAW_RUN_MXC_NATIVE_PROOF=1`. Skipped tests are not proof. Prove RO/RW, protected children, aliases, environment secrecy, internet-only networking, UI/clipboard, timeout/kill and x64/ARM64 before completion.
+  Product-runner native tests instead require `OPENCLAW_MXC_PROOF_ROOT` outside
+  the checkout and all three isolated tray roots before process creation. The
+  `validate-mxc-userfolders-native.ps1` script records process ownership, forbids
+  skipped native results and compares real appdata metadata. Its fixture checks
+  synthetic protected children, ungranted sibling **reads and writes**, redirected
+  roots, selected writes and new descendants; it records fixture/ancestor ACLs.
 - For MXC-related merge validation, prefer the formal script below because it sets the required gates and fails if MXC is skipped.
 
   ```powershell
@@ -238,7 +267,7 @@ Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `ap
   ```
 
 ### Full Gateway `system.run` MXC runtime proof
-- The focused E2E below provisions a fresh WSL Gateway, starts an isolated tray instance, enables the explicit Windows UI API sandbox opt-in, sets local exec approval policy, invokes `system.run` through the real Gateway `node.invoke` path, and verifies tray MXC diagnostics show contained `mxc-direct-appc` execution for a bound `hostname.exe` allowlist rule, PowerShell and full-policy shell execution, and denied writes to the tray data directory.
+- The focused E2E below provisions a fresh WSL Gateway, starts an isolated tray instance, enables the explicit Windows UI opt-in, sets local exec approval policy, invokes the real Gateway `node.invoke` path, and checks SDK admission/execution and protected writes. **Provisioning is a runtime mutation and requires authorization.** If it is forbidden, record this gate as blocked rather than launching it or using `-AllowSkip` as validation.
 - Run it when validating the Gateway/Windows node runtime path, not just direct MCP or shared library behavior.
 - GitHub-hosted Actions runners do not provide a working MXC/AppContainer runtime. The regular cloud E2E matrix should report these MXC proofs as skipped while still running the rest of setup-connect. Run the proof on a local MXC-enabled Windows machine. Only set `OPENCLAW_RUN_MXC_E2E=1` in GitHub Actions when using an MXC-enabled self-hosted runner.
 - Use `.\scripts\validate-mxc-e2e.ps1` for normal local validation. It sets `OPENCLAW_RUN_E2E` and `OPENCLAW_RUN_MXC_E2E`, runs the real Gateway MXC proofs, and fails if the MXC proof skips. `-AllowSkip` is only for documenting a non-MXC host, not for merge validation of MXC-related work.
@@ -263,11 +292,11 @@ Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `ap
   ```
 
 - Expected proof markers:
-  - The bound-hostname proof succeeds with a local `**/hostname.exe` rule, logs `promptAttempted=false`, and reaches MXC as `shell=<direct-argv>`.
+  - The bound-hostname proof succeeds with a local `**/hostname.exe` rule, logs `promptAttempted=false`, and executes its pinned argv through the SDK.
   - Gateway response contains PowerShell output `OPENCLAW_GATEWAY_SYSTEM_RUN_MXC_OK` with `exitCode=0`.
   - The denied-write proof targets a fresh file under the isolated tray data directory, returns non-zero, and leaves that file absent.
-  - `openclaw-tray.log` contains `[mxc] system.run sandbox request` with `executor=mxc-direct-appc`, `contained=True`, `shell=<direct-argv>`, and `uiAllowWindows=True` for the PowerShell proof.
-  - `openclaw-tray.log` contains `[mxc] system.run sandbox result` with `containment=mxc` for both the successful execution and the denied write.
+  - `openclaw-tray.log` contains `[mxc] operation=spawn requested=base-container applied=unknown` and grant counts.
+  - `openclaw-tray.log` contains `[mxc] operation=exit applied=unknown` with the exit/timeout result. The public SDK has no post-launch applied-tier field; logs must not fabricate one.
 - E2E artifacts are written under `TestResults\E2E\<run-id>` and skip known secret-bearing files such as gateway records and settings.
 
 ## Remaining Work (Roadmap)

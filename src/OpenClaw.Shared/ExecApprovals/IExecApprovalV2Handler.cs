@@ -11,7 +11,8 @@ namespace OpenClaw.Shared.ExecApprovals;
 public interface IExecApprovalV2Handler
 {
     /// <param name="correlationId">Short identifier propagated through logging for this request.</param>
-    Task<ExecApprovalV2Result> HandleAsync(OpenClaw.Shared.NodeInvokeRequest request, string correlationId);
+    Task<ExecApprovalV2Result> HandleAsync(OpenClaw.Shared.NodeInvokeRequest request, string correlationId,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Revalidates the authorizing policy immediately before process launch. The default

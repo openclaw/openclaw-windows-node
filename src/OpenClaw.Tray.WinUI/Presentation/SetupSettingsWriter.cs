@@ -6,6 +6,7 @@ internal sealed class SetupSettingsWriter
     private readonly ISettingsStore _store;
     private readonly SettingsWriteOrigin _origin;
     private readonly Dictionary<string, bool> _baseline;
+    private string _permissionBaseline;
     private readonly object _gate = new();
 
     public SetupSettingsWriter(ISettingsStore store)
@@ -13,22 +14,30 @@ internal sealed class SetupSettingsWriter
         _store = store;
         _origin = store.CreateOrigin();
         _baseline = Values(store.Current);
+        _permissionBaseline = store.Current.SystemRunPolicyFingerprint;
     }
 
-    public void Apply(IReadOnlyDictionary<string, bool> patch)
+    public void Apply(IReadOnlyDictionary<string, bool> patch,
+        OpenClaw.Shared.SystemRunAccessPreset? preset = null, bool initializationOnly = false)
     {
         lock (_gate)
         {
-            if (patch.Count == 0) return;
+            if (patch.Count == 0 && preset is null) return;
             _store.Update(_origin, editor =>
             {
                 var current = Values(_store.Current);
                 foreach (var (key, value) in patch)
                     if (current[key] != _baseline[key] && current[key] != value)
                         throw new InvalidOperationException($"The setup setting {key} changed while setup was open. Review it again.");
+                var applyPermissions = preset is not null &&
+                    (!initializationOnly || _store.Current.SystemRunFilesystemScope is null);
+                if (applyPermissions && _store.Current.SystemRunPolicyFingerprint != _permissionBaseline)
+                    throw new InvalidOperationException("Command permissions changed while setup was open. Review them before applying a preset.");
                 foreach (var (key, value) in patch) Set(editor, key, value);
+                if (applyPermissions) editor.ApplySystemRunPreset(preset!.Value);
             });
             foreach (var (key, value) in patch) _baseline[key] = value;
+            _permissionBaseline = _store.Current.SystemRunPolicyFingerprint;
         }
     }
 

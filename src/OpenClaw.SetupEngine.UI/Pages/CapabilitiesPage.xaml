@@ -21,6 +21,9 @@
                 <InfoBar x:Name="TransportRequired" x:Uid="Onboarding_V3_TransportRequired" IsOpen="True"
                          IsClosable="False" Severity="Informational" Title="Capabilities are unavailable"
                          Message="Turn on Node mode or Local MCP Server to use these capabilities. Your choices are kept." />
+                <InfoBar x:Uid="Onboarding_MxcFileScope" IsOpen="True" IsClosable="False" Severity="Informational"
+                         Title="Command file permissions"
+                         Message="New profiles: Strict grants no personal files, internet off. Balanced reads your user profile and resolved Documents, Desktop, Downloads and available OneDrive folders, without personal writes. Open reads and writes that same scope. Balanced/Open internet is on. Other users and whole drives are not included. Projects outside these roots need explicit custom grants. Protected folders, mandatory MXC and command approvals always apply. Existing Custom settings are preserved unless you explicitly reapply a preset. Clipboard and Windows UI stay independent. Node Sandbox shows resolved scope locations and resolution errors." />
                 <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
                 <StackPanel x:Name="CapabilityControls" Spacing="0">

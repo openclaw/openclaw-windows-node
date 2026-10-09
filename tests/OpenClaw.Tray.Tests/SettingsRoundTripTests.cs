@@ -67,8 +67,7 @@ public class SettingsRoundTripTests
             OpenTelemetryEndpoint = "http://localhost:4317",
             OpenTelemetryProtocol = OpenTelemetryEndpointProtocol.HttpProtobuf,
             ShowCompletedSessions = true,
-            SystemRunSandboxEnabled = true,
-            SystemRunBlockHostFallbackWhenMxcUnavailable = true,
+            SystemRunFilesystemScope = SystemRunFilesystemScope.UserFilesReadOnly,
             SystemRunAllowOutbound = true,
             SystemRunAllowWindowsUi = true,
             UserRules = new List<UserNotificationRule>
@@ -138,8 +137,7 @@ public class SettingsRoundTripTests
         Assert.Equal(original.OpenTelemetryEndpoint, restored.OpenTelemetryEndpoint);
         Assert.Equal(original.OpenTelemetryProtocol, restored.OpenTelemetryProtocol);
         Assert.Equal(original.ShowCompletedSessions, restored.ShowCompletedSessions);
-        Assert.Equal(original.SystemRunSandboxEnabled, restored.SystemRunSandboxEnabled);
-        Assert.Equal(original.SystemRunBlockHostFallbackWhenMxcUnavailable, restored.SystemRunBlockHostFallbackWhenMxcUnavailable);
+        Assert.Equal(original.SystemRunFilesystemScope, restored.SystemRunFilesystemScope);
         Assert.Equal(original.SystemRunAllowOutbound, restored.SystemRunAllowOutbound);
         Assert.Equal(original.SystemRunAllowWindowsUi, restored.SystemRunAllowWindowsUi);
         Assert.NotNull(restored.UserRules);
@@ -219,8 +217,7 @@ public class SettingsRoundTripTests
         Assert.Null(settings.OpenTelemetryEndpoint);
         Assert.Equal(OpenTelemetryEndpointProtocol.Grpc, settings.OpenTelemetryProtocol);
         Assert.False(settings.ShowCompletedSessions);
-        Assert.True(settings.SystemRunSandboxEnabled);
-        Assert.False(settings.SystemRunBlockHostFallbackWhenMxcUnavailable);
+        Assert.Null(settings.SystemRunFilesystemScope);
         Assert.False(settings.SystemRunAllowOutbound);
         Assert.False(settings.SystemRunAllowWindowsUi);
         // HubNavPaneOpen defaults to true (NavView starts expanded for new
@@ -317,7 +314,7 @@ public class SettingsRoundTripTests
     }
 
     [Fact]
-    public void SettingsManager_PreservesLegacySandboxFallbackDefault()
+    public void SettingsManager_RetiresLegacyFallbackFieldsWithoutBroadeningPermissions()
     {
         var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
 
@@ -326,21 +323,22 @@ public class SettingsRoundTripTests
             Directory.CreateDirectory(dir);
             File.WriteAllText(Path.Combine(dir, "settings.json"), """
             {
-                "SystemRunSandboxEnabled": true,
+                "SystemRunSandboxEnabled": false,
                 "SystemRunBlockHostFallbackWhenMxcUnavailable": false
             }
             """);
 
             var settings = new SettingsManager(dir);
 
-            Assert.True(settings.SystemRunSandboxEnabled);
-            Assert.False(settings.SystemRunBlockHostFallbackWhenMxcUnavailable);
+            Assert.Equal(SystemRunFilesystemScope.SelectedFolders, settings.SystemRunFilesystemScope);
+            Assert.False(settings.SystemRunAllowOutbound);
 
             settings.Save();
 
             using var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(dir, "settings.json")));
             Assert.Equal(1, saved.RootElement.GetProperty(nameof(SettingsData.SettingsSchemaVersion)).GetInt32());
-            Assert.False(saved.RootElement.GetProperty(nameof(SettingsData.SystemRunBlockHostFallbackWhenMxcUnavailable)).GetBoolean());
+            Assert.False(saved.RootElement.TryGetProperty("SystemRunSandboxEnabled", out _));
+            Assert.False(saved.RootElement.TryGetProperty("SystemRunBlockHostFallbackWhenMxcUnavailable", out _));
         }
         finally
         {
@@ -350,7 +348,44 @@ public class SettingsRoundTripTests
     }
 
     [Fact]
-    public void SettingsManager_PreservesVersionedSandboxFallbackCompatibility()
+    public void FreshSettings_NullScopeMarkerSurvivesRestartBeforeOnboarding()
+    {
+        using var temp = new OpenClaw.TestSupport.TempDirectory();
+        var settings = new SettingsManager(temp.Path);
+        settings.SaveOrThrow();
+        using var json = JsonDocument.Parse(File.ReadAllText(Path.Combine(temp.Path, "settings.json")));
+        Assert.Equal(JsonValueKind.Null, json.RootElement.GetProperty("SystemRunFilesystemScope").ValueKind);
+        Assert.Null(new SettingsManager(temp.Path).SystemRunFilesystemScope);
+    }
+
+    [Fact]
+    public void LegacyFilteredParentGrant_RemainsBlockedUntilExplicitlyReapplied()
+    {
+        using var temp = new OpenClaw.TestSupport.TempDirectory();
+        var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var safe = Path.Combine(profile, "Documents", "mxc-safe-test");
+        var path = Path.Combine(temp.Path, "settings.json");
+        File.WriteAllText(path, JsonSerializer.Serialize(new
+        {
+            SystemRunSandboxEnabled = false,
+            SandboxCustomFolders = new[]
+            {
+                new SandboxCustomFolder { Path = profile, Access = SandboxFolderAccess.ReadOnly },
+                new SandboxCustomFolder { Path = safe, Access = SandboxFolderAccess.ReadWrite },
+            },
+        }));
+        var settings = new SettingsManager(temp.Path);
+        Assert.Equal(SandboxFolderAccess.Blocked, settings.SandboxCustomFolders[0].Access);
+        Assert.Equal(SandboxFolderAccess.ReadWrite, settings.SandboxCustomFolders[1].Access);
+        settings.SaveOrThrow();
+        Assert.Equal(SandboxFolderAccess.Blocked, new SettingsManager(temp.Path).SandboxCustomFolders[0].Access);
+        settings.SandboxCustomFolders = [new() { Path = profile, Access = SandboxFolderAccess.ReadOnly }];
+        settings.SaveOrThrow();
+        Assert.Equal(SandboxFolderAccess.ReadOnly, new SettingsManager(temp.Path).SandboxCustomFolders[0].Access);
+    }
+
+    [Fact]
+    public void SettingsManager_VersionedLegacyFallbackCannotSelectBroadAccess()
     {
         var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
 
@@ -367,8 +402,8 @@ public class SettingsRoundTripTests
 
             var settings = new SettingsManager(dir);
 
-            Assert.True(settings.SystemRunSandboxEnabled);
-            Assert.False(settings.SystemRunBlockHostFallbackWhenMxcUnavailable);
+            Assert.Equal(SystemRunFilesystemScope.SelectedFolders, settings.SystemRunFilesystemScope);
+            Assert.Empty(settings.SandboxCustomFolders);
         }
         finally
         {
@@ -378,7 +413,7 @@ public class SettingsRoundTripTests
     }
 
     [Fact]
-    public void SettingsManager_PreservesVersionedStrictFallbackBlockingOptIn()
+    public void SettingsManager_VersionedStrictFallbackFieldIsIgnored()
     {
         var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
 
@@ -395,8 +430,8 @@ public class SettingsRoundTripTests
 
             var settings = new SettingsManager(dir);
 
-            Assert.True(settings.SystemRunSandboxEnabled);
-            Assert.True(settings.SystemRunBlockHostFallbackWhenMxcUnavailable);
+            Assert.Equal(SystemRunFilesystemScope.SelectedFolders, settings.SystemRunFilesystemScope);
+            Assert.False(settings.SystemRunAllowOutbound);
         }
         finally
         {
@@ -630,11 +665,11 @@ public class SettingsRoundTripTests
         {
             var settings = new SettingsManager(dir);
             settings.A2UIImageHosts.Add("images.example.test");
-            settings.SandboxCustomFolders.Add(new SandboxCustomFolder
+            settings.SandboxCustomFolders = [new SandboxCustomFolder
             {
                 Path = "C:\\Temp\\OpenClaw",
                 Access = SandboxFolderAccess.ReadOnly
-            });
+            }];
 
             var snapshot = settings.ToSettingsData();
             snapshot.A2UIImageHosts!.Add("mutated.example.test");
@@ -642,6 +677,9 @@ public class SettingsRoundTripTests
 
             Assert.Equal(["images.example.test"], settings.A2UIImageHosts);
             Assert.Equal("C:\\Temp\\OpenClaw", settings.SandboxCustomFolders[0].Path);
+            var detachedGrant = settings.SandboxCustomFolders[0];
+            detachedGrant.Access = SandboxFolderAccess.ReadWrite;
+            Assert.Equal(SandboxFolderAccess.ReadOnly, settings.SnapshotSystemRunSettings().SandboxCustomFolders![0].Access);
         }
         finally
         {

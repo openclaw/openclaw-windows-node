@@ -115,12 +115,21 @@ See [Operator and node concepts](docs/OPERATOR_NODE_CONCEPTS.md) for the pairing
 
 The **Sandbox** page controls programs launched through the Windows node's `system.run` capability:
 
-- **Locked Down** blocks internet, clipboard, and standard user folders.
-- **Recommended** enables internet, read-only access to common folders, and clipboard read access.
-- **Unprotected** allows broad folder and clipboard access. Use it only when you accept the added risk.
+- **Strict** requests no personal-file access and no internet. Necessary Windows runtime reads and private scratch writes remain.
+- **Balanced (Default)** reads your user profile and OS-resolved Documents, Desktop, Downloads and configured available OneDrive roots, without personal writes. Internet is on.
+- **Open** reads/writes that same user-folder scope, excluding protected sensitive roots. Internet is on.
 - Custom controls set folder access, network access, clipboard access, timeout, and output limits.
 
-When enabled and available, the Windows node uses MXC process isolation for `system.run`. If MXC is unavailable and strict fallback blocking is off, OpenClaw can fall back to uncontained host execution for compatibility. The **Sandbox** page shows the current state and lets you choose the appropriate policy.
+On supported Windows, `system.run` uses the official `Microsoft.Mxc.Sdk` 1.0.0 and complete BaseContainer admission with protected-folder denies and no host ACL augmentation. There is no Off switch. A positively confirmed unsupported Windows version uses approved direct uncontained execution: Node Sandbox persistently warns and disables its permission controls, without changing saved permissions or command approvals. File, network, clipboard and Windows UI restrictions are not enforced in that mode. Unknown/failed probes, missing SDK components, unsupported policies and native execution failures never downgrade to host execution. Companion's minimum Windows version is unchanged.
+
+> [!WARNING]
+> User-folder scope is **not a whole drive, all accounts under `C:\Users`, or arbitrary projects elsewhere**. Redirected personal roots outside your profile are resolved explicitly. Projects outside that scope require custom grants. A missing/inaccessible required folder blocks the affected policy with diagnostics. Node Sandbox shows resolved locations; an unavailable optional OneDrive root is explicitly listed as not included.
+
+No volume-root grants are emitted, including readonly "metadata" grants. Native
+testing found that those grants allowed unrelated sibling reads on the tested OS.
+Custom supports user-folder readonly access plus selected read/write exceptions.
+
+Presets never bypass approvals. Clipboard, Windows UI and limits remain independent. OpenClaw settings/credentials, SSH, supported browser profiles and PSReadLine roots remain denied. Explicit cwd must already be granted; omitted cwd uses private scratch. Read-only access does not prevent disclosure over an allowed network. Removing policy on exit does not undo file writes.
 
 This sandbox covers commands run through the Windows node. Commands run directly on the gateway use the gateway's separate security controls.
 

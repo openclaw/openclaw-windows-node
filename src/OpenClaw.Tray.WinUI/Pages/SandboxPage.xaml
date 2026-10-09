@@ -1,16 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Page x:Class="OpenClawTray.Pages.SandboxPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:helpers="using:OpenClawTray.Helpers">
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Padding="24" Spacing="16" HorizontalAlignment="Stretch" MaxWidth="900">
 
-            <!-- Prominent status header: big shield icon + Title-styled name +
-                 secondary subtitle + master toggle. Restored from the pre-L2
-                 layout because the SettingsExpander.Header rendered the name in
-                 BodyStrong (small) which lost the visual weight users expected
-                 at the top of the page. The architectural breakdown lives in a
-                 separate, less-prominent SettingsExpander below. -->
             <Grid x:Name="SandboxStatusCard" ColumnSpacing="16" Margin="0,0,0,8">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -36,25 +31,8 @@
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </StackPanel>
 
-                <ToggleSwitch x:Name="SandboxEnabledToggle"
-                              Grid.Column="2"
-                              VerticalAlignment="Center"
-                              MinWidth="0"
-                              OffContent=""
-                              OnContent=""
-                              AutomationProperties.Name="Sandbox enabled"
-                              Toggled="OnSandboxEnabledToggled" />
             </Grid>
 
-            <!-- Architectural scope: stock WinUI 3 Expander with custom content.
-                 Replaces the previous SettingsExpander/SettingsCard combo because
-                 SettingsExpander.Items baked in a child-row indent that pushed
-                 the inner icons ~50px right of the parent header icon. Stock
-                 Expander gives full control over Header + Content layout so both
-                 icons line up at the same x. Also replaces the previous blue
-                 scope-clarity InfoBar and the separate "How sandboxing works"
-                 ContentDialog — the architectural breakdown of which execution
-                 paths are contained vs not is inline, on-demand. -->
             <Expander x:Name="ScopeExpander"
                       AutomationProperties.LabeledBy="{Binding ElementName=ScopeExpanderLabel}"
                       HorizontalAlignment="Stretch"
@@ -137,8 +115,6 @@
                 </InfoBar.Content>
             </InfoBar>
 
-            <!-- Preset cards— wrapped in a subtle filled Border so the whole region
-                 reads as the master control region. -->
             <Border x:Name="PresetCard"
                     Background="{ThemeResource LayerFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
@@ -148,7 +124,7 @@
                 <StackPanel Spacing="6">
                     <TextBlock x:Uid="SandboxPage_SecurityLevel" Text="Security level"
                                Style="{StaticResource SubtitleTextBlockStyle}" />
-                    <TextBlock x:Uid="SandboxPage_OneClickToSet" Text="One click to set every control below. Custom folders stay as you set them."
+                    <TextBlock x:Uid="SandboxPage_PresetHelp" Text="Presets replace file grants and internet access. Clipboard, UI and command approvals stay independent."
                                TextWrapping="Wrap"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     <Grid ColumnSpacing="12" Margin="0,8,0,0">
@@ -169,10 +145,21 @@
                                 CornerRadius="8"
                                 Click="OnPresetLockedClick">
                             <StackPanel Spacing="8">
-                                <TextBlock x:Uid="SandboxPage_LockedDown" Text="🔒 Locked Down"
-                                           FontSize="18"
-                                           FontWeight="SemiBold" />
-                                <TextBlock x:Uid="SandboxPage_NoInternetNoClipboard" Text="No internet, no clipboard, no standard user folders."
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <FontIcon x:Name="PresetStrictIcon"
+                                              Glyph="{x:Bind helpers:FluentIconCatalog.SandboxStrict, Mode=OneTime}"
+                                              FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                              FontSize="16" IsTextScaleFactorEnabled="False"
+                                              AutomationProperties.AccessibilityView="Raw"
+                                              VerticalAlignment="Center" />
+                                    <TextBlock x:Uid="SandboxPage_PresetStrict" Grid.Column="1" Text="Strict"
+                                               FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                </Grid>
+                                <TextBlock x:Uid="SandboxPage_PresetStrictText" Text="No personal files or internet. Runtime access and private scratch only."
                                            TextWrapping="Wrap"
                                            FontSize="13"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
@@ -190,10 +177,21 @@
                                 CornerRadius="8"
                                 Click="OnPresetBalancedClick">
                             <StackPanel Spacing="8">
-                                <TextBlock x:Uid="SandboxPage_Recommended" Text="🛡 Recommended"
-                                           FontSize="18"
-                                           FontWeight="SemiBold" />
-                                <TextBlock x:Uid="SandboxPage_InternetOnReadOnly" Text="Internet on. Read-only on Documents, Downloads, Desktop. Clipboard read."
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <FontIcon x:Name="PresetBalancedIcon"
+                                              Glyph="{x:Bind helpers:FluentIconCatalog.Permissions, Mode=OneTime}"
+                                              FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                              FontSize="16" IsTextScaleFactorEnabled="False"
+                                              AutomationProperties.AccessibilityView="Raw"
+                                              VerticalAlignment="Center" />
+                                    <TextBlock x:Uid="SandboxPage_PresetBalanced" Grid.Column="1" Text="Balanced (Default)"
+                                               FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                </Grid>
+                                <TextBlock x:Uid="SandboxPage_PresetBalancedText" Text="Read your profile and resolved redirected personal folders. No personal writes. Internet on. Protected folders excluded."
                                            TextWrapping="Wrap"
                                            FontSize="13"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
@@ -211,10 +209,21 @@
                                 CornerRadius="8"
                                 Click="OnPresetPermissiveClick">
                             <StackPanel Spacing="8">
-                                <TextBlock x:Uid="SandboxPage_Unprotected" Text="⚠ Unprotected"
-                                           FontSize="18"
-                                           FontWeight="SemiBold" />
-                                <TextBlock x:Uid="SandboxPage_InternetOnReadWrite" Text="Internet on. Read+write on Documents, Downloads, Desktop. Clipboard read+write."
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <FontIcon x:Name="PresetOpenIcon"
+                                              Glyph="{x:Bind helpers:FluentIconCatalog.StatusWarn, Mode=OneTime}"
+                                              FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                              FontSize="16" IsTextScaleFactorEnabled="False"
+                                              AutomationProperties.AccessibilityView="Raw"
+                                              VerticalAlignment="Center" />
+                                    <TextBlock x:Uid="SandboxPage_PresetOpen" Grid.Column="1" Text="Open"
+                                               FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                </Grid>
+                                <TextBlock x:Uid="SandboxPage_PresetOpenText" Text="Read and write your profile and resolved redirected personal folders. Internet on. Protected folders excluded."
                                            TextWrapping="Wrap"
                                            FontSize="13"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
@@ -222,7 +231,12 @@
                         </Button>
                     </Grid>
 
-                    <!-- Inline warning shown when a preset is applied but custom folder grants remain -->
+                    <TextBlock x:Uid="SandboxPage_CustomPreset" x:Name="CustomPresetLabel"
+                               Text="Custom permissions" Visibility="Collapsed"
+                               AutomationProperties.LiveSetting="Polite"
+                               Style="{StaticResource BodyStrongTextBlockStyle}" />
+
+                    <!-- Retained legacy grants can require explicit review. -->
                     <InfoBar x:Uid="SandboxPage_CustomFolderGrantsStill" x:Name="PresetCustomFoldersWarning"
                              IsOpen="False"
                              IsClosable="True"
@@ -232,8 +246,19 @@
                 </StackPanel>
             </Border>
 
-            <!-- Detail sections: gated by SandboxControlsContainer's IsEnabled (off when sandbox unavailable or master toggle off) -->
+            <!-- Only confirmed unsupported Windows disables saved sandbox controls. -->
+            <ContentControl x:Name="SandboxPermissionsControls" HorizontalContentAlignment="Stretch">
             <StackPanel x:Name="SandboxControlsContainer" Spacing="16">
+                <ComboBox x:Uid="SandboxPage_FileScope" x:Name="ScopeCombo"
+                          Header="File access scope" SelectionChanged="OnScopeChanged"
+                          HorizontalAlignment="Stretch">
+                    <ComboBoxItem x:Uid="SandboxPage_SelectedFolders" Content="Selected folders" Tag="SelectedFolders" />
+                    <ComboBoxItem x:Uid="SandboxPage_UserFilesReadOnly" Content="User folders: read only" Tag="UserFilesReadOnly" />
+                    <ComboBoxItem x:Uid="SandboxPage_UserFilesReadWrite" Content="User folders: read and write" Tag="UserFilesReadWrite" />
+                </ComboBox>
+                <TextBlock x:Name="ScopeDetails" TextWrapping="Wrap"
+                           AutomationProperties.LiveSetting="Polite"
+                           Style="{StaticResource CaptionTextBlockStyle}" />
 
                 <!-- Files (highest privacy risk — appears first) -->
                 <Expander IsExpanded="True" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
@@ -241,7 +266,7 @@
                         <TextBlock x:Uid="SandboxPage_Files" Text="📁 Files" Style="{StaticResource BodyStrongTextBlockStyle}"/>
                     </Expander.Header>
                     <StackPanel Spacing="12" Padding="4">
-                        <TextBlock x:Uid="SandboxPage_ByDefaultTheAgent" Text="By default the agent only has a temporary workspace folder it can read and write. Grant access to user folders below. SSH keys, browser profiles, and OpenClaw's own settings are always blocked."
+                        <TextBlock x:Uid="SandboxPage_ByDefaultTheAgent" Text="The selected scope controls file access. These rows add folder grants; Use scope keeps that folder's existing scope permissions. Choose Selected folders to limit access to explicit grants. Protected folders remain blocked."
                                    TextWrapping="Wrap"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
 
@@ -260,7 +285,7 @@
                             <ComboBox x:Uid="SandboxPage_DocsAccessCombo" x:Name="DocsAccessCombo" Grid.Row="0" Grid.Column="1"
                                       HorizontalAlignment="Stretch"
                                       SelectionChanged="OnDocsAccessChanged">
-                                <ComboBoxItem x:Uid="SandboxPage_Blocked" Content="Blocked" Tag="None" />
+                                <ComboBoxItem x:Uid="SandboxPage_Blocked" Content="Use scope" Tag="None" />
                                 <ComboBoxItem x:Uid="SandboxPage_ReadOnly" Content="Read only" Tag="ReadOnly" />
                                 <ComboBoxItem x:Uid="SandboxPage_ReadAmpWrite" Content="Read &amp; write" Tag="ReadWrite" />
                             </ComboBox>
@@ -269,7 +294,7 @@
                             <ComboBox x:Uid="SandboxPage_DownloadsAccessCombo" x:Name="DownloadsAccessCombo" Grid.Row="1" Grid.Column="1"
                                       HorizontalAlignment="Stretch"
                                       SelectionChanged="OnDownloadsAccessChanged">
-                                <ComboBoxItem x:Uid="SandboxPage_Blocked2" Content="Blocked" Tag="None" />
+                                <ComboBoxItem x:Uid="SandboxPage_Blocked2" Content="Use scope" Tag="None" />
                                 <ComboBoxItem x:Uid="SandboxPage_ReadOnly2" Content="Read only" Tag="ReadOnly" />
                                 <ComboBoxItem x:Uid="SandboxPage_ReadAmpWrite2" Content="Read &amp; write" Tag="ReadWrite" />
                             </ComboBox>
@@ -278,19 +303,16 @@
                             <ComboBox x:Uid="SandboxPage_DesktopAccessCombo" x:Name="DesktopAccessCombo" Grid.Row="2" Grid.Column="1"
                                       HorizontalAlignment="Stretch"
                                       SelectionChanged="OnDesktopAccessChanged">
-                                <ComboBoxItem x:Uid="SandboxPage_Blocked3" Content="Blocked" Tag="None" />
+                                <ComboBoxItem x:Uid="SandboxPage_Blocked3" Content="Use scope" Tag="None" />
                                 <ComboBoxItem x:Uid="SandboxPage_ReadOnly3" Content="Read only" Tag="ReadOnly" />
                                 <ComboBoxItem x:Uid="SandboxPage_ReadAmpWrite3" Content="Read &amp; write" Tag="ReadWrite" />
                             </ComboBox>
                         </Grid>
 
-                        <!-- Implicit-grant disclosure: PATH directories are added as
-                             readonly so dev tools (git, node, python, ...) are
-                             reachable from inside the sandbox. -->
                         <TextBlock x:Uid="SandboxPage_ToolDirectoriesOnYour" TextWrapping="Wrap"
                                    FontSize="11"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   Text="Tool directories on your PATH are also granted read-only inside the sandbox, so command-line tools like git, node, python, and dotnet are usable. Drive roots are never granted." />
+                                   Text="Windows runtime folders are available. Other tools must be inside the selected scope or an explicitly granted folder. Being on PATH does not grant file access." />
 
                         <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
@@ -299,7 +321,7 @@
                                 Padding="8">
                             <StackPanel Spacing="8">
                                 <TextBlock x:Uid="SandboxPage_CustomFolders" Text="Custom folders" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                                <TextBlock x:Uid="SandboxPage_CustomGrantsAreAdded" Text="Custom grants are added on top of the rules above. Adding a folder inside Documents/Downloads/Desktop with broader access will override the row-level setting for that path."
+                                <TextBlock x:Uid="SandboxPage_CustomGrantsAreAdded" Text="Custom grants add access to the selected scope. Removing a grant does not block access already allowed by the scope. Protected folders remain blocked."
                                            TextWrapping="Wrap"
                                            FontSize="11"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
@@ -325,7 +347,7 @@
                                                           SelectedIndex="{Binding AccessIndex, Mode=TwoWay}"
                                                           SelectionChanged="OnCustomFolderAccessChanged"
                                                           Tag="{Binding Path}">
-                                                    <ComboBoxItem x:Uid="SandboxPage_Blocked4" Content="Blocked" />
+                                                    <ComboBoxItem x:Uid="SandboxPage_Blocked4" Content="Remove grant" />
                                                     <ComboBoxItem x:Uid="SandboxPage_ReadOnly4" Content="Read only" />
                                                     <ComboBoxItem x:Uid="SandboxPage_ReadAmpWrite4" Content="Read &amp; write" />
                                                 </ComboBox>
@@ -443,6 +465,7 @@
                 </Expander>
 
             </StackPanel>
+            </ContentControl>
 
         </StackPanel>
     </ScrollViewer>

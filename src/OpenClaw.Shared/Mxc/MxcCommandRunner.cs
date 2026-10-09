@@ -1,540 +1,328 @@
 using System.Diagnostics;
-using System.Text.Json;
-using System.Text.Json.Serialization;
+using System.Text;
+using Microsoft.Mxc.Sdk.V1;
 using OpenClaw.Shared.Telemetry;
 
 namespace OpenClaw.Shared.Mxc;
 
 /// <summary>
-/// Adapts the existing <see cref="ICommandRunner"/> seam so production
-/// <c>system.run</c> invocations get sandboxed via MXC AppContainer.
-/// Plugs into <c>SystemCapability.SetCommandRunner(...)</c> exactly where
-/// <c>LocalCommandRunner</c> plugs in today.
+/// The only production system.run runner. Ownership survives cancelled waits and late native launches.
+/// Admission slots cover launch, termination, draining and disposal, not just the caller's wait.
 /// </summary>
-/// <remarks>
-/// Honors <see cref="SettingsData.SystemRunSandboxEnabled"/>:
-/// <list type="bullet">
-/// <item><c>true</c> (default) — sandbox via MXC when available; fall back uncontained when MXC is unavailable.</item>
-/// <item><c>true</c> with <see cref="SettingsData.SystemRunBlockHostFallbackWhenMxcUnavailable"/> set to <c>true</c> — deny when MXC is unavailable.</item>
-/// <item><c>false</c> — bypass MXC; route through the host runner.</item>
-/// </list>
-/// </remarks>
-public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner, IDirectArgvSupportAwareCommandRunner
+public sealed class MxcCommandRunner : ICommandRunner
 {
-    public string Name => "mxc";
-    private const string DefaultSandboxShell = "cmd";
-
-    private readonly ISandboxExecutor _executor;
-    private readonly ICommandRunner _hostFallback;
-    private readonly Func<SettingsData> _settingsProvider;
-    private readonly Func<string> _settingsDirectoryPathProvider;
-    private readonly Func<bool> _isSandboxAvailable;
-    private readonly Action? _invalidateAvailability;
+    private static readonly SemaphoreSlim OwnedOperations = new(8, 8);
+    private readonly Func<SettingsData> _settings;
+    private readonly Func<string> _settingsDirectory;
+    private readonly Func<ContainerRequest, Task<IMxcProcess>> _spawn;
+    private readonly Func<ContainerRequest, ProbeOutput> _probe;
+    private readonly Func<MxcAvailability> _availability;
+    private readonly Func<MxcRequestContext> _context;
+    private readonly string _scratchRoot;
     private readonly IOpenClawLogger _logger;
 
+    public string Name => "mxc";
+
     public MxcCommandRunner(
-        ISandboxExecutor executor,
-        ICommandRunner hostFallback,
         Func<SettingsData> settingsProvider,
-        Func<string> settingsDirectoryPathProvider,
-        Func<bool> isSandboxAvailable,
-        Action? invalidateAvailability = null,
-        IOpenClawLogger? logger = null)
+        Func<string> settingsDirectoryProvider,
+        Func<MxcAvailability>? availabilityProvider = null,
+        IOpenClawLogger? logger = null,
+        Func<ContainerRequest, Task<IMxcProcess>>? spawn = null,
+        Func<ContainerRequest, ProbeOutput>? probe = null,
+        string? scratchRoot = null,
+        Func<MxcRequestContext>? contextProvider = null)
     {
-        _executor = executor;
-        _hostFallback = hostFallback;
-        _settingsProvider = settingsProvider;
-        _settingsDirectoryPathProvider = settingsDirectoryPathProvider;
-        _isSandboxAvailable = isSandboxAvailable;
-        _invalidateAvailability = invalidateAvailability;
+        _settings = settingsProvider;
+        _settingsDirectory = settingsDirectoryProvider;
+        _availability = availabilityProvider ?? (() => MxcAvailability.Probe(logger));
+        _context = contextProvider ?? (() => MxcRequestContext.Capture(_settingsDirectory()));
+        _spawn = spawn ?? (async request => await MxcContainer.SpawnAsync(
+            request, new SpawnOptions { Telemetry = new TelemetryConfig { Enabled = false } },
+            CancellationToken.None).ConfigureAwait(false));
+        _probe = probe ?? (request => MxcContainer.Probe(request));
+        _scratchRoot = scratchRoot ?? Path.Combine(
+            Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR")
+                ?? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "OpenClawMxc", "Runs");
         _logger = logger ?? NullLogger.Instance;
     }
 
-    public string ResolveEffectiveShell(string? requestedShell)
-    {
-        var settings = _settingsProvider();
-        if (!settings.SystemRunSandboxEnabled)
-            return _hostFallback.ResolveEffectiveShell(requestedShell);
-
-        if (!_isSandboxAvailable() && !settings.SystemRunBlockHostFallbackWhenMxcUnavailable)
-            return _hostFallback.ResolveEffectiveShell(requestedShell);
-
-        if (!string.IsNullOrWhiteSpace(requestedShell))
-            return ResolveSandboxShell(requestedShell);
-
-        return DefaultSandboxShell;
-    }
-
-    public string? ResolveHostFallbackShellForApproval(string? requestedShell, string effectiveShell)
-    {
-        var settings = _settingsProvider();
-        if (!settings.SystemRunSandboxEnabled || settings.SystemRunBlockHostFallbackWhenMxcUnavailable)
-            return null;
-
-        if (!string.IsNullOrWhiteSpace(requestedShell))
-            return null;
-
-        var hostShell = ResolveHostFallbackShell(requestedShell);
-        return string.Equals(hostShell, effectiveShell, StringComparison.OrdinalIgnoreCase)
-            ? null
-            : hostShell;
-    }
-
-    /// <summary>
-    /// Every active route preserves direct argv: host runners use ArgumentList,
-    /// and MXC uses a CommandLineToArgvW-reversible process command line.
-    /// </summary>
-    public bool CanExecuteDirectArgv()
-    {
-        var settings = _settingsProvider();
-        if (!settings.SystemRunSandboxEnabled)
-            return true;
-
-        if (!_isSandboxAvailable())
-            return true;
-
-        return true;
-    }
+    public string CapturePolicy() => MxcRequestBuilder.Fingerprint(MxcRequestBuilder.Snapshot(_settings()));
 
     public async Task<CommandResult> RunAsync(CommandRequest request, CancellationToken ct = default)
     {
-        var settings = _settingsProvider();
-        var effectiveShell = request.Argv is null
-            ? ResolveEffectiveShell(request.Shell)
-            : null;
-        if (effectiveShell is not null
-            && !TryValidateApprovedEffectiveShell(request, effectiveShell, out var approvalDeny))
-            return approvalDeny!;
+        ct.ThrowIfCancellationRequested();
+        var settings = MxcRequestBuilder.Snapshot(_settings());
+        var fingerprint = MxcRequestBuilder.Fingerprint(settings);
+        if (request.ExpectedMxcPolicy is not null && request.ExpectedMxcPolicy != fingerprint)
+            return Block("Permissions changed while the command was awaiting approval. Retry for a fresh approval.");
+        if (!OwnedOperations.Wait(0))
+            return Block("MXC is still cleaning up eight commands. Wait for owned native operations to finish, then retry.");
 
-        if (!settings.SystemRunSandboxEnabled)
+        var stopwatch = Stopwatch.StartNew();
+        var stop = new CancellationTokenSource();
+        var timeout = EffectiveTimeout(request.TimeoutMs, settings.SandboxTimeoutMs);
+        var executionMode = (int)NodeToolExecutionMode.Sandbox;
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        if (timeout > 0) deadline.CancelAfter(timeout);
+        var owned = Task.Run(async () =>
         {
-            _logger.Info("[mxc] sandbox=disabled; routing system.run through host runner");
-            return await RunHostFallbackAsync(request, effectiveShell, NodeToolExecutionMode.Host, ct);
-        }
-
-        // Custom env changes the execution boundary. Until MXC can enforce it
-        // in-container, sandbox-enabled requests must not bypass policy through
-        // the MXC-unavailable compatibility fallback.
-        if (request.Env is { Count: > 0 })
-            return DenyCustomEnvUnsupported();
-
-        if (!_isSandboxAvailable())
-        {
-            if (settings.SystemRunBlockHostFallbackWhenMxcUnavailable)
-                return DenySandboxUnavailable(
-                    "Sandboxed system.run is enabled, but MXC is unavailable on this host and host fallback is blocked by settings. " +
-                    "Update Windows or repair MXC, or disable strict fallback blocking if uncontained host execution is acceptable.",
-                    "[mxc] system.run denied: sandbox unavailable and host fallback blocked by settings");
-
-            // Compatibility default: keep pre-MXC host execution unless the
-            // operator explicitly opts into strict sandbox-unavailable blocking.
-            _logger.Warn(
-                "[mxc] system.run UNCONTAINED: sandbox unavailable on this host; " +
-                "routing through host runner for compatibility.");
-            return await RunHostFallbackAsync(
-                request,
-                effectiveShell,
-                NodeToolExecutionMode.HostFallback,
-                ct);
-        }
-
-        var settingsDirectoryPath = _settingsDirectoryPathProvider();
-        var policy = MxcPolicyBuilder.ForSystemRun(settings, settingsDirectoryPath);
-        var argsJson = SerializeArgs(request, effectiveShell);
-
-        // Compute the effective timeout: take the smaller of the agent-supplied
-        // timeout (request.TimeoutMs) and the user's sandbox cap (policy.TimeoutMs).
-        // A zero/null on either side means "no cap from that side".
-        var effectiveTimeoutMs = CombineTimeouts(request.TimeoutMs, policy.TimeoutMs);
-
-        var sandboxRequest = new SandboxExecutionRequest(
-            CapabilityCommand: "system.run",
-            Args: argsJson,
-            Policy: policy,
-            TimeoutMs: effectiveTimeoutMs,
-            Cwd: request.Cwd,
-            Env: request.Env,
-            MaxOutputBytes: settings.SandboxMaxOutputBytes > 0
-                ? settings.SandboxMaxOutputBytes
-                : null);
+            try { return await ExecuteOwnedAsync(request, settings, fingerprint, stop.Token,
+                mode => Volatile.Write(ref executionMode, (int)mode)).ConfigureAwait(false); }
+            finally
+            {
+                stop.Dispose();
+                OwnedOperations.Release();
+            }
+        });
 
         try
         {
-            LogSandboxRequest(sandboxRequest, request, effectiveShell, settings, settingsDirectoryPath, policy);
-            var sandboxed = await _executor.ExecuteAsync(sandboxRequest, ct);
-            LogSandboxResult(sandboxed);
-            var result = new CommandResult
-            {
-                Stdout = sandboxed.Stdout,
-                Stderr = sandboxed.Stderr,
-                ExitCode = sandboxed.ExitCode,
-                TimedOut = sandboxed.TimedOut,
-                DurationMs = sandboxed.DurationMs,
-                ExecutionMode = NodeToolExecutionMode.Sandbox,
-            };
-            result.ErrorCategory = ClassifyProcessResult(result);
+            var result = await owned.WaitAsync(deadline.Token).ConfigureAwait(false);
+            result.DurationMs = stopwatch.ElapsedMilliseconds;
             return result;
         }
-        catch (SandboxUnavailableException ex)
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
         {
-            // Invalidate any cached availability — what we thought was available
-            // turned out not to be at runtime. Next command re-probes and the
-            // top-level !_isSandboxAvailable() branch will use the compatibility
-            // fallback until MXC is available again.
-            _invalidateAvailability?.Invoke();
-
-            if (settings.SystemRunBlockHostFallbackWhenMxcUnavailable)
-                return DenySandboxUnavailable(
-                    "Sandboxed system.run is enabled, but MXC became unavailable at runtime and host fallback is blocked by settings: " +
-                    $"{ex.Message}. Repair MXC or disable strict fallback blocking if uncontained host execution is acceptable.",
-                    $"[mxc] system.run denied: sandbox became unavailable at runtime and host fallback is blocked by settings: {ex.Message}");
-
-            _logger.Warn(
-                $"[mxc] system.run UNCONTAINED: sandbox became unavailable at runtime ({ex.Message}); " +
-                "routing through host runner for compatibility.");
-            string? hostShell = null;
-            if (request.Argv is null
-                && !TryResolveApprovedHostFallbackShell(request, effectiveShell!, out hostShell, out var deny))
-            {
-                return deny!;
-            }
-
-            return await RunHostFallbackAsync(
-                request,
-                hostShell,
-                NodeToolExecutionMode.HostFallback,
-                ct);
-        }
-        catch (OperationCanceledException)
-        {
-            // Caller cancelled (gateway disconnect, agent abort). Propagate so the
-            // caller sees the cancellation rather than a fake "exited 0" response.
-            throw;
-        }
-        catch (NotSupportedException ex)
-        {
-            if (IsPowerShellUiUnsupported(ex))
-            {
-                return DenySandboxUnavailable(
-                    "Sandboxed system.run cannot execute PowerShell-family shells with the current MXC UI-deny policy. " +
-                    "Enable 'Allow Windows UI APIs' in Node Sandbox settings, retry with shell='cmd', " +
-                    "or disable sandboxing if uncontained host execution is acceptable.",
-                    $"[mxc] system.run denied: PowerShell-family shell unsupported by MXC UI-deny policy: {ex.Message}");
-            }
-
-            _logger.Warn($"[mxc] system.run denied: unsupported sandbox request: {ex.Message}");
+            // Do not dispose a late process or its scratch from this waiter. Its owner remains bounded.
+            try { stop.Cancel(); }
+            catch (ObjectDisposedException) { /* The native owner completed at the cancellation boundary. */ }
+            _ = ObserveCleanupAsync(owned);
+            ct.ThrowIfCancellationRequested();
             return new CommandResult
             {
-                Stdout = string.Empty,
-                Stderr = ex.Message,
-                ExitCode = -1,
-                TimedOut = false,
-                DurationMs = 0,
-                ExecutionMode = NodeToolExecutionMode.Sandbox,
-                ErrorCategory = NodeToolErrorCategory.SandboxDenied,
-                SandboxDenialReason = NodeToolSandboxDenialReason.UnsupportedSandboxRequest,
+                ExitCode = -1, TimedOut = true, DurationMs = stopwatch.ElapsedMilliseconds,
+                Stderr = "The command deadline expired. Owned process termination and cleanup may still be completing.",
+                ExecutionMode = (NodeToolExecutionMode)Volatile.Read(ref executionMode),
+                ErrorCategory = NodeToolErrorCategory.Timeout,
             };
+        }
+    }
+
+    private async Task<CommandResult> ExecuteOwnedAsync(
+        CommandRequest command, SettingsData settings, string fingerprint, CancellationToken stop,
+        Action<NodeToolExecutionMode> selectMode)
+    {
+        var scratch = Path.Combine(_scratchRoot, Guid.NewGuid().ToString("N"));
+        var mode = NodeToolExecutionMode.Sandbox;
+        Task? nativeCompletion = null;
+        try
+        {
+            stop.ThrowIfCancellationRequested();
+            var availability = _availability();
+            if (availability.IsWindowsUnsupported)
+            {
+                selectMode(NodeToolExecutionMode.Host);
+                mode = NodeToolExecutionMode.Host;
+                Directory.CreateDirectory(scratch);
+                stop.ThrowIfCancellationRequested();
+                if (command.RevalidateApproval is { } hostRevalidate &&
+                    !(await hostRevalidate(stop).ConfigureAwait(false)).IsCurrent)
+                    return Block("Command approval changed before launch. Retry for a fresh approval.",
+                        NodeToolErrorCategory.ExecPolicyDenied, mode);
+                if (CapturePolicy() != fingerprint)
+                    return Block("Permissions changed before launch. Retry for a fresh approval.",
+                        NodeToolErrorCategory.ExecPolicyDenied, mode);
+                _logger.Warn("[mxc] operation=compatibility executionMode=host reason=windows_unsupported sandboxControlsEnforced=false");
+                return await UnsupportedWindowsCommandExecutor.RunAsync(command, scratch,
+                    settings.SandboxMaxOutputBytes > 0 ? settings.SandboxMaxOutputBytes : 4 * 1024 * 1024,
+                    stop).ConfigureAwait(false);
+            }
+            if (!availability.CanRunSystemRunSandbox)
+                return Block(string.Join(" ", availability.SystemRunSandboxUnsupportedReasons), NodeToolErrorCategory.SandboxUnavailable);
+            Directory.CreateDirectory(scratch);
+            var request = MxcRequestBuilder.Build(command, settings, _settingsDirectory(), scratch, _context());
+            var admission = _probe(request);
+            if (admission.Error is not null || admission.Tier != IsolationTier.BaseContainer ||
+                admission.NeedsDaclAugmentation != false ||
+                !admission.Probes.BaseContainerSupportsDenyPaths)
+                return Block("This complete permission policy requires unsupported containment. " +
+                    "MXC BaseContainer with native protected-folder denies and no host ACL mutation is required. Update Windows or select a supported policy.");
+            stop.ThrowIfCancellationRequested();
+            if (command.RevalidateApproval is { } revalidate)
+            {
+                var authorization = await revalidate(stop).ConfigureAwait(false);
+                if (!authorization.IsCurrent)
+                    return Block("Command approval changed before launch. Retry for a fresh approval.",
+                        NodeToolErrorCategory.ExecPolicyDenied);
+            }
+            stop.ThrowIfCancellationRequested();
+            if (CapturePolicy() != fingerprint)
+                return Block("Permissions changed before launch. Retry for a fresh approval.");
+
+            _logger.Info($"[mxc] operation=spawn requested=base-container applied=unknown ro={request.Filesystem!.ReadonlyPaths.Count} rw={request.Filesystem.ReadwritePaths.Count} denies={request.Filesystem.DeniedPaths.Count}");
+            // Never pass caller cancellation to SpawnAsync: the SDK's cancelled wait hides its late result.
+            using var process = await _spawn(request).ConfigureAwait(false);
+            process.StandardInput?.Dispose();
+            using var stdout = process.StandardOutput;
+            using var stderr = process.StandardError;
+            using var stdoutCloser = process.StandardOutputCloser;
+            using var stderrCloser = process.StandardErrorCloser;
+            var budget = settings.SandboxMaxOutputBytes > 0 ? settings.SandboxMaxOutputBytes : 4 * 1024 * 1024;
+            var output = Task.Run(() => CollectAsync(stdout, budget));
+            var error = Task.Run(() => CollectAsync(stderr, budget));
+            var wait = process.WaitAsync(CancellationToken.None);
+            var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var registration = stop.Register(() => cancelled.TrySetResult());
+            var completion = Task.WhenAll((Task)wait, output, error);
+            nativeCompletion = completion;
+            var finished = await Task.WhenAny(completion, cancelled.Task).ConfigureAwait(false);
+            if (stop.IsCancellationRequested || finished == cancelled.Task)
+            {
+                // Blocking native termination remains with this owner, never the caller's cancellation path.
+                await Task.Run(() =>
+                {
+                    try { process.Kill(); }
+                    finally
+                    {
+                        try { stdoutCloser?.Close(); }
+                        finally { stderrCloser?.Close(); }
+                    }
+                }).ConfigureAwait(false);
+            }
+            await completion.ConfigureAwait(false);
+            var result = await wait.ConfigureAwait(false);
+            var captures = await Task.WhenAll(output, error).ConfigureAwait(false);
+            stop.ThrowIfCancellationRequested();
+            _logger.Info($"[mxc] operation=exit applied=unknown exit={result.ExitCode} timedOut={result.TimedOut}");
+            return new CommandResult
+            {
+                Stdout = captures[0], Stderr = captures[1], ExitCode = result.ExitCode,
+                TimedOut = result.TimedOut, ExecutionMode = NodeToolExecutionMode.Sandbox,
+                ErrorCategory = result.TimedOut ? NodeToolErrorCategory.Timeout :
+                    result.ExitCode == 0 ? NodeToolErrorCategory.None : NodeToolErrorCategory.CommandFailed,
+            };
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (NotSupportedException ex)
+        {
+            return Block(ex.Message, mode == NodeToolExecutionMode.Host
+                ? NodeToolErrorCategory.CommandUnavailable : NodeToolErrorCategory.SandboxDenied, mode);
         }
         catch (Exception ex)
         {
-            // Fail closed for ANY other error (bridge crashed, JSON malformed, IO
-            // failure on stdin). Returning a -1 CommandResult is what the agent
-            // pipeline understands — letting the exception escape here can crash
-            // the node loop and ultimately the tray.
-            _logger.Warn($"[mxc] system.run sandbox execution failed: {ex.GetType().Name}: {ex.Message}");
-            return new CommandResult
+            _logger.Warn($"[mxc] operation=failed error={ex.GetType().Name} applied=unknown");
+            return mode == NodeToolExecutionMode.Host
+                ? Block("Uncontained compatibility execution failed. Verify the approved executable and working folder before retrying.",
+                    NodeToolErrorCategory.CommandUnavailable, mode)
+                : Block("MXC failed to apply or execute this policy. Repair the installation or update Windows before retrying.",
+                    NodeToolErrorCategory.SandboxFailure);
+        }
+        finally
+        {
+            if (nativeCompletion is not null)
             {
-                Stdout = string.Empty,
-                Stderr =
-                    "Sandboxed system.run failed with an unexpected error: " +
-                    $"{ex.GetType().Name}: {ex.Message}",
-                ExitCode = -1,
-                TimedOut = false,
-                DurationMs = 0,
-                ExecutionMode = NodeToolExecutionMode.Sandbox,
-                ErrorCategory = NodeToolErrorCategory.SandboxFailure,
-            };
-        }
-    }
-
-    private CommandResult DenySandboxUnavailable(string stderr, string logMessage)
-    {
-        _logger.Warn(logMessage);
-        return new CommandResult
-        {
-            Stdout = string.Empty,
-            Stderr = stderr,
-            ExitCode = -1,
-            TimedOut = false,
-            DurationMs = 0,
-            ExecutionMode = NodeToolExecutionMode.Sandbox,
-            ErrorCategory = NodeToolErrorCategory.SandboxUnavailable,
-        };
-    }
-
-    private async Task<CommandResult> RunHostFallbackAsync(
-        CommandRequest request,
-        string? effectiveShell,
-        NodeToolExecutionMode executionMode,
-        CancellationToken ct)
-    {
-        var fallbackRequest = new CommandRequest
-        {
-            Command = request.Command,
-            Args = request.Args,
-            Argv = request.Argv,
-            Shell = effectiveShell,
-            Cwd = request.Cwd,
-            TimeoutMs = request.TimeoutMs,
-            Env = request.Env,
-            ApprovedEffectiveShell = request.ApprovedEffectiveShell,
-            ApprovedHostFallbackShell = request.ApprovedHostFallbackShell,
-            Telemetry = request.Telemetry,
-            TelemetryParentContext = request.TelemetryParentContext,
-        };
-        var result = await _hostFallback.RunAsync(fallbackRequest, ct);
-        result.ExecutionMode = executionMode;
-        result.ErrorCategory = ClassifyProcessResult(result);
-        return result;
-    }
-
-    private static string ResolveSandboxShell(string requestedShell) =>
-        requestedShell.Trim().ToLowerInvariant() switch
-        {
-            "cmd" => "cmd",
-            "pwsh" => "pwsh",
-            "powershell" => "powershell",
-            _ => "powershell",
-        };
-
-    private string ResolveHostFallbackShell(string? requestedShell) =>
-        _hostFallback.ResolveEffectiveShell(requestedShell);
-
-    private static bool IsPowerShellUiUnsupported(NotSupportedException ex) =>
-        ex.Message.Contains("PowerShell-family shells require UI access", StringComparison.OrdinalIgnoreCase);
-
-    private bool TryValidateApprovedEffectiveShell(
-        CommandRequest request,
-        string effectiveShell,
-        out CommandResult? deny)
-    {
-        deny = null;
-        if (string.IsNullOrWhiteSpace(request.ApprovedEffectiveShell)
-            || string.Equals(request.ApprovedEffectiveShell, effectiveShell, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(request.ApprovedHostFallbackShell, effectiveShell, StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        deny = DenyEffectiveShellMismatch(request.ApprovedEffectiveShell!, effectiveShell);
-        return false;
-    }
-
-    private bool TryResolveApprovedHostFallbackShell(
-        CommandRequest request,
-        string effectiveShell,
-        out string hostShell,
-        out CommandResult? deny)
-    {
-        hostShell = ResolveHostFallbackShell(request.Shell);
-        deny = null;
-
-        if (!string.IsNullOrWhiteSpace(request.Shell)
-            || string.Equals(hostShell, effectiveShell, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(request.ApprovedHostFallbackShell, hostShell, StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        deny = DenyFallbackShellMismatch(effectiveShell, hostShell);
-        return false;
-    }
-
-    private CommandResult DenyEffectiveShellMismatch(string approvedShell, string effectiveShell)
-    {
-        var message =
-            "Sandboxed system.run could not execute because the effective shell changed " +
-            $"after approval. Approved shell was '{approvedShell}', but execution resolved " +
-            $"'{effectiveShell}'. Retry so the command can be approved for the current shell.";
-        _logger.Warn("[mxc] system.run denied: effective shell changed after approval");
-        return new CommandResult
-        {
-            Stdout = string.Empty,
-            Stderr = message,
-            ExitCode = -1,
-            TimedOut = false,
-            DurationMs = 0,
-            ExecutionMode = NodeToolExecutionMode.Sandbox,
-            ErrorCategory = NodeToolErrorCategory.SandboxDenied,
-            SandboxDenialReason = NodeToolSandboxDenialReason.EffectiveShellChanged,
-        };
-    }
-
-    private CommandResult DenyCustomEnvUnsupported()
-    {
-        const string message =
-            "Sandboxed system.run does not currently support custom environment variables " +
-            "with the Windows MXC 0.7 processcontainer backend. Remove env from the request " +
-            "or explicitly disable sandboxing if uncontained host execution is acceptable.";
-        _logger.Warn("[mxc] system.run denied: custom env is unsupported by MXC processcontainer");
-        return new CommandResult
-        {
-            Stdout = string.Empty,
-            Stderr = message,
-            ExitCode = -1,
-            TimedOut = false,
-            DurationMs = 0,
-            ExecutionMode = NodeToolExecutionMode.Sandbox,
-            ErrorCategory = NodeToolErrorCategory.SandboxDenied,
-            SandboxDenialReason = NodeToolSandboxDenialReason.CustomEnvironmentUnsupported,
-        };
-    }
-
-    private CommandResult DenyFallbackShellMismatch(string approvedShell, string hostFallbackShell)
-    {
-        var message =
-            "Sandboxed system.run could not safely fall back to host execution because the " +
-            $"pre-approved shell was '{approvedShell}' but host fallback would execute with " +
-            $"'{hostFallbackShell}' without prior approval. Retry with an explicit shell or after " +
-            "MXC availability has been re-probed.";
-        _logger.Warn("[mxc] system.run denied: host fallback shell would differ from approved shell");
-        return new CommandResult
-        {
-            Stdout = string.Empty,
-            Stderr = message,
-            ExitCode = -1,
-            TimedOut = false,
-            DurationMs = 0,
-            ExecutionMode = NodeToolExecutionMode.Sandbox,
-            ErrorCategory = NodeToolErrorCategory.SandboxDenied,
-            SandboxDenialReason = NodeToolSandboxDenialReason.FallbackShellUnapproved,
-        };
-    }
-
-    private static NodeToolErrorCategory ClassifyProcessResult(CommandResult result)
-    {
-        if (result.ErrorCategory != NodeToolErrorCategory.None)
-            return result.ErrorCategory;
-        if (result.TimedOut)
-            return NodeToolErrorCategory.Timeout;
-        return result.ExitCode == 0
-            ? NodeToolErrorCategory.None
-            : NodeToolErrorCategory.CommandFailed;
-    }
-
-    private static JsonElement SerializeArgs(CommandRequest request, string? effectiveShell)
-    {
-        var payload = new
-        {
-            command = request.Command,
-            shell = effectiveShell,
-            args = request.Args ?? Array.Empty<string>(),
-            argv = request.Argv,
-            cwd = request.Cwd,
-            env = request.Env,
-            timeoutMs = request.TimeoutMs,
-        };
-        var json = JsonSerializer.Serialize(payload);
-        using var doc = JsonDocument.Parse(json);
-        return doc.RootElement.Clone();
-    }
-
-    private void LogSandboxRequest(
-        SandboxExecutionRequest sandboxRequest,
-        CommandRequest commandRequest,
-        string? effectiveShell,
-        SettingsData settings,
-        string settingsDirectoryPath,
-        SandboxPolicy policy)
-    {
-        var envKeys = commandRequest.Env?.Keys
-            .OrderBy(k => k, StringComparer.OrdinalIgnoreCase)
-            .ToArray() ?? Array.Empty<string>();
-        var message =
-            "[mxc] system.run sandbox request " +
-            $"executor={_executor.Name}; contained={_executor.IsContained}; " +
-            $"sandboxSettings={{enabled={settings.SystemRunSandboxEnabled},blockHostFallbackWhenMxcUnavailable={settings.SystemRunBlockHostFallbackWhenMxcUnavailable}," +
-            $"allowOutbound={settings.SystemRunAllowOutbound},allowWindowsUi={settings.SystemRunAllowWindowsUi},clipboard={settings.SandboxClipboard},documents={settings.SandboxDocumentsAccess?.ToString() ?? "<null>"}," +
-            $"downloads={settings.SandboxDownloadsAccess?.ToString() ?? "<null>"},desktop={settings.SandboxDesktopAccess?.ToString() ?? "<null>"}," +
-            $"customFolderCount={settings.SandboxCustomFolders?.Count ?? 0},timeoutMs={settings.SandboxTimeoutMs},maxOutputBytes={settings.SandboxMaxOutputBytes}," +
-            $"settingsDirectoryPath={(string.IsNullOrWhiteSpace(settingsDirectoryPath) ? "<null>" : "<set>")}}}; " +
-            $"shell={effectiveShell ?? "<direct-argv>"}; requestedShell={(string.IsNullOrWhiteSpace(commandRequest.Shell) ? "<auto>" : "<set>")}; " +
-            $"commandLength={commandRequest.Command?.Length ?? 0}; " +
-            $"cwd={(string.IsNullOrEmpty(commandRequest.Cwd) ? "<null>" : "<set>")}; " +
-            $"envKeys=[{string.Join(",", envKeys)}]; " +
-            $"timeoutMs={sandboxRequest.TimeoutMs}; maxOutputBytes={sandboxRequest.MaxOutputBytes?.ToString() ?? "<default>"}; " +
-            $"policy={{readonlyCount={policy.Filesystem?.ReadonlyPaths?.Count ?? 0},readwriteCount={policy.Filesystem?.ReadwritePaths?.Count ?? 0}," +
-            $"deniedCount={policy.Filesystem?.DeniedPaths?.Count ?? 0},networkAllowOutbound={policy.Network?.AllowOutbound},uiAllowWindows={policy.Ui?.AllowWindows}," +
-            $"clipboard={policy.Ui?.Clipboard},timeoutMs={policy.TimeoutMs?.ToString() ?? "<null>"}}}";
-        LogMxcDiagnostic(message);
-
-        if (string.Equals(Environment.GetEnvironmentVariable(DirectAppContainerExecutor.LogFullConfigEnvVar), "1", StringComparison.Ordinal))
-        {
-            var settingsJson = JsonSerializer.Serialize(ToSandboxSettingsDiagnostic(settings, settingsDirectoryPath), DiagnosticJson);
-            var policyJson = JsonSerializer.Serialize(policy, DiagnosticJson);
-            LogMxcDiagnostic(
-                "[mxc] system.run sandbox request (full) " +
-                $"sandboxSettingsJson={settingsJson}; policyJson={policyJson}");
-        }
-    }
-
-    private static object ToSandboxSettingsDiagnostic(SettingsData settings, string settingsDirectoryPath)
-    {
-        return new
-        {
-            systemRunSandboxEnabled = settings.SystemRunSandboxEnabled,
-            systemRunBlockHostFallbackWhenMxcUnavailable = settings.SystemRunBlockHostFallbackWhenMxcUnavailable,
-            systemRunAllowOutbound = settings.SystemRunAllowOutbound,
-            systemRunAllowWindowsUi = settings.SystemRunAllowWindowsUi,
-            sandboxClipboard = settings.SandboxClipboard,
-            sandboxDocumentsAccess = settings.SandboxDocumentsAccess,
-            sandboxDownloadsAccess = settings.SandboxDownloadsAccess,
-            sandboxDesktopAccess = settings.SandboxDesktopAccess,
-            sandboxCustomFolders = settings.SandboxCustomFolders?.Select<SandboxCustomFolder, object>(f => new
+                try { await nativeCompletion.ConfigureAwait(false); }
+                catch (Exception ex)
+                { _logger.Warn($"[mxc] operation=terminal-task-failed error={ex.GetType().Name}"); }
+            }
+            if (Directory.Exists(scratch))
             {
-                path = f.Path,
-                access = f.Access,
-            }).ToArray() ?? Array.Empty<object>(),
-            sandboxTimeoutMs = settings.SandboxTimeoutMs,
-            sandboxMaxOutputBytes = settings.SandboxMaxOutputBytes,
-            settingsDirectoryPath,
+                try { Directory.Delete(scratch, recursive: true); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    _logger.Warn($"[mxc] operation=scratch-cleanup-failed error={ex.GetType().Name}");
+                }
+            }
+        }
+    }
+
+    private async Task ObserveCleanupAsync(Task<CommandResult> owned)
+    {
+        try { await owned.ConfigureAwait(false); }
+        catch (OperationCanceledException) { _logger.Info("[mxc] operation=cancel-cleanup-complete"); }
+        catch (Exception ex) { _logger.Warn($"[mxc] operation=cancel-cleanup-failed error={ex.GetType().Name}"); }
+    }
+
+    internal static async Task<string> CollectAsync(Stream? stream, long byteBudget)
+    {
+        if (stream is null) return "";
+        var cap = (int)Math.Clamp(byteBudget, 0, int.MaxValue - 16);
+        var bytes = new byte[8192];
+        var prefixLength = 0;
+        while (prefixLength < 4)
+        {
+            var read = await stream.ReadAsync(bytes.AsMemory(prefixLength, 4 - prefixLength)).ConfigureAwait(false);
+            if (read == 0) break;
+            prefixLength += read;
+        }
+        // StreamReader can misidentify a BOM when a native pipe fragments it into single-byte reads.
+        Encoding encoding = new UTF8Encoding(false, false);
+        var bom = 0;
+        if (prefixLength >= 4 && bytes[0] == 0xff && bytes[1] == 0xfe && bytes[2] == 0 && bytes[3] == 0)
+        { encoding = new UTF32Encoding(false, false); bom = 4; }
+        else if (prefixLength >= 4 && bytes[0] == 0 && bytes[1] == 0 && bytes[2] == 0xfe && bytes[3] == 0xff)
+        { encoding = new UTF32Encoding(true, false); bom = 4; }
+        else if (prefixLength >= 3 && bytes[0] == 0xef && bytes[1] == 0xbb && bytes[2] == 0xbf) bom = 3;
+        else if (prefixLength >= 2 && bytes[0] == 0xff && bytes[1] == 0xfe)
+        { encoding = Encoding.Unicode; bom = 2; }
+        else if (prefixLength >= 2 && bytes[0] == 0xfe && bytes[1] == 0xff)
+        { encoding = Encoding.BigEndianUnicode; bom = 2; }
+        var decoder = encoding.GetDecoder();
+        var chars = new char[8194];
+        var result = new StringBuilder(Math.Min(cap, 8192));
+        const string marker = "\n[truncated]";
+        var contentCap = Math.Max(0, cap - Encoding.UTF8.GetByteCount(marker));
+        var retained = 0;
+        var truncated = false;
+        char? pendingHigh = null;
+        Decode(prefixLength - bom, bom, eof: false);
+        while (true)
+        {
+            var read = await stream.ReadAsync(bytes).ConfigureAwait(false);
+            Decode(read, 0, eof: read == 0);
+            if (read == 0) break;
+        }
+        if (truncated && cap >= Encoding.UTF8.GetByteCount(marker)) result.Append(marker);
+        return result.ToString();
+
+        void Decode(int byteCount, int offset, bool eof)
+        {
+            var count = decoder.GetChars(bytes, offset, byteCount, chars, 0, flush: eof);
+            if (pendingHigh is { } high)
+            {
+                if (count > 0 && char.IsLowSurrogate(chars[0]))
+                {
+                    Append(new string([high, chars[0]]));
+                    Array.Copy(chars, 1, chars, 0, --count);
+                }
+                else Append("\uFFFD");
+                pendingHigh = null;
+            }
+            for (var i = 0; i < count;)
+            {
+                if (i == count - 1 && char.IsHighSurrogate(chars[i]))
+                { pendingHigh = chars[i]; break; }
+                var width = char.IsHighSurrogate(chars[i]) && i + 1 < count && char.IsLowSurrogate(chars[i + 1]) ? 2 : 1;
+                var chunk = chars.AsSpan(i, width);
+                i += width;
+                Append(chunk);
+            }
+        }
+
+        void Append(ReadOnlySpan<char> chunk)
+        {
+            var cost = Encoding.UTF8.GetByteCount(chunk);
+            if (!truncated && retained + cost <= contentCap)
+            { result.Append(chunk); retained += cost; }
+            else truncated = true;
+        }
+    }
+
+    private static int EffectiveTimeout(int request, int setting) =>
+        request > 0 && setting > 0 ? Math.Min(request, setting) : request > 0 ? request : setting > 0 ? setting : 30_000;
+
+    private CommandResult Block(string reason, NodeToolErrorCategory category = NodeToolErrorCategory.SandboxDenied,
+        NodeToolExecutionMode mode = NodeToolExecutionMode.Sandbox)
+    {
+        _logger.Warn($"[mxc] operation=blocked category={category} applied=unknown");
+        return new()
+        {
+            ExitCode = -1, Stderr = reason, ExecutionMode = mode,
+            ErrorCategory = category,
+            SandboxDenialReason = category == NodeToolErrorCategory.SandboxDenied
+                ? NodeToolSandboxDenialReason.UnsupportedSandboxRequest : null,
         };
     }
-
-    private void LogSandboxResult(SandboxExecutionResult result)
-    {
-        LogMxcDiagnostic(
-            "[mxc] system.run sandbox result " +
-            $"exitCode={result.ExitCode}; timedOut={result.TimedOut}; durationMs={result.DurationMs}; " +
-            $"containment={result.ContainmentTag}; stdoutChars={result.Stdout?.Length ?? 0}; " +
-            $"stderrChars={result.Stderr?.Length ?? 0}; structured={result.StructuredResult.HasValue}");
-    }
-
-    private void LogMxcDiagnostic(string message)
-    {
-        _logger.Debug(message);
-        Trace.WriteLine(message);
-    }
-
-    internal static int CombineTimeouts(int agentMs, int? policyMs)
-    {
-        // Treat <= 0 as "no cap on this side."
-        var hasAgent = agentMs > 0;
-        var hasPolicy = policyMs is > 0;
-        if (hasAgent && hasPolicy) return Math.Min(agentMs, policyMs!.Value);
-        if (hasAgent) return agentMs;
-        if (hasPolicy) return policyMs!.Value;
-        return 0;
-    }
-
-    private static readonly JsonSerializerOptions DiagnosticJson = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        WriteIndented = false,
-        Converters =
-        {
-            new JsonStringEnumConverter(JsonNamingPolicy.CamelCase),
-        },
-    };
 }

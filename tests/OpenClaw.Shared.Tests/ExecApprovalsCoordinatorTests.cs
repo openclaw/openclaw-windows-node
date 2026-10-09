@@ -368,6 +368,63 @@ public class ExecApprovalsCoordinatorTests : IDisposable
             prompt: new TokenAwaitingPromptHandler(),
             promptTimeout: TimeSpan.FromMilliseconds(50)).HandleAsync(DefaultReq(), "to1");
         Assert.False(result.IsAllow);
+        Assert.Equal("prompt-timeout", result.Reason);
+    }
+
+    [Fact]
+    public async Task CallerCancellation_DismissesPromptReleasesLockAndNeverPersistsLateAllowAlways()
+    {
+        WriteStoreFile("""{"version":1,"defaults":{"security":"allowlist","ask":"on-miss"}}""");
+        var baseline = File.ReadAllText(Path.Combine(_dir, "exec-approvals.json"));
+        var prompt = new LateCancelledPrompt();
+        var coordinator = MakeCoordinator(AlwaysCanPresentEvaluator.Instance, prompt);
+        using var cancellation = new CancellationTokenSource();
+        var first = coordinator.HandleAsync(DefaultReq(), "cancel-first", cancellation.Token);
+        await prompt.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => first.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.True(prompt.Token.IsCancellationRequested);
+        prompt.Response.TrySetResult(ExecApprovalPromptOutcome.AllowAlways);
+        await Task.Delay(20);
+        Assert.Equal(baseline, File.ReadAllText(Path.Combine(_dir, "exec-approvals.json")));
+        // A subsequent request proves the prompt semaphore was released on cancellation.
+        var next = await coordinator.HandleAsync(DefaultReq(), "cancel-next").WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(ExecApprovalV2Code.UserDenied, next.Code);
+    }
+
+    [Fact]
+    public async Task CallerCancellation_WhileWaitingForPromptLockNeverShowsSecondPrompt()
+    {
+        WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"always"}}""");
+        var prompt = new LateCancelledPrompt();
+        var coordinator = MakeCoordinator(AlwaysCanPresentEvaluator.Instance, prompt);
+        using var firstCancellation = new CancellationTokenSource();
+        using var queuedCancellation = new CancellationTokenSource();
+        var first = coordinator.HandleAsync(DefaultReq(), "holding", firstCancellation.Token);
+        await prompt.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var queued = coordinator.HandleAsync(DefaultReq(), "queued", queuedCancellation.Token);
+        queuedCancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => queued);
+        Assert.Equal(1, prompt.Calls);
+        firstCancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => first);
+        prompt.Response.TrySetResult(ExecApprovalPromptOutcome.Deny);
+    }
+
+    private sealed class LateCancelledPrompt : IExecApprovalV2PromptHandler
+    {
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<ExecApprovalPromptOutcome> Response { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public CancellationToken Token { get; private set; }
+        public int Calls { get; private set; }
+        public Task<ExecApprovalPromptOutcome> PromptAsync(ExecApprovalV2PromptRequest request, CancellationToken cancellationToken)
+        {
+            Calls++;
+            if (Calls > 1) return Task.FromResult(ExecApprovalPromptOutcome.Deny);
+            Token = cancellationToken;
+            Entered.TrySetResult();
+            return Response.Task;
+        }
     }
 
     // ── Security-audit-suppression gate (macOS parity) ──
@@ -776,7 +833,7 @@ public class ExecApprovalsCoordinatorTests : IDisposable
 
     // End-to-end handoff: coordinator payload → runner plan (no shell)
     // Guards against coordinator and runner drifting apart: the payload the
-    // coordinator emits must be directly executable by LocalCommandRunner without
+    // coordinator emits must be directly renderable by the SDK request builder without
     // any shell. Previously the coordinator emitted the raw argv ("cmd") which the
     // direct-argv runner rejects.
     [Fact]
@@ -788,17 +845,11 @@ public class ExecApprovalsCoordinatorTests : IDisposable
 
         // Map the approved payload to a CommandRequest exactly as the production
         // caller will, then verify the resulting plan is non-shell.
-        var plan = LocalCommandRunner.PlanExecution(new CommandRequest
-        {
-            Argv = result.Execution!.Argv,
-            Cwd = result.Execution.Cwd,
-            TimeoutMs = result.Execution.TimeoutMs,
-            Env = result.Execution.Env is null ? null : new Dictionary<string, string>(result.Execution.Env),
-        });
-
-        Assert.True(plan.IsDirectArgv);
-        Assert.Null(plan.Arguments); // no shell-wrapped command line
-        Assert.EndsWith("where.exe", plan.FileName, StringComparison.OrdinalIgnoreCase);
+        var command = result.Execution!.ToCommandRequest();
+        var line = OpenClaw.Shared.Mxc.MxcRequestBuilder.RenderArgv(command.Argv!);
+        Assert.EndsWith("where.exe", command.Argv![0], StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith(command.Argv[0], line);
+        Assert.DoesNotContain("cmd.exe", line);
     }
 
     // Allow payload is built from the RESOLVED path, fail-closed if unresolved

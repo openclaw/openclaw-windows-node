@@ -95,6 +95,26 @@ Returns `{ "sent": true }`. All fields optional except `body` in practice.
 ### system.run
 Execute canonical argv. Subject to the local exec approval policy at
 `%APPDATA%\OpenClawTray\exec-approvals.json`.
+
+Supported Windows uses `Microsoft.Mxc.Sdk` 1.0.0 containment. There is no Off
+setting. Positively unsupported Windows instead runs approved argv uncontained,
+with a persistent Node Sandbox warning and disabled sandbox permission controls.
+File/network/clipboard/UI restrictions are not enforced there; approvals,
+deadline, bounded output and revalidation remain active. Missing SDK components,
+unknown/failed probes or native execution failures never downgrade. On supported
+Windows, unsupported/unavailable policy and stale
+authorization are tool errors (`isError=true`). Balanced reads the OS user profile
+and resolved personal/redirected folders; Open reads/writes the same scope.
+Neither grants a whole drive or other users. Projects outside that scope need
+explicit Custom grants. Readonly profile plus selected write children is
+supported. Volume roots are never granted, even readonly. Missing required
+locations block with diagnostics; optional unavailable OneDrive is not included.
+Protected OpenClaw settings,
+SSH, browser-profile and PSReadLine roots remain excluded in every scope.
+Explicit cwd must already be granted; omitted cwd uses private scratch.
+Settings affect new commands only. Pending requests revalidate before spawn.
+Cancellation dismisses approval, releases the prompt lock, and explicitly
+terminates the owned SDK process, including a late native launch.
 ```
 {
   "command": ["executable", "arg", ...], // required
@@ -127,7 +147,10 @@ PowerShell callers must likewise name `powershell.exe` or `pwsh.exe` and its
 `-Command` arguments explicitly. Remove custom `env` from the request; V2 rejects
 non-empty environments rather than approving an executable under hidden process
 configuration.
-Returns `{ stdout, stderr, exitCode, timedOut, durationMs }`.
+Exited commands return `{ stdout, stderr, exitCode, timedOut, success, durationMs }`.
+Retained output is bounded by UTF-8 bytes per stream, including any truncation
+marker, while discarded output continues to drain. Removing policy on exit
+does not undo writes to granted folders.
 
 ### system.run.prepare
 Pre-flight a `system.run` invocation. Same args as `system.run`. Returns the
