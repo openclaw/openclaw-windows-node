@@ -201,7 +201,7 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
     public bool RetrySetup() => RunCommand(CanRetrySetup, _appCommands.ShowLocalAiSetup);
     public bool ChangeModel() => RunCommand(CanChangeModel, _appCommands.ShowLocalAiModelSetup);
     public bool RepairConnection() => RunCommand(CanRepairConnection, _appCommands.Reconnect);
-    public bool OpenChat() => RunCommand(CanOpenChat, _appCommands.ShowChat);
+    public bool OpenChat() => RunCommand(CanOpenChat, () => _appCommands.Navigate("chat"));
     public bool RecheckAvailability()
     {
         ThrowIfDisposed();

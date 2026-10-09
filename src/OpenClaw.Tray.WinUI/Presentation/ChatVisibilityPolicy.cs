@@ -2,8 +2,8 @@ namespace OpenClawTray.Presentation;
 
 internal static class ChatVisibilityPolicy
 {
-    public static bool IsChatVisible(bool isShuttingDown, bool workspaceChatVisible, bool compactChatVisible) =>
-        !isShuttingDown && (workspaceChatVisible || compactChatVisible);
+    public static bool IsChatVisible(bool isShuttingDown, bool workspaceChatVisible) =>
+        !isShuttingDown && workspaceChatVisible;
 
     public static bool IsWorkspaceChatVisible(
         bool isClosed, bool isVisible, bool isMinimized, WorkspacePageId page) =>

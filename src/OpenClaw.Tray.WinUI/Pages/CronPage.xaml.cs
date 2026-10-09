@@ -1719,9 +1719,6 @@ public sealed partial class CronPage : Page
             return;
 
         CurrentApp.PendingChatSessionKey = sessionKey;
-        if (CurrentApp.ActiveHubWindow is HubWindow hub)
-            hub.PendingChatSessionKey = sessionKey;
-
         ((IAppCommands)CurrentApp).Navigate("chat");
     }
 

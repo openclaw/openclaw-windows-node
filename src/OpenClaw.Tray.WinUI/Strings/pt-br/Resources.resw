@@ -616,7 +616,7 @@
   <data name="A2UI_MultipleChoiceSelect" xml:space="preserve">
     <value>Selecionar...</value>
   </data>
-  <!-- ==================== WebChatWindow.xaml ==================== -->
+  <!-- ==================== Workspace web-chat fallback ==================== -->
   <data name="WebChatErrorTitle.Text" xml:space="preserve">
     <value>Web Chat indisponível</value>
   </data>
@@ -2263,12 +2263,6 @@ Use uma destas opções:
   <data name="WorkspacePage_TextBlock_34.Text" xml:space="preserve">
     <value>Atualizar</value>
   </data>
-  <data name="ChatWindow_TextBlock_29.Text" xml:space="preserve">
-    <value>Bate-papo</value>
-  </data>
-  <data name="ChatWindow_TextBlock_60.Text" xml:space="preserve">
-    <value>Conecte-se ao Gateway para começar a conversar</value>
-  </data>
   <data name="TitleText.Text" xml:space="preserve">
     <value>OpenClaw Windows Companion</value>
   </data>
@@ -2482,9 +2476,6 @@ Use uma destas opções:
   <data name="FallbackInfoBar.Title" xml:space="preserve">
     <value>Arquivos do workspace</value>
   </data>
-  <data name="ChatWindow_winexWindowEx_2.Title" xml:space="preserve">
-    <value>OpenClaw Chat</value>
-  </data>
   <data name="SearchBox.PlaceholderText" xml:space="preserve">
     <value>Digite um comando...</value>
   </data>
@@ -2511,12 +2502,6 @@ Use uma destas opções:
   </data>
   <data name="UsagePage_TextBlock_10.Text" xml:space="preserve">
     <value>Uso e Custo</value>
-  </data>
-  <data name="ChatWindowOpenInBrowserToolTip.Content" xml:space="preserve">
-    <value>Abrir no aplicativo complementar</value>
-  </data>
-  <data name="ChatWindowCloseToolTip.Content" xml:space="preserve">
-    <value>Fechar</value>
   </data>
   <data name="ChatPageOpenInBrowserToolTip.Content" xml:space="preserve">
     <value>Abrir no navegador</value>
@@ -2890,30 +2875,6 @@ Use uma destas opções:
   <data name="DebugPage_TextBlock_OverridesCaption.Text" xml:space="preserve">
     <value>Substitui a configuração global &quot;Usar interface padrão de chat do Gateway&quot; por contêiner de chat. Reinicia quando o aplicativo é reiniciado.</value>
   </data>
-  <data name="DebugPage_TextBlock_HubChatLabel.Text" xml:space="preserve">
-    <value>UI da aba de chat do Hub:</value>
-  </data>
-  <data name="DebugPage_TextBlock_TrayChatLabel.Text" xml:space="preserve">
-    <value>UI do popup de chat da bandeja:</value>
-  </data>
-  <data name="DebugPage_ChatOverride_NoOverride_Hub.Content" xml:space="preserve">
-    <value>Sem substituição</value>
-  </data>
-  <data name="DebugPage_ChatOverride_ForceLegacy_Hub.Content" xml:space="preserve">
-    <value>Forçar UI de Chat do Gateway</value>
-  </data>
-  <data name="DebugPage_ChatOverride_ForceNative_Hub.Content" xml:space="preserve">
-    <value>Forçar UI de Chat do Companion</value>
-  </data>
-  <data name="DebugPage_ChatOverride_NoOverride_Tray.Content" xml:space="preserve">
-    <value>Sem substituição</value>
-  </data>
-  <data name="DebugPage_ChatOverride_ForceLegacy_Tray.Content" xml:space="preserve">
-    <value>Forçar UI de Chat do Gateway</value>
-  </data>
-  <data name="DebugPage_ChatOverride_ForceNative_Tray.Content" xml:space="preserve">
-    <value>Forçar UI de Chat do Companion</value>
-  </data>
   <data name="Chat_ZeroState_WelcomeTitle" xml:space="preserve">
     <value>Bem-vindo ao OpenClaw</value>
   </data>
@@ -3006,9 +2967,6 @@ Use uma destas opções:
   </data>
   <data name="Chat_Composer_Reasoning_Maximum" xml:space="preserve">
     <value>Máximo</value>
-  </data>
-  <data name="Chat_Composer_Accessibility_Session" xml:space="preserve">
-    <value>Sessão</value>
   </data>
   <data name="Chat_Composer_Accessibility_CurrentSession" xml:space="preserve">
     <value>Sessão atual</value>
@@ -4041,13 +3999,10 @@ Os comandos são bloqueados enquanto o sandboxing está indisponível porque o b
     <value>Chat surface overrides</value>
   </data>
   <data name="DiagnosticsPage_Expander_ChatOverrides.Description" xml:space="preserve">
-    <value>Per-surface override of the chat UI. Resets when OpenClaw restarts.</value>
+    <value>Override the Workspace chat UI. Resets when OpenClaw restarts.</value>
   </data>
-  <data name="DiagnosticsPage_Card_HubChat.Header" xml:space="preserve">
-    <value>Hub chat tab</value>
-  </data>
-  <data name="DiagnosticsPage_Card_TrayChat.Header" xml:space="preserve">
-    <value>Tray chat popup</value>
+  <data name="DiagnosticsPage_Card_WorkspaceChat.Header" xml:space="preserve">
+    <value>Workspace chat</value>
   </data>
 <data name="DiagnosticsPage_DetailBack.Text" xml:space="preserve">
     <value>Back to Diagnostics</value>
@@ -4497,15 +4452,6 @@ Os comandos são bloqueados enquanto o sandboxing está indisponível porque o b
     <value>Forçar UI de Chat do Gateway</value>
   </data>
   <data name="DebugPage_ForceCompanionChatUI.Content" xml:space="preserve">
-    <value>Forçar UI de Chat do Companion</value>
-  </data>
-  <data name="DebugPage_NoOverride2.Content" xml:space="preserve">
-    <value>Sem substituição</value>
-  </data>
-  <data name="DebugPage_ForceGatewayChatUI2.Content" xml:space="preserve">
-    <value>Forçar UI de Chat do Gateway</value>
-  </data>
-  <data name="DebugPage_ForceCompanionChatUI2.Content" xml:space="preserve">
     <value>Forçar UI de Chat do Companion</value>
   </data>
   <data name="DebugPage_Refresh.Text" xml:space="preserve">
@@ -5023,12 +4969,6 @@ Os controles de arquivo, rede, área de transferência, tempo limite e aprovaç�
   </data>
   <data name="WorkspacePage_LoadingWorkspaceFiles.Text" xml:space="preserve">
     <value>Carregando arquivos do espaço de trabalho…</value>
-  </data>
-  <data name="ChatWindow_WebChatUnavailable.Text" xml:space="preserve">
-    <value>Web Chat indisponível</value>
-  </data>
-  <data name="ChatWindow_Retry.Content" xml:space="preserve">
-    <value>Tentar novamente</value>
   </data>
   <data name="ConnectionStatusWindow_ConnectionStatus.Text" xml:space="preserve">
     <value>Status da conexão</value>
@@ -6221,12 +6161,6 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="Command_GoToWorkspace_Title" xml:space="preserve">
     <value>Go to Workspace ({0})</value>
   </data>
-  <data name="Command_OpenChatWindow_Subtitle" xml:space="preserve">
-    <value>Open standalone chat</value>
-  </data>
-  <data name="Command_OpenChatWindow_Title" xml:space="preserve">
-    <value>Open Chat Window</value>
-  </data>
   <data name="Command_OpenDashboard_Subtitle" xml:space="preserve">
     <value>Open web dashboard</value>
   </data>
@@ -6637,15 +6571,6 @@ O binário wxc-exec não pôde ser localizado. {1} Se esta for uma build de dese
   </data>
   <data name="CronPage_NextWakeFormat" xml:space="preserve">
     <value>· Próxima execução: {0}</value>
-  </data>
-  <data name="ChatWindow_UnableToLoadChatCredentials" xml:space="preserve">
-    <value>Não foi possível carregar o chat. A URL ou o token do Gateway não está disponível.</value>
-  </data>
-  <data name="ChatWindow_UnableToLoadChatRetryFormat" xml:space="preserve">
-    <value>Não foi possível carregar o chat. Tente novamente. ({0})</value>
-  </data>
-  <data name="ChatWindow_WebViewFailedFormat" xml:space="preserve">
-    <value>Falha no WebView2: {0}</value>
   </data>
   <data name="CanvasWindow_WebViewInitFailedFormat" xml:space="preserve">
     <value>Falha ao inicializar o WebView2: {0}</value>

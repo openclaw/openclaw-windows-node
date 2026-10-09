@@ -39,20 +39,14 @@ public sealed class SpeechInputContractTests
     public void ChatVoiceDialogs_RouteDisabledSttCapabilityToPermissions_AndMissingModelToVoiceSettings()
     {
         var chatPage = Read("src", "OpenClaw.Tray.WinUI", "Pages", "ChatPage.xaml.cs");
-        var chatWindow = Read("src", "OpenClaw.Tray.WinUI", "Windows", "ChatWindow.xaml.cs");
         var resources = Read("src", "OpenClaw.Tray.WinUI", "Strings", "en-us", "Resources.resw");
 
         Assert.Contains("ChatVoiceDialog_OpenPermissionsSettings", chatPage);
         Assert.Contains("NavigateToPermissionsSettings", chatPage);
-        Assert.Contains("_hub.NavigateTo(\"permissions\")", chatPage);
+        Assert.Contains("((IAppCommands)CurrentApp).Navigate(\"permissions\")", chatPage);
         Assert.Contains("ChatVoiceDialog_OpenVoiceSettings", chatPage);
         Assert.Contains("NavigateToVoiceSettings", chatPage);
-        Assert.Contains("_hub.NavigateTo(\"voice\")", chatPage);
-
-        Assert.Contains("ChatVoiceDialog_OpenPermissionsSettings", chatWindow);
-        Assert.Contains("ShowHub(\"permissions\")", chatWindow);
-        Assert.Contains("ChatVoiceDialog_OpenVoiceSettings", chatWindow);
-        Assert.Contains("ShowHub(\"voice\")", chatWindow);
+        Assert.Contains("((IAppCommands)CurrentApp).Navigate(\"voice\")", chatPage);
 
         Assert.Contains("Speech-to-text is disabled. Enable the capability in Permissions", resources);
         Assert.Contains("ChatVoiceDialog_OpenPermissionsSettings", resources);
@@ -64,7 +58,6 @@ public sealed class SpeechInputContractTests
     public void ChatVoiceDialogs_RouteDisabledTtsCapabilityToPermissions_AndPreserveFallbackForMissingSetup()
     {
         var chatPage = Read("src", "OpenClaw.Tray.WinUI", "Pages", "ChatPage.xaml.cs");
-        var chatWindow = Read("src", "OpenClaw.Tray.WinUI", "Windows", "ChatWindow.xaml.cs");
         var permissionsPage = Read("src", "OpenClaw.Tray.WinUI", "Pages", "PermissionsPage.xaml.cs");
         var resources = Read("src", "OpenClaw.Tray.WinUI", "Strings", "en-us", "Resources.resw");
 
@@ -81,20 +74,6 @@ public sealed class SpeechInputContractTests
         Assert.Contains("ChatVoiceDialog_OutputOffMessage", chatPage);
         Assert.Contains("NavigateToPermissionsSettings", chatPage);
         Assert.DoesNotContain("ChatVoiceDialog_TtsSetupRequired", chatPage);
-
-        Assert.Contains("ReadChatTextAloudAsync", chatWindow);
-        Assert.Contains("OnSpeakerMuteChangedAsync", chatWindow);
-        Assert.Contains("EnsureTtsReadyForChatAsync", chatWindow);
-        Assert.Contains("ShowTtsUnavailableDialogAsync", chatWindow);
-        Assert.Contains("IsAutomaticChatTtsEnabled", chatWindow);
-        Assert.Contains("IsChatTtsPlaybackReady", chatWindow);
-        Assert.Contains("_speakerMuteGate.WaitAsync(0)", chatWindow);
-        Assert.Contains("_voiceSettingsDialogOpen", chatWindow);
-        Assert.Contains("_reactorHost?.SetSpeakerMuted(true);\n            await ShowTtsUnavailableDialogAsync();", chatWindow.Replace("\r\n", "\n"));
-        Assert.Contains("ChatVoiceDialog_OutputOffTitle", chatWindow);
-        Assert.Contains("ChatVoiceDialog_OutputOffMessage", chatWindow);
-        Assert.Contains("ShowHub(\"permissions\")", chatWindow);
-        Assert.DoesNotContain("ChatVoiceDialog_TtsSetupRequired", chatWindow);
 
         Assert.Contains("VoiceSettingsHelpPanel.Visibility", permissionsPage);
         Assert.DoesNotContain("SpeechSetupReadiness.IsConfiguredTtsProviderSetupRequired", permissionsPage);

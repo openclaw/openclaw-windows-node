@@ -1150,9 +1150,9 @@ does not replay a mutation. Insufficient operator scopes remain an explicit
 error, not a reason to fall back or use node credentials.
 
 After verification, the native chooser finalizes Windows-node workspace guidance
-and the reviewed startup preference before restart. Native Chat and the flyout
-retain their independent Dashboard action. Windows capability consent remains
-in native Permissions, not in the web dashboard.
+and the reviewed startup preference before restart. Dashboard management remains
+in Connection settings and the tray menu, not above Workspace chat. Windows
+capability consent remains in native Permissions, not in the web dashboard.
 
 ### Classic OpenClaw onboard (compatibility)
 

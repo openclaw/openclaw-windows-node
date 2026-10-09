@@ -44,14 +44,12 @@ public sealed class ChatToolCallsToggleContractTests
     }
 
     [Fact]
-    public void ProductionChatSurfaces_MountReactorRoot()
+    public void WorkspaceChatPage_MountsReactorRoot()
     {
         var page = Read("src", "OpenClaw.Tray.WinUI", "Pages", "ChatPage.xaml.cs");
-        var window = Read("src", "OpenClaw.Tray.WinUI", "Windows", "ChatWindow.xaml.cs");
         var host = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatHostExtensions.cs");
 
         Assert.Contains(".MountReactorChat(", page);
-        Assert.Contains(".MountReactorChat(", window);
         Assert.Contains("var host = new ReactorHostControl();", host);
         Assert.Contains(
             "Component<OpenClawReactorChatRoot, OpenClawReactorChatRootProps>(props)",

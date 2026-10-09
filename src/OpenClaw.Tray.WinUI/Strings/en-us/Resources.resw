@@ -616,7 +616,7 @@
   <data name="A2UI_MultipleChoiceSelect" xml:space="preserve">
     <value>Select...</value>
   </data>
-  <!-- ==================== WebChatWindow.xaml ==================== -->
+  <!-- ==================== Workspace web-chat fallback ==================== -->
   <data name="WebChatErrorTitle.Text" xml:space="preserve">
     <value>Web Chat Unavailable</value>
   </data>
@@ -2264,12 +2264,6 @@ Use one of these options:
   <data name="WorkspacePage_TextBlock_34.Text" xml:space="preserve">
     <value>Refresh</value>
   </data>
-  <data name="ChatWindow_TextBlock_29.Text" xml:space="preserve">
-    <value>Chat</value>
-  </data>
-  <data name="ChatWindow_TextBlock_60.Text" xml:space="preserve">
-    <value>Connect to gateway to start chatting</value>
-  </data>
   <data name="TitleText.Text" xml:space="preserve">
     <value>OpenClaw Windows Companion</value>
   </data>
@@ -2483,9 +2477,6 @@ Use one of these options:
   <data name="FallbackInfoBar.Title" xml:space="preserve">
     <value>Workspace files</value>
   </data>
-  <data name="ChatWindow_winexWindowEx_2.Title" xml:space="preserve">
-    <value>OpenClaw Chat</value>
-  </data>
   <data name="SearchBox.PlaceholderText" xml:space="preserve">
     <value>Type a command...</value>
   </data>
@@ -2512,12 +2503,6 @@ Use one of these options:
   </data>
   <data name="UsagePage_TextBlock_10.Text" xml:space="preserve">
     <value>Usage &amp; Cost</value>
-  </data>
-  <data name="ChatWindowOpenInBrowserToolTip.Content" xml:space="preserve">
-    <value>Open in Companion app</value>
-  </data>
-  <data name="ChatWindowCloseToolTip.Content" xml:space="preserve">
-    <value>Close</value>
   </data>
   <data name="ChatPageOpenInBrowserToolTip.Content" xml:space="preserve">
     <value>Open in Browser</value>
@@ -2918,30 +2903,6 @@ Use one of these options:
   <data name="DebugPage_TextBlock_OverridesCaption.Text" xml:space="preserve">
     <value>Override the global 'Use standard Gateway Chat interface' setting per chat container. Resets when the app restarts.</value>
   </data>
-  <data name="DebugPage_TextBlock_HubChatLabel.Text" xml:space="preserve">
-    <value>Hub Chat tab UI:</value>
-  </data>
-  <data name="DebugPage_TextBlock_TrayChatLabel.Text" xml:space="preserve">
-    <value>Tray Chat popup UI:</value>
-  </data>
-  <data name="DebugPage_ChatOverride_NoOverride_Hub.Content" xml:space="preserve">
-    <value>No override</value>
-  </data>
-  <data name="DebugPage_ChatOverride_ForceLegacy_Hub.Content" xml:space="preserve">
-    <value>Force Gateway Chat UI</value>
-  </data>
-  <data name="DebugPage_ChatOverride_ForceNative_Hub.Content" xml:space="preserve">
-    <value>Force Companion Chat UI</value>
-  </data>
-  <data name="DebugPage_ChatOverride_NoOverride_Tray.Content" xml:space="preserve">
-    <value>No override</value>
-  </data>
-  <data name="DebugPage_ChatOverride_ForceLegacy_Tray.Content" xml:space="preserve">
-    <value>Force Gateway Chat UI</value>
-  </data>
-  <data name="DebugPage_ChatOverride_ForceNative_Tray.Content" xml:space="preserve">
-    <value>Force Companion Chat UI</value>
-  </data>
   <data name="Chat_ZeroState_WelcomeTitle" xml:space="preserve">
     <value>Welcome to OpenClaw</value>
   </data>
@@ -3034,9 +2995,6 @@ Use one of these options:
   </data>
   <data name="Chat_Composer_Reasoning_Maximum" xml:space="preserve">
     <value>Maximum</value>
-  </data>
-  <data name="Chat_Composer_Accessibility_Session" xml:space="preserve">
-    <value>Session</value>
   </data>
   <data name="Chat_Composer_Accessibility_CurrentSession" xml:space="preserve">
     <value>Current session</value>
@@ -4069,13 +4027,10 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>Chat surface overrides</value>
   </data>
   <data name="DiagnosticsPage_Expander_ChatOverrides.Description" xml:space="preserve">
-    <value>Per-surface override of the chat UI. Resets when OpenClaw restarts.</value>
+    <value>Override the Workspace chat UI. Resets when OpenClaw restarts.</value>
   </data>
-  <data name="DiagnosticsPage_Card_HubChat.Header" xml:space="preserve">
-    <value>Hub chat tab</value>
-  </data>
-  <data name="DiagnosticsPage_Card_TrayChat.Header" xml:space="preserve">
-    <value>Tray chat popup</value>
+  <data name="DiagnosticsPage_Card_WorkspaceChat.Header" xml:space="preserve">
+    <value>Workspace chat</value>
   </data>
 <data name="DiagnosticsPage_DetailBack.Text" xml:space="preserve">
     <value>Back to Diagnostics</value>
@@ -4525,15 +4480,6 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>Force Gateway Chat UI</value>
   </data>
   <data name="DebugPage_ForceCompanionChatUI.Content" xml:space="preserve">
-    <value>Force Companion Chat UI</value>
-  </data>
-  <data name="DebugPage_NoOverride2.Content" xml:space="preserve">
-    <value>No override</value>
-  </data>
-  <data name="DebugPage_ForceGatewayChatUI2.Content" xml:space="preserve">
-    <value>Force Gateway Chat UI</value>
-  </data>
-  <data name="DebugPage_ForceCompanionChatUI2.Content" xml:space="preserve">
     <value>Force Companion Chat UI</value>
   </data>
   <data name="DebugPage_Refresh.Text" xml:space="preserve">
@@ -5049,12 +4995,6 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
   </data>
   <data name="WorkspacePage_LoadingWorkspaceFiles.Text" xml:space="preserve">
     <value>Loading workspace files…</value>
-  </data>
-  <data name="ChatWindow_WebChatUnavailable.Text" xml:space="preserve">
-    <value>Web Chat Unavailable</value>
-  </data>
-  <data name="ChatWindow_Retry.Content" xml:space="preserve">
-    <value>Retry</value>
   </data>
   <data name="ConnectionStatusWindow_ConnectionStatus.Text" xml:space="preserve">
     <value>Connection Status</value>
@@ -6247,12 +6187,6 @@ Make sure the gateway is running.</value>
   <data name="Command_GoToWorkspace_Title" xml:space="preserve">
     <value>Go to Workspace ({0})</value>
   </data>
-  <data name="Command_OpenChatWindow_Subtitle" xml:space="preserve">
-    <value>Open standalone chat</value>
-  </data>
-  <data name="Command_OpenChatWindow_Title" xml:space="preserve">
-    <value>Open Chat Window</value>
-  </data>
   <data name="Command_OpenDashboard_Subtitle" xml:space="preserve">
     <value>Open web dashboard</value>
   </data>
@@ -6657,15 +6591,6 @@ Make sure the gateway is running.</value>
   </data>
   <data name="CronPage_NextWakeFormat" xml:space="preserve">
     <value>· Next wake: {0}</value>
-  </data>
-  <data name="ChatWindow_UnableToLoadChatCredentials" xml:space="preserve">
-    <value>Unable to load chat. The gateway URL or token is not available.</value>
-  </data>
-  <data name="ChatWindow_UnableToLoadChatRetryFormat" xml:space="preserve">
-    <value>Unable to load chat. Please try again. ({0})</value>
-  </data>
-  <data name="ChatWindow_WebViewFailedFormat" xml:space="preserve">
-    <value>WebView2 failed: {0}</value>
   </data>
   <data name="CanvasWindow_WebViewInitFailedFormat" xml:space="preserve">
     <value>Failed to initialize WebView2: {0}</value>

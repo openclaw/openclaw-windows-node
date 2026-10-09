@@ -2218,12 +2218,6 @@ Gebruik een van deze opties:
   <data name="WorkspacePage_TextBlock_34.Text" xml:space="preserve">
     <value>Vernieuwen</value>
   </data>
-  <data name="ChatWindow_TextBlock_29.Text" xml:space="preserve">
-    <value>Chatgesprek</value>
-  </data>
-  <data name="ChatWindow_TextBlock_60.Text" xml:space="preserve">
-    <value>Maak verbinding met de gateway om te chatten</value>
-  </data>
   <data name="TitleText.Text" xml:space="preserve">
     <value>OpenClaw Windows Companion</value>
   </data>
@@ -2437,9 +2431,6 @@ Gebruik een van deze opties:
   <data name="FallbackInfoBar.Title" xml:space="preserve">
     <value>Werkruimtebestanden</value>
   </data>
-  <data name="ChatWindow_winexWindowEx_2.Title" xml:space="preserve">
-    <value>OpenClaw Chat</value>
-  </data>
   <data name="SearchBox.PlaceholderText" xml:space="preserve">
     <value>Typ een opdracht...</value>
   </data>
@@ -2466,12 +2457,6 @@ Gebruik een van deze opties:
   </data>
   <data name="UsagePage_TextBlock_10.Text" xml:space="preserve">
     <value>Gebruik en kosten</value>
-  </data>
-  <data name="ChatWindowOpenInBrowserToolTip.Content" xml:space="preserve">
-    <value>Openen in browser</value>
-  </data>
-  <data name="ChatWindowCloseToolTip.Content" xml:space="preserve">
-    <value>Sluiten</value>
   </data>
   <data name="ChatPageOpenInBrowserToolTip.Content" xml:space="preserve">
     <value>Openen in browser</value>
@@ -2872,30 +2857,6 @@ Gebruik een van deze opties:
   <data name="DebugPage_TextBlock_OverridesCaption.Text" xml:space="preserve">
     <value>Overschrijf de globale instelling 'Standaard Gateway-chatinterface gebruiken' per chatcontainer. Wordt opnieuw ingesteld wanneer de app opnieuw wordt opgestart.</value>
   </data>
-  <data name="DebugPage_TextBlock_HubChatLabel.Text" xml:space="preserve">
-    <value>Chat-tabblad van de hub:</value>
-  </data>
-  <data name="DebugPage_TextBlock_TrayChatLabel.Text" xml:space="preserve">
-    <value>Chat-pop-up van het systeemvak:</value>
-  </data>
-  <data name="DebugPage_ChatOverride_NoOverride_Hub.Content" xml:space="preserve">
-    <value>Geen overschrijving</value>
-  </data>
-  <data name="DebugPage_ChatOverride_ForceLegacy_Hub.Content" xml:space="preserve">
-    <value>Gateway-chatinterface forceren</value>
-  </data>
-  <data name="DebugPage_ChatOverride_ForceNative_Hub.Content" xml:space="preserve">
-    <value>Companion-chatinterface forceren</value>
-  </data>
-  <data name="DebugPage_ChatOverride_NoOverride_Tray.Content" xml:space="preserve">
-    <value>Geen overschrijving</value>
-  </data>
-  <data name="DebugPage_ChatOverride_ForceLegacy_Tray.Content" xml:space="preserve">
-    <value>Gateway-chatinterface forceren</value>
-  </data>
-  <data name="DebugPage_ChatOverride_ForceNative_Tray.Content" xml:space="preserve">
-    <value>Companion-chatinterface forceren</value>
-  </data>
   <data name="Chat_ZeroState_WelcomeTitle" xml:space="preserve">
     <value>Welkom bij OpenClaw</value>
   </data>
@@ -2988,9 +2949,6 @@ Gebruik een van deze opties:
   </data>
   <data name="Chat_Composer_Reasoning_Maximum" xml:space="preserve">
     <value>Maximaal</value>
-  </data>
-  <data name="Chat_Composer_Accessibility_Session" xml:space="preserve">
-    <value>Sessie</value>
   </data>
   <data name="Chat_Composer_Accessibility_CurrentSession" xml:space="preserve">
     <value>Huidige sessie</value>
@@ -4023,13 +3981,10 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Chat surface overrides</value>
   </data>
   <data name="DiagnosticsPage_Expander_ChatOverrides.Description" xml:space="preserve">
-    <value>Per-surface override of the chat UI. Resets when OpenClaw restarts.</value>
+    <value>Override the Workspace chat UI. Resets when OpenClaw restarts.</value>
   </data>
-  <data name="DiagnosticsPage_Card_HubChat.Header" xml:space="preserve">
-    <value>Hub chat tab</value>
-  </data>
-  <data name="DiagnosticsPage_Card_TrayChat.Header" xml:space="preserve">
-    <value>Tray chat popup</value>
+  <data name="DiagnosticsPage_Card_WorkspaceChat.Header" xml:space="preserve">
+    <value>Workspace chat</value>
   </data>
   <data name="DiagnosticsPage_DetailBack.Text" xml:space="preserve">
     <value>Back to Diagnostics</value>
@@ -4479,15 +4434,6 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Forceer chat-UI van gateway</value>
   </data>
   <data name="DebugPage_ForceCompanionChatUI.Content" xml:space="preserve">
-    <value>Forceer chat-UI van companion</value>
-  </data>
-  <data name="DebugPage_NoOverride2.Content" xml:space="preserve">
-    <value>Geen overschrijving</value>
-  </data>
-  <data name="DebugPage_ForceGatewayChatUI2.Content" xml:space="preserve">
-    <value>Forceer chat-UI van gateway</value>
-  </data>
-  <data name="DebugPage_ForceCompanionChatUI2.Content" xml:space="preserve">
     <value>Forceer chat-UI van companion</value>
   </data>
   <data name="DebugPage_Refresh.Text" xml:space="preserve">
@@ -5045,12 +4991,6 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
   </data>
   <data name="WorkspacePage_LoadingWorkspaceFiles.Text" xml:space="preserve">
     <value>Werkruimtebestanden worden geladen…</value>
-  </data>
-  <data name="ChatWindow_WebChatUnavailable.Text" xml:space="preserve">
-    <value>Web-chat niet beschikbaar</value>
-  </data>
-  <data name="ChatWindow_Retry.Content" xml:space="preserve">
-    <value>Opnieuw proberen</value>
   </data>
   <data name="ConnectionStatusWindow_ConnectionStatus.Text" xml:space="preserve">
     <value>Verbindingsstatus</value>
@@ -6244,12 +6184,6 @@ Controleer of de gateway actief is.</value>
   <data name="Command_GoToWorkspace_Title" xml:space="preserve">
     <value>Go to Workspace ({0})</value>
   </data>
-  <data name="Command_OpenChatWindow_Subtitle" xml:space="preserve">
-    <value>Open standalone chat</value>
-  </data>
-  <data name="Command_OpenChatWindow_Title" xml:space="preserve">
-    <value>Open Chat Window</value>
-  </data>
   <data name="Command_OpenDashboard_Subtitle" xml:space="preserve">
     <value>Open web dashboard</value>
   </data>
@@ -6660,15 +6594,6 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   </data>
   <data name="CronPage_NextWakeFormat" xml:space="preserve">
     <value>· Volgende wake: {0}</value>
-  </data>
-  <data name="ChatWindow_UnableToLoadChatCredentials" xml:space="preserve">
-    <value>Kan chat niet laden. De gateway-URL of het token is niet beschikbaar.</value>
-  </data>
-  <data name="ChatWindow_UnableToLoadChatRetryFormat" xml:space="preserve">
-    <value>Kan chat niet laden. Probeer het opnieuw. ({0})</value>
-  </data>
-  <data name="ChatWindow_WebViewFailedFormat" xml:space="preserve">
-    <value>WebView2 is mislukt: {0}</value>
   </data>
   <data name="CanvasWindow_WebViewInitFailedFormat" xml:space="preserve">
     <value>Kan WebView2 niet initialiseren: {0}</value>

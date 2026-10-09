@@ -8,9 +8,8 @@ namespace OpenClawTray.Chat;
 /// <see cref="ChatComposerController"/>, and their shared
 /// <see cref="ChatComposerHostActions"/>. Created by the stateless
 /// <see cref="IChatComposerFactory"/> and owned/disposed exactly once by
-/// <see cref="MountedReactorChat"/>. <see cref="ChatPage"/> and <see cref="ChatWindow"/>
-/// each hold a separate session over the same provider, so draft, attachment, focus,
-/// popup, and voice state stay host-local while provider/runtime state is shared.
+/// <see cref="MountedReactorChat"/>. Draft, attachment, focus, popup and voice state
+/// stay mount-local while provider/runtime state survives the Workspace window.
 /// Public only because it is a property type on the pre-existing public
 /// <see cref="OpenClawReactorChatRootProps"/> and a constructor parameter of the
 /// pre-existing public <see cref="MountedReactorChat"/>; every other member (and the

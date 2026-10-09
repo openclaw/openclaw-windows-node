@@ -44,7 +44,7 @@ The [Gateway fixture harness](GATEWAY_FIXTURE_TESTING.md) adds a middle tier:
 the real desktop app and production Gateway/chat stack consume deterministic
 synthetic Gateway responses, with no AI or real WSL Gateway. Protocol tests
 run in Shared; profile/preflight and concurrent-app tests live in Tray
-Integration; native picker/240-message/late-history proofs live in Tray UI.
+Integration; native sidebar/240-message/late-history proofs live in Tray UI.
 Use `.\scripts\test-gateway-fixture.ps1 -AppPath '<built-app.exe>'` for the
 opt-in real-app lane. It rejects skipped or zero-test runs and preserves
 per-run artifacts. Existing MCP-only integration defaults remain unchanged.

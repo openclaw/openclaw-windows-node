@@ -23,7 +23,6 @@ internal sealed record WindowManagerCallbacks(
     Func<GatewayDirectConnectService?> GetGatewayDirectConnectService,
     Func<ILocalAiRuntime?> GetLocalAiRuntime,
     Func<NodeService?> GetNodeService,
-    Func<VoiceService?> GetVoiceService,
     Func<IPageActivator?> GetPageActivator,
     Func<string?> GetPendingChatSessionKey,
     Func<string[]?> GetStartupArgs,
@@ -52,7 +51,6 @@ internal sealed class WindowManager : IWindowManager
     private HubWindow? _hubWindow;
     private WorkspaceWindow? _workspaceWindow;
     private Window? _lastActiveMainWindow;
-    private ChatWindow? _chatWindow;
     private ConnectionStatusWindow? _connectionStatusWindow;
     private SetupWindow? _setupWindow;
     private bool _isShuttingDown;
@@ -79,8 +77,7 @@ internal sealed class WindowManager : IWindowManager
 
     public bool IsChatVisible => ChatVisibilityPolicy.IsChatVisible(
         _isShuttingDown,
-        !_isShuttingDown && _workspaceWindow is { IsChatVisible: true },
-        _chatWindow is { IsClosed: false, Visible: true });
+        _workspaceWindow is { IsChatVisible: true });
 
     public XamlRoot? DialogXamlRoot =>
         _isShuttingDown
@@ -177,68 +174,6 @@ internal sealed class WindowManager : IWindowManager
         finally { _dashboardFailureVisible = false; }
         if (retryRequested && !_isShuttingDown)
             retry?.Invoke();
-    }
-
-    public void PrewarmChat(ChatWindowRequest request)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        if (_chatWindow is not null || _isShuttingDown)
-        {
-            return;
-        }
-
-        _chatWindow = new ChatWindow(request.GatewayUrl, request.GatewayToken);
-        _callbacks.ApplyTheme(_chatWindow);
-    }
-
-    public void ShowChat(ChatWindowRequest request)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        if (_isShuttingDown)
-        {
-            return;
-        }
-
-        if (_chatWindow is null)
-        {
-            _chatWindow = new ChatWindow(request.GatewayUrl, request.GatewayToken);
-            _callbacks.ApplyTheme(_chatWindow);
-        }
-
-        _chatWindow.RefreshCredentials(request.GatewayUrl, request.GatewayToken);
-
-        if (_chatWindow.Visible)
-        {
-            _chatWindow.HideNearTray();
-            return;
-        }
-
-        var window = _chatWindow;
-        _dispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
-        {
-            if (!_isShuttingDown && ReferenceEquals(_chatWindow, window))
-            {
-                try
-                {
-                    window.ShowNearTrayAnimated();
-                }
-                catch (Exception ex)
-                {
-                    Logger.Warn($"ShowChat deferred show failed: {ex.Message}");
-                }
-            }
-        });
-    }
-
-    public void ResetChatForCredentialChange()
-    {
-        if (_isShuttingDown)
-        {
-            return;
-        }
-
-        _chatWindow?.ForceClose();
-        _chatWindow = null;
     }
 
     public void ShowCanvas(CanvasWindowRequest request)
@@ -408,9 +343,7 @@ internal sealed class WindowManager : IWindowManager
                 _hubWindow.NodeShortDeviceId = nodeService.ShortDeviceId;
                 _hubWindow.NodeFullDeviceId = nodeService.FullDeviceId;
             }
-            _hubWindow.VoiceServiceInstance = _callbacks.GetVoiceService();
             _hubWindow.SettingsSaved += _callbacks.SettingsSaved;
-            _hubWindow.PendingChatSessionKey = _callbacks.GetPendingChatSessionKey();
             _hubWindow.Closed += OnHubClosed;
             _hubWindow.Activated += OnMainWindowActivated;
             _hubWindow.BindToAppState();
@@ -973,7 +906,6 @@ internal sealed class WindowManager : IWindowManager
         _callbacks.ApplyTheme(_keepAliveWindow);
         _callbacks.ApplyTheme(_hubWindow);
         _callbacks.ApplyTheme(_workspaceWindow);
-        _callbacks.ApplyTheme(_chatWindow);
         _callbacks.ApplyTheme(_connectionStatusWindow);
         _callbacks.ApplyTheme(_setupWindow);
     }
@@ -1003,7 +935,7 @@ internal sealed class WindowManager : IWindowManager
             _workspaceWindow?.ChatPage.QueueSession(sessionKey);
     }
 
-    public void ShowHubChatAndStartVoice()
+    public void ShowWorkspaceChatAndStartVoice()
     {
         if (_isShuttingDown)
         {
@@ -1041,9 +973,6 @@ internal sealed class WindowManager : IWindowManager
             TryClose("Workspace window", _workspaceWindow.Close, ref failures);
             _workspaceWindow = null;
         }
-
-        TryClose("Chat window", () => _chatWindow?.ForceClose(), ref failures);
-        _chatWindow = null;
 
         var setupWindow = _setupWindow;
         if (setupWindow is not null)

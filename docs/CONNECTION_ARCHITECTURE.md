@@ -232,7 +232,7 @@ Settings companion and reuses the existing native Settings pages. Its Chat rail
 item opens or focuses Workspace without selecting a Settings page or replacing
 the retained composer. Its activation is queued after NavigationView completes its
 own focus handling. WindowManager restores a minimized Workspace and explicitly
-requests foreground activation, including when the Chat window is already open.
+requests foreground activation, including when Workspace is already open.
 The Gateway dashboard action and its channels/integrations
 description live in their own Connection settings card, not above chat.
 Owner's Settings, Usage, Pair device, and About links open or focus that
@@ -305,10 +305,10 @@ initial launch and secondary-instance forwarding. Unlike a real interactive
 argument-free launch, StartupTask does not implicitly open Workspace. Existing
 first-run setup and restart guards remain in effect.
 
-Chat response notifications are suppressed only while native Workspace is
-visible, not minimized, and showing Home/chat, or the legacy compact chat is
-visible. An existing Settings companion, a hidden/minimized Workspace, or the
-Notifications destination is not evidence that chat is visible. The chat and
+Chat response notifications are suppressed only while Workspace is
+visible, not minimized, and showing Home/chat. An existing Settings companion,
+a hidden/minimized Workspace, or the Notifications destination is not evidence
+that chat is visible. The chat and
 per-type notification settings still apply.
 
 New Workspace resource keys exist in every supported locale. Non-English copy
@@ -782,7 +782,7 @@ Tray actions should never silently no-op on common pairing/configuration issues:
 
 - Chat resolves credentials from the active registry record and per-gateway identity. If no usable credential exists, it opens Connection settings instead.
 - Canvas opens only when the Windows node is initialized, paired, and the Canvas capability is enabled in settings; otherwise it opens Connection settings.
-- Quick Send uses the live operator client and surfaces scope/pairing errors from gateway calls.
+- Workspace chat uses the live operator connection and surfaces scope/pairing errors from gateway calls. There is no separate Quick Send route.
 - `system.run` and `system.run.prepare` are gated by `NodeSystemRunEnabled` (default `true` for backward compatibility). When disabled, those commands are dropped from advertised capabilities and invocations are rejected.
 
 ## Legacy migration
