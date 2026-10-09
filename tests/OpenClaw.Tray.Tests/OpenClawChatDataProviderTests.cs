@@ -14830,7 +14830,7 @@ public class OpenClawChatDataProviderTests
     [Fact]
     public async Task ChatMessageReceived_DuplicateAssistantFinalWithCost_KeepsSingleCostAndUsage()
     {
-        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
         await provider.LoadAsync();
 
         var message = new ChatMessageInfo
@@ -14847,12 +14847,56 @@ public class OpenClawChatDataProviderTests
         };
 
         bridge.RaiseChat(message);
+        var snapshotsAfterFirst = snapshots.Count;
         bridge.RaiseChat(message);
+        var duplicatePublishesWithCost = snapshots.Count - snapshotsAfterFirst;
 
         var entry = Assert.Single((await provider.LoadAsync()).Timelines["main"].Entries);
         var meta = provider.GetEntryMetadata("main");
         Assert.Equal(0.22503, meta[entry.Id].CostUsd);
         Assert.Equal(27, meta[entry.Id].ResponseTokens);
+
+        // The same duplicate without a cost is the baseline: an identical cost
+        // must not add a snapshot on top of the usual duplicate publishes.
+        var (baselineBridge, baselineProvider, baselineSnapshots, _) = CreateProvider(new[] { MainSession() });
+        await baselineProvider.LoadAsync();
+        var uncosted = new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "same",
+            State = "final",
+            Ts = 1714600005000,
+            InputTokens = 20,
+            OutputTokens = 7,
+            ResponseTokens = 27,
+        };
+        baselineBridge.RaiseChat(uncosted);
+        var baselineAfterFirst = baselineSnapshots.Count;
+        baselineBridge.RaiseChat(uncosted);
+        Assert.Equal(baselineSnapshots.Count - baselineAfterFirst, duplicatePublishesWithCost);
+    }
+
+    [Fact]
+    public async Task ChatMessageReceived_ZeroCostOnFreshEntry_LeavesCostUnset()
+    {
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "free",
+            State = "final",
+            Ts = 1714600005000,
+            CostUsd = 0.0,
+        });
+
+        var entry = Assert.Single((await provider.LoadAsync()).Timelines["main"].Entries);
+        var meta = provider.GetEntryMetadata("main");
+        // Zero renders like no cost, so it is not stored (and not snapshotted).
+        Assert.Null(meta[entry.Id].CostUsd);
     }
 
     [Fact]

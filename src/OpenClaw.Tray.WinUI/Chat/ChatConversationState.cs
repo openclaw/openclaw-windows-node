@@ -2235,6 +2235,10 @@ internal sealed class ChatConversationState
                 threadMetadata.TryGetValue(entry.Id, out var existing);
                 if (existing?.CostUsd is { } current && current.Equals(costUsd))
                     return null;
+                // A reported zero on an entry without a cost renders the same
+                // as no cost, so skip the redundant snapshot.
+                if (existing?.CostUsd is null && costUsd <= 0)
+                    return null;
                 threadMetadata[entry.Id] = (existing ?? BuildLiveMetaLocked(threadId)) with
                 {
                     CostUsd = costUsd,

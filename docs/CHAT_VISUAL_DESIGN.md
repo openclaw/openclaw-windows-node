@@ -92,11 +92,13 @@ without adding queue-only rows to history. This applies to both ChatPage and
 ChatWindow. See the [pending-message concept](design/reference/concepts/states/pending-chat-message.md).
 
 Assistant messages carry a quiet metadata footer under the bubble: local time,
-model name, the latest context usage (shown on the newest assistant message only
-while tool calls are visible), and the per-message cost when the gateway reports
-`usage.cost.total` for that message. Cost renders as `$0.225` with the gateway
-Control UI precision (four decimals below $0.01, three below $1, otherwise two);
-amounts below $0.0001 render as `<$0.0001`. The amount is the gateway's estimate
+model name, the latest context usage (on the newest assistant message only), and
+the per-message cost when the gateway reports `usage.cost.total` for that
+message. The whole footer renders on the last bubble of each assistant run and
+only while tool calls are visible (Settings > Show tool calls). Cost renders as
+`$0.225` with the gateway Control UI precision (four decimals below $0.01, three
+below $1, otherwise two); amounts that would round to zero at four decimals
+(below $0.00005) render as `<$0.0001`. The amount is the gateway's estimate
 from its configured per-token prices, not an invoice: for a local model it is a
 counter at whatever prices were configured, and subscription or OAuth providers
 may show a value that is never billed. Missing, zero, negative, or non-finite

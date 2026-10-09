@@ -2669,6 +2669,58 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void ParseChatHistoryPayload_AssistantRow_ReadsUsageCost()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var history = helper.ParseChatHistoryPayload("""
+        {
+          "messages": [
+            {
+              "role": "assistant",
+              "content": "priced reply",
+              "timestamp": 1,
+              "usage": { "input": 20, "output": 7, "cost": { "total": 0.22503 } }
+            },
+            {
+              "role": "assistant",
+              "content": "unpriced reply",
+              "timestamp": 2,
+              "usage": { "input": 20, "output": 7 }
+            }
+          ]
+        }
+        """);
+
+        Assert.Equal(2, history.Messages.Count);
+        Assert.Equal(0.22503, history.Messages[0].CostUsd);
+        Assert.Null(history.Messages[1].CostUsd);
+    }
+
+    [Theory]
+    [InlineData("\"usage\": { \"cost\": { \"total\": 12 } }", 12.0)]
+    [InlineData("\"usage\": { \"cost\": { \"total\": 0 } }", 0.0)]
+    [InlineData("\"usage\": { \"cost\": 0.5 }", null)]
+    [InlineData("\"usage\": { \"cost\": { \"total\": -1 } }", null)]
+    [InlineData("\"usage\": { \"cost\": { \"total\": \"bad\" } }", null)]
+    [InlineData("\"usage\": {}", null)]
+    public void ParseChatHistoryPayload_AssistantRow_RejectsInvalidUsageCost(string usageJson, double? expected)
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var history = helper.ParseChatHistoryPayload($$"""
+        {
+          "messages": [
+            { "role": "assistant", "content": "reply", "timestamp": 1, {{usageJson}} }
+          ]
+        }
+        """);
+
+        var message = Assert.Single(history.Messages);
+        Assert.Equal(expected, message.CostUsd);
+    }
+
+    [Fact]
     public void ParseChatHistoryPayload_OpenClawMetadata_PreservesMessageIdentity()
     {
         var helper = new GatewayClientTestHelper();
@@ -2901,6 +2953,32 @@ public class OpenClawGatewayClientTests
         """);
 
         Assert.Equal(expectNotification ? 1 : 0, notifications.Count);
+    }
+
+    [Fact]
+    public void ProcessRawMessage_LegacyAssistantMessage_ReadsPayloadUsageCost()
+    {
+        var helper = new GatewayClientTestHelper();
+        ChatMessageInfo? received = null;
+        helper.Client.ChatMessageReceived += (_, message) => received = message;
+
+        helper.ProcessRawMessage("""
+        {
+          "type": "event",
+          "event": "session.message",
+          "payload": {
+            "sessionKey": "main",
+            "role": "assistant",
+            "text": "legacy reply",
+            "state": "final",
+            "usage": { "cost": { "total": 0.4 } }
+          }
+        }
+        """);
+
+        Assert.NotNull(received);
+        Assert.Equal("legacy reply", received!.Text);
+        Assert.Equal(0.4, received.CostUsd);
     }
 
     [Fact]

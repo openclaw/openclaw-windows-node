@@ -91,9 +91,13 @@ public static class ChatUsageFormatter
     /// <summary>
     /// Formats the gateway-reported per-message cost for the assistant footer
     /// using the same precision as the gateway's Control UI (4 decimals below
-    /// $0.01, 3 below $1, otherwise 2), e.g. <c>$0.588</c>. Values that would
-    /// round to zero render as <c>&lt;$0.0001</c>. Missing, zero, negative,
-    /// or non-finite values are hidden.
+    /// $0.01, 3 below $1, otherwise 2), e.g. <c>$0.588</c>. The precision rule
+    /// mirrors <c>formatCost</c> in <c>ui/src/lib/format.ts</c> of
+    /// openclaw/openclaw (commit 0acc55cfa8a973f9d1764f7641f41e5a38e88abe).
+    /// Two deliberate divergences: zero is hidden instead of rendered as
+    /// <c>$0.00</c>, and values that would round to zero at four decimals
+    /// (below $0.00005) render as <c>&lt;$0.0001</c>. Missing, negative, or
+    /// non-finite values are hidden.
     /// </summary>
     public static string? FormatCost(double? costUsd)
     {

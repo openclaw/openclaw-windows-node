@@ -19,22 +19,19 @@ namespace OpenClawTray.Chat;
 /// when the model is unknown.
 /// </param>
 /// <param name="InputTokens">
-/// Cumulative input (prompt) tokens reported by the gateway for this turn,
-/// shown in the footer with an up arrow (<c>↑</c>). <c>null</c> when not
-/// reported (most live ``chat`` deltas don't carry usage info — only the
-/// final summary does).
+/// Cumulative input (prompt) tokens reported by the gateway for this turn.
+/// <c>null</c> when not reported (most live ``chat`` deltas don't carry usage
+/// info — only the final summary does).
 /// </param>
 /// <param name="OutputTokens">
-/// Cumulative output tokens reported by the gateway for this turn, shown in
-/// the footer with a down arrow (<c>↓</c>).
+/// Cumulative output tokens reported by the gateway for this turn.
 /// </param>
 /// <param name="ResponseTokens">
-/// Total tokens spent on the response (prompt + completion) — surfaces as
-/// <c>R&lt;n&gt;</c> in the footer (e.g. <c>R45.4k</c>).
+/// Total tokens spent on the response (prompt + completion).
 /// </param>
 /// <param name="ContextPercent">
 /// Percentage of the model's context window consumed by the conversation
-/// when this entry was generated (0–100). Shown as <c>23% ctx</c>.
+/// when this entry was generated (0–100).
 /// </param>
 /// <param name="CostUsd">
 /// Gateway-reported cost in USD for this assistant entry
