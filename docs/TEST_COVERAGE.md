@@ -128,6 +128,36 @@ Unavailable shell/provider access fails the selected proof instead of treating
 a window-style heuristic as taskbar evidence. Sampling gaps remain a limit of
 the measurement, not proof that an arbitrarily short transient is impossible.
 
+Native Markdown disclosure proofs use a fresh WinUI test process for each
+theme and the inert-content case. Attached native `Expander` templates can
+crash the shared testhost when a later fixture replaces application theme
+resources. The ordinary UI lane excludes `Category=NativeMarkdownProof`;
+CI runs all four cases separately through the existing proof runner instead.
+These are mandatory rendering proofs, not optional or skipped tests:
+
+```powershell
+foreach ($theme in @('Light', 'Dark', 'HighContrast')) {
+    .\scripts\run-proof-tests.ps1 `
+        -Project 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' `
+        -Filter "Category=NativeMarkdownProof&DisplayName~$theme" `
+        -ResultName "markdown-$($theme.ToLowerInvariant())" `
+        -RuntimeIdentifier win-x64
+}
+.\scripts\run-proof-tests.ps1 `
+    -Project 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' `
+    -Filter 'FullyQualifiedName~ReactorMarkdownDisclosureProofTests.AssistantMarkdown_UntrustedContentRemainsInertInsideDisclosure' `
+    -ResultName markdown-inert-content `
+    -RuntimeIdentifier win-x64
+```
+
+The proofs exercise accessible expansion/collapse, ordered Markdown body content,
+nested and initially open disclosures, inert untrusted content, and expansion
+state across rerendering and resizing. They wait for native animation state and
+assert nonzero rendered text geometry instead of using sleeps. Set
+`OPENCLAW_VISUAL_TEST=1` and `OPENCLAW_VISUAL_TEST_DIR` to a dedicated artifact
+directory for collapsed and expanded captures. HighContrast is a resource
+simulation, not a claim that Windows High Contrast was enabled.
+
 The chat composer's real keyboard regression is opt-in because it uses Windows
 `SendInput` on a visible, focused proof window. Run it only on an isolated
 interactive desktop with no concurrent computer-use or human input, Caps Lock
