@@ -1,0 +1,157 @@
+name: Upstream Gateway Protocol check
+
+on:
+  schedule:
+    - cron: "41 5 * * *"
+  workflow_dispatch:
+    inputs:
+      report_only:
+        description: Collect live upstream evidence without creating issues or assigning Copilot
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: upstream-gateway-protocol-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  observe:
+    if: ${{ github.repository == 'openclaw/openclaw-windows-node' && github.ref_name == github.event.repository.default_branch }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+      issues: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      - name: Test monitor without network or writes
+        run: node --test .github/scripts/upstream-gateway-protocol.test.cjs
+      - name: Find last reviewed observation for cumulative deltas
+        id: previous
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { findBaseline } = require("./.github/scripts/upstream-gateway-publish.cjs");
+            const baseline = await findBaseline({ github, context });
+            if (baseline) {
+              core.setOutput("run", baseline.runId);
+              core.setOutput("fingerprint", baseline.fingerprint);
+            } else {
+              core.notice("No retained reviewed observation. Requesting a full baseline audit.");
+            }
+      - uses: actions/download-artifact@v8
+        if: ${{ steps.previous.outputs.run != '' }}
+        with:
+          name: upstream-gateway-protocol-report
+          path: ${{ runner.temp }}/previous-protocol
+          run-id: ${{ steps.previous.outputs.run }}
+          github-token: ${{ github.token }}
+      - name: Observe main, npm latest and published schema
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIOUS_REPORT: ${{ runner.temp }}/previous-protocol/report.json
+          BASELINE_FINGERPRINT: ${{ steps.previous.outputs.fingerprint }}
+          OUTPUT_DIR: ${{ runner.temp }}/upstream-protocol
+        run: node .github/scripts/upstream-gateway-protocol.cjs
+      - name: Summarize observation
+        env:
+          REPORT: ${{ runner.temp }}/upstream-protocol/report.md
+        run: cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: upstream-gateway-protocol-report
+          path: ${{ runner.temp }}/upstream-protocol
+          if-no-files-found: error
+          retention-days: 90
+
+  observation-failure:
+    needs: observe
+    if: ${{ always() && needs.observe.result == 'failure' && (github.event_name == 'schedule' || !inputs.report_only) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Preserve collection failures as one actionable health issue
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { publishFailure } = require("./.github/scripts/upstream-gateway-publish.cjs");
+            const number = await publishFailure({ github, context });
+            await core.summary.addRaw(`Observation blocked. Health issue #${number}; no compatibility conclusion.`).write();
+
+  publish:
+    needs: observe
+    if: ${{ github.event_name == 'schedule' || !inputs.report_only }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    outputs:
+      issue: ${{ steps.publish.outputs.issue }}
+      action: ${{ steps.publish.outputs.action }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: upstream-gateway-protocol-report
+          path: ${{ runner.temp }}/upstream-protocol
+      - name: Publish or resume one durable review issue
+        id: publish
+        uses: actions/github-script@v9
+        env:
+          REPORT: ${{ runner.temp }}/upstream-protocol/report.json
+        with:
+          script: |
+            const fs = require("node:fs");
+            const { publish } = require("./.github/scripts/upstream-gateway-publish.cjs");
+            const report = JSON.parse(fs.readFileSync(process.env.REPORT, "utf8"));
+            const result = await publish({ github, context, core, report });
+            core.setOutput("action", result.action);
+            if (result.action !== "reviewed") core.setOutput("issue", String(result.issueNumber));
+            await core.summary.addRaw(`Protocol publication: ${result.action}, issue #${result.issueNumber}.`).write();
+
+  implement:
+    needs: publish
+    if: ${{ needs.publish.outputs.issue != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Require an explicitly configured Copilot user token
+        env:
+          HAS_TOKEN: ${{ secrets.UPSTREAM_GATEWAY_COPILOT_TOKEN != '' }}
+        run: |
+          if [ "$HAS_TOKEN" != "true" ]; then
+            echo "::error::Set UPSTREAM_GATEWAY_COPILOT_TOKEN to a Copilot-enabled user token. The issue exists, but no implementation PR has been initiated. See docs/upstream-gateway-protocol-monitor.md."
+            exit 1
+          fi
+      - name: Assign implementation, or check existing handoff without duplicating it
+        uses: actions/github-script@v9
+        env:
+          ISSUE_NUMBER: ${{ needs.publish.outputs.issue }}
+        with:
+          github-token: ${{ secrets.UPSTREAM_GATEWAY_COPILOT_TOKEN }}
+          script: |
+            const { handoff } = require("./.github/scripts/upstream-gateway-publish.cjs");
+            const result = await handoff({ github, context, core, issueNumber: Number(process.env.ISSUE_NUMBER) });
+            await core.summary.addRaw(`Implementation handoff: ${result.state}. ${result.url ?? "No draft PR observed yet."}`).write();

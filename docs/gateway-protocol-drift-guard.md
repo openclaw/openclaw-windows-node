@@ -217,6 +217,12 @@ up one level.
 
 Mitigations:
 
+- The independent nightly [Upstream Gateway Protocol check](upstream-gateway-protocol-monitor.md)
+  observes live main and npm-latest sources/schema, queues deduplicated review
+  issues and, when the dedicated Copilot credential is configured, initiates
+  draft implementation PRs for confirmed production/fixture gaps. It includes
+  chat/questions and behavioral producers/reference clients, without adding
+  network work to this offline guard or normal PR CI.
 - The snapshot records `upstreamVerified` (date + the exact `sessions.ts`/`commands.ts`
   blob SHAs the pin was checked against) so each verification is auditable and
   reproducible. **Last verified 2026-06-23** against `openclaw/openclaw` main:
