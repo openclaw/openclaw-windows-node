@@ -794,7 +794,7 @@ jobs:
         -ResultsDirectory TestResults\TrayUI
         -TrxFileName OpenClaw.Tray.UITests.trx
         -Runtime win-x64
-        -Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=ProductionResources&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled"
+        -Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=ProductionResources&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled&Category!=NativeMarkdownProof"
         -HangTimeoutSeconds 300
         -CollectNativeFailureMetadata
         -CaptureHostExit
@@ -861,6 +861,27 @@ jobs:
         -AnimationPreference Disabled
         -RequireAllTestsPassed
         -HangTimeoutSeconds 120
+
+    # Native Expander templates cannot safely outlive theme resource replacement
+    # in the shared WinUI testhost. Every disclosure case gets its own process.
+    - name: Run native Markdown disclosure proofs
+      timeout-minutes: 10
+      shell: pwsh
+      run: |
+        foreach ($theme in @('Light', 'Dark', 'HighContrast')) {
+          ./scripts/run-proof-tests.ps1 `
+            -Project 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' `
+            -Filter "Category=NativeMarkdownProof&DisplayName~$theme" `
+            -ResultName "markdown-$($theme.ToLowerInvariant())" `
+            -RuntimeIdentifier win-x64 `
+            -ResultsDirectory TestResults\Markdown
+        }
+        ./scripts/run-proof-tests.ps1 `
+          -Project 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' `
+          -Filter 'FullyQualifiedName~ReactorMarkdownDisclosureProofTests.AssistantMarkdown_UntrustedContentRemainsInertInsideDisclosure' `
+          -ResultName markdown-inert-content `
+          -RuntimeIdentifier win-x64 `
+          -ResultsDirectory TestResults\Markdown
 
     # Accessibility Insights CI pass: scans each page in the real app process.
     - name: Run Accessibility Tests (Axe.Windows)

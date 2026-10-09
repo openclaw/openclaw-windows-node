@@ -816,9 +816,19 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
     // Links follow the web chat: http/https anchors (including bare and www.
     // URLs) are real WinUI hyperlinks in the Windows accent color, without an
     // underline, that open in the default browser. Reactor admits only http/https/mailto; any other
-    // scheme renders as plain label text. Images and raw HTML stay inert.
+    // scheme renders as plain label text. Images and raw HTML stay inert. Supported
+    // details/summary wrappers become native disclosures whose bodies follow the same rules.
     internal static Element BuildSafeMarkdown(
         string? text, Func<string, bool>? tryCopy = null, bool compactSecondaryReading = false)
+    {
+        var parts = ChatMarkdownDisclosures.Parse(
+            ChatMarkdownSanitizer.Sanitize(text, preserveWebLinks: true));
+        return ChatMarkdownPresentation.Disclosures(
+            parts, markdown => BuildMarkdownBlocks(markdown, tryCopy, compactSecondaryReading));
+    }
+
+    private static Element BuildMarkdownBlocks(
+        string text, Func<string, bool>? tryCopy, bool compactSecondaryReading)
     {
         var options = new MarkdownOptions
         {
@@ -847,8 +857,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         };
 
         return ChatMarkdownPresentation.WithInlineStyling(ChatMarkdownPresentation.MessageBlocks(
-            Microsoft.UI.Reactor.Advanced.Factories.Markdown(
-                ChatMarkdownSanitizer.Sanitize(text, preserveWebLinks: true), options), compactSecondaryReading),
+            Microsoft.UI.Reactor.Advanced.Factories.Markdown(text, options), compactSecondaryReading),
             compactSecondaryReading);
     }
 

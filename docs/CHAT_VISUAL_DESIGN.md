@@ -433,6 +433,24 @@ remain in timeline state, and late usage updates do not bring the row back.
 Pending questions or approvals keep their waiting indicator until resolved.
 OS reduced motion disables the moving presentation.
 
+Assistant Markdown supports balanced, block-level `<details>` wrappers with a
+nonempty `<summary>` using a native `Expander`. The summary can follow the opener
+on the same line or a later line; `open` sets the initial expanded state.
+Expansion remains user-owned across unrelated rerenders, body streaming updates,
+and resizing. Nested disclosures are supported to 16 levels. The body uses the
+existing Markdown typography, lists, tables, quotes, literal code frames, and Copy.
+The native control owns keyboard activation, focus, and accessible expansion state.
+
+This is an allowlisted Markdown extension, not general HTML rendering. Only
+`<details>`, `<details open>`, `<summary>`, and their matching closing wrappers
+are recognized, with wrapper lines indented by at most three spaces. Disclosures
+inside Markdown code, quotes, lists, or table cells are not activated. Unsupported
+attributes, empty summaries, and incomplete streaming wrappers remain literal
+text. Summary text is inert: its HTML attributes and markup are never executed,
+and a link in it reads as plain text. The body follows the same link and image
+rules as the rest of the assistant message. Text selection still belongs to each
+native Markdown text control, not to the whole message.
+
 Queued submissions leave the textbox and appear in a single compact panel directly
 above the composer, separate from the virtualized transcript. `ReactorChatPendingMessages`
 owns this presentation; the provider still owns ordering, dispatch, cancellation and promotion.
