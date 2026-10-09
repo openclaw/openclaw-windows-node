@@ -1,244 +1,167 @@
-# Gateway Protocol Drift Guard
+# Gateway protocol drift detection
 
-> Source of truth: [`openclaw/openclaw` - `packages/gateway-protocol/src/schema/{sessions,commands}.ts`](https://github.com/openclaw/openclaw/tree/main/packages/gateway-protocol/src/schema)
+Gateway protocol compatibility has two complementary checks:
+**nightly upstream observation** discovers changes outside this repository;
+**offline regression tests** protect the client behavior already recorded here.
+A passing offline test is not evidence that the Windows client matches current
+upstream or implements every Gateway feature.
 
-This guard covers a protocol subset, not protocol negotiation or gateway release
-pinning. See the
+Neither check changes which Gateway release Windows installs or pins a runtime
+dependency. See the
 [Gateway, node, and exec flow FAQ](OPENCLAW_GATEWAY_NODE_EXEC_FAQ.md#are-we-pinned-to-a-gateway-protocol-version-or-a-gateway-release)
-for those separate version axes.
+for protocol negotiation and release-selection behavior.
 
-## Why this exists
+## Why the existing test did not catch upstream drift
 
-The Windows companion can silently drift from the upstream OpenClaw gateway
-protocol - when methods or session fields change upstream but the Windows client
-(`OpenClawGatewayClient`) keeps sending the old shapes. Because the gateway
-tolerates unknown/extra fields, such drift ships without any test failing.
+`GatewayProtocolDriftTests` loads the local
+`tests/OpenClaw.Shared.Tests/Protocol/gateway-protocol-snapshot.json` and compares
+it with Windows client source. It does **not** fetch upstream schemas, resolve
+npm latest, or connect to a live Gateway.
 
-The **drift guard** pins a hand-maintained mirror of the upstream gateway protocol
-for the `sessions` / `files` / `commands` / compaction surface and fails the test
-suite whenever the typed client and the pinned schema diverge.
+Consequently, if upstream renames a field but both the checked-in expectations
+and client still use its old name, those two local inputs still agree and the
+test passes. The test detects a local contract regression, not an upstream
+change that has never been incorporated into its expectations.
 
-The typed client implements the richer protocol surface -
-`commands.list`, the extended `sessions.patch` field set, `sessions.files.list`/
-`get`, and `sessions.compaction.list`/`get`/`branch`/`restore` - across
-`OpenClawGatewayClient.Protocol.cs` and the DTO/payload builders in
-`GatewayProtocolModels.cs`. This guard pins that whole surface.
+Coverage is also deliberately limited: the fixture's `scopePrefixes` are
+`sessions.`, `agents.files.` and `commands.`. The tests do not cover
+`chat.*`, `question.*`, authorization changes, or arbitrary contents of open
+agent event payloads. New question events, for example, cannot fail a test
+whose declared surface contains no question methods or events.
 
-It is intentionally **deterministic and repo-contained**: it requires neither a
-clone of the upstream `openclaw/openclaw` repo nor any network access, so it runs
-in the normal `OpenClaw.Shared.Tests` suite. It **complements** the behavioural
-parser tests in `GatewayProtocolModelsTests` (which parse sample JSON and assert
-DTO mapping) by statically guarding the method / request-field / response-envelope
-*surface*, so an upstream rename or a dropped API is caught even when the parser
-unit tests still pass on their fixed sample payloads.
-
-## Files
-
-| File | Role |
-| --- | --- |
-| `tests/OpenClaw.Shared.Tests/Protocol/gateway-protocol-snapshot.json` | The pinned canonical schema mirror. **Edit this when upstream changes.** |
-| `tests/OpenClaw.Shared.Tests/Protocol/GatewayProtocolDriftTests.cs` | The guard. Cross-checks the snapshot against `OpenClawGatewayClient*.cs` + `GatewayProtocolModels.cs`. |
-
-## What the guard checks
-
-1. **Method surface** (`ScopedMethodSurface_matches_snapshot`)
-   - Every in-scope method the client actually *wires* - request methods it
-     **dispatches** (a method literal passed as a call argument to any dispatcher,
-     e.g. `TrySendTrackedRequestAsync("sessions.patch", …)`,
-     `TryRequestPayloadAsync("commands.list", …)`, or the private
-     `MutateCompactionAsync("sessions.compaction.branch", …)` forwarder), plus
-     notifications it **handles** via `case "…":` - must be pinned in the snapshot.
-   - Every method pinned `windowsUsage: "used"` must still be wired in the way its
-     `kind` implies: a **request** must still be *dispatched* (a leftover `case`
-     label, a `method is "…"` predicate, or a log sentence is not enough), a
-     **notification** must still be *handled*. Dropping one is the classic
-     drift regression.
-   - A `planned` method must **not** already be wired - if the client starts using
-     it, the guard forces you to flip it to `used` and verify its response shape.
-     (None currently - the typed client wires the whole surface.)
-2. **`sessions.list` response shape** (`SessionsList_responseShape_matches_snapshot`)
-   - The session wire-fields the client parses (scoped to the two session-parsing
-     methods) must exactly equal the snapshot's `responseFields` (both directions).
-3. **Request parameters** (`RequestParameterNames_arePresentInConstructionRegion`)
-   - For each `used` request method, the set of wire keys the client actually
-     constructs in the request-construction region must **exactly equal** the pinned
-     `requestFields` (modulo a per-method `allowedExtraRequestFields` allowlist).
-     The comparison is **bidirectional**:
-     - **missing** (pinned − constructed): the client no longer sends a field the
-       schema expects - e.g. renaming a wire key while the old name survives as a
-       local/parameter (`new { sessionKey = key }` when `key` is still pinned) is
-       caught, because the check compares *constructed keys*, not token presence.
-     - **unexpected** (constructed − pinned − allowed): the client still constructs
-       a stale/extra key that is no longer in the schema. Strict gateways
-       (`additionalProperties:false`) reject the whole request on an unknown field,
-       so this is real drift. Set `allowedExtraRequestFields` on a method to declare
-       an intentional client-only extra the gateway tolerates.
-   - A constructed wire key is an anonymous-object member (`new { sessionKey = key,
-     path }`) or a dictionary string key (`payload["model"] = …`) in the region.
-   - The region is the enclosing block of an actual dispatch call, or - when the
-     payload is built by a helper rather than inline - the explicit
-     `requestFieldsSource` builder body (the extended `sessions.patch` fields are
-     checked against `SessionPatch.ToPayload`; the compaction `branch`/`restore`
-     params against `MutateCompactionAsync`). `requestFieldsSource` must resolve
-     **uniquely** to a body that actually constructs keys, and a dispatch from an
-     expression-bodied member (where the region would degrade to the whole type)
-     **fails closed** asking for a `requestFieldsSource`.
-4. **Response envelope** (`ResponseEnvelopes_areReadByClient`)
-   - For each `used` method that pins a `responseEnvelope`, the client must read
-     that property - `TryGetProperty("…")` **or** `TryGetArray(payload, "…")` -
-     **inside that method's own parser body** (pinned via `responseEnvelopeSource`),
-     so one parser reading the same property name (e.g. several read `"checkpoint"`)
-     cannot satisfy a different method's envelope. An upstream envelope rename forces
-     client reconciliation.
-5. **Snapshot integrity** (`Snapshot_isWellFormed_andCoversFoundationShapes`)
-   - The snapshot stays well-formed, keeps covering every protocol-foundation shape
-     (`commands.list`, `sessions.list`/`patch`/`compact`, `agents.files.list`/`get`,
-     `sessions.files.list`/`get`, `sessions.compaction.list`/`get`/`branch`/
-     `restore`), and keeps its honesty invariant: `provisionalResponseFields` may
-     only be set while `windowsUsage: "planned"`.
-6. **Tri-state clear contract** (`TriStateClearContract_isWiredInClient`)
-   - Upstream `SessionsPatchParamsSchema` types every `sessions.patch` field as
-     `Union([<value>, Null])`, where an explicit null **removes** a session
-     override. The client models this with a tri-state `PatchField<T>`: **unset**
-     (null reference) → omitted, a **value** → sent (blank string omitted), and
-     `SessionPatch.Clear` → **explicit JSON null**. For any method declaring
-     `requestFieldSemantics: "tristate-nullable"`, this guard statically verifies
-     the builder source still wires the clear→null routing, the blank-omit guard,
-     and the value-state gate, and that the `PatchField<T>` type still exposes its
-     three states - so a refactor that removes the machinery is caught structurally
-     here, independent of the behavioural emission tests. (Runtime emission is
-     covered by `GatewayProtocolModelsTests`.)
-
-> Extraction is intent-specific and resilient: request-method literals are read
-> from real dispatch call sites (excluding logging sinks) and notifications from
-> `case` labels - not comments, `method is "…"` predicates, or log strings. Each
-> source is preprocessed into two index-aligned views: a *code* view with comments
-> blanked (literal extraction, so commented-out code never counts) and a *masked*
-> view with comments **and** string/char literals blanked (brace structure, so
-> braces inside literals/comments cannot desync the matcher). A self-check asserts
-> the masked view stays brace-balanced.
-
-### Enforced vs. documentation-only fields
-
-Not every field in the snapshot is cross-checked against the client. Refreshers
-should know which edits are actually validated:
-
-| Snapshot field | Enforced against the client? |
-| --- | --- |
-| `methods[].method` (in-scope) | **Yes** - must match what the client dispatches/handles. |
-| `windowsUsage` (`used`/`planned`) | **Yes** - drives the dispatch/handle requirement and the planned-not-wired check. |
-| `sessions.list.responseFields` | **Yes** - exact set vs. the session parser. |
-| `requestFields` of `used` request methods | **Yes** - bidirectional: must exactly equal the wire keys constructed in the region (missing **and** unexpected both fail). |
-| `allowedExtraRequestFields` | **Yes** - exempts the listed client-only extras from the "unexpected" direction; everything else still fails. |
-| `requestFieldsSource` | **Yes** - must resolve uniquely to a body that constructs keys; that body is the region. |
-| `responseEnvelope` of `used` methods | **Yes** - must be read (`TryGetProperty`/`TryGetArray`) by the pinned parser. |
-| `responseEnvelopeSource` | **Yes** - required when `responseEnvelope` is pinned; must resolve uniquely to the parser body that reads the envelope (no whole-client fallback). |
-| `tristateContract` (markers + state members) | **Yes** - for `requestFieldSemantics: "tristate-nullable"`, the builder source must implement every marker and the `PatchField<T>` type must expose every state. |
-| `kind`, `scopePrefixes`, foundation coverage | **Yes** - snapshot-integrity invariants. |
-| `itemFields` (per-item descriptor fields) | **No** - documentation-only; behaviour covered by `GatewayProtocolModelsTests` parsers. |
-| `_comment`, `_note`, `_itemFieldsNote`, provenance | **No** - documentation-only. |
-
-
-## Tri-state clear contract (`sessions.patch`)
-
-Upstream `SessionsPatchParamsSchema` types every `sessions.patch` field as
-`Union([<value>, Null])`. A field can therefore be in one of three states, and the
-Windows client mirrors this with the tri-state `PatchField<T>`:
-
-| State | How the client expresses it | Wire result |
+| Check | Inputs | What a passing result means |
 | --- | --- | --- |
-| **unset** | leave the `PatchField<T>` default / assign a null reference | field **omitted** from the request |
-| **set** | assign a value (`patch.Model = "gpt-5"`) | field sent with the value (a **blank** string is omitted per `NonEmptyString`) |
-| **clear** | assign the sentinel (`patch.Model = SessionPatch.Clear`) | field sent as **explicit JSON `null`** (removes the session override) |
+| Nightly observation | Live upstream main, npm Gateway release sources, published protocol schema, producers and reference-client source inventories | Collection and comparison succeeded. Changed surfaces still require compatibility review. |
+| `GatewayProtocolDriftTests` | Checked-in expectations and Windows client source | The selected local method, field and parser contracts agree. |
+| Behavioral and loopback tests | Selected payloads, fixtures and the real client | The scenarios exercised by those tests behave as asserted. They do not discover upstream changes by themselves. |
 
-The drift guard pins this contract in the snapshot under
-`sessions.patch.tristateContract` and checks it statically (Guard 6): the
-`SessionPatch` builder must keep the clear→null routing, the blank-omit guard, and
-the value-state gate, and `PatchField<T>` must keep its `IsSpecified`/`IsClear`/
-`HasValue` states. The actual JSON emission for each state is covered behaviourally
-by `GatewayProtocolModelsTests` (`SessionPatch_ToPayload_ClearEmitsExplicitNull*`,
-`…MixesSetAndClearAndUnset`, `PatchField_TriStateFlags`) and end-to-end by
-`GatewayProtocolLiveRoundTripTests` (a loopback-WebSocket test capturing the real
-wire frames) - the guard is the static, upstream-mirrored complement, not a duplicate.
+## Nightly upstream observation
 
-## `windowsUsage` semantics
+The standalone **Upstream Gateway Protocol check** workflow is the upstream
+change-discovery path. It runs nightly and supports manual dispatch on the
+default branch, separately from normal build CI and required PR checks.
+Scheduling begins after the workflow lands on that branch; authenticated
+issue-to-draft-PR execution must be verified by a publishing run.
 
-| Value | Meaning |
+It observes these tracks separately:
+
+- **Main early warning:** exact upstream `openclaw/openclaw` source commit and
+  watched blob hashes.
+- **Released compatibility:** `openclaw@latest` and the corresponding source
+  commit from digest-bound registry provenance.
+- **Published schema:** the integrity-checked
+  `@openclaw/gateway-protocol@latest` artifact. Its package version is independent
+  of the Gateway release and wire protocol integer.
+
+Schema comparison alone cannot establish feature completeness. The monitor
+also watches method authorization, Gateway implementations, agent/auto-reply
+producers and reference-client sources. This includes chat/questions and
+behavior carried in open `agent.stream`/`data` payloads.
+
+Changed content creates a deduplicated **review-candidate issue**, not an
+automatic declaration of breakage. The implementation handoff uses the existing
+`COPILOT_GITHUB_TOKEN` and requires explicit **supported**, **intentionally
+unsupported**, or **pending** classifications. Confirmed gaps require
+production code and fixture-Gateway changes where needed, with behavioral
+tests in a linked draft implementation PR. Already-covered work must be linked,
+not duplicated. A schema-only or empty PR is not a behavior fix.
+
+Exact commits, package versions and hashes are reproducibility evidence, not
+runtime dependency pins. For schedule, watch scope, cumulative review baselines,
+deduplication, credentials, failure handling and activation proof, see
+[Nightly upstream Gateway protocol monitor](upstream-gateway-protocol-monitor.md).
+
+## Offline regression checks
+
+The existing offline tests remain useful and stay in the normal
+`OpenClaw.Shared.Tests` suite. They compare selected client methods, request
+fields and response parsers with **checked-in test expectations**, not a live
+upstream source of truth. Those expectations are updated alongside reviewed
+implementation changes; they are not how the nightly monitor discovers drift.
+
+| File | Responsibility |
 | --- | --- |
-| `used` | The client dispatches/handles this method today. The guard **requires** it to remain wired up. |
-| `planned` | Defined upstream but not yet consumed by the Windows client. The shape is pinned so future adoption matches upstream, but the client is not required to use it yet. (None currently - the typed client wires the whole surface.) |
+| `.github/workflows/upstream-gateway-protocol.yml` | Independent nightly/manual upstream observation and issue/agent handoff. |
+| `tests/OpenClaw.Shared.Tests/Protocol/gateway-protocol-snapshot.json` | Reviewed expectations for the offline test subset, plus historical provenance. |
+| `tests/OpenClaw.Shared.Tests/Protocol/GatewayProtocolDriftTests.cs` | Static client-versus-expectations regression checks. |
+| `OpenClawGatewayClient*.cs`, `GatewayProtocolModels.cs` | Production dispatch, payload construction and parsing checked by the offline tests. |
 
-## How to refresh the snapshot when upstream changes
+The offline tests enforce these contracts:
 
-When the upstream gateway protocol changes (a new `sessions.*` method, a renamed
-session field, a new `commands.list` descriptor field, etc.):
+| Contract | What is checked |
+| --- | --- |
+| Method surface | In-scope request dispatches and handled notifications match the fixture. A `used` method must remain wired; a `planned` method must not already be wired. |
+| Session response fields | The selected `sessions.list` parser fields exactly match `responseFields` in both directions. |
+| Request parameters | Constructed wire keys match `requestFields` in both directions, except explicit `allowedExtraRequestFields`. |
+| Response envelopes | Each method's own parser reads its declared envelope. An unrelated parser cannot satisfy the check. |
+| Fixture integrity | Required foundation shapes, scope, unique methods and usage/provisional-field invariants remain valid. |
+| Tri-state clears | Declared nullable-clear contracts retain omission, value and explicit-null behavior in their builders and state types. |
 
-1. Open the upstream schema on `main`:
-   - `packages/gateway-protocol/src/schema/sessions.ts`
-   - `packages/gateway-protocol/src/schema/commands.ts`
-2. Update `tests/OpenClaw.Shared.Tests/Protocol/gateway-protocol-snapshot.json`:
-   - Add/rename/remove methods under `methods[]`.
-   - Update `requestFields` / `responseFields` / `responseEnvelope` to match the
-     wire field names. Field/method names may use letters, digits and underscores.
-   - When a method's request payload is built by a helper rather than inline at the
-     dispatch site (e.g. `SessionPatch.ToPayload`, `MutateCompactionAsync`), point
-     `requestFieldsSource` at a unique fragment of that builder's declaration so
-     Guard C searches the right body.
-   - When a method pins a `responseEnvelope`, also set `responseEnvelopeSource` to a
-     unique fragment of the parser body that reads it (Guard D requires it).
-   - If upstream changes a field's nullability semantics (e.g. a field becomes
-     `Union([<value>, Null])`, making explicit null a "clear" signal), update the
-     `tristateContract` markers for that method and confirm the client's tri-state
-     `PatchField<T>` builder still implements them (Guard 6).
-   - Bump `snapshotUpdated` to today's date and set `upstreamCommit` to the exact
-     upstream schema commit SHA you mirrored (so the pin is reproducible/auditable;
-     `upstreamRef: "main"` alone is not).
-   - For a method upstream added that the Windows client doesn't consume yet, set
-     `windowsUsage: "planned"`; pin its shape and, if the response fields are not
-     yet verified against upstream, set `provisionalResponseFields: true`.
-3. Run the guard:
-   ```powershell
-   $env:OPENCLAW_REPO_ROOT = (Get-Location).Path
-   dotnet test ./tests/OpenClaw.Shared.Tests/OpenClaw.Shared.Tests.csproj --filter GatewayProtocolDriftTests
-   ```
-4. If the guard fails, reconcile the typed client (`OpenClawGatewayClient.cs`,
-   `OpenClawGatewayClient.Protocol.cs`, and the DTOs in `GatewayProtocolModels.cs` /
-   `SessionInfo` in `Models.cs`) with the new schema - that reconciliation is the
-   whole point of the guard. Update the snapshot only to reflect upstream, never to
-   silence a real client gap.
+The request checks inspect actual dispatch/construction regions rather than
+matching words anywhere in a file. If a helper constructs a payload,
+`requestFieldsSource` must identify its unique body. Likewise,
+`responseEnvelopeSource` identifies the method's specific parser. Comments,
+log messages and unrelated string literals cannot stand in for real wiring.
+If a refactor invalidates one of those source selectors, repair the selector
+and verify the actual behavior rather than weakening the contract.
 
-## Known limitation: snapshot ↔ upstream staleness
+### What is not enforced by those tests
 
-Every guard checks the client against the **snapshot**, not against upstream
-directly (a deliberate trade-off for the offline/repo-contained guarantee). If
-upstream changes and nobody refreshes the snapshot, the tests stay green while the
-client silently drifts from real upstream - the original regression class, moved
-up one level.
+Per-item `itemFields`, comments, notes and provenance fields are not validated
+against live upstream. Most response shapes outside the selected session
+parser require their own behavioral tests. `windowsUsage: "planned"` records
+an unimplemented method; it is not a claim of feature support.
 
-Mitigations:
+`upstreamVerified` and `snapshotUpdated` in the fixture describe historical
+maintenance of that fixture. They are **not** the latest nightly observation,
+an expiry check, or evidence that current upstream still matches. Use the
+nightly report and implementation PR proof for current compatibility evidence.
 
-- The independent nightly [Upstream Gateway Protocol check](upstream-gateway-protocol-monitor.md)
-  observes live main and npm-latest sources/schema, queues deduplicated review
-  issues and, when the dedicated Copilot credential is configured, initiates
-  draft implementation PRs for confirmed production/fixture gaps. It includes
-  chat/questions and behavioral producers/reference clients, without adding
-  network work to this offline guard or normal PR CI.
-- The snapshot records `upstreamVerified` (date + the exact `sessions.ts`/`commands.ts`
-  blob SHAs the pin was checked against) so each verification is auditable and
-  reproducible. **Last verified 2026-06-23** against `openclaw/openclaw` main:
-  all enforced request fields / response envelopes / the `sessions.patch` tri-state
-  nullable contract matched exactly; the snapshot is a deliberate subset (see the
-  `upstreamVerified.result` note for the upstream-only `sessions.patch` fields the
-  Windows client does not yet implement).
-- Treat a gateway-protocol bump in upstream as a trigger to re-verify and refresh,
-  the same way `docs/gateway-node-integration.md` is refreshed.
-- Re-verify by fetching `packages/gateway-protocol/src/schema/{sessions,commands}.ts`
-  from `openclaw/openclaw` main, diffing against the pinned methods/fields, and
-  updating `upstreamVerified` with the new blob SHAs.
+### Tri-state clear regression coverage
 
-## Scope
+For fields modeled with a nullable-clear contract, the client uses
+`PatchField<T>`:
 
-The guard deliberately covers only the `sessions` / `files` / `commands` /
-compaction surface (`scopePrefixes` in the snapshot), which is where the
-drift-critical session and command APIs live. Other gateway namespaces
-(`cron.*`, `config.*`, `device.pair.*`, …) are out of scope for this guard.
+| State | Client representation | Wire result |
+| --- | --- | --- |
+| Unset | Leave the patch field unspecified | Omit the field. |
+| Set | Assign a value | Send the value; the builder omits blank strings where required. |
+| Clear | Assign `SessionPatch.Clear` | Send explicit JSON `null`. |
+
+The static check protects the declared `tristateContract` wiring.
+`GatewayProtocolModelsTests` covers emitted payloads, and
+`GatewayProtocolLiveRoundTripTests` exercises selected frames through a loopback
+WebSocket. These are regression tests for modeled semantics, not a claim that
+every field in today's upstream schema has the same nullability.
+
+## Resolving an upstream finding
+
+1. Review the nightly issue and its exact source/schema provenance. Distinguish
+   released compatibility from main-only changes, and check existing
+   implementation PRs before starting duplicate work.
+2. Compare current production and fixture behavior. Record supported,
+   intentionally unsupported and pending surfaces with evidence. An additive
+   optional field is not automatically a breaking change.
+3. Implement confirmed gaps and add focused behavioral tests through the real
+   client. Update the offline expectations for affected in-scope contracts in
+   the same PR. New surfaces outside that subset need appropriate tests;
+   changing an unrelated snapshot cannot establish their support.
+4. When updating the fixture, keep method usage, request/response fields, parser
+   selectors and tri-state contracts aligned with the verified implementation.
+   Record the exact reviewed upstream commit and update provenance only for
+   what was actually checked. Do not refresh dates or expected fields merely
+   to silence a failure.
+5. Run focused checks, the required repository validation and relevant behavior
+   proof. Keep the implementation PR draft and record blockers honestly until
+   its required proof is available. The nightly workflow never merges it.
+
+Run the offline regression checks locally with:
+
+```powershell
+$env:OPENCLAW_REPO_ROOT = (Get-Location).Path
+dotnet test .\tests\OpenClaw.Shared.Tests\OpenClaw.Shared.Tests.csproj --filter GatewayProtocolDriftTests
+```
+
+That command remains intentionally network-independent. Use a manual run of
+**Upstream Gateway Protocol check** for fresh upstream observation, not the
+filtered offline test command.

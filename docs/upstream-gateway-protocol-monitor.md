@@ -82,13 +82,13 @@ To activate implementation handoff, a maintainer must:
 
 1. Enable Copilot cloud agent for this repository and for the sponsoring user,
    with sufficient premium-request budget and organization policy approval.
-2. Add the dedicated Actions secret **`UPSTREAM_GATEWAY_COPILOT_TOKEN`**, using
-   a Copilot-enabled user token. GitHub documents fine-grained PAT access to this
+2. Reuse the repository's existing Actions secret **`COPILOT_GITHUB_TOKEN`**.
+   No separate monitor secret is required. It must be a Copilot-enabled user
+   token. GitHub documents fine-grained PAT access to this
    repository with metadata read and actions, contents, issues and pull requests
    read/write for issue assignment. Classic PATs use `repo`. Prefer the
    fine-grained, repository-scoped token. Installation tokens and the workflow
    `GITHUB_TOKEN` are not a substitute for the documented user authentication.
-   Do not silently reuse the repository's unrelated `COPILOT_GITHUB_TOKEN`.
 3. Manually dispatch with `report_only: true` and inspect the report. Then
    dispatch with `report_only: false`, verify the issue assignee and follow the
    Copilot session to its linked draft implementation PR.
@@ -104,9 +104,10 @@ as **draft PR not yet observed**, never as completed remediation. Copilot
 execution/validation is asynchronous and still subject to its environment,
 permissions and the normal human review/merge process.
 
-At implementation time, the dedicated secret was not configured. Authenticated
-end-to-end issue-to-draft-PR execution is therefore **not verified** until
-activation. The generic REST collaborator-assignee probe is not a valid test of
+The repository already provides `COPILOT_GITHUB_TOKEN`; the monitor reuses it
+only in the implementation handoff job. Authenticated end-to-end
+issue-to-draft-PR execution remains **not verified** until the first publishing
+run confirms assignment and a linked draft PR. The generic REST collaborator-assignee probe is not a valid test of
 Copilot availability; the monitor verifies the actual documented assignment
 response instead.
 

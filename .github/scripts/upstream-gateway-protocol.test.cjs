@@ -426,6 +426,7 @@ test("workflow stays off CI/PR triggers, separates credentials and offers report
   assert.doesNotMatch(observe, /secrets\.|issues: write/);
   assert.doesNotMatch(publish, /secrets\./);
   assert.doesNotMatch(health, /secrets\./);
-  assert.match(implement, /secrets.UPSTREAM_GATEWAY_COPILOT_TOKEN/);
+  assert.equal((implement.match(/secrets\.COPILOT_GITHUB_TOKEN/g) ?? []).length, 2);
+  assert.match(implement, /github-token: \$\{\{ secrets\.COPILOT_GITHUB_TOKEN \}\}/);
   assert.doesNotMatch(workflow, /contents: write|pull-requests: write|npm (?:install|ci)|pnpm/);
 });
