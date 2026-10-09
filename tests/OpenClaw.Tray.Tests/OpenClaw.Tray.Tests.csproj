@@ -170,6 +170,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SensitiveCaptureExecutor.cs" Link="Services\SensitiveCaptureExecutor.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ConsentPromptTimeoutGate.cs" Link="Services\ConsentPromptTimeoutGate.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\BrowserProxyTunnelState.cs" Link="Services\BrowserProxyTunnelState.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SshForwardPorts.cs" Link="Services\SshForwardPorts.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\CommandCenterTopologyTunnelResolver.cs" Link="Services\CommandCenterTopologyTunnelResolver.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\CommandCenterTunnelInfoBuilder.cs" Link="Services\CommandCenterTunnelInfoBuilder.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\PortDiagnosticsService.cs" Link="Services\PortDiagnosticsService.cs" />
