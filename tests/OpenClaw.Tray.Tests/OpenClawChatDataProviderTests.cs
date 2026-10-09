@@ -14753,6 +14753,382 @@ public class OpenClawChatDataProviderTests
         Assert.Null(state);
     }
 
+    [Fact]
+    public async Task ChatMessageReceived_AssistantFinal_MergesCostOntoStreamingEntry()
+    {
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "partial",
+            State = "delta",
+            Ts = 1714600005000
+        });
+        var entryId = Assert.Single((await provider.LoadAsync()).Timelines["main"].Entries).Id;
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "final",
+            State = "final",
+            Ts = 1714600006000,
+            InputTokens = 20478,
+            OutputTokens = 405,
+            ResponseTokens = 20883,
+            CostUsd = 0.22503,
+        });
+
+        var entry = Assert.Single((await provider.LoadAsync()).Timelines["main"].Entries);
+        Assert.Equal(entryId, entry.Id);
+        var meta = provider.GetEntryMetadata("main");
+        Assert.Equal(0.22503, meta[entry.Id].CostUsd);
+        Assert.Equal(20883, meta[entry.Id].ResponseTokens);
+    }
+
+    [Fact]
+    public async Task ChatMessageReceived_CostOnlyFinal_AttachesCostToLatestAssistantEntry()
+    {
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "done",
+            State = "final",
+            Ts = 1714600005000,
+            InputTokens = 20,
+            OutputTokens = 7,
+            ResponseTokens = 27,
+        });
+        var entry = Assert.Single((await provider.LoadAsync()).Timelines["main"].Entries);
+        Assert.Null(provider.GetEntryMetadata("main")[entry.Id].CostUsd);
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "done",
+            State = "final",
+            Ts = 1714600005100,
+            CostUsd = 0.0005,
+        });
+
+        var refined = Assert.Single((await provider.LoadAsync()).Timelines["main"].Entries);
+        Assert.Equal(entry.Id, refined.Id);
+        var meta = provider.GetEntryMetadata("main");
+        Assert.Equal(0.0005, meta[entry.Id].CostUsd);
+        Assert.Equal(27, meta[entry.Id].ResponseTokens);
+        Assert.Equal(20, meta[entry.Id].InputTokens);
+    }
+
+    [Fact]
+    public async Task ChatMessageReceived_DuplicateAssistantFinalWithCost_KeepsSingleCostAndUsage()
+    {
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        var message = new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "same",
+            State = "final",
+            Ts = 1714600005000,
+            InputTokens = 20,
+            OutputTokens = 7,
+            ResponseTokens = 27,
+            CostUsd = 0.22503,
+        };
+
+        bridge.RaiseChat(message);
+        bridge.RaiseChat(message);
+
+        var entry = Assert.Single((await provider.LoadAsync()).Timelines["main"].Entries);
+        var meta = provider.GetEntryMetadata("main");
+        Assert.Equal(0.22503, meta[entry.Id].CostUsd);
+        Assert.Equal(27, meta[entry.Id].ResponseTokens);
+    }
+
+    [Fact]
+    public async Task ChatMessageReceived_CostStaysOnItsOwnAssistantMessage()
+    {
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "first",
+            State = "final",
+            Ts = 1714600005000,
+            InputTokens = 20,
+            OutputTokens = 7,
+            ResponseTokens = 27,
+            CostUsd = 0.1,
+        });
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "again",
+            State = "final",
+            Ts = 1714600005500,
+        });
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "second",
+            State = "final",
+            Ts = 1714600006000,
+            InputTokens = 20,
+            OutputTokens = 5,
+            ResponseTokens = 25,
+        });
+
+        var entries = (await provider.LoadAsync()).Timelines["main"].Entries
+            .Where(e => e.Kind == ChatTimelineItemKind.Assistant)
+            .ToArray();
+        Assert.Equal(2, entries.Length);
+        var meta = provider.GetEntryMetadata("main");
+        Assert.Equal(0.1, meta[entries[0].Id].CostUsd);
+        Assert.Null(meta[entries[1].Id].CostUsd);
+    }
+
+    [Fact]
+    public async Task ChatMessageReceived_CostAfterToolCall_LandsOnFinalAssistantEntry()
+    {
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "let me check",
+            State = "final",
+            Ts = 1714600005000,
+        });
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "toolresult",
+            Text = "Process exited with code 0",
+            State = "final",
+            Ts = 1714600005500,
+        });
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "all good",
+            State = "final",
+            Ts = 1714600006000,
+            InputTokens = 40,
+            OutputTokens = 9,
+            ResponseTokens = 49,
+            CostUsd = 0.012,
+        });
+
+        var entries = (await provider.LoadAsync()).Timelines["main"].Entries
+            .Where(e => e.Kind == ChatTimelineItemKind.Assistant)
+            .ToArray();
+        Assert.Equal(2, entries.Length);
+        var meta = provider.GetEntryMetadata("main");
+        Assert.Null(meta[entries[0].Id].CostUsd);
+        Assert.Equal(0.012, meta[entries[1].Id].CostUsd);
+    }
+
+    [Theory]
+    [InlineData(0.5, 0.0, null, null, 0.0)]
+    [InlineData(0.5, 0.3, null, null, 0.3)]
+    [InlineData(0.5, 0.3, "m1", 1, 0.5)]
+    public async Task ChatMessageReceived_LaterAssistantFinalCost_ReplacesEarlierCost(
+        double first,
+        double second,
+        string? id,
+        int? seq,
+        double expected)
+    {
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "same",
+            State = "final",
+            Ts = 1714600005000,
+            InputTokens = 20,
+            OutputTokens = 7,
+            ResponseTokens = 27,
+            CostUsd = first,
+            OpenClawId = id,
+            OpenClawSeq = seq,
+        });
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "same",
+            State = "final",
+            Ts = 1714600005000,
+            InputTokens = 20,
+            OutputTokens = 7,
+            ResponseTokens = 27,
+            CostUsd = second,
+            OpenClawId = id,
+            OpenClawSeq = seq,
+        });
+
+        var entry = Assert.Single((await provider.LoadAsync()).Timelines["main"].Entries);
+        var meta = provider.GetEntryMetadata("main");
+        Assert.Equal(expected, meta[entry.Id].CostUsd);
+        Assert.Equal(27, meta[entry.Id].ResponseTokens);
+    }
+
+    [Fact]
+    public async Task SessionsUpdated_PreservesAssistantCost()
+    {
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "final",
+            State = "final",
+            Ts = 1714600005000,
+            InputTokens = 1_000,
+            OutputTokens = 500,
+            ResponseTokens = 1_500,
+            CostUsd = 0.3,
+        });
+
+        var entry = Assert.Single((await provider.LoadAsync()).Timelines["main"].Entries);
+
+        bridge.RaiseSessions(new[]
+        {
+            new SessionInfo
+            {
+                Key = "main",
+                IsMain = true,
+                DisplayName = "Main session",
+                InputTokens = 20_000,
+                OutputTokens = 3_700,
+                TotalTokens = 23_500,
+                ContextTokens = 400_000,
+            }
+        });
+
+        var meta = provider.GetEntryMetadata("main");
+        Assert.Equal(0.3, meta[entry.Id].CostUsd);
+        Assert.Equal(23_500, meta[entry.Id].ResponseTokens);
+        Assert.Equal(400_000, meta[entry.Id].ContextTokens);
+    }
+
+    [Fact]
+    public async Task LoadHistoryAsync_CapturesAssistantCost()
+    {
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages = new[]
+            {
+                new ChatMessageInfo
+                {
+                    Role = "assistant",
+                    Text = "old",
+                    State = "final",
+                    Ts = 1714600001000,
+                    InputTokens = 10,
+                    OutputTokens = 20,
+                    ResponseTokens = 30,
+                    CostUsd = 0,
+                },
+                new ChatMessageInfo
+                {
+                    Role = "assistant",
+                    Text = "priced",
+                    State = "final",
+                    Ts = 1714600002000,
+                    InputTokens = 20478,
+                    OutputTokens = 405,
+                    ResponseTokens = 20883,
+                    CostUsd = 0.22503,
+                },
+            }
+        });
+        await provider.LoadAsync();
+
+        await provider.LoadHistoryAsync("main");
+
+        var entries = (await provider.LoadAsync()).Timelines["main"].Entries;
+        Assert.Equal(2, entries.Count);
+        var meta = provider.GetEntryMetadata("main");
+        Assert.Equal(0, meta[entries[0].Id].CostUsd);
+        Assert.Equal(0.22503, meta[entries[1].Id].CostUsd);
+    }
+
+    [Fact]
+    public async Task LoadHistoryAsync_HistoryRowWithoutCost_ReplacesLiveCost()
+    {
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "priced",
+            State = "final",
+            Ts = 1714600005000,
+            InputTokens = 20,
+            OutputTokens = 7,
+            ResponseTokens = 27,
+            CostUsd = 0.3,
+            OpenClawId = "msg-priced",
+            OpenClawSeq = 7,
+        });
+        var live = Assert.Single((await provider.LoadAsync()).Timelines["main"].Entries);
+        Assert.Equal(0.3, provider.GetEntryMetadata("main")[live.Id].CostUsd);
+
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages = new[]
+            {
+                new ChatMessageInfo
+                {
+                    Role = "assistant",
+                    Text = "priced",
+                    State = "final",
+                    Ts = 1714600005000,
+                    InputTokens = 20,
+                    OutputTokens = 7,
+                    ResponseTokens = 27,
+                    OpenClawId = "msg-priced",
+                    OpenClawSeq = 7,
+                },
+            }
+        });
+
+        await provider.LoadHistoryAsync("main");
+
+        var entry = Assert.Single((await provider.LoadAsync()).Timelines["main"].Entries);
+        Assert.Null(provider.GetEntryMetadata("main")[entry.Id].CostUsd);
+    }
+
     private static IReadOnlyList<ChatQueuedMessage> GetQueuedMessages(ChatDataSnapshot snapshot, string threadId)
         => snapshot.QueuedMessagesByThread is not null &&
            snapshot.QueuedMessagesByThread.TryGetValue(threadId, out var queued)

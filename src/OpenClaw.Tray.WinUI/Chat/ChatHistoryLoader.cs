@@ -603,6 +603,7 @@ internal sealed class ChatHistoryLoader : IDisposable
                 message.OutputTokens,
                 message.ResponseTokens,
                 message.ContextPercent,
+                CostUsd: message.CostUsd,
                 GatewayMessageId: message.OpenClawId,
                 OpenClawSeq: message.OpenClawSeq,
                 OpenClawKind: message.OpenClawKind,

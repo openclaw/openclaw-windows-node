@@ -7,7 +7,7 @@ namespace OpenClawTray.Chat;
 /// carry — specifically the wall-clock timestamp of when the entry was
 /// created, the model active at that moment, and gateway-reported usage
 /// counters — so the timeline renderer can show a richer footer like
-/// <c>Field · 7:54 PM · ↑1475 ↓12 R45.4k 23% ctx · gpt-5.5</c>.
+/// <c>7:54 PM · gpt-5.5 · 45.4K/200.0K (23%) · $0.225</c>.
 /// </summary>
 /// <param name="Timestamp">
 /// Local-time timestamp of when the entry was created. <c>null</c> when the
@@ -35,6 +35,11 @@ namespace OpenClawTray.Chat;
 /// <param name="ContextPercent">
 /// Percentage of the model's context window consumed by the conversation
 /// when this entry was generated (0–100). Shown as <c>23% ctx</c>.
+/// </param>
+/// <param name="CostUsd">
+/// Gateway-reported cost in USD for this assistant entry
+/// (<c>usage.cost.total</c>), as carried on the message frame or history
+/// row. <c>null</c> when the gateway reported none.
 /// </param>
 /// <param name="ContextTokens">
 /// Total context window size captured with a session usage snapshot. Used by
@@ -75,6 +80,7 @@ public sealed record ChatEntryMetadata(
     int? OutputTokens = null,
     int? ResponseTokens = null,
     int? ContextPercent = null,
+    double? CostUsd = null,
     long? ContextTokens = null,
     int? UsageContributionTokens = null,
     string? GatewayMessageId = null,

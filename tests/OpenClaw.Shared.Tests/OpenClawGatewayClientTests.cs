@@ -2044,6 +2044,93 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void ChatEvent_ReadsAssistantMessageUsageCost()
+    {
+        var helper = new GatewayClientTestHelper();
+        ChatMessageInfo? received = null;
+        helper.Client.ChatMessageReceived += (_, message) => received = message;
+
+        helper.ProcessRawMessage("""
+        {
+          "type": "event",
+          "event": "session.message",
+          "payload": {
+            "sessionKey": "main",
+            "message": {
+              "role": "assistant",
+              "content": [
+                { "type": "text", "text": "priced reply" }
+              ],
+              "timestamp": 1781631280633,
+              "usage": { "cost": { "total": 0.22503 } }
+            },
+            "state": "final"
+          }
+        }
+        """);
+
+        Assert.NotNull(received);
+        Assert.Equal(0.22503, received!.CostUsd);
+    }
+
+    [Fact]
+    public void ChatEvent_PrefersMessageUsageCostOverPayloadCost()
+    {
+        var helper = new GatewayClientTestHelper();
+        ChatMessageInfo? received = null;
+        helper.Client.ChatMessageReceived += (_, message) => received = message;
+
+        helper.ProcessRawMessage("""
+        {
+          "type": "event",
+          "event": "session.message",
+          "payload": {
+            "sessionKey": "main",
+            "usage": { "cost": { "total": 0.9 } },
+            "message": {
+              "role": "assistant",
+              "content": "priced reply",
+              "timestamp": 1781631280633,
+              "usage": { "cost": { "total": 0.2 } }
+            },
+            "state": "final"
+          }
+        }
+        """);
+
+        Assert.NotNull(received);
+        Assert.Equal(0.2, received!.CostUsd);
+    }
+
+    [Fact]
+    public void ChatEvent_FallsBackToPayloadUsageCost_WhenMessageHasNone()
+    {
+        var helper = new GatewayClientTestHelper();
+        ChatMessageInfo? received = null;
+        helper.Client.ChatMessageReceived += (_, message) => received = message;
+
+        helper.ProcessRawMessage("""
+        {
+          "type": "event",
+          "event": "session.message",
+          "payload": {
+            "sessionKey": "main",
+            "usage": { "cost": { "total": 0.9 } },
+            "message": {
+              "role": "assistant",
+              "content": "priced reply",
+              "timestamp": 1781631280633
+            },
+            "state": "final"
+          }
+        }
+        """);
+
+        Assert.NotNull(received);
+        Assert.Equal(0.9, received!.CostUsd);
+    }
+
+    [Fact]
     public void ProcessRawMessage_SessionMessageAssistantNoReply_DropsFrame()
     {
         var helper = new GatewayClientTestHelper();

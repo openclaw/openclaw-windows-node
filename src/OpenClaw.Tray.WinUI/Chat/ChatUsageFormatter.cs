@@ -88,6 +88,23 @@ public static class ChatUsageFormatter
             : null;
     }
 
+    /// <summary>
+    /// Formats the gateway-reported per-message cost for the assistant footer
+    /// using the same precision as the gateway's Control UI (4 decimals below
+    /// $0.01, 3 below $1, otherwise 2), e.g. <c>$0.588</c>. Values that would
+    /// round to zero render as <c>&lt;$0.0001</c>. Missing, zero, negative,
+    /// or non-finite values are hidden.
+    /// </summary>
+    public static string? FormatCost(double? costUsd)
+    {
+        if (costUsd is not { } cost || !double.IsFinite(cost) || cost <= 0)
+            return null;
+        if (cost < 0.00005)
+            return "<$0.0001";
+        var decimals = cost < 0.01 ? 4 : cost < 1 ? 3 : 2;
+        return "$" + cost.ToString("F" + decimals, CultureInfo.InvariantCulture);
+    }
+
     private static string FormatCount(long value)
     {
         if (value >= 1_000_000)
