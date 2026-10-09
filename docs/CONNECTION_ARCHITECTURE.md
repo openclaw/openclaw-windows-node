@@ -193,6 +193,9 @@ A floating-style subtle reopen button reserves a dedicated 56 DIP row at
 the content's top-left below the titlebar, never covering hosted hit targets.
 The pane toggle retains a 40 DIP target and 16 DIP glyph in both states; focus
 moves to the surviving toggle. Pane changes do not remount chat or reset drafts.
+Both Workspace toggle states and the Settings toggle use the native
+`SubtleButtonStyle` with zero padding for icon-only content. The style's default
+text-button padding must not squeeze the glyph inside the fixed 40 DIP target.
 The companion uses a native TitleBar titled OpenClaw Settings with shared claw
 artwork. Search, Back, and Forward live beside the toggle in its stable sidebar
 toolbar. The native pane reserves 56 DIP above its items, including in compact mode.
