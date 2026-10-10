@@ -93,7 +93,7 @@ public class SettingsManager
     // User interface
     /// <summary>
     /// When true, host the legacy WebView2 gateway chat UI instead of the
-    /// native chat surface in both the Hub Chat tab and tray Chat popup.
+    /// native Workspace chat surface.
     /// Default false (native).
     /// </summary>
     public bool UseLegacyWebChat { get => _data.UseLegacyWebChat; set => _data = _data with { UseLegacyWebChat = value }; }

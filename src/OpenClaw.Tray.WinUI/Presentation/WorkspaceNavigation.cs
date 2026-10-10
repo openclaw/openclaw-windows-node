@@ -88,6 +88,21 @@ internal sealed class WorkspaceNavigationHistory
     public bool CanGoBack => _back.Count > 0;
     public bool CanGoForward => _forward.Count > 0;
 
+    public bool SelectChatSession(string sessionKey)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionKey);
+        var destination = new WorkspaceDestination(WorkspacePageId.Home, sessionKey);
+        if (Current.Page == WorkspacePageId.Home)
+            return Navigate(destination);
+        if (ChatDestination == destination)
+            return false;
+
+        // A completed /new may arrive after navigation away from chat.
+        // Retain its conversation without replacing the currently visible page.
+        ChatDestination = destination;
+        return true;
+    }
+
     public bool RemoveSession(string key, string? replacementKey)
     {
         var replacement = new WorkspaceDestination(WorkspacePageId.Home, replacementKey);

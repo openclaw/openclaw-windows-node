@@ -24,7 +24,6 @@ internal static class ChatVisuals
     internal const double HeadingTopInset = 8;
     internal const double FooterBreakpoint = 640;
     internal const double CompactEffortBreakpoint = 560;
-    internal const double CompactSessionBreakpoint = 400;
     internal const double AvatarBreakpoint = 960;
     internal const double AvatarSlot = 44;
 

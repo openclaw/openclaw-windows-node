@@ -107,6 +107,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         _notifications.Changed += OnNotificationsChanged;
         UpdateNotificationsBadge();
         _chat.Loaded += (_, _) => _chat.Initialize(this);
+        _chat.SessionSelected += OnChatSessionSelected;
         Closed += OnClosed;
         Root.Loaded += OnLoaded;
         RefreshSidebar();
@@ -141,6 +142,20 @@ public sealed partial class WorkspaceWindow : WindowEx
     internal void OpenCommandCenter() => _openCompanion("command-center");
     internal void SelectSession(string sessionKey) =>
         Navigate(new(WorkspacePageId.Home, sessionKey));
+
+    private void OnChatSessionSelected(string sessionKey)
+    {
+        if (IsClosed || !_navigation.SelectChatSession(sessionKey))
+            return;
+
+        var session = _state.Sessions.FirstOrDefault(session => session.Key == sessionKey)
+            ?? new SessionInfo { Key = sessionKey };
+        _agentId = SessionDisplayResolver.Resolve(session).AgentId;
+        RefreshSidebar();
+        UpdateNavigationSelection();
+        BackButton.IsEnabled = _navigation.CanGoBack;
+        ForwardButton.IsEnabled = _navigation.CanGoForward;
+    }
 
     internal void NavigateNativeSetup(SetupNativeNavigationRequest request)
     {
@@ -809,5 +824,6 @@ public sealed partial class WorkspaceWindow : WindowEx
         _gatewayStatusFlyout.Hide();
         ContentHost.Children.Clear();
         _chat.CloseSurface();
+        _chat.SessionSelected -= OnChatSessionSelected;
     }
 }

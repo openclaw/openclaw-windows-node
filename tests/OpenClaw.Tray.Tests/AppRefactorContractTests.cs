@@ -792,15 +792,13 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
-    public void ShowWebChat_ClearsStalePendingSessionKeyOnPlainOpen()
+    public void OpenChatSession_ClearsStalePendingSessionKeyOnPlainOpen()
     {
         var source = ReadAppSources();
-        var method = ExtractMethod(source, "ShowWebChat");
+        var method = ExtractMethod(source, "OpenChatSession");
 
         Assert.Contains("PendingChatSessionKey = sessionKey;", method);
-        Assert.Contains("_windowManager?.SetPendingChatSessionKey(sessionKey);", method);
         Assert.Contains("PendingChatSessionKey = null;", method);
-        Assert.Contains("_windowManager?.SetPendingChatSessionKey(null);", method);
         AssertInOrder(
             method,
             "if (!string.IsNullOrEmpty(sessionKey))",

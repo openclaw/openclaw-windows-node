@@ -1,19 +1,5 @@
 namespace OpenClawTray.Services;
 
-internal sealed record ChatWindowRequest
-{
-    internal ChatWindowRequest(string gatewayUrl, string gatewayToken)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(gatewayUrl);
-        ArgumentException.ThrowIfNullOrWhiteSpace(gatewayToken);
-        GatewayUrl = gatewayUrl;
-        GatewayToken = gatewayToken;
-    }
-
-    internal string GatewayUrl { get; }
-    internal string GatewayToken { get; }
-}
-
 internal enum CanvasSurfaceDestination
 {
     Capabilities,

@@ -469,7 +469,7 @@ Recent native chat behavior implemented during this phase:
 
 - Queued-message UI tracks local send state (`Queued`, `Sending`, `Failed`) until the gateway confirms or rejects the turn.
 - Timeline virtualization keeps long chat histories responsive while preserving stable render identity for visible entries.
-- The Sessions page hides only successful completed runs by default; reusable sessions remain available in the native chat picker, with working sessions surfaced first.
+- The Sessions page hides only successful completed runs by default; Workspace's sidebar owns reusable conversation selection. The composer has no separate session picker.
 - TTS notification speech preserves full assistant text while UI preview truncation remains visual-only.
 - Slash-command suggestions use the gateway command catalog grouped into Mac-compatible command buckets.
 - Local MCP chat automation exposes `app.chat.snapshot`, `app.chat.send`, and `app.chat.reset` for current-thread inspection, send, and reset flows.

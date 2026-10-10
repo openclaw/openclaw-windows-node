@@ -140,7 +140,7 @@ public partial class App : IActivationPlanSink
                 OpenNativeSetupCompletion(r.Handle ?? "invalid");
                 break;
             case ActivationRoute.OpenChat r:
-                ShowWebChat(r.SessionKey);
+                OpenChatSession(r.SessionKey);
                 break;
             case ActivationRoute.OpenUrl r:
                 try

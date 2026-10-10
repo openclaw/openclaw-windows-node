@@ -65,7 +65,7 @@ openclaw-windows-hub/
 │   └── OpenClaw.Tray.WinUI/          # WinUI 3 system tray application (primary)
 │   │   ├── App.xaml.cs               # Main application, tray icon, gateway connection
 │   │   ├── Services/                 # Settings, logging, hotkeys, deep links
-│   │   ├── Windows/                  # UI windows (Settings, WebChat, Status, etc.)
+│   │   ├── Windows/                  # UI windows (Workspace, Settings, Status, etc.)
 │   │   ├── Dialogs/                  # Modal dialogs
 │   │   └── Helpers/                  # Icon generation, utilities
 │   │
@@ -105,7 +105,7 @@ OpenClaw.*.Tests  ──test──▶  corresponding shared, connection, tray, s
 | **Gateway Communication** | `OpenClaw.Shared/OpenClawGatewayClient.cs` | WebSocket client with protocol v3, reconnect/backoff logic |
 | **Connection Management** | `OpenClaw.Connection/` | Gateway registry, credential precedence, pairing, tunnels, and reconnect policy |
 | **Notification System** | `OpenClaw.Tray.WinUI/App.xaml.cs` | Event routing, toast notifications, classification |
-| **WebView2 Integration** | `OpenClaw.Tray.WinUI/Windows/ChatWindow.xaml.cs` | Embedded chat panel with lifecycle management |
+| **WebView2 Integration** | `OpenClaw.Tray.WinUI/Pages/ChatPage.xaml.cs`, `OpenClaw.Tray.WinUI/Helpers/GatewayChatHelper.cs` | Optional Workspace web-chat fallback with lifecycle and navigation guards |
 | **Tray Icon Management** | `OpenClaw.Tray.WinUI/Helpers/IconHelper.cs` | GDI handle management, dynamic icon generation |
 | **Session Tracking** | `OpenClaw.Shared/OpenClawGatewayClient.cs` | Session state, activity tracking, polling |
 | **Settings & Logging** | `OpenClaw.Tray.WinUI/Services/` | JSON settings persistence, file rotation logging |
@@ -531,12 +531,13 @@ Useful local scripts:
 
 ### Native chat surface (Reactor + OpenClaw.Chat)
 
-The Hub Chat tab (`src/OpenClaw.Tray.WinUI/Pages/ChatPage.xaml`) and the
-tray ChatWindow popup (`src/OpenClaw.Tray.WinUI/Windows/ChatWindow.xaml`)
-render their conversations with native WinUI 3 controls via the in-repo
+Workspace hosts the only application chat page
+(`src/OpenClaw.Tray.WinUI/Pages/ChatPage.xaml`). It renders conversations
+with native WinUI 3 controls via the in-repo
 Reactor components and `OpenClaw.Chat` model/reducer code.
 The standard WebView2-hosted gateway web client remains available as a
-settings-controlled fallback.
+settings-controlled fallback. Tray Chat, the Settings Chat rail, and Local AI
+Open chat navigate to Workspace rather than creating another chat host.
 
 **Layering:**
 
@@ -555,12 +556,17 @@ Reactor.WinUI                    Component · hooks · ReactorHostControl · Win
 
 - One `OpenClawChatDataProvider` instance lives on `App` (`App.ChatProvider`),
   created in `InitializeGatewayClient` and disposed inside
-  `UnsubscribeGatewayEvents`. Both the Hub Chat tab and the tray ChatWindow
-  consume the same provider - opening either surface shows identical state.
-- `ReactorChatHostExtensions` mounts a dedicated `ReactorHostControl` for each
-  XAML surface (`ChatPage`, `ChatWindow`) as the child of its
-  `<Border x:Name="ChatHost"/>`. The
-  surrounding chrome (NavigationView, popup header) stays XAML.
+  `UnsubscribeGatewayEvents`. Its lifetime is independent of Workspace, so
+  closing the window does not stop background Gateway/MCP operations.
+- `ReactorChatHostExtensions` mounts a dedicated `ReactorHostControl` in
+  Workspace's `ChatPage` as the child of `<Border x:Name="ChatHost"/>`.
+  `MountedReactorChat` owns the composer session and disposes it exactly once.
+  The surrounding Workspace chrome stays XAML.
+- Workspace owns agent/session selection and back/forward history. Sidebar,
+  notification, Sessions/Cron actions, and composer-created sessions use that
+  navigation boundary; the composer has no separate session picker.
+  Actual-width observation keeps model/reasoning controls and transcript
+  geometry responsive in narrow and wide Workspace layouts.
 - Provider events fire on the WebSocket-receive thread; the provider
   marshals `Changed` / `NotificationRequested` callbacks through a
   dispatcher post delegate (`DispatcherQueue.AsPost()`), so Reactor
@@ -635,38 +641,22 @@ Notifications are classified using two strategies:
 
 ### WebView2 Lifecycle
 
-The `ChatWindow` uses Microsoft Edge WebView2 for embedded web content:
+Workspace's `ChatPage` retains Microsoft Edge WebView2 as the optional gateway
+web-chat renderer. The persisted `UseLegacyWebChat` setting keeps its existing
+JSON name and default (`false`, native chat). Diagnostics can temporarily force
+the native or gateway UI for Workspace; the override resets on restart.
 
-**Initialization:**
-1. WebView2 control created in XAML
-2. `CoreWebView2` environment initialized on window load
-3. User data folder: `%LOCALAPPDATA%\OpenClawTray\WebView2`
-4. Navigation guard prevents external navigation
+`GatewayChatHelper` initializes WebView2 with the shared profile and standard
+browser settings, and delegates chat URL construction to `GatewayChatUrlBuilder`.
+`ChatPage` owns credential injection and navigation guards, renderer selection,
+pending-session consumption, loading/error presentation, and generation-fenced
+asynchronous applies. Native setup chat
+retains its verified native binding rather than following the fallback setting.
 
-**Lifecycle:**
-```
-Window Created → WebView2.EnsureCoreWebView2Async() → Navigate to Chat URL → User Interaction → Window Hidden (not disposed)
-```
-
-**Key Design Decisions:**
-- **Singleton pattern**: Only one chat window instance exists
-- **Hidden instead of disposed**: Window is hidden when closed to preserve state
-- **Separate user data folder**: Isolates cookies/storage from browser
-- **Navigation guard**: Prevents accidental navigation away from chat
-
-**Implementation:**
-```csharp
-// Initialize WebView2 environment
-await WebView.EnsureCoreWebView2Async();
-WebView.CoreWebView2.Navigate(chatUrl);
-
-// Navigation guard
-WebView.CoreWebView2.NavigationStarting += (s, e) => {
-    if (!e.Uri.StartsWith(allowedHost)) {
-        e.Cancel = true;
-    }
-};
-```
+The shared WebView2 profile and browser dependencies remain in use by chat and
+other app surfaces. Removing the retired popup does not delete profile data,
+conversation history, drafts, or Gateway credentials. Workspace close/reopen
+cleans up its mounted host without changing the app-owned provider lifetime.
 
 ### GDI Handle Management
 
@@ -903,21 +893,28 @@ You can test the UI and basic functionality without a running gateway:
    - Send a chat message
    - Verify no toast appears (but history still records it)
 
-#### WebChat Panel
+#### Workspace chat
 
-1. **Open WebChat**:
-   - Right-click tray → **Open Web Chat**
-   - Verify window opens with WebView2 content
-   - Test sending a message
+1. **Entry points and draft preservation**:
+   - Open Chat from the tray, Settings Chat rail, Local AI, and command palette
+   - Verify they reuse or restore one Workspace window, never a separate popup
+   - Verify Settings retains its selected page and plain Chat retains the current
+     conversation and unsent draft
 
-2. **Window State Persistence**:
-   - Move/resize WebChat window
-   - Close and reopen
-   - Verify position/size restored (future feature)
+2. **Session identity and responsive layout**:
+   - Open an explicit session from Sessions, Cron, or Notifications
+   - Verify the Workspace sidebar, selected agent, destination, and transcript agree
+   - Create a session with `/new`, then exercise Back/Forward and tray reactivation
+   - Resize Workspace; verify model/reasoning controls, voice, Attach, and Send remain
+     usable without a composer session picker
+   - Collect Light/Dark proof separately from actual Windows high-contrast proof
 
-3. **WebView2 Fallback**:
-   - Test on system without WebView2 Runtime
-   - Verify graceful fallback (opens browser instead)
+3. **Optional WebView2 renderer**:
+   - Enable the standard Gateway Chat interface in Settings
+   - Verify the gateway web chat opens inside Workspace and consumes an explicit
+     session selection once
+   - Exercise loading/retry and navigation guards, then switch back to native chat
+   - Close/reopen Workspace and verify background Gateway/MCP operations remain live
 
 ## CI/CD
 
@@ -1174,7 +1171,10 @@ gh run download <run-id> --repo shanselman/openclaw-windows-hub
 
 ## Developing & Testing the Onboarding Wizard
 
-The onboarding wizard is a 6-screen flow built with OpenClaw's minimal FunctionalUI helper layer for declarative C# WinUI. The chat page uses a WebView2 overlay for visual consistency with the post-setup chat experience.
+This section describes the legacy FunctionalUI onboarding implementation, not
+the current native setup or post-setup chat host. Use
+[docs/ONBOARDING_WIZARD.md](docs/ONBOARDING_WIZARD.md) for the current flow.
+Post-setup chat is hosted only by Workspace's ChatPage.
 
 ### Building
 
@@ -1215,7 +1215,7 @@ Direct `dotnet build` without the script will fail with "WindowsAppSDKSelfContai
 - **Services**: `src/OpenClaw.Tray.WinUI/Onboarding/Services/` - State management, setup code decoder, permission checker, health check, input validation
 - **Widgets**: `src/OpenClaw.Tray.WinUI/Onboarding/Widgets/` - Shared UI components (cards, step indicators, feature rows)
 - **Window**: `src/OpenClaw.Tray.WinUI/Onboarding/OnboardingWindow.cs` - Host window with WebView2 overlay for chat
-- **Helpers**: `src/OpenClaw.Tray.WinUI/Helpers/GatewayChatHelper.cs` - Shared WebView2 chat URL builder
+- **Helpers**: `src/OpenClaw.Tray.WinUI/Helpers/GatewayChatHelper.cs` - Current Workspace WebView2 initialization and gateway chat URL helper
 
 ---
 

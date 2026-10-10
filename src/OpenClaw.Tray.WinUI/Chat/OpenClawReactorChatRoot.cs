@@ -28,9 +28,7 @@ public sealed record OpenClawReactorChatRootProps(
     Func<string, Task>? OnReadAloud = null,
     Action? OnStopSpeaking = null,
     Action<string>? OnOpenCheckpoints = null,
-    bool IsCompact = false,
-    Func<string, bool>? TryCopyText = null,
-    bool ShowSessionPicker = true);
+    Func<string, bool>? TryCopyText = null);
 
 /// <summary>
 /// Production Reactor root for the native chat surface. It owns the provider
@@ -276,7 +274,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
         }
 
         // Bound once (idempotent) so the composer controller can hand a freshly
-        // created "/new" session, or a session-picker selection, back to the root's
+        // created "/new" session or Workspace selection back to the root's
         // selection state without the controller depending on Reactor state directly.
         props.ComposerSession.Controller.BindSelectionHandoff(SelectThread);
 
@@ -318,7 +316,6 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 ConnectionState: connectionState,
                 TurnActive: timeline.TurnActive,
                 CurrentThread: effectiveThread,
-                AvailableChannels: VisibleChannels(snapshot.Threads, effectiveThread),
                 AvailableModels: snapshot.AvailableModels,
                 ModelChoices: snapshot.ModelChoices,
                 MessageOptionsDisabled: timeline.TurnActive || hasPendingQueuedSend,
@@ -329,9 +326,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 props.ComposerSession,
                 composerInputs,
                 snapshot,
-                () => setScrollToBottomToken(scrollToBottomToken + 1),
-                props.IsCompact,
-                props.ShowSessionPicker));
+                () => setScrollToBottomToken(scrollToBottomToken + 1)));
         }
 
         return Grid(
@@ -373,17 +368,6 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             Status = ChatThreadStatus.Running,
             Activity = ChatActivity.Idle,
         };
-    }
-
-    private static IReadOnlyList<ChatThread> VisibleChannels(ChatThread[] threads, ChatThread effectiveThread)
-    {
-        var visible = SessionVisibilityFilter.VisibleChatPickerThreads(threads, effectiveThread.Id)
-            .Where(thread => !string.IsNullOrWhiteSpace(thread.Title)
-                && thread.IsVisibleInSessionPicker(effectiveThread.Id))
-            .ToList();
-        if (!visible.Any(thread => string.Equals(thread.Id, effectiveThread.Id, StringComparison.Ordinal)))
-            visible.Insert(0, effectiveThread);
-        return visible;
     }
 
     private void OnPermission(string threadId, string requestId, string action) =>

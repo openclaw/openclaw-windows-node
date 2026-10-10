@@ -102,69 +102,6 @@ public class SessionVisibilityFilterTests
         Assert.Equal(expected, SessionVisibilityFilter.ToChatThreadStatus(session));
     }
 
-    [Fact]
-    public void VisibleChatPickerThreads_ShowsSessionsWithConversationActivity()
-    {
-        var threads = new[]
-        {
-            new ChatThread
-            {
-                Id = "completed-chat",
-                Title = "Completed chat",
-                Status = ChatThreadStatus.Ended,
-                TotalTokens = 42,
-            },
-            new ChatThread
-            {
-                Id = "working",
-                Title = "Working",
-                Status = ChatThreadStatus.Running,
-                Activity = ChatActivity.Working,
-            },
-            new ChatThread
-            {
-                Id = "input-chat",
-                Title = "Input chat",
-                Status = ChatThreadStatus.Ended,
-                InputTokens = 1,
-            },
-            new ChatThread
-            {
-                Id = "output-chat",
-                Title = "Output chat",
-                Status = ChatThreadStatus.Ended,
-                OutputTokens = 1,
-            },
-            new ChatThread
-            {
-                Id = "empty-placeholder",
-                Title = "Empty placeholder",
-                Status = ChatThreadStatus.Running,
-            },
-            new ChatThread
-            {
-                Id = "context-only-placeholder",
-                Title = "Context-only placeholder",
-                Status = ChatThreadStatus.Running,
-                ContextTokens = 200_000,
-            },
-            new ChatThread
-            {
-                Id = "selected-empty",
-                Title = "Selected empty",
-                Status = ChatThreadStatus.Ended,
-            },
-        };
-
-        var visible = SessionVisibilityFilter.VisibleChatPickerThreads(threads, "selected-empty")
-            .Select(thread => thread.Id)
-            .ToArray();
-
-        Assert.Equal(
-            new[] { "completed-chat", "working", "input-chat", "output-chat", "selected-empty" },
-            visible);
-    }
-
     [Theory]
     [InlineData("all", "all")]
     [InlineData("Slack", "Slack")]

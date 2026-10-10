@@ -13,7 +13,7 @@ For the complete request, exec approval, protocol, and sandbox flow, see the
 | --- | --- |
 | Gateway | The OpenClaw service that coordinates agents, channels, sessions, devices, and nodes. The Windows app talks to it over WebSocket. |
 | Local WSL gateway | A dedicated `OpenClawGateway` WSL distro installed by the Windows onboarding flow. It is app-owned and locked down rather than a general-purpose Ubuntu profile. |
-| Operator | The user-facing control role. The tray app uses the operator connection for Quick Send, chat, diagnostics, channel controls, setup, and approving pairing requests. |
+| Operator | The user-facing control role. The tray app uses the operator connection for Workspace chat, diagnostics, channel controls, setup, and approving pairing requests. |
 | Node | The controllable Windows machine role. When Node Mode is enabled, the tray app advertises Windows capabilities such as screenshots, canvas, camera, notifications, and approved command execution. |
 | Pairing | The gateway approval flow that turns a new device or node request into a trusted identity with a stored device token. |
 | Reapproval | A later approval request when a paired node asks for new or changed trust, such as command capability access. |

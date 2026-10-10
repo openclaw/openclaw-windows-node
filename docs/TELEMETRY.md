@@ -251,7 +251,7 @@ operations. Full loads use source `initial` for the first load of that transcrip
 in the current connection generation or `forced` when deliberately bypassing
 the loaded-history cache. Backfills use the finite reason `remote_turn` or
 `reset_reconciliation`. Receiving `sessions.list`
-hydrates session-picker metadata only and does not emit a history-load operation.
+hydrates conversation metadata only and does not emit a history-load operation.
 At startup the tray loads the current/default session transcript; another
 session's transcript is loaded when that session is selected. Reconnect
 invalidates transcript freshness and refreshes the selected session through the

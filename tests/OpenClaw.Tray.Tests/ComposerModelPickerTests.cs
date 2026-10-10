@@ -5,7 +5,7 @@ namespace OpenClaw.Tray.Tests;
 /// keeps picker identity in the declarative Reactor tree instead of hand-rolling a native
 /// <c>ComboBox</c>, the escape hatch that caused the #970 dropdown regression.
 /// </summary>
-public sealed class ComposerSessionPickerTests
+public sealed class ComposerModelPickerTests
 {
     private static string ComposerSource() => File.ReadAllText(Path.Combine(
         TestRepositoryPaths.GetRepositoryRoot(),
@@ -13,17 +13,6 @@ public sealed class ComposerSessionPickerTests
         "OpenClaw.Tray.WinUI",
         "Chat",
         "ReactorChatComposer.cs"));
-
-    [Fact]
-    public void SessionPicker_UsesDeclarativeMenuFlyout()
-    {
-        var composer = ComposerSource();
-
-        Assert.Contains("var sessionPicker = MenuFlyout(", composer);
-        Assert.Contains("inputs.AvailableChannels", composer);
-        Assert.Contains(".Select(thread => RadioMenuItem(", composer);
-        Assert.Contains("() => controller.SelectChannel(thread.Id)", composer);
-    }
 
     [Fact]
     public void ModelPicker_UsesDeclarativeCatalogFlyout()

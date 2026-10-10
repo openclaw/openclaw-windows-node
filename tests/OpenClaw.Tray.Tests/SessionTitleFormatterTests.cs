@@ -237,36 +237,6 @@ public sealed class SessionTitleFormatterTests
         Assert.Contains("Tag=\"{Binding Key}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("SessionsPageShowBackground", xaml, StringComparison.Ordinal);
 
-        var chatRoot = File.ReadAllText(Path.Combine(
-            TestRepositoryPaths.GetRepositoryRoot(),
-            "src",
-            "OpenClaw.Tray.WinUI",
-            "Chat",
-            "OpenClawReactorChatRoot.cs"));
-        var chatComposer = File.ReadAllText(Path.Combine(
-            TestRepositoryPaths.GetRepositoryRoot(),
-            "src",
-            "OpenClaw.Tray.WinUI",
-            "Chat",
-            "ReactorChatComposer.cs"));
-        Assert.Contains("SessionVisibilityFilter.VisibleChatPickerThreads(threads, effectiveThread.Id)", chatRoot, StringComparison.Ordinal);
-        Assert.Contains("thread.IsVisibleInSessionPicker(effectiveThread.Id)", chatRoot, StringComparison.Ordinal);
-        Assert.Contains("inputs.CurrentThread.Title", chatComposer, StringComparison.Ordinal);
-        Assert.Contains("thread.Title", chatComposer, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void ChatThreadVisibility_HidesBackgroundButRetainsExplicitSelection()
-    {
-        var thread = new OpenClaw.Chat.ChatThread
-        {
-            Id = "agent:main:subagent:child",
-            Title = "Research",
-            IsBackground = true,
-        };
-
-        Assert.False(thread.IsVisibleInSessionPicker("agent:main:main"));
-        Assert.True(thread.IsVisibleInSessionPicker(thread.Id));
     }
 
     [Fact]

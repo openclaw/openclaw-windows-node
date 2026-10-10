@@ -1,6 +1,6 @@
 # Native chat visual system
 
-The shared ChatPage and ChatWindow use native Reactor/WinUI controls. This
+Workspace's ChatPage uses native Reactor/WinUI controls. This
 presentation follows the reading rhythm of the published 2026.9.4 web chat
 (source `3a9d69db306cd7f081e06254cb89c4bcc14a7107`) without
 replacing Windows chrome, native input, or gateway contracts.
@@ -41,7 +41,7 @@ Additional shared glyph aliases live in `FluentIconCatalog`: `ChevronDown`
 (E70D) and `Stop` (E71A).
 Glyphs do not scale with text. Text containers keep native scaling enabled.
 Chat uses dedicated `ChatSubmit` (Up, E74A) and `ChatAttach` (Add, E710)
-aliases. Global Send and Quick Send metaphors are unchanged.
+aliases. Other Send glyph aliases are unchanged.
 
 ## Theme resources
 
@@ -67,13 +67,12 @@ aliases. Global Send and Quick Send metaphors are unchanged.
 HC maps surfaces, strokes and text to system window/button/highlight colors.
 An HC resource simulation is not evidence that Windows HC mode was enabled.
 
-Window layering follows WinUI Gallery: the Hub title bar and expanded navigation
+Window layering follows WinUI Gallery: the Workspace title bar and expanded navigation
 pane reveal Mica, while `NavigationViewContentBackground` supplies one content
 layer (`LayerFillColorDefaultBrush` in Light/Dark, system window in HC).
 The embedded chat canvas is transparent so it neither hides nor doubles that
-layer. The standalone chat window also uses Mica and paints the same navigation
-content resource once below its header, including disconnected/loading states.
-The composer and code cards use the card fill above that content layer.
+layer, including disconnected/loading states. The composer and code cards
+use the card fill above that content layer.
 
 ## Controls and states
 
@@ -88,8 +87,8 @@ available even when the visual footer is hidden.
 Text remains selectable and attachment chips remain visible.
 Cancel stays available until dispatch; failures keep their error and removal
 action visible without hovering. Provider promotion replaces the pending row with the normal sent message,
-without adding queue-only rows to history. This applies to both ChatPage and
-ChatWindow. See the [pending-message concept](design/reference/concepts/states/pending-chat-message.md).
+without adding queue-only rows to history. This applies to Workspace's ChatPage.
+See the [pending-message concept](design/reference/concepts/states/pending-chat-message.md).
 
 Chat responses are not read aloud by default. Enabling the Text-to-speech
 capability permits playback but does not enable automatic spoken replies.
@@ -104,13 +103,14 @@ Gateway dashboard management lives in a Connection settings card rather than
 occupying a row above the chat surface. Settings' Chat rail action opens Workspace
 without changing the selected Settings page or discarding the chat draft.
 
-The footer has a leading Attach/session group, model/reasoning selectors, and
+Workspace's sidebar owns session selection; the composer has no session picker.
+The footer has a leading Attach action, model/reasoning selectors, and
 quiet secondary actions beside the primary Send/Stop action. Every control stays
 in one bottom row: model text shrinks rather than moving the selectors above
 the actions. At viewport widths of 560 pixels or less, effort uses a gauge and
 chevron with a 44-pixel target, retaining the full textual automation name and
-tooltip. Below 400 pixels the session trigger uses its existing Sessions icon,
-so Attach, session, model, effort, voice and Send all remain reachable.
+tooltip. Attach, model, effort, voice and Send remain reachable in narrow
+layouts through actual-width observation rather than a compact-window mode.
 The compact effort trigger has a transparent idle background and the same
 4-pixel interaction corners as the other toolbar controls. Its gauge and
 chevron are vertically centered within the 44-pixel target. The shared toolbar
