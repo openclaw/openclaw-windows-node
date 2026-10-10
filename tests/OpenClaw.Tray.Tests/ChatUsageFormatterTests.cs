@@ -5,6 +5,37 @@ namespace OpenClaw.Tray.Tests;
 
 public class ChatUsageFormatterTests
 {
+    [Theory]
+    [InlineData(0.00006, "$0.0001")]
+    [InlineData(0.0005, "$0.0005")]
+    [InlineData(0.009, "$0.0090")]
+    [InlineData(0.22503, "$0.225")]
+    [InlineData(0.5876, "$0.588")]
+    [InlineData(1.0, "$1.00")]
+    [InlineData(12.345, "$12.35")]
+    [InlineData(1234.5, "$1234.50")]
+    public void FormatCost_MatchesControlUiPrecision(double cost, string expected)
+    {
+        Assert.Equal(expected, ChatUsageFormatter.FormatCost(cost));
+    }
+
+    [Fact]
+    public void FormatCost_ShowsFloorForCostBelowDisplayPrecision()
+    {
+        Assert.Equal("<$0.0001", ChatUsageFormatter.FormatCost(0.00004));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(0.0)]
+    [InlineData(-0.5)]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    public void FormatCost_HidesMissingZeroOrInvalidCost(double? cost)
+    {
+        Assert.Null(ChatUsageFormatter.FormatCost(cost));
+    }
+
     [Fact]
     public void Format_UsesThreadTotals()
     {

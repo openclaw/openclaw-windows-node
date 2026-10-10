@@ -2211,6 +2211,44 @@ internal sealed class ChatConversationState
         }
     }
 
+    /// <summary>
+    /// Attaches a gateway-reported cost to the latest assistant entry of the
+    /// thread. Returns a snapshot only when the stored value changed; the
+    /// latest rendered frame wins (identified duplicates never reach here
+    /// because the queue classifier drops them).
+    /// </summary>
+    internal ChatDataSnapshot? SnapshotAssistantCost(
+        string threadId,
+        double costUsd,
+        ChatProjectionContext context)
+    {
+        lock (_gate)
+        {
+            if (!_timelines.TryGetValue(threadId, out var timeline))
+                return null;
+            for (var i = timeline.Entries.Count - 1; i >= 0; i--)
+            {
+                var entry = timeline.Entries[i];
+                if (entry.Kind != ChatTimelineItemKind.Assistant)
+                    continue;
+                var threadMetadata = GetOrCreateThreadMetaLocked(threadId);
+                threadMetadata.TryGetValue(entry.Id, out var existing);
+                if (existing?.CostUsd is { } current && current.Equals(costUsd))
+                    return null;
+                // A reported zero on an entry without a cost renders the same
+                // as no cost, so skip the redundant snapshot.
+                if (existing?.CostUsd is null && costUsd <= 0)
+                    return null;
+                threadMetadata[entry.Id] = (existing ?? BuildLiveMetaLocked(threadId)) with
+                {
+                    CostUsd = costUsd,
+                };
+                return BuildSnapshotLocked(context);
+            }
+            return null;
+        }
+    }
+
     internal ChatDataSnapshot? SnapshotAssistantUsageContribution(
         string threadId,
         ChatEntryMetadata metadata,

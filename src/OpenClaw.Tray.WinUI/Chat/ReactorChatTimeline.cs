@@ -1117,9 +1117,10 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             && row.Props.Timeline.ShowToolCalls
             ? row.Props.Timeline.DefaultUsageSummary
             : null;
+        var cost = ChatUsageFormatter.FormatCost(metadata?.CostUsd);
         return string.Join(
                     " · ",
-                    new[] { time, model, usageSummary }.Where(static value => !string.IsNullOrWhiteSpace(value)));
+                    new[] { time, model, usageSummary, cost }.Where(static value => !string.IsNullOrWhiteSpace(value)));
     }
 
     private static Element UserMetadata(
