@@ -99,6 +99,17 @@ public sealed class ChatComposerControllerTests
     }
 
     [Fact]
+    public async Task SendAsync_TextBoxLineBreaks_AreSentAsLineFeeds()
+    {
+        var (vm, controller, port, _) = MakeController();
+        vm.SetDraft("line one\rline two\r\nline three");
+
+        Assert.True(await controller.SendAsync());
+
+        Assert.Equal("line one\nline two\nline three", port.LastSendMessageCall!.Value.Message);
+    }
+
+    [Fact]
     public async Task SendAsync_ActiveTurn_AcceptedFollowUpClearsComposerAndAllowsAnotherDraft()
     {
         var (vm, controller, port, _) = MakeController();
