@@ -151,8 +151,9 @@ public static class LocalModelCatalog
     public const string Qwen35BModelId = "qwen3.6-35b-a3b-mtp-q4-k-m";
     public const string Qwen27BModelId = "qwen3.6-27b-mtp-q4-k-m";
     /// <summary>
-    /// Retired from new installs. Retained only so an already-installed managed
-    /// Qwen3.5 9B receipt keeps resolving and launching across upgrade.
+    /// Development-only low-memory recipe, offered only while
+    /// <see cref="DevelopmentLowMemoryModelsEnvironmentVariable"/> is "1"; otherwise it resolves only
+    /// through <see cref="FindInstalled"/> with the native F16 profile a pre-#1281 install could have recorded.
     /// </summary>
     public const string Qwen9BModelId = "qwen3.5-9b-mtp-q4-k-m";
     /// <summary>RTX Spark 48GB-SKU recipe. Never offered on the generic dGPU path; see <c>RtxSparkInferenceSelector</c>.</summary>
@@ -321,11 +322,12 @@ public static class LocalModelCatalog
                 RecommendationPriority: 0),
         });
 
-    // Retired from new installs and never offered, recommended, or selectable.
-    // These entries exist only so an existing managed installation keeps
-    // resolving its own pinned receipt and launching after upgrade. Pins are
-    // reproduced exactly as they were installed; nothing is remapped.
-    private static readonly ReadOnlyCollection<LocalModelInfo> s_legacyModels = Array.AsReadOnly(
+    // Development-only low-memory recipes. Offered, recommended and launched with
+    // their full profile set only while DevelopmentLowMemoryModelsEnvironmentVariable
+    // is "1". Without the guard they are never offered and resolve only through
+    // FindInstalled, exposing only the native F16 profile an install made before
+    // #1281 could have recorded. Pins are reproduced exactly; nothing is remapped.
+    private static readonly ReadOnlyCollection<LocalModelInfo> s_developmentModels = Array.AsReadOnly(
         new[]
         {
             new LocalModelInfo(
@@ -344,9 +346,18 @@ public static class LocalModelCatalog
                     keyValueHeadCount: 4,
                     temperature: 1.0),
                 IsDefault: false,
-                IsExplicitAlternative: false,
+                IsExplicitAlternative: true,
                 SupportsVision: false,
-                RecommendationPriority: 0),
+                RecommendationPriority: 100),
+        });
+
+    // Retired from new installs and never offered, recommended, or selectable.
+    // These entries exist only so an existing managed installation keeps
+    // resolving its own pinned receipt and launching after upgrade. Pins are
+    // reproduced exactly as they were installed; nothing is remapped.
+    private static readonly ReadOnlyCollection<LocalModelInfo> s_legacyModels = Array.AsReadOnly(
+        new[]
+        {
             new LocalModelInfo(
                 Qwen35B_IQ4XSModelId,
                 "Qwen3.6 35B-A3B (UD-IQ4_XS)",
@@ -383,6 +394,8 @@ public static class LocalModelCatalog
                     string.Equals(model.Id, Qwen35B_IQ4XSModelId, StringComparison.Ordinal)
                         ? CreateRtxSpark48GbProfiles(model)
                         : CreateLegacyProfiles(model)))))
+            .Concat(s_developmentModels
+                .Select(model => (model, profiles: Array.AsReadOnly(CreateLegacyProfiles(model)))))
             .ToDictionary(
                 entry => entry.model.Id,
                 entry => entry.profiles,
@@ -391,15 +404,48 @@ public static class LocalModelCatalog
     private static readonly ReadOnlyCollection<LocalModelInfo> s_explicitAlternatives =
         Array.AsReadOnly(s_models.Where(model => model.IsExplicitAlternative).ToArray());
 
-    public static IReadOnlyList<LocalModelInfo> Models => s_models;
+    private static readonly ReadOnlyCollection<LocalModelInfo> s_modelsWithDevelopment =
+        Array.AsReadOnly(s_models.Concat(s_developmentModels).ToArray());
+
+    private static readonly ReadOnlyCollection<LocalModelInfo> s_explicitAlternativesWithDevelopment =
+        Array.AsReadOnly(s_modelsWithDevelopment.Where(model => model.IsExplicitAlternative).ToArray());
+
+    private static readonly IReadOnlyDictionary<string, ReadOnlyCollection<LocalInferenceRunProfile>>
+        s_developmentProfilesByModel = s_developmentModels.ToDictionary(
+            model => model.Id,
+            model => Array.AsReadOnly(CreateProfiles(model)),
+            StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Development-only opt-in. When this variable equals "1", the low-memory Qwen3.5 9B recipe is
+    /// offered, recommended when no production model fits, and launched with its full profile set.
+    /// Read on every call so the tray, setup UI, and setup engine each honor their own process environment.
+    /// </summary>
+    public const string DevelopmentLowMemoryModelsEnvironmentVariable = "OPENCLAW_LOCAL_AI_DEV_LOW_MEMORY_MODELS";
+
+    public static bool DevelopmentLowMemoryModelsEnabled =>
+        string.Equals(
+            Environment.GetEnvironmentVariable(DevelopmentLowMemoryModelsEnvironmentVariable),
+            "1",
+            StringComparison.Ordinal);
+
+    public static IReadOnlyList<LocalModelInfo> Models =>
+        DevelopmentLowMemoryModelsEnabled ? s_modelsWithDevelopment : s_models;
 
     public static LocalModelInfo Default => s_models.Single(model => model.IsDefault);
 
-    public static IReadOnlyList<LocalModelInfo> ExplicitAlternatives => s_explicitAlternatives;
+    public static IReadOnlyList<LocalModelInfo> ExplicitAlternatives =>
+        DevelopmentLowMemoryModelsEnabled ? s_explicitAlternativesWithDevelopment : s_explicitAlternatives;
 
     public static IReadOnlyList<LocalInferenceRunProfile> GetProfiles(LocalModelInfo model)
     {
         ArgumentNullException.ThrowIfNull(model);
+        if (DevelopmentLowMemoryModelsEnabled &&
+            s_developmentProfilesByModel.TryGetValue(model.Id, out ReadOnlyCollection<LocalInferenceRunProfile>? developmentProfiles))
+        {
+            return developmentProfiles;
+        }
+
         return s_profilesByModel.TryGetValue(model.Id, out ReadOnlyCollection<LocalInferenceRunProfile>? profiles)
             ? profiles
             : throw new ArgumentException("The model is not part of the local inference catalog.", nameof(model));
@@ -442,24 +488,26 @@ public static class LocalModelCatalog
     public static LocalModelInfo? Find(string? id) =>
         string.IsNullOrWhiteSpace(id)
             ? null
-            : s_models.SingleOrDefault(model => string.Equals(model.Id, id, StringComparison.OrdinalIgnoreCase));
+            : Models.SingleOrDefault(model => string.Equals(model.Id, id, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Resolves a model that an existing installation receipt may reference,
-    /// including retired entries that are no longer offered for new installs.
+    /// including retired entries that are no longer offered for new installs
+    /// and development entries offered only behind the guard.
     /// Use this only on installed-receipt validation, launch, and display
     /// paths. Fresh selection, recommendation, and eligibility must keep using
     /// <see cref="Find"/> and <see cref="Models"/> so retired models are never
-    /// offered again; receipt-aware eligibility may resolve the installed model.
+    /// offered again and development models are offered only behind the guard;
+    /// receipt-aware eligibility may resolve the installed model.
     /// </summary>
     public static LocalModelInfo? FindInstalled(string? id) =>
         Find(id) ??
         (string.IsNullOrWhiteSpace(id)
             ? null
-            : s_legacyModels.SingleOrDefault(model =>
+            : s_legacyModels.Concat(s_developmentModels).SingleOrDefault(model =>
                 string.Equals(model.Id, id, StringComparison.OrdinalIgnoreCase)));
 
-    /// <summary>True when the id resolves only to a retired catalog entry.</summary>
+    /// <summary>True when the id resolves only through <see cref="FindInstalled"/> (a retired entry, or a development entry with the guard off).</summary>
     public static bool IsLegacy(string? id) => Find(id) is null && FindInstalled(id) is not null;
 
     /// <summary>
@@ -500,10 +548,11 @@ public static class LocalModelCatalog
         Profile(model, MinimumContextTokens, KvCachePrecision.Q8_0),
     ];
 
-    // A retired model can only ever have been installed under the single
-    // pre-profile recipe: native context with F16 KV. Exposing exactly that
-    // profile keeps the existing receipt launchable while any other
-    // combination still fails receipt validation instead of being remapped.
+    // The guard-off view of a development model. Without the guard it can only
+    // ever have been installed under the single pre-profile recipe: native
+    // context with F16 KV. Exposing exactly that profile keeps the existing
+    // receipt launchable while any other combination still fails receipt
+    // validation instead of being remapped.
     private static LocalInferenceRunProfile[] CreateLegacyProfiles(LocalModelInfo model) =>
     [
         Profile(model, NativeContextTokens, KvCachePrecision.F16),

@@ -471,6 +471,37 @@ materialization copies from that same verified open handle. A configured cache
 root equal to or below the app-owned `LocalAI` directory is rejected before
 mutation because uninstall removes that managed tree recursively.
 
+### Local AI recipe overrides
+
+Each start and restart regenerates `<LocalDataDir>\LocalAI\llama-server-models.ini`
+from the compiled-in model recipe. To tune it without a rebuild, create
+`<LocalDataDir>\LocalAI\recipe-overrides.ini` (at most 64 KiB). Keys under `[*]`
+apply to every model; keys under `[<model-id>]` apply to that model and win over
+`[*]`. `key = value` replaces a generated key in place or appends a new one, and
+`key =` with an empty value removes a generated key. Keys are long llama-server
+option names; short aliases are rejected. Model source and draft identity, file,
+path, URL, Hugging Face, SSL, host, port, API key, web UI, CORS, router, RPC, MCP,
+built-in tool and agent keys, their `no-` negations, and the keys that set the
+per-request context or output limit (`ctx-size`, `fit`, `fit-ctx`, `parallel`,
+`kv-unified`, `kv-unified-per-slot`, `n-predict`) cannot be overridden, because
+setup pins and verifies them, the launch arguments own them, they would reach
+other hosts or run host commands, or the Gateway `contextWindow` and `maxTokens`
+depend on them. Every line in every section is validated; an invalid file fails
+startup and the Local AI page shows `recipe-overrides.ini line N: ...`. Applied
+overrides are logged as `Local AI recipe overrides applied from
+recipe-overrides.ini: ...`. Press **Restart** on the Local AI page to apply edits.
+Owner: `LocalAiRecipeOverrides`, merged by `LlamaServerRouterConfiguration`.
+
+`scripts/bench-local-ai-recipe.ps1` measures candidate overrides. Stop Local AI,
+then run it with `-LocalAiRoot` (dev builds use
+`%LOCALAPPDATA%\OpenClawTray-Dev\LocalAI`). It launches the installed
+llama-server once per candidate on a private loopback port, writes
+`results.csv`, and, when a candidate beats the current recipe on generation
+speed without losing more than 10% prefill speed, writes `best-overrides.ini` with
+only the changed keys. Merge them into the model's section of the override file,
+replacing values it already sets. `-GridPath` and `-PromptsPath` replace the
+default grid and prompts; see the script help.
+
 ### Local AI runtime archive cache
 
 Verified llama.cpp runtime zips are kept in

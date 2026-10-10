@@ -35,34 +35,41 @@ public sealed class PairNodeStep : SetupStep
         var reachability = await WindowsGatewayReachability.VerifyAsync(ctx, "node", ct);
         if (!reachability.IsSuccess)
             return reachability;
-        var provenanceCheck = await PairOperatorStep.EnsurePairingEndpointTrustedAsync(ctx, ct);
-        if (provenanceCheck is not null)
-            return provenanceCheck;
-
-        var drainResult = await VerifyEndToEndStep.DrainPendingDeviceApprovalsAsync(ctx, ct);
-        if (!drainResult.IsSuccess)
-            return drainResult;
-        provenanceCheck = await PairOperatorStep.EnsurePairingEndpointTrustedAsync(ctx, ct);
-        if (provenanceCheck is not null)
-            return provenanceCheck;
 
         var wsLogger = new SetupOpenClawLogger(ctx.Logger);
         WindowsNodeClient? client = null;
-        var requestBaseline = await ApprovalRequestHelper.CaptureSetupBaselineOnceAsync(
-            ctx,
-            ApprovalRequestKind.Node,
-            ct);
-        ctx.CurrentNodeApprovalBaseline = requestBaseline;
+        SetupOperatorPairingSession? session = null;
+
+        WindowsNodeClient CreateClient()
+        {
+            var created = new WindowsNodeClient(gatewayUrl, token, identityPath, logger: wsLogger);
+            PairOperatorStep.ApplyReconnectAuthorization(created, ctx);
+            created.UseV2Signature = true;
+            // Register capabilities BEFORE connect — gateway stores them from hello message
+            RegisterCapabilitiesFromConfig(created, ctx);
+            return created;
+        }
 
         try
         {
-            // Phase 1: Connect (may get PAIRING_REQUIRED)
-            client = new WindowsNodeClient(gatewayUrl, token, identityPath, logger: wsLogger);
-            PairOperatorStep.ApplyReconnectAuthorization(client, ctx);
-            client.UseV2Signature = true;
+            // The operator session connects before the node socket, so verify-e2e's
+            // operator connect stays the device's last connect.
+            (session, var sessionFailure) = await SetupOperatorPairingSession.OpenAsync(ctx, identityPath, ct);
+            if (sessionFailure is not null)
+                return sessionFailure;
 
-            // Register capabilities BEFORE connect — gateway stores them from hello message
-            RegisterCapabilitiesFromConfig(client, ctx);
+            var drainResult = await VerifyEndToEndStep.DrainPendingDeviceApprovalsAsync(ctx, session!, ct);
+            if (!drainResult.IsSuccess)
+                return drainResult;
+
+            ctx.CurrentNodeApprovalBaseline = await ApprovalRequestHelper.CaptureSetupBaselineOnceAsync(
+                ctx,
+                session!,
+                ApprovalRequestKind.Node,
+                ct);
+
+            // Phase 1: Connect (may get PAIRING_REQUIRED)
+            client = CreateClient();
 
             var outcome = await WaitForNodeConnection(client, ctx, TimeSpan.FromSeconds(15), ct);
 
@@ -78,27 +85,29 @@ public sealed class PairNodeStep : SetupStep
                 if (!ctx.Config.AutoApprovePairing)
                     return StepResult.Fail("Node pairing required but auto-approve is disabled");
 
-                ctx.Logger.Info("Node pairing required — auto-approving via CLI");
+                ctx.Logger.Info("Node pairing required; auto-approving via operator session");
                 await client.DisconnectAsync();
                 client.Dispose();
                 client = null;
 
-                var approveResult = await AutoApproveNodePairing(ctx, outcome.RequestId, ct);
+                var approveResult = await AutoApproveNodePairing(ctx, session!, outcome.RequestId, ct);
                 if (!approveResult.IsSuccess)
                     return approveResult;
 
-                await Task.Delay(2000, ct);
-
                 // Phase 2: Reconnect after approval
-                provenanceCheck = await PairOperatorStep.EnsurePairingEndpointTrustedAsync(ctx, ct);
-                if (provenanceCheck is not null)
-                    return provenanceCheck;
-                client = new WindowsNodeClient(gatewayUrl, token, identityPath, logger: wsLogger);
-                PairOperatorStep.ApplyReconnectAuthorization(client, ctx);
-                client.UseV2Signature = true;
-                RegisterCapabilitiesFromConfig(client, ctx);
-
+                client = CreateClient();
                 outcome = await WaitForNodeConnection(client, ctx, TimeSpan.FromSeconds(20), ct);
+                if (outcome.Outcome == NodeConnectionOutcome.PairingRequired)
+                {
+                    ctx.Logger.Info("Node still pending right after approval; retrying reconnect once");
+                    await client.DisconnectAsync();
+                    client.Dispose();
+                    client = null;
+                    await Task.Delay(PairOperatorStep.PostApprovalReconnectRetryDelay, ct);
+                    client = CreateClient();
+                    outcome = await WaitForNodeConnection(client, ctx, TimeSpan.FromSeconds(20), ct);
+                }
+
                 if (outcome.Outcome == NodeConnectionOutcome.Connected)
                 {
                     ctx.NodeDeviceId = client.ShortDeviceId;
@@ -114,10 +123,10 @@ public sealed class PairNodeStep : SetupStep
                     return StepResult.Ok("Node paired successfully");
                 }
 
-                return StepResult.Fail($"Node reconnection after approval failed: {outcome.Outcome}");
+                return NodeConnectionFailure(ctx, "Node reconnection after approval failed", outcome.Outcome);
             }
 
-            return StepResult.Fail($"Node connection failed: {outcome.Outcome}");
+            return NodeConnectionFailure(ctx, "Node connection failed", outcome.Outcome);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -141,94 +150,9 @@ public sealed class PairNodeStep : SetupStep
                 await client.DisconnectAsync();
                 client.Dispose();
             }
-        }
-    }
 
-    /// <summary>
-    /// After node pairing, finalize by connecting with the node device token to avoid
-    /// metadata-upgrade when the tray reconnects.
-    /// </summary>
-    private static async Task<StepResult> FinalizeNodeWithDeviceToken(
-        SetupContext ctx, string gatewayUrl, string identityPath, IOpenClawLogger wsLogger, CancellationToken ct)
-    {
-        ctx.Logger.Info("Finalizing node: reconnect with node device token");
-
-        var identity = new DeviceIdentity(identityPath);
-        try
-        {
-            identity.Initialize();
-        }
-        catch (DeviceIdentityLoadException ex)
-        {
-            return SetupIdentityFailure.Terminal(ctx, "node finalization", ex);
-        }
-        var nodeToken = identity.NodeDeviceToken;
-
-        if (string.IsNullOrEmpty(nodeToken))
-        {
-            ctx.Logger.Warn("No node device token stored after pairing — skipping node finalization");
-            return StepResult.Ok("Node paired (no finalization needed)");
-        }
-
-        // Wait for grace period (same as operator finalization)
-        ctx.Logger.Info("Waiting for gateway grace period before node finalization...");
-        await Task.Delay(TimeSpan.FromSeconds(5), ct);
-
-        var requestBaseline = await ApprovalRequestHelper.CapturePendingRequestBaselineAsync(
-            ctx,
-            ApprovalRequestKind.Node,
-            ct);
-        ctx.CurrentNodeApprovalBaseline = requestBaseline;
-        var finalClient = new WindowsNodeClient(gatewayUrl, nodeToken, identityPath, logger: wsLogger);
-        PairOperatorStep.ApplyReconnectAuthorization(finalClient, ctx);
-        finalClient.UseV2Signature = true;
-
-        try
-        {
-            var result = await WaitForNodeConnection(finalClient, ctx, TimeSpan.FromSeconds(15), ct);
-
-            if (result.Outcome == NodeConnectionOutcome.Connected)
-            {
-                ctx.Logger.Info("Node finalization connected — tray will connect seamlessly");
-                return StepResult.Ok("Node paired and finalized for tray");
-            }
-
-            if (result.Outcome == NodeConnectionOutcome.PairingRequired)
-            {
-                ctx.Logger.Info("Node metadata-upgrade detected — auto-approving");
-                await finalClient.DisconnectAsync();
-                finalClient.Dispose();
-                finalClient = null;
-
-                var approveResult = await AutoApproveNodePairing(ctx, result.RequestId, ct);
-                if (!approveResult.IsSuccess)
-                    return StepResult.Fail($"Node finalization approval failed: {approveResult.Message}");
-
-                await Task.Delay(2000, ct);
-
-                finalClient = new WindowsNodeClient(gatewayUrl, nodeToken, identityPath, logger: wsLogger);
-                PairOperatorStep.ApplyReconnectAuthorization(finalClient, ctx);
-                finalClient.UseV2Signature = true;
-                var finalResult = await WaitForNodeConnection(finalClient, ctx, TimeSpan.FromSeconds(15), ct);
-
-                if (finalResult.Outcome == NodeConnectionOutcome.Connected)
-                {
-                    ctx.Logger.Info("Node finalization approved — tray will connect seamlessly");
-                    return StepResult.Ok("Node paired and finalized for tray");
-                }
-
-                return StepResult.Fail($"Node finalization failed after approval: {finalResult.Outcome}");
-            }
-
-            return StepResult.Fail($"Node finalization failed: {result.Outcome}");
-        }
-        finally
-        {
-            if (finalClient != null)
-            {
-                await finalClient.DisconnectAsync();
-                finalClient.Dispose();
-            }
+            if (session is not null)
+                await session.DisposeAsync();
         }
     }
 
@@ -236,9 +160,15 @@ public sealed class PairNodeStep : SetupStep
 
     private sealed record NodeConnectionResult(NodeConnectionOutcome Outcome, string? RequestId = null);
 
+    private static StepResult NodeConnectionFailure(SetupContext ctx, string prefix, NodeConnectionOutcome outcome) =>
+        outcome == NodeConnectionOutcome.Error && ctx.PairingEndpointTrustFailure is { } trustFailure
+            ? trustFailure
+            : StepResult.Fail($"{prefix}: {outcome}");
+
     private static async Task<NodeConnectionResult> WaitForNodeConnection(
         WindowsNodeClient client, SetupContext ctx, TimeSpan timeout, CancellationToken ct)
     {
+        ctx.PairingEndpointTrustFailure = null;
         var tcs = new TaskCompletionSource<NodeConnectionResult>();
         string? pairingRequestId = null;
 
@@ -288,12 +218,12 @@ public sealed class PairNodeStep : SetupStep
         }
     }
 
-    internal static async Task<StepResult> AutoApproveNodePairing(SetupContext ctx, string? requestId, CancellationToken ct)
+    internal static async Task<StepResult> AutoApproveNodePairing(
+        SetupContext ctx,
+        ISetupPairingRequests requests,
+        string? requestId,
+        CancellationToken ct)
     {
-        var distro = ctx.DistroName!;
-        var token = ctx.SharedGatewayToken ?? ctx.BootstrapToken ?? throw new InvalidOperationException("No gateway token available for auto-approve");
-
-        var env = new Dictionary<string, string> { ["OPENCLAW_GATEWAY_TOKEN"] = token };
         var approvalKind = ApprovalRequestKind.Device;
 
         if (string.IsNullOrWhiteSpace(requestId))
@@ -310,24 +240,20 @@ public sealed class PairNodeStep : SetupStep
             }
 
             approvalKind = ApprovalRequestKind.Node;
-            var pending = await ctx.Commands.RunInWslAsync(
-                distro,
-                $"""{ctx.WslPathPrefix} && openclaw nodes list --json""",
-                TimeSpan.FromSeconds(30), env, ct, inputViaStdin: true);
+            var pending = await requests.ListAsync(ApprovalRequestKind.Node, TimeSpan.FromSeconds(30), ct);
 
-            ctx.Logger.Info($"Node pending list: exit={pending.ExitCode}");
+            ctx.Logger.Info($"Node pending list: {(pending.Success ? "ok" : pending.FailureDetail)}");
 
-            if (pending.ExitCode != 0)
+            if (!pending.Success)
             {
-                var pendingOutput = pending.Stdout.Trim();
-                if (ApprovalRequestHelper.IsPluginNotFoundError(pendingOutput))
+                if (ApprovalRequestHelper.IsPluginNotFoundError(pending.Output))
                     return StepResult.Terminal(ApprovalRequestHelper.PluginNotFoundMessage);
-                return StepResult.Fail($"Could not list pending node pairing requests (exit {pending.ExitCode}): {pendingOutput}");
+                return StepResult.Fail($"Could not list pending node pairing requests ({pending.FailureDetail}): {pending.Output}");
             }
 
             // Both setup sockets use the same per-gateway identity. NodeDeviceId is display-only.
             var parsed = ApprovalRequestHelper.TrySelectPendingRequestForDevice(
-                pending.Stdout.Trim(),
+                pending.Output,
                 ctx.OperatorDeviceId,
                 requestBaseline.RequestIds,
                 matchNodeId: true);
@@ -344,20 +270,16 @@ public sealed class PairNodeStep : SetupStep
             return StepResult.Fail("Node pairing request ID contained unsafe characters");
 
         ctx.Logger.Info($"Approving node pairing request: {requestId}");
-        var approvalEnv = ApprovalRequestHelper.AddRequestIdEnvironment(env, requestId!);
 
-        var approve = await ctx.Commands.RunInWslAsync(
-            distro,
-            $"""{ctx.WslPathPrefix} && {ApprovalRequestHelper.ApprovalCommand(approvalKind)}""",
-            TimeSpan.FromSeconds(30), approvalEnv, ct, inputViaStdin: true);
+        var approve = await requests.ApproveAsync(approvalKind, requestId!, TimeSpan.FromSeconds(30), ct);
 
-        ctx.Logger.Info($"Node approve result: exit={approve.ExitCode}");
+        ctx.Logger.Info($"Node approve result: {(approve.Success ? "ok" : approve.FailureDetail)}");
 
-        return approve.ExitCode == 0
+        return approve.Success
             ? StepResult.Ok($"Node approved: {requestId}")
-            : ApprovalRequestHelper.IsPluginNotFoundError(approve.Stdout.Trim())
+            : ApprovalRequestHelper.IsPluginNotFoundError(approve.Output)
                 ? StepResult.Terminal(ApprovalRequestHelper.PluginNotFoundMessage)
-                : StepResult.Fail($"Node approval failed (exit {approve.ExitCode}): {approve.Stdout.Trim()}");
+                : StepResult.Fail($"Node approval failed ({approve.FailureDetail}): {approve.Output}");
     }
 
     private static void RegisterCapabilitiesFromConfig(WindowsNodeClient client, SetupContext ctx)

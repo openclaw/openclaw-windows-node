@@ -448,16 +448,22 @@ authority:
 3. Pair operator.
 4. Drain pending device approvals before node pairing.
 5. Pair node with capabilities registered before connect.
-6. Approve node/device pairing through local WSL CLI commands when configured.
+6. Approve operator pairing through local WSL CLI commands when configured;
+   after operator pairing, list/approve device and node requests over the paired
+   setup operator WebSocket (`device.pair.*` / `node.pair.*` RPCs).
 7. Verify end-to-end behavior.
 
 Important local behaviors:
 
 - Local gateway records force v2 signatures.
-- `PairNodeStep` drains pending device approvals before node connect so a
-  WSL CLI scope-upgrade request does not block Windows node approval.
-- `AutoApproveNodePairing` chooses device vs node approval command depending on
+- `PairNodeStep` opens a setup operator session, then drains pending device
+  approvals before node connect so a WSL CLI scope-upgrade request does not
+  block Windows node approval.
+- `AutoApproveNodePairing` chooses device vs node approval RPC depending on
   whether a request id is available.
+- Post-approval reconnects run immediately with one short retry on
+  `PAIRING_REQUIRED`; there are no fixed grace sleeps. Endpoint provenance is
+  checked at every handshake before credentials are sent.
 - Node finalization is intentionally skipped in one path to avoid rotating
   tokens and invalidating the operator token.
 

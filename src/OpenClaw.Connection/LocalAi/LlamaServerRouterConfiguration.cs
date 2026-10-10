@@ -7,7 +7,8 @@
 //   var plan = LlamaServerRouterConfiguration.Build(paths, install);
 //   // plan.Arguments -> fixed loopback argv; plan.Environment -> CUDA device pinning;
 //   // plan.PresetPath / plan.PresetContent -> write PresetContent to PresetPath before launch;
-//   // plan.ModelAlias -> the model id the router exposes.
+//   // plan.ModelAlias -> the model id the router exposes;
+//   // plan.AppliedOverrides -> user overrides from LocalAI\recipe-overrides.ini merged into PresetContent.
 // </summary>
 using OpenClaw.Shared.Inference.Catalog;
 using System.Collections.Immutable;
@@ -23,7 +24,8 @@ public sealed record LlamaServerRouterLaunchPlan(
     ImmutableDictionary<string, string> Environment,
     string PresetPath,
     string PresetContent,
-    string ModelAlias);
+    string ModelAlias,
+    ImmutableArray<LocalAiRecipeOverride> AppliedOverrides);
 
 public static class LlamaServerRouterConfiguration
 {
@@ -71,6 +73,7 @@ public static class LlamaServerRouterConfiguration
 
         LocalInferenceRunProfile profile = ResolveQualifiedReceipt(manifest, runtime, model);
         string? draftModelPath = ResolveDraftModelPath(manifest, model, verifiedDraftModelPath);
+        ImmutableArray<LocalAiRecipeOverride> overrides = LocalAiRecipeOverrides.Load(paths, model.Id);
 
         string presetPath = paths.ResolveContainedPath(
             Path.GetRelativePath(paths.RootDirectory, paths.RouterPresetPath),
@@ -95,8 +98,9 @@ public static class LlamaServerRouterConfiguration
                 .WithComparers(StringComparer.OrdinalIgnoreCase)
                 .Add("CUDA_VISIBLE_DEVICES", manifest.SelectedGpuId),
             presetPath,
-            BuildPreset(model, profile, modelPath, draftModelPath),
-            model.Id);
+            BuildPreset(model, profile, modelPath, draftModelPath, overrides),
+            model.Id,
+            overrides);
     }
 
     private static LocalInferenceRunProfile ResolveQualifiedReceipt(
@@ -205,7 +209,8 @@ public static class LlamaServerRouterConfiguration
         LocalModelInfo model,
         LocalInferenceRunProfile profile,
         string modelPath,
-        string? draftModelPath)
+        string? draftModelPath,
+        ImmutableArray<LocalAiRecipeOverride> overrides)
     {
         if (modelPath.IndexOfAny(['\r', '\n']) >= 0)
             throw new InvalidDataException("The managed model path cannot be represented safely in a llama-server preset.");
@@ -216,56 +221,91 @@ public static class LlamaServerRouterConfiguration
         if (recipe.SpeculativeDecoding == SpeculativeDecodingMode.DraftDFlash && draftModelPath is null)
             throw new InvalidDataException("Draft-flash decoding requires a resolved draft model path.");
         ModelSamplingPreset sampling = recipe.Sampling;
-        var preset = new StringBuilder();
-        preset.AppendLine("version = 1");
-        preset.AppendLine();
-        preset.Append('[').Append(model.Id).AppendLine("]");
-        preset.Append("model = ").AppendLine(modelPath);
-        preset.AppendLine("load-on-startup = false");
-        preset.Append("ctx-size = ").AppendLine(Invariant(profile.ContextTokens));
-        preset.Append("n-predict = ").AppendLine(Invariant(LocalAiGatewayProviderDefinition.MaximumOutputTokens));
-        preset.Append("parallel = ").AppendLine(Invariant(recipe.ParallelRequests));
-        preset.Append("cache-type-k = ").AppendLine(LocalModelCatalog.ToLlamaServerCacheType(profile.KeyCachePrecision));
-        preset.Append("cache-type-v = ").AppendLine(LocalModelCatalog.ToLlamaServerCacheType(profile.ValueCachePrecision));
-        preset.Append("cache-type-k-draft = ").AppendLine(LocalModelCatalog.ToLlamaServerCacheType(profile.DraftKeyCachePrecision));
-        preset.Append("cache-type-v-draft = ").AppendLine(LocalModelCatalog.ToLlamaServerCacheType(profile.DraftValueCachePrecision));
-        preset.Append("batch-size = ").AppendLine(Invariant(recipe.BatchTokens));
-        preset.Append("ubatch-size = ").AppendLine(Invariant(recipe.MicroBatchTokens));
-        preset.AppendLine("flash-attn = on");
-        preset.AppendLine("gpu-layers = all");
-        preset.AppendLine("split-mode = none");
-        preset.AppendLine("main-gpu = 0");
-        preset.AppendLine("fit = off");
-        preset.AppendLine("load-mode = dio");
+        var entries = new List<KeyValuePair<string, string>>();
+        void Set(string key, string value) => entries.Add(new(key, value));
+
+        Set("model", modelPath);
+        Set("load-on-startup", "false");
+        Set("ctx-size", Invariant(profile.ContextTokens));
+        Set("n-predict", Invariant(LocalAiGatewayProviderDefinition.MaximumOutputTokens));
+        Set("parallel", Invariant(recipe.ParallelRequests));
+        Set("cache-type-k", LocalModelCatalog.ToLlamaServerCacheType(profile.KeyCachePrecision));
+        Set("cache-type-v", LocalModelCatalog.ToLlamaServerCacheType(profile.ValueCachePrecision));
+        Set("cache-type-k-draft", LocalModelCatalog.ToLlamaServerCacheType(profile.DraftKeyCachePrecision));
+        Set("cache-type-v-draft", LocalModelCatalog.ToLlamaServerCacheType(profile.DraftValueCachePrecision));
+        Set("batch-size", Invariant(recipe.BatchTokens));
+        Set("ubatch-size", Invariant(recipe.MicroBatchTokens));
+        Set("flash-attn", "on");
+        Set("gpu-layers", "all");
+        Set("split-mode", "none");
+        Set("main-gpu", "0");
+        Set("fit", "off");
+        Set("load-mode", "dio");
         switch (recipe.SpeculativeDecoding)
         {
             case SpeculativeDecodingMode.DraftMtp:
-                preset.AppendLine("spec-type = draft-mtp");
-                preset.Append("spec-draft-n-max = ").AppendLine(Invariant(recipe.SpeculativeDraftMaxTokens));
-                preset.AppendLine("spec-draft-backend-sampling = true");
+                Set("spec-type", "draft-mtp");
+                Set("spec-draft-n-max", Invariant(recipe.SpeculativeDraftMaxTokens));
+                Set("spec-draft-backend-sampling", "true");
                 break;
             case SpeculativeDecodingMode.DraftDFlash:
-                preset.AppendLine("spec-type = draft-dflash");
-                preset.Append("spec-draft-model = ").AppendLine(draftModelPath);
-                preset.Append("spec-draft-n-max = ").AppendLine(Invariant(recipe.SpeculativeDraftMaxTokens));
-                preset.AppendLine("spec-draft-backend-sampling = true");
+                Set("spec-type", "draft-dflash");
+                Set("spec-draft-model", draftModelPath!);
+                Set("spec-draft-n-max", Invariant(recipe.SpeculativeDraftMaxTokens));
+                Set("spec-draft-backend-sampling", "true");
                 break;
             case SpeculativeDecodingMode.None:
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(recipe.SpeculativeDecoding));
         }
-        preset.Append("temperature = ").AppendLine(Invariant(sampling.Temperature));
-        preset.Append("top-k = ").AppendLine(Invariant(sampling.TopK));
-        preset.Append("top-p = ").AppendLine(Invariant(sampling.TopP));
-        preset.Append("min-p = ").AppendLine(Invariant(sampling.MinP));
-        preset.Append("repeat-penalty = ").AppendLine(Invariant(sampling.RepetitionPenalty));
-        preset.Append("presence-penalty = ").AppendLine(Invariant(sampling.PresencePenalty));
-        preset.AppendLine("jinja = true");
-        preset.AppendLine("reasoning = on");
-        preset.AppendLine("reasoning-format = deepseek");
-        preset.AppendLine("context-shift = true");
+        Set("temperature", Invariant(sampling.Temperature));
+        Set("top-k", Invariant(sampling.TopK));
+        Set("top-p", Invariant(sampling.TopP));
+        Set("min-p", Invariant(sampling.MinP));
+        Set("repeat-penalty", Invariant(sampling.RepetitionPenalty));
+        Set("presence-penalty", Invariant(sampling.PresencePenalty));
+        Set("jinja", "true");
+        Set("reasoning", "on");
+        Set("reasoning-format", "deepseek");
+        Set("context-shift", "true");
+
+        ApplyOverrides(entries, overrides);
+
+        var preset = new StringBuilder();
+        preset.AppendLine("version = 1");
+        preset.AppendLine();
+        preset.Append('[').Append(model.Id).AppendLine("]");
+        foreach (var (key, value) in entries)
+            preset.Append(key).Append(" = ").AppendLine(value);
         return preset.ToString();
+    }
+
+    /// <summary>
+    /// Applies overrides in file order: a null value removes the generated key, an existing key
+    /// keeps its position with the new value, and a new key is appended.
+    /// </summary>
+    private static void ApplyOverrides(
+        List<KeyValuePair<string, string>> entries,
+        ImmutableArray<LocalAiRecipeOverride> overrides)
+    {
+        foreach (LocalAiRecipeOverride entry in overrides)
+        {
+            int index = entries.FindIndex(item => string.Equals(item.Key, entry.Key, StringComparison.Ordinal));
+            if (entry.Value is null)
+            {
+                if (index >= 0)
+                    entries.RemoveAt(index);
+            }
+            else if (index >= 0)
+            {
+                entries[index] = new(entry.Key, entry.Value);
+            }
+            else
+            {
+                entries.Add(new(entry.Key, entry.Value));
+            }
+        }
     }
 
     private static string Invariant<T>(T value) where T : IFormattable =>

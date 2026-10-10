@@ -15,6 +15,7 @@ internal static partial class ApprovalRequestHelper
 
     internal static async Task<PendingRequestBaseline> CaptureSetupBaselineOnceAsync(
         SetupContext ctx,
+        ISetupPairingRequests requests,
         ApprovalRequestKind kind,
         CancellationToken ct)
     {
@@ -27,7 +28,7 @@ internal static partial class ApprovalRequestHelper
         if (baseline is not null)
             return baseline;
 
-        baseline = await CapturePendingRequestBaselineAsync(ctx, kind, ct);
+        baseline = await CapturePendingRequestBaselineAsync(requests, kind, ct);
         if (baseline.Success || baseline.PluginNotFound)
         {
             if (kind == ApprovalRequestKind.Device)
@@ -40,37 +41,24 @@ internal static partial class ApprovalRequestHelper
     }
 
     internal static async Task<PendingRequestBaseline> CapturePendingRequestBaselineAsync(
-        SetupContext ctx,
+        ISetupPairingRequests requests,
         ApprovalRequestKind kind,
         CancellationToken ct)
     {
-        var authorization = ctx.SharedGatewayToken ?? ctx.BootstrapToken;
-        if (string.IsNullOrWhiteSpace(authorization))
-            return PendingRequestBaseline.Fail("No gateway token is available to capture the pending approval baseline.");
-
-        var env = new Dictionary<string, string> { ["OPENCLAW_GATEWAY_TOKEN"] = authorization };
         var noun = Noun(kind);
-        var pending = await ctx.Commands.RunInWslAsync(
-            ctx.DistroName!,
-            $"""{ctx.WslPathPrefix} && openclaw {noun} list --json""",
-            TimeSpan.FromSeconds(30),
-            env,
-            ct,
-            inputViaStdin: true);
-
-        var output = $"{pending.Stdout.Trim()} {pending.Stderr.Trim()}".Trim();
-        if (pending.ExitCode != 0)
+        var pending = await requests.ListAsync(kind, TimeSpan.FromSeconds(30), ct);
+        if (!pending.Success)
         {
             return PendingRequestBaseline.Fail(
-                $"Could not capture pending {noun} before opening the setup socket (exit {pending.ExitCode}): {output}",
-                IsPluginNotFoundError(output));
+                $"Could not capture pending {noun} before opening the setup socket ({pending.FailureDetail}): {pending.Output}",
+                IsPluginNotFoundError(pending.Output));
         }
 
-        var parsed = TryReadPendingRequestIds(pending.Stdout.Trim());
+        var parsed = TryReadPendingRequestIds(pending.Output);
         if (parsed.Success)
             return PendingRequestBaseline.SuccessResult(parsed.RequestIds);
 
-        if (IsExplicitNoPendingMessage(pending.Stdout))
+        if (IsExplicitNoPendingMessage(pending.Output))
             return PendingRequestBaseline.SuccessResult([]);
 
         return PendingRequestBaseline.Fail(
@@ -340,7 +328,7 @@ internal static partial class ApprovalRequestHelper
             : RequestIdParseResult.NotFound("Approval request ID contained unsafe characters.");
     }
 
-    private static string Noun(ApprovalRequestKind kind)
+    internal static string Noun(ApprovalRequestKind kind)
         => kind switch
         {
             ApprovalRequestKind.Device => "devices",

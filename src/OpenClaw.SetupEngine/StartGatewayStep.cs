@@ -8,6 +8,7 @@ public sealed class StartGatewayStep : SetupStep
     // health. Leave 30s for CLI preparation instead of killing it at 30s.
     internal static readonly TimeSpan RestartCommandTimeout = TimeSpan.FromSeconds(420);
     internal static readonly TimeSpan StartCommandTimeout = TimeSpan.FromSeconds(90);
+    internal static readonly TimeSpan HealthPollInterval = TimeSpan.FromMilliseconds(500);
     public override string Id => "start-gateway";
     public override string DisplayName => "Start gateway";
     public override RetryPolicy Retry => new(MaxAttempts: 3, InitialDelay: TimeSpan.FromSeconds(3));
@@ -102,6 +103,17 @@ public sealed class StartGatewayStep : SetupStep
                 }
 
                 ctx.Logger.Info($"Port {ctx.Config.GatewayPort} is owned by openclaw-gateway.service (PID {pid}). Post-install port check succeeded.");
+                return await WaitForHealthAsync(ctx, ct);
+            }
+
+            // Installation may have started the unit before it bound the port; a CLI start would be a slow no-op.
+            var unitState = await ctx.Commands.RunInWslAsync(
+                distro, "systemctl --user is-active openclaw-gateway.service",
+                TimeSpan.FromSeconds(10), ct: ct);
+            if (unitState.ExitCode == 0 && unitState.Stdout.Trim() == "active")
+            {
+                ctx.Logger.Info("openclaw-gateway.service is already active; waiting for gateway health without starting it again.");
+                return await WaitForHealthAsync(ctx, ct);
             }
         }
 
@@ -210,7 +222,7 @@ public sealed class StartGatewayStep : SetupStep
 
             ctx.Logger.Debug($"Gateway not yet accepting connections (curl exit={status.ExitCode}, response={status.Stdout.Trim()})");
 
-            await Task.Delay(2000, ct);
+            await Task.Delay(HealthPollInterval, ct);
         }
 
         // Capture service status and journal for diagnostics

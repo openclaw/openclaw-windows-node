@@ -570,6 +570,8 @@ public sealed class SetupContext
     internal PendingRequestBaseline? CurrentNodeApprovalBaseline { get; set; }
     public GatewaySelfInfo? ObservedGatewaySelf { get; set; }
     public GatewayCompatibilityException? GatewayCompatibilityFailure { get; set; }
+    /// <summary>Provenance failure captured by the handshake authorizer during the current setup connect attempt.</summary>
+    internal StepResult? PairingEndpointTrustFailure { get; set; }
     public string? WindowsTailnetDnsSuffix { get; set; }
     public string? TailscaleDnsName { get; set; }
     public IExternalAuthorizationPresenter? ExternalAuthorizationPresenter { get; set; }
