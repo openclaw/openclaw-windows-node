@@ -208,6 +208,82 @@ public class InteractiveGatewayCredentialResolverTests : IDisposable
         Assert.Equal(CredentialResolver.SourceSharedGatewayToken, credential.Source);
     }
 
+    [Fact]
+    public void TryResolve_UsesDeviceTokenFromTheUrlDirectory()
+    {
+        const string urlA = "wss://gateway.example/routeA";
+        const string urlB = "wss://gateway.example/routeB";
+        var record = new GatewayRecord { Id = "gw-1", Url = urlB };
+        _registry.AddOrUpdate(record);
+        _registry.SetActive(record.Id);
+
+        var root = _registry.GetIdentityDirectory(record.Id);
+        Directory.CreateDirectory(root);
+        var stamped = new DeviceIdentity(root);
+        stamped.Initialize();
+        stamped.StoreDeviceTokenForRole("operator", "token-a", ["operator.read"]);
+        LegacyStartupDeviceToken.StampBoundUrl(root, urlA);
+
+        var realm = LegacyStartupDeviceToken.SelectIdentityDirectory(root, urlB);
+        var paired = new DeviceIdentity(realm);
+        paired.Initialize();
+        paired.StoreDeviceTokenForRole("operator", "token-b", ["operator.read"]);
+
+        var legacyDir = Path.Combine(_tempDir, "legacy-settings");
+        Directory.CreateDirectory(legacyDir);
+        var legacy = new DeviceIdentity(legacyDir);
+        legacy.Initialize();
+        legacy.StoreDeviceTokenForRole("operator", "token-a", ["operator.read"]);
+
+        var resolved = InteractiveGatewayCredentialResolver.TryResolve(
+            _registry,
+            legacyDir,
+            DeviceIdentityFileReader.Instance,
+            urlB,
+            null,
+            null,
+            out var credential);
+
+        Assert.True(resolved);
+        Assert.Equal("token-b", credential!.Token);
+        Assert.Equal(CredentialResolver.SourceDeviceToken, credential.Source);
+    }
+
+    [Fact]
+    public void TryResolve_ExistingRecord_DoesNotUseUnstampedLegacyToken()
+    {
+        const string urlA = "wss://gateway.example/routeA";
+        const string urlB = "wss://gateway.example/routeB";
+        var record = new GatewayRecord { Id = "gw-1", Url = urlB };
+        _registry.AddOrUpdate(record);
+        _registry.SetActive(record.Id);
+
+        var root = _registry.GetIdentityDirectory(record.Id);
+        Directory.CreateDirectory(root);
+        var stamped = new DeviceIdentity(root);
+        stamped.Initialize();
+        stamped.StoreDeviceTokenForRole("operator", "token-a", ["operator.read"]);
+        LegacyStartupDeviceToken.StampBoundUrl(root, urlA);
+
+        var legacyDir = Path.Combine(_tempDir, "legacy-settings");
+        Directory.CreateDirectory(legacyDir);
+        var legacy = new DeviceIdentity(legacyDir);
+        legacy.Initialize();
+        legacy.StoreDeviceTokenForRole("operator", "token-a", ["operator.read"]);
+
+        var resolved = InteractiveGatewayCredentialResolver.TryResolve(
+            _registry,
+            legacyDir,
+            DeviceIdentityFileReader.Instance,
+            urlB,
+            null,
+            null,
+            out var credential);
+
+        Assert.False(resolved);
+        Assert.Null(credential);
+    }
+
     private sealed class MockDeviceIdentityReader : IDeviceIdentityReader
     {
         public string? OperatorToken { get; set; }

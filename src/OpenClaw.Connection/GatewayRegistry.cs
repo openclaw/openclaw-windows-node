@@ -608,7 +608,10 @@ public sealed class GatewayRegistry
                     Directory.CreateDirectory(newIdentityDir);
                 var dest = Path.Combine(newIdentityDir, "device-key-ed25519.json");
                 if (!File.Exists(dest))
+                {
                     File.Copy(legacyIdentity, dest, overwrite: false);
+                    LegacyStartupDeviceToken.StampBoundUrl(newIdentityDir, gatewayUrl);
+                }
                 logger?.Info($"[Registry] Identity file copied to {newIdentityDir}");
             }
             catch (Exception ex)

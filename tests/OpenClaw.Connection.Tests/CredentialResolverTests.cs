@@ -36,6 +36,65 @@ public class CredentialResolverTests
     }
 
     [Fact]
+    public void ResolveOperator_IgnoresDeviceToken_WhenLegacyBindingUrlDiffers()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "ocwn-legacy-bind-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            LegacyStartupDeviceToken.StampBoundUrl(directory, "wss://old.example");
+            _mockReader.OperatorToken = "paired-tok";
+            _mockReader.NodeToken = "node-tok";
+            var record = new GatewayRecord
+            {
+                Id = "gw-1",
+                Url = "wss://new.example",
+                SharedGatewayToken = "shared",
+                BootstrapToken = "boot"
+            };
+
+            var result = _resolver.ResolveOperator(record, directory);
+            var node = _resolver.ResolveNode(record, directory);
+
+            Assert.Equal("shared", result!.Token);
+            Assert.Equal(CredentialResolver.SourceSharedGatewayToken, result.Source);
+            Assert.Equal("shared", node!.Token);
+            Assert.Equal(CredentialResolver.SourceSharedGatewayToken, node.Source);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Fact]
+    public void ResolveOperator_KeepsDeviceToken_WhenLegacyBindingUrlMatches()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "ocwn-legacy-bind-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            LegacyStartupDeviceToken.StampBoundUrl(directory, "wss://gateway.example");
+            _mockReader.OperatorToken = "paired-tok";
+            var record = new GatewayRecord
+            {
+                Id = "gw-1",
+                Url = "WSS://Gateway.Example",
+                SharedGatewayToken = "shared"
+            };
+
+            var result = _resolver.ResolveOperator(record, directory);
+
+            Assert.Equal("paired-tok", result!.Token);
+            Assert.Equal(CredentialResolver.SourceDeviceToken, result.Source);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Fact]
     public void ResolveOperator_FallsToSharedToken_WhenNoDeviceToken()
     {
         var record = new GatewayRecord

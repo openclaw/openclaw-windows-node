@@ -337,6 +337,7 @@ public sealed class AppRefactorContractTests
             "BeginManualGatewayLifecycleOperationAsync",
             "var previousActiveId = _registry.ActiveGatewayId",
             "await _connectionManager.DisconnectAsync()",
+            "LegacyStartupDeviceToken.SelectIdentityDirectory(",
             "BeginTransactionalTokenClear(identityDir, _logger)");
         AssertInOrder(
             serviceConnect,
@@ -707,13 +708,17 @@ public sealed class AppRefactorContractTests
     {
         var source = ReadAppSources();
         var connectMethod = ExtractMethod(source, "TryConnectGatewayIfCredentialAvailable");
-        var nodeCredentialMethod = ExtractMethod(source, "ResolveStartupNodeCredential");
+        var nodeCredentialMethod = ExtractMethod(source, "ChooseStartupNodeCredential");
 
-        Assert.Contains("ResolveStartupNodeCredential(record, resolver, identityDir)", connectMethod);
+        Assert.Contains("LegacyStartupDeviceToken.SelectIdentityDirectory(", connectMethod);
+        Assert.Contains("ChooseStartupNodeCredential(record, resolver, identityDir, copyLegacyIdentity)", connectMethod);
+        Assert.Contains("if (!copyLegacyIdentity)", nodeCredentialMethod);
+        Assert.Contains("RefuseUncopiedLegacyDeviceCredential(", connectMethod);
         Assert.Contains("_connectionManager.ConnectNodeOnlyAsync(record.Id)", connectMethod);
-        Assert.Contains("resolver.ResolveNodeDetailed(record, SettingsManager.SettingsDirectoryPath)", nodeCredentialMethod);
-        Assert.Contains("ResolveStartupCredentialOrThrow", nodeCredentialMethod);
-        Assert.Contains("TryCopyLegacyIdentityToGateway(record.Id, identityDir)", nodeCredentialMethod);
+        Assert.Contains("LegacyStartupDeviceToken.Prefer(", nodeCredentialMethod);
+        Assert.Contains("ResolveNodeDetailed(record, dir)", nodeCredentialMethod);
+        Assert.Contains("SettingsManager.SettingsDirectoryPath", nodeCredentialMethod);
+        Assert.Contains("ResolveStartupCredentialOrThrow", connectMethod);
     }
 
     [Fact]
@@ -727,6 +732,7 @@ public sealed class AppRefactorContractTests
         Assert.Contains("ShowTransientConnectionError(ex.Message)", connectMethod);
         Assert.Equal(2, Regex.Matches(connectMethod, "catch \\(DeviceIdentityLoadException ex\\)").Count);
         Assert.Equal(2, Regex.Matches(connectMethod, "ShowTransientConnectionError\\(ex.Message\\);\\s*return false;").Count);
+        Assert.Equal(2, Regex.Matches(connectMethod, "RefuseUncopiedLegacyDeviceCredential\\(").Count);
         Assert.Contains("GatewayCredentialResolutionStatus.Unreadable", resolutionMethod);
         Assert.Contains("GatewayCredentialResolutionStatus.Corrupt", resolutionMethod);
         Assert.Contains("throw new DeviceIdentityLoadException", resolutionMethod);
@@ -2187,7 +2193,7 @@ public sealed class AppRefactorContractTests
 
     private static string ExtractMethod(string source, string methodName, string? parameterHint = null)
     {
-        var pattern = $@"(?m)^\s*(?:(?:private|protected|public|internal)\s+)?(?:static\s+)?(?:async\s+)?(?:Task(?:<[^>]+>)?|System\.Threading\.Tasks\.Task|void|bool|int|string\??|object\??|IntPtr|TrayMenuSnapshot|RollbackResult|OpenClaw\.Connection\.GatewayCredential\?|AppShutdownPlan)\s+(?:[A-Za-z0-9_]+\.)?{Regex.Escape(methodName)}\s*\(";
+        var pattern = $@"(?m)^\s*(?:(?:private|protected|public|internal)\s+)?(?:static\s+)?(?:async\s+)?(?:Task(?:<[^>]+>)?|System\.Threading\.Tasks\.Task|void|bool|int|string\??|object\??|IntPtr|TrayMenuSnapshot|RollbackResult|OpenClaw\.Connection\.GatewayCredential\?|OpenClaw\.Connection\.LegacyStartupCredentialChoice|AppShutdownPlan)\s+(?:[A-Za-z0-9_]+\.)?{Regex.Escape(methodName)}\s*\(";
         var matches = Regex.Matches(source, pattern);
         Assert.True(matches.Count > 0, $"Could not find method {methodName}.");
 
