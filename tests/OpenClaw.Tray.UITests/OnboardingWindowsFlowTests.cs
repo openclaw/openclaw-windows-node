@@ -855,6 +855,152 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
         Assert.All(host.Checks.Concat(host.Connects), request => Assert.Equal("wss://mounted-flow.invalid", request.GatewayUrl));
     }
 
+    [Fact]
+    public async Task LegacyWizard_FinalSigtermCompletes_EarlierSigtermStaysAnError()
+    {
+        const string token = "sigterm-fixture-token";
+        var mode = "early";
+        await using var server = await FixtureGatewayServer.StartAsync(
+            GatewayScenario.CreateNativeSetup((method, _) =>
+            {
+                if (method == "wizard.start")
+                    return mode == "final" ? FinalStep() : EarlyStep();
+                if (method == "wizard.next")
+                    return new
+                    {
+                        sessionId = "sigterm-session",
+                        done = true,
+                        error = GatewayWizardRestartRecoveryPolicy.HostedWizardTerminationError,
+                    };
+                if (method == "logs.tail")
+                    return new { file = "fixture.log", cursor = 0, size = 0, lines = Array.Empty<string>() };
+                return new { ok = true };
+            }),
+            token);
+
+        await RunAsync("early");
+        mode = "final";
+        await RunAsync("final");
+
+        async Task RunAsync(string phase)
+        {
+            var seen = server.Requests.Count;
+            await WithWindowAsync(async (window, frame, data) =>
+            {
+                var registry = new GatewayRegistry(data);
+                var record = registry.AddOrUpdate(new()
+                {
+                    Id = "sigterm-fixture",
+                    Url = server.Endpoint.ToString(),
+                    FriendlyName = "SIGTERM fixture",
+                    SharedGatewayToken = token,
+                    IsLocal = false,
+                });
+                registry.SetActive(record.Id);
+                registry.Save();
+                // Existing leaves the WSL workspace untouched. The visible result is the
+                // completion page, not a Windows node guidance install.
+                window.SelectGatewayRoute(SetupGatewayRoute.Existing);
+                Assert.Equal(SetupGatewayRoute.Existing, window.AccessDraft.Route);
+                Assert.False(OnboardingFlowPolicy.UsesWslWorkspaceFinalization(window.AccessDraft.Route));
+                Assert.True(window.TryNavigateToLegacyWizard());
+                var wizard = await MountedPageAsync<WizardPage>(window, frame);
+                if (phase == "early")
+                    await AssertEarlyAsync(wizard, frame);
+                else
+                    await AssertFinalAsync(frame);
+                var methods = string.Join(",", server.Requests.Skip(seen).Select(request => request.Method));
+                output.WriteLine($"SIGTERM-{phase} requests={methods}");
+                Assert.Contains(server.Requests.Skip(seen), request => request.Method == "wizard.start");
+                Assert.Contains(server.Requests.Skip(seen), request => request.Method == "wizard.next");
+            });
+        }
+
+        async Task AssertEarlyAsync(WizardPage wizard, Frame frame)
+        {
+            await WaitRendered(frame, () =>
+                Find<TextBlock>(wizard, "TitleText").Text == "Channel" &&
+                Find<Button>(wizard, "PrimaryButton").IsEnabled &&
+                Equals(Find<Button>(wizard, "PrimaryButton").Content, "Yes"),
+                "early wizard step");
+            output.WriteLine("SIGTERM-early before " + Describe(frame));
+            Invoke(Find<Button>(wizard, "PrimaryButton"));
+            await WaitRendered(frame, () =>
+                frame.Content is WizardPage &&
+                Find<TextBlock>(wizard, "ErrorText").Text ==
+                    GatewayWizardRestartRecoveryPolicy.HostedWizardTerminationError &&
+                Find<TextBlock>(wizard, "StatusText").Text == "Wizard needs attention" &&
+                Equals(Find<Button>(wizard, "PrimaryButton").Content, "Start wizard again"),
+                "early SIGTERM stays an error");
+            Assert.Equal(Visibility.Visible, Find<TextBlock>(wizard, "ErrorText").Visibility);
+            output.WriteLine("SIGTERM-early after " + Describe(frame));
+        }
+
+        async Task AssertFinalAsync(Frame frame)
+        {
+            await WaitRendered(frame, () =>
+                frame.Content is WizardPage wizard &&
+                Find<TextBlock>(wizard, "TitleText").Text == "done" &&
+                Find<Button>(wizard, "PrimaryButton").IsEnabled &&
+                Equals(Find<Button>(wizard, "PrimaryButton").Content, "Continue"),
+                "final wizard step");
+            output.WriteLine("SIGTERM-final before " + Describe(frame));
+            Invoke(Find<Button>(Assert.IsType<WizardPage>(frame.Content), "PrimaryButton"));
+            await WaitRendered(frame, () => frame.Content is CompletePage { IsLoaded: true },
+                "final SIGTERM completion");
+            var complete = Assert.IsType<CompletePage>(frame.Content);
+            Assert.Equal("All set!", Find<TextBlock>(complete, "TitleText").Text);
+            Assert.Equal("OpenClaw is ready to go", Find<TextBlock>(complete, "SubtitleText").Text);
+            Assert.Equal(Visibility.Collapsed, Find<Border>(complete, "ErrorCard").Visibility);
+            output.WriteLine("SIGTERM-final after " + Describe(frame));
+        }
+
+        static object EarlyStep() => new
+        {
+            sessionId = "sigterm-session",
+            done = false,
+            stepIndex = 0,
+            totalSteps = 2,
+            step = new
+            {
+                id = "channel",
+                type = "confirm",
+                title = "Channel",
+                message = "Keep this gateway?",
+            },
+        };
+
+        static object FinalStep() => new
+        {
+            sessionId = "sigterm-session",
+            done = false,
+            stepIndex = 0,
+            totalSteps = 1,
+            step = new
+            {
+                id = "done",
+                type = "note",
+                title = "done",
+                message = "The last question is answered.",
+            },
+        };
+    }
+
+    private static Task WaitRendered(Frame frame, Func<bool> ready, string operation) =>
+        TestSupport.WaitForRenderedConditionAsync(ready, operation, () => Describe(frame));
+
+    private static string Describe(Frame frame)
+    {
+        if (frame.Content is not FrameworkElement page)
+            return $"page={frame.Content?.GetType().Name ?? "null"}";
+        string Text(string name) => page.FindName(name) is TextBlock block ? block.Text : "";
+        var primary = page.FindName("PrimaryButton") is Button button
+            ? $"{button.Content}|enabled={button.IsEnabled}"
+            : "";
+        return $"page={page.GetType().Name} title={Text("TitleText")} subtitle={Text("SubtitleText")} " +
+            $"status={Text("StatusText")} error={Text("ErrorText")} primary={primary}";
+    }
+
     private static void AssertNativeConnectionText(string suffix, object actual)
     {
         // Resolve expected copy independently, using the same default language context as the page.
