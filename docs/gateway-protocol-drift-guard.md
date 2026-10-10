@@ -1,7 +1,7 @@
 # Gateway protocol drift detection
 
 Gateway protocol compatibility has two complementary checks:
-**nightly upstream observation** discovers changes outside this repository;
+**publication-triggered upstream observation with nightly reconciliation** discovers changes outside this repository;
 **offline regression tests** protect the client behavior already recorded here.
 A passing offline test is not evidence that the Windows client matches current
 upstream or implements every Gateway feature.
@@ -38,7 +38,8 @@ whose declared surface contains no question methods or events.
 ## Nightly upstream observation
 
 The standalone **Upstream Gateway Protocol check** workflow is the upstream
-change-discovery path. It runs nightly and supports manual dispatch on the
+change-discovery path. It accepts exact-publication notifications, runs nightly
+and supports manual dispatch on the
 default branch, separately from normal build CI and required PR checks.
 Scheduling begins after the workflow lands on that branch; authenticated
 issue-to-draft-PR execution must be verified by a publishing run.
@@ -65,6 +66,15 @@ unsupported**, or **pending** classifications. Confirmed gaps require
 production code and fixture-Gateway changes where needed, with behavioral
 tests in a linked draft implementation PR. Already-covered work must be linked,
 not duplicated. A schema-only or empty PR is not a behavior fix.
+
+Reports also assess current Windows source/test evidence independently of
+upstream deltas. On this branch, the first-run report explicitly marks operator
+question-answer production support pending. Producer-only request/waitAnswer
+methods have reviewed role exemptions, not blanket Q&A support. Unknown methods
+and event definitions remain pending. Supported decisions require reviewed
+production dispatch/handler/construction and behavioral-test evidence, and are
+invalidated when that evidence changes. Closing an issue does not erase pending
+local support. See the monitor document for the policy and exact event contract.
 
 Exact commits, package versions and hashes are reproducibility evidence, not
 runtime dependency pins. For schedule, watch scope, cumulative review baselines,

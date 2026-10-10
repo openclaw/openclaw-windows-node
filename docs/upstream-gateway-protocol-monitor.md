@@ -1,7 +1,7 @@
-# Nightly upstream Gateway protocol monitor
+# Upstream Gateway publication and capability monitor
 
 The **Upstream Gateway Protocol check** workflow runs at **05:41 UTC daily** and
-supports manual dispatch on the default branch. It is independent of `ci.yml`,
+reconciles publication notifications and supports manual dispatch on the default branch. It is independent of `ci.yml`,
 has no push/PR trigger, and must not be added to required PR checks. It does not
 change which Gateway version Windows installs or the separate npm-latest policy.
 
@@ -11,6 +11,8 @@ change which Gateway version Windows installs or the separate npm-latest policy.
    and `@openclaw/gateway-protocol@latest` on every run. The generated protocol
    schema is read directly from the integrity-checked npm tarball in memory.
    No upstream code, package install scripts or archive paths are executed.
+   On a publication event, only the announced package uses its exact version
+   instead of `latest`. The other package remains an independent latest track.
 2. The report separates **main early warning**, **released Gateway compatibility**
    and the **independently versioned protocol package**. Since npm may omit
    `gitHead`, released source is resolved from registry-supplied SLSA provenance,
@@ -24,15 +26,20 @@ change which Gateway version Windows installs or the separate npm-latest policy.
    Test/fixture files are excluded. A missing group, relocated registry or
    truncated API tree fails explicitly. Other upstream directories are outside
    this monitor's automatic watch scope; this is not a completeness guarantee.
-4. The last reviewed (closed) monitor issue's retained observation supplies
+4. The last reviewed (closed, without the pending-Windows marker) monitor issue's retained observation supplies
    cumulative field/source deltas, even if a later job in that run failed.
    Deferred nights never advance this review baseline or lose unreviewed deltas.
    Without one, the monitor requests a **baseline review**, not an all-clear.
    Optional field additions are informational; removals, constraints, scopes
    and new surfaces require review, not an automatic claim of breakage.
-5. A separate job creates one durable, labeled **review-candidate issue**.
-   A content fingerprint excludes moving commit IDs, timestamps and version
-   labels. Both open and closed issues deduplicate the same observation.
+5. Every observation assesses current Windows source and tests, even without
+   a baseline or upstream changes. A separate job creates one durable, labeled
+   **review-candidate issue**. The content fingerprint includes local capability
+   evidence, support policy and the exact publication identity when present.
+   Moving commit IDs and timestamps alone do not trigger reassessment.
+   Open issues deduplicate repeated observations. Closing an issue with a pending
+   tracked Windows gap candidate does not acknowledge away the gap: the same issue reopens.
+   Merely unassessed surfaces do not force reopening or prevent a reviewed baseline.
    With a different observation and an existing open monitor issue, new work
    waits rather than spawning competing implementation agents. Every run still
    records current evidence. After the active issue closes, the newest
@@ -61,13 +68,99 @@ be linked instead of duplicated.
 
 If all changes are already supported or intentionally unsupported, the agent
 records evidence and closes the issue without creating a placeholder PR.
-Closing the issue acknowledges that fingerprint. Reopen it to request another
-attempt. Removing Copilot's assignee allows reassignment only when no linked
+Closing the issue acknowledges that fingerprint only when no tracked Windows gap
+candidates remain pending. Otherwise a later run reopens it, subject to active-issue
+backpressure. Removing Copilot's assignee allows reassignment only when no linked
 implementation PR exists. A linked PR must have a `Closes`/`Fixes`/`Resolves`
 reference to the issue; unrelated mentions are not remediation evidence. Closed
 implementation PRs with an open issue fail visibly and require reconciliation
 instead of spawning duplicates. Do not close pending work merely to make the
-monitor green.
+monitor green. Before assignment, the handoff also checks open PR titles for
+question-answer, interactive Gateway/fixture and chat-parity work. It adds an idempotent
+comment linking candidates and fails visibly with `related-work-needs-review`, without
+starting another agent. Existing assignment/stall checks take precedence.
+Title matches are a conservative collision check, not
+proof that the PR implements all gaps. A maintainer must reconcile coverage;
+unrelated mentions must not be presented as completed remediation.
+
+## Exact publication event contract
+
+The primary trigger is `repository_dispatch` with event type
+`gateway-protocol-published` and exactly these `client_payload` fields:
+
+```json
+{
+  "schema_version": 1,
+  "package_name": "openclaw",
+  "package_version": "2026.9.9",
+  "package_integrity": "<npm sha512 SRI>",
+  "source_repository": "openclaw/openclaw",
+  "source_commit": "<40 lowercase hex characters>"
+}
+```
+
+`package_name` also accepts `@openclaw/gateway-protocol`. The version must be
+an exact three-part published version, optionally with a prerelease suffix;
+tags, ranges, build metadata, arbitrary URLs/refs and extra fields are rejected.
+The receiver fetches that exact registry version, compares its SHA512 identity,
+binds the source commit using registry SLSA provenance, and verifies the commit
+in the fixed upstream GitHub repository. Payload fields never enter shell code.
+It does not resolve the announced package back to moving `latest`.
+
+The payload is a notification, not authority to run code or write. Observation
+still has read-only permissions and runs trusted default-branch scripts only.
+Publication and implementation remain separate jobs; the existing
+`COPILOT_GITHUB_TOKEN` remains confined to handoff. Repeated exact deliveries
+deduplicate when watched upstream and local evidence have not changed.
+Nightly reconciliation catches missed notifications and retains main early warning.
+Activation requires this workflow on the default branch and an upstream sender
+authorized to send the event. Receiver tests do not establish sender delivery.
+
+## Windows support evidence
+
+`report.json.capabilities` contains the exact local head, dirty-source indicator,
+SHA256 inventory of current tracked/untracked, non-ignored C# production/test
+files, policy hash, combined upstream/local input hash, per-surface assessments,
+and grouped feature obligations. `report.md` highlights the counts and grouped
+pending candidates, including **question-answer**, on the first observation and
+every unchanged-upstream run. All RPCs in the live method registry and all named
+`*Event` definitions are assessed. New unknown surfaces remain pending relevance
+review; they are not automatically required Windows features.
+The pending count is not a defect count. The handoff is explicitly limited to
+one evidenced, confirmed production capability gap per implementation PR;
+unassessed surfaces remain review backlog rather than a bulk implementation task.
+
+The reviewed local policy in `.github/scripts/gateway-capability-policy.json`
+describes Windows roles, not a frozen upstream schema contract. Producer-only
+`question.request` and `question.waitAnswer` have scoped intentional-unsupported
+rationales and fallbacks. This exemption never covers operator list/get/resolve,
+question events, scopes, choices/multiselect, IDs, submission or recovery.
+Authorization-scope changes invalidate those exemptions.
+
+The collector reuses the drift guard's index-aligned comment/literal masking
+approach and distinguishes dispatch calls, event-case candidates and request
+construction. These are navigation evidence only. Comments, dead strings, DTOs,
+mock implementations and even real call sites cannot by themselves establish
+support or reachability. No current surface has an automatically inferred
+supported classification. Missing extraction is a review gap, not proof of
+absence across all possible dynamic dispatch patterns.
+
+A reviewed `supported` policy decision must supply `surface`, `rationale`,
+the exact current `inputHash`, and `evidence` entries (`kind`, `file`, `sha256`)
+covering `dispatch`, `handler`, `construction` and `behavioral-test`.
+Production witnesses must be under `src/`, tests under `tests/`. Reviewers must
+inspect reachable production ownership and actual tests, not merely fill hashes.
+This is a reviewed attestation, not an automated test execution result.
+Changed production/test or watched upstream evidence invalidates it to pending.
+The initial policy intentionally has no supported attestations.
+The write-authorized publisher recomputes the assessment from its trusted
+checkout and refuses stale or altered artifact assessments before any write.
+
+The broad source hashes intentionally over-invalidate reviewed support rather
+than silently retaining it after a refactor. Main-only changes are early-warning
+review input, not an assertion that the released Gateway broke.
+Open event payloads and producer behavior not represented in schema still need
+the cumulative upstream source-delta review. This is not whole-product coverage.
 
 ## Activation and authentication
 
@@ -119,8 +212,8 @@ versions/integrities, tarball/schema/provenance SHA256 hashes and full classifie
 deltas and the reviewed baseline fingerprint. Provenance is reproducibility metadata, not a runtime dependency pin.
 Issue state, not artifact retention or a hand-maintained frozen snapshot,
 controls duplicate suppression. If old artifacts expire, the next observation
-requests a baseline comparison, but an already-reviewed fingerprint stays
-deduplicated.
+requests a baseline comparison. A fully resolved fingerprint stays deduplicated;
+still-pending local assessments remain actionable regardless of issue closure.
 
 The collector caps each response/decompressed tar at 32 MiB, each source
 inventory at 10,000 files and HTTP requests at 60 seconds. Jobs are bounded to
@@ -150,7 +243,7 @@ permissions to make its findings disappear.
 No credentials or network are required for the deterministic tests:
 
 ```powershell
-node --test .github\scripts\upstream-gateway-protocol.test.cjs
+node --test .github\scripts\upstream-gateway-protocol.test.cjs .github\scripts\gateway-capabilities.test.cjs
 ```
 
 For read-only live collection (outputs outside the checkout):
@@ -163,6 +256,9 @@ Remove-Item Env:GH_TOKEN
 ```
 
 Optionally set `PREVIOUS_REPORT` to a previous `report.json` to inspect deltas.
+For read-only replay of a publication, set `GITHUB_EVENT_NAME=repository_dispatch`
+and `GITHUB_EVENT_PATH` to a JSON file containing `action` and `client_payload`
+from the contract above. The collector verifies it against live trusted services.
 Local collection never creates an issue, assigns an agent or opens a PR.
 Repository-wide build/shared/tray validation remains required for code changes.
 The offline [Gateway protocol drift guard](gateway-protocol-drift-guard.md)

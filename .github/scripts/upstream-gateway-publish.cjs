@@ -1,6 +1,6 @@
 "use strict";
 
-const { validateReport, render } = require("./upstream-gateway-protocol.cjs");
+const { validateReport, render, assessLocal, hash } = require("./upstream-gateway-protocol.cjs");
 
 const LABEL = "upstream-gateway-protocol";
 const MARKER = "<!-- upstream-gateway-protocol:v1:";
@@ -16,6 +16,10 @@ Compare against CURRENT production code, typed client/DTOs, tests and the real-c
 Check open issues/PRs first, including ongoing chat parity work. Reuse/link existing implementation work;
 do not duplicate it. Report every relevant new or changed capability as supported (with code/test evidence),
 intentionally unsupported (with rationale and visible fallback), or pending (with a concrete implementation gap).
+Pending report counts include UNASSESSED relevance and behavior, not that many confirmed defects.
+Select at most ONE evidenced, confirmed production capability gap per implementation PR. Start with an explicit
+grouped candidate such as question-answer only after verifying current missing production wiring and existing work.
+Do not generate implementations for every schema method/definition. Leave other unassessed surfaces as review backlog.
 Questions are dedicated question.requested/question.resolved events and question.list/get/resolve RPCs,
 not agent stream=approval. Check authorization/operator.questions, IDs/session/run correlation, choices,
 multiselect/presentation modes, expiry, cancellation, submission and reconnect recovery.
@@ -61,6 +65,7 @@ async function findBaseline({ github, context }) {
   const issues = await boundedList(github, "GET /repos/{owner}/{repo}/issues",
     { ...context.repo, state: "closed", labels: LABEL, sort: "updated", direction: "desc" });
   const reviewed = issues.filter((issue) => !issue.pull_request
+    && !issue.body?.includes("<!-- windows-capability-pending -->")
     && /^<!-- upstream-gateway-protocol:v1:[a-f0-9]{64} -->\n/.test(issue.body ?? ""))
     .sort((a, b) => b.number - a.number)[0];
   if (!reviewed) return null;
@@ -72,7 +77,7 @@ async function findBaseline({ github, context }) {
     { ...context.repo, run_id: runId });
   if (run.path !== ".github/workflows/upstream-gateway-protocol.yml"
     || run.head_branch !== context.payload.repository.default_branch
-    || !["schedule", "workflow_dispatch"].includes(run.event)) fail("Untrusted baseline workflow run");
+    || !["schedule", "workflow_dispatch", "repository_dispatch"].includes(run.event)) fail("Untrusted baseline workflow run");
   const { data } = await github.request("GET /repos/{owner}/{repo}/actions/runs/{run_id}/artifacts",
     { ...context.repo, run_id: runId, per_page: 100 });
   if (!data.artifacts.some((artifact) => artifact.name === "upstream-gateway-protocol-report" && !artifact.expired)) {
@@ -82,23 +87,37 @@ async function findBaseline({ github, context }) {
   return { runId, fingerprint: reviewed.body.slice(MARKER.length, MARKER.length + 64) };
 }
 
-function decide(issues, fingerprint) {
+function decide(issues, fingerprint, pending = false) {
   const tracked = issues.filter((issue) => !issue.pull_request
     && /^<!-- upstream-gateway-protocol:v1:[a-f0-9]{64} -->\n/.test(issue.body ?? ""));
   const exact = tracked.find((issue) => issue.body.startsWith(marker(fingerprint)));
-  if (exact) return { action: exact.state === "closed" ? "reviewed" : "resume", issue: exact };
   const active = tracked.find((issue) => issue.state === "open");
+  if (exact?.state === "open") return { action: "resume", issue: exact };
+  if (exact && !pending) return { action: "reviewed", issue: exact };
   if (active) return { action: "defer", issue: active };
+  if (exact) return { action: "reopen", issue: exact };
   return { action: "create" };
 }
 
 async function publish({ github, context, report, core }) {
   validateReport(report);
+  if (!report.capabilities) fail("Publication requires a current Windows capability assessment");
+  // The artifact is data. Reassess against this trusted checkout before a write,
+  // rather than accepting classifications or prose supplied by an artifact.
+  if (report.capabilities) {
+    const current = assessLocal(report);
+    if (current.assessmentHash !== report.capabilities.assessmentHash)
+      fail("Local capability evidence changed since observation; rerun before publication");
+    report = { ...report, capabilities: current };
+  }
   const repo = context.repo;
   const issues = await boundedList(github, "GET /repos/{owner}/{repo}/issues",
     { ...repo, state: "all", labels: LABEL, sort: "created", direction: "desc" });
-  const decision = decide(issues, report.fingerprint);
+  const decision = decide(issues, report.fingerprint,
+    report.capabilities.pendingGaps.length > 0);
   if (decision.action !== "create") {
+    if (decision.action === "reopen") await github.request("PATCH /repos/{owner}/{repo}/issues/{issue_number}",
+      { ...repo, issue_number: decision.issue.number, state: "open" });
     core.info(`Protocol monitor: ${decision.action} on issue #${decision.issue.number}`);
     return { ...decision, issueNumber: decision.issue.number };
   }
@@ -108,9 +127,11 @@ async function publish({ github, context, report, core }) {
 
 ## Required outcome
 
-This is an upstream change-review candidate, not yet a confirmed production defect.
+This is an upstream/local capability review candidate, not yet a confirmed production defect.
 The first observation intentionally requests a baseline capability audit rather than assuming compatibility.
 Produce a supported / intentionally unsupported / pending table with code and test evidence.
+Pending counts include unassessed surfaces, not confirmed missing implementations. Select at most one
+confirmed production capability gap for a bounded implementation PR; retain the rest as review backlog.
 Confirm actionable gaps before implementing them. Link a draft PR with production and fixture changes as needed,
 or link existing work. If there is no gap, close with evidence, without an empty/schema-only PR.
 
@@ -176,6 +197,26 @@ async function handoff({ github, context, issueNumber, core, now = Date.now() })
     }
     core.info(`Issue #${issueNumber}: Copilot assigned, draft PR not yet observed`);
     return { state: "assigned-awaiting-pr" };
+  }
+  const related = await boundedList(github, "GET /repos/{owner}/{repo}/pulls", {
+    ...repo, state: "open", sort: "updated", direction: "desc",
+  });
+  const candidates = related.filter((pull) =>
+    /\bquestion[- .](?:answer|list|get|resolve|requested|resolved)\b|\bQ&A\b|\bchat parity\b|\binteractive (?:gateway|fixture)\b/i.test(pull.title ?? ""));
+  if (candidates.length) {
+    const numbers = candidates.map((pull) => pull.number);
+    if (!numbers.every((number) => Number.isSafeInteger(number) && number > 0)) fail("Invalid related PR number");
+    const workMarker = `<!-- upstream-gateway-related-work:${hash(numbers.sort((a, b) => a - b))} -->`;
+    const comments = await boundedList(github, "GET /repos/{owner}/{repo}/issues/{issue_number}/comments",
+      { ...repo, issue_number: issueNumber });
+    if (!comments.some((comment) => comment.body?.startsWith(workMarker)))
+      await github.request("POST /repos/{owner}/{repo}/issues/{issue_number}/comments", {
+        ...repo, issue_number: issueNumber,
+        body: `${workMarker}\nPotential existing question/interactive/chat-parity work: ${numbers.map((number) =>
+          `https://github.com/${repo.owner}/${repo.repo}/pull/${number}`).join(", ")}.\n`
+          + "This is not evidence of complete production support. Reconcile and link the existing work before starting a duplicate implementation task. Pending gaps remain open.",
+      });
+    fail(`Issue #${issueNumber}: related-work-needs-review. Reconcile linked candidate PRs before starting another task; no duplicate implementation was assigned.`);
   }
   const { data: repository } = await github.request("GET /repos/{owner}/{repo}", repo);
   const { data: assigned } = await github.request("POST /repos/{owner}/{repo}/issues/{issue_number}/assignees", {

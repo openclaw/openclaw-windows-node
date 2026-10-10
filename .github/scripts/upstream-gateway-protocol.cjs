@@ -4,6 +4,7 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const zlib = require("node:zlib");
+const capabilities = require("./gateway-capabilities.cjs");
 
 const UPSTREAM = "openclaw/openclaw";
 const MAX_BYTES = 32 * 1024 * 1024;
@@ -107,8 +108,9 @@ function provenanceCommit(attestation, info) {
     .map((item) => JSON.parse(Buffer.from(item.bundle.dsseEnvelope.payload, "base64").toString("utf8")));
   const digest = Buffer.from(info.integrity.slice(7), "base64").toString("hex");
   const commits = new Set();
+  const packageUrl = `pkg:npm/${info.name.replace(/^@/, "%40")}@${info.version}`;
   for (const statement of statements) {
-    check(statement.subject?.some((subject) => subject.name === `pkg:npm/${info.name}@${info.version}`
+    check(statement.subject?.some((subject) => subject.name === packageUrl
       && subject.digest?.sha512 === digest), "Provenance subject does not match npm package digest");
     const definition = statement.predicate?.buildDefinition;
     check(definition?.externalParameters?.workflow?.repository === `https://github.com/${UPSTREAM}`,
@@ -197,15 +199,62 @@ function fingerprint(report) {
   return hash({
     main: report.main.files, released: report.released.files,
     schema: report.protocol.schema, policy: 1,
+    ...(report.capabilities ? { localAssessment: report.capabilities.assessmentHash } : {}),
+    ...(report.publication ? { publication: report.publication } : {}),
   });
 }
 
-async function collect({ token, previous, outputDir }) {
+function validatePublication(payload) {
+  check(payload && Object.keys(payload).sort().join(",")
+    === "package_integrity,package_name,package_version,schema_version,source_commit,source_repository",
+  "Invalid publication payload fields");
+  check(payload.schema_version === 1 && payload.source_repository === UPSTREAM
+    && SHA.test(payload.source_commit)
+    && ["openclaw", "@openclaw/gateway-protocol"].includes(payload.package_name), "Invalid publication identity");
+  packageInfo({ name: payload.package_name, version: payload.package_version,
+    dist: { integrity: payload.package_integrity } }, payload.package_name);
+  check(/^\d+\.\d+\.\d+(?:-[a-zA-Z0-9]+(?:[.-][a-zA-Z0-9]+)*)?$/.test(payload.package_version),
+    "Publication requires an exact immutable package version");
+  return payload;
+}
+
+async function verifyPublication(payload, metadata, token, loadJson = json) {
+  validatePublication(payload);
+  const info = packageInfo(metadata, payload.package_name);
+  check(info.version === payload.package_version && info.integrity === payload.package_integrity,
+    "Publication does not match trusted registry metadata");
+  const attestation = await loadJson(
+    `https://registry.npmjs.org/-/npm/v1/attestations/${encodeURIComponent(info.name)}@${info.version}`);
+  check(provenanceCommit(attestation, info) === payload.source_commit, "Publication source provenance mismatch");
+  const commit = await loadJson(`https://api.github.com/repos/${UPSTREAM}/commits/${payload.source_commit}`, token);
+  check(commit.sha === payload.source_commit, "Publication source commit mismatch");
+}
+
+function metadataUrl(name, publication) {
+  const version = publication?.package_name === name ? publication.package_version : "latest";
+  return `https://registry.npmjs.org/${encodeURIComponent(name)}/${version}`;
+}
+
+function assessLocal(report, local = capabilities.readLocal(path.resolve(__dirname, "../.."))) {
+  const assessment = capabilities.assess({
+    schema: report.protocol.schema, local, hash,
+    upstreamHash: hash({ main: report.main.files, released: report.released.files, schema: report.protocol.schema }),
+  });
+  // Head and cleanliness are provenance. Content changes, not unrelated commits,
+  // drive reassessment. This also makes repeated exact publication deliveries idempotent.
+  assessment.assessmentHash = hash({ ...assessment, localHead: null, dirty: null });
+  return assessment;
+}
+
+async function collect({ token, previous, outputDir, publication, root = path.resolve(__dirname, "../..") }) {
+  if (publication) validatePublication(publication);
   const [head, gatewayMetadata, protocolMetadata] = await Promise.all([
     json(`https://api.github.com/repos/${UPSTREAM}/commits/main`, token),
-    json("https://registry.npmjs.org/openclaw/latest"),
-    json("https://registry.npmjs.org/@openclaw%2fgateway-protocol/latest"),
+    json(metadataUrl("openclaw", publication)),
+    json(metadataUrl("@openclaw/gateway-protocol", publication)),
   ]);
+  if (publication) await verifyPublication(publication,
+    publication.package_name === "openclaw" ? gatewayMetadata : protocolMetadata, token);
   const gateway = packageInfo(gatewayMetadata, "openclaw");
   const protocol = packageInfo(protocolMetadata, "@openclaw/gateway-protocol");
   const attestationUrl = `https://registry.npmjs.org/-/npm/v1/attestations/openclaw@${gateway.version}`;
@@ -229,7 +278,9 @@ async function collect({ token, previous, outputDir }) {
       released: sourceChanges(previous?.released.files, released.files),
       schema: schemaChanges(previous?.protocol.schema, schema),
     },
+    publication: publication ?? null,
   };
+  report.capabilities = assessLocal(report, capabilities.readLocal(root));
   report.fingerprint = fingerprint(report);
   report.evidenceHash = hash({ baseline: report.baseline, changes: report.changes });
   validateReport(report);
@@ -258,6 +309,23 @@ function validateReport(report) {
   check(HASH.test(report.released.attestationHash) && HASH.test(report.protocol.tarballHash)
     && report.protocol.schemaHash === hash(report.protocol.schema), "Invalid provenance hashes");
   validateSchema(report.protocol.schema);
+  if (report.publication) {
+    validatePublication(report.publication);
+    const info = report.publication.package_name === "openclaw" ? report.released.package : report.protocol;
+    check(info.version === report.publication.package_version && info.integrity === report.publication.package_integrity,
+      "Report publication package mismatch");
+    if (report.publication.package_name === "openclaw")
+      check(report.released.commit === report.publication.source_commit, "Report publication source mismatch");
+  }
+  if (report.capabilities) {
+    const { assessmentHash, ...assessment } = report.capabilities;
+    check(SHA.test(assessment.localHead) && typeof assessment.dirty === "boolean"
+      && HASH.test(assessment.inputHash) && HASH.test(assessment.policyHash)
+      && assessmentHash === hash({ ...assessment, localHead: null, dirty: null }), "Invalid capability evidence");
+    check(assessment.upstreamHash === hash({
+      main: report.main.files, released: report.released.files, schema: report.protocol.schema,
+    }), "Capability upstream evidence mismatch");
+  }
   check(report.fingerprint === fingerprint(report), "Report fingerprint mismatch");
   check(report.baseline === null || (HASH.test(report.baseline?.fingerprint)
     && SHA.test(report.baseline.mainCommit) && SHA.test(report.baseline.releasedCommit)), "Invalid review baseline");
@@ -309,12 +377,17 @@ function render(report) {
   lines.push("", "Classification: **pending review**, not a finding of breakage.",
     "New optional fields are not automatically breaking. Open agent stream/data payloads require producer and reference-client review.",
     "Full source inventory, blob hashes and classified deltas are in the workflow artifact.");
+  if (report.publication) lines.push("",
+    `Trigger: exact publication \`${report.publication.package_name}@${report.publication.package_version}\`, source \`${report.publication.source_commit}\`.`,
+    "Only the announced package is pinned by this event. The other package is an independent latest observation, not a matching-release claim.");
+  if (report.capabilities) lines.push(capabilities.renderAssessment(report.capabilities));
   return lines.join("\n") + "\n";
 }
 
 module.exports = {
   collect, sourceInventory, sourceChanges, schemaChanges, provenanceCommit, packageInfo,
   readSchemaTarball, validateReport, render, fingerprint, hash, watchGroup,
+  validatePublication, verifyPublication, metadataUrl, assessLocal,
 };
 
 if (require.main === module) {
@@ -326,7 +399,11 @@ if (require.main === module) {
     if (process.env.BASELINE_FINGERPRINT) check(previous.fingerprint === process.env.BASELINE_FINGERPRINT,
       "Baseline artifact does not match reviewed issue fingerprint");
   } else check(!process.env.BASELINE_FINGERPRINT, "Reviewed baseline artifact is missing");
-  collect({ token: process.env.GH_TOKEN, previous, outputDir: process.env.OUTPUT_DIR ?? "upstream-protocol-report" })
+  const event = process.env.GITHUB_EVENT_NAME === "repository_dispatch"
+    ? JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, "utf8")) : null;
+  if (event) check(event.action === "gateway-protocol-published", "Unexpected publication event");
+  collect({ token: process.env.GH_TOKEN, previous, outputDir: process.env.OUTPUT_DIR ?? "upstream-protocol-report",
+    publication: event?.client_payload })
     .then((report) => console.log(render(report)))
     .catch((error) => { console.error(error.message); process.exitCode = 1; });
 }

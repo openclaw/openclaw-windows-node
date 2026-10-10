@@ -1,6 +1,8 @@
 name: Upstream Gateway Protocol check
 
 on:
+  repository_dispatch:
+    types: [gateway-protocol-published]
   schedule:
     - cron: "41 5 * * *"
   workflow_dispatch:
@@ -33,7 +35,7 @@ jobs:
         with:
           node-version: "22"
       - name: Test monitor without network or writes
-        run: node --test .github/scripts/upstream-gateway-protocol.test.cjs
+        run: node --test .github/scripts/upstream-gateway-protocol.test.cjs .github/scripts/gateway-capabilities.test.cjs
       - name: Find last reviewed observation for cumulative deltas
         id: previous
         uses: actions/github-script@v9
