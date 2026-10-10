@@ -26,6 +26,13 @@ internal sealed class ChatComposerRuntimePort(IChatDataProvider provider) : ICha
     {
         try
         {
+            if (provider is OpenClawChatDataProvider native)
+                return await native.SendMessageReportingAcceptanceAsync(
+                    threadId,
+                    message,
+                    cancellationToken,
+                    attachments).ConfigureAwait(true);
+
             await provider.SendMessageAsync(threadId, message, cancellationToken, attachments).ConfigureAwait(true);
             return true;
         }

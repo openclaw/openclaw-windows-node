@@ -11204,6 +11204,47 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task ComposerPort_StaleFailureAfterReconnect_IsNotAccepted()
+    {
+        var sendStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSend = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var sendCount = 0;
+        var (bridge, provider, _, notifications) = CreateProvider(new[] { MainSession() });
+        bridge.SendBehavior = async (_, _, _) =>
+        {
+            if (Interlocked.Increment(ref sendCount) != 1)
+                return;
+            sendStarted.TrySetResult();
+            await releaseSend.Task;
+            throw new InvalidOperationException("stale failure");
+        };
+        await provider.LoadAsync();
+        var port = new ChatComposerRuntimePort(provider);
+
+        var staleSend = port.SendMessageAsync(
+            "main",
+            "failing in flight",
+            [],
+            CancellationToken.None);
+        await sendStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        var freshAccepted = await port.SendMessageAsync(
+            "main",
+            "fresh after stale failure",
+            [],
+            CancellationToken.None);
+        releaseSend.SetResult();
+        var staleAccepted = await staleSend;
+
+        Assert.False(staleAccepted);
+        Assert.True(freshAccepted);
+        Assert.DoesNotContain(notifications, note => note.Message == "stale failure");
+        await WaitForConditionAsync(() => bridge.SentMessages.Count == 2);
+    }
+
+    [Fact]
     public async Task SendMessageAsync_ContinuesWhenInFlightModelPatchFails()
     {
         var patchStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
