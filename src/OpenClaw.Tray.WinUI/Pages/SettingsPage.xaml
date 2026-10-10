@@ -200,6 +200,29 @@
                 </Border>
 
                 <!-- ═════════ Chat ═════════ -->
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="{StaticResource SettingsRowPadding}">
+                    <Grid ColumnSpacing="14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center" Spacing="2">
+                            <TextBlock x:Name="DesktopCompanionLabel" x:Uid="DesktopCompanion_Label"
+                                       Text="Desktop lobster" Style="{StaticResource BodyTextBlockStyle}"/>
+                            <TextBlock x:Uid="DesktopCompanion_Description"
+                                       Text="Keep an animated lobster on your desktop. Notification text appears in speech bubbles, even when OpenClaw is in the background. Drag to move; right-click for options."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1" MinWidth="0" OnContent="" OffContent=""
+                                      IsOn="{Binding ShowDesktopCompanion, Mode=TwoWay}"
+                                      AutomationProperties.AutomationId="SettingsPageDesktopCompanion"
+                                      AutomationProperties.LabeledBy="{Binding ElementName=DesktopCompanionLabel}"/>
+                    </Grid>
+                </Border>
+
                 <TextBlock x:Uid="SettingsPage_Chat" Text="Chat" Style="{StaticResource BodyStrongTextBlockStyle}"
                            Margin="{StaticResource SectionHeaderMargin}"/>
 

@@ -203,6 +203,8 @@ disconnect, replacement, or close. This cache is not used for authorization.
 | Inferring chat visibility from any existing main window | Closed in `App.ShouldShowNotification`; use `IWindowManager.IsChatVisible`, retaining chat/per-type notification toggles | closed |
 | Readiness-gated, single-use native chat voice launch | `PendingVoiceActivation` | authoritative |
 | Hub notification banner severity and action projection | `AppNotificationInfoBarPresenter` | authoritative |
+| Optional desktop lobster lifetime and notification arrival tracking | `DesktopCompanionController` + `DesktopCompanionState`; `DesktopCompanionSurface` owns Reactor visual projection and the retained setup-mascot adapter; `DesktopCompanionWindow` owns native window lifetime, hit region, drag placement and bubble timeout | authoritative |
+| Desktop lobster imperative notification-control projection | Closed in `DesktopCompanionWindow`; presentation changes reconcile through `DesktopCompanionSurface`, not direct text/mood/control setters in the window | closed |
 | Compact notification list reconciliation and dismissal | `NotificationFlyoutContent` | authoritative |
 | Gateway/operator/node status flyout controls | `GatewayStatusContent` | authoritative |
 | Tray-menu semantic composition and connection-toggle state | `TrayMenuPresenter` + `ConnectionTogglePresenter` | authoritative |

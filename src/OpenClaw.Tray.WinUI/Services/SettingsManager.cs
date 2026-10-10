@@ -69,6 +69,7 @@ public class SettingsManager
 
     // Notifications
     public bool ShowNotifications { get => _data.ShowNotifications; set => _data = _data with { ShowNotifications = value }; }
+    public bool ShowDesktopCompanion { get => _data.ShowDesktopCompanion; set => _data = _data with { ShowDesktopCompanion = value }; }
     public string NotificationSound { get => _data.NotificationSound ?? "Default"; set => _data = _data with { NotificationSound = value }; }
     
     // Notification filters

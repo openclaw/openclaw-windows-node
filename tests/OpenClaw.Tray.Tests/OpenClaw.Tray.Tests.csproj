@@ -177,6 +177,8 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\PairingApprovalCoordinator.cs" Link="Services\PairingApprovalCoordinator.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ToastActivationRouter.cs" Link="Services\ToastActivationRouter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AppNotificationService.cs" Link="Services\AppNotificationService.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\DesktopCompanionState.cs" Link="Presentation\DesktopCompanionState.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\DesktopCompanionController.cs" Link="Presentation\DesktopCompanionController.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AppNotificationMapper.cs" Link="Services\AppNotificationMapper.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ChatNotificationSpeechText.cs" Link="Services\ChatNotificationSpeechText.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AppNotificationPublisher.cs" Link="Services\AppNotificationPublisher.cs" />

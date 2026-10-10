@@ -17,6 +17,17 @@
       </xsd:complexType>
     </xsd:element>
   </xsd:schema>
+  <data name="DesktopCompanion_Label.Text" xml:space="preserve"><value>Lagosta na área de trabalho</value></data>
+  <data name="DesktopCompanion_Description.Text" xml:space="preserve"><value>Mantenha uma lagosta animada na área de trabalho. As notificações aparecem em balões, mesmo quando o OpenClaw está em segundo plano. Arraste para mover; clique com o botão direito para ver as opções.</value></data>
+  <data name="DesktopCompanion_Name" xml:space="preserve"><value>Lagosta do OpenClaw na área de trabalho</value></data>
+  <data name="DesktopCompanion_Dismiss" xml:space="preserve"><value>Fechar balão</value></data>
+  <data name="DesktopCompanion_Notifications" xml:space="preserve"><value>Abrir notificações</value></data>
+  <data name="DesktopCompanion_Open" xml:space="preserve"><value>Abrir OpenClaw</value></data>
+  <data name="DesktopCompanion_Preview" xml:space="preserve"><value>Prévia de notificação</value></data>
+  <data name="DesktopCompanion_Hide" xml:space="preserve"><value>Ocultar lagosta da área de trabalho</value></data>
+  <data name="DesktopCompanion_PreviewTitle" xml:space="preserve"><value>Olá do OpenClaw</value></data>
+  <data name="DesktopCompanion_PreviewMessage" xml:space="preserve"><value>Estou aqui quando precisar de mim. Novas notificações aparecem aqui. Você pode me arrastar para um lugar confortável na área de trabalho.</value></data>
+  <data name="DesktopCompanion_Failed" xml:space="preserve"><value>Não foi possível exibir a lagosta. Desative e reative Lagosta na área de trabalho em Configurações para tentar novamente. Suas notificações continuam disponíveis no OpenClaw.</value></data>
   <!-- ==================== SettingsWindow.xaml ==================== -->
   <!-- Section headers -->
   <data name="SettingsConnectionHeader.Text" xml:space="preserve">
