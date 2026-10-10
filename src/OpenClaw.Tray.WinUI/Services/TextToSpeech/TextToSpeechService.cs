@@ -22,6 +22,7 @@ public sealed class TextToSpeechService : IDisposable
     private readonly ElevenLabsTextToSpeechClient _elevenLabsClient;
     private readonly MiniMaxTextToSpeechClient _miniMaxClient;
     private readonly PiperVoiceManager _piperVoices;
+    private readonly KokoroModelManager _kokoroModels;
     private readonly object _piperLock = new();
     private PiperTextToSpeechClient? _piperClient;  // lazily loaded; reused across calls for the same voice
     private readonly SemaphoreSlim _playbackGate = new(1, 1);
@@ -47,6 +48,7 @@ public sealed class TextToSpeechService : IDisposable
         // Piper voices live under the same data directory as Whisper models
         // so the user has a single "AI assets" folder to point at.
         _piperVoices = new PiperVoiceManager(SettingsManager.SettingsDirectoryPath, logger);
+        _kokoroModels = new KokoroModelManager(SettingsManager.SettingsDirectoryPath, logger);
     }
 
     /// <summary>Exposed so Settings UI can drive download/delete from the same instance.</summary>
@@ -92,6 +94,10 @@ public sealed class TextToSpeechService : IDisposable
         else if (string.Equals(provider, TtsCapability.ElevenLabsProvider, StringComparison.OrdinalIgnoreCase))
         {
             await SpeakWithElevenLabsAsync(args, cancellationToken).ConfigureAwait(false);
+        }
+        else if (string.Equals(provider, TtsCapability.KokoroProvider, StringComparison.OrdinalIgnoreCase))
+        {
+            await SpeakWithKokoroAsync(args, cancellationToken).ConfigureAwait(false);
         }
         else if (string.Equals(provider, TtsCapability.PiperProvider, StringComparison.OrdinalIgnoreCase))
         {
@@ -202,6 +208,19 @@ public sealed class TextToSpeechService : IDisposable
                 : TtsCapability.ReadinessReady;
         }
 
+        if (string.Equals(provider, TtsCapability.KokoroProvider, StringComparison.OrdinalIgnoreCase))
+        {
+            var voiceId = !string.IsNullOrWhiteSpace(args?.VoiceId)
+                ? args!.VoiceId!
+                : _settings.TtsKokoroVoiceId;
+            if (string.IsNullOrWhiteSpace(voiceId))
+                return TtsCapability.ReadinessNeedsVoice;
+            // Unknown voice ids map to voice-not-downloaded, as with Piper.
+            return _kokoroModels.IsVoiceReady(voiceId)
+                ? TtsCapability.ReadinessReady
+                : TtsCapability.ReadinessVoiceNotDownloaded;
+        }
+
         if (string.Equals(provider, TtsCapability.PiperProvider, StringComparison.OrdinalIgnoreCase))
         {
             var voiceId = !string.IsNullOrWhiteSpace(args?.VoiceId)
@@ -297,6 +316,27 @@ public sealed class TextToSpeechService : IDisposable
 
         using var stream = await CreateStreamAsync(audio.AudioBytes, cancellationToken).ConfigureAwait(false);
         await PlayStreamAsync(stream, audio.ContentType, args.Interrupt, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task SpeakWithKokoroAsync(TtsSpeakArgs args, CancellationToken cancellationToken)
+    {
+        var voiceId = string.IsNullOrWhiteSpace(args.VoiceId)
+            ? _settings.TtsKokoroVoiceId
+            : args.VoiceId;
+        if (string.IsNullOrWhiteSpace(voiceId))
+            throw new InvalidOperationException("Kokoro voice ID is required in Settings or the tts.speak voiceId argument.");
+
+        // Privacy: none of these messages echo the user-controlled voiceId.
+        var pack = KokoroModelManager.FindPackForVoice(voiceId)
+            ?? throw new InvalidOperationException("Kokoro voice is not in the catalog.");
+        if (!_kokoroModels.IsPackDownloaded(pack.PackId))
+            throw new InvalidOperationException("Kokoro voice pack not downloaded. Open Voice Settings to download it.");
+
+        var wavBytes = await KokoroSpeechEngine.Shared
+            .SynthesizeWavAsync(_kokoroModels, pack.PackId, voiceId, args.Text, 1.0f, cancellationToken)
+            .ConfigureAwait(false);
+        using var stream = await CreateStreamAsync(wavBytes, cancellationToken).ConfigureAwait(false);
+        await PlayStreamAsync(stream, "audio/wav", args.Interrupt, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task SpeakWithPiperAsync(TtsSpeakArgs args, CancellationToken cancellationToken)

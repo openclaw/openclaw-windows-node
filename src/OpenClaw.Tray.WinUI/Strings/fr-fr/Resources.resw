@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
@@ -2595,6 +2595,75 @@ Utilisez l'une de ces options :
   <data name="VoiceSettingsPage_TtsMiniMax.Content" xml:space="preserve">
     <value>MiniMax (cloud, clé API requise)</value>
   </data>
+  <data name="VoiceSettingsPage_TtsKokoro.Content" xml:space="preserve">
+    <value>Kokoro (voix neuronales locales)</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroVoiceCombo.Header" xml:space="preserve">
+    <value>Voix</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadButtonText.Text" xml:space="preserve">
+    <value>Télécharger le pack vocal</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonDownloadPack" xml:space="preserve">
+    <value>Télécharger le pack vocal</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonDownloaded" xml:space="preserve">
+    <value>Téléchargé</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonDownloading" xml:space="preserve">
+    <value>Téléchargement…</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonRetry" xml:space="preserve">
+    <value>Réessayer le téléchargement</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDeleteButton.Content" xml:space="preserve">
+    <value>Supprimer</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPreview.Text" xml:space="preserve">
+    <value>Aperçu</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPreviewButtonContent" xml:space="preserve">
+    <value>Aperçu</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroInfoText.Text" xml:space="preserve">
+    <value>Les packs vocaux sont téléchargés depuis les versions GitHub (environ 380 Mo pour l’anglais et le chinois, environ 310 Mo pour l’espagnol). Ils s’exécutent entièrement sur ce PC ; aucun son ne quitte votre appareil.</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPackReady" xml:space="preserve">
+    <value>Pack vocal prêt sur ce PC ({0} Mo).</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPackNotDownloaded" xml:space="preserve">
+    <value>Pack vocal pas encore téléchargé. Cliquez sur Télécharger pour le récupérer (environ {0} Mo).</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroConnecting" xml:space="preserve">
+    <value>Connexion aux versions GitHub…</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroProgressBytes" xml:space="preserve">
+    <value>Téléchargement… {0} / {1} Mo</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadCanceled" xml:space="preserve">
+    <value>Téléchargement annulé.</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailed" xml:space="preserve">
+    <value>Échec du téléchargement (voir le journal Debug).</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailedDiskFull" xml:space="preserve">
+    <value>Espace disque insuffisant. Libérez au moins {0} Mo et réessayez.</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailedNetwork" xml:space="preserve">
+    <value>Échec du téléchargement. Vérifiez votre connexion Internet et réessayez.</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailedIntegrity" xml:space="preserve">
+    <value>Le pack vocal téléchargé n'a pas passé la vérification et a été supprimé. Réessayez plus tard.</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDeleted" xml:space="preserve">
+    <value>Pack vocal supprimé.</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDeleteFailed" xml:space="preserve">
+    <value>Échec de la suppression (voir le journal Debug).</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPreviewFailed" xml:space="preserve">
+    <value>Échec de l’aperçu (voir le journal Debug).</value>
+  </data>
   <data name="VoiceSettingsPage_PiperVoiceCombo.Header" xml:space="preserve">
     <value>Voix</value>
   </data>
@@ -2653,7 +2722,7 @@ Utilisez l'une de ces options :
     <value>Chine</value>
   </data>
   <data name="VoiceSettingsPage_PrivacyNote.Text" xml:space="preserve">
-    <value>Piper, Windows et la reconnaissance vocale s'exécutent sur cet appareil. Les fournisseurs TTS cloud envoient le texte des réponses à leurs services pour la synthèse ; le son du microphone ne leur est pas envoyé.</value>
+    <value>Kokoro, Piper, Windows et la reconnaissance vocale s’exécutent sur cet appareil. Les fournisseurs TTS cloud envoient le texte des réponses à leurs services pour la synthèse ; le son du microphone ne leur est pas envoyé.</value>
   </data>
   <data name="VoiceSettingsPage_StatusModelReady" xml:space="preserve">
     <value>✅ Modèle prêt</value>

@@ -217,11 +217,47 @@
 
                     <ComboBox x:Uid="VoiceSettingsPage_TtsProviderCombo" x:Name="TtsProviderCombo" Header="Provider"
                               SelectionChanged="OnTtsProviderChanged" Width="360">
+                        <ComboBoxItem x:Uid="VoiceSettingsPage_TtsKokoro"     Content="Kokoro (local neural voices)"         Tag="kokoro"/>
                         <ComboBoxItem x:Uid="VoiceSettingsPage_TtsPiper"      Content="Piper (local neural voices)"          Tag="piper"/>
                         <ComboBoxItem x:Uid="VoiceSettingsPage_TtsWindows"    Content="Windows (built-in neural voices)"     Tag="windows"/>
                         <ComboBoxItem x:Uid="VoiceSettingsPage_TtsElevenLabs" Content="ElevenLabs (cloud, requires API key)" Tag="elevenlabs"/>
                         <ComboBoxItem x:Uid="VoiceSettingsPage_TtsMiniMax" Content="MiniMax (cloud, requires API key)" Tag="minimax"/>
                     </ComboBox>
+
+                    <!-- Kokoro voice picker (local neural TTS via kokoro.cpp) -->
+                    <StackPanel x:Name="KokoroVoicePanel" Spacing="8" Visibility="Collapsed">
+                        <ComboBox x:Uid="VoiceSettingsPage_KokoroVoiceCombo" x:Name="KokoroVoiceCombo" Header="Voice"
+                                  SelectionChanged="OnKokoroVoiceChanged" Width="400"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button x:Name="KokoroDownloadButton" Click="OnKokoroDownloadClick"
+                                    AutomationProperties.LabeledBy="{Binding ElementName=KokoroDownloadButtonText}"
+                                    Width="180" MinHeight="32">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon x:Name="KokoroDownloadIcon" Glyph="&#xE896;" FontSize="14"/>
+                                    <TextBlock x:Uid="VoiceSettingsPage_KokoroDownloadButtonText" x:Name="KokoroDownloadButtonText" Text="Download Voice Pack"/>
+                                </StackPanel>
+                            </Button>
+                            <Button x:Uid="VoiceSettingsPage_KokoroDeleteButton" x:Name="KokoroDeleteButton" Click="OnKokoroDeleteClick"
+                                    Content="Delete" Width="80" Visibility="Collapsed"/>
+                            <Button x:Name="KokoroPreviewButton" Click="OnKokoroPreviewClick"
+                                    AutomationProperties.LabeledBy="{Binding ElementName=KokoroPreviewLabel}"
+                                    Width="100" Visibility="Collapsed">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon x:Name="KokoroPreviewIcon" Glyph="&#xE768;" FontSize="14"/>
+                                    <TextBlock x:Uid="VoiceSettingsPage_KokoroPreview" x:Name="KokoroPreviewLabel" Text="Preview"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                        <ProgressBar x:Name="KokoroDownloadProgress" Visibility="Collapsed"
+                                     IsIndeterminate="False" Maximum="100" Height="6" Width="400" HorizontalAlignment="Left"/>
+                        <TextBlock x:Name="KokoroStatusText"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+                        <TextBlock x:Uid="VoiceSettingsPage_KokoroInfoText" x:Name="KokoroInfoText"
+                                   Text="Voice packs download from GitHub releases (about 380 MB for English and Chinese, about 310 MB for Spanish). They run fully on this PC; no audio leaves your device."
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+                    </StackPanel>
 
                     <!-- Piper voice picker (local neural TTS via Sherpa-ONNX) -->
                     <StackPanel x:Name="PiperVoicePanel" Spacing="8" Visibility="Collapsed">

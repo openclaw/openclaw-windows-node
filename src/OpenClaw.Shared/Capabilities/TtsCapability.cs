@@ -18,6 +18,11 @@ public sealed class TtsCapability : NodeCapabilityBase
     /// egress; voice models download once to %LOCALAPPDATA%.
     /// </summary>
     public const string PiperProvider = "piper";
+    /// <summary>
+    /// Local neural TTS via kokoro.cpp (Larroy.Kokoro). No network egress;
+    /// voice packs download once to the tray data directory.
+    /// </summary>
+    public const string KokoroProvider = "kokoro";
     public const int MaxTextLength = 5000;
 
     // ============================================================
@@ -32,13 +37,13 @@ public sealed class TtsCapability : NodeCapabilityBase
     public const string ReadinessNeedsApiKey = "needs-api-key";
     /// <summary>ElevenLabs selected with a key but no voice id is configured.</summary>
     public const string ReadinessNeedsVoice = "needs-voice";
-    /// <summary>Piper selected but the chosen voice isn't downloaded yet.</summary>
+    /// <summary>Piper or Kokoro selected but the chosen voice (or its Kokoro voice pack) isn't downloaded yet.</summary>
     public const string ReadinessVoiceNotDownloaded = "voice-not-downloaded";
     /// <summary>Provider is unknown or otherwise unusable.</summary>
     public const string ReadinessUnavailable = "unavailable";
 
-    /// <summary>All known providers, in catalog order (Piper is the default).</summary>
-    public static readonly string[] AllProviders = [PiperProvider, WindowsProvider, ElevenLabsProvider, MiniMaxProvider];
+    /// <summary>All known providers, in catalog order (Kokoro is the default).</summary>
+    public static readonly string[] AllProviders = [KokoroProvider, PiperProvider, WindowsProvider, ElevenLabsProvider, MiniMaxProvider];
 
     private static readonly string[] _commands = [SpeakCommand, StatusCommand];
 
@@ -64,7 +69,7 @@ public sealed class TtsCapability : NodeCapabilityBase
             : requestedProvider;
 
         return string.IsNullOrWhiteSpace(provider)
-            ? PiperProvider
+            ? KokoroProvider
             : provider.Trim().ToLowerInvariant();
     }
 
@@ -276,8 +281,8 @@ public sealed class TtsProviderStatus
 /// </summary>
 public sealed class TtsStatusResult
 {
-    public string ConfiguredProvider { get; set; } = TtsCapability.PiperProvider;
-    public string EffectiveProvider { get; set; } = TtsCapability.PiperProvider;
+    public string ConfiguredProvider { get; set; } = TtsCapability.KokoroProvider;
+    public string EffectiveProvider { get; set; } = TtsCapability.KokoroProvider;
     public bool WillFallBack { get; set; }
     public IReadOnlyList<TtsProviderStatus> Providers { get; set; } = Array.Empty<TtsProviderStatus>();
 }

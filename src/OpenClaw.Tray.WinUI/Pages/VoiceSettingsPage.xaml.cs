@@ -2,6 +2,7 @@
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.Shared;
+using OpenClaw.Shared.Audio;
 using OpenClaw.Shared.Capabilities;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
@@ -18,15 +19,19 @@ public sealed partial class VoiceSettingsPage : Page
     private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private VoiceService? _voiceService;
     private bool _suppressEvents = true; // suppress until Initialize/LoadSettings runs
-    // Per-asset CTS so a Piper download doesn't cancel an in-flight Whisper
+    // Per-asset CTS so a Piper or Kokoro download doesn't cancel an in-flight Whisper
     // download (and vice versa). Each download type owns its own token.
     private static string L(string key) => LocalizationHelper.GetString(key);
     private static string Lf(string key, params object?[] args) =>
         string.Format(CultureInfo.CurrentCulture, LocalizationHelper.GetString(key), args);
+    private static string PreviewTextFor(string? voiceLanguageTag) =>
+        VoicePreviewText.For(voiceLanguageTag, L("VoiceSettingsPage_CompanionPreviewText"));
 
     private CancellationTokenSource? _whisperDownloadCts;
     private CancellationTokenSource? _piperDownloadCts;
+    private CancellationTokenSource? _kokoroDownloadCts;
     private bool _piperPreviewInProgress;
+    private bool _kokoroPreviewInProgress;
 
     public VoiceSettingsPage()
     {
@@ -34,6 +39,7 @@ public sealed partial class VoiceSettingsPage : Page
         Loaded += (_, _) =>
         {
             UpdateModelStatus();
+            UpdateKokoroVoiceState();
             UpdatePiperVoiceState();
         };
         Unloaded += async (_, _) =>
@@ -62,6 +68,7 @@ public sealed partial class VoiceSettingsPage : Page
         // the buttons so their inner StackPanel (FontIcon + TextBlock)
         // survives state changes in the click handlers (we update only the
         // TextBlock's Text, never the Button's Content).
+        KokoroPreviewLabel.Text = L("VoiceSettingsPage_KokoroPreviewButtonContent");
         PiperPreviewLabel.Text = L("VoiceSettingsPage_PiperPreviewButtonContent");
         PreviewVoiceLabel.Text = L("VoiceSettingsPage_PreviewVoiceButtonContent");
         LoadSettings();
@@ -558,7 +565,10 @@ public sealed partial class VoiceSettingsPage : Page
             }
         }
         if (TtsProviderCombo.SelectedIndex < 0)
-            TtsProviderCombo.SelectedIndex = 0;  // default to Piper
+            TtsProviderCombo.SelectedIndex = 0;  // default to Kokoro
+
+        // Kokoro voice catalog
+        PopulateKokoroVoices(settings);
 
         // Piper voice catalog
         PopulatePiperVoices(settings);
@@ -588,7 +598,199 @@ public sealed partial class VoiceSettingsPage : Page
 
         UpdateTtsProviderVisibility();
         UpdatePiperVoiceState();
+        UpdateKokoroVoiceState();
         UpdateCapabilityState();
+    }
+
+    private void PopulateKokoroVoices(SettingsManager settings)
+    {
+        KokoroVoiceCombo.Items.Clear();
+        var selected = string.IsNullOrWhiteSpace(settings.TtsKokoroVoiceId)
+            ? KokoroModelManager.DefaultVoiceId
+            : settings.TtsKokoroVoiceId;
+        int selectedIdx = 0;
+
+        foreach (var pack in KokoroModelManager.AvailablePacks)
+        {
+            foreach (var voice in pack.Voices)
+            {
+                KokoroVoiceCombo.Items.Add(new ComboBoxItem { Content = voice.DisplayName, Tag = voice.VoiceId });
+                if (string.Equals(voice.VoiceId, selected, StringComparison.Ordinal))
+                    selectedIdx = KokoroVoiceCombo.Items.Count - 1;
+            }
+        }
+
+        if (KokoroVoiceCombo.Items.Count > 0)
+            KokoroVoiceCombo.SelectedIndex = selectedIdx;
+    }
+
+    private void OnKokoroVoiceChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressEvents || CurrentApp.Settings == null) return;
+        if (KokoroVoiceCombo.SelectedItem is ComboBoxItem item && item.Tag is string voiceId)
+        {
+            CurrentApp.Settings.TtsKokoroVoiceId = voiceId;
+            CurrentApp.Settings.Save();
+        }
+        UpdateKokoroVoiceState();
+    }
+
+    private void UpdateKokoroVoiceState()
+    {
+        if (CurrentApp.Settings == null) return;
+        if (KokoroVoiceCombo.SelectedItem is not ComboBoxItem item || item.Tag is not string voiceId) return;
+        var pack = KokoroModelManager.FindPackForVoice(voiceId);
+        if (pack == null) return;
+
+        var models = new KokoroModelManager(SettingsManager.SettingsDirectoryPath, new AppLogger());
+        var downloaded = models.IsPackDownloaded(pack.PackId);
+        KokoroDownloadButton.IsEnabled = !downloaded;
+        KokoroDownloadButtonText.Text = downloaded
+            ? L("VoiceSettingsPage_KokoroButtonDownloaded")
+            : L("VoiceSettingsPage_KokoroButtonDownloadPack");
+        KokoroDownloadIcon.Glyph = downloaded ? "\uE73E" : "\uE896";
+        KokoroDeleteButton.Visibility = downloaded ? Visibility.Visible : Visibility.Collapsed;
+        KokoroPreviewButton.Visibility = downloaded ? Visibility.Visible : Visibility.Collapsed;
+        KokoroPreviewButton.IsEnabled = downloaded && !_kokoroPreviewInProgress;
+        KokoroStatusText.Text = downloaded
+            ? Lf("VoiceSettingsPage_KokoroPackReady", $"{models.GetPackSize(pack.PackId) / (1024d * 1024d):F1}")
+            : Lf("VoiceSettingsPage_KokoroPackNotDownloaded", $"{pack.TotalSizeBytes / (1024d * 1024d):F0}");
+        KokoroDownloadProgress.Visibility = Visibility.Collapsed;
+        UpdateCapabilityState();
+    }
+
+    private void OnKokoroDownloadClick(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(OnKokoroDownloadClickAsync, new OpenClawTray.AppLogger(), nameof(OnKokoroDownloadClick));
+
+    private async Task OnKokoroDownloadClickAsync()
+    {
+        if (CurrentApp.Settings == null) return;
+        if (KokoroVoiceCombo.SelectedItem is not ComboBoxItem item || item.Tag is not string voiceId) return;
+        var pack = KokoroModelManager.FindPackForVoice(voiceId);
+        if (pack == null) return;
+
+        try { _kokoroDownloadCts?.Cancel(); }
+        catch (Exception ex) { Logger.Debug($"VoiceSettingsPage: cancel prior Kokoro download failed: {ex.Message}"); }
+        _kokoroDownloadCts = new CancellationTokenSource();
+        var ct = _kokoroDownloadCts.Token;
+        // The download controls are shared by every voice; lock the voice picker so they keep
+        // describing the pack being downloaded until this operation finishes.
+        KokoroVoiceCombo.IsEnabled = false;
+        KokoroDownloadButton.IsEnabled = false;
+        KokoroDownloadButtonText.Text = L("VoiceSettingsPage_KokoroButtonDownloading");
+        KokoroDownloadProgress.IsIndeterminate = false;
+        KokoroDownloadProgress.Visibility = Visibility.Visible;
+        KokoroDownloadProgress.Value = 0;
+        KokoroStatusText.Text = L("VoiceSettingsPage_KokoroConnecting");
+
+        var active = true;
+        try
+        {
+            var models = new KokoroModelManager(SettingsManager.SettingsDirectoryPath, new AppLogger());
+            DateTime lastReportUtc = DateTime.MinValue;
+            var progress = new Progress<(long downloaded, long total)>(p =>
+            {
+                // Progress<T> posts asynchronously; drop reports that arrive after completion.
+                if (!active) return;
+                var now = DateTime.UtcNow;
+                if (p.downloaded < p.total && now - lastReportUtc < TimeSpan.FromMilliseconds(150)) return;
+                lastReportUtc = now;
+                KokoroDownloadProgress.Value = (double)p.downloaded * 100 / p.total;
+                KokoroStatusText.Text = Lf("VoiceSettingsPage_KokoroProgressBytes",
+                    $"{p.downloaded / (1024d * 1024d):F1}", $"{p.total / (1024d * 1024d):F1}");
+            });
+            await models.DownloadPackAsync(pack.PackId, progress, ct);
+            UpdateKokoroVoiceState();
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            UpdateKokoroVoiceState();
+            KokoroStatusText.Text = L("VoiceSettingsPage_KokoroDownloadCanceled");
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"Kokoro voice pack download failed: {ex}");
+            KokoroStatusText.Text = KokoroDownloadFailureText(VoicePackDownloadFailure.Classify(ex), pack);
+            KokoroDownloadButton.IsEnabled = true;
+            KokoroDownloadButtonText.Text = L("VoiceSettingsPage_KokoroButtonRetry");
+            KokoroDownloadProgress.Visibility = Visibility.Collapsed;
+            UpdateCapabilityState();
+        }
+        finally
+        {
+            active = false;
+            KokoroVoiceCombo.IsEnabled = true;
+        }
+    }
+
+    private static string KokoroDownloadFailureText(VoicePackDownloadFailureKind kind, KokoroModelPackInfo pack) => kind switch
+    {
+        VoicePackDownloadFailureKind.DiskFull =>
+            Lf("VoiceSettingsPage_KokoroDownloadFailedDiskFull", $"{pack.TotalSizeBytes / (1024d * 1024d):F0}"),
+        VoicePackDownloadFailureKind.Network => L("VoiceSettingsPage_KokoroDownloadFailedNetwork"),
+        VoicePackDownloadFailureKind.Integrity => L("VoiceSettingsPage_KokoroDownloadFailedIntegrity"),
+        _ => L("VoiceSettingsPage_KokoroDownloadFailed"),
+    };
+
+    private void OnKokoroDeleteClick(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(OnKokoroDeleteClickAsync, new OpenClawTray.AppLogger(), nameof(OnKokoroDeleteClick));
+
+    private async Task OnKokoroDeleteClickAsync()
+    {
+        if (CurrentApp.Settings == null) return;
+        if (KokoroVoiceCombo.SelectedItem is not ComboBoxItem item || item.Tag is not string voiceId) return;
+        var pack = KokoroModelManager.FindPackForVoice(voiceId);
+        if (pack == null) return;
+        try
+        {
+            await KokoroSpeechEngine.Shared.UnloadAsync(pack.PackId);
+            new KokoroModelManager(SettingsManager.SettingsDirectoryPath, new AppLogger()).DeletePack(pack.PackId);
+            UpdateKokoroVoiceState();
+            KokoroStatusText.Text = L("VoiceSettingsPage_KokoroDeleted");
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"Kokoro voice pack delete failed: {ex}");
+            KokoroStatusText.Text = L("VoiceSettingsPage_KokoroDeleteFailed");
+        }
+    }
+
+    private void OnKokoroPreviewClick(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(OnKokoroPreviewClickAsync, new OpenClawTray.AppLogger(), nameof(OnKokoroPreviewClick));
+
+    private async Task OnKokoroPreviewClickAsync()
+    {
+        if (CurrentApp.Settings == null) return;
+        if (KokoroVoiceCombo.SelectedItem is not ComboBoxItem item || item.Tag is not string voiceId) return;
+        KokoroPreviewButton.IsEnabled = false;
+        _kokoroPreviewInProgress = true;
+        var oldLabel = KokoroPreviewLabel.Text;
+        KokoroPreviewLabel.Text = L("VoiceSettingsPage_PreviewButtonPlaying");
+        try
+        {
+            using var tts = new TextToSpeechService(new AppLogger(), CurrentApp.Settings);
+            await tts.SpeakAsync(new TtsSpeakArgs
+            {
+                Text = PreviewTextFor(KokoroModelManager.FindVoice(voiceId)?.LanguageTag),
+                Provider = TtsCapability.KokoroProvider,
+                VoiceId = voiceId,
+                Interrupt = true
+            });
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"Kokoro voice pack preview failed: {ex}");
+            KokoroPreviewIcon.Glyph = "\uEA39";
+            KokoroStatusText.Text = L("VoiceSettingsPage_KokoroPreviewFailed");
+            await System.Threading.Tasks.Task.Delay(3000);
+        }
+        finally
+        {
+            _kokoroPreviewInProgress = false;
+            KokoroPreviewIcon.Glyph = "\uE768";
+            KokoroPreviewLabel.Text = oldLabel;
+            UpdateKokoroVoiceState();
+        }
     }
 
     private void PopulatePiperVoices(SettingsManager settings)
@@ -774,7 +976,8 @@ public sealed partial class VoiceSettingsPage : Page
             using var tts = new TextToSpeechService(new AppLogger(), CurrentApp.Settings);
             await tts.SpeakAsync(new OpenClaw.Shared.Capabilities.TtsSpeakArgs
             {
-                Text = L("VoiceSettingsPage_CompanionPreviewText"),
+                Text = PreviewTextFor(PiperVoiceManager.AvailableVoices.FirstOrDefault(
+                    v => string.Equals(v.VoiceId, voiceId, StringComparison.OrdinalIgnoreCase))?.LanguageTag),
                 Provider = OpenClaw.Shared.Capabilities.TtsCapability.PiperProvider,
                 VoiceId = voiceId,
                 Interrupt = true
@@ -832,12 +1035,14 @@ public sealed partial class VoiceSettingsPage : Page
 
     private void UpdateTtsProviderVisibility()
     {
-        var providerTag = (TtsProviderCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? TtsCapability.PiperProvider;
-        var isPiper = string.Equals(providerTag, "piper", StringComparison.OrdinalIgnoreCase);
+        var providerTag = (TtsProviderCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? TtsCapability.KokoroProvider;
+        var isKokoro = string.Equals(providerTag, TtsCapability.KokoroProvider, StringComparison.OrdinalIgnoreCase);
+        var isPiper = string.Equals(providerTag, TtsCapability.PiperProvider, StringComparison.OrdinalIgnoreCase);
         var isElevenLabs = string.Equals(providerTag, "elevenlabs", StringComparison.OrdinalIgnoreCase);
         var isMiniMax = string.Equals(providerTag, "minimax", StringComparison.OrdinalIgnoreCase);
-        var isWindows = !isPiper && !isElevenLabs && !isMiniMax;
+        var isWindows = !isKokoro && !isPiper && !isElevenLabs && !isMiniMax;
 
+        KokoroVoicePanel.Visibility = isKokoro ? Visibility.Visible : Visibility.Collapsed;
         PiperVoicePanel.Visibility = isPiper ? Visibility.Visible : Visibility.Collapsed;
         WindowsVoicePanel.Visibility = isWindows ? Visibility.Visible : Visibility.Collapsed;
         ElevenLabsPanel.Visibility = isElevenLabs ? Visibility.Visible : Visibility.Collapsed;

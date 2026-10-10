@@ -327,24 +327,24 @@ where `readiness` ∈ `"ready" | "initializing" | "model-downloading" | "model-n
 
 ## Text-to-speech (tts.*)
 
-Four providers - Piper (local neural via Sherpa-ONNX, default), Windows
-built-in speech, ElevenLabs (cloud), and MiniMax (cloud). Provider +
-per-provider voice are configured in tray Settings.
+Five providers - Kokoro (local neural via kokoro.cpp, default), Piper (local
+neural via Sherpa-ONNX), Windows built-in speech, ElevenLabs (cloud), and
+MiniMax (cloud). Provider + per-provider voice are configured in tray Settings.
 
 ### tts.speak
 Speak text aloud on the Windows node.
 ```
 {
   "text": "string",           // required
-  "provider": "piper|windows|elevenlabs|minimax",  // optional; omit to use TtsProvider setting
+  "provider": "kokoro|piper|windows|elevenlabs|minimax",  // optional; omit to use TtsProvider setting
   "voiceId": "string",        // optional, overrides the per-provider configured voice
   "model": "string",          // optional, cloud providers only
   "interrupt": false          // default false; true cuts off any in-progress playback
 }
 ```
 When `provider` is omitted and the configured provider isn't usable (no
-cloud API key, Piper voice not downloaded), the node falls back to Windows
-TTS so playback still happens. Explicit `provider` requests stay strict and
+cloud API key, Kokoro voice pack or Piper voice not downloaded), the node
+falls back to Windows TTS so playback still happens. Explicit `provider` requests stay strict and
 do not silently reroute. Returns `{ spoken, provider, requestedProvider, fellBack, contentType, durationMs }`
 where `provider` is the provider that actually spoke.
 

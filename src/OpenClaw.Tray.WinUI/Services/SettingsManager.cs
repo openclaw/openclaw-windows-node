@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using OpenClaw.Shared;
+using OpenClaw.Shared.Audio;
 using OpenClaw.Shared.Capabilities;
 
 namespace OpenClawTray.Services;
@@ -146,7 +147,7 @@ public class SettingsManager
     /// from, and does not change, the app-managed Local AI gateway provider.
     /// </summary>
     public bool NodeOllamaInferenceEnabled { get => _data.NodeOllamaInferenceEnabled; set => _data = _data with { NodeOllamaInferenceEnabled = value }; }
-    public string TtsProvider { get => string.IsNullOrWhiteSpace(_data.TtsProvider) ? TtsCapability.PiperProvider : _data.TtsProvider; set => _data = _data with { TtsProvider = value }; }
+    public string TtsProvider { get => string.IsNullOrWhiteSpace(_data.TtsProvider) ? TtsCapability.KokoroProvider : _data.TtsProvider; set => _data = _data with { TtsProvider = value }; }
     public string TtsElevenLabsApiKey { get => _data.TtsElevenLabsApiKey ?? ""; set => _data = _data with { TtsElevenLabsApiKey = value }; }
     public string TtsElevenLabsModel { get => _data.TtsElevenLabsModel ?? ""; set => _data = _data with { TtsElevenLabsModel = value }; }
     public string TtsElevenLabsVoiceId { get => _data.TtsElevenLabsVoiceId ?? ""; set => _data = _data with { TtsElevenLabsVoiceId = value }; }
@@ -159,6 +160,8 @@ public class SettingsManager
     public bool HubNavPaneOpen { get => _data.HubNavPaneOpen; set => _data = _data with { HubNavPaneOpen = value }; }
     /// <summary>Piper voice identifier, e.g. "en_US-amy-low".</summary>
     public string TtsPiperVoiceId { get => string.IsNullOrWhiteSpace(_data.TtsPiperVoiceId) ? "en_US-amy-low" : _data.TtsPiperVoiceId; set => _data = _data with { TtsPiperVoiceId = value }; }
+    /// <summary>Kokoro voice name, e.g. "af_maple".</summary>
+    public string TtsKokoroVoiceId { get => string.IsNullOrWhiteSpace(_data.TtsKokoroVoiceId) ? KokoroModelManager.DefaultVoiceId : _data.TtsKokoroVoiceId; set => _data = _data with { TtsKokoroVoiceId = value }; }
     // Local MCP HTTP server (independent of EnableNodeMode)
     public bool EnableMcpServer { get => _data.EnableMcpServer; set => _data = _data with { EnableMcpServer = value }; }
     // Automatic self-repair of app-owned setup-managed local WSL gateways (kill switch).
@@ -310,7 +313,7 @@ public class SettingsManager
         VoiceAudioFeedback = true,
         NodeTtsEnabled = false,
         NodeOllamaInferenceEnabled = false,
-        TtsProvider = TtsCapability.PiperProvider,
+        TtsProvider = TtsCapability.KokoroProvider,
         TtsElevenLabsApiKey = "",
         TtsElevenLabsModel = "",
         TtsElevenLabsVoiceId = "",
@@ -321,6 +324,7 @@ public class SettingsManager
         TtsWindowsVoiceId = "",
         HubNavPaneOpen = true,
         TtsPiperVoiceId = "en_US-amy-low",
+        TtsKokoroVoiceId = KokoroModelManager.DefaultVoiceId,
         EnableMcpServer = false,
         A2UIImageHosts = new(),
         HasSeenActivityStreamTip = false,
@@ -355,7 +359,7 @@ public class SettingsManager
             SttLanguage = string.IsNullOrWhiteSpace(loaded.SttLanguage) ? defaults.SttLanguage : loaded.SttLanguage,
             SttModelName = string.IsNullOrWhiteSpace(loaded.SttModelName) ? defaults.SttModelName : loaded.SttModelName,
             SttSilenceTimeout = loaded.SttSilenceTimeout > 0 ? loaded.SttSilenceTimeout : defaults.SttSilenceTimeout,
-            TtsProvider = string.IsNullOrWhiteSpace(loaded.TtsProvider) ? defaults.TtsProvider : loaded.TtsProvider,
+            TtsProvider = string.IsNullOrWhiteSpace(loaded.TtsProvider) ? SettingsData.LegacyDefaultTtsProvider : loaded.TtsProvider,
             TtsElevenLabsApiKey = UnprotectSettingSecret(loaded.TtsElevenLabsApiKey) ?? defaults.TtsElevenLabsApiKey,
             TtsElevenLabsModel = loaded.TtsElevenLabsModel ?? defaults.TtsElevenLabsModel,
             TtsElevenLabsVoiceId = loaded.TtsElevenLabsVoiceId ?? defaults.TtsElevenLabsVoiceId,
@@ -365,6 +369,7 @@ public class SettingsManager
             TtsMiniMaxRegion = loaded.TtsMiniMaxRegion ?? defaults.TtsMiniMaxRegion,
             TtsWindowsVoiceId = loaded.TtsWindowsVoiceId ?? defaults.TtsWindowsVoiceId,
             TtsPiperVoiceId = string.IsNullOrWhiteSpace(loaded.TtsPiperVoiceId) ? defaults.TtsPiperVoiceId : loaded.TtsPiperVoiceId,
+            TtsKokoroVoiceId = string.IsNullOrWhiteSpace(loaded.TtsKokoroVoiceId) ? defaults.TtsKokoroVoiceId : loaded.TtsKokoroVoiceId,
             A2UIImageHosts = loaded.A2UIImageHosts is { Count: > 0 } hosts ? new List<string>(hosts) : new(),
             SkippedUpdateTag = loaded.SkippedUpdateTag ?? defaults.SkippedUpdateTag,
             PreferredGatewayId = loaded.PreferredGatewayId ?? defaults.PreferredGatewayId,
@@ -459,6 +464,7 @@ public class SettingsManager
         TtsMiniMaxRegion = string.IsNullOrWhiteSpace(TtsMiniMaxRegion) ? MiniMaxTextToSpeechClient.GlobalRegion : TtsMiniMaxRegion,
         TtsWindowsVoiceId = string.IsNullOrWhiteSpace(TtsWindowsVoiceId) ? null : TtsWindowsVoiceId,
         TtsPiperVoiceId = TtsPiperVoiceId,
+        TtsKokoroVoiceId = TtsKokoroVoiceId,
         AppTheme = AppTheme,
         ShowDiagnostics = ShowDiagnosticsOverride,
         OpenTelemetryEndpoint = NormalizeOptionalString(OpenTelemetryEndpoint),

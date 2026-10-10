@@ -10,10 +10,15 @@ bound to an HTTPS source and a pinned SHA-256 hash.
 | --- | --- | --- |
 | Whisper GGML models | `WhisperModelManager.AvailableModels` | `<tray-data>\models\` |
 | Piper voice archives | `PiperVoiceManager.AvailableVoices` | `<tray-data>\models\piper\` |
+| Kokoro voice packs (model `.onnx` + `voices-*.bin`) | `KokoroModelManager.AvailablePacks` | `<tray-data>\models\kokoro\<pack-id>\` |
 | Silero VAD ONNX model | `SileroVadModelManifest` | Audio pipeline model directory |
 
 The source catalogs contain the download URL, pinned hash, and approximate size
 used by the UI. Do not duplicate those values in this document.
+
+Kokoro's G2P dictionaries are not runtime downloads: they ship inside the
+`Larroy.Kokoro` NuGet package and land in `<app>\kokoro-dict\`, because they
+are tied to the native kokoro.cpp version.
 
 ## Runtime enforcement
 

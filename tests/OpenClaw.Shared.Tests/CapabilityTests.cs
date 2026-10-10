@@ -3192,8 +3192,8 @@ public class TtsCapabilityTests
     [InlineData(" MiniMax ", "windows", "minimax")]
     [InlineData(null, "elevenlabs", "elevenlabs")]
     [InlineData("   ", "elevenlabs", "elevenlabs")]
-    [InlineData(null, "", "piper")]
-    [InlineData(null, "   ", "piper")]
+    [InlineData(null, "", "kokoro")]
+    [InlineData(null, "   ", "kokoro")]
     public void ResolveProvider_NormalizesRequestedAndConfiguredValues(
         string? requestedProvider,
         string? configuredProvider,
@@ -3382,10 +3382,12 @@ public class TtsCapabilityTests
     [InlineData("minimax", "piper", "minimax,windows", false, "minimax", "minimax", false)]
     // Configured/default preferred provider not ready, Windows available → fall back to Windows.
     [InlineData(null, "piper", "windows", true, "piper", "windows", true)]
+    [InlineData(null, "kokoro", "windows", true, "kokoro", "windows", true)]
     [InlineData(null, "elevenlabs", "windows", true, "elevenlabs", "windows", true)]
     [InlineData(null, "minimax", "windows", true, "minimax", "windows", true)]
     // Explicit provider requests stay strict and do not silently reroute.
     [InlineData("piper", "windows", "windows", false, "piper", "piper", false)]
+    [InlineData("kokoro", "windows", "windows", false, "kokoro", "kokoro", false)]
     [InlineData("elevenlabs", "windows", "windows", false, "elevenlabs", "elevenlabs", false)]
     [InlineData("minimax", "windows", "windows", false, "minimax", "minimax", false)]
     [InlineData("unknown-provider", "windows", "windows", false, "unknown-provider", "unknown-provider", false)]

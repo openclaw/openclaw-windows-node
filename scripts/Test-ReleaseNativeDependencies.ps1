@@ -102,6 +102,7 @@ function Get-NativeLoadProbeFiles {
         Get-ChildItem -LiteralPath $Directory -File -Filter "onnxruntime.dll"
         Get-ChildItem -LiteralPath $Directory -File -Filter "sherpa-onnx.dll"
         Get-ChildItem -LiteralPath $Directory -File -Filter "sherpa-onnx-c-api.dll"
+        Get-ChildItem -LiteralPath $Directory -File -Filter "kokoro.dll"
     ) | Sort-Object FullName -Unique
 }
 
@@ -143,7 +144,13 @@ function Add-TtsNativeStackProbeErrors {
         "onnxruntime.dll"
         "sherpa-onnx.dll"
         "sherpa-onnx-c-api.dll"
+        "Kokoro.Net.dll"
+        "kokoro.dll"
     )
+
+    if (-not (Test-Path -LiteralPath (Join-Path $payloadRoot "kokoro-dict\vocab.txt"))) {
+        $errors.Add("Missing kokoro-dict\vocab.txt for Kokoro TTS.")
+    }
 
     $filesByName = @{}
     foreach ($fileName in $requiredFiles) {
@@ -225,7 +232,15 @@ if (env is null)
     throw new InvalidOperationException("Microsoft.ML.OnnxRuntime.OrtEnv did not initialize.");
 }
 
-Console.WriteLine($"TTS native stack probe passed (Sherpa {version}, ONNX Runtime initialized).");
+var kokoroAsm = Assembly.LoadFrom(Path.Combine(payloadRoot, "Kokoro.Net.dll"));
+var kokoroVersion = kokoroAsm.GetType("Kokoro.Net.KokoroContext", true)!
+    .GetMethod("Version", BindingFlags.Public | BindingFlags.Static)!.Invoke(null, null)?.ToString();
+if (string.IsNullOrWhiteSpace(kokoroVersion))
+{
+    throw new InvalidOperationException("Kokoro.Net.KokoroContext.Version() returned an empty version.");
+}
+
+Console.WriteLine($"TTS native stack probe passed (Sherpa {version}, Kokoro {kokoroVersion}, ONNX Runtime initialized).");
 return 0;
 '@
 

@@ -60,6 +60,22 @@ public class AssetHashPinningTests
     }
 
     [Fact]
+    public void EveryKokoroAsset_HasPinnedSha256AndHttpsUrl()
+    {
+        Assert.NotEmpty(KokoroModelManager.AvailablePacks);
+        foreach (var pack in KokoroModelManager.AvailablePacks)
+        {
+            foreach (var asset in new[] { pack.Model, pack.VoicesFile })
+            {
+                Assert.False(string.IsNullOrWhiteSpace(asset.Sha256),
+                    $"Kokoro asset '{asset.FileName}' in pack '{pack.PackId}' is missing a pinned SHA-256 hash.");
+                Assert.Matches(Sha256Hex, asset.Sha256!);
+                Assert.StartsWith("https://", asset.DownloadUrl);
+            }
+        }
+    }
+
+    [Fact]
     public void SileroVadModel_HasPinnedSha256()
     {
         Assert.False(string.IsNullOrWhiteSpace(SileroVadModelManifest.Sha256),
