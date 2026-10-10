@@ -341,6 +341,9 @@ internal static class ConnectEnvelopeBuilder
     private const string OperatorClientId = "cli";
     private const string OperatorClientMode = "cli";
     private const string OperatorDisplayName = "OpenClaw Windows Tray";
+    // cli is not an approval-client id. Without this cap the gateway expires
+    // exec approvals as no-route and never delivers exec.approval events.
+    private static readonly string[] OperatorCaps = ["exec-approvals"];
     private const string NodeClientId = "node-host";
     private const string NodeClientMode = "node";
     private const string NodeRole = "node";
@@ -375,7 +378,7 @@ internal static class ConnectEnvelopeBuilder
             WindowsClientMetadata.Platform,
             WindowsClientMetadata.DeviceFamily,
             OperatorDisplayName,
-            [],
+            OperatorCaps,
             [],
             new Dictionary<string, bool>(),
             options.Credential,

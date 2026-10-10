@@ -397,7 +397,7 @@ public sealed class ConnectEnvelopeBuilderTests
             PropertyNames(parameters.GetProperty("device")));
         Assert.Equal(testCase.Scopes, StringValues(parameters.GetProperty("scopes")));
         Assert.Equal(
-            testCase.Profile == ConnectEnvelopeProfile.Operator ? [] : ["screen", "system"],
+            testCase.Profile == ConnectEnvelopeProfile.Operator ? ["exec-approvals"] : ["screen", "system"],
             StringValues(parameters.GetProperty("caps")));
         Assert.Equal(
             testCase.Profile == ConnectEnvelopeProfile.Operator ? [] : ["screen.capture", "system.run"],
@@ -444,7 +444,7 @@ public sealed class ConnectEnvelopeBuilderTests
                 },
                 ["role"] = testCase.Role,
                 ["scopes"] = ToJsonArray(testCase.Scopes),
-                ["caps"] = ToJsonArray(isOperator ? [] : ["screen", "system"]),
+                ["caps"] = ToJsonArray(isOperator ? ["exec-approvals"] : ["screen", "system"]),
                 ["commands"] = ToJsonArray(isOperator ? [] : ["screen.capture", "system.run"]),
                 ["permissions"] = permissions,
                 ["auth"] = auth,
