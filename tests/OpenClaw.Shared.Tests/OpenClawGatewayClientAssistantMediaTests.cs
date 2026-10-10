@@ -109,6 +109,59 @@ public sealed class OpenClawGatewayClientAssistantMediaTests
     }
 
     [Fact]
+    public async Task ResolveLegacyMedia_DoesNotSendThisNetworkOrCgnatSource()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("assistant-media-");
+        await server.StartAsync();
+        var handler = new SequentialMediaHandler(
+            JsonResponse("""{"available":false}"""));
+        using var client = new OpenClawGatewayClient(
+            server.WebSocketUrl,
+            "paired-device-token",
+            identityPath: identity.Path,
+            assistantMediaAuthToken: "shared-http-token",
+            assistantMediaHandler: handler);
+        await client.ConnectAsync();
+        MarkHandshakeReady(client);
+
+        foreach (var source in new[]
+        {
+            "https://0.0.0.0/a.png",
+            "https://100.64.0.1/a.png",
+            "https://[::ffff:0.1.2.3]/a.png",
+        })
+        {
+            var blocked = await client.ResolveAssistantMediaAsync(
+                "main",
+                new ChatMediaContentInfo
+                {
+                    Kind = ChatMediaContentKind.Image,
+                    Source = ChatMediaContentSource.LegacyDirective,
+                    GatewaySource = source,
+                });
+            Assert.Equal(AssistantMediaResolutionStatus.Unavailable, blocked.Status);
+        }
+
+        Assert.Empty(handler.Requests);
+
+        var allowed = await client.ResolveAssistantMediaAsync(
+            "main",
+            new ChatMediaContentInfo
+            {
+                Kind = ChatMediaContentKind.Image,
+                Source = ChatMediaContentSource.LegacyDirective,
+                GatewaySource = "https://example.com/a.png",
+            });
+        Assert.Equal(AssistantMediaResolutionStatus.Unavailable, allowed.Status);
+        var request = Assert.Single(handler.Requests);
+        Assert.Contains("example.com", request.Uri.Query, StringComparison.Ordinal);
+        Assert.DoesNotContain("0.0.0.0", request.Uri.Query, StringComparison.Ordinal);
+        Assert.DoesNotContain("100.64.0.1", request.Uri.Query, StringComparison.Ordinal);
+        Assert.Equal("shared-http-token", request.AuthorizationParameter);
+    }
+
+    [Fact]
     public async Task ResolveLegacyMedia_WithoutExplicitHttpCredential_DoesNotUseWebSocketToken()
     {
         using var server = new LoopbackWebSocketServer();

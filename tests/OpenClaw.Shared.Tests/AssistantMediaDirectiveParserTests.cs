@@ -137,4 +137,38 @@ public sealed class AssistantMediaDirectiveParserTests
             part => part.Kind == ChatMessageContentPartKind.Media);
         Assert.Equal(text, projection.Text);
     }
+
+    [Theory]
+    [InlineData("MEDIA:https://0.0.0.0/a.png")]
+    [InlineData("MEDIA:https://0.1.2.3/a.png")]
+    [InlineData("MEDIA:https://100.64.0.1/a.png")]
+    [InlineData("MEDIA:https://100.119.0.78/a.png")]
+    [InlineData("MEDIA:https://[::ffff:0.0.0.1]/a.png")]
+    [InlineData("MEDIA:https://[::ffff:100.64.0.1]/a.png")]
+    public void Project_ThisNetworkAndCgnatHttps_RemainsInert(string text)
+    {
+        var projection = AssistantMediaDirectiveParser.Project("assistant", text);
+
+        Assert.DoesNotContain(
+            projection.ContentParts,
+            part => part.Kind == ChatMessageContentPartKind.Media);
+        Assert.Equal(text, projection.Text);
+        Assert.False(AssistantMediaDirectiveParser.IsSendableLegacySource(text["MEDIA:".Length..]));
+    }
+
+    [Theory]
+    [InlineData("https://example.com/a.png", "example.com")]
+    [InlineData("https://1.1.1.1/a.png", "1.1.1.1")]
+    public void Project_PublicHttps_KeepsTheGatewaySource(string source, string host)
+    {
+        var projection = AssistantMediaDirectiveParser.Project("assistant", "MEDIA:" + source);
+
+        var media = Assert.Single(
+            projection.ContentParts,
+            part => part.Kind == ChatMessageContentPartKind.Media).Media;
+        Assert.NotNull(media);
+        Assert.Equal(source, media.GatewaySource);
+        Assert.Equal(host, new Uri(media.GatewaySource!).Host);
+        Assert.True(AssistantMediaDirectiveParser.IsSendableLegacySource(source));
+    }
 }
