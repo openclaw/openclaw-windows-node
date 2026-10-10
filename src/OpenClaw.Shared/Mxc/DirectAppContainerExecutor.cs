@@ -154,9 +154,10 @@ public sealed class DirectAppContainerExecutor : ISandboxExecutor
             if (ct.IsCancellationRequested)
                 ct.ThrowIfCancellationRequested();
 
-            // If our linked token tripped (timeout) and the caller's didn't, surface
-            // as a TimedOut result rather than throwing.
-            var timedOut = result.TimedOut || linked.IsCancellationRequested;
+            // The grace token can trip while stdout is drained after wxc-exec
+            // has already exited. Only the executor's TimedOut flag means the
+            // command itself did not finish.
+            var timedOut = CompletedResultIsTimeout(result, linked.Token);
             if (timedOut)
             {
                 return new SandboxExecutionResult(
@@ -183,6 +184,12 @@ public sealed class DirectAppContainerExecutor : ISandboxExecutor
             TryDelete(tempConfigFile);
             TryDeleteDir(scratchDir);
         }
+    }
+
+    internal static bool CompletedResultIsTimeout(MxcResult result, CancellationToken graceToken)
+    {
+        _ = graceToken;
+        return result.TimedOut;
     }
 
     private static string CreateScratchDir()

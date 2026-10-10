@@ -28,6 +28,26 @@ public class DirectAppContainerExecutorTests
         TimeoutMs: 30_000);
 
     [Fact]
+    public void CompletedResult_IsNotATimeoutWhenTheGraceTokenIsCancelled()
+    {
+        using var grace = new CancellationTokenSource();
+        grace.Cancel();
+        var finished = new MxcResult
+        {
+            Success = true,
+            ExitCode = 7,
+            Output = "done",
+            TimedOut = false,
+        };
+
+        Assert.False(DirectAppContainerExecutor.CompletedResultIsTimeout(finished, grace.Token));
+        Assert.True(grace.IsCancellationRequested);
+
+        var timedOut = new MxcResult { ExitCode = -1, TimedOut = true };
+        Assert.True(DirectAppContainerExecutor.CompletedResultIsTimeout(timedOut, grace.Token));
+    }
+
+    [Fact]
     public async Task ExecuteAsync_AppContainerUnavailable_Throws()
     {
         var availability = new MxcAvailability(

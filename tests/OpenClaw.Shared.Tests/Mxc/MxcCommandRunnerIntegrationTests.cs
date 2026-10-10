@@ -306,6 +306,67 @@ public class MxcCommandRunnerIntegrationTests
         Assert.Equal(0, executor.CallCount);
     }
 
+    [IntegrationFact]
+    public async Task DirectWxcExec_HostTokenCancelsBeforeSandboxDeadline_ReportsTimeout()
+    {
+        var availability = MxcAvailability.Probe(NullLogger.Instance);
+        if (!availability.CanRunSystemRunSandbox || string.IsNullOrWhiteSpace(availability.WxcExecPath))
+        {
+            Console.WriteLine(
+                "[mxc-integration] SKIPPING host-token: " +
+                string.Join("; ", availability.SystemRunSandboxUnsupportedReasons));
+            return;
+        }
+
+        if (!HasSupportedSandboxPath(AppContext.BaseDirectory)
+            || !HasSupportedSandboxPath(availability.WxcExecPath))
+        {
+            Console.WriteLine("[mxc-integration] SKIPPING host-token: unsupported sandbox path.");
+            return;
+        }
+
+        var scratch = Path.Combine(Path.GetTempPath(), "openclaw-mxc-host-token-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(scratch);
+        try
+        {
+            var settings = new SettingsData
+            {
+                SystemRunSandboxEnabled = true,
+                SystemRunAllowOutbound = false,
+            };
+            var policy = MxcPolicyBuilder.ForSystemRun(settings, scratch);
+            using var argsDoc = JsonDocument.Parse(
+                """
+                {"command":"for /L %i in (1,1,8000000) do @rem","shell":"cmd","args":[],"timeoutMs":60000}
+                """);
+            var request = new SandboxExecutionRequest(
+                "system.run",
+                argsDoc.RootElement.Clone(),
+                policy,
+                TimeoutMs: 60_000,
+                Cwd: scratch);
+            var built = MxcConfigBuilder.Build(request, scratch);
+            var config = built with
+            {
+                Process = built.Process with { TimeoutMs = 60_000 },
+            };
+
+            var executor = new MxcExecutor(availability.WxcExecPath!);
+            using var hostToken = new CancellationTokenSource(TimeSpan.FromMilliseconds(2_000));
+            var result = await executor.RunAsync(config, hostToken.Token);
+            Console.WriteLine(
+                "[mxc-integration] host-token " +
+                $"exitCode={result.ExitCode}; timedOut={result.TimedOut}; durationMs={result.DurationMs}; error={result.Error}");
+            Assert.True(result.TimedOut, result.Error);
+            Assert.Contains("cancelled", result.Error ?? "", StringComparison.OrdinalIgnoreCase);
+            Assert.InRange(result.DurationMs, 1_500, 5_000);
+        }
+        finally
+        {
+            try { Directory.Delete(scratch, recursive: true); } catch { }
+        }
+    }
+
     private static bool HasSupportedSandboxPath(string path)
     {
         try
