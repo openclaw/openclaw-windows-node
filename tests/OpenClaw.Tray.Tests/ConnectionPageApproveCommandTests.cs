@@ -153,6 +153,34 @@ public sealed class ConnectionPageApproveCommandTests
     }
 
     [Fact]
+    public void LongSafeRequestId_IsCopiedInFull()
+    {
+        var requestId = new string('a', 100);
+
+        var operatorPlan = BuildOperatorPairingPlan(requestId);
+        var nodePlan = BuildNodePairingPlan(requestId, PairingApprovalKind.NodePair);
+        var devicePlan = BuildNodePairingPlan(requestId, PairingApprovalKind.DevicePair);
+
+        Assert.Equal($"openclaw devices approve {requestId}", operatorPlan.RecoveryApproveCommand);
+        Assert.Equal($"openclaw nodes approve {requestId}", nodePlan.NodeTrustApproveCommand);
+        Assert.Equal($"openclaw devices approve {requestId}", devicePlan.NodeApproveCommand);
+    }
+
+    [Fact]
+    public void RequestIdLongerThanTheCommandLimit_UsesDiscovery()
+    {
+        var requestId = new string('b', 129);
+
+        var operatorPlan = BuildOperatorPairingPlan(requestId);
+        var nodePlan = BuildNodePairingPlan(requestId, PairingApprovalKind.NodePair);
+
+        Assert.Equal("openclaw devices list", operatorPlan.RecoveryApproveCommand);
+        Assert.Equal("openclaw nodes pending", nodePlan.NodeTrustApproveCommand);
+        Assert.DoesNotContain(requestId, operatorPlan.RecoveryApproveCommand);
+        Assert.DoesNotContain("…", operatorPlan.RecoveryApproveCommand);
+    }
+
+    [Fact]
     public void MissingOperatorRequestId_EmitsShellSafeDiscoveryCommand_NotBareApprove()
     {
         var plan = BuildOperatorPairingPlan(null);

@@ -858,29 +858,25 @@ internal sealed record ConnectionPagePlan
     private static string? BuildNodeApproveCommand(GatewayConnectionSnapshot snap)
     {
         if (snap.NodeState != RoleConnectionState.PairingRequired) return null;
-        var reqId = !string.IsNullOrEmpty(snap.NodePairingRequestId)
-            ? ConnectionCardPlanSanitizer.Sanitize(snap.NodePairingRequestId!, maxLen: 64)
-            : null;
         // Exact approval commands require an explicit kind. Unknown legacy
         // events stay discovery-only so operators can classify the request.
         // Missing requestId is a real-world case on older gateway builds:
         // emit a single discovery command the
-        // user can paste verbatim into any shell — they then pick a
+        // user can paste verbatim into any shell. They then pick a
         // requestId from its output and run approve manually. We avoid
         // embedding a "# then:" or "<requestId>" follow-up in the clipboard
         // text because `#` is treated as a literal arg by cmd.exe and `<`
-        // is parsed as input redirection — pasting either breaks for
-        // Windows-cmd users.
+        // is parsed as input redirection. Pasting either breaks for
+        // Windows-cmd users. The raw id is passed through so a 65 to 128
+        // character id is not cut before the command is built.
         if (snap.NodePairingApprovalKind == PairingApprovalKind.DevicePair)
         {
-            return CommandCenterDiagnostics.BuildDeviceApprovalRepairCommand(reqId);
+            return CommandCenterDiagnostics.BuildDeviceApprovalRepairCommand(snap.NodePairingRequestId);
         }
 
         if (snap.NodePairingApprovalKind == PairingApprovalKind.NodePair)
         {
-            return reqId != null
-                ? $"openclaw nodes approve {reqId}"
-                : "openclaw nodes pending";
+            return CommandCenterDiagnostics.BuildNodeApprovalRepairCommand(snap.NodePairingRequestId);
         }
 
         return CommandCenterDiagnostics.BuildUnknownPairingDiscoveryCommands();
@@ -890,15 +886,10 @@ internal sealed record ConnectionPagePlan
     {
         if (!snap.OperatorPairingRequired && snap.OperatorState != RoleConnectionState.PairingRequired)
             return null;
-        var reqId = !string.IsNullOrEmpty(snap.OperatorPairingRequestId)
-            ? ConnectionCardPlanSanitizer.Sanitize(snap.OperatorPairingRequestId!, maxLen: 64)
-            : null;
         // Noun-first per openclaw/src/cli/devices-cli.ts:
-        // `openclaw devices approve <requestId>`. Mirror BuildNodeApproveCommand:
-        // single discovery command in the clipboard, no shell-hostile suffix.
-        return reqId != null
-            ? $"openclaw devices approve {reqId}"
-            : "openclaw devices list";
+        // `openclaw devices approve <requestId>`. The helper keeps a safe id
+        // up to 128 characters and falls back to `openclaw devices list`.
+        return CommandCenterDiagnostics.BuildDeviceApprovalRepairCommand(snap.OperatorPairingRequestId);
     }
 
     private static string? ExtractNodeErrorDetail(GatewayConnectionSnapshot snap)
