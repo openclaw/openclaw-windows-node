@@ -235,6 +235,16 @@ public abstract class WebSocketClientBase : IDisposable
             expectedGeneration: 0).ConfigureAwait(false);
     }
 
+    internal static void ConfigureConnectProxy(ClientWebSocket socket, Uri gatewayUri)
+    {
+        ArgumentNullException.ThrowIfNull(socket);
+        ArgumentNullException.ThrowIfNull(gatewayUri);
+        if (gatewayUri.IsLoopback)
+        {
+            socket.Options.Proxy = null;
+        }
+    }
+
     private async Task<(ClientWebSocket Socket, long Generation)?> ConnectAsync(
         ClientWebSocket? expectedSocket,
         long expectedGeneration)
@@ -280,6 +290,10 @@ public abstract class WebSocketClientBase : IDisposable
                     "Authorization",
                     $"Basic {Convert.ToBase64String(Encoding.UTF8.GetBytes(credentialsToEncode))}");
             }
+
+            // The first frames carry the gateway token. A loopback URI must not
+            // traverse the process proxy. A remote URI keeps the default proxy.
+            ConfigureConnectProxy(ws, uri);
 
             var connectTimeout = ConnectAttemptTimeout;
             using var connectCancellation =
