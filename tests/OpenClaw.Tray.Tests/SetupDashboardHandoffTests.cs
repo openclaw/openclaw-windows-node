@@ -120,7 +120,7 @@ public sealed class SetupDashboardHandoffTests
     public async Task OrdinaryDashboard_UsesRequestedPathAndNormalCredentials(string? path, string suffix)
     {
         string? launched = null;
-        var launcher = new GatewayDashboardLauncher(() => true,
+        var launcher = new GatewayDashboardLauncher(() => Task.FromResult(true),
             () => new(Gateway.Url, "synthetic shared", false, CredentialResolver.SourceSharedGatewayToken),
             url => { launched = url; return Task.FromResult(true); },
             () => throw new InvalidOperationException("Unexpected failure"));
@@ -135,7 +135,7 @@ public sealed class SetupDashboardHandoffTests
     public async Task DeviceAndBootstrapTokens_NeverEnterBrowserUrl(string source, bool bootstrap)
     {
         string? launched = null;
-        var launcher = new GatewayDashboardLauncher(() => true,
+        var launcher = new GatewayDashboardLauncher(() => Task.FromResult(true),
             () => new(Gateway.Url, "do-not-export", bootstrap, source),
             url => { launched = url; return Task.FromResult(true); },
             () => throw new InvalidOperationException("Unexpected failure"));
@@ -152,7 +152,7 @@ public sealed class SetupDashboardHandoffTests
     {
         var launches = 0;
         var failures = 0;
-        var launcher = new GatewayDashboardLauncher(() => failure != "tunnel",
+        var launcher = new GatewayDashboardLauncher(() => Task.FromResult(failure != "tunnel"),
             () => failure == "credential" ? null : new(Gateway.Url, "shared", false, CredentialResolver.SourceSharedGatewayToken),
             _ =>
             {
@@ -181,7 +181,7 @@ public sealed class SetupDashboardHandoffTests
         var urls = new List<string>();
         var failures = 0;
         var opened = 0;
-        var launcher = new GatewayDashboardLauncher(() => true,
+        var launcher = new GatewayDashboardLauncher(() => Task.FromResult(true),
             () => new(Gateway.Url, "synthetic", false, CredentialResolver.SourceSharedGatewayToken),
             url => { urls.Add(url); return Task.FromResult(urls.Count == 2); },
             () => failures++, () => opened++);

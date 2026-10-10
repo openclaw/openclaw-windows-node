@@ -7,22 +7,26 @@ namespace OpenClawTray.Services;
 
 /// <summary>Uses the normal Dashboard credential path without setup completion authority.</summary>
 internal sealed class GatewayDashboardLauncher(
-    Func<bool> ensureTunnel,
+    Func<Task<bool>> ensureTunnel,
     Func<InteractiveGatewayCredential?> resolveCredential,
     Func<string, Task<bool>> launchBrowser,
     Action reportFailure,
-    Action? reportOpened = null)
+    Action? reportOpened = null,
+    Func<int?>? ownedLocalForwardPort = null)
 {
     internal const string FailureNotificationId = "setup-dashboard-launch";
     public async Task<bool> OpenAsync(string? path = null)
     {
         try
         {
-            if (!ensureTunnel())
+            if (!await ensureTunnel())
                 throw new InvalidOperationException("The Gateway tunnel is unavailable.");
             var credential = resolveCredential()
                 ?? throw new InvalidOperationException("The Gateway credential is unavailable.");
-            var url = GatewayDashboardUrlBuilder.Build(credential.GatewayUrl, path, credential.Token,
+            var gatewayUrl = ownedLocalForwardPort?.Invoke() is int localPort
+                ? DashboardBrowserHandoff.ProjectOntoLocalForward(credential.GatewayUrl, localPort)
+                : credential.GatewayUrl;
+            var url = GatewayDashboardUrlBuilder.Build(gatewayUrl, path, credential.Token,
                 !credential.IsBootstrapToken && credential.Source == CredentialResolver.SourceSharedGatewayToken);
             if (!await launchBrowser(url))
                 throw new InvalidOperationException("Windows did not open the Dashboard.");

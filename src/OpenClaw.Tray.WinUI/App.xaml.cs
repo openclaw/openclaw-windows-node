@@ -3957,12 +3957,26 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         out string gatewayUrl,
         out string token,
         out string credentialSource,
-        out bool isBootstrapToken)
+        out bool isBootstrapToken) =>
+        TryResolveChatCredentials(
+            out gatewayUrl,
+            out token,
+            out credentialSource,
+            out isBootstrapToken,
+            out _);
+
+    private bool TryResolveChatCredentials(
+        out string gatewayUrl,
+        out string token,
+        out string credentialSource,
+        out bool isBootstrapToken,
+        out string? gatewayId)
     {
         gatewayUrl = string.Empty;
         token = string.Empty;
         credentialSource = "none";
         isBootstrapToken = false;
+        gatewayId = null;
 
         if (_settings == null)
             return false;
@@ -3986,6 +4000,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         token = credential.Token;
         credentialSource = credential.Source;
         isBootstrapToken = credential.IsBootstrapToken;
+        gatewayId = credential.GatewayId;
         return true;
     }
 
@@ -4013,22 +4028,200 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         }, new AppLogger(), nameof(OpenNativeSetupCompletion));
     }
 
+    private enum DashboardLaunchReadiness
+    {
+        Ready,
+        FailedVisible,
+        FailedReport,
+    }
+
+    private sealed record DashboardLaunchPreparation(
+        InteractiveGatewayCredential Credential,
+        DashboardGatewayTunnelSnapshot Snapshot,
+        SettingsOwnedForwardBinding? OwnedForward);
+
     private void OpenDashboard(string? path = null)
     {
         AsyncEventHandlerGuard.Run(async () =>
         {
+            DashboardLaunchPreparation? prepared = null;
+            var readiness = DashboardLaunchReadiness.FailedReport;
             var launcher = new GatewayDashboardLauncher(
-                EnsureSshTunnelConfigured,
-                () => TryResolveChatCredentials(out var url, out var token, out var source, out var bootstrap)
-                    ? new InteractiveGatewayCredential(url, token, bootstrap, source) : null,
-                async url => await global::Windows.System.Launcher.LaunchUriAsync(new Uri(url)),
-                () => AsyncEventHandlerGuard.Run(
-                    () => _windowManager?.ShowDashboardLaunchFailureAsync(
-                        () => OpenDashboard(path))
-                        ?? Task.CompletedTask, new AppLogger(), "Dashboard launch error"),
-                () => _appNotificationService?.Dismiss(GatewayDashboardLauncher.FailureNotificationId));
+                async () =>
+                {
+                    (readiness, prepared) = await PrepareDashboardLaunchAsync();
+                    return readiness == DashboardLaunchReadiness.Ready;
+                },
+                () => prepared?.Credential,
+                url => LaunchDashboardBrowserAsync(url, prepared),
+                () =>
+                {
+                    if (readiness == DashboardLaunchReadiness.FailedVisible)
+                        return;
+                    AsyncEventHandlerGuard.Run(
+                        () => _windowManager?.ShowDashboardLaunchFailureAsync(
+                            () => OpenDashboard(path)) ?? Task.CompletedTask,
+                        new AppLogger(),
+                        "Dashboard launch error");
+                },
+                () => _appNotificationService?.Dismiss(GatewayDashboardLauncher.FailureNotificationId),
+                () => prepared?.OwnedForward?.LocalPort);
             await launcher.OpenAsync(path);
         }, new AppLogger(), nameof(OpenDashboard));
+    }
+
+    private async Task<(DashboardLaunchReadiness Readiness, DashboardLaunchPreparation? Prepared)> PrepareDashboardLaunchAsync()
+    {
+        if (_settings == null)
+            return (DashboardLaunchReadiness.FailedVisible, null);
+
+        var capturedTunnel = _settings.UseSshTunnel ? CreateDashboardSshTunnelOrNull() : null;
+        var hadCredentials = TryCaptureDashboardGatewaySnapshot(capturedTunnel, out var before);
+        var sshGate = await EnsureDashboardSshForwardOwnedAsync(capturedTunnel);
+        if (!sshGate.Allowed)
+            return (DashboardLaunchReadiness.FailedReport, null);
+
+        if (!hadCredentials || before is null)
+        {
+            ShowConnectionSettingsForPairingIssue(
+                "Dashboard",
+                "Gateway URL or credential is not configured");
+            return (DashboardLaunchReadiness.FailedVisible, null);
+        }
+
+        var tunnelNow = _settings.UseSshTunnel ? CreateDashboardSshTunnelOrNull() : null;
+        if (!TryCaptureDashboardGatewaySnapshot(tunnelNow, out var after) || after is null)
+        {
+            ShowConnectionSettingsForPairingIssue(
+                "Dashboard",
+                "Gateway URL or credential is not configured");
+            return (DashboardLaunchReadiness.FailedVisible, null);
+        }
+
+        if (!DashboardBrowserHandoff.SameBinding(before, after))
+        {
+            _toastService?.ShowToast(new ToastContentBuilder()
+                .AddText("SSH tunnel")
+                .AddText("SSH tunnel changed before the dashboard could open."));
+            return (DashboardLaunchReadiness.FailedVisible, null);
+        }
+
+        SettingsOwnedForwardBinding? ownedForward = sshGate.Generation is long generation
+            ? new SettingsOwnedForwardBinding(true, generation, sshGate.LocalPort, sshGate.ProcessId)
+            : null;
+        return (DashboardLaunchReadiness.Ready, new DashboardLaunchPreparation(
+            new InteractiveGatewayCredential(
+                after.GatewayUrl,
+                after.Token,
+                after.IsBootstrapToken,
+                after.Source),
+            after,
+            ownedForward));
+    }
+
+    private Task<bool> LaunchDashboardBrowserAsync(string url, DashboardLaunchPreparation? prepared)
+    {
+        if (prepared is null)
+            return Task.FromResult(false);
+
+        if (prepared.OwnedForward is not { } owned)
+            return Task.FromResult(DashboardBrowserShell.TryOpen(url, out _));
+
+        if (!DashboardBrowserHandoff.UrlUsesCapturedForward(url, prepared.Snapshot))
+            return Task.FromResult(false);
+
+        if (_sshTunnelService is not SshTunnelService tunnel ||
+            !tunnel.TryEnterBrowserHandoff(owned.Generation, owned.LocalPort, owned.ProcessId, out var handoffId))
+        {
+            return Task.FromResult(false);
+        }
+
+        if (tunnel.HasDeferredStop || !tunnel.TryBeginDashboardNavigation(handoffId))
+        {
+            tunnel.ExitBrowserHandoff(handoffId);
+            return Task.FromResult(false);
+        }
+
+        var opened = DashboardBrowserShell.TryOpen(url, out var browserProcessId);
+        if (!tunnel.CompleteDashboardNavigation(handoffId, opened, browserProcessId))
+            return Task.FromResult(false);
+
+        var localPort = owned.LocalPort;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                while (tunnel.IsBrowserHandoffOpen(handoffId))
+                {
+                    var settled = await tunnel.WatchBrowserHandoffConsumptionAsync(
+                        handoffId,
+                        localPort,
+                        TimeSpan.FromSeconds(60),
+                        consumptionProbe: null).ConfigureAwait(false);
+                    if (settled)
+                        return;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"Dashboard browser handoff watch failed: {ex.GetType().Name}");
+                if (!tunnel.IsRunning)
+                    tunnel.ExitBrowserHandoff(handoffId);
+            }
+        });
+
+        return Task.FromResult(true);
+    }
+
+    private SshTunnelConfig? CreateDashboardSshTunnelOrNull()
+    {
+        if (_settings == null ||
+            string.IsNullOrWhiteSpace(_settings.SshTunnelUser) ||
+            string.IsNullOrWhiteSpace(_settings.SshTunnelHost) ||
+            _settings.SshTunnelRemotePort is < 1 or > 65535 ||
+            _settings.SshTunnelLocalPort is < 1 or > 65535)
+        {
+            return null;
+        }
+
+        var includeBrowserProxy = BrowserProxySshTunnelForwardPolicy.ShouldInclude(
+            _settings.NodeBrowserProxyEnabled,
+            _settings.SshTunnelRemotePort,
+            _settings.SshTunnelLocalPort);
+        return new SshTunnelConfig(
+            _settings.SshTunnelUser,
+            _settings.SshTunnelHost,
+            _settings.SshTunnelRemotePort,
+            _settings.SshTunnelLocalPort,
+            includeBrowserProxy,
+            _settings.SshTunnelSshPort);
+    }
+
+    private bool TryCaptureDashboardGatewaySnapshot(
+        SshTunnelConfig? tunnel,
+        out DashboardGatewayTunnelSnapshot? snapshot)
+    {
+        snapshot = null;
+        if (!TryResolveChatCredentials(
+                out var gatewayUrl,
+                out var token,
+                out var credentialSource,
+                out var isBootstrapToken,
+                out var gatewayId))
+        {
+            return false;
+        }
+
+        var identity = string.IsNullOrWhiteSpace(gatewayId) ? gatewayUrl : gatewayId;
+        snapshot = new DashboardGatewayTunnelSnapshot(
+            identity,
+            gatewayUrl,
+            token,
+            !isBootstrapToken && credentialSource == CredentialResolver.SourceSharedGatewayToken,
+            tunnel,
+            isBootstrapToken,
+            credentialSource);
+        return true;
     }
 
     // ── IAppCommands implementation ─────────────────────────────────────
@@ -4352,60 +4545,54 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
     #endregion
 
-    private bool EnsureSshTunnelConfigured()
+    private async Task<(bool Allowed, long? Generation, int LocalPort, int ProcessId)> EnsureDashboardSshForwardOwnedAsync(
+        SshTunnelConfig? capturedTunnel)
     {
         if (_settings == null)
         {
-            return false;
+            return (false, null, 0, 0);
         }
 
-        if (_settings.UseSshTunnel)
-        {
-            if (string.IsNullOrWhiteSpace(_settings.SshTunnelUser) ||
-                string.IsNullOrWhiteSpace(_settings.SshTunnelHost) ||
-                _settings.SshTunnelRemotePort is < 1 or > 65535 ||
-                _settings.SshTunnelLocalPort is < 1 or > 65535)
-            {
-                Logger.Warn("SSH tunnel is enabled but settings are incomplete");
-                UpdateTrayIcon();
-                return false;
-            }
-
-            try
-            {
-                _sshTunnelService ??= new SshTunnelService(new AppLogger());
-                var includeBrowserProxy = BrowserProxySshTunnelForwardPolicy.ShouldInclude(
-                    _settings.NodeBrowserProxyEnabled,
-                    _settings.SshTunnelRemotePort,
-                    _settings.SshTunnelLocalPort);
-                _sshTunnelService.EnsureStarted(
-                    _settings.SshTunnelUser,
-                    _settings.SshTunnelHost,
-                    _settings.SshTunnelRemotePort,
-                    _settings.SshTunnelLocalPort,
-                    includeBrowserProxy,
-                    _settings.SshTunnelSshPort);
-                DiagnosticsJsonlService.Write("tunnel.ensure_started", new
-                {
-                    status = _sshTunnelService.Status.ToString(),
-                    localEndpoint = $"127.0.0.1:{_settings.SshTunnelLocalPort}",
-                    remoteHost = string.IsNullOrWhiteSpace(_settings.SshTunnelHost) ? null : _settings.SshTunnelHost,
-                    remotePort = _settings.SshTunnelRemotePort
-                });
-            }
-            catch (Exception ex)
-            {
-                Logger.Error($"Failed to start SSH tunnel: {ex.Message}");
-                UpdateTrayIcon();
-                return false;
-            }
-        }
-        else
+        if (!_settings.UseSshTunnel)
         {
             _sshTunnelService?.Stop();
+            return (true, null, 0, 0);
         }
 
-        return true;
+        if (capturedTunnel is null)
+        {
+            Logger.Warn("SSH tunnel is enabled but settings are incomplete");
+            UpdateTrayIcon();
+            return (false, null, 0, 0);
+        }
+
+        try
+        {
+            _sshTunnelService ??= new SshTunnelService(new AppLogger());
+            var owned = await _sshTunnelService.EnsureSettingsOwnedForwardReadyAsync(
+                capturedTunnel,
+                CancellationToken.None);
+            DiagnosticsJsonlService.Write("tunnel.ensure_started", new
+            {
+                status = _sshTunnelService.Status.ToString(),
+                localEndpoint = $"127.0.0.1:{capturedTunnel.LocalPort}",
+                remoteHost = string.IsNullOrWhiteSpace(capturedTunnel.Host) ? null : capturedTunnel.Host,
+                remotePort = capturedTunnel.RemotePort
+            });
+            if (!owned.Owned)
+            {
+                UpdateTrayIcon();
+                return (false, null, 0, 0);
+            }
+
+            return (true, owned.Generation, owned.LocalPort, owned.ProcessId);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"Failed to start SSH tunnel: {ex.Message}");
+            UpdateTrayIcon();
+            return (false, null, 0, 0);
+        }
     }
 
     private void OnSshTunnelExited(object? sender, SshTunnelExit tunnelExit) =>
