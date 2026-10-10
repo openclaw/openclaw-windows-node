@@ -534,8 +534,13 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                                     available ? Visibility.Collapsed : Visibility.Visible;
                                 Find<StackPanel>(welcome, "NativeSupportStatusPanel").Visibility =
                                     available ? Visibility.Collapsed : Visibility.Visible;
-                                Find<TextBlock>(welcome, "NativeSupportStatus").Text =
-                                    available ? "" : "Synthetic unavailable host. Windows update required.";
+                                var nativeStatus = Find<TextBlock>(welcome, "NativeSupportStatus");
+                                if (available)
+                                    NativeGatewayEligibilityTextTestAccess.ApplyPlain(nativeStatus, "");
+                                else
+                                    NativeGatewayEligibilityTextTestAccess.Apply(nativeStatus, NativeGatewayEligibility.CapabilityUnavailable);
+                                Find<Button>(welcome, "WindowsUpdateButton").Visibility =
+                                    available ? Visibility.Collapsed : Visibility.Visible;
                                 Assert.True(VisualStateManager.GoToState(welcome,
                                     available ? "NativeRecommendedState" : "WslRecommendedState", false));
                                 result.Facts.Add("Synthetic availability projection using production visual states, not host eligibility proof.");
