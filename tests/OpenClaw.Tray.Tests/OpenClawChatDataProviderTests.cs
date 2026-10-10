@@ -15125,6 +15125,51 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task LoadHistoryAsync_SplitAssistantRow_ShowsCostOnceOnLastTextPart()
+    {
+        var call = new ChatToolContentInfo
+        {
+            Kind = ChatToolContentKind.Call,
+            CallId = "call-cost",
+            ToolName = "exec",
+        };
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    Role = "assistant",
+                    Text = "Before\nAfter",
+                    State = "final",
+                    Ts = 1714600001000,
+                    CostUsd = 0.5,
+                    ToolContent = [call],
+                    ContentParts =
+                    [
+                        new ChatMessageContentPartInfo { Kind = ChatMessageContentPartKind.Text, Text = "Before" },
+                        new ChatMessageContentPartInfo { Kind = ChatMessageContentPartKind.Tool, Tool = call },
+                        new ChatMessageContentPartInfo { Kind = ChatMessageContentPartKind.Text, Text = "After" },
+                    ],
+                },
+            ],
+        });
+        await provider.LoadAsync();
+
+        await provider.LoadHistoryAsync("main");
+
+        var entries = (await provider.LoadAsync()).Timelines["main"].Entries;
+        var meta = provider.GetEntryMetadata("main");
+        var priced = entries.Where(entry => meta.TryGetValue(entry.Id, out var m) && m.CostUsd is not null).ToArray();
+        var only = Assert.Single(priced);
+        Assert.Equal(ChatTimelineItemKind.Assistant, only.Kind);
+        Assert.Equal("After", only.Text);
+        Assert.Equal(0.5, meta[only.Id].CostUsd);
+    }
+
+    [Fact]
     public async Task LoadHistoryAsync_HistoryRowWithoutCost_ReplacesLiveCost()
     {
         var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });

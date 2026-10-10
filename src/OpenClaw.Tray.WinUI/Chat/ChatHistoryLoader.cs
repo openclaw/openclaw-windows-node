@@ -518,6 +518,21 @@ internal sealed class ChatHistoryLoader : IDisposable
             .Select(static tool => tool.CallId)
             .Where(static callId => !string.IsNullOrWhiteSpace(callId))
             .ToHashSet(StringComparer.Ordinal);
+        // One history row can replay as several entries (text, tool, text) but
+        // reports a single cost. Show it once, on the row's last text part.
+        var costCarriers = new Dictionary<ChatMessageInfo, ChatHistoryReplayPart>(
+            ReferenceEqualityComparer.Instance);
+        foreach (var part in replayParts)
+        {
+            if (part.Message.CostUsd is null)
+                continue;
+            if (!costCarriers.TryGetValue(part.Message, out var carrier) ||
+                part.Text.Length > 0 ||
+                carrier.Text.Length == 0)
+            {
+                costCarriers[part.Message] = part;
+            }
+        }
 
         string AllocateSyntheticToolCallId()
         {
@@ -603,7 +618,10 @@ internal sealed class ChatHistoryLoader : IDisposable
                 message.OutputTokens,
                 message.ResponseTokens,
                 message.ContextPercent,
-                CostUsd: message.CostUsd,
+                CostUsd: costCarriers.TryGetValue(message, out var costCarrier) &&
+                         ReferenceEquals(costCarrier, replayPart)
+                    ? message.CostUsd
+                    : null,
                 GatewayMessageId: message.OpenClawId,
                 OpenClawSeq: message.OpenClawSeq,
                 OpenClawKind: message.OpenClawKind,
