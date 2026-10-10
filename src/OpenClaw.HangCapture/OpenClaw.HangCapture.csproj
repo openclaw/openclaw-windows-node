@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>OpenClaw.HangCapture</AssemblyName>
+    <RootNamespace>OpenClawTray.Services</RootNamespace>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenClaw.Shared\OpenClaw.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\OpenClaw.Tray.WinUI\Services\UiThreadStackCollector.cs" Link="Services\UiThreadStackCollector.cs" />
+    <Compile Include="..\OpenClaw.Tray.WinUI\Services\CompanionHangCapture.cs" Link="Services\CompanionHangCapture.cs" />
+    <Compile Include="..\OpenClaw.Tray.WinUI\Services\HangCaptureHost.cs" Link="Services\HangCaptureHost.cs" />
+    <Compile Include="..\OpenClaw.Tray.WinUI\Services\CaptureDrain.cs" Link="Services\CaptureDrain.cs" />
+    <Compile Include="..\OpenClaw.Tray.WinUI\Services\CaptureResumeObligations.cs" Link="Services\CaptureResumeObligations.cs" />
+    <Compile Include="..\OpenClaw.Tray.WinUI\Services\CaptureHostLifetime.cs" Link="Services\CaptureHostLifetime.cs" />
+    <Compile Include="..\OpenClaw.Tray.WinUI\Services\WindowsUiThreadStackSource.cs" Link="Services\WindowsUiThreadStackSource.cs" />
+    <Compile Include="..\OpenClaw.Tray.WinUI\Services\DiagnosticsExportSanitizer.cs" Link="Services\DiagnosticsExportSanitizer.cs" />
+  </ItemGroup>
+
+</Project>

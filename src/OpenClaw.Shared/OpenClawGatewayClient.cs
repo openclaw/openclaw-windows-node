@@ -41,11 +41,46 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     // Tracked state
     private readonly Dictionary<string, SessionInfo> _sessions = new();
+    private readonly SessionCatalogRefreshState _catalogRefreshState = new();
     private ThinkingContext? _sessionThinkingDefaults;
     private GatewayUsageInfo? _usage;
     private GatewayUsageStatusInfo? _usageStatus;
     private GatewayCostUsageInfo? _usageCost;
     private readonly PendingRequestRegistry _pendingRequests = new();
+    /// <summary>Raised after an accepted catalog-refresh transition (retry needed or cleared), outside locks.</summary>
+    public event EventHandler<SessionCatalogRefreshStateChangedEventArgs>? SessionCatalogRefreshStateChanged;
+
+    /// <summary>True while a bounded catalog acquisition is in progress (begin..terminal).</summary>
+    public bool SessionCatalogAcquisitionInProgress => Volatile.Read(ref _sessionsPageSet) is not null;
+
+    private void RaiseCatalogRefreshStateChanged() =>
+        SessionCatalogRefreshStateChanged?.Invoke(this, new SessionCatalogRefreshStateChangedEventArgs
+        {
+            RetryRequired = _catalogRefreshState.RetryRequired,
+            AcquisitionInProgress = Volatile.Read(ref _sessionsPageSet) is not null
+        });
+
+    private readonly object _sessionsAcquisitionLock = new();
+    private SessionCatalogPageSet? _sessionsPageSet;
+    private CancellationTokenSource? _sessionsAcquisitionCts;
+    private long _catalogRefreshGeneration;
+
+    /// <summary>Immutable per-request acquisition context correlated back with the response.</summary>
+    private sealed class SessionCatalogRequestContext(long generation, string? scope, int requestedOffset, SessionCatalogPageSet pageSet)
+    {
+        public long Generation { get; } = generation;
+        public string? Scope { get; } = scope;
+        public int RequestedOffset { get; } = requestedOffset;
+        public SessionCatalogPageSet PageSet { get; } = pageSet;
+    }
+
+    /// <summary>Result of admitting one sessions payload (admitted keys + the committed snapshot).</summary>
+    private readonly record struct SessionParseResult(HashSet<string> AdmittedKeys, SessionInfo[]? Snapshot);
+
+    /// <summary>Test-only hook invoked inside the acquisition lock just before admission (barrier controls).</summary>
+    internal Action? TestBeforeAdmissionHook { get; set; }
+
+    private Func<TimeSpan, CancellationToken, Task> _acquisitionDelay = static (delay, token) => Task.Delay(delay, token);
     private readonly object _sessionsLock = new();
     private readonly DeviceIdentity _deviceIdentity;
     private sealed record SigningIdentity(string RequestId, long Generation, string DeviceId);
@@ -199,6 +234,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         Volatile.Write(ref _handshakeConnectionGeneration, 0);
         Volatile.Write(ref _hasHandshakeSnapshot, false);
         _pendingRequests.OpenConnection();
+        InvalidateSessionAcquisition();
         ResetUnsupportedMethodFlags();
         RaiseTransportConnected();
         return Task.CompletedTask;
@@ -442,6 +478,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             }
         }
         _pendingRequests.Drain();
+        InvalidateSessionAcquisition();
         RaiseStatusChanged(ConnectionStatus.Disconnected);
         _logger.Info("Disconnected");
     }
@@ -575,6 +612,252 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             timeoutMs);
 
         return ParseChatHistory(payload, effectiveSessionKey);
+    }
+
+    /// <summary>
+    /// Source-grounded bounded history page: sends limit (+ optional maxBytes/offset) exactly as the
+    /// installed handler accepts them and returns the response's paging metadata. The legacy
+    /// RequestChatHistoryAsync path is untouched (no offset) and is NOT claimed to be a complete page.
+    /// </summary>
+    public async Task<GatewayChatHistoryPage> RequestChatHistoryPageAsync(
+        string? sessionKey,
+        ChatHistoryPageOptions options,
+        int timeoutMs = 15000,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        if (options.Limit < 1) throw new ArgumentOutOfRangeException(nameof(options), "limit must be >= 1");
+        if (options.Limit > 1000) throw new ArgumentOutOfRangeException(nameof(options), "limit must be <= 1000 (installed handler maximum page limit)");
+        if (options.MaxBytes is < 1024) throw new ArgumentOutOfRangeException(nameof(options), "maxBytes must be >= 1024 when present");
+        if (options.Offset is < 0) throw new ArgumentOutOfRangeException(nameof(options), "offset must be >= 0 when present");
+
+        cancellationToken.ThrowIfCancellationRequested();
+        var effectiveSessionKey = ResolveEffectiveSessionKey(
+            sessionKey, Volatile.Read(ref _mainSessionKey), "chat.history");
+
+        object parameters =
+            options.Offset is null && options.MaxBytes is null
+                ? new { sessionKey = effectiveSessionKey, limit = options.Limit }
+                : options.Offset is null
+                    ? new { sessionKey = effectiveSessionKey, limit = options.Limit, maxBytes = options.MaxBytes!.Value }
+                    : options.MaxBytes is null
+                        ? new { sessionKey = effectiveSessionKey, limit = options.Limit, offset = options.Offset!.Value }
+                        : new { sessionKey = effectiveSessionKey, limit = options.Limit, maxBytes = options.MaxBytes!.Value, offset = options.Offset!.Value };
+
+        var payload = await SendWizardRequestAsync("chat.history", parameters, timeoutMs);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ParseChatHistoryPage(payload, effectiveSessionKey, options);
+    }
+
+    /// <summary>
+    /// Strict, source-grounded admission of a bounded chat.history page. The installed handler emits
+    /// totalMessages and treats offset 0 as the tail. Any missing/ill-typed metadata or inconsistent
+    /// progression throws <see cref="ChatHistoryPageException"/> so callers surface an
+    /// unsupported/retry state instead of silently presenting an unknown window as complete history.
+    /// </summary>
+    private static GatewayChatHistoryPage ParseChatHistoryPage(JsonElement payload, string sessionKey, ChatHistoryPageOptions options)
+    {
+        var requestedOffset = options.Offset;
+        if (payload.ValueKind != JsonValueKind.Object)
+            throw new ChatHistoryPageException("chat.history page response was not a JSON object; completeness is unknown.");
+
+        // The handler echoes the request's sessionKey; require an exact match (no alias/canonicalization).
+        if (!payload.TryGetProperty("sessionKey", out var keyProp) || keyProp.ValueKind != JsonValueKind.String)
+            throw new ChatHistoryPageException("chat.history page response omitted a string sessionKey echo.");
+        var echoedKey = keyProp.GetString();
+        if (!string.Equals(echoedKey, sessionKey, StringComparison.Ordinal))
+            throw new ChatHistoryPageException($"chat.history page echoed sessionKey '{echoedKey}' for requested '{sessionKey}'.");
+
+        if (!payload.TryGetProperty("messages", out var msgsProp) || msgsProp.ValueKind != JsonValueKind.Array)
+            throw new ChatHistoryPageException("chat.history page response omitted the messages array.");
+
+        // REQUESTED CONTENT BUDGET: the admitted page must honour the request's OWN bounds. The requested
+        // MESSAGE-ARRAY budget (maxBytes) is distinct from the transport-envelope cap the socket applies, so
+        // this guards the reply CONTENT, not the frame. A page that ignores the requested row count or message
+        // byte budget is NOT a valid page: reject it HERE (before any history is constructed or replayed) so
+        // callers surface an unsupported/retry state instead of presenting over-budget history. No silent
+        // truncation and no unbounded fallback.
+        // REQUESTED ROW BUDGET with SOURCE-SEMANTICS: the installed handler caps PROJECTED messages by the raw
+        // requested count, but its cap PRESERVES same-sequence boundary siblings (capOffset...): a page may exceed
+        // the raw limit only by messages that share the boundary raw __openclaw.seq group. An unconditional
+        // count<=limit guard rejects a VALID gateway response; an unconditional pass would admit an ignored limit.
+        // So: allow the overflow ONLY when every extra (older) message shares the boundary seq; otherwise reject.
+        // WIRE AUTHORITY: the wire completeSnapshot flag is the ONLY completeness signal. An internal
+        // completeCliImport marker is NOT wire authority and is never invented or accepted from the payload.
+        bool? completeSnapshot = null;
+        if (payload.TryGetProperty("completeSnapshot", out var completeSnapshotProp))
+        {
+            if (completeSnapshotProp.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                throw new ChatHistoryPageException("chat.history page completeSnapshot is not a boolean.");
+            completeSnapshot = completeSnapshotProp.GetBoolean();
+        }
+
+        var admittedCount = msgsProp.GetArrayLength();
+        // FINITE WIRE BOUND (not an invented row cap): the completeCLI merge can legitimately emit more projected
+        // rows than the requested raw limit, bounded only by the hard INBOUND wire cap (32 MiB, mirroring the
+        // socket guard). No unbounded allocation is implied: the payload was already bounded on receive.
+        var messageArray = msgsProp.GetRawText();
+        if (messageArray.Length > MaxWirePageChars)
+            throw new ChatHistoryPageException(
+                $"chat.history page payload exceeds the {MaxWirePageChars}-char wire bound.");
+        // ACTUAL OMISSION (source emits this object only when content was really omitted). Strict, typed, bounded.
+        int? omittedCount = null;
+        long? normalizedBytes = null;
+        if (payload.TryGetProperty("omission", out var omissionProp) && omissionProp.ValueKind != JsonValueKind.Null)
+        {
+            if (omissionProp.ValueKind != JsonValueKind.Object)
+                throw new ChatHistoryPageException("chat.history page omission is not an object.");
+            if (omissionProp.TryGetProperty("omittedCount", out var omittedCountProp))
+            {
+                if (omittedCountProp.ValueKind != JsonValueKind.Number || !omittedCountProp.TryGetInt32(out var oc) || oc < 0)
+                    throw new ChatHistoryPageException("chat.history page omission.omittedCount is not a non-negative integer.");
+                omittedCount = oc;
+            }
+            if (omissionProp.TryGetProperty("normalizedBytes", out var normalizedBytesProp))
+            {
+                if (normalizedBytesProp.ValueKind != JsonValueKind.Number || !normalizedBytesProp.TryGetInt64(out var nb) || nb < 0)
+                    throw new ChatHistoryPageException("chat.history page omission.normalizedBytes is not a non-negative integer.");
+                normalizedBytes = nb;
+            }
+        }
+
+        // SOURCE-BACKED budget provenance (strict boolean). This is the ACTUAL producer's explicit signal that
+        // the page is a complete-CLI projection bounded by the source GLOBAL budget; it is NOT a licence to
+        // ignore budgets in general (an arbitrary omission alone is never accepted as such).
+        var completeCliImport = false;
+        if (payload.TryGetProperty("completeCliImport", out var completeCliImportProp))
+        {
+            if (completeCliImportProp.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                throw new ChatHistoryPageException("chat.history page completeCliImport is not a boolean.");
+            completeCliImport = completeCliImportProp.GetBoolean();
+        }
+
+        // CONTRADICTION: an explicit complete snapshot cannot also claim a reported omission.
+        if (completeSnapshot == true && omittedCount is > 0)
+            throw new ChatHistoryPageException("chat.history page reported completeSnapshot WITH a reported omission; contradictory.");
+
+        if (completeSnapshot != true && !completeCliImport && admittedCount > options.Limit && !IsProjectedSiblingOverflowAllowed(msgsProp, options.Limit))
+            throw new ChatHistoryPageException(
+                $"chat.history page admitted {admittedCount} messages for a requested limit of {options.Limit} without a same-sequence sibling boundary.");
+        // REQUESTED CONTENT BUDGET: applies to a NON-complete page. A completeSnapshot page is bounded by the
+        // SOURCE GLOBAL budget instead (completeCLI can legitimately exceed the requested envelope budget), so the
+        // requested byte budget must not reject it. This is NOT a no-op guard: non-complete pages stay bounded.
+        if (completeSnapshot != true && !completeCliImport && options.MaxBytes is int requestedMaxBytes)
+        {
+            var messageArrayBytes = System.Text.Encoding.UTF8.GetByteCount(messageArray);
+            if (messageArrayBytes > requestedMaxBytes)
+                throw new ChatHistoryPageException(
+                    $"chat.history page message array is {messageArrayBytes} bytes for a requested maxBytes of {requestedMaxBytes}.");
+        }
+
+        // hasMore must be a real boolean; a missing/ill-typed value must never read as "complete".
+        if (!payload.TryGetProperty("hasMore", out var hasMoreProp)
+            || hasMoreProp.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+            throw new ChatHistoryPageException("chat.history page response has no boolean hasMore.");
+        var hasMore = hasMoreProp.GetBoolean();
+
+        // totalMessages must be a non-negative integer (the handler field, not "total").
+        if (!payload.TryGetProperty("totalMessages", out var totalProp)
+            || totalProp.ValueKind != JsonValueKind.Number || !totalProp.TryGetInt32(out var total) || total < 0)
+            throw new ChatHistoryPageException("chat.history page response has no non-negative integer totalMessages.");
+
+        // Response offset: when a page was requested it must equal the request; a no-offset (tail)
+        // request may legitimately omit it.
+        int? responseOffset = null;
+        if (payload.TryGetProperty("offset", out var offsetProp) && offsetProp.ValueKind != JsonValueKind.Null)
+        {
+            if (offsetProp.ValueKind != JsonValueKind.Number || !offsetProp.TryGetInt32(out var offsetValue) || offsetValue < 0)
+                throw new ChatHistoryPageException("chat.history page response offset is not a non-negative integer.");
+            responseOffset = offsetValue;
+        }
+        if (requestedOffset is int requested && responseOffset != requested)
+            throw new ChatHistoryPageException(
+                $"chat.history page returned offset {responseOffset?.ToString() ?? "<none>"} for requested offset {requested}.");
+
+        // nextOffset: required, non-negative, strictly past the effective offset and below totalMessages
+        // when more pages remain; legitimately omitted (or null) only on exhaustion.
+        int? nextOffset = null;
+        var hasNextProp = payload.TryGetProperty("nextOffset", out var nextProp);
+        if (hasMore)
+        {
+            var effective = requestedOffset ?? 0;
+            if (!hasNextProp || nextProp.ValueKind != JsonValueKind.Number
+                || !nextProp.TryGetInt32(out var nextValue) || nextValue < 0)
+                throw new ChatHistoryPageException("chat.history reported hasMore without a non-negative integer nextOffset.");
+            if (nextValue <= effective || nextValue >= total)
+                throw new ChatHistoryPageException(
+                    $"chat.history nextOffset {nextValue} is not past {effective} and below totalMessages {total}.");
+            nextOffset = nextValue;
+        }
+        else if (hasNextProp && nextProp.ValueKind != JsonValueKind.Null)
+        {
+            throw new ChatHistoryPageException("chat.history reported completion but still returned a nextOffset.");
+        }
+
+        // CONTRADICTION (checked after hasMore is known): complete snapshot WITH more pages is impossible.
+        if (completeSnapshot == true && hasMore)
+            throw new ChatHistoryPageException("chat.history page reported completeSnapshot WITH hasMore; contradictory.");
+
+        var info = ParseChatHistory(payload, sessionKey);
+        return new GatewayChatHistoryPage(
+            sessionKey, info.SessionId, info.Messages, hasMore, nextOffset, responseOffset, total,
+            completeSnapshot, omittedCount, normalizedBytes, completeCliImport);
+    }
+
+    /// <summary>
+    /// True when a page that EXCEEDS the requested raw limit is the source cap's same-sequence boundary-sibling
+    /// preservation: with <c>start = count - limit</c>, EVERY older message before start must share the boundary
+    /// message's positive <c>__openclaw.seq</c>. If the boundary has no seq (or a sibling differs), the overflow
+    /// is NOT justified and the page is rejected - so the generic ignored-limit rejection stays meaningful.
+    /// </summary>
+    private static bool IsProjectedSiblingOverflowAllowed(JsonElement messages, int limit)
+    {
+        var count = messages.GetArrayLength();
+        if (count <= limit || limit < 1) return count <= limit;
+        var start = count - limit;
+        if (!TryReadChatHistoryMessageSeq(messages[start], out var boundarySeq)) return false;
+        for (var i = 0; i < start; i++)
+        {
+            if (!TryReadChatHistoryMessageSeq(messages[i], out var seq) || seq != boundarySeq) return false;
+        }
+        return true;
+    }
+
+    /// <summary>Finite bound on an admitted page, independent of the requested limit and the global source cap.</summary>
+    /// <summary>Hard INBOUND wire bound for one page payload (mirrors the socket 32 MiB character guard).</summary>
+    private const int MaxWirePageChars = 32 * 1024 * 1024;
+
+    /// <summary>Number.MAX_SAFE_INTEGER (2^53 - 1): the largest integral JS number the source treats as a safe seq.</summary>
+    private const double MaxSafeSeq = 9007199254740991d;
+
+    /// <summary>
+    /// Reads a message __openclaw.seq under the ACTUAL source numeric contract:
+    /// typeof seq === "number" &amp;&amp; Number.isSafeInteger(seq) &amp;&amp; seq &gt; 0. A JSON number is evaluated
+    /// numerically (so 1, 1.0 and 1e0 all read as 1), a non-integral / non-finite / non-positive value is undefined,
+    /// and a value above Number.MAX_SAFE_INTEGER (e.g. 2^53) is undefined - NOT accepted because it fits an int64.
+    /// </summary>
+    private static bool TryReadChatHistoryMessageSeq(JsonElement message, out long seq)
+    {
+        seq = 0;
+        if (message.ValueKind != JsonValueKind.Object) return false;
+        if (!message.TryGetProperty("__openclaw", out var metadata) || metadata.ValueKind != JsonValueKind.Object) return false;
+        if (!metadata.TryGetProperty("seq", out var seqProperty) || seqProperty.ValueKind != JsonValueKind.Number) return false;
+
+        double value;
+        try
+        {
+            value = seqProperty.GetDouble();
+        }
+        catch (Exception)
+        {
+            return false;   // not representable as a double => not a JS safe integer
+        }
+
+        if (double.IsNaN(value) || double.IsInfinity(value)) return false;
+        if (value <= 0 || value > MaxSafeSeq) return false;
+        if (Math.Floor(value) != value) return false;   // Number.isSafeInteger requires an integer
+        seq = (long)value;
+        return true;
     }
 
     /// <summary>
@@ -787,6 +1070,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 State = "final",
                 Ts = ts,
                 OpenClawId = openClawMetadata.Id,
+                OpenClawDisplayItemId = ExtractOpenClawDisplayItemId(m),
                 OpenClawSeq = openClawMetadata.Seq,
                 OpenClawKind = openClawMetadata.Kind,
                 CompactionTokensBefore = openClawMetadata.TokensBefore,
@@ -1347,14 +1631,157 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
     }
 
+    /// <summary>
+    /// U2: true when a session-catalog refresh returned no rows and was ignored to protect
+    /// the held catalog. The UI can surface a retry/error state; it must never blank the list.
+    /// </summary>
+    public bool SessionCatalogRetryRequired => _catalogRefreshState.RetryRequired;
+
+    /// <summary>Number of ignored empty catalog refreshes since the last successful refresh.</summary>
+    public int IgnoredEmptyCatalogRefreshes => _catalogRefreshState.IgnoredEmptyRefreshes;
+
     /// <summary>Request session list from gateway.</summary>
     public async Task RequestSessionsAsync(string? agentId = null)
     {
         if (_operatorReadScopeUnavailable) return;
-        if (!string.IsNullOrEmpty(agentId))
-            await SendTrackedRequestAsync("sessions.list", new { agentId });
-        else
-            await SendTrackedRequestAsync("sessions.list");
+        // Start a bounded complete page-set acquisition. Each response is correlated back by
+        // request identity; the scope travels with every page so a scoped (filtered) response
+        // never deletes other agents' held sessions. Supersedes any in-flight acquisition.
+        SessionCatalogPageSet pageSet;
+        long generation;
+        lock (_sessionsAcquisitionLock)
+        {
+            generation = ++_catalogRefreshGeneration;
+            pageSet = new SessionCatalogPageSet(agentId, generation, Environment.TickCount64);
+            _sessionsPageSet = pageSet;
+            StartAcquisitionDeadlineLocked(pageSet, generation, null);
+        }
+
+        // Send the explicit bounded initial window (limit + offset 0) with per-request context.
+        // Begin transition: an acquisition is now in progress.
+        RaiseCatalogRefreshStateChanged();
+
+        bool sent;
+        try
+        {
+            sent = await SendSessionsListPageAsync(agentId, offset: 0, generation, pageSet);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"[SESSIONS] initial page send threw: {ex.Message}");
+            sent = false;
+        }
+
+        if (!sent)
+        {
+            lock (_sessionsAcquisitionLock)
+            {
+                if (ReferenceEquals(_sessionsPageSet, pageSet))
+                {
+                    _catalogRefreshState.RecordIgnoredEmpty(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+                    _logger.Warn("[SESSIONS] initial page send was not accepted; preserving held catalog and marking retry");
+                    CompleteAcquisitionLocked(pageSet);
+                }
+            }
+            // Terminal transition (send false or throw): acquisition ends promptly.
+            RaiseCatalogRefreshStateChanged();
+        }
+    }
+
+    /// <summary>Requests one bounded window of the session catalog for an in-flight acquisition.</summary>
+    private async Task<bool> SendSessionsListPageAsync(string? agentId, int offset, long generation, SessionCatalogPageSet pageSet)
+    {
+        object payload = string.IsNullOrEmpty(agentId)
+            ? new { limit = SessionCatalogPageSet.DefaultPageSize, offset }
+            : new { agentId, limit = SessionCatalogPageSet.DefaultPageSize, offset };
+        var context = new SessionCatalogRequestContext(generation, agentId, offset, pageSet);
+        // Dependency seam: unit tests can supply the bool send result without a live socket.
+        if (_sessionsPageSender is not null) return await _sessionsPageSender(agentId, offset);
+        return await SendTrackedRequestAsync("sessions.list", payload, scope: agentId, context: context);
+    }
+
+    /// <summary>Autonomous deadline. Caller must hold <see cref="_sessionsAcquisitionLock"/>.</summary>
+    private void StartAcquisitionDeadlineLocked(SessionCatalogPageSet pageSet, long generation, TimeSpan? deadline)
+    {
+        var cts = new CancellationTokenSource();
+        var previous = _sessionsAcquisitionCts;
+        _sessionsAcquisitionCts = cts;
+        previous?.Cancel();
+        previous?.Dispose();
+        var token = cts.Token;
+        var wait = deadline ?? SessionCatalogPageSet.DefaultDeadline;
+        _ = Task.Run(async () =>
+        {
+            try { await _acquisitionDelay(wait, token).ConfigureAwait(false); }
+            catch (OperationCanceledException) { return; }
+            var changed = false;
+            lock (_sessionsAcquisitionLock)
+            {
+                if (ReferenceEquals(_sessionsPageSet, pageSet) && pageSet.Generation == _catalogRefreshGeneration)
+                {
+                    _catalogRefreshState.RecordIgnoredEmpty(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+                    _logger.Warn("[SESSIONS] page-set acquisition timed out with no response; marking retry");
+                    CompleteAcquisitionLocked(pageSet);
+                    changed = true;
+                }
+            }
+            if (changed) RaiseCatalogRefreshStateChanged();
+        });
+    }
+
+    /// <summary>Generation-safe completion. Caller must hold <see cref="_sessionsAcquisitionLock"/>.</summary>
+    private void CompleteAcquisitionLocked(SessionCatalogPageSet pageSet)
+    {
+        if (!ReferenceEquals(_sessionsPageSet, pageSet)) return;
+        _sessionsPageSet = null;
+        var cts = _sessionsAcquisitionCts;
+        _sessionsAcquisitionCts = null;
+        cts?.Cancel();
+        cts?.Dispose();
+    }
+
+    /// <summary>Invalidate any in-flight acquisition (disconnect/open/supersession).</summary>
+    private void InvalidateSessionAcquisition()
+    {
+        lock (_sessionsAcquisitionLock)
+        {
+            _catalogRefreshGeneration++;
+            _sessionsPageSet = null;
+            var cts = _sessionsAcquisitionCts;
+            _sessionsAcquisitionCts = null;
+            cts?.Cancel();
+            cts?.Dispose();
+        }
+        RaiseCatalogRefreshStateChanged();
+    }
+
+    private async Task SendSessionsListPageGuardedAsync(string? agentId, int offset, long generation, SessionCatalogPageSet pageSet)
+    {
+        bool sent;
+        try
+        {
+            sent = await SendSessionsListPageAsync(agentId, offset, generation, pageSet);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"[SESSIONS] continuation send threw at offset {offset}: {ex.Message}");
+            sent = false;
+        }
+
+        if (sent) return;
+
+        var changed = false;
+        lock (_sessionsAcquisitionLock)
+        {
+            if (ReferenceEquals(_sessionsPageSet, pageSet))
+            {
+                _catalogRefreshState.RecordIgnoredEmpty(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+                _logger.Warn($"[SESSIONS] continuation send not accepted at offset {offset}; preserving held catalog and marking retry");
+                CompleteAcquisitionLocked(pageSet);
+                changed = true;
+            }
+        }
+        if (changed) RaiseCatalogRefreshStateChanged();
     }
 
     /// <summary>Subscribe to session change events so the gateway pushes
@@ -2254,7 +2681,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// (SendConnectMessageAsync sends via SendRawAsync directly), so protocol
     /// frames are exempt by construction.
     /// </summary>
-    private async Task<bool> SendTrackedRequestAsync(string method, object? parameters = null)
+    private async Task<bool> SendTrackedRequestAsync(string method, object? parameters = null, string? scope = null, object? context = null)
     {
         if (!TryGetReadyConnectionGeneration(out var connectionGeneration))
         {
@@ -2263,7 +2690,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
 
         var requestId = Guid.NewGuid().ToString();
-        var pending = _pendingRequests.RegisterTracked(requestId, method);
+        var pending = _pendingRequests.RegisterTracked(requestId, method, scope, context);
         try
         {
             var sent = await SendRawAsync(
@@ -2286,11 +2713,11 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
     }
 
-    private async Task<bool> TrySendTrackedRequestAsync(string method, object? parameters = null)
+    private async Task<bool> TrySendTrackedRequestAsync(string method, object? parameters = null, string? scope = null, object? context = null)
     {
         try
         {
-            return await SendTrackedRequestAsync(method, parameters);
+            return await SendTrackedRequestAsync(method, parameters, scope, context);
         }
         catch (Exception ex)
         {
@@ -2381,6 +2808,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         _pendingRequests.TryTake(requestId, out var pending);
         var requestMethod = pending?.Method;
+        var requestScope = pending?.Scope;
+        var requestContext = pending?.Context as SessionCatalogRequestContext;
 
         switch (pending?.Category)
         {
@@ -2476,7 +2905,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             return;
         }
 
-        if (!string.IsNullOrEmpty(requestMethod) && HandleKnownResponse(requestMethod!, payload))
+        if (!string.IsNullOrEmpty(requestMethod) && HandleKnownResponse(requestMethod!, payload, requestScope, requestContext))
         {
             return;
         }
@@ -2642,7 +3071,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
     }
 
-    private bool HandleKnownResponse(string method, JsonElement payload)
+    private bool HandleKnownResponse(string method, JsonElement payload, string? requestScope = null, SessionCatalogRequestContext? requestContext = null)
     {
         switch (method)
         {
@@ -2653,7 +3082,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 return true;
             case "sessions.list":
                 if (TryGetSessionsPayload(payload, out _))
-                    ParseSessions(payload);
+                    HandleSessionsListResponse(payload, requestContext);
                 return true;
             case "usage":
                 ParseUsage(payload);
@@ -4079,7 +4508,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 messageOpenClawMetadata.Kind ?? payloadOpenClawMetadata.Kind,
                 messageOpenClawMetadata.TokensBefore ?? payloadOpenClawMetadata.TokensBefore,
                 messageOpenClawMetadata.TokensAfter ?? payloadOpenClawMetadata.TokensAfter,
-                contentParts);
+                contentParts,
+                ExtractOpenClawDisplayItemId(message) ?? ExtractOpenClawDisplayItemId(payload));
 
             if (role == "assistant" && string.Equals(state, "final", StringComparison.OrdinalIgnoreCase))
             {
@@ -4120,7 +4550,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                     openClawMetadata.Kind,
                     openClawMetadata.TokensBefore,
                     openClawMetadata.TokensAfter,
-                    projection.ContentParts);
+                    projection.ContentParts,
+                    ExtractOpenClawDisplayItemId(payload));
 
                 if (role == "assistant" &&
                     (string.IsNullOrWhiteSpace(state) ||
@@ -4200,7 +4631,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         string? openClawKind = null,
         long? compactionTokensBefore = null,
         long? compactionTokensAfter = null,
-        IReadOnlyList<ChatMessageContentPartInfo>? contentParts = null)
+        IReadOnlyList<ChatMessageContentPartInfo>? contentParts = null,
+        string? openClawDisplayItemId = null)
     {
         if (ChatMessageInfo.IsSilentAssistantDirective(role, text))
             return;
@@ -4220,6 +4652,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 ResponseTokens = responseTokens,
                 ContextPercent = contextPct,
                 OpenClawId = openClawId,
+                OpenClawDisplayItemId = openClawDisplayItemId,
                 OpenClawSeq = openClawSeq,
                 OpenClawKind = openClawKind,
                 CompactionTokensBefore = compactionTokensBefore,
@@ -4230,6 +4663,25 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         {
             _logger.Warn($"ChatMessageReceived handler threw: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Reads the optional projected/display item identity from <c>openclawStreamFallback.itemId</c> ONLY when the
+    /// nested value is a non-empty string; returns null otherwise. Separate from the raw <c>__openclaw.id</c>.
+    /// </summary>
+    private static string? ExtractOpenClawDisplayItemId(JsonElement node)
+    {
+        if (node.ValueKind != JsonValueKind.Object)
+            return null;
+        if (!node.TryGetProperty("openclawStreamFallback", out var fallback) ||
+            fallback.ValueKind != JsonValueKind.Object)
+            return null;
+        if (fallback.TryGetProperty("itemId", out var itemId) && itemId.ValueKind == JsonValueKind.String)
+        {
+            var value = itemId.GetString();
+            return string.IsNullOrWhiteSpace(value) ? null : value;
+        }
+        return null;
     }
 
     private static (
@@ -4428,30 +4880,200 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         GatewaySelfUpdated?.Invoke(this, info);
     }
 
-    private void ParseSessions(JsonElement sessions)
+    /// <summary>
+    /// Reads an explicit authoritative session count from a sessions.list payload.
+    /// Returns null when the payload does not declare one (treated as non-authoritative
+    /// so an empty refresh cannot silently clear a held catalog).
+    /// </summary>
+    private static int? TryReadAuthoritativeSessionCount(JsonElement payload)
     {
+        if (payload.ValueKind != JsonValueKind.Object) return null;
+        if (payload.ValueKind == JsonValueKind.Object
+            && payload.TryGetProperty("count", out var count)
+            && count.ValueKind == JsonValueKind.Number
+            && count.TryGetInt32(out var value)
+            && value >= 0)
+        {
+            return value;
+        }
+        if (payload.TryGetProperty("sessions", out var inner) && inner.ValueKind == JsonValueKind.Object)
+            return TryReadAuthoritativeSessionCount(inner);
+        return null;
+    }
+
+    /// <summary>
+    /// Handles a sessions.list response. With an acquisition context, the response is validated
+    /// (context, bounds, keys, metadata) BEFORE any catalog mutation; stale/superseded/foreign
+    /// responses are rejected outright. Deletion is permitted only for the first page of a set
+    /// (a single complete page) or the legacy no-acquisition path; a tail page never prunes.
+    /// </summary>
+    private void HandleSessionsListResponse(JsonElement payload, SessionCatalogRequestContext? context)
+    {
+        if (context is null)
+        {
+            // Legacy / event-driven refresh with no acquisition context.
+            ParseSessions(payload, null, allowDeletion: true);
+            RaiseCatalogRefreshStateChanged();
+            return;
+        }
+
+        bool allowDeletion;
+        PageSetDecision decision;
+        SessionInfo[]? snapshot = null;
+        var rejected = false;
+        // Validate context + bounds/keys/metadata AND commit the catalog mutation under the one
+        // acquisition lock, so a supersession/disconnect cannot interleave between validation and
+        // admission. Events and sends are published only after the lock is released.
+        lock (_sessionsAcquisitionLock)
+        {
+            // Reject stale/superseded/foreign responses BEFORE any mutation.
+            if (context.Generation != _catalogRefreshGeneration)
+            {
+                Interlocked.Increment(ref _testStaleResponseRejections);
+                return;
+            }
+            if (!ReferenceEquals(context.PageSet, _sessionsPageSet))
+            {
+                Interlocked.Increment(ref _testStaleResponseRejections);
+                return;
+            }
+            if (!string.Equals(context.Scope, context.PageSet.Scope, StringComparison.Ordinal)) return;
+            if (context.PageSet.Decision != PageSetDecision.Continue) return;
+
+            var scan = SessionCatalogAuthority.ScanPage(payload);
+            var refresh = SessionCatalogAuthority.Read(payload, scan.AdmittedKeys.Count);
+            var bytes = System.Text.Encoding.UTF8.GetByteCount(payload.GetRawText());
+            allowDeletion = context.RequestedOffset == 0 && context.PageSet.Pages == 0;
+
+            decision = context.PageSet.Accept(refresh, scan.AdmittedKeys, context.RequestedOffset, bytes, Environment.TickCount64);
+
+            if (decision == PageSetDecision.Failed)
+            {
+                // A failed/oversized/late page must not update the held snapshot.
+                _catalogRefreshState.RecordIgnoredEmpty(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+                _logger.Warn($"[SESSIONS] page-set acquisition rejected ({context.PageSet.Failure}); preserving {_sessions.Count} held session(s)");
+                CompleteAcquisitionLocked(context.PageSet);
+                rejected = true;
+            }
+            else
+            {
+                // Barrier hook (tests) simulates a supersession landing between validation and
+                // admission; the re-check below still runs under the same lock as the commit.
+                TestBeforeAdmissionHook?.Invoke();
+                if (context.Generation != _catalogRefreshGeneration || !ReferenceEquals(context.PageSet, _sessionsPageSet))
+                    return; // superseded in the gap -> do not admit; the newer authority owns the catalog
+
+                // Commit the catalog mutation atomically with the acquisition authority.
+                var parsed = ParseSessions(payload, context.Scope, allowDeletion, raiseEvents: false);
+                snapshot = parsed.Snapshot;
+            }
+        }
+
+        // Publish events/state only after the lock is released. A rejected page may not have
+        // changed the session collection, so the state-change event still fires (never an empty
+        // session event).
+        if (rejected)
+        {
+            RaiseCatalogRefreshStateChanged();
+            return;
+        }
+        if (snapshot is not null) SessionsUpdated?.Invoke(this, snapshot);
+
+        if (decision == PageSetDecision.Continue && context.PageSet.NextOffset is int next)
+        {
+            // Still in progress: the next page continues the same acquisition.
+            RaiseCatalogRefreshStateChanged();
+            _ = SendSessionsListPageGuardedAsync(context.Scope, next, context.Generation, context.PageSet);
+            return;
+        }
+
+        lock (_sessionsAcquisitionLock)
+        {
+            CompleteAcquisitionLocked(context.PageSet);
+        }
+        // Terminal transition: the acquisition has ended (retry re-enabled by the UI).
+        RaiseCatalogRefreshStateChanged();
+    }
+
+    // --- Internal seams for deterministic production-wiring controls (tests only). ---
+    internal void TestSetAcquisition(long generation, SessionCatalogPageSet set)
+    {
+        Volatile.Write(ref _catalogRefreshGeneration, generation);
+        _sessionsPageSet = set;
+    }
+
+    internal SessionCatalogPageSet? TestAcquisition => _sessionsPageSet;
+
+    internal void TestFeedSessionsList(JsonElement payload, string? scope, int requestedOffset, long generation, SessionCatalogPageSet pageSet)
+        => HandleSessionsListResponse(payload, new SessionCatalogRequestContext(generation, scope, requestedOffset, pageSet));
+
+    /// <summary>Test-only: drives the production legacy (no-acquisition) sessions path.</summary>
+    internal void TestFeedLegacySessionsList(JsonElement payload) => HandleSessionsListResponse(payload, null);
+
+    internal void TestCompleteAcquisition(SessionCatalogPageSet set)
+    {
+        lock (_sessionsAcquisitionLock) { CompleteAcquisitionLocked(set); }
+    }
+
+    internal void TestInvalidateAcquisition() => InvalidateSessionAcquisition();
+
+    /// <summary>Test-only sender seam: supplies the sessions.list page send result without a live socket.</summary>
+    internal Func<string?, int, Task<bool>>? _sessionsPageSender;
+
+    internal void TestSetPageSender(Func<string?, int, Task<bool>> sender) => _sessionsPageSender = sender;
+
+    internal void TestSetDelay(Func<TimeSpan, CancellationToken, Task> delay) => _acquisitionDelay = delay;
+
+    internal void TestInstallAcquisitionWithDeadline(SessionCatalogPageSet set, long generation, TimeSpan deadline)
+    {
+        lock (_sessionsAcquisitionLock)
+        {
+            _catalogRefreshGeneration = generation;
+            _sessionsPageSet = set;
+            StartAcquisitionDeadlineLocked(set, generation, deadline);
+        }
+    }
+
+    internal int TestCatalogCount => _sessions.Count;
+
+    private int _testStaleResponseRejections;
+
+    /// <summary>Deterministic barrier: counts responses rejected as stale/superseded before any mutation.</summary>
+    internal int TestStaleResponseRejections => Volatile.Read(ref _testStaleResponseRejections);
+
+    private SessionParseResult ParseSessions(JsonElement sessions, string? requestedAgentScope = null, bool allowDeletion = true, bool raiseEvents = true)
+    {
+        var incomingKeys = new HashSet<string>();
+        SessionInfo[]? snapshot = null;
         try
         {
-            SessionInfo[] snapshot;
             lock (_sessionsLock)
             {
                 var envelope = sessions;
                 if (envelope.ValueKind == JsonValueKind.Object
                     && envelope.TryGetProperty("sessions", out var rows))
                     sessions = rows;
-                _sessionThinkingDefaults = envelope.ValueKind == JsonValueKind.Object
+                // Parse into STAGED candidates first; live tracked state is only mutated after a
+                // fully successful parse, so a malformed row/field cannot leave partial updates.
+                var stagedDefaults = envelope.ValueKind == JsonValueKind.Object
                     && envelope.TryGetProperty("defaults", out var defaults)
                     && defaults.ValueKind == JsonValueKind.Object
                         ? ThinkingMetadata.MergeSession(defaults, _sessionThinkingDefaults)
                         : null;
+                var staged = new Dictionary<string, SessionInfo>(StringComparer.Ordinal);
+                SessionInfo Stage(string key)
+                {
+                    if (staged.TryGetValue(key, out var existing)) return existing;
+                    var copy = _sessions.TryGetValue(key, out var held) ? held.Clone() : new SessionInfo { Key = key };
+                    staged[key] = copy;
+                    return copy;
+                }
                 // Merge instead of clear — collect incoming keys, update/add, then remove absent
-                var incomingKeys = new HashSet<string>();
-
                 if (sessions.ValueKind == JsonValueKind.Array)
                 {
                     foreach (var item in sessions.EnumerateArray())
                     {
-                        var key = ParseSessionItem(item);
+                        var key = ParseSessionItem(item, Stage, stagedDefaults);
                         if (key != null) incomingKeys.Add(key);
                     }
                 }
@@ -4483,11 +5105,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                             continue;
                         }
 
-                        // Update or create session
-                        if (!_sessions.TryGetValue(sessionKey, out var session))
-                        {
-                            session = new SessionInfo { Key = sessionKey };
-                        }
+                        // Update or create session (staged, not yet committed)
+                        var session = Stage(sessionKey);
 
                         UpdateSessionMainStatus(session, sessionKey, item);
 
@@ -4500,19 +5119,47 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                             session.Status = item.GetString() ?? "";
                         }
 
-                        session.ThinkingDefaults = _sessionThinkingDefaults;
-                        _sessions[sessionKey] = session;
+                        session.ThinkingDefaults = stagedDefaults;
                         incomingKeys.Add(sessionKey);
                     }
                 }
 
-                // Remove sessions no longer present in the gateway response
+                // P2: never replace a non-empty catalog with an empty one.
+                // A transient/failed sessions.list can return no rows; deleting every
+                // held session in that case is what made sessions (for example the
+                // helper session) disappear until the next successful refresh.
+                // An explicit authoritative count in the payload still wins.
+                // Phase 2: commit the staged candidates atomically. Reached only when the parse
+                // above completed without throwing, so live state is never partially updated.
+                foreach (var kv in staged) _sessions[kv.Key] = kv.Value;
+                _sessionThinkingDefaults = stagedDefaults;
+
+                var authoritativeCount = TryReadAuthoritativeSessionCount(envelope);
+                // Page-vs-total authority: count is the returned window size, not the
+                // inventory total. Only a verified complete inventory window may delete
+                // absent held keys; a partial page merges rows and preserves the rest.
+                var refresh = SessionCatalogAuthority.Read(envelope, incomingKeys.Count);
+                if (SessionCatalogRetention.ShouldPreserveOnEmpty(incomingKeys.Count, _sessions.Count, authoritativeCount)
+                    || !refresh.AllowsDeletionOfAbsentKeys
+                    || !allowDeletion)
                 {
+                    _catalogRefreshState.RecordIgnoredEmpty(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+                    _logger.Warn(refresh.Kind == SessionCatalogRefreshKind.PartialPage
+                        ? $"[SESSIONS] partial sessions.list window (rows={refresh.ObservedRows}, total={(refresh.TotalCount?.ToString() ?? "?")}, hasMore={refresh.HasMore}); merging and preserving {_sessions.Count} held session(s)"
+                        : $"[SESSIONS] non-authoritative sessions.list ignored; preserving {_sessions.Count} known session(s)");
+                }
+                else
+                {
+                    _catalogRefreshState.RecordSuccessfulRefresh();
+                    // Remove sessions no longer present in the gateway response
                     var staleKeys = new List<string>();
                     foreach (var key in _sessions.Keys)
                     {
-                        if (!incomingKeys.Contains(key))
-                            staleKeys.Add(key);
+                        if (incomingKeys.Contains(key)) continue;
+                        // A scoped (agent-filtered) response may only delete that agent's own
+                        // held sessions; other agents' sessions are always preserved.
+                        if (requestedAgentScope is not null && !KeyBelongsToAgent(key, requestedAgentScope)) continue;
+                        staleKeys.Add(key);
                     }
                     foreach (var key in staleKeys)
                         _sessions.Remove(key);
@@ -4521,32 +5168,38 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 snapshot = GetSessionListInternal();
             }
 
-            SessionsUpdated?.Invoke(this, snapshot);
+            if (raiseEvents && snapshot is not null) SessionsUpdated?.Invoke(this, snapshot);
         }
         catch (Exception ex)
         {
+            // The parse aborted before the phase-2 commit, so no live session/defaults were mutated.
+            // Signal a retry instead of silently accepting a partial page.
             _logger.Warn($"Failed to parse sessions: {ex.Message}");
+            _catalogRefreshState.RecordIgnoredEmpty(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
         }
+        return new SessionParseResult(incomingKeys, snapshot);
     }
 
-    private string? ParseSessionItem(JsonElement item)
+    /// <summary>True when a session key belongs to the given agent (keys are agent:&lt;id&gt;:...).</summary>
+    private static bool KeyBelongsToAgent(string key, string agentId)
+    {
+        if (string.IsNullOrEmpty(key) || string.IsNullOrEmpty(agentId)) return false;
+        var parts = key.Split(':');
+        return parts.Length >= 2
+            && string.Equals(parts[0], "agent", StringComparison.Ordinal)
+            && string.Equals(parts[1], agentId, StringComparison.Ordinal);
+    }
+
+    private string? ParseSessionItem(JsonElement item, Func<string, SessionInfo> stage, ThinkingContext? defaults)
     {
         var sessionKey = "unknown";
         if (item.TryGetProperty("key", out var key))
             sessionKey = key.GetString() ?? "unknown";
 
-        // Update or create
-        if (!_sessions.TryGetValue(sessionKey, out var session))
-        {
-            session = new SessionInfo { Key = sessionKey };
-        }
-
+        var session = stage(sessionKey);
         UpdateSessionMainStatus(session, sessionKey, item);
-
         PopulateSessionFromObject(session, item, authoritativeSessionList: true);
-        session.ThinkingDefaults = _sessionThinkingDefaults;
-
-        _sessions[session.Key] = session;
+        session.ThinkingDefaults = defaults;
         return session.Key;
     }
 

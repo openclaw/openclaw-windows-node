@@ -149,36 +149,57 @@ internal static class AccessibilityHistoryCollisionFixture
             string? sessionKey)
         {
             HistoryRequestCount++;
-            return Task.FromResult(new ChatHistoryInfo
-            {
-                SessionId = SessionId,
-                SessionKey = ThreadId,
-                Messages =
-                [
-                    new ChatMessageInfo
-                    {
-                        Role = "assistant",
-                        Ts = 200,
-                        ToolContent =
-                        [
-                            new ChatToolContentInfo
-                            {
-                                Kind = ChatToolContentKind.Call,
-                                CallId = "history-tool-0",
-                                ToolName = "Exec",
-                            },
-                        ],
-                    },
-                    new ChatMessageInfo
-                    {
-                        Role = "toolresult",
-                        Text =
-                            "flattened output owned by history-tool-1",
-                        Ts = 300,
-                    },
-                ],
-            });
+            return Task.FromResult(BuildHistory());
         }
+
+        // The production loader consumes the bounded typed page; this fixture supplies one exhausted
+        // synthetic page with the same messages (no legacy unbounded fallback, no production bypass).
+        public Task<GatewayChatHistoryPage> RequestChatHistoryPageAsync(
+            string? sessionKey,
+            ChatHistoryPageOptions options,
+            CancellationToken cancellationToken = default)
+        {
+            HistoryRequestCount++;
+            var info = BuildHistory();
+            return Task.FromResult(new GatewayChatHistoryPage(
+                info.SessionKey,
+                info.SessionId,
+                info.Messages,
+                HasMore: false,
+                NextOffset: null,
+                ResponseOffset: options.Offset,
+                Total: info.Messages.Count));
+        }
+
+        private ChatHistoryInfo BuildHistory() => new()
+        {
+            SessionId = SessionId,
+            SessionKey = ThreadId,
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    Role = "assistant",
+                    Ts = 200,
+                    ToolContent =
+                    [
+                        new ChatToolContentInfo
+                        {
+                            Kind = ChatToolContentKind.Call,
+                            CallId = "history-tool-0",
+                            ToolName = "Exec",
+                        },
+                    ],
+                },
+                new ChatMessageInfo
+                {
+                    Role = "toolresult",
+                    Text =
+                        "flattened output owned by history-tool-1",
+                    Ts = 300,
+                },
+            ],
+        };
 
         public Task SendChatMessageAsync(
             string message,

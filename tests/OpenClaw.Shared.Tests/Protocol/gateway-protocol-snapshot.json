@@ -62,7 +62,8 @@
       "method": "sessions.list",
       "kind": "request",
       "windowsUsage": "used",
-      "requestFields": ["agentId", "archived"],
+      "requestFields": ["agentId", "archived", "limit", "offset"],
+      "_requestFieldsNote": "agentId/archived mirror the upstream schema. limit/offset are verified against the pinned installed Gateway request handler: /usr/lib/node_modules/openclaw/dist/session-utils-list-Cjeh9QIy.mjs (sha256 5F0670D976DF459F0A9CC841A83F48B08CA357772EC9C219B1D11422228FF06E) reads params.opts.limit (min 1, default params.defaultLimit=100) and params.opts.offset (non-negative int). They are required for bounded page-set acquisition, not an exemption.",
       "responseEnvelope": ["sessions"],
       "responseEnvelopeSource": "TryGetSessionsPayload(JsonElement payload",
       "responseFields": [

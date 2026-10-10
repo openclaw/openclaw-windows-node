@@ -7,13 +7,20 @@ using System.Text.Json;
 
 namespace OpenClaw.TestSupport.Gateway;
 
-/// <summary>Safe diagnostic metadata only. Request IDs, credentials and payloads are never retained.</summary>
+/// <summary>
+/// Safe diagnostic metadata only. Request IDs, credentials and payload text are never retained; the
+/// only captured request scalars are the bounded paging parameters (limit/offset/maxBytes) so tests
+/// can assert what the carrier transmitted and omitted.
+/// </summary>
 public sealed record GatewayFixtureRequest(
     string Method,
     string? SessionKey,
     string Outcome,
     string? Decision = null,
-    string? ApprovalId = null);
+    string? ApprovalId = null,
+    string? Limit = null,
+    string? Offset = null,
+    string? MaxBytes = null);
 
 /// <summary>
 /// An independently owned, operator-only loopback Gateway. Responses are selected by
@@ -34,6 +41,29 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private readonly Dictionary<int, ActiveConnection> _authenticatedConnections = [];
     private readonly Dictionary<string, TaskCompletionSource> _historyGates = new(StringComparer.Ordinal);
     private TaskCompletionSource? _sessionMutationGate;
+    private readonly List<TaskCompletionSource> _sessionsListGates = new();
+
+    /// <summary>
+    /// Test hook: when set, each sessions.list response stamps the main session's label/displayName/
+    /// derivedTitle with the next value from this source (called once per response, in arrival order).
+    /// Gives newer and older responses materially distinct observable values for the same key.
+    /// </summary>
+    public Func<string>? SessionsListLabelSource { get; set; }
+
+    /// <summary>
+    /// Test hook: when set, replaces the chat.history response payload verbatim. Lets a test drive
+    /// valid, omitted, and malformed/unsupported metadata shapes through the real client-side parser.
+    /// The override still runs through the same socket/serialize/send path.
+    /// </summary>
+    public Func<JsonElement, object?>? HistoryResponseOverride { get; set; }
+
+    /// <summary>
+    /// Narrow read-only ERROR seam for chat.history: when set and it returns a non-null object, the fixture sends
+    /// { type="res", id=<actual request id>, ok=false, error=<theobject> } and returns - forwarding the ACTUAL
+    /// source error object unchanged (the FixtureRequestException path synthesizes details={code} and cannot).
+    /// Invoked only AFTER scenario authentication/session/method validation.
+    /// </summary>
+    public Func<JsonElement, object?>? HistoryErrorOverride { get; set; }
     private readonly TaskCompletionSource _handshake = NewSignal();
     private readonly TaskCompletionSource _accepted = NewSignal();
     private TaskCompletionSource _requestChanged = NewSignal();
@@ -120,6 +150,36 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             }
             finally { connection.SendLock.Release(); }
         }
+    }
+
+    /// <summary>
+    /// Holds the next sessions.list response until the returned gate is released. Multiple holds
+    /// queue FIFO, so each held request is pinned to its own gate; release them in any order to
+    /// deliver responses out of arrival order (e.g. newer before older).
+    /// </summary>
+    public TaskCompletionSource HoldSessionsList()
+    {
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposal is not null, this);
+            var gate = NewSignal();
+            _sessionsListGates.Add(gate);
+            return gate;
+        }
+    }
+
+    public void ReleaseSessionsList(TaskCompletionSource gate)
+    {
+        ArgumentNullException.ThrowIfNull(gate);
+        lock (_sync) _sessionsListGates.Remove(gate);
+        gate.TrySetResult();
+    }
+
+    private TaskCompletionSource TakeFirstSessionsListGateLocked()
+    {
+        var gate = _sessionsListGates[0];
+        _sessionsListGates.RemoveAt(0);
+        return gate;
     }
 
     /// <summary>Holds subsequent reads of this history until ReleaseHistory. Other requests continue normally.</summary>
@@ -369,7 +429,10 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                         method!,
                         _scenario.ContainsSession(key ?? "") ? key : key is null ? null : "<unknown>",
                         SafeApprovalDecision(method!, parameters),
-                        SafeApprovalId(method!, parameters));
+                        SafeApprovalId(method!, parameters),
+                        SafePagingParam(parameters, "limit"),
+                        SafePagingParam(parameters, "offset"),
+                        SafePagingParam(parameters, "maxBytes"));
                     if (!authenticated || method == "connect")
                     {
                         try
@@ -403,7 +466,10 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                         gate = method is "sessions.patch" or "sessions.delete"
                             ? _sessionMutationGate?.Task
                             : method == "chat.history" && key is not null && _historyGates.TryGetValue(key, out var held)
-                                ? held.Task : null;
+                                ? held.Task
+                                : method == "sessions.list" && _sessionsListGates.Count > 0
+                                    ? TakeFirstSessionsListGateLocked().Task
+                                    : null;
                     pending.RemoveAll(task => task.IsCompletedSuccessfully);
                     pending.Add(RespondAsync(socket, sendLock, id!, method!, parameters, requestIndex, connectionId, gate, connection.Token));
                 }
@@ -461,6 +527,26 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                     }
                 }
                 payload = _scenario.Respond(method, parameters);
+                if (method == "chat.history" && HistoryResponseOverride is not null)
+                    payload = HistoryResponseOverride(parameters)!;
+                if (method == "chat.history" && HistoryErrorOverride is not null && HistoryErrorOverride(parameters) is { } historyError)
+                {
+                    await SendAsync(socket, sendLock, new { type = "res", id, ok = false, error = historyError }, cancellationToken);
+                    Complete(requestIndex, "error:HISTORY_OVERRIDE");
+                    return;
+                }
+                if (method == "sessions.list" && SessionsListLabelSource is not null)
+                {
+                    var stamp = SessionsListLabelSource();
+                    var node = JsonSerializer.SerializeToNode(payload)!.AsObject();
+                    if (node["sessions"] is System.Text.Json.Nodes.JsonArray rows)
+                        foreach (var row in rows.OfType<System.Text.Json.Nodes.JsonObject>())
+                            if (row["key"]?.GetValue<string>() == "agent:main:main")
+                            {
+                                row["label"] = stamp; row["displayName"] = stamp; row["derivedTitle"] = stamp;
+                            }
+                    payload = node;
+                }
                 if (method == "exec.approval.resolve")
                 {
                     var approvalId = ReadString(parameters, "id");
@@ -541,12 +627,15 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         string method,
         string? key,
         string? decision = null,
-        string? approvalId = null)
+        string? approvalId = null,
+        string? limit = null,
+        string? offset = null,
+        string? maxBytes = null)
     {
         lock (_sync)
         {
             var index = _requests.Count;
-            _requests.Add(new GatewayFixtureRequest(method, key, "pending", decision, approvalId));
+            _requests.Add(new GatewayFixtureRequest(method, key, "pending", decision, approvalId, limit, offset, maxBytes));
             SignalRequestChanged();
             return index;
         }
@@ -571,6 +660,18 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     }
 
     private static TaskCompletionSource NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
+    /// <summary>
+    /// Bounded paging scalar (limit/offset/maxBytes) captured for parameter/omission assertions.
+    /// Returns null when the field is omitted, the raw JSON number when present, or "&lt;non-number&gt;"
+    /// when present with a non-numeric type. No payload text is retained.
+    /// </summary>
+    private static string? SafePagingParam(JsonElement parameters, string name)
+    {
+        if (parameters.ValueKind != JsonValueKind.Object || !parameters.TryGetProperty(name, out var value))
+            return null;
+        return value.ValueKind == JsonValueKind.Number ? value.GetRawText() : "<non-number>";
+    }
+
     private static string? SafeApprovalDecision(string method, JsonElement parameters)
     {
         if (method != "exec.approval.resolve")
@@ -671,6 +772,9 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             foreach (var gate in _historyGates.Values)
                 gate.TrySetCanceled(_lifetime.Token);
             _historyGates.Clear();
+            foreach (var gate in _sessionsListGates)
+                gate.TrySetCanceled(_lifetime.Token);
+            _sessionsListGates.Clear();
             _sessionMutationGate?.TrySetCanceled();
             _sessionMutationGate = null;
         }

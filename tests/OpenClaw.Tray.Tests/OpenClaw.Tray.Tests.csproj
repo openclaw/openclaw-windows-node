@@ -48,6 +48,9 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\PendingVoiceActivation.cs" Link="Chat\PendingVoiceActivation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\DebugChatSurfaceOverrides.cs" Link="Chat\DebugChatSurfaceOverrides.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatEntryMetadata.cs" Link="Chat\ChatEntryMetadata.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatLoadOlderState.cs" Link="Chat\ChatLoadOlderState.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatTimelineDisplayWindow.cs" Link="Chat\ChatTimelineDisplayWindow.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatLatestUsageProjection.cs" Link="Chat\ChatLatestUsageProjection.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatAssistantContentPresentation.cs" Link="Chat\ChatAssistantContentPresentation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatAssistantImageDecodePolicy.cs" Link="Chat\ChatAssistantImageDecodePolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatAttachmentPresentation.cs" Link="Chat\ChatAttachmentPresentation.cs" />
@@ -133,6 +136,13 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DiagnosticsExportSanitizer.cs" Link="Services\DiagnosticsExportSanitizer.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DiagnosticsLogTailReader.cs" Link="Services\DiagnosticsLogTailReader.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DiagnosticsBundleBuilder.cs" Link="Services\DiagnosticsBundleBuilder.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\UiThreadStackCollector.cs" Link="Services\UiThreadStackCollector.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\CompanionHangCapture.cs" Link="Services\CompanionHangCapture.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\HangCaptureHost.cs" Link="Services\HangCaptureHost.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\CaptureDrain.cs" Link="Services\CaptureDrain.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\CaptureResumeObligations.cs" Link="Services\CaptureResumeObligations.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\CaptureHostLifetime.cs" Link="Services\CaptureHostLifetime.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\WindowsUiThreadStackSource.cs" Link="Services\WindowsUiThreadStackSource.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SettingsManager.cs" Link="Services\SettingsManager.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AutoStartReconciliation.cs" Link="Services\AutoStartReconciliation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AutoStartSettingsApplier.cs" Link="Services\AutoStartSettingsApplier.cs" />

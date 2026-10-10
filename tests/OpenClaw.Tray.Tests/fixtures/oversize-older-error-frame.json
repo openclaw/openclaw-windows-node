@@ -1,0 +1,1 @@
+{"type":"res","id":"fixture-id","ok":false,"error":{"code":"INVALID_REQUEST","message":"chat.history oversized item cannot fit the bounded page budget","details":{"method":"chat.history","reason":"ITEM_CANNOT_FIT","at":0,"bytes":600064,"maxBytes":524288},"retryable":false}}

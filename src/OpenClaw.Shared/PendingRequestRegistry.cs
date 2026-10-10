@@ -16,18 +16,26 @@ internal readonly record struct PendingRequestRegistration<T>(
 
 internal abstract class PendingRequestResolution
 {
-    protected PendingRequestResolution(string method, PendingRequestCategory category)
+    protected PendingRequestResolution(string method, PendingRequestCategory category, string? scope = null, object? context = null)
     {
         Method = method;
         Category = category;
+        Scope = scope;
+        Context = context;
     }
 
     internal string Method { get; }
     internal PendingRequestCategory Category { get; }
+
+    /// <summary>Requested agent scope carried from the originating request, if any.</summary>
+    internal string? Scope { get; }
+
+    /// <summary>Opaque per-request context (e.g. acquisition generation/offset) carried to the response.</summary>
+    internal object? Context { get; }
 }
 
-internal sealed class TrackedRequestResolution(string method)
-    : PendingRequestResolution(method, PendingRequestCategory.Tracked);
+internal sealed class TrackedRequestResolution(string method, string? scope = null, object? context = null)
+    : PendingRequestResolution(method, PendingRequestCategory.Tracked, scope, context);
 
 internal sealed class ChatSendRequestResolution(
     string method,
@@ -88,8 +96,8 @@ internal sealed class PendingRequestRegistry
         FaultDrainedEntries(staleEntries);
     }
 
-    internal RegistrationHandle RegisterTracked(string requestId, string method) =>
-        Register(new TrackedEntry(requestId, method));
+    internal RegistrationHandle RegisterTracked(string requestId, string method, string? scope = null, object? context = null) =>
+        Register(new TrackedEntry(requestId, method, scope, context));
 
     internal PendingRequestRegistration<ChatSendResult> RegisterChatSend(
         string requestId,
@@ -240,11 +248,14 @@ internal sealed class PendingRequestRegistry
             GatewayConnectionLostException? wizardDisconnect);
     }
 
-    private sealed class TrackedEntry(string requestId, string method)
+    private sealed class TrackedEntry(string requestId, string method, string? scope, object? context)
         : Entry(requestId, method, PendingRequestCategory.Tracked)
     {
+        private string? Scope { get; } = scope;
+        private object? Context { get; } = context;
+
         internal override PendingRequestResolution CreateResolution() =>
-            new TrackedRequestResolution(Method);
+            new TrackedRequestResolution(Method, Scope, Context);
 
         internal override void FaultFromDrain(
             GatewayConnectionLostException? wizardDisconnect)

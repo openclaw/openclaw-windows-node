@@ -44,6 +44,16 @@ public interface IOperatorGatewayClient
     string? AuthenticatedSigningDeviceId => null;
     IReadOnlyList<string> GrantedOperatorScopes { get; }
     bool IsConnectedToGateway { get; }
+    /// <summary>True while the last session-catalog refresh was withheld (partial/failed/empty); a retry is required.
+    /// Default false so non-catalog implementers (e.g. test doubles) stay source-compatible.</summary>
+    bool SessionCatalogRetryRequired => false;
+
+    /// <summary>True while a bounded catalog acquisition is in progress. Default false.</summary>
+    bool SessionCatalogAcquisitionInProgress => false;
+
+    /// <summary>Raised after an accepted catalog-refresh transition (retry needed or cleared).
+    /// Default no-op so non-catalog implementers stay source-compatible.</summary>
+    event EventHandler<SessionCatalogRefreshStateChangedEventArgs>? SessionCatalogRefreshStateChanged { add { } remove { } }
     /// <summary>Canonical main session key resolved from hello-ok; <c>null</c> until handshake.</summary>
     string? MainSessionKey { get; }
     /// <summary>True once the hello-ok handshake has been processed.</summary>
@@ -73,6 +83,14 @@ public interface IOperatorGatewayClient
     /// </summary>
     Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey = null, int timeoutMs = 15000)
         => Task.FromException<ChatHistoryInfo>(new NotSupportedException("chat.history is not supported by this gateway client."));
+
+    /// <summary>Bounded chat.history page (source-grounded offset/limit/maxBytes). Default: unsupported.</summary>
+    Task<GatewayChatHistoryPage> RequestChatHistoryPageAsync(
+        string? sessionKey,
+        ChatHistoryPageOptions options,
+        int timeoutMs = 15000,
+        System.Threading.CancellationToken cancellationToken = default)
+        => Task.FromException<GatewayChatHistoryPage>(new NotSupportedException("chat.history paging is not supported by this gateway client."));
     Task CheckHealthAsync();
     Task RequestSessionsAsync(string? agentId = null);
     Task RequestUsageAsync();

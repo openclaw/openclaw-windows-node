@@ -290,7 +290,10 @@ public record ChatDataSnapshot(
     bool CommandsSupported = true,
     IReadOnlyDictionary<string, long>? TimelineGenerations = null,
     IReadOnlyDictionary<string, long>? HistoryRevisions = null,
-    IReadOnlyDictionary<string, IReadOnlyList<ChatQueuedMessage>>? QueuedMessagesByThread = null);
+    IReadOnlyDictionary<string, IReadOnlyList<ChatQueuedMessage>>? QueuedMessagesByThread = null,
+    // AUTHORITATIVE accepted session UUID per thread, projected under the state _gate with the SAME coherent
+    // timeline snapshot. Null/absent means EXPLICITLY unknown - never silently reuse another identity.
+    IReadOnlyDictionary<string, string>? AcceptedSessionIds = null);
 
 /// <summary>
 /// Describes where the UI may send the next chat message. Distinct from
