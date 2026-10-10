@@ -132,7 +132,7 @@ test("exact publication pins only its own package; other track remains independe
   }
 });
 
-test("exact publication independently binds registry integrity, provenance and GitHub commit", async () => {
+test("exact publication separates publisher provenance from declared source existence", async () => {
   const metadata = { name: "openclaw", version: "2026.9.9", dist: { integrity } };
   const statement = {
     subject: [{ name: "pkg:npm/openclaw@2026.9.9", digest: { sha512: Buffer.alloc(64).toString("hex") } }],
@@ -149,11 +149,17 @@ test("exact publication independently binds registry integrity, provenance and G
       bundle: { dsseEnvelope: { payload: Buffer.from(JSON.stringify(statement)).toString("base64") } },
     }] };
   };
-  await monitor.verifyPublication(publication, metadata, undefined, load);
+  const verified = await monitor.verifyPublication(publication, metadata, undefined, load);
+  assert.deepEqual(verified, { workflowSha: head, declaredSourceCommit: head, sourceCoverage: "unverified" });
   assert.equal(calls.length, 2);
   assert.ok(calls.every((url) => !url.includes("/latest")));
   await assert.rejects(monitor.verifyPublication(publication, { ...metadata, version: "2026.9.10" }, undefined, load), /registry/);
-  await assert.rejects(monitor.verifyPublication({ ...publication, source_commit: "c".repeat(40) }, metadata, undefined, load), /provenance/);
+  const sourceCommit = "bcfc88812a35243893585dbeca87ca41b48272ca";
+  const toolingCommit = "2b988ee83444f08ccaf37aa5e98f370726c75f6e";
+  statement.predicate.buildDefinition.resolvedDependencies[0].digest.gitCommit = toolingCommit;
+  const discrepancy = await monitor.verifyPublication({ ...publication, source_commit: sourceCommit }, metadata, undefined,
+    async (url) => url.startsWith("https://api.github.com/") ? { sha: sourceCommit } : load(url));
+  assert.deepEqual(discrepancy, { workflowSha: toolingCommit, declaredSourceCommit: sourceCommit, sourceCoverage: "unverified" });
   await assert.rejects(monitor.verifyPublication(publication, metadata, undefined,
     async (url) => url.startsWith("https://api.github.com/") ? { sha: "c".repeat(40) } : load(url)), /commit mismatch/);
   statement.subject[0].name = "pkg:npm/%40openclaw/gateway-protocol@2026.9.9";

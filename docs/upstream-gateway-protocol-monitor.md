@@ -5,6 +5,14 @@ reconciles publication notifications and supports manual dispatch on the default
 has no push/PR trigger, and must not be added to required PR checks. It does not
 change which Gateway version Windows installs or the separate npm-latest policy.
 
+**Activation blocker:** registry SLSA currently binds the package digest to a
+publication workflow revision, not the release-source checkout. Reports retain
+main/schema/local capability evidence, but released-source coverage is explicitly
+unverified. Implementation issue publication and agent handoff fail closed with
+a separate health issue until independent source-to-exact-artifact verification
+is implemented. This is not an activated remediation pipeline and has no
+configuration switch to bypass the blocker.
+
 ## Observation, review and implementation
 
 1. A read-only job resolves upstream `openclaw/openclaw` main, `openclaw@latest`
@@ -13,19 +21,23 @@ change which Gateway version Windows installs or the separate npm-latest policy.
    No upstream code, package install scripts or archive paths are executed.
    On a publication event, only the announced package uses its exact version
    instead of `latest`. The other package remains an independent latest track.
-2. The report separates **main early warning**, **released Gateway compatibility**
-   and the **independently versioned protocol package**. Since npm may omit
-   `gitHead`, released source is resolved from registry-supplied SLSA provenance,
-   bound to the exact package SHA512 digest and upstream repository. This is not
-   independent signature verification. Missing/mismatched provenance fails the
-   observation rather than substituting main or an assumed version tag.
-3. Full live source inventories watch protocol schemas, Gateway method metadata
+2. The report separates **main early warning**, **released package identity**
+   and the **independently versioned protocol package**. Registry-supplied SLSA
+   binds the exact package SHA512 digest and upstream publication workflow
+   identity, recorded as `workflowSha`. It does not independently bind the
+   package-source checkout and is not independent signature verification.
+   Missing/mismatched publisher provenance fails observation; missing package
+   source binding is reported as unverified rather than substituting main,
+   tooling source, `gitHead`, or an assumed version tag.
+3. The live **main** source inventory watches protocol schemas, Gateway method metadata
    and authorization, Gateway implementations, agent/auto-reply producers and
    reference UI sources. These intentionally broad source groups catch new
    files and open `agent.stream`/`data` behavior that schemas cannot describe.
    Test/fixture files are excluded. A missing group, relocated registry or
    truncated API tree fails explicitly. Other upstream directories are outside
    this monitor's automatic watch scope; this is not a completeness guarantee.
+   There is no released-source inventory or diff without independently bound
+   package-source evidence. JSON uses `null`, not empty arrays implying success.
 4. The last reviewed (closed, without the pending-Windows marker) monitor issue's retained observation supplies
    cumulative field/source deltas, even if a later job in that run failed.
    Deferred nights never advance this review baseline or lose unreviewed deltas.
@@ -33,7 +45,8 @@ change which Gateway version Windows installs or the separate npm-latest policy.
    Optional field additions are informational; removals, constraints, scopes
    and new surfaces require review, not an automatic claim of breakage.
 5. Every observation assesses current Windows source and tests, even without
-   a baseline or upstream changes. A separate job creates one durable, labeled
+   a baseline or upstream changes. Once the independent source-binding blocker
+   is resolved, the retained publication state machine can create one durable, labeled
    **review-candidate issue**. The content fingerprint includes local capability
    evidence, support policy and the exact publication identity when present.
    Moving commit IDs and timestamps alone do not trigger reassessment.
@@ -44,7 +57,7 @@ change which Gateway version Windows installs or the separate npm-latest policy.
    waits rather than spawning competing implementation agents. Every run still
    records current evidence. After the active issue closes, the newest
    unreviewed fingerprint is eligible even if the previous artifact has no diff.
-6. A separate credentialed job assigns that issue to **Copilot cloud agent** via
+6. After source-binding activation, a separate credentialed job assigns that issue to **Copilot cloud agent** via
    GitHub's documented issue-assignment API. Copilot must compare CURRENT
    production and fixture code, inspect existing work, classify relevant
    surfaces and implement confirmed gaps in a **linked draft implementation PR**.
@@ -103,8 +116,10 @@ The primary trigger is `repository_dispatch` with event type
 an exact three-part published version, optionally with a prerelease suffix;
 tags, ranges, build metadata, arbitrary URLs/refs and extra fields are rejected.
 The receiver fetches that exact registry version, compares its SHA512 identity,
-binds the source commit using registry SLSA provenance, and verifies the commit
-in the fixed upstream GitHub repository. Payload fields never enter shell code.
+validates SLSA publisher identity into a separate `workflowSha`, and verifies
+that the sender-declared `source_commit` exists in the fixed upstream GitHub
+repository. Existence is not a package-source binding. The declaration remains
+unverified, even if it happens to equal the workflow SHA. Payload fields never enter shell code.
 It does not resolve the announced package back to moving `latest`.
 
 The payload is a notification, not authority to run code or write. Observation
@@ -115,6 +130,30 @@ deduplicate when watched upstream and local evidence have not changed.
 Nightly reconciliation catches missed notifications and retains main early warning.
 Activation requires this workflow on the default branch and an upstream sender
 authorized to send the event. Receiver tests do not establish sender delivery.
+They also do not establish independent package-source binding, which remains
+required before implementation publication/handoff can run.
+
+### Concrete source-identity discrepancy and report version
+
+For both `openclaw@2026.9.9` and `@openclaw/gateway-protocol@2026.9.9`,
+registry metadata lacks `gitHead`. Complete SLSA statements record workflow
+revision `2b988ee83444f08ccaf37aa5e98f370726c75f6e`, tooling tag
+`release-publish/2b988ee83444-1791449196`, run `37755950239`, attempt 1.
+The signed version tag instead points to release candidate
+`bcfc88812a35243893585dbeca87ca41b48272ca`. That candidate does not appear as a
+source dependency in registry SLSA. A version tag alone is not an exact
+source-to-published-artifact binding either.
+
+Report version 2 distinguishes `released.workflowSha`,
+`released.declaredSourceCommit` (null without a Gateway publication declaration),
+and `released.sourceCoverage: "unverified"`. `released.commit`,
+`released.files`, and `changes.released` are null. For either announced package,
+`publicationProvenance` records its own workflow SHA, declared source and unverified
+coverage. Main and integrity-checked schema comparisons still run.
+Legacy version-1 reports could mislabel a tooling inventory as released source.
+They are excluded from reviewed baseline selection and explicitly discarded
+with a diagnostic on local replay; their source trees cannot advance coverage.
+No asserted `verified` coverage is accepted without a future independent verifier.
 
 ## Windows support evidence
 
@@ -171,7 +210,10 @@ They do not receive the agent credential, and no upstream source text is copied
 into publication instructions. Artifacts/schema strings remain untrusted data.
 Only trusted default-branch workflow code runs; checkout credentials are not persisted.
 
-To activate implementation handoff, a maintainer must:
+To activate implementation handoff, independent candidate-to-exact-published-artifact
+receipt verification must first be implemented and reviewed. A sender declaration,
+SLSA workflow commit, or matching version tag cannot substitute for this work.
+Then a maintainer must:
 
 1. Enable Copilot cloud agent for this repository and for the sponsoring user,
    with sufficient premium-request budget and organization policy approval.
@@ -199,7 +241,7 @@ permissions and the normal human review/merge process.
 
 The repository already provides `COPILOT_GITHUB_TOKEN`; the monitor reuses it
 only in the implementation handoff job. Authenticated end-to-end
-issue-to-draft-PR execution remains **not verified** until the first publishing
+issue-to-draft-PR execution remains **blocked by unverified package source**, and subsequently not verified until the first publishing
 run confirms assignment and a linked draft PR. The generic REST collaborator-assignee probe is not a valid test of
 Copilot availability; the monitor verifies the actual documented assignment
 response instead.
@@ -207,7 +249,7 @@ response instead.
 ## Evidence, limits and troubleshooting
 
 The `upstream-gateway-protocol-report` artifact retains `report.json` and
-`report.md` for 90 days: exact source commits/blob hashes, npm package
+`report.md` for 90 days: exact main commits/blob hashes, npm package
 versions/integrities, tarball/schema/provenance SHA256 hashes and full classified
 deltas and the reviewed baseline fingerprint. Provenance is reproducibility metadata, not a runtime dependency pin.
 Issue state, not artifact retention or a hand-maintained frozen snapshot,
@@ -226,11 +268,15 @@ Versions with no changed watched source/schema content are deduplicated even
 if unrelated upstream directories changed. Watch scope is not whole-repository
 or whole-package compatibility coverage.
 
-Observation failures also create or reopen one separate
-`upstream-gateway-protocol-health` issue, linking the latest failed run without
+Observation failures create or reopen one `upstream-gateway-protocol-health`
+issue. Source-binding activation failures use a separate
+`upstream-gateway-source-binding-health` issue, so the permanent activation
+blocker cannot hide a new transient collection failure. Each links the latest failed run without
 copying untrusted error text. It does not launch a production implementation
 agent. After fixing and verifying collection, a maintainer closes that health
-issue. Manual `report_only` runs do not publish even health issues.
+issue. The source-binding health issue remains until an independent verifier is
+implemented; closing it alone does not activate remediation. Manual `report_only`
+runs do not publish even health issues.
 
 One active issue provides backpressure, not a permanent ignore list. If it
 stalls, inspect the agent/PR, resolve the blocker and retry or close it with an

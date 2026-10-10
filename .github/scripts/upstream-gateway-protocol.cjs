@@ -102,7 +102,7 @@ function packageInfo(metadata, name) {
   return { name, version: metadata.version, integrity: metadata.dist.integrity };
 }
 
-function provenanceCommit(attestation, info) {
+function provenanceWorkflowCommit(attestation, info) {
   const statements = (attestation.attestations ?? [])
     .filter((item) => item.predicateType === "https://slsa.dev/provenance/v1")
     .map((item) => JSON.parse(Buffer.from(item.bundle.dsseEnvelope.payload, "base64").toString("utf8")));
@@ -120,7 +120,7 @@ function provenanceCommit(attestation, info) {
         && SHA.test(dependency.digest?.gitCommit)) commits.add(dependency.digest.gitCommit);
     }
   }
-  check(commits.size === 1, "Missing or ambiguous registry provenance commit");
+  check(commits.size === 1, "Missing or ambiguous registry publication workflow commit");
   return [...commits][0];
 }
 
@@ -198,7 +198,8 @@ function fingerprint(report) {
   // Commits, timestamps and package versions are provenance, not change triggers.
   return hash({
     main: report.main.files, released: report.released.files,
-    schema: report.protocol.schema, policy: 1,
+    schema: report.protocol.schema, policy: 2, version: report.version,
+    coverage: report.released.sourceCoverage,
     ...(report.capabilities ? { localAssessment: report.capabilities.assessmentHash } : {}),
     ...(report.publication ? { publication: report.publication } : {}),
   });
@@ -225,9 +226,10 @@ async function verifyPublication(payload, metadata, token, loadJson = json) {
     "Publication does not match trusted registry metadata");
   const attestation = await loadJson(
     `https://registry.npmjs.org/-/npm/v1/attestations/${encodeURIComponent(info.name)}@${info.version}`);
-  check(provenanceCommit(attestation, info) === payload.source_commit, "Publication source provenance mismatch");
+  const workflowSha = provenanceWorkflowCommit(attestation, info);
   const commit = await loadJson(`https://api.github.com/repos/${UPSTREAM}/commits/${payload.source_commit}`, token);
   check(commit.sha === payload.source_commit, "Publication source commit mismatch");
+  return { workflowSha, declaredSourceCommit: payload.source_commit, sourceCoverage: "unverified" };
 }
 
 function metadataUrl(name, publication) {
@@ -247,38 +249,43 @@ function assessLocal(report, local = capabilities.readLocal(path.resolve(__dirna
 }
 
 async function collect({ token, previous, outputDir, publication, root = path.resolve(__dirname, "../..") }) {
+  if (previous?.version === 1) previous = undefined;
+  if (previous) validateReport(previous);
   if (publication) validatePublication(publication);
   const [head, gatewayMetadata, protocolMetadata] = await Promise.all([
     json(`https://api.github.com/repos/${UPSTREAM}/commits/main`, token),
     json(metadataUrl("openclaw", publication)),
     json(metadataUrl("@openclaw/gateway-protocol", publication)),
   ]);
-  if (publication) await verifyPublication(publication,
-    publication.package_name === "openclaw" ? gatewayMetadata : protocolMetadata, token);
+  const publicationProvenance = publication ? await verifyPublication(publication,
+    publication.package_name === "openclaw" ? gatewayMetadata : protocolMetadata, token) : null;
   const gateway = packageInfo(gatewayMetadata, "openclaw");
   const protocol = packageInfo(protocolMetadata, "@openclaw/gateway-protocol");
   const attestationUrl = `https://registry.npmjs.org/-/npm/v1/attestations/openclaw@${gateway.version}`;
   const attestation = await json(attestationUrl);
-  const releaseCommit = provenanceCommit(attestation, gateway);
+  const workflowSha = provenanceWorkflowCommit(attestation, gateway);
   const tarballUrl = protocolMetadata.dist.tarball;
   check(tarballUrl === `https://registry.npmjs.org/@openclaw/gateway-protocol/-/gateway-protocol-${protocol.version}.tgz`,
     "Unexpected protocol tarball URL");
-  const [main, released, tarball] = await Promise.all([
-    sourceTrack(head.sha, token), sourceTrack(releaseCommit, token), download(tarballUrl),
+  const [main, tarball] = await Promise.all([
+    sourceTrack(head.sha, token), download(tarballUrl),
   ]);
   const schema = readSchemaTarball(tarball, protocol.integrity);
   const report = {
-    version: 1, observedAt: new Date().toISOString(),
+    version: 2, observedAt: new Date().toISOString(),
     baseline: previous ? { fingerprint: previous.fingerprint, mainCommit: previous.main.commit,
-      releasedCommit: previous.released.commit } : null,
-    main, released: { ...released, package: gateway, attestationUrl, attestationHash: hash(attestation) },
+      releasedCommit: null } : null,
+    main, released: { commit: null, files: null, sourceCoverage: "unverified",
+      declaredSourceCommit: publication?.package_name === "openclaw" ? publication.source_commit : null,
+      workflowSha, package: gateway, attestationUrl, attestationHash: hash(attestation) },
     protocol: { ...protocol, tarballUrl, tarballHash: hash(tarball), schema, schemaHash: hash(schema) },
     changes: {
       main: sourceChanges(previous?.main.files, main.files),
-      released: sourceChanges(previous?.released.files, released.files),
+      released: null,
       schema: schemaChanges(previous?.protocol.schema, schema),
     },
     publication: publication ?? null,
+    publicationProvenance,
   };
   report.capabilities = assessLocal(report, capabilities.readLocal(root));
   report.fingerprint = fingerprint(report);
@@ -291,8 +298,13 @@ async function collect({ token, previous, outputDir, publication, root = path.re
 }
 
 function validateReport(report) {
-  check(report.version === 1 && HASH.test(report.fingerprint), "Unsupported monitor report");
-  for (const track of [report.main, report.released]) {
+  check(report.version === 2 && HASH.test(report.fingerprint), "Unsupported monitor report (legacy source coverage cannot be trusted)");
+  check(report.released?.sourceCoverage === "unverified" && report.released.commit === null
+    && report.released.files === null && report.changes?.released === null
+    && SHA.test(report.released.workflowSha)
+    && (report.released.declaredSourceCommit === null || SHA.test(report.released.declaredSourceCommit)),
+  "Invalid or independently unverified package-source binding claim");
+  for (const track of [report.main]) {
     check(SHA.test(track?.commit) && track.files && Object.keys(track.files).length <= 10000,
       "Invalid source track");
     for (const [file, entry] of Object.entries(track.files)) {
@@ -314,8 +326,16 @@ function validateReport(report) {
     const info = report.publication.package_name === "openclaw" ? report.released.package : report.protocol;
     check(info.version === report.publication.package_version && info.integrity === report.publication.package_integrity,
       "Report publication package mismatch");
-    if (report.publication.package_name === "openclaw")
-      check(report.released.commit === report.publication.source_commit, "Report publication source mismatch");
+    check(report.publicationProvenance?.declaredSourceCommit === report.publication.source_commit
+      && SHA.test(report.publicationProvenance.workflowSha)
+      && report.publicationProvenance.sourceCoverage === "unverified", "Report publication provenance mismatch");
+    if (report.publication.package_name === "openclaw") {
+      check(report.released.declaredSourceCommit === report.publication.source_commit
+        && report.released.workflowSha === report.publicationProvenance.workflowSha, "Report publication source mismatch");
+    } else check(report.released.declaredSourceCommit === null, "Unannounced Gateway source declaration");
+  } else {
+    check(report.publicationProvenance === null && report.released.declaredSourceCommit === null,
+      "Unexpected source declaration without publication");
   }
   if (report.capabilities) {
     const { assessmentHash, ...assessment } = report.capabilities;
@@ -328,9 +348,9 @@ function validateReport(report) {
   }
   check(report.fingerprint === fingerprint(report), "Report fingerprint mismatch");
   check(report.baseline === null || (HASH.test(report.baseline?.fingerprint)
-    && SHA.test(report.baseline.mainCommit) && SHA.test(report.baseline.releasedCommit)), "Invalid review baseline");
+    && SHA.test(report.baseline.mainCommit) && report.baseline.releasedCommit === null), "Invalid review baseline");
   check(report.evidenceHash === hash({ baseline: report.baseline, changes: report.changes }), "Report evidence mismatch");
-  for (const track of ["main", "released"]) {
+  for (const track of ["main"]) {
     const changes = report.changes?.[track];
     check(Array.isArray(changes) && changes.length <= 20000, "Invalid source deltas");
     for (const change of changes) {
@@ -354,10 +374,13 @@ function render(report) {
   // Only trusted labels, validated identities and hashes enter write-authorized publication.
   const lines = [
     "## Upstream Gateway protocol observation",
+    "<!-- upstream-source-coverage:v2 -->",
     "",
     `Fingerprint: \`${report.fingerprint}\``,
     `Early warning: openclaw/openclaw main \`${report.main.commit}\`.`,
-    `Released compatibility: openclaw@${report.released.package.version}, source \`${report.released.commit}\`.`,
+    `Released package: openclaw@${report.released.package.version}. Package-source binding: **unverified**.`,
+    `Registry-verified publisher/workflow commit: \`${report.released.workflowSha}\` (not proof of packaged source).`,
+    `Sender-declared Gateway source: ${report.released.declaredSourceCommit ? `\`${report.released.declaredSourceCommit}\`` : "not supplied"}.`,
     `Published schema: @openclaw/gateway-protocol@${report.protocol.version}, SHA256 \`${report.protocol.schemaHash}\`.`,
     `Gateway package integrity: \`${report.released.package.integrity}\`.`,
     `Protocol package integrity: \`${report.protocol.integrity}\`.`,
@@ -366,39 +389,48 @@ function render(report) {
     `Review baseline: ${report.baseline ? `\`${report.baseline.fingerprint}\`` : "none (full baseline audit required)"}.`,
     "",
     "The schema package version is independent of the wire protocol integer and may differ from the Gateway release.",
-    "Source commits come from registry-supplied, digest-bound provenance, not independently verified attestation signatures.",
+    "Registry provenance binds the package digest to a publication workflow identity, not necessarily the package-source checkout. Attestation signatures are not independently verified.",
+    "Released source inventory and comparison are omitted (unverified, not zero deltas). Main, integrity-verified schema and local capability evidence remain available.",
+    "**Implementation publication/handoff blocked:** independent package-source-to-exact-artifact evidence is required. There is no configurable bypass.",
     "",
     "| Track | Watched sources | Content fingerprint |",
     "| --- | ---: | --- |",
   ];
-  for (const name of ["main", "released"]) {
+  for (const name of ["main"]) {
     lines.push(`| ${name} | ${Object.keys(report[name].files).length} | \`${hash(report[name].files)}\` |`);
   }
+  lines.push("| released | unverified | source comparison omitted |");
   lines.push("", "Classification: **pending review**, not a finding of breakage.",
     "New optional fields are not automatically breaking. Open agent stream/data payloads require producer and reference-client review.",
     "Full source inventory, blob hashes and classified deltas are in the workflow artifact.");
   if (report.publication) lines.push("",
-    `Trigger: exact publication \`${report.publication.package_name}@${report.publication.package_version}\`, source \`${report.publication.source_commit}\`.`,
+    `Trigger: exact publication \`${report.publication.package_name}@${report.publication.package_version}\`, sender-declared source \`${report.publication.source_commit}\` (GitHub existence checked, package binding unverified).`,
+    `Announced package publisher/workflow commit: \`${report.publicationProvenance.workflowSha}\`.`,
     "Only the announced package is pinned by this event. The other package is an independent latest observation, not a matching-release claim.");
   if (report.capabilities) lines.push(capabilities.renderAssessment(report.capabilities));
   return lines.join("\n") + "\n";
 }
 
 module.exports = {
-  collect, sourceInventory, sourceChanges, schemaChanges, provenanceCommit, packageInfo,
+  collect, sourceInventory, sourceChanges, schemaChanges, provenanceWorkflowCommit, packageInfo,
   readSchemaTarball, validateReport, render, fingerprint, hash, watchGroup,
   validatePublication, verifyPublication, metadataUrl, assessLocal,
 };
 
 if (require.main === module) {
   const previousPath = process.env.PREVIOUS_REPORT;
-  const previous = previousPath && fs.existsSync(previousPath)
+  let previous = previousPath && fs.existsSync(previousPath)
     ? JSON.parse(fs.readFileSync(previousPath, "utf8")) : undefined;
+  if (previous?.version === 1) {
+    console.error("Ignoring legacy baseline: its released inventory may represent publication tooling, not package source. Requesting a fresh observation.");
+    previous = undefined;
+  }
   if (previous) {
     validateReport(previous);
     if (process.env.BASELINE_FINGERPRINT) check(previous.fingerprint === process.env.BASELINE_FINGERPRINT,
       "Baseline artifact does not match reviewed issue fingerprint");
-  } else check(!process.env.BASELINE_FINGERPRINT, "Reviewed baseline artifact is missing");
+  } else check(!process.env.BASELINE_FINGERPRINT || (previousPath && fs.existsSync(previousPath)),
+    "Reviewed baseline artifact is missing");
   const event = process.env.GITHUB_EVENT_NAME === "repository_dispatch"
     ? JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, "utf8")) : null;
   if (event) check(event.action === "gateway-protocol-published", "Unexpected publication event");

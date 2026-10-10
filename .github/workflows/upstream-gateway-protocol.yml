@@ -75,8 +75,8 @@ jobs:
           retention-days: 90
 
   observation-failure:
-    needs: observe
-    if: ${{ always() && needs.observe.result == 'failure' && (github.event_name == 'schedule' || !inputs.report_only) }}
+    needs: [observe, publish]
+    if: ${{ always() && (needs.observe.result == 'failure' || needs.publish.result == 'failure') && (github.event_name == 'schedule' || !inputs.report_only) }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -88,10 +88,13 @@ jobs:
           persist-credentials: false
       - name: Preserve collection failures as one actionable health issue
         uses: actions/github-script@v9
+        env:
+          OBSERVATION_RESULT: ${{ needs.observe.result }}
         with:
           script: |
             const { publishFailure } = require("./.github/scripts/upstream-gateway-publish.cjs");
-            const number = await publishFailure({ github, context });
+            const cause = process.env.OBSERVATION_RESULT === "failure" ? "observation" : "source-binding";
+            const number = await publishFailure({ github, context, cause });
             await core.summary.addRaw(`Observation blocked. Health issue #${number}; no compatibility conclusion.`).write();
 
   publish:
@@ -139,6 +142,10 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: upstream-gateway-protocol-report
+          path: ${{ runner.temp }}/upstream-protocol
       - name: Require the repository Copilot user token
         env:
           HAS_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN != '' }}
@@ -151,9 +158,11 @@ jobs:
         uses: actions/github-script@v9
         env:
           ISSUE_NUMBER: ${{ needs.publish.outputs.issue }}
+          REPORT: ${{ runner.temp }}/upstream-protocol/report.json
         with:
           github-token: ${{ secrets.COPILOT_GITHUB_TOKEN }}
           script: |
             const { handoff } = require("./.github/scripts/upstream-gateway-publish.cjs");
-            const result = await handoff({ github, context, core, issueNumber: Number(process.env.ISSUE_NUMBER) });
+            const report = JSON.parse(require("node:fs").readFileSync(process.env.REPORT, "utf8"));
+            const result = await handoff({ github, context, core, report, issueNumber: Number(process.env.ISSUE_NUMBER) });
             await core.summary.addRaw(`Implementation handoff: ${result.state}. ${result.url ?? "No draft PR observed yet."}`).write();

@@ -7,7 +7,19 @@ const path = require("node:path");
 const test = require("node:test");
 const zlib = require("node:zlib");
 const monitor = require("./upstream-gateway-protocol.cjs");
-const publisher = require("./upstream-gateway-publish.cjs");
+const guardedPublisher = require("./upstream-gateway-publish.cjs");
+// Keep partial-failure/backpressure state-machine coverage while production entry
+// points are deliberately blocked pending independent package-source receipts.
+const publisherPath = path.join(__dirname, "upstream-gateway-publish.cjs");
+const publisher = { ...guardedPublisher };
+const internalModule = { exports: {} };
+require("node:vm").runInThisContext(
+  `(function(require,module){${fs.readFileSync(publisherPath, "utf8")}\n`
+  + "module.exports = { reconcilePublication, reconcileHandoff };})",
+  { filename: publisherPath },
+)(require, internalModule);
+publisher.publish = internalModule.exports.reconcilePublication;
+publisher.handoff = internalModule.exports.reconcileHandoff;
 const local = require("./gateway-capabilities.cjs").readLocal(path.resolve(__dirname, "../.."));
 let cachedCapabilities;
 
@@ -42,10 +54,11 @@ function report() {
   const doc = schema();
   doc.methods["question.list"] = { scope: "operator.questions" };
   const value = {
-    version: 1, observedAt: "2026-10-09T00:00:00Z",
-    baseline: null, changes: { main: [], released: [], schema: [] },
+    version: 2, observedAt: "2026-10-09T00:00:00Z",
+    baseline: null, changes: { main: [], released: null, schema: [] }, publicationProvenance: null,
     main: { commit: sha, files }, released: {
-      commit: sha, files: structuredClone(files), package: { name: "openclaw", version: "2026.9.9", integrity },
+      commit: null, files: null, sourceCoverage: "unverified", workflowSha: sha, declaredSourceCommit: null,
+      package: { name: "openclaw", version: "2026.9.9", integrity },
       attestationHash: "0".repeat(64),
     },
     protocol: {
@@ -62,7 +75,7 @@ function report() {
 
 function issue(overrides = {}) {
   return {
-    number: 42, body: `${publisher.marker(report().fingerprint)}\nreview`, state: "open",
+    number: 42, body: `${publisher.marker(report().fingerprint)}\n<!-- upstream-source-coverage:v2 -->\nreview`, state: "open",
     labels: [{ name: publisher.LABEL }], assignees: [],
     created_at: new Date().toISOString(), ...overrides,
   };
@@ -161,7 +174,7 @@ test("package tar is digest verified and read in memory; links, missing schema a
   assert.throws(() => monitor.readSchemaTarball(broken.compressed, broken.integrity), /definition/);
 });
 
-test("registry provenance must bind package digest, upstream repository and one source commit", () => {
+test("registry provenance must bind package digest, upstream repository and one publisher workflow commit", () => {
   const info = { name: "openclaw", version: "2026.9.9", integrity };
   const statement = {
     subject: [{ name: "pkg:npm/openclaw@2026.9.9", digest: { sha512: Buffer.alloc(64).toString("hex") } }],
@@ -174,16 +187,16 @@ test("registry provenance must bind package digest, upstream repository and one 
     predicateType: "https://slsa.dev/provenance/v1",
     bundle: { dsseEnvelope: { payload: Buffer.from(JSON.stringify(statement)).toString("base64") } },
   }] });
-  assert.equal(monitor.provenanceCommit(envelope(), info), sha);
+  assert.equal(monitor.provenanceWorkflowCommit(envelope(), info), sha);
   statement.subject[0].digest.sha512 = "bad";
-  assert.throws(() => monitor.provenanceCommit(envelope(), info), /subject/);
+  assert.throws(() => monitor.provenanceWorkflowCommit(envelope(), info), /subject/);
   statement.subject[0].digest.sha512 = Buffer.alloc(64).toString("hex");
   statement.predicate.buildDefinition.externalParameters.workflow.repository = "https://github.com/attacker/repo";
-  assert.throws(() => monitor.provenanceCommit(envelope(), info), /repository/);
-  assert.throws(() => monitor.provenanceCommit({ attestations: [] }, info), /Missing/);
+  assert.throws(() => monitor.provenanceWorkflowCommit(envelope(), info), /repository/);
+  assert.throws(() => monitor.provenanceWorkflowCommit({ attestations: [] }, info), /Missing/);
 });
 
-test("fingerprint ignores moving refs/version labels but notices behavior and released-track changes", () => {
+test("fingerprint ignores moving refs/version labels but notices watched main behavior changes", () => {
   const initial = report();
   monitor.validateReport(initial);
   const next = structuredClone(initial);
@@ -191,7 +204,7 @@ test("fingerprint ignores moving refs/version labels but notices behavior and re
   next.protocol.version = "2026.10.9";
   next.observedAt = "tomorrow";
   assert.equal(monitor.fingerprint(next), initial.fingerprint);
-  next.released.files[paths[0]].sha = otherSha;
+  next.main.files[paths[0]].sha = otherSha;
   assert.notEqual(monitor.fingerprint(next), initial.fingerprint);
 });
 
@@ -388,7 +401,7 @@ test("missing or expired reviewed baseline requests a full audit; untrusted work
 test("closing pending Windows gaps cannot advance the reviewed upstream baseline", async () => {
   const github = mock({
     "GET /repos/{owner}/{repo}/issues": [issue({
-      state: "closed", body: `${publisher.marker(report().fingerprint)}\n<!-- windows-capability-pending -->`,
+      state: "closed", body: `${publisher.marker(report().fingerprint)}\n<!-- upstream-source-coverage:v2 -->\n<!-- windows-capability-pending -->`,
     })],
   });
 
@@ -534,4 +547,160 @@ test("capability evidence must bind the observed upstream tracks", () => {
   value.capabilities.assessmentHash = monitor.hash({ ...assessment, localHead: null, dirty: null });
   value.fingerprint = monitor.fingerprint(value);
   assert.throws(() => monitor.validateReport(value), /Capability upstream evidence mismatch/);
+});
+
+test("unverified package source blocks public implementation entry points before all API calls", async () => {
+  const github = mock({});
+  await assert.rejects(guardedPublisher.publish({ github, context, core, report: report() }), /Package-source binding is unverified/);
+  await assert.rejects(guardedPublisher.handoff({ github, context, core, report: report(), issueNumber: 42 }),
+    /Package-source binding is unverified/);
+  assert.equal(github.calls.length, 0);
+  assert.equal(guardedPublisher.reconcilePublication, undefined);
+  assert.equal(guardedPublisher.reconcileHandoff, undefined);
+  await assert.rejects(guardedPublisher.handoff({ github, context, core, issueNumber: 42 }), /Package-source binding/);
+});
+
+test("released source is unverified and omitted, never a tooling inventory or zero-delta success", () => {
+  const value = report();
+  value.released.workflowSha = "2b988ee83444f08ccaf37aa5e98f370726c75f6e";
+  monitor.validateReport(value);
+  const text = monitor.render(value);
+  assert.match(text, /Package-source binding: \*\*unverified\*\*/);
+  assert.match(text, /publisher\/workflow commit/);
+  assert.match(text, /source comparison omitted/);
+  assert.doesNotMatch(text, /Released compatibility:.*source/);
+  assert.equal(value.changes.released, null);
+  for (const change of [
+    { sourceCoverage: "verified" },
+    { commit: value.released.workflowSha },
+    { files: value.main.files },
+  ]) assert.throws(() => monitor.validateReport({ ...value, released: { ...value.released, ...change } }),
+    /package-source binding/);
+  value.changes.released = [];
+  assert.throws(() => monitor.validateReport(value), /package-source binding/);
+});
+
+test("legacy tooling-as-release observations cannot supply a reviewed source baseline or publish", async () => {
+  const legacy = report();
+  legacy.version = 1;
+  legacy.released.commit = legacy.released.workflowSha;
+  legacy.released.files = legacy.main.files;
+  assert.throws(() => monitor.validateReport(legacy), /legacy source coverage/);
+  const github = mock({
+    "GET /repos/{owner}/{repo}/issues": [issue({ state: "closed", body: `${publisher.marker("a".repeat(64))}\nlegacy review` })],
+  });
+  assert.equal(await publisher.findBaseline({ github, context }), null);
+  assert.equal(github.calls.length, 1);
+});
+
+test("publication failure surfaces a health issue and report-only never writes", () => {
+  const workflow = fs.readFileSync(path.join(__dirname, "../workflows/upstream-gateway-protocol.yml"), "utf8");
+  assert.match(workflow, /needs: \[observe, publish\]/);
+  assert.match(workflow, /needs\.publish\.result == 'failure'/);
+  assert.match(workflow, /handoff\(\{ github, context, core, report,/);
+  assert.equal((workflow.match(/!inputs.report_only/g) ?? []).length, 2);
+});
+
+test("live-shaped tooling/source discrepancy collects partial evidence without requesting a tooling tree", async () => {
+  const tooling = "2b988ee83444f08ccaf37aa5e98f370726c75f6e";
+  const candidate = "bcfc88812a35243893585dbeca87ca41b48272ca";
+  const artifact = tarball(schema());
+  const gateway = { name: "openclaw", version: "2026.9.9", dist: { integrity } };
+  const protocol = { name: "@openclaw/gateway-protocol", version: "2026.9.9",
+    dist: { integrity: artifact.integrity,
+      tarball: "https://registry.npmjs.org/@openclaw/gateway-protocol/-/gateway-protocol-2026.9.9.tgz" } };
+  const statement = {
+    subject: [{ name: "pkg:npm/openclaw@2026.9.9", digest: { sha512: Buffer.alloc(64).toString("hex") } }],
+    predicate: { buildDefinition: {
+      externalParameters: { workflow: { repository: "https://github.com/openclaw/openclaw" } },
+      resolvedDependencies: [{ uri: `git+https://github.com/openclaw/openclaw@refs/tags/release-publish/${tooling}`,
+        digest: { gitCommit: tooling } }],
+    } },
+  };
+  const envelope = { attestations: [{
+    predicateType: "https://slsa.dev/provenance/v1",
+    bundle: { dsseEnvelope: { payload: Buffer.from(JSON.stringify(statement)).toString("base64") } },
+  }] };
+  const routes = {
+    "https://api.github.com/repos/openclaw/openclaw/commits/main": { sha },
+    [`https://api.github.com/repos/openclaw/openclaw/commits/${candidate}`]: { sha: candidate },
+    [`https://api.github.com/repos/openclaw/openclaw/git/trees/${sha}?recursive=1`]: {
+      truncated: false, tree: paths.map((file) => ({ path: file, sha, type: "blob" })),
+    },
+    "https://registry.npmjs.org/openclaw/2026.9.9": gateway,
+    "https://registry.npmjs.org/%40openclaw%2Fgateway-protocol/latest": protocol,
+    "https://registry.npmjs.org/-/npm/v1/attestations/openclaw@2026.9.9": envelope,
+    [protocol.dist.tarball]: artifact.compressed,
+  };
+  const calls = [];
+  const saved = global.fetch;
+  const outputDir = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "gateway-source-proof-"));
+  try {
+    global.fetch = async (url) => {
+      const key = String(url);
+      calls.push(key);
+      assert.ok(Object.hasOwn(routes, key), `Unexpected network call: ${key}`);
+      return new Response(Buffer.isBuffer(routes[key]) ? routes[key] : JSON.stringify(routes[key]));
+    };
+    const publication = { schema_version: 1, package_name: "openclaw", package_version: "2026.9.9",
+      package_integrity: integrity, source_repository: "openclaw/openclaw", source_commit: candidate };
+    const legacy = { ...report(), version: 1 };
+    const result = await monitor.collect({ outputDir, publication, previous: legacy });
+    assert.equal(result.baseline, null);
+    assert.equal(result.released.workflowSha, tooling);
+    assert.equal(result.released.declaredSourceCommit, candidate);
+    assert.equal(result.released.sourceCoverage, "unverified");
+    assert.equal(result.released.files, null);
+    assert.equal(result.changes.released, null);
+    assert.ok(result.capabilities.assessments.length > 0);
+    assert.equal(calls.filter((url) => url.includes("/git/trees/")).length, 1);
+    const github = mock({});
+    await assert.rejects(guardedPublisher.publish({ github, context, core, report: result }), /Package-source binding/);
+    assert.equal(github.calls.length, 0);
+    const malformed = structuredClone(result);
+    malformed.publicationProvenance.declaredSourceCommit = sha;
+    assert.throws(() => monitor.validateReport(malformed), /publication provenance mismatch/);
+    const unannounced = structuredClone(result);
+    unannounced.publication = { ...publication, package_name: "@openclaw/gateway-protocol",
+      package_integrity: artifact.integrity };
+    assert.throws(() => monitor.validateReport(unannounced), /Unannounced Gateway source/);
+    const withoutEvent = structuredClone(result);
+    withoutEvent.publication = null;
+    assert.throws(() => monitor.validateReport(withoutEvent), /Unexpected source declaration/);
+  } finally {
+    global.fetch = saved;
+    fs.rmSync(outputDir, { recursive: true });
+  }
+});
+
+test("source-binding activation and transient observation failures have independent durable health issues", async () => {
+  const github = mock({
+    "GET /repos/{owner}/{repo}/issues": (args) => {
+      assert.equal(args.labels, "upstream-gateway-source-binding-health");
+      return [{ number: 51, body: "<!-- upstream-gateway-protocol:observation-health -->\nold observation" }];
+    },
+    "GET /repos/{owner}/{repo}/labels/{name}": {},
+    "POST /repos/{owner}/{repo}/issues": (args) => {
+      assert.deepEqual(args.labels, ["upstream-gateway-source-binding-health"]);
+      assert.match(args.body, /source-binding-health/);
+      assert.match(args.body, /Read-only observation may still be healthy/);
+      return { number: 52 };
+    },
+  });
+  assert.equal(await guardedPublisher.publishFailure({ github, context, cause: "source-binding" }), 52);
+});
+
+test("legacy health issues acquire explicit source-coverage blocker without losing notes", async () => {
+  const github = mock({
+    "GET /repos/{owner}/{repo}/issues": [{ number: 51, body:
+      "<!-- upstream-gateway-protocol:observation-health -->\n"
+      + "[Latest failed observation](https://github.com/openclaw/openclaw-windows-node/actions/runs/12)\nMaintainer notes" }],
+    "PATCH /repos/{owner}/{repo}/issues/{issue_number}": (args) => {
+      assert.match(args.body, /Maintainer notes/);
+      assert.match(args.body, /source-binding-blocker:v2/);
+      assert.match(args.body, /Implementation[\s\S]*blocked/);
+      return {};
+    },
+  });
+  assert.equal(await guardedPublisher.publishFailure({ github, context }), 51);
 });
