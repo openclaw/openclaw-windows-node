@@ -658,7 +658,7 @@ public class OpenClawGatewayClientTests
             error = new { message = "permission denied" },
             payload = new { ok = false, reason = "permission denied" }
         }));
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => task);
+        var error = await Assert.ThrowsAnyAsync<InvalidOperationException>(() => task);
         Assert.Equal("permission denied", error.Message);
         Assert.Equal(0, helper.GetPendingRequestCount());
     }
@@ -778,6 +778,7 @@ public class OpenClawGatewayClientTests
             identityPath: identity.Path);
         using var client = helper.Client;
         await client.ConnectAsync();
+        helper.MarkHandshakeReady();
         using var config = JsonDocument.Parse("{}");
 
         var responseTask = client.PatchConfigDetailedAsync(config.RootElement, "base-hash", 10_000);
@@ -809,6 +810,7 @@ public class OpenClawGatewayClientTests
             identityPath: identity.Path);
         using var client = helper.Client;
         await client.ConnectAsync();
+        helper.MarkHandshakeReady();
         using var config = JsonDocument.Parse("{}");
 
         var responseTask = client.PatchConfigDetailedAsync(config.RootElement, "base-hash", 10_000);
@@ -840,6 +842,7 @@ public class OpenClawGatewayClientTests
             identityPath: identity.Path);
         using var client = helper.Client;
         await client.ConnectAsync();
+        helper.MarkHandshakeReady();
         using var config = JsonDocument.Parse("{}");
 
         var responseTask = client.PatchConfigDetailedAsync(config.RootElement, "base-hash", 250);
