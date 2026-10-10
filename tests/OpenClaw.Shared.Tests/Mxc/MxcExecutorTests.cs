@@ -140,8 +140,11 @@ public class MxcExecutorTests
             Assert.True(result.TimedOut, result.Error);
             Assert.Equal(-1, result.ExitCode);
             Assert.Contains("cancelled", result.Error, StringComparison.OrdinalIgnoreCase);
+            // The injected cleanup budget is 100ms. The launcher lives about 30
+            // seconds. A loaded runner can delay the timeout callbacks, so the
+            // outer bound only has to show that cleanup does not wait for it.
             Assert.True(
-                stopwatch.Elapsed < TimeSpan.FromSeconds(2),
+                stopwatch.Elapsed < TimeSpan.FromSeconds(5),
                 $"Post-cancel cleanup took {stopwatch.ElapsedMilliseconds} ms.");
         }
         finally
