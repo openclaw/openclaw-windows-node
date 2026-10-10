@@ -95,7 +95,7 @@ duplicate WSL tests against Packaged.
 Native Latest/Packaged runtime CI is not implemented. Existing unit/helper and
 packaging checks do not prove live isolated-session startup, pairing or recovery;
 native runtime proof needs a capability-qualified Windows client host. See the
-[development/CI matrix](../../../DEVELOPMENT.md#gateway-development-and-ci-matrix).
+Gateway development and CI matrix in the repository's `DEVELOPMENT.md`.
 
 ## Build and register an explicit source ref
 
