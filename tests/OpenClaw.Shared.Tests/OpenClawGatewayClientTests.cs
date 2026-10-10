@@ -2608,6 +2608,66 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void ParseChatHistoryPayload_RealtimeVoiceFractionalTimestamp_PreservesMessage()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var history = helper.ParseChatHistoryPayload("""
+        {
+          "messages": [
+            {
+              "role": "user",
+              "api": "realtime",
+              "model": "realtime-voice",
+              "content": [{ "type": "text", "text": "Can you hear me?" }],
+              "timestamp": 1791257718360.176,
+              "provenance": {
+                "kind": "realtime_voice",
+                "sourceChannel": "talk"
+              },
+              "__openclaw": {
+                "id": "voice:abc:1",
+                "seq": 1
+              }
+            },
+            {
+              "role": "assistant",
+              "api": "realtime",
+              "model": "realtime-voice",
+              "content": "Yes, I can hear you.",
+              "ts": 1791257719361.992,
+              "provenance": {
+                "kind": "realtime_voice",
+                "sourceChannel": "talk"
+              },
+              "__openclaw": {
+                "id": "voice:abc:2",
+                "seq": 2
+              }
+            }
+          ]
+        }
+        """);
+
+        Assert.Collection(
+            history.Messages,
+            user =>
+            {
+                Assert.Equal("user", user.Role);
+                Assert.Equal("Can you hear me?", user.Text);
+                Assert.Equal(1791257718360, user.Ts);
+                Assert.Equal("voice:abc:1", user.OpenClawId);
+            },
+            assistant =>
+            {
+                Assert.Equal("assistant", assistant.Role);
+                Assert.Equal("Yes, I can hear you.", assistant.Text);
+                Assert.Equal(1791257719361, assistant.Ts);
+                Assert.Equal("voice:abc:2", assistant.OpenClawId);
+            });
+    }
+
+    [Fact]
     public void ParseChatHistoryPayload_CompactionMetadata_PreservesBoundaryDetails()
     {
         var helper = new GatewayClientTestHelper();
