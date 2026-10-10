@@ -49,6 +49,12 @@ public sealed record MigrationInventory(
     /// recording their bytes does not establish ownership or authorize a policy.
     /// </summary>
     public static MigrationInventory Capture(string roamingDirectory, string localDirectory)
+        => Capture(roamingDirectory, localDirectory, afterGatewaySnapshot: null);
+
+    internal static MigrationInventory Capture(
+        string roamingDirectory,
+        string localDirectory,
+        Action? afterGatewaySnapshot)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(roamingDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(localDirectory);
@@ -63,7 +69,13 @@ public sealed record MigrationInventory(
             var autoStart = settings is not null && ValidateSettings(settings.Value);
             var registry = capture.ReadJson("roaming", roaming, "gateways.json");
             var gatewayIds = ValidateRegistry(registry);
-            var directories = GetGatewayDirectories(roaming);
+            var nativeSetupDraft = Path.Combine(
+                "gateways", OpenClawAppIdentity.NativeGatewaySetupDraftFileName);
+            var gatewaySnapshot = GetGatewayDirectorySnapshot(roaming);
+            afterGatewaySnapshot?.Invoke();
+            if (gatewaySnapshot.NativeSetupDraftPresent)
+                capture.ReadJson("roaming", roaming, nativeSetupDraft);
+            var directories = gatewaySnapshot.Directories;
             // Removing a saved gateway deliberately leaves its identity directory behind.
             // Inventory that state without reinstating the record or selecting a gateway.
             var identityDirectories = gatewayIds.Union(directories, StringComparer.OrdinalIgnoreCase)
@@ -99,7 +111,9 @@ public sealed record MigrationInventory(
             capture.ReadJson("local", local, "windows-node-context.json");
 
             capture.Recheck();
-            if (!directories.SequenceEqual(GetGatewayDirectories(roaming), StringComparer.Ordinal) ||
+            var currentGatewaySnapshot = GetGatewayDirectorySnapshot(roaming);
+            if (gatewaySnapshot.NativeSetupDraftPresent != currentGatewaySnapshot.NativeSetupDraftPresent ||
+                !directories.SequenceEqual(currentGatewaySnapshot.Directories, StringComparer.Ordinal) ||
                 !string.Equals(approvalsPath, Path.GetFullPath(ExecApprovalsStore.ResolveFilePath(roaming)), StringComparison.Ordinal))
                 throw new IOException("Migration sources changed during capture.");
 
@@ -148,23 +162,52 @@ public sealed record MigrationInventory(
         return ids;
     }
 
-    private static string[] GetGatewayDirectories(string roaming)
+    private static GatewayDirectorySnapshot GetGatewayDirectorySnapshot(string roaming)
     {
         var path = Path.Combine(roaming, "gateways");
         if (!CheckPath(path, directory: true))
-            return [];
+            return new([], NativeSetupDraftPresent: false);
         var names = new List<string>();
+        var nativeSetupDraftPresent = false;
         foreach (var child in Directory.EnumerateFileSystemEntries(path))
         {
+            var name = Path.GetFileName(child);
+            if (string.Equals(
+                name, OpenClawAppIdentity.NativeGatewaySetupDraftFileName, StringComparison.Ordinal))
+            {
+                CheckPath(child, directory: false);
+                nativeSetupDraftPresent = true;
+                continue;
+            }
+            if (IsNativeSetupDraftTemporaryFile(name))
+            {
+                CheckPath(child, directory: false);
+                continue;
+            }
             if (names.Count >= MaximumGateways)
                 throw new InvalidDataException("Too many gateway identity directories.");
             CheckPath(child, directory: true);
-            var name = Path.GetFileName(child);
             ValidateSegment(name);
             names.Add(name);
         }
-        return names.Order(StringComparer.Ordinal).ToArray();
+        return new(names.Order(StringComparer.Ordinal).ToArray(), nativeSetupDraftPresent);
     }
+
+    private static bool IsNativeSetupDraftTemporaryFile(string name)
+    {
+        var prefix = $".{OpenClawAppIdentity.NativeGatewaySetupDraftFileName}.";
+        const string suffix = ".tmp";
+        if (!name.StartsWith(prefix, StringComparison.Ordinal) ||
+            !name.EndsWith(suffix, StringComparison.Ordinal))
+            return false;
+
+        var id = name.AsSpan(prefix.Length, name.Length - prefix.Length - suffix.Length);
+        return id.Length == 32 && id.IndexOfAnyExcept("0123456789abcdef") < 0;
+    }
+
+    private sealed record GatewayDirectorySnapshot(
+        string[] Directories,
+        bool NativeSetupDraftPresent);
 
     private static void CaptureIdentities(CaptureSession capture, string root, string directory, string relativeDirectory)
     {

@@ -211,7 +211,9 @@ public sealed class NativeGatewaySetupService(
     }
 
     internal static string GetDraftPath(GatewayRegistry registry) =>
-        Path.Combine(Path.GetDirectoryName(registry.GetIdentityDirectory("native-setup"))!, "native-setup-draft.json");
+        Path.Combine(
+            Path.GetDirectoryName(registry.GetIdentityDirectory("native-setup"))!,
+            OpenClawAppIdentity.NativeGatewaySetupDraftFileName);
 
     public async Task<NativeGatewaySetupSession> PrepareAsync(
         NativeGatewaySetupDraft draft,

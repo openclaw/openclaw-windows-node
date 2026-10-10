@@ -134,6 +134,20 @@ public sealed class StoreMigrationStartupCoordinatorTests
         Assert.False(result.AllowsNormalStartup);
     }
 
+    [Theory]
+    [InlineData("2026.9.8.0", StoreMigrationStartupState.UpdateInno)]
+    [InlineData("2026.9.8.1", StoreMigrationStartupState.ConsentRequired)]
+    [InlineData("2026.9.8.2", StoreMigrationStartupState.ConsentRequired)]
+    public void StableCorrectionMinimum_UsesCorrectionOrdering(
+        string sourceVersion, StoreMigrationStartupState expected)
+    {
+        var result = Evaluate(
+            Detected(sourceVersion), new(MigrationStartupRecordStatus.None),
+            minimumSourceVersion: "2026.9.8-1");
+
+        Assert.Equal(expected, result.State);
+    }
+
     [Fact]
     public void ExistingIntent_StillRequiresStoreConsent()
     {
@@ -398,9 +412,10 @@ public sealed class StoreMigrationStartupCoordinatorTests
             SourcePayloadPresent: true);
 
     private static StoreMigrationStartupDecision Evaluate(
-        InnoInstallationDetection installation, MigrationStartupRecord record, string architecture = "x64") =>
+        InnoInstallationDetection installation, MigrationStartupRecord record, string architecture = "x64",
+        string minimumSourceVersion = "2026.9.1") =>
         new StoreMigrationStartupCoordinator(new Detector(() => installation),
-            new Records(() => record), NullLogger.Instance).Evaluate(true, "2026.9.1", architecture);
+            new Records(() => record), NullLogger.Instance).Evaluate(true, minimumSourceVersion, architecture);
 
     private sealed class Detector(Func<InnoInstallationDetection> read) : IInnoInstallationDetector
     {
