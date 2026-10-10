@@ -7,16 +7,8 @@ on:
   pull_request:
     branches: [ main, master ]
   workflow_dispatch:
-    inputs:
-      packaging_release:
-        description: 'Exact Gateway packaging release tag (empty selects latest published)'
-        type: string
-        required: false
   workflow_call:
     inputs:
-      packaging_release:
-        type: string
-        required: false
       promotion_alpha:
         type: string
         required: true
@@ -58,7 +50,8 @@ jobs:
       arm64_release: ${{ steps.classify.outputs.arm64_release }}
       full: ${{ steps.classify.outputs.full }}
       promotion_record: ${{ steps.promotion.outputs.record }}
-      gateway_matrix: ${{ steps.gateway.outputs.matrix }}
+      gateway_version: ${{ steps.gateway.outputs.version }}
+      gateway_release: ${{ steps.gateway.outputs.release }}
     steps:
     - uses: actions/checkout@v7
       with:
@@ -122,17 +115,11 @@ jobs:
         }
         "CI change classification: $($impact.classification)" >> $env:GITHUB_STEP_SUMMARY
 
-    - name: Snapshot packaged and latest Gateway baselines
+    - name: Snapshot latest WSL Gateway baseline
       id: gateway
       if: ${{ steps.classify.outputs.setup_e2e == 'true' || steps.classify.outputs.revocation_e2e == 'true' || steps.classify.outputs.network_e2e == 'true' }}
       shell: pwsh
-      env:
-        GH_TOKEN: ${{ github.token }}
-        PACKAGING_RELEASE: ${{ inputs.packaging_release }}
-      run: |
-        $arguments = @{}
-        if ($env:PACKAGING_RELEASE) { $arguments.PackagingRelease = $env:PACKAGING_RELEASE }
-        ./scripts/Resolve-CiGateway.ps1 @arguments
+      run: ./scripts/Resolve-CiGateway.ps1
 
   fast-validation:
     runs-on: windows-latest
@@ -751,17 +738,14 @@ jobs:
         if-no-files-found: warn
 
   setup-e2e:
-    name: Setup and connect E2E (${{ matrix.channel }})
+    name: Setup and connect E2E (WSL Latest)
     needs: [change-classification, fast-validation]
     if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.fast-validation.result == 'success' && needs.change-classification.outputs.setup_e2e == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.change-classification.outputs.gateway_matrix) }}
     env:
       OPENCLAW_REPO_ROOT: ${{ github.workspace }}
-      OPENCLAW_E2E_GATEWAY_VERSION: ${{ matrix.version }}
+      OPENCLAW_E2E_GATEWAY_VERSION: ${{ needs.change-classification.outputs.gateway_version }}
     steps:
     - uses: actions/checkout@v7
       with:
@@ -774,8 +758,16 @@ jobs:
     - name: Record exact Gateway baseline
       shell: pwsh
       env:
-        GATEWAY_RELEASE_JSON: ${{ toJSON(matrix) }}
+        GATEWAY_RELEASE_JSON: ${{ needs.change-classification.outputs.gateway_release }}
       run: |
+        if ([string]::IsNullOrWhiteSpace($env:OPENCLAW_E2E_GATEWAY_VERSION) -or
+            [string]::IsNullOrWhiteSpace($env:GATEWAY_RELEASE_JSON)) {
+          throw 'The exact WSL Gateway baseline is missing.'
+        }
+        $release = $env:GATEWAY_RELEASE_JSON | ConvertFrom-Json
+        if ($release.version -cne $env:OPENCLAW_E2E_GATEWAY_VERSION) {
+          throw 'The WSL Gateway version does not match its baseline metadata.'
+        }
         New-Item -ItemType Directory -Path TestResults/E2E -Force | Out-Null
         $env:GATEWAY_RELEASE_JSON | Set-Content TestResults/E2E/gateway-release.json
 
@@ -815,23 +807,20 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: e2e-test-results-setup-connect-${{ matrix.channel }}
+        name: e2e-test-results-setup-connect
         path: |
           TestResults/E2E/
         if-no-files-found: warn
 
   revocation-e2e:
-    name: Revocation recovery E2E (${{ matrix.channel }})
+    name: Revocation recovery E2E (WSL Latest)
     needs: [change-classification, fast-validation]
     if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.fast-validation.result == 'success' && needs.change-classification.outputs.revocation_e2e == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.change-classification.outputs.gateway_matrix) }}
     env:
       OPENCLAW_REPO_ROOT: ${{ github.workspace }}
-      OPENCLAW_E2E_GATEWAY_VERSION: ${{ matrix.version }}
+      OPENCLAW_E2E_GATEWAY_VERSION: ${{ needs.change-classification.outputs.gateway_version }}
     steps:
     - uses: actions/checkout@v7
       with:
@@ -844,8 +833,16 @@ jobs:
     - name: Record exact Gateway baseline
       shell: pwsh
       env:
-        GATEWAY_RELEASE_JSON: ${{ toJSON(matrix) }}
+        GATEWAY_RELEASE_JSON: ${{ needs.change-classification.outputs.gateway_release }}
       run: |
+        if ([string]::IsNullOrWhiteSpace($env:OPENCLAW_E2E_GATEWAY_VERSION) -or
+            [string]::IsNullOrWhiteSpace($env:GATEWAY_RELEASE_JSON)) {
+          throw 'The exact WSL Gateway baseline is missing.'
+        }
+        $release = $env:GATEWAY_RELEASE_JSON | ConvertFrom-Json
+        if ($release.version -cne $env:OPENCLAW_E2E_GATEWAY_VERSION) {
+          throw 'The WSL Gateway version does not match its baseline metadata.'
+        }
         New-Item -ItemType Directory -Path TestResults/E2E -Force | Out-Null
         $env:GATEWAY_RELEASE_JSON | Set-Content TestResults/E2E/gateway-release.json
 
@@ -885,23 +882,20 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: e2e-test-results-revocation-recovery-${{ matrix.channel }}
+        name: e2e-test-results-revocation-recovery
         path: |
           TestResults/E2E/
         if-no-files-found: warn
 
   network-e2e:
-    name: Network recovery E2E (${{ matrix.channel }})
+    name: Network recovery E2E (WSL Latest)
     needs: [change-classification, fast-validation]
     if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.fast-validation.result == 'success' && needs.change-classification.outputs.network_e2e == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.change-classification.outputs.gateway_matrix) }}
     env:
       OPENCLAW_REPO_ROOT: ${{ github.workspace }}
-      OPENCLAW_E2E_GATEWAY_VERSION: ${{ matrix.version }}
+      OPENCLAW_E2E_GATEWAY_VERSION: ${{ needs.change-classification.outputs.gateway_version }}
     steps:
     - uses: actions/checkout@v7
       with:
@@ -914,8 +908,16 @@ jobs:
     - name: Record exact Gateway baseline
       shell: pwsh
       env:
-        GATEWAY_RELEASE_JSON: ${{ toJSON(matrix) }}
+        GATEWAY_RELEASE_JSON: ${{ needs.change-classification.outputs.gateway_release }}
       run: |
+        if ([string]::IsNullOrWhiteSpace($env:OPENCLAW_E2E_GATEWAY_VERSION) -or
+            [string]::IsNullOrWhiteSpace($env:GATEWAY_RELEASE_JSON)) {
+          throw 'The exact WSL Gateway baseline is missing.'
+        }
+        $release = $env:GATEWAY_RELEASE_JSON | ConvertFrom-Json
+        if ($release.version -cne $env:OPENCLAW_E2E_GATEWAY_VERSION) {
+          throw 'The WSL Gateway version does not match its baseline metadata.'
+        }
         New-Item -ItemType Directory -Path TestResults/E2E -Force | Out-Null
         $env:GATEWAY_RELEASE_JSON | Set-Content TestResults/E2E/gateway-release.json
 
@@ -955,7 +957,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: e2e-test-results-network-recovery-${{ matrix.channel }}
+        name: e2e-test-results-network-recovery
         path: |
           TestResults/E2E/
         if-no-files-found: warn

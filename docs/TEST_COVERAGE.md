@@ -132,20 +132,21 @@ proof must remain reported as blocked.
 
 ### CI impact fast paths
 
-The setup/connect, revocation recovery and network recovery E2E jobs each run a
-required `Packaged` / `Latest` Gateway matrix with `fail-fast: false`.
-`scripts\Resolve-CiGateway.ps1` resolves both baselines once in change-classification and supplies
-the exact version to the existing candidate-version setup path, so setup and
-assertions use the same version even if the tag moves during a run. No npm
-resolution failure falls back to the Store or another channel. The channel-specific
-artifact includes `gateway-release.json`: npm selector/version/integrity for Latest;
-release tag, packaging commit, MSIX digest, embedded Gateway version/commit/build ID
-and Node runtime for Packaged. Packaged's version comes from the released payload,
-never the MSIX tag or packaging policy. Resolution runs only when E2E is selected.
-Both matrix results contribute to the existing CI Gate.
+The setup/connect, revocation recovery and network recovery E2E jobs each run once
+against npm Latest, matching normal WSL setup.
+`scripts\Resolve-CiGateway.ps1` resolves Latest once in change-classification and
+supplies the exact version to the existing candidate-version setup path, so setup
+and assertions use the same version even if the tag moves during a run. No npm
+resolution failure falls back to the Store or another channel. Each job's artifact
+includes `gateway-release.json` with the npm selector, exact version, integrity and
+tarball URL. Resolution runs only when E2E is selected, without downloading an MSIX
+or consulting native packaging releases. Every selected E2E job contributes to the
+existing CI Gate.
 
-These are real WSL Gateway-to-Windows-node compatibility lanes, not native MSIX
-runtime proof. The Packaged WSL lane installs the exact corresponding npm version.
+These are real WSL Gateway-to-Windows-node lanes, not native MSIX runtime proof.
+There is no duplicate Packaged WSL lane and no native Latest/Packaged runtime matrix.
+Native unit/helper tests and upstream package build/install checks are not substitutes
+for live isolated-session startup, pairing and recovery on a capable Windows client.
 Native developer builds use the verified npm archive for Latest, or released app
 bytes and the release packaging commit for Packaged. `scripts\test-gateway-npm-release.ps1` covers
 channel selection, source/Store overrides, exact pins, archive integrity and

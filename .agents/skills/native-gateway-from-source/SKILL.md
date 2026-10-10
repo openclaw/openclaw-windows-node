@@ -86,11 +86,16 @@ it; clear the variable before explicitly using `-GatewayChannel`.
 Neither flag changes WSL setup defaults. For a WSL version-specific setup, explicitly
 set `Gateway.Version` to the exact version.
 
-CI resolves Latest and Packaged once per workflow and runs setup/connect, revocation
-and network recovery against **both** versions, installing npm at the resolved exact
-version via `OPENCLAW_E2E_GATEWAY_VERSION`. Each
-channel's artifact contains `gateway-release.json`. These WSL Gateway-to-Windows-node
-lanes are not proof of native MSIX registration; native proof remains separate.
+WSL CI follows npm Latest only, matching normal WSL setup. It resolves Latest once
+per workflow and runs each selected setup/connect, revocation and network recovery
+job once at that exact version via `OPENCLAW_E2E_GATEWAY_VERSION`. Each job's
+artifact contains `gateway-release.json`. CI does not download a native MSIX or
+duplicate WSL tests against Packaged.
+
+Native Latest/Packaged runtime CI is not implemented. Existing unit/helper and
+packaging checks do not prove live isolated-session startup, pairing or recovery;
+native runtime proof needs a capability-qualified Windows client host. See the
+[development/CI matrix](../../../DEVELOPMENT.md#gateway-development-and-ci-matrix).
 
 ## Build and register an explicit source ref
 

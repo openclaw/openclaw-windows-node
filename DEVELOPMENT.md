@@ -533,6 +533,8 @@ without a long-lived release fork. The launcher selects `npm-latest` or
 skips only the Companion build; Gateway tags are still resolved to exact versions.
 An explicit `OPENCLAW_NATIVE_GATEWAY_DEV_PATCH` reuses a prepared patch without
 rebuilding. `-UseStoreGateway` opts back into the installed Store runtime.
+Existing profiles are retained, not migrated into the new channel-specific data
+directories; use `-DataDir` only when deliberately reusing an existing profile.
 
 For Gateway-only preparation, use `.\scripts\Build-NativeGatewayFromSource.ps1`
 with the same `-GatewayChannel` and `-PackagingRelease` parameters. Packaged reuses
@@ -548,6 +550,24 @@ for prerequisites, provenance, verification and removal.
 This changes development tooling, not installed Companion's Store acquisition or
 normal WSL setup. WSL already defaults to npm `latest`; set `Gateway.Version`
 explicitly for a WSL version-specific install.
+
+##### Gateway development and CI matrix
+
+`build.ps1` builds Companion. Native Gateway preparation is performed by
+`run-app-local.ps1` or `scripts\Build-NativeGatewayFromSource.ps1`; the native
+channel flag is `-GatewayChannel Packaged`, not `-Packaged`.
+
+| Context | Gateway | Default / Latest | Packaged | Coverage or limitation |
+|---|---|---|---|---|
+| Local development | Native | Download npm Latest and build/register a side-by-side development package. | Reuse the verified released MSIX application payload and build/register a side-by-side development package. | Native runtime proof is separate from build/registration checks. |
+| Local development | WSL | Use the existing installer policy, normally npm Latest. | Not a WSL channel. An explicit `Gateway.Version` can select another npm version. | Native channel flags do not change WSL setup. |
+| CI | WSL | Run each selected setup/connect, revocation and network recovery job once against a shared exact npm Latest snapshot. | No duplicated Packaged lane or MSIX baseline dependency. | Real WSL Gateway-to-Windows-node coverage; not native session proof. |
+| CI | Native | No live Gateway runtime lane. | No live Gateway runtime lane. | Unit/helper and upstream packaging checks exist, but live isolated-session startup, pairing and recovery are not covered. |
+
+Native runtime CI requires a capability-qualified Windows client runner.
+Standard Windows Server runners are rejected by the current support gate; a
+Windows client build alone is not sufficient without a successful session
+capability probe and real startup proof.
 
 The first-run Windows gateway onboarding wizard lives in `OpenClaw.SetupEngine.UI` and is hosted by `OpenClaw.Tray.WinUI`; see [docs/ONBOARDING_WIZARD.md](docs/ONBOARDING_WIZARD.md) for the page flow. The setup pipeline itself is documented in [docs/SETUP_ENGINE_REDESIGN.md](docs/SETUP_ENGINE_REDESIGN.md), including the Windows node context step that injects agent instructions into the WSL workspace.
 
