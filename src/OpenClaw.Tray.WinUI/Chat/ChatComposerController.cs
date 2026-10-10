@@ -189,8 +189,7 @@ internal sealed partial class ChatComposerController : IDisposable
 
                 if (accepted)
                 {
-                    if (ChatComposerSubmissionPolicy.ShouldClearInput(submittedRevision, _vm.DraftRevision))
-                        _vm.ClearDraft();
+                    _vm.ClearDraftIfUnchanged(submittedRevision);
                     _vm.RemoveSubmittedAttachments(attachments);
                 }
 
