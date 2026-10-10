@@ -142,6 +142,29 @@ public sealed class SetupDashboardHandoffTests
         Assert.Equal("https://gateway.example/control", launched);
     }
 
+    [Fact]
+    public async Task SavedDashboard_WithoutBrowserCredential_BypassesCredentialFallbackValidation()
+    {
+        string? launched = null;
+        var validationCalls = 0;
+        var service = new GatewayDashboardLinkService((_, _) => Task.FromResult(false), key => key);
+        var launcher = new GatewayDashboardLauncher(
+            () => throw new InvalidOperationException("Saved rows do not require an active tunnel."),
+            _ => null,
+            service,
+            url => { launched = url; return Task.FromResult(true); },
+            _ => throw new InvalidOperationException("Unexpected Dashboard link failure"),
+            () => throw new InvalidOperationException("Unexpected launch failure"));
+
+        var opened = await launcher.OpenSavedAsync(
+            new GatewayDashboardLinkRequest(Gateway.Url, null, null, AppendBrowserCredential: false),
+            _ => { validationCalls++; return Task.FromResult(false); });
+
+        Assert.True(opened);
+        Assert.Equal(0, validationCalls);
+        Assert.Equal("https://gateway.example/control", launched);
+    }
+
     [Theory]
     [InlineData("tunnel")]
     [InlineData("credential")]
