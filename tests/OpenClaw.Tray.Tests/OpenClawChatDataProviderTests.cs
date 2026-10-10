@@ -2507,7 +2507,7 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
-    public async Task Status_ReconnectClearsUncorrelatedQueuedMessagesBeforeHistoryReload()
+    public async Task Status_ReconnectKeepsUnsentQueuedMessagesAsFailed()
     {
         var sendGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
@@ -2520,7 +2520,12 @@ public class OpenClawChatDataProviderTests
 
         bridge.RaiseStatus(ConnectionStatus.Connected);
 
-        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
+        var queued = GetQueuedMessages(snapshots[^1], "main");
+        var pending = Assert.Single(queued, message => message.Text == "pending across reconnect");
+        Assert.Equal(ChatQueuedMessageSendState.Failed, pending.SendState);
+        Assert.Equal(
+            "The connection dropped before the gateway accepted this message.",
+            pending.ErrorText);
         sendGate.SetResult();
         await sendTask;
     }

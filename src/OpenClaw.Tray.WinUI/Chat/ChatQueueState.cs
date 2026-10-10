@@ -549,10 +549,44 @@ internal sealed class ChatQueueState
 
     internal void ClearForReconnect()
     {
+        const string droppedBeforeAccept =
+            "The connection dropped before the gateway accepted this message.";
+        var keptIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var (threadId, messages) in _messages.ToArray())
+        {
+            var kept = new List<ChatQueuedMessage>(messages.Count);
+            foreach (var message in messages)
+            {
+                if (message.SendState == ChatQueuedMessageSendState.Failed)
+                {
+                    kept.Add(message);
+                }
+                else
+                {
+                    kept.Add(message with
+                    {
+                        SendState = ChatQueuedMessageSendState.Failed,
+                        ErrorText = string.IsNullOrEmpty(message.ErrorText)
+                            ? droppedBeforeAccept
+                            : message.ErrorText,
+                    });
+                }
+
+                keptIds.Add(message.Id);
+            }
+
+            _messages[threadId] = kept;
+        }
+
+        foreach (var (threadId, requests) in _requests.ToArray())
+        {
+            requests.RemoveAll(request => !keptIds.Contains(request.Id));
+            if (requests.Count == 0)
+                _requests.Remove(threadId);
+        }
+
         _locallyInitiatedThreads.Clear();
         _localSentTexts.Clear();
-        _messages.Clear();
-        _requests.Clear();
         _drainScheduledThreads.Clear();
         _assistantFallbackPromotedThreads.Clear();
         _messageIdsByRunId.Clear();
