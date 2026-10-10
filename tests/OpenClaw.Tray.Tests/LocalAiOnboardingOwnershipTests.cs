@@ -98,7 +98,22 @@ public sealed class LocalAiOnboardingOwnershipTests
         var connect = initialize.IndexOf("await SetupGatewaySession.ConnectAsync", StringComparison.Ordinal);
         Assert.True(observation >= 0 && observation < connect);
         Assert.Contains("observationStarted = true;", initialize[observation..connect]);
-        Assert.Contains("else if (!observationStarted)", initialize[connect..]);
+        var optionalStart = initialize.LastIndexOf(
+            "if (_localObservation is not null && _localExpectedModel is null)", StringComparison.Ordinal);
+        var consoleStart = initialize.IndexOf(
+            "if (_args.NativeSession is { IsIsolated: true } isolated)", optionalStart, StringComparison.Ordinal);
+        Assert.True(optionalStart > connect && consoleStart > optionalStart);
+        var optionalObservation = initialize[optionalStart..consoleStart].Replace("\r\n", "\n", StringComparison.Ordinal);
+        Assert.Contains("if (!observationStarted)\n                " +
+            "AsyncEventHandlerGuard.Run(_localObservation.RefreshAsync, onError: ReportLocalObservationFailure);", optionalObservation);
+        Assert.DoesNotContain("await _localObservation.RefreshAsync", optionalObservation);
+        Assert.Equal(2, initialize.Split("AsyncEventHandlerGuard.Run(_localObservation.RefreshAsync",
+            StringSplitOptions.None).Length - 1);
+        Assert.True(initialize.IndexOf("localAi.ConfigureNative(", StringComparison.Ordinal) < optionalStart);
+        Assert.True(initialize.IndexOf("await StartIsolatedConsoleAsync", StringComparison.Ordinal) <
+            initialize.IndexOf("ApplyDetection(detection)", StringComparison.Ordinal));
+        Assert.Contains("AiSetupReadinessPresentation.ShowLocalChoice(", page);
+        Assert.Contains("state != LocalAiOnboardingState.Checking", page);
     }
 
     [Fact]
@@ -168,7 +183,10 @@ public sealed class LocalAiOnboardingOwnershipTests
         var progress = Read(@"src\OpenClaw.SetupEngine.UI\Pages\ProgressPage.xaml.cs");
         Assert.Contains("RootFrame.Content is AiSetupPage aiPage", window);
         Assert.Contains("Task.WhenAll(_aiPageCleanupTask, aiPage.CloseAsync())", window);
-        Assert.True(window.IndexOf("await _aiPageCleanupTask", StringComparison.Ordinal) <
+        Assert.Contains("await Task.WhenAll(\n                                " +
+            "_nativePageCleanupTask, _aiPageCleanupTask, _preparationTask,",
+            window.Replace("\r\n", "\n", StringComparison.Ordinal));
+        Assert.True(window.IndexOf("_completionPreparation?.CleanupCompleted ?? Task.CompletedTask", StringComparison.Ordinal) <
             window.IndexOf("_setupLock?.Dispose()", StringComparison.Ordinal));
         Assert.Contains("Page, IAsyncDisposable", progress);
         Assert.Contains("await _pipelineTask", progress);

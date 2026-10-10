@@ -15,6 +15,49 @@ namespace OpenClaw.Connection.Tests;
 public sealed class LocalAiPortLifecycleTests
 {
     [Fact]
+    public async Task ExplicitStartReportsPublicationBeforePausedEndpointWriteAndDiscardsLateProgress()
+    {
+        using var temp = new TempDirectory("local-ai-start-progress-");
+        var paths = await PrepareInstallAsync(temp);
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_765);
+        var client = new FakeClient(events);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<LocalAiEndpointLifecycleResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stages = new System.Collections.Concurrent.ConcurrentQueue<LocalAiRuntimeStartStage>();
+        var lifecycle = new FakeLifecycle(events)
+        {
+            PublishHandler = (_, ct) =>
+            {
+                Assert.Contains("probe:28765", events);
+                Assert.Equal(LocalAiRuntimeStartStage.PublishingProvider, stages.Last());
+                entered.SetResult();
+                return release.Task.WaitAsync(ct);
+            }
+        };
+        await using var runtime = CreateRuntime(paths, host, platform, client, lifecycle);
+        var starting = runtime.EnsureStartedAsync(default, new StartProgress(stages.Enqueue));
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(starting.IsCompleted);
+            Assert.Equal(LocalAiRuntimeStartStage.PublishingProvider, stages.Last());
+        }
+        finally { release.TrySetResult(LocalAiEndpointLifecycleResult.Ok()); }
+        Assert.Equal(LocalAiRuntimeState.Healthy, (await starting).State);
+        Assert.Single(events, item => item == "publish:28765");
+        var count = stages.Count;
+        lifecycle.LastStartProgress!.Report(LocalAiRuntimeStartStage.VerifyingEndpoint);
+        Assert.Equal(count, stages.Count);
+    }
+
+    private sealed class StartProgress(Action<LocalAiRuntimeStartStage> report) : IProgress<LocalAiRuntimeStartStage>
+    {
+        public void Report(LocalAiRuntimeStartStage value) => report(value);
+    }
+
+    [Fact]
     public async Task ChildProcessPathResolver_ResolvesExistingFileAndDirectoryPaths()
     {
         using var temp = new TempDirectory("local-ai-child-path-resolver-");
@@ -3664,6 +3707,16 @@ public sealed class LocalAiPortLifecycleTests
 
     private sealed class FakeLifecycle(SynchronizedEventLog events) : ILocalAiEndpointLifecycle
     {
+        public IProgress<LocalAiRuntimeStartStage>? LastStartProgress { get; private set; }
+        public Task<LocalAiEndpointLifecycleResult> PublishAsync(LocalAiResolvedInstall install, CancellationToken ct,
+            IProgress<LocalAiRuntimeStartStage>? progress)
+        {
+            LastStartProgress = progress;
+            ct.ThrowIfCancellationRequested();
+            progress?.Report(LocalAiRuntimeStartStage.PublishingProvider);
+            return PublishAsync(install, ct);
+        }
+
         public LocalAiNativeBindingStore? BindingStore { get; init; }
         public Func<CancellationToken, Task>? PrepareStartHandler { get; set; }
         public Task PrepareStartAsync(LocalAiResolvedInstall install, CancellationToken ct) =>

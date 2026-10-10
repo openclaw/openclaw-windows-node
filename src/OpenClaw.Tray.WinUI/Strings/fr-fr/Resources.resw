@@ -7449,7 +7449,34 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   <data name="Onboarding_Ready_Skills.Description" xml:space="preserve"><value>Parcourir les compétences de votre agent. Rien n'est installé automatiquement.</value></data>
   <data name="Onboarding_Ready_Channels.Header" xml:space="preserve"><value>Connecter des canaux</value></data>
   <data name="Onboarding_Ready_Channels.Description" xml:space="preserve"><value>WhatsApp, Telegram et plus encore. Vous choisissez quand vous connecter.</value></data>
-  <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>Retour à l’IA</value></data>
+  <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>Vérifier à nouveau</value></data>
+  <data name="Onboarding_AiSetup_Preparing" xml:space="preserve"><value>Préparation de vos choix d’IA</value></data>
+  <data name="Onboarding_Loading_Gateway" xml:space="preserve"><value>Préparation de la passerelle</value></data>
+  <data name="Onboarding_Loading_StartGateway" xml:space="preserve"><value>Démarrage de la passerelle et vérification de son écoute...</value></data>
+  <data name="Onboarding_Loading_PairGateway" xml:space="preserve"><value>Appairage de Companion avec la passerelle...</value></data>
+  <data name="Onboarding_Loading_AcquireArtifacts" xml:space="preserve"><value>Acquisition des fichiers de l’IA locale...</value></data>
+  <data name="Onboarding_Loading_ApplyCapabilities" xml:space="preserve"><value>Application des capacités Windows examinées...</value></data>
+  <data name="Onboarding_Loading_CheckConfiguration" xml:space="preserve"><value>Vérification de la configuration enregistrée de la passerelle...</value></data>
+  <data name="Onboarding_Loading_RestartGateway" xml:space="preserve"><value>Redémarrage de la passerelle configurée...</value></data>
+  <data name="Onboarding_Loading_CheckHealth" xml:space="preserve"><value>Vérification authentifiée de l’état de la passerelle...</value></data>
+  <data name="Onboarding_Loading_ReconcileLocalAi" xml:space="preserve"><value>Réconciliation de la configuration de l’IA locale sélectionnée...</value></data>
+  <data name="Onboarding_Loading_PublishGateway" xml:space="preserve"><value>Enregistrement du profil de passerelle vérifié...</value></data>
+  <data name="Onboarding_Loading_SaveSettings" xml:space="preserve"><value>Enregistrement de vos choix de configuration...</value></data>
+  <data name="Onboarding_Loading_ApplyStartup" xml:space="preserve"><value>Application de votre préférence de démarrage à la connexion...</value></data>
+  <data name="Onboarding_Loading_StartCompanion" xml:space="preserve"><value>Démarrage des services Companion avant la vérification finale de l’IA...</value></data>
+  <data name="Onboarding_Loading_RecoverLocalAi" xml:space="preserve"><value>Attente de la récupération du moteur d’IA locale sélectionné...</value></data>
+  <data name="Onboarding_Loading_StopLocalAi" xml:space="preserve"><value>Arrêt sécurisé de l’ancien moteur d’IA locale...</value></data>
+  <data name="Onboarding_Loading_StopGateway" xml:space="preserve"><value>Libération de l’ancienne connexion et du moteur de passerelle...</value></data>
+  <data name="Onboarding_AiSetup_VerifyingTitle" xml:space="preserve"><value>Vérification de votre IA</value></data>
+  <data name="Onboarding_AiSetup_VerificationFailedTitle" xml:space="preserve"><value>Votre IA nécessite votre attention</value></data>
+  <data name="Onboarding_AiSetup_ManagerRecoveryBlocked" xml:space="preserve"><value>La connexion à la passerelle a changé pendant la configuration. Fermez cette fenêtre, vérifiez Connexion et rouvrez la configuration de l’IA pour vérifier le résultat enregistré. Ne répétez pas l’action du fournisseur tant que son résultat est incertain. La fermeture attend la fin de toute opération admise.</value></data>
+  <data name="Onboarding_Finishing_Draining" xml:space="preserve"><value>Fermeture sécurisée de l’opération de configuration précédente...</value></data>
+  <data name="Onboarding_Finishing_Restarting" xml:space="preserve"><value>Redémarrage d’OpenClaw avant la vérification finale...</value></data>
+  <data name="Onboarding_Finishing_Recovery" xml:space="preserve"><value>La configuration n’est pas prête. Utilisez une action de récupération disponible ou fermez cette fenêtre. Aucune action de fournisseur ne sera répétée automatiquement.</value></data>
+  <data name="Onboarding_Ai_CompletionConsent.Text" xml:space="preserve"><value>Choisir une IA ou poursuivre sa configuration autorise OpenClaw à terminer les choix examinés et à redémarrer avant d’indiquer que l’IA est prête.</value></data>
+  <data name="Onboarding_Finishing_Heading.Text" xml:space="preserve"><value>Finalisation de la configuration</value></data>
+  <data name="Onboarding_Finishing_Detail.Text" xml:space="preserve"><value>Application de vos choix, redémarrage d’OpenClaw et vérification de votre IA. Cela peut prendre quelques minutes.</value></data>
+  <data name="Onboarding_Finishing_Interrupted" xml:space="preserve"><value>La configuration nécessite votre attention. Aucune action d’IA ne sera répétée automatiquement. Fermez cette fenêtre, vérifiez la passerelle enregistrée dans Connexion, puis rouvrez explicitement la configuration de l’IA pour la vérifier.</value></data>
   <data name="Onboarding_Ready_Model" xml:space="preserve"><value>Modèle vérifié : {0}</value></data>
   <data name="Onboarding_Ready_Verifying" xml:space="preserve"><value>Nouvelle vérification du même Gateway, agent et modèle...</value></data>
   <data name="Onboarding_Ready_Finalizing" xml:space="preserve"><value>Finalisation de vos choix de configuration Windows...</value></data>
@@ -7465,7 +7492,7 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   <data name="Onboarding_Ready_FinalizingFailed" xml:space="preserve"><value>La configuration Windows n’a pas pu se terminer. La destination n’a pas été ouverte. Réessayez ou revenez à la configuration IA.</value></data>
   <data name="Onboarding_Ready_OpeningFailed" xml:space="preserve"><value>L’application n’a pas pu ouvrir la destination choisie. Réessayez. Aucune connexion à un canal n’a été démarrée.</value></data>
   <data name="Onboarding_Ready_LaunchFailedTitle" xml:space="preserve"><value>Impossible d’ouvrir la destination choisie</value></data>
-  <data name="Onboarding_Ready_LaunchInvalid" xml:space="preserve"><value>Ce transfert de configuration a expiré, a déjà été utilisé ou est indisponible. Rouvrez la configuration et vérifiez votre IA.</value></data>
+  <data name="Onboarding_Ready_LaunchInvalid" xml:space="preserve"><value>Ce transfert de configuration est interrompu, incompatible, expiré ou déjà utilisé. Il ne peut pas être rejoué. Vérifiez la passerelle enregistrée dans Connexion, puis rouvrez explicitement la configuration de l’IA pour la vérifier. Les actions précédentes ne seront pas répétées automatiquement.</value></data>
   <data name="Onboarding_Ready_LaunchChanged" xml:space="preserve"><value>Le Gateway ou l’agent vérifié a changé. Revenez au Gateway d’origine et rouvrez la configuration IA. Aucun autre compte n’a été ouvert.</value></data>
   <data name="Onboarding_Ready_LaunchUnavailable" xml:space="preserve"><value>Le Gateway vérifié ou la page n’est pas prêt. Vérifiez Connection, puis réessayez explicitement.</value></data>
   <data name="Onboarding_Ready_Retry" xml:space="preserve"><value>Réessayer</value></data>

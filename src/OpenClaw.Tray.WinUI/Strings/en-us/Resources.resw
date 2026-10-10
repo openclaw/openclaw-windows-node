@@ -7513,7 +7513,34 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_Ready_Skills.Description" xml:space="preserve"><value>Browse skills for your agent. Nothing is installed automatically.</value></data>
   <data name="Onboarding_Ready_Channels.Header" xml:space="preserve"><value>Connect channels</value></data>
   <data name="Onboarding_Ready_Channels.Description" xml:space="preserve"><value>WhatsApp, Telegram, and more. You choose when to sign in.</value></data>
-  <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>Back to AI setup</value></data>
+  <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>Check readiness again</value></data>
+  <data name="Onboarding_AiSetup_Preparing" xml:space="preserve"><value>Preparing your AI choices</value></data>
+  <data name="Onboarding_Loading_Gateway" xml:space="preserve"><value>Preparing Gateway</value></data>
+  <data name="Onboarding_Loading_StartGateway" xml:space="preserve"><value>Starting the Gateway and checking its listener...</value></data>
+  <data name="Onboarding_Loading_PairGateway" xml:space="preserve"><value>Pairing this Companion with the Gateway...</value></data>
+  <data name="Onboarding_Loading_AcquireArtifacts" xml:space="preserve"><value>Acquiring Local AI files...</value></data>
+  <data name="Onboarding_Loading_ApplyCapabilities" xml:space="preserve"><value>Applying your reviewed Windows capabilities...</value></data>
+  <data name="Onboarding_Loading_CheckConfiguration" xml:space="preserve"><value>Checking the saved Gateway configuration...</value></data>
+  <data name="Onboarding_Loading_RestartGateway" xml:space="preserve"><value>Restarting the configured Gateway...</value></data>
+  <data name="Onboarding_Loading_CheckHealth" xml:space="preserve"><value>Checking authenticated Gateway health...</value></data>
+  <data name="Onboarding_Loading_ReconcileLocalAi" xml:space="preserve"><value>Reconciling the selected Local AI configuration...</value></data>
+  <data name="Onboarding_Loading_PublishGateway" xml:space="preserve"><value>Saving the verified Gateway profile...</value></data>
+  <data name="Onboarding_Loading_SaveSettings" xml:space="preserve"><value>Saving your setup choices...</value></data>
+  <data name="Onboarding_Loading_ApplyStartup" xml:space="preserve"><value>Applying your sign-in startup preference...</value></data>
+  <data name="Onboarding_Loading_StartCompanion" xml:space="preserve"><value>Starting Companion services before the final AI check...</value></data>
+  <data name="Onboarding_Loading_RecoverLocalAi" xml:space="preserve"><value>Waiting for the selected Local AI runtime to recover...</value></data>
+  <data name="Onboarding_Loading_StopLocalAi" xml:space="preserve"><value>Safely stopping the old Local AI runtime...</value></data>
+  <data name="Onboarding_Loading_StopGateway" xml:space="preserve"><value>Releasing the old Gateway connection and runtime...</value></data>
+  <data name="Onboarding_AiSetup_VerifyingTitle" xml:space="preserve"><value>Checking your AI</value></data>
+  <data name="Onboarding_AiSetup_VerificationFailedTitle" xml:space="preserve"><value>Your AI needs attention</value></data>
+  <data name="Onboarding_AiSetup_ManagerRecoveryBlocked" xml:space="preserve"><value>The Gateway connection changed while setup was pending. Close this setup window, check Connection, and reopen AI setup to verify the saved result. Do not repeat the provider action while its outcome is uncertain. Closing waits for any admitted operation to settle.</value></data>
+  <data name="Onboarding_Finishing_Draining" xml:space="preserve"><value>Closing the previous setup operation safely...</value></data>
+  <data name="Onboarding_Finishing_Restarting" xml:space="preserve"><value>Restarting OpenClaw before the final readiness check...</value></data>
+  <data name="Onboarding_Finishing_Recovery" xml:space="preserve"><value>Setup is not ready. Use an available recovery action, or close this window. No provider action will be repeated automatically.</value></data>
+  <data name="Onboarding_Ai_CompletionConsent.Text" xml:space="preserve"><value>Selecting an AI or continuing its setup authorizes OpenClaw to finish your reviewed setup choices and restart before showing Ready.</value></data>
+  <data name="Onboarding_Finishing_Heading.Text" xml:space="preserve"><value>Finishing setup</value></data>
+  <data name="Onboarding_Finishing_Detail.Text" xml:space="preserve"><value>Applying your choices, restarting OpenClaw, and checking your AI. This may take a few minutes.</value></data>
+  <data name="Onboarding_Finishing_Interrupted" xml:space="preserve"><value>Setup completion needs attention. No AI action will be repeated automatically. Close this window, check the saved Gateway in Connection, then explicitly reopen AI setup to verify it.</value></data>
   <data name="Onboarding_Ready_Model" xml:space="preserve"><value>Verified model: {0}</value></data>
   <data name="Onboarding_Ready_Verifying" xml:space="preserve"><value>Rechecking the same Gateway, agent, and model...</value></data>
   <data name="Onboarding_Ready_Finalizing" xml:space="preserve"><value>Finishing your Windows setup choices...</value></data>
@@ -7529,7 +7556,7 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_Ready_FinalizingFailed" xml:space="preserve"><value>Windows setup could not finish. Your choice was not launched. Choose again to retry or return to AI setup.</value></data>
   <data name="Onboarding_Ready_OpeningFailed" xml:space="preserve"><value>The app could not open your selected destination. Choose again to retry. No channel sign-in was started.</value></data>
   <data name="Onboarding_Ready_LaunchFailedTitle" xml:space="preserve"><value>Could not open your setup destination</value></data>
-  <data name="Onboarding_Ready_LaunchInvalid" xml:space="preserve"><value>This setup handoff is expired, already used, or unavailable. Reopen setup and verify your AI again.</value></data>
+  <data name="Onboarding_Ready_LaunchInvalid" xml:space="preserve"><value>This setup handoff is interrupted, incompatible, expired, or already used. It cannot be replayed. Check the saved Gateway in Connection, then explicitly reopen AI setup to verify it. Previous setup actions will not be repeated automatically.</value></data>
   <data name="Onboarding_Ready_LaunchChanged" xml:space="preserve"><value>The verified Gateway or agent changed. Return to the original Gateway and reopen AI setup. No other account was opened.</value></data>
   <data name="Onboarding_Ready_LaunchUnavailable" xml:space="preserve"><value>The verified Gateway or app page is not ready. Check Connection, then retry explicitly.</value></data>
   <data name="Onboarding_Ready_Retry" xml:space="preserve"><value>Retry</value></data>

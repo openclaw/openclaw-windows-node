@@ -9,6 +9,17 @@ the provider, reconnecting and testing real Gateway inference. File verification
 can take a minute or more for large models; it is not a download. Artifact acquisition
 retains the installation progress page and its actual download progress.
 
+The three-phase installation overview places the current pipeline substep directly
+under its owning phase title, for example **Create WSL instance** under **Prepare
+your PC**. Waiting and completed phases have no stale substep subtitle. Failed or
+cancelled phases retain the interrupted substep. Download measurements and the
+expandable activity log remain below the phase overview; the internal pipeline
+step count is not displayed.
+
+The shared loading surface centers its bounded content group inside the scroll
+viewport, independently of the current status text or window width. Short
+windows retain vertical scrolling without horizontal overflow.
+
 Reopening an incomplete native Local AI setup uses this Companion profile's saved
 Gateway ownership to offer **Recover and use Local AI**, including pending
 configuration writes not yet reflected in runtime status. Recovery preserves the
@@ -285,8 +296,7 @@ The native path:
    Native console output and scoped terminal/restart/cancel recovery appear only
    for errors, skipped/unavailable console output or uncertain outcomes in the
    shared page/provider dialog. Healthy provider selection has no extra native controls.
-4. The verified chooser offers **Talk to my agent**, **Connect channels**, and
-   **Explore skills**. Choosing a destination rechecks the same Gateway, package
+4. After the explicit AI action, finishing progress rechecks the same Gateway, package
    family and runtime contract, signing identity, agent, session and primary model.
    After draining the operator, setup retains isolated stop ownership through
    the explicit package restart. The legacy path first stops its own runtime
@@ -297,10 +307,10 @@ The native path:
    gate remains retryable and does not publish the staged record.
 5. Stops the setup-owned runtime before reloading and updating the registry.
    The isolated runtime leaves a pre-existing service running on detach.
-   The selected destination uses the same protected restart receipt as WSL.
+   The destination-free preparation uses the same protected receipt store as WSL.
    The normal connection manager owns the native runtime after restart and
    supplies the authorized connection for another fresh verification before
-   opening the selected page. This does not approve the separate Windows node
+   mounting Ready. Destination selection then only navigates. This does not approve the separate Windows node
    role. Current Windows node permissions are preserved.
 
 If the required AI setup methods are absent, the page explains the unsupported
@@ -414,12 +424,109 @@ Capabilities, installation review and AI provider setup use native controls.
 The [screen details](#screen-details) below own their behavior and consent rules;
 the [artwork section](#artwork-and-motion) covers motion and asset packaging.
 
+### Consolidated loading groups
+
+Loading uses three stable major titles: **Preparing Gateway**, **Setting up
+Local AI**, and **Finishing setup**, followed by the verified Ready chooser.
+`SetupLoadingProgress` supplies operation-scoped snapshots, not elapsed-time
+estimates. Real operations report before their awaits: authenticated connection,
+pairing, discovery, capabilities/configuration, Gateway restart and health,
+model verification, reconciliation, settings and startup preference application.
+Normal-runtime completion reports connection, selected-runtime recovery,
+post-recovery connection, configuration inspection and model verification.
+
+`SetupWindow` retains one `SetupLoadingView` above its page frame. Automatic
+Local AI artifact acquisition, consented runtime startup, provider publication
+and inference use that same surface even as the underlying operation owners
+change. A new scope invalidates callbacks from the old owner without changing
+the Local AI major title. Download byte/item counts and progress come directly
+from the existing acquisition events. There is no overall percentage or inferred
+model-load progress. Review, authentication prompts and recovery choices remain
+interactive pages, revealed rather than hidden by the loading shell. No second
+Use, new consent or provider write is introduced by presentation.
+Only native artifact acquisition and recovery-only pipelines use the consolidated
+Local AI group. Full Gateway/WSL installation keeps its existing installation
+overview, logs and step affordances even when Local AI is selected. Loading begins
+only when the pipeline actually starts; milestone-only and preview visits do not
+cover their interactive controls. Leaving a page clears only that page's loading
+scope. Interactive authorization temporarily reveals its existing page and the
+next automatic step resumes the applicable loading group.
+
+Native explicit Start forwards an optional operation-scoped progress sink through
+the runtime's existing operation gate to the endpoint owner. Publication is
+reported before its actual write, and recovery verification before its existing
+inference request. The host does not announce publication after Start returns
+or perform another publication for progress. Cancellation and completion deactivate
+the sink before the operation gate is released; late events cannot update a later
+operation.
+
+For a completion restart, `WindowManager` first opens a passive finishing
+window, then the existing setup close and canonical shutdown run in their
+original order. The passive window owns no completion task, setup lock, runtime
+or shutdown callback. It remains through Local AI and Gateway disposal and closes
+at the end of owned-window cleanup. Thus it cannot join its own publication.
+The replacement process shows a non-authoritative finishing shell after
+single-instance admission and registry/window-manager initialization, before
+inference-runtime construction. Receipt acquisition still precedes verification
+or Ready admission. Legacy destination receipts close the early shell after
+their normal destination mounts.
+If startup encounters a settled retry receipt, the early shell presents explicit
+retry/recovery without reacquiring, verifying or renewing it. Busy duplicate
+activation leaves an in-flight presentation untouched, including legacy
+destination receipts that never set a Ready proof. A process-local presentation
+claim spans the admitted lease's verification and navigation and grants no
+readiness authority. Only an unbound startup shell with no in-flight claim may
+be closed. Legacy launches without an early shell remain silent on deferred
+acquisition.
+
+The OS process transition and the replacement's pre-admission initialization
+still have an unavoidable presentation gap. Its duration is not measured here;
+the change does not promise continuous pixels across process exit, faster total
+startup, or instantaneous destination loading. No detached helper process or
+second runtime owner is created. Packaged restart/GPU proof remains required.
+
 ### Verified native completion
 
-`AiReadyPage` is mounted only through the setup window's current verified
-completion coordinator. Its celebrating mascot and "Your AI is ready" heading
-follow real primary-model verification, not discovery or browser sign-in.
-Showing the page creates no pending handoff and performs no finalization.
+`NativeGatewaySetupPage` stays in preparation through authenticated connection,
+pairing and minimum provider discovery. `GatewayAiPreparation` transfers that
+connection and discovery exactly once to `AiSetupPage`, bound to its authority
+and generation. Console cursor initialization precedes provider actions; optional
+Local AI hardware observation does not block hosted-provider choices.
+Timeout, I/O and malformed-response failures from the read-only provider
+discovery request transfer an explicit failed-discovery state with that same
+authenticated owner only after current route, generation, connection and admin
+scope checks. They do not trigger another hidden discovery request. Provider
+choices remain unavailable with a visible error, while independent Local AI
+review/recovery remains accessible. Cancellation, authority loss and unclassified
+errors still dispose preparation and fail closed.
+For an admitted native Local AI route, a disabled **Checking** row remains
+visible until availability is known. An observation failure leaves explicit
+unknown/recheck state, not a general provider error or a silently missing choice.
+A failed provider-discovery request does not hide independently observed Local AI
+review/recovery once that request has settled. Busy preparation and replaced
+Gateway authority still disable its actions; an explicit Local AI Use retains its normal
+authorization checks. If an installed continuation fails before admission, its
+unused intent is removed from the page and **Connect your AI** asks for a new
+explicit choice. Refreshing authorization never replays that unused intent.
+Provider readiness is derived from the current connection-generation hint,
+not a one-way page flag. Starting discovery invalidates its old snapshot until
+a new result succeeds. Local AI visibility instead follows its own observed
+target; pending work disables its action without erasing the row.
+
+If normal connection management replaces the operator during an unsettled
+provider operation, setup shows a blocked recovery message and a Close action.
+It does not transfer the pending mutation to the replacement client or
+automatically resubmit anything. The saved outcome must be checked explicitly
+after reopening. Close waits up to five seconds for pure reads, then observes
+and fences any late result; pending provider/local mutations and connection
+initialization retain their real cleanup ownership and emit delay guidance.
+
+`AiReadyPage` mounts in `SetupReadyWindow` only after staged finalization,
+settings/startup application, Companion restart, normal-manager Local AI recovery
+and fresh primary-model inference. Before and after restart, the surface says
+**Finishing setup**, not **Your AI is ready**. Selecting an AI or continuing its
+setup authorizes completion; provider authentication and installation still
+require their existing explicit consent.
 
 The final screen has exactly three choices: **Talk to my agent**, with a visible
 Recommended badge, opens Chat; **Connect channels** opens Channels (WhatsApp,
@@ -430,21 +537,45 @@ choices, never automatic sign-in, channel configuration, or skill installation.
 Legacy WhatsApp/Telegram receipt destinations retain their numeric mappings and
 channel focus behavior, but are not separate choices on this screen.
 
-Each explicit choice drains the prior AI page, rechecks the same Gateway,
-endpoint, agent, model and main session through bounded verification,
-then finalizes Windows choices once. The prior page drain has its own 30-second
-deadline. Fresh proof has a separate six-minute ceiling, allowing the
-native owner's 210-second reconnect budget, the existing 120-second exact-model
-RPC budget and authority-check overhead. Neither deadline runs across finalization
-or destination publication: those retain caller cancellation and their underlying
-operation budgets, without abandoning or automatically replaying mutations.
-Verification does not publish provider configuration or finalize setup, but its
-authorization may start the selected owned Gateway and roll that start back.
-Failures stay on the chooser with retry or
-return-to-AI guidance. **Back to AI setup** is available only inside the error
-message, so changed verification has an actionable recovery without a permanent
-footer escape. Returning invalidates its admission and requires another
-verification. MCP-only/deferred routes do not claim verified AI.
+The window-scoped `SetupCompletionPreparation` yields before joining the
+originating AI request's cleanup, preventing self-await. It holds ownership
+through admitted mutations even if the presentation closes. It performs fresh
+read-only verification before the existing finalizer, and never automatically
+replays a failed or uncertain finalization. Runtime restarts and security gates
+remain intact.
+The presentation waits at most 30 seconds for the previous page drain, while
+the actual drain remains tracked and owns the setup lock until it settles.
+Cleanup first joins the completion task, then reads and joins its retained
+page drain. Cancellation while the drain callback is returning cannot release
+ownership before that admitted cleanup finishes.
+Explicit retry is available before finalization, or for publication after
+confirmed finalization; the latter reuses the freshly verified proof without
+rerunning finalization. An uncertain finalization cannot be retried blindly.
+If the Gateway/context checkpoint is confirmed, an explicit retry can finish
+the remaining CAS-protected settings and startup steps using their existing
+completion flags, without reopening the staged Gateway or replaying its writes.
+Back from unpublished setup waits for retained cleanup before returning to
+capability review. Progress reports drain, verification, finalization and restart.
+
+After Ready, `SetupReadyCoordinator` has only navigation callbacks. A lightweight
+configuration-revision read, exact transport generation/identity/agent/session
+checks and normal-owner observations precede mounting the selected surface.
+An unchanged click performs no setup writes, inference, installation or process
+restart. Normal page/history loading still occurs. A mount failure can retry
+navigation; authority or runtime drift hides Ready and requires explicit
+**Check readiness again**, with visible progress and fresh verification.
+Closing Ready closes presentation only, not committed Gateway/model ownership.
+MCP-only/deferred routes do not claim verified AI.
+The mounted page initially retains a finishing headline and hidden choices.
+It reveals Ready only after final current-authority checks and receipt
+consumption. Failure or invalidation during mounting replaces it with visible
+recovery; Connection remains reachable even when the receipt was not consumed.
+Observation is installed before the final asynchronous configuration-revision
+check, within the same navigation budget. A failed check releases both the
+subscription and choice lifetime; an event in the subscription gap cannot
+produce a Ready admission.
+The local consumed marker permits only explicit read-only recovery, not stale
+readiness or replay of an interrupted receipt.
 
 ### Native startup and completion deadlines
 
@@ -476,6 +607,10 @@ verification (including the existing 120-second RPC and authorization), and
 30 seconds for navigation. Their 810-second total bounds the exclusive execution
 lease. A phase can fail earlier due to its underlying owner or caller cancellation;
 unused phase time is not a guarantee that a different phase may overrun its ceiling.
+Both configuration-revision reads around the inference probe fit inside the
+same 150-second verification budget. Destination-time revision inspection and
+page mounting share the existing 30-second navigation budget. Neither adds time
+to the receipt lease or renews its deadline.
 Recovery waits never initiate or replay a provider mutation.
 Timeouts retain a typed, finite phase (page drain, connection, Local AI recovery,
 model verification, or native startup). The aggregate pre-publication verification
@@ -586,8 +721,15 @@ rejection with confirmed absence retains the legitimate Run-key fallback.
 The trusted profile-local handoff retains exclusive leasing, five-minute unused
 admission and a non-renewable bounded execution deadline,
 consumption on successful native presentation and explicit failure retry. New
-`ai-v3:` opaque handles carry a typed native destination and exact verified
-session in the protected record, not in public activation JSON. The experimental
+`ai-v3:` opaque handles reference a versioned protected record, not public
+activation JSON. New `preparation-v1` records bind the exact verified
+Gateway, endpoint, signing identity, positive generation, primary model,
+agent/session and managed-use intent without a fabricated destination.
+Legacy destination records retain their original interpretation. Both kinds
+explicitly supersede the single pending record. Unknown kinds fail visibly.
+The preparation lease is consumed only after normal-runtime verification and
+Ready mounting; it is not kept alive while the user thinks. Ready is never
+persisted as reusable authority. The experimental
 `ai-v2:` browser-completion path is removed; those handles fail visibly and are
 never reinterpreted as native receipts or ordinary Dashboard requests. The public
 `setup-dashboard` activation route and profile-local storage name remain stable
@@ -604,6 +746,17 @@ failures offer explicit Retry. That retry can admit an unstarted `ready` receipt
 after pre-acquisition I/O failure or a settled `retry` receipt after a failed
 presentation; it cannot replay an abandoned `inflight` receipt. Ordinary
 activation of a `retry` receipt only offers recovery, never automatic execution.
+
+A narrowly typed loss of readiness freshness is not itself evidence of changed
+authority or permission to retry. Preparation receipts retain explicit retry
+only after a separate inspection-only normal-manager borrow confirms the same
+persisted Gateway/endpoint/signing identity, agent/session and selected primary
+model, with stable configuration revision and handshake around read-only
+discovery. Confirmation performs no inference, activation or setup writes.
+Actual identity/model/session drift consumes the receipt as changed. Missing,
+malformed or unstable confirmation rejects it without replay. Confirmation and
+explicit retry share the original non-renewing execution lease. Both initial
+and per-request inspection-only native authorization prohibit runtime startup.
 
 A startup activation with a well-formed native handle bypasses the ordinary
 update prompt for that launch. Receipt validation still runs normally; handle
@@ -980,11 +1133,10 @@ use that same command, carrying its exact kind, identifier and model reference.
 The inline API form is already visible when there are
 no Gateway candidates or visible Local AI choice, without selecting its provider. Website links do not run
 installers. **Check again** repeats discovery explicitly; a failed scan is not
-an empty catalog. Native-conversation discovery is a visible, default-off opt-in
-when the Gateway requests it. The current Boolean is sent only with an explicit
-provider action; unchecked means false, never automatic permission. When the
-Gateway does not request a preference, the parameter remains absent. Refreshing
-presentation retains the user's current checkbox value.
+an empty catalog. Optional native-conversation discovery is not offered during
+onboarding. When the Gateway requests a preference, an explicit provider action
+sends false; removing the checkbox never grants automatic permission. When the
+Gateway does not request a preference, the parameter remains absent.
 
 #### One provider operation, one dialog
 
@@ -1149,8 +1301,10 @@ not guess that reference from a catalog ID. Cancellation or an uncertain reply
 does not replay a mutation. Insufficient operator scopes remain an explicit
 error, not a reason to fall back or use node credentials.
 
-After verification, the native chooser finalizes Windows-node workspace guidance
-and the reviewed startup preference before restart. Native Chat and the flyout
+After verification, the tracked finishing owner finalizes Windows-node workspace
+guidance and the reviewed startup preference before restart. The replacement
+process verifies normal-runtime readiness before offering destination choices.
+Native Chat and the flyout
 retain their independent Dashboard action. Windows capability consent remains
 in native Permissions, not in the web dashboard.
 
@@ -1277,6 +1431,10 @@ gateway or profile in a test. Use only owned disposable resources and compare
 protected profile metadata and notification/COM, URI, and startup registration
 fingerprints before and after native runs.
 
+A fresh isolated profile opens onboarding without `OPENCLAW_FORCE_ONBOARDING`.
+Leave that override unset when testing restart handoffs: it is inherited by the
+new process and deliberately takes precedence over normal launch routing.
+
 ### Setup image packaging
 
 Setup images use `ms-appx:///OpenClaw.SetupEngine.UI/Assets/Setup/...` URIs.
@@ -1313,12 +1471,19 @@ clean directory and checks every setup asset, including nested SVGs and notices.
 Run the repository-required build, Shared and Tray suites, plus
 `OpenClaw.SetupEngine.Tests` for the flow and AI protocol contracts.
 `AiReadyPageRenderingTests` covers the three destinations and isolated startup.
+`SetupLoadingViewRenderingTests` checks the arranged mascot, text and progress
+bounds against the viewport center across progress updates, themes and resizing.
+Ready badge assertions wait for layout after receipt consumption reveals the
+choices; mounting the page alone does not lay out collapsed choices.
+`SetupHandoffReceiptCompatibilityTests` checks current-reader handling of kindless
+destination receipts and retained retries. These schema fixtures supplement, but
+do not replace, signed-package upgrade/downgrade and live authority-chain proof.
 `ApprovedMock_FivePagesAndProviderPopup_LightAndDark` provides an opt-in native
 comparison without installation. Building fixtures alone is not rendered proof;
 high contrast and Windows text scaling need authorized visible validation.
 `OnboardingAiPageTests` mounts the production page with a scoped transport
 double and checks explicit selection, masked input, conversation-discovery
-consent, exact-model retry, uncertain replies, and cancellation before handoff.
+disabled-by-default behavior, exact-model retry, uncertain replies, and cancellation before handoff.
 `OnboardingArtworkRenderingTests` decodes the bundled SVGs through WinUI,
 checks library-qualified URIs, and renders all static mascot moods in light and
 dark themes. Set `OPENCLAW_UI_PROOF_DIR` to an isolated artifact directory to

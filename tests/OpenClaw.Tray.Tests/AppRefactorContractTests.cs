@@ -1322,9 +1322,16 @@ public sealed class AppRefactorContractTests
         var restart = ExtractMethod(source, "RestartAfterSetupAsync");
         AssertInOrder(
             restart,
-            "if (nativeCompletion is null)",
+            "var verifiedCompletion = preparation?.Verification ?? nativeCompletion?.Verification;",
+            "if (verifiedCompletion is null)",
             "SetupStartupPolicy.ApplyClassicPreferenceAsync(enableAutoStart",
+            "if (verifiedCompletion is not null)",
+            "store.IssuePreparation(preparation) : store.Issue(nativeCompletion!)",
             "Process.Start(psi)");
+        Assert.Contains("if (verifiedCompletion is null)\n            " +
+            "await SetupStartupPolicy.ApplyClassicPreferenceAsync(enableAutoStart",
+            restart.Replace("\r\n", "\n", StringComparison.Ordinal));
+        Assert.DoesNotContain("if (nativeCompletion is null)", restart);
     }
 
     [Fact]

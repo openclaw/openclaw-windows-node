@@ -191,11 +191,14 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.Contains("Onboarding_Native_InstallingPackage", source);
         Assert.Contains("Onboarding_Native_VerifyingPackage", source);
         Assert.DoesNotContain("Onboarding_Native_InstallerOpened", source);
-        Assert.Contains("NavigateToNativeAiSetup(session)", source);
+        Assert.Contains("NavigateToNativeAiSetup(session, preparation)", source);
+        Assert.True(source.IndexOf("GatewayAiPreparation.PrepareNativeAsync", StringComparison.Ordinal) <
+            source.IndexOf("NavigateToNativeAiSetup(session, preparation)", StringComparison.Ordinal));
         Assert.DoesNotContain("NavigateToNativeWizard", source);
-        Assert.Contains("new NativeGatewaySetupHost(ReportProgress, ReportStage)", source);
-        Assert.Contains("progressDispatcher.TryEnqueue", source);
-        Assert.Contains("if (IsLoaded && !cancellationToken.IsCancellationRequested)", source);
+        Assert.Contains("new NativeGatewaySetupHost(stageProgress: stage => loading?.Report(", source);
+        Assert.DoesNotContain("void ReportProgress(string message)", source);
+        Assert.DoesNotContain("progressDispatcher.TryEnqueue", source);
+        Assert.Contains("GatewayAiPreparation.PrepareNativeAsync(session, cancellationToken, loading)", source);
         Assert.Contains("Unloaded += (_, _) => _operationCts?.Cancel()", source);
         Assert.True(source.IndexOf("if (SetupPreview.IsActive)", StringComparison.Ordinal) <
                     source.IndexOf("_operation = RunOperationAsync", StringComparison.Ordinal));
@@ -459,16 +462,16 @@ public sealed class NativeGatewaySetupUxContractTests
         var route = window[start..window.IndexOf("internal async Task CancelNativeAiSetupAsync", start, StringComparison.Ordinal)];
         Assert.Contains("typeof(AiSetupPage)", route);
         Assert.DoesNotContain("WizardPage", route);
-        Assert.Contains("NativeGatewaySetupConnection.ConnectAsync(native, ct)", ai);
+        Assert.Contains("NativeGatewaySetupConnection.ConnectAsync(native, ct, _loading)", ai);
         Assert.Contains("await native.RestartAsync(token)", ai);
-        Assert.Contains("native.VerifyAsync(proof, ct)", window);
+        Assert.Contains("native.VerifyAsync(proof, ct, _finishingLoading)", window);
         Assert.Contains("native.CompleteVerifiedAsync(proof, _config.Capabilities, ct,", window);
         Assert.Contains("ReconcileNativeAsync", window);
         Assert.Contains("await afterVerification(connection, linked.Token)", session);
         Assert.DoesNotContain("MarkWizardCompleted", ai);
         Assert.DoesNotContain("MarkWizardCompleted", window);
         Assert.Contains("ConnectForFinalizationAsync", session);
-        Assert.Contains("await VerifyConnectionAsync(connection, proof, linked.Token)", session);
+        Assert.Contains("await VerifyConnectionAsync(connection, proof, linked.Token, progress)", session);
         Assert.Contains("registry.Save(beforePublication)", session);
         foreach (var file in new[] { Path.Combine(ui, "Pages", "AiSetupPage.xaml"),
                      Path.Combine(ui, "Controls", "ProviderSetupDialog.xaml") })

@@ -7449,7 +7449,34 @@
   <data name="Onboarding_Ready_Skills.Description" xml:space="preserve"><value>浏览智能体的技能。不会自动安装任何内容。</value></data>
   <data name="Onboarding_Ready_Channels.Header" xml:space="preserve"><value>连接渠道</value></data>
   <data name="Onboarding_Ready_Channels.Description" xml:space="preserve"><value>WhatsApp、Telegram 等。由您选择何时登录。</value></data>
-  <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>返回 AI 设置</value></data>
+  <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>重新检查就绪状态</value></data>
+  <data name="Onboarding_AiSetup_Preparing" xml:space="preserve"><value>正在准备 AI 选项</value></data>
+  <data name="Onboarding_Loading_Gateway" xml:space="preserve"><value>正在准备网关</value></data>
+  <data name="Onboarding_Loading_StartGateway" xml:space="preserve"><value>正在启动网关并检查侦听器...</value></data>
+  <data name="Onboarding_Loading_PairGateway" xml:space="preserve"><value>正在将 Companion 与网关配对...</value></data>
+  <data name="Onboarding_Loading_AcquireArtifacts" xml:space="preserve"><value>正在获取本地 AI 文件...</value></data>
+  <data name="Onboarding_Loading_ApplyCapabilities" xml:space="preserve"><value>正在应用已审核的 Windows 功能...</value></data>
+  <data name="Onboarding_Loading_CheckConfiguration" xml:space="preserve"><value>正在检查已保存的网关配置...</value></data>
+  <data name="Onboarding_Loading_RestartGateway" xml:space="preserve"><value>正在重新启动已配置的网关...</value></data>
+  <data name="Onboarding_Loading_CheckHealth" xml:space="preserve"><value>正在通过身份验证检查网关运行状况...</value></data>
+  <data name="Onboarding_Loading_ReconcileLocalAi" xml:space="preserve"><value>正在协调所选本地 AI 的配置...</value></data>
+  <data name="Onboarding_Loading_PublishGateway" xml:space="preserve"><value>正在保存已验证的网关配置文件...</value></data>
+  <data name="Onboarding_Loading_SaveSettings" xml:space="preserve"><value>正在保存设置选项...</value></data>
+  <data name="Onboarding_Loading_ApplyStartup" xml:space="preserve"><value>正在应用登录时启动的偏好设置...</value></data>
+  <data name="Onboarding_Loading_StartCompanion" xml:space="preserve"><value>正在启动 Companion 服务，然后进行最终 AI 检查...</value></data>
+  <data name="Onboarding_Loading_RecoverLocalAi" xml:space="preserve"><value>正在等待所选本地 AI 运行时恢复...</value></data>
+  <data name="Onboarding_Loading_StopLocalAi" xml:space="preserve"><value>正在安全停止旧的本地 AI 运行时...</value></data>
+  <data name="Onboarding_Loading_StopGateway" xml:space="preserve"><value>正在释放旧的网关连接和运行时...</value></data>
+  <data name="Onboarding_AiSetup_VerifyingTitle" xml:space="preserve"><value>正在检查 AI</value></data>
+  <data name="Onboarding_AiSetup_VerificationFailedTitle" xml:space="preserve"><value>AI 需要处理</value></data>
+  <data name="Onboarding_AiSetup_ManagerRecoveryBlocked" xml:space="preserve"><value>设置尚未完成时网关连接发生了变化。请关闭此设置窗口，检查“连接”，然后重新打开 AI 设置以验证已保存的结果。在结果不确定时，请勿重复提供程序操作。关闭时会等待已准许的操作完成。</value></data>
+  <data name="Onboarding_Finishing_Draining" xml:space="preserve"><value>正在安全结束上一项设置操作...</value></data>
+  <data name="Onboarding_Finishing_Restarting" xml:space="preserve"><value>正在重新启动 OpenClaw，然后进行最终就绪检查...</value></data>
+  <data name="Onboarding_Finishing_Recovery" xml:space="preserve"><value>设置尚未就绪。请使用可用的恢复操作，或关闭此窗口。不会自动重复任何提供程序操作。</value></data>
+  <data name="Onboarding_Ai_CompletionConsent.Text" xml:space="preserve"><value>选择 AI 或继续其设置，即授权 OpenClaw 完成您已审核的设置选项，并在显示就绪状态前重新启动。</value></data>
+  <data name="Onboarding_Finishing_Heading.Text" xml:space="preserve"><value>正在完成设置</value></data>
+  <data name="Onboarding_Finishing_Detail.Text" xml:space="preserve"><value>正在应用您的选项、重新启动 OpenClaw 并检查 AI。这可能需要几分钟。</value></data>
+  <data name="Onboarding_Finishing_Interrupted" xml:space="preserve"><value>设置需要处理。不会自动重复任何 AI 操作。请关闭此窗口，在“连接”中检查已保存的网关，然后明确重新打开 AI 设置进行验证。</value></data>
   <data name="Onboarding_Ready_Model" xml:space="preserve"><value>已验证的模型：{0}</value></data>
   <data name="Onboarding_Ready_Verifying" xml:space="preserve"><value>正在重新验证同一 Gateway、智能体和模型...</value></data>
   <data name="Onboarding_Ready_Finalizing" xml:space="preserve"><value>正在完成你的 Windows 设置选项...</value></data>
@@ -7465,7 +7492,7 @@
   <data name="Onboarding_Ready_FinalizingFailed" xml:space="preserve"><value>Windows 设置未能完成。所选目标尚未打开。请重试或返回 AI 设置。</value></data>
   <data name="Onboarding_Ready_OpeningFailed" xml:space="preserve"><value>应用无法打开所选目标。请再次选择以重试。未启动任何渠道登录。</value></data>
   <data name="Onboarding_Ready_LaunchFailedTitle" xml:space="preserve"><value>无法打开所选设置目标</value></data>
-  <data name="Onboarding_Ready_LaunchInvalid" xml:space="preserve"><value>此设置交接已过期、已使用或不可用。请重新打开设置并验证 AI。</value></data>
+  <data name="Onboarding_Ready_LaunchInvalid" xml:space="preserve"><value>此设置交接已中断、不兼容、已过期或已使用，无法重放。请在“连接”中检查已保存的网关，然后明确重新打开 AI 设置进行验证。不会自动重复之前的设置操作。</value></data>
   <data name="Onboarding_Ready_LaunchChanged" xml:space="preserve"><value>已验证的 Gateway 或智能体发生变化。请返回原 Gateway 并重新打开 AI 设置。未打开其他账户。</value></data>
   <data name="Onboarding_Ready_LaunchUnavailable" xml:space="preserve"><value>已验证的 Gateway 或应用页面尚未就绪。请检查 Connection，然后手动重试。</value></data>
   <data name="Onboarding_Ready_Retry" xml:space="preserve"><value>重试</value></data>

@@ -527,7 +527,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         AsyncEventHandlerGuard.Run(
             () => OnLaunchedAsync(args),
             new AppLogger(),
-            nameof(OnLaunched));
+            nameof(OnLaunched),
+            onError: _ => _windowManager?.FailNativeSetupStartupProgress());
 
     private async Task OnLaunchedAsync(LaunchActivatedEventArgs args)
     {
@@ -700,6 +701,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 ApplyTheme: ApplyThemePreference,
                 PublishNativeCompletion: (choice, ct) => RestartAfterSetupAsync(null, "chat",
                     choice, ct),
+                PublishNativePreparation: (preparation, ct) => RestartAfterSetupAsync(null, "",
+                    ct: ct, preparation: preparation),
                 ApplyNativeStartup: (enabled, ct) => AutoStartSettingsApplier.ApplyExplicitAsync(
                     _autoStartMutationGate, enabled,
                     () => _settings?.AutoStart ?? throw new InvalidOperationException("Settings are unavailable."),
@@ -791,6 +794,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         var appLogger = new AppLogger();
         _gatewayRegistry = new GatewayRegistry(SettingsManager.SettingsDirectoryPath, logger: appLogger);
         _gatewayRegistry.Load();
+        if (nativeRestart)
+            _windowManager.ShowNativeSetupStartupProgress();
         var localAiLogger = new AppLogger();
         var localAiPaths = new LocalAiPaths(AppIdentity.ResolveSetupLocalDataDirectory());
         var localAiEndpointLifecycle = new LocalAiGatewayProviderCoordinator(
@@ -3826,17 +3831,19 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             nameof(OnSetupCompleted));
 
     private async Task RestartAfterSetupAsync(bool? enableAutoStart, string launchTarget,
-        OpenClaw.SetupEngine.SetupNativeCompletion? nativeCompletion = null, CancellationToken ct = default)
+        OpenClaw.SetupEngine.SetupNativeCompletion? nativeCompletion = null, CancellationToken ct = default,
+        OpenClaw.SetupEngine.SetupNativePreparation? preparation = null)
     {
+        var verifiedCompletion = preparation?.Verification ?? nativeCompletion?.Verification;
         var exePath = ResolveCurrentExecutablePath();
         if (string.IsNullOrWhiteSpace(exePath) || !File.Exists(exePath))
         {
-            if (nativeCompletion is not null) throw new InvalidOperationException("The tray executable is unavailable.");
+            if (verifiedCompletion is not null) throw new InvalidOperationException("The tray executable is unavailable.");
             await ShowSetupRestartErrorAsync("OpenClaw setup finished, but the tray executable could not be found for restart.");
             return;
         }
 
-        if (nativeCompletion is null)
+        if (verifiedCompletion is null)
             await SetupStartupPolicy.ApplyClassicPreferenceAsync(enableAutoStart,
                 enabled => AutoStartSettingsApplier.ApplyExplicitAsync(_autoStartMutationGate, enabled,
                     () => _settings?.AutoStart ?? throw new InvalidOperationException("Settings are unavailable."),
@@ -3848,12 +3855,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         try
         {
             ct.ThrowIfCancellationRequested();
-            if (nativeCompletion is not null)
+            if (verifiedCompletion is not null)
             {
                 OpenClaw.SetupEngine.SetupGatewaySession.RequireCompletionGateway(
-                    AppIdentity.ResolveRoamingDataDirectory(), nativeCompletion.Verification);
+                    AppIdentity.ResolveRoamingDataDirectory(), verifiedCompletion);
                 var store = new SetupDashboardHandoffStore(AppIdentity.ResolveRoamingDataDirectory());
-                launchTarget = store.Issue(nativeCompletion);
+                launchTarget = preparation is not null ? store.IssuePreparation(preparation) : store.Issue(nativeCompletion!);
             }
             var psi = new ProcessStartInfo(exePath)
             {
@@ -3871,12 +3878,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             restarted.Dispose();
 
             Logger.Info("Started post-setup tray restart process");
-            if (nativeCompletion is not null)
+            if (verifiedCompletion is not null)
             {
-                // Let the chooser's publication await finish before shutdown drains that same page.
+                // Let the tracked publication finish before shutdown joins its owner.
                 if (!_dispatcherQueue!.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
                     AsyncEventHandlerGuard.Run(async () =>
                     {
+                        _windowManager?.ShowSetupRestartProgress();
                         _windowManager?.CloseSetup();
                         await ExitApplicationAsync();
                     }, new AppLogger(), "Native setup restart shutdown")))
@@ -3888,7 +3896,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         }
         catch (Exception ex)
         {
-            if (nativeCompletion is not null) throw;
+            if (verifiedCompletion is not null) throw;
             Logger.Error($"Failed to restart tray after setup: {ex}");
             await ShowSetupRestartErrorAsync("OpenClaw setup finished, but restarting the tray failed. The current tray will keep running; please exit and reopen OpenClaw.");
         }
@@ -3995,6 +4003,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     {
         AsyncEventHandlerGuard.Run(async () =>
         {
+            Task<OpenClaw.SetupEngine.SetupVerifiedNativeRoute> VerifyReady(
+                OpenClaw.SetupEngine.GatewayAiSetupCompletion proof, CancellationToken ct) =>
+                OpenClaw.SetupEngine.SetupNativeCompletionVerifier.VerifyAsync(
+                    AppIdentity.ResolveRoamingDataDirectory(), proof, ct, _connectionManager,
+                    (expected, token) => _localAiGatewayLifecycle is { } lifecycle && _localAiRuntime is { } runtime
+                        ? lifecycle.WaitForRuntimeAsync(expected, runtime, token) : Task.CompletedTask,
+                    captureReadiness: true, progress: _windowManager?.NativeSetupProgress);
             var launcher = new SetupNativeHandoffLauncher(
                 () => _gatewayRegistry?.GetActive(),
                 (proof, ct) => OpenClaw.SetupEngine.SetupNativeCompletionVerifier.VerifyAsync(
@@ -4006,10 +4021,27 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 failure => AsyncEventHandlerGuard.Run(
                     () => _windowManager?.ShowNativeSetupFailureAsync(failure,
                         () => OpenNativeSetupCompletion(handle, explicitRetry: true)) ?? Task.CompletedTask,
-                    new AppLogger(), "Native setup launch error"));
+                    new AppLogger(), "Native setup launch error"),
+                showPreparing: (proof, ct) => _windowManager?.ShowNativeSetupPreparingAsync(
+                    proof, token => VerifyReady(proof, token), ct) ??
+                    Task.FromException(new InvalidOperationException("The setup preparation host is unavailable.")),
+                showReady: (route, ct) => _windowManager?.ShowNativeSetupReadyAsync(route, ct) ??
+                    Task.FromException(new InvalidOperationException("The setup Ready host is unavailable.")),
+                verifyPreparation: (_, ct) => _windowManager?.VerifyNativeSetupReadyAsync(ct) ??
+                    Task.FromException<OpenClaw.SetupEngine.SetupVerifiedNativeRoute>(
+                        new InvalidOperationException("The setup preparation host is unavailable.")),
+                readyConsumed: () => _windowManager?.CommitNativeSetupReady(),
+                confirmStableAuthority: (proof, ct) => OpenClaw.SetupEngine.SetupNativeCompletionVerifier.ConfirmReadinessAuthorityAsync(
+                    AppIdentity.ResolveRoamingDataDirectory(), proof, _connectionManager, ct),
+                acquisitionDeferred: status => _windowManager?.SettleDeferredNativeSetupPresentation(status,
+                    () => OpenNativeSetupCompletion(handle, explicitRetry: true)),
+                acquirePresentation: () => _windowManager?.BeginNativeSetupPresentation());
             if (await launcher.OpenAsync(new SetupDashboardHandoffStore(AppIdentity.ResolveRoamingDataDirectory()),
                 handle, explicitRetry, restartRecovery: _nativeRestartRecovery))
+            {
                 _appNotificationService?.Dismiss(SetupNativeHandoffLauncher.FailureNotificationId);
+                _windowManager?.FinishNativeLaunchPresentation();
+            }
         }, new AppLogger(), nameof(OpenNativeSetupCompletion));
     }
 

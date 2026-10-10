@@ -43,28 +43,43 @@ public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHel
             var resources = OnboardingWindowsFlowTests.LoadProgressResources(
                 Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT")!);
             Application.Current.Resources.MergedDictionaries.Add(resources);
-            SetupWindow? window = null;
+            SetupReadyWindow? window = null;
             try
             {
-                window = OnboardingNativeProof.CreateWindow(() => new SetupWindow(configPath: configPath,
-                    dataDir: data, localDataDir: temp.Combine("local"), commandLineArgs: []));
+                var route = await VerifySyntheticAsync(proof, CancellationToken.None);
+                window = OnboardingNativeProof.CreateWindow(() => new SetupReadyWindow(
+                    ct => VerifySyntheticAsync(proof, ct),
+                    (_, _) => throw new InvalidOperationException("Must not navigate"),
+                    _ => new Observation(), () => { }, () => { }));
                 var size = window.AppWindow.Size;
-                var root = Assert.IsType<Grid>(window.Content);
-                var frame = Assert.IsType<Frame>(root.FindName("RootFrame"));
+                var frame = Assert.IsType<Frame>(window.Content);
                 using var navigation = OnboardingNativeProof.TrackNavigation(frame);
-                // Feed only the trusted host boundary in this fixture. This is not live AI-verification proof.
-                var completed = typeof(SetupWindow).GetMethod("CompleteVerifiedAiSetupAsync",
-                    BindingFlags.Instance | BindingFlags.NonPublic)!;
-                await Assert.IsAssignableFrom<Task>(completed.Invoke(window, [proof]));
                 if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENCLAW_UI_PROOF_DIR")))
                     window.Activate();
                 else
                     OnboardingNativeProof.ActivateOwned(window);
-                await OnboardingNativeProof.ApplyThemeSurfaceAsync(root, theme);
+                // Synthetic verification exercises rendering, not a live Gateway or inference.
+                await window.ShowReadyAsync(route, CancellationToken.None);
                 await TestSupport.WaitForRenderedConditionAsync(() => frame.Content is AiReadyPage { IsLoaded: true },
                     "native ready chooser mounted");
                 var page = Assert.IsType<AiReadyPage>(frame.Content);
                 var choices = Assert.IsType<StackPanel>(page.FindName("Choices"));
+                Assert.Equal(Visibility.Collapsed, choices.Visibility);
+                Assert.NotEqual("Your AI is ready", Assert.IsType<TextBlock>(page.FindName("Heading")).Text);
+                window.Invalidate();
+                var beforeConsumption = Assert.IsType<AiCompletionPage>(frame.Content);
+                var returnButton = Assert.IsType<Button>(beforeConsumption.FindName("BackButton"));
+                Assert.Equal(Visibility.Visible, returnButton.Visibility);
+                Assert.True(returnButton.IsEnabled);
+                Assert.Equal(Visibility.Collapsed,
+                    Assert.IsType<Button>(beforeConsumption.FindName("RetryButton")).Visibility);
+                await window.ShowReadyAsync(await VerifySyntheticAsync(proof, CancellationToken.None), CancellationToken.None);
+                page = Assert.IsType<AiReadyPage>(frame.Content);
+                choices = Assert.IsType<StackPanel>(page.FindName("Choices"));
+                var root = Assert.IsType<Grid>(page.Content);
+                await OnboardingNativeProof.ApplyThemeSurfaceAsync(root, theme);
+                window.CommitPresentation();
+                Assert.Equal(Visibility.Visible, choices.Visibility);
                 Assert.Equal(3, choices.Children.Count);
                 Assert.Equal(["Chat", "Channels", "Skills"], choices.Children.Cast<FrameworkElement>().Select(item => item.Tag));
                 Assert.All(choices.Children, item => Assert.True(Assert.IsAssignableFrom<Control>(item).IsEnabled));
@@ -73,6 +88,9 @@ public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHel
                 Assert.Null(page.FindName("FinishButton"));
                 var badge = Assert.IsType<RecommendedBadge>(page.FindName("RecommendedBadge"));
                 Assert.Equal("Recommended", Assert.IsType<TextBlock>(badge.FindName("Label")).Text);
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => badge.IsLoaded && badge.ActualWidth > 0 && badge.ActualHeight > 0,
+                    "admitted Ready choices have completed layout");
                 Assert.True(badge.ActualWidth > 0 && badge.ActualHeight > 0);
                 Assert.Equal("Talk to my agent, recommended",
                     Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(choices.Children[0]));
@@ -90,22 +108,11 @@ public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHel
                         ["Recommended", "Talk to my agent"], requiredContent: page)) { }
                     foreach (var choice in choices.Children.Cast<Control>()) choice.IsEnabled = true;
                 }
-                // Fail at the coordinator boundary without touching a Gateway or publishing a handoff.
-                var argsField = typeof(AiReadyPage).GetField("_args", BindingFlags.Instance | BindingFlags.NonPublic)!;
-                var originalArgs = argsField.GetValue(page)!;
-                ((SetupNativeCompletionCoordinator)originalArgs.GetType().GetProperty("Coordinator")!.GetValue(originalArgs)!).Dispose();
-                using var failed = new SetupNativeCompletionCoordinator(proof, _ => Task.CompletedTask,
-                    (_, _) => Task.FromException<SetupVerifiedNativeRoute>(new SetupNativeOwnershipException()),
-                    (_, _) => throw new InvalidOperationException("Must not finalize"),
-                    (_, _) => throw new InvalidOperationException("Must not publish"));
-                typeof(SetupWindow).GetField("_readyChoice", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(window, failed);
-                var failedArgs = Activator.CreateInstance(originalArgs.GetType(), failed, window)!;
-                argsField.SetValue(page, failedArgs);
-                await Assert.IsAssignableFrom<Task>(typeof(AiReadyPage).GetMethod("ChooseAsync",
-                    BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(page, [failedArgs, SetupNativeDestination.Skills]));
-                Assert.True(Assert.IsType<InfoBar>(page.FindName("ErrorBar")).IsOpen);
-                Assert.True(Assert.IsType<Button>(page.FindName("RecoveryButton")).IsEnabled);
-                Assert.All(choices.Children, item => Assert.True(Assert.IsAssignableFrom<Control>(item).IsEnabled));
+                window.Invalidate();
+                var failure = Assert.IsType<AiCompletionPage>(frame.Content);
+                Assert.True(Assert.IsType<InfoBar>(failure.FindName("ErrorBar")).IsOpen);
+                Assert.Equal(Visibility.Visible, Assert.IsType<Button>(failure.FindName("RetryButton")).Visibility);
+                Assert.Equal(Visibility.Visible, Assert.IsType<Button>(failure.FindName("BackButton")).Visibility);
                 Assert.False(File.Exists(Path.Combine(data, "settings.json")));
                 if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENCLAW_UI_PROOF_DIR")))
                     OnboardingNativeProof.AssertSourceUnchanged();
@@ -168,7 +175,7 @@ public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHel
                         failStartupOnce = false;
                         return Task.FromException(new IOException("Synthetic startup registration failure"));
                     },
-                    publishNativeCompletion: (_, _) => throw new InvalidOperationException("Must not publish")));
+                    publishNativePreparation: (_, _) => throw new InvalidOperationException("Must not publish")));
                 window.SelectGatewayRoute(SetupGatewayRoute.Existing, gatewayAvailable: true);
                 window.AutoStartAfterSetup = selectedStartup;
                 if (preservePreference)
@@ -202,5 +209,38 @@ public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHel
                 Application.Current.Resources.MergedDictionaries.Remove(resources);
             }
         });
+    }
+
+    private static async Task<SetupVerifiedNativeRoute> VerifySyntheticAsync(
+        GatewayAiSetupCompletion proof, CancellationToken ct)
+    {
+        var binding = await SetupNativeReadyBinding.VerifyAsync(new SyntheticTransport(proof), proof, ct);
+        return new(binding.Proof, binding.Proof.SessionKey!, binding);
+    }
+
+    private sealed class SyntheticTransport(GatewayAiSetupCompletion proof) : IGatewayAiSetupTransport
+    {
+        public GatewayAiSetupRoute Route => new(proof.GatewayId, proof.AgentId, "synthetic",
+            proof.EndpointBinding, proof.IdentityBinding, proof.SessionKey);
+        public long Generation => proof.VerifiedGeneration;
+        public bool IsConnected => true;
+        public IReadOnlyCollection<string> Methods => ["openclaw.setup.verify"];
+        public IReadOnlyCollection<string> OperatorScopes => ["operator.admin"];
+        public Task<JsonElement> RequestAsync(string method, object parameters, int timeoutMs, CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            return Task.FromResult(method switch
+            {
+                "config.get" => JsonSerializer.SerializeToElement(new { hash = "synthetic-revision", valid = true }),
+                "openclaw.setup.verify" => JsonSerializer.SerializeToElement(new { ok = true, modelRef = proof.ModelRef, latencyMs = 1 }),
+                _ => throw new InvalidOperationException("No mutations are permitted in rendering proof."),
+            });
+        }
+
+    }
+
+    private sealed class Observation : IDisposable
+    {
+        public void Dispose() { }
     }
 }

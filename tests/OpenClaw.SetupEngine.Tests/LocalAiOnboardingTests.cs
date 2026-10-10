@@ -843,6 +843,8 @@ public sealed class LocalAiOnboardingTests
         public int WithdrawOnlyCalls { get; private set; }
         public Action? OnStart { get; init; }
         public Func<Task>? OnStartAsync { get; init; }
+        public Func<IProgress<LocalAiRuntimeStartStage>?, Task>? OnStartWithProgressAsync { get; init; }
+        public Action? AfterStart { get; set; }
         public LocalAiRuntimeSnapshot? StartResult { get; init; }
         public LocalAiRuntimeSnapshot Snapshot { get; set; } = snapshot;
         public event EventHandler<LocalAiRuntimeSnapshotChangedEventArgs>? StateChanged { add { } remove { } }
@@ -850,13 +852,20 @@ public sealed class LocalAiOnboardingTests
             EnsureStartedAsync(cancellationToken);
         public Task<LocalAiRuntimeSnapshot> ReconcileStoppedAsync(CancellationToken cancellationToken = default)
         { WithdrawOnlyCalls++; return Task.FromResult(Snapshot); }
-        public async Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken = default)
+        public Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken = default) =>
+            EnsureStartedAsync(cancellationToken, null);
+        public async Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken,
+            IProgress<LocalAiRuntimeStartStage>? progress)
         {
+            progress?.Report(LocalAiRuntimeStartStage.StartingRuntime);
             Calls++;
             OnStart?.Invoke();
             Snapshot = StartResult ?? Snapshot;
             if (OnStartAsync is not null) await OnStartAsync();
-            return Snapshot;
+            if (OnStartWithProgressAsync is not null) await OnStartWithProgressAsync(progress);
+            var result = Snapshot;
+            AfterStart?.Invoke();
+            return result;
         }
         public Task<LocalAiRuntimeSnapshot> StopAsync(CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("Observation must not stop a runtime.");

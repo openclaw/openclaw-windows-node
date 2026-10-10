@@ -1137,6 +1137,7 @@ public sealed class NativeGatewaySetupTests
         public void ReportProgress(NativeGatewaySetupStage stage) => Progress.Add(stage);
         public Action Prepare { get; set; } = () => { };
         public Action Health { get; set; } = () => { };
+        public Func<Task> HealthAsync { get; set; } = () => Task.CompletedTask;
         public Action Validate { get; set; } = () => { };
         public IDisposable OpenRecoveryTerminal(NativeGatewayPackage package,
             IReadOnlyDictionary<string, string> environment) => throw new NotSupportedException();
@@ -1160,7 +1161,7 @@ public sealed class NativeGatewaySetupTests
         {
             events.Add("health");
             Health();
-            return Task.CompletedTask;
+            return HealthAsync();
         }
     }
 

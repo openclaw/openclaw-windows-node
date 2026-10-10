@@ -35,6 +35,11 @@ public sealed class GatewayAiSetupClient(
     public bool IsBusy => _busy;
     public GatewayAiSetupRoute Route => _route;
     public long ConnectionGeneration => transport.Generation;
+    /// <summary>Cheap presentation hint only. Every action still checks full authority in EnsureAuthorized.</summary>
+    public bool HasCurrentDiscovery
+    {
+        get => Detection is not null && transport.IsConnected && transport.Generation == _detectionGeneration;
+    }
     public bool WaitingForRestart => GatewayRestartRequired &&
         (transport.Generation == _attemptGeneration || !transport.IsConnected);
     public bool CanLeaveForLocalAi => !_busy && Phase is not (GatewayAiSetupPhase.Running or
@@ -86,6 +91,7 @@ public sealed class GatewayAiSetupClient(
         EnsureSettled();
         EnsureAuthorized();
         Selection = null;
+        _detectionGeneration = 0;
         Phase = GatewayAiSetupPhase.Idle;
         if (!HasMethod("openclaw.setup.detect") || !HasMethod("openclaw.setup.verify") ||
             !Enum.GetValues<GatewayAiSetupChoiceKind>().Any(SupportsChoice))

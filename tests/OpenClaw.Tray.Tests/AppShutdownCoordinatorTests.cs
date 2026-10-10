@@ -8,6 +8,44 @@ namespace OpenClaw.Tray.Tests;
 
 public class AppShutdownCoordinatorTests
 {
+    [Fact]
+    public async Task PassiveFinishingProgressSurvivesDelayedOwnedShutdownUntilWindowCleanup()
+    {
+        using var progress = new OpenClaw.SetupEngine.SetupLoadingProgress();
+        using var scope = progress.Begin(OpenClaw.SetupEngine.SetupLoadingGroup.Finishing,
+            OpenClaw.SetupEngine.SetupLoadingStep.RestartCompanion);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var passiveVisible = true;
+        var exited = false;
+        var coordinator = new AppShutdownCoordinator();
+        var shutdown = coordinator.ShutdownAsync(new AppShutdownPlan(() => { },
+            [
+                new("local AI runtime", async () =>
+                {
+                    scope.Report(OpenClaw.SetupEngine.SetupLoadingStep.StopLocalAi);
+                    entered.SetResult();
+                    await release.Task;
+                }),
+                new("window manager", () =>
+                {
+                    passiveVisible = false;
+                    scope.Dispose();
+                    return ValueTask.CompletedTask;
+                })
+            ], () => exited = true));
+        await entered.Task;
+        Assert.True(passiveVisible);
+        Assert.False(exited);
+        Assert.False(shutdown.IsCompleted);
+        Assert.Equal(OpenClaw.SetupEngine.SetupLoadingStep.StopLocalAi, progress.Current!.Step);
+        release.SetResult();
+        await shutdown;
+        Assert.False(passiveVisible);
+        Assert.True(exited);
+        Assert.Null(progress.Current);
+    }
+
     private sealed class TrackingSynchronizationContext : SynchronizationContext
     {
         public override void Post(SendOrPostCallback callback, object? state)

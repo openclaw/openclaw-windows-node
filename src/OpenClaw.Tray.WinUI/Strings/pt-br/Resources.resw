@@ -7503,7 +7503,34 @@ O binário wxc-exec não pôde ser localizado. {1} Se esta for uma build de dese
   <data name="Onboarding_Ready_Skills.Description" xml:space="preserve"><value>Veja habilidades para seu agente. Nada é instalado automaticamente.</value></data>
   <data name="Onboarding_Ready_Channels.Header" xml:space="preserve"><value>Conectar canais</value></data>
   <data name="Onboarding_Ready_Channels.Description" xml:space="preserve"><value>WhatsApp, Telegram e mais. Você escolhe quando entrar.</value></data>
-  <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>Voltar à IA</value></data>
+  <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>Verificar prontidão novamente</value></data>
+  <data name="Onboarding_AiSetup_Preparing" xml:space="preserve"><value>Preparando suas opções de IA</value></data>
+  <data name="Onboarding_Loading_Gateway" xml:space="preserve"><value>Preparando o gateway</value></data>
+  <data name="Onboarding_Loading_StartGateway" xml:space="preserve"><value>Iniciando o gateway e verificando sua escuta...</value></data>
+  <data name="Onboarding_Loading_PairGateway" xml:space="preserve"><value>Pareando o Companion com o gateway...</value></data>
+  <data name="Onboarding_Loading_AcquireArtifacts" xml:space="preserve"><value>Obtendo os arquivos da IA local...</value></data>
+  <data name="Onboarding_Loading_ApplyCapabilities" xml:space="preserve"><value>Aplicando os recursos do Windows revisados...</value></data>
+  <data name="Onboarding_Loading_CheckConfiguration" xml:space="preserve"><value>Verificando a configuração salva do gateway...</value></data>
+  <data name="Onboarding_Loading_RestartGateway" xml:space="preserve"><value>Reiniciando o gateway configurado...</value></data>
+  <data name="Onboarding_Loading_CheckHealth" xml:space="preserve"><value>Verificando a integridade autenticada do gateway...</value></data>
+  <data name="Onboarding_Loading_ReconcileLocalAi" xml:space="preserve"><value>Reconciliando a configuração da IA local selecionada...</value></data>
+  <data name="Onboarding_Loading_PublishGateway" xml:space="preserve"><value>Salvando o perfil verificado do gateway...</value></data>
+  <data name="Onboarding_Loading_SaveSettings" xml:space="preserve"><value>Salvando suas opções de configuração...</value></data>
+  <data name="Onboarding_Loading_ApplyStartup" xml:space="preserve"><value>Aplicando sua preferência de início ao entrar...</value></data>
+  <data name="Onboarding_Loading_StartCompanion" xml:space="preserve"><value>Iniciando os serviços do Companion antes da verificação final de IA...</value></data>
+  <data name="Onboarding_Loading_RecoverLocalAi" xml:space="preserve"><value>Aguardando a recuperação do runtime de IA local selecionado...</value></data>
+  <data name="Onboarding_Loading_StopLocalAi" xml:space="preserve"><value>Parando com segurança o runtime de IA local anterior...</value></data>
+  <data name="Onboarding_Loading_StopGateway" xml:space="preserve"><value>Liberando a conexão e o runtime anteriores do gateway...</value></data>
+  <data name="Onboarding_AiSetup_VerifyingTitle" xml:space="preserve"><value>Verificando sua IA</value></data>
+  <data name="Onboarding_AiSetup_VerificationFailedTitle" xml:space="preserve"><value>Sua IA precisa de atenção</value></data>
+  <data name="Onboarding_AiSetup_ManagerRecoveryBlocked" xml:space="preserve"><value>A conexão do gateway mudou durante a configuração. Feche esta janela, verifique Conexão e reabra a configuração de IA para verificar o resultado salvo. Não repita a ação do provedor enquanto o resultado for incerto. O fechamento aguarda a conclusão de qualquer operação admitida.</value></data>
+  <data name="Onboarding_Finishing_Draining" xml:space="preserve"><value>Encerrando a operação de configuração anterior com segurança...</value></data>
+  <data name="Onboarding_Finishing_Restarting" xml:space="preserve"><value>Reiniciando o OpenClaw antes da verificação final...</value></data>
+  <data name="Onboarding_Finishing_Recovery" xml:space="preserve"><value>A configuração não está pronta. Use uma ação de recuperação disponível ou feche esta janela. Nenhuma ação de provedor será repetida automaticamente.</value></data>
+  <data name="Onboarding_Ai_CompletionConsent.Text" xml:space="preserve"><value>Selecionar uma IA ou continuar sua configuração autoriza o OpenClaw a concluir suas opções revisadas e reiniciar antes de mostrar Pronto.</value></data>
+  <data name="Onboarding_Finishing_Heading.Text" xml:space="preserve"><value>Concluindo a configuração</value></data>
+  <data name="Onboarding_Finishing_Detail.Text" xml:space="preserve"><value>Aplicando suas opções, reiniciando o OpenClaw e verificando sua IA. Isso pode levar alguns minutos.</value></data>
+  <data name="Onboarding_Finishing_Interrupted" xml:space="preserve"><value>A configuração precisa de atenção. Nenhuma ação de IA será repetida automaticamente. Feche esta janela, verifique o gateway salvo em Conexão e reabra explicitamente a configuração de IA para verificá-la.</value></data>
   <data name="Onboarding_Ready_Model" xml:space="preserve"><value>Modelo verificado: {0}</value></data>
   <data name="Onboarding_Ready_Verifying" xml:space="preserve"><value>Verificando novamente o mesmo Gateway, agente e modelo...</value></data>
   <data name="Onboarding_Ready_Finalizing" xml:space="preserve"><value>Concluindo suas opções de configuração do Windows...</value></data>
@@ -7519,7 +7546,7 @@ O binário wxc-exec não pôde ser localizado. {1} Se esta for uma build de dese
   <data name="Onboarding_Ready_FinalizingFailed" xml:space="preserve"><value>Não foi possível concluir a configuração do Windows. O destino não foi aberto. Tente novamente ou volte à configuração da IA.</value></data>
   <data name="Onboarding_Ready_OpeningFailed" xml:space="preserve"><value>O aplicativo não conseguiu abrir o destino escolhido. Escolha novamente para tentar. Nenhum login de canal foi iniciado.</value></data>
   <data name="Onboarding_Ready_LaunchFailedTitle" xml:space="preserve"><value>Não foi possível abrir o destino escolhido</value></data>
-  <data name="Onboarding_Ready_LaunchInvalid" xml:space="preserve"><value>Esta transferência de configuração expirou, já foi usada ou está indisponível. Reabra a configuração e verifique sua IA.</value></data>
+  <data name="Onboarding_Ready_LaunchInvalid" xml:space="preserve"><value>Esta transferência de configuração foi interrompida, é incompatível, expirou ou já foi usada. Ela não pode ser repetida. Verifique o gateway salvo em Conexão e reabra explicitamente a configuração de IA para verificá-la. As ações anteriores não serão repetidas automaticamente.</value></data>
   <data name="Onboarding_Ready_LaunchChanged" xml:space="preserve"><value>O Gateway ou agente verificado mudou. Volte ao Gateway original e reabra a configuração da IA. Nenhuma outra conta foi aberta.</value></data>
   <data name="Onboarding_Ready_LaunchUnavailable" xml:space="preserve"><value>O Gateway verificado ou a página ainda não está pronto. Confira Connection e tente novamente explicitamente.</value></data>
   <data name="Onboarding_Ready_Retry" xml:space="preserve"><value>Tentar novamente</value></data>

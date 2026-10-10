@@ -830,7 +830,7 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
             result.Facts.Add("Detected Local AI and Gateway model choices precede Gateway preparation, provider cards, API Keys and the separate manual form.");
         }
         if (state == "catalog")
-            Assert.False(Find<CheckBox>(page, "CatalogPreference").IsChecked);
+            Assert.Null(page.FindName("CatalogPreference"));
         if (result.Scene.Family == "ai-return")
         {
             Assert.NotNull(reviewedModel);
