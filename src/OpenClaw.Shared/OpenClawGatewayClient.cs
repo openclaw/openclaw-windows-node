@@ -549,7 +549,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 throw new InvalidOperationException("Gateway connection changed before chat.send could be sent.");
             var result = await WaitForGatewayResponseAsync(
                 pending.Task,
-                TimeSpan.FromSeconds(5),
+                TimeSpan.FromSeconds(30),
                 CancellationToken,
                 "Timed out waiting for chat.send response from gateway");
             _logger.Info($"Sent chat message ({message.Length} chars{(hasAttachments ? $", {attachments!.Count} attachment(s)" : "")})");
@@ -673,9 +673,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
 
         // Bounded wait. Approval-resolve is interactive and the response may
-        // traverse gateway → operator → optional UI confirm → ack, so we give
-        // it a larger budget than the chat.send sibling's 5s. A timeout keeps
-        // the banner visible for the user to retry rather than hanging the UI.
+        // traverse gateway → operator → optional UI confirm → ack. A timeout
+        // keeps the banner visible for the user to retry rather than hanging the UI.
         try
         {
             await WaitForGatewayResponseAsync(
