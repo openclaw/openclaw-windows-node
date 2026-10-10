@@ -293,6 +293,7 @@ public sealed partial class CronPage : Page
 
     // --- Job creation/edit form ---
     private string? _editingJobId = null; // null = creating new, set = editing existing
+    private string? _preservedScheduleTz;
 
     private void OnNewJobClick(object sender, RoutedEventArgs e)
     {
@@ -327,11 +328,17 @@ public sealed partial class CronPage : Page
         var kind = vm.ScheduleKind;
         FormScheduleKind.SelectedIndex = kind switch { "at" => 1, "cron" => 2, _ => 0 };
         UpdateScheduleFieldVisibility(kind);
+        _preservedScheduleTz = null;
 
         if (kind == "cron")
         {
             FormCronExpr.Text = vm.ScheduleExpr;
-            SelectComboByTag(FormTimezone, vm.ScheduleTz);
+            var timezoneEdit = CronScheduleTimezone.BeginEdit(vm.ScheduleTz, ListedComboTags(FormTimezone));
+            _preservedScheduleTz = timezoneEdit.PreservedUnlisted;
+            if (timezoneEdit.SelectedTag == null)
+                FormTimezone.SelectedIndex = -1;
+            else
+                SelectComboByTag(FormTimezone, timezoneEdit.SelectedTag);
             HighlightPreset(vm.ScheduleExpr);
         }
         else if (kind == "every")
@@ -421,7 +428,7 @@ public sealed partial class CronPage : Page
                 ShowFormError("Cron expression is required.");
                 return;
             }
-            var tz = GetSelectedTag(FormTimezone);
+            var tz = CronScheduleTimezone.ResolveSave(_preservedScheduleTz, GetSelectedTag(FormTimezone));
             var sched = new Dictionary<string, object> { ["kind"] = "cron", ["expr"] = expr };
             if (!string.IsNullOrEmpty(tz)) sched["tz"] = tz;
             schedule = sched;
@@ -607,6 +614,7 @@ public sealed partial class CronPage : Page
     {
         FormName.Text = "";
         FormCronExpr.Text = "";
+        _preservedScheduleTz = null;
         FormTimezone.SelectedIndex = -1;
         FormEveryValue.Text = "30";
         FormEveryUnit.SelectedIndex = 0; // Minutes
@@ -706,17 +714,28 @@ public sealed partial class CronPage : Page
         return (combo.SelectedItem as ComboBoxItem)?.Tag as string;
     }
 
-    private static void SelectComboByTag(ComboBox combo, string? tag)
+    private static IEnumerable<string> ListedComboTags(ComboBox combo)
     {
-        if (string.IsNullOrEmpty(tag)) return;
+        foreach (var item in combo.Items)
+        {
+            if (item is ComboBoxItem { Tag: string tag } && !string.IsNullOrEmpty(tag))
+                yield return tag;
+        }
+    }
+
+    private static bool SelectComboByTag(ComboBox combo, string? tag)
+    {
+        if (string.IsNullOrEmpty(tag)) return false;
         for (int i = 0; i < combo.Items.Count; i++)
         {
             if (combo.Items[i] is ComboBoxItem item && item.Tag as string == tag)
             {
                 combo.SelectedIndex = i;
-                return;
+                return true;
             }
         }
+
+        return false;
     }
 
     public void UpdateFromGateway(JsonElement data)
