@@ -23,14 +23,42 @@ public static class GatewayDashboardUrlBuilder
             : $"{baseUrl}/{path.TrimStart('/')}";
         var fragment = endpoint.Fragment;
 
-        if (appendSharedGatewayToken && !trustTailscaleAuth && !string.IsNullOrEmpty(sharedGatewayToken))
+        if (trustTailscaleAuth)
         {
-            var fields = fragment.TrimStart('#').Split('&', StringSplitOptions.RemoveEmptyEntries)
-                .Where(field => !Uri.UnescapeDataString(field.Split('=', 2)[0])
-                    .Equals("token", StringComparison.OrdinalIgnoreCase));
+            fragment = RemoveSharedTokenFields(fragment);
+        }
+        else if (appendSharedGatewayToken && !string.IsNullOrEmpty(sharedGatewayToken))
+        {
+            var fields = GetFragmentFields(fragment)
+                .Where(field => !IsSharedTokenField(field));
             fragment = "#" + string.Join("&", fields.Append("token=" + Uri.EscapeDataString(sharedGatewayToken)));
         }
 
         return url + fragment;
+    }
+
+    internal static bool HasSharedTokenFragment(string gatewayUrl)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(gatewayUrl);
+        var endpoint = new Uri(gatewayUrl
+            .Replace("ws://", "http://", StringComparison.OrdinalIgnoreCase)
+            .Replace("wss://", "https://", StringComparison.OrdinalIgnoreCase), UriKind.Absolute);
+        return GetFragmentFields(endpoint.Fragment).Any(IsSharedTokenField);
+    }
+
+    private static string RemoveSharedTokenFields(string fragment)
+    {
+        var fields = GetFragmentFields(fragment).Where(field => !IsSharedTokenField(field)).ToArray();
+        return fields.Length == 0 ? string.Empty : "#" + string.Join("&", fields);
+    }
+
+    private static IEnumerable<string> GetFragmentFields(string fragment) =>
+        fragment.TrimStart('#').Split('&', StringSplitOptions.RemoveEmptyEntries);
+
+    private static bool IsSharedTokenField(string field)
+    {
+        var separator = field.IndexOf('=');
+        var key = separator < 0 ? field : field[..separator];
+        return Uri.UnescapeDataString(key).Equals("token", StringComparison.OrdinalIgnoreCase);
     }
 }

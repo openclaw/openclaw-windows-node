@@ -78,10 +78,11 @@ public sealed class GatewayDashboardLinkService
                 RevalidationError: revalidationError);
         }
 
-        // Match the URL builder's exact append predicate so only credential-bearing URLs need authorization.
-        var browserCredentialIncluded = request.AppendBrowserCredential &&
-            !trustTailscaleAuth &&
-            !string.IsNullOrEmpty(request.BrowserCredential);
+        // The emitted link can carry a shared token already embedded in its endpoint fragment.
+        // Keep saved-link authorization aligned with the URL, not just the append request.
+        var browserCredentialIncluded = !trustTailscaleAuth &&
+            ((request.AppendBrowserCredential && !string.IsNullOrEmpty(request.BrowserCredential)) ||
+             GatewayDashboardUrlBuilder.HasSharedTokenFragment(request.GatewayUrl));
         var url = GatewayDashboardUrlBuilder.Build(
             request.GatewayUrl,
             request.Path,
