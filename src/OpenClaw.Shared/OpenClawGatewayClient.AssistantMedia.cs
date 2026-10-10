@@ -62,6 +62,63 @@ public partial class OpenClawGatewayClient
         }
     }
 
+    /// <summary>
+    /// Resolves a structured file attachment (for example a zip the agent produced) to
+    /// the Gateway's short-lived ticketed download URL. The ticket authorizes only this
+    /// attachment, so the URL can be handed to the browser, which saves the file under
+    /// the Gateway's Content-Disposition name. Returns null when the file is unavailable.
+    /// </summary>
+    public async Task<Uri?> ResolveAssistantFileDownloadUriAsync(
+        string sessionKey,
+        ChatMediaContentInfo media,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(sessionKey)
+            || media.Kind != ChatMediaContentKind.File
+            || media.Source != ChatMediaContentSource.Structured
+            || string.IsNullOrWhiteSpace(media.ArtifactId)
+            || !TryCaptureMediaLease(out var lease))
+        {
+            return null;
+        }
+
+        try
+        {
+            var payload = await RequestArtifactDownloadAsync(sessionKey, media)
+                .WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
+            return IsCurrentMediaLease(lease)
+                && TryReadArtifactMetadata(payload, media.Kind, out _, out _)
+                && payload.TryGetProperty("url", out var urlElement)
+                && urlElement.ValueKind == JsonValueKind.String
+                && TryResolveManagedMediaUri(lease.HttpBaseUri, urlElement.GetString(), out var downloadUri)
+                    ? downloadUri
+                    : null;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"Assistant file download resolution failed ({ex.GetType().Name}).");
+            return null;
+        }
+    }
+
+    private Task<JsonElement> RequestArtifactDownloadAsync(
+        string sessionKey,
+        ChatMediaContentInfo media)
+    {
+        var parameters = string.IsNullOrWhiteSpace(media.AgentId)
+            ? new { sessionKey, artifactId = media.ArtifactId }
+            : (object)new { sessionKey, artifactId = media.ArtifactId, agentId = media.AgentId };
+        return SendWizardRequestAsync(
+            "artifacts.download",
+            parameters,
+            timeoutMs: 20000);
+    }
+
     private async Task<AssistantMediaResolutionResult> ResolveStructuredMediaAsync(
         GatewayConnectionLease lease,
         string sessionKey,
@@ -71,13 +128,7 @@ public partial class OpenClawGatewayClient
         if (string.IsNullOrWhiteSpace(media.ArtifactId))
             return AssistantMediaResolutionResult.Unavailable;
 
-        var parameters = string.IsNullOrWhiteSpace(media.AgentId)
-            ? new { sessionKey, artifactId = media.ArtifactId }
-            : (object)new { sessionKey, artifactId = media.ArtifactId, agentId = media.AgentId };
-        var payload = await SendWizardRequestAsync(
-                "artifacts.download",
-                parameters,
-                timeoutMs: 20000)
+        var payload = await RequestArtifactDownloadAsync(sessionKey, media)
             .WaitAsync(cancellationToken)
             .ConfigureAwait(false);
 
@@ -446,9 +497,11 @@ public partial class OpenClawGatewayClient
         _ => "application",
     };
 
+    // Files are downloaded rather than rendered, so any declared MIME type is acceptable.
     private static bool MatchesKind(string? mimeType, ChatMediaContentKind kind) =>
         !string.IsNullOrWhiteSpace(mimeType)
-        && mimeType.StartsWith($"{MimePrefix(kind)}/", StringComparison.OrdinalIgnoreCase);
+        && (kind == ChatMediaContentKind.File
+            || mimeType.StartsWith($"{MimePrefix(kind)}/", StringComparison.OrdinalIgnoreCase));
 
     private static bool HasTraversal(string absolutePath)
     {

@@ -7114,6 +7114,8 @@ Make sure the gateway is running.</value>
   <data name="Chat_AssistantMedia_Close" xml:space="preserve">
     <value>Close</value>
   </data>
+  <data name="Chat_AssistantMedia_Download" xml:space="preserve"><value>Download</value></data>
+  <data name="Chat_AssistantMedia_DownloadFailed" xml:space="preserve"><value>Couldn't start the download</value></data>
   <data name="HubWindow_NavigationViewItem_LocalAi.Content" xml:space="preserve"><value>Local AI</value></data>
   <data name="LocalAiPage_Title.Text" xml:space="preserve"><value>Local AI</value></data>
   <data name="LocalAiPage_Intro.Text" xml:space="preserve"><value>Run the verified native llama-server privately on this computer. Models load only when requested.</value></data>

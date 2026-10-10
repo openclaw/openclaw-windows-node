@@ -1059,6 +1059,18 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         out ChatMediaContentInfo media)
     {
         media = null!;
+        var type = ReadFirstString(item, "type");
+        // Gateway display content wraps managed attachments as
+        // { "type": "attachment", "attachment": { kind, label, url, mimeType, ... } }.
+        string? declaredKind = null;
+        if (normalizedType == "attachment"
+            && item.TryGetProperty("attachment", out var nestedAttachment)
+            && nestedAttachment.ValueKind == JsonValueKind.Object)
+        {
+            item = nestedAttachment;
+            declaredKind = ReadFirstString(item, "kind")?.Trim().ToLowerInvariant();
+        }
+
         var mimeType = ReadFirstString(item, "mimeType", "mime_type")?.Trim().ToLowerInvariant();
         var hasMediaShape = normalizedType is "image" or "audio" or "video" or "file" or "attachment"
             || !string.IsNullOrWhiteSpace(mimeType)
@@ -1067,11 +1079,12 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         if (!hasMediaShape)
             return false;
 
-        var kind = normalizedType switch
+        var kind = (declaredKind ?? normalizedType) switch
         {
             "image" => ChatMediaContentKind.Image,
             "audio" => ChatMediaContentKind.Audio,
             "video" => ChatMediaContentKind.Video,
+            "document" => ChatMediaContentKind.File,
             "file" or "attachment" => ClassifyMediaMimeType(mimeType, ChatMediaContentKind.File),
             _ => ClassifyMediaMimeType(mimeType, ChatMediaContentKind.Unknown),
         };
@@ -1083,10 +1096,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         {
             Kind = kind,
             Source = ChatMediaContentSource.Structured,
-            Type = ReadFirstString(item, "type"),
+            Type = type,
             MimeType = NormalizeMediaMimeType(mimeType),
             FileName = NormalizeMediaDisplayText(
-                ReadFirstString(item, "fileName", "file_name"),
+                ReadFirstString(item, "fileName", "file_name", "label"),
                 255),
             ArtifactId = NormalizeMediaDisplayText(artifactId, 512),
             AgentId = NormalizeMediaDisplayText(ReadFirstString(item, "agentId", "agent_id"), 256),
@@ -1219,7 +1232,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         {
             return null;
         }
-        var prefix = kind is ChatMediaContentKind.Audio or ChatMediaContentKind.Video
+        var prefix = kind is ChatMediaContentKind.Audio or ChatMediaContentKind.Video or ChatMediaContentKind.File
             ? "artifact_managed_media_"
             : "artifact_managed_image_";
         return prefix + attachmentId.ToString("D").ToLowerInvariant();

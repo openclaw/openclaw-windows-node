@@ -90,6 +90,11 @@ public interface IChatGatewayBridge : IDisposable
         ChatMediaContentInfo media,
         CancellationToken cancellationToken = default) =>
         Task.FromResult(AssistantMediaResolutionResult.Unavailable);
+    Task<Uri?> ResolveAssistantFileDownloadUriAsync(
+        string sessionKey,
+        ChatMediaContentInfo media,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<Uri?>(null);
     Task SendChatAbortAsync(string runId, string? sessionKey = null);
     Task ResolveExecApprovalAsync(string approvalId, string decision);
 
@@ -258,6 +263,12 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
         ChatMediaContentInfo media,
         CancellationToken cancellationToken = default) =>
         _client.ResolveAssistantMediaAsync(sessionKey, media, cancellationToken);
+
+    public Task<Uri?> ResolveAssistantFileDownloadUriAsync(
+        string sessionKey,
+        ChatMediaContentInfo media,
+        CancellationToken cancellationToken = default) =>
+        _client.ResolveAssistantFileDownloadUriAsync(sessionKey, media, cancellationToken);
 
     public Task SendChatAbortAsync(string runId, string? sessionKey = null) => _client.SendChatAbortAsync(runId, sessionKey);
 
