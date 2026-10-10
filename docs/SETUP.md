@@ -115,6 +115,23 @@ OpenClaw Companion responds to `openclaw://` deep links, which can be invoked fr
 | `openclaw://extensibility-summary` | Copy channel, skills, and cron dashboard surface guidance |
 | `openclaw://restart-ssh-tunnel` | Restart the tray-managed SSH tunnel when enabled |
 | `openclaw://agent?message=Hello` | Send a message directly to the connected gateway |
+| `openclaw://clawhub/install?id=diagnostics-otel` | Review and install a managed ClawHub plugin through the connected Gateway |
+| `openclaw://clawhub/install?kind=plugin&id=expedia-openclaw&package=%40expediagroup%2Fexpedia-openclaw` | Review and install a community ClawHub plugin package through the connected Gateway |
+| `openclaw://clawhub/install?kind=skill&id=%40alipay%2Falipay-aipay` | Review and install a ClawHub skill through the connected Gateway |
+| `openclaw://clawhub/install?kind=skill&id=skills-sh%3Avercel-labs%2Fskills%2Ffind-skills` | Review and install a skill that ClawHub resolves from skills.sh |
+
+The ClawHub install link is only a trigger. For a managed plugin, Windows Hub calls
+`plugins.inspect`, shows the Gateway-provided identity, declared capabilities, grants, and trust
+details, and requires native confirmation before calling `plugins.install`. If the plugin is not
+yet in the Gateway's managed catalog, the injected bridge carries the package name from ClawHub's
+install command. Windows Hub shows the listing id and package name, then asks the Gateway to fetch
+and validate the package. Plugin installs never pre-acknowledge policy warnings. A Gateway security
+warning for either a managed or community plugin is shown in a second native confirmation before
+an acknowledged retry. Skill links show the exact scoped ClawHub skill id before calling the
+source-routed `skills.install` API. For skills synced from skills.sh, the injected bridge preserves
+ClawHub's exact `skills-sh:owner/repository/skill` install reference instead of rewriting it as a
+native `@owner/slug` reference. The Gateway applies its configured install security policy. All
+flows require the connected operator session to include the `operator.admin` scope.
 
 ## Troubleshooting
 
