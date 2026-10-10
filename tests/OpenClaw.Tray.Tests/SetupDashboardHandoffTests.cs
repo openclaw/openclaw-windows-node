@@ -194,6 +194,38 @@ public sealed class SetupDashboardHandoffTests
     }
 
     [Fact]
+    public async Task SavedDashboard_EmbeddedTokenStillRequiresEndpointAuthorization()
+    {
+        var launches = 0;
+        var validationCalls = 0;
+        var service = new GatewayDashboardLinkService((_, _) => Task.FromResult(false), key => key);
+        var launcher = new GatewayDashboardLauncher(
+            () => throw new InvalidOperationException("Saved rows do not require an active tunnel."),
+            _ => null,
+            service,
+            _ => { launches++; return Task.FromResult(true); },
+            _ => throw new InvalidOperationException("Unexpected Dashboard link failure"),
+            () => throw new InvalidOperationException("Unexpected launch failure"));
+
+        var opened = await launcher.OpenSavedAsync(
+            new GatewayDashboardLinkRequest(
+                "wss://gateway.example/control/#token=stale&view=compact",
+                null,
+                null,
+                AppendBrowserCredential: false),
+            result =>
+            {
+                Assert.True(result.BrowserCredentialIncluded);
+                validationCalls++;
+                return Task.FromResult(false);
+            });
+
+        Assert.False(opened);
+        Assert.Equal(1, validationCalls);
+        Assert.Equal(0, launches);
+    }
+
+    [Fact]
     public async Task SavedDashboard_CancellationAfterLinkPreparationSkipsAuthorizationAndLaunch()
     {
         using var cancellation = new CancellationTokenSource();

@@ -64,6 +64,38 @@ public sealed class GatewayDashboardLinkServiceTests
     }
 
     [Fact]
+    public async Task BuildAsync_TrustedTailscaleAuthStripsEmbeddedTokenFragment()
+    {
+        var service = CreateService((_, _) => Task.FromResult(true));
+
+        var result = await service.BuildAsync(Request(
+            appendBrowserCredential: false,
+            browserCredential: null,
+            tailscaleGatewayId: "gateway-1",
+            gatewayUrl: "wss://gateway.example.test/mount/#token=stale&view=compact"));
+
+        Assert.True(result.Success);
+        Assert.True(result.TrustTailscaleAuth);
+        Assert.False(result.BrowserCredentialIncluded);
+        Assert.Equal("https://gateway.example.test/mount/settings/profile#view=compact", result.Url);
+    }
+
+    [Fact]
+    public async Task BuildAsync_ExistingTokenFragmentCountsAsBrowserCredential()
+    {
+        var service = CreateService((_, _) => Task.FromResult(false));
+
+        var result = await service.BuildAsync(Request(
+            appendBrowserCredential: false,
+            browserCredential: null,
+            gatewayUrl: "wss://gateway.example.test/mount/#token=stale&view=compact"));
+
+        Assert.True(result.Success);
+        Assert.True(result.BrowserCredentialIncluded);
+        Assert.Equal("https://gateway.example.test/mount/settings/profile#token=stale&view=compact", result.Url);
+    }
+
+    [Fact]
     public async Task BuildAsync_TailscaleRequestWithoutApprovedBrowserCredential_FailsClosed()
     {
         var service = CreateService((_, _) => Task.FromResult(false));
@@ -142,8 +174,9 @@ public sealed class GatewayDashboardLinkServiceTests
     private static GatewayDashboardLinkRequest Request(
         bool appendBrowserCredential = true,
         string? browserCredential = "shared-token",
-        string? tailscaleGatewayId = null) => new(
-            "https://gateway.example.test",
+        string? tailscaleGatewayId = null,
+        string? gatewayUrl = null) => new(
+            gatewayUrl ?? "https://gateway.example.test",
             "/settings/profile",
             browserCredential,
             appendBrowserCredential,
