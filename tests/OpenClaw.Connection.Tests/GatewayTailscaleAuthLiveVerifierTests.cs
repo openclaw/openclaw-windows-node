@@ -723,8 +723,11 @@ public sealed class GatewayTailscaleAuthLiveVerifierTests
             string name,
             IReadOnlyList<string> command,
             CancellationToken cancellationToken = default,
-            IReadOnlyDictionary<string, string>? environment = null)
+            IReadOnlyDictionary<string, string>? environment = null,
+            string? standardInput = null)
         {
+            if (standardInput is not null)
+                StandardInputs.Add(standardInput);
             ProbeCalls++;
             DistroName = name;
             Commands.Add(command);
@@ -738,8 +741,7 @@ public sealed class GatewayTailscaleAuthLiveVerifierTests
             CancellationToken cancellationToken = default,
             IReadOnlyDictionary<string, string>? environment = null)
         {
-            StandardInputs.Add(standardInput);
-            return RunInDistroAsync(name, command, cancellationToken, environment);
+            return RunInDistroAsync(name, command, cancellationToken, environment, standardInput);
         }
 
         public Task<WslCommandResult> RunAsync(
@@ -801,7 +803,8 @@ public sealed class GatewayTailscaleAuthLiveVerifierTests
             string name,
             IReadOnlyList<string> command,
             CancellationToken cancellationToken = default,
-            IReadOnlyDictionary<string, string>? environment = null) =>
+            IReadOnlyDictionary<string, string>? environment = null,
+            string? standardInput = null) =>
             throw new NotSupportedException();
     }
 }
