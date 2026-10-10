@@ -3,8 +3,10 @@
     Builds and launches the WinUI tray app for local development.
 
 .DESCRIPTION
-    Builds the tray app, then launches the unpackaged WinUI executable directly
-    for the common local-development path.
+    Builds only the WinUI tray project graph with one incremental dotnet build,
+    then launches the unpackaged WinUI executable directly. It does not run
+    build.ps1's prerequisite checks, documentation validation, or CLI builds;
+    run .\build.ps1 for the full closeout gate.
 
     Use -UseWinApp when you specifically want Microsoft WinAppCLI (`winapp run`)
     to launch with Package.appxmanifest for packaged/MSIX-adjacent validation.
@@ -13,10 +15,6 @@
     and device identities. Use -Dev to opt into the side-by-side dev app
     identity with separate mutex, protocol, gateway distro, and gateway port.
 
-    By default this helper refuses to run outside `main` to avoid accidentally
-    launching a stale or experimental worktree. Use -AllowNonMain when you
-    intentionally want to preview a PR or feature branch.
-
 .PARAMETER NoBuild
     Skip the build step and launch the existing Debug output.
 
@@ -24,15 +22,12 @@
     Build/output configuration to use. Defaults to Debug.
 
 .PARAMETER RuntimeIdentifier
-    Explicit output runtime to launch. Use with -NoBuild after building that RID.
-    When omitted, the current PowerShell process architecture selects the RID.
+    Runtime to build and launch. When omitted, the current PowerShell process
+    architecture selects the RID.
 
 .PARAMETER Dev
     Build and launch with the side-by-side dev app identity. Defaults off so
     release identity remains the default local-launch behavior.
-
-.PARAMETER AllowNonMain
-    Allow launching from a branch other than main.
 
 .PARAMETER Isolated
     Set OPENCLAW_TRAY_DATA_DIR to a stable temp directory unique to this worktree
@@ -72,7 +67,7 @@
     .\run-app-local.ps1 -Dev -Isolated
 
 .EXAMPLE
-    .\run-app-local.ps1 -Configuration Release -Isolated -UpdateChannel alpha -AllowNonMain
+    .\run-app-local.ps1 -Configuration Release -Isolated -UpdateChannel alpha
 
 .EXAMPLE
     .\run-app-local.ps1 -UseWinApp -NoBuild
@@ -88,8 +83,6 @@ param(
     [string]$RuntimeIdentifier,
 
     [switch]$Dev,
-
-    [switch]$AllowNonMain,
 
     [switch]$Isolated,
 
@@ -144,38 +137,11 @@ function Get-ShortHash {
 }
 
 $branch = (git -C $repoRoot rev-parse --abbrev-ref HEAD).Trim()
-if ($branch -ne "main" -and -not $AllowNonMain) {
-    throw "Refusing to run: current branch is '$branch', expected 'main'. Use -AllowNonMain to preview this branch intentionally."
-}
-
-if ($PSBoundParameters.ContainsKey("RuntimeIdentifier") -and -not $NoBuild) {
-    throw "-RuntimeIdentifier requires -NoBuild. Build the requested RID explicitly before launching it."
-}
-
-if (-not $NoBuild) {
-    $buildArgs = @{
-        Configuration = $Configuration
-    }
-    if ($Dev) {
-        $buildArgs["DevBuild"] = $true
-    }
-
-    & "$repoRoot\build.ps1" @buildArgs
-    if ($LASTEXITCODE -ne 0) {
-        exit $LASTEXITCODE
-    }
-}
 
 $projectPath = Join-Path $repoRoot "src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj"
 $manifestPath = Join-Path $repoRoot "src\OpenClaw.Tray.WinUI\Package.appxmanifest"
-[xml]$projectXml = Get-Content -LiteralPath $projectPath -Raw -Encoding UTF8
-$targetFramework = ($projectXml.Project.PropertyGroup | Where-Object { $_.TargetFramework } | Select-Object -First 1).TargetFramework
-if (-not $targetFramework) {
-    throw "Unable to determine TargetFramework from $projectPath."
-}
 
-# Without an explicit RID, match build.ps1's process-architecture detection so
-# this script looks in the output folder the build wrote to.
+# Without an explicit RID, pick the RID from the current process architecture, matching build.ps1.
 if ([string]::IsNullOrWhiteSpace($RuntimeIdentifier)) {
     $architecture = $env:PROCESSOR_ARCHITECTURE
     $RuntimeIdentifier = switch ($architecture) {
@@ -183,10 +149,30 @@ if ([string]::IsNullOrWhiteSpace($RuntimeIdentifier)) {
         default { "win-x64" }
     }
 }
+Write-Host "Selected runtime: $RuntimeIdentifier"
+
+if (-not $NoBuild) {
+    $dotnetArgs = @("build", $projectPath, "-c", $Configuration, "-r", $RuntimeIdentifier)
+    if ($Dev) {
+        $dotnetArgs += "-p:DevBuild=true"
+    }
+
+    Write-Host "Building OpenClaw Tray: dotnet $($dotnetArgs -join ' ')" -ForegroundColor Cyan
+    & dotnet @dotnetArgs
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Build failed. Close any running OpenClaw Tray that locks the output, or run .\build.ps1 to check prerequisites and trust the repo for GitVersion (.\scripts\setup-dev.ps1 -CheckOnly for setup diagnostics)." -ForegroundColor Yellow
+        exit $LASTEXITCODE
+    }
+}
+
+[xml]$projectXml = Get-Content -LiteralPath $projectPath -Raw -Encoding UTF8
+$targetFramework = ($projectXml.Project.PropertyGroup | Where-Object { $_.TargetFramework } | Select-Object -First 1).TargetFramework
+if (-not $targetFramework) {
+    throw "Unable to determine TargetFramework from $projectPath."
+}
 $outputDir = Join-Path $repoRoot "src\OpenClaw.Tray.WinUI\bin\$Configuration\$targetFramework\$RuntimeIdentifier"
 $exePath = Join-Path $outputDir "OpenClaw.Tray.WinUI.exe"
 $identityMarkerPath = Join-Path $outputDir "app-identity.txt"
-Write-Host "Selected runtime: $RuntimeIdentifier"
 
 if (-not (Test-Path $outputDir)) {
     throw "Build output folder not found: $outputDir. Run without -NoBuild first."

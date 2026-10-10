@@ -26,7 +26,7 @@ Prefer isolated tray data so tests do not change
 `%APPDATA%\OpenClawTray`:
 
 ```powershell
-.\run-app-local.ps1 -Isolated -AllowNonMain
+.\run-app-local.ps1 -Isolated
 ```
 
 Copy the data directory printed by the launcher:

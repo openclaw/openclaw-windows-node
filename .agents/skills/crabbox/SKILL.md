@@ -342,7 +342,7 @@ app in an interactive Windows session and capture current-head evidence:
   --open \
   --take-control -- \
   powershell.exe -NoProfile -ExecutionPolicy Bypass -File '.\run-app-local.ps1' \
-    -NoBuild -Isolated -AllowNonMain
+    -NoBuild -Isolated
 ```
 
 If the leased host has no interactive desktop, state that UI proof is blocked
