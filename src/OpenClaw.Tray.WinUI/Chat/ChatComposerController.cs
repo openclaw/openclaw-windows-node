@@ -8,6 +8,19 @@ using System.Threading.Tasks;
 namespace OpenClawTray.Chat;
 
 /// <summary>
+/// Provider result plus whether this controller was still the live host when that result arrived.
+/// A disposed host can observe <see cref="Submitted"/> true. That is not a failed submission.
+/// </summary>
+internal readonly record struct ChatSendCoreResult(bool Submitted, bool HostLive, string? FailedMessageId = null)
+{
+    public bool AcceptedByLiveHost => Submitted && HostLive;
+
+    public bool FailedWhileHostLive => HostLive && !Submitted;
+
+    public static ChatSendCoreResult NotSubmitted() => new(false, false);
+}
+
+/// <summary>
 /// Focused workflow orchestrator for the composer. It owns send/lifecycle/stop/reset
 /// confirmation/queue cancel/model set-clear/thinking/catalog/attachment ingress-
 /// remove/paste-image/voice operation cancellation and IDs, executed over the narrow
@@ -183,7 +196,8 @@ internal sealed partial class ChatComposerController : IDisposable
             _vm.SetSending(true);
             try
             {
-                var accepted = await SendCoreAsync(thread.Id, thread.Title, message, attachments).ConfigureAwait(true);
+                var result = await SendCoreAsync(thread.Id, thread.Title, message, attachments).ConfigureAwait(true);
+                var accepted = result.AcceptedByLiveHost;
                 if (_disposed || generationAtStart != _generation || sendOperation != _sendOperation)
                     return accepted;
 
@@ -229,16 +243,18 @@ internal sealed partial class ChatComposerController : IDisposable
     /// (after the compact enqueue, the reset-confirmation dialog, and the lifecycle
     /// execute/send calls) against a dispose/generation change that happened while
     /// awaiting, so a controller disposed mid-confirmation cannot still execute the
-    /// destructive command or hand a stale session key to a torn-down host. No-ops
-    /// (returns false without calling the port) if already disposed at entry.</summary>
-    public async Task<bool> SendCoreAsync(
+    /// destructive command or hand a stale session key to a torn-down host. Returns
+    /// <see cref="ChatSendCoreResult.NotSubmitted"/> without calling the port if already
+    /// disposed at entry. A provider acceptance observed after dispose stays
+    /// <see cref="ChatSendCoreResult.Submitted"/> and is not a failed submission.</summary>
+    public async Task<ChatSendCoreResult> SendCoreAsync(
         string threadId,
         string? displayName,
         string message,
         IReadOnlyList<ChatAttachment> attachments)
     {
         if (_disposed)
-            return false;
+            return ChatSendCoreResult.NotSubmitted();
 
 #if OPENCLAW_TRAY_TESTS
         if (TestOnlyAfterEntryBeforePortInvocation is { } hook)
@@ -254,31 +270,34 @@ internal sealed partial class ChatComposerController : IDisposable
             if (ChatLifecycleCommandExecutionPolicy.ShouldQueue(command))
             {
                 var queued = await _port.EnqueueCompactCommandAsync(threadId).ConfigureAwait(true);
-                return StillLive() && queued;
+                return new(queued, StillLive());
             }
 
             if (command == ChatLifecycleCommandKind.Reset && _hostActions.ConfirmResetAsync is not null)
             {
                 var confirmed = await _hostActions.ConfirmResetAsync(threadId, displayName).ConfigureAwait(true);
                 if (!StillLive() || !confirmed)
-                    return false;
+                    return ChatSendCoreResult.NotSubmitted();
             }
 
             if (command == ChatLifecycleCommandKind.New)
                 _hostActions.SessionNavigationStarting?.Invoke();
             if (!StillLive())
-                return false;
+                return ChatSendCoreResult.NotSubmitted();
 
             var result = await _port.ExecuteLifecycleCommandAsync(threadId, command).ConfigureAwait(true);
             if (!StillLive())
-                return false;
+                return new(result.Succeeded, false);
             if (result.Succeeded && result.NewSessionKey is { } sessionKey)
                 TrySelectChannel(sessionKey);
-            return result.Succeeded;
+            return new(result.Succeeded, true);
         }
 
-        var accepted = await _port.SendMessageAsync(threadId, message, attachments, _lifetimeToken).ConfigureAwait(true);
-        return StillLive() && accepted;
+        var submitted = await _port.SendMessageAsync(threadId, message, attachments, _lifetimeToken).ConfigureAwait(true);
+        var failedMessageId = submitted || _port is not ChatComposerRuntimePort runtime
+            ? null
+            : runtime.LastFailedSendMessageId;
+        return new(submitted, StillLive(), failedMessageId);
     }
 
     public void Stop()

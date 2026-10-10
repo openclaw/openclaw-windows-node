@@ -877,6 +877,64 @@ internal sealed class ChatConversationState
         }
     }
 
+    internal ChatDataSnapshot RestoreFailedWelcomeSend(
+        string threadId,
+        string messageText,
+        ChatProjectionContext context,
+        string? failedMessageId = null)
+    {
+        lock (_gate)
+        {
+            if (!string.IsNullOrWhiteSpace(threadId) && !string.IsNullOrWhiteSpace(messageText))
+            {
+                if (!string.IsNullOrWhiteSpace(failedMessageId))
+                    _queue.RemoveFailedMessage(threadId, failedMessageId);
+                // A follow-up can already be queued, failed, or promoted before this
+                // recovery runs. Those checks happen before any timeline replacement.
+                if (_timelines.TryGetValue(threadId, out var timeline)
+                    && !timeline.TurnActive
+                    && !_queue.HasPendingMessages(threadId)
+                    && !_queue.HasSendingMessages(threadId)
+                    && !_queue.HasFailedMessages(threadId)
+                    && IsFailedWelcomeTimeline(timeline, messageText))
+                {
+                    _timelines[threadId] = ChatTimelineState.Initial() with
+                    {
+                        HistoryLoaded = timeline.HistoryLoaded,
+                    };
+                    _queue.ClearLocallyInitiated(threadId);
+                }
+            }
+
+            return BuildSnapshotLocked(context);
+        }
+    }
+
+    private static bool IsFailedWelcomeTimeline(ChatTimelineState timeline, string messageText)
+    {
+        if (timeline.LocalNonces.Count == 0 || timeline.Entries.Count == 0)
+            return false;
+
+        var userCount = 0;
+        var sawStatus = false;
+        foreach (var entry in timeline.Entries)
+        {
+            if (entry.Kind == ChatTimelineItemKind.Status)
+            {
+                sawStatus = true;
+                continue;
+            }
+
+            if (entry.Kind != ChatTimelineItemKind.User
+                || !string.Equals(entry.Text, messageText, StringComparison.Ordinal))
+                return false;
+
+            userCount++;
+        }
+
+        return sawStatus && userCount == 1;
+    }
+
     internal ChatSendFailure FailSend(
         ChatQueuedSendDispatch dispatch,
         string queueError,
