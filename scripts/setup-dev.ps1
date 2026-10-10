@@ -80,7 +80,11 @@ function Test-DotNet10Sdk {
 }
 
 function Test-NodeAndNpm {
-    return (Test-CommandAvailable "node") -and (Test-CommandAvailable "npm")
+    if (-not (Test-CommandAvailable "node") -or -not (Test-CommandAvailable "npm")) {
+        return $false
+    }
+    $version = & node --version 2>$null
+    return $version -match '^v(\d+)\.' -and [int]$Matches[1] -ge 24
 }
 
 function Get-WindowsSdkVersion {
@@ -223,7 +227,7 @@ Update-ProcessPath
 
 Require-Prerequisite "Git" (Test-CommandAvailable "git") "Git.Git"
 Require-Prerequisite ".NET SDK 10.0.400 or newer" (Test-DotNet10Sdk) "Microsoft.DotNet.SDK.10"
-Require-Prerequisite "Node.js LTS with npm" (Test-NodeAndNpm) "OpenJS.NodeJS.LTS"
+Require-Prerequisite "Node.js 24 or newer with npm" (Test-NodeAndNpm) "OpenJS.NodeJS.LTS"
 Require-Prerequisite "Windows SDK 10.0.26100" ([bool](Get-WindowsSdkVersion)) "Microsoft.WindowsSDK.10.0.26100"
 
 $webView2Version = Get-WebView2RuntimeVersion
@@ -239,7 +243,7 @@ Ensure-RepositoryTrust
 $missing = @()
 if (-not (Test-CommandAvailable "git")) { $missing += "Git" }
 if (-not (Test-DotNet10Sdk)) { $missing += ".NET SDK 10.0.400 or newer" }
-if (-not (Test-NodeAndNpm)) { $missing += "Node.js LTS with npm" }
+if (-not (Test-NodeAndNpm)) { $missing += "Node.js 24 or newer with npm" }
 if (-not (Get-WindowsSdkVersion)) { $missing += "Windows SDK 10.0.26100" }
 if (-not (Get-WebView2RuntimeVersion)) { $missing += "WebView2 Runtime" }
 

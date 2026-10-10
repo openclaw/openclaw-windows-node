@@ -22,8 +22,7 @@ namespace OpenClaw.Shared.Mxc;
 /// <item>Scratch dir injection — adds the per-invocation scratch dir as
 ///   readwrite and bootstraps <c>TEMP</c>/<c>TMP</c>/<c>TMPDIR</c> inside the
 ///   launched shell. Explicit <c>process.env</c> injection is intentionally
-///   disabled for the current Windows MXC 0.7 processcontainer backend because
-///   non-empty env entries fail process creation.</item>
+///   reserved for the companion; arbitrary caller overrides remain unsupported.</item>
 /// <item>Cwd handling — defaults omitted cwd to the writable per-run scratch
 ///   directory, and adds an explicit request cwd as readonly when not already
 ///   covered by an allow grant. AppContainer does NOT auto-grant cwd.</item>
@@ -33,15 +32,14 @@ namespace OpenClaw.Shared.Mxc;
 ///   <c>-EncodedCommand</c>.</item>
 /// </list>
 /// Env scrubbing happens upstream in <c>SystemCapability.HandleRunAsync</c>
-/// via <c>ExecEnvSanitizer.Sanitize</c>; this class rejects explicit env until
-/// the backend accepts it.
+/// via <c>ExecEnvSanitizer.Sanitize</c>; this class also rejects caller env.
 /// </remarks>
 public static class MxcConfigBuilder
 {
     // MXC processcontainer defaults to cmd because it starts inside the
     // AppContainer while preserving the default UI-deny boundary. PowerShell
     // remains available when explicitly requested, but callers must supply a
-    // policy with AllowWindows=true because MXC 0.7 requires UI access for
+    // policy with AllowWindows=true because the sandbox requires UI access for
     // PowerShell startup.
     private const string DefaultShell = "cmd";
 
@@ -85,13 +83,13 @@ public static class MxcConfigBuilder
         if (requiresWindowsUi && policy?.Ui?.AllowWindows != true)
         {
             throw new NotSupportedException(
-                "PowerShell-family shells require UI access with the Windows MXC 0.7 processcontainer backend.");
+                "PowerShell-family shells require UI access with the Windows companion sandbox.");
         }
 
         if (request.Env is { Count: > 0 })
         {
             throw new NotSupportedException(
-                "Explicit environment variables are not supported by the Windows MXC 0.7 processcontainer backend.");
+                "Explicit environment variables are not supported by the Windows companion sandbox.");
         }
 
         // readonly = UI grants. Additional compatibility paths are added below.
@@ -111,7 +109,7 @@ public static class MxcConfigBuilder
         // Win32 escaping. cmd.exe /C is special: cmd parses its raw command line
         // instead of CommandLineToArgvW, so the canonical gateway wrapper must use
         // the cmd-aware serializer. It also carries the PATH/temp bootstrap because
-        // MXC 0.7 rejects non-empty process.env.
+        // the established shell bootstrap owns these values.
         var commandLine = args.DirectArgv is not null
             ? BuildDirectArgvCommandLine(args.DirectArgv, scratchDir, pathDirs)
             : ShellCommandLine.Build(shell!, args.Command, args.Arguments, scratchDir, pathDirs);
@@ -124,7 +122,7 @@ public static class MxcConfigBuilder
 
         // denied list from policy (settings dir, ~/.ssh, browser profiles, ...).
         // Keep the full list for local allow-list filtering, but do not emit
-        // filesystem.deniedPaths to wxc-exec. Windows MXC 0.7 rejects that field;
+        // filesystem.deniedPaths to wxc-exec; preserve grant-only enforcement:
         // omitted grants remain denied by default inside the AppContainer.
         var deniedForFiltering = (policy?.Filesystem?.DeniedPaths ?? Array.Empty<string>()).ToList();
         string[]? deniedForBackend = null;
@@ -145,23 +143,15 @@ public static class MxcConfigBuilder
         roFromPolicy = FilterOutDenied(roFromPolicy, deniedForFiltering);
         rwFromPolicy = FilterOutDenied(rwFromPolicy, deniedForFiltering);
 
-        // process.env — intentionally empty. MXC 0.7 processcontainer currently
-        // fails process creation when a non-empty process.env array is supplied,
-        // so shell-level bootstrap above carries PATH/scratch temp instead.
-        var env = BuildEnv(request.Env);
-
         // timeout — caller-supplied or default.
         var timeoutMs = request.TimeoutMs > 0 ? request.TimeoutMs : DefaultProcessTimeoutMs;
 
-        // capabilities — only network for now.
-        var capabilities = new List<string>();
-        if (policy?.Network?.AllowOutbound == true)
-            capabilities.Add("internetClient");
-
         var network = new MxcNetwork
         {
-            DefaultPolicy = policy?.Network?.AllowOutbound == true ? "allow" : "block",
-            EnforcementMode = "capabilities",
+            Egress = new MxcNetworkEgress
+            {
+                Default = policy?.Network?.AllowOutbound == true ? "allow" : "deny",
+            },
         };
 
         var topLevelUi = new MxcUi
@@ -189,13 +179,14 @@ public static class MxcConfigBuilder
             {
                 CommandLine = commandLine,
                 Cwd = workingDirectory,
-                Env = env,
+                // Omit env: SDK 0.9 treats [] as empty, losing Windows defaults.
                 TimeoutMs = timeoutMs,
             },
             ProcessContainer = new MxcProcessContainer
             {
                 LeastPrivilege = false,
-                Capabilities = capabilities.ToArray(),
+                // The SDK derives network capabilities from directional policy.
+                Capabilities = Array.Empty<string>(),
                 Ui = processContainerUi,
             },
             Filesystem = new MxcFilesystem
@@ -379,25 +370,6 @@ public static class MxcConfigBuilder
         yield return Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
         yield return Environment.GetFolderPath(Environment.SpecialFolder.CommonProgramFiles);
         yield return Environment.GetFolderPath(Environment.SpecialFolder.CommonProgramFilesX86);
-    }
-
-    /// <summary>
-    /// Build the explicit process.env array for the wxc-exec sandbox.
-    /// </summary>
-    /// <remarks>
-    /// Current MXC 0.7 Windows processcontainer accepts an empty env array but
-    /// rejects non-empty entries at <c>CreateProcessW</c>. Emit an explicit
-    /// empty array for normal requests so the config does not rely on implicit
-    /// host-environment inheritance semantics. PATH and scratch temp variables
-    /// are set by the shell command line bootstrap instead.
-    /// </remarks>
-    public static IReadOnlyList<string>? BuildEnv(IReadOnlyDictionary<string, string>? requestEnv)
-    {
-        if (requestEnv is null || requestEnv.Count == 0)
-            return Array.Empty<string>();
-
-        throw new NotSupportedException(
-            "Explicit environment variables are not supported by the Windows MXC 0.7 processcontainer backend.");
     }
 
     private static List<string> FilterOutDenied(List<string> allowed, List<string> denied)
@@ -634,7 +606,7 @@ public static class MxcConfigBuilder
         {
             "cmd" or "powershell" or "pwsh" => normalized,
             _ => throw new NotSupportedException(
-                $"Unsupported shell '{shell}' for the Windows MXC 0.7 processcontainer backend."),
+                $"Unsupported shell '{shell}' for the Windows companion sandbox."),
         };
     }
 
@@ -749,7 +721,7 @@ internal static class ShellCommandLine
                 scratchDir,
                 bootstrapPathDirs),
             _ => throw new NotSupportedException(
-                $"Unsupported shell '{shell}' for the Windows MXC 0.7 processcontainer backend."),
+                $"Unsupported shell '{shell}' for the Windows companion sandbox."),
         };
     }
 
@@ -844,7 +816,7 @@ internal static class ShellCommandLine
         if (value.IndexOfAny(new[] { '\r', '\n' }) >= 0)
         {
             throw new NotSupportedException(
-                $"cmd shell {fieldName} values cannot contain CR or LF characters with the Windows MXC 0.7 processcontainer backend.");
+                $"cmd shell {fieldName} values cannot contain CR or LF characters with the Windows companion sandbox.");
         }
     }
 

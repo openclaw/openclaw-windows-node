@@ -136,8 +136,8 @@ public class MxcConfigBuilderTests
 
         // The golden test reproduces the exact harness recipe: no commandLine,
         // no cwd, no shell PATH dirs. We pass an empty PATH and no
-        // caller env. The C# config still emits env: [] to make the sandbox env
-        // boundary explicit and bootstraps shell env in commandLine; the
+        // caller env. The C# config omits env to preserve native defaults
+        // and bootstraps shell env in commandLine; the
         // harness stripped process.* (commandLine, cwd, env, timeout), so do
         // the same on the C# side before comparing. Use cmd so this pure
         // policy golden stays independent from shell command-line encoding.
@@ -201,12 +201,14 @@ public class MxcConfigBuilderTests
     }
 
     [Fact]
-    public void Build_OutboundOn_AddsInternetClientCapability()
+    public void Build_OutboundOn_UsesDirectionalPolicyWithNativeCapabilityDerivation()
     {
         var policy = BalancedPolicy();
         var config = BuildConfig(RequestFor(policy), pathEnvVar: "");
-        Assert.Contains("internetClient", config.ProcessContainer!.Capabilities!);
-        Assert.Equal("allow", config.Network!.DefaultPolicy);
+        Assert.Empty(config.ProcessContainer!.Capabilities!);
+        Assert.Equal("allow", config.Network!.Egress.Default);
+        Assert.Equal("deny", config.Network.Ingress.Default);
+        Assert.Equal("deny", config.Network.Ingress.HostLoopback);
     }
 
     [Fact]
@@ -214,8 +216,10 @@ public class MxcConfigBuilderTests
     {
         var policy = LockedDownPolicy();
         var config = BuildConfig(RequestFor(policy), pathEnvVar: "");
-        Assert.DoesNotContain("internetClient", config.ProcessContainer!.Capabilities!);
-        Assert.Equal("block", config.Network!.DefaultPolicy);
+        Assert.Empty(config.ProcessContainer!.Capabilities!);
+        Assert.Equal("deny", config.Network!.Egress.Default);
+        Assert.Equal("deny", config.Network.Ingress.Default);
+        Assert.Equal("deny", config.Network.Ingress.HostLoopback);
     }
 
     [Theory]
@@ -445,8 +449,8 @@ public class MxcConfigBuilderTests
 
             var config = BuildConfig(request, pathEnvVar: tempDir);
 
-            Assert.NotNull(config.Process.Env);
-            Assert.Empty(config.Process.Env);
+            Assert.Null(config.Process.Env);
+            Assert.False(JsonSerializer.SerializeToElement(config).GetProperty("process").TryGetProperty("env", out _));
             Assert.Contains(tempDir, config.Filesystem!.ReadonlyPaths!);
             Assert.Contains($"set \"TEMP={P.Scratch}\"", config.Process.CommandLine);
             Assert.Contains($"set \"TMP={P.Scratch}\"", config.Process.CommandLine);
@@ -857,7 +861,7 @@ public class MxcConfigBuilderTests
             config.Process.CommandLine);
         Assert.DoesNotContain(" /S /C ", config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("-EncodedCommand", config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
-        Assert.Empty(config.Process.Env!);
+        Assert.Null(config.Process.Env);
         Assert.Contains(P.Scratch, config.Filesystem!.ReadwritePaths!);
         Assert.True(config.Ui!.Disable);
         Assert.Equal("container", config.ProcessContainer!.Ui!.Isolation);
@@ -1045,7 +1049,7 @@ public class MxcConfigBuilderTests
                 ? pwshPath
                 : "\"" + pwshPath.Replace("\"", "\\\"") + "\"";
             Assert.StartsWith(expectedPrefix, config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
-            Assert.Empty(config.Process.Env!);
+            Assert.Null(config.Process.Env);
             Assert.Contains(" -NoProfile -NonInteractive -EncodedCommand ", config.Process.CommandLine, StringComparison.Ordinal);
         }
         finally

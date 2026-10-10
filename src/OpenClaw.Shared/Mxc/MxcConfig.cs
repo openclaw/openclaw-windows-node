@@ -10,7 +10,7 @@ namespace OpenClaw.Shared.Mxc;
 public sealed record MxcConfig
 {
     [JsonPropertyName("version")]
-    public string Version { get; init; } = "0.7.0-alpha";
+    public string Version { get; init; } = MxcPolicyBuilder.SupportedPolicyVersion;
 
     [JsonPropertyName("containerId")]
     public required string ContainerId { get; init; }
@@ -116,21 +116,26 @@ public sealed record MxcFilesystem
 
 public sealed record MxcNetwork
 {
-    [JsonPropertyName("enforcementMode")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? EnforcementMode { get; init; }
+    [JsonPropertyName("egress")]
+    public required MxcNetworkEgress Egress { get; init; }
 
-    [JsonPropertyName("defaultPolicy")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? DefaultPolicy { get; init; }
+    [JsonPropertyName("ingress")]
+    public MxcNetworkIngress Ingress { get; init; } = new();
+}
 
-    [JsonPropertyName("allowedHosts")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string[]? AllowedHosts { get; init; }
+public sealed record MxcNetworkEgress
+{
+    [JsonPropertyName("default")]
+    public string Default { get; init; } = "deny";
+}
 
-    [JsonPropertyName("blockedHosts")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string[]? BlockedHosts { get; init; }
+public sealed record MxcNetworkIngress
+{
+    [JsonPropertyName("default")]
+    public string Default { get; init; } = "deny";
+
+    [JsonPropertyName("hostLoopback")]
+    public string HostLoopback { get; init; } = "deny";
 }
 
 public sealed record MxcUi

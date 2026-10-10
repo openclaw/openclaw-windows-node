@@ -331,10 +331,13 @@ if (-not $git) {
 $nodeVersion = $null
 try { $nodeVersion = & node --version 2>$null } catch {}
 if (-not $nodeVersion) {
-    Write-Error "Node.js not found (required by WinUI build to restore @microsoft/mxc-sdk)"
+    Write-Error "Node.js 24 or newer is required by the WinUI build to restore @microsoft/mxc-sdk 0.9"
     Write-Info "Install via: winget install OpenJS.NodeJS.LTS"
     Write-Info "Or download from: https://nodejs.org/"
     $issues += "Missing Node.js"
+} elseif ($nodeVersion -notmatch '^v(\d+)\.' -or [int]$Matches[1] -lt 24) {
+    Write-Error "Node.js 24 or newer is required by @microsoft/mxc-sdk 0.9. Found: $nodeVersion"
+    $issues += "Node.js older than 24"
 } else {
     Write-Success "Node.js: $nodeVersion"
 

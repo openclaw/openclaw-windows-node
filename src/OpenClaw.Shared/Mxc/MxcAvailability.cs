@@ -51,6 +51,7 @@ public sealed class MxcAvailability
     public bool? IsolationSessionCapability { get; }
     public bool IsWxcExecResolvable { get; }
     public string? WxcExecPath { get; }
+    public bool UsesCustomExecutor { get; }
     public bool ProbeSuppressedBySkuGate { get; }
 
     /// <summary>
@@ -89,6 +90,7 @@ public sealed class MxcAvailability
     public bool CanRunSystemRunSandbox =>
         IsAppContainerAvailable &&
         IsWxcExecResolvable &&
+        !UsesCustomExecutor &&
         string.Equals(
             IsolationTier,
             MxcIsolationTierPolicy.BaseContainer,
@@ -114,6 +116,9 @@ public sealed class MxcAvailability
 
             if (UnsupportedReasons.Count > 0)
                 return UnsupportedReasons;
+
+            if (UsesCustomExecutor && IsolationTier == MxcIsolationTierPolicy.BaseContainer && !NeedsDaclAugmentation)
+                return ["MXC 0.9 system.run requires the bundled executor. Unset OPENCLAW_WXC_EXEC and re-probe to use it."];
 
             var tier = string.IsNullOrWhiteSpace(IsolationTier)
                 ? "no process-containment tier"
@@ -147,13 +152,15 @@ public sealed class MxcAvailability
         bool needsDaclAugmentation = false,
         IReadOnlyList<string>? warnings = null,
         bool probeSuppressedBySkuGate = false,
-        bool? isolationSessionCapability = null)
+        bool? isolationSessionCapability = null,
+        bool usesCustomExecutor = false)
     {
         IsAppContainerAvailable = isAppContainerAvailable;
         IsIsolationSessionAvailable = isIsolationSessionAvailable;
         IsolationSessionCapability = isolationSessionCapability;
         IsWxcExecResolvable = isWxcExecResolvable;
         WxcExecPath = wxcExecPath;
+        UsesCustomExecutor = usesCustomExecutor;
         UnsupportedReasons = unsupportedReasons;
         ProbeErrored = probeErrored;
         IsolationTier = isolationTier;
@@ -214,6 +221,7 @@ public sealed class MxcAvailability
 
         // wxc-exec is the source of truth for host support, so resolve it first.
         // Without the binary we cannot probe and therefore report unavailable.
+        var usesCustomExecutor = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(WxcExecOverrideEnvVar));
         var (wxcResolvable, wxcPath) = (wxcResolver ?? ResolveWxcExec)();
         if (!wxcResolvable || string.IsNullOrEmpty(wxcPath))
         {
@@ -261,7 +269,8 @@ public sealed class MxcAvailability
             isolationTier: probe.Tier,
             needsDaclAugmentation: probe.NeedsDaclAugmentation,
             warnings: probe.Warnings,
-            isolationSessionCapability: probe.IsolationSessionCapability);
+            isolationSessionCapability: probe.IsolationSessionCapability,
+            usesCustomExecutor: usesCustomExecutor);
     }
 
     internal static bool? DetectWindowsServerSku()

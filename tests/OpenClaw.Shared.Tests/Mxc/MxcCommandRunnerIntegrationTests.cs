@@ -108,6 +108,69 @@ public class MxcCommandRunnerIntegrationTests
     }
 
     [IntegrationFact]
+    public async Task SystemRun_RetainsWindowsDefaultEnvironment()
+    {
+        var runner = TryBuildRunner(configure: settings => settings.SystemRunBlockHostFallbackWhenMxcUnavailable = true);
+        if (runner is null) return;
+
+        var result = await runner.RunAsync(new CommandRequest
+        {
+            Command = "if defined SYSTEMROOT if defined LOCALAPPDATA echo native-defaults-retained",
+            Shell = "cmd",
+            TimeoutMs = 30_000,
+        });
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("native-defaults-retained", result.Stdout);
+        Assert.Equal(OpenClaw.Shared.Telemetry.NodeToolExecutionMode.Sandbox, result.ExecutionMode);
+    }
+
+    [IntegrationFact]
+    public async Task SystemRun_DirectionalNetwork_PreservesEgressAndDeniesHostLoopback()
+    {
+        var denied = TryBuildRunner(configure: settings =>
+        {
+            settings.SystemRunAllowWindowsUi = true;
+            settings.SystemRunBlockHostFallbackWhenMxcUnavailable = true;
+        });
+        if (denied is null) return;
+        var allowed = TryBuildRunner(configure: settings =>
+        {
+            settings.SystemRunAllowWindowsUi = true;
+            settings.SystemRunAllowOutbound = true;
+            settings.SystemRunBlockHostFallbackWhenMxcUnavailable = true;
+        });
+        Assert.NotNull(allowed);
+
+        // Establish host reachability first so a disconnected test host cannot
+        // masquerade as correct outbound blocking.
+        using var publicProbe = new System.Net.Sockets.TcpClient();
+        await publicProbe.ConnectAsync("1.1.1.1", 443).WaitAsync(TimeSpan.FromSeconds(10));
+        using var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+
+        foreach (var (runner, expectPublic) in new[] { (denied, false), (allowed, true) })
+        {
+            foreach (var (address, targetPort, expected) in new[] { ("1.1.1.1", 443, expectPublic), ("127.0.0.1", port, false) })
+            {
+                var result = await runner.RunAsync(new CommandRequest
+                {
+                    Shell = "powershell",
+                    Command = "$c = New-Object Net.Sockets.TcpClient; try { " +
+                        $"$t = $c.ConnectAsync('{address}', {targetPort}); " +
+                        "if ($t.Wait(5000) -and $c.Connected) { 'connected' } else { 'denied' } " +
+                        "} catch { 'denied' } finally { $c.Dispose() }",
+                    TimeoutMs = 30_000,
+                });
+                Assert.Equal(0, result.ExitCode);
+                Assert.Equal(OpenClaw.Shared.Telemetry.NodeToolExecutionMode.Sandbox, result.ExecutionMode);
+                Assert.Equal(expected ? "connected" : "denied", result.Stdout.Trim());
+            }
+        }
+    }
+
+    [IntegrationFact]
     public async Task SystemRun_DirectArgvWithWindowsUiAccess_ExecutesInsideAppContainer()
     {
         var runner = TryBuildRunner(configure: settings => settings.SystemRunAllowWindowsUi = true);

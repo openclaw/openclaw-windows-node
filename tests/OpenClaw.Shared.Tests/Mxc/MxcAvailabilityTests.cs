@@ -406,7 +406,7 @@ public class MxcAvailabilityTests
     }
 
     [Fact]
-    public void Probe_WhenProbeReportsTier_ReportsAvailable()
+    public void Probe_CustomExecutor_KeepsDiagnosticsButRejectsNewSystemRunPolicy()
     {
         if (!OperatingSystem.IsWindows()) return;
 
@@ -431,8 +431,10 @@ public class MxcAvailabilityTests
             Assert.Empty(availability.UnsupportedReasons);
             Assert.False(availability.ProbeErrored);
             Assert.Equal("base-container", availability.IsolationTier);
-            Assert.True(availability.CanRunSystemRunSandbox);
-            Assert.Empty(availability.SystemRunSandboxUnsupportedReasons);
+            Assert.True(availability.UsesCustomExecutor);
+            Environment.SetEnvironmentVariable(MxcAvailability.WxcExecOverrideEnvVar, null);
+            Assert.False(availability.CanRunSystemRunSandbox);
+            Assert.Contains("requires the bundled executor", Assert.Single(availability.SystemRunSandboxUnsupportedReasons));
         }
         finally
         {
