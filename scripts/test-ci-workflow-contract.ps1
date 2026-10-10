@@ -602,6 +602,10 @@ foreach ($lane in $e2eLanes.GetEnumerator()) {
             "fetch-depth: 0",
             "needs.change-classification.outputs.$($lane.Value.Output) == 'true'",
             "OPENCLAW_RUN_E2E: 1",
+            'OPENCLAW_E2E_GATEWAY_VERSION: ${{ needs.change-classification.outputs.gateway_version }}',
+            'GATEWAY_RELEASE_JSON: ${{ needs.change-classification.outputs.gateway_release }}',
+            "name: e2e-test-results-$($lane.Value.Name)",
+            'TestResults/E2E/gateway-release.json',
             "./scripts/Invoke-CiE2e.ps1",
             "-Name $($lane.Value.Name)",
             $lane.Value.Filter,
@@ -612,6 +616,45 @@ foreach ($lane in $e2eLanes.GetEnumerator()) {
             -Expected $token `
             -Message "E2E lane '$($lane.Key)' is missing '$token'."
     }
+    $jobHeader = ($job -split '(?m)^    steps:\s*$', 2)[0]
+    Assert-NotContains -Text $jobHeader -Unexpected 'continue-on-error:' `
+        -Message "WSL Latest must be required in '$($lane.Key)'."
+    Assert-NotContains -Text $jobHeader -Unexpected 'strategy:' `
+        -Message "WSL lane '$($lane.Key)' must run once, without a packaged Gateway matrix."
+    Assert-NotContains -Text $job -Unexpected 'Resolve-CiGateway.ps1' `
+        -Message 'E2E shards must consume the workflow snapshot, never re-resolve moving selectors.'
+}
+$classification = Get-JobBlock 'change-classification'
+foreach ($output in @('gateway_version: ${{ steps.gateway.outputs.version }}', 'gateway_release: ${{ steps.gateway.outputs.release }}')) {
+    Assert-Contains -Text $classification -Expected $output `
+        -Message 'CI must forward the exact WSL Latest version and provenance to every E2E job.'
+}
+$snapshot = Get-StepBlock -Text $classification -Name 'Snapshot latest WSL Gateway baseline'
+Assert-Contains -Text $snapshot -Expected './scripts/Resolve-CiGateway.ps1' `
+    -Message 'CI must resolve the WSL Latest baseline once.'
+Assert-NotContains -Text $snapshot -Unexpected 'continue-on-error:' `
+    -Message 'An unresolved baseline must fail CI rather than fall back.'
+Assert-NotContains -Text $workflow -Unexpected 'packaging_release' `
+    -Message 'WSL CI must not select a native packaging release.'
+Assert-NotContains -Text $workflow -Unexpected 'gateway_matrix' `
+    -Message 'WSL CI must not restore the native Packaged/Latest matrix.'
+$gatewayResolver = Get-Content -LiteralPath (Join-Path $repoRootPath 'scripts\Resolve-CiGateway.ps1') -Raw
+foreach ($token in @(
+        'Resolve-GatewayNpmRelease -Selector latest',
+        '"version=$($release.version)"',
+        '"release=$($release | ConvertTo-Json -Compress)"',
+        "'gateway-release.json'"
+    )) {
+    Assert-Contains -Text $gatewayResolver -Expected $token `
+        -Message "WSL baseline resolution is missing '$token'."
+}
+foreach ($token in @('GatewayPackagedRelease', 'PackagingRelease', 'Save-PackagedGatewayArchive', 'gateway-matrix.json')) {
+    Assert-NotContains -Text $gatewayResolver -Unexpected $token `
+        -Message 'WSL Latest resolution must not depend on native MSIX releases or downloads.'
+}
+foreach ($lane in @('setup_e2e', 'revocation_e2e', 'network_e2e')) {
+    Assert-Contains -Text $snapshot -Expected "steps.classify.outputs.$lane == 'true'" `
+        -Message 'Baseline resolution must run only when an E2E lane needs it.'
 }
 foreach ($proofName in @(
         "RealGateway_SystemRun_ExecutesThroughWindowsNodeMxcSandbox",
@@ -1058,6 +1101,55 @@ try {
         -RepoRoot $tempRoot
     if ($pushDecision -ne "true") {
         throw "Push and tag workflow runs must run the proof-pool regression."
+    }
+
+    $baselineCases = @(
+        @{ Name = 'valid'; Version = '2026.9.9'; Json = '{"version":"2026.9.9"}'; Succeeds = $true },
+        @{ Name = 'missing-version'; Version = ''; Json = '{"version":"2026.9.9"}'; Succeeds = $false },
+        @{ Name = 'missing-metadata'; Version = '2026.9.9'; Json = ''; Succeeds = $false },
+        @{ Name = 'malformed-metadata'; Version = '2026.9.9'; Json = '{invalid'; Succeeds = $false },
+        @{ Name = 'mismatched-version'; Version = '2026.9.9'; Json = '{"version":"2026.9.8"}'; Succeeds = $false }
+    )
+    $previousGatewayVersion = $env:OPENCLAW_E2E_GATEWAY_VERSION
+    $previousGatewayRelease = $env:GATEWAY_RELEASE_JSON
+    try {
+        foreach ($lane in $e2eLanes.Keys) {
+            $step = Get-StepBlock -Text (Get-JobBlock $lane) -Name 'Record exact Gateway baseline'
+            $body = ($step -split '(?m)^      run: \|\r?$', 2)[1] -replace '(?m)^        ', ''
+            $recordBaseline = [scriptblock]::Create($body)
+            foreach ($case in $baselineCases) {
+                $caseRoot = Join-Path $tempRoot "baselines\$lane\$($case.Name)"
+                New-Item -ItemType Directory -Path $caseRoot -Force | Out-Null
+                $env:OPENCLAW_E2E_GATEWAY_VERSION = $case.Version
+                $env:GATEWAY_RELEASE_JSON = $case.Json
+                $succeeded = $false
+                Push-Location $caseRoot
+                try {
+                    & $recordBaseline
+                    $succeeded = $true
+                }
+                catch {
+                    if ($case.Succeeds) { throw }
+                }
+                finally {
+                    Pop-Location
+                }
+                $artifact = Join-Path $caseRoot 'TestResults\E2E\gateway-release.json'
+                if ($succeeded -ne $case.Succeeds -or (Test-Path -LiteralPath $artifact) -ne $case.Succeeds) {
+                    throw "WSL baseline case '$($case.Name)' in '$lane' must fail closed before publishing invalid metadata."
+                }
+                if ($case.Succeeds) {
+                    $recorded = Get-Content -LiteralPath $artifact -Raw | ConvertFrom-Json
+                    if ($recorded.version -cne $case.Version) {
+                        throw "WSL baseline artifact in '$lane' did not retain the exact version."
+                    }
+                }
+            }
+        }
+    }
+    finally {
+        $env:OPENCLAW_E2E_GATEWAY_VERSION = $previousGatewayVersion
+        $env:GATEWAY_RELEASE_JSON = $previousGatewayRelease
     }
 } finally {
     if (Test-Path -LiteralPath $tempRoot) {

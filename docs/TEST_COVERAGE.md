@@ -132,6 +132,28 @@ proof must remain reported as blocked.
 
 ### CI impact fast paths
 
+The setup/connect, revocation recovery and network recovery E2E jobs each run once
+against npm Latest, matching normal WSL setup.
+`scripts\Resolve-CiGateway.ps1` resolves Latest once in change-classification and
+supplies the exact version to the existing candidate-version setup path, so setup
+and assertions use the same version even if the tag moves during a run. No npm
+resolution failure falls back to the Store or another channel. Each job's artifact
+includes `gateway-release.json` with the npm selector, exact version, integrity and
+tarball URL. Resolution runs only when E2E is selected, without downloading an MSIX
+or consulting native packaging releases. Every selected E2E job contributes to the
+existing CI Gate.
+
+These are real WSL Gateway-to-Windows-node lanes, not native MSIX runtime proof.
+There is no duplicate Packaged WSL lane and no native Latest/Packaged runtime matrix.
+Native unit/helper tests and upstream package build/install checks are not substitutes
+for live isolated-session startup, pairing and recovery on a capable Windows client.
+Native developer builds use the verified npm archive for Latest, or released app
+bytes and the release packaging commit for Packaged. `scripts\test-gateway-npm-release.ps1` covers
+channel selection, source/Store overrides, exact pins, archive integrity and
+provenance without network access or changing installed packages.
+`scripts\test-gateway-packaged-release.ps1` covers release/tag resolution, embedded
+payload identity, asset digest, extraction safety and inventory-verified cache reuse.
+
 The `change-classification` job emits explicit booleans for `core_tests`,
 `tray_tests`, `ui_tests`, `setup_e2e`, `revocation_e2e`, `network_e2e`,
 `x64_release`, `arm64_release`, and `full`. Jobs consume those outputs directly.

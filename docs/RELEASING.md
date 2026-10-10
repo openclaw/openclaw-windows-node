@@ -18,6 +18,38 @@ packages with their matching public certificates, provenance metadata, and
 installation instructions. Unsigned Store packages stay in Actions for manual
 Partner Center submission.
 
+## Gateway compatibility channels
+
+Keep Companion development and compatibility fixes on one branch. There is no
+separate `release/extended-stable` branch to synchronize. Native development
+defaults to npm `latest`; `-GatewayChannel Packaged` on
+`scripts\Build-NativeGatewayFromSource.ps1` or `run-app-local.ps1` selects the latest
+published `openclaw/openclaw-windows-packaging` release while retaining MSIX isolation.
+Use `-PackagingRelease <tag>` to select a specific native shipping baseline.
+Native Packaged reads the actual Gateway identity from the digest-verified released
+MSIX and reuses its application bytes, with a development launcher rebuilt from
+the exact packaging release commit. Do not infer the payload version from the
+MSIX tag or moving `release-policy.json`: packaging may ship an older Gateway
+under a newer MSIX version. GitHub publication does not establish Store rollout
+availability.
+
+WSL setup already follows npm `latest`, so its CI does not duplicate tests against
+the native packaging baseline. CI resolves npm Latest once per workflow and runs
+each selected setup/connect, revocation and network recovery job once against
+that exact version. Each job's `gateway-release.json` artifact records the npm
+selector, version, integrity and tarball URL. WSL CI does not download a packaging
+MSIX or accept a `packaging_release` input.
+
+Native Latest/Packaged runtime CI is still missing. Unit/helper and upstream
+packaging checks do not prove real isolated-session Gateway startup, pairing or
+recovery. That coverage requires a capability-qualified Windows client host and
+dedicated native runtime jobs, not a second WSL npm version. See the
+[development/CI matrix](../DEVELOPMENT.md#gateway-development-and-ci-matrix).
+
+Store Gateway packaging and release policy remain
+owned by `openclaw/openclaw-windows-packaging`; these development switches neither
+replace the installed Store package nor change WSL setup's npm-latest default.
+
 ## Inno-to-Store migration foundation
 
 Issue #1374 is delivered in two PRs: the preservation/startup foundation, then

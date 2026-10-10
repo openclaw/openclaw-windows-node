@@ -1,11 +1,11 @@
 ---
 name: native-gateway-from-source
-description: Build the native (MSIX, isolated-session) OpenClaw Gateway from the latest openclaw/openclaw sources (or any ref, local checkout, or prebuilt openclaw.tgz), register it side by side with the Microsoft Store Gateway, and run Companion against it with OPENCLAW_NATIVE_GATEWAY_DEV_PATCH. Use when the user asks to test Companion with Gateway main, an unreleased Gateway change, or a source-built native Gateway, or to remove such a build.
+description: Build the native MSIX isolated-session Gateway from npm latest, a published packaging release with -GatewayChannel Packaged, or explicit openclaw sources. Register it beside the Store Gateway and run Companion with OPENCLAW_NATIVE_GATEWAY_DEV_PATCH. Use for native Gateway development, release-channel compatibility, unreleased source changes, or removing a development Gateway.
 ---
 
 # Native Gateway from source
 
-`scripts\Build-NativeGatewayFromSource.ps1` builds OpenClaw from source, packages it with
+`scripts\Build-NativeGatewayFromSource.ps1` packages npm `latest` by default with
 `openclaw/openclaw-windows-packaging`, and registers a Developer Mode loose package named
 `OpenClawFoundation.OpenClawGateway-<patch>` with aliases `openclaw-<patch>.exe` and
 `clawctl-<patch>.exe`. A "patch" is a side-by-side identity slot (upstream
@@ -14,7 +14,9 @@ agent account, and Gateway port, and never touches the Store package.
 
 Companion uses the patch only when started with `OPENCLAW_NATIVE_GATEWAY_DEV_PATCH=<patch>`.
 Without it, Companion resolves the Store package and installs it with WinGet only when
-missing. See `docs/ONBOARDING_WIZARD.md` and `docs/ARCHITECTURE.md` (native Gateway section).
+missing. The local launcher now sets the development patch automatically; installed
+Companion behavior is unchanged. See `docs/ONBOARDING_WIZARD.md` and
+`docs/ARCHITECTURE.md` (native Gateway section).
 
 ## Prerequisites
 
@@ -24,11 +26,78 @@ Check before building; the script fails fast on most of these:
 - PowerShell 7.4 or later (`pwsh`). Windows PowerShell 5.1 cannot run the script.
 - git, .NET SDK 10.0.400 or later, Visual Studio Build Tools with C++ and the Windows SDK
   (the packaging repo builds NativeAOT executables).
-- Node.js 24.16 or later whose `process.platform/process.arch` is `win32/<OS arch>`.
-- pnpm with the same major as the source's `packageManager` (main uses pnpm 12):
+- For npm/source builds, Node.js satisfying the selected Gateway's engines requirement
+  (currently 24.16 or later) whose `process.platform/process.arch` is `win32/<OS arch>`.
+- For Packaged, authenticated GitHub CLI (`gh`). No local Node/pnpm build is needed;
+  deployment obtains the Node runtime version recorded in the released MSIX.
+- For explicit source builds only, pnpm with the same major as the source's `packageManager` (main uses pnpm 12):
   `npm install -g pnpm@<version>`. The script prints the exact version on mismatch.
 
-## Build and register the latest Gateway
+## Latest and Packaged development
+
+Use one Companion branch for both Gateway compatibility targets. Do not create or
+continually synchronize a `release/extended-stable` fork.
+
+```powershell
+.\run-app-local.ps1 -Isolated -AllowNonMain
+.\run-app-local.ps1 -Isolated -AllowNonMain -GatewayChannel Packaged
+.\run-app-local.ps1 -Isolated -AllowNonMain -GatewayChannel Packaged -PackagingRelease v2026.9.9-msix.0
+```
+
+The first command resolves npm `latest` and builds/registers patch `npm-latest`.
+The second selects the latest published packaging release and uses patch `packaged`.
+The third pins a specific published release. GitHub publication does not establish
+Store availability; select the known shipping release explicitly when needed. Both
+retain MSIX isolation and package through `openclaw/openclaw-windows-packaging`.
+The launcher uses separate worktree/channel data directories automatically and
+restores its environment after launch. The Store package is not updated or replaced.
+`-NoBuild` skips the Companion build, not Gateway resolution/packaging.
+
+To prepare only the native Gateway:
+
+```powershell
+.\scripts\Build-NativeGatewayFromSource.ps1
+.\scripts\Build-NativeGatewayFromSource.ps1 -GatewayChannel Packaged
+.\scripts\Build-NativeGatewayFromSource.ps1 -OpenClawNpmVersion 2026.8.35 -Patch pinned
+```
+
+Latest is resolved to an exact npm version on every build. Archive SHA-512
+integrity, package version and embedded build commit are verified before packaging.
+`source.json` records the selector, exact version, commit, npm integrity and archive
+SHA-256. For reproducible reruns, specify that exact npm version and a packaging
+commit with `-PackagingRef`. Cached archives are reverified before payload reuse.
+An incompatible or unavailable release fails explicitly, never falls back to Store
+or the other channel.
+
+Packaged verifies the published architecture-specific MSIX SHA-256 and reads its
+embedded package version, build commit/build ID and Node runtime. Never derive the
+Gateway version from the MSIX tag: packaging can ship an older payload under a newer
+MSIX identity. The helper reuses released `app` bytes, checks each file against the
+release inventory on extraction and cache reuse, and writes `packaging-release.json`.
+It checks out the exact packaging tag commit to build the side-by-side development
+launcher. This is released Gateway payload proof, not installation of the original
+signed MSIX. `-PackagingRef` and `-PackagingDirectory` cannot override Packaged's
+provenance. Pin with `-PackagingRelease`; `-Force` re-registers without changing
+the released payload bytes.
+
+Use `-UseStoreGateway` on the local launcher to test the installed Store runtime.
+An existing `OPENCLAW_NATIVE_GATEWAY_DEV_PATCH` selects that patch without rebuilding
+it; clear the variable before explicitly using `-GatewayChannel`.
+Neither flag changes WSL setup defaults. For a WSL version-specific setup, explicitly
+set `Gateway.Version` to the exact version.
+
+WSL CI follows npm Latest only, matching normal WSL setup. It resolves Latest once
+per workflow and runs each selected setup/connect, revocation and network recovery
+job once at that exact version via `OPENCLAW_E2E_GATEWAY_VERSION`. Each job's
+artifact contains `gateway-release.json`. CI does not download a native MSIX or
+duplicate WSL tests against Packaged.
+
+Native Latest/Packaged runtime CI is not implemented. Existing unit/helper and
+packaging checks do not prove live isolated-session startup, pairing or recovery;
+native runtime proof needs a capability-qualified Windows client host. See the
+Gateway development and CI matrix in the repository's `DEVELOPMENT.md`.
+
+## Build and register an explicit source ref
 
 ```powershell
 pwsh -File .\scripts\Build-NativeGatewayFromSource.ps1 -OpenClawRef main -Patch source
@@ -75,7 +144,7 @@ Use isolated tray data so the user's real settings and gateways are untouched:
 .\build.ps1
 $env:OPENCLAW_NATIVE_GATEWAY_DEV_PATCH = 'source'
 $env:OPENCLAW_FORCE_ONBOARDING = '1'
-.\run-app-local.ps1 -NoBuild -DataDir "$env:TEMP\oc-devgw-source"
+.\run-app-local.ps1 -NoBuild -AllowNonMain -DataDir "$env:TEMP\oc-devgw-source"
 ```
 
 In setup choose **Install a local native gateway**, then **Set up gateway**. Expected:
@@ -94,7 +163,9 @@ pick it up. Profiles created this way resolve only while the variable names the 
 pwsh -File .\scripts\Build-NativeGatewayFromSource.ps1 -Unregister -Patch source
 ```
 
-This runs `clawctl-source teardown --force` (removes the isolated session, Gateway records and
+Use `-Patch npm-latest` or `-Patch packaged` for the channel builds.
+Unregister always requires the explicit patch. This runs the selected patch's
+`clawctl-<patch> teardown --force` (removes the isolated session, Gateway records and
 agent profile), then unregisters. The Store package stays. Payloads and checkouts under the
 work root are kept; delete them manually only after unregistering. Pass the same
 `-WorkRoot`/`-PackagingDirectory`/`-Architecture` used to register, or the ownership check
