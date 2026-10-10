@@ -358,6 +358,13 @@ public sealed class ConfigPatchResult
     public string? RawResponse { get; init; }
 
     /// <summary>
+    /// True only when the gateway returned an explicit pre-commit rejection.
+    /// Transport failures, timeouts, and post-commit runtime errors leave the
+    /// commit outcome unknown and must not be treated as authoritative.
+    /// </summary>
+    public bool IsGatewayRejection { get; init; }
+
+    /// <summary>
     /// True when the gateway rejected the patch because our baseHash was
     /// stale (someone else changed the config out from under us). Pages
     /// should refresh the cached config and prompt the user to retry.

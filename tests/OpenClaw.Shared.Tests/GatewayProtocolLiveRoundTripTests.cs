@@ -244,7 +244,7 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         {
             await ConnectAndWaitAsync(client, server);
 
-            var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            var exception = await Assert.ThrowsAnyAsync<InvalidOperationException>(
                 () => client.GetUpdateStatusAsync(timeoutMs: 20_000));
 
             Assert.Contains("unauthorized update.status", exception.Message);

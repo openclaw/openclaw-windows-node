@@ -22,6 +22,18 @@ public sealed class GatewayDashboardUrlBuilderTests
     }
 
     [Fact]
+    public void Build_TrustedTailscaleAuthRemovesTokenFragmentAndPreservesOtherFields()
+    {
+        Assert.Equal("https://gateway.example/mount#view=compact&route=health",
+            GatewayDashboardUrlBuilder.Build(
+                "wss://gateway.example/mount/#token=old-token&view=compact&route=health",
+                null,
+                "unused",
+                appendSharedGatewayToken: true,
+                trustTailscaleAuth: true));
+    }
+
+    [Fact]
     public void Build_AppendsSharedTokenToDashboardRoot()
     {
         var url = GatewayDashboardUrlBuilder.Build("ws://localhost:4317", null, "shared token", appendSharedGatewayToken: true);

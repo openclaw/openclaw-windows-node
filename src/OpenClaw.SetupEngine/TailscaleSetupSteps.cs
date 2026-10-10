@@ -139,15 +139,21 @@ public static partial class TailscaleSetupPolicy
 
         foreach (var webEndpoint in web.EnumerateObject())
         {
-            if (!webEndpoint.Value.TryGetProperty("Handlers", out var handlers) || handlers.ValueKind != JsonValueKind.Object)
+            if (webEndpoint.Value.ValueKind != JsonValueKind.Object ||
+                !webEndpoint.Value.TryGetProperty("Handlers", out var handlers) ||
+                handlers.ValueKind != JsonValueKind.Object)
+            {
                 continue;
+            }
 
             foreach (var handler in handlers.EnumerateObject())
             {
                 if (handler.Value.ValueKind != JsonValueKind.Object ||
                     !handler.Value.TryGetProperty("Proxy", out var proxy) ||
                     proxy.ValueKind != JsonValueKind.String)
+                {
                     continue;
+                }
 
                 if (IsLoopbackGatewayProxy(proxy.GetString(), port))
                     return true;
@@ -157,9 +163,6 @@ public static partial class TailscaleSetupPolicy
         return false;
     }
 
-    // Serve status represents Funnel as AllowFunnel on current Tailscale
-    // versions. Accept the legacy Funnel spelling too so a version change
-    // cannot silently turn a public endpoint into an accepted setup state.
     private static bool HasEnabledFunnel(JsonElement root)
     {
         foreach (var property in root.EnumerateObject())
@@ -176,11 +179,10 @@ public static partial class TailscaleSetupPolicy
         JsonValueKind.True => true,
         JsonValueKind.False or JsonValueKind.Null or JsonValueKind.Undefined => false,
         JsonValueKind.Array => value.EnumerateArray().Any(ContainsEnabledFunnelValue),
-        JsonValueKind.Object => value.EnumerateObject().Any(property => ContainsEnabledFunnelValue(property.Value)),
-        // A non-empty string is a configured public endpoint in older status
-        // documents. Be conservative: setup must never accept it as private.
+        JsonValueKind.Object => value.EnumerateObject().Any(property =>
+            ContainsEnabledFunnelValue(property.Value)),
         JsonValueKind.String => !string.IsNullOrWhiteSpace(value.GetString()),
-        _ => false
+        _ => false,
     };
 
     private static bool IsLoopbackGatewayProxy(string? proxy, int port) =>

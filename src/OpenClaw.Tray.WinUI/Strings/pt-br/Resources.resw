@@ -5516,6 +5516,30 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="ConnectionPage_OpenDashboard" xml:space="preserve">
     <value>Abrir painel</value>
   </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthMenu" xml:space="preserve">
+    <value>Usar identidade Tailscale para o painel</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthTitle" xml:space="preserve">
+    <value>Usar a identidade do Tailscale no painel?</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthBody" xml:space="preserve">
+    <value>Isso habilita a autenticação verificada pela identidade do Tailscale neste gateway gerenciado. O token salvo, a identidade do dispositivo, a distribuição WSL e o pareamento permanecem inalterados.</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthEnable" xml:space="preserve">
+    <value>Ativar</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthEnabled" xml:space="preserve">
+    <value>Identidade do Tailscale para o painel ativada.</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailedFormat" xml:space="preserve">
+    <value>Não foi possível ativar a identidade do Tailscale para o painel: {0}</value>
+  </data>
+  <data name="DashboardLink_NoBrowserCompatibleCredential" xml:space="preserve">
+    <value>Nenhuma credencial de gateway compatível com o navegador está disponível</value>
+  </data>
+  <data name="DashboardLink_TailscaleRevalidationFailed" xml:space="preserve">
+    <value>Falha na revalidação da autenticação do painel pelo Tailscale</value>
+  </data>
   <data name="ConnectionPage_GatewayOptionsA11y" xml:space="preserve">
     <value>Opções de {0}</value>
   </data>

@@ -6,6 +6,69 @@ namespace OpenClaw.Tray.Tests;
 public sealed class ConnectionPageTailscaleRecoveryTests
 {
     [Fact]
+    public void SavedDashboardLaunch_DelegatesToSharedDashboardLinkService()
+    {
+        var source = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Pages",
+            "ConnectionPage.xaml.cs"));
+        var methodStart = source.IndexOf(
+            "private async Task OnSavedRowOpenDashboardAsync(object sender)",
+            StringComparison.Ordinal);
+        var methodEnd = source.IndexOf(
+            "private void OnEnableTailscaleDashboardAuth(object sender, RoutedEventArgs e)",
+            methodStart,
+            StringComparison.Ordinal);
+        Assert.True(methodStart >= 0 && methodEnd > methodStart);
+        var method = source[methodStart..methodEnd];
+
+        Assert.Contains("OpenDashboardFromLinkServiceAsync", method);
+        Assert.Contains("new GatewayDashboardLinkRequest(", method);
+        Assert.Contains("ValidateSavedDashboardFallbackAsync", method);
+        Assert.Contains("var recordSnapshot = rec with { }", method);
+        Assert.Contains("OnSavedRowOpenDashboardAsync(sender)", method);
+        Assert.DoesNotContain("RevalidateTailscaleDashboardAuthAsync", method);
+        Assert.DoesNotContain("GatewayDashboardUrlBuilder.Build(", method);
+
+        var validationStart = source.IndexOf(
+            "private async Task<bool> ValidateSavedDashboardFallbackAsync(",
+            methodStart,
+            StringComparison.Ordinal);
+        Assert.True(validationStart > methodStart);
+        var validationEnd = source.IndexOf(
+            "private void OnEnableTailscaleDashboardAuth(object sender, RoutedEventArgs e)",
+            validationStart,
+            StringComparison.Ordinal);
+        Assert.True(validationEnd > validationStart);
+        var validation = source[validationStart..validationEnd];
+
+        var credentialExportGuard = validation.IndexOf(
+            "if (!result.BrowserCredentialIncluded)",
+            StringComparison.Ordinal);
+        var bypassReturn = validation.IndexOf(
+            "return true;",
+            credentialExportGuard,
+            StringComparison.Ordinal);
+        var provenanceLookup = validation.IndexOf(
+            "ManagedLocalPortProvenance",
+            bypassReturn,
+            StringComparison.Ordinal);
+        var credentialAuthorization = validation.IndexOf(
+            "InteractiveEndpointAuthorizer?.IsCredentialAllowed",
+            provenanceLookup,
+            StringComparison.Ordinal);
+
+        Assert.True(credentialExportGuard >= 0);
+        Assert.True(bypassReturn > credentialExportGuard);
+        Assert.True(provenanceLookup > bypassReturn);
+        Assert.True(credentialAuthorization > provenanceLookup);
+        Assert.DoesNotContain("result.TrustTailscaleAuth", validation);
+        Assert.DoesNotContain("IsStrongCredentialAllowed", validation);
+    }
+
+    [Fact]
     public void NetworkFailure_ForManagedTailscaleGateway_UsesDedicatedRecoveryPlan()
     {
         var snapshot = new GatewayConnectionSnapshot
@@ -64,4 +127,5 @@ public sealed class ConnectionPageTailscaleRecoveryTests
         Assert.Equal(RecoveryCategory.Network, plan.Recovery);
         Assert.NotEqual("Tailscale gateway unavailable", plan.StripHeadline);
     }
+
 }

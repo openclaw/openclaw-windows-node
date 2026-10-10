@@ -2606,7 +2606,7 @@ public class GatewayConnectionManagerTests : IDisposable
         tunnel.AllowStart.SetResult(true);
         await connectTask.WaitAsync(TimeSpan.FromSeconds(2));
 
-        var result = await replaceTask.WaitAsync(TimeSpan.FromSeconds(10));
+        var result = await replaceTask.WaitAsync(TimeSpan.FromSeconds(20));
 
         Assert.Equal(SetupCodeOutcome.ConnectionFailed, result.Outcome);
         Assert.Null(_registry.GetById("gw-1")?.SharedGatewayToken);

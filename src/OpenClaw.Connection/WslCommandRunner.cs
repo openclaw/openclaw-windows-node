@@ -36,6 +36,19 @@ public interface IWslCommandRunner
         CancellationToken cancellationToken = default,
         IReadOnlyDictionary<string, string>? environment = null,
         string? standardInput = null);
+
+    Task<WslCommandResult> RunInDistroWithStandardInputAsync(
+        string name,
+        IReadOnlyList<string> command,
+        string standardInput,
+        CancellationToken cancellationToken = default,
+        IReadOnlyDictionary<string, string>? environment = null) =>
+        cancellationToken.IsCancellationRequested
+            ? Task.FromCanceled<WslCommandResult>(cancellationToken)
+            : Task.FromResult(new WslCommandResult(
+                -1,
+                string.Empty,
+                "This WSL command runner does not support standard input."));
 }
 
 /// <summary>
@@ -87,6 +100,14 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
             environment,
             standardInput);
     }
+
+    public Task<WslCommandResult> RunInDistroWithStandardInputAsync(
+        string name,
+        IReadOnlyList<string> command,
+        string standardInput,
+        CancellationToken cancellationToken = default,
+        IReadOnlyDictionary<string, string>? environment = null)
+        => RunInDistroAsync(name, command, cancellationToken, environment, standardInput);
 
     public Task<WslCommandResult> TerminateDistroAsync(string name, CancellationToken cancellationToken = default) =>
         RunAsync(["--terminate", name], cancellationToken);
@@ -173,6 +194,7 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
         var stderrTask = process.StandardError.ReadToEndAsync(timeoutCts.Token);
 
         bool timedOut = false;
+        OperationCanceledException? cancellationException = null;
         try
         {
             if (standardInput is not null)
@@ -208,16 +230,26 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
             // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
             try { process.Kill(entireProcessTree: true); } catch { }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
         {
             // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
             try { process.Kill(entireProcessTree: true); } catch { }
-            throw;
+            cancellationException = ex;
+        }
+
+        if (timedOut || cancellationException is not null)
+        {
+            using var exitCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            try { await process.WaitForExitAsync(exitCts.Token).ConfigureAwait(false); } catch { }
         }
 
         string stdout, stderr;
         try { stdout = await stdoutTask; } catch { stdout = string.Empty; }
         try { stderr = await stderrTask; } catch { stderr = string.Empty; }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        if (cancellationException is not null)
+            throw cancellationException;
 
         return timedOut
             ? new WslCommandResult(-1, stdout, "wsl.exe timed out", TimedOut: true)

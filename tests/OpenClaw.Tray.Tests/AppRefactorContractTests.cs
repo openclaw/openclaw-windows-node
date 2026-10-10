@@ -474,11 +474,22 @@ public sealed class AppRefactorContractTests
         var source = ReadAppSources();
         var method = ExtractMethod(source, "OpenDashboard");
 
-        Assert.Contains("new GatewayDashboardLauncher(", method);
-        Assert.Contains("EnsureSshTunnelConfigured,", method);
-        Assert.Contains("ShowDashboardLaunchFailureAsync", method);
+        Assert.Contains("CreateGatewayDashboardLauncher", method);
+        Assert.Contains("EnsureSshTunnelConfigured,", source);
+        Assert.Contains("ShowDashboardLaunchFailureAsync", source);
         Assert.DoesNotContain("GatewayDashboardUrlBuilder.Build", method);
         Assert.DoesNotContain("Process.Start", method);
+    }
+
+    [Fact]
+    public void DashboardLinkPolicy_StaysDelegatedToFocusedService()
+    {
+        var source = ReadAppSources();
+
+        Assert.Contains("GatewayDashboardLinkService", source);
+        Assert.DoesNotContain("OpenDashboardAfterTailscaleAuthRevalidationAsync", source);
+        Assert.DoesNotContain(".RevalidateTailscaleDashboardAuthAsync(active.Id)", source);
+        Assert.DoesNotContain("GatewayDashboardUrlBuilder.Build(", source);
     }
 
     [Fact]

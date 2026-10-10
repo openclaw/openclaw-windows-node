@@ -54,6 +54,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private GatewayConnectionManager? _connectionManager;
     internal InteractiveGatewayEndpointAuthorizer? InteractiveEndpointAuthorizer { get; private set; }
     private GatewayDirectConnectService? _gatewayDirectConnectService;
+    private GatewayDashboardLinkService? _gatewayDashboardLinkService;
     private GatewayRegistry? _gatewayRegistry;
     private OpenClawTray.Services.ManagedLocalGatewayAutoRepairMonitor? _managedLocalAutoRepairMonitor;
     private ManagedLocalGatewayPortProvenanceService? _managedLocalPortProvenance;
@@ -897,6 +898,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             endpointProvenanceProbe: managedLocalPortProvenance.InspectAsync,
             validationTunnelFactory: () => new SshTunnelService(appLogger),
             nativeGatewayRuntime: nativeGatewayRuntime);
+        _gatewayDashboardLinkService = new GatewayDashboardLinkService(
+            (gatewayId, cancellationToken) => _connectionManager.RevalidateTailscaleDashboardAuthAsync(
+                gatewayId,
+                cancellationToken),
+            LocalizationHelper.GetString);
         _connectionManager.OperatorClientChanged += OnOperatorClientChanged;
         _connectionManager.StateChanged += OnManagerStateChanged;
         _localAiGatewayLifecycle.Attach(_connectionManager, _localAiRuntime);
@@ -4017,19 +4023,76 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     {
         AsyncEventHandlerGuard.Run(async () =>
         {
-            var launcher = new GatewayDashboardLauncher(
-                EnsureSshTunnelConfigured,
-                () => TryResolveChatCredentials(out var url, out var token, out var source, out var bootstrap)
-                    ? new InteractiveGatewayCredential(url, token, bootstrap, source) : null,
-                async url => await global::Windows.System.Launcher.LaunchUriAsync(new Uri(url)),
-                () => AsyncEventHandlerGuard.Run(
-                    () => _windowManager?.ShowDashboardLaunchFailureAsync(
-                        () => OpenDashboard(path))
-                        ?? Task.CompletedTask, new AppLogger(), "Dashboard launch error"),
-                () => _appNotificationService?.Dismiss(GatewayDashboardLauncher.FailureNotificationId));
+            var service = _gatewayDashboardLinkService;
+            if (service is null)
+            {
+                ShowConnectionSettingsForPairingIssue("Dashboard", "Connection manager is not initialized");
+                return;
+            }
+
+            var launcher = CreateGatewayDashboardLauncher(
+                service,
+                ResolveActiveDashboardLinkRequest,
+                () => OpenDashboard(path));
             await launcher.OpenAsync(path);
         }, new AppLogger(), nameof(OpenDashboard));
     }
+
+    private GatewayDashboardLinkRequest? ResolveActiveDashboardLinkRequest(string? path)
+    {
+        if (!TryResolveChatCredentials(out var gatewayUrl, out var token, out var credentialSource, out var isBootstrapToken))
+            return null;
+
+        var appendBrowserCredential =
+            !isBootstrapToken && credentialSource == CredentialResolver.SourceSharedGatewayToken;
+        var active = _gatewayRegistry?.GetActive();
+        var tailscaleGatewayId = active?.TrustTailscaleAuth == true &&
+                                 string.Equals(active.Url, gatewayUrl, StringComparison.OrdinalIgnoreCase)
+            ? active.Id
+            : null;
+
+        return new GatewayDashboardLinkRequest(
+            gatewayUrl,
+            path,
+            token,
+            appendBrowserCredential,
+            tailscaleGatewayId);
+    }
+
+    internal async Task OpenDashboardFromLinkServiceAsync(
+        GatewayDashboardLinkRequest request,
+        Func<GatewayDashboardLinkResult, Task<bool>> validateBeforeLaunch,
+        Action retry)
+    {
+        var service = _gatewayDashboardLinkService;
+        if (service is null)
+        {
+            ShowConnectionSettingsForPairingIssue("Dashboard", "Connection manager is not initialized");
+            return;
+        }
+
+        var launcher = CreateGatewayDashboardLauncher(service, _ => request, retry);
+        await launcher.OpenSavedAsync(request, validateBeforeLaunch);
+    }
+
+    private GatewayDashboardLauncher CreateGatewayDashboardLauncher(
+        GatewayDashboardLinkService service,
+        Func<string?, GatewayDashboardLinkRequest?> resolveRequest,
+        Action retry) =>
+        new(
+            EnsureSshTunnelConfigured,
+            resolveRequest,
+            service,
+            async url => await global::Windows.System.Launcher.LaunchUriAsync(new Uri(url)),
+            result => ShowConnectionSettingsForPairingIssue(
+                "Dashboard",
+                result.Error ?? "Dashboard URL is unavailable"),
+            () => AsyncEventHandlerGuard.Run(
+                () => _windowManager?.ShowDashboardLaunchFailureAsync(retry) ?? Task.CompletedTask,
+                new AppLogger(),
+                "Dashboard launch error"),
+            () => _appNotificationService?.Dismiss(GatewayDashboardLauncher.FailureNotificationId),
+            warning => Logger.Warn(warning));
 
     // ── IAppCommands implementation ─────────────────────────────────────
 
