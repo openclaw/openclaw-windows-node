@@ -17,6 +17,7 @@ public sealed class GatewayDashboardLinkServiceTests
         var result = await service.BuildAsync(Request());
 
         Assert.True(result.Success);
+        Assert.True(result.BrowserCredentialIncluded);
         Assert.Contains("token=shared-token", result.Url);
         Assert.Equal(0, revalidationCalls);
     }
@@ -30,6 +31,7 @@ public sealed class GatewayDashboardLinkServiceTests
 
         Assert.True(result.Success);
         Assert.True(result.TrustTailscaleAuth);
+        Assert.False(result.BrowserCredentialIncluded);
         Assert.DoesNotContain("token=", result.Url);
     }
 
@@ -42,6 +44,7 @@ public sealed class GatewayDashboardLinkServiceTests
 
         Assert.True(result.Success);
         Assert.False(result.TrustTailscaleAuth);
+        Assert.True(result.BrowserCredentialIncluded);
         Assert.Contains("token=shared-token", result.Url);
     }
 
@@ -55,6 +58,7 @@ public sealed class GatewayDashboardLinkServiceTests
             tailscaleGatewayId: null));
 
         Assert.True(result.Success);
+        Assert.False(result.BrowserCredentialIncluded);
         Assert.NotNull(result.Url);
         Assert.DoesNotContain("token=", result.Url);
     }

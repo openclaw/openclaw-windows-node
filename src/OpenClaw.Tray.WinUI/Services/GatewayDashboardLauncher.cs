@@ -16,8 +16,9 @@ internal sealed class GatewayDashboardLauncher(
 {
     internal const string FailureNotificationId = "setup-dashboard-launch";
 
-    public async Task<bool> OpenAsync(string? path = null)
+    public async Task<bool> OpenAsync(string? path = null, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         GatewayDashboardLinkRequest? request;
         try
         {
@@ -37,23 +38,27 @@ internal sealed class GatewayDashboardLauncher(
             return false;
         }
 
-        return await PrepareAndLaunchAsync(request, validateBeforeLaunch: null);
+        return await PrepareAndLaunchAsync(request, validateBeforeLaunch: null, cancellationToken: cancellationToken);
     }
 
     internal Task<bool> OpenSavedAsync(
         GatewayDashboardLinkRequest request,
-        Func<GatewayDashboardLinkResult, Task<bool>> validateBeforeLaunch)
+        Func<GatewayDashboardLinkResult, Task<bool>> validateBeforeLaunch,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(validateBeforeLaunch);
-        return PrepareAndLaunchAsync(request, validateBeforeLaunch);
+        return PrepareAndLaunchAsync(request, validateBeforeLaunch, cancellationToken);
     }
 
     private async Task<bool> PrepareAndLaunchAsync(
         GatewayDashboardLinkRequest request,
-        Func<GatewayDashboardLinkResult, Task<bool>>? validateBeforeLaunch)
+        Func<GatewayDashboardLinkResult, Task<bool>>? validateBeforeLaunch,
+        CancellationToken cancellationToken)
     {
-        var result = await linkService.BuildAsync(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        var result = await linkService.BuildAsync(request, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
         if (result.RevalidationError is not null)
             reportRevalidationWarning?.Invoke(result.RevalidationError);
 
@@ -63,8 +68,11 @@ internal sealed class GatewayDashboardLauncher(
             return false;
         }
 
-        if (validateBeforeLaunch is not null && !await validateBeforeLaunch(result))
+        cancellationToken.ThrowIfCancellationRequested();
+        if (result.BrowserCredentialIncluded && validateBeforeLaunch is not null &&
+            !await validateBeforeLaunch(result))
             return false;
+        cancellationToken.ThrowIfCancellationRequested();
 
         try
         {

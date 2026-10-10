@@ -27,6 +27,8 @@ public sealed class ConnectionPageTailscaleRecoveryTests
         Assert.Contains("OpenDashboardFromLinkServiceAsync", method);
         Assert.Contains("new GatewayDashboardLinkRequest(", method);
         Assert.Contains("ValidateSavedDashboardFallbackAsync", method);
+        Assert.Contains("var recordSnapshot = rec with { }", method);
+        Assert.Contains("OnSavedRowOpenDashboardAsync(sender)", method);
         Assert.DoesNotContain("RevalidateTailscaleDashboardAuthAsync", method);
         Assert.DoesNotContain("GatewayDashboardUrlBuilder.Build(", method);
 
@@ -42,26 +44,28 @@ public sealed class ConnectionPageTailscaleRecoveryTests
         Assert.True(validationEnd > validationStart);
         var validation = source[validationStart..validationEnd];
 
-        var tailscaleBypass = validation.IndexOf(
-            "if (result.TrustTailscaleAuth)",
+        var credentialExportGuard = validation.IndexOf(
+            "if (!result.BrowserCredentialIncluded)",
             StringComparison.Ordinal);
         var bypassReturn = validation.IndexOf(
             "return true;",
-            tailscaleBypass,
+            credentialExportGuard,
             StringComparison.Ordinal);
         var provenanceLookup = validation.IndexOf(
             "ManagedLocalPortProvenance",
             bypassReturn,
             StringComparison.Ordinal);
         var credentialAuthorization = validation.IndexOf(
-            "IsStrongCredentialAllowed",
+            "InteractiveEndpointAuthorizer?.IsCredentialAllowed",
             provenanceLookup,
             StringComparison.Ordinal);
 
-        Assert.True(tailscaleBypass >= 0);
-        Assert.True(bypassReturn > tailscaleBypass);
+        Assert.True(credentialExportGuard >= 0);
+        Assert.True(bypassReturn > credentialExportGuard);
         Assert.True(provenanceLookup > bypassReturn);
         Assert.True(credentialAuthorization > provenanceLookup);
+        Assert.DoesNotContain("result.TrustTailscaleAuth", validation);
+        Assert.DoesNotContain("IsStrongCredentialAllowed", validation);
     }
 
     [Fact]

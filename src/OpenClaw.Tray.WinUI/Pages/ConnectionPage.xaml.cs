@@ -2604,7 +2604,7 @@ public sealed partial class ConnectionPage : Page
         GatewayRecord record,
         GatewayDashboardLinkResult result)
     {
-        if (result.TrustTailscaleAuth)
+        if (!result.BrowserCredentialIncluded)
         {
             return true;
         }

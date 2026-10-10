@@ -13,7 +13,8 @@ public sealed record GatewayDashboardLinkResult(
     string? Url,
     bool TrustTailscaleAuth,
     string? Error = null,
-    string? RevalidationError = null)
+    string? RevalidationError = null,
+    bool BrowserCredentialIncluded = false)
 {
     public bool Success => Url is not null && Error is null;
 }
@@ -77,6 +78,10 @@ public sealed class GatewayDashboardLinkService
                 RevalidationError: revalidationError);
         }
 
+        // Match the URL builder's exact append predicate so only credential-bearing URLs need authorization.
+        var browserCredentialIncluded = request.AppendBrowserCredential &&
+            !trustTailscaleAuth &&
+            !string.IsNullOrEmpty(request.BrowserCredential);
         var url = GatewayDashboardUrlBuilder.Build(
             request.GatewayUrl,
             request.Path,
@@ -87,6 +92,7 @@ public sealed class GatewayDashboardLinkService
         return new GatewayDashboardLinkResult(
             url,
             trustTailscaleAuth,
-            RevalidationError: revalidationError);
+            RevalidationError: revalidationError,
+            BrowserCredentialIncluded: browserCredentialIncluded);
     }
 }
