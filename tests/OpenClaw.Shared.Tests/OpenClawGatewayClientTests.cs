@@ -2608,6 +2608,43 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void ParseChatHistoryPayload_OpenClawMedia_PreservesUserImageBesideCaption()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var history = helper.ParseChatHistoryPayload("""
+        {
+          "messages": [
+            {
+              "role": "user",
+              "content": "see this\rphoto",
+              "timestamp": 1,
+              "__openclaw": {
+                "id": "msg-photo",
+                "seq": 5,
+                "media": [
+                  {
+                    "url": "media://inbound/ocwn-1634---aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.png",
+                    "contentType": "image/png",
+                    "kind": "image",
+                    "fileName": "ocwn-1634.png"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+        """);
+
+        var message = Assert.Single(history.Messages);
+        Assert.Equal("see this\rphoto", message.Text);
+        var media = Assert.Single(message.ContentParts, part => part.Kind == ChatMessageContentPartKind.Media);
+        Assert.Equal(ChatMediaContentKind.Image, media.Media?.Kind);
+        Assert.Equal("image/png", media.Media?.MimeType);
+        Assert.Equal("ocwn-1634.png", media.Media?.FileName);
+    }
+
+    [Fact]
     public void ParseChatHistoryPayload_CompactionMetadata_PreservesBoundaryDetails()
     {
         var helper = new GatewayClientTestHelper();

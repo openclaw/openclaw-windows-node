@@ -13074,6 +13074,40 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public void AttachmentMetadata_MultilineCaption_MatchesTheHistoryText()
+    {
+        using var tempDir = new TempDirectory();
+        var toolPath = Path.Combine(tempDir.DirectoryPath, "tool-metadata.json");
+        var attachmentPath = Path.Combine(tempDir.DirectoryPath, "attachment-metadata.json");
+        using (var store = new ChatMetadataStore(toolPath, attachmentPath, _ => { }))
+        {
+            store.CacheAttachments(
+                "thread-1",
+                "session-1",
+                0,
+                "see this\nphoto",
+                [new ChatAttachment
+                {
+                    Type = "image",
+                    MimeType = "image/png",
+                    FileName = "photo.png",
+                    Content = Convert.ToBase64String([1]),
+                    SizeBytes = 1,
+                }],
+                5_000);
+        }
+
+        var entries = ChatMetadataStore.LoadAttachmentMetaCache(attachmentPath)["session-1"];
+        var signature = GatewayMediaMessageProjection.BuildAttachmentCorrelationSignature(
+            ChatMetadataStore.CreatePersistedLocalPresentations(entries[0].Attachments));
+        var match = new AttachmentMetaMatcher(entries).TryMatch("see this\nphoto", signature, 5_000);
+
+        Assert.NotNull(match);
+        Assert.Equal("photo.png", match!.Attachments[0].FileName);
+        Assert.Contains("\n", match.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task AttachmentMetadata_PersistsAndRehydratesMultipleAttachments()
     {
         using var tempDir = new TempDirectory();

@@ -19,6 +19,31 @@ internal sealed record ChatHistoryLoadResult(
 /// </summary>
 internal sealed class ChatHistoryLoader : IDisposable
 {
+    private static IReadOnlyList<ChatAttachmentPresentation> HistoryMediaPresentations(
+        ChatMessageInfo message)
+    {
+        var presentations = new List<ChatAttachmentPresentation>();
+        foreach (var part in message.ContentParts)
+        {
+            if (part.Kind != ChatMessageContentPartKind.Media || part.Media is not { } media)
+                continue;
+
+            var mimeType = GatewayMediaMessageProjection.NormalizeMimeType(media.MimeType);
+            var isImage = media.Kind == ChatMediaContentKind.Image ||
+                mimeType.StartsWith("image/", StringComparison.Ordinal);
+            var name = GatewayMediaMessageProjection.NormalizeDisplayFileName(media.FileName);
+            if (name.Length == 0)
+                name = isImage ? "image" : "attachment";
+            presentations.Add(new ChatAttachmentPresentation(
+                ChatAttachmentOrigin.GatewayReference,
+                name,
+                mimeType,
+                isImage));
+        }
+
+        return presentations;
+    }
+
     private readonly record struct PendingReload(
         ChatHistoryCommitToken Token,
         bool Replacement);
@@ -594,6 +619,15 @@ internal sealed class ChatHistoryLoader : IDisposable
             var userProjection = role == "user"
                 ? GatewayMediaMessageProjection.Project(rawText)
                 : null;
+            if (userProjection is { Attachments.Count: 0 } &&
+                !string.IsNullOrEmpty(rawText))
+            {
+                var historyMedia = HistoryMediaPresentations(message);
+                if (historyMedia.Count > 0)
+                {
+                    userProjection = userProjection with { Attachments = historyMedia };
+                }
+            }
             var entryMetadata = new ChatEntryMetadata(
                 message.Ts > 0
                     ? DateTimeOffset.FromUnixTimeMilliseconds(message.Ts).ToLocalTime()
