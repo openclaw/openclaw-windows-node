@@ -160,6 +160,9 @@ Exact head: [HEAD]. Base or previously reviewed head: [BASE].
 
 Focus on bugs, security issues, race conditions, and correctness problems.
 Ignore style and formatting.
+Write every review comment in simplified technical English. Use short sentences
+and common words, explain necessary technical terms, and avoid jargon or
+unnecessary detail.
 
 [FULL CODE OR DIFF HERE]
 
