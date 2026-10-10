@@ -2566,21 +2566,84 @@ public sealed partial class ConnectionPage : Page
     private async Task OnSavedRowOpenDashboardAsync(object sender)
     {
         if (sender is not MenuFlyoutItem item || item.Tag is not string gwId) return;
-        var rec = _gatewayRegistry?.GetById(gwId);
-        if (rec == null) return;
+        var pinned = _gatewayRegistry?.GetById(gwId);
+        if (pinned == null) return;
         try
         {
-            if (!string.IsNullOrWhiteSpace(rec.SharedGatewayToken))
+            var listenerOwned = false;
+            if (pinned.SshTunnel is { } ssh)
+                listenerOwned = await CurrentApp.IsDashboardListenerOwnedAsync(ssh);
+
+            if (!CurrentApp.DashboardPinStillMatches(pinned))
+            {
+                CurrentApp.ShowTransientConnectionError(DashboardCredentialGate.PinMismatchMessage);
+                return;
+            }
+
+            if (!GatewayClientEndpointResolver.TryResolveDashboardEndpoint(
+                    pinned,
+                    CurrentApp.CaptureSshTunnelSnapshot(),
+                    out var endpoint,
+                    out var appendSharedToken,
+                    listenerOwned))
+            {
+                CurrentApp.ShowTransientConnectionError(
+                    "Dashboard blocked because the SSH tunnel is not up.");
+                return;
+            }
+
+            string? dashboardToken = pinned.SharedGatewayToken;
+            var appendDashboardToken = appendSharedToken;
+            if (pinned.SshTunnel is not null)
+            {
+                if (!CurrentApp.TryResolvePinnedDashboardCredential(
+                        pinned,
+                        out var resolvedToken,
+                        out var credentialSource,
+                        out var isBootstrapToken,
+                        out var pinMismatch))
+                {
+                    CurrentApp.ShowTransientConnectionError(pinMismatch
+                        ? DashboardCredentialGate.PinMismatchMessage
+                        : "Gateway URL or credential is not configured");
+                    return;
+                }
+
+                var decision = DashboardCredentialGate.Decide(
+                    CurrentApp.DashboardPinStillMatches(pinned),
+                    samePinnedRecord: true,
+                    appendSharedToken,
+                    credentialSource,
+                    isBootstrapToken,
+                    resolvedToken,
+                    pinned.SharedGatewayToken);
+                if (decision.PinMismatch)
+                {
+                    CurrentApp.ShowTransientConnectionError(DashboardCredentialGate.PinMismatchMessage);
+                    return;
+                }
+
+                dashboardToken = decision.Token;
+                appendDashboardToken = decision.AppendToken &&
+                    !isBootstrapToken &&
+                    credentialSource == CredentialResolver.SourceSharedGatewayToken;
+            }
+            else if (appendSharedToken)
             {
                 var provenanceService = CurrentApp.ManagedLocalPortProvenance;
                 if (provenanceService is null)
                     return;
-                _ = await provenanceService.InspectAsync(rec);
+                _ = await provenanceService.InspectAsync(pinned);
+                if (!CurrentApp.DashboardPinStillMatches(pinned))
+                {
+                    CurrentApp.ShowTransientConnectionError(DashboardCredentialGate.PinMismatchMessage);
+                    return;
+                }
                 var candidate = new GatewayCredential(
-                    rec.SharedGatewayToken!,
+                    pinned.SharedGatewayToken!,
                     IsBootstrapToken: false,
                     CredentialResolver.SourceSharedGatewayToken);
-                if (CurrentApp.InteractiveEndpointAuthorizer?.IsCredentialAllowed(rec, candidate) != true)
+                if (CurrentApp.InteractiveEndpointAuthorizer?.IsCredentialAllowed(pinned, candidate) != true)
                 {
                     CurrentApp.ShowTransientConnectionError(
                         "Dashboard blocked because the saved gateway address is not owned by the verified managed gateway.");
@@ -2589,16 +2652,51 @@ public sealed partial class ConnectionPage : Page
             }
 
             var url = GatewayDashboardUrlBuilder.Build(
-                rec.Url,
+                endpoint,
                 path: null,
-                rec.SharedGatewayToken,
-                appendSharedGatewayToken: !string.IsNullOrWhiteSpace(rec.SharedGatewayToken));
-            await global::Windows.System.Launcher.LaunchUriAsync(new Uri(url));
+                dashboardToken,
+                appendSharedGatewayToken: appendDashboardToken);
+            if (pinned.SshTunnel is { } launchSsh &&
+                !await SavedDashboardListenerStillOwnedAsync(pinned, launchSsh))
+                return;
+            var launchUrl = pinned.SshTunnel is null
+                ? url
+                : DashboardCredentialHandoff.Start(
+                    () => SavedDashboardListenerStillOwnedAsync(pinned, pinned.SshTunnel),
+                    url,
+                    Uri.TryCreate(pinned.Url, UriKind.Absolute, out var savedUri) ? savedUri.Host : null,
+                    pinned.Id);
+            await global::Windows.System.Launcher.LaunchUriAsync(new Uri(launchUrl));
         }
         catch (Exception ex)
         {
             Services.Logger.Warn($"[ConnectionPage] Failed to open saved gateway dashboard: {ex.Message}");
         }
+    }
+
+    private async Task<bool> SavedDashboardListenerStillOwnedAsync(GatewayRecord pinned, SshTunnelConfig ssh)
+    {
+        if (!CurrentApp.DashboardPinStillMatches(pinned))
+        {
+            CurrentApp.ShowTransientConnectionError(DashboardCredentialGate.PinMismatchMessage);
+            return false;
+        }
+
+        var listenerOwned = await CurrentApp.IsDashboardListenerOwnedAsync(ssh);
+        if (!listenerOwned ||
+            !GatewayClientEndpointResolver.TryResolveDashboardEndpoint(
+                pinned,
+                CurrentApp.CaptureSshTunnelSnapshot(),
+                out _,
+                out _,
+                listenerOwned))
+        {
+            CurrentApp.ShowTransientConnectionError(
+                "Dashboard blocked because the SSH tunnel is not up.");
+            return false;
+        }
+
+        return true;
     }
 
     private void OnSavedRowEdit(object sender, RoutedEventArgs e)

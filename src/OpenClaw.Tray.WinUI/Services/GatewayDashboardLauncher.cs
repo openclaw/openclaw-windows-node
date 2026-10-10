@@ -37,6 +37,43 @@ internal sealed class GatewayDashboardLauncher(
         return true;
     }
 
+    public async Task<bool> OpenPreparedAsync(
+        string url,
+        Func<Task<bool>>? confirmReady = null,
+        string? tlsHost = null,
+        string? originKey = null)
+    {
+        // The ownership check that built this URL can be stale by the time the
+        // browser starts. Refuse the launch when that check no longer holds.
+        if (confirmReady is not null && !await confirmReady())
+            return false;
+
+        // The browser receives a loopback page with no credential. The credential
+        // is released only when that page is requested and ownership still holds.
+        var launchUrl = confirmReady is null
+            ? url
+            : DashboardCredentialHandoff.Start(confirmReady, url, tlsHost, originKey);
+        return await OpenUrlAsync(launchUrl);
+    }
+
+    private async Task<bool> OpenUrlAsync(string url)
+    {
+        try
+        {
+            if (!await launchBrowser(url))
+                throw new InvalidOperationException("Windows did not open the Dashboard.");
+        }
+        catch (Exception ex) when (IsExpectedLaunchFailure(ex))
+        {
+            // Browser failures can include the full credential-bearing URL. Do not log them.
+            reportFailure();
+            return false;
+        }
+
+        reportOpened?.Invoke();
+        return true;
+    }
+
     private static bool IsExpectedLaunchFailure(Exception error) =>
         error is InvalidOperationException or IOException or UnauthorizedAccessException or
             ArgumentException or Win32Exception or COMException;

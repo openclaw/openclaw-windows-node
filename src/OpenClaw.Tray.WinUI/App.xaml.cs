@@ -151,6 +151,74 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     /// Ensures the managed SSH tunnel is started using the current settings.
     /// Used by connection settings when the user picks the SSH topology.
     /// </summary>
+    internal SshTunnelSnapshot? CaptureSshTunnelSnapshot() =>
+        _sshTunnelService?.CreateSnapshot();
+
+    internal Task<bool> IsDashboardListenerOwnedAsync(SshTunnelConfig config) =>
+        _sshTunnelService?.IsOwnedListenerReadyAsync(config, config.LocalPort, CancellationToken.None)
+        ?? Task.FromResult(false);
+
+    internal bool DashboardPinStillMatches(GatewayRecord pinned)
+    {
+        var current = _gatewayRegistry?.GetById(pinned.Id);
+        return current is not null
+            && string.Equals(current.Id, pinned.Id, StringComparison.Ordinal)
+            && string.Equals(current.SharedGatewayToken, pinned.SharedGatewayToken, StringComparison.Ordinal)
+            && string.Equals(current.BootstrapToken, pinned.BootstrapToken, StringComparison.Ordinal)
+            && string.Equals(current.Url, pinned.Url, StringComparison.OrdinalIgnoreCase)
+            && current.SshTunnel == pinned.SshTunnel;
+    }
+
+    internal bool TryResolvePinnedDashboardCredential(
+        GatewayRecord pinned,
+        out string token,
+        out string credentialSource,
+        out bool isBootstrapToken,
+        out bool pinMismatch)
+    {
+        token = string.Empty;
+        credentialSource = "none";
+        isBootstrapToken = false;
+        pinMismatch = false;
+
+        if (!DashboardPinStillMatches(pinned))
+        {
+            pinMismatch = true;
+            return false;
+        }
+
+        if (_gatewayRegistry is null || _settings is null)
+            return false;
+
+        var identityDirectory = _gatewayRegistry.GetIdentityDirectory(pinned.Id);
+        var resolved = InteractiveGatewayCredentialResolver.TryResolveRecord(
+            pinned,
+            identityDirectory,
+            DeviceIdentityFileReader.Instance,
+            (record, candidate) =>
+                InteractiveEndpointAuthorizer?.IsCredentialAllowed(record, candidate) == true,
+            out var credential,
+            out _);
+
+        if (!DashboardPinStillMatches(pinned))
+        {
+            token = string.Empty;
+            credentialSource = "none";
+            isBootstrapToken = false;
+            pinMismatch = true;
+            Logger.Warn("Dashboard pin mismatch after credential resolution; refusing token URL.");
+            return false;
+        }
+
+        if (!resolved || credential is null)
+            return false;
+
+        token = credential.Token;
+        credentialSource = credential.Source;
+        isBootstrapToken = credential.IsBootstrapToken;
+        return true;
+    }
+
     public void EnsureSshTunnelStarted()
     {
         if (_sshTunnelService == null || _settings == null)
@@ -4017,6 +4085,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     {
         AsyncEventHandlerGuard.Run(async () =>
         {
+            if (_gatewayRegistry?.GetActive()?.SshTunnel is not null)
+            {
+                await OpenDashboardAsync(path);
+                return;
+            }
+
             var launcher = new GatewayDashboardLauncher(
                 EnsureSshTunnelConfigured,
                 () => TryResolveChatCredentials(out var url, out var token, out var source, out var bootstrap)
@@ -4029,6 +4103,157 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 () => _appNotificationService?.Dismiss(GatewayDashboardLauncher.FailureNotificationId));
             await launcher.OpenAsync(path);
         }, new AppLogger(), nameof(OpenDashboard));
+    }
+
+    private async Task OpenDashboardAsync(string? path = null)
+    {
+        if (_settings == null) return;
+
+        var pinned = _gatewayRegistry?.GetActive();
+        if (pinned?.SshTunnel is { } ssh)
+        {
+            var listenerOwned = await IsDashboardListenerOwnedAsync(ssh);
+            if (!TryResolvePinnedDashboardCredential(
+                    pinned,
+                    out var tunnelToken,
+                    out var tunnelCredentialSource,
+                    out var tunnelIsBootstrapToken,
+                    out var pinMismatch))
+            {
+                if (pinMismatch)
+                {
+                    Logger.Warn("Dashboard pin mismatch; refusing token URL.");
+                    _toastService?.ShowToast(new ToastContentBuilder()
+                        .AddText("Dashboard")
+                        .AddText(DashboardCredentialGate.PinMismatchMessage));
+                }
+                else
+                {
+                    ShowConnectionSettingsForPairingIssue(
+                        "Dashboard",
+                        "Gateway URL or credential is not configured");
+                }
+
+                return;
+            }
+
+            if (!GatewayClientEndpointResolver.TryResolveDashboardEndpoint(
+                    pinned,
+                    _sshTunnelService?.CreateSnapshot(),
+                    out var tunnelEndpoint,
+                    out var appendSharedToken,
+                    listenerOwned))
+            {
+                _toastService?.ShowToast(new ToastContentBuilder()
+                    .AddText("SSH tunnel")
+                    .AddText("Dashboard blocked because the SSH tunnel is not up."));
+                return;
+            }
+
+            var decision = DashboardCredentialGate.Decide(
+                DashboardPinStillMatches(pinned),
+                samePinnedRecord: true,
+                appendSharedToken,
+                tunnelCredentialSource,
+                tunnelIsBootstrapToken,
+                tunnelToken,
+                pinned.SharedGatewayToken);
+            if (decision.PinMismatch)
+            {
+                Logger.Warn("Dashboard pin mismatch; refusing token URL.");
+                _toastService?.ShowToast(new ToastContentBuilder()
+                    .AddText("Dashboard")
+                    .AddText(DashboardCredentialGate.PinMismatchMessage));
+                return;
+            }
+
+            await LaunchPreparedDashboardAsync(GatewayDashboardUrlBuilder.Build(
+                tunnelEndpoint,
+                path,
+                decision.Token,
+                decision.AppendToken &&
+                !tunnelIsBootstrapToken &&
+                tunnelCredentialSource == CredentialResolver.SourceSharedGatewayToken), path, pinned, ssh);
+            return;
+        }
+
+        if (!EnsureSshTunnelConfigured())
+        {
+            _toastService?.ShowToast(new ToastContentBuilder()
+                .AddText("SSH tunnel")
+                .AddText(_sshTunnelService?.LastError ?? "Check SSH tunnel settings and logs."));
+            return;
+        }
+
+        if (!TryResolveChatCredentials(out var gatewayUrl, out var token, out var credentialSource, out var isBootstrapToken))
+        {
+            ShowConnectionSettingsForPairingIssue(
+                "Dashboard",
+                "Gateway URL or credential is not configured");
+            return;
+        }
+
+        await LaunchPreparedDashboardAsync(GatewayDashboardUrlBuilder.Build(
+            gatewayUrl,
+            path,
+            token,
+            !isBootstrapToken && credentialSource == CredentialResolver.SourceSharedGatewayToken), path);
+    }
+
+    private Task LaunchPreparedDashboardAsync(
+        string url,
+        string? path,
+        GatewayRecord? issued = null,
+        SshTunnelConfig? issuedTunnel = null)
+    {
+        var launcher = new GatewayDashboardLauncher(
+            () => true,
+            () => null,
+            async target => await global::Windows.System.Launcher.LaunchUriAsync(new Uri(target)),
+            () => AsyncEventHandlerGuard.Run(
+                () => _windowManager?.ShowDashboardLaunchFailureAsync(() => OpenDashboard(path))
+                    ?? Task.CompletedTask,
+                new AppLogger(),
+                "Dashboard launch error"),
+            () => _appNotificationService?.Dismiss(GatewayDashboardLauncher.FailureNotificationId));
+        Func<Task<bool>>? confirm = issued is not null && issuedTunnel is not null
+            ? () => ConfirmIssuedDashboardListenerAsync(issued, issuedTunnel)
+            : null;
+        var tlsHost = issued is not null && Uri.TryCreate(issued.Url, UriKind.Absolute, out var issuedUri)
+            ? issuedUri.Host
+            : null;
+        return launcher.OpenPreparedAsync(url, confirm, tlsHost, issued?.Id);
+    }
+
+    private async Task<bool> ConfirmIssuedDashboardListenerAsync(
+        GatewayRecord issued,
+        SshTunnelConfig issuedTunnel)
+    {
+        if (!DashboardIssuedBinding.Matches(issued, issuedTunnel, _gatewayRegistry?.GetActive()) ||
+            !DashboardPinStillMatches(issued))
+        {
+            _toastService?.ShowToast(new ToastContentBuilder()
+                .AddText("Dashboard")
+                .AddText(DashboardCredentialGate.PinMismatchMessage));
+            return false;
+        }
+
+        var listenerOwned = await IsDashboardListenerOwnedAsync(issuedTunnel);
+        if (!listenerOwned ||
+            !GatewayClientEndpointResolver.TryResolveDashboardEndpoint(
+                issued,
+                _sshTunnelService?.CreateSnapshot(),
+                out _,
+                out _,
+                listenerOwned))
+        {
+            _toastService?.ShowToast(new ToastContentBuilder()
+                .AddText("SSH tunnel")
+                .AddText("Dashboard blocked because the SSH tunnel is not up."));
+            return false;
+        }
+
+        return true;
     }
 
     // ── IAppCommands implementation ─────────────────────────────────────

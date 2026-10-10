@@ -482,6 +482,78 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void Dashboard_PinnedCredentialUsesHttpResolverBetweenPinChecks()
+    {
+        var method = ExtractMethod(ReadAppSources(), "TryResolvePinnedDashboardCredential");
+
+        // Retire when the WinUI adapter can be invoked directly by a unit test.
+        AssertInOrder(method,
+            "DashboardPinStillMatches(pinned)",
+            "_gatewayRegistry.GetIdentityDirectory(pinned.Id)",
+            "InteractiveGatewayCredentialResolver.TryResolveRecord(",
+            "DeviceIdentityFileReader.Instance",
+            "IsCredentialAllowed(record, candidate)",
+            "DashboardPinStillMatches(pinned)",
+            "token = credential.Token");
+        Assert.DoesNotContain("ResolveOperator(", method);
+        Assert.DoesNotContain("TryResolveChatCredentials(", method);
+    }
+
+    [Theory]
+    [InlineData("App.xaml.cs", "OpenDashboardAsync")]
+    [InlineData("Pages\\ConnectionPage.xaml.cs", "OnSavedRowOpenDashboardAsync")]
+    [InlineData("App.CapabilityHandlers.cs", "app.DashboardUrlHandler =")]
+    public void Dashboard_AllSshCallersKeepPinnedCredentialAndEndpointGates(string file, string methodName)
+    {
+        var source = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI",
+            file.Replace('\\', Path.DirectorySeparatorChar)));
+        var method = file == "App.CapabilityHandlers.cs"
+            ? source[source.IndexOf(methodName, StringComparison.Ordinal)..
+                source.IndexOf("app.ChatSnapshotHandler =", StringComparison.Ordinal)]
+            : ExtractMethod(source, methodName);
+
+        Assert.Contains("IsDashboardListenerOwnedAsync(ssh)", method);
+        Assert.Contains("TryResolvePinnedDashboardCredential(", method);
+        Assert.Contains("GatewayClientEndpointResolver.TryResolveDashboardEndpoint(", method);
+        AssertInOrder(method, "TryResolvePinnedDashboardCredential(",
+            "DashboardCredentialGate.Decide(", "DashboardPinStillMatches(pinned)",
+            "pinned.SharedGatewayToken", "GatewayDashboardUrlBuilder.Build(");
+        Assert.Contains("CredentialResolver.SourceSharedGatewayToken", method);
+        if (file == "App.xaml.cs")
+        {
+            Assert.Contains("LaunchPreparedDashboardAsync(", method);
+            Assert.DoesNotContain("OpenDashboardUri", method);
+            Assert.DoesNotContain("ex.Message", method);
+            var prepared = ExtractMethod(source, "LaunchPreparedDashboardAsync");
+            Assert.Contains("ConfirmIssuedDashboardListenerAsync", prepared);
+            var confirm = ExtractMethod(source, "ConfirmIssuedDashboardListenerAsync");
+            Assert.Contains("DashboardIssuedBinding.Matches", confirm);
+            Assert.Contains("IsDashboardListenerOwnedAsync(issuedTunnel)", confirm);
+            Assert.Contains("TryResolveDashboardEndpoint(", confirm);
+        }
+
+        if (file == "Pages\\ConnectionPage.xaml.cs")
+        {
+            Assert.Contains("SavedDashboardListenerStillOwnedAsync(", method);
+            var recheck = ExtractMethod(source, "SavedDashboardListenerStillOwnedAsync");
+            Assert.Contains("IsDashboardListenerOwnedAsync(ssh)", recheck);
+            var buildAt = method.IndexOf("GatewayDashboardUrlBuilder.Build(", StringComparison.Ordinal);
+            var recheckAt = method.IndexOf("SavedDashboardListenerStillOwnedAsync(", StringComparison.Ordinal);
+            var launchAt = method.IndexOf("LaunchUriAsync", StringComparison.Ordinal);
+            Assert.True(buildAt >= 0 && recheckAt > buildAt && launchAt > recheckAt);
+        }
+
+        if (file == "App.CapabilityHandlers.cs")
+        {
+            var first = method.IndexOf("IsDashboardListenerOwnedAsync(ssh)", StringComparison.Ordinal);
+            var buildAt = method.IndexOf("GatewayDashboardUrlBuilder.Build(", StringComparison.Ordinal);
+            var second = method.IndexOf("IsDashboardListenerOwnedAsync(ssh)", buildAt, StringComparison.Ordinal);
+            Assert.True(first >= 0 && buildAt > first && second > buildAt);
+        }
+    }
+
+    [Fact]
     public void SshTunnelExit_RecoversActiveRegistryGatewayThroughConnectionManager()
     {
         var source = ReadAppSources();
