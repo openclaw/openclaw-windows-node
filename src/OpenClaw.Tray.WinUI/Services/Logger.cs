@@ -33,6 +33,7 @@ public static class Logger
     private static readonly Channel<string> s_channel;
     private static readonly Task s_writerTask;
     private static int _writesSinceRotateCheck;
+    private static int _consecutiveWriteFailures;
 
     /// <summary>Most recent write/rotate failure, or null if the writer is healthy.</summary>
     public static string? LastWriteError { get; private set; }
@@ -127,10 +128,15 @@ public static class Logger
                 }
                 sw.Flush();
                 LastWriteError = null;
+                _consecutiveWriteFailures = 0;
             }
             catch (Exception ex)
             {
                 ReportWriteFailure(ex.Message);
+                var attempt = _consecutiveWriteFailures;
+                if (_consecutiveWriteFailures < 5)
+                    _consecutiveWriteFailures++;
+                await Task.Delay(LoggerWriteBackoff.Next(attempt)).ConfigureAwait(false);
             }
 
             if (wrote > 0)
