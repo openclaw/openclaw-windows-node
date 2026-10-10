@@ -1,3 +1,4 @@
+using System.Text.Json;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
 
@@ -85,15 +86,37 @@ internal static class WslKeepAlivePolicy
         return WslCommandLineMatcher.IsKeepaliveForDistro(commandLine, distroName);
     }
 
+    public static bool TryReadMarkerStartTimeUtc(JsonElement startElement, out DateTime utc)
+    {
+        if (startElement.TryGetDateTimeOffset(out var offset))
+        {
+            utc = offset.UtcDateTime;
+            return true;
+        }
+
+        if (startElement.TryGetDateTime(out var dateTime) && dateTime.Kind == DateTimeKind.Utc)
+        {
+            utc = dateTime;
+            return true;
+        }
+
+        utc = default;
+        return false;
+    }
+
     public static bool IsMarkedKeepaliveProcessIdentity(
         string? processName,
         DateTime processStartTimeUtc,
         DateTime markerStartTimeUtc)
     {
+        var markerUtc = markerStartTimeUtc.Kind == DateTimeKind.Local
+            ? markerStartTimeUtc.ToUniversalTime()
+            : markerStartTimeUtc;
+        var processUtc = processStartTimeUtc.Kind == DateTimeKind.Local
+            ? processStartTimeUtc.ToUniversalTime()
+            : processStartTimeUtc;
         return string.Equals(processName, "wsl", StringComparison.OrdinalIgnoreCase) &&
-            Math.Abs(
-                (processStartTimeUtc -
-                 DateTime.SpecifyKind(markerStartTimeUtc, DateTimeKind.Utc)).TotalSeconds) <= 5;
+            Math.Abs((processUtc - markerUtc).TotalSeconds) <= 5;
     }
 
     public static bool TryGetMarkerDistroName(string markerJson, out string distroName)
