@@ -151,6 +151,7 @@
     <!-- GatewayHostAccess, GatewayTerminalLauncher, WslGatewayController and WslCommandRunner
          now live in OpenClaw.Connection (referenced above), so they no longer need linking. -->
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\WslKeepAlivePolicy.cs" Link="Services\WslKeepAlivePolicy.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\HotkeyRegistrationState.cs" Link="Services\HotkeyRegistrationState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ManagedLocalGatewayRepairCoordinator.cs" Link="Services\ManagedLocalGatewayRepairCoordinator.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ManagedLocalGatewayAutoRepairMonitor.cs" Link="Services\ManagedLocalGatewayAutoRepairMonitor.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ManagedLocalGatewayRepairAdapters.cs" Link="Services\ManagedLocalGatewayRepairAdapters.cs" />
