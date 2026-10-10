@@ -104,7 +104,7 @@ public sealed class GatewayScenario
                 ["Can we browse the synthetic Gateway?", MainSentinel]),
             CreateSession(LongSessionKey, LongTitle, "main", "browse", 1,
                 Enumerable.Range(1, LongMessageCount).Select(LongMessage).ToArray()),
-            CreateSession(OtherSessionKey, OtherTitle, "research", "research", 2,
+            CreateSession(OtherSessionKey, OtherTitle, "research", "worker", 2,
                 ["What did the synthetic research find?", OtherSentinel, "No provider was contacted.", OtherSentinel]),
             CreateSession(EmptySessionKey, EmptyTitle, "main", "browse", 3, []),
             CreateSession(EdgeSessionKey, EdgeTitle, "research", "research", 4,
@@ -239,7 +239,12 @@ public sealed class GatewayScenario
         type = GatewayProtocolContract.HelloOkType,
         protocol = ProtocolVersion,
         server = new { version = "fixture-1", connId = connectionId },
-        features = new { methods = ReadMethods, events = new[] { "connect.challenge", "sessions.changed", "agent" } },
+        features = new
+        {
+            methods = ReadMethods,
+            events = new[] { "connect.challenge", "sessions.changed", "agent" },
+            capabilities = new[] { "session-scoped-model-catalog" },
+        },
         snapshot = new
         {
             presence = Array.Empty<object>(), health = _reads["health"],
@@ -407,12 +412,27 @@ public sealed class GatewayScenario
         return new { ok = true };
     }
 
-    private static object Models(JsonElement p)
+    private object Models(JsonElement p)
     {
-        ValidateProperties(p, "view");
+        ValidateProperties(p, "view", "sessionKey", "includeDetails");
         var view = OptionalString(p, "view") ?? "configured";
         if (view is not ("configured" or "all"))
             throw new FixtureRequestException("INVALID_PARAMS", "view must be configured or all.");
+        var sessionKey = OptionalString(p, "sessionKey");
+        if (sessionKey is not null && !ContainsSession(sessionKey))
+            throw new FixtureRequestException("INVALID_PARAMS", "Unknown fixture session key.");
+        if (p.TryGetProperty("includeDetails", out _))
+            throw new FixtureRequestException("INVALID_PARAMS", "Fixture does not advertise published-model-catalog.");
+        if (sessionKey == OtherSessionKey)
+        {
+            return new
+            {
+                models = new[]
+                {
+                    new { id = "worker", name = "Fixture Worker", provider = "fixture", contextWindow = 96_000, configured = true, available = true, @default = true },
+                }
+            };
+        }
         return new
         {
             models = new[]

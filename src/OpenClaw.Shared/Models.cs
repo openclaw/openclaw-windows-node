@@ -2261,6 +2261,12 @@ public class ModelInfo
     /// </summary>
     public bool RequiresAuth { get; set; }
 
+    /// <summary>
+    /// Whether the gateway permits users to select this model manually. Null
+    /// preserves the behavior of gateways that do not publish selection policy.
+    /// </summary>
+    public bool? ManualSelectionAllowed { get; set; }
+
     public string DisplayName => Name ?? Id;
 }
 

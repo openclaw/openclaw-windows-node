@@ -341,6 +341,7 @@ internal static class ConnectEnvelopeBuilder
     private const string OperatorClientId = "cli";
     private const string OperatorClientMode = "cli";
     private const string OperatorDisplayName = "OpenClaw Windows Tray";
+    private const string ModelSelectionPolicyCapability = "model-selection-policy";
     private const string NodeClientId = "node-host";
     private const string NodeClientMode = "node";
     private const string NodeRole = "node";
@@ -375,7 +376,7 @@ internal static class ConnectEnvelopeBuilder
             WindowsClientMetadata.Platform,
             WindowsClientMetadata.DeviceFamily,
             OperatorDisplayName,
-            [],
+            [ModelSelectionPolicyCapability],
             [],
             new Dictionary<string, bool>(),
             options.Credential,

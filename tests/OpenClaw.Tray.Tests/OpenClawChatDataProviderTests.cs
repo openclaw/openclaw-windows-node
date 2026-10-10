@@ -86,6 +86,9 @@ public class OpenClawChatDataProviderTests
         public Func<string, Task>? AbortBehavior { get; set; }
         public SessionInfo[] Sessions { get; set; } = Array.Empty<SessionInfo>();
         public ModelsListInfo? CurrentModels { get; set; }
+        public bool SupportsSessionScopedModelCatalog { get; set; }
+        public Func<string, Task<ModelsListInfo?>>? SessionModelsBehavior { get; set; }
+        public List<string> RequestedSessionModelKeys { get; } = new();
         // Configurable commands.list result + a call counter for the
         // request/response protocol API.
         public CommandCatalog CommandCatalogResult { get; set; } = new CommandCatalog { IsSupported = true };
@@ -118,6 +121,11 @@ public class OpenClawChatDataProviderTests
 
         public SessionInfo[] GetSessionList() => Sessions;
         public ModelsListInfo? GetCurrentModelsList() => CurrentModels;
+        public Task<ModelsListInfo?> RequestSessionModelsListAsync(string sessionKey)
+        {
+            RequestedSessionModelKeys.Add(sessionKey);
+            return SessionModelsBehavior?.Invoke(sessionKey) ?? Task.FromResult<ModelsListInfo?>(null);
+        }
         public void StartProactiveBootstrap() { }
 
         public Task<CommandCatalog> ListCommandsAsync(CommandCatalogQuery? query = null)
@@ -239,6 +247,7 @@ public class OpenClawChatDataProviderTests
         public event EventHandler<ChatMessageInfo>? ChatMessageReceived;
         public event EventHandler<AgentEventInfo>? AgentEventReceived;
         public event EventHandler<ModelsListInfo>? ModelsListUpdated;
+        public event EventHandler? ModelCatalogInvalidated;
         public bool IsDisposed { get; private set; }
         public int DisposeCount { get; private set; }
 
@@ -249,6 +258,7 @@ public class OpenClawChatDataProviderTests
         public void RaiseChat(ChatMessageInfo m) => ChatMessageReceived?.Invoke(this, m);
         public void RaiseAgent(AgentEventInfo a) => AgentEventReceived?.Invoke(this, a);
         public void RaiseModels(ModelsListInfo m) { CurrentModels = m; ModelsListUpdated?.Invoke(this, m); }
+        public void RaiseModelCatalogInvalidated() => ModelCatalogInvalidated?.Invoke(this, EventArgs.Empty);
         public void Dispose()
         {
             IsDisposed = true;
@@ -10532,6 +10542,35 @@ public class OpenClawChatDataProviderTests
         Assert.Equal(
             new[] { "gpt-5.4", "claude-sonnet-4.6", "ollama-only-id" },
             snapshots[^1].AvailableModels);
+    }
+
+    [Fact]
+    public async Task SessionScopedModelCatalog_RequestDoesNotMutateSharedProviderSnapshot()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[]
+        {
+            new SessionInfo { Key = "agent:main:main", IsMain = true, DisplayName = "Main" },
+            new SessionInfo { Key = "agent:research:worker", DisplayName = "Worker" },
+        });
+        bridge.SupportsSessionScopedModelCatalog = true;
+        bridge.SessionModelsBehavior = _ => Task.FromResult<ModelsListInfo?>(new ModelsListInfo
+        {
+            Models = [new ModelInfo { Id = "worker-local", Name = "Worker local" }],
+        });
+        bridge.RaiseModels(new ModelsListInfo
+        {
+            Models = [new ModelInfo { Id = "gateway-only", Name = "Gateway only" }],
+        });
+
+        var models = await provider.RequestSessionModelsListAsync("agent:research:worker");
+        bridge.RaiseModelCatalogInvalidated();
+        bridge.RaiseStatus(ConnectionStatus.Connecting);
+
+        Assert.True(provider.SupportsSessionScopedModelCatalog);
+        Assert.Equal(2, provider.ModelCatalogRevision);
+        Assert.Equal(["agent:research:worker"], bridge.RequestedSessionModelKeys);
+        Assert.Equal("worker-local", Assert.Single(models!.Models).Id);
+        Assert.Equal(["gateway-only"], snapshots[^1].AvailableModels);
     }
 
     [Fact]

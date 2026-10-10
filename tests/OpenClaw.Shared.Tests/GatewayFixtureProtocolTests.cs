@@ -212,6 +212,12 @@ public sealed class GatewayFixtureProtocolTests
         Assert.Equal(2, models.Models.Count);
         Assert.All(models.Models, model => Assert.True(model.IsAvailable && model.IsConfigured));
         Assert.Contains(models.Models, model => model.Id == "research" && model.Provider == "fixture");
+        Assert.Contains("session-scoped-model-catalog", client.AdvertisedServerCapabilities);
+        var sessionModels = await client.RequestSessionModelsListAsync(GatewayScenario.OtherSessionKey);
+        Assert.Equal("worker", Assert.Single(sessionModels!.Models).Id);
+        Assert.Contains(
+            server.Requests,
+            request => request.Method == "models.list" && request.SessionKey == GatewayScenario.OtherSessionKey);
         await client.RequestSessionPreviewAsync([GatewayScenario.MainSessionKey], limit: 1);
         var previews = await previewsReceived.Task.WaitAsync(Deadline);
         Assert.Equal(GatewayScenario.MainSentinel, Assert.Single(Assert.Single(previews.Previews).Items).Text);

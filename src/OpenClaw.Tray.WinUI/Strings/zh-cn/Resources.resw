@@ -2997,6 +2997,12 @@
   <data name="Chat_Composer_Accessibility_Model" xml:space="preserve">
     <value>模型</value>
   </data>
+  <data name="Chat_Composer_Model_Loading" xml:space="preserve">
+    <value>正在加载模型…</value>
+  </data>
+  <data name="Chat_Composer_Model_Unavailable" xml:space="preserve">
+    <value>模型不可用</value>
+  </data>
   <data name="Chat_Composer_Accessibility_Reasoning" xml:space="preserve">
     <value>推理</value>
   </data>

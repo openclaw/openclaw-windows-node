@@ -17,6 +17,10 @@ namespace OpenClaw.Tray.Tests;
 internal sealed class FakeChatComposerRuntimePort : IChatComposerRuntimePort
 {
     public bool SupportsNativeLifecycle { get; set; } = true;
+    public bool SupportsSessionScopedModelCatalog { get; set; }
+    public long ModelCatalogRevision { get; set; }
+    public List<string> RequestedSessionModelKeys { get; } = new();
+    public Func<string, CancellationToken, Task<ModelsListInfo?>>? SessionModelsBehavior { get; set; }
 
     public int SendMessageCallCount { get; private set; }
     public (string ThreadId, string Message, IReadOnlyList<ChatAttachment> Attachments)? LastSendMessageCall { get; private set; }
@@ -118,6 +122,15 @@ internal sealed class FakeChatComposerRuntimePort : IChatComposerRuntimePort
         LastClearModelThreadId = threadId;
         LastClearModelToken = cancellationToken;
         return Task.CompletedTask;
+    }
+
+    public Task<ModelsListInfo?> RequestSessionModelsListAsync(
+        string threadId,
+        CancellationToken cancellationToken)
+    {
+        RequestedSessionModelKeys.Add(threadId);
+        return SessionModelsBehavior?.Invoke(threadId, cancellationToken)
+            ?? Task.FromResult<ModelsListInfo?>(null);
     }
 
     public Task SetThinkingLevelAsync(string threadId, string thinkingLevel, CancellationToken cancellationToken)

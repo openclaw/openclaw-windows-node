@@ -2998,6 +2998,12 @@ Gebruik een van deze opties:
   <data name="Chat_Composer_Accessibility_Model" xml:space="preserve">
     <value>Taalmodel</value>
   </data>
+  <data name="Chat_Composer_Model_Loading" xml:space="preserve">
+    <value>Modellen laden…</value>
+  </data>
+  <data name="Chat_Composer_Model_Unavailable" xml:space="preserve">
+    <value>Modellen niet beschikbaar</value>
+  </data>
   <data name="Chat_Composer_Accessibility_Reasoning" xml:space="preserve">
     <value>Redenering</value>
   </data>

@@ -18,6 +18,9 @@ public interface IChatGatewayBridge : IDisposable
     bool HasHandshakeSnapshot { get; }
     SessionInfo[] GetSessionList();
     ModelsListInfo? GetCurrentModelsList();
+    bool SupportsSessionScopedModelCatalog => false;
+    Task<ModelsListInfo?> RequestSessionModelsListAsync(string sessionKey) =>
+        Task.FromResult<ModelsListInfo?>(null);
 
     /// <summary>
     /// If the underlying gateway client was already Connected by the time
@@ -99,6 +102,11 @@ public interface IChatGatewayBridge : IDisposable
     event EventHandler<ChatMessageInfo>? ChatMessageReceived;
     event EventHandler<AgentEventInfo>? AgentEventReceived;
     event EventHandler<ModelsListInfo>? ModelsListUpdated;
+    event EventHandler? ModelCatalogInvalidated
+    {
+        add { }
+        remove { }
+    }
 }
 
 /// <summary>
@@ -113,6 +121,7 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
     private readonly EventHandler<ChatMessageInfo> _chatMessageReceivedHandler;
     private readonly EventHandler<AgentEventInfo> _agentEventReceivedHandler;
     private readonly EventHandler<ModelsListInfo> _modelsListUpdatedHandler;
+    private readonly EventHandler _modelCatalogInvalidatedHandler;
     // _currentStatus is written from the gateway client's StatusChanged
     // callback (arbitrary thread) and read from CurrentStatus on the UI
     // thread. ``volatile`` gives us a memory barrier so the reader can't
@@ -153,6 +162,7 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
             _currentModels = e;
             ModelsListUpdated?.Invoke(s, e);
         };
+        _modelCatalogInvalidatedHandler = (s, e) => ModelCatalogInvalidated?.Invoke(s, e);
 
         // Subscribe StatusChanged BEFORE reading the seed so any
         // ``StatusChanged → X`` edge that fires during construction is
@@ -173,6 +183,7 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
         _client.ChatMessageReceived += _chatMessageReceivedHandler;
         _client.AgentEventReceived += _agentEventReceivedHandler;
         _client.ModelsListUpdated += _modelsListUpdatedHandler;
+        _client.ModelCatalogInvalidated += _modelCatalogInvalidatedHandler;
 
         if (_currentStatus == ConnectionStatus.Disconnected)
         {
@@ -205,6 +216,12 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
     public bool HasHandshakeSnapshot => _client.HasHandshakeSnapshot;
     public SessionInfo[] GetSessionList() => _client.GetSessionList();
     public ModelsListInfo? GetCurrentModelsList() => _currentModels;
+    public bool SupportsSessionScopedModelCatalog =>
+        _client.AdvertisedServerCapabilities.Contains(
+            "session-scoped-model-catalog",
+            StringComparer.Ordinal);
+    public Task<ModelsListInfo?> RequestSessionModelsListAsync(string sessionKey) =>
+        _client.RequestSessionModelsListAsync(sessionKey);
 
     public Task SendChatMessageAsync(string message, string? sessionKey, string? sessionId, IReadOnlyList<ChatAttachment>? attachments = null) =>
         _client.SendChatMessageAsync(message, sessionKey, sessionId, attachments);
@@ -270,6 +287,7 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
     public event EventHandler<ChatMessageInfo>? ChatMessageReceived;
     public event EventHandler<AgentEventInfo>? AgentEventReceived;
     public event EventHandler<ModelsListInfo>? ModelsListUpdated;
+    public event EventHandler? ModelCatalogInvalidated;
 
     public void Dispose()
     {
@@ -282,6 +300,7 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
         _client.ChatMessageReceived -= _chatMessageReceivedHandler;
         _client.AgentEventReceived -= _agentEventReceivedHandler;
         _client.ModelsListUpdated -= _modelsListUpdatedHandler;
+        _client.ModelCatalogInvalidated -= _modelCatalogInvalidatedHandler;
 
         StatusChanged = null;
         SessionsUpdated = null;
@@ -289,5 +308,6 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
         ChatMessageReceived = null;
         AgentEventReceived = null;
         ModelsListUpdated = null;
+        ModelCatalogInvalidated = null;
     }
 }

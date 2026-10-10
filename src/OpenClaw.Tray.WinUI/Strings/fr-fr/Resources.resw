@@ -2997,6 +2997,12 @@ Utilisez l'une de ces options :
   <data name="Chat_Composer_Accessibility_Model" xml:space="preserve">
     <value>Modèle</value>
   </data>
+  <data name="Chat_Composer_Model_Loading" xml:space="preserve">
+    <value>Chargement des modèles…</value>
+  </data>
+  <data name="Chat_Composer_Model_Unavailable" xml:space="preserve">
+    <value>Modèles indisponibles</value>
+  </data>
   <data name="Chat_Composer_Accessibility_Reasoning" xml:space="preserve">
     <value>Raisonnement</value>
   </data>
