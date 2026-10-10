@@ -15,6 +15,9 @@ public class LocalCommandRunner : ICommandRunner
     private readonly IOpenClawLogger _logger;
     
     private const int OutputDrainTimeoutMs = 500;
+
+    /// <summary>Same default as <see cref="SettingsData.SandboxMaxOutputBytes"/>.</summary>
+    private const int DefaultMaxOutputBytes = 4 * 1024 * 1024;
     
     public string Name => "local";
     
@@ -87,21 +90,104 @@ public class LocalCommandRunner : ICommandRunner
         var outputLock = new object();
         var stdoutCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var stderrCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        // Null and non-positive caps use the 4 MiB host default. Stop before the
+        // combined builders pass the cap, then kill as a timeout would.
+        var maxOutputBytes = request.MaxOutputBytes is int configured && configured > 0
+            ? configured
+            : DefaultMaxOutputBytes;
+        var outputBytes = 0L;
+        var outputCapped = false;
 
-        process.OutputDataReceived += (_, e) =>
+        async Task ReadCappedAsync(Stream stream, StringBuilder builder, TaskCompletionSource completed)
         {
-            if (e.Data is null)
-                stdoutCompleted.TrySetResult();
-            else
-                lock (outputLock) { stdoutBuilder.AppendLine(e.Data); }
-        };
-        process.ErrorDataReceived += (_, e) =>
+            var buffer = new byte[8192];
+            var chars = new char[Encoding.UTF8.GetMaxCharCount(buffer.Length)];
+            var decoder = Encoding.UTF8.GetDecoder();
+            try
+            {
+                while (true)
+                {
+                    var read = await stream.ReadAsync(buffer, ct).ConfigureAwait(false);
+                    var kill = false;
+                    lock (outputLock)
+                    {
+                        if (outputCapped)
+                        {
+                            kill = true;
+                        }
+                        else if (read == 0)
+                        {
+                            decoder.Convert(
+                                Array.Empty<byte>(), 0, 0,
+                                chars, 0, chars.Length,
+                                flush: true,
+                                out _, out var flushed, out _);
+                            if (AppendFittingChars(builder, chars, flushed, maxOutputBytes, ref outputBytes) < flushed)
+                            {
+                                outputCapped = true;
+                                stderrBuilder.AppendLine("[output truncated]");
+                                kill = true;
+                            }
+                        }
+                        else
+                        {
+                            decoder.Convert(
+                                buffer, 0, read,
+                                chars, 0, chars.Length,
+                                flush: false,
+                                out _, out var produced, out _);
+                            if (AppendFittingChars(builder, chars, produced, maxOutputBytes, ref outputBytes) < produced)
+                            {
+                                outputCapped = true;
+                                stderrBuilder.AppendLine("[output truncated]");
+                                kill = true;
+                            }
+                        }
+                    }
+
+                    if (read == 0 || kill)
+                    {
+                        if (kill)
+                        {
+                            _logger.Warn($"[EXEC] Output exceeded {maxOutputBytes} bytes; stopping process");
+                            KillProcess(process);
+                        }
+                        completed.TrySetResult();
+                        return;
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is IOException or OperationCanceledException)
+            {
+                completed.TrySetResult();
+            }
+        }
+
+        static int AppendFittingChars(StringBuilder builder, char[] chars, int count, long maxBytes, ref long outputBytes)
         {
-            if (e.Data is null)
-                stderrCompleted.TrySetResult();
-            else
-                lock (outputLock) { stderrBuilder.AppendLine(e.Data); }
-        };
+            var taken = 0;
+            var bytes = 0L;
+            var room = maxBytes - outputBytes;
+            while (taken < count)
+            {
+                var length = char.IsHighSurrogate(chars[taken]) && taken + 1 < count ? 2 : 1;
+                if (taken + length > count)
+                    break;
+                var size = Encoding.UTF8.GetByteCount(chars, taken, length);
+                if (bytes + size > room)
+                    break;
+                bytes += size;
+                taken += length;
+            }
+
+            if (taken > 0)
+            {
+                builder.Append(chars, 0, taken);
+                outputBytes += bytes;
+            }
+
+            return taken;
+        }
         
         // Use the Exited event rather than WaitForExitAsync to detect process exit.
         // WaitForExitAsync (.NET 6+) internally calls WaitForExit() which blocks until
@@ -115,8 +201,8 @@ public class LocalCommandRunner : ICommandRunner
         try
         {
             process.Start();
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
+            _ = ReadCappedAsync(process.StandardOutput.BaseStream, stdoutBuilder, stdoutCompleted);
+            _ = ReadCappedAsync(process.StandardError.BaseStream, stderrBuilder, stderrCompleted);
         }
         catch (Exception ex)
         {
@@ -180,6 +266,8 @@ public class LocalCommandRunner : ICommandRunner
         {
             stdout = stdoutBuilder.ToString().TrimEnd();
             stderr = stderrBuilder.ToString().TrimEnd();
+            if (outputCapped)
+                timedOut = true;
         }
         
         var result = new CommandResult

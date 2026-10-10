@@ -946,6 +946,41 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
+    public async Task RunAsync_HostFallbackCopiesCallerMaxOutputBytes()
+    {
+        var executor = new FakeSandboxExecutor();
+        var fallback = new FakeCommandRunner();
+        var runner = NewRunner(executor, fallback, NewSettings(sandboxEnabled: false));
+
+        await runner.RunAsync(new CommandRequest
+        {
+            Command = "echo hi",
+            Shell = "cmd",
+            MaxOutputBytes = 4096,
+        });
+
+        Assert.NotNull(fallback.LastRequest);
+        Assert.Equal(4096, fallback.LastRequest!.MaxOutputBytes);
+    }
+
+    [Fact]
+    public async Task RunAsync_HostFallbackLeavesNullMaxOutputBytesNull()
+    {
+        var executor = new FakeSandboxExecutor();
+        var fallback = new FakeCommandRunner();
+        var runner = NewRunner(executor, fallback, NewSettings(sandboxEnabled: false));
+
+        await runner.RunAsync(new CommandRequest
+        {
+            Command = "echo hi",
+            Shell = "cmd",
+        });
+
+        Assert.NotNull(fallback.LastRequest);
+        Assert.Null(fallback.LastRequest!.MaxOutputBytes);
+    }
+
+    [Fact]
     public async Task RunAsync_SandboxRequestUsesNormalizedEffectiveShellForUnsupportedExplicitShell()
     {
         var executor = new FakeSandboxExecutor();

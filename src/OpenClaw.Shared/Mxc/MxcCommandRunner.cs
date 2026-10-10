@@ -286,6 +286,7 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner, IDirectA
             Shell = effectiveShell,
             Cwd = request.Cwd,
             TimeoutMs = request.TimeoutMs,
+            MaxOutputBytes = request.MaxOutputBytes,
             Env = request.Env,
             ApprovedEffectiveShell = request.ApprovedEffectiveShell,
             ApprovedHostFallbackShell = request.ApprovedHostFallbackShell,

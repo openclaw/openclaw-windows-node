@@ -72,6 +72,105 @@ public class LocalCommandRunnerTests
         Assert.Contains("-NoProfile -NonInteractive -Command Write-Output hi", arguments);
     }
 
+    [Fact(Timeout = 20000)]
+    public async Task Run_HostOutputOverCap_KillsProcessAndMarksTruncated()
+    {
+        // cmd prints far more than 4096 bytes. The cap must win before TimeoutMs.
+        var runner = new LocalCommandRunner();
+        var result = await runner.RunAsync(new CommandRequest
+        {
+            Command = "for /L %i in (1,1,4000) do @echo 0123456789ABCDEFGHIJ",
+            Shell = "cmd",
+            TimeoutMs = 15000,
+            MaxOutputBytes = 4096,
+        });
+
+        const string marker = "[output truncated]";
+        var totalBytes = Encoding.UTF8.GetByteCount(result.Stdout) + Encoding.UTF8.GetByteCount(result.Stderr);
+        var limit = 4096 + Encoding.UTF8.GetByteCount(marker);
+        Assert.True(
+            totalBytes <= limit,
+            $"combined stdout+stderr was {totalBytes} bytes, limit {limit}, timedOut={result.TimedOut}, exit={result.ExitCode}, stderr={result.Stderr}");
+        Assert.Contains(marker, result.Stderr);
+        Assert.DoesNotContain(marker, result.Stdout);
+        Assert.True(result.TimedOut);
+        Assert.Equal(-1, result.ExitCode);
+        Assert.True(result.DurationMs < 12000, $"cap should stop the process before the timeout, duration={result.DurationMs}ms");
+    }
+
+    [Fact(Timeout = 20000)]
+    public async Task Run_SplitUtf8Character_StaysIntactAcrossReads()
+    {
+        var runner = new LocalCommandRunner();
+        var result = await runner.RunAsync(new CommandRequest
+        {
+            Command = "$o=[Console]::OpenStandardOutput(); $o.Write([byte[]](0xF0,0x9F),0,2); $o.Flush(); Start-Sleep -Milliseconds 200; $o.Write([byte[]](0x98,0x80),0,2); $o.Flush()",
+            Shell = "powershell",
+            TimeoutMs = 10000,
+            MaxOutputBytes = 64,
+        });
+
+        Assert.False(result.TimedOut, result.Stderr);
+        Assert.Equal("😀", result.Stdout);
+        Assert.DoesNotContain("\uFFFD", result.Stdout);
+    }
+
+    [Fact(Timeout = 20000)]
+    public async Task Run_UnterminatedStdoutFlood_StopsBeforeANewline()
+    {
+        var runner = new LocalCommandRunner();
+        var result = await runner.RunAsync(new CommandRequest
+        {
+            Command = "$o=[Console]::OpenStandardOutput(); $b=New-Object byte[] 256; while ($true) { $o.Write($b,0,$b.Length) }",
+            Shell = "powershell",
+            TimeoutMs = 15000,
+            MaxOutputBytes = 4096,
+        });
+
+        Assert.True(result.TimedOut, $"timedOut={result.TimedOut} exit={result.ExitCode} duration={result.DurationMs} stderr={result.Stderr}");
+        Assert.Contains("[output truncated]", result.Stderr);
+        Assert.True(Encoding.UTF8.GetByteCount(result.Stdout) <= 4096, $"stdout bytes={Encoding.UTF8.GetByteCount(result.Stdout)}");
+        Assert.DoesNotContain("\n", result.Stdout);
+        Assert.True(result.DurationMs < 12000, $"duration={result.DurationMs}ms");
+    }
+
+    [Fact(Timeout = 15000)]
+    public async Task Run_HostOutputUnderCap_EchoHiSucceedsWithoutMarker()
+    {
+        var runner = new LocalCommandRunner();
+        var result = await runner.RunAsync(new CommandRequest
+        {
+            Command = "echo hi",
+            Shell = "cmd",
+            TimeoutMs = 10000,
+            MaxOutputBytes = 4096,
+        });
+
+        Assert.False(result.TimedOut);
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("hi", result.Stdout);
+        Assert.DoesNotContain("[output truncated]", result.Stdout);
+        Assert.DoesNotContain("[output truncated]", result.Stderr);
+    }
+
+    [Fact(Timeout = 15000)]
+    public async Task Run_NonPositiveMaxOutputBytes_DoesNotTruncateSmallCommand()
+    {
+        var runner = new LocalCommandRunner();
+        var result = await runner.RunAsync(new CommandRequest
+        {
+            Command = "echo hi",
+            Shell = "cmd",
+            TimeoutMs = 10000,
+            MaxOutputBytes = 0,
+        });
+
+        Assert.False(result.TimedOut);
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("hi", result.Stdout);
+        Assert.DoesNotContain("[output truncated]", result.Stderr);
+    }
+
     private static string ExpectedWindowsPowerShellExe()
     {
         var systemRoot = Environment.GetEnvironmentVariable("SystemRoot")
