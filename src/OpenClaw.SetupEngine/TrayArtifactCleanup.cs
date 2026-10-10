@@ -76,7 +76,7 @@ public static class TrayArtifactCleanup
         DeleteFileIfExists(Path.Combine(localDataDir, "exec-policy.json"), "local exec-policy.json", logger);
 
         // 4. Reset onboarding settings in settings.json
-        ResetOnboardingSettings(appDataDir, logger, preserveNodeSettings: HasRemainingGatewayRecords(appDataDir, logger));
+        ApplyOnboardingReset(appDataDir, logger);
 
         // 5. Optionally delete gateway logs
         if (!preserveLogs)
@@ -126,18 +126,43 @@ public static class TrayArtifactCleanup
         }
     }
 
-    private static bool HasRemainingGatewayRecords(string appDataDir, SetupLogger logger)
+    private enum GatewayRegistryInspection
+    {
+        HasRecords,
+        NoRecords,
+        Unreadable,
+    }
+
+    internal static void ApplyOnboardingReset(string appDataDir, SetupLogger logger)
+    {
+        switch (InspectGatewayRegistry(appDataDir, logger))
+        {
+            case GatewayRegistryInspection.HasRecords:
+                ResetOnboardingSettings(appDataDir, logger, preserveNodeSettings: true);
+                break;
+            case GatewayRegistryInspection.NoRecords:
+                ResetOnboardingSettings(appDataDir, logger, preserveNodeSettings: false);
+                break;
+            default:
+                logger.Warn("[Uninstall] Left onboarding settings unchanged because the gateway registry could not be read.");
+                break;
+        }
+    }
+
+    private static GatewayRegistryInspection InspectGatewayRegistry(string appDataDir, SetupLogger logger)
     {
         try
         {
             var registry = new GatewayRegistry(appDataDir);
             registry.Load();
-            return registry.GetAll().Count > 0;
+            return registry.GetAll().Count > 0
+                ? GatewayRegistryInspection.HasRecords
+                : GatewayRegistryInspection.NoRecords;
         }
         catch (Exception ex)
         {
             logger.Warn($"[Uninstall] Failed to inspect gateway registry: {ex.Message}");
-            return false;
+            return GatewayRegistryInspection.Unreadable;
         }
     }
 
