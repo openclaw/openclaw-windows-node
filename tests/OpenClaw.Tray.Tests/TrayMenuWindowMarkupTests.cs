@@ -30,7 +30,8 @@ public class TrayMenuWindowMarkupTests
         Assert.Contains("RemoveWebResourceRequestedFilter", source);
         Assert.Contains("_gatewayToken = null", source);
         Assert.Contains("_trustedGatewayOrigin = null", source);
-        Assert.Contains("IsUriForOrigin(args.Request.Uri, trustedOrigin)", source);
+        Assert.Contains("CanvasGatewayAuth.ShouldAttachGatewayBearer(", source);
+        Assert.Contains("_pendingNativeNavigationUrl)", source);
         Assert.DoesNotContain("WebResourceRequested += (", source);
     }
 
