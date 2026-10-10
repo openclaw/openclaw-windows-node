@@ -80,29 +80,16 @@ public sealed partial class BindingsPage : Page
 
         try
         {
-            if (config.ValueKind == JsonValueKind.Object &&
-                config.TryGetProperty("bindings", out var bindingsEl) &&
-                bindingsEl.ValueKind == JsonValueKind.Array)
+            foreach (var route in ConfigEditorModel.ReadBindingRoutes(config))
             {
-                foreach (var item in bindingsEl.EnumerateArray())
+                bindings.Add(new BindingViewModel
                 {
-                    if (item.ValueKind != JsonValueKind.Object) continue;
-
-                    var vm = new BindingViewModel();
-
-                    if (item.TryGetProperty("channel", out var ch))
-                        vm.Channel = ch.GetString() ?? "";
-                    if (item.TryGetProperty("accountId", out var acc))
-                        vm.AccountId = acc.GetString() ?? "*";
-                    if (item.TryGetProperty("agentId", out var agent))
-                        vm.AgentId = agent.GetString() ?? "main";
-                    if (item.TryGetProperty("peer", out var peer))
-                        vm.Peer = peer.GetString();
-                    if (item.TryGetProperty("priority", out var prio) && prio.TryGetInt32(out var prioVal))
-                        vm.Priority = prioVal;
-
-                    bindings.Add(vm);
-                }
+                    Channel = route.Channel,
+                    AccountId = route.AccountId,
+                    AgentId = route.AgentId,
+                    Peer = route.Peer,
+                    Priority = route.Priority,
+                });
             }
         }
         catch (Exception ex)
