@@ -54,6 +54,7 @@ internal enum TrayMenuIconIdentity
     Device,
     App,
     Document,
+    Ollama,
 }
 
 internal enum TrayMenuAccent

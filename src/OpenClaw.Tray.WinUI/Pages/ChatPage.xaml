@@ -60,6 +60,13 @@
 
         <!-- Native chat host: the Reactor tree mounts into this Border (default UI). -->
         <Border x:Name="ChatHost" Grid.Row="1"/>
+        <TextBlock x:Name="RemovedSessionPlaceholder" x:Uid="WorkspaceShell_SelectConversation"
+                   AutomationProperties.AutomationId="WorkspaceSelectConversation"
+                   Grid.Row="1" Visibility="Collapsed"
+                   Text="Select a conversation or create a new one to start chatting."
+                   TextWrapping="Wrap" MaxWidth="360"
+                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                   Style="{StaticResource BodyTextBlockStyle}"/>
 
         <!-- WebView2 host: only created/used when "Use standard Gateway Chat interface" is enabled. -->
         <WebView2 x:Name="WebView" Grid.Row="1" Visibility="Collapsed"/>
@@ -71,7 +78,7 @@
         <StackPanel x:Name="WaitingPanel" Grid.Row="1"
                     Visibility="Collapsed"
                     VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
-            <TextBlock Text="💬" FontSize="48" HorizontalAlignment="Center"/>
+            <FontIcon Glyph="&#xE8F2;" FontSize="48" HorizontalAlignment="Center"/>
             <TextBlock x:Uid="ChatPage_WaitingTitle"
                        Text="Waiting for chat to start…"
                        Style="{StaticResource SubtitleTextBlockStyle}"
@@ -88,12 +95,23 @@
         <!-- Disconnected placeholder (shown when no provider yet). -->
         <StackPanel x:Name="PlaceholderPanel" Grid.Row="1"
                     VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
-            <TextBlock Text="💬" FontSize="48" HorizontalAlignment="Center"/>
+            <FontIcon Glyph="&#xE8F2;" FontSize="48" HorizontalAlignment="Center"/>
             <TextBlock x:Uid="ChatPage_TextBlock_53" Text="Connect to gateway to start chatting"
                        Style="{StaticResource SubtitleTextBlockStyle}"
                        HorizontalAlignment="Center"/>
+            <Button x:Uid="WorkspaceShell_OpenConnection" Content="Open Connection"
+                    Click="OnWorkspaceOpenConnection" HorizontalAlignment="Center"/>
         </StackPanel>
 
+        <InfoBar x:Name="NativeSetupError" Grid.Row="1" IsOpen="False" Visibility="Collapsed"
+                 AutomationProperties.AutomationId="ChatNativeSetupError"
+                 IsClosable="False" Severity="Error" VerticalAlignment="Top">
+            <InfoBar.ActionButton>
+                <Button x:Name="NativeSetupCheckAgain" x:Uid="ChatPage_SetupCheckAgain"
+                        AutomationProperties.AutomationId="ChatNativeSetupCheckAgain"
+                        Content="Check again" IsEnabled="False" Click="OnNativeSetupCheckAgain"/>
+            </InfoBar.ActionButton>
+        </InfoBar>
         <!-- WebView2 navigation error panel. -->
         <ScrollViewer x:Name="ErrorPanel" Grid.Row="1" Visibility="Collapsed" Padding="20">
             <StackPanel Spacing="12">

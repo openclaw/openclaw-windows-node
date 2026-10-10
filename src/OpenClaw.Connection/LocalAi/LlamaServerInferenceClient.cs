@@ -1,5 +1,21 @@
+// <summary>
+// Setup-time inference verification for the managed llama-server router. Sends one bounded,
+// OpenAI-compatible request that intentionally triggers lazy model loading, then verifies the
+// response plus token and timing evidence. Prompt and response content are never returned or
+// logged; only llama-server's own error text surfaces on failure (LlamaServerInferenceException).
+// Usage:
+//   using var client = new LlamaServerInferenceClient();
+//   LlamaServerInferenceVerification verification = await client.VerifyAsync(
+//       endpoint: new Uri("http://127.0.0.1:18803/v1"),
+//       modelAlias: "local-model",
+//       cancellationToken);
+//   // verification.PromptTokens / CompletionTokens / timing evidence; throws
+//   // LlamaServerInferenceException with the server's own error text on failure.
+// </summary>
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
+using OpenClaw.Shared;
 
 namespace OpenClaw.Connection.LocalAi;
 
@@ -10,8 +26,26 @@ public sealed record LlamaServerInferenceVerification(
     double PromptMilliseconds,
     double CompletionMilliseconds);
 
+/// <summary>
+/// llama-server rejected the setup-time request. Carries the server's own error text, never prompt
+/// or response content. Derives from <see cref="IOException"/> because <c>InvalidDataException</c>
+/// is sealed; callers already filter on <see cref="IOException"/> alongside it, so the existing
+/// failure handling keeps working.
+/// </summary>
+public sealed class LlamaServerInferenceException(string message, int statusCode, string? serverError)
+    : IOException(message)
+{
+    public int StatusCode { get; } = statusCode;
+    public string? ServerError { get; } = serverError;
+}
+
 public interface ILlamaServerInferenceClient : IDisposable
 {
+    /// <summary>
+    /// Sends one bounded OpenAI-compatible request to the managed endpoint, intentionally triggering
+    /// lazy model loading during setup. Verifies the response plus token and timing evidence without
+    /// returning or logging prompt or response content.
+    /// </summary>
     Task<LlamaServerInferenceVerification> VerifyAsync(
         Uri endpoint,
         string modelAlias,
@@ -21,30 +55,40 @@ public interface ILlamaServerInferenceClient : IDisposable
 /// <summary>
 /// Sends one bounded OpenAI-compatible request to the managed router. This is
 /// the setup-time first request, so it intentionally triggers lazy model load.
-/// Prompt and response content are never returned or logged.
+/// Prompt and response content are never returned or logged, except llama-server's
+/// own error text on a failed request.
 /// </summary>
-public sealed class LlamaServerInferenceClient : ILlamaServerInferenceClient
+public sealed partial class LlamaServerInferenceClient : ILlamaServerInferenceClient
 {
     private const int MaximumResponseBytes = 1024 * 1024;
+    private const int MaximumErrorBytes = 8 * 1024;
+    private const int MaximumErrorDetailLength = 400;
     private readonly HttpClient _client;
+    private readonly Func<string>? _getApiKey;
 
-    public LlamaServerInferenceClient() : this(new SocketsHttpHandler
+    public LlamaServerInferenceClient(Func<string>? getApiKey = null) : this(new SocketsHttpHandler
     {
         UseProxy = false,
         AllowAutoRedirect = false,
         ConnectTimeout = TimeSpan.FromSeconds(3),
-    })
+    }, getApiKey)
     {
     }
 
-    internal LlamaServerInferenceClient(HttpMessageHandler handler)
+    internal LlamaServerInferenceClient(HttpMessageHandler handler, Func<string>? getApiKey = null)
     {
+        _getApiKey = getApiKey;
         _client = new HttpClient(handler ?? throw new ArgumentNullException(nameof(handler)), disposeHandler: true)
         {
             Timeout = Timeout.InfiniteTimeSpan,
         };
     }
 
+    /// <summary>
+    /// Sends one bounded OpenAI-compatible request to the managed endpoint, intentionally triggering
+    /// lazy model loading during setup. Verifies the response plus token and timing evidence without
+    /// returning or logging prompt or response content.
+    /// </summary>
     public async Task<LlamaServerInferenceVerification> VerifyAsync(
         Uri endpoint,
         string modelAlias,
@@ -72,6 +116,9 @@ public sealed class LlamaServerInferenceClient : ILlamaServerInferenceClient
                 stream = false,
             }),
         };
+        var apiKey = _getApiKey is null ? null : LocalAiApiCredentialStore.RequireApiKey(_getApiKey());
+        if (apiKey is not null)
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
 
         using HttpResponseMessage response = await _client.SendAsync(
                 request,
@@ -80,11 +127,18 @@ public sealed class LlamaServerInferenceClient : ILlamaServerInferenceClient
             .ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
-            throw new InvalidDataException(
-                $"llama-server inference returned HTTP {(int)response.StatusCode} ({response.StatusCode}).");
+            string? serverError = await ReadErrorDetailAsync(response.Content, cancellationToken, apiKey)
+                .ConfigureAwait(false);
+            throw new LlamaServerInferenceException(
+                serverError is null
+                    ? $"llama-server inference returned HTTP {(int)response.StatusCode} ({response.StatusCode})."
+                    : $"llama-server inference returned HTTP {(int)response.StatusCode} ({response.StatusCode}): {serverError}",
+                (int)response.StatusCode,
+                serverError);
         }
 
-        byte[] payload = await ReadBoundedAsync(response.Content, cancellationToken).ConfigureAwait(false);
+        byte[] payload = await ReadBoundedAsync(response.Content, MaximumResponseBytes, cancellationToken)
+            .ConfigureAwait(false);
         using JsonDocument document = JsonDocument.Parse(payload, new JsonDocumentOptions { MaxDepth = 24 });
         JsonElement root = document.RootElement;
         if (root.ValueKind != JsonValueKind.Object ||
@@ -187,11 +241,107 @@ public sealed class LlamaServerInferenceClient : ILlamaServerInferenceClient
         }
     }
 
+    /// <summary>
+    /// Best-effort extraction of llama-server's own error text so a failed setup reports a root
+    /// cause instead of a bare status code. Never throws, and never reads assistant output: this
+    /// runs only on a non-success response, and reads only llama-server's recognized
+    /// <c>{"error": ...}</c> shape. Anything else — HTML, a differently-shaped JSON body, or a
+    /// truncated/malformed payload — is not attributable to llama-server's own diagnostics and
+    /// yields <see langword="null"/> (status-only) rather than surfacing an unvetted raw body
+    /// through the exception message, setup log, and completion UI.
+    /// </summary>
+    private static async Task<string?> ReadErrorDetailAsync(
+        HttpContent content,
+        CancellationToken cancellationToken,
+        string? apiKey)
+    {
+        byte[] payload;
+        try
+        {
+            payload = await ReadBoundedAsync(content, MaximumErrorBytes, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is InvalidDataException or IOException or HttpRequestException)
+        {
+            return null;
+        }
+        if (payload.Length == 0)
+            return null;
+
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(
+                payload, new JsonDocumentOptions { MaxDepth = 24 });
+            if (document.RootElement.ValueKind == JsonValueKind.Object &&
+                document.RootElement.TryGetProperty("error", out JsonElement error))
+            {
+                if (error.ValueKind == JsonValueKind.String)
+                    return Sanitize(error.GetString(), apiKey);
+                if (error.ValueKind == JsonValueKind.Object)
+                {
+                    return Sanitize(ReadStringProperty(error, "message"), apiKey)
+                        ?? Sanitize(ReadStringProperty(error, "type"), apiKey);
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            // Not JSON, or truncated. No recognized llama-server error shape to surface.
+        }
+
+        return null;
+    }
+
+    private static string? ReadStringProperty(JsonElement value, string propertyName) =>
+        value.TryGetProperty(propertyName, out JsonElement property) &&
+        property.ValueKind == JsonValueKind.String
+            ? property.GetString()
+            : null;
+
+    private static string? Sanitize(string? value, string? apiKey)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+        if (VerbosePayloadRecordPattern().IsMatch(value))
+            return null;
+
+        if (apiKey is not null)
+            value = value.Replace(apiKey, "[REDACTED]", StringComparison.Ordinal);
+        value = TokenSanitizer.SanitizeLogMessage(value);
+        var builder = new StringBuilder(value.Length);
+        bool pendingSpace = false;
+        foreach (char character in value)
+        {
+            if (char.IsControl(character) || char.IsSeparator(character))
+            {
+                pendingSpace = builder.Length > 0;
+                continue;
+            }
+            if (pendingSpace)
+            {
+                builder.Append(' ');
+                pendingSpace = false;
+            }
+            builder.Append(character);
+            if (builder.Length >= MaximumErrorDetailLength)
+                break;
+        }
+
+        return builder.Length == 0 ? null : builder.ToString();
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(
+        @"(?:\blog_server_[a-z_]*|\brequest|\bresponse)\s*:",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase |
+        System.Text.RegularExpressions.RegexOptions.CultureInvariant)]
+    private static partial System.Text.RegularExpressions.Regex VerbosePayloadRecordPattern();
+
     private static async Task<byte[]> ReadBoundedAsync(
         HttpContent content,
+        int maximumBytes,
         CancellationToken cancellationToken)
     {
-        if (content.Headers.ContentLength is > MaximumResponseBytes)
+        if (content.Headers.ContentLength > maximumBytes)
             throw new InvalidDataException("The llama-server inference response exceeds the size limit.");
 
         await using Stream input = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
@@ -202,7 +352,7 @@ public sealed class LlamaServerInferenceClient : ILlamaServerInferenceClient
             int read = await input.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false);
             if (read == 0)
                 return output.ToArray();
-            if (output.Length + read > MaximumResponseBytes)
+            if (output.Length + read > maximumBytes)
                 throw new InvalidDataException("The llama-server inference response exceeds the size limit.");
             output.Write(buffer, 0, read);
         }

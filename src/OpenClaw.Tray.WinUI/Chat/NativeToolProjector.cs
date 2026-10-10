@@ -21,6 +21,7 @@ internal static class NativeToolProjector
         ["command", "path", "file_path", "query", "url", "pattern"];
 
     internal const int MaxDisplayValueChars = 240;
+    internal const int MaxPersistedToolArgumentsChars = 64 * 1024;
     private const int MaxIdentityChars = 80;
     private const int ToolOutputMaxChars = 4000;
 
@@ -170,6 +171,34 @@ internal static class NativeToolProjector
             }
         }
         return displayArgs.Count == 0 ? null : displayArgs;
+    }
+
+    internal static JsonObject? ExtractSafePersistedToolDisplayArgs(JsonElement? value)
+    {
+        if (value is { ValueKind: JsonValueKind.Object } data)
+            return ExtractSafeToolDisplayArgs(data);
+
+        if (value is not { ValueKind: JsonValueKind.String } encoded)
+            return null;
+
+        var json = encoded.GetString();
+        if (string.IsNullOrWhiteSpace(json)
+            || json.Length > MaxPersistedToolArgumentsChars)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return document.RootElement.ValueKind == JsonValueKind.Object
+                ? ExtractSafeToolDisplayArgs(document.RootElement)
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     internal static string SanitizeToolDisplayValue(string? value)

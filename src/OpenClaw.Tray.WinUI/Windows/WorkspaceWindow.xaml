@@ -1,0 +1,214 @@
+<?xml version="1.0" encoding="utf-8"?>
+<winex:WindowEx
+    x:Class="OpenClawTray.Windows.WorkspaceWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:OpenClawTray.Controls"
+    xmlns:winex="using:WinUIEx"
+    MinWidth="800" MinHeight="560">
+    <Window.SystemBackdrop><MicaBackdrop/></Window.SystemBackdrop>
+    <Grid x:Name="Root" PreviewKeyDown="OnKeyDown">
+        <Grid.Resources>
+            <DataTemplate x:Key="AgentIdentityTemplate">
+                <controls:AgentIdentityBadge/>
+            </DataTemplate>
+            <Style x:Key="ConnectionBadgeIcon" TargetType="FontIcon">
+                <Setter Property="Glyph" Value="&#xE91F;"/>
+                <Setter Property="FontSize" Value="10"/>
+            </Style>
+            <Style x:Key="ConnectionBadgeNeutral" TargetType="FontIcon" BasedOn="{StaticResource ConnectionBadgeIcon}">
+                <Setter Property="Foreground" Value="{ThemeResource SystemFillColorNeutralBrush}"/>
+            </Style>
+            <Style x:Key="ConnectionBadgeSuccess" TargetType="FontIcon" BasedOn="{StaticResource ConnectionBadgeIcon}">
+                <Setter Property="Foreground" Value="{ThemeResource SystemFillColorSuccessBrush}"/>
+            </Style>
+            <Style x:Key="ConnectionBadgeCaution" TargetType="FontIcon" BasedOn="{StaticResource ConnectionBadgeIcon}">
+                <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCautionBrush}"/>
+            </Style>
+            <Style x:Key="ConnectionBadgeCritical" TargetType="FontIcon" BasedOn="{StaticResource ConnectionBadgeIcon}">
+                <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCriticalBrush}"/>
+            </Style>
+        </Grid.Resources>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <TitleBar x:Name="WorkspaceTitleBar" Title="OpenClaw" AutomationProperties.AutomationId="WorkspaceTitleBar"/>
+        <Grid x:Name="NavigationSection" Grid.Row="1">
+        <NavigationView x:Name="NavView"
+                        AutomationProperties.AutomationId="WorkspaceNavigation"
+                        PaneDisplayMode="Left" OpenPaneLength="256" CompactPaneLength="0"
+                        IsBackButtonVisible="Collapsed" IsSettingsVisible="False"
+                        IsPaneToggleButtonVisible="False" IsPaneOpen="True"
+                        PaneClosed="OnPaneClosed"
+                        SelectionChanged="OnNavigationChanged">
+            <NavigationView.Resources>
+                <x:String x:Key="SplitViewPaneAnimationOpenDuration">00:00:00.16</x:String>
+                <x:String x:Key="SplitViewPaneAnimationOpenPreDuration">00:00:00.15999</x:String>
+                <x:String x:Key="SplitViewPaneAnimationCloseDuration">00:00:00.16</x:String>
+                <StaticResource x:Key="NavigationViewDefaultPaneBackground" ResourceKey="NavigationViewExpandedPaneBackground"/>
+                <Thickness x:Key="NavigationViewBorderThickness">0</Thickness>
+                <Thickness x:Key="NavigationViewPaneContentGridMargin">0</Thickness>
+                <x:Double x:Key="NavigationViewItemOnLeftIconBoxHeight">22</x:Double>
+                <Thickness x:Key="NavigationViewItemSeparatorMargin">0,2,0,2</Thickness>
+                <SvgImageSource x:Key="Chat_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Chat.svg"/>
+                <SvgImageSource x:Key="Notifications_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Notifications.svg"/>
+            </NavigationView.Resources>
+            <NavigationView.PaneHeader>
+                <StackPanel Margin="4,8,4,8" Spacing="8">
+                    <Grid x:Name="NavigationToolbar" Height="40">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                            <Button x:Name="BackButton" x:Uid="NavBackButton" Click="OnBack"
+                                    Height="40"
+                                    Style="{StaticResource SubtleButtonStyle}" AutomationProperties.AutomationId="WorkspaceBack"
+                                    IsEnabled="False">
+                                <FontIcon Glyph="&#xE76B;" FontSize="16"/>
+                            </Button>
+                            <Button x:Name="ForwardButton" x:Uid="WorkspaceShell_Forward" Click="OnForward"
+                                    Height="40"
+                                    Style="{StaticResource SubtleButtonStyle}" AutomationProperties.AutomationId="WorkspaceForward"
+                                    IsEnabled="False">
+                                <FontIcon Glyph="&#xE76C;" FontSize="16"/>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                    <ComboBox x:Name="AssistantSelector" x:Uid="WorkspaceShell_Assistant"
+                              Padding="4,8,28,8"
+                              HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" SelectionChanged="OnAssistantChanged"
+                              Background="Transparent" BorderThickness="0" CornerRadius="{ThemeResource ControlCornerRadius}"
+                              AutomationProperties.AutomationId="WorkspaceAssistantSelector">
+                        <ComboBox.Resources>
+                            <SolidColorBrush x:Key="ComboBoxBackground" Color="Transparent"/>
+                            <SolidColorBrush x:Key="ComboBoxBackgroundUnfocused" Color="Transparent"/>
+                            <StaticResource x:Key="ComboBoxBackgroundPointerOver" ResourceKey="SubtleFillColorSecondaryBrush"/>
+                            <StaticResource x:Key="ComboBoxBackgroundPressed" ResourceKey="SubtleFillColorTertiaryBrush"/>
+                        </ComboBox.Resources>
+                        <ComboBoxItem x:Name="NewAgentOption" Padding="2,8,12,8" Margin="-5,0,0,0"
+                                      AutomationProperties.AutomationId="WorkspaceNewAgent">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon Glyph="&#xE710;" FontSize="16"/>
+                                <TextBlock x:Name="NewAgentLabel"/>
+                            </StackPanel>
+                        </ComboBoxItem>
+                    </ComboBox>
+                </StackPanel>
+            </NavigationView.PaneHeader>
+            <NavigationView.MenuItems>
+                <NavigationViewItem x:Name="HomeItem" Tag="home" Padding="0" AutomationProperties.AutomationId="WorkspaceNavHome">
+                    <NavigationViewItem.Resources>
+                        <Thickness x:Key="NavigationViewItemContentPresenterMargin">0,-1,8,-1</Thickness>
+                    </NavigationViewItem.Resources>
+                    <!-- The native iconless presenter already reserves an 8-DIP leading column. -->
+                    <StackPanel Orientation="Horizontal" Spacing="16">
+                        <Grid Width="24">
+                            <ImageIcon x:Name="HomeIcon" Source="{StaticResource Chat_Icon}" Width="22" Height="22"
+                                       AutomationProperties.AccessibilityView="Raw"/>
+                        </Grid>
+                        <TextBlock x:Name="HomeLabel" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </NavigationViewItem>
+                <NavigationViewItemHeader x:Name="SessionsHeader" IsEnabled="True">
+                    <NavigationViewItemHeader.Resources>
+                        <Thickness x:Key="NavigationViewItemInnerHeaderMargin">16,0,4,0</Thickness>
+                    </NavigationViewItemHeader.Resources>
+                    <NavigationViewItemHeader.Template>
+                        <ControlTemplate TargetType="NavigationViewItemHeader">
+                            <Grid>
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="PaneStates">
+                                        <VisualState x:Name="HeaderTextVisible"/>
+                                        <VisualState x:Name="HeaderTextCollapsed">
+                                            <VisualState.Setters>
+                                                <Setter Target="HeaderContent.Visibility" Value="Collapsed"/>
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                                <ContentPresenter x:Name="HeaderContent" Content="{TemplateBinding Content}"
+                                                  Height="40" HorizontalContentAlignment="Stretch"
+                                                  Margin="{ThemeResource NavigationViewItemInnerHeaderMargin}"/>
+                            </Grid>
+                        </ControlTemplate>
+                    </NavigationViewItemHeader.Template>
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBlock x:Uid="WorkspaceShell_SessionsLabel" Text="Sessions" VerticalAlignment="Center"
+                                   Style="{StaticResource NavigationViewItemHeaderTextStyle}"/>
+                        <Button x:Name="NewSessionButton" x:Uid="WorkspaceShell_NewConversation" Grid.Column="1" Click="OnNewConversation"
+                                Width="40" Height="{ThemeResource NavigationViewItemOnLeftMinHeight}"
+                                CornerRadius="{ThemeResource ControlCornerRadius}"
+                                Style="{StaticResource SubtleButtonStyle}" AutomationProperties.AutomationId="WorkspaceSessionsAdd">
+                            <FontIcon Glyph="&#xE710;" FontSize="16"/>
+                        </Button>
+                    </Grid>
+                </NavigationViewItemHeader>
+                <NavigationViewItemHeader x:Name="SessionsEmpty" FontWeight="Normal"/>
+            </NavigationView.MenuItems>
+            <NavigationView.PaneFooter>
+                <Grid x:Name="ExpandedFooter" ColumnSpacing="4" Margin="4,8,4,8">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <Button x:Name="OwnerButton" Style="{StaticResource SubtleButtonStyle}" Padding="8" HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch" AutomationProperties.AutomationId="WorkspaceOwner">
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="24"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <PersonPicture x:Name="OwnerPicture" Width="24" Height="24" VerticalAlignment="Center"
+                                           IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw"/>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock x:Name="OwnerName" TextTrimming="CharacterEllipsis"/>
+                                <Grid ColumnSpacing="4">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <FontIcon x:Name="OwnerStatusDot" Style="{StaticResource ConnectionBadgeNeutral}"
+                                              VerticalAlignment="Center" IsHitTestVisible="False"
+                                              AutomationProperties.AccessibilityView="Raw"/>
+                                    <TextBlock x:Name="OwnerDetail" Grid.Column="1" TextTrimming="CharacterEllipsis"
+                                               Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                </Grid>
+                            </StackPanel>
+                        </Grid>
+                    </Button>
+                    <Button x:Name="NotificationsButton" x:Uid="WorkspaceShell_NotificationsButton" Grid.Column="1"
+                            Width="40" Height="{ThemeResource NavigationViewItemOnLeftMinHeight}"
+                            CornerRadius="{ThemeResource ControlCornerRadius}"
+                            Style="{StaticResource SubtleButtonStyle}" Padding="8" VerticalAlignment="Center"
+                            AutomationProperties.AutomationId="WorkspaceNotifications">
+                        <Grid>
+                            <ImageIcon Source="{StaticResource Notifications_Icon}" Width="20" Height="20"
+                                       AutomationProperties.AccessibilityView="Raw"/>
+                            <InfoBadge x:Name="NotificationsBadge" Value="0" Visibility="Collapsed"
+                                       HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-6,-8,0"/>
+                        </Grid>
+                        <Button.Flyout>
+                            <Flyout x:Name="NotificationsFlyout" Placement="TopEdgeAlignedLeft"
+                                    Opening="OnNotificationsOpening" Closed="OnNotificationsClosed">
+                                <controls:NotificationFlyoutContent x:Name="NotificationContent"/>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+                </Grid>
+            </NavigationView.PaneFooter>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <Grid x:Name="ReopenPaneSlot" Height="56" Visibility="Collapsed"/>
+                <InfoBar x:Name="OperationInfo" Grid.Row="1" IsOpen="False" IsClosable="True" Severity="Error"/>
+                <Grid x:Name="ContentHost" Grid.Row="2" AutomationProperties.AutomationId="WorkspaceContent"/>
+            </Grid>
+        </NavigationView>
+        <Button x:Name="CollapsePaneButton" x:Uid="WorkspaceShell_TogglePane" Click="OnTogglePane"
+                AutomationProperties.AutomationId="WorkspaceTogglePane"
+                HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,8,0,0"
+                Width="40" Height="40" Style="{StaticResource SubtleButtonStyle}">
+            <FontIcon Glyph="&#xE90C;" FontSize="16"/>
+        </Button>
+        <Button x:Name="ReopenPaneButton" x:Uid="WorkspaceShell_TogglePane" Click="OnTogglePane"
+                AutomationProperties.AutomationId="WorkspaceReopenPane"
+                Visibility="Collapsed" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,8,0,0"
+                Width="40" Height="40" Style="{StaticResource SubtleButtonStyle}">
+            <FontIcon Glyph="&#xE90C;" FontSize="16"/>
+        </Button>
+        </Grid>
+    </Grid>
+</winex:WindowEx>

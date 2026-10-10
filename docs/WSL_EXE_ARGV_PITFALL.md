@@ -128,6 +128,7 @@ All of these failed workarounds were verified empirically:
 - `src/OpenClaw.SetupEngine/CommandRunner.cs` - `RunInWslAsync` exposes the opt-in `inputViaStdin` parameter.
 - `src/OpenClaw.SetupEngine/ValidateWslLockdownStep.cs` - `ValidateWslLockdownStep` uses workaround #2, C# interpolation.
 - `src/OpenClaw.SetupEngine/WindowsNodeBootstrapContextStep.cs` - `WindowsNodeBootstrapContextStep` uses workaround #1, stdin.
+- `src/OpenClaw.Connection/WslGatewayController.cs` - gateway start, stop, and restart scripts use `bash -s` stdin so the Linux `$PATH` is not replaced by the Windows process environment.
 
 ## Related
 

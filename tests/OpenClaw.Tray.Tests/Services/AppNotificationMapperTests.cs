@@ -82,6 +82,44 @@ public sealed class AppNotificationMapperTests
     }
 
     [Fact]
+    public void FromGatewayNotification_FormatsChatMarkdownAndRemovesTrailingControlMarker()
+    {
+        var mapped = AppNotificationMapper.FromGatewayNotification(new OpenClawNotification
+        {
+            Title = "# Build **complete**",
+            Message = "truncated",
+            FullMessage = "## Result\n- **Build** [passed](https://example.com) with `zero` failures.\n```text\n# Tests: **42**\nDONE\n```\nStatus is DONE. Use <https://example.com> with <requestId>.\nfinishedDONENext stepDONE",
+            IsChat = true
+        });
+
+        Assert.Equal("Build complete", mapped.Title);
+        Assert.Equal(
+            "Result\nBuild passed (https://example.com) with zero failures.\n# Tests: **42**\nDONE\nStatus is DONE. Use https://example.com with <requestId>.\nfinished Next step",
+            mapped.Message);
+
+        var controlOnly = AppNotificationMapper.FromGatewayNotification(new OpenClawNotification
+        {
+            Title = "Chat response",
+            FullMessage = "DONE",
+            IsChat = true
+        });
+        Assert.Empty(controlOnly.Message);
+    }
+
+    [Fact]
+    public void FromNodeSystemNotification_FormatsMarkdownWithoutChangingMarkerLikeProse()
+    {
+        var mapped = AppNotificationMapper.FromNodeSystemNotification(new SystemNotifyArgs
+        {
+            Title = "**Deploy** notice",
+            Body = "- Review [details](https://example.com) when DONE"
+        });
+
+        Assert.Equal("Deploy notice", mapped.Title);
+        Assert.Equal("Review details (https://example.com) when DONE", mapped.Message);
+    }
+
+    [Fact]
     public void FromNodeActivity_UsesExplicitMetadata()
     {
         var mapped = AppNotificationMapper.FromNodeActivity(

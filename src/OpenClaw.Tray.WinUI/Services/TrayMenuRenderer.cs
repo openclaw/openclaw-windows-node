@@ -695,6 +695,7 @@ internal sealed class TrayMenuRenderer
         TrayMenuIconIdentity.Device => FluentIconCatalog.Devices,
         TrayMenuIconIdentity.App => "",
         TrayMenuIconIdentity.Document => "",
+        TrayMenuIconIdentity.Ollama => FluentIconCatalog.Inference,
         _ => null,
     };
 

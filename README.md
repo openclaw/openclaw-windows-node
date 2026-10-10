@@ -22,6 +22,12 @@ Requires Windows 10 20H2 or later, or Windows 11. No source build is required.
 
 On first launch, the setup wizard can install a dedicated local gateway in WSL or connect OpenClaw Companion to an existing gateway. If you do not have a gateway yet, choose **Install a local gateway (WSL)**.
 
+## Uninstall
+
+Go to **Settings → Apps → Installed apps**, find **OpenClaw Companion**, and click **Uninstall** (or use **Add or Remove Programs** in Control Panel). You'll be asked whether to also remove the local WSL gateway; choose **Yes** to unregister its WSL distro and generated state, or **No** to leave the gateway and that state in place.
+
+Your settings file at `%APPDATA%\OpenClawTray\settings.json` is not removed automatically, and device identity files for gateways unrelated to the one you removed are preserved. Choosing **Yes** also removes the removed gateway's own identity directory under `%APPDATA%\OpenClawTray\gateways\`. Root operator and node tokens are preserved only while an external gateway record remains; otherwise they are cleared, even if another local or loopback gateway record remains. Delete `%APPDATA%\OpenClawTray\` manually for a fully clean uninstall. See [docs/SETUP.md](docs/SETUP.md#uninstalling) for details, including the headless `--uninstall --confirm-destructive` CLI path used for testing.
+
 ## 🔌 Node mode (agent control)
 
 Use OpenClaw Companion for normal setup. You should not need to edit `openclaw.json` by hand.
@@ -92,6 +98,14 @@ policy. Commands outside the Windows gateway defaults, including
 `screen.record`, `camera.snap`, `camera.clip`, `stt.transcribe`, and
 `tts.speak`, require deliberate gateway opt-in. Reapprove and reconnect the
 node after changing the effective command set.
+
+**Share Windows Ollama** in the Permissions page is a separate opt-in. It
+advertises `ollama.models` and `ollama.chat` so the active paired gateway,
+whether local or remote, can use an Ollama service running on Windows loopback.
+It does not change or reuse the app-managed Local AI gateway provider. Older
+gateways require both exact Ollama commands in `gateway.nodes.allowCommands`;
+newer gateways with the bundled Ollama plugin can expose them through the
+`node_inference` agent tool.
 
 </details>
 

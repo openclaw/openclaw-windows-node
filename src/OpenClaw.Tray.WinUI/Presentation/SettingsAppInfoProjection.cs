@@ -24,6 +24,13 @@ public static class SettingsAppInfoProjection
     /// <summary>Maps the packaged flag to the installation-kind label.</summary>
     public static string InstallKind(bool isPackaged) => isPackaged ? PackagedInstallText : UnpackagedInstallText;
 
+    /// <summary>
+    /// Displays the Windows package identity version for MSIX installs and the application
+    /// GitVersion for unpackaged developer runs.
+    /// </summary>
+    public static string ResolveDisplayVersion(string appDisplayVersion, string? packageVersion) =>
+        string.IsNullOrWhiteSpace(packageVersion) ? appDisplayVersion : packageVersion.Trim();
+
     /// <summary>Resolves the update-channel label, defaulting to <c>stable</c> when unset.</summary>
     public static string ResolveUpdateChannel(string? channelEnvironmentValue) =>
         string.IsNullOrWhiteSpace(channelEnvironmentValue) ? DefaultChannel : channelEnvironmentValue.Trim();

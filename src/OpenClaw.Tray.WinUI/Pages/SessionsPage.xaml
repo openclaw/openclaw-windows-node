@@ -58,8 +58,8 @@
                                       FontFamily="{ThemeResource SymbolThemeFontFamily}"
                                       FontSize="14"
                                       IsTextScaleFactorEnabled="False"/>
-                            <TextBlock x:Uid="SessionsPage_Refresh" x:Name="RefreshLabel" Text="Refresh"/>
-                        </StackPanel>
+                                        <TextBlock x:Uid="SessionsPage_Refresh" x:Name="RefreshLabel" Text="Refresh"/>
+                                    </StackPanel>
                     </Button>
                 </Grid>
 
@@ -270,6 +270,39 @@
                         </ListView.ItemTemplate>
                     </ListView>
                 </Grid>
+                <Expander x:Name="ArchivedSection" Header="Archived"
+                          HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                          Expanding="OnArchivedExpanding" Collapsed="OnArchivedCollapsed"
+                          AutomationProperties.AutomationId="SessionsPageArchived">
+                    <StackPanel Spacing="8">
+                        <TextBlock x:Name="ArchivedMessage" TextWrapping="Wrap"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <ListView x:Name="ArchivedList" SelectionMode="None"
+                                  ItemContainerStyle="{Binding ItemContainerStyle, ElementName=SessionListView}"
+                                  AutomationProperties.AutomationId="SessionsPageArchivedList">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Padding="12" ColumnSpacing="12"
+                                          AutomationProperties.AutomationId="{Binding RowAutomationId}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Spacing="4" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis"
+                                                       Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                                            <TextBlock Text="{Binding AgeText}"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Tag="{Binding Key}" Content="{Binding UnarchiveLabel}"
+                                                Click="OnUnarchiveSession"
+                                                AutomationProperties.AutomationId="{Binding UnarchiveAutomationId}"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </StackPanel>
+                </Expander>
             </StackPanel>
         </Grid>
     </ScrollViewer>

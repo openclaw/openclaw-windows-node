@@ -6,6 +6,19 @@ namespace OpenClaw.Tray.Tests;
 public class WslKeepAlivePolicyTests
 {
     [Fact]
+    public void IsolatedProfile_RequiresExplicitManagedGatewayBeforeAnyLifecycleAction()
+    {
+        Assert.False(WslKeepAlivePolicy.CanManageGateway(null, isIsolated: true));
+        Assert.False(WslKeepAlivePolicy.CanManageGateway(
+            new GatewayRecord { Id = "fake", Url = "ws://127.0.0.1:59999", IsLocal = true },
+            isIsolated: true));
+        Assert.True(WslKeepAlivePolicy.CanManageGateway(
+            new GatewayRecord { Id = "owned", SetupManagedDistroName = "ScenarioOwnedGateway" },
+            isIsolated: true));
+        Assert.True(WslKeepAlivePolicy.CanManageGateway(null, isIsolated: false));
+    }
+
+    [Fact]
     public void MarkedKeepaliveIdentity_RejectsReusedPidProcessNameOrStartTime()
     {
         var markerStart = new DateTime(2026, 7, 24, 1, 2, 3, DateTimeKind.Utc);

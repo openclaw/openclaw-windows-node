@@ -10,6 +10,7 @@ public sealed class SettingsChangeCoordinatorTests
     private static SettingsChangeEffects RecordingEffects(
         List<string> calls) =>
         new(
+            settings => calls.Add($"ollama:{settings.NodeOllamaInferenceEnabled}"),
             settings => calls.Add($"visibility:{settings.GatewayUrl}"),
             () => calls.Add("sync"),
             () => calls.Add("sandbox-risk"),
@@ -30,6 +31,7 @@ public sealed class SettingsChangeCoordinatorTests
 
         Assert.Equal(new[]
         {
+            "ollama:False",
             "visibility:ws://current",
             "sync",
             "sandbox-risk",
@@ -91,6 +93,7 @@ public sealed class SettingsChangeCoordinatorTests
         var activeEffects = 0;
         var overlapDetected = 0;
         var effects = new SettingsChangeEffects(
+            _ => { },
             settings =>
             {
                 if (Interlocked.Increment(ref activeEffects) != 1)
@@ -132,6 +135,7 @@ public sealed class SettingsChangeCoordinatorTests
         using var firstStarted = new ManualResetEventSlim();
         using var releaseFirst = new ManualResetEventSlim();
         var effects = new SettingsChangeEffects(
+            _ => { },
             settings =>
             {
                 if (settings.GatewayUrl != "ws://first")
@@ -168,5 +172,55 @@ public sealed class SettingsChangeCoordinatorTests
         releaseFirst.Set();
         await first;
         await Assert.ThrowsAsync<InvalidOperationException>(() => failing);
+    }
+
+    [Fact]
+    public async Task Apply_ConcurrentPermissionChanges_PreserveFinalDisabledOrder()
+    {
+        using var enabledStarted = new ManualResetEventSlim();
+        using var releaseEnabled = new ManualResetEventSlim();
+        using var disabledCallerStarted = new ManualResetEventSlim();
+        var permissionStates = new ConcurrentQueue<bool>();
+        var effects = new SettingsChangeEffects(
+            settings =>
+            {
+                permissionStates.Enqueue(settings.NodeOllamaInferenceEnabled);
+                if (!settings.NodeOllamaInferenceEnabled)
+                    return;
+
+                enabledStarted.Set();
+                Assert.True(releaseEnabled.Wait(TimeSpan.FromSeconds(5)));
+            },
+            _ => { },
+            () => { },
+            () => { },
+            _ => { },
+            () => { },
+            _ => { },
+            _ => { },
+            _ => { },
+            _ => { });
+        var coordinator = new SettingsChangeCoordinator(
+            effects,
+            new SettingsData { NodeOllamaInferenceEnabled = false });
+
+        var enable = Task.Factory.StartNew(
+            () => coordinator.Apply(new SettingsData { NodeOllamaInferenceEnabled = true }),
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+        Assert.True(enabledStarted.Wait(TimeSpan.FromSeconds(2)));
+        var disable = Task.Run(() =>
+        {
+            disabledCallerStarted.Set();
+            coordinator.Apply(new SettingsData { NodeOllamaInferenceEnabled = false });
+        });
+        Assert.True(disabledCallerStarted.Wait(TimeSpan.FromSeconds(2)));
+        Assert.False(disable.IsCompleted);
+
+        releaseEnabled.Set();
+        await Task.WhenAll(enable, disable);
+
+        Assert.Equal([true, false], permissionStates);
     }
 }

@@ -1,10 +1,12 @@
 using OpenClaw.Chat;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Telemetry;
+using OpenClaw.TestSupport.Gateway;
 using OpenClawTray.Chat;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace OpenClaw.Tray.Tests;
@@ -78,6 +80,8 @@ public class OpenClawChatDataProviderTests
         public Func<string, string?, string?, Task>? SendBehavior { get; set; }
         public Func<string, string, Task>? PatchSessionModelBehavior { get; set; }
         public Func<string, Task>? ClearSessionModelBehavior { get; set; }
+        public Func<string, string, Task>? PatchSessionThinkingLevelBehavior { get; set; }
+        public Func<string, Task>? ClearSessionThinkingLevelBehavior { get; set; }
         public Func<string?, Task<ChatHistoryInfo>>? HistoryBehavior { get; set; }
         public Func<string, Task>? AbortBehavior { get; set; }
         public SessionInfo[] Sessions { get; set; } = Array.Empty<SessionInfo>();
@@ -194,7 +198,18 @@ public class OpenClawChatDataProviderTests
             return ClearSessionModelBehavior?.Invoke(sessionKey) ?? Task.CompletedTask;
         }
         public List<string> ClearedModelKeys { get; } = new();
-        public Task PatchSessionThinkingLevelAsync(string sessionKey, string thinkingLevel) => Task.CompletedTask;
+        public Task PatchSessionThinkingLevelAsync(string sessionKey, string thinkingLevel)
+        {
+            PatchedThinkingLevels.Add((sessionKey, thinkingLevel));
+            return PatchSessionThinkingLevelBehavior?.Invoke(sessionKey, thinkingLevel) ?? Task.CompletedTask;
+        }
+        public List<(string SessionKey, string ThinkingLevel)> PatchedThinkingLevels { get; } = new();
+        public Task ClearSessionThinkingLevelAsync(string sessionKey)
+        {
+            ClearedThinkingLevelKeys.Add(sessionKey);
+            return ClearSessionThinkingLevelBehavior?.Invoke(sessionKey) ?? Task.CompletedTask;
+        }
+        public List<string> ClearedThinkingLevelKeys { get; } = new();
 
         public Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey)
         {
@@ -248,6 +263,8 @@ public class OpenClawChatDataProviderTests
             string? attachmentMetaCachePath = null,
             string? lastChatStatePath = null,
             TimeSpan? lastChatStateSaveDelay = null,
+            Action? lastStateSaveReservedForTesting = null,
+            Action? beforeSelectedStateSaveForTesting = null,
             Func<TimeSpan, CancellationToken, Func<Task>, Task>? historyRetryScheduler = null,
             Action? historyFailureReservedForTesting = null,
             Func<Func<Task>, Task>? deferredAbortScheduler = null,
@@ -256,6 +273,7 @@ public class OpenClawChatDataProviderTests
         var bridge = new FakeBridge { Sessions = initial ?? Array.Empty<SessionInfo>() };
         var provider = toolMetaCachePath is null && attachmentMetaCachePath is null && lastChatStatePath is null &&
             lastChatStateSaveDelay is null && historyRetryScheduler is null && historyFailureReservedForTesting is null &&
+            lastStateSaveReservedForTesting is null && beforeSelectedStateSaveForTesting is null &&
             deferredAbortScheduler is null && post is null
             ? new OpenClawChatDataProvider(bridge)
             : new OpenClawChatDataProvider(
@@ -268,6 +286,9 @@ public class OpenClawChatDataProviderTests
                 historyRetryScheduler: historyRetryScheduler,
                 historyFailureReservedForTesting: historyFailureReservedForTesting,
                 deferredAbortScheduler: deferredAbortScheduler);
+        provider.SetPersistenceTestHooks(
+            lastStateSaveReservedForTesting,
+            beforeSelectedStateSaveForTesting);
         var snapshots = new List<ChatDataSnapshot>();
         var notifications = new List<ChatProviderNotification>();
         provider.Changed += (_, e) => snapshots.Add(e.Snapshot);
@@ -787,7 +808,18 @@ public class OpenClawChatDataProviderTests
             bridge.RaiseStatus(ConnectionStatus.Connected);
             await provider.SendMessageAsync("main", "first");
             bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
-            await provider.SendMessageAsync("main", "second");
+            using var composer = new ChatComposerFactory(new Presentation.RecordingUiDispatcher()).Create(
+                provider, new ChatComposerHostActions(null, null, null, null, null), initialSpeakerMuted: false);
+            composer.ApplyInputs(new ChatComposerInputs(
+                "connected", true, snapshots[^1].Threads.Single(thread => thread.Id == "main"),
+                [], [], null, true, [], null, false));
+            composer.ViewModel.SetDraft("second");
+            var queuedSend = composer.Controller.SendAsync();
+
+            Assert.True(queuedSend.IsCompletedSuccessfully);
+            Assert.True(await queuedSend);
+            Assert.Empty(composer.ViewModel.Draft);
+            Assert.False(composer.ViewModel.IsSending);
 
             var result = await provider.ExecuteLifecycleCommandAsync(
                 "main",
@@ -2008,6 +2040,7 @@ public class OpenClawChatDataProviderTests
         Assert.Single(posted);
 
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
+        Assert.Single(posted);
 
         foreach (var action in posted)
             action();
@@ -5462,16 +5495,894 @@ public class OpenClawChatDataProviderTests
         var bridge = new FakeBridge { Sessions = new[] { MainSession() } };
         var queued = new List<Action>();
         var provider = new OpenClawChatDataProvider(bridge, post: a => queued.Add(a));
-        var snapshots = new List<ChatDataSnapshot>();
-        provider.Changed += (_, e) => snapshots.Add(e.Snapshot);
+        var deliveries = new List<string>();
+        provider.Changed += (_, _) => deliveries.Add("snapshot");
+        provider.NotificationRequested += (_, _) => deliveries.Add("notification");
 
         bridge.RaiseChat(new ChatMessageInfo { SessionKey = "main", Role = "assistant", Text = "x", State = "final" });
 
-        // Snapshot was queued, not invoked immediately.
-        Assert.Empty(snapshots);
-        Assert.NotEmpty(queued);
+        Assert.Empty(deliveries);
+        Assert.Single(queued);
         foreach (var a in queued) a();
-        Assert.NotEmpty(snapshots);
+        Assert.Equal(["snapshot", "notification"], deliveries);
+    }
+
+    [Fact]
+    public async Task PostDelegate_CoalescesBurstToLatestSnapshotPerDrain()
+    {
+        var bridge = new FakeBridge { Sessions = [MainSession()] };
+        var queued = new ConcurrentQueue<Action>();
+        var postCount = 0;
+        var provider = new OpenClawChatDataProvider(
+            bridge,
+            post: action =>
+            {
+                Interlocked.Increment(ref postCount);
+                queued.Enqueue(action);
+            });
+        var snapshots = new List<ChatDataSnapshot>();
+        provider.Changed += (_, args) => snapshots.Add(args.Snapshot);
+        await using (provider)
+        {
+            bridge.RaiseStatus(ConnectionStatus.Connecting);
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            bridge.RaiseStatus(ConnectionStatus.Disconnected);
+
+            Assert.Equal(1, Volatile.Read(ref postCount));
+            AssertSingleQueuedAction(queued)();
+
+            var snapshot = Assert.Single(snapshots);
+            Assert.Equal(ConnectionStatus.Disconnected.ToString(), snapshot.ConnectionStatus);
+            Assert.Empty(queued);
+        }
+    }
+
+    [Fact]
+    public async Task PostDelegate_PublishesDuringCallbackScheduleExactlyOneFollowUpDrain()
+    {
+        var bridge = new FakeBridge { Sessions = [MainSession()] };
+        var queued = new ConcurrentQueue<Action>();
+        var postCount = 0;
+        var provider = new OpenClawChatDataProvider(
+            bridge,
+            post: action =>
+            {
+                Interlocked.Increment(ref postCount);
+                queued.Enqueue(action);
+            });
+        var snapshots = new List<ChatDataSnapshot>();
+        provider.Changed += (_, args) =>
+        {
+            snapshots.Add(args.Snapshot);
+            if (snapshots.Count == 1)
+            {
+                bridge.RaiseStatus(ConnectionStatus.Connected);
+                bridge.RaiseStatus(ConnectionStatus.Disconnected);
+            }
+        };
+        await using (provider)
+        {
+            bridge.RaiseStatus(ConnectionStatus.Connecting);
+            Assert.Equal(1, Volatile.Read(ref postCount));
+
+            AssertSingleQueuedAction(queued)();
+
+            Assert.Equal(2, Volatile.Read(ref postCount));
+            AssertSingleQueuedAction(queued)();
+
+            Assert.Equal(2, snapshots.Count);
+            Assert.Equal("Connecting…", snapshots[0].ConnectionStatus);
+            Assert.Equal(ConnectionStatus.Disconnected.ToString(), snapshots[1].ConnectionStatus);
+            Assert.Empty(queued);
+        }
+    }
+
+    [Fact]
+    public async Task PostDelegate_ConcurrentBurstDoesNotLoseFinalSnapshot()
+    {
+        var bridge = new FakeBridge { Sessions = [MainSession()] };
+        var queued = new ConcurrentQueue<Action>();
+        var postCount = 0;
+        var provider = new OpenClawChatDataProvider(
+            bridge,
+            post: action =>
+            {
+                Interlocked.Increment(ref postCount);
+                queued.Enqueue(action);
+            });
+        var snapshots = new ConcurrentQueue<ChatDataSnapshot>();
+        provider.Changed += (_, args) => snapshots.Enqueue(args.Snapshot);
+        await using (provider)
+        {
+            Parallel.For(
+                0,
+                512,
+                index => bridge.RaiseStatus(
+                    index % 2 == 0
+                        ? ConnectionStatus.Connecting
+                        : ConnectionStatus.Connected));
+            bridge.RaiseStatus(ConnectionStatus.Disconnected);
+
+            Assert.Equal(1, Volatile.Read(ref postCount));
+            AssertSingleQueuedAction(queued)();
+
+            var snapshot = Assert.Single(snapshots);
+            Assert.Equal(ConnectionStatus.Disconnected.ToString(), snapshot.ConnectionStatus);
+            Assert.Empty(queued);
+        }
+    }
+
+    [Fact]
+    public async Task PostDelegate_OutOfOrderPublishArrivalUsesAuthoritativeFinalSnapshot()
+    {
+        var bridge = new FakeBridge { Sessions = [MainSession()] };
+        var queued = new ConcurrentQueue<Action>();
+        var postCount = 0;
+        var provider = new OpenClawChatDataProvider(
+            bridge,
+            post: action =>
+            {
+                Interlocked.Increment(ref postCount);
+                queued.Enqueue(action);
+            });
+        using var olderSnapshotBuilt = new ManualResetEventSlim();
+        using var releaseOlderPublish = new ManualResetEventSlim();
+        provider.BeforePublishForTests = snapshot =>
+        {
+            if (snapshot.ConnectionStatus == "Connecting…")
+            {
+                olderSnapshotBuilt.Set();
+                Assert.True(releaseOlderPublish.Wait(TimeSpan.FromSeconds(10)));
+            }
+        };
+        var snapshots = new List<ChatDataSnapshot>();
+        provider.Changed += (_, args) => snapshots.Add(args.Snapshot);
+        await using (provider)
+        {
+            var olderPublish = Task.Run(
+                () => bridge.RaiseStatus(ConnectionStatus.Connecting));
+            Assert.True(olderSnapshotBuilt.Wait(TimeSpan.FromSeconds(10)));
+
+            bridge.RaiseStatus(ConnectionStatus.Disconnected);
+            releaseOlderPublish.Set();
+            await olderPublish;
+
+            Assert.Equal(1, Volatile.Read(ref postCount));
+            AssertSingleQueuedAction(queued)();
+
+            var snapshot = Assert.Single(snapshots);
+            Assert.Equal(
+                ConnectionStatus.Disconnected.ToString(),
+                snapshot.ConnectionStatus);
+            Assert.Empty(queued);
+        }
+    }
+
+    [Fact]
+    public async Task PostDelegate_RapidToolAndSessionBurstUsesOneDrainAndKeepsFinalSnapshot()
+    {
+        const int toolCount = 64;
+        var bridge = new FakeBridge { Sessions = [MainSession()] };
+        var queued = new ConcurrentQueue<Action>();
+        var postCount = 0;
+        var provider = new OpenClawChatDataProvider(
+            bridge,
+            post: action =>
+            {
+                Interlocked.Increment(ref postCount);
+                queued.Enqueue(action);
+            });
+        var snapshots = new List<ChatDataSnapshot>();
+        provider.Changed += (_, args) => snapshots.Add(args.Snapshot);
+        await using (provider)
+        {
+            await provider.LoadAsync();
+            for (var index = 0; index < toolCount; index++)
+            {
+                var command = $"echo {index}";
+                bridge.RaiseAgent(MakeAgentEvent(
+                    "tool",
+                    JsonSerializer.Serialize(new
+                    {
+                        phase = "start",
+                        name = "powershell",
+                        args = new { command },
+                    })));
+                bridge.RaiseAgent(MakeAgentEvent(
+                    "tool",
+                    JsonSerializer.Serialize(new
+                    {
+                        phase = "result",
+                        name = "powershell",
+                        args = new { command },
+                    })));
+
+                if (index % 8 == 0)
+                {
+                    bridge.RaiseSessions(
+                    [
+                        new SessionInfo
+                        {
+                            Key = "main",
+                            IsMain = true,
+                            DisplayName = $"Main session {index}",
+                            Status = "active",
+                        },
+                    ]);
+                }
+            }
+
+            bridge.RaiseSessions(
+            [
+                new SessionInfo
+                {
+                    Key = "main",
+                    IsMain = true,
+                    DisplayName = "Final session",
+                    Status = "active",
+                },
+            ]);
+
+            Assert.Equal(1, Volatile.Read(ref postCount));
+            AssertSingleQueuedAction(queued)();
+
+            var snapshot = Assert.Single(snapshots);
+            Assert.Equal("Final session", Assert.Single(snapshot.Threads).Title);
+            Assert.Equal(
+                toolCount,
+                snapshot.Timelines["main"].Entries.Count(
+                    entry => entry.Kind == ChatTimelineItemKind.ToolCall));
+            Assert.All(
+                snapshot.Timelines["main"].Entries.Where(
+                    entry => entry.Kind == ChatTimelineItemKind.ToolCall),
+                entry => Assert.Equal(ChatToolCallStatus.Success, entry.ToolResult));
+            Assert.Empty(queued);
+        }
+    }
+
+    [Fact]
+    public async Task PostDelegate_DrainLeaseFencesAuthoritativeSnapshotRebuild()
+    {
+        var bridge = new FakeBridge { Sessions = [MainSession()] };
+        var queued = new ConcurrentQueue<Action>();
+        var provider = new OpenClawChatDataProvider(bridge, post: queued.Enqueue);
+        using var drainEntered = new ManualResetEventSlim();
+        using var releaseDrain = new ManualResetEventSlim();
+        provider.BeforePublishDrainForTests = () =>
+        {
+            drainEntered.Set();
+            Assert.True(releaseDrain.Wait(TimeSpan.FromSeconds(10)));
+        };
+
+        bridge.RaiseStatus(ConnectionStatus.Connecting);
+        var drain = AssertSingleQueuedAction(queued);
+        var drainTask = Task.Factory.StartNew(
+            drain,
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+        Assert.True(drainEntered.Wait(TimeSpan.FromSeconds(10)));
+        var disposeTask = Task.Factory.StartNew(
+            () => provider.DisposeAsync().AsTask().GetAwaiter().GetResult(),
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+        Assert.True(
+            SpinWait.SpinUntil(
+                () => provider.PublishDisposedForTests,
+                TimeSpan.FromSeconds(10)));
+        Assert.False(disposeTask.IsCompleted);
+        Assert.False(bridge.IsDisposed);
+
+        releaseDrain.Set();
+        await drainTask;
+        await disposeTask;
+
+        Assert.True(bridge.IsDisposed);
+    }
+
+    [Fact]
+    public async Task PostDelegate_ThrowingSnapshotSubscriberDoesNotDropNotification()
+    {
+        using var temp = new TempDirectory();
+        var bridge = new FakeBridge { Sessions = [MainSession()] };
+        var queued = new ConcurrentQueue<Action>();
+        using var snapshotSaved = new ManualResetEventSlim();
+        var provider = new OpenClawChatDataProvider(
+            bridge,
+            post: queued.Enqueue,
+            toolMetaCacheFilePath: Path.Combine(
+                temp.DirectoryPath,
+                "tool-metadata.json"),
+            lastChatStateFilePath: Path.Combine(
+                temp.DirectoryPath,
+                "last-chat-state.json"),
+            lastChatStateSaveDelay: TimeSpan.Zero);
+        provider.SetPersistenceTestHooks(snapshotSaved.Set, null);
+        var notifications = new List<ChatProviderNotification>();
+        provider.Changed += (_, _) =>
+            throw new InvalidOperationException("snapshot subscriber failed");
+        provider.NotificationRequested +=
+            (_, args) => notifications.Add(args.Notification);
+        await provider.LoadAsync();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "done",
+            State = "final",
+        });
+        var drain = AssertSingleQueuedAction(queued);
+
+        Assert.Throws<InvalidOperationException>(drain);
+        Assert.Single(
+            notifications,
+            notification =>
+                notification.Kind ==
+                ChatProviderNotificationKind.TurnComplete);
+        Assert.True(snapshotSaved.Wait(TimeSpan.FromSeconds(10)));
+
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task InlinePost_ThrowingSnapshotSubscriberDoesNotDropPairedNotification()
+    {
+        var bridge = new FakeBridge { Sessions = [MainSession()] };
+        var provider = new OpenClawChatDataProvider(
+            bridge,
+            post: action => action());
+        var notifications = new List<ChatProviderNotification>();
+        provider.Changed += (_, _) =>
+            throw new InvalidOperationException("snapshot subscriber failed");
+        provider.NotificationRequested +=
+            (_, args) => notifications.Add(args.Notification);
+
+        var snapshot = await provider.LoadAsync();
+        var notification = new ChatProviderNotification(
+            ChatProviderNotificationKind.TurnComplete,
+            "main",
+            "done");
+        var publish = typeof(OpenClawChatDataProvider).GetMethod(
+            "Publish",
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.NonPublic);
+        var failure = Assert.Throws<System.Reflection.TargetInvocationException>(
+            () => publish!.Invoke(provider, [snapshot, notification]));
+        Assert.IsType<InvalidOperationException>(failure.InnerException);
+        Assert.Single(
+            notifications,
+            delivered =>
+                delivered.Kind ==
+                ChatProviderNotificationKind.TurnComplete);
+
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task PostDelegate_DisposalFromSnapshotSubscriberStopsBatchedNotification()
+    {
+        var bridge = new FakeBridge { Sessions = [MainSession()] };
+        var queued = new ConcurrentQueue<Action>();
+        var provider = new OpenClawChatDataProvider(bridge, post: queued.Enqueue);
+        var notifications = new List<ChatProviderNotification>();
+        provider.Changed +=
+            (_, _) => provider.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        provider.NotificationRequested +=
+            (_, args) => notifications.Add(args.Notification);
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "done",
+            State = "final",
+        });
+        AssertSingleQueuedAction(queued)();
+
+        Assert.Empty(notifications);
+        Assert.True(bridge.IsDisposed);
+    }
+
+    [Fact]
+    public void DirectDelivery_DisposalFromFirstSubscriberStopsLaterSubscribers()
+    {
+        var bridge = new FakeBridge { Sessions = [MainSession()] };
+        var provider = new OpenClawChatDataProvider(bridge);
+        var laterSubscriberCalls = 0;
+        provider.Changed +=
+            (_, _) => provider.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        provider.Changed +=
+            (_, _) => Interlocked.Increment(ref laterSubscriberCalls);
+
+        bridge.RaiseStatus(ConnectionStatus.Connecting);
+
+        Assert.Equal(0, Volatile.Read(ref laterSubscriberCalls));
+        Assert.True(bridge.IsDisposed);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_DropsQueuedChangedDeliveryAndFuturePublishes()
+    {
+        var bridge = new FakeBridge { Sessions = [MainSession()] };
+        var queued = new ConcurrentQueue<Action>();
+        var provider = new OpenClawChatDataProvider(bridge, post: queued.Enqueue);
+        var snapshots = new List<ChatDataSnapshot>();
+        provider.Changed += (_, args) => snapshots.Add(args.Snapshot);
+
+        bridge.RaiseStatus(ConnectionStatus.Connecting);
+        var queuedBeforeDispose = AssertSingleQueuedAction(queued);
+
+        await provider.DisposeAsync();
+        queuedBeforeDispose();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        Assert.Empty(snapshots);
+        Assert.Empty(queued);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_WaitsForInFlightChangedCallback()
+    {
+        var bridge = new FakeBridge { Sessions = [MainSession()] };
+        var provider = new OpenClawChatDataProvider(bridge);
+        using var callbackEntered = new ManualResetEventSlim();
+        using var releaseCallback = new ManualResetEventSlim();
+        provider.Changed += (_, _) =>
+        {
+            callbackEntered.Set();
+            Assert.True(releaseCallback.Wait(TimeSpan.FromSeconds(10)));
+        };
+
+        var publishTask = Task.Run(
+            () => bridge.RaiseStatus(ConnectionStatus.Connecting));
+        Assert.True(callbackEntered.Wait(TimeSpan.FromSeconds(10)));
+        var disposeTask = Task.Run(async () => await provider.DisposeAsync());
+        Assert.True(
+            SpinWait.SpinUntil(
+                () => provider.PublishDisposedForTests,
+                TimeSpan.FromSeconds(10)));
+        Assert.False(disposeTask.IsCompleted);
+        Assert.False(bridge.IsDisposed);
+
+        releaseCallback.Set();
+        await publishTask;
+        await disposeTask;
+
+        Assert.True(bridge.IsDisposed);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_FromChangedCallbackDoesNotDeadlock()
+    {
+        var bridge = new FakeBridge { Sessions = [MainSession()] };
+        var provider = new OpenClawChatDataProvider(bridge);
+        provider.Changed += (_, _) => provider.DisposeAsync().AsTask().GetAwaiter().GetResult();
+
+        await Task.Run(
+            () => bridge.RaiseStatus(ConnectionStatus.Connecting))
+            .WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.True(bridge.IsDisposed);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_ConcurrentExternalAndCallbackDisposalDoesNotDeadlock()
+    {
+        var bridge = new FakeBridge { Sessions = [MainSession()] };
+        var provider = new OpenClawChatDataProvider(bridge);
+        using var callbackEntered = new ManualResetEventSlim();
+        using var allowCallbackDispose = new ManualResetEventSlim();
+        provider.Changed += (_, _) =>
+        {
+            callbackEntered.Set();
+            Assert.True(allowCallbackDispose.Wait(TimeSpan.FromSeconds(10)));
+            provider.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        };
+
+        var publishTask = Task.Run(
+            () => bridge.RaiseStatus(ConnectionStatus.Connecting));
+        Assert.True(callbackEntered.Wait(TimeSpan.FromSeconds(10)));
+        var externalDispose = Task.Run(async () => await provider.DisposeAsync());
+        Assert.True(
+            SpinWait.SpinUntil(
+                () => provider.PublishDisposedForTests,
+                TimeSpan.FromSeconds(10)));
+
+        allowCallbackDispose.Set();
+        await publishTask.WaitAsync(TimeSpan.FromSeconds(10));
+        await externalDispose.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.True(bridge.IsDisposed);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_PersistsAuthoritativeSnapshotWhenQueuedDeliveryIsDropped()
+    {
+        using var temp = new TempDirectory();
+        var statePath = Path.Combine(temp.DirectoryPath, "last-chat-state.json");
+        var queued = new ConcurrentQueue<Action>();
+        var (bridge, provider, snapshots, _) = CreateProvider(
+            lastChatStatePath: statePath,
+            lastChatStateSaveDelay: TimeSpan.FromDays(1),
+            post: queued.Enqueue);
+        bridge.RaiseSessions(
+        [
+            new SessionInfo
+            {
+                Key = "main",
+                IsMain = true,
+                DisplayName = "Final session",
+                Status = "active",
+            },
+        ]);
+        Assert.Single(queued);
+
+        await provider.DisposeAsync();
+
+        Assert.Empty(snapshots);
+        var persisted = OpenClawChatDataProvider.LoadLastChatState(statePath);
+        Assert.Equal("Final session", persisted?.ThreadTitle);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_FinalSnapshotWinsOverOlderSelectedStateSave()
+    {
+        using var temp = new TempDirectory();
+        var statePath = Path.Combine(temp.DirectoryPath, "last-chat-state.json");
+        using var oldSaveEntered = new ManualResetEventSlim();
+        using var releaseOldSave = new ManualResetEventSlim();
+        var queued = new ConcurrentQueue<Action>();
+        var blockNextSave = 1;
+        var (bridge, provider, _, _) = CreateProvider(
+            [
+                new SessionInfo
+                {
+                    Key = "old",
+                    IsMain = true,
+                    DisplayName = "Old session",
+                    Status = "active",
+                },
+            ],
+            lastChatStatePath: statePath,
+            lastChatStateSaveDelay: TimeSpan.FromDays(1),
+            post: queued.Enqueue,
+            lastStateSaveReservedForTesting: () =>
+            {
+                if (Interlocked.Exchange(ref blockNextSave, 0) != 1)
+                    return;
+                oldSaveEntered.Set();
+                Assert.True(releaseOldSave.Wait(TimeSpan.FromSeconds(10)));
+            });
+        await provider.LoadAsync();
+
+        var oldSave = Task.Factory.StartNew(
+            () => provider.RememberSelectedThread("old"),
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+        Assert.True(oldSaveEntered.Wait(TimeSpan.FromSeconds(10)));
+        bridge.RaiseSessions(
+        [
+            new SessionInfo
+            {
+                Key = "final",
+                IsMain = true,
+                DisplayName = "Final session",
+                Status = "active",
+            },
+        ]);
+        var dispose = Task.Factory.StartNew(
+            () => provider.DisposeAsync().AsTask().GetAwaiter().GetResult(),
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+        Assert.False(dispose.IsCompleted);
+
+        releaseOldSave.Set();
+        await oldSave;
+        await dispose;
+
+        var persisted = OpenClawChatDataProvider.LoadLastChatState(statePath);
+        Assert.Equal("Final session", persisted?.ThreadTitle);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_FinalSnapshotRejectsSelectedStateWaitingOutsidePersistenceFence()
+    {
+        using var temp = new TempDirectory();
+        var statePath = Path.Combine(temp.DirectoryPath, "last-chat-state.json");
+        using var staleSaveReady = new ManualResetEventSlim();
+        using var releaseStaleSave = new ManualResetEventSlim();
+        var (bridge, provider, _, _) = CreateProvider(
+            [
+                new SessionInfo
+                {
+                    Key = "old",
+                    IsMain = true,
+                    DisplayName = "Old session",
+                    Status = "active",
+                },
+            ],
+            lastChatStatePath: statePath,
+            beforeSelectedStateSaveForTesting: () =>
+            {
+                staleSaveReady.Set();
+                Assert.True(releaseStaleSave.Wait(TimeSpan.FromSeconds(10)));
+            });
+        await provider.LoadAsync();
+
+        var staleSave = Task.Factory.StartNew(
+            () => provider.RememberSelectedThread("old"),
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+        Assert.True(staleSaveReady.Wait(TimeSpan.FromSeconds(10)));
+        bridge.RaiseSessions(
+        [
+            new SessionInfo
+            {
+                Key = "final",
+                IsMain = true,
+                DisplayName = "Final session",
+                Status = "active",
+            },
+        ]);
+
+        await provider.DisposeAsync();
+        releaseStaleSave.Set();
+        await staleSave;
+
+        var persisted = OpenClawChatDataProvider.LoadLastChatState(statePath);
+        Assert.Equal("Final session", persisted?.ThreadTitle);
+    }
+
+    [Fact]
+    public void ConversationState_DisposalRejectsPersistenceRelevantPresentationMutations()
+    {
+        var state = new ChatConversationState(
+            ConnectionStatus.Connected,
+            lastChatState: null,
+            seedModels: null);
+        var context = new ChatProjectionContext(
+            "old",
+            HasHandshakeSnapshot: true);
+        var before = state.Load(
+        [
+            new SessionInfo
+            {
+                Key = "old",
+                IsMain = true,
+                DisplayName = "Old session",
+                Status = "active",
+            },
+        ],
+        context);
+        state.DisposeState();
+
+        Assert.Null(state.RememberSelectedThread("new"));
+        var sessionsAfterDispose = state.ApplySessions(
+        [
+            new SessionInfo
+            {
+                Key = "new",
+                IsMain = true,
+                DisplayName = "New session",
+                Status = "active",
+            },
+        ],
+        new ChatProjectionContext("new", HasHandshakeSnapshot: true));
+        var modelsAfterDispose = state.ApplyModels(
+            new ModelsListInfo
+            {
+                Models =
+                [
+                    new ModelInfo
+                    {
+                        Id = "new-model",
+                        Name = "New model",
+                    },
+                ],
+            },
+            context);
+
+        var after = state.Snapshot(context);
+        Assert.Equal(
+            before.Threads.Select(thread => thread.Id),
+            sessionsAfterDispose.Snapshot.Threads.Select(thread => thread.Id));
+        Assert.Equal(before.AvailableModels, modelsAfterDispose.AvailableModels);
+        Assert.Equal(
+            before.Threads.Select(thread => thread.Id),
+            after.Threads.Select(thread => thread.Id));
+        Assert.Equal(before.AvailableModels, after.AvailableModels);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_DropsQueuedCommandCatalogDelivery()
+    {
+        var bridge = new FakeBridge
+        {
+            Sessions = [MainSession()],
+            CurrentStatus = ConnectionStatus.Connected,
+            CommandCatalogResult = new CommandCatalog
+            {
+                IsSupported = true,
+                Commands = [new GatewayCommand { Name = "status", NativeName = "/status" }],
+            },
+        };
+        var queued = new ConcurrentQueue<Action>();
+        var provider = new OpenClawChatDataProvider(bridge, post: queued.Enqueue);
+        var snapshots = new List<ChatDataSnapshot>();
+        provider.Changed += (_, args) => snapshots.Add(args.Snapshot);
+
+        await provider.EnsureCommandCatalogAsync();
+        var queuedBeforeDispose = AssertSingleQueuedAction(queued);
+
+        await provider.DisposeAsync();
+        queuedBeforeDispose();
+
+        Assert.Empty(snapshots);
+        Assert.Empty(queued);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_WaitsForPublishPostInvocation()
+    {
+        var bridge = new FakeBridge { Sessions = [MainSession()] };
+        using var postEntered = new ManualResetEventSlim();
+        using var releasePost = new ManualResetEventSlim();
+        var queued = new ConcurrentQueue<Action>();
+        var provider = new OpenClawChatDataProvider(
+            bridge,
+            post: callback =>
+            {
+                postEntered.Set();
+                Assert.True(releasePost.Wait(TimeSpan.FromSeconds(10)));
+                queued.Enqueue(callback);
+            });
+
+        var publishTask = Task.Factory.StartNew(
+            () => bridge.RaiseStatus(ConnectionStatus.Connecting),
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+        Assert.True(postEntered.Wait(TimeSpan.FromSeconds(10)));
+        var disposeTask = Task.Run(async () => await provider.DisposeAsync());
+        Assert.True(
+            SpinWait.SpinUntil(
+                () => provider.PublishDisposedForTests,
+                TimeSpan.FromSeconds(10)));
+        Assert.False(disposeTask.IsCompleted);
+        Assert.False(bridge.IsDisposed);
+
+        releasePost.Set();
+        await publishTask;
+        await disposeTask;
+
+        Assert.True(bridge.IsDisposed);
+        AssertSingleQueuedAction(queued)();
+    }
+
+    [Fact]
+    public async Task DisposeAsync_WaitsForFencedCallbackPostInvocation()
+    {
+        var bridge = new FakeBridge
+        {
+            Sessions = [MainSession()],
+            CurrentStatus = ConnectionStatus.Connected,
+            CommandCatalogResult = new CommandCatalog
+            {
+                IsSupported = true,
+                Commands = [new GatewayCommand { Name = "status", NativeName = "/status" }],
+            },
+        };
+        using var postEntered = new ManualResetEventSlim();
+        using var releasePost = new ManualResetEventSlim();
+        var queued = new ConcurrentQueue<Action>();
+        var provider = new OpenClawChatDataProvider(
+            bridge,
+            post: callback =>
+            {
+                postEntered.Set();
+                Assert.True(releasePost.Wait(TimeSpan.FromSeconds(10)));
+                queued.Enqueue(callback);
+            });
+
+        var catalogTask = Task.Factory.StartNew(
+                () => provider.EnsureCommandCatalogAsync(),
+                CancellationToken.None,
+                TaskCreationOptions.LongRunning,
+                TaskScheduler.Default)
+            .Unwrap();
+        Assert.True(postEntered.Wait(TimeSpan.FromSeconds(10)));
+        var disposeTask = Task.Run(async () => await provider.DisposeAsync());
+        Assert.True(
+            SpinWait.SpinUntil(
+                () => provider.PublishDisposedForTests,
+                TimeSpan.FromSeconds(10)));
+        Assert.False(disposeTask.IsCompleted);
+        Assert.False(bridge.IsDisposed);
+
+        releasePost.Set();
+        await catalogTask;
+        await disposeTask;
+
+        Assert.True(bridge.IsDisposed);
+        AssertSingleQueuedAction(queued)();
+    }
+
+    [Fact]
+    public async Task DisposeAsync_WaitsForInFlightHistoryNotificationCallback()
+    {
+        var bridge = new FakeBridge
+        {
+            Sessions = [MainSession()],
+            CurrentStatus = ConnectionStatus.Connected,
+            HistoryBehavior = _ => Task.FromException<ChatHistoryInfo>(
+                new InvalidOperationException("history unavailable")),
+        };
+        var provider = new OpenClawChatDataProvider(bridge);
+        using var callbackEntered = new ManualResetEventSlim();
+        using var releaseCallback = new ManualResetEventSlim();
+        provider.NotificationRequested += (_, _) =>
+        {
+            callbackEntered.Set();
+            Assert.True(releaseCallback.Wait(TimeSpan.FromSeconds(10)));
+        };
+
+        var loadTask = Task.Run(() => provider.LoadHistoryAsync("main"));
+        Assert.True(callbackEntered.Wait(TimeSpan.FromSeconds(10)));
+        var disposeTask = Task.Run(async () => await provider.DisposeAsync());
+        Assert.True(
+            SpinWait.SpinUntil(
+                () => provider.PublishDisposedForTests,
+                TimeSpan.FromSeconds(10)));
+        Assert.False(disposeTask.IsCompleted);
+
+        releaseCallback.Set();
+        await loadTask;
+        await disposeTask;
+
+        Assert.True(bridge.IsDisposed);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_WaitsForInFlightCommandCatalogCallback()
+    {
+        var bridge = new FakeBridge
+        {
+            Sessions = [MainSession()],
+            CurrentStatus = ConnectionStatus.Connected,
+            CommandCatalogResult = new CommandCatalog
+            {
+                IsSupported = true,
+                Commands = [new GatewayCommand { Name = "status", NativeName = "/status" }],
+            },
+        };
+        var provider = new OpenClawChatDataProvider(bridge);
+        using var callbackEntered = new ManualResetEventSlim();
+        using var releaseCallback = new ManualResetEventSlim();
+        provider.Changed += (_, _) =>
+        {
+            callbackEntered.Set();
+            Assert.True(releaseCallback.Wait(TimeSpan.FromSeconds(10)));
+        };
+
+        var catalogTask = Task.Run(() => provider.EnsureCommandCatalogAsync());
+        Assert.True(callbackEntered.Wait(TimeSpan.FromSeconds(10)));
+        var disposeTask = Task.Run(async () => await provider.DisposeAsync());
+        Assert.True(
+            SpinWait.SpinUntil(
+                () => provider.PublishDisposedForTests,
+                TimeSpan.FromSeconds(10)));
+        Assert.False(disposeTask.IsCompleted);
+
+        releaseCallback.Set();
+        await catalogTask;
+        await disposeTask;
+
+        Assert.True(bridge.IsDisposed);
     }
 
     [Fact]
@@ -6128,6 +7039,10 @@ public class OpenClawChatDataProviderTests
         });
         for (var i = 0; i < 20 && bridge.SentMessages.Count < 2; i++)
             await Task.Delay(10);
+        await WaitForConditionAsync(() =>
+            GetQueuedMessages(snapshots[^1], "main").Count == 0 &&
+            snapshots[^1].Timelines["main"].Entries.Any(e =>
+                e.Kind == ChatTimelineItemKind.User && e.Text == "second"));
 
         Assert.Equal(new[] { "first", "second" }, bridge.SentMessages);
         Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
@@ -7324,6 +8239,495 @@ public class OpenClawChatDataProviderTests
         Assert.Equal(ChatToolCallStatus.Success, entry.ToolResult);
         Assert.Equal("pwd", entry.ToolArgs?["command"]?.GetValue<string>());
         Assert.Equal("/workspace", entry.ToolOutput);
+    }
+
+    [Fact]
+    public async Task LoadHistoryAsync_KeyedCallAndFlattenedResult_AvoidIdentityCollision()
+    {
+        using var tempDir = new TempDirectory();
+        var cachePath = Path.Combine(
+            tempDir.DirectoryPath,
+            "tool-metadata.json");
+        File.WriteAllText(
+            cachePath,
+            JsonSerializer.Serialize(
+                new Dictionary<string, List<ChatMetadataStore.CachedToolMeta>>
+                {
+                    ["session-1"] =
+                    [
+                        new()
+                        {
+                            Ts = 100,
+                            ToolName = "Bash",
+                            Label = "cached flattened command",
+                            ToolCallId = "unverified-flat-id",
+                            RunId = "unverified-flat-run",
+                            ToolArgs = new JsonObject
+                            {
+                                ["command"] = "echo flattened",
+                            },
+                            IdentityStrength =
+                                ChatToolIdentityStrength.Specific,
+                        },
+                        new()
+                        {
+                            Ts = 200,
+                            ToolName = "Exec",
+                            Label = "cached structured command",
+                            ToolCallId = "history-tool-0",
+                            IdentityStrength =
+                                ChatToolIdentityStrength.Specific,
+                        },
+                    ],
+                }));
+        var (bridge, provider, snapshots, _) = CreateProvider(
+            [MainSession()],
+            toolMetaCachePath: cachePath);
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            SessionId = "session-1",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    Role = "assistant",
+                    Ts = 200,
+                    ToolContent =
+                    [
+                        new ChatToolContentInfo
+                        {
+                            Kind = ChatToolContentKind.Call,
+                            CallId = "history-tool-0",
+                            ToolName = "Exec",
+                        },
+                    ],
+                },
+                new ChatMessageInfo
+                {
+                    Role = "toolresult",
+                    Text = "flattened output",
+                    Ts = 300,
+                },
+            ],
+        });
+
+        await provider.LoadHistoryAsync("main");
+
+        Assert.Collection(
+            snapshots[^1].Timelines["main"].Entries,
+            structured =>
+            {
+                Assert.Equal("history-tool-0", structured.ToolCallId);
+                Assert.Equal("Exec", structured.ToolName);
+                Assert.Equal(
+                    ChatToolCallStatus.Interrupted,
+                    structured.ToolResult);
+                Assert.Null(structured.ToolOutput);
+            },
+            flattened =>
+            {
+                Assert.Equal("history-tool-1", flattened.ToolCallId);
+                Assert.NotEqual(
+                    "unverified-flat-id",
+                    flattened.ToolCallId);
+                Assert.Null(flattened.ToolRunId);
+                Assert.Equal("Bash", flattened.ToolName);
+                Assert.Equal(
+                    "echo flattened",
+                    flattened.ToolArgs?["command"]?.GetValue<string>());
+                Assert.Equal("flattened output", flattened.ToolOutput);
+                Assert.Equal(ChatToolCallStatus.Success, flattened.ToolResult);
+            });
+    }
+
+    [Fact]
+    public async Task LoadHistoryAsync_VerifiedIdMissStopsPositionalEnrichment()
+    {
+        using var tempDir = new TempDirectory();
+        var cachePath = Path.Combine(
+            tempDir.DirectoryPath,
+            "tool-metadata.json");
+        File.WriteAllText(
+            cachePath,
+            JsonSerializer.Serialize(
+                new Dictionary<string, List<ChatMetadataStore.CachedToolMeta>>
+                {
+                    ["session-1"] =
+                    [
+                        new()
+                        {
+                            Ts = 100,
+                            ToolName = "Bash",
+                            Label = "stale positional command",
+                            ToolArgs = new JsonObject
+                            {
+                                ["command"] = "stale command",
+                            },
+                            IdentityStrength =
+                                ChatToolIdentityStrength.Specific,
+                        },
+                        new()
+                        {
+                            Ts = 200,
+                            ToolName = "Read",
+                            ToolCallId = "call-b",
+                            IdentityStrength =
+                                ChatToolIdentityStrength.Specific,
+                        },
+                    ],
+                }));
+        var (bridge, provider, snapshots, _) = CreateProvider(
+            [MainSession()],
+            toolMetaCachePath: cachePath);
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            SessionId = "session-1",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    Role = "assistant",
+                    Ts = 100,
+                    ToolContent =
+                    [
+                        new ChatToolContentInfo
+                        {
+                            Kind = ChatToolContentKind.Call,
+                            CallId = "call-a",
+                            ToolName = "Exec",
+                        },
+                    ],
+                },
+                new ChatMessageInfo
+                {
+                    Role = "assistant",
+                    Ts = 200,
+                    ToolContent =
+                    [
+                        new ChatToolContentInfo
+                        {
+                            Kind = ChatToolContentKind.Call,
+                            CallId = "call-b",
+                            ToolName = "Read",
+                        },
+                    ],
+                },
+                new ChatMessageInfo
+                {
+                    Role = "toolresult",
+                    Text = "unrelated flattened output",
+                    Ts = 300,
+                },
+            ],
+        });
+
+        await provider.LoadHistoryAsync("main");
+
+        var flattened = Assert.Single(
+            snapshots[^1].Timelines["main"].Entries,
+            entry => entry.ToolOutput == "unrelated flattened output");
+        Assert.NotEqual("Bash", flattened.ToolName);
+        Assert.NotEqual(
+            "stale positional command",
+            flattened.Text);
+        Assert.Null(flattened.ToolArgs);
+        Assert.Equal("history-tool-0", flattened.ToolCallId);
+    }
+
+    [Fact]
+    public async Task LoadHistoryAsync_PairedDuplicateResultsKeepPositionalEnrichment()
+    {
+        using var tempDir = new TempDirectory();
+        var cachePath = Path.Combine(
+            tempDir.DirectoryPath,
+            "tool-metadata.json");
+        File.WriteAllText(
+            cachePath,
+            JsonSerializer.Serialize(
+                new Dictionary<string, List<ChatMetadataStore.CachedToolMeta>>
+                {
+                    ["session-1"] =
+                    [
+                        new()
+                        {
+                            Ts = 100,
+                            ToolName = "Read",
+                            ToolCallId = "call-x",
+                        },
+                        new()
+                        {
+                            Ts = 250,
+                            ToolName = "Bash",
+                            Label = "flattened command",
+                            ToolArgs = new JsonObject
+                            {
+                                ["command"] = "echo flattened",
+                            },
+                        },
+                    ],
+                }));
+        var (bridge, provider, snapshots, _) = CreateProvider(
+            [MainSession()],
+            toolMetaCachePath: cachePath);
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            SessionId = "session-1",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    Role = "assistant",
+                    Ts = 100,
+                    ToolContent =
+                    [
+                        new ChatToolContentInfo
+                        {
+                            Kind = ChatToolContentKind.Call,
+                            CallId = "call-x",
+                            ToolName = "Read",
+                        },
+                    ],
+                },
+                new ChatMessageInfo
+                {
+                    Role = "developer",
+                    Text = "turn boundary",
+                    Ts = 150,
+                },
+                new ChatMessageInfo
+                {
+                    Role = "toolresult",
+                    Ts = 200,
+                    ToolContent =
+                    [
+                        new ChatToolContentInfo
+                        {
+                            Kind = ChatToolContentKind.Result,
+                            CallId = "call-x",
+                            ToolName = "Read",
+                            Text = "read output",
+                        },
+                        new ChatToolContentInfo
+                        {
+                            Kind = ChatToolContentKind.Result,
+                            CallId = "call-x",
+                            ToolName = "Read",
+                            Text = "more read output",
+                        },
+                    ],
+                },
+                new ChatMessageInfo
+                {
+                    Role = "toolresult",
+                    Text = "flattened output",
+                    Ts = 300,
+                },
+            ],
+        });
+
+        await provider.LoadHistoryAsync("main");
+
+        var flattened = Assert.Single(
+            snapshots[^1].Timelines["main"].Entries,
+            entry => entry.ToolOutput == "flattened output");
+        Assert.Equal("Bash", flattened.ToolName);
+        Assert.Equal("flattened command", flattened.Text);
+        Assert.Equal(
+            "echo flattened",
+            flattened.ToolArgs?["command"]?.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task LoadHistoryAsync_SyntheticToolIdsSkipReservedStructuredIds()
+    {
+        var (bridge, provider, snapshots, _) =
+            CreateProvider([MainSession()]);
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    Role = "assistant",
+                    Ts = 100,
+                    ToolContent =
+                    [
+                        new ChatToolContentInfo
+                        {
+                            Kind = ChatToolContentKind.Call,
+                            CallId = "history-tool-0",
+                            ToolName = "Exec",
+                        },
+                        new ChatToolContentInfo
+                        {
+                            Kind = ChatToolContentKind.Call,
+                            CallId = "history-tool-2",
+                            ToolName = "Read",
+                        },
+                    ],
+                },
+                new ChatMessageInfo
+                {
+                    Role = "toolresult",
+                    Text = "first flattened",
+                    Ts = 200,
+                },
+                new ChatMessageInfo
+                {
+                    Role = "toolresult",
+                    Text = "second flattened",
+                    Ts = 300,
+                },
+            ],
+        });
+
+        await provider.LoadHistoryAsync("main");
+
+        var flattened = snapshots[^1].Timelines["main"].Entries
+            .Where(entry => entry.ToolOutput is not null)
+            .ToArray();
+        Assert.Equal(
+            ["history-tool-1", "history-tool-3"],
+            flattened.Select(entry => entry.ToolCallId));
+        Assert.Equal(
+            ["first flattened", "second flattened"],
+            flattened.Select(entry => entry.ToolOutput));
+    }
+
+    [Fact]
+    public async Task AccessibilityHistoryCollisionFixture_UsesCurrentHistoryOwners()
+    {
+        using var tempDir = new TempDirectory();
+        var (provider, bridge) =
+            AccessibilityHistoryCollisionFixture.CreateForTesting(
+                tempDir.DirectoryPath,
+                name => name switch
+                {
+                    "OPENCLAW_ACCESSIBILITY_TEST_CHAT" => "1",
+                    "OPENCLAW_ACCESSIBILITY_TEST_CHAT_FIXTURE" =>
+                        AccessibilityHistoryCollisionFixture.FixtureName,
+                    "OPENCLAW_TRAY_DATA_DIR" => tempDir.DirectoryPath,
+                    _ => null,
+                });
+        await using var providerScope = provider;
+
+        var snapshot = await provider.LoadAsync();
+
+        Assert.Equal(1, bridge.HistoryRequestCount);
+        Assert.Collection(
+            snapshot.Timelines[
+                AccessibilityHistoryCollisionFixture.ThreadId].Entries,
+            structured =>
+            {
+                Assert.Equal("history-tool-0", structured.ToolCallId);
+                Assert.Equal("Exec", structured.ToolName);
+                Assert.Equal(
+                    ChatToolCallStatus.Interrupted,
+                    structured.ToolResult);
+            },
+            flattened =>
+            {
+                Assert.Equal("history-tool-1", flattened.ToolCallId);
+                Assert.Equal("Bash", flattened.ToolName);
+                Assert.Equal(
+                    "flattened output owned by history-tool-1",
+                    flattened.ToolOutput);
+            });
+    }
+
+    [Fact]
+    public async Task LoadHistoryAsync_StringEncodedToolArguments_PreservesSafeInput()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    Role = "assistant",
+                    State = "final",
+                    Ts = 1,
+                    ToolContent =
+                    [
+                        new ChatToolContentInfo
+                        {
+                            Kind = ChatToolContentKind.Call,
+                            CallId = "call-1",
+                            ToolName = "exec",
+                            Args = JsonSerializer.SerializeToElement(
+                                """{"command":"pwd","workdir":"/workspace"}"""),
+                        },
+                    ],
+                },
+            ],
+        });
+
+        await provider.LoadHistoryAsync("main");
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal("pwd", entry.ToolArgs?["command"]?.GetValue<string>());
+        Assert.False(entry.ToolArgs?.ContainsKey("workdir"));
+    }
+
+    [Fact]
+    public async Task LoadHistoryAsync_AfterRestart_ReplaysSanitizedArgumentsWithoutLocalPersistence()
+    {
+        using var tempDir = new TempDirectory();
+        var cachePath = Path.Combine(tempDir.DirectoryPath, "tool-metadata.json");
+        static ChatHistoryInfo History() => new()
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    Role = "assistant",
+                    State = "final",
+                    Ts = 1,
+                    ToolContent =
+                    [
+                        new ChatToolContentInfo
+                        {
+                            Kind = ChatToolContentKind.Call,
+                            CallId = "call-1",
+                            ToolName = "exec",
+                            Args = JsonSerializer.SerializeToElement(
+                                """{"command":"curl https://example.test --token abcdef1234567890ghij","workdir":"C:\\private"}"""),
+                        },
+                    ],
+                },
+            ],
+        };
+
+        var first = CreateProvider(
+            new[] { MainSession() },
+            toolMetaCachePath: cachePath);
+        first.bridge.HistoryBehavior = _ => Task.FromResult(History());
+        await first.provider.LoadHistoryAsync("main");
+        await first.provider.DisposeAsync();
+
+        var second = CreateProvider(
+            new[] { MainSession() },
+            toolMetaCachePath: cachePath);
+        second.bridge.HistoryBehavior = _ => Task.FromResult(History());
+        await second.provider.LoadHistoryAsync("main");
+
+        var entry = Assert.Single(second.snapshots[^1].Timelines["main"].Entries);
+        var command = entry.ToolArgs?["command"]?.GetValue<string>();
+        Assert.NotNull(command);
+        Assert.DoesNotContain(
+            "abcdef1234567890ghij",
+            command,
+            StringComparison.Ordinal);
+        Assert.False(entry.ToolArgs?.ContainsKey("workdir"));
+        Assert.False(File.Exists(cachePath));
+        await second.provider.DisposeAsync();
     }
 
     [Theory]
@@ -9070,7 +10474,7 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
-    public async Task Disconnect_DropsHistoryDeliveryQueuedAfterNewerStatusSnapshot()
+    public async Task Disconnect_QueuedHistoryDeliveryCannotSupersedeLatestStatusDrain()
     {
         var deliveries = new List<Action>();
         var bridge = new FakeBridge
@@ -9097,10 +10501,11 @@ public class OpenClawChatDataProviderTests
         bridge.RaiseStatus(ConnectionStatus.Disconnected);
         Assert.Equal(2, deliveries.Count);
 
-        // Model a dispatcher race where disconnect is delivered before the
-        // history callback that was queued from an earlier connection state.
-        deliveries[1]();
+        // The first callback is history commit work, not a snapshot drain. It
+        // observes the advanced connection generation and drops its stale result.
+        // The second callback is the coalesced snapshot drain.
         deliveries[0]();
+        deliveries[1]();
 
         var snapshot = Assert.Single(snapshots);
         Assert.Equal(ConnectionStatus.Disconnected.ToString(), snapshot.ConnectionStatus);
@@ -9581,6 +10986,100 @@ public class OpenClawChatDataProviderTests
 
         Assert.Equal(new[] { "main" }, bridge.ClearedModelKeys);
         Assert.Empty(bridge.PatchedModels);
+    }
+
+    [Fact]
+    public async Task ThinkingProfiles_ProjectClearAndInvalidateCapabilitiesAcrossConnections()
+    {
+        var session = MainSession();
+        session.Model = "m";
+        session.Provider = "p";
+        session.ThinkingLevel = "off";
+        var context = new ThinkingContext(new("p", "m", "r"), new([new("off", "Off")], "off"));
+        session.ThinkingContext = context;
+        session.ThinkingDefaults = context;
+        var (bridge, provider, snapshots, _) = CreateProvider([session]);
+        await using (provider)
+        {
+            await provider.LoadAsync();
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            bridge.RaiseModels(new ModelsListInfo
+            {
+                Models = [new ModelInfo { Id = "m", Provider = "p", ThinkingContext = context }],
+            });
+            var before = snapshots[^1];
+            var thread = Assert.Single(before.Threads);
+            Assert.Equal("off", thread.ThinkingLevel);
+            Assert.Same(context, thread.ThinkingContext);
+            var cleared = session.Clone();
+            cleared.ThinkingLevel = null;
+            bridge.RaiseSessions([cleared]);
+            Assert.Null(Assert.Single(snapshots[^1].Threads).ThinkingLevel);
+            Assert.Equal("off", thread.ThinkingLevel);
+            Assert.Same(context.Profile, ChatThinkingProfile.Resolve(
+                Assert.Single(snapshots[^1].Threads), snapshots[^1].ModelChoices));
+            await provider.SetModelAsync("main", "p/new");
+            Assert.Empty(bridge.PatchedThinkingLevels);
+            Assert.Empty(bridge.ClearedThinkingLevelKeys);
+            bridge.RaiseStatus(ConnectionStatus.Disconnected);
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            var reconnected = snapshots[^1];
+            Assert.Null(Assert.Single(reconnected.Threads).ThinkingContext);
+            Assert.Null(Assert.Single(reconnected.Threads).ThinkingDefaults);
+            Assert.Null(Assert.Single(reconnected.ModelChoices!).ThinkingContext);
+            Assert.Null(ChatThinkingProfile.Resolve(Assert.Single(reconnected.Threads), reconnected.ModelChoices));
+            Assert.Same(context, thread.ThinkingContext);
+        }
+    }
+
+    [Fact]
+    public async Task SetThinkingLevelAsync_ForwardsConcreteLevelToBridge()
+    {
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        await provider.SetThinkingLevelAsync("main", "high");
+
+        Assert.Equal([("main", "high")], bridge.PatchedThinkingLevels);
+        Assert.Empty(bridge.ClearedThinkingLevelKeys);
+    }
+
+    [Fact]
+    public async Task ClearThinkingLevelAsync_ClearsOverrideViaBridge()
+    {
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        await provider.ClearThinkingLevelAsync("main");
+
+        Assert.Equal(["main"], bridge.ClearedThinkingLevelKeys);
+        Assert.Empty(bridge.PatchedThinkingLevels);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_WaitsForInFlightThinkingLevelClearBeforeGatewaySend()
+    {
+        var patchStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releasePatch = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        bridge.ClearSessionThinkingLevelBehavior = _ =>
+        {
+            patchStarted.TrySetResult();
+            return releasePatch.Task;
+        };
+        await provider.LoadAsync();
+
+        var clearTask = provider.ClearThinkingLevelAsync("main");
+        await patchStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        var sendTask = provider.SendMessageAsync("main", "Use default reasoning");
+        await Task.Delay(50);
+
+        Assert.Empty(bridge.SentMessages);
+        releasePatch.SetResult();
+        await Task.WhenAll(clearTask, sendTask);
+
+        Assert.Equal(["main"], bridge.ClearedThinkingLevelKeys);
+        Assert.Equal(["Use default reasoning"], bridge.SentMessages);
     }
 
     [Fact]
@@ -11514,50 +13013,64 @@ public class OpenClawChatDataProviderTests
     [Fact]
     public async Task AttachmentMetadata_ConcurrentSavesPreserveEveryCompletedSend()
     {
-        const int sendCount = 16;
         using var tempDir = new TempDirectory();
+        var toolPath = Path.Combine(tempDir.DirectoryPath, "tool-metadata.json");
         var attachmentPath = Path.Combine(tempDir.DirectoryPath, "attachment-metadata.json");
-        var sessions = Enumerable.Range(0, sendCount)
-            .Select(index => new SessionInfo
+        var firstSnapshotCaptured = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var releaseFirstSnapshot = new ManualResetEventSlim();
+        using var store = new ChatMetadataStore(
+            toolPath,
+            attachmentPath,
+            version =>
             {
-                Key = $"thread-{index}",
-                DisplayName = $"Thread {index}",
-                Status = "active",
-                IsMain = index == 0,
-            })
-            .ToArray();
-        var (bridge, provider, _, _) = CreateProvider(
-            sessions,
-            attachmentMetaCachePath: attachmentPath);
-        await provider.LoadAsync();
+                if (version != 1)
+                    return;
 
-        var allStarted = new CountdownEvent(sendCount);
-        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        bridge.SendBehavior = async (_, _, _) =>
+                firstSnapshotCaptured.SetResult();
+                releaseFirstSnapshot.Wait();
+            });
+
+        static ChatAttachment Attachment(string fileName) => new()
         {
-            allStarted.Signal();
-            await release.Task;
+            Type = "image",
+            MimeType = "image/png",
+            FileName = fileName,
+            Content = Convert.ToBase64String([1]),
+            SizeBytes = 1,
         };
 
-        var sends = sessions.Select((session, index) =>
-            provider.SendMessageAsync(session.Key, $"caption-{index}", default,
-            [
-                new ChatAttachment
-                {
-                    Type = "image",
-                    MimeType = "image/png",
-                    FileName = $"file-{index}.png",
-                    Content = Convert.ToBase64String([(byte)index]),
-                    SizeBytes = 1,
-                },
-            ])).ToArray();
-        Assert.True(allStarted.Wait(TimeSpan.FromSeconds(5)));
-        release.SetResult();
-        await Task.WhenAll(sends);
+        var firstSave = Task.Run(() =>
+            store.CacheAttachments(
+                "thread-1",
+                "session-1",
+                0,
+                "first",
+                [Attachment("first.png")],
+                1_000));
+        try
+        {
+            await firstSnapshotCaptured.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            store.CacheAttachments(
+                "thread-2",
+                "session-2",
+                0,
+                "second",
+                [Attachment("second.png")],
+                2_000);
+        }
+        finally
+        {
+            releaseFirstSnapshot.Set();
+        }
 
-        var persisted = await File.ReadAllTextAsync(attachmentPath);
-        for (var index = 0; index < sendCount; index++)
-            Assert.Contains($"file-{index}.png", persisted, StringComparison.Ordinal);
+        await firstSave;
+
+        var cache = JsonSerializer.Deserialize<
+            Dictionary<string, List<ChatMetadataStore.CachedAttachmentMeta>>>(
+                await File.ReadAllTextAsync(attachmentPath));
+        Assert.Equal("first.png", Assert.Single(cache!["session-1"]).Attachments[0].FileName);
+        Assert.Equal("second.png", Assert.Single(cache["session-2"]).Attachments[0].FileName);
     }
 
     [Fact]
@@ -12616,6 +14129,35 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task RespondToPermissionAsync_UnreviewableCommandBlocksDirectAllowButPermitsDeny()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        bridge.RaiseAgent(MakeAgentEvent("approval", JsonSerializer.Serialize(new
+        {
+            phase = "requested",
+            approvalId = "appr-unsafe-1",
+            command = new string('x', 20 * 1024),
+        })));
+
+        var pending = snapshots[^1].Timelines["main"].PendingPermission;
+        Assert.NotNull(pending);
+        Assert.Equal([ChatPermissionActionKeys.Deny], pending.Actions);
+
+        await provider.RespondToPermissionAsync("main", "appr-unsafe-1", allow: true);
+        await provider.RespondToPermissionAsync("main", "appr-unsafe-1", ChatPermissionActionKeys.AllowAlways);
+
+        Assert.Empty(bridge.ResolvedApprovals);
+        Assert.Equal("appr-unsafe-1", snapshots[^1].Timelines["main"].PendingPermission?.RequestId);
+
+        await provider.RespondToPermissionAsync("main", "appr-unsafe-1", allow: false);
+
+        Assert.Single(bridge.ResolvedApprovals);
+        Assert.Equal(ChatPermissionActionKeys.Deny, bridge.ResolvedApprovals[0].Decision);
+        Assert.Null(snapshots[^1].Timelines["main"].PendingPermission);
+    }
+
+    [Fact]
     public async Task RespondToPermissionAsync_RpcThrows_BannerPreservedForRetry()
     {
         // Critical contract: if ResolveExecApprovalAsync throws (e.g. gateway
@@ -12897,6 +14439,97 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task RespondToPermissionAsync_SupersededRequestBlocksStaleAllow()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        bridge.RaiseAgent(MakeApprovalRequestedEvent("appr-stale-1"));
+        bridge.RaiseAgent(MakeApprovalRequestedEvent("appr-current-2"));
+
+        await provider.RespondToPermissionAsync("main", "appr-stale-1", allow: true);
+
+        Assert.Empty(bridge.ResolvedApprovals);
+        Assert.Equal("appr-current-2", snapshots[^1].Timelines["main"].PendingPermission?.RequestId);
+
+        await provider.RespondToPermissionAsync("main", "appr-current-2", allow: true);
+
+        var resolved = Assert.Single(bridge.ResolvedApprovals);
+        Assert.Equal("appr-current-2", resolved.Id);
+        Assert.Equal(ChatPermissionActionKeys.AllowOnce, resolved.Decision);
+        Assert.Null(snapshots[^1].Timelines["main"].PendingPermission);
+    }
+
+    [Fact]
+    public async Task RespondToPermissionAsync_StaleAllowStopsBeforeProductionWebSocketIo()
+    {
+        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
+        using var identity = new OpenClaw.TestSupport.TempDirectory();
+        using var client = new OpenClawGatewayClient(
+            server.Endpoint.AbsoluteUri,
+            token,
+            NullLogger.Instance,
+            identityPath: identity.Path,
+            ignoreStoredDeviceToken: true,
+            persistHandshakeDeviceTokens: false);
+        var handshake = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.HandshakeSucceeded += (_, _) => handshake.TrySetResult();
+        await client.ConnectAsync();
+        await handshake.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        using var bridge = new GatewayClientChatBridge(client);
+        var snapshots = new List<ChatDataSnapshot>();
+        await using var provider = new OpenClawChatDataProvider(bridge);
+        provider.Changed += (_, args) => snapshots.Add(args.Snapshot);
+        await provider.LoadAsync();
+        string? PendingPermissionId() =>
+            snapshots.LastOrDefault() is { } snapshot
+            && snapshot.Timelines.TryGetValue(GatewayScenario.MainSessionKey, out var timeline)
+                ? timeline.PendingPermission?.RequestId
+                : null;
+
+        await server.PublishAgentEventAsync(GatewayScenario.MainSessionKey, new
+        {
+            phase = "requested",
+            approvalId = "fixture-stale-provider",
+            command = "echo stale",
+        });
+        await WaitForConditionAsync(() => PendingPermissionId() == "fixture-stale-provider");
+        await server.PublishAgentEventAsync(GatewayScenario.MainSessionKey, new
+        {
+            phase = "requested",
+            approvalId = "fixture-current-provider",
+            command = "echo current",
+        });
+        await WaitForConditionAsync(() => PendingPermissionId() == "fixture-current-provider");
+
+        await provider.RespondToPermissionAsync(
+            GatewayScenario.MainSessionKey,
+            "fixture-stale-provider",
+            allow: true);
+        await Task.Delay(100);
+
+        Assert.DoesNotContain(
+            server.Requests,
+            request => request.Method == "exec.approval.resolve"
+                && request.ApprovalId == "fixture-stale-provider");
+        Assert.Equal(
+            "fixture-current-provider",
+            PendingPermissionId());
+
+        await provider.RespondToPermissionAsync(
+            GatewayScenario.MainSessionKey,
+            "fixture-current-provider",
+            allow: true);
+        var resolved = await server.WaitForCompletedRequestAsync("exec.approval.resolve");
+
+        Assert.Equal("fixture-current-provider", resolved.ApprovalId);
+        Assert.Equal("allow-once", resolved.Decision);
+        Assert.Equal("ok", resolved.Outcome);
+        await client.DisconnectAsync();
+    }
+
+    [Fact]
     public async Task RuntimeGolden_ResetAtomicallyClearsQueueAndAdvancesGeneration()
     {
         var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
@@ -12939,7 +14572,7 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
-    public async Task LoadHistoryAsync_QueuedDeliveryDropsAfterResetGenerationAdvances()
+    public async Task LoadHistoryAsync_QueuedDeliveryCannotSupersedeLatestResetGenerationDrain()
     {
         using var temp = new TempDirectory();
         var bridge = new FakeBridge
@@ -12982,8 +14615,8 @@ public class OpenClawChatDataProviderTests
             });
             Assert.Equal(2, deliveries.Count);
 
-            deliveries[1]();
             deliveries[0]();
+            deliveries[1]();
 
             var snapshot = Assert.Single(snapshots);
             Assert.Empty(snapshot.Timelines["main"].Entries);
@@ -13125,6 +14758,13 @@ public class OpenClawChatDataProviderTests
            snapshot.QueuedMessagesByThread.TryGetValue(threadId, out var queued)
             ? queued
             : Array.Empty<ChatQueuedMessage>();
+
+    private static Action AssertSingleQueuedAction(ConcurrentQueue<Action> queued)
+    {
+        Assert.True(queued.TryDequeue(out var action));
+        Assert.Empty(queued);
+        return action;
+    }
 
     private static ISet<string> GetQueuedDrainScheduledThreads(OpenClawChatDataProvider provider)
     {

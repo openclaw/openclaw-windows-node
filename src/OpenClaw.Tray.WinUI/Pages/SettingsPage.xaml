@@ -32,6 +32,73 @@
                            Margin="0,0,0,8"/>
 
                 <!-- ═════════ General ═════════ -->
+                <Border x:Name="StoreMigrationCard" Visibility="Collapsed"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="{StaticResource SettingsRowPadding}"
+                        AutomationProperties.AutomationId="SettingsStoreMigrationCard">
+                    <Grid ColumnSpacing="16">
+                        <!--
+                            Single row, matching every other settings row: wrapping
+                            text on the left, action on the right. The action cannot
+                            starve the text column because it is capped at MaxWidth
+                            and wraps its own label.
+                        -->
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <!-- Badge leads so it stays beside the title and is never
+                                         clipped by a long translation. -->
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" CornerRadius="4" Padding="7,1"
+                                        VerticalAlignment="Center"
+                                        BorderBrush="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                        BorderThickness="1">
+                                    <TextBlock x:Uid="Migration2_InnoRecommendation" Text="Recommended"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                                </Border>
+                                <TextBlock x:Uid="Migration2_InnoCardTitle" Grid.Column="1"
+                                           Text="Move to the Microsoft Store version"
+                                           Style="{StaticResource BodyStrongTextBlockStyle}"
+                                           VerticalAlignment="Center"
+                                           TextWrapping="Wrap"/>
+                            </Grid>
+                            <TextBlock x:Uid="Migration2_InnoCardDescription"
+                                       Text="Get future OpenClaw updates through Microsoft Store. Your existing OpenClaw setup will be preserved."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <Button x:Name="StoreMigrationAction" Grid.Column="1"
+                                Click="OnStoreMigration" HorizontalAlignment="Right"
+                                VerticalAlignment="Center"
+                                MinWidth="100" MaxWidth="320"
+                                Style="{StaticResource AccentButtonStyle}"
+                                AutomationProperties.AutomationId="SettingsStoreMigration">
+                            <Button.ContentTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" TextWrapping="Wrap"
+                                               TextAlignment="Center"/>
+                                </DataTemplate>
+                            </Button.ContentTemplate>
+                        </Button>
+                    </Grid>
+                </Border>
+                <!--
+                    Collapsed, not just closed: a closed InfoBar is still a visible
+                    StackPanel child, so it consumes layout spacing and pushes the
+                    bottom settings row past the scroll viewport clip.
+                -->
+                <InfoBar x:Name="StoreMigrationStatus" Visibility="Collapsed"
+                         IsOpen="False" IsClosable="True" Closed="OnStoreMigrationStatusClosed"/>
+
                 <TextBlock x:Uid="SettingsPage_General" Text="General" Style="{StaticResource BodyStrongTextBlockStyle}"
                            Margin="{StaticResource SectionHeaderMargin}"/>
 
@@ -268,7 +335,7 @@
                 <TextBlock x:Uid="SettingsPage_Privacy" Text="Privacy" Style="{StaticResource BodyStrongTextBlockStyle}"
                            Margin="{StaticResource SectionHeaderMargin}"/>
                 <TextBlock x:Uid="SettingsPrivacyDescription"
-                           Text="Pre-approve capabilities so agents can use them without a prompt every time. You'll still see a countdown before recording starts."
+                           Text="Allow sensitive capture without prompting every time. OpenClaw still notifies you before each access and shows a countdown before recordings."
                            Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            TextWrapping="Wrap" Margin="4,0,4,4"/>
@@ -282,7 +349,7 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
-                            <TextBlock x:Uid="SettingsRow_ScreenRec_Header" Text="Allow screen recording" Style="{StaticResource BodyTextBlockStyle}"/>
+                            <TextBlock x:Uid="SettingsRow_ScreenRec_Header" Text="Allow screen capture" Style="{StaticResource BodyTextBlockStyle}"/>
                             <TextBlock x:Uid="SettingsRow_ScreenRec_Description"
                                        Text="Lets agents capture the screen via screen.* commands."
                                        Style="{StaticResource CaptionTextBlockStyle}"
@@ -292,7 +359,7 @@
                         <ToggleSwitch Grid.Column="1" x:Name="ScreenRecordingToggle" MinWidth="0" OnContent="" OffContent=""
                                       IsOn="{Binding ScreenRecordingConsentGiven, Mode=TwoWay}"
                                       AutomationProperties.AutomationId="SettingsPageScreenRecording"
-                                      AutomationProperties.Name="Allow screen recording"/>
+                                      AutomationProperties.Name="Allow screen capture"/>
                     </Grid>
                 </Border>
 
@@ -305,7 +372,7 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
-                            <TextBlock x:Uid="SettingsRow_CamRec_Header" Text="Allow camera recording" Style="{StaticResource BodyTextBlockStyle}"/>
+                            <TextBlock x:Uid="SettingsRow_CamRec_Header" Text="Allow camera capture" Style="{StaticResource BodyTextBlockStyle}"/>
                             <TextBlock x:Uid="SettingsRow_CamRec_Description"
                                        Text="Lets agents capture the camera via camera.* commands."
                                        Style="{StaticResource CaptionTextBlockStyle}"
@@ -315,7 +382,30 @@
                         <ToggleSwitch Grid.Column="1" x:Name="CameraRecordingToggle" MinWidth="0" OnContent="" OffContent=""
                                       IsOn="{Binding CameraRecordingConsentGiven, Mode=TwoWay}"
                                       AutomationProperties.AutomationId="SettingsPageCameraRecording"
-                                      AutomationProperties.Name="Allow camera recording"/>
+                                      AutomationProperties.Name="Allow camera capture"/>
+                    </Grid>
+                </Border>
+
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="{StaticResource SettingsRowPadding}">
+                    <Grid ColumnSpacing="14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock x:Uid="SettingsRow_Location_Header" Text="Allow location access" Style="{StaticResource BodyTextBlockStyle}"/>
+                            <TextBlock x:Uid="SettingsRow_Location_Description"
+                                      Text="Lets agents read device location via location.* commands."
+                                      Style="{StaticResource CaptionTextBlockStyle}"
+                                      Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                      TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1" x:Name="LocationConsentToggle" MinWidth="0" OnContent="" OffContent=""
+                                      IsOn="{Binding LocationConsentGiven, Mode=TwoWay}"
+                                      AutomationProperties.AutomationId="SettingsPageLocationConsent"
+                                      AutomationProperties.Name="Allow location access"/>
                     </Grid>
                 </Border>
 
@@ -395,7 +485,7 @@
                                  IsOpen="False"
                                  IsClosable="False"
                                  Title="MSIX installation detected"
-                                 Message="Removing OpenClaw from Windows Settings &#x2192; Apps will NOT clean up the Local Gateway (WSL distro, disk image). Use Remove Local Gateway below FIRST, then uninstall OpenClaw."/>
+                                 Message="Removing OpenClaw from Windows Settings → Apps will NOT clean up the Local Gateway (WSL distro, disk image). Use Remove Local Gateway below FIRST, then uninstall OpenClaw."/>
 
                         <TextBlock x:Uid="SettingsPage_RemovesTheWSLDistro" x:Name="GatewayBodyText"
                                    Text="Removes the app-owned WSL distro, its disk image, autostart entry, and clears gateway credentials. Your MCP token is preserved. Onboarding will reset."
@@ -448,7 +538,7 @@
                 </Border>
 
                 <!-- ═════════ About ═════════ -->
-                <TextBlock x:Uid="SettingsPage_About" Text="About" Style="{StaticResource BodyStrongTextBlockStyle}"
+                <TextBlock x:Name="AboutHeading" x:Uid="SettingsPage_About" Text="About" Style="{StaticResource BodyStrongTextBlockStyle}"
                            Margin="{StaticResource SectionHeaderMargin}"/>
 
                 <toolkit:SettingsExpander x:Uid="SettingsPage_AppInfoExpander"

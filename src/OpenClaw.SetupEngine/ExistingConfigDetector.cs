@@ -12,6 +12,8 @@ public sealed class ExistingConfigDetector
         string? LocalGatewayId,
         string? LocalGatewayUrl,
         bool HasDistro,
+        bool HasDistroDataDirectory,
+        bool DistroIsAppOwned,
         string? DistroName,
         bool HasIdentityFiles,
         int PreservedGatewayCount,
@@ -20,21 +22,52 @@ public sealed class ExistingConfigDetector
     /// <summary>
     /// Detect existing local configuration by checking the gateway registry and WSL distros.
     /// </summary>
-    public static ExistingConfig Detect(string dataDir, string targetDistroName)
+    public static ExistingConfig Detect(
+        string dataDir,
+        string targetDistroName,
+        string? localDataDir = null,
+        string? expectedLocalGatewayId = null)
     {
+        localDataDir ??= SetupContext.ResolveLocalDataDir();
         var registry = new GatewayRegistry(dataDir);
         registry.Load();
         var all = registry.GetAll();
 
-        var localRecord = all.FirstOrDefault(r => r.IsLocal && r.SshTunnel == null);
+        var localRecord = string.IsNullOrWhiteSpace(expectedLocalGatewayId)
+            ? all.FirstOrDefault(r => r.IsLocal && r.SshTunnel == null)
+            : all.FirstOrDefault(r =>
+                string.Equals(r.Id, expectedLocalGatewayId, StringComparison.Ordinal) &&
+                GatewayRecordEditing.IsSetupManagedLocalRecord(r));
         var preserved = all.Where(r => !r.IsLocal || r.SshTunnel != null).ToList();
 
         var logger = new SetupLogger(filePath: null, LogLevel.Warn);
         var result = new CommandRunner(logger)
-            .RunAsync(WslConstants.WslExePath, ["--list", "--quiet"], TimeSpan.FromSeconds(5))
+            .RunAsyncAllowingInheritedPipeHandleEscape(
+                WslConstants.WslExePath,
+                ["--list", "--quiet"],
+                TimeSpan.FromSeconds(5))
             .GetAwaiter()
             .GetResult();
         var hasDistro = InterpretDistroList(result, targetDistroName);
+        var hasDistroDataDirectory =
+            DistroInstallPathPolicy.TryGetManagedInstallPath(
+                localDataDir,
+                targetDistroName,
+                out var distroDataDirectory,
+                out _) &&
+            Directory.Exists(distroDataDirectory);
+        var distroIsAppOwned = hasDistro
+            ? ManagedDistroOwnership.HasRegisteredDistroEvidence(
+                dataDir,
+                localDataDir,
+                targetDistroName,
+                distroDataDirectory,
+                new WindowsWslRegistrationInspector(),
+                out _)
+            : hasDistroDataDirectory &&
+              ManagedDistroOwnership.HasPathBoundMarkerEvidence(
+                  localDataDir,
+                  targetDistroName);
 
         var hasIdentity = false;
         if (localRecord != null)
@@ -48,7 +81,9 @@ public sealed class ExistingConfigDetector
             LocalGatewayId: localRecord?.Id,
             LocalGatewayUrl: localRecord?.Url,
             HasDistro: hasDistro,
-            DistroName: hasDistro ? targetDistroName : null,
+            HasDistroDataDirectory: hasDistroDataDirectory,
+            DistroIsAppOwned: distroIsAppOwned,
+            DistroName: hasDistro || hasDistroDataDirectory ? targetDistroName : null,
             HasIdentityFiles: hasIdentity,
             PreservedGatewayCount: preserved.Count,
             PreservedGatewayNames: preserved.Select(r => r.FriendlyName ?? r.Url).ToList());
@@ -59,7 +94,11 @@ public sealed class ExistingConfigDetector
         if (!result.TimedOut && result.ExitCode == 0)
             return WslInstallSupport.ContainsDistro(result.Stdout, targetDistroName);
 
-        if (!result.TimedOut && WslViabilityInspector.LooksUnavailable(result))
+        // A conclusive "WSL is not installed" answer stays usable even when the run
+        // also timed out. The output already proves no distro can exist, so failing
+        // closed here would reject evidence the inspector itself treats as the
+        // installable path rather than a blocker.
+        if (WslViabilityInspector.LooksUnavailable(result))
             return false;
 
         throw new InvalidOperationException(
@@ -72,13 +111,23 @@ public sealed class ExistingConfigDetector
     /// </summary>
     public static string BuildReplacementSummary(ExistingConfig config)
     {
-        if (!config.HasLocalGateway && !config.HasDistro)
+        if (!config.HasLocalGateway && !config.HasDistro && !config.HasDistroDataDirectory)
             return "A new local WSL gateway will be created. No existing configuration will be affected.";
 
         var lines = new List<string>();
 
         if (config.HasDistro)
-            lines.Add($"• WSL distro '{config.DistroName}' will be deleted and recreated");
+        {
+            lines.Add(config.DistroIsAppOwned
+                ? $"• App-owned WSL distro '{config.DistroName}' will be deleted and recreated"
+                : $"• WSL distro '{config.DistroName}' is not proven to be app-owned. Continuing will permanently delete and recreate it");
+        }
+        else if (config.HasDistroDataDirectory)
+        {
+            lines.Add(config.DistroIsAppOwned
+                ? $"• App-owned WSL data for '{config.DistroName}' will be deleted"
+                : $"• WSL data for '{config.DistroName}' is not proven to be app-owned. Continuing will permanently delete it");
+        }
         if (config.HasLocalGateway)
             lines.Add("• Local gateway record will be replaced");
         if (config.HasIdentityFiles)
@@ -94,4 +143,8 @@ public sealed class ExistingConfigDetector
 
         return string.Join("\n", lines);
     }
+
+    public static bool RequiresDestructiveConfirmation(ExistingConfig config) =>
+        !config.DistroIsAppOwned &&
+        (config.HasDistro || config.HasDistroDataDirectory);
 }

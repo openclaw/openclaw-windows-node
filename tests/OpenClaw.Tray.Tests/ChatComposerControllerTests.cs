@@ -20,18 +20,19 @@ namespace OpenClaw.Tray.Tests;
 /// </summary>
 public sealed class ChatComposerControllerTests
 {
-    private static ChatThread MakeThread(string id = "session-1") =>
+    private static ChatThread MakeThread(string id = "session-1", string? thinkingLevel = null) =>
         new()
         {
             Id = id,
             Title = "Test Session",
             Status = ChatThreadStatus.Running,
             Activity = ChatActivity.Idle,
+            ThinkingLevel = thinkingLevel,
+            ThinkingContext = new(new(), new([new("high", "high"), new("custom-adaptive", "Custom")])),
         };
 
     private static ChatComposerInputs MakeInputs(long revision = 1, ChatThread? thread = null, string connectionState = "connected") =>
         new(
-            revision,
             connectionState,
             false,
             thread ?? MakeThread(),
@@ -41,7 +42,10 @@ public sealed class ChatComposerControllerTests
             false,
             System.Array.Empty<ChatQueuedMessage>(),
             null,
-            false);
+            false)
+        {
+            Revision = revision,
+        };
 
     private static (ChatComposerViewModel Vm, ChatComposerController Controller, FakeChatComposerRuntimePort Port, ChatComposerHostActions HostActions)
         MakeController(ChatComposerHostActions? hostActions = null, RecordingUiDispatcher? dispatcher = null)
@@ -92,6 +96,28 @@ public sealed class ChatComposerControllerTests
         Assert.Equal(1, port.SendMessageCallCount);
         Assert.Equal(("session-1", "hello world", (IReadOnlyList<ChatAttachment>)System.Array.Empty<ChatAttachment>()), port.LastSendMessageCall);
         Assert.Equal(string.Empty, vm.Draft);
+    }
+
+    [Fact]
+    public async Task SendAsync_ActiveTurn_AcceptedFollowUpClearsComposerAndAllowsAnotherDraft()
+    {
+        var (vm, controller, port, _) = MakeController();
+        vm.ApplyInputs(MakeInputs(revision: 2) with { TurnActive = true });
+        var attachment = new ChatAttachment { FileName = "notes.txt" };
+        vm.AddAttachments([attachment]);
+        vm.SetDraft("next message");
+
+        Assert.True(await controller.SendAsync());
+        Assert.Equal(string.Empty, vm.Draft);
+        Assert.Empty(vm.PendingAttachments);
+        Assert.False(vm.IsSending);
+        Assert.Equal(1, port.SendMessageCallCount);
+
+        vm.SetDraft("another message");
+        Assert.True(vm.CanSend);
+        Assert.True(await controller.SendAsync());
+        Assert.Equal(string.Empty, vm.Draft);
+        Assert.Equal(2, port.SendMessageCallCount);
     }
 
     [Fact]
@@ -247,6 +273,22 @@ public sealed class ChatComposerControllerTests
     }
 
     [Fact]
+    public void TrySelectChannel_RequiresLiveRootAndPreservesDraft()
+    {
+        var (vm, controller, _, _) = MakeController();
+        vm.SetDraft("Unsent sidebar draft");
+        Assert.False(controller.TrySelectChannel("agent:main:main"));
+        string? selected = null;
+        controller.BindSelectionHandoff(key => selected = key);
+        Assert.True(controller.TrySelectChannel("agent:research:thread"));
+        Assert.Equal("agent:research:thread", selected);
+        Assert.Equal("Unsent sidebar draft", vm.Draft);
+        controller.Dispose();
+        Assert.False(controller.TrySelectChannel("agent:main:main"));
+        Assert.Equal("agent:research:thread", selected);
+    }
+
+    [Fact]
     public async Task SendAsync_NewCommand_HandsCanonicalSessionKeyToBoundSelection()
     {
         var (vm, controller, port, _) = MakeController();
@@ -266,6 +308,119 @@ public sealed class ChatComposerControllerTests
         Assert.Equal(ChatLifecycleCommandKind.New, port.LastLifecycleCall!.Value.Command);
         Assert.Equal("new-session-key", handedOff);
         Assert.Equal(0, port.SendMessageCallCount);
+    }
+
+    [Fact]
+    public async Task NewNavigationReleasesSetupBindingBeforeAwaitAndReconnectCannotRestoreOldTarget()
+    {
+        var binding = new OpenClawTray.Presentation.SetupNativeChatBinding();
+        var request = new OpenClawTray.Presentation.SetupNativeNavigationRequest(new(
+            new(OpenClaw.SetupEngine.SetupCompletionIntent.CustodianOnboarding,
+                "test", "endpoint", "provider/model", "main", 1,
+                IdentityBinding: new string('A', 64), SessionKey: "session-1"),
+            new(OpenClaw.SetupEngine.SetupNativeDestination.Chat, "session-1")));
+        binding.Bind(request);
+        var presentation = new OpenClawTray.Presentation.SetupNativeChatPresentation();
+        presentation.Bind(request);
+        string mountedThread = "session-1";
+        var actions = new ChatComposerHostActions(null, null, null, null, null,
+            SessionNavigationStarting: () =>
+            {
+                binding.Invalidate();
+                presentation.Bind(binding.Request);
+            },
+            SessionSelected: key => mountedThread = key);
+        var (vm, controller, port, _) = MakeController(actions);
+        using (controller)
+        using (vm)
+        {
+            controller.BindSelectionHandoff(key =>
+            {
+                Assert.Null(binding.Request);
+                Assert.Equal("session-1", mountedThread);
+                vm.ApplyInputs(MakeInputs(2, MakeThread(key)));
+            });
+            vm.SetDraft("/new");
+            port.ExecuteLifecycleGate = new();
+            var send = controller.SendAsync();
+            Assert.False(send.IsCompleted);
+            Assert.Null(binding.Request);
+            port.ExecuteLifecycleGate.SetResult(new(ChatLifecycleCommandKind.New, true, "session-B"));
+            Assert.True(await send);
+            Assert.Equal("session-B", mountedThread);
+
+            // Any already-queued setup refresh must be inert after admitted navigation.
+            presentation.Evaluate(() => throw new InvalidOperationException("Must not check old owner"),
+                _ => throw new InvalidOperationException(), _ => throw new InvalidOperationException(),
+                () => Assert.Fail("Must not dispose B"), () => Assert.Fail("Must not hide B"));
+            vm.SetDraft("Send to the new conversation");
+            Assert.True(await controller.SendAsync());
+            Assert.Equal("session-B", port.LastSendMessageCall!.Value.ThreadId);
+        }
+    }
+
+    [Fact]
+    public async Task DisposedNewNavigationDoesNotNotifyHostSelection()
+    {
+        var selected = 0;
+        var actions = new ChatComposerHostActions(null, null, null, null, null,
+            SessionSelected: _ => selected++);
+        var (vm, controller, port, _) = MakeController(actions);
+        using (vm)
+        {
+            controller.BindSelectionHandoff(_ => Assert.Fail("Stale root handoff"));
+            vm.SetDraft("/new");
+            port.ExecuteLifecycleGate = new();
+            var send = controller.SendAsync();
+            controller.Dispose();
+            port.ExecuteLifecycleGate.SetResult(new(ChatLifecycleCommandKind.New, true, "session-B"));
+            Assert.False(await send);
+            Assert.Equal(0, selected);
+        }
+    }
+
+    [Fact]
+    public void SelectionDisposedDuringRootHandoffDoesNotNotifyHost()
+    {
+        var notifications = 0;
+        var actions = new ChatComposerHostActions(null, null, null, null, null,
+            SessionSelected: _ => notifications++);
+        var (vm, controller, _, _) = MakeController(actions);
+        using (vm)
+        {
+            controller.BindSelectionHandoff(_ => controller.Dispose());
+            Assert.False(controller.TrySelectChannel("session-B"));
+            Assert.Equal(0, notifications);
+        }
+    }
+
+    [Fact]
+    public async Task HiddenHostCancelsVoiceWithoutLosingDraftOrAcceptingLateTranscript()
+    {
+        var capture = new TaskCompletionSource<string?>();
+        var cleanedUp = new TaskCompletionSource();
+        CancellationToken token = default;
+        var actions = new ChatComposerHostActions(null, null,
+            (ct, _) => { token = ct; return capture.Task; }, null, null);
+        var (vm, controller, _, _) = MakeController(actions);
+        using (controller)
+        using (vm)
+        {
+            vm.SetDraft("Keep this draft");
+            var attachment = new ChatAttachment { FileName = "keep.png" };
+            vm.AddAttachments([attachment]);
+            controller.TestOnlyVoiceOperationCleanedUp = () => cleanedUp.TrySetResult();
+            controller.StartVoiceRecording();
+            Assert.True(vm.IsRecording);
+            controller.CancelVoiceRecording();
+            Assert.True(token.IsCancellationRequested);
+            Assert.False(vm.IsRecording);
+            capture.SetResult("Late hidden transcript");
+            await cleanedUp.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal("Keep this draft", vm.Draft);
+            Assert.Same(attachment, Assert.Single(vm.PendingAttachments));
+            Assert.False(controller.IsDisposed);
+        }
     }
 
     [Fact]
@@ -529,6 +684,38 @@ public sealed class ChatComposerControllerTests
         Assert.Equal(("session-1", "gpt-5"), port.LastSetModelCall);
     }
 
+    [Theory]
+    [InlineData("disconnected", false)]
+    [InlineData("connecting", false)]
+    [InlineData("connected", true)]
+    public void SessionOptions_RejectStaleUnavailableActionsAndResumeAfterReconnect(string state, bool disabled)
+    {
+        var (vm, controller, port, _) = MakeController();
+        using (controller)
+        using (vm)
+        {
+            vm.ApplyInputs(MakeInputs(revision: 2, connectionState: state) with { MessageOptionsDisabled = disabled });
+            controller.SetModel("provider/model");
+            controller.ClearModel();
+            controller.SetThinkingLevel("custom-adaptive");
+            controller.ClearThinkingLevel();
+            Assert.Equal(0, port.SetModelCallCount);
+            Assert.Equal(0, port.ClearModelCallCount);
+            Assert.Equal(0, port.SetThinkingLevelCallCount);
+            Assert.Equal(0, port.ClearThinkingLevelCallCount);
+
+            vm.ApplyInputs(MakeInputs(revision: 3));
+            controller.SetModel("provider/model");
+            controller.ClearModel();
+            controller.SetThinkingLevel("custom-adaptive");
+            controller.ClearThinkingLevel();
+            Assert.Equal(1, port.SetModelCallCount);
+            Assert.Equal(1, port.ClearModelCallCount);
+            Assert.Equal(("session-1", "custom-adaptive"), port.LastSetThinkingLevelCall);
+            Assert.Equal(1, port.ClearThinkingLevelCallCount);
+        }
+    }
+
     [Fact]
     public void ClearModel_CallsExplicitClearNotSet()
     {
@@ -563,7 +750,62 @@ public sealed class ChatComposerControllerTests
         controller.SetThinkingLevel("high");
 
         Assert.Equal(1, port.SetThinkingLevelCallCount);
+        Assert.Equal(0, port.ClearThinkingLevelCallCount);
         Assert.Equal(("session-1", "high"), port.LastSetThinkingLevelCall);
+    }
+
+    [Fact]
+    public void ThinkingOptions_RejectStaleUnsupportedChoiceAndAllowExplicitResetWhenUnknown()
+    {
+        var (vm, controller, port, _) = MakeController();
+        using (controller)
+        using (vm)
+        {
+            vm.ApplyInputs(MakeInputs(2, MakeThread(thinkingLevel: "high") with
+            {
+                ThinkingContext = new(new(), new([new("off", "Off")])),
+            }));
+            controller.SetThinkingLevel("high");
+            controller.SetThinkingLevel("low");
+            Assert.Equal(0, port.SetThinkingLevelCallCount);
+            controller.SetThinkingLevel("off");
+            Assert.Equal(("session-1", "off"), port.LastSetThinkingLevelCall);
+
+            vm.ApplyInputs(MakeInputs(3, MakeThread(thinkingLevel: "high") with { ThinkingContext = null }));
+            Assert.True(vm.Inputs!.CanChangeThinking);
+            controller.SetThinkingLevel("off");
+            Assert.Equal(1, port.SetThinkingLevelCallCount);
+            controller.ClearThinkingLevel();
+            Assert.Equal(1, port.ClearThinkingLevelCallCount);
+            controller.SetModel("new/model");
+            controller.ClearModel();
+            Assert.Equal(1, port.SetModelCallCount);
+            Assert.Equal(1, port.ClearModelCallCount);
+            Assert.Equal(1, port.SetThinkingLevelCallCount);
+            Assert.Equal(1, port.ClearThinkingLevelCallCount);
+
+            vm.ApplyInputs(MakeInputs(4, MakeThread() with { ThinkingContext = null }));
+            Assert.False(vm.Inputs!.CanChangeThinking);
+            Assert.True(vm.Inputs.CanChangeSessionOptions);
+        }
+    }
+
+    [Fact]
+    public void ClearThinkingLevel_FromOff_DelegatesExplicitClearNotConcreteLevel()
+    {
+        var vm = new ChatComposerViewModel(new RecordingUiDispatcher(), initialSpeakerMuted: false);
+        vm.ApplyInputs(MakeInputs(thread: MakeThread(thinkingLevel: "off")));
+        var port = new FakeChatComposerRuntimePort();
+        var controller = new ChatComposerController(
+            vm,
+            port,
+            new ChatComposerHostActions(null, null, null, null, null));
+
+        controller.ClearThinkingLevel();
+
+        Assert.Equal(1, port.ClearThinkingLevelCallCount);
+        Assert.Equal("session-1", port.LastClearThinkingLevelThreadId);
+        Assert.Equal(0, port.SetThinkingLevelCallCount);
     }
 
     [Fact]

@@ -10,7 +10,10 @@ public sealed class PermissionSettingsWriterRoutingTests
         var toggleHelper = ExtractMethodBodyBySignature(source, "private void ToggleCommandPalettePermission(HubSettingToggle toggle)");
         var executeCommand = ExtractMethodBodyBySignature(source, "private void ExecuteCommand(HubCommand command)");
 
-        Assert.Contains("HubPageRegistry.BuildCommands", buildCommandList);
+        Assert.Contains("HubCommandCatalog.Build", buildCommandList);
+        var catalog = ReadSource("src", "OpenClaw.Tray.WinUI", "Services", "HubCommandCatalog.cs");
+        Assert.Contains("HubPageRegistry.BuildCommands", catalog);
+        Assert.DoesNotContain("settings.Save();", catalog);
         Assert.DoesNotContain("settings.Save();", buildCommandList);
         Assert.Contains("ToggleCommandPalettePermission(toggle);", executeCommand);
 
@@ -36,7 +39,8 @@ public sealed class PermissionSettingsWriterRoutingTests
             "\"Screen capture\"",
             "\"Location\"",
             "\"Voice (TTS)\"",
-            "\"Speech-to-text (STT)\"");
+            "\"Speech-to-text (STT)\"",
+            "\"Ollama\"");
 
         Assert.Contains("ActionId = $\"perm-toggle|{text}\"", source);
         Assert.DoesNotContain("SettingsManager", source);
@@ -55,6 +59,7 @@ public sealed class PermissionSettingsWriterRoutingTests
         AssertInOrder(
             persistToggle,
             "TryPersistPermissionSetting(",
+            "_nodeService?.ApplyOllamaPermission(",
             "ReconnectWithSyncedBrowserProxyForward();");
         Assert.DoesNotContain("_settings?.Save(); ReconnectWithSyncedBrowserProxyForward();", persistToggle);
     }
@@ -90,7 +95,57 @@ public sealed class PermissionSettingsWriterRoutingTests
         Assert.Contains("ApplyStoreManagedPermissionSetting(settings, name, permissionValue)", source);
         Assert.Contains("prop.SetValue(_settings, converted);", source);
         Assert.Contains("_settings.Save();", source);
-        Assert.Contains("OnSettingsSaved(this, EventArgs.Empty);", source);
+        Assert.Contains("ApplySettingsSavedAndWait();", source);
+
+        var settingsCoordinator = ReadSource(
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "App.SettingsChangeCoordinator.cs");
+        var settingsSaved = ExtractMethodBodyBySignature(
+            settingsCoordinator,
+            "private Task ApplySettingsSavedAsync()");
+        AssertInOrder(
+            settingsSaved,
+            "void ApplyLatestSettings()",
+            "_settings.ToSettingsData()",
+            "_dispatcherQueue == null || _dispatcherQueue.HasThreadAccess",
+            "ApplyLatestSettings();",
+            "_dispatcherQueue.TryEnqueue");
+        Assert.DoesNotContain("var settings = _settings.ToSettingsData();", settingsSaved);
+        Assert.DoesNotContain("_nodeService?.ApplyOllamaPermission", settingsSaved);
+        Assert.Contains(
+            "settings => _nodeService?.ApplyOllamaPermission(settings.NodeOllamaInferenceEnabled)",
+            settingsCoordinator);
+        var coordinatorService = ReadSource(
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Services",
+            "SettingsChangeCoordinator.cs");
+        AssertInOrder(
+            coordinatorService,
+            "_effects.ApplyOllamaPermission(settings);",
+            "_effects.ApplyChatToolCallVisibility(settings);");
+        Assert.Contains(
+            "if (_dispatcherQueue?.HasThreadAccess == true)",
+            settingsCoordinator);
+        Assert.Contains(
+            "ApplySettingsSavedAsync().GetAwaiter().GetResult();",
+            settingsCoordinator);
+
+        var nodeService = ReadSource(
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Services",
+            "NodeService.cs");
+        var applyOllama = ExtractMethodBodyBySignature(
+            nodeService,
+            "public void ApplyOllamaPermission(bool enabled)");
+        AssertInOrder(
+            applyOllama,
+            "_ollamaCapability.Revoke();",
+            "_capabilities.Remove(_ollamaCapability);",
+            "_ollamaCapability = null;");
+        Assert.Contains("_capabilities.Count != 0", applyOllama);
 
         foreach (var settingName in new[]
         {
@@ -102,6 +157,7 @@ public sealed class PermissionSettingsWriterRoutingTests
             "NodeLocationEnabled",
             "NodeBrowserProxyEnabled",
             "NodeTtsEnabled",
+            "NodeOllamaInferenceEnabled",
         })
         {
             Assert.Contains($"nameof(SettingsManager.{settingName})", source);

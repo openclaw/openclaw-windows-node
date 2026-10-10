@@ -55,7 +55,8 @@ public sealed class AccessibilityScanTests
         yield return ["SkillsPage", "skills", "SkillsPageMarker"];
         yield return ["UsagePage", "usage", "UsagePageMarker"];
         yield return ["VoiceSettingsPage", "voice", "VoiceSettingsPageMarker"];
-        yield return ["WorkspacePage", "workspace", "WorkspacePageMarker"];
+        yield return ["ChatPage", "workspace", "ChatComposerInput"];
+        yield return ["WorkspacePage", "agent:main:workspace", "WorkspacePageMarker"];
     }
 
     [Theory]
@@ -66,7 +67,10 @@ public sealed class AccessibilityScanTests
         string pageTag,
         string pageMarkerAutomationId)
     {
-        await _app.NavigateAsync(pageTag, pageMarkerAutomationId);
+        await _app.NavigateAsync(
+            pageTag,
+            pageName,
+            pageMarkerAutomationId);
         PageRuleExclusions.TryGetValue(pageName, out var exclusions);
         AxeHelper.AssertNoAccessibilityErrors(
             _app.HubWindowHandle,
@@ -78,13 +82,19 @@ public sealed class AccessibilityScanTests
     [Trait("Category", "Accessibility")]
     public async Task ChatComposerControls_ExposeOnscreenLayoutThroughUia()
     {
-        await _app.NavigateAsync("chat", "ChatComposerInput");
+        await _app.NavigateAsync(
+            "chat",
+            "ChatPage",
+            "ChatComposerInput");
         var hub = AutomationElement.FromHandle(_app.HubWindowHandle);
         foreach (var automationId in new[]
         {
             "ChatComposerInput",
             "ChatComposerAttach",
-            "ChatComposerSpeakerToggle",
+            "ChatComposerModelPicker",
+            "ChatComposerReasoningPicker",
+            "ChatComposerVoice",
+            "ChatComposerPrimaryAction",
         })
         {
             var element = await WaitForOnscreenLayoutAsync(hub, automationId);
@@ -92,6 +102,8 @@ public sealed class AccessibilityScanTests
             Assert.True(element.Current.BoundingRectangle.Width > 0);
             Assert.True(element.Current.BoundingRectangle.Height > 0);
         }
+        Assert.Null(hub.FindFirst(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.AutomationIdProperty, "ChatComposerSessionPicker")));
     }
 
     private static async Task<AutomationElement> WaitForOnscreenLayoutAsync(

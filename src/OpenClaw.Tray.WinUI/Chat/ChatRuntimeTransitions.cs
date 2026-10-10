@@ -136,7 +136,7 @@ internal sealed record ChatSendPreparation(
     bool IsCurrent,
     ChatDataSnapshot? Snapshot);
 
-internal sealed record ChatModelPatchLease(
+internal sealed record ChatSessionOptionPatchLease(
     string ThreadId,
     Task? Previous,
     TaskCompletionSource Completion);

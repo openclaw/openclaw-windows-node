@@ -3189,6 +3189,7 @@ public class TtsCapabilityTests
     [Theory]
     [InlineData("elevenlabs", "windows", "elevenlabs")]
     [InlineData(" ELEVENLABS ", "windows", "elevenlabs")]
+    [InlineData(" MiniMax ", "windows", "minimax")]
     [InlineData(null, "elevenlabs", "elevenlabs")]
     [InlineData("   ", "elevenlabs", "elevenlabs")]
     [InlineData(null, "", "piper")]
@@ -3378,12 +3379,15 @@ public class TtsCapabilityTests
     // Preferred provider is ready → no fallback.
     [InlineData("piper", "piper", "piper,windows", false, "piper", "piper", false)]
     [InlineData("elevenlabs", "piper", "elevenlabs,windows", false, "elevenlabs", "elevenlabs", false)]
+    [InlineData("minimax", "piper", "minimax,windows", false, "minimax", "minimax", false)]
     // Configured/default preferred provider not ready, Windows available → fall back to Windows.
     [InlineData(null, "piper", "windows", true, "piper", "windows", true)]
     [InlineData(null, "elevenlabs", "windows", true, "elevenlabs", "windows", true)]
+    [InlineData(null, "minimax", "windows", true, "minimax", "windows", true)]
     // Explicit provider requests stay strict and do not silently reroute.
     [InlineData("piper", "windows", "windows", false, "piper", "piper", false)]
     [InlineData("elevenlabs", "windows", "windows", false, "elevenlabs", "elevenlabs", false)]
+    [InlineData("minimax", "windows", "windows", false, "minimax", "minimax", false)]
     [InlineData("unknown-provider", "windows", "windows", false, "unknown-provider", "unknown-provider", false)]
     // Preferred IS Windows but somehow not ready → no self-fallback.
     [InlineData("windows", "windows", "piper", false, "windows", "windows", false)]
@@ -3466,7 +3470,8 @@ public class TtsCapabilityTests
             [
                 new TtsProviderStatus { Provider = TtsCapability.PiperProvider, Readiness = TtsCapability.ReadinessVoiceNotDownloaded, IsReady = false },
                 new TtsProviderStatus { Provider = TtsCapability.WindowsProvider, Readiness = TtsCapability.ReadinessReady, IsReady = true },
-                new TtsProviderStatus { Provider = TtsCapability.ElevenLabsProvider, Readiness = TtsCapability.ReadinessNeedsApiKey, IsReady = false }
+                new TtsProviderStatus { Provider = TtsCapability.ElevenLabsProvider, Readiness = TtsCapability.ReadinessNeedsApiKey, IsReady = false },
+                new TtsProviderStatus { Provider = TtsCapability.MiniMaxProvider, Readiness = TtsCapability.ReadinessNeedsVoice, IsReady = false }
             ]
         });
 
@@ -3485,7 +3490,7 @@ public class TtsCapabilityTests
         Assert.Equal("windows", root.GetProperty("effectiveProvider").GetString());
         Assert.True(root.GetProperty("willFallBack").GetBoolean());
         var providers = root.GetProperty("providers");
-        Assert.Equal(3, providers.GetArrayLength());
+        Assert.Equal(4, providers.GetArrayLength());
         Assert.Equal("voice-not-downloaded", providers[0].GetProperty("readiness").GetString());
         Assert.False(providers[0].GetProperty("isReady").GetBoolean());
         Assert.True(providers[1].GetProperty("isReady").GetBoolean());
@@ -3552,7 +3557,7 @@ public class LocationCapabilityTests
     public async Task Get_ReturnsLocation_WhenHandler()
     {
         var cap = new LocationCapability(NullLogger.Instance);
-        cap.GetRequested += (args) => Task.FromResult(new LocationResult
+        cap.GetRequested += (args, cancellationToken) => Task.FromResult(new LocationResult
         {
             Latitude = 47.6062,
             Longitude = -122.3321,
@@ -3579,7 +3584,7 @@ public class LocationCapabilityTests
     {
         var cap = new LocationCapability(NullLogger.Instance);
         LocationGetArgs? receivedArgs = null;
-        cap.GetRequested += (args) =>
+        cap.GetRequested += (args, cancellationToken) =>
         {
             receivedArgs = args;
             return Task.FromResult(new LocationResult
@@ -3608,7 +3613,7 @@ public class LocationCapabilityTests
     {
         var cap = new LocationCapability(NullLogger.Instance);
         LocationGetArgs? receivedArgs = null;
-        cap.GetRequested += (args) =>
+        cap.GetRequested += (args, cancellationToken) =>
         {
             receivedArgs = args;
             return Task.FromResult(new LocationResult
@@ -3629,7 +3634,7 @@ public class LocationCapabilityTests
     public async Task Get_ReturnsPermissionError_WhenUnauthorized()
     {
         var cap = new LocationCapability(NullLogger.Instance);
-        cap.GetRequested += (args) => throw new UnauthorizedAccessException("No permission");
+        cap.GetRequested += (args, cancellationToken) => throw new UnauthorizedAccessException("No permission");
 
         var req = new NodeInvokeRequest { Id = "loc5", Command = "location.get", Args = Parse("""{}""") };
         var res = await cap.ExecuteAsync(req);
@@ -3641,12 +3646,35 @@ public class LocationCapabilityTests
     public async Task Get_ReturnsError_WhenHandlerThrows()
     {
         var cap = new LocationCapability(NullLogger.Instance);
-        cap.GetRequested += (args) => throw new InvalidOperationException("GPS unavailable");
+        cap.GetRequested += (args, cancellationToken) => throw new InvalidOperationException("GPS unavailable");
 
         var req = new NodeInvokeRequest { Id = "loc6", Command = "location.get", Args = Parse("""{}""") };
         var res = await cap.ExecuteAsync(req);
         Assert.False(res.Ok);
         Assert.Equal("Location failed", res.Error);
+    }
+
+    [Fact]
+    public async Task Get_ReturnsCancelled_AndPassesCancellationToHandler()
+    {
+        var cap = new LocationCapability(NullLogger.Instance);
+        using var cancellation = new CancellationTokenSource();
+        CancellationToken receivedToken = default;
+        cap.GetRequested += async (args, cancellationToken) =>
+        {
+            receivedToken = cancellationToken;
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return new LocationResult();
+        };
+
+        var req = new NodeInvokeRequest { Id = "loc-cancel", Command = "location.get", Args = Parse("""{}""") };
+        var execution = cap.ExecuteAsync(req, cancellation.Token);
+        cancellation.Cancel();
+
+        var res = await execution;
+        Assert.False(res.Ok);
+        Assert.Equal("cancelled", res.Error);
+        Assert.Equal(cancellation.Token, receivedToken);
     }
 
     [Fact]

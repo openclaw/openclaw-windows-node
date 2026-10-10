@@ -325,7 +325,7 @@ public class McpToolBridge
         // No screen.list or screen.capture exist in the protocol; previous
         // drift advertised tools that didn't actually resolve.
         ["screen.snapshot"] =
-            "Capture a screenshot of the specified display. Args: format ('png'|'jpeg', default 'png'), maxWidth (int, default 1920), quality (int 1-100, default 80), monitor / screenIndex (int, default 0 = primary), includePointer (bool, default true). Returns { format, width, height, base64, image } where image is a data: URL.",
+            "Capture a screenshot of the specified display. The first use requires remembered user consent, and every invocation shows a visible notification before capture. Args: format ('png'|'jpeg', default 'png'), maxWidth (int, default 1920), quality (int 1-100, default 80), monitor / screenIndex (int, default 0 = primary), includePointer (bool, default true). Returns { format, width, height, base64, image } where image is a data: URL.",
         ["screen.record"] =
             "Record the specified display for a bounded duration. Args: durationMs (int, required, max 300000), format ('mp4'|'webm', default 'mp4'), monitor / screenIndex (int, default 0 = primary), maxWidth (int, default 1920), fps (int, default 30). Returns { format, durationMs, base64 }.",
 
@@ -333,7 +333,7 @@ public class McpToolBridge
         ["camera.list"] =
             "List cameras attached to the Windows node. Returns { cameras: [{ deviceId, name, isDefault }, ...] }.",
         ["camera.snap"] =
-            "Capture a still photo from a camera. Args: deviceId (string, optional — defaults to system default camera), format ('jpeg'|'png', default 'jpeg'), maxWidth (int, default 1280), quality (int 1-100, default 80). Returns { format, width, height, base64 }.",
+            "Capture a still photo from a camera. The first use requires remembered user consent, and every invocation shows a visible notification before capture. Args: deviceId (string, optional; defaults to system default camera), format ('jpeg'|'png', default 'jpeg'), maxWidth (int, default 1280), quality (int 1-100, default 80). Returns { format, width, height, base64 }.",
         ["camera.clip"] =
             "Record a short clip from a camera. Args: deviceId (string, optional), durationMs (int, required, max 60000), format ('mp4'|'webm', default 'mp4'), maxWidth (int, default 1280). Returns { format, durationMs, base64 }.",
 
@@ -348,13 +348,19 @@ public class McpToolBridge
 
         // tts.*
         ["tts.speak"] =
-            "Speak text aloud on the Windows node. Args: text (string, required), provider ('piper'|'windows'|'elevenlabs', optional — omit to use the configured TtsProvider setting, default 'piper' for fresh installs), voiceId (string, optional — overrides the per-provider configured voice), model (string, optional, ElevenLabs only), interrupt (bool, default false — interrupts any in-progress playback). When provider is omitted and the configured provider isn't usable (no ElevenLabs key, Piper voice not downloaded), the node falls back to Windows TTS so playback still happens. Explicit provider requests stay strict and do not silently reroute. Returns { spoken, provider (the provider that actually spoke), requestedProvider, fellBack, contentType, durationMs }.",
+            "Speak text aloud on the Windows node. Args: text (string, required), provider ('piper'|'windows'|'elevenlabs'|'minimax', optional; omit to use the configured TtsProvider setting, default 'piper' for fresh installs), voiceId (string, optional; overrides the per-provider configured voice), model (string, optional, cloud providers only), interrupt (bool, default false; interrupts any in-progress playback). When provider is omitted and the configured provider isn't usable (no cloud key, Piper voice not downloaded), the node falls back to Windows TTS so playback still happens. Explicit provider requests stay strict and do not silently reroute. Returns { spoken, provider (the provider that actually spoke), requestedProvider, fellBack, contentType, durationMs }.",
         ["tts.status"] =
-            "Report TTS provider readiness. No args. Returns { configuredProvider, effectiveProvider (the provider that would run now after fallback), willFallBack (bool), providers: [{ provider ('piper'|'windows'|'elevenlabs'), readiness ('ready'|'needs-api-key'|'needs-voice'|'voice-not-downloaded'|'unavailable'), isReady (bool) }] }. Carries no PII (no voice ids, no key fragments, no device names). Requires NodeTtsEnabled.",
+            "Report TTS provider readiness. No args. Returns { configuredProvider, effectiveProvider (the provider that would run now after fallback), willFallBack (bool), providers: [{ provider ('piper'|'windows'|'elevenlabs'|'minimax'), readiness ('ready'|'needs-api-key'|'needs-voice'|'voice-not-downloaded'|'unavailable'), isReady (bool) }] }. Carries no PII (no voice ids, no key fragments, no device names). Requires NodeTtsEnabled.",
 
+        // ollama.* — inference against a separately installed Windows Ollama service.
+        // Default-off; any paired active gateway (local or remote) may invoke it. Requires NodeOllamaInferenceEnabled.
+        ["ollama.models"] =
+            "List locally installed Ollama models. No args. Returns { provider, models: [{ name, size, modifiedAt, family, parameterSize, quantization, contextWindow, capabilities, loaded }] }. Read-only inventory; carries no prompt or chat content. Requires NodeOllamaInferenceEnabled.",
+        ["ollama.chat"] =
+            "Send a single-turn chat prompt to a local Ollama model. Args: model (string, required), prompt (string, required, max 128000 chars), system (string, optional, max 32000 chars), temperature (number, optional, 0..2), maxTokens (int, optional, default 512, max 8192), timeoutMs (int, optional, default 120000, max 600000). Only one chat runs at a time per node; a concurrent call while one is in flight returns an error. Returns { provider, model, response, usage?: { promptTokens, completionTokens }, timings?: { loadMs, totalMs } }. Privacy and resource sensitive (sends prompt content to a locally running model and consumes CPU/GPU). Requires NodeOllamaInferenceEnabled.",
         // app.*
         ["app.navigate"] =
-            "Navigate the companion app to a specific page (e.g., 'home', 'sessions', 'settings'). Args: page (string, required). Returns { navigated, page }.",
+            "Navigate Workspace or the Settings companion to a specific page (e.g., 'workspace:home', 'workspace:notifications', 'sessions', 'settings'). Args: page (string, required). Returns { navigated, page }. Unknown workspace: routes return a tool error without opening or forwarding a window.",
         ["app.status"] =
             "Get current connection status, manager-owned overall/operator/node state, and gateway info. Returns { connectionStatus, overallState, operatorState, nodeState, nodeConnected, nodePaired, nodePendingApproval, nodeError, gatewayVersion, sessionCount, nodeCount }.",
         ["app.sessions"] =
@@ -410,7 +416,7 @@ public class McpToolBridge
 
         // location.*
         ["location.get"] =
-            "Get the current device location via Windows.Devices.Geolocation. Args: accuracy ('default'|'high', optional, default 'default'), maxAge (int ms, optional, default 30000 — return a cached fix if it is younger than this), locationTimeout (int ms, optional, default 10000). Returns { latitude, longitude, accuracy (meters), timestamp (ms since epoch) }. Requires Location capability to be enabled and the user to have granted location permission to the app.",
+            "Get the current device location via Windows.Devices.Geolocation. The first use requires remembered user consent, and every invocation shows a visible notification before location access. Args: accuracy ('default'|'high', optional, default 'default'), maxAge (int ms, optional, default 30000; return a cached fix if it is younger than this), locationTimeout (int ms, optional, default 10000). Returns { latitude, longitude, accuracy (meters), timestamp (ms since epoch) }. Requires Location capability to be enabled and the user to have granted location permission to the app.",
 
         // device.*
         ["device.info"] =

@@ -96,6 +96,7 @@ internal sealed class HandshakeChallengeGate
 public abstract class WebSocketClientBase : IDisposable
 {
     private ClientWebSocket? _webSocket;
+    private readonly object _connectionStateLock = new();
     private readonly string _gatewayUrl;
     private readonly string? _credentials;
     private CancellationTokenSource _cts;
@@ -107,6 +108,7 @@ public abstract class WebSocketClientBase : IDisposable
     private string? _remoteCloseStatusDescription;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
     private static readonly int[] BackoffMs = { 1000, 2000, 4000, 8000, 15000, 30000, 60000 };
+    private static readonly TimeSpan DefaultConnectAttemptTimeout = TimeSpan.FromSeconds(15);
 
     protected readonly string _token;
     protected readonly IOpenClawLogger _logger;
@@ -208,6 +210,9 @@ public abstract class WebSocketClientBase : IDisposable
     /// </summary>
     protected virtual bool ShouldAutoReconnect() => true;
 
+    /// <summary>Maximum time allowed for one WebSocket HTTP upgrade attempt.</summary>
+    protected virtual TimeSpan ConnectAttemptTimeout => DefaultConnectAttemptTimeout;
+
     protected WebSocketClientBase(string gatewayUrl, string token, IOpenClawLogger? logger = null)
     {
         if (string.IsNullOrEmpty(gatewayUrl))
@@ -225,25 +230,42 @@ public abstract class WebSocketClientBase : IDisposable
 
     public async Task ConnectAsync()
     {
+        _ = await ConnectAsync(
+            expectedSocket: null,
+            expectedGeneration: 0).ConfigureAwait(false);
+    }
+
+    private async Task<(ClientWebSocket Socket, long Generation)?> ConnectAsync(
+        ClientWebSocket? expectedSocket,
+        long expectedGeneration)
+    {
         if (_disposed)
         {
             _logger.Debug($"Skipping {ClientRole} connect: client already disposed");
-            return;
+            return null;
         }
 
-        var connectGeneration = Interlocked.Increment(ref _connectionGeneration);
-        Volatile.Write(ref _remoteCloseStatusCode, -1);
-        Volatile.Write(ref _remoteCloseStatusDescription, null);
+        var connectGeneration = 0L;
         ClientWebSocket? ws = null;
 
         try
         {
+            ws = new ClientWebSocket();
+            if (!TryPublishConnection(
+                    ws,
+                    expectedSocket,
+                    expectedGeneration,
+                    out connectGeneration))
+            {
+                DisposeStaleSocket(ws);
+                _logger.Debug($"{ClientRole} reconnect skipped: connection ownership changed");
+                return null;
+            }
+
             RaiseStatusChanged(ConnectionStatus.Connecting);
             _logger.Info($"Connecting to {ClientRole}: {GatewayUrlForDisplay}");
 
-            ws = new ClientWebSocket();
             ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(30);
-            _webSocket = ws;
 
             // Set Origin header (convert ws/wss to http/https)
             var uri = new Uri(_gatewayUrl);
@@ -259,11 +281,33 @@ public abstract class WebSocketClientBase : IDisposable
                     $"Basic {Convert.ToBase64String(Encoding.UTF8.GetBytes(credentialsToEncode))}");
             }
 
-            await ws.ConnectAsync(uri, _cts.Token);
+            var connectTimeout = ConnectAttemptTimeout;
+            using var connectCancellation =
+                CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
+            connectCancellation.CancelAfter(connectTimeout);
+            try
+            {
+                await ws.ConnectAsync(uri, connectCancellation.Token);
+            }
+            catch (OperationCanceledException ex) when (
+                !_cts.Token.IsCancellationRequested &&
+                connectCancellation.IsCancellationRequested)
+            {
+                try { ws.Abort(); }
+                catch (Exception abortEx)
+                {
+                    _logger.Debug($"{ClientRole} timed-out WebSocket abort threw: {abortEx.Message}");
+                }
+
+                throw new TimeoutException(
+                    $"{ClientRole} connect timed out after {connectTimeout.TotalSeconds:0.#}s.",
+                    ex);
+            }
+
             if (!IsCurrentConnection(ws, connectGeneration))
             {
                 DisposeStaleSocket(ws);
-                return;
+                return null;
             }
 
             // Don't reset _reconnectAttempts here — TCP connect succeeding doesn't mean
@@ -275,10 +319,11 @@ public abstract class WebSocketClientBase : IDisposable
             if (!IsCurrentConnection(ws, connectGeneration))
             {
                 DisposeStaleSocket(ws);
-                return;
+                return null;
             }
 
             _ = Task.Run(() => ListenForMessagesAsync(ws, connectGeneration), _cts.Token);
+            return (ws, connectGeneration);
         }
         catch (OperationCanceledException)
         {
@@ -287,6 +332,7 @@ public abstract class WebSocketClientBase : IDisposable
                 DisposeStaleSocket(ws);
             }
             _logger.Debug($"{ClientRole} connect canceled (likely shutdown)");
+            return null;
         }
         catch (ObjectDisposedException)
         {
@@ -295,6 +341,7 @@ public abstract class WebSocketClientBase : IDisposable
                 DisposeStaleSocket(ws);
             }
             _logger.Debug($"{ClientRole} connect aborted after dispose");
+            return null;
         }
         catch (Exception ex)
         {
@@ -302,12 +349,16 @@ public abstract class WebSocketClientBase : IDisposable
             {
                 DisposeStaleSocket(ws);
                 _logger.Debug($"{ClientRole} stale connection failure ignored: {ex.Message}");
-                return;
+                return null;
             }
 
             if (ws != null)
             {
                 DisposeStaleSocket(ws);
+            }
+            if (ex is TimeoutException)
+            {
+                _logger.Warn(ex.Message);
             }
             _logger.Error($"{ClientRole} connection failed", ex);
             OnConnectionException(ex);
@@ -315,8 +366,9 @@ public abstract class WebSocketClientBase : IDisposable
 
             if (!_disposed && !_cts.Token.IsCancellationRequested && ShouldAutoReconnect())
             {
-                _ = ReconnectWithBackoffAsync();
+                _ = ReconnectWithBackoffAsync(ws, connectGeneration);
             }
+            return ws is null ? null : (ws, connectGeneration);
         }
     }
 
@@ -333,11 +385,37 @@ public abstract class WebSocketClientBase : IDisposable
         && Interlocked.Read(ref _connectionGeneration) == generation
         && ReferenceEquals(_webSocket, ws);
 
+    private bool TryPublishConnection(
+        ClientWebSocket ws,
+        ClientWebSocket? expectedSocket,
+        long expectedGeneration,
+        out long connectGeneration)
+    {
+        lock (_connectionStateLock)
+        {
+            connectGeneration = 0;
+            if (_disposed ||
+                !IsReconnectOwnerLocked(expectedSocket, expectedGeneration))
+            {
+                return false;
+            }
+
+            connectGeneration = Interlocked.Increment(ref _connectionGeneration);
+            Volatile.Write(ref _remoteCloseStatusCode, -1);
+            Volatile.Write(ref _remoteCloseStatusDescription, null);
+            _webSocket = ws;
+            return true;
+        }
+    }
+
     private void DisposeStaleSocket(ClientWebSocket ws)
     {
-        if (ReferenceEquals(_webSocket, ws))
+        lock (_connectionStateLock)
         {
-            _webSocket = null;
+            if (ReferenceEquals(_webSocket, ws))
+            {
+                _webSocket = null;
+            }
         }
 
         // slopwatch-ignore: SW003 Cleanup is best-effort for superseded sockets.
@@ -384,6 +462,8 @@ public abstract class WebSocketClientBase : IDisposable
         // (16–64 KB) heap allocation per connection that would otherwise land on the LOH.
         var buffer = ArrayPool<byte>.Shared.Rent(ReceiveBufferSize);
         var sb = new StringBuilder();
+        var textDecoder = Encoding.UTF8.GetDecoder();
+        var fragmented = false;
 
         try
         {
@@ -398,24 +478,30 @@ public abstract class WebSocketClientBase : IDisposable
 
                 if (result.MessageType == WebSocketMessageType.Text)
                 {
-                    if (result.EndOfMessage && sb.Length == 0)
+                    if (result.EndOfMessage && !fragmented)
                     {
-                        // Fast path: single-frame message — decode directly, skip StringBuilder round-trip
+                        // Fast path: single-frame message. Decode directly and skip the StringBuilder.
                         await ProcessMessageForConnectionAsync(
                             Encoding.UTF8.GetString(buffer, 0, result.Count),
                             connectionGeneration);
                     }
                     else
                     {
-                        // Multi-frame path: decode into a pooled char buffer and append to the
-                        // StringBuilder directly, avoiding the intermediate string allocation that
-                        // Encoding.UTF8.GetString would produce.
+                        // A split character can produce zero chars on the first frame. Track the
+                        // message itself, not the decoded length, so the last frame still flushes.
+                        fragmented = true;
                         var maxCharCount = Encoding.UTF8.GetMaxCharCount(result.Count);
                         var charBuffer = ArrayPool<char>.Shared.Rent(maxCharCount);
                         bool withinLimit;
                         try
                         {
-                            var charCount = Encoding.UTF8.GetChars(buffer, 0, result.Count, charBuffer, 0);
+                            textDecoder.Convert(
+                                buffer, 0, result.Count,
+                                charBuffer, 0, charBuffer.Length,
+                                flush: result.EndOfMessage,
+                                out _,
+                                out var charCount,
+                                out _);
                             withinLimit = TryAppendWithinLimit(sb, charBuffer, charCount, MaxInboundMessageChars);
                         }
                         finally
@@ -425,6 +511,8 @@ public abstract class WebSocketClientBase : IDisposable
 
                         if (!withinLimit)
                         {
+                            textDecoder.Reset();
+                            fragmented = false;
                             _logger.Warn($"[{ClientRole}] inbound message exceeded {MaxInboundMessageChars} chars; closing connection (memory-exhaustion guard)");
                             try { await ws.CloseAsync(WebSocketCloseStatus.MessageTooBig, "message too large", CancellationToken.None); }
                             catch { /* best-effort close */ }
@@ -437,6 +525,8 @@ public abstract class WebSocketClientBase : IDisposable
                                 sb.ToString(),
                                 connectionGeneration);
                             sb.Clear();
+                            textDecoder.Reset();
+                            fragmented = false;
                         }
                     }
                 }
@@ -509,12 +599,14 @@ public abstract class WebSocketClientBase : IDisposable
             return;
         }
 
+        var ownerSocket = expectedSocket;
+        var ownerGeneration = expectedGeneration;
         try
         {
             while (!_disposed
                 && !_cts.Token.IsCancellationRequested
                 && ShouldAutoReconnect()
-                && IsReconnectOwner(expectedSocket, expectedGeneration))
+                && IsReconnectOwner(ownerSocket, ownerGeneration))
             {
                 var delay = BackoffMs[Math.Min(_reconnectAttempts, BackoffMs.Length - 1)];
                 // Add 0-25% jitter to prevent thundering herd when multiple clients
@@ -530,7 +622,7 @@ public abstract class WebSocketClientBase : IDisposable
                 if (_cts.Token.IsCancellationRequested
                     || _disposed
                     || !ShouldAutoReconnect()
-                    || !IsReconnectOwner(expectedSocket, expectedGeneration))
+                    || !IsReconnectOwner(ownerSocket, ownerGeneration))
                 {
                     break;
                 }
@@ -539,6 +631,14 @@ public abstract class WebSocketClientBase : IDisposable
                 {
                     var authorization =
                         await ReconnectAuthorizationAsync(_cts.Token).ConfigureAwait(false);
+                    if (_cts.Token.IsCancellationRequested
+                        || _disposed
+                        || !ShouldAutoReconnect()
+                        || !IsReconnectOwner(ownerSocket, ownerGeneration))
+                    {
+                        break;
+                    }
+
                     if (!authorization.Allowed)
                     {
                         _logger.Warn(
@@ -551,7 +651,7 @@ public abstract class WebSocketClientBase : IDisposable
                 }
 
                 // Safely dispose old socket
-                var oldSocket = expectedSocket ?? _webSocket;
+                var oldSocket = ownerSocket ?? _webSocket;
                 if (oldSocket != null)
                 {
                     DisposeStaleSocket(oldSocket);
@@ -565,7 +665,21 @@ public abstract class WebSocketClientBase : IDisposable
                     DisposeStaleSocket(currentSocket);
                 }
 
-                await ConnectAsync();
+                var attempt = await ConnectAsync(
+                    ownerSocket,
+                    ownerGeneration).ConfigureAwait(false);
+                if (attempt is null)
+                {
+                    if (IsReconnectOwner(ownerSocket, ownerGeneration))
+                    {
+                        continue;
+                    }
+
+                    break;
+                }
+
+                ownerSocket = attempt.Value.Socket;
+                ownerGeneration = attempt.Value.Generation;
 
                 if (IsConnected)
                 {
@@ -593,11 +707,29 @@ public abstract class WebSocketClientBase : IDisposable
 
     private bool IsReconnectOwner(ClientWebSocket? expectedSocket, long expectedGeneration)
     {
-        if (expectedSocket is null || IsCurrentConnection(expectedSocket, expectedGeneration))
+        lock (_connectionStateLock)
+        {
+            return IsReconnectOwnerLocked(expectedSocket, expectedGeneration);
+        }
+    }
+
+    private bool IsReconnectOwnerLocked(
+        ClientWebSocket? expectedSocket,
+        long expectedGeneration)
+    {
+        if (expectedSocket is null && expectedGeneration == 0)
+            return true;
+
+        if (Interlocked.Read(ref _connectionGeneration) == expectedGeneration &&
+            (expectedSocket is null ||
+             _webSocket is null ||
+             ReferenceEquals(_webSocket, expectedSocket)))
         {
             return true;
         }
 
+        // A newer open socket owns recovery. A null or closing socket can be adopted because its
+        // listener cannot start another reconnect loop while this loop holds the single-flight gate.
         var currentSocket = _webSocket;
         return currentSocket is null || IsSocketClosingOrClosed(currentSocket);
     }
@@ -787,18 +919,25 @@ public abstract class WebSocketClientBase : IDisposable
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
+        lock (_connectionStateLock)
+        {
+            if (_disposed) return;
+            _disposed = true;
+        }
 
         OnDisposing();
 
-        Interlocked.Increment(ref _connectionGeneration);
+        ClientWebSocket? ws;
+        lock (_connectionStateLock)
+        {
+            Interlocked.Increment(ref _connectionGeneration);
+            ws = _webSocket;
+            _webSocket = null;
+        }
 
         try { _cts.Cancel(); }
         catch (Exception ex) { _logger.Debug($"{ClientRole} cts.Cancel during Dispose threw: {ex.Message}"); }
 
-        var ws = _webSocket;
-        _webSocket = null;
         try { ws?.Dispose(); }
         catch (Exception ex) { _logger.Debug($"{ClientRole} WebSocket Dispose threw: {ex.Message}"); }
 

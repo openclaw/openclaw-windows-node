@@ -238,6 +238,44 @@ public class MxcConfigBuilderTests
     }
 
     [Fact]
+    public void WithNonCascadingVolumeRootGrants_AddsSystemVolumeRoot()
+    {
+        var original = BuildConfig(RequestFor(BalancedPolicy()), pathEnvVar: "");
+        var config = MxcConfigBuilder.WithNonCascadingVolumeRootGrants(original);
+
+        Assert.DoesNotContain(
+            @"C:\",
+            original.Filesystem!.ReadonlyPaths!,
+            StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(
+            @"C:\",
+            config.Filesystem!.ReadonlyPaths!,
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Build_BaseContainer_AddsEveryGrantedVolumeRoot()
+    {
+        var policy = new SandboxPolicy(
+            Version: MxcPolicyBuilder.SupportedPolicyVersion,
+            Filesystem: new FilesystemPolicy(
+                ReadwritePaths: [@"D:\Workspace"],
+                ReadonlyPaths: [@"E:\Inputs"],
+                DeniedPaths: AlwaysDenied,
+                ClearPolicyOnExit: true),
+            Network: new NetworkPolicy(false, false),
+            Ui: new UiPolicy(false, ClipboardPolicy.None, false),
+            TimeoutMs: 30_000);
+
+        var original = BuildConfig(RequestFor(policy), pathEnvVar: "");
+        var config = MxcConfigBuilder.WithNonCascadingVolumeRootGrants(original);
+
+        Assert.Contains(@"C:\", config.Filesystem!.ReadonlyPaths!, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(@"D:\", config.Filesystem.ReadonlyPaths!, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(@"E:\", config.Filesystem.ReadonlyPaths!, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void Build_RejectsExplicitEnvironmentUntilBackendSupportsIt()
     {
         var request = RequestFor(BalancedPolicy()) with
@@ -743,6 +781,24 @@ public class MxcConfigBuilderTests
     public void Build_DirectArgv_LateCmdCommandMode_FailsClosed()
     {
         string[] argv = [ExpectedSystemCmdExe(), "/d", "ignored", "/c", "echo hi"];
+        using var argsDoc = JsonDocument.Parse(JsonSerializer.Serialize(new { argv }));
+        var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+        var error = Assert.Throws<NotSupportedException>(
+            () => BuildConfig(request, pathEnvVar: ""));
+
+        Assert.Contains("canonical argv", error.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("/R", "echo hi")]
+    [InlineData("/r", "prog", "hello&calc")]
+    [InlineData("/Recho hi")]
+    [InlineData("/rcommand")]
+    [InlineData("/d/s/recho hi")]
+    public void Build_DirectArgv_CmdSlashRCommandMode_FailsClosed(params string[] tail)
+    {
+        string[] argv = [ExpectedSystemCmdExe(), .. tail];
         using var argsDoc = JsonDocument.Parse(JsonSerializer.Serialize(new { argv }));
         var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
 

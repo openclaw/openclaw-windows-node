@@ -1,0 +1,186 @@
+using OpenClaw.Connection.LocalAi;
+using System.Net;
+using System.Text;
+using System.Text.Json;
+
+namespace OpenClaw.Connection.Tests;
+
+public sealed class LlamaServerClientTests
+{
+    private const string ModelAlias = "managed-model";
+    private static readonly Uri s_endpoint = new("http://127.0.0.1:18803/v1");
+    private static readonly string s_modelPath = Path.GetFullPath("managed-model.gguf");
+
+    [Fact]
+    public async Task AuthenticatedProbe_UsesBearerForHealthAndLazyModelInspection()
+    {
+        var requests = new List<string>();
+        using var client = new LlamaServerClient(new DelegateHandler((request, _) =>
+        {
+            Assert.Equal("Bearer", request.Headers.Authorization?.Scheme);
+            Assert.Equal("local-test-credential", request.Headers.Authorization?.Parameter);
+            requests.Add(request.RequestUri!.PathAndQuery);
+            return request.RequestUri.AbsolutePath == "/health"
+                ? Task.FromResult(JsonResponse("{\"status\":\"ok\"}")) : ModelResponseAsync(ProbeCase.Verified);
+        }), () => "local-test-credential");
+        var result = await client.ProbeManagedModelAsync(s_endpoint, ModelAlias, s_modelPath);
+        Assert.True(result.IsHealthy);
+        Assert.Equal(["/health", "/models?autoload=false"], requests);
+    }
+
+    [Fact]
+    public async Task StalledHealthBodyTimesOutInsteadOfWaitingForEof()
+    {
+        using var client = new LlamaServerClient(
+            new StalledBodyHandler(),
+            timeout: TimeSpan.FromMilliseconds(200));
+        var started = System.Diagnostics.Stopwatch.StartNew();
+
+        LlamaServerRouterProbeResult result = await client.ProbeManagedModelAsync(
+            s_endpoint,
+            ModelAlias,
+            s_modelPath);
+
+        Assert.False(result.IsHealthy);
+        Assert.Contains("health check", result.Detail, StringComparison.OrdinalIgnoreCase);
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(2));
+    }
+
+    [Fact]
+    public async Task UnauthorizedProbeNeverReportsAReadyModel()
+    {
+        using var client = new LlamaServerClient(new DelegateHandler((_, _) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.Unauthorized))), () => "wrong-credential");
+        var result = await client.ProbeManagedModelAsync(s_endpoint, ModelAlias, s_modelPath);
+        Assert.False(result.IsHealthy);
+    }
+
+    [Theory]
+    [InlineData(ProbeCase.Timeout, LocalAiModelAvailabilityState.Unknown, false)]
+    [InlineData(ProbeCase.InvalidResponse, LocalAiModelAvailabilityState.Unknown, false)]
+    [InlineData(ProbeCase.MissingAlias, LocalAiModelAvailabilityState.NotInstalled, false)]
+    [InlineData(ProbeCase.UnknownState, LocalAiModelAvailabilityState.Unknown, false)]
+    [InlineData(ProbeCase.MissingPath, LocalAiModelAvailabilityState.Unknown, false)]
+    [InlineData(ProbeCase.WrongPath, LocalAiModelAvailabilityState.Unknown, false)]
+    [InlineData(ProbeCase.Verified, LocalAiModelAvailabilityState.Verified, true)]
+    [InlineData(ProbeCase.Loaded, LocalAiModelAvailabilityState.Loaded, true)]
+    public async Task ProbeManagedModelAsync_RequiresReadyModelEvidence(
+        ProbeCase probeCase,
+        LocalAiModelAvailabilityState expectedState,
+        bool expectedReady)
+    {
+        using var client = new LlamaServerClient(new DelegateHandler((request, _) =>
+            request.RequestUri?.AbsolutePath == "/health"
+                ? Task.FromResult(JsonResponse("{\"status\":\"ok\"}"))
+                : ModelResponseAsync(probeCase)));
+
+        LlamaServerRouterProbeResult result = await client.ProbeManagedModelAsync(
+            s_endpoint,
+            ModelAlias,
+            s_modelPath);
+
+        Assert.Equal(expectedReady, result.IsHealthy);
+        Assert.Equal(expectedState, result.ModelState);
+        Assert.Equal(expectedReady, result.IsReadyForManagedModel(s_modelPath));
+    }
+
+    private static Task<HttpResponseMessage> ModelResponseAsync(ProbeCase probeCase) => probeCase switch
+    {
+        ProbeCase.Timeout => Task.FromException<HttpResponseMessage>(new OperationCanceledException()),
+        ProbeCase.InvalidResponse => Task.FromResult(JsonResponse("{")),
+        ProbeCase.MissingAlias => Task.FromResult(JsonResponse(ModelStatus("other-model", "unloaded", s_modelPath))),
+        ProbeCase.UnknownState => Task.FromResult(JsonResponse(ModelStatus(ModelAlias, "unexpected", s_modelPath))),
+        ProbeCase.MissingPath => Task.FromResult(JsonResponse(ModelStatus(ModelAlias, "unloaded", null))),
+        ProbeCase.WrongPath => Task.FromResult(JsonResponse(ModelStatus(ModelAlias, "loaded", s_modelPath + ".other"))),
+        ProbeCase.Verified => Task.FromResult(JsonResponse(ModelStatus(ModelAlias, "unloaded", s_modelPath))),
+        ProbeCase.Loaded => Task.FromResult(JsonResponse(ModelStatus(ModelAlias, "loaded", s_modelPath))),
+        _ => throw new InvalidOperationException("Unknown probe test case."),
+    };
+
+    private static string ModelStatus(string alias, string status, string? path) => JsonSerializer.Serialize(new
+    {
+        data = new[]
+        {
+            new
+            {
+                id = alias,
+                status = path is null
+                    ? (object)new { value = status }
+                    : new { value = status, args = new[] { "--model", path } },
+            },
+        },
+    });
+
+    private static HttpResponseMessage JsonResponse(string payload) => new(HttpStatusCode.OK)
+    {
+        Content = new StringContent(payload, Encoding.UTF8, "application/json"),
+    };
+
+    public enum ProbeCase
+    {
+        Timeout,
+        InvalidResponse,
+        MissingAlias,
+        UnknownState,
+        MissingPath,
+        WrongPath,
+        Verified,
+        Loaded,
+    }
+
+    private sealed class StalledBodyHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StreamContent(new StalledBodyStream()),
+            });
+    }
+
+    private sealed class StalledBodyStream : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override void Flush()
+        {
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) =>
+            throw new NotSupportedException();
+
+        public override long Seek(long offset, SeekOrigin origin) =>
+            throw new NotSupportedException();
+
+        public override void SetLength(long value) =>
+            throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) =>
+            throw new NotSupportedException();
+
+        public override async ValueTask<int> ReadAsync(
+            Memory<byte> buffer,
+            CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
+            return 0;
+        }
+    }
+
+    private sealed class DelegateHandler(
+        Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> handler) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken) => handler(request, cancellationToken);
+    }
+}

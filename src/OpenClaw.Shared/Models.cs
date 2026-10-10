@@ -299,6 +299,8 @@ public class SessionInfo
     public int? SpawnDepth { get; set; }
     public string? SessionId { get; set; }
     public string? ThinkingLevel { get; set; }
+    public ThinkingContext? ThinkingContext { get; set; }
+    public ThinkingContext? ThinkingDefaults { get; set; }
     public string? VerboseLevel { get; set; }
     public bool SystemSent { get; set; }
     public bool AbortedLastRun { get; set; }
@@ -307,6 +309,14 @@ public class SessionInfo
     /// older Gateway did not provide the field, so callers may use legacy status.
     /// </summary>
     public bool? HasActiveRun { get; set; }
+    public bool Pinned { get; set; }
+    public long? PinnedAt { get; set; }
+    public bool Unread { get; set; }
+    public long? MarkedUnreadAt { get; set; }
+    /// <summary>Gateway session creation time (Unix ms). Write-once upstream; compact/sparse
+    /// rows may omit it, so a missing value means "not projected", not "cleared".</summary>
+    public long? CreatedAt { get; set; }
+    public bool Archived { get; set; }
     public long InputTokens { get; set; }
     public long OutputTokens { get; set; }
     public long TotalTokens { get; set; }
@@ -1003,6 +1013,7 @@ public class NodeCapabilityHealthInfo
                 .ToList(),
             Permissions = new Dictionary<string, bool>(node.Permissions, StringComparer.OrdinalIgnoreCase),
             SafeApprovedCommands = CommandCenterCommandGroups.SafeCompanionCommands
+                .Concat(OllamaNodeCommandPolicy.ReadOnlyCommands)
                 .Where(commandSet.Contains)
                 .ToList(),
             PrivacySensitiveApprovedCommands = CommandCenterCommandGroups.DangerousCommands
@@ -1022,7 +1033,8 @@ public class NodeCapabilityHealthInfo
                 continue;
 
             info.PermissionBlockedCommands.Add(command);
-            if (CommandCenterCommandGroups.SafeCompanionCommandSet.Contains(command))
+            if (CommandCenterCommandGroups.SafeCompanionCommandSet.Contains(command) ||
+                OllamaNodeCommandPolicy.ReadOnlyCommandSet.Contains(command))
                 info.MissingSafeAllowlistCommands.Add(command);
             else if (CommandCenterCommandGroups.DangerousCommandSet.Contains(command))
                 info.MissingDangerousAllowlistCommands.Add(command);
@@ -1182,7 +1194,8 @@ public static class CommandCenterCommandGroups
         "tts.status",
         "stt.transcribe",
         "stt.listen",
-        "stt.status"
+        "stt.status",
+        .. OllamaNodeCommandPolicy.SensitiveCommands
     ];
 
     public static readonly FrozenSet<string> DangerousCommandSet =
@@ -2224,6 +2237,8 @@ public class ModelInfo
     public string? Provider { get; set; }
     public int? ContextWindow { get; set; }
     public int? ContextTokens { get; set; }
+    public bool? Reasoning { get; set; }
+    public ThinkingContext? ThinkingContext { get; set; }
 
     /// <summary>True when the model's provider is configured on the gateway.</summary>
     public bool IsConfigured { get; set; }

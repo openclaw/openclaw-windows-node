@@ -34,6 +34,7 @@ namespace OpenClaw.Shared.Audio;
 /// </summary>
 public sealed class PiperVoiceManager
 {
+    private const string InstallMarkerSuffix = ".installing";
     private readonly string _voicesDirectory;
     private readonly IOpenClawLogger _logger;
     // Per-voice single-flight gate: prevents racing the same voice download
@@ -51,7 +52,8 @@ public sealed class PiperVoiceManager
     /// Sizes shown in the UI are approximate compressed sizes.
     ///
     /// SECURITY — pinned SHA-256 hashes (lowercase hex) verified against
-    /// the sherpa-onnx GitHub release on 2026-05-05. Downloads with a
+    /// the sherpa-onnx GitHub release on 2026-05-05 (en_GB-northern_english_male-medium
+    /// verified 2026-09-07). Downloads with a
     /// different hash are rejected and the partial tarball is deleted.
     /// Before every public release: re-verify each hash from an independent
     /// source and document provenance. See
@@ -68,6 +70,9 @@ public sealed class PiperVoiceManager
         new("en_GB-alan-low",    "English (GB): Alan (low quality, fast)",  "en-GB",
             "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_GB-alan-low.tar.bz2",
             "1308e730b7a12c3b64b669d65daa0138fcb83b1a086edee92fa9fa68cb0290dd"),
+        new("en_GB-northern_english_male-medium", "English (GB): Northern English Male (medium quality)", "en-GB",
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_GB-northern_english_male-medium.tar.bz2",
+            "2bb2c1e709f58c11f17c693b3b38f500e110e7f54f2651774ec48b8d41f12c55"),
         new("fr_FR-siwis-low",   "Français (FR): Siwis (low quality, fast)","fr-FR",
             "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-fr_FR-siwis-low.tar.bz2",
             "3d69170c160c8375c4123901a72a3845222b39456d39ab74f5bbd7310952b5af"),
@@ -113,9 +118,8 @@ public sealed class PiperVoiceManager
     {
         try
         {
-            return File.Exists(GetModelPath(voiceId))
-                && File.Exists(GetTokensPath(voiceId))
-                && Directory.Exists(GetEspeakDataDir(voiceId));
+            return !File.Exists(GetInstallMarkerPath(voiceId))
+                && HasExpectedVoiceLayout(voiceId);
         }
         catch (Exception ex)
         {
@@ -173,15 +177,18 @@ public sealed class PiperVoiceManager
         }
 
         var voiceDir = Path.Combine(_voicesDirectory, info.VoiceId);
-        Directory.CreateDirectory(voiceDir);
+        var installMarkerPath = GetInstallMarkerPath(info.VoiceId);
         var tarballPath = Path.Combine(voiceDir, $"{info.VoiceId}.tar.bz2.tmp");
+        var hadExpectedLayout = HasExpectedVoiceLayout(info.VoiceId);
+        var extractionVerified = false;
         _logger.Info($"Downloading Piper voice '{info.VoiceId}' from {info.DownloadUrl}");
 
         try
         {
-            using var httpClient = new HttpClient();
-            httpClient.Timeout = TimeSpan.FromMinutes(10);
-            using var response = await httpClient.GetAsync(info.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+            Directory.CreateDirectory(voiceDir);
+            File.WriteAllText(installMarkerPath, string.Empty);
+            using var httpClient = AllowedAssetDownload.CreateClient(TimeSpan.FromMinutes(10));
+            using var response = await AllowedAssetDownload.GetAsync(httpClient, info.DownloadUrl, cancellationToken).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
 
             var totalBytes = response.Content.Headers.ContentLength ?? 0;
@@ -208,16 +215,18 @@ public sealed class PiperVoiceManager
             await VerifyHashAsync(tarballPath, info.Sha256, info.VoiceId, cancellationToken);
 
             _logger.Info($"Extracting Piper voice '{info.VoiceId}'");
-            ExtractTarBz2(tarballPath, voiceDir, cancellationToken);
+            await ExtractTarBz2Async(tarballPath, voiceDir, cancellationToken).ConfigureAwait(false);
 
             // Verify the extraction produced the files we expect; if not,
             // tear the half-extracted dir down so a retry starts clean.
-            if (!IsVoiceDownloaded(info.VoiceId))
+            if (!HasExpectedVoiceLayout(info.VoiceId))
             {
                 throw new InvalidOperationException(
                     $"Extraction of Piper voice '{info.VoiceId}' did not produce the expected layout.");
             }
 
+            extractionVerified = true;
+            File.Delete(installMarkerPath);
             _logger.Info($"Piper voice '{info.VoiceId}' verified and ready at {voiceDir}");
         }
         catch
@@ -226,7 +235,13 @@ public sealed class PiperVoiceManager
             // leftover partial files.
             try { if (File.Exists(tarballPath)) File.Delete(tarballPath); }
             catch (Exception cleanupEx) { _logger.Debug($"PiperVoiceManager: post-failure tarball cleanup failed: {cleanupEx.Message}"); }
-            try { if (Directory.Exists(voiceDir) && !IsVoiceDownloaded(info.VoiceId)) Directory.Delete(voiceDir, recursive: true); }
+            try
+            {
+                if (!extractionVerified && !hadExpectedLayout && Directory.Exists(voiceDir))
+                    Directory.Delete(voiceDir, recursive: true);
+                if (!Directory.Exists(voiceDir) && File.Exists(installMarkerPath))
+                    File.Delete(installMarkerPath);
+            }
             catch (Exception cleanupEx) { _logger.Debug($"PiperVoiceManager: post-failure voiceDir cleanup failed: {cleanupEx.Message}"); }
             throw;
         }
@@ -236,6 +251,14 @@ public sealed class PiperVoiceManager
             catch (Exception cleanupEx) { _logger.Debug($"PiperVoiceManager: finally tarball cleanup failed: {cleanupEx.Message}"); }
         }
     }
+
+    private string GetInstallMarkerPath(string voiceId) =>
+        $"{GetVoiceDirectory(voiceId)}{InstallMarkerSuffix}";
+
+    private bool HasExpectedVoiceLayout(string voiceId) =>
+        File.Exists(GetModelPath(voiceId))
+        && File.Exists(GetTokensPath(voiceId))
+        && Directory.Exists(GetEspeakDataDir(voiceId));
 
     /// <summary>
     /// Compute SHA-256 of <paramref name="filePath"/> and compare to
@@ -261,8 +284,19 @@ public sealed class PiperVoiceManager
     {
         var info = FindVoice(voiceId);
         var dir = Path.Combine(_voicesDirectory, info.VoiceId);
-        if (!Directory.Exists(dir)) return false;
-        Directory.Delete(dir, recursive: true);
+        var markerPath = GetInstallMarkerPath(info.VoiceId);
+        var deleted = false;
+        if (Directory.Exists(dir))
+        {
+            Directory.Delete(dir, recursive: true);
+            deleted = true;
+        }
+        if (File.Exists(markerPath))
+        {
+            File.Delete(markerPath);
+            deleted = true;
+        }
+        if (!deleted) return false;
         _logger.Info($"Deleted Piper voice '{info.VoiceId}'");
         return true;
     }
@@ -283,7 +317,7 @@ public sealed class PiperVoiceManager
     }
 
     /// <summary>
-    /// Probe the bundled OS tar.exe used by <see cref="ExtractTarBz2"/>.
+    /// Probe the bundled OS tar.exe used by <see cref="ExtractTarBz2Async"/>.
     /// Throws a clear error before any network I/O happens so users on
     /// downlevel Windows aren't left with a half-downloaded tarball.
     /// </summary>
@@ -335,7 +369,12 @@ public sealed class PiperVoiceManager
     /// transitive dependency via PiperSharp's ecosystem, but explicit here)
     /// so we don't need to shell out to tar.exe.
     /// </summary>
-    private static void ExtractTarBz2(string archivePath, string destinationDir, CancellationToken cancellationToken)
+    internal static async Task ExtractTarBz2Async(
+        string archivePath,
+        string destinationDir,
+        CancellationToken cancellationToken,
+        string extractorFileName = "tar",
+        TimeSpan? timeout = null)
     {
         // SharpCompress isn't a direct dep of OpenClaw.Shared today; we
         // intentionally use the BCL .tar reader on top of a bzip2 stream
@@ -349,24 +388,38 @@ public sealed class PiperVoiceManager
         // which transparently handles bz2.
         var psi = new System.Diagnostics.ProcessStartInfo
         {
-            FileName = "tar",
+            FileName = extractorFileName,
             ArgumentList = { "-xjf", archivePath, "-C", destinationDir, "--strip-components=1" },
             UseShellExecute = false,
             CreateNoWindow = true,
+            RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
-        using var proc = System.Diagnostics.Process.Start(psi)
+        cancellationToken.ThrowIfCancellationRequested();
+        var proc = System.Diagnostics.Process.Start(psi)
             ?? throw new InvalidOperationException("Could not start tar to extract Piper voice");
 
-        // Cancellation: kill the tar process if requested. Static context — no logger;
-        // best-effort kill, the cancellation surfaces via the awaited WaitForExit.
-        using var reg = cancellationToken.Register(() => { try { proc.Kill(entireProcessTree: true); } catch (Exception ex) { System.Diagnostics.Trace.WriteLine($"PiperVoiceManager: tar cancellation kill failed: {ex.GetType().Name}: {ex.Message}"); } });
-
-        proc.WaitForExit();
-        if (proc.ExitCode != 0)
+        BoundedProcessResult result;
+        try
         {
-            var err = proc.StandardError.ReadToEnd();
-            throw new InvalidOperationException($"tar extraction failed (exit {proc.ExitCode}): {err}");
+            result = await BoundedProcessWait.WaitAsync(
+                proc,
+                timeout ?? BoundedProcessWait.DefaultTimeout,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (TimeoutException ex)
+        {
+            throw new InvalidOperationException(
+                "tar extraction timed out while unpacking the Piper voice.", ex);
+        }
+
+        if (result.ExitCode != 0)
+        {
+            var output = string.IsNullOrWhiteSpace(result.StandardError)
+                ? result.StandardOutput
+                : result.StandardError;
+            throw new InvalidOperationException(
+                $"tar extraction failed (exit {result.ExitCode}): {output}");
         }
     }
 

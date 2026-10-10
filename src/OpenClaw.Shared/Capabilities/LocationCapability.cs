@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace OpenClaw.Shared.Capabilities;
@@ -15,22 +16,29 @@ public class LocationCapability : NodeCapabilityBase
     
     public override IReadOnlyList<string> Commands => _commands;
     
-    public event Func<LocationGetArgs, Task<LocationResult>>? GetRequested;
+    public event Func<LocationGetArgs, CancellationToken, Task<LocationResult>>? GetRequested;
     
     public LocationCapability(IOpenClawLogger logger) : base(logger)
     {
     }
     
-    public override async Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request)
+    public override Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request)
+        => ExecuteAsync(request, CancellationToken.None);
+
+    public override async Task<NodeInvokeResponse> ExecuteAsync(
+        NodeInvokeRequest request,
+        CancellationToken cancellationToken)
     {
         return request.Command switch
         {
-            "location.get" => await HandleGetAsync(request),
+            "location.get" => await HandleGetAsync(request, cancellationToken),
             _ => Error($"Unknown command: {request.Command}")
         };
     }
     
-    private async Task<NodeInvokeResponse> HandleGetAsync(NodeInvokeRequest request)
+    private async Task<NodeInvokeResponse> HandleGetAsync(
+        NodeInvokeRequest request,
+        CancellationToken cancellationToken)
     {
         var accuracy = GetStringArg(request.Args, "accuracy", "default");
         var maxAgeMs = GetIntArg(request.Args, "maxAge", 30000);
@@ -43,12 +51,14 @@ public class LocationCapability : NodeCapabilityBase
         
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var result = await GetRequested(new LocationGetArgs
             {
                 Accuracy = accuracy ?? "default",
                 MaxAgeMs = maxAgeMs,
                 TimeoutMs = timeoutMs
-            });
+            }, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             return Success(new
             {
                 latitude = result.Latitude,
@@ -60,6 +70,10 @@ public class LocationCapability : NodeCapabilityBase
         catch (UnauthorizedAccessException)
         {
             return Error("LOCATION_PERMISSION_REQUIRED");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return Error("cancelled");
         }
         catch (Exception ex)
         {

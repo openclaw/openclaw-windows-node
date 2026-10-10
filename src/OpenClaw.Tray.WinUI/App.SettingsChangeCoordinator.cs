@@ -9,16 +9,62 @@ public partial class App
     private SettingsChangeCoordinator? _settingsChangeCoordinator;
 
     private void OnSettingsSaved(object? sender, EventArgs e)
+        => ObserveBackgroundFault(
+            ApplySettingsSavedAsync(),
+            "[App] Failed to apply persisted settings");
+
+    private void ApplySettingsSavedAndWait()
+    {
+        if (_dispatcherQueue?.HasThreadAccess == true)
+        {
+            throw new InvalidOperationException(
+                "Synchronous settings application cannot run on the UI thread.");
+        }
+
+        ApplySettingsSavedAsync().GetAwaiter().GetResult();
+    }
+
+    private Task ApplySettingsSavedAsync()
     {
         if (_settings == null)
-            return;
+            return Task.CompletedTask;
 
-        _settingsChangeCoordinator?.Apply(_settings.ToSettingsData());
+        void ApplyLatestSettings() =>
+            _settingsChangeCoordinator?.Apply(_settings.ToSettingsData());
+
+        if (_dispatcherQueue == null || _dispatcherQueue.HasThreadAccess)
+        {
+            ApplyLatestSettings();
+            return Task.CompletedTask;
+        }
+
+        var completion = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_dispatcherQueue.TryEnqueue(() =>
+        {
+            try
+            {
+                ApplyLatestSettings();
+                completion.TrySetResult();
+            }
+            catch (Exception ex)
+            {
+                completion.TrySetException(ex);
+            }
+        }))
+        {
+            completion.TrySetException(
+                new InvalidOperationException(
+                    "Could not dispatch settings effects to the UI thread."));
+        }
+
+        return completion.Task;
     }
 
     private SettingsChangeCoordinator CreateSettingsChangeCoordinator(SettingsData initialSettings) =>
         new(
             new SettingsChangeEffects(
+                settings => _nodeService?.ApplyOllamaPermission(settings.NodeOllamaInferenceEnabled),
                 settings => OpenClawTray.Chat.OpenClawReactorChatRoot.SetToolCallsVisible(settings.ShowChatToolCalls),
                 SyncActiveGatewayBrowserProxyForward,
                 PublishSandboxRiskNotificationIfNeeded,
@@ -86,7 +132,11 @@ public partial class App
     private void ApplyAutoStartAndTelemetry(SettingsData settings)
     {
         ObserveBackgroundFault(
-            AutoStartManager.SetAutoStartAsync(settings.AutoStart),
+            AutoStartSettingsApplier.ApplyLatestAsync(
+                _autoStartMutationGate,
+                () => (_settings ?? throw new InvalidOperationException(
+                    "Settings are unavailable while applying auto-start.")).AutoStart,
+                AutoStartManager.SetAutoStartAsync),
             "[App] Failed to apply auto-start setting");
         ApplyOpenTelemetryEndpointSettings();
     }

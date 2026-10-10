@@ -160,6 +160,23 @@ public sealed class NodeCapabilityGatingTests : IDisposable
     }
 
     [Fact]
+    public void Ollama_OnlyAdvertisedWhenExplicitlyEnabled()
+    {
+        var s = NewSettings();
+        Assert.False(NodeCapabilityGating.ShouldRegisterOllama(s));
+        s.NodeOllamaInferenceEnabled = true;
+        Assert.True(NodeCapabilityGating.ShouldRegisterOllama(s));
+        s.NodeOllamaInferenceEnabled = false;
+        Assert.False(NodeCapabilityGating.ShouldRegisterOllama(s));
+    }
+
+    [Fact]
+    public void Ollama_NullSettings_IsFalse()
+    {
+        Assert.False(NodeCapabilityGating.ShouldRegisterOllama(null));
+    }
+
+    [Fact]
     public void DefaultOnCapabilities_OnlyDisabledWhenExplicitlySetToFalse()
     {
         var s = NewSettings();
@@ -225,6 +242,17 @@ public sealed class NodeCapabilityGatingTests : IDisposable
         s.NodeTtsEnabled = true;
         s.NodeSttEnabled = true;
         Assert.Equal(baseline + 2, NodeCapabilityGating.CountMcpServedCapabilities(s));
+    }
+
+    [Fact]
+    public void CountMcpServed_OllamaOptIn_IncrementsCount()
+    {
+        var s = NewSettings();
+        var baseline = NodeCapabilityGating.CountMcpServedCapabilities(s);
+        s.NodeOllamaInferenceEnabled = true;
+        Assert.Equal(baseline + 1, NodeCapabilityGating.CountMcpServedCapabilities(s));
+        s.NodeOllamaInferenceEnabled = false;
+        Assert.Equal(baseline, NodeCapabilityGating.CountMcpServedCapabilities(s));
     }
 
     [Fact]

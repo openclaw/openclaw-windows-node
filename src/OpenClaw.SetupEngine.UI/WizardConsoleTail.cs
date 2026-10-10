@@ -6,9 +6,15 @@ using OpenClaw.Shared;
 
 namespace OpenClaw.SetupEngine.UI;
 
+internal enum GatewayLogTailIssue
+{
+    Skipped,
+    Unavailable
+}
+
 /// <summary>
-/// Tails the OpenClaw gateway log running inside WSL and emits a callback for
-/// every line that the upstream openclaw wizard plugins wrote via
+/// Tails the WSL or legacy Gateway log, or the isolated Gateway's authenticated
+/// logs.tail RPC, and emits a callback for every line that wizard plugins wrote via
 /// <c>console.log</c>. Workaround for an upstream bug: plugins emit
 /// user-critical content (OAuth URLs, install fallback messages) to gateway
 /// stdout instead of as a <c>wizard.payload</c> WS frame, leaving the tray UI
@@ -30,12 +36,33 @@ internal sealed class WizardConsoleTail : IDisposable
     private readonly IOpenClawLogger _logger;
     private readonly object _stateLock = new();
     private Process? _process;
+    private readonly string? _nativeLogPath;
+    private readonly Func<long?, CancellationToken, Task<JsonElement>>? _gatewayLogTail;
+    private CancellationTokenSource? _nativeTailCancellation;
 
-    public WizardConsoleTail(IOpenClawLogger? logger = null, string? distroNameOverride = null)
+    public WizardConsoleTail(IOpenClawLogger? logger = null, string? distroNameOverride = null,
+        string? nativeLogPath = null,
+        Func<long?, CancellationToken, Task<JsonElement>>? gatewayLogTail = null)
     {
         _logger = logger ?? NullLogger.Instance;
         _distroName = distroNameOverride ?? DefaultDistroName;
+        _nativeLogPath = nativeLogPath;
+        _gatewayLogTail = gatewayLogTail;
     }
+
+    internal static Func<long?, CancellationToken, Task<JsonElement>> CreateGatewayLogReader(
+        Func<string, object?, int, Task<JsonElement>> send) =>
+        CreateGatewayLogReader((method, parameters, timeout, ct) => send(method, parameters, timeout).WaitAsync(ct));
+
+    internal static Func<long?, CancellationToken, Task<JsonElement>> CreateGatewayLogReader(
+        Func<string, object, int, CancellationToken, Task<JsonElement>> send) =>
+        (cursor, cancellationToken) =>
+        {
+            object parameters = cursor is long position
+                ? new { cursor = position, limit = 128, maxBytes = 64 * 1024 }
+                : new { limit = 1, maxBytes = 1 };
+            return send("logs.tail", parameters, 10_000, cancellationToken);
+        };
 
     /// <summary>
     /// Starts tailing in the background. <paramref name="onMessage"/> is invoked
@@ -46,7 +73,15 @@ internal sealed class WizardConsoleTail : IDisposable
     public void Start(Action<string> onMessage)
     {
         ArgumentNullException.ThrowIfNull(onMessage);
+        if (_gatewayLogTail is not null)
+            throw new InvalidOperationException("The isolated Gateway requires StartGatewayAsync.");
         Stop();
+        if (_nativeLogPath is not null)
+        {
+            _nativeTailCancellation = new CancellationTokenSource();
+            _ = TailNativeLogAsync(_nativeLogPath, onMessage, _nativeTailCancellation.Token);
+            return;
+        }
 
         Process? process;
         try
@@ -116,8 +151,151 @@ internal sealed class WizardConsoleTail : IDisposable
         }
     }
 
+    public async Task StartGatewayAsync(
+        Action<string> onMessage,
+        Action<GatewayLogTailIssue> onIssue,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(onMessage);
+        ArgumentNullException.ThrowIfNull(onIssue);
+        if (_gatewayLogTail is null)
+            throw new InvalidOperationException("No isolated Gateway log source was configured.");
+        Stop();
+        var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _nativeTailCancellation = cancellation;
+        var token = cancellation.Token;
+        try
+        {
+            // Anchor before wizard.start so old OAuth prompts cannot reappear on retry.
+            var initial = await ReadGatewayLogAsync(null, token);
+            token.ThrowIfCancellationRequested();
+            _ = TailGatewayLogAsync(initial.File, initial.Size, onMessage, onIssue,
+                token);
+        }
+        catch
+        {
+            if (ReferenceEquals(_nativeTailCancellation, cancellation))
+                Stop();
+            throw;
+        }
+    }
+
+    private async Task TailGatewayLogAsync(
+        string file,
+        long cursor,
+        Action<string> onMessage,
+        Action<GatewayLogTailIssue> onIssue,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                var batch = await ReadGatewayLogAsync(cursor, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!string.Equals(file, batch.File, StringComparison.Ordinal))
+                {
+                    onIssue(GatewayLogTailIssue.Skipped);
+                    file = batch.File;
+                    cursor = batch.Size;
+                    await Task.Delay(500, cancellationToken);
+                    continue;
+                }
+                if (batch.Skipped)
+                    onIssue(GatewayLogTailIssue.Skipped);
+                foreach (string message in batch.Messages)
+                    onMessage(message);
+                cursor = batch.Cursor;
+                await Task.Delay(500, cancellationToken);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            _logger.Warn($"Isolated Gateway console tail stopped ({ex.GetType().Name}).");
+            onIssue(GatewayLogTailIssue.Unavailable);
+        }
+    }
+
+    private async Task<GatewayConsoleBatch> ReadGatewayLogAsync(long? cursor, CancellationToken cancellationToken)
+    {
+        int failures = 0;
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                return ParseGatewayLogTail(
+                    await _gatewayLogTail!(cursor, cancellationToken), cursor);
+            }
+            catch (Exception ex) when ((ex is TimeoutException or IOException or InvalidOperationException) &&
+                ex is not ObjectDisposedException && ++failures <= 2)
+            {
+                _logger.Warn($"Isolated Gateway console tail retry {failures} ({ex.GetType().Name}).");
+                await Task.Delay(TimeSpan.FromMilliseconds(500 * failures), cancellationToken);
+            }
+        }
+    }
+
+    internal static GatewayConsoleBatch ParseGatewayLogTail(JsonElement payload, long? previousCursor)
+    {
+        if (payload.ValueKind != JsonValueKind.Object ||
+            !payload.TryGetProperty("file", out var fileValue) ||
+            fileValue.ValueKind != JsonValueKind.String ||
+            string.IsNullOrWhiteSpace(fileValue.GetString()) ||
+            !payload.TryGetProperty("cursor", out var cursorValue) ||
+            cursorValue.ValueKind != JsonValueKind.Number ||
+            !cursorValue.TryGetInt64(out long cursor) ||
+            !payload.TryGetProperty("size", out var sizeValue) ||
+            sizeValue.ValueKind != JsonValueKind.Number ||
+            !sizeValue.TryGetInt64(out long size) ||
+            cursor < 0 || size < cursor ||
+            !payload.TryGetProperty("lines", out var lines) ||
+            lines.ValueKind != JsonValueKind.Array ||
+            lines.GetArrayLength() > 128)
+            throw new InvalidDataException("The Gateway returned an invalid bounded log tail.");
+        bool reset = false;
+        if (payload.TryGetProperty("reset", out var resetValue))
+        {
+            if (resetValue.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                throw new InvalidDataException("The Gateway log tail has an invalid reset flag.");
+            reset = resetValue.GetBoolean();
+        }
+        if (previousCursor is long previous && cursor < previous && !reset)
+            throw new InvalidDataException("The Gateway log cursor moved backward without a reset.");
+        bool skipped = false;
+        if (payload.TryGetProperty("truncated", out var truncated))
+        {
+            if (truncated.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                throw new InvalidDataException("The Gateway log tail has an invalid truncation flag.");
+            skipped = truncated.GetBoolean();
+        }
+        if (payload.TryGetProperty("skippedBytes", out var skippedBytes))
+        {
+            if (skippedBytes.ValueKind != JsonValueKind.Number ||
+                !skippedBytes.TryGetInt64(out long count) || count < 0)
+                throw new InvalidDataException("The Gateway log tail has an invalid skipped-byte count.");
+            skipped |= count > 0;
+        }
+        var messages = new List<string>();
+        foreach (var line in lines.EnumerateArray())
+        {
+            if (line.ValueKind != JsonValueKind.String)
+                throw new InvalidDataException("The Gateway log tail contains a non-text entry.");
+            if (TryExtractConsoleMessage(line.GetString()) is { } message)
+                messages.Add(message);
+        }
+        return new GatewayConsoleBatch(fileValue.GetString()!, cursor, size, messages, skipped);
+    }
+
+    internal sealed record GatewayConsoleBatch(
+        string File, long Cursor, long Size, IReadOnlyList<string> Messages, bool Skipped);
+
     public void Stop()
     {
+        _nativeTailCancellation?.Cancel();
+        _nativeTailCancellation?.Dispose();
+        _nativeTailCancellation = null;
         Process? process;
         lock (_stateLock)
         {
@@ -139,6 +317,39 @@ internal sealed class WizardConsoleTail : IDisposable
     }
 
     public void Dispose() => Stop();
+
+    private async Task TailNativeLogAsync(string path, Action<string> onMessage, CancellationToken cancellationToken)
+    {
+        long position = File.Exists(path) ? new FileInfo(path).Length : 0;
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                try
+                {
+                    using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
+                        FileShare.ReadWrite | FileShare.Delete, 4096, useAsync: true);
+                    if (stream.Length < position)
+                        position = 0;
+                    stream.Position = position;
+                    using var reader = new StreamReader(stream);
+                    while (await reader.ReadLineAsync(cancellationToken) is { } line)
+                    {
+                        if (TryExtractConsoleMessage(line) is { } message)
+                            onMessage(message);
+                    }
+                    position = stream.Position;
+                }
+                catch (IOException) { /* The gateway can rotate or create its log between polls. */ }
+                await Task.Delay(500, cancellationToken);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            _logger.Warn($"Native wizard console tail stopped: {ex.GetType().Name}");
+        }
+    }
 
     /// <summary>
     /// Extracts the human-readable <c>message</c> field from a single openclaw

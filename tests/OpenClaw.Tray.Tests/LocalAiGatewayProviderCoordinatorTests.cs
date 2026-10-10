@@ -5,11 +5,241 @@ using OpenClaw.Shared.Inference.Catalog;
 using OpenClawTray.Services;
 using System.Collections.Immutable;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace OpenClaw.Tray.Tests;
 
 public sealed class LocalAiGatewayProviderCoordinatorTests
 {
+    [Fact]
+    public async Task RpcPublish_UsesOneGuardedPatchAndPreservesOtherProvidersAndAllowlistEntries()
+    {
+        var install = Install(28_765, "cloud/prior");
+        var transport = new AtomicTransport("""
+            {"models":{"providers":{"other":{"apiKey":"other-secret"}}},
+             "agents":{"defaults":{"model":{"primary":"cloud/prior","fallbacks":["cloud/backup"]},
+                                   "models":{"cloud/prior":{"alias":"Cloud"}}}}}
+            """);
+        var coordinator = new LocalAiGatewayProviderCoordinator(transport, () => "actual-local-secret", NullLogger.Instance);
+
+        var result = await coordinator.PublishAsync(install);
+
+        Assert.True(result.Success, result.Detail);
+        Assert.Single(transport.Patches);
+        Assert.Equal("other-secret", (string?)transport.Config["models"]?["providers"]?["other"]?["apiKey"]);
+        Assert.Equal("actual-local-secret", (string?)transport.Config["models"]?["providers"]?["llamacpp"]?["apiKey"]);
+        Assert.Equal("Cloud", (string?)transport.Config["agents"]?["defaults"]?["models"]?["cloud/prior"]?["alias"]);
+        Assert.Equal("cloud/backup", (string?)transport.Config["agents"]?["defaults"]?["model"]?["fallbacks"]?[0]);
+        Assert.NotNull(transport.Config["agents"]?["defaults"]?["models"]?[LocalAiGatewayProviderDefinition.BuildPrimaryModel(install)]);
+        Assert.DoesNotContain("other-secret", transport.Patches[0].GetRawText());
+        Assert.Empty(Assert.Single(transport.ReplacementPaths));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RpcMutation_ConcurrentEditRejectsWholeChangeWithoutBlindRollback(bool quiesce)
+    {
+        var install = Install(28_765);
+        var transport = new AtomicTransport("{}") { DriftOnApply = true };
+        if (quiesce) transport.SetManaged(install);
+        var coordinator = new LocalAiGatewayProviderCoordinator(transport, () => "actual-local-secret", NullLogger.Instance);
+
+        var result = quiesce ? await coordinator.QuiesceAsync(install) : await coordinator.PublishAsync(install);
+
+        Assert.False(result.Success);
+        Assert.Single(transport.Patches);
+        Assert.Equal("cloud/user-edit", (string?)transport.Config["agents"]?["defaults"]?["model"]?["primary"]);
+        Assert.Contains("reconcile", result.Detail);
+        Assert.DoesNotContain("secret", result.Detail);
+        Assert.Equal(quiesce, transport.Config["models"]?["providers"]?["llamacpp"] is not null);
+    }
+
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("cloud/prior", false)]
+    [InlineData("cloud/prior", true)]
+    public async Task RpcQuiesce_AtomicallyWithdrawsProviderAndConditionallyRestoresPrimary(string? fallback, bool cycle)
+    {
+        var install = Install(28_765, fallback);
+        var transport = new AtomicTransport("{}");
+        transport.SetManaged(install);
+        var coordinator = new LocalAiGatewayProviderCoordinator(transport, () => "actual-local-secret", NullLogger.Instance);
+
+        var result = await coordinator.QuiesceAsync(install,
+            cycle ? LocalAiQuiesceReason.EndpointCycle : LocalAiQuiesceReason.Teardown);
+
+        Assert.True(result.Success, result.Detail);
+        Assert.Single(transport.Patches);
+        Assert.Null(transport.Config["models"]?["providers"]?["llamacpp"]);
+        Assert.Equal([LocalAiGatewayProviderDefinition.ProviderModelsPath],
+            Assert.Single(transport.ReplacementPaths));
+        Assert.Equal(cycle ? LocalAiGatewayProviderDefinition.BuildPrimaryModel(install) : fallback,
+            (string?)transport.Config["agents"]?["defaults"]?["model"]?["primary"]);
+    }
+
+    [Theory]
+    [InlineData("""{"agents":{"defaults":{"model":"cloud/legacy"}}}""")]
+    [InlineData("""{"agents":{"defaults":{"models":[]}}}""")]
+    [InlineData("""{"models":{"providers":{"llamacpp":{"baseUrl":"http://outside"}}}}""")]
+    public async Task RpcPublish_InvalidOrExternallyOwnedConfigurationIsNeverPatched(string config)
+    {
+        var transport = new AtomicTransport(config);
+        var coordinator = new LocalAiGatewayProviderCoordinator(transport, () => "actual-local-secret", NullLogger.Instance);
+
+        var result = await coordinator.PublishAsync(Install(28_765));
+
+        Assert.False(result.Success);
+        Assert.Empty(transport.Patches);
+    }
+
+    [Fact]
+    public async Task RpcPublish_UnknownReadOutcomeNeverMutatesOrLeaksRpcErrors()
+    {
+        var transport = new AtomicTransport("{}") { FailRead = true };
+        var coordinator = new LocalAiGatewayProviderCoordinator(transport, () => "actual-local-secret", NullLogger.Instance);
+        var result = await coordinator.PublishAsync(Install(28_765));
+        Assert.False(result.Success);
+        Assert.Empty(transport.Patches);
+        Assert.DoesNotContain("sensitive", result.Detail);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RpcMutation_PersistedButUnavailableIsNotReplayedOrBlindlyRolledBack(bool quiesce)
+    {
+        var install = Install(28_765);
+        var transport = new AtomicTransport("{}") { FailAfterApply = true };
+        if (quiesce) transport.SetManaged(install);
+        var coordinator = new LocalAiGatewayProviderCoordinator(transport, () => "actual-local-secret", NullLogger.Instance);
+
+        var result = quiesce ? await coordinator.QuiesceAsync(install) : await coordinator.PublishAsync(install);
+
+        Assert.False(result.Success);
+        Assert.Contains("reconcile", result.Detail);
+        Assert.Single(transport.Patches);
+        Assert.Equal(!quiesce, transport.Config["models"]?["providers"]?["llamacpp"] is not null);
+        Assert.Equal(quiesce ? null : LocalAiGatewayProviderDefinition.BuildPrimaryModel(install),
+            (string?)transport.Config["agents"]?["defaults"]?["model"]?["primary"]);
+    }
+
+    private sealed class AtomicTransport(string config) : ILocalAiGatewayAtomicConfigurationTransport
+    {
+        public JsonObject Config { get; } = JsonNode.Parse(config)!.AsObject();
+        public List<JsonElement> Patches { get; } = [];
+        public List<string[]> ReplacementPaths { get; } = [];
+        public bool DriftOnApply { get; init; }
+        public bool FailRead { get; init; }
+        public bool FailAfterApply { get; init; }
+        private int _version;
+
+        public Task<LocalAiGatewayConfigurationSnapshot> CaptureAsync(CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (FailRead) throw new IOException("sensitive RPC response");
+            return Task.FromResult(new LocalAiGatewayConfigurationSnapshot(
+                JsonSerializer.SerializeToElement(Config), _version.ToString()));
+        }
+
+        public Task ApplyAsync(LocalAiGatewayConfigurationSnapshot expected, JsonElement patch, CancellationToken ct,
+            IReadOnlyList<string>? replacePaths = null)
+        {
+            ct.ThrowIfCancellationRequested();
+            Patches.Add(patch.Clone());
+            ReplacementPaths.Add(replacePaths?.ToArray() ?? []);
+            if (DriftOnApply)
+            {
+                Merge(Config, JsonNode.Parse("""{"agents":{"defaults":{"model":{"primary":"cloud/user-edit"}}}}""")!.AsObject());
+                _version++;
+            }
+            if (expected.Hash != _version.ToString()) throw new InvalidOperationException("baseHash conflict sensitive RPC response");
+            if (Config["models"]?["providers"]?["llamacpp"]?["models"] is JsonArray &&
+                patch.TryGetProperty("models", out var models) &&
+                models.TryGetProperty("providers", out var providers) &&
+                providers.TryGetProperty("llamacpp", out _) &&
+                replacePaths?.Contains(LocalAiGatewayProviderDefinition.ProviderModelsPath) != true)
+                throw new InvalidOperationException("Destructive model array change requires its exact replacePaths entry.");
+            Merge(Config, JsonNode.Parse(patch.GetRawText())!.AsObject());
+            _version++;
+            if (FailAfterApply) throw new IOException("UNAVAILABLE: configuration persisted but restart did not complete.");
+            return Task.CompletedTask;
+        }
+
+        public void SetManaged(LocalAiResolvedInstall install) => Merge(Config, new JsonObject
+        {
+            ["models"] = new JsonObject { ["providers"] = new JsonObject
+                { ["llamacpp"] = JsonNode.Parse(LocalAiGatewayProviderDefinition.BuildProviderJson(install, "actual-local-secret")) } },
+            ["agents"] = new JsonObject { ["defaults"] = new JsonObject
+                { ["model"] = new JsonObject { ["primary"] = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install) } } },
+        });
+
+        private static void Merge(JsonObject target, JsonObject patch)
+        {
+            foreach (var pair in patch)
+            {
+                if (pair.Value is null) target.Remove(pair.Key);
+                else if (pair.Value is JsonObject nested && target[pair.Key] is JsonObject current) Merge(current, nested);
+                else target[pair.Key] = pair.Value.DeepClone();
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task Publish_UncertainTransportReadNeverMutates(bool timedOut, bool indeterminate)
+    {
+        var transport = new UncertainTransport(timedOut, indeterminate);
+        var coordinator = new LocalAiGatewayProviderCoordinator(transport, NullLogger.Instance);
+
+        var result = await coordinator.PublishAsync(Install(28_765));
+
+        Assert.False(result.Success);
+        Assert.Contains("reliably", result.Detail);
+        Assert.Equal(1, transport.Reads);
+        Assert.Equal(0, transport.Mutations);
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task Quiesce_UncertainTransportReadNeverMutates(bool timedOut, bool indeterminate)
+    {
+        var transport = new UncertainTransport(timedOut, indeterminate);
+        var coordinator = new LocalAiGatewayProviderCoordinator(transport, NullLogger.Instance);
+
+        var result = await coordinator.QuiesceAsync(Install(28_765));
+
+        Assert.False(result.Success);
+        Assert.Equal(0, transport.Mutations);
+    }
+
+    private sealed class UncertainTransport(bool timedOut, bool indeterminate)
+        : ILocalAiGatewayConfigurationTransport
+    {
+        public int Reads { get; private set; }
+        public int Mutations { get; private set; }
+
+        public Task<LocalAiGatewayCommandOutcome> RunAsync(
+            IReadOnlyList<string> arguments, CancellationToken cancellationToken)
+        {
+            if (arguments is ["config", "get", _, "--json"])
+                Reads++;
+            else
+                Mutations++;
+            return Task.FromResult(new LocalAiGatewayCommandOutcome(
+                new(0, "{}", "", timedOut, indeterminate), null));
+        }
+
+        public Task<LocalAiGatewayCommandOutcome> ApplyBatchAsync(
+            string batch, CancellationToken cancellationToken)
+        {
+            Mutations++;
+            return Task.FromResult(new LocalAiGatewayCommandOutcome(new(0, "", ""), null));
+        }
+    }
+
     [Fact]
     public async Task Quiesce_RemovesExactManagedRouteWhenNoFallbackExists()
     {
@@ -26,6 +256,135 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         Assert.Null(commands.ProviderJson);
         Assert.Null(commands.PrimaryModel);
         Assert.Contains(commands.Calls, call => call.Contains("unset"));
+    }
+
+    [Fact]
+    public async Task Quiesce_EndpointCycleRetainsManagedPrimaryWhenNoFallbackExists()
+    {
+        LocalAiResolvedInstall install = Install(28_765);
+        string managedPrimary = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install);
+        var commands = new FakeWslCommandRunner(
+            LocalAiGatewayProviderDefinition.BuildProviderJson(install),
+            managedPrimary);
+        var coordinator = CreateCoordinator(commands);
+
+        LocalAiEndpointLifecycleResult result = await coordinator.QuiesceAsync(
+            install,
+            LocalAiQuiesceReason.EndpointCycle);
+
+        Assert.True(result.Success);
+        Assert.Null(commands.ProviderJson);
+        Assert.Equal(managedPrimary, commands.PrimaryModel);
+        Assert.DoesNotContain(
+            commands.Calls,
+            call => call.Contains("unset") &&
+                    call.Contains(LocalAiGatewayProviderDefinition.PrimaryModelPath));
+    }
+
+    [Fact]
+    public async Task Quiesce_FailedEndpointCycleCanBeCompletedAsTeardown()
+    {
+        LocalAiResolvedInstall install = Install(28_765);
+        string managedPrimary = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install);
+        var commands = new FakeWslCommandRunner(
+            LocalAiGatewayProviderDefinition.BuildProviderJson(install),
+            managedPrimary)
+        {
+            FailedReadCalls = [2],
+        };
+        var coordinator = CreateCoordinator(commands);
+
+        LocalAiEndpointLifecycleResult interrupted = await coordinator.QuiesceAsync(
+            install,
+            LocalAiQuiesceReason.EndpointCycle);
+
+        Assert.False(interrupted.Success);
+        Assert.Null(commands.ProviderJson);
+        Assert.Equal(managedPrimary, commands.PrimaryModel);
+
+        LocalAiEndpointLifecycleResult teardown = await coordinator.QuiesceAsync(
+            install,
+            LocalAiQuiesceReason.Teardown);
+
+        Assert.True(teardown.Success);
+        Assert.Null(commands.ProviderJson);
+        Assert.Null(commands.PrimaryModel);
+    }
+
+    [Fact]
+    public async Task Quiesce_EndpointCycleRetainsManagedPrimaryWhenFallbackExists()
+    {
+        LocalAiResolvedInstall install = Install(28_770, "openai/gpt-5");
+        string managedPrimary = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install);
+        var commands = new FakeWslCommandRunner(
+            LocalAiGatewayProviderDefinition.BuildProviderJson(install),
+            managedPrimary);
+        var coordinator = CreateCoordinator(commands);
+
+        LocalAiEndpointLifecycleResult result = await coordinator.QuiesceAsync(
+            install,
+            LocalAiQuiesceReason.EndpointCycle);
+
+        Assert.True(result.Success);
+        Assert.Null(commands.ProviderJson);
+        Assert.Equal(managedPrimary, commands.PrimaryModel);
+    }
+
+    [Fact]
+    public async Task Quiesce_TeardownRestoresRealPriorModel()
+    {
+        LocalAiResolvedInstall install = Install(28_770, "openai/gpt-5");
+        var commands = new FakeWslCommandRunner(
+            LocalAiGatewayProviderDefinition.BuildProviderJson(install),
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install))
+        {
+            PrimaryAfterApply = "openai/gpt-5",
+        };
+        var coordinator = CreateCoordinator(commands);
+
+        LocalAiEndpointLifecycleResult result = await coordinator.QuiesceAsync(
+            install,
+            LocalAiQuiesceReason.Teardown);
+
+        Assert.True(result.Success);
+        Assert.Null(commands.ProviderJson);
+        Assert.Equal("openai/gpt-5", commands.PrimaryModel);
+    }
+
+    [Fact]
+    public async Task Publish_AcceptsPrimaryRetainedByAnEndpointCycle()
+    {
+        LocalAiResolvedInstall install = Install(28_765);
+        string managedPrimary = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install);
+        var commands = new FakeWslCommandRunner(providerJson: null, primaryModel: managedPrimary)
+        {
+            ProviderAfterApply = LocalAiGatewayProviderDefinition.BuildProviderJson(install),
+            PrimaryAfterApply = managedPrimary,
+        };
+        var coordinator = CreateCoordinator(commands);
+
+        LocalAiEndpointLifecycleResult result = await coordinator.PublishAsync(install);
+
+        Assert.True(result.Success);
+        Assert.Equal(managedPrimary, commands.PrimaryModel);
+    }
+
+    [Fact]
+    public async Task Publish_AcceptsPrimaryRetainedByEndpointCycleWithFallback()
+    {
+        LocalAiResolvedInstall install = Install(28_765, "openai/gpt-5");
+        string managedPrimary = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install);
+        var commands = new FakeWslCommandRunner(providerJson: null, primaryModel: managedPrimary)
+        {
+            ProviderAfterApply = LocalAiGatewayProviderDefinition.BuildProviderJson(install),
+            PrimaryAfterApply = managedPrimary,
+        };
+        var coordinator = CreateCoordinator(commands);
+
+        LocalAiEndpointLifecycleResult result = await coordinator.PublishAsync(install);
+
+        Assert.True(result.Success);
+        Assert.Equal(managedPrimary, commands.PrimaryModel);
     }
 
     [Fact]
@@ -64,6 +423,112 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
     }
 
     [Fact]
+    public async Task Quiesce_NoProviderWithoutEndpoint_Succeeds()
+    {
+        LocalAiResolvedInstall install = InstallWithoutEndpoint(28_765);
+        var commands = new FakeWslCommandRunner(providerJson: null);
+        var coordinator = CreateCoordinator(commands);
+
+        LocalAiEndpointLifecycleResult result = await coordinator.QuiesceAsync(install);
+
+        Assert.True(result.Success);
+        Assert.Null(commands.ProviderJson);
+        Assert.Null(commands.PrimaryModel);
+        Assert.DoesNotContain(commands.Calls, call => call.Contains("unset"));
+    }
+
+    [Fact]
+    public async Task Quiesce_ExistingProviderWithoutEndpoint_PreservesProviderAndFailsClosed()
+    {
+        LocalAiResolvedInstall runningInstall = Install(28_765);
+        string provider = LocalAiGatewayProviderDefinition.BuildProviderJson(runningInstall);
+        var commands = new FakeWslCommandRunner(
+            provider,
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(runningInstall));
+        var coordinator = CreateCoordinator(commands);
+
+        LocalAiEndpointLifecycleResult result = await coordinator.QuiesceAsync(
+            InstallWithoutEndpoint(28_765));
+
+        Assert.False(result.Success);
+        Assert.Contains("verified Local AI endpoint is required", result.Detail, StringComparison.Ordinal);
+        Assert.Equal(provider, commands.ProviderJson);
+        Assert.Equal(LocalAiGatewayProviderDefinition.BuildPrimaryModel(runningInstall), commands.PrimaryModel);
+        Assert.DoesNotContain(commands.Calls, call => call.Contains("unset"));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Quiesce_NoProviderWithUnqualifiedManagedModel_PreservesPrimaryAndFailsClosed(
+        bool unknownCatalog)
+    {
+        LocalAiResolvedInstall valid = InstallWithoutEndpoint(28_765);
+        LocalAiResolvedInstall tampered = valid with
+        {
+            Manifest = valid.Manifest with
+            {
+                ModelCatalogId = unknownCatalog ? "missing-model" : valid.Manifest.ModelCatalogId,
+                ModelAlias = unknownCatalog ? valid.Manifest.ModelAlias : "tampered-model",
+            },
+        };
+        string primary = $"llamacpp/{tampered.Manifest.ModelAlias}";
+        var commands = new FakeWslCommandRunner(providerJson: null, primary);
+        var coordinator = CreateCoordinator(commands);
+
+        LocalAiEndpointLifecycleResult result = await coordinator.QuiesceAsync(tampered);
+
+        Assert.False(result.Success);
+        Assert.Contains("qualified", result.Detail, StringComparison.Ordinal);
+        Assert.Null(commands.ProviderJson);
+        Assert.Equal(primary, commands.PrimaryModel);
+        Assert.DoesNotContain(commands.Calls, call => call.Contains("unset"));
+        Assert.DoesNotContain(commands.Calls, call => call.Contains("/bin/sh"));
+    }
+
+    [Fact]
+    public async Task Quiesce_NoProviderWithoutEndpoint_UnsetsManagedPrimary()
+    {
+        LocalAiResolvedInstall install = InstallWithoutEndpoint(28_765);
+        var commands = new FakeWslCommandRunner(
+            providerJson: null,
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install));
+        var coordinator = CreateCoordinator(commands);
+
+        LocalAiEndpointLifecycleResult result = await coordinator.QuiesceAsync(install);
+
+        Assert.True(result.Success);
+        Assert.Null(commands.ProviderJson);
+        Assert.Null(commands.PrimaryModel);
+        Assert.Contains(commands.Calls, call =>
+            call.Contains("unset") &&
+            call.Contains(LocalAiGatewayProviderDefinition.PrimaryModelPath));
+    }
+
+    [Fact]
+    public async Task Quiesce_NoProviderWithoutEndpoint_RestoresFallbackPrimary()
+    {
+        LocalAiResolvedInstall install = InstallWithoutEndpoint(28_765, "openai/gpt-5");
+        var commands = new FakeWslCommandRunner(
+            providerJson: null,
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install))
+        {
+            PrimaryAfterApply = "openai/gpt-5",
+        };
+        var coordinator = CreateCoordinator(commands);
+
+        LocalAiEndpointLifecycleResult result = await coordinator.QuiesceAsync(install);
+
+        Assert.True(result.Success);
+        Assert.Null(commands.ProviderJson);
+        Assert.Equal("openai/gpt-5", commands.PrimaryModel);
+        Assert.Contains(commands.Calls, call => call.Contains("/bin/sh"));
+        Assert.DoesNotContain(commands.Calls, call =>
+            call.Contains("unset") &&
+            call.Contains(LocalAiGatewayProviderDefinition.ProviderPath));
+    }
+
+    [Fact]
     public async Task Publish_UsesVerifiedEndpointAndNonDefaultManagedDistro()
     {
         LocalAiResolvedInstall install = Install(28_766);
@@ -81,9 +546,21 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         Assert.True(LocalAiGatewayProviderDefinition.MatchesProviderJson(commands.ProviderJson!, install));
         Assert.Equal(LocalAiGatewayProviderDefinition.BuildPrimaryModel(install), commands.PrimaryModel);
         IReadOnlyList<string> apply = Assert.Single(commands.Calls, call => call.Contains("/bin/sh"));
-        string script = apply[^1];
-        Assert.Contains("--dry-run", script, StringComparison.Ordinal);
-        Assert.DoesNotContain('$', script);
+        Assert.Equal("-s", apply[^1]);
+        Assert.DoesNotContain("-c", apply);
+        Assert.DoesNotContain(apply, argument => argument.Contains("base64", StringComparison.Ordinal));
+        string script = Assert.IsType<string>(commands.StandardInputs[
+            commands.Calls.FindIndex(call => call.Contains("/bin/sh"))]);
+        Assert.StartsWith("set -e\n", script, StringComparison.Ordinal);
+        Assert.Contains("batch_file=\"$(mktemp)\"\n", script, StringComparison.Ordinal);
+        Assert.Contains("trap 'rm -f \"$batch_file\"' EXIT\n", script, StringComparison.Ordinal);
+        Assert.Contains("| base64 -d > \"$batch_file\"\n", script, StringComparison.Ordinal);
+        Assert.Contains(
+            "openclaw config set --batch-file \"$batch_file\" --dry-run\n" +
+            "openclaw config set --batch-file \"$batch_file\"\n",
+            script, StringComparison.Ordinal);
+        Assert.DoesNotContain("/dev/stdin", script, StringComparison.Ordinal);
+        Assert.DoesNotContain('\r', script);
         Assert.All(commands.Distros, distro => Assert.Equal("CustomGateway", distro));
     }
 
@@ -164,6 +641,10 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         int unsetIndex = commands.Calls.FindIndex(call =>
             call.Contains("unset") && call.Contains(LocalAiGatewayProviderDefinition.ProviderPath));
         Assert.True(restoreIndex >= 0 && unsetIndex > restoreIndex);
+        Assert.Equal("-s", commands.Calls[restoreIndex][^1]);
+        string restoreScript = Assert.IsType<string>(commands.StandardInputs[restoreIndex]);
+        Assert.Contains("--batch-file \"$batch_file\" --dry-run", restoreScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("/dev/stdin", restoreScript, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -194,6 +675,164 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         Assert.Contains("No explicit setup-managed WSL gateway", result.Detail, StringComparison.Ordinal);
         Assert.Empty(commands.Calls);
         Assert.Empty(commands.Distros);
+    }
+
+    [Fact]
+    public void LocalAiSetupRoute_UsesUniqueManagedOwnerEvenWhenItIsNotActive()
+    {
+        GatewayRecord owner = ManagedRecord("managed", "CustomGateway") with
+        {
+            Url = "ws://127.0.0.1:29999",
+        };
+        IReadOnlyList<GatewayRecord> owners =
+            LocalAiGatewayDistroResolver.FindOwners([owner]);
+
+        LocalAiSetupResolution resolution = LocalAiSetupRoutePolicy.Decide(
+            owners,
+            hasLocalGateway: true,
+            localGatewayId: owner.Id,
+            hasDistro: true,
+            hasDistroDataDirectory: true,
+            distroIsAppOwned: true,
+            installedModelCatalogId: LocalModelCatalog.Qwen38_27BModelId,
+            installedRequestedLocalAiPort: 28888);
+
+        Assert.Equal(LocalAiSetupRoute.Recovery, resolution.Route);
+        Assert.Equal("managed", resolution.RecoveryTarget?.GatewayId);
+        Assert.Equal("CustomGateway", resolution.RecoveryTarget?.DistroName);
+        Assert.Equal(29999, resolution.RecoveryTarget?.GatewayPort);
+        Assert.Equal(LocalModelCatalog.Qwen38_27BModelId, resolution.RecoveryTarget?.ModelCatalogId);
+        Assert.Equal(28888, resolution.RecoveryTarget?.RequestedLocalAiPort);
+    }
+
+    [Fact]
+    public void LocalAiSetupRoute_AcceptsLegacyManagedOwner()
+    {
+        GatewayRecord owner = new()
+        {
+            Id = "legacy-managed",
+            Url = "ws://localhost:18789",
+            IsLocal = true,
+            FriendlyName = "Local (LegacyGateway)",
+        };
+        IReadOnlyList<GatewayRecord> owners =
+            LocalAiGatewayDistroResolver.FindOwners([owner]);
+
+        LocalAiSetupResolution resolution = LocalAiSetupRoutePolicy.Decide(
+            owners,
+            hasLocalGateway: true,
+            localGatewayId: owner.Id,
+            hasDistro: true,
+            hasDistroDataDirectory: true,
+            distroIsAppOwned: true,
+            installedModelCatalogId: LocalModelCatalog.Qwen38_27BModelId);
+
+        Assert.Equal(LocalAiSetupRoute.Recovery, resolution.Route);
+        Assert.Equal("LegacyGateway", resolution.RecoveryTarget?.DistroName);
+    }
+
+    [Theory]
+    [InlineData("http://127.0.0.1:18789")]
+    [InlineData("ws://127.0.0.1:18789/path")]
+    [InlineData("ws://127.0.0.1:18789?query=1")]
+    public void LocalAiSetupRoute_BlocksNonCanonicalManagedEndpoint(string url)
+    {
+        GatewayRecord owner = ManagedRecord("managed", "OpenClawGateway") with
+        {
+            Url = url,
+        };
+
+        LocalAiSetupResolution resolution = LocalAiSetupRoutePolicy.Decide(
+            [owner],
+            hasLocalGateway: true,
+            localGatewayId: owner.Id,
+            hasDistro: true,
+            hasDistroDataDirectory: true,
+            distroIsAppOwned: true,
+            installedModelCatalogId: LocalModelCatalog.Qwen38_27BModelId);
+
+        Assert.Equal(LocalAiSetupRoute.Blocked, resolution.Route);
+    }
+
+    [Fact]
+    public void LocalAiSetupRoute_RecoversManagedGatewayWithoutAnInstalledModelReceipt()
+    {
+        GatewayRecord owner = ManagedRecord("managed", "OpenClawGateway");
+
+        LocalAiSetupResolution resolution = LocalAiSetupRoutePolicy.Decide(
+            [owner],
+            hasLocalGateway: true,
+            localGatewayId: owner.Id,
+            hasDistro: true,
+            hasDistroDataDirectory: true,
+            distroIsAppOwned: true);
+
+        Assert.Equal(LocalAiSetupRoute.Recovery, resolution.Route);
+        Assert.Null(resolution.RecoveryTarget?.ModelCatalogId);
+        Assert.Null(resolution.RecoveryTarget?.RequestedLocalAiPort);
+    }
+
+    [Fact]
+    public void DistroResolver_ResolvesLegacyManagedOwner()
+    {
+        GatewayRecord owner = new()
+        {
+            Id = "legacy-managed",
+            Url = "ws://localhost:18789",
+            IsLocal = true,
+            FriendlyName = "Local (LegacyGateway)",
+        };
+        var resolver = new LocalAiGatewayDistroResolver(CreateRegistry(owner));
+
+        LocalAiGatewayDistroResolution resolution = resolver.Resolve();
+
+        Assert.True(resolution.Success);
+        Assert.Equal("LegacyGateway", resolution.DistroName);
+    }
+
+    [Fact]
+    public void LocalAiSetupRoute_ProvisionsOnlyWhenManagedGatewayIsConclusivelyAbsent()
+    {
+        LocalAiSetupResolution resolution = LocalAiSetupRoutePolicy.Decide(
+            owners: [],
+            hasLocalGateway: false,
+            localGatewayId: null,
+            hasDistro: false,
+            hasDistroDataDirectory: false,
+            distroIsAppOwned: false);
+
+        Assert.Equal(LocalAiSetupRoute.Provision, resolution.Route);
+        Assert.Null(resolution.RecoveryTarget);
+    }
+
+    [Fact]
+    public void LocalAiSetupRoute_BlocksAmbiguousOrStaleOwnership()
+    {
+        IReadOnlyList<GatewayRecord> ambiguousOwners =
+        [
+            ManagedRecord("managed-a", "GatewayA"),
+            ManagedRecord("managed-b", "GatewayB"),
+        ];
+        Assert.Equal(
+            LocalAiSetupRoute.Blocked,
+            LocalAiSetupRoutePolicy.Decide(
+                ambiguousOwners,
+                hasLocalGateway: true,
+                localGatewayId: "managed-a",
+                hasDistro: true,
+                hasDistroDataDirectory: true,
+                distroIsAppOwned: true).Route);
+
+        GatewayRecord staleOwner = ManagedRecord("managed", "OpenClawGateway");
+        Assert.Equal(
+            LocalAiSetupRoute.Blocked,
+            LocalAiSetupRoutePolicy.Decide(
+                [staleOwner],
+                hasLocalGateway: true,
+                localGatewayId: staleOwner.Id,
+                hasDistro: false,
+                hasDistroDataDirectory: true,
+                distroIsAppOwned: true).Route);
     }
 
     [Fact]
@@ -322,6 +961,18 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         return new(manifest, "llama-server.exe", "model.gguf", endpoint);
     }
 
+    private static LocalAiResolvedInstall InstallWithoutEndpoint(
+        int port,
+        string? fallbackModel = null)
+    {
+        LocalAiResolvedInstall install = Install(port, fallbackModel);
+        return install with
+        {
+            Manifest = install.Manifest with { Endpoint = null },
+            Endpoint = null,
+        };
+    }
+
     private static string RedactApiKey(string value) => value.Replace(
         "\"api\":\"openai-completions\",\"apiKey\":\"llama-local\"",
         $"\"apiKey\":\"{LocalAiGatewayProviderDefinition.CliRedactedApiKey}\",\"api\":\"openai-completions\"",
@@ -337,6 +988,7 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         public HashSet<int> FailedReadCalls { get; init; } = [];
         public Action<int>? CommandObserved { get; init; }
         public List<IReadOnlyList<string>> Calls { get; } = [];
+        public List<string?> StandardInputs { get; } = [];
         public List<string> Distros { get; } = [];
         private int _readCalls;
 
@@ -344,11 +996,13 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
             string name,
             IReadOnlyList<string> command,
             CancellationToken cancellationToken = default,
-            IReadOnlyDictionary<string, string>? environment = null)
+            IReadOnlyDictionary<string, string>? environment = null,
+            string? standardInput = null)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Distros.Add(name);
             Calls.Add(command.ToArray());
+            StandardInputs.Add(standardInput);
             CommandObserved?.Invoke(Calls.Count);
             bool providerRead = command.Contains("get") &&
                 command.Contains(LocalAiGatewayProviderDefinition.ProviderPath);

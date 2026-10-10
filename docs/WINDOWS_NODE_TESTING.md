@@ -14,7 +14,7 @@ The Windows Node feature allows the tray app to receive commands from the OpenCl
 
 ## Companion-App Setup Guidance
 
-For app-owned local WSL setup, after OpenClaw onboard completes or is explicitly skipped, setup runs the pinned gateway CLI's non-interactive baseline initializer against the final runtime workspace and then injects fixed Windows-node guidance into that workspace's `AGENTS.md`. The injected block is setup-owned and idempotently replaced between managed markers, preserving user-authored content and file permissions outside those markers and leaving OpenClaw source files unchanged.
+For app-owned local WSL setup, after OpenClaw onboard completes or is explicitly skipped, setup runs the installed gateway CLI's non-interactive baseline initializer against the final runtime workspace and then injects fixed Windows-node guidance into that workspace's `AGENTS.md`. The injected block is setup-owned and idempotently replaced between managed markers, preserving user-authored content and file permissions outside those markers and leaving OpenClaw source files unchanged.
 
 **Note on the apply script's WSL invocation.** The `WindowsNodeBootstrapContextStep` apply and rollback scripts are piped to `bash -s` via stdin (`RunInWslAsync(..., inputViaStdin: true)`) rather than the default `bash -c` argv path. This is required because `wsl.exe` performs shell variable expansion on argv before invoking bash, which would drop user-defined `$var` references in the multi-line script (`workspace='...'` followed by `mkdir -p "$workspace"` becomes `mkdir -p ""`). See `docs/WSL_EXE_ARGV_PITFALL.md` for the full writeup.
 
@@ -28,9 +28,58 @@ For changes touching tray UX, Settings, onboarding, chat/canvas, Command Center,
 
 Short version: run required tests, collect a closeout proof pass with `.\run-app-local.ps1 -Isolated` when UI is involved, use computer-use or developer-provided screenshots/output for the active changed UI state, prove MCP with `winnode` or raw JSON-RPC, prove gateway paths when available, and include current-head concrete output under `## Real behavior proof`. Mid-development computer-use/MCP/rubber-duck validation is fine when explicitly requested or needed to unblock work.
 
+### Reactor preview.12 compatibility proof
+
+The [fixture Gateway harness](GATEWAY_FIXTURE_TESTING.md) can populate the real
+app without a running WSL Gateway or AI provider. Run
+`.\scripts\run-gateway-fixture.ps1 -AppPath '<built-app.exe>'` to explore, or
+`.\scripts\test-gateway-fixture.ps1 -AppPath '<built-app.exe>'` for automated
+picker, 240-message final-item, navigation and delayed-history proof. Use a
+non-Dev Release binary as well as Debug; an empty page or MCP snapshot is not
+equivalent to visible native history proof. Streaming still needs separate
+coverage.
+
+Both Reactor packages are temporarily pinned to `0.1.0-preview.12` while
+[microsoft/microsoft-ui-xaml#11865](https://github.com/microsoft/microsoft-ui-xaml/issues/11865)
+awaits a released and validated fix. `ReactorChatTimeline.BuildSafeMarkdown`
+uses `MarkdownOptions.ListItem` to replace the default horizontal list row with
+an Auto-marker/Star-content Grid, preserving the existing marker, content and
+spacing. This locally supplies the wrapping fix from
+[microsoft/microsoft-ui-reactor#1197](https://github.com/microsoft/microsoft-ui-reactor/pull/1197)
+without adopting preview.13's row eviction behavior.
+
+Run `ReactorMarkdownListProofTests` in `OpenClaw.Tray.UITests` on the host's
+native architecture. These mounted tests check ordered/unordered wrapping at
+240 DIPs, reflow at 600 DIPs, and nested/loose list content and formatting.
+Keep the existing table and disposal proof in the focused run.
+
+Before release or removing the pin, also exercise repeated session switching
+while a bring-into-view request is pending, using 240 mixed-height messages.
+Verify that message 240 is actually visible, not just that the current scroll
+extent was reached. Verify streaming tail-follow and arrivals while scrolled
+up. Do not substitute extent-only scrolling: the alternative workaround
+stopped near message 233 in the reported scenario.
+[Tracking issue #1424](https://github.com/openclaw/openclaw-windows-node/issues/1424)
+owns the package upgrade and removal gates.
+
 ### New command MCP contract
 
-Every new Windows node call must be exposed through local MCP and `winnode`: register the capability, update `McpToolBridge.CommandDescriptions`, update `src/OpenClaw.WinNode.Cli/skill.md`, add focused tests, and prove discovery/invocation with `winnode` or raw MCP JSON-RPC.
+Every new Windows node call must be exposed through local MCP and `winnode`: register the capability, update `McpToolBridge.CommandDescriptions`, update `.agents/skills/winnode/SKILL.md`, add focused tests, and prove discovery/invocation with `winnode` or raw MCP JSON-RPC.
+
+### Permissions exec policy editor
+
+The Permissions page shows the `main`, wildcard (`*`), then defaults cascade
+and lists both wildcard and main allowlist entries. Removing a displayed entry
+edits its original bucket, not every matching pattern. A duplicate in the other
+bucket remains effective until it is removed separately. Adding a rule writes
+to `main` and preserves inherited wildcard security and ask settings, except
+for the existing transition from effective Deny to a main allowlist.
+
+Use an isolated profile for visual proof: seed distinguishable wildcard and
+main rules, remove the wildcard row, then reopen the page and confirm only
+that entry is gone from its original bucket. Also check equal patterns in both
+buckets and adding a main rule while inheriting wildcard Full. These editor
+checks do not require executing a command and are not MXC containment proof.
 
 ### 1. Settings Toggle
 - Verify the toggle appears in Settings under "ADVANCED"
@@ -49,8 +98,8 @@ Every new Windows node call must be exposed through local MCP and `winnode`: reg
   ```
 
 ### 3. Screen Capture Notification
-- When the agent captures your screen, you should see "📸 Screen Captured" toast
-- This is throttled to max once per 10 seconds
+- The first screen capture requires explicit remembered consent.
+- Every screen capture shows a "📸 Capturing screen" toast before sensor access.
 
 ### 4. Command Center
 - Open the tray status detail or launch `openclaw://commandcenter`
@@ -74,22 +123,24 @@ These features need the gateway to send `node.invoke` commands:
 | `canvas.eval` | Execute JavaScript | Runs JS in canvas, returns result |
 | `canvas.snapshot` | Capture canvas | Returns base64 PNG of canvas content |
 | `canvas.a2ui.pushJSONL` | Legacy A2UI JSONL push | Routes through same renderer path as `canvas.a2ui.push` |
-| `screen.snapshot` | Take screenshot | Captures screen, shows notification, returns base64 |
+| `screen.snapshot` | Take screenshot | Requires remembered consent, shows a notification before every capture, and returns base64 |
 | `screen.record` | Record short screen clip | Returns MP4/base64 metadata; requires explicit gateway allowlist |
 | `system.notify` | Show notification | Displays toast notification |
 | `system.run` | Controlled command execution | Uses local exec approval policy. A simple unquoted gateway command can bind to an allowlisted executable and run as direct argv; shell syntax remains one-time. Prompt decisions show a Windows Allow once / Always allow / Deny dialog when Allow always is safe. |
 | `system.run.prepare` | Pre-flight command execution | Parses and validates a `system.run` invocation without executing it |
 | `system.which` | Resolve executables | Returns absolute paths for requested binaries |
 | `camera.list` | Enumerate cameras | Returns device IDs and names |
-| `camera.snap` | Capture photo | Returns base64 image (NV12 fallback) |
+| `camera.snap` | Capture photo | Requires remembered consent, shows a notification before every capture, and returns a base64 image (NV12 fallback) |
 | `camera.clip` | Capture video clip | Returns MP4/base64 metadata |
-| `location.get` | Get Windows location | Uses Windows location permission/settings |
+| `location.get` | Get Windows location | Requires remembered consent, shows a notification before every access, and uses Windows location permission/settings |
 | `device.info` / `device.status` | Device metadata/status | Returns host/app/locale plus battery/storage/network/uptime payloads |
 | `browser.proxy` | Proxy browser-control host requests | Requires Browser proxy bridge enabled, a compatible browser-control host listening on gateway port + 2, and matching browser-control auth |
 | `tts.speak` | Speak text aloud | Requires Text-to-speech playback enabled in Settings; gateway mode also requires `tts.speak` in `gateway.nodes.allowCommands` |
 | `stt.transcribe` | Bounded microphone transcription | Requires Speech-to-text enabled in Settings; uses local Whisper.net |
 | `stt.listen` | Voice-activity microphone transcription | Returns when the user stops speaking or timeout expires |
 | `stt.status` | Speech-to-text readiness | Returns Whisper.net model download/readiness state |
+| `ollama.models` | Discover local Ollama chat models | Requires Share Windows Ollama in Permissions; reads the separately installed Ollama service on `127.0.0.1:11434` |
+| `ollama.chat` | Run bounded local Ollama inference | Requires Share Windows Ollama, gateway command approval, and an exact local model returned by `ollama.models` |
 
 ### Cancelling an invocation
 
@@ -119,17 +170,20 @@ When the node connects, it advertises these capabilities:
 - `browser` - Local `browser.proxy` bridge to a browser-control host on gateway port + 2, when enabled in Settings
 - `tts` - Windows speech synthesis or ElevenLabs playback, when enabled in Settings
 - `stt` - Local speech-to-text via Whisper.net, when enabled in Settings
+- `local-inference` - `ollama.models` and `ollama.chat` against a separately installed Windows Ollama service, when explicitly enabled in Permissions
 
 Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `app.status`, `app.chat.snapshot`/`app.chat.send`/`app.chat.reset`, and `app.chat.queue.list`/`app.chat.queue.cancel`. Connection diagnostics and setup tools live under `app.connection.*`; use `app.connection.status` to inspect active gateway, operator/node credential state, MCP runtime status, browser proxy caveat, pending approval commands, and recent diagnostics, and `app.connection.gateways` to list saved gateway records without token values. These are local testing and automation hooks registered with the tray's MCP server and are not advertised to the gateway WebSocket.
 
 ## Security Features
 
 - **URL Validation**: Canvas blocks `file://`, `javascript:`, localhost, private IPs, IPv6 localhost
-- **Screen Capture Notification**: User is notified when screen snapshots are captured
+- **Sensitive Capture Consent**: Screen snapshots, camera photos, and location reads require remembered per-capability consent
+- **Per-use Capture Notification**: Every screen snapshot, camera photo, and location read is visibly indicated before sensor access
 - **Screen Recording Allowlist**: `screen.record` must be explicitly allowed by the gateway and does not leave a hidden local MP4 copy on Windows
 - **Session Attribution**: Only the optional top-level `sessionKey` stamped by the Gateway on `node.invoke.request` is trusted. Older Gateways omit it, so those invokes remain unattributed; a caller-supplied nested `args.sessionKey` is never used as a fallback.
 - **Command Center Redaction**: recent node invoke activity records command name, status, duration, node id, and privacy class only; it does not store base64 payloads, screenshots, recordings, tokens, or command arguments
 - **Node Mode Toggle**: Must be explicitly enabled by user
+- **Ollama Sharing Toggle**: Off by default; enabling it shares Windows Ollama compute with the active paired local or remote gateway without changing the app-managed Local AI provider
 - **Command Validation**: Only alphanumeric commands with dots/hyphens allowed
 
 ## Troubleshooting
@@ -172,6 +226,11 @@ Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `ap
 ### Local sandbox validation
 - Sandbox integration tests are intended for local Windows development machines and may skip when the required local sandbox prerequisites are unavailable.
 - Build the tray app before running local sandbox validation so the required sandbox helper binaries are present in the app output.
+- MXC path grants use absolute Windows paths. OpenClaw adds each granted volume root as read-only only when the host probe selects BaseContainer and the exact emitted config remains BaseContainer-compatible: no backend `deniedPaths`, proxy/directional networking, denial capture, or least-privilege mode. MXC 0.8's request selector keeps that policy on BaseContainer, whose root grants are documented not to cascade. This supplies the root metadata access needed by common Windows path APIs without exposing child directories.
+- OpenClaw supports MXC sandboxing for `system.run` only when `wxc-exec --probe` reports `tier: "base-container"` and `needsDaclAugmentation: false`. BFS, DACL, unknown, and augmented tiers are treated as unavailable for the Node Sandbox. General MXC and `isolation_session` diagnostics remain separate from this process-containment decision.
+- OpenClaw classifies the Windows SKU before resolving or launching `wxc-exec`. Windows Server is explicitly unsupported because the current MXC probe can crash there. An indeterminate SKU check also fails closed and skips the native probe. This suppression does not erase the user's sandbox preference, so the existing host-fallback or strict-block policy remains visible and recoverable after an OS/runtime fix.
+- OpenClaw never invokes `wxc-host-prep` and never adds a volume-root policy grant to BFS or the DACL fallback. DACL directory grants intentionally propagate, and [microsoft/mxc#648](https://github.com/microsoft/mxc/issues/648) documents unsafe descendant ACL rewriting in the current privileged helper.
+- The upstream BaseContainer readiness and root-grant behavior is tracked in [microsoft/mxc#1109](https://github.com/microsoft/mxc/issues/1109).
 - For MXC-related merge validation, prefer the formal script below because it sets the required gates and fails if MXC is skipped.
 
   ```powershell

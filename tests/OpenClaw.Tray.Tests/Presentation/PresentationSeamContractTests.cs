@@ -91,10 +91,13 @@ public sealed class PresentationSeamContractTests
             TestRepositoryPaths.GetRepositoryRoot(),
             "src", "OpenClaw.Tray.WinUI", "Services", "SettingsChangeCoordinator.cs"));
 
-        var settingsSavedIdx = appSource.IndexOf("private void OnSettingsSaved", StringComparison.Ordinal);
-        Assert.True(settingsSavedIdx >= 0, "Expected App to handle persisted settings saves.");
-        var settingsSavedBlock = appSource.Substring(settingsSavedIdx, Math.Min(300, appSource.Length - settingsSavedIdx));
+        var settingsSavedIdx = appSource.IndexOf("private Task ApplySettingsSavedAsync()", StringComparison.Ordinal);
+        Assert.True(settingsSavedIdx >= 0, "Expected App to apply persisted settings saves.");
+        var settingsSavedBlock = appSource.Substring(settingsSavedIdx, Math.Min(1200, appSource.Length - settingsSavedIdx));
+        Assert.Contains("void ApplyLatestSettings()", settingsSavedBlock);
         Assert.Contains("_settingsChangeCoordinator?.Apply(_settings.ToSettingsData())", settingsSavedBlock);
+        Assert.DoesNotContain("var settings = _settings.ToSettingsData();", settingsSavedBlock);
+        Assert.Contains("_dispatcherQueue.TryEnqueue", settingsSavedBlock);
 
         var applyVisibilityIdx = appSource.IndexOf("new SettingsChangeEffects(", StringComparison.Ordinal);
         Assert.True(applyVisibilityIdx >= 0, "Expected App to own chat tool-call visibility application.");

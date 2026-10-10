@@ -452,6 +452,8 @@ internal sealed class TrayMenuPresenter
                 "Read responses out loud", settings.NodeTtsEnabled),
             Toggle("Speech-to-text (STT)", TrayMenuIconIdentity.Speech,
                 "Dictate input by speaking", settings.NodeSttEnabled),
+            Toggle("Ollama", TrayMenuIconIdentity.Ollama,
+                "Let agents use Ollama models installed separately on this PC", settings.NodeOllamaInferenceEnabled),
             Spacer(),
         ],
     };

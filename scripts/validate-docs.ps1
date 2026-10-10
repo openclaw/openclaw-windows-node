@@ -3,18 +3,29 @@
     Validates maintained Markdown and Excalidraw-backed documentation diagrams.
 
 .DESCRIPTION
-    Checks local Markdown links, local Markdown anchors, the repository Mermaid
-    policy, diagram source/render pairing, Excalidraw text invariants, SVG
-    accessibility metadata, and source/render label synchronization.
+    Checks the named proof-pool inventory, local Markdown links, local Markdown
+    anchors, the repository Mermaid policy, diagram source/render pairing,
+    Excalidraw text invariants, SVG accessibility metadata, and source/render
+    label synchronization.
 #>
 
 param(
-    [string]$RepoRoot = (Split-Path -Parent $PSScriptRoot)
+    [string]$RepoRoot,
+    [switch]$SkipProofPoolFlowRegression
 )
 
 $ErrorActionPreference = "Stop"
+$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
+    $RepoRoot = Split-Path -Parent $scriptRoot
+}
 $repoRootPath = [System.IO.Path]::GetFullPath($RepoRoot)
 $errors = [System.Collections.Generic.List[string]]::new()
+
+& (Join-Path $repoRootPath "scripts\validate-proof-pools.ps1") -RepoRoot $repoRootPath
+& (Join-Path $repoRootPath "scripts\validate-proof-pools.ps1") `
+    -RepoRoot $repoRootPath `
+    -ForceFallback
 
 function Add-ValidationError([string]$message) {
     $script:errors.Add($message)
@@ -278,6 +289,11 @@ if ($errors.Count -gt 0) {
         Write-Host "  - $validationError" -ForegroundColor Red
     }
     exit 1
+}
+
+if (-not $SkipProofPoolFlowRegression) {
+    & (Join-Path $repoRootPath "scripts\test-validate-docs-proof-pool-flow.ps1") `
+        -RepoRoot $repoRootPath
 }
 
 Write-Host "Documentation validation passed: $($markdownFiles.Count) Markdown files checked." -ForegroundColor Green

@@ -74,6 +74,17 @@ public sealed class CapabilitiesPageLocalizationCoverageTests
         new object[] { "PermissionsPage_VoiceSettingsLink", new[] { ".Content" } },
     };
 
+    public static IEnumerable<object[]> MiniMaxVoiceSettingsUids => new[]
+    {
+        new object[] { "VoiceSettingsPage_TtsMiniMax", new[] { ".Content" } },
+        new object[] { "VoiceSettingsPage_MiniMaxApiKeyBox", new[] { ".Header" } },
+        new object[] { "VoiceSettingsPage_MiniMaxVoiceIdBox", new[] { ".Header", ".PlaceholderText" } },
+        new object[] { "VoiceSettingsPage_MiniMaxModelBox", new[] { ".Header", ".PlaceholderText" } },
+        new object[] { "VoiceSettingsPage_MiniMaxRegionCombo", new[] { ".Header" } },
+        new object[] { "VoiceSettingsPage_MiniMaxRegionGlobal", new[] { ".Content" } },
+        new object[] { "VoiceSettingsPage_MiniMaxRegionChina", new[] { ".Content" } },
+    };
+
     [Theory]
     [MemberData(nameof(VoiceSettingsCardUids))]
     public void VoiceSettingsControl_HasXUid_InCapabilitiesPageXaml(string uid, string[] _)
@@ -86,6 +97,22 @@ public sealed class CapabilitiesPageLocalizationCoverageTests
     [MemberData(nameof(VoiceSettingsCardUids))]
     public void VoiceSettingsControl_AllExpectedReswKeys_ExistInEnUs(string uid, string[] suffixes)
     {
+        var keys = LoadReswKeys();
+        var missing = suffixes
+            .Select(suffix => uid + suffix)
+            .Where(key => !keys.Contains(key))
+            .ToList();
+
+        Assert.True(missing.Count == 0,
+            $"Missing en-us resw keys for x:Uid '{uid}': {string.Join(", ", missing)}");
+    }
+
+    [Theory]
+    [MemberData(nameof(MiniMaxVoiceSettingsUids))]
+    public void MiniMaxVoiceSettingsControl_IsLocalized(string uid, string[] suffixes)
+    {
+        Assert.Contains(uid, LoadVoiceSettingsXamlUids());
+
         var keys = LoadReswKeys();
         var missing = suffixes
             .Select(suffix => uid + suffix)
@@ -150,6 +177,7 @@ public sealed class CapabilitiesPageLocalizationCoverageTests
         Assert.Contains("TtsCapability.WindowsProvider", readiness);
         Assert.Contains("TtsCapability.PiperProvider", readiness);
         Assert.Contains("TtsCapability.ElevenLabsProvider", readiness);
+        Assert.Contains("TtsCapability.MiniMaxProvider", readiness);
         Assert.DoesNotContain("EnsureWhisperModelDownloaded", pageSource);
         Assert.DoesNotContain("UpdateSttCard", pageSource);
         Assert.DoesNotContain("UpdateTtsCard", pageSource);

@@ -1,3 +1,21 @@
+// <summary>
+// Bounded, loopback-only health and model-state client for the managed llama-server router.
+// Parses router model metadata (path from status.args or top-level path) into
+// LlamaServerModelStatusEvidence, and LlamaServerClient polls /health plus model state to
+// produce LlamaServerRouterProbeResult used to decide when the managed endpoint is ready.
+// Usage:
+//   using var client = new LlamaServerClient();
+//   LlamaServerRouterProbeResult probe = await client.ProbeManagedModelAsync(
+//       endpoint: new Uri("http://127.0.0.1:18803/v1"),
+//       modelAlias: "local-model",
+//       expectedModelPath: install.ModelPath,
+//       cancellationToken);
+//   if (probe.IsHealthy &&
+//       probe.ModelState is LocalAiModelAvailabilityState.Verified or LocalAiModelAvailabilityState.Loaded)
+//   {
+//       // The public probe evidence is ready; the runtime service also validates the exact model path.
+//   }
+// </summary>
 using System.Text.Json;
 
 namespace OpenClaw.Connection.LocalAi;
@@ -6,7 +24,14 @@ public sealed record LlamaServerRouterProbeResult(
     bool IsHealthy,
     LocalAiModelAvailabilityState ModelState,
     string? ReportedModelPath,
-    string? Detail);
+    string? Detail)
+{
+    internal bool IsReadyForManagedModel(string expectedModelPath) =>
+        IsHealthy &&
+        ModelState is LocalAiModelAvailabilityState.Verified or LocalAiModelAvailabilityState.Loaded &&
+        !string.IsNullOrWhiteSpace(ReportedModelPath) &&
+        LlamaServerModelStatusParser.PathsEqual(ReportedModelPath, expectedModelPath);
+}
 
 public sealed record LlamaServerModelStatusEvidence(
     LocalAiModelAvailabilityState State,
@@ -119,7 +144,7 @@ public static class LlamaServerModelStatusParser
         return modelPath;
     }
 
-    private static bool PathsEqual(string left, string right)
+    internal static bool PathsEqual(string left, string right)
     {
         try
         {
@@ -134,7 +159,7 @@ public static class LlamaServerModelStatusParser
 
 internal interface ILlamaServerClient : IDisposable
 {
-    Task<LlamaServerRouterProbeResult> ProbeRouterAsync(
+    Task<LlamaServerRouterProbeResult> ProbeManagedModelAsync(
         Uri endpoint,
         string modelAlias,
         string expectedModelPath,
@@ -146,25 +171,30 @@ public sealed class LlamaServerClient : ILlamaServerClient
 {
     private const int MaxEvidenceResponseBytes = 1024 * 1024;
     private readonly HttpClient _client;
+    private readonly Func<string?>? _getApiKey;
 
-    public LlamaServerClient() : this(new SocketsHttpHandler
+    public LlamaServerClient(Func<string?>? getApiKey = null) : this(new SocketsHttpHandler
     {
         UseProxy = false,
         AllowAutoRedirect = false,
         ConnectTimeout = TimeSpan.FromSeconds(2),
-    })
+    }, getApiKey)
     {
     }
 
-    internal LlamaServerClient(HttpMessageHandler handler)
+    internal LlamaServerClient(
+        HttpMessageHandler handler,
+        Func<string?>? getApiKey = null,
+        TimeSpan? timeout = null)
     {
+        _getApiKey = getApiKey;
         _client = new HttpClient(handler ?? throw new ArgumentNullException(nameof(handler)), disposeHandler: true)
         {
-            Timeout = TimeSpan.FromSeconds(3),
+            Timeout = timeout ?? TimeSpan.FromSeconds(3),
         };
     }
 
-    public async Task<LlamaServerRouterProbeResult> ProbeRouterAsync(
+    public async Task<LlamaServerRouterProbeResult> ProbeManagedModelAsync(
         Uri endpoint,
         string modelAlias,
         string expectedModelPath,
@@ -191,20 +221,29 @@ public sealed class LlamaServerClient : ILlamaServerClient
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return new(true, LocalAiModelAvailabilityState.Unknown, null, "The model status check timed out.");
+            return new(false, LocalAiModelAvailabilityState.Unknown, null, "The model status check timed out.");
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException or JsonException or InvalidDataException)
         {
-            return new(true, LocalAiModelAvailabilityState.Unknown, null, "The model status response was invalid.");
+            return new(false, LocalAiModelAvailabilityState.Unknown, null, "The model status response was invalid.");
         }
     }
+
+    [Obsolete("Use ProbeManagedModelAsync instead.")]
+    public Task<LlamaServerRouterProbeResult> ProbeRouterAsync(
+        Uri endpoint,
+        string modelAlias,
+        string expectedModelPath,
+        CancellationToken cancellationToken = default) =>
+        ProbeManagedModelAsync(endpoint, modelAlias, expectedModelPath, cancellationToken);
 
     private async Task<bool> ProbeHealthAsync(Uri endpoint, CancellationToken cancellationToken)
     {
         try
         {
-            using var response = await _client.GetAsync(
-                    BuildEndpointUri(endpoint, "/health"),
+            using var request = CreateRequest(BuildEndpointUri(endpoint, "/health"));
+            using var response = await _client.SendAsync(
+                    request,
                     HttpCompletionOption.ResponseHeadersRead,
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -234,8 +273,9 @@ public sealed class LlamaServerClient : ILlamaServerClient
         string expectedModelPath,
         CancellationToken cancellationToken)
     {
-        using var response = await _client.GetAsync(
-                BuildEndpointUri(endpoint, "/models", "autoload=false"),
+        using var request = CreateRequest(BuildEndpointUri(endpoint, "/models", "autoload=false"));
+        using var response = await _client.SendAsync(
+                request,
                 HttpCompletionOption.ResponseHeadersRead,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -249,12 +289,21 @@ public sealed class LlamaServerClient : ILlamaServerClient
             modelAlias,
             expectedModelPath);
         if (evidence is null)
-            return new(true, LocalAiModelAvailabilityState.NotInstalled, null, "The configured model is not registered.");
+            return new(false, LocalAiModelAvailabilityState.NotInstalled, null, "The configured model is not registered.");
         return new(
-            true,
+            evidence.State is LocalAiModelAvailabilityState.Verified or LocalAiModelAvailabilityState.Loaded,
             evidence.State,
             evidence.ModelPath,
             $"llama-server reports the model as {evidence.ServerStatus}.");
+    }
+
+    private HttpRequestMessage CreateRequest(Uri uri)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, uri);
+        if (_getApiKey?.Invoke() is { } apiKey)
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+                "Bearer", LocalAiApiCredentialStore.RequireApiKey(apiKey));
+        return request;
     }
 
     private static void ValidateManagedEndpoint(Uri endpoint)
@@ -279,17 +328,21 @@ public sealed class LlamaServerClient : ILlamaServerClient
             Query = query ?? string.Empty,
         }.Uri;
 
-    private static async Task<byte[]> ReadBoundedAsync(HttpContent content, CancellationToken cancellationToken)
+    private async Task<byte[]> ReadBoundedAsync(HttpContent content, CancellationToken cancellationToken)
     {
         if (content.Headers.ContentLength is > MaxEvidenceResponseBytes)
             throw new InvalidDataException("The llama-server evidence response exceeds the size limit.");
 
-        await using Stream input = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using var readTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (_client.Timeout > TimeSpan.Zero && _client.Timeout != Timeout.InfiniteTimeSpan)
+            readTimeout.CancelAfter(_client.Timeout);
+
+        await using Stream input = await content.ReadAsStreamAsync(readTimeout.Token).ConfigureAwait(false);
         using var output = new MemoryStream();
         var buffer = new byte[16 * 1024];
         while (true)
         {
-            int read = await input.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false);
+            int read = await input.ReadAsync(buffer.AsMemory(), readTimeout.Token).ConfigureAwait(false);
             if (read == 0)
                 return output.ToArray();
             if (output.Length + read > MaxEvidenceResponseBytes)

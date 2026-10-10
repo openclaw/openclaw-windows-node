@@ -52,6 +52,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private ITrayController? _trayController;
     private IWindowManager? _windowManager;
     private GatewayConnectionManager? _connectionManager;
+    internal InteractiveGatewayEndpointAuthorizer? InteractiveEndpointAuthorizer { get; private set; }
     private GatewayDirectConnectService? _gatewayDirectConnectService;
     private GatewayDashboardLinkService? _gatewayDashboardLinkService;
     private GatewayRegistry? _gatewayRegistry;
@@ -59,6 +60,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private ManagedLocalGatewayPortProvenanceService? _managedLocalPortProvenance;
     private OpenClawTray.Chat.OpenClawChatCoordinator? _chatCoordinator;
     private ILocalAiRuntime? _localAiRuntime;
+    private LocalAiGatewayLifecycle? _localAiGatewayLifecycle;
 
     /// <summary>
     /// Root DI composition root, built once during startup and disposed during
@@ -205,6 +207,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private readonly SshTunnelRecoveryBudget _sshTunnelRecoveryBudget = new();
     private GlobalHotkeyService? _globalHotkey;
     private Mutex? _mutex;
+    // Do not release during managed shutdown: a failed service disposal may leave state
+    // writers running. Windows closes this handle only when the process terminates.
+    private IDisposable? _innoMigrationLease;
+    private NativeRestartRecoveryStore? _nativeRestartRecovery;
     private Microsoft.UI.Dispatching.DispatcherQueue? _dispatcherQueue;
     private AppState? _appState;
     internal AppState? AppState => _appState;
@@ -221,6 +227,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private string? _lastManagerConnectedSideEffectsKey;
     private SettingsWriteOrigin? _trayPermissionWriteOrigin;
     private SettingsWriteOrigin? _appCapabilityPermissionWriteOrigin;
+    private SettingsWriteOrigin? _trayAutoStartWriteOrigin;
+
+    /// <summary>
+    /// Serializes auto-start mutations so startup reconciliation and a user toggle cannot
+    /// interleave their read-decide-write sequences against Windows and settings.
+    /// </summary>
+    private readonly SemaphoreSlim _autoStartMutationGate = new(1, 1);
 
     // FrozenDictionary for O(1) case-insensitive notification type → setting lookup — no per-call allocation.
     private static readonly System.Collections.Frozen.FrozenDictionary<string, Func<SettingsManager, bool>> s_notifTypeMap =
@@ -240,6 +253,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private DiagnosticsClipboardService? _diagnosticsClipboard;
     private ToastService? _toastService;
     private AppNotificationService? _appNotificationService;
+    private SettingsPersistenceNotification? _settingsPersistenceNotification;
     internal AppNotificationService? AppNotifications => _appNotificationService;
     private string? _lastConnectionIssueNotificationKey;
     private readonly Dictionary<string, string> _reportedChannelIssueSignatures = new(StringComparer.OrdinalIgnoreCase);
@@ -284,6 +298,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
     public App()
     {
+        // Validate before restart handling, logging, settings, or run-marker writes.
+        _ = GatewayFixtureIsolation.Get();
+
         WaitForRestartSourceIfRequested(Environment.GetCommandLineArgs());
         StartupInputConfigurator.Configure();
 
@@ -292,7 +309,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         if (!string.IsNullOrEmpty(langOverride))
         {
             // SECURITY: Whitelist known locale codes to prevent locale injection
-            string[] allowedLocales = ["en-us", "fr-fr", "nl-nl", "zh-cn", "zh-tw"];
+            string[] allowedLocales = ["en-us", "fr-fr", "nl-nl", "zh-cn", "zh-tw", "pt-br"];
             if (allowedLocales.Contains(langOverride.ToLowerInvariant()))
                 LocalizationHelper.SetLanguageOverride(langOverride);
             else
@@ -417,10 +434,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private void OnUiThread(Microsoft.UI.Dispatching.DispatcherQueueHandler action) => _dispatcherQueue?.TryEnqueue(action);
 
     /// <summary>
-    /// Check if the app was launched via protocol activation (MSIX deep link).
-    /// In WinUI 3, protocol activation is retrieved via AppInstance, not OnActivated.
+    /// Preserve packaged activation identity before planning or forwarding a launch.
     /// </summary>
-    private static string? GetProtocolActivationUri()
+    private static (LaunchActivationKind Kind, string? ProtocolUri) GetLaunchActivation()
     {
         try
         {
@@ -428,15 +444,20 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             if (activatedArgs.Kind == Microsoft.Windows.AppLifecycle.ExtendedActivationKind.Protocol
                 && activatedArgs.Data is global::Windows.ApplicationModel.Activation.IProtocolActivatedEventArgs protocolArgs)
             {
-                return protocolArgs.Uri?.ToString();
+                return (LaunchActivationKind.Protocol, protocolArgs.Uri?.ToString());
             }
+            return (activatedArgs.Kind switch
+            {
+                Microsoft.Windows.AppLifecycle.ExtendedActivationKind.StartupTask => LaunchActivationKind.StartupTask,
+                Microsoft.Windows.AppLifecycle.ExtendedActivationKind.Launch => LaunchActivationKind.Launch,
+                _ => LaunchActivationKind.Other
+            }, null);
         }
         catch (Exception ex)
         {
-            // Not activated via protocol, or not packaged. Surface at Debug for diagnostics.
-            Logger.Debug($"GetProtocolActivationUri: {ex.GetType().Name}: {ex.Message}");
+            Logger.Debug($"GetLaunchActivation: {ex.GetType().Name}: {ex.Message}");
         }
-        return null;
+        return (LaunchActivationKind.Launch, null);
     }
 
     /// <summary>
@@ -529,8 +550,14 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             return; // Environment.Exit called inside; defensive return
         }
 
-        // Check for protocol activation (MSIX packaged apps receive deep links this way)
-        string? protocolUri = GetProtocolActivationUri();
+        if (await StoreMigrationStartupGuard.ShouldStopLaunchAsync(DeepLinkPipeName))
+        {
+            Exit();
+            return;
+        }
+
+        var activation = GetLaunchActivation();
+        string? protocolUri = activation.ProtocolUri;
 
         // Single instance check - keep mutex alive for app lifetime.
         // When running with an isolated data dir (tests), suffix the mutex name so
@@ -553,7 +580,32 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         }
         _mutex = new Mutex(true, mutexName, out bool createdNew);
         var ownsMutex = createdNew;
-        if (!ownsMutex && _isPostSetupRestart)
+        _nativeRestartRecovery = new NativeRestartRecoveryStore(AppIdentity.ResolveRoamingDataDirectory());
+        if (ownsMutex && string.IsNullOrEmpty(protocolUri) && _startupArgs.Length == 1 && string.IsNullOrEmpty(_postSetupLaunch))
+        {
+            try
+            {
+                _postSetupLaunch = _nativeRestartRecovery.Read();
+                _isPostSetupRestart |= _postSetupLaunch is not null;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+            {
+                Logger.Error("Saved setup restart could not be read. Reopen setup to select a destination.");
+                NativeRestartAdmission.Notify(LocalizationHelper.GetString("Onboarding_RestartRecovery_Invalid"),
+                    LocalizationHelper.GetString("Onboarding_RestartRecovery_Title"));
+            }
+        }
+        var nativeRestart = _isPostSetupRestart && SetupDashboardHandoff.ParseHandle(_postSetupLaunch) is not null;
+        if (nativeRestart)
+        {
+            ownsMutex = NativeRestartAdmission.Acquire(_postSetupLaunch!, _nativeRestartRecovery.Save,
+                timeout => ownsMutex || _mutex.WaitOne(timeout),
+                failure => NativeRestartAdmission.PromptRetry(
+                    LocalizationHelper.GetString(failure == NativeRestartWaitFailure.PreviousInstance
+                        ? "Onboarding_RestartRecovery_Waiting" : "Onboarding_RestartRecovery_Storage"),
+                    LocalizationHelper.GetString("Onboarding_RestartRecovery_Title")));
+        }
+        else if (!ownsMutex && _isPostSetupRestart)
         {
             try
             {
@@ -567,20 +619,25 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             }
         }
 
-        _activationRouter = new ActivationRouter(AppIdentity.ProtocolScheme, DeepLinkPipeName);
+        // Keep Inno's AppMutex held while finish-migration guidance is visible.
+        if (ownsMutex && InnoMigrationStartupGuard.ShouldStopLaunch(out _innoMigrationLease))
+        {
+            Exit();
+            return;
+        }
+
+        _activationRouter = new ActivationRouter(AppIdentity.ProtocolScheme, DeepLinkPipeName,
+            InnoMigrationHandoff.CreateShutdownHandler(_dispatcherQueue!, ExitApplication));
 
         if (!ownsMutex)
         {
-            // Forward deep link args to running instance (command-line or protocol activation)
-            var deepLink = _activationRouter.ResolveLaunchCandidate(new LaunchActivationInput(
+            if (nativeRestart) { Exit(); return; }
+            await _activationRouter.ForwardLaunchToPrimaryAsync(new LaunchActivationInput(
                 protocolUri,
                 _startupArgs,
                 _postSetupLaunch,
-                SetupShownDuringStartup: false));
-            if (deepLink != null)
-            {
-                await _activationRouter.ForwardToPrimaryAsync(deepLink, CancellationToken.None);
-            }
+                SetupShownDuringStartup: false,
+                Kind: activation.Kind), CancellationToken.None);
             Exit();
             return;
         }
@@ -622,12 +679,16 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 GetConnectionManager: () => _connectionManager,
                 GetGatewayRegistry: () => _gatewayRegistry,
                 GetSettings: () => _settings,
+                GetGatewayDirectConnectService: () => GatewayDirectConnectService,
+                GetLocalAiRuntime: () => _localAiRuntime,
+                GetLocalAiGatewayLifecycle: () => _localAiGatewayLifecycle,
                 GetNodeService: () => _nodeService,
                 GetVoiceService: () => _nodeService?.VoiceService ?? _standaloneVoiceService,
                 GetPageActivator: () => PageActivator,
                 GetPendingChatSessionKey: () => PendingChatSessionKey,
                 GetStartupArgs: () => _startupArgs,
                 IsDeepLinkArg: IsDeepLinkArg,
+                RequiresSetup: () => !_isPostSetupRestart && _settings is not null && RequiresSetup(_settings),
                 Connect: ReconnectWithSyncedBrowserProxyForward,
                 Disconnect: () =>
                 {
@@ -637,11 +698,19 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 SettingsSaved: OnSettingsSaved,
                 AdvancedSetupRequested: OnSetupAdvancedSetupRequested,
                 SetupCompleted: OnSetupCompleted,
-                ApplyTheme: ApplyThemePreference));
+                ApplyTheme: ApplyThemePreference,
+                PublishNativeCompletion: (choice, ct) => RestartAfterSetupAsync(null, "chat",
+                    choice, ct),
+                ApplyNativeStartup: (enabled, ct) => AutoStartSettingsApplier.ApplyExplicitAsync(
+                    _autoStartMutationGate, enabled,
+                    () => _settings?.AutoStart ?? throw new InvalidOperationException("Settings are unavailable."),
+                    AutoStartManager.ApplySetupPreferenceAsync, ct),
+                GetSettingsStore: () => SettingsStore));
         _updateCoordinator = new UpdateCoordinator(
             AppUpdater,
             _appState,
             _settings,
+            () => _connectionManager?.OperatorClient,
             () => _windowManager?.DialogXamlRoot,
             refreshStatus: UpdateStatusDetailWindow,
             exit: Exit);
@@ -656,6 +725,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         _diagnosticsClipboard = new DiagnosticsClipboardService(BuildCommandCenterState);
         _toastService = new ToastService(() => _settings);
         _appNotificationService = new AppNotificationService();
+        _settingsPersistenceNotification = new SettingsPersistenceNotification(
+            _settings, new OpenClawTray.Presentation.Adapters.WinUIDispatcher(_dispatcherQueue!),
+            _appNotificationService, LocalizationHelper.GetString);
         PublishSandboxRiskNotificationIfNeeded();
 
         // Inbound pairing approvals: surface a focused dialog + awareness toast when another
@@ -700,21 +772,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         // explicitly via Application.Exit().
         DispatcherShutdownMode = DispatcherShutdownMode.OnExplicitShutdown;
 
-        // Check for updates before launching. Skip in test instances — no UI dialogs,
-        // no network calls, no startup delay.
-        if (DataDirOverride is null &&
-            Environment.GetEnvironmentVariable("OPENCLAW_SKIP_UPDATE_CHECK") != "1")
-        {
-            var shouldLaunch = await _updateCoordinator.CheckForUpdatesAsync();
-            if (!shouldLaunch)
-            {
-                Exit();
-                return;
-            }
-        }
-
-        // Register toast activation handler
-        ToastNotificationManagerCompat.OnActivated += OnToastActivated;
+        // Touching the toolkit initializes installed COM/AUMID registration, even
+        // when notification display is disabled. Data overrides cannot redirect it.
+        if (!GatewayFixtureIsolation.IsEnabled && !AppIdentity.IsIsolated)
+            ToastNotificationManagerCompat.OnActivated += OnToastActivated;
 
         _sshTunnelService = new SshTunnelService(new AppLogger());
         _sshTunnelService.TunnelExited += OnSshTunnelExited;
@@ -727,9 +788,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         InitializeTrayIcon();
         ShowSurfaceImprovementsTipIfNeeded();
 
-        // The singleton Local AI installation belongs to exactly one explicit
-        // setup-managed local WSL gateway. Load the registry before composing its
-        // lifecycle so no hardcoded distro can receive provider commands.
+        // Load ownership before composing the single Windows inference runtime.
         var appLogger = new AppLogger();
         _gatewayRegistry = new GatewayRegistry(SettingsManager.SettingsDirectoryPath, logger: appLogger);
         _gatewayRegistry.Load();
@@ -739,11 +798,16 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             new WslExeCommandRunner(localAiLogger),
             new LocalAiGatewayDistroResolver(_gatewayRegistry),
             localAiLogger);
+        _localAiGatewayLifecycle = new LocalAiGatewayLifecycle(localAiPaths,
+            SettingsManager.SettingsDirectoryPath, () => _gatewayRegistry, () => _connectionManager,
+            localAiEndpointLifecycle, localAiLogger);
         _localAiRuntime = new LlamaServerRuntimeService(
             new LlamaServerRuntimeOptions
             {
                 Paths = localAiPaths,
-                EndpointLifecycle = localAiEndpointLifecycle,
+                EndpointLifecycle = _localAiGatewayLifecycle,
+                GetApiKey = _localAiGatewayLifecycle.GetApiKey,
+                GetRecoveryPort = _localAiGatewayLifecycle.GetRecoveryPort,
             },
             localAiLogger);
 
@@ -751,7 +815,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         // can never delay or preempt tray initialization. It only needs the
         // dispatcher + settings (created above) and failures are non-fatal.
         InitializeServiceProvider();
-        StartLocalAiRouterInBackground();
+        if (!_localAiGatewayLifecycle.IsNativeMode)
+            StartLocalAiRouterInBackground();
 
         // Initialize connection manager before setup flow.
         var credentialResolver = new CredentialResolver(DeviceIdentityFileReader.Instance);
@@ -818,6 +883,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         // SshTunnelService implements ISshTunnelManager directly — no shim needed
         var managedLocalPortProvenance = _managedLocalPortProvenance =
             new ManagedLocalGatewayPortProvenanceService(appLogger);
+        var nativeGatewayResolver = new OpenClaw.SetupEngine.UI.NativeGatewayPackageResolver();
+        var nativeGatewayRuntime = OpenClaw.Connection.NativeGateway.NativeGatewayRuntimeRouter.Create(
+            _gatewayRegistry, nativeGatewayResolver, appLogger);
+        InteractiveEndpointAuthorizer = new InteractiveGatewayEndpointAuthorizer(
+            nativeGatewayRuntime, managedLocalPortProvenance.IsStrongCredentialAllowed, appLogger);
         _connectionManager = new GatewayConnectionManager(
             credentialResolver, clientFactory, _gatewayRegistry, appLogger,
             identityStore: new DeviceIdentityFileStore(appLogger),
@@ -826,7 +896,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             diagnostics: diagnostics,
             tunnelManager: _sshTunnelService,
             endpointProvenanceProbe: managedLocalPortProvenance.InspectAsync,
-            validationTunnelFactory: () => new SshTunnelService(appLogger));
+            validationTunnelFactory: () => new SshTunnelService(appLogger),
+            nativeGatewayRuntime: nativeGatewayRuntime);
         _gatewayDashboardLinkService = new GatewayDashboardLinkService(
             (gatewayId, cancellationToken) => _connectionManager.RevalidateTailscaleDashboardAuthAsync(
                 gatewayId,
@@ -834,6 +905,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             LocalizationHelper.GetString);
         _connectionManager.OperatorClientChanged += OnOperatorClientChanged;
         _connectionManager.StateChanged += OnManagerStateChanged;
+        _localAiGatewayLifecycle.Attach(_connectionManager, _localAiRuntime);
         _gatewayDirectConnectService = new GatewayDirectConnectService(
             _connectionManager,
             _gatewayRegistry,
@@ -854,15 +926,19 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 setupShownDuringStartup = true;
             }
         }
-        catch (DeviceIdentityLoadException ex)
-        {
-            Logger.Error($"Stored device identity load failed during launch setup detection: {ex.InnerException?.Message}");
-            ShowTransientConnectionError(ex.Message);
-        }
         catch (Exception ex)
         {
             Logger.Error($"Onboarding failed during launch (tray remains available): {ex}");
         }
+
+        // Packaged builds must reconcile auto-start with Windows after settings load.
+        // Nothing else does: SettingsChangeCoordinator.Apply only runs on a settings
+        // *change*, so a preserved AutoStart=true would be shown as enabled while the
+        // manifest's StartupTask sat disabled. Backgrounded so a slow StartupTask query
+        // cannot delay tray availability.
+        ObserveBackgroundFault(
+            ReconcileAutoStartOnStartupAsync(),
+            "[App] Failed to reconcile auto-start with Windows");
 
         // Ensure NodeService is constructed BEFORE InitializeGatewayClient triggers a
         // NodeConnector connect. The NodeConnector.ClientCreated event subscription
@@ -937,6 +1013,21 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
         InitializeGatewayClient();
 
+        // Resolve the existing connection-manager-owned client before checking
+        // whether its authenticated Gateway channel suppresses an ordinary update.
+        if (DataDirOverride is null &&
+            Environment.GetEnvironmentVariable("OPENCLAW_SKIP_UPDATE_CHECK") != "1")
+        {
+            var shouldLaunch = await _activationRouter.CheckOrdinaryStartupUpdateAsync(
+                new LaunchActivationInput(_pendingProtocolUri, _startupArgs, _postSetupLaunch, setupShownDuringStartup, activation.Kind),
+                () => _updateCoordinator.CheckForUpdatesAsync());
+            if (!shouldLaunch)
+            {
+                Exit();
+                return;
+            }
+        }
+
         // Pre-warm chat window (WebView2 init takes 1-3s, do it now so left-click is instant)
         if (_settings != null &&
             TryResolveChatCredentials(out var prewarmUrl, out var prewarmToken, out _, out var prewarmIsBootstrapToken) &&
@@ -963,7 +1054,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             _pendingProtocolUri,
             _startupArgs,
             _postSetupLaunch,
-            setupShownDuringStartup));
+            setupShownDuringStartup,
+            activation.Kind));
         await _activationRouter.DispatchPlanAsync(launchPlan, this, CancellationToken.None);
 
         Logger.Info("Application started (WinUI 3)");
@@ -1006,10 +1098,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         _trayController = new TrayController(new TrayControllerCallbacks(
             CaptureMenuSnapshot: CaptureTrayMenuSnapshot,
             CaptureIconSnapshot: CaptureTraySnapshot,
-            IsOperatorConnected: () =>
-                _connectionManager?.CurrentSnapshot.OperatorState == RoleConnectionState.Connected,
-            ShowChat: ShowChatWindow,
-            ShowConnection: () => ShowHub("connection"),
+            ShowChat: () => ShowHub("chat"),
             DispatchMenuAction: action => OnTrayMenuItemClicked(null, action),
             ApplyTheme: ApplyThemePreference,
             IsDispatcherAvailable: () => _dispatcherQueue != null,
@@ -1549,6 +1638,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                     (edit, value) => edit.NodeSttEnabled = value,
                     (settings, value) => settings.NodeSttEnabled = value);
                 break;
+            case "perm-toggle|Ollama":
+                PersistTrayPermission(
+                    nameof(SettingsManager.NodeOllamaInferenceEnabled),
+                    !_settings.NodeOllamaInferenceEnabled,
+                    (edit, value) => edit.NodeOllamaInferenceEnabled = value,
+                    (settings, value) => settings.NodeOllamaInferenceEnabled = value);
+                break;
         }
     }
 
@@ -1565,6 +1661,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             settings => fallbackEdit(settings, value),
             out _))
         {
+            _nodeService?.ApplyOllamaPermission(
+                _settings?.NodeOllamaInferenceEnabled == true);
             ReconnectWithSyncedBrowserProxyForward();
         }
     }
@@ -1640,7 +1738,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                     _settings.NodeScreenEnabled,
                     _settings.NodeLocationEnabled,
                     _settings.NodeTtsEnabled,
-                    _settings.NodeSttEnabled),
+                    _settings.NodeSttEnabled,
+                    _settings.NodeOllamaInferenceEnabled),
             SetupMenuLabel = setupMenuLabel,
             ShowSetupMenuEntry = !hasSetupManagedLocalWslGateway,
             LastUpdated = _appState?.LastCheckTime,
@@ -2349,7 +2448,17 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
     private bool RequiresSetup(SettingsManager settings)
     {
-        return StartupSetupState.RequiresSetup(settings, IdentityDataPath, _gatewayRegistry);
+        try
+        {
+            return StartupSetupState.RequiresSetup(settings, IdentityDataPath, _gatewayRegistry);
+        }
+        catch (DeviceIdentityLoadException ex)
+        {
+            Logger.Error($"Stored device identity load failed during setup detection: {ex.InnerException?.Message}");
+            ShowTransientConnectionError(ex.Message);
+            // Keep connection recovery available; an unreadable identity is not a fresh install.
+            return false;
+        }
     }
 
     private bool ShouldInitializeNodeService()
@@ -2766,14 +2875,15 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         // Agent requested a notification via node.invoke system.notify
         try
         {
+            AppNotification notification = AppNotificationMapper.FromNodeSystemNotification(args);
             AppNotificationPublisher.Publish(
                 _appNotificationService,
                 _toastService,
                 new AppNotificationPublishRequest(
-                    AppNotificationMapper.FromNodeSystemNotification(args),
+                    notification,
                     new ToastContentBuilder()
-                        .AddText(args.Title)
-                        .AddText(args.Body)));
+                        .AddText(notification.Title)
+                        .AddText(notification.Message)));
         }
         catch (Exception ex)
         {
@@ -2989,11 +3099,16 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         if (_settings?.ShowNotifications != true) return;
         if (!ShouldShowNotification(notification)) return;
 
+        AppNotification appNotification = AppNotificationMapper.FromGatewayNotification(
+            notification,
+            LocalizationHelper.GetString("AppNotification_ExecApprovalPending_OpenChatAction"));
+        if (notification.IsChat && string.IsNullOrWhiteSpace(appNotification.Message)) return;
+
         // Store in history
         NotificationHistoryService.AddNotification(new Services.GatewayNotification
         {
-            Title = notification.Title,
-            Message = notification.Message,
+            Title = appNotification.Title,
+            Message = appNotification.Message,
             Category = notification.Type
         });
 
@@ -3001,8 +3116,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         try
         {
             var builder = new ToastContentBuilder()
-                .AddText(notification.Title ?? "OpenClaw")
-                .AddText(notification.Message);
+                .AddText(appNotification.Title)
+                .AddText(appNotification.Message);
 
             var logoPath = GetNotificationIcon(notification.Type);
             if (!string.IsNullOrEmpty(logoPath) && System.IO.File.Exists(logoPath))
@@ -3027,9 +3142,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 _appNotificationService,
                 _toastService,
                 new AppNotificationPublishRequest(
-                    AppNotificationMapper.FromGatewayNotification(
-                        notification,
-                        LocalizationHelper.GetString("AppNotification_ExecApprovalPending_OpenChatAction")),
+                    appNotification,
                     builder));
         }
         catch (Exception ex)
@@ -3222,14 +3335,14 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
     private void PublishSandboxRiskNotification(MxcAvailability availability)
     {
-        if (availability.HasAnyBackend)
+        if (availability.CanRunSystemRunSandbox)
         {
             ClearSandboxRiskNotification();
             return;
         }
 
-        var reasonText = availability.UnsupportedReasons.Count > 0
-            ? string.Join("  ·  ", availability.UnsupportedReasons)
+        var reasonText = availability.SystemRunSandboxUnsupportedReasons.Count > 0
+            ? string.Join("  ·  ", availability.SystemRunSandboxUnsupportedReasons)
             : LocalizationHelper.GetString("AppNotification_SandboxUnavailable_DefaultReason");
         var blockHostFallback = _settings?.SystemRunBlockHostFallbackWhenMxcUnavailable == true;
         var mode = blockHostFallback ? "blocked" : "host-fallback";
@@ -3292,8 +3405,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         // Suppress chat notifications when a chat window is already showing them
         if (notification.IsChat)
         {
-            if (_windowManager?.IsHubOpen == true)
-                return false;
             if (_windowManager?.IsChatVisible == true)
                 return false;
         }
@@ -3714,33 +3825,42 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
     private void OnSetupCompleted(object? sender, SetupCompletedEventArgs e) =>
         AsyncEventHandlerGuard.Run(
-            () => RestartAfterSetupAsync(e.EnableAutoStart),
+            () => RestartAfterSetupAsync(
+                e.ApplyStartupPreference ? e.EnableAutoStart : null,
+                OpenClaw.SetupEngine.OnboardingFlowPolicy.GetCompletionLaunchTarget(e.Route)),
             new AppLogger(),
             nameof(OnSetupCompleted));
 
-    private async Task RestartAfterSetupAsync(bool enableAutoStart)
+    private async Task RestartAfterSetupAsync(bool? enableAutoStart, string launchTarget,
+        OpenClaw.SetupEngine.SetupNativeCompletion? nativeCompletion = null, CancellationToken ct = default)
     {
         var exePath = ResolveCurrentExecutablePath();
         if (string.IsNullOrWhiteSpace(exePath) || !File.Exists(exePath))
         {
+            if (nativeCompletion is not null) throw new InvalidOperationException("The tray executable is unavailable.");
             await ShowSetupRestartErrorAsync("OpenClaw setup finished, but the tray executable could not be found for restart.");
             return;
         }
 
+        if (nativeCompletion is null)
+            await SetupStartupPolicy.ApplyClassicPreferenceAsync(enableAutoStart,
+                enabled => AutoStartSettingsApplier.ApplyExplicitAsync(_autoStartMutationGate, enabled,
+                    () => _settings?.AutoStart ?? throw new InvalidOperationException("Settings are unavailable."),
+                    AutoStartManager.ApplySetupPreferenceAsync, ct),
+                () => ShowSetupRestartErrorAsync(
+                    LocalizationHelper.GetString("Onboarding_StartupWarning_Message"),
+                    LocalizationHelper.GetString("Onboarding_StartupWarning_Title")));
+
         try
         {
-            if (enableAutoStart)
+            ct.ThrowIfCancellationRequested();
+            if (nativeCompletion is not null)
             {
-                try
-                {
-                    await AutoStartManager.SetAutoStartAsync(true);
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error($"Failed to enable autostart after setup: {ex}");
-                }
+                OpenClaw.SetupEngine.SetupGatewaySession.RequireCompletionGateway(
+                    AppIdentity.ResolveRoamingDataDirectory(), nativeCompletion.Verification);
+                var store = new SetupDashboardHandoffStore(AppIdentity.ResolveRoamingDataDirectory());
+                launchTarget = store.Issue(nativeCompletion);
             }
-
             var psi = new ProcessStartInfo(exePath)
             {
                 UseShellExecute = false,
@@ -3749,7 +3869,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             psi.ArgumentList.Add("--wait-for-pid");
             psi.ArgumentList.Add(Environment.ProcessId.ToString(CultureInfo.InvariantCulture));
             psi.ArgumentList.Add("--post-setup-launch");
-            psi.ArgumentList.Add("chat");
+            psi.ArgumentList.Add(launchTarget);
 
             var restarted = Process.Start(psi);
             if (restarted == null)
@@ -3757,17 +3877,30 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             restarted.Dispose();
 
             Logger.Info("Started post-setup tray restart process");
+            if (nativeCompletion is not null)
+            {
+                // Let the chooser's publication await finish before shutdown drains that same page.
+                if (!_dispatcherQueue!.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+                    AsyncEventHandlerGuard.Run(async () =>
+                    {
+                        _windowManager?.CloseSetup();
+                        await ExitApplicationAsync();
+                    }, new AppLogger(), "Native setup restart shutdown")))
+                    throw new InvalidOperationException("The app could not schedule setup shutdown.");
+                return;
+            }
             _windowManager?.CloseSetup();
             await ExitApplicationAsync();
         }
         catch (Exception ex)
         {
+            if (nativeCompletion is not null) throw;
             Logger.Error($"Failed to restart tray after setup: {ex}");
             await ShowSetupRestartErrorAsync("OpenClaw setup finished, but restarting the tray failed. The current tray will keep running; please exit and reopen OpenClaw.");
         }
     }
 
-    private async Task ShowSetupRestartErrorAsync(string message)
+    private async Task ShowSetupRestartErrorAsync(string message, string title = "Restart OpenClaw")
     {
         var xamlRoot = _windowManager?.SetupXamlRoot;
         if (xamlRoot is null)
@@ -3778,7 +3911,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
         var dialog = new ContentDialog
         {
-            Title = "Restart OpenClaw",
+            Title = title,
             Content = message,
             CloseButtonText = "OK",
             XamlRoot = xamlRoot,
@@ -3848,7 +3981,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             _settings.LegacyToken,
             _settings.LegacyBootstrapToken,
             (record, candidate) =>
-                _managedLocalPortProvenance?.IsStrongCredentialAllowed(record, candidate) == true,
+                InteractiveEndpointAuthorizer?.IsCredentialAllowed(record, candidate) == true,
             out var credential) ||
             credential == null)
         {
@@ -3864,24 +3997,51 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
     #region Actions
 
+    private void OpenNativeSetupCompletion(string handle, bool explicitRetry = false)
+    {
+        AsyncEventHandlerGuard.Run(async () =>
+        {
+            var launcher = new SetupNativeHandoffLauncher(
+                () => _gatewayRegistry?.GetActive(),
+                (proof, ct) => OpenClaw.SetupEngine.SetupNativeCompletionVerifier.VerifyAsync(
+                    AppIdentity.ResolveRoamingDataDirectory(), proof, ct, _connectionManager,
+                    (expected, token) => _localAiGatewayLifecycle is { } lifecycle && _localAiRuntime is { } runtime
+                        ? lifecycle.WaitForRuntimeAsync(expected, runtime, token) : Task.CompletedTask),
+                (choice, ct) => _windowManager?.ShowNativeSetupAsync(choice, ct)
+                    ?? Task.FromException(new InvalidOperationException("The native window host is unavailable.")),
+                failure => AsyncEventHandlerGuard.Run(
+                    () => _windowManager?.ShowNativeSetupFailureAsync(failure,
+                        () => OpenNativeSetupCompletion(handle, explicitRetry: true)) ?? Task.CompletedTask,
+                    new AppLogger(), "Native setup launch error"));
+            if (await launcher.OpenAsync(new SetupDashboardHandoffStore(AppIdentity.ResolveRoamingDataDirectory()),
+                handle, explicitRetry, restartRecovery: _nativeRestartRecovery))
+                _appNotificationService?.Dismiss(SetupNativeHandoffLauncher.FailureNotificationId);
+        }, new AppLogger(), nameof(OpenNativeSetupCompletion));
+    }
+
     private void OpenDashboard(string? path = null)
     {
-        if (_settings == null) return;
-        if (!EnsureSshTunnelConfigured())
+        AsyncEventHandlerGuard.Run(async () =>
         {
-            _toastService?.ShowToast(new ToastContentBuilder()
-                .AddText("SSH tunnel")
-                .AddText(_sshTunnelService?.LastError ?? "Check SSH tunnel settings and logs."));
-            return;
-        }
+            var service = _gatewayDashboardLinkService;
+            if (service is null)
+            {
+                ShowConnectionSettingsForPairingIssue("Dashboard", "Connection manager is not initialized");
+                return;
+            }
 
+            var launcher = CreateGatewayDashboardLauncher(
+                service,
+                ResolveActiveDashboardLinkRequest,
+                () => OpenDashboard(path));
+            await launcher.OpenAsync(path);
+        }, new AppLogger(), nameof(OpenDashboard));
+    }
+
+    private GatewayDashboardLinkRequest? ResolveActiveDashboardLinkRequest(string? path)
+    {
         if (!TryResolveChatCredentials(out var gatewayUrl, out var token, out var credentialSource, out var isBootstrapToken))
-        {
-            ShowConnectionSettingsForPairingIssue(
-                "Dashboard",
-                "Gateway URL or credential is not configured");
-            return;
-        }
+            return null;
 
         var appendBrowserCredential =
             !isBootstrapToken && credentialSource == CredentialResolver.SourceSharedGatewayToken;
@@ -3891,17 +4051,18 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             ? active.Id
             : null;
 
-        _ = OpenDashboardFromLinkServiceAsync(new GatewayDashboardLinkRequest(
+        return new GatewayDashboardLinkRequest(
             gatewayUrl,
             path,
             token,
             appendBrowserCredential,
-            tailscaleGatewayId));
+            tailscaleGatewayId);
     }
 
     internal async Task OpenDashboardFromLinkServiceAsync(
         GatewayDashboardLinkRequest request,
-        Func<GatewayDashboardLinkResult, Task<bool>>? validateBeforeLaunch = null)
+        Func<GatewayDashboardLinkResult, Task<bool>> validateBeforeLaunch,
+        Action retry)
     {
         var service = _gatewayDashboardLinkService;
         if (service is null)
@@ -3910,40 +4071,28 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             return;
         }
 
-        var result = await service.BuildAsync(request);
-        if (result.RevalidationError is not null)
-        {
-            Logger.Warn(result.RevalidationError);
-        }
+        var launcher = CreateGatewayDashboardLauncher(service, _ => request, retry);
+        await launcher.OpenSavedAsync(request, validateBeforeLaunch);
+    }
 
-        if (!result.Success)
-        {
-            ShowConnectionSettingsForPairingIssue(
+    private GatewayDashboardLauncher CreateGatewayDashboardLauncher(
+        GatewayDashboardLinkService service,
+        Func<string?, GatewayDashboardLinkRequest?> resolveRequest,
+        Action retry) =>
+        new(
+            EnsureSshTunnelConfigured,
+            resolveRequest,
+            service,
+            async url => await global::Windows.System.Launcher.LaunchUriAsync(new Uri(url)),
+            result => ShowConnectionSettingsForPairingIssue(
                 "Dashboard",
-                result.Error ?? "Dashboard URL is unavailable");
-            return;
-        }
-
-        if (validateBeforeLaunch is not null && !await validateBeforeLaunch(result))
-        {
-            return;
-        }
-
-        LaunchDashboardUrl(result.Url!);
-    }
-
-    private static void LaunchDashboardUrl(string url)
-    {
-
-        try
-        {
-            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
-        }
-        catch (Exception ex)
-        {
-            Logger.Error($"Failed to open dashboard: {ex.Message}");
-        }
-    }
+                result.Error ?? "Dashboard URL is unavailable"),
+            () => AsyncEventHandlerGuard.Run(
+                () => _windowManager?.ShowDashboardLaunchFailureAsync(retry) ?? Task.CompletedTask,
+                new AppLogger(),
+                "Dashboard launch error"),
+            () => _appNotificationService?.Dismiss(GatewayDashboardLauncher.FailureNotificationId),
+            warning => Logger.Warn(warning));
 
     // ── IAppCommands implementation ─────────────────────────────────────
 
@@ -3959,6 +4108,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     void IAppCommands.ShowChat() => ShowChatWindow();
     void IAppCommands.CheckForUpdates() => _ = _updateCoordinator!.CheckForUpdatesUserInitiatedAsync();
     void IAppCommands.ShowOnboarding() => _ = ShowOnboardingAsync();
+    void IAppCommands.ShowLocalAiSetup() => _ = _windowManager?.ShowLocalAiSetupAsync();
+    void IAppCommands.ShowLocalAiModelSetup() => _ = _windowManager?.ShowLocalAiModelSetupAsync();
     void IAppCommands.OpenLocalAiLogs() =>
         OpenFolder(new LocalAiPaths(AppIdentity.ResolveSetupLocalDataDirectory()).LogsDirectory, "Local AI logs");
     void IAppCommands.ShowGatewayWizard() => _ = ShowGatewayWizardAsync();
@@ -4044,9 +4195,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private async Task ToggleAutoStartAsync()
     {
         if (_settings == null) return;
-        _settings.AutoStart = !_settings.AutoStart;
-        _settings.Save();
-        await AutoStartManager.SetAutoStartAsync(_settings.AutoStart);
+
+        var origin = SettingsStore is { } store
+            ? GetOrCreateSettingsWriteOrigin(ref _trayAutoStartWriteOrigin, store)
+            : null;
+        await ApplyAutoStartCore(origin, !_settings.AutoStart);
     }
 
     /// <summary>
@@ -4057,8 +4210,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     /// triggering view model ignores its own change event.
     /// </summary>
     public async Task<bool> ApplyAutoStart(SettingsWriteOrigin origin, bool autoStart)
+        => await ApplyAutoStartCore(origin, autoStart);
+
+    private async Task<bool> ApplyAutoStartCore(SettingsWriteOrigin? origin, bool autoStart)
     {
         if (_settings == null) return false;
+        await _autoStartMutationGate.WaitAsync();
         try
         {
             if (SettingsStore is { } store)
@@ -4078,7 +4235,76 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         catch (Exception ex)
         {
             Logger.Error($"ApplyAutoStart failed: {ex.Message}");
+            var effectiveAutoStart = await AutoStartManager.ResolveAutoStartAfterFailedChangeAsync(autoStart, ex);
+            if (SettingsStore is { } store)
+            {
+                store.Update(origin, edit => edit.AutoStart = effectiveAutoStart);
+            }
+            else if (_settings != null)
+            {
+                _settings.AutoStart = effectiveAutoStart;
+                _settings.Save();
+            }
             return false;
+        }
+        finally
+        {
+            _autoStartMutationGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Aligns the stored auto-start preference with the state Windows actually reports,
+    /// so the Settings toggle never claims auto-start is on while nothing launches at logon.
+    /// </summary>
+    /// <remarks>
+    /// Runs under <see cref="_autoStartMutationGate"/> so the query-then-set sequence cannot
+    /// interleave with a user toggle: a toggle raised while this is in flight is applied after
+    /// it, and therefore wins. The preference is re-read before persisting as well, to cover
+    /// writes that reach settings without passing through the gate. The saved event is raised
+    /// after the gate is released, because subscribers apply auto-start themselves and must
+    /// not re-enter a non-reentrant gate.
+    /// </remarks>
+    private async Task ReconcileAutoStartOnStartupAsync()
+    {
+        if (_settings == null) return;
+        if (GatewayFixtureIsolation.IsEnabled)
+        {
+            Logger.Info("Gateway fixture mode: skipping Windows auto-start reconciliation.");
+            return;
+        }
+
+        var persisted = false;
+        await _autoStartMutationGate.WaitAsync();
+        try
+        {
+            var configured = _settings.AutoStart;
+            var effective = await AutoStartManager.ReconcileAutoStartAsync(configured);
+
+            if (!AutoStartReconciliation.ShouldPersistReconciledValue(configured, _settings.AutoStart, effective))
+                return;
+
+            Logger.Info($"Auto-start setting corrected from {configured} to {effective} to match Windows.");
+            if (SettingsStore is { } store)
+            {
+                store.Update(null, edit => edit.AutoStart = effective);
+            }
+            else
+            {
+                _settings.AutoStart = effective;
+                _settings.Save();
+            }
+
+            persisted = true;
+        }
+        finally
+        {
+            _autoStartMutationGate.Release();
+        }
+
+        if (persisted)
+        {
+            OnSettingsSaved(this, EventArgs.Empty);
         }
     }
 

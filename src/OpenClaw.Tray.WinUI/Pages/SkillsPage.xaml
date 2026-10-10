@@ -20,6 +20,8 @@
                 </StackPanel>
                 <ComboBox x:Uid="AgentFilterCombo" x:Name="AgentFilterCombo" Header="Agent"
                           MinWidth="200" Margin="0,0,0,8"/>
+                <InfoBar x:Name="NativeSetupError" Severity="Error" IsOpen="False"
+                         IsClosable="False" Visibility="Collapsed" />
 
                 <!-- Skills Groups -->
                 <StackPanel x:Name="SkillsGroups" Spacing="8" Visibility="Collapsed">

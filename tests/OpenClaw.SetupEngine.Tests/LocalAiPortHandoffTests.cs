@@ -35,6 +35,63 @@ public sealed class LocalAiPortHandoffTests
     }
 
     [Fact]
+    public async Task Preflight_RetainedSparkReceiptUsesInstalledModelCatalogDuringRepair()
+    {
+        SetupContext context = CreateContext(new LocalAiConfig
+        {
+            Enabled = true,
+            Port = 0,
+            SelectedModelId = LocalModelCatalog.Qwen35B_IQ4XSModelId,
+            InstalledReceiptModelId = LocalModelCatalog.Qwen35B_IQ4XSModelId,
+        });
+        var step = new PreflightLocalAiHardwareStep(new FakeHardwareProbe(CreateSparkHardware()));
+
+        StepResult result = await step.ExecuteAsync(context, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Success, result.Outcome);
+        Assert.Equal(LocalModelCatalog.Qwen35B_IQ4XSModelId, context.LocalAiEligibility!.Plan!.Model.Id);
+        Assert.Equal(LocalModelCatalog.RtxSpark48GbContextTokens, context.LocalAiEligibility.Plan.Profile.ContextTokens);
+    }
+
+    [Fact]
+    public async Task Preflight_RetiredSparkModelWithoutMatchingReceiptProofRemainsUnavailable()
+    {
+        SetupContext context = CreateContext(new LocalAiConfig
+        {
+            Enabled = true,
+            Port = 0,
+            SelectedModelId = LocalModelCatalog.Qwen35B_IQ4XSModelId,
+        });
+        var step = new PreflightLocalAiHardwareStep(new FakeHardwareProbe(CreateSparkHardware()));
+
+        StepResult result = await step.ExecuteAsync(context, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Equal(
+            LocalInferenceSelectionFailureCode.UnknownModel,
+            context.LocalAiEligibility!.SelectionFailureCode);
+    }
+
+    [Fact]
+    public async Task Preflight_StopsBeforeAnyDownloadWhenCapacityIsUnknown()
+    {
+        // A GPU whose CUDA memory could not be read has no
+        // trustworthy admission capacity, so setup must stop before downloading.
+        SetupContext context = CreateContext(new LocalAiConfig { Enabled = true, Port = 0 });
+        var step = new PreflightLocalAiHardwareStep(
+            new FakeHardwareProbe(CreateIncompleteFactsHardware()));
+
+        StepResult result = await step.ExecuteAsync(context, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Contains(
+            nameof(LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete),
+            result.Message,
+            StringComparison.Ordinal);
+        Assert.Null(context.LocalAiPort);
+    }
+
+    [Fact]
     public async Task PersistStep_RecordsRequestButNotEndpointBeforeHealth()
     {
         using var temp = new TempDirectory("local-ai-handoff-");
@@ -55,6 +112,16 @@ public sealed class LocalAiPortHandoffTests
         Assert.NotNull(saved);
         Assert.Equal(0, saved.Manifest.RequestedPort);
         Assert.Null(saved.Endpoint);
+        Assert.Equal(LocalAiInstallManifest.HubCacheReceiptSchemaVersion, saved.Manifest.SchemaVersion);
+        Assert.Equal(context.LocalAiModelInstall.CacheRoot, saved.Manifest.ModelCacheRoot);
+        Assert.Equal(context.LocalAiModelInstall.ModelPath, saved.Manifest.CachedModelPath);
+        Assert.Equal(context.LocalAiModelInstall.ModelPath, saved.ModelPath);
+        Assert.NotEqual(saved.Manifest.ModelPath, saved.Manifest.CachedModelPath);
+        Assert.Equal(
+            context.LocalAiModelInstall.LegacyModelPath,
+            new LocalAiPaths(temp.Path).ResolveContainedPath(
+                saved.Manifest.ModelPath,
+                nameof(saved.Manifest.ModelPath)));
     }
 
     [Fact]
@@ -66,7 +133,7 @@ public sealed class LocalAiPortHandoffTests
             {
                 Enabled = true,
                 Port = 0,
-                SelectedModelId = LocalModelCatalog.Qwen9BModelId,
+                SelectedModelId = LocalModelCatalog.Qwen38_27BModelId,
             },
             temp.Path);
         context.LocalAiEligibility = LocalInferenceEligibility.Evaluate(
@@ -110,9 +177,25 @@ public sealed class LocalAiPortHandoffTests
             new GpuInfo(
                 GpuVendor.Nvidia,
                 "NVIDIA RTX Spark N1X (6144-core Blackwell RTX GPU)",
-                GpuVisibleMemoryBytes: 25_702_694_912,
-                FreeGpuVisibleMemoryBytes: 25_000_000_000,
+                // A real 48GB-SKU RTX Spark's measured cuMemGetInfo total, so this
+                // fixture routes through the fixed SKU table instead of landing
+                // below the smallest (32GB) recommended tier.
+                GpuVisibleMemoryBytes: 48_585_498_624,
+                FreeGpuVisibleMemoryBytes: 48_585_498_624,
                 DriverVersion: "616.00",
+                CudaMajorVersion: 13,
+                StableId: "GPU-SPARK"),
+        ],
+        VulkanAvailable: false);
+
+    private static HostHardwareInfo CreateIncompleteFactsHardware() => new(
+        Architecture.Arm64,
+        128L * 1024 * 1024 * 1024,
+        100L * 1024 * 1024 * 1024,
+        [
+            new GpuInfo(
+                GpuVendor.Nvidia,
+                "NVIDIA RTX Spark N1X (6144-core Blackwell RTX GPU)",
                 CudaMajorVersion: 13,
                 StableId: "GPU-SPARK"),
         ],
@@ -160,10 +243,42 @@ public sealed class LocalAiPortHandoffTests
 
     private static HuggingFaceModelInstallResult ModelInstall(
         string localDataDirectory,
-        LocalModelInfo model) => new(
-            Path.Combine(localDataDirectory, "LocalAI", "models", model.Weights.RelativePath),
+        LocalModelInfo model)
+    {
+        string cacheRoot = Path.Combine(localDataDirectory, "hf-cache");
+        HuggingFaceRevisionSource source = Assert.IsType<HuggingFaceRevisionSource>(
+            model.Weights.Source);
+        Assert.True(HuggingFaceHubCache.TryGetSnapshotPaths(
+            cacheRoot,
+            source.RepositoryId,
+            source.RevisionSha,
+            model.Weights.RelativePath,
+            out string modelPath,
+            out _,
+            out string error), error);
+        LocalAiComponentIdentity component = LlamaRuntimeInstaller.Component(
+            LlamaRuntimeCatalog.Find(Architecture.Arm64)!);
+        Assert.True(LocalAiPathPolicy.TryResolve(
+            localDataDirectory,
+            component,
+            out LocalAiSetupPaths paths,
+            out error), error);
+        Assert.True(LocalAiPathPolicy.TryGetModelPaths(
+            paths,
+            source.RepositoryId,
+            source.RevisionSha,
+            model.Weights.RelativePath,
+            out string legacyModelPath,
+            out _,
+            out error), error);
+        return new(
+            modelPath,
+            cacheRoot,
             HuggingFaceModelInstallDisposition.Downloaded,
-            CreatedThisRun: true);
+            CreatedThisRun: true,
+            legacyModelPath,
+            LegacyCreatedThisRun: true);
+    }
 
     private sealed class FakeHardwareProbe(HostHardwareInfo hardware) : IHostHardwareProbe
     {

@@ -134,6 +134,7 @@ public partial class App
             "EnableNodeMode", "EnableMcpServer", "PreferStructuredCategories",
             "NodeCanvasEnabled", "NodeScreenEnabled", "NodeCameraEnabled",
             "NodeLocationEnabled", "NodeBrowserProxyEnabled", "NodeTtsEnabled",
+            "NodeOllamaInferenceEnabled",
             "HasSeenActivityStreamTip", "TtsProvider"
         };
 
@@ -150,6 +151,15 @@ public partial class App
         {
             if (_settings == null) return new { error = "Settings not loaded" };
             if (!safeSettings.Contains(name)) return new { error = $"Setting '{name}' is not accessible" };
+            if (name.Equals(nameof(SettingsManager.AutoStart), StringComparison.OrdinalIgnoreCase))
+            {
+                try { AutoStartReconciliation.ThrowIfFixtureMutation(); }
+                catch (AutoStartRefusedException ex)
+                {
+                    Logger.Warn(ex.Message);
+                    return new { error = ex.Message };
+                }
+            }
             var prop = typeof(SettingsManager).GetProperty(name,
                 System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase);
             if (prop == null) return new { error = $"Unknown setting: {name}" };
@@ -174,7 +184,7 @@ public partial class App
                     _settings.Save();
                 }
 
-                OnSettingsSaved(this, EventArgs.Empty);
+                ApplySettingsSavedAndWait();
                 var runtimeError = McpRuntimeStatePolicy.GetSettingsSetError(
                     name,
                     converted,
@@ -213,8 +223,10 @@ public partial class App
 
         app.SearchHandler = (query) =>
         {
-            if (ActiveHubWindow is not OpenClawTray.Windows.HubWindow hubWindow) return Array.Empty<object>();
-            var commands = hubWindow.BuildCommandList();
+            var commands = ActiveHubWindow is OpenClawTray.Windows.HubWindow hubWindow
+                ? hubWindow.BuildCommandList()
+                : HubCommandCatalog.Build(_appState, _settings,
+                    (ActiveHubWindow as OpenClawTray.Windows.WorkspaceWindow)?.SelectedAgentId ?? "main");
             var matches = commands
                 .Where(c => c.Title.Contains(query, StringComparison.OrdinalIgnoreCase)
                     || (c.Subtitle?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false))
@@ -459,6 +471,11 @@ public partial class App
                     ? booleanValue
                     : throw new InvalidCastException($"Setting '{name}' must be a boolean.");
                 return true;
+            case nameof(SettingsManager.NodeOllamaInferenceEnabled):
+                value = converted is bool ollamaBooleanValue
+                    ? ollamaBooleanValue
+                    : throw new InvalidCastException($"Setting '{name}' must be a boolean.");
+                return true;
             default:
                 value = false;
                 return false;
@@ -493,6 +510,9 @@ public partial class App
             case nameof(SettingsManager.NodeTtsEnabled):
                 edit.NodeTtsEnabled = value;
                 break;
+            case nameof(SettingsManager.NodeOllamaInferenceEnabled):
+                edit.NodeOllamaInferenceEnabled = value;
+                break;
             default:
                 throw new InvalidOperationException($"Setting '{name}' is not store-managed.");
         }
@@ -525,6 +545,9 @@ public partial class App
                 break;
             case nameof(SettingsManager.NodeTtsEnabled):
                 settings.NodeTtsEnabled = value;
+                break;
+            case nameof(SettingsManager.NodeOllamaInferenceEnabled):
+                settings.NodeOllamaInferenceEnabled = value;
                 break;
             default:
                 throw new InvalidOperationException($"Setting '{name}' is not store-managed.");

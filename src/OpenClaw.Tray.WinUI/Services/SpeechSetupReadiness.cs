@@ -40,6 +40,12 @@ public static class SpeechSetupReadiness
                 string.IsNullOrWhiteSpace(settings.TtsElevenLabsVoiceId);
         }
 
+        if (string.Equals(provider, TtsCapability.MiniMaxProvider, StringComparison.Ordinal))
+        {
+            return string.IsNullOrWhiteSpace(settings.TtsMiniMaxApiKey) ||
+                string.IsNullOrWhiteSpace(settings.TtsMiniMaxVoiceId);
+        }
+
         return true;
     }
 

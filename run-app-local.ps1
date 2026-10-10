@@ -23,6 +23,10 @@
 .PARAMETER Configuration
     Build/output configuration to use. Defaults to Debug.
 
+.PARAMETER RuntimeIdentifier
+    Explicit output runtime to launch. Use with -NoBuild after building that RID.
+    When omitted, the current PowerShell process architecture selects the RID.
+
 .PARAMETER Dev
     Build and launch with the side-by-side dev app identity. Defaults off so
     release identity remains the default local-launch behavior.
@@ -79,6 +83,9 @@ param(
 
     [ValidateSet("Debug", "Release")]
     [string]$Configuration = "Debug",
+
+    [ValidateSet("win-x64", "win-arm64")]
+    [string]$RuntimeIdentifier,
 
     [switch]$Dev,
 
@@ -141,6 +148,10 @@ if ($branch -ne "main" -and -not $AllowNonMain) {
     throw "Refusing to run: current branch is '$branch', expected 'main'. Use -AllowNonMain to preview this branch intentionally."
 }
 
+if ($PSBoundParameters.ContainsKey("RuntimeIdentifier") -and -not $NoBuild) {
+    throw "-RuntimeIdentifier requires -NoBuild. Build the requested RID explicitly before launching it."
+}
+
 if (-not $NoBuild) {
     $buildArgs = @{
         Configuration = $Configuration
@@ -163,20 +174,19 @@ if (-not $targetFramework) {
     throw "Unable to determine TargetFramework from $projectPath."
 }
 
-# Match build.ps1's architecture detection so this script looks in the same
-# output folder the build wrote to. build.ps1 uses $env:PROCESSOR_ARCHITECTURE,
-# which reflects the PowerShell process architecture (and therefore the RID that
-# `dotnet build -r` produced). Using [RuntimeInformation]::OSArchitecture here can
-# disagree (e.g. an x64-emulated shell on an ARM64 device), sending us to a folder
-# that was never built.
-$architecture = $env:PROCESSOR_ARCHITECTURE
-$runtimeIdentifier = switch ($architecture) {
-    "ARM64" { "win-arm64" }
-    default { "win-x64" }
+# Without an explicit RID, match build.ps1's process-architecture detection so
+# this script looks in the output folder the build wrote to.
+if ([string]::IsNullOrWhiteSpace($RuntimeIdentifier)) {
+    $architecture = $env:PROCESSOR_ARCHITECTURE
+    $RuntimeIdentifier = switch ($architecture) {
+        "ARM64" { "win-arm64" }
+        default { "win-x64" }
+    }
 }
-$outputDir = Join-Path $repoRoot "src\OpenClaw.Tray.WinUI\bin\$Configuration\$targetFramework\$runtimeIdentifier"
+$outputDir = Join-Path $repoRoot "src\OpenClaw.Tray.WinUI\bin\$Configuration\$targetFramework\$RuntimeIdentifier"
 $exePath = Join-Path $outputDir "OpenClaw.Tray.WinUI.exe"
 $identityMarkerPath = Join-Path $outputDir "app-identity.txt"
+Write-Host "Selected runtime: $RuntimeIdentifier"
 
 if (-not (Test-Path $outputDir)) {
     throw "Build output folder not found: $outputDir. Run without -NoBuild first."
@@ -241,7 +251,7 @@ try {
     Write-Host "  Branch:        $branch"
     Write-Host "  Configuration: $Configuration"
     Write-Host "  Identity:      $(if ($actualIdentity -eq 'dev') { 'Dev (opt-in)' } else { 'Release (default)' })"
-    Write-Host "  Runtime:       $runtimeIdentifier"
+    Write-Host "  Runtime:       $RuntimeIdentifier"
     Write-Host "  Output:        $outputDir"
     Write-Host "  Mode:          $(if ($UseWinApp) { 'WinAppCLI manifest activation' } else { 'Direct unpackaged executable' })"
     if ($env:OPENCLAW_TRAY_DATA_DIR) {

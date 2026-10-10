@@ -27,8 +27,7 @@ public sealed class PairOperatorStep : SetupStep
             return StepResult.Terminal("No credential available for operator pairing");
 
         // Register gateway in registry (only once — reuse across retries)
-        var registry = new GatewayRegistry(ctx.DataDir, logger: new SetupOpenClawLogger(ctx.Logger));
-        registry.Load();
+        var registry = ctx.LoadSetupRegistry();
 
         string identityPath;
         if (!string.IsNullOrEmpty(ctx.GatewayRecordId))
@@ -58,7 +57,7 @@ public sealed class PairOperatorStep : SetupStep
 
             record = registry.AddOrUpdate(record);
             registry.SetActive(record.Id);
-            registry.Save();
+            ctx.SaveSetupRegistry(registry);
             ctx.GatewayRecordId = record.Id;
             identityPath = registry.GetIdentityDirectory(record.Id);
             ctx.Logger.Info($"Gateway record created: id={record.Id}");
@@ -88,6 +87,11 @@ public sealed class PairOperatorStep : SetupStep
         // Connect operator WebSocket — handle pairing-required flow
         var wsLogger = new SetupOpenClawLogger(ctx.Logger);
         OpenClawGatewayClient? client = null;
+        var requestBaseline = await ApprovalRequestHelper.CaptureSetupBaselineOnceAsync(
+            ctx,
+            ApprovalRequestKind.Device,
+            ct);
+        ctx.CurrentDeviceApprovalBaseline = requestBaseline;
 
         try
         {
@@ -287,6 +291,12 @@ public sealed class PairOperatorStep : SetupStep
         ctx.Logger.Info("Waiting for gateway grace period to expire before finalization...");
         await Task.Delay(TimeSpan.FromSeconds(5), ct);
 
+        var requestBaseline = await ApprovalRequestHelper.CapturePendingRequestBaselineAsync(
+            ctx,
+            ApprovalRequestKind.Device,
+            ct);
+        ctx.CurrentDeviceApprovalBaseline = requestBaseline;
+
         // Connect exactly as the tray would: pass deviceToken as the credential
         var finalClient = new OpenClawGatewayClient(gatewayUrl, deviceToken, logger: wsLogger, identityPath: identityPath);
         ApplyReconnectAuthorization(finalClient, ctx);
@@ -344,9 +354,6 @@ public sealed class PairOperatorStep : SetupStep
         }
     }
 
-    internal static async Task<StepResult> AutoApprovePairing(SetupContext ctx, CancellationToken ct)
-        => await AutoApprovePairing(ctx, requestId: null, ct);
-
     internal static async Task<StepResult> AutoApprovePairing(SetupContext ctx, string? requestId, CancellationToken ct)
     {
         var distro = ctx.DistroName!;
@@ -356,18 +363,41 @@ public sealed class PairOperatorStep : SetupStep
 
         if (string.IsNullOrWhiteSpace(requestId))
         {
-            var preview = await ctx.Commands.RunInWslAsync(
+            var requestBaseline = ctx.CurrentDeviceApprovalBaseline;
+            if (requestBaseline is null || !requestBaseline.Success)
+            {
+                if (requestBaseline?.PluginNotFound == true)
+                    return StepResult.Terminal(ApprovalRequestHelper.PluginNotFoundMessage);
+
+                return StepResult.Fail(
+                    requestBaseline?.Error ??
+                    "The setup socket did not provide a pairing request ID, and no pre-connect approval baseline is available.");
+            }
+
+            var pending = await ctx.Commands.RunInWslAsync(
                 distro,
-                $"""{ctx.WslPathPrefix} && openclaw devices approve --latest --json""",
-                TimeSpan.FromSeconds(30), env, ct);
+                $"""{ctx.WslPathPrefix} && openclaw devices list --json""",
+                TimeSpan.FromSeconds(30), env, ct, inputViaStdin: true);
 
-            ctx.Logger.Info($"Approve preview: exit={preview.ExitCode}");
+            ctx.Logger.Info($"Device pending list: exit={pending.ExitCode}");
 
-            var parsed = ApprovalRequestHelper.TryReadSelectedRequestId(preview.Stdout.Trim());
+            if (pending.ExitCode != 0)
+            {
+                var pendingOutput = pending.Stdout.Trim();
+                if (ApprovalRequestHelper.IsPluginNotFoundError(pendingOutput))
+                    return StepResult.Terminal(ApprovalRequestHelper.PluginNotFoundMessage);
+                return StepResult.Fail($"Could not list pending pairing requests (exit {pending.ExitCode}): {pendingOutput}");
+            }
+
+            var parsed = ApprovalRequestHelper.TrySelectPendingRequestForDevice(
+                pending.Stdout.Trim(),
+                ctx.OperatorDeviceId,
+                requestBaseline.RequestIds,
+                matchNodeId: false);
             if (!parsed.Success)
             {
                 ctx.Logger.Warn($"Could not select pairing request: {parsed.Error}");
-                return StepResult.Fail("Could not find a safe pending pairing request to approve");
+                return StepResult.Fail(parsed.Error ?? "Could not find a safe pending pairing request to approve");
             }
 
             requestId = parsed.RequestId;
@@ -385,7 +415,7 @@ public sealed class PairOperatorStep : SetupStep
         var approve = await ctx.Commands.RunInWslAsync(
             distro,
             $"""{ctx.WslPathPrefix} && {ApprovalRequestHelper.ApprovalCommand(ApprovalRequestKind.Device)}""",
-            TimeSpan.FromSeconds(30), approvalEnv, ct);
+            TimeSpan.FromSeconds(30), approvalEnv, ct, inputViaStdin: true);
 
         ctx.Logger.Info($"Approve result: exit={approve.ExitCode}");
 
@@ -440,7 +470,8 @@ public sealed class PairOperatorStep : SetupStep
         SetupContext ctx,
         TimeSpan timeout,
         CancellationToken ct,
-        bool retryGatewayStartupDisconnects = false)
+        bool retryGatewayStartupDisconnects = false,
+        bool allowInstalledVersionDiscovery = false)
     {
         var tcs = new TaskCompletionSource<ConnectionOutcome>();
         ctx.ObservedGatewaySelf = null;
@@ -451,9 +482,10 @@ public sealed class PairOperatorStep : SetupStep
             ctx.Logger.Debug($"Operator connection status: {status}");
             if (status == ConnectionStatus.Connected)
             {
-                var compatibilityFailure = GatewayReleasePolicy.ValidateHandshake(
+                var compatibilityFailure = GatewayInstallPolicy.ValidateHandshake(
                     ctx.Config,
-                    ctx.ObservedGatewaySelf);
+                    ctx.ObservedGatewaySelf,
+                    allowInstalledVersionDiscovery);
                 if (compatibilityFailure is null)
                 {
                     tcs.TrySetResult(ConnectionOutcome.Connected);
@@ -518,8 +550,7 @@ public sealed class PairOperatorStep : SetupStep
 
     public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
     {
-        var registry = new GatewayRegistry(ctx.DataDir, logger: new SetupOpenClawLogger(ctx.Logger));
-        registry.Load();
+        var registry = ctx.LoadSetupRegistry();
 
         // Find all local gateway records to remove (mirrors old uninstall step 6a)
         var localRecords = registry.GetAll()
@@ -539,7 +570,7 @@ public sealed class PairOperatorStep : SetupStep
                 }
                 registry.Remove(record.Id);
             }
-            registry.Save();
+            ctx.SaveSetupRegistry(registry);
             ctx.Logger.Info($"[Uninstall] Removed {localRecords.Count} local gateway record(s)");
         }
         else

@@ -5,6 +5,8 @@ internal static class SetupWindowArgumentProjection
     private static readonly HashSet<string> s_hostFlags =
         new(StringComparer.OrdinalIgnoreCase)
         {
+            "-Embedding",
+            "-ToastActivated",
             "--post-setup-restart",
         };
 
@@ -68,9 +70,7 @@ internal static class SetupWindowArgumentProjection
                    pid != currentProcessId;
         }
 
-        return string.Equals(
-            value,
-            "chat",
-            StringComparison.OrdinalIgnoreCase);
+        return ActivationRouter.GetPostSetupLaunchPath(value) is not null ||
+            SetupDashboardHandoff.ParseHandle(value) is not null;
     }
 }

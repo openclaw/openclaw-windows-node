@@ -23,6 +23,7 @@ internal sealed class SettingsChangeCoordinator
 
     private void ApplyCore(SettingsData settings)
     {
+        _effects.ApplyOllamaPermission(settings);
         _effects.ApplyChatToolCallVisibility(settings);
 
         var currentSnapshot = settings.ToConnectionSnapshot();

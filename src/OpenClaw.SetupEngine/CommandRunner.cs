@@ -19,6 +19,25 @@ public interface ICommandRunner
         CancellationToken ct = default,
         Stream? stdinStream = null);
 
+    Task<CommandResult> RunAsyncAllowingInheritedPipeHandleEscape(
+        string executable,
+        string[] arguments,
+        TimeSpan timeout,
+        IReadOnlyDictionary<string, string>? environment = null,
+        string? workingDirectory = null,
+        string? stdinInput = null,
+        CancellationToken ct = default,
+        Stream? stdinStream = null) =>
+        RunAsync(
+            executable,
+            arguments,
+            timeout,
+            environment,
+            workingDirectory,
+            stdinInput,
+            ct,
+            stdinStream);
+
     /// <summary>
     /// Run a command inside a WSL distro.
     /// </summary>
@@ -71,6 +90,13 @@ public sealed class CommandRunner : ICommandRunner
 {
     private readonly SetupLogger _logger;
     private static readonly TimeSpan s_outputDrainGrace = TimeSpan.FromMilliseconds(250);
+
+    /// <summary>
+    /// Upper bound on how long known inherited-pipe callers are given to reach EOF
+    /// after their direct child exits. Normal commands wait for EOF so trailing output
+    /// remains complete.
+    /// </summary>
+    private static readonly TimeSpan s_outputDrainCap = TimeSpan.FromSeconds(3);
     private const int MaxCapturedStreamChars = 1_048_576;
 
     public CommandRunner(SetupLogger logger) => _logger = logger;
@@ -78,7 +104,7 @@ public sealed class CommandRunner : ICommandRunner
     /// <summary>
     /// Run a process and capture output. Timeout kills the process.
     /// </summary>
-    public async Task<CommandResult> RunAsync(
+    public Task<CommandResult> RunAsync(
         string executable,
         string[] arguments,
         TimeSpan timeout,
@@ -86,7 +112,48 @@ public sealed class CommandRunner : ICommandRunner
         string? workingDirectory = null,
         string? stdinInput = null,
         CancellationToken ct = default,
-        Stream? stdinStream = null)
+        Stream? stdinStream = null) =>
+        RunAsyncCore(
+            executable,
+            arguments,
+            timeout,
+            environment,
+            workingDirectory,
+            stdinInput,
+            ct,
+            stdinStream,
+            allowInheritedPipeHandleEscape: false);
+
+    public Task<CommandResult> RunAsyncAllowingInheritedPipeHandleEscape(
+        string executable,
+        string[] arguments,
+        TimeSpan timeout,
+        IReadOnlyDictionary<string, string>? environment = null,
+        string? workingDirectory = null,
+        string? stdinInput = null,
+        CancellationToken ct = default,
+        Stream? stdinStream = null) =>
+        RunAsyncCore(
+            executable,
+            arguments,
+            timeout,
+            environment,
+            workingDirectory,
+            stdinInput,
+            ct,
+            stdinStream,
+            allowInheritedPipeHandleEscape: true);
+
+    private async Task<CommandResult> RunAsyncCore(
+        string executable,
+        string[] arguments,
+        TimeSpan timeout,
+        IReadOnlyDictionary<string, string>? environment,
+        string? workingDirectory,
+        string? stdinInput,
+        CancellationToken ct,
+        Stream? stdinStream,
+        bool allowInheritedPipeHandleEscape)
     {
         ArgumentNullException.ThrowIfNull(executable);
         ArgumentNullException.ThrowIfNull(arguments);
@@ -114,6 +181,16 @@ public sealed class CommandRunner : ICommandRunner
         {
             foreach (var (key, value) in environment)
                 psi.Environment[key] = value;
+        }
+
+        if (IsWslExecutable(executable))
+        {
+            // Redirected wsl.exe output defaults to UTF-16LE unless WSL_UTF8=1.
+            // Force the documented UTF-8 mode so every WSL invocation has one
+            // deterministic redirected-output encoding.
+            psi.Environment["WSL_UTF8"] = "1";
+            psi.StandardOutputEncoding = Encoding.UTF8;
+            psi.StandardErrorEncoding = Encoding.UTF8;
         }
 
         using var process = new Process { StartInfo = psi };
@@ -192,12 +269,14 @@ public sealed class CommandRunner : ICommandRunner
             throw;
         }
 
-        // A surviving descendant can keep inherited pipe handles open after the child
-        // exits. Preserve output already in flight without charging the command's full
-        // timeout to an EOF that may never arrive.
-        await Task.WhenAny(
-            Task.WhenAll(stdoutClosed.Task, stderrClosed.Task),
-            Task.Delay(s_outputDrainGrace));
+        var outputClosed = Task.WhenAll(stdoutClosed.Task, stderrClosed.Task);
+        await WaitForOutputDrainAsync(
+            outputClosed,
+            timeout,
+            sw.Elapsed,
+            timedOut,
+            allowInheritedPipeHandleEscape,
+            ct).ConfigureAwait(false);
 
         sw.Stop();
         var result = new CommandResult(
@@ -210,6 +289,49 @@ public sealed class CommandRunner : ICommandRunner
         _logger.CommandCompleted(executable, result, sw.Elapsed);
         return result;
     }
+
+    internal static TimeSpan GetOutputDrainBudget(
+        TimeSpan timeout,
+        TimeSpan elapsed,
+        bool timedOut)
+    {
+        if (timedOut)
+            return s_outputDrainGrace;
+
+        TimeSpan remaining = timeout - elapsed;
+        if (remaining <= TimeSpan.Zero)
+            return TimeSpan.Zero;
+
+        return remaining < s_outputDrainCap ? remaining : s_outputDrainCap;
+    }
+
+    internal static async Task WaitForOutputDrainAsync(
+        Task outputClosed,
+        TimeSpan timeout,
+        TimeSpan elapsed,
+        bool timedOut,
+        bool allowInheritedPipeHandleEscape,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(outputClosed);
+
+        if (timedOut || allowInheritedPipeHandleEscape)
+        {
+            // A surviving descendant can keep inherited pipe handles open after the
+            // child exits. Bound only known inherited-pipe callers and timeout cleanup.
+            TimeSpan drainBudget = GetOutputDrainBudget(timeout, elapsed, timedOut);
+            var delay = Task.Delay(drainBudget, cancellationToken);
+            var completed = await Task.WhenAny(outputClosed, delay).ConfigureAwait(false);
+            if (ReferenceEquals(completed, delay))
+                await delay.ConfigureAwait(false);
+            return;
+        }
+
+        await outputClosed.WaitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    internal static bool IsWslExecutable(string executable) =>
+        string.Equals(Path.GetFileName(executable), "wsl.exe", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Run a command inside a WSL distro.

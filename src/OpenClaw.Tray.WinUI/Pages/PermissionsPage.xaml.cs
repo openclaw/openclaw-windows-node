@@ -151,6 +151,7 @@ public sealed partial class PermissionsPage : Page
             BuildCapabilityRow(PermissionsCapabilityKey.Location, "📍", "PermissionsPage_Cap_Location_Label", "PermissionsPage_Cap_Location_Description"),
             BuildCapabilityRow(PermissionsCapabilityKey.TextToSpeech, "🔊", "PermissionsPage_Cap_Tts_Label", "PermissionsPage_Cap_Tts_Description"),
             BuildCapabilityRow(PermissionsCapabilityKey.SpeechToText, "🎤", "PermissionsPage_Cap_Stt_Label", "PermissionsPage_Cap_Stt_Description"),
+            BuildCapabilityRow(PermissionsCapabilityKey.Ollama, "🦙", "PermissionsPage_Cap_Ollama_Label", "PermissionsPage_Cap_Ollama_Description"),
         };
     }
 
@@ -385,14 +386,30 @@ public sealed partial class PermissionsPage : Page
         SelectComboBoxTag(DefaultActionCombo, _viewModel.DefaultExecActionTag);
         _suppressDefaultActionChange = false;
 
-        PolicyRulesList.ItemsSource = _viewModel.ExecApprovalRules.Select((rule, index) => new
+        var inactiveAction = LocalizationHelper.GetString("PermissionsPage_ExecRuleAction_Inactive");
+        var action = _viewModel.ExecApprovalRulesActive ? "allow" : inactiveAction;
+        var actionBrushKey = _viewModel.ExecApprovalRulesActive
+            ? "SystemFillColorSuccessBrush"
+            : "SystemFillColorNeutralBrush";
+        PolicyRulesList.ItemsSource = _viewModel.ExecApprovalRules.Select((rule, index) =>
         {
-            Rule = rule,
-            rule.Pattern,
-            RemoveRuleAutomationName = $"Remove allowlist entry {rule.Pattern}",
-            RemoveRuleAutomationId = $"RemoveExecPolicyRuleButton_{index}",
-            Action = "allow",
-            ActionBrush = (Brush)Application.Current.Resources["SystemFillColorSuccessBrush"],
+            var scopeLabel = LocalizationHelper.GetString(
+                rule.IsWildcard
+                    ? "PermissionsPage_ExecRuleScope_Wildcard"
+                    : "PermissionsPage_ExecRuleScope_Main");
+            return new
+            {
+                Rule = rule,
+                rule.Pattern,
+                DisplayText = $"{rule.Pattern} ({scopeLabel})",
+                RemoveRuleAutomationName = LocalizationHelper.Format(
+                    "PermissionsPage_RemoveRuleAutomationNameFormat",
+                    scopeLabel,
+                    rule.Pattern),
+                RemoveRuleAutomationId = $"RemoveExecPolicyRuleButton_{index}",
+                Action = action,
+                ActionBrush = (Brush)Application.Current.Resources[actionBrushKey],
+            };
         }).ToList();
 
         var count = _viewModel.ExecApprovalRules.Count;

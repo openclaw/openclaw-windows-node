@@ -22,4 +22,5 @@ public sealed record ConnectionSettingsSnapshot(
     bool NodeSttEnabled,
     bool NodeTtsEnabled,
     bool NodeSystemRunEnabled,
+    bool NodeOllamaInferenceEnabled,
     string? FullSettingsJson);

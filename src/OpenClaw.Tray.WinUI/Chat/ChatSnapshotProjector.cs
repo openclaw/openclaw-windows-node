@@ -134,6 +134,8 @@ internal static class ChatSnapshotProjector
             Model = session.Model,
             ModelProvider = session.Provider,
             ThinkingLevel = session.ThinkingLevel,
+            ThinkingContext = session.ThinkingContext,
+            ThinkingDefaults = session.ThinkingDefaults,
             InputTokens = session.InputTokens,
             OutputTokens = session.OutputTokens,
             TotalTokens = session.TotalTokens,

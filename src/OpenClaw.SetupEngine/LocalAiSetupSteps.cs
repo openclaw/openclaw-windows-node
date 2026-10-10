@@ -17,7 +17,7 @@ public sealed class PreflightLocalAiHardwareStep : SetupStep
     private readonly IHostHardwareProbe _hardwareProbe;
 
     public PreflightLocalAiHardwareStep()
-        : this(new NvmlHostHardwareProbe())
+        : this(new CudaHostHardwareProbe())
     {
     }
 
@@ -47,26 +47,24 @@ public sealed class PreflightLocalAiHardwareStep : SetupStep
                 ex));
         }
 
-        LocalInferenceEligibilityResult eligibility = LocalInferenceEligibility.Evaluate(
-            hardware,
-            ctx.Config.LocalAi.SelectedModelId);
+        string? selectedModelId = ctx.Config.LocalAi.SelectedModelId;
+        LocalInferenceEligibilityResult eligibility =
+            !string.IsNullOrWhiteSpace(selectedModelId) &&
+            string.Equals(
+                selectedModelId,
+                ctx.Config.LocalAi.InstalledReceiptModelId,
+                StringComparison.OrdinalIgnoreCase)
+                ? LocalInferenceEligibility.EvaluateInstalled(hardware, selectedModelId)
+                : LocalInferenceEligibility.Evaluate(hardware, selectedModelId);
         ctx.LocalAiHardware = hardware;
         ctx.LocalAiEligibility = eligibility;
+        ctx.Config.LocalAi.SelectedProfileId = eligibility.Plan?.Profile.Id;
 
         if (eligibility.Status == LocalInferenceEligibilityStatus.Unsupported)
         {
             return Task.FromResult(StepResult.Terminal(
                 $"This system does not meet the Local AI requirements " +
                 $"({eligibility.FailureCode}, {eligibility.SelectionFailureCode})."));
-        }
-
-        if (eligibility.Status == LocalInferenceEligibilityStatus.EligibleButBusy)
-        {
-            long requiredMiB = eligibility.RequiredFreeMemoryBytes / (1024 * 1024);
-            long availableMiB = (eligibility.AvailableFreeMemoryBytes ?? 0) / (1024 * 1024);
-            return Task.FromResult(StepResult.Terminal(
-                $"The selected GPU is supported but currently busy. Local AI needs {requiredMiB:N0} MiB free; " +
-                $"{availableMiB:N0} MiB is available. Close GPU applications and retry."));
         }
 
         if (eligibility.Plan is null || eligibility.SelectedGpu is null)
@@ -160,6 +158,8 @@ public sealed class ConfigureLocalAiWslNetworkingStep : SetupStep
 
         try
         {
+            if (!string.IsNullOrWhiteSpace(ctx.Config.LocalAiRecoveryGatewayId))
+                ctx.LocalAiRecoveryStoppedWsl = true;
             CommandResult shutdown = await ShutdownWslAsync(ctx, ct);
             if (shutdown.ExitCode != 0 || shutdown.TimedOut)
             {
@@ -192,6 +192,8 @@ public sealed class ConfigureLocalAiWslNetworkingStep : SetupStep
             case WslGlobalConfigRestoreResult.InvalidBackup:
                 throw new InvalidDataException("The Local AI WSL configuration backup is invalid.");
             case WslGlobalConfigRestoreResult.Restored:
+                if (!string.IsNullOrWhiteSpace(ctx.Config.LocalAiRecoveryGatewayId))
+                    ctx.LocalAiRecoveryStoppedWsl = true;
                 CommandResult shutdown = await ShutdownWslAsync(ctx, ct);
                 if (shutdown.ExitCode != 0 || shutdown.TimedOut)
                     throw new InvalidOperationException("WSL could not be stopped to apply the restored configuration.");
@@ -259,15 +261,57 @@ public sealed class ReconcileLocalAiInstallationStep : SetupStep
 
         try
         {
+            var migrationProgress = new SynchronousProgress<LocalAiModelMigrationProgress>(value =>
+                ctx.DetailProgress?.Report(new SetupDetailProgressEvent(
+                    Id,
+                    value.Phase switch
+                    {
+                        LocalAiModelMigrationPhase.VerifyingLegacyModel =>
+                            "Verifying the existing Local AI model",
+                        LocalAiModelMigrationPhase.CopyingToCache =>
+                            "Copying the existing Local AI model to the Hugging Face cache",
+                        _ => "Verifying the Hugging Face cache copy",
+                    },
+                    value.CompletedBytes,
+                    value.TotalBytes,
+                    SetupDetailProgressUnit.Bytes)));
             LocalAiReconcileResult result = await _reconciler
-                .ReconcileAsync(ctx.LocalDataDir, plan, selectedGpuId, ct)
+                .ReconcileAsync(
+                    ctx.LocalDataDir,
+                    plan,
+                    selectedGpuId,
+                    ct,
+                    migrationProgress,
+                    allowIncompleteInstallation:
+                        !string.IsNullOrWhiteSpace(ctx.Config.LocalAiRecoveryGatewayId))
                 .ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(ctx.Config.LocalAiRecoveryGatewayId) &&
+                (result.OriginalInstall ?? result.ResolvedInstall) is { } originalInstall)
+            {
+                ctx.LocalAiRecoveryOriginalInstall = originalInstall;
+                ctx.LocalAiRecoveryReceiptRollbackAllowed = true;
+            }
             if (!result.Reused)
-                return StepResult.Skip("No completed managed Local AI installation was found.");
+            {
+                // Normal upgrades restore their receipt independently of the gateway
+                // recovery pipeline's endpoint-health and provider rollback guards.
+                if (ctx.LocalAiRecoveryOriginalInstall is null &&
+                    result.OriginalInstall is { } retainedReceipt)
+                    ctx.LocalAiUpgradeOriginalInstall ??= retainedReceipt;
+                ctx.LocalAiRuntimeInstall = result.RuntimeInstall;
+                ctx.LocalAiModelInstall = result.ModelInstall;
+                ctx.LocalAiAdditionalModelInstalls = result.AdditionalModelInstalls
+                    ?? ImmutableArray<HuggingFaceAdditionalAssetInstallResult>.Empty;
+                return StepResult.Skip(result.OriginalInstall is null
+                    ? "No completed managed Local AI installation was found."
+                    : "The existing Local AI receipt was retained while incomplete assets are repaired.");
+            }
 
             ctx.LocalAiResolvedInstall = result.ResolvedInstall;
             ctx.LocalAiRuntimeInstall = result.RuntimeInstall;
             ctx.LocalAiModelInstall = result.ModelInstall;
+            ctx.LocalAiAdditionalModelInstalls = result.AdditionalModelInstalls
+                ?? ImmutableArray<HuggingFaceAdditionalAssetInstallResult>.Empty;
             ctx.LocalAiPort = result.ResolvedInstall!.Manifest.RequestedPort;
             return StepResult.Ok("Reused the verified managed Local AI installation.");
         }
@@ -283,6 +327,11 @@ public sealed class ReconcileLocalAiInstallationStep : SetupStep
                 ex);
         }
     }
+
+    public override Task RollbackAsync(SetupContext ctx, CancellationToken ct) =>
+        ctx.IsUninstalling
+            ? Task.CompletedTask
+            : PersistLocalAiManifestStep.RestoreUpgradeReceiptAsync(ctx, ct);
 }
 
 /// <summary>Installs the two pinned llama.cpp runtime archives as one atomic component.</summary>
@@ -353,7 +402,12 @@ public sealed class AcquireLocalAiRuntimeStep : SetupStep
                 progress,
                 linked.Token);
             ctx.LocalAiRuntimeInstall = install;
-            return StepResult.Ok($"Installed llama-server {LlamaRuntimeCatalog.ReleaseTag}.");
+            string message = install.ReusedCachedArchiveCount == 0
+                ? $"Installed llama-server {plan.Runtime.ReleaseTag}."
+                : $"Installed llama-server {plan.Runtime.ReleaseTag} " +
+                  $"({install.ReusedCachedArchiveCount} of {plan.Runtime.Artifacts.Count} archives " +
+                  "reused from the local download cache).";
+            return StepResult.Ok(message);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -408,6 +462,16 @@ public sealed class AcquireLocalAiModelStep : SetupStep
     internal AcquireLocalAiModelStep(IHuggingFaceModelAcquirer acquirer) =>
         _acquirer = acquirer ?? throw new ArgumentNullException(nameof(acquirer));
 
+    /// <summary>
+    /// Additional artifacts a recipe needs beyond its primary weights, in the
+    /// fixed catalog order <see cref="LocalModelCatalog.AdditionalArtifacts"/>
+    /// defines. <see cref="LlamaServerRouterConfiguration"/> relies on that same
+    /// ordering to tell the draft checkpoint apart from a shard without a
+    /// separate "kind" tag on the receipt.
+    /// </summary>
+    internal static ImmutableArray<PinnedArtifact> AdditionalArtifacts(LocalModelInfo model) =>
+        LocalModelCatalog.AdditionalArtifacts(model);
+
     public override string Id => "acquire-local-ai-model";
     public override string DisplayName => "Downloading Local AI model from Hugging Face";
     public override bool CanRetry => false;
@@ -434,7 +498,9 @@ public sealed class AcquireLocalAiModelStep : SetupStep
             var progress = new SynchronousProgress<HuggingFaceModelInstallProgress>(value =>
                 ctx.DetailProgress?.Report(new SetupDetailProgressEvent(
                     Id,
-                    $"Downloading {plan.Model.Weights.RelativePath}",
+                    value.Phase == HuggingFaceModelInstallPhase.Verifying
+                        ? $"Verifying {plan.Model.Weights.RelativePath}"
+                        : $"Downloading {plan.Model.Weights.RelativePath}",
                     value.CompletedBytes,
                     value.TotalBytes,
                     SetupDetailProgressUnit.Bytes)));
@@ -445,6 +511,29 @@ public sealed class AcquireLocalAiModelStep : SetupStep
                 progress,
                 linked.Token);
             ctx.LocalAiModelInstall = install;
+
+            ImmutableArray<PinnedArtifact> additionalArtifacts = AdditionalArtifacts(plan.Model);
+            var additionalInstalls = ImmutableArray.CreateBuilder<HuggingFaceAdditionalAssetInstallResult>(
+                additionalArtifacts.Length);
+            foreach (PinnedArtifact artifact in additionalArtifacts)
+            {
+                var artifactProgress = new SynchronousProgress<HuggingFaceModelInstallProgress>(value =>
+                    ctx.DetailProgress?.Report(new SetupDetailProgressEvent(
+                        Id,
+                        value.Phase == HuggingFaceModelInstallPhase.Verifying
+                            ? $"Verifying {artifact.RelativePath}"
+                            : $"Downloading {artifact.RelativePath}",
+                        value.CompletedBytes,
+                        value.TotalBytes,
+                        SetupDetailProgressUnit.Bytes)));
+                additionalInstalls.Add(await _acquirer.InstallAdditionalAssetAsync(
+                    ctx.LocalDataDir,
+                    artifact,
+                    artifactProgress,
+                    linked.Token));
+            }
+            ctx.LocalAiAdditionalModelInstalls = additionalInstalls.MoveToImmutable();
+
             string action = install.Disposition == HuggingFaceModelInstallDisposition.ReusedVerified
                 ? "Verified existing"
                 : "Downloaded";
@@ -462,6 +551,7 @@ public sealed class AcquireLocalAiModelStep : SetupStep
             ex is HuggingFaceModelInstallException
             or IOException
             or UnauthorizedAccessException
+            or InvalidDataException
             or HttpRequestException)
         {
             return StepResult.Fail($"Hugging Face model installation failed: {ex.Message}", ex);
@@ -476,6 +566,9 @@ public sealed class AcquireLocalAiModelStep : SetupStep
             _acquirer.RemoveInstalledModel(ctx.LocalDataDir, install);
             ctx.LocalAiModelInstall = null;
         }
+        // Additional assets have no legacy app-owned copy to remove; their hub-cache
+        // artifacts survive rollback the same way the primary weights' do.
+        ctx.LocalAiAdditionalModelInstalls = ImmutableArray<HuggingFaceAdditionalAssetInstallResult>.Empty;
         if (ctx.LocalAiEligibility?.Plan is { } plan)
         {
             _acquirer.RemovePartialModel(
@@ -506,7 +599,11 @@ public sealed class PersistLocalAiManifestStep : SetupStep
             ctx.LocalAiEligibility.SelectedGpu is not { StableId: { Length: > 0 } gpuId } ||
             ctx.LocalAiPort is not { } requestedPort ||
             ctx.LocalAiRuntimeInstall is not { } runtimeInstall ||
-            ctx.LocalAiModelInstall is not { } modelInstall)
+            ctx.LocalAiModelInstall is not
+            {
+                CacheRoot: { Length: > 0 },
+                LegacyModelPath: { Length: > 0 },
+            } modelInstall)
         {
             return StepResult.Terminal(
                 "The Local AI installation receipt requires completed hardware, runtime, and model steps.");
@@ -518,8 +615,41 @@ public sealed class PersistLocalAiManifestStep : SetupStep
             return StepResult.Terminal(portError ?? "The requested Local AI port is invalid.");
 
         var paths = new LocalAiPaths(ctx.LocalDataDir);
-        if (File.Exists(paths.ManifestPath))
+        LocalAiResolvedInstall? originalInstall =
+            ctx.LocalAiRecoveryOriginalInstall ?? ctx.LocalAiUpgradeOriginalInstall;
+        bool replacesExistingReceipt =
+            originalInstall is not null &&
+            File.Exists(paths.ManifestPath);
+        if (File.Exists(paths.ManifestPath) && !replacesExistingReceipt)
             return StepResult.Terminal("A managed Local AI installation receipt already exists.");
+        LocalAiComponentIdentity component = LlamaRuntimeInstaller.Component(plan.Runtime);
+        if (!LocalAiPathPolicy.TryResolve(
+                ctx.LocalDataDir,
+                component,
+                out LocalAiSetupPaths setupPaths,
+                out string modelPathError) ||
+            !LocalAiPathPolicy.TryGetModelPaths(
+                setupPaths,
+                modelSource.RepositoryId,
+                modelSource.RevisionSha,
+                plan.Model.Weights.RelativePath,
+                out string legacyModelPath,
+                out _,
+                out modelPathError))
+        {
+            return StepResult.Terminal(
+                string.IsNullOrWhiteSpace(modelPathError)
+                    ? "The legacy-compatible Local AI model path is invalid."
+                    : modelPathError);
+        }
+        if (!string.Equals(
+                legacyModelPath,
+                modelInstall.LegacyModelPath,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return StepResult.Terminal(
+                "The Local AI model compatibility path does not match the selected recipe.");
+        }
 
         ImmutableArray<LocalAiAssetReceipt> runtimeAssets;
         try
@@ -531,9 +661,34 @@ public sealed class PersistLocalAiManifestStep : SetupStep
             return StepResult.Terminal(ex.Message, ex);
         }
 
-        var manifest = new LocalAiInstallManifest
+        ImmutableArray<PinnedArtifact> additionalArtifacts = AcquireLocalAiModelStep.AdditionalArtifacts(plan.Model);
+        if (additionalArtifacts.Length != ctx.LocalAiAdditionalModelInstalls.Length)
         {
-            EngineVersion = LlamaRuntimeCatalog.ReleaseTag,
+            return StepResult.Terminal(
+                "The Local AI installation receipt requires a completed additional-asset acquisition step.");
+        }
+
+        var additionalModelAssets = ImmutableArray.CreateBuilder<LocalAiAssetReceipt>(additionalArtifacts.Length);
+        var additionalModelPaths = ImmutableArray.CreateBuilder<string>(additionalArtifacts.Length);
+        for (int i = 0; i < additionalArtifacts.Length; i++)
+        {
+            PinnedArtifact artifact = additionalArtifacts[i];
+            additionalModelAssets.Add(new LocalAiAssetReceipt
+            {
+                FileName = Path.GetFileName(artifact.RelativePath),
+                SourceUrl = artifact.DownloadUri.AbsoluteUri,
+                SizeBytes = artifact.SizeBytes,
+                Sha256 = artifact.Sha256.Value,
+            });
+            additionalModelPaths.Add(ctx.LocalAiAdditionalModelInstalls[i].ModelPath);
+        }
+
+        LocalAiInstallManifest manifest = new()
+        {
+            SchemaVersion = additionalArtifacts.IsEmpty
+                ? LocalAiInstallManifest.HubCacheReceiptSchemaVersion
+                : LocalAiInstallManifest.AdditionalAssetsSchemaVersion,
+            EngineVersion = plan.Runtime.ReleaseTag,
             Architecture = plan.Runtime.Architecture switch
             {
                 Architecture.X64 => "x64",
@@ -545,7 +700,9 @@ public sealed class PersistLocalAiManifestStep : SetupStep
             SelectedGpuId = gpuId,
             ExecutablePath = Path.GetRelativePath(paths.RootDirectory, runtimeInstall.ExecutablePath),
             RuntimeAssets = runtimeAssets,
-            ModelPath = Path.GetRelativePath(paths.RootDirectory, modelInstall.ModelPath),
+            ModelPath = Path.GetRelativePath(paths.RootDirectory, modelInstall.LegacyModelPath),
+            ModelCacheRoot = modelInstall.CacheRoot,
+            CachedModelPath = modelInstall.ModelPath,
             ModelId = $"{modelSource.RepositoryId}@{modelSource.RevisionSha}",
             ModelAlias = plan.Model.Id,
             ModelAsset = new LocalAiAssetReceipt
@@ -555,17 +712,55 @@ public sealed class PersistLocalAiManifestStep : SetupStep
                 SizeBytes = plan.Model.Weights.SizeBytes,
                 Sha256 = plan.Model.Weights.Sha256.Value,
             },
+            // Leave these at their unset default (not an explicitly-built empty
+            // array) when there is nothing to add, so schema-4 manifests omit
+            // them from JSON entirely -- see the properties' remarks.
+            AdditionalModelAssets = additionalArtifacts.IsEmpty ? default : additionalModelAssets.MoveToImmutable(),
+            AdditionalModelPaths = additionalArtifacts.IsEmpty ? default : additionalModelPaths.MoveToImmutable(),
             RequestedPort = requestedPort,
             Endpoint = null,
-            ContextLength = plan.Model.Recipe.ContextTokens,
+            ContextLength = plan.Profile.ContextTokens,
+            KeyCachePrecision = plan.Profile.KeyCachePrecision,
+            ValueCachePrecision = plan.Profile.ValueCachePrecision,
+            DraftKeyCachePrecision = plan.Profile.DraftKeyCachePrecision,
+            DraftValueCachePrecision = plan.Profile.DraftValueCachePrecision,
         };
+        if (originalInstall is not null)
+        {
+            manifest = originalInstall.Manifest with
+            {
+                SchemaVersion = manifest.SchemaVersion,
+                EngineVersion = manifest.EngineVersion,
+                Architecture = manifest.Architecture,
+                RuntimeId = manifest.RuntimeId,
+                ModelCatalogId = manifest.ModelCatalogId,
+                SelectedGpuId = manifest.SelectedGpuId,
+                ExecutablePath = manifest.ExecutablePath,
+                RuntimeAssets = manifest.RuntimeAssets,
+                ModelPath = manifest.ModelPath,
+                ModelCacheRoot = manifest.ModelCacheRoot,
+                CachedModelPath = manifest.CachedModelPath,
+                ModelId = manifest.ModelId,
+                ModelAlias = manifest.ModelAlias,
+                ModelAsset = manifest.ModelAsset,
+                AdditionalModelAssets = manifest.AdditionalModelAssets,
+                AdditionalModelPaths = manifest.AdditionalModelPaths,
+                RequestedPort = manifest.RequestedPort,
+                Endpoint = null,
+                ContextLength = manifest.ContextLength,
+                KeyCachePrecision = manifest.KeyCachePrecision,
+                ValueCachePrecision = manifest.ValueCachePrecision,
+                DraftKeyCachePrecision = manifest.DraftKeyCachePrecision,
+                DraftValueCachePrecision = manifest.DraftValueCachePrecision,
+            };
+        }
 
         var store = new LocalAiManifestStore(paths);
         try
         {
             await store.SaveAsync(manifest, ct);
             ctx.LocalAiResolvedInstall = store.ResolveAndValidate(manifest);
-            ctx.LocalAiManifestCreatedThisRun = true;
+            ctx.LocalAiManifestCreatedThisRun = !replacesExistingReceipt;
             return StepResult.Ok("Recorded the verified llama-server and Hugging Face installation.");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
@@ -594,7 +789,27 @@ public sealed class PersistLocalAiManifestStep : SetupStep
             ctx.LocalAiRuntimeInstall = null;
             ctx.LocalAiModelInstall = null;
             ctx.LocalAiResolvedInstall = null;
+            ctx.LocalAiUpgradeOriginalInstall = null;
             ctx.LocalAiManifestCreatedThisRun = false;
+            string cacheRoot = Path.Combine(
+                ctx.LocalDataDir,
+                LocalAiPathPolicy.ArchiveCacheDirectoryName);
+            if (Directory.Exists(cacheRoot))
+            {
+                int retainedSets = LocalAiArtifactInstaller.ParseRetainedArchiveSets(
+                    Environment.GetEnvironmentVariable(LocalAiArtifactInstaller.RetainedArchiveSetsEnvironmentVariable));
+                ctx.Logger.Info(
+                    $"Kept the verified Local AI download cache at '{cacheRoot}' for faster reinstalls. " +
+                    $"It holds the current runtime plus at most {retainedSets} " +
+                    $"older runtime sets (set {LocalAiArtifactInstaller.RetainedArchiveSetsEnvironmentVariable} to change this). " +
+                    "Delete this folder to reclaim disk space.");
+            }
+            return;
+        }
+
+        if (ctx.LocalAiUpgradeOriginalInstall is not null)
+        {
+            await RestoreUpgradeReceiptAsync(ctx, ct);
             return;
         }
 
@@ -607,6 +822,20 @@ public sealed class PersistLocalAiManifestStep : SetupStep
         File.Delete(paths.RouterPresetPath);
         ctx.LocalAiResolvedInstall = null;
         ctx.LocalAiManifestCreatedThisRun = false;
+    }
+
+    internal static async Task RestoreUpgradeReceiptAsync(SetupContext ctx, CancellationToken ct)
+    {
+        if (ctx.LocalAiUpgradeOriginalInstall is not { } originalInstall)
+            return;
+
+        var paths = new LocalAiPaths(ctx.LocalDataDir);
+        var store = new LocalAiManifestStore(paths);
+        await store.SaveAsync(originalInstall.Manifest, ct);
+        File.Delete(paths.RouterPresetPath);
+        ctx.LocalAiResolvedInstall = store.ResolveAndValidate(originalInstall.Manifest);
+        ctx.LocalAiManifestCreatedThisRun = false;
+        ctx.LocalAiUpgradeOriginalInstall = null;
     }
 
     private static ImmutableArray<LocalAiAssetReceipt> BuildRuntimeReceipts(
@@ -712,8 +941,22 @@ public sealed class StartLocalAiRuntimeStep : SetupStep
         }
     }
 
-    public override Task RollbackAsync(SetupContext ctx, CancellationToken ct) =>
-        DisposeRuntimeAsync(ctx).AsTask();
+    public override Task RollbackAsync(SetupContext ctx, CancellationToken ct)
+    {
+        // During a recovery provider transition, ConfigureLocalAiGatewayStep's rollback (which
+        // runs before this step's rollback) sets LocalAiRecoveryReceiptRollbackAllowed only when
+        // it confirmed the Gateway no longer routes to this runtime's endpoint. If that could not
+        // be confirmed, the Gateway may still be pointed at this runtime; disposing it here would
+        // orphan the active route instead of the intended, coordinated rollback.
+        if (ctx.LocalAiRecoveryProviderTransition && !ctx.LocalAiRecoveryReceiptRollbackAllowed)
+        {
+            ctx.Logger.Warn(
+                "Keeping the replacement llama-server router running because the Gateway configuration " +
+                "rollback could not confirm it no longer routes to this endpoint.");
+            return Task.CompletedTask;
+        }
+        return DisposeRuntimeAsync(ctx).AsTask();
+    }
 
     private static ILocalAiRuntime CreateRuntime(SetupContext ctx)
     {
@@ -799,16 +1042,18 @@ public sealed class VerifyLocalAiInferenceStep : SetupStep
         }
         catch (OperationCanceledException ex)
         {
-            await ResetRouterAsync(runtime);
-            return StepResult.Fail("The first Local AI model load timed out.", ex);
+            // A stalled CUDA model load presents as a timeout, so this path needs the same
+            // llama-server evidence as an explicit failure.
+            LocalAiFailureDetail detail = await CaptureFailureDetailAsync(ctx, runtime);
+            return StepResult.Fail("The first Local AI model load timed out.", ex, detail);
         }
         catch (Exception ex) when (
             ex is HttpRequestException
             or IOException
             or InvalidDataException)
         {
-            await ResetRouterAsync(runtime);
-            return StepResult.Fail($"Local AI inference verification failed: {ex.Message}", ex);
+            LocalAiFailureDetail detail = await CaptureFailureDetailAsync(ctx, runtime);
+            return StepResult.Fail($"Local AI inference verification failed: {ex.Message}", ex, detail);
         }
 
         if (loaded.State != LocalAiRuntimeState.Healthy ||
@@ -821,6 +1066,27 @@ public sealed class VerifyLocalAiInferenceStep : SetupStep
         ctx.LocalAiInferenceVerification = verification;
         return StepResult.Ok(
             $"Verified {verification.CompletionTokens} generated tokens with the selected model.");
+    }
+
+    /// <summary>
+    /// Reads llama-server's own failure lines, then resets the router. The order matters: the reset
+    /// restarts llama-server, which appends a fresh startup banner and can rotate the failing lines
+    /// out of the bounded log. Uses <see cref="CancellationToken.None"/> so a timed-out verification
+    /// still yields evidence.
+    /// </summary>
+    private static async Task<LocalAiFailureDetail> CaptureFailureDetailAsync(
+        SetupContext ctx,
+        ILocalAiRuntime runtime)
+    {
+        var paths = new LocalAiPaths(ctx.LocalDataDir);
+        IReadOnlyList<string> diagnostics =
+            await LocalAiLogTail.ReadDiagnosticLinesAsync(paths, CancellationToken.None);
+        await ResetRouterAsync(runtime);
+        // Echo into the setup log the UI already links, so the root cause remains available if
+        // the router restart rotates the managed llama-server logs.
+        foreach (string line in diagnostics)
+            ctx.Logger.Warn($"llama-server: {line}");
+        return new LocalAiFailureDetail(diagnostics, paths.LogsDirectory);
     }
 
     internal static async Task<LocalAiRuntimeSnapshot> ResetRouterAsync(ILocalAiRuntime runtime)

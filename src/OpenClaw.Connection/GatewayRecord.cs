@@ -39,6 +39,15 @@ public sealed record GatewayRecord
     /// </summary>
     public bool TrustTailscaleAuth { get; init; }
 
+    /// <summary>
+    /// Installed MSIX package family owned by the native gateway runtime. Native gateways
+    /// are non-isolated and must never also carry a setup-managed WSL distro marker.
+    /// </summary>
+    public string? NativePackageFamilyName { get; init; }
+
+    /// <summary>The package-owned isolation contract. Null identifies an existing same-user profile.</summary>
+    public string? NativeRuntimeContract { get; init; }
+
     /// <summary>Per-gateway SSH tunnel configuration. Null if no tunnel needed.</summary>
     public SshTunnelConfig? SshTunnel { get; init; }
 
@@ -76,6 +85,8 @@ public static class GatewayRecordEditing
     /// the standard localhost aliases <c>localhost</c>, <c>127.0.0.1</c>, and <c>::1</c>, with scheme,
     /// port, path, and query unchanged. If the user repoints the URL or adds a tunnel, the record becomes
     /// manual and all managed-ownership metadata is removed.
+    /// Native MSIX ownership is likewise preserved only for an equivalent loopback endpoint
+    /// without SSH or WSL ownership. A native marker never grants legacy WSL ownership.
     /// </summary>
     public static GatewayRecord PreserveAdvancedFields(this GatewayRecord rebuilt, GatewayRecord? existing)
     {
@@ -83,6 +94,21 @@ public static class GatewayRecordEditing
             return rebuilt;
 
         var result = rebuilt with { BrowserControlPort = rebuilt.BrowserControlPort ?? existing.BrowserControlPort };
+
+        if (existing.NativePackageFamilyName is not null)
+        {
+            var preserveNative = existing.SshTunnel is null && rebuilt.SshTunnel is null &&
+                existing.SetupManagedDistroName is null && rebuilt.SetupManagedDistroName is null &&
+                AreEquivalentLoopbackEndpoints(rebuilt.Url, existing.Url);
+            return result with
+            {
+                NativePackageFamilyName = preserveNative ? existing.NativePackageFamilyName : null,
+                NativeRuntimeContract = preserveNative ? existing.NativeRuntimeContract : null,
+                IsLocal = OpenClaw.Shared.LocalGatewayUrlClassifier.IsLocalGatewayUrl(rebuilt.Url),
+                RequiresV2Signature = preserveNative &&
+                    (rebuilt.RequiresV2Signature || existing.RequiresV2Signature),
+            };
+        }
 
         var stillSameManagedEndpoint = AreEquivalentManagedEndpoints(rebuilt.Url, existing.Url);
         var existingManagedDistroName = ResolveManagedDistroName(existing);
@@ -121,7 +147,7 @@ public static class GatewayRecordEditing
         return result;
     }
 
-    internal static bool AreEquivalentLoopbackEndpoints(string? left, string? right)
+    public static bool AreEquivalentLoopbackEndpoints(string? left, string? right)
     {
         if (!Uri.TryCreate(left, UriKind.Absolute, out var leftUri) ||
             !Uri.TryCreate(right, UriKind.Absolute, out var rightUri) ||
@@ -176,6 +202,10 @@ public static class GatewayRecordEditing
 
     public static string? ResolveManagedDistroName(GatewayRecord record)
     {
+        // A native gateway's display name must never confer legacy WSL ownership.
+        if (record.NativePackageFamilyName is not null)
+            return null;
+
         if (!string.IsNullOrWhiteSpace(record.SetupManagedDistroName))
             return record.SetupManagedDistroName;
 
@@ -187,6 +217,16 @@ public static class GatewayRecordEditing
         }
 
         return distro;
+    }
+
+    public static bool IsSetupManagedLocalRecord(GatewayRecord record)
+    {
+        if (record.SshTunnel is not null)
+            return false;
+
+        return ResolveManagedDistroName(record) is not null &&
+            (record.IsLocal ||
+             OpenClaw.Shared.LocalGatewayUrlClassifier.IsLocalGatewayUrl(record.Url));
     }
 
     private static string? ParseLegacyManagedDistroName(string? friendlyName)

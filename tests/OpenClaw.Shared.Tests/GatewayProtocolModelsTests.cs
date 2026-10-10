@@ -36,6 +36,7 @@ public class GatewayProtocolModelsTests
             ("CreateSessionAsync", new[] { typeof(SessionCreateRequest), typeof(int) }),
             ("ResetSessionDetailedAsync", new[] { typeof(string), typeof(int) }),
             ("CompactSessionDetailedAsync", new[] { typeof(string), typeof(int) }),
+            ("GetUpdateStatusAsync", new[] { typeof(int) }),
         };
 
         foreach (var (name, args) in newMembers)
@@ -48,6 +49,21 @@ public class GatewayProtocolModelsTests
     }
 
     private static JsonElement Parse(string json) => JsonDocument.Parse(json).RootElement;
+
+    [Fact]
+    public void GatewayUpdateStatusParser_PreservesOnlyStringEffectiveChannel()
+    {
+        var extendedStable = GatewayUpdateStatusParser.Parse(
+            Parse("""{"effectiveChannel":"extended-stable"}"""));
+        var missing = GatewayUpdateStatusParser.Parse(
+            Parse("""{"updateAvailable":null}"""));
+        var malformed = GatewayUpdateStatusParser.Parse(
+            Parse("""{"effectiveChannel":42}"""));
+
+        Assert.Equal("extended-stable", extendedStable.EffectiveChannel);
+        Assert.Null(missing.EffectiveChannel);
+        Assert.Null(malformed.EffectiveChannel);
+    }
 
     [Fact]
     public void ParseSessionCreateResult_RequiresAndPreservesGatewayKey()
@@ -107,6 +123,53 @@ public class GatewayProtocolModelsTests
         Assert.DoesNotContain("parentSessionKey", legacy);
         Assert.DoesNotContain("emitCommandHooks", legacy);
         Assert.DoesNotContain("succeedsParent", legacy);
+    }
+
+    [Fact]
+    public void BuildSessionCreateParameters_ForkEmitsForkKeys()
+    {
+        var request = new SessionCreateRequest
+        {
+            ParentSessionKey = "agent:main:main",
+            Fork = true,
+            ForkFrom = "last-completed"
+        };
+
+        var parameters = OpenClawGatewayClient.BuildSessionCreateParameters(request);
+        Assert.Equal(true, parameters["fork"]);
+        Assert.Equal("last-completed", parameters["forkFrom"]);
+        Assert.Equal("agent:main:main", parameters["parentSessionKey"]);
+
+        var forkOnly = OpenClawGatewayClient.BuildSessionCreateParameters(
+            new SessionCreateRequest { ParentSessionKey = "agent:main:main", Fork = true });
+        Assert.Equal(true, forkOnly["fork"]);
+        Assert.DoesNotContain("forkFrom", forkOnly);
+
+        var plain = OpenClawGatewayClient.BuildSessionCreateParameters(
+            new SessionCreateRequest { ParentSessionKey = "agent:main:main" });
+        Assert.DoesNotContain("fork", plain);
+        Assert.DoesNotContain("forkFrom", plain);
+    }
+
+    [Fact]
+    public void SessionPatch_ExpectedMarkedUnreadAtAlone_IsNotAChange()
+    {
+        // The read acknowledgement guard is only valid alongside unread:false;
+        // on its own it must not be treated as a mutation.
+        var patch = new SessionPatch { ExpectedMarkedUnreadAt = 5L };
+
+        Assert.False(patch.HasChanges);
+    }
+
+    [Fact]
+    public void SessionPatch_ClearLabelEmitsExplicitNull()
+    {
+        var patch = new SessionPatch { Label = SessionPatch.Clear };
+
+        var payload = patch.ToPayload("agent:main:main");
+
+        Assert.True(payload.ContainsKey("label"));
+        Assert.Null(payload["label"]);
     }
 
     [Fact]
@@ -441,6 +504,7 @@ public class GatewayProtocolModelsTests
         var patch = new SessionPatch
         {
             Model = SessionPatch.Clear,
+            ThinkingLevel = SessionPatch.Clear,
             ExecNode = SessionPatch.Clear,
             FastMode = SessionPatch.Clear,
             ResponseUsage = SessionPatch.Clear,
@@ -451,14 +515,13 @@ public class GatewayProtocolModelsTests
         var payload = patch.ToPayload("agent:main");
 
         // Cleared fields are present with an explicit null value (not omitted).
-        foreach (var name in new[] { "model", "execNode", "fastMode", "responseUsage", "sendPolicy", "groupActivation" })
+        foreach (var name in new[] { "model", "thinkingLevel", "execNode", "fastMode", "responseUsage", "sendPolicy", "groupActivation" })
         {
             Assert.True(payload.ContainsKey(name), $"expected '{name}' to be present");
             Assert.Null(payload[name]);
         }
 
         // Untouched fields stay omitted.
-        Assert.False(payload.ContainsKey("thinkingLevel"));
         Assert.False(payload.ContainsKey("execHost"));
     }
 
@@ -467,6 +530,9 @@ public class GatewayProtocolModelsTests
     {
         var json = JsonSerializer.Serialize(new SessionPatch { Model = SessionPatch.Clear }.ToPayload("k"));
         Assert.Contains("\"model\":null", json);
+
+        var thinkingJson = JsonSerializer.Serialize(new SessionPatch { ThinkingLevel = SessionPatch.Clear }.ToPayload("k"));
+        Assert.Contains("\"thinkingLevel\":null", thinkingJson);
 
         var fastJson = JsonSerializer.Serialize(new SessionPatch { FastMode = SessionPatch.Clear }.ToPayload("k"));
         Assert.Contains("\"fastMode\":null", fastJson);
@@ -535,19 +601,26 @@ public class GatewayProtocolModelsTests
             ExecAsk = "on-miss",
             ExecNode = "n",
             SendPolicy = SessionSendPolicy.Allow,
-            GroupActivation = SessionGroupActivation.Mention
+            GroupActivation = SessionGroupActivation.Mention,
+            Label = "l",
+            Pinned = true,
+            Unread = true,
+            Archived = true,
+            ExpectedMarkedUnreadAt = 1L
         };
 
         var keys = patch.ToPayload("agent:main").Keys.OrderBy(k => k).ToArray();
 
         var expected = new[]
         {
-            "elevatedLevel", "execAsk", "execHost", "execNode", "execSecurity",
-            "fastMode", "groupActivation", "key", "model", "reasoningLevel",
-            "responseUsage", "sendPolicy", "thinkingLevel", "traceLevel", "verboseLevel"
+            "archived", "elevatedLevel", "execAsk", "execHost", "execNode", "execSecurity",
+            "expectedMarkedUnreadAt", "fastMode", "groupActivation", "key", "label", "model",
+            "pinned", "reasoningLevel", "responseUsage", "sendPolicy", "thinkingLevel",
+            "traceLevel", "unread", "verboseLevel"
         }.OrderBy(k => k).ToArray();
 
         Assert.Equal(expected, keys);
+
     }
 
     // ── sessions.files.list / get ──

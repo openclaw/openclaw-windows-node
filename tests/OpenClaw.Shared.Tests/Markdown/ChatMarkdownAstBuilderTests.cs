@@ -193,6 +193,39 @@ public class ChatMarkdownAstBuilderTests
             Assert.IsType<MdInlineText>(Assert.Single(table.BodyRows[0].Cells[1].Inlines)).Text);
     }
 
+    [Theory]
+    [InlineData(
+        "Metric | Value\n" +
+        "---|---\n" +
+        "Price | $205.27\n" +
+        "Forward P/E | 13.40x (cheapest)\n" +
+        "PEG Ratio | 0.79\n" +
+        "Dividend Yield | 3.47%\n" +
+        "Beta | 0.49 (lowest volatility)\n")]
+    [InlineData(
+        "| Metric | Value |\n|---|---|\n| Price | $205.27 |\n| Forward P/E | 13.40x (cheapest) |\n")]
+    public void Table_GFM_WithOrWithoutOuterPipes_ProducesAlignedRows(string markdown)
+    {
+        var table = Assert.IsType<MdTable>(Assert.Single(Build(markdown).Blocks));
+
+        Assert.Equal(2, table.ColumnAlignments.Count);
+        Assert.Equal(2, Assert.Single(table.HeaderRows).Cells.Count);
+        var expectedBodyRows = markdown.StartsWith("Metric", StringComparison.Ordinal) ? 5 : 2;
+        Assert.Equal(expectedBodyRows, table.BodyRows.Count);
+        Assert.All(table.BodyRows, row => Assert.Equal(2, row.Cells.Count));
+    }
+
+    [Fact]
+    public void TableSyntaxInsideFence_RemainsLiteralCode()
+    {
+        const string markdown = "```text\nMetric | Value\n---|---\nPrice | $205.27\n```\n";
+
+        var code = Assert.IsType<MdCodeBlock>(Assert.Single(Build(markdown).Blocks));
+
+        Assert.Contains("Metric | Value", code.Code, StringComparison.Ordinal);
+        Assert.Contains("---|---", code.Code, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void Table_LikeScreenshotFromTeams_RendersAllRows()
     {

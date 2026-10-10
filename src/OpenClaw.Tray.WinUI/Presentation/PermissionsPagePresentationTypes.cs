@@ -14,6 +14,7 @@ internal enum PermissionsCapabilityKey
     Location,
     TextToSpeech,
     SpeechToText,
+    Ollama,
 }
 
 internal sealed record PermissionsCapabilityState(
@@ -67,7 +68,8 @@ internal sealed record PermissionsExecApprovalRule(
     string Pattern,
     string? ArgPattern,
     double? LastUsedAt,
-    string? LastResolvedPath);
+    string? LastResolvedPath,
+    bool IsWildcard);
 
 internal sealed record PermissionsRuntimeSourceSnapshot(
     GatewayConnectionSnapshot ConnectionSnapshot,

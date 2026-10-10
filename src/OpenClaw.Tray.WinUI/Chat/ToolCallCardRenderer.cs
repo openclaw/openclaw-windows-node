@@ -67,40 +67,26 @@ internal static class ToolCallCardRenderer
                 $"{toolName} · {statusLabel}",
                 Border(VStack(6, details.ToArray()))
                     .Padding(18, 8, 18, 10))
-            .Set(control =>
-            {
-                control.HorizontalAlignment = HorizontalAlignment.Stretch;
-                control.HorizontalContentAlignment = HorizontalAlignment.Stretch;
-                if (isNested)
-                {
-                    control.FontSize = 12;
-                    control.MinHeight = 28;
-                    control.Padding = new Thickness(4, 0, 4, 0);
-                }
-                AutomationProperties.SetAutomationId(
-                    control,
-                    $"ChatToolCall_{SanitizeAutomationId(entry.Id)}");
-            })
+            .HAlign(HorizontalAlignment.Stretch)
+            .HorizontalContentAlignment(HorizontalAlignment.Stretch)
+            .AutomationId($"ChatToolCall_{SanitizeAutomationId(entry.Id)}")
             .AutomationName(
                 $"{LocalizedOrDefault("Chat_Tool_CallLabel", "Tool call")} {toolName}. {statusLabel}.")
             .WithKey($"tool-expander:{entry.Id}:collapse:{props.ToolCallsCollapseVersion}");
 
+        if (isNested)
+        {
+            expander = expander
+                .FontSize(12)
+                .MinHeight(28)
+                .Padding(4, 0, 4, 0);
+        }
+
         return Border(expander)
-            .Set(border =>
-            {
-                border.Margin = isNested
-                    ? new Thickness(0)
-                    : new Thickness(68, 4, 40, 4);
-                border.Padding = isNested
-                    ? new Thickness(0)
-                    : new Thickness(12, 8, 12, 8);
-                border.BorderThickness = isNested
-                    ? new Thickness(0)
-                    : new Thickness(1);
-                border.CornerRadius = isNested
-                    ? new CornerRadius(4)
-                    : new CornerRadius(12);
-            })
+            .Margin(0, isNested ? 0 : 8)
+            .Padding(0)
+            .BorderThickness(0)
+            .CornerRadius(ChatVisuals.SurfaceRadius)
             .Background(BrushFor(
                 isNested
                     ? "SubtleFillColorTransparentBrush"
@@ -122,10 +108,10 @@ internal static class ToolCallCardRenderer
         var body = RichTextBlock(content)
             .Set(text =>
             {
+                text.Style = (Style)Application.Current.Resources["ChatRichTextStyle"];
                 text.TextWrapping = TextWrapping.Wrap;
                 text.FontSize = 12;
                 text.FontWeight = FontWeights.Normal;
-                text.Foreground = BrushFor("TextFillColorSecondaryBrush", Microsoft.UI.Colors.Black);
                 text.FontFamily = new FontFamily("Cascadia Code, Consolas");
                 text.IsTextSelectionEnabled = true;
             });
@@ -200,13 +186,11 @@ internal static class ToolCallCardRenderer
         var expander = Expander(
                 summaryText,
                 details)
+            .HAlign(HorizontalAlignment.Stretch)
+            .HorizontalContentAlignment(HorizontalAlignment.Stretch)
+            .AutomationId($"ChatToolActivity_{SanitizeAutomationId(activity.Tools[0].Id)}")
             .Set(control =>
             {
-                control.HorizontalAlignment = HorizontalAlignment.Stretch;
-                control.HorizontalContentAlignment = HorizontalAlignment.Stretch;
-                AutomationProperties.SetAutomationId(
-                    control,
-                    $"ChatToolActivity_{SanitizeAutomationId(activity.Tools[0].Id)}");
                 ApplyActivityExpander(
                     control,
                     onUserExpansionChanged,
@@ -218,16 +202,16 @@ internal static class ToolCallCardRenderer
             .WithKey(activity.Key);
 
         return Border(expander)
-            .Margin(68, 4, 40, 4)
-            .Padding(8, 4)
+            .Margin(0, 8)
+            .Padding(0)
             .Background(BrushFor(
                 "CardBackgroundFillColorDefaultBrush",
                 Color.FromArgb(0x24, 0x80, 0x80, 0x80)))
             .BorderBrush(BrushFor(
                 "ControlStrokeColorDefaultBrush",
                 Color.FromArgb(0x40, 0x80, 0x80, 0x80)))
-            .BorderThickness(1)
-            .CornerRadius(12);
+            .BorderThickness(0)
+            .CornerRadius(ChatVisuals.SurfaceRadius);
     }
 
     internal static string FormatSummary(ChatToolActivitySummary summary)
@@ -315,7 +299,7 @@ internal static class ToolCallCardRenderer
         global::Windows.UI.Text.FontWeight weight,
         string foregroundResource) =>
         TextBlock(text)
-            .Set(control => control.TextWrapping = TextWrapping.Wrap)
+            .TextWrapping(TextWrapping.Wrap)
             .FontSize(fontSize)
             .FontWeight(weight)
             .Foreground(BrushFor(foregroundResource, Microsoft.UI.Colors.Black));

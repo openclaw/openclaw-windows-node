@@ -29,19 +29,32 @@ public sealed class AccessibilityAppFixture : IDisposable
 
     private readonly string _dataDirectory;
     private readonly string _executablePath;
+    private readonly string? _chatFixture;
+    private readonly bool _syntheticData;
+    private readonly bool _agentIdentities;
     private readonly string? _nativeChatProofSignalPath;
     private readonly string? _nativeChatProofVisualDirectory;
+    private readonly string _navigationSignalPath;
     private readonly Process _process;
 
-    public IntPtr HubWindowHandle { get; }
+    public IntPtr HubWindowHandle { get; private set; }
 
     public AccessibilityAppFixture()
         : this(initializeAxe: true)
     {
     }
 
-    internal AccessibilityAppFixture(bool initializeAxe)
+    internal AccessibilityAppFixture(
+        bool initializeAxe,
+        string? chatFixture = null,
+        string theme = "System",
+        bool syntheticData = true,
+        string? initialRoute = "connection",
+        bool agentIdentities = false)
     {
+        _chatFixture = chatFixture;
+        _syntheticData = syntheticData;
+        _agentIdentities = agentIdentities;
         _executablePath = Path.Combine(AppContext.BaseDirectory, "OpenClaw.Tray.WinUI.exe");
         if (!File.Exists(_executablePath))
         {
@@ -54,6 +67,9 @@ public sealed class AccessibilityAppFixture : IDisposable
             Path.GetTempPath(),
             $"OpenClaw.Tray.Axe.{Guid.NewGuid():N}");
         Directory.CreateDirectory(_dataDirectory);
+        _navigationSignalPath = Path.Combine(
+            _dataDirectory,
+            "accessibility-navigation.ready");
         if (!initializeAxe
             && Environment.GetEnvironmentVariable("OPENCLAW_UI_SCREENSHOT_PATH")
                 is { Length: > 0 })
@@ -72,20 +88,51 @@ public sealed class AccessibilityAppFixture : IDisposable
               "SettingsSchemaVersion": 1,
               "EnableMcpServer": true,
               "GlobalHotkeyEnabled": false,
-              "AutoStart": false
+              "AutoStart": false,
+              "EnableNodeMode": false,
+              "AppTheme": "THEME"
             }
-            """);
+            """.Replace("THEME", theme, StringComparison.Ordinal));
 
-        _process = StartProcess($"{OpenClawTray.AppIdentity.ProtocolScheme}://hub/connection");
+        _process = StartProcess(initialRoute is null ? null : $"{OpenClawTray.AppIdentity.ProtocolScheme}://hub/{initialRoute}");
         HubWindowHandle = WaitForHubWindow();
         if (initializeAxe)
             AxeHelper.Initialize(_process.Id);
     }
 
-    public async Task NavigateAsync(string pageTag, string pageMarkerAutomationId)
+    public async Task NavigateAsync(
+        string pageTag,
+        string expectedPageName,
+        string pageMarkerAutomationId)
     {
-        EnsureTargetIsAlive();
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            EnsureTargetIsAlive();
+            var baselineSignalCount = ReadNavigationSignals().Count;
+            await ForwardDeepLinkAsync(pageTag);
 
+            try
+            {
+                await WaitForNavigationSignalAsync(
+                    pageTag,
+                    expectedPageName,
+                    baselineSignalCount);
+                await WaitForPageMarkerAsync(pageTag, pageMarkerAutomationId);
+                return;
+            }
+            catch (TimeoutException) when (attempt == 0)
+            {
+                // A busy UI automation host can delay or lose one activation.
+                // Re-sending is safe because same-page navigation is deduplicated.
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"Navigation retry loop for '{pageTag}' completed unexpectedly.");
+    }
+
+    private async Task ForwardDeepLinkAsync(string pageTag)
+    {
         using var sender = StartProcess($"{OpenClawTray.AppIdentity.ProtocolScheme}://hub/{pageTag}");
         using var timeout = new CancellationTokenSource(DeepLinkTimeout);
         try
@@ -99,9 +146,6 @@ public sealed class AccessibilityAppFixture : IDisposable
             throw new TimeoutException(
                 $"Timed out forwarding the '{pageTag}' deep link to the accessibility app.");
         }
-
-        EnsureTargetIsAlive();
-        await WaitForPageMarkerAsync(pageTag, pageMarkerAutomationId);
     }
 
     public string? CaptureHubScreenshotIfRequested()
@@ -237,6 +281,70 @@ public sealed class AccessibilityAppFixture : IDisposable
         return path;
     }
 
+    private async Task WaitForNavigationSignalAsync(
+        string pageTag,
+        string expectedPageName,
+        int baselineSignalCount)
+    {
+        var stopwatch = Stopwatch.StartNew();
+
+        while (stopwatch.Elapsed < NavigationTimeout)
+        {
+            EnsureTargetIsAlive();
+            var signals = ReadNavigationSignals();
+            if (signals
+                .Skip(Math.Min(baselineSignalCount, signals.Count))
+                .Any(signal => string.Equals(
+                    signal,
+                    expectedPageName,
+                    StringComparison.Ordinal)))
+            {
+                return;
+            }
+
+            await Task.Delay(100);
+        }
+
+        throw new TimeoutException(
+            $"The '{pageTag}' page did not publish its app-owned readiness acknowledgement " +
+            $"within {NavigationTimeout.TotalSeconds:0} seconds.");
+    }
+
+    private IReadOnlyList<string> ReadNavigationSignals()
+    {
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            try
+            {
+                if (!File.Exists(_navigationSignalPath))
+                    return [];
+
+                using var stream = new FileStream(
+                    _navigationSignalPath,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.ReadWrite);
+                using var reader = new StreamReader(stream);
+                var signals = new List<string>();
+                while (reader.ReadLine() is { } line)
+                {
+                    var parts = line.Split('\t', 2);
+                    if (parts.Length == 2)
+                        signals.Add(parts[1]);
+                }
+
+                return signals;
+            }
+            catch (IOException) when (attempt < 4)
+            {
+                Thread.Sleep(20);
+            }
+        }
+
+        throw new IOException(
+            "Could not read the accessibility navigation acknowledgement file.");
+    }
+
     private async Task WaitForPageMarkerAsync(string pageTag, string automationId)
     {
         var stopwatch = Stopwatch.StartNew();
@@ -247,32 +355,74 @@ public sealed class AccessibilityAppFixture : IDisposable
         while (stopwatch.Elapsed < NavigationTimeout)
         {
             EnsureTargetIsAlive();
-            var hub = AutomationElement.FromHandle(HubWindowHandle);
-            if (hub.FindFirst(TreeScope.Descendants, condition) != null)
-                return;
+            var workspaceRoute = pageTag is "chat" or "workspace" or "home" or "hub"
+                || pageTag.StartsWith("workspace:", StringComparison.Ordinal);
+            var windows = AutomationElement.RootElement.FindAll(TreeScope.Children,
+                new PropertyCondition(AutomationElement.ProcessIdProperty, _process.Id));
+            foreach (AutomationElement window in windows)
+            {
+                var isWorkspace = window.FindFirst(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.AutomationIdProperty, "WorkspaceNavigation")) is not null;
+                if (isWorkspace != workspaceRoute) continue;
+                if (window.FindFirst(TreeScope.Descendants, condition) is not null)
+                {
+                    HubWindowHandle = new IntPtr(window.Current.NativeWindowHandle);
+                    return;
+                }
+            }
 
             await Task.Delay(100);
         }
 
         throw new TimeoutException(
-            $"The '{pageTag}' page did not expose its '{automationId}' marker " +
+            $"The app acknowledged '{pageTag}' as ready, but its '{automationId}' marker was not visible " +
             $"within {NavigationTimeout.TotalSeconds:0} seconds.");
     }
 
-    private Process StartProcess(string deepLink)
+    internal async Task RefocusWorkspaceAsync()
+    {
+        await ForwardDeepLinkAsync("hub");
+        await WaitForPageMarkerAsync("chat", "WorkspaceNavigation");
+    }
+
+    /// <summary>Waits until the current Hub window owns the foreground so synthesized keyboard input reaches it.</summary>
+    internal async Task EnsureHubForegroundAsync()
+    {
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            if (GetForegroundWindow() == HubWindowHandle) return;
+            _ = BringWindowToTop(HubWindowHandle);
+            _ = SetForegroundWindow(HubWindowHandle);
+            await Task.Delay(100);
+        }
+        if (GetForegroundWindow() != HubWindowHandle)
+            throw new InvalidOperationException("Could not foreground the Hub window for keyboard input.");
+    }
+
+    private Process StartProcess(string? deepLink)
     {
         var startInfo = new ProcessStartInfo(_executablePath)
         {
             UseShellExecute = false,
             WorkingDirectory = AppContext.BaseDirectory,
         };
-        startInfo.ArgumentList.Add(deepLink);
+        if (deepLink is not null)
+            startInfo.ArgumentList.Add(deepLink);
         startInfo.Environment["OPENCLAW_TRAY_DATA_DIR"] = _dataDirectory;
         startInfo.Environment["OPENCLAW_SKIP_UPDATE_CHECK"] = "1";
         startInfo.Environment["OPENCLAW_FORCE_ONBOARDING"] = "0";
         startInfo.Environment["OPENCLAW_LANGUAGE"] = "en-US";
-        startInfo.Environment["OPENCLAW_ACCESSIBILITY_TEST_CHAT"] = "1";
-        startInfo.Environment["OPENCLAW_ACCESSIBILITY_TEST_SESSIONS"] = "1";
+        startInfo.Environment["OPENCLAW_ACCESSIBILITY_TEST_CHAT"] = _syntheticData ? "1" : "0";
+        startInfo.Environment["OPENCLAW_ACCESSIBILITY_TEST_SESSIONS"] = _syntheticData ? "1" : "0";
+        startInfo.Environment["OPENCLAW_ACCESSIBILITY_TEST_AGENT_IDENTITIES"] = _agentIdentities ? "1" : "0";
+        if (!string.IsNullOrWhiteSpace(_chatFixture))
+        {
+            startInfo.Environment[
+                "OPENCLAW_ACCESSIBILITY_TEST_CHAT_FIXTURE"] =
+                _chatFixture;
+        }
+        startInfo.Environment["OPENCLAW_ACCESSIBILITY_NAVIGATION_SIGNAL"] =
+            _navigationSignalPath;
         if (_nativeChatProofSignalPath is not null
             && _nativeChatProofVisualDirectory is not null)
         {

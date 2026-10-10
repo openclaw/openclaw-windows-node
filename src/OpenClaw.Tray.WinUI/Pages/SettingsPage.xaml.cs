@@ -1,5 +1,6 @@
 using Microsoft.Toolkit.Uwp.Notifications;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
@@ -52,10 +53,84 @@ public sealed partial class SettingsPage : Page
 
     public void Initialize()
     {
+        StoreMigrationAction.Content = LocalizationHelper.GetString("Migration2_InnoAction");
+        StoreMigrationCard.Visibility = InnoMigrationHandoff.IsAvailable ? Visibility.Visible : Visibility.Collapsed;
         PopulateAppInfo();
         InitializeGatewayInfo();
         if (CurrentApp.Settings is { } settings)
             LoadGatewaySection(settings);
+    }
+
+    private void OnStoreMigration(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(OnStoreMigrationAsync, new AppLogger(), nameof(OnStoreMigration));
+
+    private async Task OnStoreMigrationAsync()
+    {
+        StoreMigrationAction.IsEnabled = false;
+        try
+        {
+            var confirmation = new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = LocalizationHelper.GetString("Migration2_InnoConsentTitle"),
+                Content = LocalizationHelper.GetString("Migration2_InnoConsent"),
+                PrimaryButtonText = LocalizationHelper.GetString("Migration2_InnoAction"),
+                CloseButtonText = LocalizationHelper.GetString("Migration_StoreNotNow"),
+                DefaultButton = ContentDialogButton.Close
+            };
+            if (await confirmation.ShowAsync() != ContentDialogResult.Primary)
+                return;
+            var messageKey = await InnoMigrationHandoff.GrantAndLaunchAsync();
+            ShowStoreMigrationStatus(messageKey, messageKey == "Migration2_InnoGranted"
+                ? InfoBarSeverity.Success : InfoBarSeverity.Error);
+        }
+        catch (Exception exception)
+        {
+            Logger.Error($"Could not show migration consent: {exception.Message}");
+            ShowStoreMigrationStatus("Migration2_InnoFailed", InfoBarSeverity.Error);
+        }
+        finally
+        {
+            StoreMigrationAction.IsEnabled = true;
+        }
+    }
+
+    private void ShowStoreMigrationStatus(string messageKey, InfoBarSeverity severity)
+    {
+        StoreMigrationStatus.Message = LocalizationHelper.GetString(messageKey);
+        StoreMigrationStatus.Severity = severity;
+        // Re-open a bar the user never dismissed so a second result is announced
+        // rather than silently swapping the text of the first one.
+        StoreMigrationStatus.IsOpen = false;
+        StoreMigrationStatus.Visibility = Visibility.Visible;
+        // The bar is collapsed while idle so it does not consume layout spacing, but a
+        // collapsed element has no automation peer, and InfoBar announces through the
+        // existing peer only. Realize it before opening or the announcement is dropped.
+        FrameworkElementAutomationPeer.CreatePeerForElement(StoreMigrationStatus);
+        StoreMigrationStatus.IsOpen = true;
+    }
+
+    private void OnStoreMigrationStatusClosed(InfoBar sender, InfoBarClosedEventArgs args)
+    {
+        if (!sender.IsOpen)
+            sender.Visibility = Visibility.Collapsed;
+    }
+
+    internal void ShowAbout()
+    {
+        if (IsLoaded)
+            AboutHeading.StartBringIntoView();
+        else
+        {
+            Loaded -= OnAboutLoaded;
+            Loaded += OnAboutLoaded;
+        }
+    }
+
+    private void OnAboutLoaded(object sender, RoutedEventArgs e)
+    {
+        Loaded -= OnAboutLoaded;
+        AboutHeading.StartBringIntoView();
     }
 
     /// <summary>
@@ -119,7 +194,8 @@ public sealed partial class SettingsPage : Page
 
     private void PopulateAppInfo()
     {
-        AppInfoVersionText.Text = AppVersionInfo.DisplayVersion;
+        AppInfoVersionText.Text = SettingsAppInfoProjection.ResolveDisplayVersion(
+            AppVersionInfo.DisplayVersion, PackageHelper.PackageVersion);
         var windowsAppSdk = SettingsAppInfoProjection.ResolveWindowsAppSdkDisplayName(
             Assembly.GetEntryAssembly()?.GetName().Name, AppContext.BaseDirectory);
         AppInfoRuntimeText.Text = SettingsAppInfoProjection.BuildRuntimeStack(

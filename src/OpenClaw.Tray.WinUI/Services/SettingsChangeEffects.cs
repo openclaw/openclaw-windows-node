@@ -4,6 +4,7 @@ using OpenClaw.Shared;
 namespace OpenClawTray.Services;
 
 internal sealed record SettingsChangeEffects(
+    Action<SettingsData> ApplyOllamaPermission,
     Action<SettingsData> ApplyChatToolCallVisibility,
     Action SyncActiveGatewayBrowserProxyForward,
     Action PublishSandboxRiskNotification,

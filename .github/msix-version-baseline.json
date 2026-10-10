@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "lastAllocated": {
+    "2026.9.4": 400
+  },
+  "evidence": {
+    "2026.9.4": {
+      "storePackageVersion": "2026.9.400.0",
+      "workflowRun": "https://github.com/natalie-aguinaldo/openclaw-windows-node/actions/runs/35303248183",
+      "workflowHeadCommit": "01f2bf7ef407f8b9125f40bf1a4638c0361818c2",
+      "packageSourceCommit": "ded1d4aed4d1a69859a817dc57087f2c6142deab",
+      "artifacts": {
+        "x64": {
+          "artifactId": 10531666502,
+          "packageSha256": "4612ff57a12489584a853a5eed38f687d6a8ac2f89836eb74c4eab8b1514d4db"
+        },
+        "arm64": {
+          "artifactId": 10531117192,
+          "packageSha256": "febd4c4db99d153eea85c97000dd3583364ce671c3e8598bd7bf972a89cc788d"
+        }
+      }
+    }
+  }
+}

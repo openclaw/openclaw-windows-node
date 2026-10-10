@@ -64,6 +64,22 @@ public sealed class SettingsPageViewModelTests
     }
 
     [Fact]
+    public void LocationConsent_PersistsField()
+    {
+        var vm = NewVm(out var settings, out var appCommands, out _, out var temp);
+        using (temp)
+        {
+            vm.Activate(null);
+
+            var target = !vm.LocationConsentGiven;
+            vm.LocationConsentGiven = target;
+
+            Assert.Equal(target, settings.LocationConsentGiven);
+            Assert.Equal(1, appCommands.NotifySettingsSavedCount);
+        }
+    }
+
+    [Fact]
     public void ShowDiagnostics_WritesOverride_NotEffectiveOnly()
     {
         var vm = NewVm(out var settings, out _, out _, out var temp);
@@ -120,7 +136,7 @@ public sealed class SettingsPageViewModelTests
     [Fact]
     public void AutoStart_OsWriteFailure_DoesNotFlashSaved()
     {
-        var vm = NewVm(out _, out var appCommands, out _, out var temp);
+        var vm = NewVm(out var settings, out var appCommands, out _, out var temp);
         using (temp)
         {
             appCommands.AutoStartResult = false; // simulate the OS registration failing
@@ -128,10 +144,12 @@ public sealed class SettingsPageViewModelTests
             var savedFlashes = 0;
             vm.SavedIndicated += (_, _) => savedFlashes++;
 
+            var effectiveValue = settings.AutoStart;
             vm.AutoStart = !vm.AutoStart;
 
             Assert.Equal(1, appCommands.AutoStartApplyCount);
             Assert.Equal(0, savedFlashes); // no confirmation when the apply reports failure
+            Assert.Equal(effectiveValue, vm.AutoStart);
         }
     }
 

@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <root>
   <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
     <xsd:element name="root" msdata:IsDataSet="true">
@@ -395,8 +395,14 @@
   <data name="Update_Message_Skipped_Debug" xml:space="preserve">
     <value>Update checks are disabled in debug builds.</value>
   </data>
+  <data name="Update_Message_Skipped_Store" xml:space="preserve">
+    <value>Updates for this app are managed by the Microsoft Store.</value>
+  </data>
   <data name="Update_Message_Skipped_Dev" xml:space="preserve">
     <value>Update checks are disabled in development builds.</value>
+  </data>
+  <data name="Update_Message_Skipped_ExtendedStable" xml:space="preserve">
+    <value>The connected Gateway uses extended-stable, so this ordinary Windows update is deferred.</value>
   </data>
   <data name="Update_OK" xml:space="preserve">
     <value>OK</value>
@@ -824,10 +830,22 @@ Use one of these options:
   </data>
   <!-- ==================== Toast: Screen / Camera ==================== -->
   <data name="Toast_ScreenCaptured" xml:space="preserve">
-    <value>📸 Screen Captured</value>
+    <value>📸 Capturing screen</value>
   </data>
   <data name="Toast_ScreenCapturedDetail" xml:space="preserve">
-    <value>OpenClaw agent captured your screen</value>
+    <value>OpenClaw agent is capturing your screen</value>
+  </data>
+  <data name="Toast_CameraCaptured" xml:space="preserve">
+    <value>📷 Capturing webcam photo</value>
+  </data>
+  <data name="Toast_CameraCapturedDetail" xml:space="preserve">
+    <value>OpenClaw agent is capturing a photo from your camera</value>
+  </data>
+  <data name="Toast_LocationRead" xml:space="preserve">
+    <value>📍 Accessing location</value>
+  </data>
+  <data name="Toast_LocationReadDetail" xml:space="preserve">
+    <value>OpenClaw agent is accessing your device location</value>
   </data>
   <data name="Toast_CameraBlocked" xml:space="preserve">
     <value>📷 Camera access blocked</value>
@@ -871,22 +889,28 @@ Use one of these options:
     <value>Permission Request</value>
   </data>
   <data name="RecordingConsent_ScreenTitle" xml:space="preserve">
-    <value>Allow screen recording?</value>
+    <value>Allow screen capture?</value>
   </data>
   <data name="RecordingConsent_CameraTitle" xml:space="preserve">
-    <value>Allow camera recording?</value>
+    <value>Allow camera capture?</value>
+  </data>
+  <data name="RecordingConsent_LocationTitle" xml:space="preserve">
+    <value>Allow location access?</value>
   </data>
   <data name="RecordingConsent_ScreenDescription" xml:space="preserve">
-    <value>An agent is requesting to record your screen. This will capture video from your display and send it to the agent. Your choice will be remembered for future requests until you change it in Settings.</value>
+    <value>An agent is requesting access to capture your screen. This may capture images or video from your display and send them to the agent. Your choice will be remembered for future requests.</value>
   </data>
   <data name="RecordingConsent_CameraDescription" xml:space="preserve">
-    <value>An agent is requesting to record from your camera. This will capture video from your webcam and send it to the agent. Your choice will be remembered for future requests until you change it in Settings.</value>
+    <value>An agent is requesting access to your camera. This may capture photos or video and send them to the agent. Your choice will be remembered for future requests.</value>
+  </data>
+  <data name="RecordingConsent_LocationDescription" xml:space="preserve">
+    <value>An agent is requesting access to your device location. This will send your current location to the agent. Your choice will be remembered for future requests.</value>
   </data>
   <data name="RecordingConsent_Privacy" xml:space="preserve">
-    <value>You can change this later in Settings.</value>
+    <value>Only allow this if you trust the connected agent and gateway.</value>
   </data>
   <data name="RecordingConsent_Allow" xml:space="preserve">
-    <value>Allow recording</value>
+    <value>Allow</value>
   </data>
   <data name="RecordingConsent_Deny" xml:space="preserve">
     <value>Deny</value>
@@ -908,7 +932,7 @@ Use one of these options:
     <value>Privacy</value>
   </data>
   <data name="SettingsPrivacyDescription.Text" xml:space="preserve">
-    <value>Pre-approve capabilities so agents can use them without a permission prompt each time. You'll still see a countdown before recording starts.</value>
+    <value>Allow sensitive capture without prompting every time. OpenClaw still notifies you before each access and shows a countdown before recordings.</value>
   </data>
   <data name="ScreenRecordingToggle.Header" xml:space="preserve">
     <value>Allow screen recording</value>
@@ -1080,8 +1104,11 @@ Use one of these options:
   <data name="Onboarding_Connection_Later" xml:space="preserve">
     <value>Configure Later</value>
   </data>
+  <data name="Onboarding_LocalAi_RecheckAvailabilityButton.Content" xml:space="preserve">
+    <value>Recheck</value>
+  </data>
   <data name="Onboarding_Ready_Title" xml:space="preserve">
-    <value>All Set!</value>
+    <value>All set!</value>
   </data>
   <data name="Onboarding_Ready_Subtitle" xml:space="preserve">
     <value>OpenClaw is ready to go. Here are some things to try:</value>
@@ -2375,6 +2402,12 @@ Use one of these options:
   <data name="Onboarding_Wizard_ErrorGatewayDisconnected" xml:space="preserve">
     <value>Gateway disconnected</value>
   </data>
+  <data name="Onboarding_Wizard_GatewayConsoleGap" xml:space="preserve">
+    <value>Some Gateway console messages were skipped. Open the Gateway terminal for missing sign-in guidance.</value>
+  </data>
+  <data name="Onboarding_Wizard_GatewayConsoleUnavailable" xml:space="preserve">
+    <value>Gateway console updates are unavailable. Open the Gateway terminal for provider sign-in guidance.</value>
+  </data>
   <data name="Onboarding_Wizard_ErrorGatewayDisconnectedDetail" xml:space="preserve">
     <value>Lost connection to gateway. Click Next to skip the wizard, or wait for reconnection.</value>
   </data>
@@ -2457,7 +2490,7 @@ Use one of these options:
     <value>Type a command...</value>
   </data>
   <data name="HubWindow_winexWindowEx_2.Title" xml:space="preserve">
-    <value>OpenClaw</value>
+    <value>OpenClaw Settings</value>
   </data>
   <data name="TitleSearchBox.PlaceholderText" xml:space="preserve">
     <value>Search… (Ctrl+E)</value>
@@ -2606,6 +2639,9 @@ Use one of these options:
   <data name="VoiceSettingsPage_TtsElevenLabs.Content" xml:space="preserve">
     <value>ElevenLabs (cloud, requires API key)</value>
   </data>
+  <data name="VoiceSettingsPage_TtsMiniMax.Content" xml:space="preserve">
+    <value>MiniMax (cloud, requires API key)</value>
+  </data>
   <data name="VoiceSettingsPage_PiperVoiceCombo.Header" xml:space="preserve">
     <value>Voice</value>
   </data>
@@ -2639,8 +2675,32 @@ Use one of these options:
   <data name="VoiceSettingsPage_ElevenLabsModelBox.Header" xml:space="preserve">
     <value>Model (optional)</value>
   </data>
+  <data name="VoiceSettingsPage_MiniMaxApiKeyBox.Header" xml:space="preserve">
+    <value>API Key</value>
+  </data>
+  <data name="VoiceSettingsPage_MiniMaxVoiceIdBox.Header" xml:space="preserve">
+    <value>Voice ID</value>
+  </data>
+  <data name="VoiceSettingsPage_MiniMaxVoiceIdBox.PlaceholderText" xml:space="preserve">
+    <value>e.g. male-qn-qingse</value>
+  </data>
+  <data name="VoiceSettingsPage_MiniMaxModelBox.Header" xml:space="preserve">
+    <value>Model</value>
+  </data>
+  <data name="VoiceSettingsPage_MiniMaxModelBox.PlaceholderText" xml:space="preserve">
+    <value>speech-2.8-hd</value>
+  </data>
+  <data name="VoiceSettingsPage_MiniMaxRegionCombo.Header" xml:space="preserve">
+    <value>Region</value>
+  </data>
+  <data name="VoiceSettingsPage_MiniMaxRegionGlobal.Content" xml:space="preserve">
+    <value>Global</value>
+  </data>
+  <data name="VoiceSettingsPage_MiniMaxRegionChina.Content" xml:space="preserve">
+    <value>China</value>
+  </data>
   <data name="VoiceSettingsPage_PrivacyNote.Text" xml:space="preserve">
-    <value>All speech processing runs entirely on your device. No audio data is sent to any cloud service.</value>
+    <value>Piper, Windows, and speech recognition run on this device. Cloud TTS providers send response text to their services for synthesis; microphone audio is not sent to them.</value>
   </data>
   <data name="VoiceSettingsPage_StatusModelReady" xml:space="preserve">
     <value>✅ Model ready</value>
@@ -3038,6 +3098,9 @@ Use one of these options:
   <data name="Chat_Composer_QueuedMessageFailed" xml:space="preserve">
     <value>Failed</value>
   </data>
+  <data name="Chat_Timeline_Pending" xml:space="preserve">
+    <value>Pending</value>
+  </data>
   <data name="Chat_Composer_QueuedMessageCancel" xml:space="preserve">
     <value>Cancel queued message</value>
   </data>
@@ -3386,6 +3449,12 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
   </data>
   <data name="PermissionsPage_Cap_Stt_Description" xml:space="preserve">
     <value>Lets agents transcribe microphone audio locally. Download a speech model in Voice &amp; Audio settings before first use.</value>
+  </data>
+  <data name="PermissionsPage_Cap_Ollama_Label" xml:space="preserve">
+    <value>Share Windows Ollama</value>
+  </data>
+  <data name="PermissionsPage_Cap_Ollama_Description" xml:space="preserve">
+    <value>Let agents connected through the active local or remote gateway use Ollama models running separately on this PC. This does not change the app-managed Local AI gateway provider.</value>
   </data>
   <data name="PermissionsPage_Cap_SystemRun_Label" xml:space="preserve">
     <value>System tools</value>
@@ -3775,10 +3844,13 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>Sound</value>
   </data>
   <data name="SettingsRow_ScreenRec_Header.Text" xml:space="preserve">
-    <value>Allow screen recording</value>
+    <value>Allow screen capture</value>
   </data>
   <data name="SettingsRow_CamRec_Header.Text" xml:space="preserve">
-    <value>Allow camera recording</value>
+    <value>Allow camera capture</value>
+  </data>
+  <data name="SettingsRow_Location_Header.Text" xml:space="preserve">
+    <value>Allow location access</value>
   </data>
   <data name="HubWindow_NavigationViewItem_Voice.Content" xml:space="preserve">
     <value>Voice &amp; Audio</value>
@@ -4028,6 +4100,9 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
   </data>
   <data name="SettingsRow_CamRec_Description.Text" xml:space="preserve">
     <value>Lets agents capture the camera via camera.* commands.</value>
+  </data>
+  <data name="SettingsRow_Location_Description.Text" xml:space="preserve">
+    <value>Lets agents read device location via location.* commands.</value>
   </data>
   <data name="VoiceSettingsPage_ElevenLabsVoiceIdBox.PlaceholderText" xml:space="preserve">
     <value>e.g. 21m00Tcm4TlvDq8ikWAM</value>
@@ -4919,7 +4994,7 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>MSIX installation detected</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Message" xml:space="preserve">
-    <value>Removing OpenClaw from Windows Settings &amp;#x2192; Apps will NOT clean up the Local Gateway (WSL distro, disk image). Use Remove Local Gateway below FIRST, then uninstall OpenClaw.</value>
+    <value>Removing OpenClaw from Windows Settings → Apps will NOT clean up the Local Gateway (WSL distro, disk image). Use Remove Local Gateway below FIRST, then uninstall OpenClaw.</value>
   </data>
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>Removes the WSL distro (OpenClawGateway), its disk image, autostart entry, and clears gateway credentials. Your MCP token is preserved. Onboarding will reset.</value>
@@ -7066,6 +7141,12 @@ Make sure the gateway is running.</value>
   <data name="HubWindow_NavigationViewItem_LocalAi.Content" xml:space="preserve"><value>Local AI</value></data>
   <data name="LocalAiPage_Title.Text" xml:space="preserve"><value>Local AI</value></data>
   <data name="LocalAiPage_Intro.Text" xml:space="preserve"><value>Run the verified native llama-server privately on this computer. Models load only when requested.</value></data>
+  <data name="LocalAiPage_UnavailableInfoBar.Title" xml:space="preserve"><value>Local AI is not available</value></data>
+  <data name="LocalAiPage_UnavailableDetailsButton.Content" xml:space="preserve"><value>See why</value></data>
+  <data name="LocalAiPage_UnavailableDetailsTip.Title" xml:space="preserve"><value>Why Local AI is unavailable</value></data>
+  <data name="LocalAiPage_RecheckAvailabilityButton.Content" xml:space="preserve"><value>Recheck</value></data>
+  <data name="LocalAiPage_UnavailableRequirementsMessage" xml:space="preserve"><value>This device does not meet one or more Local AI requirements.</value></data>
+  <data name="LocalAiPage_UnavailableProbeMessage" xml:space="preserve"><value>OpenClaw could not verify Local AI requirements right now. Recheck after confirming the NVIDIA driver is available.</value></data>
   <data name="LocalAiPage_EngineHeading.Text" xml:space="preserve"><value>llama-server</value></data>
   <data name="LocalAiPage_VersionLabel.Text" xml:space="preserve"><value>Version</value></data>
   <data name="LocalAiPage_EndpointLabel.Text" xml:space="preserve"><value>Endpoint</value></data>
@@ -7076,6 +7157,8 @@ Make sure the gateway is running.</value>
   <data name="LocalAiPage_OpenLogsButton.Content" xml:space="preserve"><value>Open logs</value></data>
   <data name="LocalAiPage_ModelHeading.Text" xml:space="preserve"><value>Model</value></data>
   <data name="LocalAiPage_RetrySetupButton.Content" xml:space="preserve"><value>Retry setup or download</value></data>
+  <data name="LocalAiPage_ChangeModelDescription.Text" xml:space="preserve"><value>Opens setup to choose another model. Replacing the existing Local Gateway still requires confirmation.</value></data>
+  <data name="LocalAiPage_ChangeModelButton.Content" xml:space="preserve"><value>Change model</value></data>
   <data name="LocalAiPage_GatewayHeading.Text" xml:space="preserve"><value>Gateway connection</value></data>
   <data name="LocalAiPage_RepairConnectionButton.Content" xml:space="preserve"><value>Repair connection</value></data>
   <data name="LocalAiPage_OpenChatButton.Content" xml:space="preserve"><value>Open chat</value></data>
@@ -7099,4 +7182,860 @@ Make sure the gateway is running.</value>
   <data name="LocalAiPage_ModelRecipeFormat" xml:space="preserve"><value>{0} context · {1} KV · Loads on first request</value></data>
   <data name="Command_GoToLocalAi_Title" xml:space="preserve"><value>Go to Local AI</value></data>
   <data name="Command_GoToLocalAi_Subtitle" xml:space="preserve"><value>View llama-server, model, and gateway status</value></data>
+  <data name="Onboarding_LocalAi_UnavailableDetailsButton.Content" xml:space="preserve"><value>See why</value></data>
+  <data name="Onboarding_LocalAi_CheckingTitle" xml:space="preserve"><value>Checking Local AI requirements</value></data>
+  <data name="Onboarding_LocalAi_CheckingMessage" xml:space="preserve"><value>OpenClaw is checking the NVIDIA GPU, driver, CUDA, memory, and WSL requirements.</value></data>
+  <data name="Onboarding_LocalAi_CheckingHelpText" xml:space="preserve"><value>OpenClaw is checking Local AI requirements.</value></data>
+  <data name="Onboarding_LocalAi_ProbeUnknownTitle" xml:space="preserve"><value>Local AI availability could not be verified</value></data>
+  <data name="Onboarding_LocalAi_ProbeUnknownMessage" xml:space="preserve"><value>OpenClaw could not verify Local AI requirements right now. Recheck after confirming the NVIDIA driver is available.</value></data>
+  <data name="Onboarding_LocalAi_ProbeUnknownHelpText" xml:space="preserve"><value>OpenClaw could not verify Local AI requirements. Recheck availability to try again.</value></data>
+  <data name="Onboarding_LocalAi_UnavailableTitle" xml:space="preserve"><value>Local AI is not available</value></data>
+  <data name="Onboarding_LocalAi_UnavailableMessage" xml:space="preserve"><value>This PC does not meet one or more Local AI requirements.</value></data>
+  <data name="Onboarding_LocalAi_UnavailableHelpText" xml:space="preserve"><value>Unavailable because this PC does not meet the Local AI requirements.</value></data>
+  <data name="Onboarding_LocalAi_ProbeFailureReason" xml:space="preserve"><value>OpenClaw could not read the NVIDIA GPU, driver, CUDA, or memory information. Confirm the NVIDIA driver is available, then recheck Local AI requirements.</value></data>
+  <data name="Onboarding_LocalAi_UnavailableDetailsDialogTitle" xml:space="preserve"><value>Why Local AI is unavailable</value></data>
+  <data name="Onboarding_LocalAi_UnavailableDetailsDialogClose" xml:space="preserve"><value>Close</value></data>
+  <data name="LocalAi_Reason_RuntimeUnavailable" xml:space="preserve"><value>This Local AI release does not include a native llama-server runtime for the detected Windows architecture.</value></data>
+  <data name="LocalAi_Reason_NoNvidiaGpu" xml:space="preserve"><value>No NVIDIA GPU was reported by the NVIDIA driver. Install or repair the NVIDIA driver, then try setup again.</value></data>
+  <data name="LocalAi_Reason_UnknownModel" xml:space="preserve"><value>The selected model is not available in this Local AI release.</value></data>
+  <data name="LocalAi_Reason_HardwareFactsIncomplete" xml:space="preserve"><value>OpenClaw could not read a stable NVIDIA GPU identifier, memory, driver, or CUDA capability.</value></data>
+  <data name="LocalAi_Reason_InsufficientGpuMemory" xml:space="preserve"><value>{0} requires {1} of GPU memory for model weights, KV cache, and runtime workspace. OpenClaw detected {2}.</value></data>
+  <data name="LocalAi_Reason_DriverTooOld" xml:space="preserve"><value>NVIDIA driver {0} was detected. Local AI requires version {1} or newer.</value></data>
+  <data name="LocalAi_Reason_CudaCapabilityTooLow" xml:space="preserve"><value>The NVIDIA driver does not provide CUDA 13 support. A separate CUDA Toolkit is not required.</value></data>
+  <data name="LocalAi_Reason_Generic" xml:space="preserve"><value>OpenClaw could not verify the Local AI requirements on this system.</value></data>
+  <data name="LocalAi_Reason_UnknownModelName" xml:space="preserve"><value>The selected model</value></data>
+  <data name="LocalAi_Reason_UnknownDriverVersion" xml:space="preserve"><value>unknown</value></data>
+  <data name="LocalAi_Reason_UnknownMemoryAmount" xml:space="preserve"><value>an unknown amount</value></data>
+  <data name="LocalAi_Reason_GigabytesFormat" xml:space="preserve"><value>{0:0.#} GiB</value></data>
+  <data name="Onboarding_Welcome_LocalAiAvailableBadge.Text" xml:space="preserve"><value>Your PC supports Local AI</value></data>
+  <data name="Onboarding_Welcome_LocalAiAvailabilityDetail" xml:space="preserve"><value>Run a model locally using your {0}.</value></data>
+  <data name="Onboarding_LocalAi_WslConfigReadFailureReason" xml:space="preserve"><value>OpenClaw cannot safely read the global .wslconfig file. Check that the file is valid and readable, then try setup again.</value></data>
+  <data name="LocalAiPage_UnavailableProbeTitle" xml:space="preserve"><value>Local AI availability could not be verified</value></data>
+  <data name="LocalAiPage_CheckingTitle" xml:space="preserve"><value>Checking Local AI availability</value></data>
+  <data name="LocalAiPage_CheckingMessage" xml:space="preserve"><value>OpenClaw is verifying whether this device can run Local AI. This only takes a moment.</value></data>
+  <data name="Chat_Code_Copy" xml:space="preserve"><value>Copy code</value></data>
+  <data name="Chat_Code_Label" xml:space="preserve"><value>Code block</value></data>
+  <data name="Chat_Model_Current" xml:space="preserve"><value>Current model</value></data>
+  <data name="Chat_Model_Other" xml:space="preserve"><value>Other models</value></data>
+  <data name="Chat_Model_NoMatches" xml:space="preserve"><value>No matching models</value></data>
+  <data name="Chat_Model_Search" xml:space="preserve"><value>Search models</value></data>
+  <data name="Chat_Attachment_Remove" xml:space="preserve"><value>Remove attachment</value></data>
+  <data name="Chat_Timeline_Loading" xml:space="preserve"><value>Loading messages...</value></data>
+  <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 queued message</value></data>
+  <data name="Chat_Copy_Copied" xml:space="preserve"><value>Copied</value></data>
+  <data name="Chat_Copy_Failed" xml:space="preserve"><value>Copy failed</value></data>
+  <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>Effort</value></data>
+  <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Faster</value></data>
+  <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Smarter</value></data>
+  <data name="Onboarding_Flow_Position" xml:space="preserve"><value>Step {0} of {1}</value></data>
+  <data name="Onboarding_Flow_CompletionUnavailable" xml:space="preserve"><value>Setup could not open Chat. Close setup and reopen OpenClaw.</value></data>
+  <data name="Onboarding_Flow_AiNavigationFailed" xml:space="preserve"><value>The gateway is installed, but AI setup could not open. Reopen setup to continue without reinstalling.</value></data>
+  <data name="Onboarding_Flow_AccessTitle" xml:space="preserve"><value>Your PC, your permissions</value></data>
+  <data name="Onboarding_Flow_InstallAction" xml:space="preserve"><value>Install and set up</value></data>
+  <data name="Onboarding_Flow_Permissions.Header" xml:space="preserve"><value>Windows permissions</value></data>
+  <data name="Onboarding_Flow_InstallReview.Text" xml:space="preserve"><value>What setup will install</value></data>
+  <data name="Onboarding_Flow_AutoStart.Text" xml:space="preserve"><value>Launch OpenClaw at sign-in</value></data>
+  <data name="Onboarding_Flow_AutoStartToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Launch OpenClaw at sign-in</value></data>
+  <data name="ChatDashboardButton.Content" xml:space="preserve"><value>Dashboard</value></data>
+  <data name="ChatDashboardHint.Text" xml:space="preserve"><value>Channels, integrations and gateway settings</value></data>
+  <data name="Onboarding_Flow_WelcomeDescription.Text" xml:space="preserve"><value>OpenClaw is your AI assistant for getting things done on your PC.</value></data>
+  <data name="Onboarding_AiSetup_Title.Text" xml:space="preserve"><value>Connect your AI</value></data>
+  <data name="Onboarding_AiSetup_CatalogOptIn" xml:space="preserve"><value>Discover existing provider conversations (optional)</value></data>
+  <data name="Onboarding_AiSetup_Starting" xml:space="preserve"><value>Starting provider setup…</value></data>
+  <data name="Onboarding_AiSetup_WorkingProvider" xml:space="preserve"><value>Waiting for your provider…</value></data>
+  <data name="Onboarding_AiSetup_Reconnecting" xml:space="preserve"><value>Waiting for the Gateway to reconnect, then verifying this model…</value></data>
+  <data name="Onboarding_AiSetup_PreparedChanged" xml:space="preserve"><value>The model was prepared but not activated. The Gateway connection changed or cannot activate this model. Cancel to return to choices.</value></data>
+  <data name="Onboarding_AiSetup_Submit" xml:space="preserve"><value>Submit</value></data>
+  <data name="Onboarding_AiSetup_SignedIn" xml:space="preserve"><value>I've signed in</value></data>
+  <data name="Onboarding_AiSetup_CopyCode" xml:space="preserve"><value>Copy code</value></data>
+  <data name="Onboarding_AiSetup_CopyFailed" xml:space="preserve"><value>Could not copy the code. Select it and copy it manually.</value></data>
+  <data name="Onboarding_AiSetup_Recheck" xml:space="preserve"><value>Check again</value></data>
+  <data name="Onboarding_AiSetup_More.Header" xml:space="preserve"><value>More sign-in options</value></data>
+  <data name="Onboarding_AiSetup_Candidates" xml:space="preserve"><value>Detected AI access</value></data>
+  <data name="Onboarding_AiSetup_Recommended" xml:space="preserve"><value>Recommended installs</value></data>
+  <data name="Onboarding_AiSetup_RecommendedDetail" xml:space="preserve"><value>Open a provider website to install or sign in, then check again. Nothing is installed by this page.</value></data>
+  <data name="Onboarding_AiSetup_Unavailable" xml:space="preserve"><value>Detected, but not ready to test</value></data>
+  <data name="Onboarding_AiSetup_Prepare" xml:space="preserve"><value>Prepare a local model</value></data>
+  <data name="Onboarding_AiSetup_SignIn" xml:space="preserve"><value>Sign in with a provider</value></data>
+  <data name="Onboarding_AiSetup_ApiKeys" xml:space="preserve"><value>API Keys</value></data>
+  <data name="Onboarding_AiSetup_ManualHeading" xml:space="preserve"><value>Connect with an API key or token</value></data>
+  <data name="Onboarding_AiSetup_ManualConnect" xml:space="preserve"><value>Connect</value></data>
+  <data name="Onboarding_AiSetup_ManualHelp" xml:space="preserve"><value>Choose a provider and enter its API key or token. Connect sends it to your Gateway to configure and verify that provider.</value></data>
+  <data name="Onboarding_AiSetup_ApiProvider" xml:space="preserve"><value>API key provider</value></data>
+  <data name="Onboarding_AiSetup_CheckAgain" xml:space="preserve"><value>Check again</value></data>
+  <data name="Onboarding_AiSetup_NoUsableCandidates" xml:space="preserve"><value>No usable AI access was detected. Choose a sign-in method or enter an API key below.</value></data>
+  <data name="Onboarding_AiSetup_DiscoveryFailed" xml:space="preserve"><value>AI discovery failed. Check the gateway connection, then try again.</value></data>
+  <data name="Onboarding_AiSetup_Cancelling" xml:space="preserve"><value>Waiting for the gateway to confirm cancellation. Saved provider credentials may remain.</value></data>
+  <data name="Onboarding_AiSetup_ApiKey.Header" xml:space="preserve"><value>API key or token</value></data>
+  <data name="Onboarding_AiSetup_Catalog.Header" xml:space="preserve"><value>Discover existing provider conversations?</value></data>
+  <data name="Onboarding_AiSetup_CatalogYes.Content" xml:space="preserve"><value>Yes, discover conversations</value></data>
+  <data name="Onboarding_AiSetup_CatalogNo.Content" xml:space="preserve"><value>No, keep conversations separate</value></data>
+  <data name="Onboarding_AiSetup_OpenLink.Content" xml:space="preserve"><value>Open sign-in page</value></data>
+  <data name="Onboarding_AiSetup_Confirm.Content" xml:space="preserve"><value>Yes</value></data>
+  <data name="Onboarding_AiSetup_Refresh.Content" xml:space="preserve"><value>Refresh</value></data>
+  <data name="Onboarding_AiSetup_Cancel.Content" xml:space="preserve"><value>Cancel</value></data>
+  <data name="Onboarding_AiSetup_Legacy.Content" xml:space="preserve"><value>Use classic setup</value></data>
+  <data name="Onboarding_AiSetup_Continue.Content" xml:space="preserve"><value>Continue</value></data>
+  <data name="Onboarding_AiSetup_Connecting" xml:space="preserve"><value>Connecting to your gateway...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_CheckingHardware" xml:space="preserve"><value>Checking NVIDIA GPU memory and CUDA support...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_CheckingFiles" xml:space="preserve"><value>Verifying llama.cpp and downloaded model files. Large models can take a minute or more; no download is needed for intact files.</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_PreparingGateway" xml:space="preserve"><value>Checking the selected Gateway and its Local AI configuration...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_StartingRuntime" xml:space="preserve"><value>Starting llama-server and checking the model. Loading the model into GPU memory can take a while...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_PublishingProvider" xml:space="preserve"><value>Confirming the Local AI provider and primary model in your Gateway...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_Verifying" xml:space="preserve"><value>Testing a real response from the selected model through your Gateway...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_Detecting" xml:space="preserve"><value>Discovering configured models and AI providers...</value></data>
+  <data name="Onboarding_AiSetup_LocalProgress_Console" xml:space="preserve"><value>Opening the isolated Gateway diagnostic console...</value></data>
+  <data name="Onboarding_AiSetup_Choose" xml:space="preserve"><value>Choose a model or connect an AI provider.</value></data>
+  <data name="Onboarding_AiSetup_Running" xml:space="preserve"><value>Follow your provider's setup steps.</value></data>
+  <data name="Onboarding_AiSetup_Verifying" xml:space="preserve"><value>Your model was saved. Verifying the current gateway connection.</value></data>
+  <data name="Onboarding_AiSetup_Verified" xml:space="preserve"><value>Your AI is ready. Opening Chat...</value></data>
+  <data name="Onboarding_AiSetup_Prepared" xml:space="preserve"><value>Your model is prepared, not yet activated. Activate it to test this exact model.</value></data>
+  <data name="Onboarding_AiSetup_ActivatePrepared" xml:space="preserve"><value>Activate model</value></data>
+  <data name="Onboarding_AiSetup_Cancelled" xml:space="preserve"><value>Setup was cancelled. Refresh to choose again. Saved provider credentials may remain.</value></data>
+  <data name="Onboarding_AiSetup_Rejected" xml:space="preserve"><value>The provider could not activate this model. Refresh to choose again.</value></data>
+  <data name="Onboarding_AiSetup_Unsupported" xml:space="preserve"><value>This gateway does not support focused AI setup. Use classic setup instead.</value></data>
+  <data name="Onboarding_AiSetup_Uncertain" xml:space="preserve"><value>The setup outcome is not confirmed. Refresh after the gateway reconnects, or cancel the current session. Another activation will not be started.</value></data>
+  <data name="Onboarding_AiSetup_AdminRequired" xml:space="preserve"><value>AI setup requires a connected operator with administrator permission. Complete operator pairing, then refresh.</value></data>
+  <data name="Onboarding_AiSetup_Failed" xml:space="preserve"><value>AI setup could not continue. Check the gateway connection, then refresh.</value></data>
+  <data name="Onboarding_AiSetup_VerificationFailed" xml:space="preserve"><value>The selected model did not pass verification. Setup is not complete.</value></data>
+  <data name="Onboarding_AiSetup_NavigationFailed" xml:space="preserve"><value>Classic setup could not open. Keep this window open and try again.</value></data>
+  <data name="Onboarding_AiSetup_InvalidLink" xml:space="preserve"><value>The provider link could not be opened. Only HTTP or HTTPS sign-in links are supported.</value></data>
+  <data name="Onboarding_AiSetup_NoChoices" xml:space="preserve"><value>No supported AI setup options were returned by this gateway. Check its provider configuration and refresh.</value></data>
+  <data name="Onboarding_AiSetup_Value" xml:space="preserve"><value>Enter a value</value></data>
+  <data name="Onboarding_AiSetup_CodeExpiry" xml:space="preserve"><value>This code expires in {0} minutes.</value></data>
+  <data name="Onboarding_AiSetup_InvalidInput" xml:space="preserve"><value>The provider did not accept this answer. Review the current step and try again.</value></data>
+  <data name="Onboarding_NativeConnection_Title" xml:space="preserve"><value>Connect to a gateway</value></data>
+  <data name="Onboarding_NativeConnection_Description" xml:space="preserve"><value>Check the connection without saving it. Next checks again and saves this gateway before you review this PC's access.</value></data>
+  <data name="Onboarding_NativeConnection_Address" xml:space="preserve"><value>Gateway address</value></data>
+  <data name="Onboarding_NativeConnection_Code" xml:space="preserve"><value>Setup code</value></data>
+  <data name="Onboarding_NativeConnection_Token" xml:space="preserve"><value>Shared token (instead of a setup code)</value></data>
+  <data name="Onboarding_NativeConnection_Ssh" xml:space="preserve"><value>SSH tunnel</value></data>
+  <data name="Onboarding_NativeConnection_SshDescription" xml:space="preserve"><value>Optional. Uses your existing OpenSSH keys and configuration. Keep the gateway address from your saved connection or setup code. The remote gateway port is forwarded from the SSH host.</value></data>
+  <data name="Onboarding_NativeConnection_SshEnabled" xml:space="preserve"><value>Use an SSH tunnel</value></data>
+  <data name="Onboarding_NativeConnection_SshHost" xml:space="preserve"><value>SSH host</value></data>
+  <data name="Onboarding_NativeConnection_SshUser" xml:space="preserve"><value>SSH user</value></data>
+  <data name="Onboarding_NativeConnection_SshPort" xml:space="preserve"><value>SSH port</value></data>
+  <data name="Onboarding_NativeConnection_RemotePort" xml:space="preserve"><value>Remote gateway port</value></data>
+  <data name="Onboarding_NativeConnection_LocalPort" xml:space="preserve"><value>Local tunnel port</value></data>
+  <data name="Onboarding_NativeConnection_Back" xml:space="preserve"><value>Back</value></data>
+  <data name="Onboarding_NativeConnection_Check" xml:space="preserve"><value>Check connection</value></data>
+  <data name="Onboarding_NativeConnection_Next" xml:space="preserve"><value>Next</value></data>
+  <data name="Onboarding_NativeConnection_Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="Onboarding_Native_Checking" xml:space="preserve"><value>Checking the installed Gateway package and its execution aliases...</value></data>
+  <data name="Onboarding_NativeConnection_Checking" xml:space="preserve"><value>Checking the gateway connection...</value></data>
+  <data name="Onboarding_NativeConnection_Cancelled" xml:space="preserve"><value>Connection attempt cancelled.</value></data>
+  <data name="Onboarding_NativeConnection_Checked" xml:space="preserve"><value>Connection checked. Nothing was saved. Next will check again and save this gateway.</value></data>
+  <data name="Onboarding_NativeConnection_Failed" xml:space="preserve"><value>The connection outcome could not be confirmed. Review the active gateway in Companion Settings before continuing.</value></data>
+  <data name="Onboarding_V2_AlternativesTitle.Text" xml:space="preserve"><value>Choose another setup route</value></data>
+  <data name="Onboarding_V2_ExistingRoute.Header" xml:space="preserve"><value>Existing Gateway</value></data>
+  <data name="Onboarding_V2_ExistingRoute.Description" xml:space="preserve"><value>Use a saved or existing connection. No WSL installation.</value></data>
+  <data name="Onboarding_V2_RemoteRoute.Header" xml:space="preserve"><value>Remote Gateway</value></data>
+  <data name="Onboarding_V2_RemoteRoute.Description" xml:space="preserve"><value>Use the native address, setup code or SSH connection editor.</value></data>
+  <data name="Onboarding_V2_McpRoute.Header" xml:space="preserve"><value>Local MCP only</value></data>
+  <data name="Onboarding_V2_McpRoute.Description" xml:space="preserve"><value>Enable local MCP without a Gateway. Review PC capabilities next.</value></data>
+  <data name="Onboarding_V2_DeferredRoute.Header" xml:space="preserve"><value>Set up a Gateway later</value></data>
+  <data name="Onboarding_V2_DeferredRoute.Description" xml:space="preserve"><value>Review your choices without installing WSL or changing saved Gateways.</value></data>
+  <data name="Onboarding_V2_HostUnavailable.Title" xml:space="preserve"><value>Connection editor is unavailable in this setup host</value></data>
+  <data name="Onboarding_V2_HostUnavailable.Message" xml:space="preserve"><value>Open setup from the Companion app to use its native connection editor.</value></data>
+  <data name="Onboarding_V2_Back.Content" xml:space="preserve"><value>Back</value></data>
+  <data name="Onboarding_V2_CapabilitiesTitle.Text" xml:space="preserve"><value>PC capabilities</value></data>
+  <data name="Onboarding_V2_CapabilitiesIntro.Text" xml:space="preserve"><value>Choose what agents may use on this PC. These choices do not grant Windows privacy access or execution approval.</value></data>
+  <data name="Onboarding_V2_NodeMode.Header" xml:space="preserve"><value>Node mode</value></data>
+  <data name="Onboarding_V2_NodeMode.Description" xml:space="preserve"><value>Offer this PC's capabilities through a connected Gateway.</value></data>
+  <data name="Onboarding_V2_NodeModeToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Node mode</value></data>
+  <data name="Onboarding_V2_Mcp.Header" xml:space="preserve"><value>Local MCP Server</value></data>
+  <data name="Onboarding_V2_Mcp.Description" xml:space="preserve"><value>Use local MCP clients without requiring a Gateway.</value></data>
+  <data name="Onboarding_V2_McpToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Local MCP Server</value></data>
+  <data name="Onboarding_V2_ReadOnly.Content" xml:space="preserve"><value>Strict: Canvas and screen capture. Command execution is off.</value></data>
+  <data name="Onboarding_V2_Standard.Content" xml:space="preserve"><value>Balanced (Recommended): commands, Canvas, screen capture and voice.</value></data>
+  <data name="Onboarding_V2_Full.Content" xml:space="preserve"><value>Open: all eight capabilities, including Camera, Location and Browser control.</value></data>
+  <data name="Onboarding_V2_Custom.Text" xml:space="preserve"><value>Custom capabilities</value></data>
+  <data name="Onboarding_V2_BrowserRequired.Title" xml:space="preserve"><value>Browser control needs Node mode and a Gateway</value></data>
+  <data name="Onboarding_V2_BrowserRequired.Message" xml:space="preserve"><value>Your Browser control selection is retained. It becomes available after a Gateway connection is ready.</value></data>
+  <data name="Onboarding_V2_DeviceFixed.Text" xml:space="preserve"><value>Basic device information and status remain available while a node service is running. They are not a profile toggle.</value></data>
+  <data name="Onboarding_V2_Ollama.Header" xml:space="preserve"><value>Ollama sharing</value></data>
+  <data name="Onboarding_V2_Ollama.Description" xml:space="preserve"><value>Share an existing Windows Ollama service. This does not install Local AI or change your capability profile.</value></data>
+  <data name="Onboarding_V2_OllamaToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Ollama sharing</value></data>
+  <data name="Onboarding_V2_NativeSettings.Text" xml:space="preserve"><value>Execution approvals, sandbox grants, remembered capture consent, MCP tokens and voice configuration stay in Companion Settings.</value></data>
+  <data name="Onboarding_V2_Next.Content" xml:space="preserve"><value>Next</value></data>
+  <data name="Onboarding_V2_NetworkExplanation.Text" xml:space="preserve"><value>Local AI needs mirrored WSL networking. Installation will update the global .wslconfig and stop all running WSL distributions once. No distributions are deleted. Save your WSL work first.</value></data>
+  <data name="Onboarding_V2_NetworkConsent.Content" xml:space="preserve"><value>I allow this global networking change and one-time WSL shutdown.</value></data>
+  <data name="Onboarding_V2_ReplacementWarning.Title" xml:space="preserve"><value>This replacement can permanently delete WSL data</value></data>
+  <data name="Onboarding_V2_ReplacementWarning.Message" xml:space="preserve"><value>Only the named WSL installation is replaced. Other saved Gateway connections stay available.</value></data>
+  <data name="Onboarding_V2_ReturnToReview.Content" xml:space="preserve"><value>Return to review</value></data>
+  <data name="Onboarding_V2_ReviewTitle.Text" xml:space="preserve"><value>WSL Gateway setup</value></data>
+  <data name="Onboarding_V2_ReviewIntro.Text" xml:space="preserve"><value>Review what will change before installation starts.</value></data>
+  <data name="Onboarding_V2_CliCard.Header" xml:space="preserve"><value>OpenClaw CLI</value></data>
+  <data name="Onboarding_V2_GatewayCard.Header" xml:space="preserve"><value>Local Gateway service</value></data>
+  <data name="Onboarding_V2_LocalAiReview.Header" xml:space="preserve"><value>Local AI</value></data>
+  <data name="Onboarding_V2_TailscaleReview.Header" xml:space="preserve"><value>Tailscale Serve</value></data>
+  <data name="Onboarding_V2_ReplacementCard.Header" xml:space="preserve"><value>Review WSL replacement</value></data>
+  <data name="Onboarding_V2_StartupCard.Header" xml:space="preserve"><value>Launch OpenClaw at sign-in</value></data>
+  <data name="Onboarding_V2_ExactCommands.Header" xml:space="preserve"><value>Exact commands and files</value></data>
+  <data name="Onboarding_V2_ReviewRequired.Title" xml:space="preserve"><value>Review the required choices</value></data>
+  <data name="Onboarding_V2_ReviewRequired.Message" xml:space="preserve"><value>Review selected Local AI and Tailscale prerequisites, and confirm any WSL replacement before installing.</value></data>
+  <data name="Onboarding_V2_Install.Content" xml:space="preserve"><value>Install</value></data>
+  <data name="Onboarding_V2_WelcomeTitle.Text" xml:space="preserve"><value>Welcome to OpenClaw</value></data>
+  <data name="Onboarding_V2_WelcomeChat.Header" xml:space="preserve"><value>Chat with your AI</value></data>
+  <data name="Onboarding_V2_WelcomeChat.Description" xml:space="preserve"><value>Use native Chat with an AI provider you choose.</value></data>
+  <data name="Onboarding_V2_WelcomePc.Header" xml:space="preserve"><value>Let agents help on this PC</value></data>
+  <data name="Onboarding_V2_WelcomePc.Description" xml:space="preserve"><value>Choose which PC capabilities to enable. Windows permissions and execution approvals remain separate.</value></data>
+  <data name="Onboarding_V2_WelcomeGateway.Header" xml:space="preserve"><value>Keep your Gateway under your control</value></data>
+  <data name="Onboarding_V2_WelcomeGateway.Description" xml:space="preserve"><value>Run a private WSL Gateway here or connect to an existing one.</value></data>
+  <data name="Onboarding_V2_WelcomeTrust.Title" xml:space="preserve"><value>Before you get started</value></data>
+  <data name="Onboarding_V2_WelcomeTrust.Message" xml:space="preserve"><value>AI agents are powerful and giving them access to your PC carries risks. They can make mistakes, change or delete files, or expose private information.&#x0a;&#x0a;You can control and limit OpenClaw’s access to your PC.</value></data>
+  <data name="Onboarding_V2_Continue.Content" xml:space="preserve"><value>Continue</value></data>
+  <data name="Onboarding_V2_Retry.Content" xml:space="preserve"><value>Try again</value></data>
+  <data name="Onboarding_V2_AlternativeRoutes.Content" xml:space="preserve"><value>Remote, local MCP or set up later</value></data>
+  <data name="Onboarding_V2_LocalAiCard.Header" xml:space="preserve"><value>Local AI</value></data>
+  <data name="Onboarding_V2_LocalAiCard.Description" xml:space="preserve"><value>Optional managed llama-server for Windows. This is separate from Ollama sharing.</value></data>
+  <data name="Onboarding_V2_LocalAiToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Set up Local AI</value></data>
+  <data name="Onboarding_V2_LocalAiModel.Header" xml:space="preserve"><value>Model</value></data>
+  <data name="Onboarding_V2_LocalAiModel.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Local AI model</value></data>
+  <data name="Onboarding_V2_NetworkRequired.Title" xml:space="preserve"><value>WSL networking change required</value></data>
+  <data name="Onboarding_V2_TailscaleCard.Header" xml:space="preserve"><value>Tailscale Serve</value></data>
+  <data name="Onboarding_V2_TailscaleCard.Description" xml:space="preserve"><value>Private tailnet access, not public Funnel access. Optional and off by default.</value></data>
+  <data name="Onboarding_V2_TailscaleToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Set up Tailscale Serve</value></data>
+  <data name="Onboarding_V2_TailscalePrerequisite.Text" xml:space="preserve"><value>First install and sign in to Tailscale on Windows with MagicDNS enabled. The WSL Gateway signs in separately.</value></data>
+  <data name="Onboarding_V2_TailscaleAuthMode.Header" xml:space="preserve"><value>Sign in to the WSL Gateway</value></data>
+  <data name="Onboarding_V2_TailscaleBrowser.Content" xml:space="preserve"><value>Sign in with a browser during installation</value></data>
+  <data name="Onboarding_V2_TailscaleKey.Content" xml:space="preserve"><value>Use a one-off auth key</value></data>
+  <data name="Onboarding_V2_TailscaleKeyInput.Header" xml:space="preserve"><value>Tailscale auth key</value></data>
+  <data name="Onboarding_V2_TailscaleKeyInput.PlaceholderText" xml:space="preserve"><value>Kept only for this setup session</value></data>
+  <data name="Onboarding_V2_TailscaleTrust.Header" xml:space="preserve"><value>Trust Tailscale identities for Gateway authentication</value></data>
+  <data name="Onboarding_V2_TailscaleTrust.Description" xml:space="preserve"><value>Off by default. Enable only if your tailnet ACLs should participate in Gateway access control.</value></data>
+  <data name="Onboarding_V2_TailscaleTrustToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Trust Tailscale identities</value></data>
+  <data name="Onboarding_V2_WindowTitle.Text" xml:space="preserve"><value>OpenClaw Setup</value></data>
+  <data name="Onboarding_V2_NetworkConsentRecorded" xml:space="preserve"><value>WSL networking consent recorded</value></data>
+  <data name="Onboarding_V2_ReviewNetworking" xml:space="preserve"><value>Review WSL networking changes</value></data>
+  <data name="Onboarding_V2_TailscaleChecking" xml:space="preserve"><value>Checking Windows Tailscale...</value></data>
+  <data name="Onboarding_V2_TailscaleConnected" xml:space="preserve"><value>Windows Tailscale connected as {0}.</value></data>
+  <data name="Onboarding_V2_TailscaleRequired" xml:space="preserve"><value>Windows Tailscale must be installed, signed in and have MagicDNS enabled.</value></data>
+  <data name="Onboarding_V2_SelectedReview" xml:space="preserve"><value>Selected. Review details and prerequisites.</value></data>
+  <data name="Onboarding_V2_OptionalOff" xml:space="preserve"><value>Optional. Off.</value></data>
+  <data name="Onboarding_V2_ConsentRecorded" xml:space="preserve"><value>Confirmation recorded for this WSL installation.</value></data>
+  <data name="Onboarding_V2_ConsentRequired" xml:space="preserve"><value>Explicit confirmation is required before replacement.</value></data>
+  <data name="Onboarding_V2_DetailLocalAi" xml:space="preserve"><value>Local AI</value></data>
+  <data name="Onboarding_V2_DetailTailscale" xml:space="preserve"><value>Tailscale Serve</value></data>
+  <data name="Onboarding_V2_DetailNetworking" xml:space="preserve"><value>WSL networking consent</value></data>
+  <data name="Onboarding_V2_DetailReplacement" xml:space="preserve"><value>Replace the WSL Gateway</value></data>
+  <data name="Onboarding_V2_ReplaceDistro" xml:space="preserve"><value>I confirm replacement of the WSL installation '{0}' and understand its data may be permanently deleted.</value></data>
+  <data name="Onboarding_V2_WslNotReady" xml:space="preserve"><value>WSL2 is not ready</value></data>
+  <data name="Onboarding_V2_WslInspectFailure" xml:space="preserve"><value>Could not inspect WSL</value></data>
+  <data name="Onboarding_V2_Recommended" xml:space="preserve"><value>Recommended</value></data>
+  <data name="Onboarding_V2_ModelNotQualified" xml:space="preserve"><value>This model is not qualified for the detected hardware.</value></data>
+  <data name="Onboarding_V2_HardwareMemory" xml:space="preserve"><value>{0} required. {1} CUDA-visible on {2}.</value></data>
+  <data name="Onboarding_V2_EngineDownload" xml:space="preserve"><value>llama-server for Windows. {0} verified download. Loads on first request.</value></data>
+  <data name="Onboarding_V2_ModelDownload" xml:space="preserve"><value>{0}, {1} from Hugging Face</value></data>
+  <data name="Onboarding_V2_Tokens" xml:space="preserve"><value>{0:N0} tokens</value></data>
+  <data name="Onboarding_V2_ClassicSettings.Content" xml:space="preserve"><value>Open classic Connection settings</value></data>
+  <data name="Onboarding_V2_SaveChoicesFailed" xml:space="preserve"><value>Could not save your setup choices. Review the error and retry: {0}</value></data>
+  <data name="Onboarding_V2_ProfileSelector.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Capability profile</value></data>
+  <data name="Onboarding_V2_ProfileReadOnly.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Strict: Canvas and screen capture. Command execution is off.</value></data>
+  <data name="Onboarding_V2_ProfileStandard.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Balanced (Recommended): commands, Canvas, screen capture and voice.</value></data>
+  <data name="Onboarding_V2_ProfileFull.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Open: all eight capabilities, including Camera, Location and Browser control.</value></data>
+  <data name="Onboarding_V2_ProfileReadOnlyTitle.Text" xml:space="preserve"><value>Strict</value></data>
+  <data name="Onboarding_V2_ProfileReadOnlyDescription.Text" xml:space="preserve"><value>Canvas and screen capture. Command execution is off.</value></data>
+  <data name="Onboarding_V2_ProfileStandardTitle.Text" xml:space="preserve"><value>Balanced</value></data>
+  <data name="Onboarding_V2_ProfileStandardDescription.Text" xml:space="preserve"><value>Commands, Canvas, screen capture and voice.</value></data>
+  <data name="Onboarding_V2_ProfileFullTitle.Text" xml:space="preserve"><value>Open</value></data>
+  <data name="Onboarding_V2_ProfileFullDescription.Text" xml:space="preserve"><value>All eight capabilities, including Camera, Location and Browser control.</value></data>
+  <data name="Onboarding_V2_CustomizeCapabilities.Header" xml:space="preserve"><value>Customize capabilities</value></data>
+  <data name="Onboarding_V2_NoCapabilities" xml:space="preserve"><value>No optional capabilities selected.</value></data>
+  <data name="Onboarding_V2_BrowserPrerequisite" xml:space="preserve"><value>Requires Node mode and a ready Gateway. Your selection is retained.</value></data>
+  <data name="Onboarding_V2_BlockerManagedWslRoute" xml:space="preserve"><value>Choose a Gateway route</value></data>
+  <data name="Onboarding_V2_BlockerWslInspection" xml:space="preserve"><value>WSL inspection is incomplete</value></data>
+  <data name="Onboarding_V2_BlockerReplacement" xml:space="preserve"><value>Replacement needs your confirmation</value></data>
+  <data name="Onboarding_V2_BlockerLocalAi" xml:space="preserve"><value>Local AI is not ready</value></data>
+  <data name="Onboarding_V2_BlockerNetworkingConsent" xml:space="preserve"><value>Local AI needs networking consent</value></data>
+  <data name="Onboarding_V2_BlockerTailscale" xml:space="preserve"><value>Tailscale prerequisites are incomplete</value></data>
+  <data name="Onboarding_V2_RequirementManagedWslRoute" xml:space="preserve"><value>This review installs a managed WSL Gateway. Choose an existing Gateway instead to connect without replacing anything.</value></data>
+  <data name="Onboarding_V2_RequirementWslInspection" xml:space="preserve"><value>Complete or retry Gateway inspection for {0}. Installation stays blocked until inspection succeeds for this exact target.</value></data>
+  <data name="Onboarding_V2_RequirementReplacement" xml:space="preserve"><value>Installation will replace the existing setup for {0}. Review the consequences and check the consent box below. To keep your setup, go Back and choose an existing Gateway.</value></data>
+  <data name="Onboarding_V2_RequirementLocalAi" xml:space="preserve"><value>Review Local AI availability and the selected model. You can turn Local AI off outside recovery; recovery requires it to be ready.</value></data>
+  <data name="Onboarding_V2_RequirementNetworkingConsent" xml:space="preserve"><value>Review the global .wslconfig change and one-time shutdown of all WSL distributions. Nothing changes until you explicitly consent and install.</value></data>
+  <data name="Onboarding_V2_RequirementTailscale" xml:space="preserve"><value>Review Windows sign-in, MagicDNS and the selected authentication method, or turn Tailscale off.</value></data>
+  <data name="Onboarding_V2_ActionManagedWslRoute" xml:space="preserve"><value>Choose Gateway</value></data>
+  <data name="Onboarding_V2_ActionWslInspection" xml:space="preserve"><value>Check Gateway</value></data>
+  <data name="Onboarding_V2_ActionReplacement" xml:space="preserve"><value>Review replacement</value></data>
+  <data name="Onboarding_V2_ActionLocalAi" xml:space="preserve"><value>Review Local AI</value></data>
+  <data name="Onboarding_V2_ActionNetworkingConsent" xml:space="preserve"><value>Review networking</value></data>
+  <data name="Onboarding_V2_ActionTailscale" xml:space="preserve"><value>Review Tailscale</value></data>
+  <data name="Onboarding_AiSetup_ArtworkAction_Pair" xml:space="preserve"><value>Pair</value></data>
+  <data name="Onboarding_AiSetup_ArtworkAction_Setup" xml:space="preserve"><value>Set up…</value></data>
+  <data name="Onboarding_AiSetup_ArtworkAction_Configure" xml:space="preserve"><value>Configure…</value></data>
+  <data name="Onboarding_AiSetup_ArtworkAction_Connect" xml:space="preserve"><value>Connect</value></data>
+  <data name="Onboarding_AiSetup_ArtworkAction_SignIn" xml:space="preserve"><value>Sign in</value></data>
+  <data name="Onboarding_AiSetup_ArtworkAction_Prepare" xml:space="preserve"><value>Connect / Set up</value></data>
+  <data name="Onboarding_AiSetup_ArtworkUnavailable" xml:space="preserve"><value>Provider logo unavailable ({0}). Provider setup is still available.</value></data>
+  <data name="Onboarding_V3_ProfileHeading.Text" xml:space="preserve"><value>What your agent can do</value></data>
+  <data name="Onboarding_V3_ProfileHelp.Text" xml:space="preserve"><value>Choose a preset. Open Fine-tune to inspect or change individual capabilities.</value></data>
+  <data name="Onboarding_V3_FineTune.Text" xml:space="preserve"><value>Fine-tune</value></data>
+  <data name="Onboarding_V3_TransportRequired.Title" xml:space="preserve"><value>Capabilities are unavailable</value></data>
+  <data name="Onboarding_V3_TransportRequired.Message" xml:space="preserve"><value>Turn on Node mode or Local MCP Server to use these capabilities. Your choices are kept.</value></data>
+  <data name="Onboarding_V3_ProfileCustom.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Custom: choose individual capabilities</value></data>
+  <data name="Onboarding_V3_ProfileCustomTitle.Text" xml:space="preserve"><value>Custom</value></data>
+  <data name="Onboarding_V3_ProfileCustomDescription.Text" xml:space="preserve"><value>Start with your current choices and adjust them below.</value></data>
+  <data name="Onboarding_AiSetup_OnThisPc" xml:space="preserve"><value>On this PC</value></data>
+  <data name="Onboarding_AiSetup_LocalTitle" xml:space="preserve"><value>Local AI on this PC</value></data>
+  <data name="Onboarding_AiSetup_LocalExplanation" xml:space="preserve"><value>Managed Windows llama-server uses this PC's GPU. This is separate from NVIDIA's hosted API.</value></data>
+  <data name="Onboarding_AiSetup_GatewayModels" xml:space="preserve"><value>Available on your Gateway</value></data>
+  <data name="Onboarding_AiSetup_ConnectProvider" xml:space="preserve"><value>Connect an AI provider</value></data>
+  <data name="Onboarding_AiSetup_OtherLocal" xml:space="preserve"><value>Set up a local model</value></data>
+  <data name="Onboarding_AiSetup_OtherLocalDetail" xml:space="preserve"><value>Set up and use a model through your Gateway. Review any download or permission requests before continuing.</value></data>
+  <data name="Onboarding_AiSetup_UtilityNotice" xml:space="preserve"><value>Your Gateway also offers setup or utility models. This page connects the main assistant only; utility-only choices are not shown.</value></data>
+  <data name="Onboarding_AiSetup_LocalSetUp" xml:space="preserve"><value>Set up Local AI</value></data>
+  <data name="Onboarding_AiSetup_LocalStartAndUse" xml:space="preserve"><value>Start and use</value></data>
+  <data name="Onboarding_AiSetup_LocalUse" xml:space="preserve"><value>Use this model</value></data>
+  <data name="Onboarding_AiSetup_LocalRepair" xml:space="preserve"><value>Repair Local AI</value></data>
+  <data name="Onboarding_AiSetup_LocalReconcile" xml:space="preserve"><value>Recover and use Local AI</value></data>
+  <data name="Onboarding_AiSetup_LocalState_Reconcile" xml:space="preserve"><value>The owned Gateway route needs recovery.</value></data>
+  <data name="LocalAiPage_ReleaseOwnershipButton.Content" xml:space="preserve"><value>Release Gateway ownership</value></data>
+  <data name="Onboarding_AiSetup_LocalInstall" xml:space="preserve"><value>Install and use Local AI</value></data>
+  <data name="Onboarding_AiSetup_LocalInstalling" xml:space="preserve"><value>Setting up Local AI</value></data>
+  <data name="Onboarding_AiSetup_LocalChanged" xml:space="preserve"><value>The Gateway or Local AI readiness changed. Go back to Connect your AI and check again before installing.</value></data>
+  <data name="Onboarding_AiSetup_LocalStartFailed" xml:space="preserve"><value>Local AI could not start. Cleanup is complete. Repair Local AI or choose another provider.</value></data>
+  <data name="Onboarding_AiSetup_LocalState_Checking" xml:space="preserve"><value>Checking this PC. You can still choose an AI provider.</value></data>
+  <data name="Onboarding_AiSetup_LocalState_SetUp" xml:space="preserve"><value>Compatible PC. Review setup before installing.</value></data>
+  <data name="Onboarding_AiSetup_LocalState_StartAndUse" xml:space="preserve"><value>Installed, not running</value></data>
+  <data name="Onboarding_AiSetup_LocalState_Use" xml:space="preserve"><value>Running on this PC</value></data>
+  <data name="Onboarding_AiSetup_LocalState_Repair" xml:space="preserve"><value>The managed installation needs attention. Review repairs without reinstalling the Gateway.</value></data>
+  <data name="Onboarding_AiSetup_LocalState_BusyGpu" xml:space="preserve"><value>Compatible GPU, but not enough free GPU memory right now. Close other GPU workloads and check again.</value></data>
+  <data name="Onboarding_AiSetup_LocalState_Unsupported" xml:space="preserve"><value>This PC does not meet the managed Local AI requirements. You can still connect an AI provider.</value></data>
+  <data name="Onboarding_AiSetup_LocalState_Unknown" xml:space="preserve"><value>Local AI readiness could not be confirmed. Check again or choose another AI provider.</value></data>
+  <data name="Onboarding_AiSetup_LocalState_UnsupportedGateway" xml:space="preserve"><value>Managed Local AI requires one app-managed local Gateway selected on this PC. Remote or ambiguous Gateways are not supported.</value></data>
+  <data name="Onboarding_AiSetup_LocalState_Working" xml:space="preserve"><value>Local AI is starting or stopping. Check again when that operation finishes.</value></data>
+  <data name="Onboarding_DashboardLaunchFailed" xml:space="preserve"><value>Dashboard could not open. Check the verified gateway connection, then try again.</value></data>
+  <data name="Onboarding_V4_ConnectionOptions.Text" xml:space="preserve"><value>Connection options</value></data>
+  <data name="Onboarding_V4_OllamaDisclosure.Header" xml:space="preserve"><value>Ollama sharing</value></data>
+  <data name="Onboarding_V4_OllamaDisclosure.Description" xml:space="preserve"><value>Optional</value></data>
+  <data name="Onboarding_V4_TailscaleDisclosure.Header" xml:space="preserve"><value>Tailscale</value></data>
+  <data name="Onboarding_V4_TailscaleDisclosure.Description" xml:space="preserve"><value>Optional</value></data>
+  <data name="Onboarding_V4_DetectedAi.Text" xml:space="preserve"><value>Detected AI choices</value></data>
+  <data name="Onboarding_V4_PhasePrepare.Header" xml:space="preserve"><value>Prepare your PC</value></data>
+  <data name="Onboarding_V4_PhaseInstall.Header" xml:space="preserve"><value>Install the Gateway</value></data>
+  <data name="Onboarding_V4_PhaseConnect.Header" xml:space="preserve"><value>Start and check connection</value></data>
+  <data name="Onboarding_V4_DetailedActivity.Header" xml:space="preserve"><value>Detailed activity</value></data>
+  <data name="Onboarding_V4_InstallationTitle" xml:space="preserve"><value>Making room for your agent</value></data>
+  <data name="Onboarding_V4_InstallationSubtitle" xml:space="preserve"><value>One step at a time. You can follow the details below.</value></data>
+  <data name="Onboarding_V4_RecoveryTitle" xml:space="preserve"><value>Restoring Local AI</value></data>
+  <data name="Onboarding_V4_RecoveryInstall" xml:space="preserve"><value>Prepare and check Local AI</value></data>
+  <data name="Onboarding_V4_StatusPending" xml:space="preserve"><value>Waiting</value></data>
+  <data name="Onboarding_V4_StatusRunning" xml:space="preserve"><value>In progress</value></data>
+  <data name="Onboarding_V4_StatusComplete" xml:space="preserve"><value>Complete</value></data>
+  <data name="Onboarding_V4_StatusSkipped" xml:space="preserve"><value>Not needed</value></data>
+  <data name="Onboarding_V4_StatusFailed" xml:space="preserve"><value>Needs attention</value></data>
+  <data name="Onboarding_V4_StepCount" xml:space="preserve"><value>{0} of {1} steps complete</value></data>
+  <data name="Onboarding_V4_StatusCancelled" xml:space="preserve"><value>Cancelled</value></data>
+  <data name="Onboarding_V5_DownloadMeasurement" xml:space="preserve"><value>{0} of {1}</value></data>
+  <data name="Onboarding_Ready_Heading.Text" xml:space="preserve"><value>Your AI is ready</value></data>
+  <data name="Onboarding_Ready_Prompt.Text" xml:space="preserve"><value>What would you like to do first?</value></data>
+  <data name="Onboarding_Ready_Chat.Header" xml:space="preserve"><value>Talk to my agent</value></data>
+  <data name="Onboarding_Ready_Chat.Description" xml:space="preserve"><value>Open Chat with your agent.</value></data>
+  <data name="Onboarding_Ready_Chat.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Talk to my agent, recommended</value></data>
+  <data name="Onboarding_Ready_Skills.Header" xml:space="preserve"><value>Explore skills</value></data>
+  <data name="Onboarding_Ready_Skills.Description" xml:space="preserve"><value>Browse skills for your agent. Nothing is installed automatically.</value></data>
+  <data name="Onboarding_Ready_Channels.Header" xml:space="preserve"><value>Connect channels</value></data>
+  <data name="Onboarding_Ready_Channels.Description" xml:space="preserve"><value>WhatsApp, Telegram, and more. You choose when to sign in.</value></data>
+  <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>Back to AI setup</value></data>
+  <data name="Onboarding_Ready_Model" xml:space="preserve"><value>Verified model: {0}</value></data>
+  <data name="Onboarding_Ready_Verifying" xml:space="preserve"><value>Rechecking the same Gateway, agent, and model...</value></data>
+  <data name="Onboarding_Ready_Finalizing" xml:space="preserve"><value>Finishing your Windows setup choices...</value></data>
+  <data name="Onboarding_Ready_Opening" xml:space="preserve"><value>Opening your selected app page...</value></data>
+  <data name="Onboarding_Ready_OwnershipChanged" xml:space="preserve"><value>The Gateway, agent, or primary model could not be verified. Return to AI setup and verify again.</value></data>
+  <data name="Onboarding_Ready_Timeout" xml:space="preserve"><value>Verification timed out or was cancelled. Choose again to retry, or return to AI setup.</value></data>
+  <data name="Onboarding_Ready_TimeoutPageDrain" xml:space="preserve"><value>Closing the previous AI setup page timed out. Retry, or return to AI setup.</value></data>
+  <data name="Onboarding_Ready_TimeoutConnection" xml:space="preserve"><value>Connecting to the native Gateway timed out. Check Gateway readiness, then retry.</value></data>
+  <data name="Onboarding_Ready_TimeoutModelRecovery" xml:space="preserve"><value>Waiting for Local AI recovery timed out. Check Local AI status, then retry.</value></data>
+  <data name="Onboarding_Ready_TimeoutModelVerification" xml:space="preserve"><value>Verifying the selected AI model timed out. Check that the model can respond, then retry.</value></data>
+  <data name="Onboarding_Ready_TimeoutGatewayStartup" xml:space="preserve"><value>Starting the native Gateway or confirming its listener timed out. Check Gateway status, then retry.</value></data>
+  <data name="Onboarding_Ready_VerifyingFailed" xml:space="preserve"><value>AI verification is not available right now. Check the Gateway connection and model readiness, then choose again or return to AI setup.</value></data>
+  <data name="Onboarding_Ready_FinalizingFailed" xml:space="preserve"><value>Windows setup could not finish. Your choice was not launched. Choose again to retry or return to AI setup.</value></data>
+  <data name="Onboarding_Ready_OpeningFailed" xml:space="preserve"><value>The app could not open your selected destination. Choose again to retry. No channel sign-in was started.</value></data>
+  <data name="Onboarding_Ready_LaunchFailedTitle" xml:space="preserve"><value>Could not open your setup destination</value></data>
+  <data name="Onboarding_Ready_LaunchInvalid" xml:space="preserve"><value>This setup handoff is expired, already used, or unavailable. Reopen setup and verify your AI again.</value></data>
+  <data name="Onboarding_Ready_LaunchChanged" xml:space="preserve"><value>The verified Gateway or agent changed. Return to the original Gateway and reopen AI setup. No other account was opened.</value></data>
+  <data name="Onboarding_Ready_LaunchUnavailable" xml:space="preserve"><value>The verified Gateway or app page is not ready. Check Connection, then retry explicitly.</value></data>
+  <data name="Onboarding_Ready_Retry" xml:space="preserve"><value>Retry</value></data>
+  <data name="Onboarding_Ready_Close" xml:space="preserve"><value>Close</value></data>
+  <data name="Onboarding_Ready_ChannelUnavailable" xml:space="preserve"><value>This Gateway did not offer the selected channel. Review its available channels or refresh after updating the Gateway.</value></data>
+  <data name="Onboarding_Ready_ChannelUnconfirmed" xml:space="preserve"><value>Channel availability could not be confirmed. Refresh to retry. No channel sign-in or configuration was started.</value></data>
+  <data name="Onboarding_Copy_SafetyLink.Content" xml:space="preserve"><value>Learn more about risks and safety</value></data>
+  <data name="Onboarding_Copy_GatewayTitle.Text" xml:space="preserve"><value>Set up OpenClaw</value></data>
+  <data name="Onboarding_Copy_GatewayIntro.Text" xml:space="preserve"><value>The Gateway connects your AI assistant to your apps and tools. Choose where it runs. You can change this later.</value></data>
+  <data name="Onboarding_Copy_GatewaySelector.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Gateway setup method</value></data>
+  <data name="Onboarding_Copy_GatewaySelector.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve"><value>Choose one Gateway setup method.</value></data>
+  <data name="Onboarding_Copy_GatewayLocalChoice.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Install a local Gateway (WSL), recommended</value></data>
+  <data name="Onboarding_Copy_GatewayLocalTitle.Text" xml:space="preserve"><value>Install a local Gateway (WSL)</value></data>
+  <data name="Onboarding_Copy_GatewayLocalDescription.Text" xml:space="preserve"><value>Install a private OpenClaw Gateway in WSL.</value></data>
+  <data name="Onboarding_Copy_Recommended.Text" xml:space="preserve"><value>Recommended</value></data>
+  <data name="Onboarding_Copy_GatewayExistingChoice.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Connect to an existing Gateway</value></data>
+  <data name="Onboarding_Copy_GatewayExistingTitle.Text" xml:space="preserve"><value>Connect to an existing Gateway</value></data>
+  <data name="Onboarding_Copy_GatewayExistingDescription.Text" xml:space="preserve"><value>Connect without installing a Gateway or Local AI on this PC.</value></data>
+  <data name="Onboarding_StartupWarning_Title" xml:space="preserve"><value>Windows startup</value></data>
+  <data name="Onboarding_StartupWarning_Message" xml:space="preserve"><value>Setup is complete, but the Windows startup preference could not be fully applied. OpenClaw will finish restarting. You can retry this preference in Companion Settings.</value></data>
+  <data name="Onboarding_RegistryRecovery_Title" xml:space="preserve"><value>Gateway recovery needs attention</value></data>
+  <data name="Onboarding_RegistryRecovery_Message" xml:space="preserve"><value>Setup could not reconcile saved gateway changes. Unsaved edits were not committed. Close and reopen OpenClaw to reload saved gateways before retrying.</value></data>
+  <data name="Onboarding_RestartRecovery_Title" xml:space="preserve"><value>Finish opening OpenClaw</value></data>
+  <data name="Onboarding_RestartRecovery_Waiting" xml:space="preserve"><value>Another OpenClaw instance is still finishing setup. Retry waits for it to release ownership. Your selected page is retained. Cancel lets you close the other instance and reopen OpenClaw to resume.</value></data>
+  <data name="Onboarding_RestartRecovery_Storage" xml:space="preserve"><value>OpenClaw could not securely retain the selected setup page. Retry to try again. Cancel stops this launch; you may need to reopen setup and choose again.</value></data>
+  <data name="Onboarding_RestartRecovery_Invalid" xml:space="preserve"><value>The saved setup launch could not be read. OpenClaw will open normally. Reopen setup to select a destination.</value></data>
+  <data name="PermissionsPage_ExecRuleScope_Main" xml:space="preserve">
+    <value>this agent</value>
+  </data>
+  <data name="PermissionsPage_ExecRuleScope_Wildcard" xml:space="preserve">
+    <value>all agents</value>
+  </data>
+  <data name="PermissionsPage_RemoveRuleAutomationNameFormat" xml:space="preserve">
+    <value>Remove {0} allowlist entry {1}</value>
+  </data>
+  <data name="PermissionsPage_ExecRuleAction_Inactive" xml:space="preserve">
+    <value>inactive</value>
+  </data>
+  <data name="Migration_InnoCompleted" xml:space="preserve">
+    <value>Your OpenClaw setup was migrated to the Store version. Close this message to exit this app. Then uninstall the previous OpenClaw Companion app through Windows Settings &gt; Apps &gt; Installed apps and open the Store version. Your migrated setup and gateway will be preserved.</value>
+  </data>
+  <data name="Migration_InnoCheckFailed" xml:space="preserve">
+    <value>OpenClaw could not check whether migration to the Store version has completed. This copy cannot start safely. Close other OpenClaw processes and try again. Do not delete migration data or run gateway cleanup.</value>
+  </data>
+  <data name="Migration_StorePreviewTitle" xml:space="preserve">
+    <value>OpenClaw migration preview</value>
+  </data>
+  <data name="Migration_StorePreviewReady" xml:space="preserve">
+    <value>A supported previous installation was found. Normal startup is paused. You can start migration, or choose Not now to continue using the previous app.</value>
+  </data>
+  <data name="Migration_StoreConsent" xml:space="preserve">
+    <value>A supported previous installation was found. Start migration only when you are ready.
+
+Choosing {0} validates your setup and saves protected migration records. If validation succeeds, the previous app will be blocked from starting normally. You must then uninstall the previous app through Windows Settings &gt; Apps &gt; Installed apps and reopen the Store app to finish migration. Your setup and gateway will be preserved; nothing is uninstalled automatically.
+
+Choose {1} to exit this preview without starting migration and continue using the previous app.</value>
+  </data>
+  <data name="Migration_StoreMigrate" xml:space="preserve">
+    <value>Migrate</value>
+  </data>
+  <data name="Migration_StoreNotNow" xml:space="preserve">
+    <value>Not now</value>
+  </data>
+  <data name="Migration_StoreCloseInno" xml:space="preserve">
+    <value>Close the previous OpenClaw Companion app, then choose {0} to retry. Choose {1} to exit this preview. Do not force-close the previous app or uninstall it yet. Uninstall only after this preview tells you migration completion has been recorded.</value>
+  </data>
+  <data name="Migration_StoreRetry" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="Migration_StoreAdoptionPending" xml:space="preserve">
+    <value>The previous app is closed and migration could proceed. This test build does not adopt your setup yet. Close this preview. Do not uninstall the previous app, delete migration data, or run gateway cleanup.</value>
+  </data>
+  <data name="Migration_StorePrepared" xml:space="preserve">
+    <value>The previous app is closed. OpenClaw validated your current setup and saved protected migration preparation data. This test build does not adopt your setup yet. Close this preview. Do not uninstall the previous app, delete migration data, or run gateway cleanup.</value>
+  </data>
+  <data name="Migration_StoreValidationFailed" xml:space="preserve">
+    <value>OpenClaw could not safely validate the previous setup for migration. No completion was recorded and the previous app was not changed. Close this preview and try again later. Do not uninstall the previous app, delete migration data, or run gateway cleanup.</value>
+  </data>
+  <data name="Migration_StoreAwaitingInnoRemoval" xml:space="preserve">
+    <value>OpenClaw recorded migration completion and preserved your setup. Close this preview, uninstall the previous OpenClaw Companion app through Windows Settings, then open the Store version. Do not delete migration data or run gateway cleanup.</value>
+  </data>
+  <data name="Migration_StoreYes" xml:space="preserve">
+    <value>Yes</value>
+  </data>
+  <data name="Migration_StoreNo" xml:space="preserve">
+    <value>No</value>
+  </data>
+  <data name="Migration_StoreUpdateRequired" xml:space="preserve">
+    <value>The previous app is older than this preview's required source version. Migration and normal Store startup are blocked. Use a verified migration-capable Inno release before testing migration. Your setup has not been changed.</value>
+  </data>
+  <data name="Migration_StoreUnsupported" xml:space="preserve">
+    <value>This installation layout, architecture, or package configuration is not supported by the migration preview. Only the default per-user installation with a matching architecture is supported. Your setup has not been changed.</value>
+  </data>
+  <data name="Migration_StoreInspectionFailed" xml:space="preserve">
+    <value>The migration preview could not safely inspect the previous installation or migration records. Normal startup is blocked. Close this preview and check the app log before retrying. Do not delete migration data or run gateway cleanup.</value>
+  </data>
+  <data name="Migration_StoreFinalizationFailed" xml:space="preserve">
+    <value>OpenClaw could not safely finish the completed migration. Normal startup is blocked and the migration receipt was kept for recovery. Close this preview and try again later. Do not delete migration data or run gateway cleanup.</value>
+  </data>
+  <data name="Migration_StoreStartupRefused" xml:space="preserve">
+    <value>OpenClaw finished the migration, but Windows would not enable OpenClaw Companion at sign-in. Your data and settings were migrated. To start OpenClaw automatically, enable OpenClaw Companion in Settings > Apps > Startup, or contact your administrator if startup is managed by policy.</value>
+  </data>
+  <data name="Migration_StorePending" xml:space="preserve">
+    <value>A previous migration needs recovery or finalization. This test build cannot continue it or start normally. Close this preview. Do not uninstall the previous app, delete migration data, or run gateway cleanup.</value>
+  </data>
+  <data name="Migration2_Title" xml:space="preserve">
+    <value>Move to the Store version</value>
+  </data>
+  <data name="Migration2_Consent" xml:space="preserve">
+    <value>Keep your settings, gateway, files, and models where they are.</value>
+  </data>
+  <data name="Migration2_PrepareStepTitle" xml:space="preserve">
+    <value>We'll prepare your setup</value>
+  </data>
+  <data name="Migration2_PrepareStepBody" xml:space="preserve">
+    <value>We'll safely close the previous app, check your installation and settings, and save protected migration records.</value>
+  </data>
+  <data name="Migration2_RemoveStepTitle" xml:space="preserve">
+    <value>You'll remove the previous app</value>
+  </data>
+  <data name="Migration2_RemoveStepBody" xml:space="preserve">
+    <value>When prompted, uninstall it manually. Nothing is uninstalled automatically.</value>
+  </data>
+  <data name="Migration2_FinishStepTitle" xml:space="preserve">
+    <value>Then use the Store version</value>
+  </data>
+  <data name="Migration2_FinishStepBody" xml:space="preserve">
+    <value>We verify removal before starting the Store version.</value>
+  </data>
+  <data name="Migration2_ConsentHint" xml:space="preserve">
+    <value>Choose Not now to leave without starting migration. The Store version stays closed while the previous app is installed.</value>
+  </data>
+  <data name="Migration2_ConsentWarningTitle" xml:space="preserve">
+    <value>Before you continue</value>
+  </data>
+  <data name="Migration2_ConsentWarning" xml:space="preserve">
+    <value>If validation succeeds, the previous app can no longer start normally.</value>
+  </data>
+  <data name="Migration2_Closing" xml:space="preserve">
+    <value>Asking the previous app to close safely...</value>
+  </data>
+  <data name="Migration2_Preparing" xml:space="preserve">
+    <value>Validating your existing setup...</value>
+  </data>
+  <data name="Migration2_Completing" xml:space="preserve">
+    <value>Recording migration completion...</value>
+  </data>
+  <data name="Migration2_Finalizing" xml:space="preserve">
+    <value>Checking removal and finishing migration...</value>
+  </data>
+  <data name="Migration2_CloseInno" xml:space="preserve">
+    <value>Close OpenClaw Companion from its tray menu, then choose Retry.</value>
+  </data>
+  <data name="Migration2_CloseInnoTitle" xml:space="preserve">
+    <value>Close the previous app</value>
+  </data>
+  <data name="Migration2_CloseInnoWarningTitle" xml:space="preserve">
+    <value>Don't uninstall yet</value>
+  </data>
+  <data name="Migration2_CloseInnoWarning" xml:space="preserve">
+    <value>Don't force-close or uninstall it yet. We'll tell you when it's safe to uninstall.</value>
+  </data>
+  <data name="Migration2_AwaitingRemoval" xml:space="preserve">
+    <value>Your setup has been validated and migration completion recorded.
+
+1. Open Installed apps and uninstall only the previous OpenClaw Companion app. Keep the Store version.
+
+2. Return here and choose Retry to verify removal and finish.
+
+Your settings, gateway, files, and models stay in place.</value>
+  </data>
+  <data name="Migration2_RemovalTitle" xml:space="preserve">
+    <value>Remove the previous app</value>
+  </data>
+  <data name="Migration2_RemovalWarningTitle" xml:space="preserve">
+    <value>Keep your setup</value>
+  </data>
+  <data name="Migration2_RemovalWarning" xml:space="preserve">
+    <value>Don't delete migration data or run gateway cleanup.</value>
+  </data>
+  <data name="Migration2_ValidationFailed" xml:space="preserve">
+    <value>OpenClaw could not safely complete migration. Do not uninstall the previous app or run gateway cleanup. Check the app log, resolve the problem, and retry.</value>
+  </data>
+  <data name="Migration2_UpdateRequired" xml:space="preserve">
+    <value>Update the previous app to a supported migration-capable version first. Your setup has not been changed. This app stays inactive while the previous app is installed.</value>
+  </data>
+  <data name="Migration2_Unsupported" xml:space="preserve">
+    <value>This installation cannot be migrated safely. Only the default installation for the same Windows user and matching architecture is supported. Your setup has not been changed. This app stays inactive while the previous app is installed.</value>
+  </data>
+  <data name="Migration2_InspectionFailed" xml:space="preserve">
+    <value>OpenClaw could not safely inspect the installation or migration records. Check the app log before retrying. Do not delete migration data or run gateway cleanup.</value>
+  </data>
+  <data name="Migration2_Recovery" xml:space="preserve">
+    <value>This migration needs recovery. Check the app log. If the previous app is still installed, remove it from Installed apps and select Retry. Do not delete migration data by hand or run gateway cleanup.</value>
+  </data>
+  <data name="Migration2_FinalizationFailed" xml:space="preserve">
+    <value>OpenClaw could not finish migration. The completion receipt was kept for recovery. Check the app log and retry. Do not delete migration data or run gateway cleanup.</value>
+  </data>
+  <data name="Migration2_InstalledApps" xml:space="preserve">
+    <value>Open Installed apps</value>
+  </data>
+  <data name="Migration2_DiscardRecords" xml:space="preserve">
+    <value>Discard unreadable migration data</value>
+  </data>
+  <data name="Migration2_DiscardFailed" xml:space="preserve">
+    <value>OpenClaw could not discard the migration data. If the previous OpenClaw app is running, close it and try again. Check the app log for details.</value>
+  </data>
+  <data name="Migration2_LaunchFailed" xml:space="preserve">
+    <value>Windows could not open the requested page. Try again, or open Windows Settings &gt; Apps &gt; Installed apps manually if migration is complete.</value>
+  </data>
+  <data name="Migration2_InnoRecommendation.Text" xml:space="preserve">
+    <value>Recommended</value>
+  </data>
+  <data name="Migration2_InnoCardTitle.Text" xml:space="preserve">
+    <value>Move to the Microsoft Store version</value>
+  </data>
+  <data name="Migration2_InnoCardDescription.Text" xml:space="preserve">
+    <value>Get future OpenClaw updates through Microsoft Store. Your existing OpenClaw setup will be preserved.</value>
+  </data>
+  <data name="Migration2_InnoAction" xml:space="preserve">
+    <value>Install Store version and migrate</value>
+  </data>
+  <data name="Migration2_InnoConsentTitle" xml:space="preserve">
+    <value>Move to the Store version?</value>
+  </data>
+  <data name="Migration2_InnoConsent" xml:space="preserve">
+    <value>Microsoft Store opens so you can install the Store version. When you open it, it can close this app and finish the move without asking again.
+
+Your settings, gateway, files, and models stay where they are.</value>
+  </data>
+  <data name="Migration2_InnoGranted" xml:space="preserve">
+    <value>Migration consent was saved. Install and open the Store version to continue. Keep this app installed until migration completion is confirmed.</value>
+  </data>
+  <data name="Migration2_InnoFailed" xml:space="preserve">
+    <value>OpenClaw could not save migration consent or open the Store listing. Check the app log and retry. Do not uninstall this app.</value>
+  </data>
+  <data name="Migration2_Close" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="Migration2_Busy" xml:space="preserve">
+    <value>Please wait for this step to finish.</value>
+  </data>
+  <data name="Onboarding_Native_Title.Text" xml:space="preserve"><value>Install a local native gateway</value></data>
+  <data name="Onboarding_Native_Description.Text" xml:space="preserve"><value>Install and set up an OpenClaw gateway on this device</value></data>
+  <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>Install a local WSL gateway</value></data>
+  <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>Checking native gateway support...</value></data>
+  <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>Native gateway support is available on this device.</value></data>
+  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>Native gateway support is unavailable. Install Windows Insider build {0} or a newer supported build in Windows Update, then reopen this page. Feature availability can vary by device.</value></data>
+  <data name="Onboarding_Native_SupportCheckFailed" xml:space="preserve"><value>Could not verify native gateway support. Reopen this page to retry. If the check keeps failing, update or repair Companion.</value></data>
+  <data name="Onboarding_Native_UnsupportedPlatform" xml:space="preserve"><value>Native gateway setup requires a supported Windows client. Windows Server is not supported.</value></data>
+  <data name="Onboarding_Native_WindowsUpdate.Content" xml:space="preserve"><value>Open Windows Update</value></data>
+  <data name="Onboarding_Native_Recommended.Text" xml:space="preserve"><value>Recommended</value></data>
+  <data name="Onboarding_Native_Alternatives.Header" xml:space="preserve"><value>Other gateway options</value></data>
+  <data name="Onboarding_Native_UpdateLaunchFailed" xml:space="preserve"><value>Could not open Windows Update. Open Windows Settings, then Windows Update.</value></data>
+  <data name="Onboarding_Native_Lifecycle.Text" xml:space="preserve"><value>Continue with the same Gateway setup wizard used for WSL, here in Companion. Companion validates configuration and health before connecting. Existing WSL gateways and your default OpenClaw profile are not replaced.</value></data>
+  <data name="Onboarding_Native_Acquisition.Text" xml:space="preserve"><value>If the Gateway is not installed, setup installs it from Microsoft Store using WinGet, then verifies the package before continuing automatically.</value></data>
+  <data name="Onboarding_Native_InstallingPackage" xml:space="preserve"><value>Installing the Gateway from Microsoft Store using WinGet...</value></data>
+  <data name="Onboarding_Native_VerifyingPackage" xml:space="preserve"><value>WinGet completed. Verifying Gateway registration and execution aliases before continuing...</value></data>
+  <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>Companion will prepare your Gateway, then help you connect your AI.</value></data>
+  <data name="Onboarding_Native_Recovery.Header" xml:space="preserve"><value>Gateway recovery</value></data>
+  <data name="Onboarding_Native_Terminal.Content" xml:space="preserve"><value>Open terminal</value></data>
+  <data name="Onboarding_Native_Restart.Content" xml:space="preserve"><value>Restart Gateway</value></data>
+  <data name="Onboarding_Native_RetryAi.Content" xml:space="preserve"><value>Start AI setup again</value></data>
+  <data name="Onboarding_Native_StepSupport" xml:space="preserve"><value>Check device support</value></data>
+  <data name="Onboarding_Native_StepPackage" xml:space="preserve"><value>Install or verify Gateway package</value></data>
+  <data name="Onboarding_Native_StepPrepare" xml:space="preserve"><value>Prepare your Gateway profile</value></data>
+  <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>Start and verify the Gateway</value></data>
+  <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>Retry setup</value></data>
+  <data name="Onboarding_Native_Preview" xml:space="preserve"><value>Preview only. No package will be installed or Gateway started.</value></data>
+  <data name="Onboarding_Native_Review.Text" xml:space="preserve"><value>By selecting Set up gateway, you authorize WinGet to install the missing Gateway package from Microsoft Store and accept the package and Store source agreements. If WinGet is not ready, setup may repair App Installer before retrying. Companion then verifies the package, prepares a dedicated profile, and opens Gateway setup. Provider sign-in stays interactive. This path does not install WSL, Local AI, or Tailscale.</value></data>
+  <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>These Windows capabilities become usable after Node Mode connects and pairs with the Gateway. Windows permissions and command approvals still apply.</value></data>
+  <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>Native Gateway configured</value></data>
+  <data name="Onboarding_Native_CapabilitySummary" xml:space="preserve"><value>{0}. You can change these choices in Companion Settings.</value></data>
+  <data name="Onboarding_Native_ReviewTitle" xml:space="preserve"><value>Ready to set up your native gateway</value></data>
+  <data name="Onboarding_Native_Start.Content" xml:space="preserve"><value>Set up gateway</value></data>
+  <data name="Onboarding_Native_Cancel.Content" xml:space="preserve"><value>Cancel setup</value></data>
+  <data name="Onboarding_Native_Back.Content" xml:space="preserve"><value>Back</value></data>
+  <data name="Onboarding_Native_Open.Content" xml:space="preserve"><value>Open Companion to connect</value></data>
+  <data name="Onboarding_Native_Available" xml:space="preserve"><value>Gateway package {0} is installed.</value></data>
+  <data name="Onboarding_Native_InProgress" xml:space="preserve"><value>Preparing the native Gateway. Connect your AI next in Companion.</value></data>
+  <data name="Onboarding_Native_Cancelled" xml:space="preserve"><value>Setup cancelled. The WinGet request was cancelled, but Windows may still finish deployment. Any configuration already entered is retained in the dedicated native profile. No Gateway package was removed.</value></data>
+  <data name="Onboarding_Native_Configured" xml:space="preserve"><value>Gateway configuration and authenticated health verified at {0}. Open Companion to start the gateway and finish device pairing in Connection settings. Your selected Windows capabilities have been saved.</value></data>
+  <data name="Onboarding_Native_ReplaceDraftTitle" xml:space="preserve"><value>Replace unfinished Gateway setup?</value></data>
+  <data name="Onboarding_Native_ReplaceDraftContent" xml:space="preserve"><value>This clears only the Companion setup draft. Existing workspace files, configuration and credentials are kept. New setup uses a new profile and does not import or change the old Gateway data, WSL setup, or package-managed profile.</value></data>
+  <data name="Onboarding_Native_ReplaceDraftPrimary" xml:space="preserve"><value>Discard and set up again</value></data>
+  <data name="Onboarding_Native_ReplaceDraftClose" xml:space="preserve"><value>Keep draft</value></data>
+  <data name="Settings_PersistenceConflict_Title" xml:space="preserve"><value>Settings could not be saved</value></data>
+  <data name="Settings_PersistenceConflict_Message" xml:space="preserve"><value>Another process changed your settings. Your latest changes were not saved. Exit OpenClaw from the tray menu and reopen it, then retry your changes. The other process's saved settings have been preserved.</value></data>
+  <!-- Native Workspace shell. Other cultures use the default-language fallback. -->
+  <data name="WorkspaceShell_AutomationMissing" xml:space="preserve"><value>This automation is no longer available. Return to Automations and refresh.</value></data>
+  <data name="WorkspaceShell_Connected" xml:space="preserve"><value>Gateway connected</value></data>
+  <data name="WorkspaceShell_ThisComputer" xml:space="preserve"><value>This computer</value></data>
+  <data name="WorkspaceShell_SystemMissing" xml:space="preserve"><value>System unavailable</value></data>
+  <data name="WorkspaceShell_SelectSystemFirst" xml:space="preserve"><value>Select an available system from Systems to view its details.</value></data>
+  <data name="WorkspaceShell_GatewayInsights" xml:space="preserve"><value>View usage and activity reported by the connected gateway.</value></data>
+  <data name="WorkspaceShell_ProjectMetrics" xml:space="preserve"><value>Project metrics</value></data>
+  <data name="WorkspaceShell_Priorities" xml:space="preserve"><value>Priorities</value></data>
+  <data name="WorkspaceShell_Title" xml:space="preserve"><value>Workspace</value></data>
+  <data name="WorkspaceShell_Home" xml:space="preserve"><value>Home</value></data>
+  <data name="WorkspaceShell_Agents" xml:space="preserve"><value>Agents</value></data>
+  <data name="WorkspaceShell_AgentDetail" xml:space="preserve"><value>Agent</value></data>
+  <data name="WorkspaceShell_WriterDetail" xml:space="preserve"><value>Agent</value></data>
+  <data name="WorkspaceShell_Dashboards" xml:space="preserve"><value>Dashboards</value></data>
+  <data name="WorkspaceShell_DashboardDetail" xml:space="preserve"><value>Dashboard details</value></data>
+  <data name="WorkspaceShell_Canvas" xml:space="preserve"><value>Canvas</value></data>
+  <data name="WorkspaceShell_Systems" xml:space="preserve"><value>Systems</value></data>
+  <data name="WorkspaceShell_SystemDetail" xml:space="preserve"><value>System details</value></data>
+  <data name="WorkspaceShell_Automations" xml:space="preserve"><value>Automations</value></data>
+  <data name="WorkspaceShell_AutomationDetail" xml:space="preserve"><value>Automation details</value></data>
+  <data name="WorkspaceShell_Plugins" xml:space="preserve"><value>Plugins</value></data>
+  <data name="WorkspaceShell_Skills" xml:space="preserve"><value>Skills</value></data>
+  <data name="WorkspaceShell_Sessions" xml:space="preserve"><value>Sessions</value></data>
+  <data name="WorkspaceShell_Usage" xml:space="preserve"><value>Usage</value></data>
+  <data name="WorkspaceShell_Activity" xml:space="preserve"><value>Activity</value></data>
+  <data name="WorkspaceShell_Tasks" xml:space="preserve"><value>Tasks</value></data>
+  <data name="WorkspaceShell_Meetings" xml:space="preserve"><value>Meetings</value></data>
+  <data name="WorkspaceShell_Apps" xml:space="preserve"><value>Apps</value></data>
+  <data name="WorkspaceShell_Portals" xml:space="preserve"><value>Portals</value></data>
+  <data name="WorkspaceShell_Notifications" xml:space="preserve"><value>Notifications</value></data>
+  <data name="WorkspaceShell_More" xml:space="preserve"><value>More</value></data>
+  <data name="WorkspaceShell_Connection" xml:space="preserve"><value>Connection</value></data>
+  <data name="WorkspaceShell_Channels" xml:space="preserve"><value>Channels</value></data>
+  <data name="WorkspaceShell_Instances" xml:space="preserve"><value>Instances</value></data>
+  <data name="WorkspaceShell_Cron" xml:space="preserve"><value>Cron</value></data>
+  <data name="WorkspaceShell_AgentEvents" xml:space="preserve"><value>Agent events</value></data>
+  <data name="WorkspaceShell_Bindings" xml:space="preserve"><value>Bindings</value></data>
+  <data name="WorkspaceShell_Config" xml:space="preserve"><value>Configuration</value></data>
+  <data name="WorkspaceShell_LocalAi" xml:space="preserve"><value>Local AI</value></data>
+  <data name="WorkspaceShell_Voice" xml:space="preserve"><value>Voice</value></data>
+  <data name="WorkspaceShell_Permissions" xml:space="preserve"><value>Permissions</value></data>
+  <data name="WorkspaceShell_Sandbox" xml:space="preserve"><value>Sandbox</value></data>
+  <data name="WorkspaceShell_Debug" xml:space="preserve"><value>Diagnostics</value></data>
+  <data name="WorkspaceShell_Settings" xml:space="preserve"><value>Settings</value></data>
+  <data name="WorkspaceShell_About" xml:space="preserve"><value>About OpenClaw</value></data>
+  <data name="WorkspaceShell_AgentsDescription" xml:space="preserve"><value>Your gateway agents and their recent conversations.</value></data>
+  <data name="WorkspaceShell_AgentDetailDescription" xml:space="preserve"><value>Agent workspace and recent work.</value></data>
+  <data name="WorkspaceShell_WriterDetailDescription" xml:space="preserve"><value>Agent workspace and recent work.</value></data>
+  <data name="WorkspaceShell_DashboardsDescription" xml:space="preserve"><value>Projects, priorities, and gateway insights.</value></data>
+  <data name="WorkspaceShell_DashboardDetailDescription" xml:space="preserve"><value>Dashboard data is provided by your gateway.</value></data>
+  <data name="WorkspaceShell_CanvasDescription" xml:space="preserve"><value>Gateway-managed visual workspaces.</value></data>
+  <data name="WorkspaceShell_SystemsDescription" xml:space="preserve"><value>This computer, your gateway, and paired devices.</value></data>
+  <data name="WorkspaceShell_SystemDetailDescription" xml:space="preserve"><value>Connection and access for your systems.</value></data>
+  <data name="WorkspaceShell_PluginsDescription" xml:space="preserve"><value>Extensions and tools available to your gateway.</value></data>
+  <data name="WorkspaceShell_ActivityDescription" xml:space="preserve"><value>Live events from the current gateway connection.</value></data>
+  <data name="WorkspaceShell_MoreDescription" xml:space="preserve"><value>Explore your workspace and companion tools.</value></data>
+  <data name="WorkspaceShell_AppsDescription" xml:space="preserve"><value>Manage this companion or learn about other OpenClaw apps.</value></data>
+  <data name="WorkspaceShell_PortalsDescription" xml:space="preserve"><value>Open your configured gateway dashboard or documentation.</value></data>
+  <data name="WorkspaceShell_TasksDescription" xml:space="preserve"><value>Task workflows provided by your gateway.</value></data>
+  <data name="WorkspaceShell_MeetingsDescription" xml:space="preserve"><value>Meeting workflows provided by your gateway.</value></data>
+  <data name="WorkspaceShell_NoAgents" xml:space="preserve"><value>No agents loaded</value></data>
+  <data name="WorkspaceShell_SelectAssistant" xml:space="preserve"><value>Select assistant</value></data>
+  <data name="WorkspaceShell_NoSessions" xml:space="preserve"><value>No conversations to show.</value></data>
+  <data name="WorkspaceShell_ConnectionRequired" xml:space="preserve"><value>Connect a gateway to load agents and conversations.</value></data>
+  <data name="WorkspaceShell_ConnectionInfo.Message" xml:space="preserve"><value>Connect a gateway to load live workspace data.</value></data>
+  <data name="WorkspaceShell_SessionFailed" xml:space="preserve"><value>The gateway could not create a new session. Refresh the list before retrying.</value></data>
+  <data name="WorkspaceShell_SessionUnsupported" xml:space="preserve"><value>This gateway does not support creating sessions. Update the gateway to use this action.</value></data>
+  <data name="WorkspaceShell_TrayUnavailable" xml:space="preserve"><value>The Windows tray menu is not available.</value></data>
+  <data name="WorkspaceShell_LinkFailed" xml:space="preserve"><value>Windows could not open the link.</value></data>
+  <data name="WorkspaceShell_SessionMenu_LastActiveFormat" xml:space="preserve"><value>Last active {0}</value></data>
+  <data name="WorkspaceShell_SessionMenu_Pin" xml:space="preserve"><value>Pin session</value></data>
+  <data name="WorkspaceShell_SessionMenu_Unpin" xml:space="preserve"><value>Unpin session</value></data>
+  <data name="WorkspaceShell_SessionMenu_Rename" xml:space="preserve"><value>Rename…</value></data>
+  <data name="WorkspaceShell_SessionMenu_MarkUnread" xml:space="preserve"><value>Mark as unread</value></data>
+  <data name="WorkspaceShell_SessionMenu_MarkRead" xml:space="preserve"><value>Mark as read</value></data>
+  <data name="WorkspaceShell_SessionMenu_Archive" xml:space="preserve"><value>Archive session</value></data>
+  <data name="WorkspaceShell_SessionMenu_Unarchive" xml:space="preserve"><value>Unarchive session</value></data>
+  <data name="WorkspaceShell_SessionMenu_Fork" xml:space="preserve"><value>Fork conversation</value></data>
+  <data name="WorkspaceShell_SessionMenu_Copy" xml:space="preserve"><value>Copy</value></data>
+  <data name="WorkspaceShell_SessionMenu_CopyKey" xml:space="preserve"><value>Copy session key</value></data>
+  <data name="WorkspaceShell_SessionMenu_CopyId" xml:space="preserve"><value>Copy session ID</value></data>
+  <data name="WorkspaceShell_SessionMenu_CopyMarkdown" xml:space="preserve"><value>Copy as Markdown</value></data>
+  <data name="WorkspaceShell_SessionMenu_Reset" xml:space="preserve"><value>Reset session…</value></data>
+  <data name="WorkspaceShell_SessionMenu_Compact" xml:space="preserve"><value>Compact session…</value></data>
+  <data name="WorkspaceShell_SessionMenu_Export" xml:space="preserve"><value>Export transcript…</value></data>
+  <data name="WorkspaceShell_SessionMenu_Delete" xml:space="preserve"><value>Delete…</value></data>
+  <data name="WorkspaceShell_SessionRename_Title" xml:space="preserve"><value>Rename session</value></data>
+  <data name="WorkspaceShell_SessionRename_Body" xml:space="preserve"><value>Leave blank to use the default title.</value></data>
+  <data name="WorkspaceShell_SessionRename_Save" xml:space="preserve"><value>Save</value></data>
+  <data name="WorkspaceShell_SessionPinned" xml:space="preserve"><value>Pinned</value></data>
+  <data name="WorkspaceShell_SessionUnread" xml:space="preserve"><value>Unread</value></data>
+  <data name="WorkspaceShell_SessionWorking" xml:space="preserve"><value>Working</value></data>
+  <data name="SessionsPage_Archived" xml:space="preserve"><value>Archived</value></data>
+  <data name="SessionsPage_ArchivedEmpty" xml:space="preserve"><value>No archived sessions.</value></data>
+  <data name="SessionsPage_ArchivedUnavailable" xml:space="preserve"><value>Archived sessions are unavailable on this gateway.</value></data>
+  <data name="SessionsPage_Unarchive" xml:space="preserve"><value>Unarchive session</value></data>
+  <data name="WorkspaceShell_SessionActionFailed" xml:space="preserve"><value>The gateway didn't accept the request. Try again.</value></data>
+  <data name="WorkspaceShell_SessionConnectionChanged" xml:space="preserve"><value>The Gateway connection changed. Refresh sessions to check the outcome before trying again.</value></data>
+  <data name="WorkspaceShell_SessionActionTimedOut" xml:space="preserve"><value>The Gateway did not respond in time. The outcome is unknown. Refresh the session before trying again.</value></data>
+  <data name="WorkspaceShell_SelectConversation.Text" xml:space="preserve"><value>Select a conversation or create a new one to start chatting.</value></data>
+  <data name="WorkspaceShell_ForkFailed" xml:space="preserve"><value>The gateway could not fork this conversation.</value></data>
+  <data name="WorkspaceShell_ForkUnsupported" xml:space="preserve"><value>This gateway does not support forking conversations. Update the gateway to use this action.</value></data>
+  <data name="WorkspaceShell_CopyFailed" xml:space="preserve"><value>Windows could not copy to the clipboard.</value></data>
+  <data name="WorkspaceShell_CopyEmpty" xml:space="preserve"><value>This session has no messages to copy.</value></data>
+  <data name="WorkspaceShell_HistoryUnsupported" xml:space="preserve"><value>This gateway does not support reading transcripts. Update the gateway to use this action.</value></data>
+  <data name="WorkspaceShell_ExportEmpty" xml:space="preserve"><value>This session has no transcript yet.</value></data>
+  <data name="WorkspaceShell_ExportDone" xml:space="preserve"><value>Saved {0} messages to {1}.</value></data>
+  <data name="WorkspaceShell_AgentsEmpty" xml:space="preserve"><value>Connect and refresh to load agents. Manage agent configuration in the companion.</value></data>
+  <data name="WorkspaceShell_SelectAgentFirst" xml:space="preserve"><value>Select an agent from the Agents page to view its details.</value></data>
+  <data name="WorkspaceShell_AgentSummary" xml:space="preserve"><value>{0} · {1} conversations</value></data>
+  <data name="WorkspaceShell_WorkspaceNotReported" xml:space="preserve"><value>The gateway has not reported a workspace path.</value></data>
+  <data name="WorkspaceShell_RecentWork" xml:space="preserve"><value>Recent work</value></data>
+  <data name="WorkspaceShell_Gateway" xml:space="preserve"><value>Gateway</value></data>
+  <data name="WorkspaceShell_DeviceAccess" xml:space="preserve"><value>Device access</value></data>
+  <data name="WorkspaceShell_DeviceAccessDescription" xml:space="preserve"><value>Manage permissions and pairing in the native companion.</value></data>
+  <data name="WorkspaceShell_MetricsUnavailable" xml:space="preserve"><value>CPU, memory, and storage utilization are not reported by the current node API.</value></data>
+  <data name="WorkspaceShell_DashboardsUnavailable" xml:space="preserve"><value>No native dashboard catalog</value></data>
+  <data name="WorkspaceShell_DashboardsUnavailableDescription" xml:space="preserve"><value>The current gateway client does not expose a dashboard catalog or project metrics. Open the real gateway dashboard instead.</value></data>
+  <data name="WorkspaceShell_NoDashboardSelected" xml:space="preserve"><value>No dashboard data is available. Usage and activity remain available from the gateway.</value></data>
+  <data name="WorkspaceShell_Installed" xml:space="preserve"><value>Installed</value></data>
+  <data name="WorkspaceShell_Discover" xml:space="preserve"><value>Discover</value></data>
+  <data name="WorkspaceShell_Install" xml:space="preserve"><value>Install</value></data>
+  <data name="WorkspaceShell_PluginInventoryUnavailable" xml:space="preserve"><value>Plugin inventory unavailable</value></data>
+  <data name="WorkspaceShell_PluginsUnavailableDescription" xml:space="preserve"><value>The current gateway client has no plugin inventory API. Configuration and Skills show the supported gateway workflows.</value></data>
+  <data name="WorkspaceShell_PluginCatalogUnavailable" xml:space="preserve"><value>Plugin catalog unavailable</value></data>
+  <data name="WorkspaceShell_PluginMutationsUnavailable" xml:space="preserve"><value>Plugin installation and removal are unavailable because this client has no supported plugin management API.</value></data>
+  <data name="WorkspaceShell_NotAvailable" xml:space="preserve"><value>Not available in this companion</value></data>
+  <data name="WorkspaceShell_NoNativeWorkflow" xml:space="preserve"><value>The current gateway client does not expose this workflow. Check your gateway dashboard for supported extensions.</value></data>
+  <data name="WorkspaceShell_NoActivity" xml:space="preserve"><value>No recent activity</value></data>
+  <data name="WorkspaceShell_ActivityEmpty" xml:space="preserve"><value>Agent events will appear here as the connected gateway sends them.</value></data>
+  <data name="WorkspaceShell_CompanionApp" xml:space="preserve"><value>OpenClaw Windows companion</value></data>
+  <data name="WorkspaceShell_OpenChat" xml:space="preserve"><value>Open chat</value></data>
+  <data name="WorkspaceShell_Details" xml:space="preserve"><value>View details</value></data>
+  <data name="WorkspaceShell_AgentSettings" xml:space="preserve"><value>Agent settings</value></data>
+  <data name="WorkspaceShell_AgentFiles" xml:space="preserve"><value>Workspace files</value></data>
+  <data name="WorkspaceShell_ManageConnection" xml:space="preserve"><value>Manage connection</value></data>
+  <data name="WorkspaceShell_ConnectionTimeline" xml:space="preserve"><value>Connection event timeline</value></data>
+  <data name="WorkspaceShell_PairedDevices" xml:space="preserve"><value>Paired devices</value></data>
+  <data name="WorkspaceShell_PairDevice" xml:space="preserve"><value>Pair device</value></data>
+  <data name="WorkspaceShell_OpenDashboard" xml:space="preserve"><value>Open gateway dashboard</value></data>
+  <data name="WorkspaceShell_Help" xml:space="preserve"><value>Help</value></data>
+  <data name="WorkspaceShell_Documentation" xml:space="preserve"><value>Documentation</value></data>
+  <data name="WorkspaceShell_Support" xml:space="preserve"><value>Get help</value></data>
+  <data name="WorkspaceShell_Community" xml:space="preserve"><value>Community</value></data>
+  <data name="WorkspaceShell_ReleaseNotes" xml:space="preserve"><value>Release notes</value></data>
+  <data name="WorkspaceShell_GetApps" xml:space="preserve"><value>Get apps</value></data>
+  <data name="WorkspaceShell_CommandCenter" xml:space="preserve"><value>Command center</value></data>
+  <data name="WorkspaceShell_SearchPages" xml:space="preserve"><value>Search companion pages</value></data>
+  <data name="WorkspaceShell_Tray" xml:space="preserve"><value>Windows tray menu</value></data>
+  <data name="WorkspaceShell_Setup" xml:space="preserve"><value>Setup and onboarding</value></data>
+  <data name="WorkspaceShell_Owner.Text" xml:space="preserve"><value>Owner</value></data>
+  <data name="WorkspaceShell_PersonalWorkspace.Text" xml:space="preserve"><value>Personal workspace</value></data>
+  <data name="WorkspaceShell_Pages.Text" xml:space="preserve"><value>Pages</value></data>
+  <data name="WorkspaceShell_SessionsLabel.Text" xml:space="preserve"><value>Sessions</value></data>
+  <data name="WorkspaceShell_MoreButton.Content" xml:space="preserve"><value>More</value></data>
+  <data name="WorkspaceShell_Refresh.Content" xml:space="preserve"><value>Refresh</value></data>
+  <data name="WorkspaceShell_OpenConnection.Content" xml:space="preserve"><value>Open Connection</value></data>
+  <data name="WorkspaceShell_Assistant.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Assistant</value></data>
+  <data name="WorkspaceShell_NewConversation.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>New conversation</value></data>
+  <data name="WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Notifications</value></data>
+  <data name="WorkspaceShell_Forward.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Forward</value></data>
+  <data name="WorkspaceShell_Forward.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Forward</value></data>
+  <data name="WorkspaceShell_Back.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Back</value></data>
+  <data name="WorkspaceShell_TogglePane.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Toggle sidebar</value></data>
+  <data name="WorkspaceShell_AutomationSendFailed" xml:space="preserve">
+    <value>The automation could not be sent. Your changes are still in the editor. Check the gateway connection and try again.</value>
+  </data>
+  <data name="WorkspaceShell_AutomationSubmitted" xml:space="preserve">
+    <value>Changes sent. The list will update when the gateway confirms them.</value>
+  </data>
+  <data name="AgentCreation_Title" xml:space="preserve"><value>New agent</value></data>
+  <data name="AgentCreation_Creating" xml:space="preserve"><value>Creating agent on the gateway. Please wait for confirmation.</value></data>
+  <data name="AgentCreation_Create" xml:space="preserve"><value>Create agent</value></data>
+  <data name="AgentCreation_Name" xml:space="preserve"><value>Name</value></data>
+  <data name="AgentCreation_Workspace" xml:space="preserve"><value>Workspace path on the gateway</value></data>
+  <data name="AgentCreation_Description" xml:space="preserve"><value>Create an agent and its workspace on the connected gateway. This does not create a conversation or change your current chat.</value></data>
+  <data name="AgentCreation_PermissionRequired" xml:space="preserve"><value>Connect to a gateway with operator.admin permission to create an agent.</value></data>
+  <data name="AgentCreation_Failed" xml:space="preserve"><value>Agent creation could not be confirmed. Close this dialog and refresh agents before trying again.</value></data>
+  <data name="Onboarding_AiSetup_LocalState_ManagementBlocked" xml:space="preserve"><value>Companion management is unavailable.</value></data>
+  <data name="Onboarding_AiSetup_LocalOwnershipMissing" xml:space="preserve"><value>This profile has no ownership receipt for the existing Local AI provider. If Companion created it during an earlier setup attempt, reopen the original Companion profile and choose Recover and use Local AI. Nothing has been changed. Using a detected model does not restore Companion management.</value></data>
+  <data name="Onboarding_AiSetup_LocalOwnershipInvalid" xml:space="preserve"><value>The saved Local AI ownership, model or Gateway configuration no longer matches. In the original Companion profile, review the original Gateway and its model settings, including edited model allowlist entries. Keep the ownership receipt; do not copy credentials or replace the provider.</value></data>
+  <data name="Onboarding_AiSetup_LocalOwnershipUnavailable" xml:space="preserve"><value>The original Gateway ownership or configuration could not be checked. Reconnect the original Gateway and check again. Nothing has been changed.</value></data>
+  <data name="Onboarding_AiSetup_LocalOwnershipFiles" xml:space="preserve"><value>The owned Local AI installation needs file repair. In Local AI settings, stop its runtime and resolve its original Gateway route before repairing files. Keep the ownership receipt.</value></data>
+  <data name="ChatPage_SetupUnavailable" xml:space="preserve">
+    <value>The Gateway verified during setup is not connected. Check Connection, or check again when it is available.</value>
+  </data>
+  <data name="ChatPage_SetupAuthorityUnconfirmed" xml:space="preserve">
+    <value>The Gateway and agent verified during setup could not be confirmed. Open Connection to check them.</value>
+  </data>
+  <data name="ChatPage_SetupRenderingFailed" xml:space="preserve">
+    <value>Chat could not be displayed. Check again. If the problem continues, open Diagnostics.</value>
+  </data>
+  <data name="ChatPage_SetupCheckAgain.Content" xml:space="preserve">
+    <value>Check again</value>
+  </data>
 </root>

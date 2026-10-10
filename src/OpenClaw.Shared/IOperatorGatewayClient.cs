@@ -32,6 +32,8 @@ public interface IOperatorGatewayClient
     event EventHandler<DevicePairingListInfo>? DevicePairListUpdated;
     event EventHandler<ModelsListInfo>? ModelsListUpdated;
     event EventHandler<PresenceEntry[]>? PresenceUpdated;
+    /// <summary>The authenticated profile changed; consumers should reload users.self.</summary>
+    event EventHandler? SelfProfileChanged { add { } remove { } }
     event EventHandler<JsonElement>? AgentsListUpdated;
     event EventHandler<JsonElement>? AgentFilesListUpdated;
     event EventHandler<JsonElement>? AgentFileContentUpdated;
@@ -39,12 +41,15 @@ public interface IOperatorGatewayClient
 
     // ─── Query ───
     string? OperatorDeviceId { get; }
+    string? AuthenticatedSigningDeviceId => null;
     IReadOnlyList<string> GrantedOperatorScopes { get; }
     bool IsConnectedToGateway { get; }
     /// <summary>Canonical main session key resolved from hello-ok; <c>null</c> until handshake.</summary>
     string? MainSessionKey { get; }
     /// <summary>True once the hello-ok handshake has been processed.</summary>
     bool HasHandshakeSnapshot { get; }
+    /// <summary>Authenticated transport epoch, used to bind a mutation across an asynchronous dialog.</summary>
+    long? SessionMutationConnectionEpoch => null;
 
     // ─── Connection events (from WebSocketClientBase) ───
     event EventHandler<ConnectionStatus>? StatusChanged;
@@ -140,6 +145,12 @@ public interface IOperatorGatewayClient
     Task<bool> StopChannelAsync(string channelName);
     /// <summary>Fetch the rich channels.status snapshot from the gateway. Mac/web canonical wire method.</summary>
     Task<ChannelsStatusSnapshot?> GetChannelsStatusAsync(bool probe = false, int timeoutMs = 12000);
+    /// <summary>
+    /// Fetches the Gateway's effective update track (<c>update.status</c>).
+    /// Older Gateway client implementations return no status.
+    /// </summary>
+    Task<GatewayUpdateStatus?> GetUpdateStatusAsync(int timeoutMs = 5000) =>
+        Task.FromResult<GatewayUpdateStatus?>(null);
     /// <summary>Log out / unlink a channel (whatsapp, telegram). Sends channels.logout { channel }.</summary>
     Task<bool> LogoutChannelAsync(string channelName, int timeoutMs = 12000);
     /// <summary>Begin a QR linking flow (whatsapp, signal). Sends web.login.start { force, timeoutMs }.</summary>
@@ -159,6 +170,12 @@ public interface IOperatorGatewayClient
     /// <summary>Apply an extended <see cref="SessionPatch"/> (rich field set) to a session.</summary>
     Task<bool> PatchSessionAsync(string key, SessionPatch patch)
         => Task.FromResult(false);
+    /// <summary>Waits for Gateway acceptance on the captured connection. Does not publish generic session-action notifications.</summary>
+    Task PatchSessionConfirmedAsync(string key, SessionPatch patch, long connectionEpoch, int timeoutMs = 15000)
+        => Task.FromException(new NotSupportedException("Response-aware sessions.patch is not supported by this gateway client."));
+    /// <summary>Waits for Gateway acceptance on the captured connection. The caller owns navigation and list refresh.</summary>
+    Task DeleteSessionConfirmedAsync(string key, long connectionEpoch, int timeoutMs = 15000)
+        => Task.FromException(new NotSupportedException("Response-aware sessions.delete is not supported by this gateway client."));
     /// <summary>List session files, optionally scoped to a sub-path/search (<c>sessions.files.list</c>).</summary>
     Task<SessionFileList> ListSessionFilesAsync(string key, string? path = null, string? search = null, int timeoutMs = 15000)
         => Task.FromResult(new SessionFileList { Key = key, IsSupported = false });
@@ -185,6 +202,9 @@ public interface IOperatorGatewayClient
             IsSupported = false,
             Error = "sessions.create is not supported by this gateway client."
         });
+    /// <summary>List only the archived sessions (<c>sessions.list</c> with <c>archived:true</c>). Rows are detached snapshots.</summary>
+    Task<SessionListResult> ListArchivedSessionsAsync(int timeoutMs = 15000)
+        => Task.FromResult(new SessionListResult { IsSupported = false });
 }
 
 public sealed record CronRunRequestResult(

@@ -26,13 +26,13 @@ public sealed class ComposerSessionPickerTests
     }
 
     [Fact]
-    public void ModelPicker_UsesDeclarativeMenuFlyout()
+    public void ModelPicker_UsesDeclarativeCatalogFlyout()
     {
         var composer = ComposerSource();
 
-        Assert.Contains("var modelPicker = MenuFlyout(", composer);
-        Assert.Contains("modelNames", composer);
-        Assert.Contains(".Select((modelName, index) => RadioMenuItem(", composer);
+        Assert.Contains("Component<ChatModelPicker, ChatModelPickerProps>", composer);
+        Assert.DoesNotContain("controller.ClearModel()", composer);
+        Assert.Contains("controller.SetModel(choice.SelectionId)", composer);
     }
 
     [Fact]

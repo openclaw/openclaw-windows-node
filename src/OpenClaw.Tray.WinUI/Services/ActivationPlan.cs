@@ -6,11 +6,17 @@ namespace OpenClawTray.Services;
 
 internal sealed record ActivationConfirmation(string ActionDisplayName, string RedactedInput);
 
+internal enum LaunchActivationKind
+{
+    Launch, Protocol, StartupTask, Other
+}
+
 internal sealed record LaunchActivationInput(
     string? ProtocolUri,
     IReadOnlyList<string> CommandLineArguments,
     string? PostSetupLaunch,
-    bool SetupShownDuringStartup);
+    bool SetupShownDuringStartup,
+    LaunchActivationKind Kind = LaunchActivationKind.Launch);
 
 internal abstract record ActivationPlan
 {

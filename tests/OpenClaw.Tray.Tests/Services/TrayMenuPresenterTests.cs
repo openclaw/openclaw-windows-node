@@ -240,7 +240,7 @@ public sealed class TrayMenuPresenterTests
     }
 
     [Fact]
-    public void Permissions_ProjectAllNineTogglesInOrderWithStableStoreBeforeReconnectActions()
+    public void Permissions_ProjectAllTenTogglesInOrderWithStableStoreBeforeReconnectActions()
     {
         var permissions = Find(Present(DetailedSnapshot()), "permissions");
         var toggles = permissions.Children.Where(item => item.Kind == TrayMenuElementKind.Toggle).ToArray();
@@ -256,6 +256,7 @@ public sealed class TrayMenuPresenterTests
                 "Location",
                 "Voice (TTS)",
                 "Speech-to-text (STT)",
+                "Ollama",
             ],
             toggles.Select(item => item.Text));
         Assert.Equal(
@@ -269,11 +270,12 @@ public sealed class TrayMenuPresenterTests
                 "perm-toggle|Location",
                 "perm-toggle|Voice (TTS)",
                 "perm-toggle|Speech-to-text (STT)",
+                "perm-toggle|Ollama",
             ],
             toggles.Select(item => item.ActionId));
-        Assert.Equal([true, false, true, false, true, false, true, false, true], toggles.Select(item => item.IsChecked));
+        Assert.Equal([true, false, true, false, true, false, true, false, true, false], toggles.Select(item => item.IsChecked));
         Assert.All(toggles, toggle => Assert.Equal(toggle.Text, toggle.AutomationName));
-        Assert.Equal("Dictate input by speaking", toggles[^1].Detail);
+        Assert.Equal("Let agents use Ollama models installed separately on this PC", toggles[^1].Detail);
     }
 
     [Fact]
@@ -397,7 +399,8 @@ public sealed class TrayMenuPresenterTests
             false,
             true,
             false,
-            true),
+            true,
+            false),
         SetupMenuLabel = "Reconfigure...",
         ShowSetupMenuEntry = true,
         LastUpdated = NowUtc.AddSeconds(-10),

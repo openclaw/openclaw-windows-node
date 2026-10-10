@@ -48,7 +48,8 @@ public class WslPlatformInstallDiagnosticsTests
     }
 
     [Fact]
-    public void EnsureWslPlatform_IsRetryable() => Assert.True(new EnsureWslPlatformStep().CanRetry);
+    public void EnsureWslPlatform_DoesNotRetryElevatedMutation() =>
+        Assert.False(new EnsureWslPlatformStep().CanRetry);
 
     private sealed class DelayedHandler : HttpMessageHandler
     {

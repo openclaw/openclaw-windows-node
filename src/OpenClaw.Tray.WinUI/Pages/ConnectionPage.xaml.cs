@@ -1269,6 +1269,7 @@ public sealed partial class ConnectionPage : Page
             ("location", "PermissionsPage_Cap_Location_Label", FluentIconCatalog.Location, settings.NodeLocationEnabled),
             ("tts",      "PermissionsPage_Cap_Tts_Label",      FluentIconCatalog.Voice,    settings.NodeTtsEnabled),
             ("stt",      "PermissionsPage_Cap_Stt_Label",      FluentIconCatalog.Speech,   settings.NodeSttEnabled),
+            ("local-inference", "PermissionsPage_Cap_Ollama_Label",   FluentIconCatalog.Inference, settings.NodeOllamaInferenceEnabled),
         };
 
         var shown = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -1456,7 +1457,8 @@ public sealed partial class ConnectionPage : Page
             settings.NodeScreenEnabled ? '1' : '0',
             settings.NodeLocationEnabled ? '1' : '0',
             settings.NodeTtsEnabled ? '1' : '0',
-            settings.NodeSttEnabled ? '1' : '0');
+            settings.NodeSttEnabled ? '1' : '0',
+            settings.NodeOllamaInferenceEnabled ? '1' : '0');
         return $"{state}|{eff}|{pend}|{toggles}|{(hasSharedGatewayToken ? '1' : '0')}|{(nodeSessionLive ? '1' : '0')}|{(requiresRemoteBrowserEndpoint ? '1' : '0')}|{(browserEndpointVerified ? '1' : '0')}";
     }
 
@@ -2577,15 +2579,20 @@ public sealed partial class ConnectionPage : Page
         if (sender is not MenuFlyoutItem item || item.Tag is not string gwId) return;
         var rec = _gatewayRegistry?.GetById(gwId);
         if (rec == null) return;
+        var recordSnapshot = rec with { };
         try
         {
             await CurrentApp.OpenDashboardFromLinkServiceAsync(new GatewayDashboardLinkRequest(
-                rec.Url,
+                recordSnapshot.Url,
                 null,
-                rec.SharedGatewayToken,
-                !string.IsNullOrWhiteSpace(rec.SharedGatewayToken),
-                rec.TrustTailscaleAuth ? rec.Id : null),
-                result => ValidateSavedDashboardFallbackAsync(rec, result));
+                recordSnapshot.SharedGatewayToken,
+                !string.IsNullOrWhiteSpace(recordSnapshot.SharedGatewayToken),
+                recordSnapshot.TrustTailscaleAuth ? recordSnapshot.Id : null),
+                result => ValidateSavedDashboardFallbackAsync(recordSnapshot, result),
+                () => AsyncEventHandlerGuard.Run(
+                    () => OnSavedRowOpenDashboardAsync(sender),
+                    new AppLogger(),
+                    nameof(OnSavedRowOpenDashboard)));
         }
         catch (Exception ex)
         {
@@ -2613,7 +2620,7 @@ public sealed partial class ConnectionPage : Page
             record.SharedGatewayToken,
             IsBootstrapToken: false,
             CredentialResolver.SourceSharedGatewayToken);
-        if (provenanceService.IsStrongCredentialAllowed(record, candidate))
+        if (CurrentApp.InteractiveEndpointAuthorizer?.IsCredentialAllowed(record, candidate) == true)
         {
             return true;
         }
@@ -2908,15 +2915,37 @@ public sealed partial class ConnectionPage : Page
             ? LocalizationHelper.GetString("ConnectionPage_Connecting")
             : LocalizationHelper.GetString("ConnectionPage_StartingSshTunnel");
 
+        var registry = _gatewayRegistry;
+        var editing = _editingGatewayId is null
+            ? null
+            : registry?.GetById(_editingGatewayId);
+        var submittedToken = string.IsNullOrWhiteSpace(token) ? null : token;
+        var sharedTokenUnchanged = registry is not null &&
+            GatewayDirectConnectService.ShouldPreserveUnchangedSharedToken(
+                editing,
+                submittedToken,
+                url,
+                sshConfig,
+                registry);
+
         try
         {
             var result = await _gatewayDirectConnectService.ConnectAsync(
-                new GatewayDirectConnectRequest(
-                    url,
-                    token,
-                    friendly,
-                    sshConfig,
-                    _editingGatewayId));
+                sharedTokenUnchanged
+                    ? new GatewayDirectConnectRequest(
+                        url,
+                        null,
+                        friendly,
+                        sshConfig,
+                        _editingGatewayId,
+                        PreserveExistingSharedTokenWhenMissing: true)
+                    : new GatewayDirectConnectRequest(
+                        url,
+                        submittedToken,
+                        friendly,
+                        sshConfig,
+                        _editingGatewayId,
+                        PreserveExistingSharedTokenWhenMissing: false));
             if (result.Outcome == GatewayDirectConnectOutcome.Failed)
             {
                 AddResultText.Text = $"✗ {result.Error}";

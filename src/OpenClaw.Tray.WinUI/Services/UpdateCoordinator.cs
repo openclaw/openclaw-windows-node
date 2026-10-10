@@ -4,6 +4,7 @@ using OpenClaw.Shared;
 using OpenClawTray.Dialogs;
 using OpenClawTray.Helpers;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -20,11 +21,17 @@ internal sealed class UpdateCoordinator(
     UpdatumManager updater,
     AppState appState,
     SettingsManager? settings,
+    Func<IOperatorGatewayClient?> getGatewayClient,
     Func<XamlRoot?> getXamlRoot,
     Action refreshStatus,
-    Action exit)
+    Action exit,
+    IUpdateCheckBoundary? updateCheckBoundary = null)
 {
     private readonly SettingsManager? _settings = settings;
+    private readonly IUpdateCheckBoundary _updateCheckBoundary =
+        updateCheckBoundary ?? new UpdatumUpdateCheckBoundary(updater);
+    private readonly Func<IOperatorGatewayClient?> _getGatewayClient =
+        getGatewayClient ?? throw new ArgumentNullException(nameof(getGatewayClient));
 
     // Cross-path concurrency for update checks, split into two phases:
     //  - _updateCheckGate: held only during the metadata/network check.
@@ -60,6 +67,23 @@ internal sealed class UpdateCoordinator(
             return true; // Don't block launch
         }
 
+        if (PackageHelper.IsPackaged)
+        {
+            // A Store-installed package is updated by Windows, not by Updatum.
+            // Self-updating from GitHub releases would bypass the Store, and the
+            // packaged app must not claim update ownership from a legacy install.
+            Logger.Info("Skipping update check in packaged build; updates are managed by the Microsoft Store");
+            appState.UpdateInfo = new UpdateCommandCenterInfo
+            {
+                Status = "Skipped",
+                CurrentVersion = AppVersionInfo.Version,
+                CheckedAt = DateTime.UtcNow,
+                Detail = "managed by the Microsoft Store"
+            };
+            _updateCheckGate.Release();
+            return true;
+        }
+
         if (AppIdentity.IsDev)
         {
             Logger.Info("Skipping release-channel update check in development build");
@@ -68,7 +92,8 @@ internal sealed class UpdateCoordinator(
                 Status = "Skipped",
                 CurrentVersion = AppVersionInfo.Version,
                 CheckedAt = DateTime.UtcNow,
-                Detail = "development build"
+                Detail = LocalizationHelper.GetString(
+                    "Update_Message_Skipped_Dev")
             };
             _updateCheckGate.Release();
             return true;
@@ -83,7 +108,8 @@ internal sealed class UpdateCoordinator(
                 Status = "Skipped",
                 CurrentVersion = AppVersionInfo.Version,
                 CheckedAt = DateTime.UtcNow,
-                Detail = "debug build"
+                Detail = LocalizationHelper.GetString(
+                    "Update_Message_Skipped_Debug")
             };
             return true;
         }
@@ -103,7 +129,15 @@ internal sealed class UpdateCoordinator(
                 CurrentVersion = AppVersionInfo.Version,
                 CheckedAt = DateTime.UtcNow
             };
-            var updateFound = await updater.CheckForUpdatesAsync();
+            var checkOutcome = await UpdateCheckPipeline.CheckAsync(
+                _updateCheckBoundary,
+                AppVersionInfo.Version);
+            var updateFound = checkOutcome.UpdateFound;
+            if (checkOutcome.ActivatedFallbackTag is not null)
+            {
+                Logger.Info(
+                    $"Using OpenClaw stable correction ordering for update {checkOutcome.ActivatedFallbackTag}");
+            }
 
             if (!updateFound)
             {
@@ -114,6 +148,25 @@ internal sealed class UpdateCoordinator(
                     CurrentVersion = AppVersionInfo.Version,
                     CheckedAt = DateTime.UtcNow,
                     Detail = "no updates available"
+                };
+                return true;
+            }
+
+            if (UpdateReleasePolicy.Classify(checkOutcome.SelectedRelease) ==
+                    ReleaseSecurityClassification.Ordinary &&
+                CompanionUpdateSuppressionPolicy.ShouldSuppress(
+                    await TryGetGatewayUpdateStatusAsync(_getGatewayClient()),
+                    checkOutcome))
+            {
+                Logger.Info(
+                    "Skipping ordinary companion update: authenticated Gateway is on extended-stable");
+                appState.UpdateInfo = new UpdateCommandCenterInfo
+                {
+                    Status = "Skipped",
+                    CurrentVersion = AppVersionInfo.Version,
+                    CheckedAt = DateTime.UtcNow,
+                    Detail = LocalizationHelper.GetString(
+                        "Update_Message_Skipped_ExtendedStable")
                 };
                 return true;
             }
@@ -314,6 +367,64 @@ internal sealed class UpdateCoordinator(
 #endif
     }
 
+    private static async Task<GatewayUpdateStatus?> TryGetGatewayUpdateStatusAsync(
+        IOperatorGatewayClient? gatewayClient)
+    {
+        if (gatewayClient is null)
+            return null;
+
+        if (!gatewayClient.HasHandshakeSnapshot &&
+            !await WaitForGatewayHandshakeAsync(gatewayClient))
+        {
+            Logger.Info(
+                "Gateway update channel unavailable before deadline; using companion updater");
+            return null;
+        }
+
+        if (!GatewayUpdateStatusLookup.CanQuery(
+                gatewayClient.HasHandshakeSnapshot,
+                gatewayClient.IsConnectedToGateway,
+                gatewayClient.GrantedOperatorScopes))
+        {
+            Logger.Info(
+                "Gateway update channel unavailable or unauthorized; using companion updater");
+            return null;
+        }
+
+        return await GatewayUpdateStatusLookup.TryGetAsync(
+            () => gatewayClient.GetUpdateStatusAsync(),
+            ex => Logger.Info(
+                $"Gateway update channel unavailable; using companion updater: {ex.Message}"));
+    }
+
+    private static async Task<bool> WaitForGatewayHandshakeAsync(
+        IOperatorGatewayClient gatewayClient)
+    {
+        var completion = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        void OnHandshakeSucceeded(object? sender, EventArgs args) =>
+            completion.TrySetResult();
+
+        gatewayClient.HandshakeSucceeded += OnHandshakeSucceeded;
+        try
+        {
+            if (gatewayClient.HasHandshakeSnapshot)
+                return true;
+
+            await completion.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            return gatewayClient.HasHandshakeSnapshot;
+        }
+        catch (TimeoutException)
+        {
+            return false;
+        }
+        finally
+        {
+            gatewayClient.HandshakeSucceeded -= OnHandshakeSucceeded;
+        }
+    }
+
     // Re-entrancy guard: the button/menu/deep-link are all fire-and-forget
     // (`_ = CheckForUpdatesUserInitiatedAsync()`), so a double-click would
     // otherwise open two ContentDialogs on the same XamlRoot which throws
@@ -369,10 +480,13 @@ internal sealed class UpdateCoordinator(
                         await ShowUpdateInfoDialogAsync(
                             "Skipped",
                             LocalizationHelper.GetString("Update_Title_Skipped"),
+                            info.Detail ??
                             LocalizationHelper.GetString(
-                                AppIdentity.IsDev
-                                    ? "Update_Message_Skipped_Dev"
-                                    : "Update_Message_Skipped_Debug"));
+                                PackageHelper.IsPackaged
+                                    ? "Update_Message_Skipped_Store"
+                                    : AppIdentity.IsDev
+                                        ? "Update_Message_Skipped_Dev"
+                                        : "Update_Message_Skipped_Debug"));
                         break;
                 }
             }
@@ -477,4 +591,30 @@ internal sealed class UpdateCoordinator(
             // Same as above for other "already-disposed" race variants.
         }
     }
+}
+
+internal sealed class UpdatumUpdateCheckBoundary(UpdatumManager updater) : IUpdateCheckBoundary
+{
+    public Task<bool> CheckForUpdatesAsync() => updater.CheckForUpdatesAsync();
+
+    public UpdateReleaseCandidate? GetSelectedRelease() =>
+        updater.LatestRelease is { } release
+            ? CreateCandidate(release)
+            : null;
+
+    public IEnumerable<UpdateReleaseCandidate> GetReleaseCandidates()
+    {
+        foreach (var release in updater.Releases)
+            yield return CreateCandidate(release);
+    }
+
+    private UpdateReleaseCandidate CreateCandidate(Octokit.Release release) => new(
+        release.TagName,
+        release.Body,
+        HasTrustedMetadata: true,
+        release.Draft,
+        release.Prerelease,
+        release.PublishedAt is not null,
+        () => updater.GetCompatibleReleaseAsset(release) is not null,
+        () => updater.ForceTriggerUpdateFromRelease(release));
 }

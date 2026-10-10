@@ -30,14 +30,19 @@ public sealed partial class SessionsPage : Page
     private bool _unloaded;
     private bool _syncingShowCompletedToggle;
     private bool _showBackgroundSessions;
+    private readonly ArchivedSessionsSource _archived;
 
     public SessionsPage()
     {
         InitializeComponent();
+        _archived = new ArchivedSessionsSource(ApplyArchivedSessions,
+            ex => new AppLogger().Warn($"[Sessions] Archived sessions unavailable ({ex.GetType().Name})."));
+        ArchivedSection.Header = LocalizationHelper.GetString("SessionsPage_Archived");
         Loaded += (_, _) => _unloaded = false;
         Unloaded += (_, _) =>
         {
             _unloaded = true;
+            _archived.Clear();
             _refreshTimer?.Stop(); _refreshTimer = null;
             if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
             if (_subscribedClient != null)
@@ -50,6 +55,7 @@ public sealed partial class SessionsPage : Page
 
     public void Initialize()
     {
+        _unloaded = false;
         // Guard against duplicate subscriptions (NavigationCacheMode reuses page)
         if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
         _appState = CurrentApp.AppState!;
@@ -57,6 +63,10 @@ public sealed partial class SessionsPage : Page
         SyncShowCompletedToggle();
 
         var client = CurrentApp.GatewayClient;
+        if (client is not { IsConnectedToGateway: true })
+            _archived.Clear();
+        ApplyArchivedSessions();
+        _ = _archived.RefreshAsync(client);
 
         // The real-process accessibility suite has no gateway. Give it an
         // isolated, deterministic duplicate-name scenario so UI Automation can
@@ -66,7 +76,19 @@ public sealed partial class SessionsPage : Page
         if (Environment.GetEnvironmentVariable("OPENCLAW_ACCESSIBILITY_TEST_SESSIONS") == "1"
             && Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR") is { Length: > 0 })
         {
-            UpdateSessions(
+            if (Environment.GetEnvironmentVariable("OPENCLAW_ACCESSIBILITY_TEST_AGENT_IDENTITIES") == "1")
+            {
+                using var agents = System.Text.Json.JsonDocument.Parse("""
+                    {"defaultId":"main","mainKey":"main","agents":[
+                      {"id":"main","name":"Roster alias","identity":{"name":"Configured assistant","emoji":"C","avatarUrl":"data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='32'%20height='32'%3E%3Crect%20width='32'%20height='32'%20fill='teal'/%3E%3Ccircle%20cx='16'%20cy='16'%20r='8'%20fill='white'/%3E%3C/svg%3E"}},
+                      {"id":"research","identity":{"name":"Research assistant","emoji":"\ud83d\udd2c"}},
+                      {"id":"fallback","name":"No configured icon"}
+                    ]}
+                    """);
+                _appState.AgentsList = agents.RootElement.Clone();
+            }
+            // Use the same test-only snapshot for the companion and Workspace sidebar.
+            _appState.Sessions =
             [
                 new SessionInfo
                 {
@@ -123,7 +145,7 @@ public sealed partial class SessionsPage : Page
                     DisplayName = "Completed cleanup",
                     UpdatedAt = DateTime.UtcNow.AddMinutes(-8),
                 },
-            ]);
+            ];
             return;
         }
 
@@ -178,7 +200,7 @@ public sealed partial class SessionsPage : Page
 
     private IEnumerable<SessionInfo> SessionsForCurrentBackgroundScope() =>
         (_allSessions ?? Array.Empty<SessionInfo>())
-        .Where(session => SessionDisplayResolver.IsVisible(session, _showBackgroundSessions));
+        .Where(session => !session.Archived && SessionDisplayResolver.IsVisible(session, _showBackgroundSessions));
 
     private void RebuildChannelTabs()
     {
@@ -306,7 +328,81 @@ public sealed partial class SessionsPage : Page
         {
             case nameof(AppState.Sessions):
                 UpdateSessions(_appState!.Sessions);
+                _ = _archived.RefreshAsync(CurrentApp.GatewayClient);
                 break;
+            case nameof(AppState.Status):
+                if (_appState!.Status != ConnectionStatus.Connected)
+                    _archived.Clear();
+                ApplyArchivedSessions();
+                _ = _archived.RefreshAsync(CurrentApp.GatewayClient);
+                break;
+        }
+    }
+
+    private void OnArchivedExpanding(Expander sender, ExpanderExpandingEventArgs args)
+    {
+        _archived.SetExpanded(true);
+        _ = _archived.RefreshAsync(CurrentApp.GatewayClient);
+    }
+
+    private void OnArchivedCollapsed(Expander sender, ExpanderCollapsedEventArgs args) =>
+        _archived.SetExpanded(false);
+
+    private void ApplyArchivedSessions()
+    {
+        ArchivedSection.IsEnabled = CurrentApp.GatewayClient is { IsConnectedToGateway: true };
+        var sessions = _archived.Sessions.OrderByDescending(session => session.UpdatedAt).ToArray();
+        var titles = SessionTitleFormatter.FormatUnique(sessions);
+        ArchivedList.ItemsSource = sessions.Select((session, index) => new ArchivedSessionViewModel(
+            session.Key, titles[index], session.AgeText,
+            LocalizationHelper.GetString("SessionsPage_Unarchive"))).ToArray();
+        ArchivedMessage.Text = LocalizationHelper.GetString(!ArchivedSection.IsEnabled
+            ? "SessionsPage_GatewayDisconnected.Message"
+            : _archived.IsUnavailable ? "SessionsPage_ArchivedUnavailable"
+            : !_archived.HasLoaded ? "SessionsPage_LoadingSessions.Text" : "SessionsPage_ArchivedEmpty");
+        ArchivedMessage.Visibility = sessions.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void OnUnarchiveSession(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(() => UnarchiveSessionAsync(sender),
+            new AppLogger(), nameof(OnUnarchiveSession));
+
+    private async Task UnarchiveSessionAsync(object sender)
+    {
+        if (sender is not Button { Tag: string key })
+            return;
+        var client = CurrentApp.GatewayClient;
+        if (client is not { IsConnectedToGateway: true })
+        {
+            ShowDisconnected();
+            return;
+        }
+        var operation = new WorkspaceSessionOperation(client, () => _unloaded ? null : CurrentApp.GatewayClient);
+        ArchivedList.IsEnabled = false;
+        try
+        {
+            await operation.PatchAsync(key, new SessionPatch { Archived = false });
+            await client.RequestSessionsAsync();
+            if (operation.IsCurrent)
+                await _archived.RefreshAsync(client);
+        }
+        catch (WorkspaceSessionConnectionChangedException)
+        {
+            ShowActionInfo(LocalizationHelper.GetString("SessionsPage_Archived"),
+                LocalizationHelper.GetString("WorkspaceShell_SessionConnectionChanged"), InfoBarSeverity.Error);
+        }
+        catch (TimeoutException)
+        {
+            ShowActionInfo(LocalizationHelper.GetString("SessionsPage_Archived"),
+                LocalizationHelper.GetString("WorkspaceShell_SessionActionTimedOut"), InfoBarSeverity.Error);
+        }
+        catch (Exception ex)
+        {
+            ShowActionFailure(LocalizationHelper.GetString("SessionsPage_Archived"), ex);
+        }
+        finally
+        {
+            ArchivedList.IsEnabled = true;
         }
     }
 
@@ -644,11 +740,13 @@ public sealed partial class SessionsPage : Page
 
     private IntPtr ResolveHostHwnd()
     {
-        var window = CurrentApp.ActiveHubWindow;
+        var window = HostWindow ?? CurrentApp.ActiveHubWindow;
         if (window == null) return IntPtr.Zero;
         try { return WinRT.Interop.WindowNative.GetWindowHandle(window); }
         catch { return IntPtr.Zero; }
     }
+
+    internal Window? HostWindow { get; set; }
 
     private void OnSessionCommandCompleted(object? sender, SessionCommandResult result)
     {
@@ -693,6 +791,7 @@ public sealed partial class SessionsPage : Page
         _ = client.RequestSessionsAsync();
         _ = client.RequestModelsListAsync();
 
+        _ = _archived.RefreshAsync(client);
         if (RefreshLabel is not null)
         {
             RefreshLabel.Text = "Refreshing...";
@@ -735,6 +834,12 @@ public sealed partial class SessionsPage : Page
         ConnectionInfoBar.Severity = severity;
         ConnectionInfoBar.IsOpen = true;
     }
+}
+
+public sealed record ArchivedSessionViewModel(string Key, string DisplayName, string AgeText, string UnarchiveLabel)
+{
+    public string RowAutomationId => $"SessionsPageArchived:{Key}";
+    public string UnarchiveAutomationId => $"SessionsPageUnarchive:{Key}";
 }
 
 public class SessionViewModel

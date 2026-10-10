@@ -10,7 +10,7 @@
   "Headless": true,
   // Auto-approve all pairing requests during setup
   "AutoApprovePairing": true,
-  // Unregister existing distro + clean gateway state before starting
+  // Clean app-owned or explicitly confirmed distro data before starting
   "CleanBeforeRun": true,
   // Skip Windows permission elevation checks
   "SkipPermissions": false,
@@ -18,18 +18,17 @@
   "SkipWizard": false,
   // Answers for the gateway wizard when SkipWizard is false. Keys use stable
   // normalized step titles/messages; select values must match gateway option values.
+  // Companion-managed choices use policy defaults. Conflicting explicit answers fail setup.
   "WizardAnswers": {
     "openclaw-setup": "true",
     "security-disclaimer": "true",
     "i-understand-this-is-personal-by-default-and-shared-multi-user-use-requires-lock-down-continue": "true",
-    "setup-mode": "quickstart",
     "existing-config-detected": "true",
     "config-handling": "keep",
     "quickstart": "true",
     "model-auth-provider": "skip",
     "default-model": "__keep__",
     "select-channel-quickstart": "__skip__",
-    "search-provider": "__skip__",
     "configure-skills-now-recommended": "false"
   },
   // Log verbosity: "trace", "debug", "info", "warn", "error"
@@ -82,14 +81,13 @@
     // Network bind: "loopback" (127.0.0.1, secure default), "lan" (0.0.0.0, opt-in for LAN access)
     "Bind": "loopback",
     // Override CLI install script URL (null = official https://openclaw.ai/install-cli.sh).
-    // A custom URL requires an exact Version and is reported as unverified.
+    // The official installer defaults to npm latest. A custom URL requires an exact Version.
     "InstallUrl": null,
-    // "recommended" installs the exact evidence-backed Windows release.
-    // "fallback" is explicit and fails closed when no distinct validated fallback exists.
-    // "exact" requires Version and accepts only an embedded attested official release.
-    "Selection": "recommended",
-    // Exact version for Selection="exact" or for a custom InstallUrl.
+    // Optional upstream selector. null uses latest; tags such as extended-stable or beta
+    // and exact package versions such as 2026.9.1 are also supported.
     "Version": null,
+    // Optional exact stable version offered after a typed compatibility failure.
+    "FallbackVersion": null,
     // Seconds to wait for gateway health endpoint before failing
     "HealthTimeoutSeconds": 90,
     // Config reload strategy: "off" or "hybrid"
@@ -109,7 +107,9 @@
     "Port": 0,
     // The setup UI sets this only after explaining that applying mirrored mode stops running WSL distros once.
     "WslMirroredNetworkingConsent": false,
-    "HealthTimeoutSeconds": 15,
+    // The first router start after an install pays a Windows Defender scan of the
+    // freshly extracted ~700 MB CUDA runtime (measured 26.0 s cold, 0.17 s once cached).
+    "HealthTimeoutSeconds": 90,
     "AcquisitionTimeoutSeconds": 7200,
     // Includes first-request model load and a short verification completion.
     "InferenceTimeoutSeconds": 600
@@ -163,7 +163,7 @@
   // Inject setup-owned guidance into the final OpenClaw runtime workspace AGENTS.md.
   "WindowsNodeContext": {
     "Enabled": true,
-    // Optional WSL workspace path override; null = let the pinned gateway CLI's baseline setup use its configured/default workspace.
+    // Optional WSL workspace path override; null = let the installed gateway CLI's baseline setup use its configured/default workspace.
     "WorkspacePath": null,
     // Seconds allowed for OpenClaw workspace seeding and AGENTS.md context injection.
     "TimeoutSeconds": 180

@@ -18,7 +18,7 @@ the `openclaw` and `openclaw-windows-node` checkouts beside each other, or set `
 
 The wrapper restores the newest general `e2e` snapshot, then adds only the native app prerequisites:
 
-1. .NET 10 SDK.
+1. .NET SDK 10.0.400 or newer.
 2. Windows SDK 10.0.26100.
 3. WebView2 Runtime.
 4. A clean `openclaw-windows-node` checkout and `scripts/setup-dev.ps1 -CheckOnly`.

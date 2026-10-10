@@ -1,4 +1,5 @@
 using Microsoft.Toolkit.Uwp.Notifications;
+using OpenClaw.Shared;
 using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
@@ -38,7 +39,10 @@ public partial class App
         var activationRouter = _activationRouter;
         steps.Add(new AppShutdownStep("activation router", async () =>
         {
-            ToastNotificationManagerCompat.OnActivated -= OnToastActivated;
+            // Even removing an unregistered handler triggers the toolkit's static
+            // initializer, which writes installed notification registration.
+            if (!GatewayFixtureIsolation.IsEnabled && !AppIdentity.IsIsolated)
+                ToastNotificationManagerCompat.OnActivated -= OnToastActivated;
             if (ReferenceEquals(_activationRouter, activationRouter))
                 _activationRouter = null;
             if (activationRouter is not null)
@@ -80,26 +84,12 @@ public partial class App
             }));
         }
 
-        var connectionManager = _connectionManager;
         _gatewayDashboardLinkService = null;
-        if (connectionManager is not null)
-        {
-            steps.Add(new AppShutdownStep("gateway client", async () =>
-            {
-                try
-                {
-                    await connectionManager.DisposeAsync();
-                }
-                finally
-                {
-                    if (ReferenceEquals(_connectionManager, connectionManager))
-                        _connectionManager = null;
-                }
-            }));
-        }
-
-        // The gateway and chat are consumers of local inference, so stop them first.
-        // App owns this pre-built runtime instance; the DI provider must not dispose it.
+        // Native withdrawal borrows the authorized manager connection. Drain recovery
+        // and withdraw before that owner is disconnected, even when the Gateway stays running.
+        var localAiLifecycle = _localAiGatewayLifecycle;
+        if (localAiLifecycle is not null)
+            steps.Add(new AppShutdownStep("local AI recovery", async () => await localAiLifecycle.DrainRecoveryAsync()));
         var localAiRuntime = _localAiRuntime;
         if (localAiRuntime is not null)
         {
@@ -113,6 +103,23 @@ public partial class App
                 {
                     if (ReferenceEquals(_localAiRuntime, localAiRuntime))
                         _localAiRuntime = null;
+                }
+            }));
+        }
+
+        var connectionManager = _connectionManager;
+        if (connectionManager is not null)
+        {
+            steps.Add(new AppShutdownStep("gateway client", async () =>
+            {
+                try
+                {
+                    await connectionManager.DisposeAsync();
+                }
+                finally
+                {
+                    if (ReferenceEquals(_connectionManager, connectionManager))
+                        _connectionManager = null;
                 }
             }));
         }
@@ -176,6 +183,8 @@ public partial class App
 
         steps.Add(new AppShutdownStep("app state observers", () =>
         {
+            _settingsPersistenceNotification?.Dispose();
+            _settingsPersistenceNotification = null;
             if (_appState != null)
                 _appState.PropertyChanged -= OnAppStateChanged;
             PermissionsRuntimeChanged = null;

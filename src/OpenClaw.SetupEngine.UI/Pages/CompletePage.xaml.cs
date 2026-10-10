@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using OpenClaw.SetupEngine;
 using OpenClaw.SetupEngine.UI;
+using OpenClaw.Shared;
 using Windows.UI;
 
 namespace OpenClaw.SetupEngine.UI.Pages;
@@ -12,7 +13,9 @@ namespace OpenClaw.SetupEngine.UI.Pages;
 public sealed partial class CompletePage : Page
 {
     private static readonly Regex s_urlRegex = new(@"https?://[^\s)]+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly WindowsRestartLauncher s_windowsRestartLauncher = new();
     private string? _logPath;
+    private string? _serverLogDirectory;
 
     public CompletePage()
     {
@@ -35,6 +38,7 @@ public sealed partial class CompletePage : Page
                 GatewaySummaryText.Text = review.CompletionGatewaySummary;
                 TitleText.Text = "All set!";
                 SubtitleText.Text = "OpenClaw is ready to go";
+                SubtitleText.Visibility = Visibility.Visible;
                 ErrorCard.Visibility = Visibility.Collapsed;
                 HelpLink.Visibility = Visibility.Collapsed;
                 FallbackButton.Visibility = Visibility.Collapsed;
@@ -42,24 +46,67 @@ public sealed partial class CompletePage : Page
                 LocalAiSummaryCard.Visibility = review.LocalAiEnabled ? Visibility.Visible : Visibility.Collapsed;
                 if (review.LocalAiEnabled)
                 {
-                    LocalAiSummaryTitle.Text = review.LocalAiTitle ?? "Local AI verified";
+                    LocalAiSummaryTitle.Text = review.LocalAiTitle ?? "Local AI installed";
                     LocalAiSummaryDescription.Text = review.LocalAiDescription ??
                         "The native llama-server router is ready. The model loads on the first request.";
                     SubtitleText.Text = "OpenClaw and Local AI are ready";
                     LaunchButton.Content = "Open chat";
                 }
+                if (args.NativeGatewayUrl is { } nativeUrl)
+                {
+                    // The normal connection manager starts the runtime and pairs the node
+                    // after this handoff. Completed setup is not a live node connection.
+                    GatewaySummaryTitle.Text = SetupLocalization.GetString("Onboarding_Native_ConfiguredTitle");
+                    GatewaySummaryText.Text = nativeUrl;
+                    DevicePairedSummaryCard.Visibility = Visibility.Collapsed;
+                    LocalAiSummaryCard.Visibility = Visibility.Collapsed;
+                    CapabilitySummaryText.Text = SetupLocalization.Format(
+                        "Onboarding_Native_CapabilitySummary", args.NativeCapabilitySummary);
+                    NativeFeaturesNote.Visibility = Visibility.Visible;
+                    NodeModeBanner.Visibility = Visibility.Collapsed;
+                    SubtitleText.Text = SetupLocalization.Format("Onboarding_Native_Configured", nativeUrl);
+                    SubtitleText.TextWrapping = TextWrapping.Wrap;
+                    SubtitleText.TextAlignment = TextAlignment.Center;
+                    LaunchButton.Content = SetupLocalization.GetString("Onboarding_Native_Open.Content");
+                }
             }
             else
             {
                 var errorMessage = args.ErrorMessage ?? "Unknown error";
-                var helpUrl = ExtractHelpUrl(errorMessage);
+
+                if (args.RequiresRestart)
+                {
+                    SuccessIcon.Visibility = Visibility.Collapsed;
+                    FailureIcon.Visibility = Visibility.Collapsed;
+                    RestartIcon.Visibility = Visibility.Visible;
+                    TitleText.Text = "Restart required";
+                    SubtitleText.Text = "OpenClaw needs to restart Windows to continue the installation. Would you like to restart now?";
+                    SubtitleText.TextWrapping = TextWrapping.Wrap;
+                    SubtitleText.TextAlignment = TextAlignment.Center;
+                    SubtitleText.Visibility = Visibility.Visible;
+                    NodeModeBanner.Visibility = Visibility.Collapsed;
+                    StartupRow.Visibility = Visibility.Collapsed;
+                    SummaryPanel.Visibility = Visibility.Collapsed;
+                    LocalAiSummaryCard.Visibility = Visibility.Collapsed;
+                    ErrorCard.Visibility = Visibility.Collapsed;
+                    HelpLink.Visibility = Visibility.Collapsed;
+                    FallbackButton.Visibility = Visibility.Collapsed;
+                    LaunchButton.Visibility = Visibility.Collapsed;
+                    RestartLaterButton.Visibility = Visibility.Visible;
+                    RestartNowButton.Visibility = Visibility.Visible;
+                    return;
+                }
+
+                // Local AI failures (identified by Detail) carry llama-server's own error text in
+                // errorMessage. That text is diagnostic evidence, not a curated OpenClaw message,
+                // so it must never be scanned for a URL to turn into a clickable help link.
+                var helpUrl = args.Detail is null ? ExtractHelpUrl(errorMessage) : null;
 
                 SuccessIcon.Visibility = Visibility.Collapsed;
                 FailureIcon.Visibility = Visibility.Visible;
+                RestartIcon.Visibility = Visibility.Collapsed;
                 TitleText.Text = "Setup failed";
-                SubtitleText.Text = helpUrl is null
-                    ? args.ErrorMessage ?? "An error occurred during setup"
-                    : "Follow the steps below to resolve the setup issue and retry.";
+                SubtitleText.Visibility = Visibility.Collapsed;
                 NodeModeBanner.Visibility = Visibility.Collapsed;
                 StartupRow.Visibility = Visibility.Collapsed;
                 SummaryPanel.Visibility = Visibility.Collapsed;
@@ -69,8 +116,8 @@ public sealed partial class CompletePage : Page
                     ? Visibility.Visible
                     : Visibility.Collapsed;
                 FallbackButton.Content = string.IsNullOrWhiteSpace(args.GatewayFallbackVersion)
-                    ? "Retry with validated fallback"
-                    : $"Retry with validated fallback {args.GatewayFallbackVersion}";
+                    ? "Retry with configured fallback"
+                    : $"Retry with fallback {args.GatewayFallbackVersion}";
 
                 // Show error card with details and log link
                 ErrorCard.Visibility = Visibility.Visible;
@@ -96,8 +143,50 @@ public sealed partial class CompletePage : Page
                 }
                 else
                     ViewLogLink.Visibility = Visibility.Collapsed;
+
+                // llama-server reports the real cause in its own logs, which live outside the
+                // setup log directory above, so surface both the lines and where to find them.
+                ShowServerDiagnostics(args.Detail);
             }
         }
+    }
+
+    private void ShowServerDiagnostics(LocalAiFailureDetail? detail)
+    {
+        if (detail is null)
+        {
+            ServerDiagnosticsText.Visibility = Visibility.Collapsed;
+            ViewServerLogLink.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        if (detail.Diagnostics.Count > 0)
+        {
+            ServerDiagnosticsText.Text = string.Join(
+                Environment.NewLine,
+                detail.Diagnostics.Select(line => $"llama-server: {line}"));
+            ServerDiagnosticsText.Visibility = Visibility.Visible;
+        }
+        else
+            ServerDiagnosticsText.Visibility = Visibility.Collapsed;
+
+        _serverLogDirectory = detail.LogDirectory;
+        var displayDirectory = LogFileLauncher.ResolveRealPath(detail.LogDirectory);
+        // The directory may not exist if setup failed before log initialization or if another
+        // cleanup removed it. The link must not promise a folder that is unavailable.
+        if (Directory.Exists(displayDirectory))
+        {
+            ViewServerLogLink.Content = $"Open Local AI logs → {displayDirectory}";
+            ToolTipService.SetToolTip(ViewServerLogLink, displayDirectory);
+            ViewServerLogLink.Visibility = Visibility.Visible;
+        }
+        else
+            ViewServerLogLink.Visibility = Visibility.Collapsed;
+    }
+
+    private void ViewServerLog_Click(object sender, RoutedEventArgs e)
+    {
+        LogFileLauncher.RevealInExplorer(_serverLogDirectory);
     }
 
     private static Uri? ExtractHelpUrl(string? text)
@@ -141,6 +230,39 @@ public sealed partial class CompletePage : Page
         FallbackButton.Visibility = Visibility.Collapsed;
         if (!string.IsNullOrWhiteSpace(error))
             ErrorText.Text = $"{ErrorText.Text}{Environment.NewLine}{error}";
+    }
+
+    private void RestartLaterButton_Click(object sender, RoutedEventArgs e)
+    {
+        SetupWindow.Active?.Close();
+    }
+
+    private void RestartNowButton_Click(object sender, RoutedEventArgs e)
+    {
+        AsyncEventHandlerGuard.Run(
+            RestartWindowsAsync,
+            NullLogger.Instance,
+            nameof(RestartNowButton_Click),
+            ShowRestartError);
+    }
+
+    private async Task RestartWindowsAsync()
+    {
+        RestartNowButton.IsEnabled = false;
+        RestartLaterButton.IsEnabled = false;
+        SubtitleText.Text = "Windows is restarting...";
+
+        await s_windowsRestartLauncher.RestartAsync();
+    }
+
+    private void ShowRestartError(Exception ex)
+    {
+        ErrorText.Text = $"Windows could not be restarted: {ex.Message}";
+        ErrorCard.Visibility = Visibility.Visible;
+        ViewLogLink.Visibility = Visibility.Collapsed;
+        RestartNowButton.IsEnabled = true;
+        RestartLaterButton.IsEnabled = true;
+        SubtitleText.Text = "OpenClaw needs to restart Windows to continue the installation. Would you like to restart now?";
     }
 
 }

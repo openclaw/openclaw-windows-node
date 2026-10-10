@@ -1,4 +1,5 @@
 using OpenClaw.Connection;
+using OpenClaw.Shared;
 using OpenClawTray;
 using System;
 using System.Collections.Generic;
@@ -29,12 +30,28 @@ internal sealed class WslGatewayKeepAliveService(
     /// </summary>
     public async Task TryEnsureAsync()
     {
+        // This must precede BOTH the start path and stale cleanup. A loopback fixture
+        // is not a local WSL gateway, and an invalid context must fail before any IO.
+        if (GatewayFixtureIsolation.IsEnabled)
+        {
+            Logger.Info("[WslKeepAlive] Gateway fixture mode: skipping keepalive start and stale cleanup.");
+            return;
+        }
+
         try
         {
             var settings = _getSettings();
             if (settings is null) return;
 
             var activeRecord = _getRegistry()?.GetActive();
+            // An isolated profile has no authority to adopt the normal user's
+            // default distro or clean up keepalives discovered outside its records.
+            if (!WslKeepAlivePolicy.CanManageGateway(activeRecord, AppIdentity.IsIsolated))
+            {
+                Logger.Info("[WslKeepAlive] Isolated profile has no explicitly managed gateway; skipping lifecycle actions.");
+                return;
+            }
+
             if (!WslKeepAlivePolicy.ShouldStart(activeRecord, settings.GetEffectiveGatewayUrl()))
             {
                 await StopStaleLocalGatewayKeepAliveAsync();
@@ -316,34 +333,7 @@ internal sealed class WslGatewayKeepAliveService(
     }
 
     private static string? GetProcessCommandLine(int pid)
-    {
-        try
-        {
-            var psi = new System.Diagnostics.ProcessStartInfo("powershell.exe",
-                $"-NoProfile -Command \"(Get-CimInstance Win32_Process -Filter 'ProcessId={pid}').CommandLine\"")
-            {
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-            using var p = System.Diagnostics.Process.Start(psi);
-            if (p == null) return null;
-
-            // Drain stdout asynchronously so a large command line cannot deadlock the fixed-size pipe,
-            // and bound the whole inspection: WaitForExit(5000) returns before ReadToEnd could block
-            // forever on a hung CIM/PowerShell. On timeout, kill and report indeterminate (null).
-            var readTask = p.StandardOutput.ReadToEndAsync();
-            if (!p.WaitForExit(5000))
-            {
-                // slopwatch-ignore: SW003 Best-effort kill of a stuck inspection process; failure cannot improve caller state.
-                try { p.Kill(entireProcessTree: true); } catch { }
-                return null;
-            }
-
-            return readTask.GetAwaiter().GetResult()?.Trim();
-        }
-        catch { return null; }
-    }
+        => WindowsTcpListenerSnapshot.GetProcessCommandLine(pid);
 
     private static string ResolveWslExePath()
     {

@@ -13,8 +13,8 @@ using WinUIEx;
 namespace OpenClawTray.Dialogs;
 
 /// <summary>
-/// Privacy consent dialog shown before the first screen or camera recording.
-/// Parameterized by recording type so each capability gets its own consent.
+/// Privacy consent dialog shown before the first screen, camera, or location capture.
+/// Parameterized by capture type so each capability gets its own consent.
 /// </summary>
 public sealed class RecordingConsentDialog : WindowEx
 {
@@ -32,12 +32,24 @@ public sealed class RecordingConsentDialog : WindowEx
     private readonly TaskCompletionSource<bool> _tcs = new();
     private bool _consented;
 
-    public RecordingConsentDialog(RecordingType type)
+    internal RecordingConsentDialog(CaptureConsentType type)
     {
-        var isScreen = type == RecordingType.Screen;
-        var headingKey = isScreen ? "RecordingConsent_ScreenTitle" : "RecordingConsent_CameraTitle";
-        var descriptionKey = isScreen ? "RecordingConsent_ScreenDescription" : "RecordingConsent_CameraDescription";
-        var emoji = isScreen ? "🖥️" : "📷";
+        var (headingKey, descriptionKey, emoji) = type switch
+        {
+            CaptureConsentType.Screen => (
+                "RecordingConsent_ScreenTitle",
+                "RecordingConsent_ScreenDescription",
+                "🖥️"),
+            CaptureConsentType.Camera => (
+                "RecordingConsent_CameraTitle",
+                "RecordingConsent_CameraDescription",
+                "📷"),
+            CaptureConsentType.Location => (
+                "RecordingConsent_LocationTitle",
+                "RecordingConsent_LocationDescription",
+                "📍"),
+            _ => throw new ArgumentOutOfRangeException(nameof(type))
+        };
 
         var windowTitle = $"{AppIdentity.DisplayName} - {LocalizationHelper.GetString("RecordingConsent_WindowTitle")}";
         Title = windowTitle;
@@ -141,7 +153,7 @@ public sealed class RecordingConsentDialog : WindowEx
         };
         denyButton.Click += (s, e) =>
         {
-            Logger.Info($"[RecordingConsent] User denied {type} recording consent");
+            Logger.Info($"[CaptureConsent] User denied {type} capture consent");
             _consented = false;
             Close();
         };
@@ -154,7 +166,7 @@ public sealed class RecordingConsentDialog : WindowEx
         };
         allowButton.Click += (s, e) =>
         {
-            Logger.Info($"[RecordingConsent] User allowed {type} recording consent");
+            Logger.Info($"[CaptureConsent] User allowed {type} capture consent");
             _consented = true;
             Close();
         };
@@ -170,7 +182,7 @@ public sealed class RecordingConsentDialog : WindowEx
 
         Closed += (s, e) => _tcs.TrySetResult(_consented);
 
-        Logger.Info($"[RecordingConsent] {type} recording consent dialog shown");
+        Logger.Info($"[CaptureConsent] {type} capture consent dialog shown");
     }
 
     public Task<bool> ShowAsync()

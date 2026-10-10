@@ -107,6 +107,8 @@ internal sealed class ChatConversationState
     {
         lock (_gate)
         {
+            if (_disposed)
+                return null;
             return _presentation.RememberSelectedThread(threadId);
         }
     }
@@ -350,6 +352,8 @@ internal sealed class ChatConversationState
     {
         lock (_gate)
         {
+            if (_disposed)
+                return new(BuildSnapshotLocked(context), []);
             var previousUsage = _presentation.SnapshotUsage();
             _presentation.ReplaceSessions(sessions);
             var currentSessions = _presentation.SessionSnapshot();
@@ -387,27 +391,29 @@ internal sealed class ChatConversationState
     {
         lock (_gate)
         {
+            if (_disposed)
+                return BuildSnapshotLocked(context);
             _presentation.ApplyModels(models);
             return BuildSnapshotLocked(context);
         }
     }
 
-    internal ChatModelPatchLease BeginModelPatch(string threadId)
+    internal ChatSessionOptionPatchLease BeginSessionOptionPatch(string threadId)
     {
         lock (_gate)
-            return _presentation.BeginModelPatch(threadId);
+            return _presentation.BeginSessionOptionPatch(threadId);
     }
 
-    internal void CompleteModelPatch(ChatModelPatchLease lease, Exception? error)
+    internal void CompleteSessionOptionPatch(ChatSessionOptionPatchLease lease, Exception? error)
     {
         lock (_gate)
-            _presentation.CompleteModelPatch(lease, error);
+            _presentation.CompleteSessionOptionPatch(lease, error);
     }
 
-    internal Task? GetPendingModelPatch(string threadId)
+    internal Task? GetPendingSessionOptionPatch(string threadId)
     {
         lock (_gate)
-            return _presentation.GetPendingModelPatch(threadId);
+            return _presentation.GetPendingSessionOptionPatch(threadId);
     }
 
     internal bool TryBeginCommandCatalogFetch(out int epoch)
@@ -437,7 +443,8 @@ internal sealed class ChatConversationState
     {
         lock (_gate)
         {
-            return _presentation.IsCommandCatalogEpochCurrent(epoch)
+            return !_disposed &&
+                   _presentation.IsCommandCatalogEpochCurrent(epoch)
                 ? BuildSnapshotLocked(context)
                 : null;
         }
@@ -472,6 +479,18 @@ internal sealed class ChatConversationState
     {
         lock (_gate)
             return GetOrCreateTimelineLocked(threadId).PendingPermission?.RequestId;
+    }
+
+    internal bool CanRespondToPermission(string threadId, string requestId, string action)
+    {
+        lock (_gate)
+        {
+            var pending = GetOrCreateTimelineLocked(threadId).PendingPermission;
+            return pending is not null
+                && string.Equals(pending.RequestId, requestId, StringComparison.Ordinal)
+                && ChatPermissionActionKeys.NormalizeActions(pending.Actions)
+                    .Contains(action, StringComparer.OrdinalIgnoreCase);
+        }
     }
 
     internal void ActivateHistoryGeneration(long generation)

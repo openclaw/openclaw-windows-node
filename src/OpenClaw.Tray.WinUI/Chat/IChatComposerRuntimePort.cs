@@ -37,5 +37,7 @@ internal interface IChatComposerRuntimePort
 
     Task SetThinkingLevelAsync(string threadId, string thinkingLevel, CancellationToken cancellationToken);
 
+    Task ClearThinkingLevelAsync(string threadId, CancellationToken cancellationToken);
+
     Task EnsureCommandCatalogAsync(CancellationToken cancellationToken);
 }

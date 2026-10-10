@@ -7,31 +7,31 @@ namespace OpenClawTray.Helpers;
 /// </summary>
 internal static class PackageHelper
 {
-    private static bool? _isPackaged;
+    private static readonly Lazy<string?> CurrentPackageVersion = new(DetectPackageVersion);
 
     /// <summary>
     /// Returns true if the app is running with package identity (MSIX).
     /// </summary>
-    public static bool IsPackaged
-    {
-        get
-        {
-            _isPackaged ??= DetectPackaged();
-            return _isPackaged.Value;
-        }
-    }
+    public static bool IsPackaged => PackageVersion is not null;
 
-    private static bool DetectPackaged()
+    /// <summary>
+    /// Returns the four-part Windows package identity version, or null when unpackaged.
+    /// </summary>
+    public static string? PackageVersion => CurrentPackageVersion.Value;
+
+    private static string? DetectPackageVersion()
     {
         try
         {
             // Package.Current throws if not running in a packaged context
             var package = global::Windows.ApplicationModel.Package.Current;
-            return package != null;
+            var version = package.Id.Version;
+            return FormattableString.Invariant(
+                $"{version.Major}.{version.Minor}.{version.Build}.{version.Revision}");
         }
         catch
         {
-            return false;
+            return null;
         }
     }
 }

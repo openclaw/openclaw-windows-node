@@ -571,6 +571,21 @@ public sealed partial class VoiceSettingsPage : Page
         ElevenLabsVoiceIdBox.Text = settings.TtsElevenLabsVoiceId ?? "";
         ElevenLabsModelBox.Text = settings.TtsElevenLabsModel ?? "";
 
+        MiniMaxApiKeyBox.Password = settings.TtsMiniMaxApiKey ?? "";
+        MiniMaxVoiceIdBox.Text = settings.TtsMiniMaxVoiceId ?? "";
+        MiniMaxModelBox.Text = settings.TtsMiniMaxModel ?? "";
+        for (int i = 0; i < MiniMaxRegionCombo.Items.Count; i++)
+        {
+            if (MiniMaxRegionCombo.Items[i] is ComboBoxItem item &&
+                string.Equals(item.Tag?.ToString(), settings.TtsMiniMaxRegion, StringComparison.OrdinalIgnoreCase))
+            {
+                MiniMaxRegionCombo.SelectedIndex = i;
+                break;
+            }
+        }
+        if (MiniMaxRegionCombo.SelectedIndex < 0)
+            MiniMaxRegionCombo.SelectedIndex = 0;
+
         UpdateTtsProviderVisibility();
         UpdatePiperVoiceState();
         UpdateCapabilityState();
@@ -820,11 +835,13 @@ public sealed partial class VoiceSettingsPage : Page
         var providerTag = (TtsProviderCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? TtsCapability.PiperProvider;
         var isPiper = string.Equals(providerTag, "piper", StringComparison.OrdinalIgnoreCase);
         var isElevenLabs = string.Equals(providerTag, "elevenlabs", StringComparison.OrdinalIgnoreCase);
-        var isWindows = !isPiper && !isElevenLabs;
+        var isMiniMax = string.Equals(providerTag, "minimax", StringComparison.OrdinalIgnoreCase);
+        var isWindows = !isPiper && !isElevenLabs && !isMiniMax;
 
         PiperVoicePanel.Visibility = isPiper ? Visibility.Visible : Visibility.Collapsed;
         WindowsVoicePanel.Visibility = isWindows ? Visibility.Visible : Visibility.Collapsed;
         ElevenLabsPanel.Visibility = isElevenLabs ? Visibility.Visible : Visibility.Collapsed;
+        MiniMaxPanel.Visibility = isMiniMax ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OnTtsProviderChanged(object sender, SelectionChangedEventArgs e)
@@ -923,5 +940,36 @@ public sealed partial class VoiceSettingsPage : Page
         if (_suppressEvents || CurrentApp.Settings == null) return;
         CurrentApp.Settings.TtsElevenLabsModel = ElevenLabsModelBox.Text;
         CurrentApp.Settings.Save();
+    }
+
+    private void OnMiniMaxKeyChanged(object sender, RoutedEventArgs e)
+    {
+        if (_suppressEvents || CurrentApp.Settings == null) return;
+        CurrentApp.Settings.TtsMiniMaxApiKey = MiniMaxApiKeyBox.Password;
+        CurrentApp.Settings.Save();
+    }
+
+    private void OnMiniMaxVoiceIdChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_suppressEvents || CurrentApp.Settings == null) return;
+        CurrentApp.Settings.TtsMiniMaxVoiceId = MiniMaxVoiceIdBox.Text;
+        CurrentApp.Settings.Save();
+    }
+
+    private void OnMiniMaxModelChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_suppressEvents || CurrentApp.Settings == null) return;
+        CurrentApp.Settings.TtsMiniMaxModel = MiniMaxModelBox.Text;
+        CurrentApp.Settings.Save();
+    }
+
+    private void OnMiniMaxRegionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressEvents || CurrentApp.Settings == null) return;
+        if (MiniMaxRegionCombo.SelectedItem is ComboBoxItem item && item.Tag is string region)
+        {
+            CurrentApp.Settings.TtsMiniMaxRegion = region;
+            CurrentApp.Settings.Save();
+        }
     }
 }

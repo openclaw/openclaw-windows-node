@@ -30,6 +30,8 @@ public class MxcAvailabilityTests
         {
             Assert.True(availability.IsAppContainerAvailable);
             Assert.True(availability.IsWxcExecResolvable);
+            Assert.True(availability.IsolationSessionCapability);
+            Assert.False(availability.ProbeErrored);
         }
 
         // wxc-exec resolvable implies a path is captured.
@@ -58,11 +60,147 @@ public class MxcAvailabilityTests
 
         Assert.True(availability.IsAppContainerAvailable);
         Assert.False(availability.IsIsolationSessionAvailable);
+        Assert.Null(availability.IsolationSessionCapability);
         Assert.True(availability.IsWxcExecResolvable);
         Assert.Equal("C:\\fake\\wxc-exec.exe", availability.WxcExecPath);
         Assert.Single(availability.UnsupportedReasons);
         Assert.True(availability.HasAnyBackend);
+        Assert.Empty(availability.Warnings);
+        Assert.False(availability.CanRunSystemRunSandbox);
+        Assert.NotEmpty(availability.SystemRunSandboxUnsupportedReasons);
     }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Constructor_PreservesExplicitSessionAvailabilityForFixtures(bool? capability)
+    {
+        var availability = new MxcAvailability(
+            true, true, true, @"C:\fake\wxc-exec.exe", [],
+            isolationSessionCapability: capability);
+
+        Assert.True(availability.IsIsolationSessionAvailable);
+        Assert.Equal(capability, availability.IsolationSessionCapability);
+    }
+
+    [Theory]
+    [InlineData("""{"probes":{"isolationSessionAvailable":true}}""", true)]
+    [InlineData("""{"probes":{"isolationSessionAvailable":false}}""", false)]
+    [InlineData("""{}""", null)]
+    [InlineData("""{"isolationSessionAvailable":true}""", null)]
+    [InlineData("""{"probes":{}}""", null)]
+    [InlineData("""{"probes":null}""", null)]
+    [InlineData("""{"probes":true}""", null)]
+    [InlineData("""{"probes":[]}""", null)]
+    [InlineData("""{"probes":"true"}""", null)]
+    [InlineData("""{"probes":{"isolationSessionAvailable":null}}""", null)]
+    [InlineData("""{"probes":{"isolationSessionAvailable":"true"}}""", null)]
+    [InlineData("""{"probes":{"isolationSessionAvailable":1}}""", null)]
+    [InlineData("""{"probes":{"isolationSessionAvailable":{}}}""", null)]
+    [InlineData("""{"probes":{"isolationSessionAvailable":[]}}""", null)]
+    public void Probe_SessionMetadata_DoesNotChangeProcessSandboxAvailability(
+        string metadata,
+        bool? expectedCapability)
+    {
+        var stdout = """{"tier":"base-container","needsDaclAugmentation":false,"warnings":["test"]"""
+            + (metadata.Length > 2 ? "," + metadata[1..] : "}");
+        var availability = ProbeOutput(stdout);
+
+        Assert.Equal(expectedCapability, availability.IsolationSessionCapability);
+        Assert.Equal(expectedCapability == true, availability.IsIsolationSessionAvailable);
+        Assert.True(availability.IsAppContainerAvailable);
+        Assert.True(availability.CanRunSystemRunSandbox);
+        Assert.True(availability.HasAnyBackend);
+        Assert.False(availability.ProbeErrored);
+        Assert.Empty(availability.UnsupportedReasons);
+        Assert.Equal(["test"], availability.Warnings);
+    }
+
+    [Fact]
+    public void Probe_SessionCapability_DoesNotRequireIsolationProxyBesideExecutable()
+    {
+        var nonexistentDirectory = Path.Combine(
+            AppContext.BaseDirectory, $"missing-mxc-{Guid.NewGuid():N}");
+        var availability = MxcAvailability.Probe(
+            NullLogger.Instance,
+            _ => new WxcProbeInvocation(
+                WxcProbeStatus.Completed, 0,
+                """{"tier":"base-container","needsDaclAugmentation":false,"probes":{"isolationSessionAvailable":true}}""",
+                string.Empty),
+            windowsServerProvider: () => false,
+            windowsProvider: () => true,
+            wxcResolver: () => (true, Path.Combine(nonexistentDirectory, "wxc-exec.exe")));
+
+        Assert.False(File.Exists(Path.Combine(nonexistentDirectory, "IsolationProxy.exe")));
+        Assert.True(availability.IsolationSessionCapability);
+        Assert.True(availability.IsIsolationSessionAvailable);
+    }
+
+    [Theory]
+    [InlineData("base-container", false, true)]
+    [InlineData("base-container", true, false)]
+    [InlineData("appcontainer-bfs", false, false)]
+    [InlineData("appcontainer-dacl", true, false)]
+    [InlineData("some-future-tier", false, false)]
+    public void Probe_SessionCapability_DoesNotAdmitWeakerProcessContainment(
+        string tier, bool needsDacl, bool expectedProcessSandbox)
+    {
+        var availability = ProbeOutput(System.Text.Json.JsonSerializer.Serialize(new
+        {
+            tier,
+            needsDaclAugmentation = needsDacl,
+            probes = new { isolationSessionAvailable = true },
+        }));
+
+        Assert.True(availability.IsIsolationSessionAvailable);
+        Assert.True(availability.IsolationSessionCapability);
+        Assert.Equal(expectedProcessSandbox, availability.CanRunSystemRunSandbox);
+    }
+
+    [Theory]
+    [InlineData(1, 0)]
+    [InlineData(2, 0)]
+    [InlineData(0, 1)]
+    public void Probe_InfrastructureError_IgnoresPositiveSessionMetadata(
+        int status, int exitCode)
+    {
+        var availability = ProbeOutput(
+            """{"tier":"base-container","needsDaclAugmentation":false,"probes":{"isolationSessionAvailable":true}}""",
+            (WxcProbeStatus)status, exitCode);
+
+        Assert.True(availability.ProbeErrored);
+        Assert.Null(availability.IsolationSessionCapability);
+        Assert.False(availability.IsIsolationSessionAvailable);
+        Assert.False(availability.CanRunSystemRunSandbox);
+    }
+
+    [Theory]
+    [InlineData("""{"probes":{"isolationSessionAvailable":true}}""", true)]
+    [InlineData("""{"tier":"base-container","needsDaclAugmentation":"false","probes":{"isolationSessionAvailable":true}}""", true)]
+    [InlineData("""{"supported":false,"probes":{"isolationSessionAvailable":true}}""", false)]
+    [InlineData("""{"error":"unsupported","probes":{"isolationSessionAvailable":true}}""", false)]
+    public void Probe_InvalidOrUnsupportedProcessVerdict_DoesNotAdmitSession(
+        string stdout, bool expectedError)
+    {
+        var availability = ProbeOutput(stdout);
+
+        Assert.Equal(expectedError, availability.ProbeErrored);
+        Assert.Null(availability.IsolationSessionCapability);
+        Assert.False(availability.IsIsolationSessionAvailable);
+        Assert.False(availability.CanRunSystemRunSandbox);
+    }
+
+    private static MxcAvailability ProbeOutput(
+        string stdout,
+        WxcProbeStatus status = WxcProbeStatus.Completed,
+        int exitCode = 0) =>
+        MxcAvailability.Probe(
+            NullLogger.Instance,
+            _ => new WxcProbeInvocation(status, exitCode, stdout, string.Empty),
+            windowsServerProvider: () => false,
+            windowsProvider: () => true,
+            wxcResolver: () => (true, @"C:\fake\wxc-exec.exe"));
 
     [Fact]
     public void ParseProbeOutput_ValidTier_ReportsSupported()
@@ -189,12 +327,51 @@ public class MxcAvailabilityTests
     }
 
     [Theory]
-    [InlineData("base-container", false, false)]
+    [InlineData("[]")]
+    [InlineData("null")]
+    [InlineData("\"text\"")]
+    public void ParseProbeOutput_NonObjectJson_ReportsProbeError(string stdout)
+    {
+        var result = MxcAvailability.ParseProbeOutput(
+            WxcProbeStatus.Completed,
+            exitCode: 0,
+            stdout,
+            stderr: "");
+
+        Assert.Equal(MxcProbeOutcome.ProbeError, result.Outcome);
+        Assert.False(result.Supported);
+        Assert.Contains("non-object JSON", result.FailureReason);
+    }
+
+    [Theory]
+    [InlineData("""{"tier":"base-container"}""")]
+    [InlineData("""{"tier":"base-container","needsDaclAugmentation":null}""")]
+    [InlineData("""{"tier":"base-container","needsDaclAugmentation":"false"}""")]
+    public void ParseProbeOutput_InvalidDaclAugmentationSignal_ReportsProbeError(string stdout)
+    {
+        var result = MxcAvailability.ParseProbeOutput(
+            WxcProbeStatus.Completed,
+            exitCode: 0,
+            stdout,
+            stderr: "");
+
+        Assert.Equal(MxcProbeOutcome.ProbeError, result.Outcome);
+        Assert.False(result.Supported);
+        Assert.Contains("boolean needsDaclAugmentation", result.FailureReason);
+    }
+
+    [Theory]
+    [InlineData("base-container", false, true)]
+    [InlineData("base-container", true, false)]
     [InlineData("appcontainer-bfs", false, false)]
-    [InlineData("appcontainer-dacl", false, true)]
-    [InlineData("base-container", true, true)]   // needsDaclAugmentation forces degraded
-    [InlineData("some-future-tier", false, true)] // unrecognized tier => degraded
-    public void IsDegradedContainment_ReflectsTierAndDaclFlag(string tier, bool needsDacl, bool expectedDegraded)
+    [InlineData("appcontainer-dacl", true, false)]
+    [InlineData("some-future-tier", false, false)]
+    [InlineData("BASE-CONTAINER", false, false)]
+    [InlineData("base-container ", false, false)]
+    public void CanRunSystemRunSandbox_RequiresUnaugmentedBaseContainer(
+        string tier,
+        bool needsDacl,
+        bool expected)
     {
         var availability = new MxcAvailability(
             isAppContainerAvailable: true,
@@ -206,11 +383,14 @@ public class MxcAvailabilityTests
             needsDaclAugmentation: needsDacl);
 
         Assert.True(availability.HasAnyBackend);
-        Assert.Equal(expectedDegraded, availability.IsDegradedContainment);
+        Assert.Equal(expected, availability.CanRunSystemRunSandbox);
+        Assert.Equal(
+            expected,
+            availability.SystemRunSandboxUnsupportedReasons.Count == 0);
     }
 
     [Fact]
-    public void IsDegradedContainment_FalseWhenNoBackend()
+    public void CanRunSystemRunSandbox_FalseWhenNoBackend()
     {
         var availability = new MxcAvailability(
             isAppContainerAvailable: false,
@@ -222,7 +402,7 @@ public class MxcAvailabilityTests
             needsDaclAugmentation: true);
 
         Assert.False(availability.HasAnyBackend);
-        Assert.False(availability.IsDegradedContainment);
+        Assert.False(availability.CanRunSystemRunSandbox);
     }
 
     [Fact]
@@ -238,7 +418,12 @@ public class MxcAvailabilityTests
 
             var availability = MxcAvailability.Probe(
                 NullLogger.Instance,
-                _ => new WxcProbeInvocation(WxcProbeStatus.Completed, 0, "{\"tier\":\"base-container\",\"warnings\":[]}", string.Empty));
+                _ => new WxcProbeInvocation(
+                    WxcProbeStatus.Completed,
+                    0,
+                    "{\"tier\":\"base-container\",\"needsDaclAugmentation\":false,\"warnings\":[]}",
+                    string.Empty),
+                windowsServerProvider: () => false);
 
             Assert.True(availability.IsAppContainerAvailable);
             Assert.True(availability.IsWxcExecResolvable);
@@ -246,13 +431,150 @@ public class MxcAvailabilityTests
             Assert.Empty(availability.UnsupportedReasons);
             Assert.False(availability.ProbeErrored);
             Assert.Equal("base-container", availability.IsolationTier);
-            Assert.False(availability.IsDegradedContainment);
+            Assert.True(availability.CanRunSystemRunSandbox);
+            Assert.Empty(availability.SystemRunSandboxUnsupportedReasons);
         }
         finally
         {
             Environment.SetEnvironmentVariable(MxcAvailability.WxcExecOverrideEnvVar, null);
             try { File.Delete(fakeExe); } catch { /* best-effort */ }
         }
+    }
+
+    [Fact]
+    public void Probe_WindowsServerSku_SkipsResolverAndNativeProbe()
+    {
+        var resolverCalled = false;
+        var probeCalled = false;
+
+        var availability = MxcAvailability.Probe(
+            NullLogger.Instance,
+            _ =>
+            {
+                probeCalled = true;
+                throw new InvalidOperationException("native probe must not run on Server");
+            },
+            windowsServerProvider: () => true,
+            windowsProvider: () => true,
+            wxcResolver: () =>
+            {
+                resolverCalled = true;
+                return (true, @"C:\mxc\wxc-exec.exe");
+            });
+
+        Assert.False(resolverCalled);
+        Assert.False(probeCalled);
+        Assert.False(availability.CanRunSystemRunSandbox);
+        Assert.False(availability.IsWxcExecResolvable);
+        Assert.False(availability.IsIsolationSessionAvailable);
+        Assert.Null(availability.IsolationSessionCapability);
+        Assert.False(availability.ProbeErrored);
+        Assert.True(availability.ProbeSuppressedBySkuGate);
+        Assert.Contains("Windows Server", Assert.Single(availability.UnsupportedReasons));
+    }
+
+    [Fact]
+    public void Probe_UnknownWindowsSku_SkipsResolverAndNativeProbe()
+    {
+        var resolverCalled = false;
+        var probeCalled = false;
+
+        var availability = MxcAvailability.Probe(
+            NullLogger.Instance,
+            _ =>
+            {
+                probeCalled = true;
+                throw new InvalidOperationException("native probe must not run for an unknown SKU");
+            },
+            windowsServerProvider: () => null,
+            windowsProvider: () => true,
+            wxcResolver: () =>
+            {
+                resolverCalled = true;
+                return (true, @"C:\mxc\wxc-exec.exe");
+            });
+
+        Assert.False(resolverCalled);
+        Assert.False(probeCalled);
+        Assert.False(availability.CanRunSystemRunSandbox);
+        Assert.True(availability.ProbeErrored);
+        Assert.False(availability.IsIsolationSessionAvailable);
+        Assert.Null(availability.IsolationSessionCapability);
+        Assert.True(availability.ProbeSuppressedBySkuGate);
+        Assert.Contains("supported Windows client SKU", Assert.Single(availability.UnsupportedReasons));
+    }
+
+    [Fact]
+    public void DetectWindowsServerSku_ReturnsDefinitiveResultOnWindows()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        Assert.NotNull(MxcAvailability.DetectWindowsServerSku());
+    }
+
+    [Fact]
+    public void Probe_NonWindows_SkipsSkuResolutionAndNativeProbe()
+    {
+        var skuCalled = false;
+        var resolverCalled = false;
+        var probeCalled = false;
+
+        var availability = MxcAvailability.Probe(
+            NullLogger.Instance,
+            _ =>
+            {
+                probeCalled = true;
+                throw new InvalidOperationException("native probe must not run");
+            },
+            windowsServerProvider: () =>
+            {
+                skuCalled = true;
+                return false;
+            },
+            windowsProvider: () => false,
+            wxcResolver: () =>
+            {
+                resolverCalled = true;
+                return (true, @"C:\mxc\wxc-exec.exe");
+            });
+
+        Assert.False(skuCalled);
+        Assert.False(resolverCalled);
+        Assert.False(probeCalled);
+        Assert.False(availability.ProbeSuppressedBySkuGate);
+        Assert.Contains("requires Windows", Assert.Single(availability.UnsupportedReasons));
+    }
+
+    [Fact]
+    public void Probe_WindowsClient_ResolvesAndRunsNativeProbe()
+    {
+        var resolverCalled = false;
+        var probeCalled = false;
+
+        var availability = MxcAvailability.Probe(
+            NullLogger.Instance,
+            path =>
+            {
+                probeCalled = true;
+                Assert.Equal(@"C:\mxc\wxc-exec.exe", path);
+                return new WxcProbeInvocation(
+                    WxcProbeStatus.Completed,
+                    0,
+                    """{"tier":"base-container","needsDaclAugmentation":false,"warnings":[]}""",
+                    string.Empty);
+            },
+            windowsServerProvider: () => false,
+            windowsProvider: () => true,
+            wxcResolver: () =>
+            {
+                resolverCalled = true;
+                return (true, @"C:\mxc\wxc-exec.exe");
+            });
+
+        Assert.True(resolverCalled);
+        Assert.True(probeCalled);
+        Assert.True(availability.CanRunSystemRunSandbox);
+        Assert.False(availability.ProbeSuppressedBySkuGate);
     }
 
     [Fact]
@@ -268,7 +590,8 @@ public class MxcAvailabilityTests
 
             var availability = MxcAvailability.Probe(
                 NullLogger.Instance,
-                _ => new WxcProbeInvocation(WxcProbeStatus.Completed, 1, string.Empty, "unsupported os build"));
+                _ => new WxcProbeInvocation(WxcProbeStatus.Completed, 1, string.Empty, "unsupported os build"),
+                windowsServerProvider: () => false);
 
             Assert.True(availability.IsWxcExecResolvable);
             Assert.False(availability.IsAppContainerAvailable);
@@ -297,7 +620,8 @@ public class MxcAvailabilityTests
             // TimedOut status → transient probe error.
             var availability = MxcAvailability.Probe(
                 NullLogger.Instance,
-                _ => new WxcProbeInvocation(WxcProbeStatus.TimedOut, 0, string.Empty, "wxc-exec --probe timed out."));
+                _ => new WxcProbeInvocation(WxcProbeStatus.TimedOut, 0, string.Empty, "wxc-exec --probe timed out."),
+                windowsServerProvider: () => false);
 
             Assert.True(availability.IsWxcExecResolvable);
             Assert.False(availability.IsAppContainerAvailable);
@@ -313,7 +637,7 @@ public class MxcAvailabilityTests
     }
 
     [Fact]
-    public void Probe_WhenProbeReportsDaclTier_ReportsDegraded()
+    public void Probe_WhenProbeReportsDaclTier_RejectsSystemRunSandbox()
     {
         if (!OperatingSystem.IsWindows()) return;
 
@@ -329,15 +653,21 @@ public class MxcAvailabilityTests
                     WxcProbeStatus.Completed,
                     0,
                     "{\"tier\":\"appcontainer-dacl\",\"needsDaclAugmentation\":true,\"warnings\":[\"fallback\"]}",
-                    string.Empty));
+                    string.Empty),
+                windowsServerProvider: () => false);
 
-            // Still contained (don't downgrade to uncontained), but flagged degraded.
+            // General MXC remains available, but OpenClaw does not admit the
+            // DACL-backed process tier for system.run.
             Assert.True(availability.IsAppContainerAvailable);
             Assert.True(availability.HasAnyBackend);
-            Assert.True(availability.IsDegradedContainment);
+            Assert.False(availability.CanRunSystemRunSandbox);
             Assert.Equal("appcontainer-dacl", availability.IsolationTier);
             Assert.True(availability.NeedsDaclAugmentation);
             Assert.False(availability.ProbeErrored);
+            Assert.Equal(["fallback"], availability.Warnings);
+            Assert.Contains(
+                "requires MXC BaseContainer",
+                Assert.Single(availability.SystemRunSandboxUnsupportedReasons));
         }
         finally
         {

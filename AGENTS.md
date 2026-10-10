@@ -1,5 +1,9 @@
 # AGENTS.md
 
+## Gateway MSIX Packaging
+
+For Gateway MSIX packaging, use [openclaw-windows-packaging](https://github.com/openclaw/openclaw-windows-packaging).
+
 ## Required Validation After Every Change
 
 All agents working in this repository must run validation after each code change before marking work complete.
@@ -38,6 +42,7 @@ Notes:
 - Apply the label only to work that is actively moving. Do not use it for queued, parked, or indefinitely blocked items.
 - Remove the label when active work pauses, ownership returns to the author, or the item closes or merges.
 - This maintainer-ownership label may coexist with contributor-facing status labels such as `status: 📣 needs proof`.
+- When referring to a pull request, include its title in parentheses after the number, for example `#1312 (improve(setup): install latest stable Gateway from npm)`.
 
 ## Targeted Validation Paths
 
@@ -52,6 +57,12 @@ When changing MXC sandboxing, `system.run`, exec approvals, Windows node command
 ```
 
 The script sets `OPENCLAW_RUN_E2E` and `OPENCLAW_RUN_MXC_E2E` itself, then runs the real WSL Gateway -> Windows node -> `system.run` MXC E2E proofs. It fails if the MXC proof skips. Use `-AllowSkip` only to document that the current host is not MXC-capable; do not report an `-AllowSkip` run as merge validation for MXC-related work.
+
+## Coding rules
+
+- Keep methods focused and reduce nested control flow when it improves readability.
+- Prefer existing repository patterns and simple, idiomatic C# over speculative abstractions.
+- Document non-obvious ownership, invariants, and public usage. Avoid boilerplate comments that only repeat the code.
 
 ## UI, MCP, and PR Proof
 
@@ -70,13 +81,13 @@ Policy:
 - For node/MCP changes, prove discovery and invocation with `winnode --list-tools` plus `winnode --command ...`, or raw MCP JSON-RPC `tools/list` plus `tools/call`.
 - For gateway-mediated behavior, prove the real gateway path when available; otherwise state the blocker and keep MCP proof.
 - Run rubber-duck review before PR publication for non-trivial UI, MCP, node-command, setup, pairing, security, permissions, or diagnostics changes.
-- PRs should include `## Validation` and `## Real behavior proof`; proof must directly show the changed behavior from the current PR head. Fill `Not verified / blocked` for focused proof or unavailable dependencies.
+- PRs should include `## Required proof pools`, `## Validation`, and `## Real behavior proof`. Select every applicable pool ID from [`docs/PROOF_POOLS.md`](docs/PROOF_POOLS.md), or declare `none` with a reason. Proof must directly show the changed behavior from the current PR head. Fill `Not verified / blocked` for focused proof or unavailable dependencies.
 
 Every new Windows node call must be exposed, documented, and tested through MCP before completion:
 
 1. Register the capability/command in the tray node capability registry.
 2. Add/update `McpToolBridge.CommandDescriptions`.
-3. Update `src/OpenClaw.WinNode.Cli/skill.md`.
+3. Update `.agents/skills/winnode/SKILL.md`.
 4. Add/update capability, MCP bridge, `winnode`, and UI/gateway tests as appropriate.
 5. Run required validation plus `dotnet test .\tests\OpenClaw.WinNode.Cli.Tests\OpenClaw.WinNode.Cli.Tests.csproj --no-restore` when `winnode`, MCP output, or command docs change.
 
@@ -123,3 +134,9 @@ Important current facts:
 - `GatewayConnectionManager` owns operator/node connection state. UI surfaces should observe it or call its reconnect/disconnect APIs instead of constructing parallel gateway clients.
 - Chat/canvas/tray actions must visibly route users to Connection settings when pairing is incomplete or credentials are missing; avoid silent no-ops.
 - MCP-only mode (`EnableMcpServer=true`, `EnableNodeMode=false`) must start local `NodeService` without requiring a gateway credential.
+
+## Autoreview priority
+
+Use `--max-priority P3` with the shared autoreview helper to preserve this
+repository's existing P0–P3 review gate. Follow the
+[shared skill setup](.agents/skills/autoreview/SKILL.md) before running it.

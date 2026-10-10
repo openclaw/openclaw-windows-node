@@ -1,4 +1,5 @@
 using OpenClaw.Shared.ExecApprovals;
+using OpenClaw.Shared.Inference;
 using Microsoft.Extensions.DependencyInjection;
 using OpenClawTray.Chat;
 using OpenClawTray.Services;
@@ -42,6 +43,7 @@ internal static class AppServiceRegistration
         // its Saved-event subscription during shutdown.
         services.AddSingleton<ISettingsStore, SettingsStore>();
         services.AddSingleton<IPermissionsPageRuntimeSource, PermissionsPageRuntimeSource>();
+        services.AddSingleton<IHostHardwareProbe, CudaHostHardwareProbe>();
 
         // Container-owned navigation lifetime manager (disposed with the root provider).
         services.AddSingleton<NavigationScopeManager>();

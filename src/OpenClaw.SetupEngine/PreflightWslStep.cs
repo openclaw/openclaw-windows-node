@@ -44,7 +44,7 @@ internal static class WslViabilityInspector
         CommandResult versionResult;
         try
         {
-            versionResult = await commands.RunAsync(
+            versionResult = await commands.RunAsyncAllowingInheritedPipeHandleEscape(
                 WslConstants.WslExePath,
                 ["--version"],
                 TimeSpan.FromSeconds(5),
@@ -102,7 +102,7 @@ internal static class WslViabilityInspector
         CommandResult status;
         try
         {
-            status = await commands.RunAsync(
+            status = await commands.RunAsyncAllowingInheritedPipeHandleEscape(
                 WslConstants.WslExePath,
                 ["--status"],
                 TimeSpan.FromSeconds(10),
@@ -115,6 +115,14 @@ internal static class WslViabilityInspector
         }
 
         var combined = $"{status.Stdout}\n{status.Stderr}";
+        if (LooksPlatformInstallRequired(status))
+        {
+            return new(
+                WslViabilityKind.Installable,
+                "WSL is not initialized yet.",
+                "Setup can request administrator approval to initialize and verify it before continuing.");
+        }
+
         if (WslInstallSupport.TryGetEnvironmentIssue(combined, out var message))
         {
             logger.Warn($"WSL environment issue detected: {NormalizeWslOutput(combined).Trim()}");
@@ -147,9 +155,19 @@ internal static class WslViabilityInspector
         var text = NormalizeWslOutput($"{result.Stdout}\n{result.Stderr}");
         return text.Contains("aka.ms/wslinstall", StringComparison.OrdinalIgnoreCase)
             || text.Contains("Windows Subsystem for Linux has no installed distributions", StringComparison.OrdinalIgnoreCase)
+            || LooksPlatformInstallRequired(text)
             || text.Contains("not recognized", StringComparison.OrdinalIgnoreCase)
             || text.Contains("not installed", StringComparison.OrdinalIgnoreCase);
     }
+
+    private static bool LooksPlatformInstallRequired(CommandResult result) =>
+        LooksPlatformInstallRequired(NormalizeWslOutput($"{result.Stdout}\n{result.Stderr}"));
+
+    private static bool LooksPlatformInstallRequired(string text) =>
+        text.Contains("WSL_E_WSL_OPTIONAL_COMPONENT_REQUIRED", StringComparison.OrdinalIgnoreCase)
+        || text.Contains("0x8007019e", StringComparison.OrdinalIgnoreCase)
+        || text.Contains("requires the Windows Subsystem for Linux Optional Component", StringComparison.OrdinalIgnoreCase)
+        || text.Contains("Optional components needed to run WSL are not installed", StringComparison.OrdinalIgnoreCase);
 
     private static bool LooksTooOldForVersionCommand(CommandResult result)
     {
@@ -170,6 +188,7 @@ public sealed class PreflightWslStep : SetupStep
 
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
+        ctx.WslViability = null;
         WslViabilityResult viability = await WslViabilityInspector.InspectAsync(
             ctx.Commands,
             ctx.Logger,
@@ -182,7 +201,7 @@ public sealed class PreflightWslStep : SetupStep
 
     internal static async Task<string?> DetectEnvironmentIssueAsync(SetupContext ctx, CancellationToken ct)
     {
-        var status = await ctx.Commands.RunAsync(
+        var status = await ctx.Commands.RunAsyncAllowingInheritedPipeHandleEscape(
             WslConstants.WslExePath,
             ["--status"],
             TimeSpan.FromSeconds(10),
@@ -218,7 +237,7 @@ public sealed class PreflightWslStep : SetupStep
             await process.WaitForExitAsync(ct);
 
             if (process.ExitCode == 3010)
-                return StepResult.Terminal("WSL platform install requires a restart. Reboot Windows, then run setup again.");
+                return StepResult.RestartRequired("WSL platform install requires a restart. Reboot Windows, then run setup again.");
 
             if (process.ExitCode != 0)
             {
@@ -226,14 +245,14 @@ public sealed class PreflightWslStep : SetupStep
                 return StepResult.Fail(WslPlatformInstallDiagnostics.DescribeFailure(process.ExitCode, quota));
             }
 
-            var probe = await ctx.Commands.RunAsync(
+            var probe = await ctx.Commands.RunAsyncAllowingInheritedPipeHandleEscape(
                 WslConstants.WslExePath,
                 ["--version"],
                 TimeSpan.FromSeconds(5),
                 ct: ct);
             if (probe.ExitCode != 0 || WslViabilityInspector.LooksUnavailable(probe))
             {
-                return StepResult.Terminal(
+                return StepResult.RestartRequired(
                     "WSL platform install completed, but Windows still reports WSL unavailable. Reboot Windows, then run setup again.");
             }
 
@@ -261,26 +280,42 @@ public sealed class PreflightWslStep : SetupStep
 public sealed class EnsureWslPlatformStep : SetupStep
 {
     private readonly Func<SetupContext, CancellationToken, Task<StepResult>> _installer;
+    private readonly bool _reusePreflightResult;
 
     public EnsureWslPlatformStep()
-        : this(PreflightWslStep.InstallWslPlatformAsync)
+        : this(PreflightWslStep.InstallWslPlatformAsync, reusePreflightResult: false)
+    {
+    }
+
+    internal EnsureWslPlatformStep(bool reusePreflightResult)
+        : this(PreflightWslStep.InstallWslPlatformAsync, reusePreflightResult)
     {
     }
 
     internal EnsureWslPlatformStep(
-        Func<SetupContext, CancellationToken, Task<StepResult>> installer) =>
+        Func<SetupContext, CancellationToken, Task<StepResult>> installer,
+        bool reusePreflightResult = false)
+    {
         _installer = installer ?? throw new ArgumentNullException(nameof(installer));
+        _reusePreflightResult = reusePreflightResult;
+    }
 
     public override string Id => "ensure-wsl-platform";
     public override string DisplayName => "Prepare WSL platform";
-    public override bool CanRetry => true;
+    public override bool CanRetry => false;
 
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
-        WslViabilityResult viability = await WslViabilityInspector.InspectAsync(
-            ctx.Commands,
-            ctx.Logger,
-            ct);
+        WslViabilityResult viability;
+        if (_reusePreflightResult && ctx.WslViability is { } preflightViability)
+        {
+            viability = preflightViability;
+        }
+        else
+        {
+            ctx.WslViability = null;
+            viability = await WslViabilityInspector.InspectAsync(ctx.Commands, ctx.Logger, ct);
+        }
         ctx.WslViability = viability;
 
         if (viability.Kind == WslViabilityKind.Ready)
@@ -288,14 +323,22 @@ public sealed class EnsureWslPlatformStep : SetupStep
         if (viability.BlocksSetup)
             return StepResult.Terminal(viability.Description);
 
+        ctx.WslViability = null;
         StepResult install = await _installer(ctx, ct);
         if (!install.IsSuccess)
             return install;
 
         viability = await WslViabilityInspector.InspectAsync(ctx.Commands, ctx.Logger, ct);
         ctx.WslViability = viability;
-        return viability.Kind == WslViabilityKind.Ready
-            ? StepResult.Ok("WSL platform installed and verified.")
-            : StepResult.Terminal(viability.Description);
+        if (viability.Kind == WslViabilityKind.Ready)
+            return StepResult.Ok("WSL platform installed and verified.");
+        if (viability.Kind is WslViabilityKind.Installable or WslViabilityKind.EnvironmentBlocked)
+        {
+            return StepResult.RestartRequired(
+                "WSL platform installation completed, but Windows must be restarted before WSL is ready. " +
+                "Reboot Windows, then run setup again.");
+        }
+
+        return StepResult.Terminal(viability.Description);
     }
 }

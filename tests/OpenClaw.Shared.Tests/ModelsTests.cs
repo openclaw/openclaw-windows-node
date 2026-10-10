@@ -2079,4 +2079,5 @@ public class SessionInfoContextSummaryTests
         Assert.Contains("camera.clip", CommandCenterCommandGroups.MacNodeParityCommands);
         Assert.Contains("screen.record", CommandCenterCommandGroups.MacNodeParityCommands);
     }
+
 }

@@ -1,3 +1,14 @@
+// <summary>
+// Canonical gateway configuration for the companion-owned llama.cpp provider: builds the
+// provider config JSON (models.providers.llamacpp) and primary-model identifier for the gateway,
+// and compares CLI-reported (secret-redacted) provider JSON against the managed definition.
+// </summary>
+// Usage:
+//   // Requires a resolved install with a verified loopback Endpoint.
+//   string providerJson = LocalAiGatewayProviderDefinition.BuildProviderJson(install);
+//   string batchJson = LocalAiGatewayProviderDefinition.BuildProviderBatchJson(install);
+//   // batchJson atomically writes ProviderPath and PrimaryModelPath with valid JSON values.
+//   bool matches = LocalAiGatewayProviderDefinition.MatchesProviderJson(cliOutputJson, install);
 using OpenClaw.Shared.Inference.Catalog;
 using System.Text.Json;
 
@@ -9,6 +20,7 @@ public static class LocalAiGatewayProviderDefinition
     private const string ApiType = "openai-completions";
     public const string CliRedactedApiKey = "__OPENCLAW_REDACTED__";
     public const string ProviderPath = "models.providers.llamacpp";
+    public const string ProviderModelsPath = ProviderPath + ".models";
     public const string PrimaryModelPath = "agents.defaults.model.primary";
     public const int ProviderTimeoutSeconds = 300;
     public const int MaximumOutputTokens = 8_192;
@@ -24,7 +36,7 @@ public static class LocalAiGatewayProviderDefinition
     /// so the API key may be either its written value or the documented
     /// redaction marker; every routing and model field must still match.
     /// </summary>
-    public static bool MatchesProviderJson(string providerJson, LocalAiResolvedInstall install)
+    public static bool MatchesProviderJson(string providerJson, LocalAiResolvedInstall install, string? apiKey = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(providerJson);
         ArgumentNullException.ThrowIfNull(install);
@@ -32,7 +44,7 @@ public static class LocalAiGatewayProviderDefinition
         try
         {
             using JsonDocument actual = JsonDocument.Parse(providerJson);
-            using JsonDocument expected = JsonDocument.Parse(BuildProviderJson(install));
+            using JsonDocument expected = JsonDocument.Parse(BuildProviderJson(install, apiKey ?? "llama-local"));
             if (JsonEquals(actual.RootElement, expected.RootElement))
                 return true;
 
@@ -83,15 +95,13 @@ public static class LocalAiGatewayProviderDefinition
         return JsonElement.DeepEquals(left, right);
     }
 
-    private static string BuildProviderJson(LocalAiResolvedInstall install, string apiKey)
+    public static string BuildProviderJson(LocalAiResolvedInstall install, string apiKey)
     {
         ArgumentNullException.ThrowIfNull(install);
+        _ = LocalAiApiCredentialStore.RequireApiKey(apiKey);
+        LocalModelInfo model = GetQualifiedModel(install);
         Uri endpoint = install.Endpoint
             ?? throw new InvalidOperationException("The verified Local AI endpoint is required.");
-        LocalModelInfo model = LocalModelCatalog.Find(install.Manifest.ModelCatalogId)
-            ?? throw new InvalidDataException("The managed Local AI model is no longer qualified.");
-        if (!string.Equals(model.Id, install.Manifest.ModelAlias, StringComparison.Ordinal))
-            throw new InvalidDataException("The managed Local AI model alias does not match the qualified catalog.");
 
         var value = new
         {
@@ -122,7 +132,17 @@ public static class LocalAiGatewayProviderDefinition
     public static string BuildPrimaryModel(LocalAiResolvedInstall install)
     {
         ArgumentNullException.ThrowIfNull(install);
+        _ = GetQualifiedModel(install);
         return $"llamacpp/{install.Manifest.ModelAlias}";
+    }
+
+    private static LocalModelInfo GetQualifiedModel(LocalAiResolvedInstall install)
+    {
+        LocalModelInfo model = LocalModelCatalog.FindInstalled(install.Manifest.ModelCatalogId)
+            ?? throw new InvalidDataException("The managed Local AI model is no longer qualified.");
+        if (!string.Equals(model.Id, install.Manifest.ModelAlias, StringComparison.Ordinal))
+            throw new InvalidDataException("The managed Local AI model alias does not match the qualified catalog.");
+        return model;
     }
 
     public static void ValidateFallbackModel(string? model)

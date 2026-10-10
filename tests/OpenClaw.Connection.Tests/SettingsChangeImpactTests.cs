@@ -22,6 +22,7 @@ public class SettingsChangeImpactTests
         bool nodeSttEnabled = false,
         bool nodeTtsEnabled = false,
         bool nodeSystemRunEnabled = true,
+        bool nodeOllamaInferenceEnabled = false,
         string? fullSettingsJson = null) => new(
         gatewayUrl,
         useSshTunnel,
@@ -40,6 +41,7 @@ public class SettingsChangeImpactTests
         nodeSttEnabled,
         nodeTtsEnabled,
         nodeSystemRunEnabled,
+        nodeOllamaInferenceEnabled,
         fullSettingsJson);
 
     [Fact]
@@ -117,6 +119,18 @@ public class SettingsChangeImpactTests
         // UiOnly and the connect-handshake commands list stays stale.
         var prev = MakeSnapshot(gatewayUrl: "wss://test", nodeSystemRunEnabled: true);
         var next = MakeSnapshot(gatewayUrl: "wss://test", nodeSystemRunEnabled: false);
+        Assert.Equal(SettingsChangeImpact.CapabilityReload,
+            SettingsChangeClassifier.Classify(prev, next));
+    }
+
+    [Fact]
+    public void OllamaCapabilityChanged_ReturnsCapabilityReload()
+    {
+        // Flipping "Share Windows Ollama" must trigger a capability reload so
+        // the gateway sees ollama.models/ollama.chat appear or disappear from
+        // the node's advertised command set without a full reconnect.
+        var prev = MakeSnapshot(gatewayUrl: "wss://test", nodeOllamaInferenceEnabled: false);
+        var next = MakeSnapshot(gatewayUrl: "wss://test", nodeOllamaInferenceEnabled: true);
         Assert.Equal(SettingsChangeImpact.CapabilityReload,
             SettingsChangeClassifier.Classify(prev, next));
     }

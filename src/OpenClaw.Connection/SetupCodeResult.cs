@@ -1,3 +1,5 @@
+using OpenClaw.Shared;
+
 namespace OpenClaw.Connection;
 
 /// <summary>
@@ -7,7 +9,8 @@ public sealed record SetupCodeResult(
     SetupCodeOutcome Outcome,
     string? ErrorMessage = null,
     string? GatewayUrl = null,
-    bool GatewayCommitted = false);
+    bool GatewayCommitted = false,
+    GatewayErrorKind ErrorKind = GatewayErrorKind.Unknown);
 
 public enum SetupCodeOutcome
 {

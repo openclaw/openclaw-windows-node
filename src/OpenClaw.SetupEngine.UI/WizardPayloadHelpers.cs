@@ -8,6 +8,20 @@ namespace OpenClaw.SetupEngine.UI;
 /// </summary>
 internal static class WizardPayloadHelpers
 {
+    public static string? GetNativeTerminalError(JsonElement payload)
+    {
+        // Error detail must win over status: "error" is a state, not the reason.
+        if (payload.TryGetProperty("error", out var error) &&
+            !string.IsNullOrWhiteSpace(error.ToString()))
+            return error.ToString();
+
+        if (payload.TryGetProperty("status", out var status) &&
+            (status.ValueKind != JsonValueKind.String || status.GetString() != "done"))
+            return $"The native Gateway wizard stopped with status '{status}'. Retry the wizard or cancel setup.";
+
+        return null;
+    }
+
     /// <summary>
     /// Reads the <c>message</c> field of a wizard step. Upstream is supposed to
     /// send a string; the Gemini CLI OAuth plugin (and possibly others) nests a

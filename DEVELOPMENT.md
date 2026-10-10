@@ -17,7 +17,7 @@ A comprehensive guide for building, running, and contributing to the OpenClaw Wi
 
 ### Required
 
-- **.NET 10 SDK** - [Download here](https://dotnet.microsoft.com/download)
+- **.NET SDK 10.0.400 or newer** - [Download here](https://dotnet.microsoft.com/download)
 - **Windows 10/11** - WinUI 3 and Windows App SDK require Windows 10 version 1903 or later
 - **Node.js LTS with npm** - Required by the WinUI build to restore JavaScript build assets
 - **Windows 10 SDK** - Required for WinUI builds
@@ -208,6 +208,302 @@ Use the local helper to build unsigned installer EXEs without waiting for CI:
 
 `-Fast` uses ZIP/no-solid compression for quick local iteration. CI release builds keep the default LZMA solid compression and Azure signing.
 
+#### Local development MSIX
+
+The development MSIX is opt-in and does not replace the Inno or Updatum
+release paths. Create and trust its local signing certificate once from an
+elevated PowerShell:
+
+```powershell
+.\scripts\setup-dev-msix-cert.ps1
+```
+
+Then build the signed package:
+
+```powershell
+.\build.ps1 -Project WinUI -Msix Dev
+```
+
+`-Msix Dev` implies `-DevBuild`, uses the side-by-side development package
+identity, publishes the .NET runtime self-contained, advances the installed
+development package revision, and prints the generated package path. The
+development certificate has a distinct local-only publisher and a
+non-exportable private key; only its thumbprint is stored under
+`%LOCALAPPDATA%\OpenClawDevelopment\MSIX`. Future Microsoft Store submissions
+use the Partner Center identity and signing process instead.
+
+The development machine must also have
+`Microsoft.VCLibs.140.00.UWPDesktop` version `14.0.33728.0` or newer installed.
+Microsoft Store distribution resolves this framework dependency automatically;
+direct `Add-AppxPackage` sideloading requires it to be installed first.
+
+A production-identity MSIX can be installed while an Inno build is still present;
+see "The Store package alongside an existing Inno install" below for what the two
+share and how they interfere. The packaged app deliberately leaves the legacy
+scheduled task and `HKCU\...\Run` value in place: MSIX virtualizes HKCU writes and
+cannot remove the host value without a restricted capability that is inappropriate
+for the Store package, and deleting the task would silently disable an Inno install
+the user has not agreed to replace. That cleanup belongs to a migration flow that
+asks first, tracked in #1374.
+Packaged builds register launch-at-login through the manifest
+`windows.startupTask` extension and the Windows `StartupTask` API. Unpackaged
+Inno builds retain the existing scheduled-task and registry fallback until that
+installer path is retired.
+
+Remove the development certificate and machine trust when it is no longer
+needed:
+
+```powershell
+.\scripts\setup-dev-msix-cert.ps1 -Remove
+```
+
+#### Microsoft Store packages
+
+Store submissions use the release identity and are signed by Partner Center, so
+they share no state with the development certificate above:
+
+```powershell
+.\build.ps1 -Project WinUI -Msix Store
+```
+
+The two `-Msix` modes are mutually exclusive because they produce different
+applications rather than two flavors of one. They install side by side, which
+is what lets a packaged smoke test run without disturbing a working install:
+
+| | `-Msix Dev` | `-Msix Store` |
+| --- | --- | --- |
+| Identity | `OpenClawFoundation.OpenClaw.Dev` | `OpenClawFoundation.OpenClaw` |
+| Publisher | local development certificate | Partner Center |
+| Protocol | `openclaw-dev` | `openclaw` |
+| Signing | signed locally | unsigned; the Store signs |
+| Version revision | installed revision + 1 locally; explicit CI run number | pinned to `0` |
+| Architectures | host only | x64 and ARM64 |
+
+The revision field is the clearest reason the modes cannot merge, because each
+needs the opposite value. `Add-AppxPackage` only installs over an existing
+package when the version increases, and GitVersion holds major/minor/build
+steady across rebuilds of one commit, so a development build derives its
+revision from the installed development package and adds one. Rebuilding
+without installing in between reuses the same revision, which is why an
+uninstalled package must be installed before the next revision advances.
+Partner Center rejects any submission whose revision is non-zero.
+
+`-Msix Store` forces `-Configuration Release`, refuses to combine with
+`-DevBuild`, and delegates to `scripts\Build-StoreMsix.ps1` once
+per architecture. Each run produces one unsigned self-contained package at
+`artifacts\msix\<arch>\OpenClaw-<arch>.msix` alongside an
+`msix-metadata.json` provenance sidecar recording the source commit, whether
+the tree was dirty, the package version, publisher, and the package SHA-256.
+
+`scripts\Build-StoreMsix.ps1` fails the build when the produced package drifts from
+`Package.appxmanifest`: the identity name, publisher, and processor
+architecture must match, the version must be four `uint16` components ending in
+`.0` because Partner Center reserves the revision field, exactly one `.msix`
+must be produced, required content must be present (the app host, the .NET
+runtime, the in-process SetupEngine UI, and the architecture-matched
+`wxc-exec.exe`), and forbidden content must be absent (`AppxSignature.p7x` and
+the loose Visual C++ runtime files that the Inno payload ships but the MSIX
+resolves through its VCLibs framework dependency).
+
+CI combines both packages into `OpenClaw.msixbundle`, the recommended single
+Partner Center submission input. The standalone `.msix` files remain available
+for architecture-specific inspection or fallback. `Identity/@Name`,
+`Identity/@Publisher`, and `Properties/PublisherDisplayName` in
+`src\OpenClaw.Tray.WinUI\Package.appxmanifest` already hold the reserved
+Partner Center values and must keep matching **Product management > Product
+identity** exactly; a mismatch fails ingestion. The submission also needs a
+justification for the `runFullTrust` restricted capability and a stated reason
+plus privacy policy for the declared `webcam`, `microphone`, and `location`
+device capabilities.
+
+Generating the optional `.appxsym` symbol package additionally requires
+`mspdbcmf.exe` from the Visual Studio **Desktop development with C++** workload;
+without it the build logs a warning and skips symbols.
+
+#### CI MSIX downloads
+
+The **Build and Test** workflow builds both x64 and ARM64 MSIX variants and a
+multi-architecture bundle whenever
+the change classifier selects a release-build lane. This includes packaging,
+build, and workflow PRs, pushes to `main`/`master`, tags, and manual workflow
+dispatches. Ordinary targeted or documentation-only PRs intentionally skip them.
+MSIX failures block **CI Gate** when selected; a skipped unselected job is valid.
+
+Download the desired ZIP from the workflow run's **Artifacts**:
+
+| Artifact | Contents and purpose |
+|---|---|
+| `openclaw-msix-dev-x64` / `openclaw-msix-dev-arm64` | Signed `OpenClaw-Dev-<arch>.msix`, public `OpenClaw-Dev.cer`, `msix-metadata.json`, and `INSTALL.txt` for opt-in tester installation. |
+| `openclaw-msix-store-unsigned-x64` / `openclaw-msix-store-unsigned-arm64` | Unsigned `OpenClaw-<arch>.msix` and the validated provenance sidecar from `Build-StoreMsix.ps1`. Submission inputs, not directly installable tester packages. |
+
+These MSIX filenames use `OpenClaw`, not the previous `OpenClawCompanion`
+prefix. Only the download filenames changed: package identities, versions,
+and EXE installer filenames are unchanged. Existing downloads are not renamed.
+
+Each disposable runner uses `setup-dev-msix-cert.ps1` to generate and trust a
+non-exportable Dev certificate. Only its public `.cer` is included. The key and
+runner trust are removed in an always-run cleanup step. No repository signing
+secret or production release-signing environment is used. Each architecture
+and later workflow run can have a different certificate; testers must trust
+the matching signer explicitly. Only install packages from a workflow/source
+you trust, especially when testing unreviewed PR code.
+
+Extract the Dev artifact and follow `INSTALL.txt`: verify package/certificate
+hashes, install the architecture-matched VCLibs dependency described above,
+import the public certificate into `LocalMachine\TrustedPeople` from elevated
+PowerShell, then install the package as the intended user. This uses the
+existing **OpenClaw (Dev)** identity and can upgrade a locally installed Dev
+package; it is not a new independent test identity.
+
+CI passes `-MsixRevision $env:GITHUB_RUN_NUMBER` to the existing
+`build.ps1 -Project WinUI -Configuration Release -Msix Dev` path, with a fresh
+`-MsixOutputDirectory`. Explicit revisions must be 1-65535; overflow fails
+instead of wrapping. Omitting these options preserves local build behavior.
+Tagged-release reruns reuse their reserved package base. PR/main previews use
+the latest published stable Windows release line from the canonical upstream
+repository and do not consume numbers. For example, while Latest is
+`v2026.9.4`, previews use the `2026.9.4` allocation range and currently produce
+Store `2026.9.402.0`; a future official `v2026.9.5` release still starts in the
+`500-599` range. A preview candidate can advance after another official release
+reserves a number. Version ordering is not guaranteed across forks, branches,
+local builds, or decreasing base versions.
+Do not uninstall/downgrade an existing Dev package just to
+resolve a version conflict without considering its settings and data.
+When `-MsixBaseVersion` is omitted, local `-Msix Dev` builds compare the
+application-derived base with the installed Dev package and reuse the installed
+three-part base when it is higher. The fourth component still increments from
+the installed revision. This keeps ordinary local builds upgrade-compatible
+after installing an encoded CI Dev package without changing GitVersion.
+
+CI allocates a separate MSIX base without changing the application's GitVersion,
+assembly metadata, EXE/ZIP versions, or GitHub release tags. For app `X.Y.Z`,
+the third package component starts at `Z * 100` and advances within that patch's
+100-number range. For example:
+
+| App release line | MSIX Store versions |
+|---|---|
+| `2026.9.4`, including its alpha/correction tags | `2026.9.400.0` through `2026.9.499.0` |
+| `2026.9.5`, including its alpha/correction tags | `2026.9.500.0` through `2026.9.599.0` |
+| `2026.10.1`, including its alpha/correction tags | `2026.10.100.0` through `2026.10.199.0` |
+
+The already-used `2026.9.400.0` is recorded with its workflow and artifact
+provenance in `.github/msix-version-baseline.json`. The canonical ledger also
+contains reservation `msix-package/2026.9.4/401`, so the next unreserved
+`2026.9.4` packaging candidate is `2026.9.402.0`. Correction suffixes do not
+occupy their own digit.
+
+All tags on the same app patch share the counter, including revisions 10, 11,
+and onward. Exhaustion fails rather than entering the next patch's range.
+Every component must fit `uint16`; patch 655 has only the remaining 65500-65535
+slots, and larger patches cannot be encoded.
+
+Only `push` or `workflow_dispatch` builds of `v*` tags in the upstream repository
+reserve versions. A separate write-scoped job allocates once before the
+architecture matrix. PRs, ordinary main builds, and fork builds resolve Latest
+from `openclaw/openclaw-windows-node`, then read the next candidate from that
+same canonical reservation ledger. They are marked `preview` in
+`msixVersionAllocation` in each metadata sidecar and are not official release
+or Store-submission versions.
+Both Store architectures share the reserved base and end in `.0`. Both Dev
+architectures use the same base with the CI run number as the final component.
+
+The allocator records reservations as append-only annotated Git tags under
+`msix-package/<app-base>/<package-counter>`. Concurrent claims use atomic
+create-ref requests; reruns of the same source tag/commit reuse their record.
+Failed builds keep their reservations, so numbers are never recycled.
+Do not delete, move, or repurpose reservation tags, including during alpha
+release cleanup. The repository's active `Protect MSIX package reservations`
+ruleset blocks deletion and non-fast-forward updates under this namespace while
+permitting the official workflow to create refs. Preserve that ruleset as part
+of the release contract.
+See [MSIX version allocation](docs/RELEASING.md#msix-version-allocation).
+
+For an encoded local preview, save the readonly resolver result outside tracked
+source, then pass it through the validated builder:
+
+```powershell
+$info = .\scripts\Resolve-MsixPackageVersion.ps1 `
+  -SourceVersion (.\scripts\Get-OpenClawMsixPreviewSourceVersion.ps1) `
+  -SourceCommit (git rev-parse HEAD) `
+  -SourceRef "refs/heads/$(git branch --show-current)" `
+  -Repository openclaw/openclaw-windows-node
+$info | ConvertTo-Json -Depth 4 |
+  Set-Content "$env:TEMP\openclaw-msix-preview.json" -Encoding utf8
+.\scripts\Build-StoreMsix.ps1 -Architecture x64 `
+  -VersionInfoPath "$env:TEMP\openclaw-msix-preview.json"
+.\build.ps1 -Project WinUI -Configuration Release -Msix Dev `
+  -MsixBaseVersion $info.packageBaseVersion
+```
+
+`VersionInfoPath` validates the source commit and expected actual package
+version before writing metadata. `MsixBaseVersion` changes only the package
+manifest base; it does not override the app's assembly versions.
+Ordinary local builds that omit these options preserve their previous
+unallocated version calculation. Store distribution remains gated by #1375;
+this allocator does not submit packages to Partner Center.
+
+Every canonical stable, correction, and prerelease tag attaches
+`OpenClaw-Dev-x64.zip` and `OpenClaw-Dev-arm64.zip`. Each archive contains the
+signed Dev MSIX, matching public certificate, provenance metadata, and
+installation instructions. Unsigned Store MSIX packages and the bundle remain
+Actions artifacts only for manual upload to Partner Center. Public
+prereleases are not Latest and are not hidden from GitHub's Releases list.
+
+To request a new alpha from current `main`, manually run **Daily Alpha
+Release**. Its existing checks choose the GitVersion alpha tag, skip a commit
+that already has a published release, and dispatch **Build and Test** on the
+tag. It does not release the feature branch selected in the UI. Running
+**Build and Test** directly on a branch still produces workflow artifacts
+only. See [manual alpha releases](docs/RELEASING.md#manual-alpha-releases).
+
+Store distribution remains paused. This workflow neither submits to Partner
+Center nor retrieves or publishes Store-signed packages. The published Dev
+packages require explicit trust of their included development certificate.
+
+#### The Store package alongside an existing Inno install
+
+The Store package and the Inno installer produce the same application. Both can
+be installed at once, and uninstalling the Inno build first is **not** required.
+They cannot both run at once, though, and nothing in either build arbitrates
+between them yet.
+
+What the two installs share: the `openclaw` protocol registration, the
+`OpenClawTray` single-instance mutex, per-user data under `%APPDATA%\OpenClawTray`,
+the local gateway port, and the WSL gateway distro. MSIX full-trust apps are not
+namespace-isolated for named objects, so the mutex really is shared. Package
+identity, install directory, and AppUserModelID are the only axes that differ.
+
+Consequences to expect while both are installed:
+
+- The first one launched holds the mutex. The second forwards its activation to
+  the running instance and exits, so opening the Store entry while the Inno build
+  is running surfaces the Inno window with no error shown.
+- Both can register autostart, so which build starts at logon is a race. The
+  Inno installer's "Start when Windows starts" task creates a Startup folder
+  shortcut (`installer.iss:124`, `{userstartup}`); the Inno app's own Settings
+  toggle creates a logon scheduled task and an `HKCU\...\Run` value; the packaged
+  build uses the manifest's `windows.startupTask`. Neither build suppresses the
+  other, so the race persists across reboots. Windows Settings lists all of them
+  under the same name, and a Startup folder shortcut is labelled by its target
+  executable, so they cannot be told apart there.
+- Settings, gateway records, and device identities carry over either way. A
+  packaged process reads the existing per-user data through the merged MSIX view,
+  so there is no re-pairing.
+- A running Store app blocks the Inno installer **and** uninstaller, because
+  `installer.iss` sets `AppMutex` to the shared mutex name. Both abort with
+  "Setup has detected that OpenClaw Companion is currently running". Quit the
+  Store app before installing or uninstalling the Inno build.
+- Inno uninstall asks whether to also remove the local WSL gateway. **No** is the
+  default and keeps it. A silent uninstall (`/SILENT`, `/VERYSILENT`) always
+  removes the gateway.
+
+To make the Store build the one that runs, quit the Inno build and launch the
+Store entry, or uninstall the Inno build.
+
+Detecting a legacy install from the packaged app, suppressing its autostart,
+telling the user which install is active, and removing it with consent are
+tracked in #1374 and are not implemented here.
+
 #### Dev identity and side-by-side installs
 
 Release identity is the default for every configuration. Use `-DevBuild` on `build.ps1` or `-Dev` on `run-app-local.ps1` when you explicitly want the side-by-side dev identity:
@@ -225,6 +521,9 @@ The first-run Windows gateway onboarding wizard lives in `OpenClaw.SetupEngine.U
 
 Useful local scripts:
 
+- `.\scripts\clean-uninstall.ps1` is a standalone demo-device cleanup script (Windows PowerShell 5.1, no build or Copilot required). Preview by default; repeat with `-ConfirmDestructive` to apply. `-All` enables shared cached-model, dev-state, and owned WSL cleanup together; add `-ExcludeCachedModels` to preserve external shared cached weights. Additional profile paths remain explicit. See the [standalone usage and safety limits](.agents/skills/uninstall/HARD-CLEAN.md#standalone-script-no-copilot-required).
+  Use `-RemoveIsolatedProfilePath` for explicitly identified leftover Windows isolated-profile registrations, including records whose folders were already deleted. This is not implied by `-All`; confirmed removal requires elevation and rejects loaded, special, and ordinary user profiles.
+- For a native Gateway/MXC and llama.cpp clean retest, use the [uninstall skill](.agents/skills/uninstall/SKILL.md) and its [hard-clean procedure](.agents/skills/uninstall/HARD-CLEAN.md). It includes package teardown, isolated profiles, shared-model consent, and post-clean verification; the WSL helpers below are not substitutes.
 - `.\scripts\dev-reset-rebuild-launch.ps1` resets tray data, rebuilds, and optionally launches the app; add `-WipeWslDistro` for a full local WSL gateway reset.
 - `.\scripts\validate-mxc-e2e.ps1` runs the formal WSL Gateway -> Windows node -> `system.run` MXC proof path for MXC-sensitive changes.
 
@@ -491,10 +790,10 @@ Run documentation validation directly with:
 .\scripts\validate-docs.ps1
 ```
 
-`.\build.ps1` runs the same validator before compiling. It checks maintained
-Markdown links and anchors, rejects Mermaid and em dashes, verifies every
-Excalidraw/SVG pair, requires SVG accessibility metadata, and confirms rendered
-labels match the editable source.
+`.\build.ps1` runs the same validator before compiling. It checks the named
+custom Windows proof-pool inventory, maintained Markdown links and anchors,
+rejects Mermaid and em dashes, verifies every Excalidraw/SVG pair, requires SVG
+accessibility metadata, and confirms rendered labels match the editable source.
 
 ## Testing
 
@@ -511,11 +810,14 @@ computer-use, or MCP validation is also appropriate when explicitly requested or
 needed to unblock the work; agents should ask whether to run computer-use or
 provide manual UI proof steps, while still enforcing required automated tests.
 
-PRs should include `## Validation` and `## Real behavior proof` sections. Paste concrete
-after-change output, visible UI evidence for visual changes, `winnode` output or
-raw MCP server JSON-RPC output for node commands, and gateway invoke output for
-gateway-mediated behavior when available; the default PR template includes these
-prompts.
+PRs should include `## Required proof pools`, `## Validation`, and
+`## Real behavior proof` sections. Select stable pool IDs from
+[`docs/PROOF_POOLS.md`](docs/PROOF_POOLS.md), or declare `none` with a reason.
+Pool selection schedules capacity-dependent work but does not claim it ran.
+Paste concrete after-change output, visible UI evidence for visual changes,
+`winnode` output or raw MCP server JSON-RPC output for node commands, and
+gateway invoke output for gateway-mediated behavior when available. The default
+PR template includes these prompts.
 
 ### Running Unit Tests
 
@@ -630,37 +932,21 @@ The repository uses GitHub Actions for continuous integration and release automa
 - Pull requests to `main`
 - Git tags matching `v*` (e.g., `v1.2.3`) for releases
 
-### Gateway release policy
+### Gateway release selection
 
-- `src/OpenClaw.SetupEngine/GatewayReleasePolicy.cs` embeds the exact Gateway
-  recommendation, protocol generation, security floor, validation evidence, and
-  any distinct validated fallback for the Windows release.
-- Setup and E2E install the exact recommendation. Product setup never resolves
-  a moving npm dist-tag at runtime.
-- `Gateway.Selection` supports `recommended`, `fallback`, and `exact`.
-  `fallback` currently resolves to exact validated release `2026.6.11` and is
-  never automatic. `exact` accepts only an embedded validated official release
-  in product mode.
-- A custom `Gateway.InstallUrl` must also specify an exact `Gateway.Version`.
-  Setup labels it unverified and still requires an exact protocol-v4 handshake
-  and matching server version after installation.
-- `.github/workflows/gateway-release-candidate.yml` discovers official stable
-  candidates and opens an evidence-only draft PR. It does not promote a
-  candidate. Promotion requires exact-version Windows setup, pairing,
-  reconnect, recovery, and Gateway-to-node invocation proof.
-- `scripts/Test-GatewayReleaseCandidate.ps1` verifies stable GitHub release
-  classification, SHA-512 npm integrity, registry signature, SLSA provenance,
-  exact package/tag commit identity, stable release soak evidence, and protocol
-  v4 at that exact commit. Unembedded candidates require provenance whose source
-  commit matches the tag. Existing embedded recommendation/fallback evidence
-  may use the explicit `-AllowEmbeddedPolicyEvidence` compatibility switch only
-  when the integrity-verified package build commit matches the exact tag and
-  the package integrity is already embedded in policy.
-- Candidate evidence is discovery input only and cannot authorize an
-  unembedded release. To exercise a candidate, first add a reviewed
-  `GatewayReleaseStatus.Candidate` entry to `GatewayReleasePolicy`, then set
-  `OPENCLAW_E2E_GATEWAY_VERSION` and run the setup/connect and recovery E2E
-  shards with `--validate-gateway-candidate`.
+- Normal setup runs the official installer without `--version`, so npm `latest`
+  selects the current stable OpenClaw package.
+- Setup records the installed CLI version and requires the protocol-v4 gateway
+  handshake to report that same version.
+- `Gateway.Version` follows the upstream installer selector contract. Leave it
+  null for npm `latest`, use a supported npm channel tag, or set an exact
+  OpenClaw package version.
+- `Gateway.FallbackVersion` may name an exact stable release to offer after a
+  typed compatibility failure. It is never a default product pin.
+- A custom installer is labeled unverified and requires an exact stable
+  `Gateway.Version`.
+- Set `OPENCLAW_E2E_GATEWAY_VERSION` to exercise an exact published candidate in
+  the setup/connect and recovery E2E shards.
 
 ### Build Matrix
 
@@ -868,6 +1154,18 @@ gh run download <run-id> --repo shanselman/openclaw-windows-hub
    - Verify authentication token is correct
    - Check firewall settings
 
+5. **Piper voice preview fails with "Piper TTS native library could not be loaded"**
+   - The build copied a Visual C++ runtime that is too old for `onnxruntime`
+     next to the exe. Local x64 builds take a compatible 14.38-or-newer runtime
+     from your Visual Studio install. If the component is missing, stale, or
+     incomplete for x64, the build falls back to a 14.29 runtime and warns
+     (`OPENCLAW0001`).
+   - Install or update "C++ Redistributable Update" via the Visual Studio
+     Installer (Individual Components), rebuild, and confirm `msvcp140.dll` beside
+     `OpenClaw.Tray.WinUI.exe` is 14.38 or newer.
+   - The same failure shows up in `%LOCALAPPDATA%\OpenClawTray\openclaw-tray.log`
+     as `DllNotFoundException` from `PiperTextToSpeechClient`.
+
 ### Getting Help
 
 - **Issues**: [GitHub Issues](https://github.com/shanselman/openclaw-windows-hub/issues)
@@ -894,7 +1192,7 @@ Direct `dotnet build` without the script will fail with "WindowsAppSDKSelfContai
 |----------|---------|
 | `OPENCLAW_FORCE_ONBOARDING=1` | Show onboarding wizard even if a token already exists |
 | `OPENCLAW_SKIP_UPDATE_CHECK=1` | Skip the update dialog (useful during testing) |
-| `OPENCLAW_LANGUAGE=fr-fr` | Override UI language (validated: en-us, fr-fr, nl-nl, zh-cn, zh-tw) |
+| `OPENCLAW_LANGUAGE=fr-fr` | Override UI language (validated: en-us, fr-fr, nl-nl, pt-br, zh-cn, zh-tw) |
 | `OPENCLAW_GATEWAY_PORT=19001` | Override default gateway port for local dev |
 | `OPENCLAW_VISUAL_TEST=1` | Enable automatic screenshot capture on page transitions |
 | `OPENCLAW_VISUAL_TEST_DIR=path` | Output directory for visual test screenshots |

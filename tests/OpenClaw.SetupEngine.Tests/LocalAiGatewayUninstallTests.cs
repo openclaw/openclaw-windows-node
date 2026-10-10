@@ -1,6 +1,8 @@
 using OpenClaw.Connection.LocalAi;
+using OpenClaw.Shared.Inference;
 using OpenClaw.Shared.Inference.Catalog;
 using OpenClaw.TestSupport;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 
@@ -8,6 +10,158 @@ namespace OpenClaw.SetupEngine.Tests;
 
 public sealed class LocalAiGatewayUninstallTests
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Recovery_ProbesPhysicalModelPathWithoutChangingReceipt(bool endpointHealthy)
+    {
+        using var temp = new TempDirectory("local-ai-recovery-path-");
+        LocalAiResolvedInstall original = await SaveManifestAsync(temp.Path);
+        string physicalModelPath = temp.Combine("physical", "model.gguf");
+        using var client = new RecordingRecoveryClient { IsHealthy = endpointHealthy };
+        using var cancellation = new CancellationTokenSource();
+
+        bool healthy = await PreserveLocalAiRecoveryGatewayStep.ProbeOriginalEndpointAsync(
+            original, cancellation.Token, client, path =>
+            {
+                Assert.Equal(original.ModelPath, path);
+                return physicalModelPath;
+            });
+
+        Assert.Equal(endpointHealthy, healthy);
+        Assert.Equal(physicalModelPath, client.ExpectedModelPath);
+        Assert.Equal(original.Endpoint, client.Endpoint);
+        Assert.Equal(original.Manifest.ModelAlias, client.ModelAlias);
+        Assert.Equal(cancellation.Token, client.CancellationToken);
+        LocalAiResolvedInstall saved = (await new LocalAiManifestStore(new LocalAiPaths(temp.Path)).LoadAsync())!;
+        Assert.Equal(original.ModelPath, saved.ModelPath);
+        Assert.Equal(JsonSerializer.Serialize(original.Manifest), JsonSerializer.Serialize(saved.Manifest));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Recovery_ResolutionFailureDoesNotProbeLogicalPath(bool accessDenied)
+    {
+        using var temp = new TempDirectory("local-ai-recovery-path-");
+        LocalAiResolvedInstall original = await SaveManifestAsync(temp.Path);
+        using var client = new RecordingRecoveryClient();
+
+        bool healthy = await PreserveLocalAiRecoveryGatewayStep.ProbeOriginalEndpointAsync(
+            original, CancellationToken.None, client, _ => accessDenied
+                ? throw new UnauthorizedAccessException("Cannot open model path.")
+                : throw new IOException("Cannot resolve model path."));
+
+        Assert.False(healthy);
+        Assert.Null(client.Endpoint);
+    }
+
+    [Fact]
+    public async Task Recovery_NoOriginalEndpointDoesNotResolveOrProbe()
+    {
+        using var temp = new TempDirectory("local-ai-recovery-path-");
+        LocalAiResolvedInstall original = (await SaveManifestAsync(temp.Path)) with { Endpoint = null };
+        using var client = new RecordingRecoveryClient();
+
+        bool healthy = await PreserveLocalAiRecoveryGatewayStep.ProbeOriginalEndpointAsync(
+            original, CancellationToken.None, client,
+            _ => throw new InvalidOperationException("No model path should be resolved."));
+
+        Assert.True(healthy);
+        Assert.Null(client.Endpoint);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Recovery_CancellationDoesNotResolveOrProbe(bool hasEndpoint)
+    {
+        using var temp = new TempDirectory("local-ai-recovery-path-");
+        LocalAiResolvedInstall original = await SaveManifestAsync(temp.Path);
+        if (!hasEndpoint)
+            original = original with { Endpoint = null };
+        using var client = new RecordingRecoveryClient();
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            PreserveLocalAiRecoveryGatewayStep.ProbeOriginalEndpointAsync(
+                original, cancellation.Token, client,
+                _ => throw new InvalidOperationException("No model path should be resolved.")));
+
+        Assert.Null(client.Endpoint);
+    }
+
+    private sealed class RecordingRecoveryClient : ILlamaServerClient
+    {
+        public bool IsHealthy { get; init; } = true;
+        public string? ExpectedModelPath { get; private set; }
+        public Uri? Endpoint { get; private set; }
+        public string? ModelAlias { get; private set; }
+        public CancellationToken CancellationToken { get; private set; }
+
+        public Task<LlamaServerRouterProbeResult> ProbeManagedModelAsync(
+            Uri endpoint, string modelAlias, string expectedModelPath, CancellationToken cancellationToken = default)
+        {
+            Endpoint = endpoint;
+            ModelAlias = modelAlias;
+            ExpectedModelPath = expectedModelPath;
+            CancellationToken = cancellationToken;
+            return Task.FromResult(new LlamaServerRouterProbeResult(
+                IsHealthy, LocalAiModelAvailabilityState.Verified, expectedModelPath, null));
+        }
+
+        public void Dispose() { }
+    }
+
+    [Fact]
+    public async Task Repair_RollbackRestoresFallbackAfterRetainedEndpointCycle()
+    {
+        using var temp = new TempDirectory("local-ai-gateway-repair-");
+        LocalAiResolvedInstall install = await SaveManifestAsync(temp.Path, "openai/gpt-5");
+        string managedPrimary = JsonSerializer.Serialize(
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install));
+        var commands = new GatewayStateCommandRunner(providerJson: null, managedPrimary);
+        SetupContext context = CreateContext(temp.Path, commands);
+        context.LocalAiResolvedInstall = install;
+        context.LocalAiEligibility = LocalInferenceEligibility.Evaluate(CreateSparkHardware());
+
+        StepResult result = await new ConfigureLocalAiGatewayStep()
+            .ExecuteAsync(context, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Success, result.Outcome);
+        Assert.Equal(LocalAiGatewayProviderDefinition.BuildProviderJson(install), commands.ProviderJson);
+        Assert.Equal(managedPrimary, commands.PrimaryJson);
+        LocalAiResolvedInstall repaired = (await new LocalAiManifestStore(new LocalAiPaths(temp.Path)).LoadAsync())!;
+        Assert.Equal("openai/gpt-5", repaired.Manifest.GatewayFallbackModel);
+
+        await new ConfigureLocalAiGatewayStep().RollbackAsync(context, CancellationToken.None);
+
+        Assert.Null(commands.ProviderJson);
+        Assert.Equal(JsonSerializer.Serialize("openai/gpt-5"), commands.PrimaryJson);
+    }
+
+    [Fact]
+    public async Task Repair_RollbackUnsetsPrimaryAfterRetainedEndpointCycleWithoutFallback()
+    {
+        using var temp = new TempDirectory("local-ai-gateway-repair-");
+        LocalAiResolvedInstall install = await SaveManifestAsync(temp.Path);
+        string managedPrimary = JsonSerializer.Serialize(
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install));
+        var commands = new GatewayStateCommandRunner(providerJson: null, managedPrimary);
+        SetupContext context = CreateContext(temp.Path, commands);
+        context.LocalAiResolvedInstall = install;
+        context.LocalAiEligibility = LocalInferenceEligibility.Evaluate(CreateSparkHardware());
+        var step = new ConfigureLocalAiGatewayStep();
+
+        StepResult result = await step.ExecuteAsync(context, CancellationToken.None);
+        await step.RollbackAsync(context, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Success, result.Outcome);
+        Assert.Null(commands.ProviderJson);
+        Assert.Null(commands.PrimaryJson);
+    }
+
     [Fact]
     public async Task FreshProcessUninstall_RemovesExactManagedProviderAndPrimary()
     {
@@ -116,9 +270,447 @@ public sealed class LocalAiGatewayUninstallTests
             command.Contains("LOCAL_AI_GATEWAY_UNSET", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task Recovery_ReplacesExactManagedProviderAfterAutomaticPortChanges()
+    {
+        using var temp = new TempDirectory("local-ai-gateway-recovery-");
+        LocalAiResolvedInstall original = await SaveManifestAsync(temp.Path, "openai/gpt-5");
+        string originalProvider = LocalAiGatewayProviderDefinition.BuildProviderJson(original);
+        string primary = JsonSerializer.Serialize(
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(original));
+        var commands = new GatewayStateCommandRunner(originalProvider, primary);
+        SetupContext context = CreateRecoveryContext(temp.Path, commands);
+        context.LocalAiRecoveryOriginalInstall = original;
+        context.LocalAiRecoveryReceiptRollbackAllowed = true;
+        LocalAiInstallManifest replacementManifest = original.Manifest with
+        {
+            Endpoint = "http://127.0.0.1:39876/v1",
+        };
+        var store = new LocalAiManifestStore(new LocalAiPaths(temp.Path));
+        await store.SaveAsync(replacementManifest);
+        context.LocalAiResolvedInstall = store.ResolveAndValidate(replacementManifest);
+        var step = new ConfigureLocalAiGatewayStep();
+
+        StepResult result = await step.ExecuteAsync(context, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Success, result.Outcome);
+        Assert.True(context.LocalAiRecoveryProviderTransition);
+        Assert.True(LocalAiGatewayProviderDefinition.MatchesProviderJson(
+            commands.ProviderJson!,
+            context.LocalAiResolvedInstall));
+        Assert.Equal(primary, commands.PrimaryJson);
+    }
+
+    [Fact]
+    public async Task Recovery_PreservesProviderThatMatchesNeitherEndpoint()
+    {
+        using var temp = new TempDirectory("local-ai-gateway-recovery-");
+        LocalAiResolvedInstall original = await SaveManifestAsync(temp.Path);
+        string driftedProvider = LocalAiGatewayProviderDefinition.BuildProviderJson(original)
+            .Replace(
+                "http://127.0.0.1:28765/v1",
+                "http://127.0.0.1:45555/v1",
+                StringComparison.Ordinal);
+        string primary = JsonSerializer.Serialize(
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(original));
+        var commands = new GatewayStateCommandRunner(driftedProvider, primary);
+        SetupContext context = CreateRecoveryContext(temp.Path, commands);
+        context.LocalAiRecoveryOriginalInstall = original;
+        context.LocalAiRecoveryReceiptRollbackAllowed = true;
+        LocalAiInstallManifest replacementManifest = original.Manifest with
+        {
+            Endpoint = "http://127.0.0.1:39876/v1",
+        };
+        context.LocalAiResolvedInstall = new LocalAiResolvedInstall(
+            replacementManifest,
+            original.ExecutablePath,
+            original.ModelPath,
+            new Uri(replacementManifest.Endpoint!));
+
+        StepResult result = await new ConfigureLocalAiGatewayStep()
+            .ExecuteAsync(context, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Equal(driftedProvider, commands.ProviderJson);
+        Assert.Equal(primary, commands.PrimaryJson);
+    }
+
+    [Fact]
+    public async Task Recovery_RollbackRestoresOriginalProviderAndReceipt()
+    {
+        using var temp = new TempDirectory("local-ai-gateway-recovery-");
+        LocalAiResolvedInstall original = await SaveManifestAsync(temp.Path, "openai/gpt-5");
+        string originalProvider = LocalAiGatewayProviderDefinition.BuildProviderJson(original);
+        string primary = JsonSerializer.Serialize(
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(original));
+        var commands = new GatewayStateCommandRunner(originalProvider, primary);
+        SetupContext context = CreateRecoveryContext(temp.Path, commands);
+        context.LocalAiRecoveryOriginalInstall = original;
+        context.LocalAiRecoveryReceiptRollbackAllowed = true;
+        LocalAiInstallManifest replacementManifest = original.Manifest with
+        {
+            Endpoint = "http://127.0.0.1:39876/v1",
+        };
+        var store = new LocalAiManifestStore(new LocalAiPaths(temp.Path));
+        await store.SaveAsync(replacementManifest);
+        context.LocalAiResolvedInstall = store.ResolveAndValidate(replacementManifest);
+        var step = new ConfigureLocalAiGatewayStep();
+
+        StepResult result = await step.ExecuteAsync(context, CancellationToken.None);
+        await step.RollbackAsync(context, CancellationToken.None);
+        await new PreserveLocalAiRecoveryGatewayStep(
+                (_, _) => Task.FromResult(StepResult.Ok("not needed")),
+                (_, _) => Task.FromResult(true))
+            .RollbackAsync(context, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Success, result.Outcome);
+        Assert.True(LocalAiGatewayProviderDefinition.MatchesProviderJson(
+            commands.ProviderJson!,
+            original));
+        Assert.Equal(primary, commands.PrimaryJson);
+        Assert.Equal(original.Endpoint, (await store.LoadAsync())!.Endpoint);
+        Assert.False(context.LocalAiRecoveryProviderTransition);
+    }
+
+    [Fact]
+    public async Task Recovery_RollbackPreservesEndpointCycleManagedPrimary()
+    {
+        using var temp = new TempDirectory("local-ai-gateway-recovery-");
+        LocalAiResolvedInstall original = await SaveManifestAsync(temp.Path, "openai/gpt-5");
+        string managedPrimary = JsonSerializer.Serialize(
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(original));
+        var commands = new GatewayStateCommandRunner(providerJson: null, managedPrimary);
+        SetupContext context = CreateRecoveryContext(temp.Path, commands);
+        context.LocalAiRecoveryOriginalInstall = original;
+        context.LocalAiRecoveryReceiptRollbackAllowed = true;
+        LocalAiInstallManifest replacementManifest = original.Manifest with
+        {
+            Endpoint = "http://127.0.0.1:39876/v1",
+        };
+        var store = new LocalAiManifestStore(new LocalAiPaths(temp.Path));
+        await store.SaveAsync(replacementManifest);
+        context.LocalAiResolvedInstall = store.ResolveAndValidate(replacementManifest);
+        var step = new ConfigureLocalAiGatewayStep();
+
+        StepResult result = await step.ExecuteAsync(context, CancellationToken.None);
+        await step.RollbackAsync(context, CancellationToken.None);
+        await new PreserveLocalAiRecoveryGatewayStep(
+                (_, _) => Task.FromResult(StepResult.Ok("not needed")),
+                (_, _) => Task.FromResult(true))
+            .RollbackAsync(context, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Success, result.Outcome);
+        Assert.Null(commands.ProviderJson);
+        Assert.Equal(managedPrimary, commands.PrimaryJson);
+        Assert.Equal(original.Endpoint, (await store.LoadAsync())!.Endpoint);
+        Assert.False(context.LocalAiRecoveryProviderTransition);
+    }
+
+    [Fact]
+    public async Task Recovery_FailedProviderSwitchRestoresOriginalReceipt()
+    {
+        using var temp = new TempDirectory("local-ai-gateway-recovery-");
+        LocalAiResolvedInstall original = await SaveManifestAsync(temp.Path, "openai/gpt-5");
+        string originalProvider = LocalAiGatewayProviderDefinition.BuildProviderJson(original);
+        string primary = JsonSerializer.Serialize(
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(original));
+        var commands = new GatewayStateCommandRunner(originalProvider, primary)
+        {
+            FailConfiguredBatchOnce = true,
+        };
+        SetupContext context = CreateRecoveryContext(temp.Path, commands);
+        context.LocalAiRecoveryOriginalInstall = original;
+        context.LocalAiRecoveryReceiptRollbackAllowed = true;
+        LocalAiInstallManifest replacementManifest = original.Manifest with
+        {
+            Endpoint = "http://127.0.0.1:39876/v1",
+        };
+        var store = new LocalAiManifestStore(new LocalAiPaths(temp.Path));
+        await store.SaveAsync(replacementManifest);
+        context.LocalAiResolvedInstall = store.ResolveAndValidate(replacementManifest);
+        var step = new ConfigureLocalAiGatewayStep();
+
+        StepResult result = await step.ExecuteAsync(context, CancellationToken.None);
+        await step.RollbackAsync(context, CancellationToken.None);
+        await new PreserveLocalAiRecoveryGatewayStep(
+                (_, _) => Task.FromResult(StepResult.Ok("not needed")),
+                (_, _) => Task.FromResult(true))
+            .RollbackAsync(context, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.True(LocalAiGatewayProviderDefinition.MatchesProviderJson(
+            commands.ProviderJson!,
+            original));
+        Assert.Equal(primary, commands.PrimaryJson);
+        Assert.Equal(original.Endpoint, (await store.LoadAsync())!.Endpoint);
+        Assert.False(context.LocalAiRecoveryProviderTransition);
+    }
+
+    [Fact]
+    public async Task Recovery_FailureBeforeProviderConfigurationRestoresOriginalReceipt()
+    {
+        using var temp = new TempDirectory("local-ai-gateway-recovery-");
+        LocalAiResolvedInstall original = await SaveManifestAsync(temp.Path, "openai/gpt-5");
+        var commands = new GatewayStateCommandRunner(
+            providerJson: null,
+            primaryJson: JsonSerializer.Serialize("openai/gpt-5"));
+        SetupContext context = CreateRecoveryContext(temp.Path, commands);
+        context.LocalAiRecoveryOriginalInstall = original;
+        context.LocalAiRecoveryReceiptRollbackAllowed = true;
+        LocalAiInstallManifest replacementManifest = original.Manifest with
+        {
+            Endpoint = "http://127.0.0.1:39876/v1",
+        };
+        var store = new LocalAiManifestStore(new LocalAiPaths(temp.Path));
+        await store.SaveAsync(replacementManifest);
+        context.LocalAiResolvedInstall = store.ResolveAndValidate(replacementManifest);
+        context.LocalAiRecoveryProviderTransition = true;
+        context.LocalAiGatewayPriorState = new(
+            ProviderExisted: false,
+            ProviderJson: null,
+            PrimaryModelExisted: true,
+            PrimaryModelJson: JsonSerializer.Serialize("openai/gpt-5"));
+        var step = new PreserveLocalAiRecoveryGatewayStep(
+            (_, _) => Task.FromResult(StepResult.Ok("not needed")),
+            (_, _) => Task.FromResult(true));
+
+        await step.RollbackAsync(context, CancellationToken.None);
+
+        Assert.Equal(original.Endpoint, (await store.LoadAsync())!.Endpoint);
+        Assert.Equal(original.Endpoint, context.LocalAiResolvedInstall!.Endpoint);
+        Assert.False(context.LocalAiRecoveryProviderTransition);
+        Assert.Null(context.LocalAiGatewayPriorState);
+    }
+
+    [Fact]
+    public async Task Recovery_RetryPreservesOriginalProviderRollbackBaseline()
+    {
+        using var temp = new TempDirectory("local-ai-gateway-recovery-");
+        LocalAiResolvedInstall original = await SaveManifestAsync(temp.Path, "openai/gpt-5");
+        string originalProvider = LocalAiGatewayProviderDefinition.BuildProviderJson(original);
+        string primary = JsonSerializer.Serialize(
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(original));
+        var commands = new GatewayStateCommandRunner(originalProvider, primary)
+        {
+            LoseConfiguredAcknowledgementOnce = true,
+        };
+        SetupContext context = CreateRecoveryContext(temp.Path, commands);
+        context.LocalAiRecoveryOriginalInstall = original;
+        context.LocalAiRecoveryReceiptRollbackAllowed = true;
+        LocalAiInstallManifest replacementManifest = original.Manifest with
+        {
+            Endpoint = "http://127.0.0.1:39876/v1",
+        };
+        var store = new LocalAiManifestStore(new LocalAiPaths(temp.Path));
+        await store.SaveAsync(replacementManifest);
+        context.LocalAiResolvedInstall = store.ResolveAndValidate(replacementManifest);
+        var step = new ConfigureLocalAiGatewayStep();
+
+        StepResult first = await step.ExecuteAsync(context, CancellationToken.None);
+        StepResult second = await step.ExecuteAsync(context, CancellationToken.None);
+        await step.RollbackAsync(context, CancellationToken.None);
+        await new PreserveLocalAiRecoveryGatewayStep(
+                (_, _) => Task.FromResult(StepResult.Ok("not needed")),
+                (_, _) => Task.FromResult(true))
+            .RollbackAsync(context, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, first.Outcome);
+        Assert.Equal(StepOutcome.Success, second.Outcome);
+        Assert.True(LocalAiGatewayProviderDefinition.MatchesProviderJson(
+            commands.ProviderJson!,
+            original));
+        Assert.Equal(primary, commands.PrimaryJson);
+        Assert.Equal(original.Endpoint, (await store.LoadAsync())!.Endpoint);
+        Assert.False(context.LocalAiRecoveryProviderTransition);
+    }
+
+    [Fact]
+    public async Task Recovery_FailedProviderCompensationKeepsReplacementReceipt()
+    {
+        using var temp = new TempDirectory("local-ai-gateway-recovery-");
+        LocalAiResolvedInstall original = await SaveManifestAsync(temp.Path, "openai/gpt-5");
+        string originalProvider = LocalAiGatewayProviderDefinition.BuildProviderJson(original);
+        string primary = JsonSerializer.Serialize(
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(original));
+        var commands = new GatewayStateCommandRunner(originalProvider, primary);
+        SetupContext context = CreateRecoveryContext(temp.Path, commands);
+        context.Config.RollbackOnFailure = true;
+        context.LocalAiRecoveryOriginalInstall = original;
+        context.LocalAiRecoveryReceiptRollbackAllowed = true;
+        LocalAiInstallManifest replacementManifest = original.Manifest with
+        {
+            Endpoint = "http://127.0.0.1:39876/v1",
+        };
+        var store = new LocalAiManifestStore(new LocalAiPaths(temp.Path));
+        await store.SaveAsync(replacementManifest);
+        context.LocalAiResolvedInstall = store.ResolveAndValidate(replacementManifest);
+        var configure = new ConfigureLocalAiGatewayStep();
+        StepResult configured = await configure.ExecuteAsync(context, CancellationToken.None);
+        commands.FailRestoreBatchOnce = true;
+        var pipeline = new SetupPipeline(
+        [
+            new PreserveLocalAiRecoveryGatewayStep((_, _) =>
+                Task.FromResult(StepResult.Ok("not needed"))),
+            new DelegatingRollbackStep("configured", configure.RollbackAsync),
+            new DelegatingRollbackStep(
+                "fail",
+                (_, _) => Task.CompletedTask,
+                (_, _) => Task.FromResult(StepResult.Fail("forced failure"))),
+        ]);
+
+        PipelineResult result = await pipeline.RunAsync(context);
+
+        Assert.Equal(StepOutcome.Success, configured.Outcome);
+        Assert.Equal(PipelineOutcome.Failed, result.Outcome);
+        Assert.True(LocalAiGatewayProviderDefinition.MatchesProviderJson(
+            commands.ProviderJson!,
+            context.LocalAiResolvedInstall));
+        Assert.Equal(new Uri(replacementManifest.Endpoint!), (await store.LoadAsync())!.Endpoint);
+        Assert.False(context.LocalAiRecoveryProviderTransition);
+        Assert.False(context.LocalAiRecoveryReceiptRollbackAllowed);
+    }
+
+    [Fact]
+    public async Task Recovery_LostRollbackAcknowledgementRestoresOriginalReceipt()
+    {
+        using var temp = new TempDirectory("local-ai-gateway-recovery-");
+        LocalAiResolvedInstall original = await SaveManifestAsync(temp.Path, "openai/gpt-5");
+        string originalProvider = LocalAiGatewayProviderDefinition.BuildProviderJson(original);
+        string primary = JsonSerializer.Serialize(
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(original));
+        var commands = new GatewayStateCommandRunner(originalProvider, primary);
+        SetupContext context = CreateRecoveryContext(temp.Path, commands);
+        context.Config.RollbackOnFailure = true;
+        context.LocalAiRecoveryOriginalInstall = original;
+        context.LocalAiRecoveryReceiptRollbackAllowed = true;
+        LocalAiInstallManifest replacementManifest = original.Manifest with
+        {
+            Endpoint = "http://127.0.0.1:39876/v1",
+        };
+        var store = new LocalAiManifestStore(new LocalAiPaths(temp.Path));
+        await store.SaveAsync(replacementManifest);
+        context.LocalAiResolvedInstall = store.ResolveAndValidate(replacementManifest);
+        var configure = new ConfigureLocalAiGatewayStep();
+        StepResult configured = await configure.ExecuteAsync(context, CancellationToken.None);
+        commands.LoseRestoreAcknowledgementOnce = true;
+        var pipeline = new SetupPipeline(
+        [
+            new PreserveLocalAiRecoveryGatewayStep(
+                (_, _) => Task.FromResult(StepResult.Ok("not needed")),
+                (_, _) => Task.FromResult(true)),
+            new DelegatingRollbackStep("configured", configure.RollbackAsync),
+            new DelegatingRollbackStep(
+                "fail",
+                (_, _) => Task.CompletedTask,
+                (_, _) => Task.FromResult(StepResult.Fail("forced failure"))),
+        ]);
+
+        PipelineResult result = await pipeline.RunAsync(context);
+
+        Assert.Equal(StepOutcome.Success, configured.Outcome);
+        Assert.Equal(PipelineOutcome.Failed, result.Outcome);
+        Assert.True(LocalAiGatewayProviderDefinition.MatchesProviderJson(
+            commands.ProviderJson!,
+            original));
+        Assert.Equal(primary, commands.PrimaryJson);
+        Assert.Equal(original.Endpoint, (await store.LoadAsync())!.Endpoint);
+        Assert.False(context.LocalAiRecoveryProviderTransition);
+        Assert.False(context.LocalAiRecoveryReceiptRollbackAllowed);
+    }
+
+    [Fact]
+    public async Task Recovery_RollbackCancellationKeepsReplacementReceipt()
+    {
+        using var temp = new TempDirectory("local-ai-gateway-recovery-");
+        LocalAiResolvedInstall original = await SaveManifestAsync(temp.Path, "openai/gpt-5");
+        string originalProvider = LocalAiGatewayProviderDefinition.BuildProviderJson(original);
+        string primary = JsonSerializer.Serialize(
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(original));
+        var commands = new GatewayStateCommandRunner(originalProvider, primary);
+        SetupContext context = CreateRecoveryContext(temp.Path, commands);
+        context.Config.RollbackOnFailure = true;
+        context.LocalAiRecoveryOriginalInstall = original;
+        context.LocalAiRecoveryReceiptRollbackAllowed = true;
+        LocalAiInstallManifest replacementManifest = original.Manifest with
+        {
+            Endpoint = "http://127.0.0.1:39876/v1",
+        };
+        var store = new LocalAiManifestStore(new LocalAiPaths(temp.Path));
+        await store.SaveAsync(replacementManifest);
+        context.LocalAiResolvedInstall = store.ResolveAndValidate(replacementManifest);
+        var configure = new ConfigureLocalAiGatewayStep();
+        StepResult configured = await configure.ExecuteAsync(context, CancellationToken.None);
+        commands.ThrowOnNextCapture = true;
+        var pipeline = new SetupPipeline(
+        [
+            new PreserveLocalAiRecoveryGatewayStep((_, _) =>
+                Task.FromResult(StepResult.Ok("not needed"))),
+            new DelegatingRollbackStep("configured", configure.RollbackAsync),
+            new DelegatingRollbackStep(
+                "fail",
+                (_, _) => Task.CompletedTask,
+                (_, _) => Task.FromResult(StepResult.Fail("forced failure"))),
+        ]);
+
+        PipelineResult result = await pipeline.RunAsync(context);
+
+        Assert.Equal(StepOutcome.Success, configured.Outcome);
+        Assert.Equal(PipelineOutcome.Failed, result.Outcome);
+        Assert.True(LocalAiGatewayProviderDefinition.MatchesProviderJson(
+            commands.ProviderJson!,
+            context.LocalAiResolvedInstall));
+        Assert.Equal(new Uri(replacementManifest.Endpoint!), (await store.LoadAsync())!.Endpoint);
+        Assert.False(context.LocalAiRecoveryProviderTransition);
+        Assert.False(context.LocalAiRecoveryReceiptRollbackAllowed);
+    }
+
+    [Fact]
+    public async Task Recovery_ProviderCreationRollbackCancellationKeepsReplacementReceipt()
+    {
+        using var temp = new TempDirectory("local-ai-gateway-recovery-");
+        LocalAiResolvedInstall original = await SaveManifestAsync(temp.Path, "openai/gpt-5");
+        string fallback = JsonSerializer.Serialize("openai/gpt-5");
+        var commands = new GatewayStateCommandRunner(providerJson: null, primaryJson: fallback);
+        SetupContext context = CreateRecoveryContext(temp.Path, commands);
+        context.Config.RollbackOnFailure = true;
+        context.LocalAiRecoveryOriginalInstall = original;
+        context.LocalAiRecoveryReceiptRollbackAllowed = true;
+        LocalAiInstallManifest replacementManifest = original.Manifest with
+        {
+            Endpoint = "http://127.0.0.1:39876/v1",
+        };
+        var store = new LocalAiManifestStore(new LocalAiPaths(temp.Path));
+        await store.SaveAsync(replacementManifest);
+        context.LocalAiResolvedInstall = store.ResolveAndValidate(replacementManifest);
+        var configure = new ConfigureLocalAiGatewayStep();
+        StepResult configured = await configure.ExecuteAsync(context, CancellationToken.None);
+        commands.ThrowOnNextCapture = true;
+        var pipeline = new SetupPipeline(
+        [
+            new PreserveLocalAiRecoveryGatewayStep((_, _) =>
+                Task.FromResult(StepResult.Ok("not needed"))),
+            new DelegatingRollbackStep("configured", configure.RollbackAsync),
+            new DelegatingRollbackStep(
+                "fail",
+                (_, _) => Task.CompletedTask,
+                (_, _) => Task.FromResult(StepResult.Fail("forced failure"))),
+        ]);
+
+        PipelineResult result = await pipeline.RunAsync(context);
+
+        Assert.Equal(StepOutcome.Success, configured.Outcome);
+        Assert.Equal(PipelineOutcome.Failed, result.Outcome);
+        Assert.True(LocalAiGatewayProviderDefinition.MatchesProviderJson(
+            commands.ProviderJson!,
+            context.LocalAiResolvedInstall));
+        Assert.Equal(new Uri(replacementManifest.Endpoint!), (await store.LoadAsync())!.Endpoint);
+        Assert.False(context.LocalAiRecoveryProviderTransition);
+        Assert.False(context.LocalAiRecoveryReceiptRollbackAllowed);
+    }
+
     private static SetupContext CreateContext(string localDataDirectory, ICommandRunner commands)
     {
-        var config = new SetupConfig();
+        var config = new SetupConfig { LocalAi = new LocalAiConfig { Enabled = true } };
         var logger = new SetupLogger(filePath: null);
         return new SetupContext(
             config,
@@ -128,6 +720,34 @@ public sealed class LocalAiGatewayUninstallTests
             CancellationToken.None,
             localDataDir: localDataDirectory);
     }
+
+    private static SetupContext CreateRecoveryContext(
+        string localDataDirectory,
+        ICommandRunner commands)
+    {
+        SetupContext context = CreateContext(localDataDirectory, commands);
+        context.Config.LocalAi.Enabled = true;
+        context.Config.LocalAiRecoveryGatewayId = "gateway-id";
+        context.DistroName = "OpenClawGateway";
+        context.LocalAiEligibility = LocalInferenceEligibility.Evaluate(CreateSparkHardware());
+        return context;
+    }
+
+    private static HostHardwareInfo CreateSparkHardware() => new(
+        Architecture.Arm64,
+        128L * 1024 * 1024 * 1024,
+        100L * 1024 * 1024 * 1024,
+        [
+            new GpuInfo(
+                GpuVendor.Nvidia,
+                "NVIDIA RTX Spark N1X (6144-core Blackwell RTX GPU)",
+                GpuVisibleMemoryBytes: 48L * 1024 * 1024 * 1024,
+                FreeGpuVisibleMemoryBytes: 40L * 1024 * 1024 * 1024,
+                DriverVersion: "616.00",
+                CudaMajorVersion: 13,
+                StableId: "GPU-SPARK"),
+        ],
+        VulkanAvailable: false);
 
     private static async Task<LocalAiResolvedInstall> SaveManifestAsync(
         string localDataDirectory,
@@ -184,6 +804,11 @@ public sealed class LocalAiGatewayUninstallTests
         public string? ProviderJson { get; private set; } = providerJson;
         public string? PrimaryJson { get; private set; } = primaryJson;
         public bool FailCapture { get; init; }
+        public bool FailConfiguredBatchOnce { get; set; }
+        public bool LoseConfiguredAcknowledgementOnce { get; set; }
+        public bool FailRestoreBatchOnce { get; set; }
+        public bool LoseRestoreAcknowledgementOnce { get; set; }
+        public bool ThrowOnNextCapture { get; set; }
         public List<string> WslCalls { get; } = [];
 
         public Task<CommandResult> RunAsync(
@@ -207,20 +832,79 @@ public sealed class LocalAiGatewayUninstallTests
         {
             ct.ThrowIfCancellationRequested();
             WslCalls.Add(command);
-            if (command.Contains("LOCAL_AI_PRIMARY_RESTORED", StringComparison.Ordinal))
+            if (environment is not null && environment.Count == 1)
             {
-                string encoded = Assert.Single(environment!).Value;
+                if (FailRestoreBatchOnce &&
+                    command.Contains("LOCAL_AI_GATEWAY_RESTORED", StringComparison.Ordinal))
+                {
+                    FailRestoreBatchOnce = false;
+                    return Task.FromResult(new CommandResult(
+                        1,
+                        "",
+                        "gateway rollback failed",
+                        TimeSpan.Zero,
+                        TimedOut: false));
+                }
+                if (FailConfiguredBatchOnce &&
+                    command.Contains("LOCAL_AI_GATEWAY_CONFIGURED", StringComparison.Ordinal))
+                {
+                    FailConfiguredBatchOnce = false;
+                    return Task.FromResult(new CommandResult(
+                        1,
+                        "",
+                        "gateway configuration failed",
+                        TimeSpan.Zero,
+                        TimedOut: false));
+                }
+                string encoded = Assert.Single(environment).Value;
                 string batch = Encoding.UTF8.GetString(Convert.FromBase64String(encoded));
                 using JsonDocument document = JsonDocument.Parse(batch);
-                PrimaryJson = document.RootElement[0].GetProperty("value").GetRawText();
+                foreach (JsonElement operation in document.RootElement.EnumerateArray())
+                {
+                    string path = operation.GetProperty("path").GetString()!;
+                    string value = operation.GetProperty("value").GetRawText();
+                    if (path == LocalAiGatewayProviderDefinition.ProviderPath)
+                        ProviderJson = value;
+                    else if (path == LocalAiGatewayProviderDefinition.PrimaryModelPath)
+                        PrimaryJson = value;
+                }
+                if (LoseRestoreAcknowledgementOnce &&
+                    command.Contains("LOCAL_AI_GATEWAY_RESTORED", StringComparison.Ordinal))
+                {
+                    LoseRestoreAcknowledgementOnce = false;
+                    return Task.FromResult(new CommandResult(
+                        1,
+                        "",
+                        "gateway rollback acknowledgement lost",
+                        TimeSpan.Zero,
+                        TimedOut: false));
+                }
+                if (LoseConfiguredAcknowledgementOnce &&
+                    command.Contains("LOCAL_AI_GATEWAY_CONFIGURED", StringComparison.Ordinal))
+                {
+                    LoseConfiguredAcknowledgementOnce = false;
+                    return Task.FromResult(new CommandResult(
+                        1,
+                        "",
+                        "gateway configuration acknowledgement lost",
+                        TimeSpan.Zero,
+                        TimedOut: false));
+                }
+                string marker =
+                    command.Contains("LOCAL_AI_GATEWAY_CONFIGURED", StringComparison.Ordinal)
+                        ? "LOCAL_AI_GATEWAY_CONFIGURED"
+                        : command.Contains("LOCAL_AI_GATEWAY_RESTORED", StringComparison.Ordinal)
+                            ? "LOCAL_AI_GATEWAY_RESTORED"
+                            : "LOCAL_AI_PRIMARY_RESTORED";
                 return Task.FromResult(new CommandResult(
                     0,
-                    "LOCAL_AI_PRIMARY_RESTORED",
+                    marker,
                     "",
                     TimeSpan.Zero,
                     TimedOut: false));
             }
-            if (command.Contains("LOCAL_AI_GATEWAY_UNSET", StringComparison.Ordinal))
+            if (command.Contains("LOCAL_AI_GATEWAY_UNSET", StringComparison.Ordinal) ||
+                command.Contains("openclaw config unset", StringComparison.Ordinal))
             {
                 if (command.Contains(LocalAiGatewayProviderDefinition.PrimaryModelPath, StringComparison.Ordinal))
                     PrimaryJson = null;
@@ -232,6 +916,11 @@ public sealed class LocalAiGatewayUninstallTests
                     "",
                     TimeSpan.Zero,
                     TimedOut: false));
+            }
+            if (ThrowOnNextCapture)
+            {
+                ThrowOnNextCapture = false;
+                throw new OperationCanceledException(ct);
             }
             if (FailCapture)
             {
@@ -252,5 +941,21 @@ public sealed class LocalAiGatewayUninstallTests
         private static string EncodeOrMissing(string? value) => value is null
             ? "MISSING"
             : Convert.ToBase64String(Encoding.UTF8.GetBytes(value));
+    }
+
+    private sealed class DelegatingRollbackStep(
+        string id,
+        Func<SetupContext, CancellationToken, Task> rollback,
+        Func<SetupContext, CancellationToken, Task<StepResult>>? execute = null) : SetupStep
+    {
+        public override string Id => id;
+        public override string DisplayName => id;
+        public override bool CanRetry => false;
+
+        public override Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct) =>
+            execute?.Invoke(ctx, ct) ?? Task.FromResult(StepResult.Ok());
+
+        public override Task RollbackAsync(SetupContext ctx, CancellationToken ct) =>
+            rollback(ctx, ct);
     }
 }

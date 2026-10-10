@@ -38,9 +38,10 @@ public sealed class ChannelPatchBuildResult
 /// so blindly round-tripping the cached config can clobber unrelated secrets
 /// with their redaction sentinels. <see cref="BuildPatch"/> scans for the
 /// common sentinels (<c>[REDACTED]</c>, <c>&lt;redacted&gt;</c>, <c>***</c>)
-/// in fields OUTSIDE the channel being written and aborts the patch if any
-/// are found — caller should direct the user to the Config page in that
-/// state.
+/// and aborts when any leaf still holds one, except the paths this save
+/// replaces (the edited fields and <c>channels.{id}.enabled</c>). A redacted
+/// sibling such as an app token or <c>accounts.*.botToken</c> blocks the
+/// save. The caller should direct the user to the Config page in that state.
 /// </summary>
 public static class ChannelConfigPatchBuilder
 {
@@ -98,18 +99,27 @@ public static class ChannelConfigPatchBuilder
             ? DeserializeObject(cachedConfig)
             : new Dictionary<string, object?>();
 
-        // Safety rail: scan the cached config for redaction sentinels in any
-        // leaf string field that lives OUTSIDE the channel we're writing.
-        // If we'd be re-sending one of those, abort — the gateway might
-        // clobber the on-disk secret with the sentinel.
-        var targetPrefix = $"channels.{channelId}.";
-        var redactedPath = FindRedactionSentinel(cachedConfig, "", targetPrefix);
+        // Safety rail: only the edited paths and channels.{id}.enabled are
+        // replaced. Every other leaf, including untouched siblings in this
+        // channel, is round-tripped. A placeholder there would overwrite
+        // the real secret, so refuse the save.
+        var replacedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            $"channels.{channelId}.enabled",
+        };
+        foreach (var (path, _) in updates)
+        {
+            if (!string.IsNullOrWhiteSpace(path))
+                replacedPaths.Add(path);
+        }
+
+        var redactedPath = FindRedactionSentinel(cachedConfig, "", replacedPaths);
         if (redactedPath != null)
         {
             return new ChannelPatchBuildResult
             {
                 BlockedReason =
-                    $"Your gateway returns redacted credentials for other channels (e.g. {redactedPath}). " +
+                    $"Your gateway returns a redacted credential (e.g. {redactedPath}). " +
                     "Saving from here would risk overwriting those secrets with their redaction placeholders. " +
                     "Use Open Config page for safe editing while we sort this out.",
                 BlockedPath = redactedPath,
@@ -139,20 +149,21 @@ public static class ChannelConfigPatchBuilder
     /// <summary>
     /// Recursively walk <paramref name="el"/> looking for a string leaf whose
     /// value matches one of <see cref="RedactionSentinels"/>. Returns the
-    /// first matching dot-path found, OR null if none. Paths that start with
-    /// <paramref name="excludePrefix"/> are skipped — we don't care about
-    /// sentinels in the channel we're about to overwrite.
+    /// first matching dot-path found, OR null if none. A path in
+    /// <paramref name="replacedPaths"/> is skipped, including its descendants,
+    /// because that whole value is overwritten and is not sent back.
     /// </summary>
-    internal static string? FindRedactionSentinel(JsonElement el, string path, string excludePrefix)
+    internal static string? FindRedactionSentinel(JsonElement el, string path, IReadOnlySet<string> replacedPaths)
     {
+        if (path.Length > 0 && replacedPaths.Contains(path))
+            return null;
+
         if (el.ValueKind == JsonValueKind.Object)
         {
             foreach (var prop in el.EnumerateObject())
             {
                 var childPath = string.IsNullOrEmpty(path) ? prop.Name : $"{path}.{prop.Name}";
-                if (!string.IsNullOrEmpty(excludePrefix) && childPath.StartsWith(excludePrefix, StringComparison.OrdinalIgnoreCase))
-                    continue;
-                var hit = FindRedactionSentinel(prop.Value, childPath, excludePrefix);
+                var hit = FindRedactionSentinel(prop.Value, childPath, replacedPaths);
                 if (hit != null) return hit;
             }
         }
@@ -162,7 +173,7 @@ public static class ChannelConfigPatchBuilder
             foreach (var item in el.EnumerateArray())
             {
                 var childPath = $"{path}[{i++}]";
-                var hit = FindRedactionSentinel(item, childPath, excludePrefix);
+                var hit = FindRedactionSentinel(item, childPath, replacedPaths);
                 if (hit != null) return hit;
             }
         }

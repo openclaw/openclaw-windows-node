@@ -1,3 +1,5 @@
+using OpenClaw.Shared;
+
 namespace OpenClaw.Chat;
 
 public enum ChatThreadStatus
@@ -126,6 +128,8 @@ public record ChatThread
     public string? Model { get; init; }
     public string? ModelProvider { get; init; }
     public string? ThinkingLevel { get; init; }
+    public ThinkingContext? ThinkingContext { get; init; }
+    public ThinkingContext? ThinkingDefaults { get; init; }
     public long InputTokens { get; init; }
     public long OutputTokens { get; init; }
     public long TotalTokens { get; init; }
@@ -362,6 +366,12 @@ public interface IChatDataProvider : IAsyncDisposable
     /// </summary>
     Task ClearModelAsync(string threadId, CancellationToken cancellationToken = default) => Task.CompletedTask;
     Task SetThinkingLevelAsync(string threadId, string thinkingLevel, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Clears the session's explicit thinking-level override so the gateway can
+    /// restore its provider default. Distinct from <see cref="SetThinkingLevelAsync"/>
+    /// because the gateway models this as an explicit null.
+    /// </summary>
+    Task ClearThinkingLevelAsync(string threadId, CancellationToken cancellationToken = default) => Task.CompletedTask;
     Task SetPermissionModeAsync(string threadId, bool allowAll, CancellationToken cancellationToken = default);
     Task RespondToPermissionAsync(string threadId, string requestId, string action, CancellationToken cancellationToken = default);
     Task RespondToPermissionAsync(string threadId, string requestId, bool allow, CancellationToken cancellationToken = default) =>

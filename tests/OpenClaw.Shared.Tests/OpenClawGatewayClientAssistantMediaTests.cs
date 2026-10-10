@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using OpenClaw.TestSupport;
@@ -19,6 +20,7 @@ public sealed class OpenClawGatewayClientAssistantMediaTests
             "test-token",
             identityPath: identity.Path);
         await client.ConnectAsync();
+        MarkHandshakeReady(client);
 
         var resolution = client.ResolveAssistantMediaAsync(
             "main",
@@ -80,6 +82,7 @@ public sealed class OpenClawGatewayClientAssistantMediaTests
             assistantMediaAuthToken: "shared-http-token",
             assistantMediaHandler: handler);
         await client.ConnectAsync();
+        MarkHandshakeReady(client);
 
         var media = new ChatMediaContentInfo
         {
@@ -121,6 +124,7 @@ public sealed class OpenClawGatewayClientAssistantMediaTests
             identityPath: identity.Path,
             assistantMediaHandler: handler);
         await client.ConnectAsync();
+        MarkHandshakeReady(client);
 
         var result = await client.ResolveAssistantMediaAsync(
             "main",
@@ -155,6 +159,7 @@ public sealed class OpenClawGatewayClientAssistantMediaTests
             assistantMediaAuthToken: "shared-token-1",
             assistantMediaHandler: handler);
         await client.ConnectAsync();
+        MarkHandshakeReady(client);
         var media = new ChatMediaContentInfo
         {
             Kind = ChatMediaContentKind.Image,
@@ -232,6 +237,19 @@ public sealed class OpenClawGatewayClientAssistantMediaTests
             Assert.Equal("gateway.example", uri.Host);
     }
 
+    /// <summary>
+    /// Satisfies the #1418 readiness gate (IsConnectedToGateway requires the
+    /// hello-ok snapshot) without a wire handshake: media resolution leases
+    /// gate on that property. Mechanical tests set the snapshot flag directly
+    /// so the post-handshake auto-request burst cannot race their HTTP handler
+    /// sequencing; the real handshake path is covered by
+    /// GatewayProtocolLiveRoundTripTests.
+    /// </summary>
+    private static void CompleteHandshakeForTest(OpenClawGatewayClient client)
+    {
+        MarkHandshakeReady(client);
+    }
+
     private static HttpResponseMessage JsonResponse(string json) =>
         new(HttpStatusCode.OK)
         {
@@ -246,6 +264,26 @@ public sealed class OpenClawGatewayClientAssistantMediaTests
         };
         response.Content.Headers.ContentType = new MediaTypeHeaderValue(mimeType);
         return response;
+    }
+
+    private static void MarkHandshakeReady(OpenClawGatewayClient client)
+    {
+        var generationProperty = typeof(WebSocketClientBase).GetProperty(
+            "CurrentConnectionGeneration",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        var generation = (long)generationProperty!.GetValue(client)!;
+        SetPrivateField(client, "_mainSessionKeyIsCanonical", true);
+        SetPrivateField(client, "_mainSessionKey", "agent:main:main");
+        SetPrivateField(client, "_handshakeConnectionGeneration", generation);
+        SetPrivateField(client, "_hasHandshakeSnapshot", true);
+    }
+
+    private static void SetPrivateField(OpenClawGatewayClient client, string fieldName, object? value)
+    {
+        var field = typeof(OpenClawGatewayClient).GetField(
+            fieldName,
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        field!.SetValue(client, value);
     }
 
     private sealed class SequentialMediaHandler(params HttpResponseMessage[] responses)

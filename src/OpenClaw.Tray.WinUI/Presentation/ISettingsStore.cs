@@ -91,9 +91,12 @@ public interface ISettingsEditor
     bool NodeLocationEnabled { set; }
     bool NodeTtsEnabled { set; }
     bool NodeSttEnabled { set; }
+    bool NodeOllamaInferenceEnabled { set; }
+    bool EnableManagedLocalGatewayAutoRepair { set; }
 
     bool ScreenRecordingConsentGiven { set; }
     bool CameraRecordingConsentGiven { set; }
+    bool LocationConsentGiven { set; }
     bool VoiceTtsEnabled { set; }
     bool ShowChatToolCalls { set; }
 }
@@ -134,6 +137,8 @@ public sealed record SettingsSnapshot
     public bool NodeLocationEnabled { get; init; }
     public bool NodeTtsEnabled { get; init; }
     public bool NodeSttEnabled { get; init; }
+    public bool NodeOllamaInferenceEnabled { get; init; }
+    public bool EnableManagedLocalGatewayAutoRepair { get; init; }
     public string SttModelName { get; init; } = "base";
     public string TtsProvider { get; init; } = "";
     public string TtsPiperVoiceId { get; init; } = "";
@@ -142,6 +147,7 @@ public sealed record SettingsSnapshot
 
     public bool ScreenRecordingConsentGiven { get; init; }
     public bool CameraRecordingConsentGiven { get; init; }
+    public bool LocationConsentGiven { get; init; }
 
     public bool ShowChatToolCalls { get; init; }
 }

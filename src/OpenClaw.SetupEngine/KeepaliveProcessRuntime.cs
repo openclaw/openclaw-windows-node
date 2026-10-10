@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using OpenClaw.Connection;
 
 namespace OpenClaw.SetupEngine;
 
@@ -19,9 +20,7 @@ internal interface IKeepaliveProcessRuntime
 
     /// <summary>
     /// Best-effort command-line lookup for a PID. Returns null if the process is gone or the
-    /// lookup otherwise fails to produce a value. May throw for exceptional OS failures — callers
-    /// in <see cref="KeepaliveProcessManager"/> catch per-call so one failure doesn't abort a
-    /// broader scan.
+    /// lookup otherwise fails to produce a value. The production runtime does not throw.
     /// </summary>
     string? GetCommandLine(int pid);
 
@@ -48,9 +47,8 @@ internal sealed record KeepaliveProcessStartSpec(string FileName, IReadOnlyList<
 
 /// <summary>
 /// Production <see cref="IKeepaliveProcessRuntime"/> backed by <see cref="System.Diagnostics.Process"/>
-/// and a WMI/CIM command-line lookup via a spawned <c>powershell.exe</c> helper (unchanged from the
-/// pre-extraction inline implementation). Every <see cref="Process"/> wrapper obtained here is
-/// disposed before the method returns.
+/// and the shared bounded WMI/CIM command-line lookup. Every <see cref="Process"/> wrapper obtained
+/// here is disposed before the method returns.
 /// </summary>
 internal sealed class ProcessKeepaliveRuntime : IKeepaliveProcessRuntime
 {
@@ -60,21 +58,8 @@ internal sealed class ProcessKeepaliveRuntime : IKeepaliveProcessRuntime
         return !process.HasExited;
     }
 
-    public string? GetCommandLine(int pid)
-    {
-        var psi = new ProcessStartInfo("powershell.exe",
-            $"-NoProfile -Command \"(Get-CimInstance Win32_Process -Filter 'ProcessId={pid}').CommandLine\"")
-        {
-            RedirectStandardOutput = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-        using var p = Process.Start(psi);
-        if (p == null) return null;
-        var output = p.StandardOutput.ReadToEnd();
-        p.WaitForExit(5000);
-        return output.Trim();
-    }
+    public string? GetCommandLine(int pid) =>
+        WindowsTcpListenerSnapshot.GetProcessCommandLine(pid);
 
     public IReadOnlyList<int> EnumerateProcessIds(string processName)
     {

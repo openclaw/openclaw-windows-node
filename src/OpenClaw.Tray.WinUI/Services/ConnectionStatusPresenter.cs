@@ -84,6 +84,15 @@ internal static class ConnectionStatusPresenter
         };
     }
 
+    public static (string LabelKey, ConnectionStatusAccent Accent) Pill(OverallConnectionState? overall, ConnectionStatus fallback) =>
+        overall is { } state ? Pill(state) : fallback switch
+        {
+            ConnectionStatus.Connected => ("StatusDisplay_Connected", ConnectionStatusAccent.Success),
+            ConnectionStatus.Connecting => ("StatusDisplay_Connecting", ConnectionStatusAccent.Caution),
+            ConnectionStatus.Error => ("StatusDisplay_Error", ConnectionStatusAccent.Critical),
+            _ => ("StatusDisplay_Disconnected", ConnectionStatusAccent.Neutral),
+        };
+
     public static (string LabelKey, ConnectionStatusAccent Accent) Pill(OverallConnectionState overall) => overall switch
     {
         OverallConnectionState.Connected or OverallConnectionState.Ready =>

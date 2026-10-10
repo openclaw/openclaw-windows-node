@@ -1,0 +1,210 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/openclaw/openclaw-windows-node/blob/main/.github/proof-pools.schema.json",
+  "title": "OpenClaw Windows proof pool inventory",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "declaration",
+    "pools"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "./proof-pools.schema.json"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "declaration": {
+      "$ref": "#/definitions/declaration"
+    },
+    "pools": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/pool"
+      }
+    }
+  },
+  "definitions": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "stringList": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/definitions/nonEmptyString"
+      }
+    },
+    "declaration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prBodySection",
+        "noneValue",
+        "format"
+      ],
+      "properties": {
+        "prBodySection": {
+          "const": "Required proof pools"
+        },
+        "noneValue": {
+          "const": "none"
+        },
+        "format": {
+          "const": "- `<pool-id>`: <reason>"
+        }
+      }
+    },
+    "scheduler": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runnerClass",
+        "dispatch",
+        "availability",
+        "requiresMaintainerApproval"
+      ],
+      "properties": {
+        "runnerClass": {
+          "$ref": "#/definitions/identifier"
+        },
+        "dispatch": {
+          "const": "maintainer-scheduled"
+        },
+        "availability": {
+          "const": "capacity-dependent"
+        },
+        "requiresMaintainerApproval": {
+          "const": true
+        }
+      }
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "command",
+        "purpose",
+        "evidence"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/identifier"
+        },
+        "kind": {
+          "enum": [
+            "repository",
+            "proof-test",
+            "host",
+            "manual"
+          ]
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^(?!.*(?:^|\\\\)\\.\\.(?:\\\\|$))(?:(?:scripts|tests|src)\\\\[^<>:\"|?*\\\\]+(?:\\\\[^<>:\"|?*\\\\]+)*|run-app-local\\.ps1)$"
+        },
+        "command": {
+          "$ref": "#/definitions/nonEmptyString"
+        },
+        "purpose": {
+          "$ref": "#/definitions/nonEmptyString"
+        },
+        "evidence": {
+          "$ref": "#/definitions/nonEmptyString"
+        }
+      }
+    },
+    "evidencePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "collect",
+        "redact",
+        "neverCollect"
+      ],
+      "properties": {
+        "collect": {
+          "$ref": "#/definitions/stringList"
+        },
+        "redact": {
+          "$ref": "#/definitions/stringList"
+        },
+        "neverCollect": {
+          "$ref": "#/definitions/stringList"
+        }
+      }
+    },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requiredWhen",
+        "doesNotProve"
+      ],
+      "properties": {
+        "requiredWhen": {
+          "$ref": "#/definitions/stringList"
+        },
+        "doesNotProve": {
+          "$ref": "#/definitions/stringList"
+        }
+      }
+    },
+    "pool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "displayName",
+        "purpose",
+        "scheduler",
+        "requiredCapabilities",
+        "authoritativeCommands",
+        "evidencePolicy",
+        "selection"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/identifier"
+        },
+        "displayName": {
+          "$ref": "#/definitions/nonEmptyString"
+        },
+        "purpose": {
+          "$ref": "#/definitions/nonEmptyString"
+        },
+        "scheduler": {
+          "$ref": "#/definitions/scheduler"
+        },
+        "requiredCapabilities": {
+          "$ref": "#/definitions/stringList"
+        },
+        "authoritativeCommands": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/command"
+          }
+        },
+        "evidencePolicy": {
+          "$ref": "#/definitions/evidencePolicy"
+        },
+        "selection": {
+          "$ref": "#/definitions/selection"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,468 @@
+{
+  "$schema": "./proof-pools.schema.json",
+  "schemaVersion": 1,
+  "declaration": {
+    "prBodySection": "Required proof pools",
+    "noneValue": "none",
+    "format": "- `<pool-id>`: <reason>"
+  },
+  "pools": [
+    {
+      "id": "windows-11-sac-on",
+      "displayName": "Windows 11 with Smart App Control on",
+      "purpose": "Prove that an official signed installer and installed binaries remain trusted and runnable when Smart App Control is enforcing reputation policy.",
+      "scheduler": {
+        "runnerClass": "windows-11-sac-on",
+        "dispatch": "maintainer-scheduled",
+        "availability": "capacity-dependent",
+        "requiresMaintainerApproval": true
+      },
+      "requiredCapabilities": [
+        "windows-11",
+        "smart-app-control-on",
+        "clean-restorable-state",
+        "interactive-desktop",
+        "official-signed-installer"
+      ],
+      "authoritativeCommands": [
+        {
+          "id": "record-sac-state",
+          "kind": "host",
+          "command": "Get-ItemPropertyValue -LiteralPath 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\CI\\Policy' -Name VerifiedAndReputablePolicyState",
+          "purpose": "Confirm that Smart App Control is in enforcement state before installation.",
+          "evidence": "Record the numeric policy state with the Windows edition, version, and OS build."
+        },
+        {
+          "id": "verify-installer-signature",
+          "kind": "host",
+          "command": "Get-AuthenticodeSignature -LiteralPath $env:OPENCLAW_PROOF_INSTALLER | Select-Object Status, StatusMessage, @{n='Subject';e={$_.SignerCertificate.Subject}}",
+          "purpose": "Verify the exact official installer selected for the run.",
+          "evidence": "Record signature status and public signer subject without certificate private material."
+        },
+        {
+          "id": "install-and-launch",
+          "kind": "manual",
+          "command": "Install $env:OPENCLAW_PROOF_INSTALLER, launch OpenClaw Companion from the installed location, and exercise first-run navigation.",
+          "purpose": "Exercise the reputation-sensitive install and process launch path.",
+          "evidence": "Capture installer exit status plus a screenshot showing the installed app running and any Smart App Control decision."
+        }
+      ],
+      "evidencePolicy": {
+        "collect": [
+          "Windows edition, version, OS build, and Smart App Control policy state",
+          "installer SHA-256, signature status, and public signer subject",
+          "installer exit status and consented screenshots of trust decisions or the running app"
+        ],
+        "redact": [
+          "Windows user name, machine name, and user-profile paths",
+          "notification content, recent files, and unrelated desktop applications"
+        ],
+        "neverCollect": [
+          "certificate private keys or signing credentials",
+          "gateway tokens, setup codes, device identities, or environment variable dumps",
+          "unreviewed full-desktop recordings"
+        ]
+      },
+      "selection": {
+        "requiredWhen": [
+          "release signing, installer identity, executable layout, or reputation behavior changes",
+          "a release candidate must claim Smart App Control compatibility"
+        ],
+        "doesNotProve": [
+          "unsigned local installers are accepted by Smart App Control",
+          "gateway, MXC, GPU, or upgrade behavior"
+        ]
+      }
+    },
+    {
+      "id": "windows-wsl-mxc",
+      "displayName": "MXC-capable Windows and WSL",
+      "purpose": "Prove Gateway to Windows node system.run containment through a real WSL Gateway on a host where MXC and AppContainer execute rather than skip.",
+      "scheduler": {
+        "runnerClass": "windows-wsl-mxc",
+        "dispatch": "maintainer-scheduled",
+        "availability": "capacity-dependent",
+        "requiresMaintainerApproval": true
+      },
+      "requiredCapabilities": [
+        "windows-11",
+        "wsl2",
+        "mxc-appcontainer",
+        "interactive-desktop",
+        "loopback-networking",
+        "clean-restorable-state"
+      ],
+      "authoritativeCommands": [
+        {
+          "id": "run-mxc-e2e",
+          "kind": "repository",
+          "path": "scripts\\validate-mxc-e2e.ps1",
+          "command": ".\\scripts\\validate-mxc-e2e.ps1",
+          "purpose": "Run the formal Gateway to Windows node MXC proof and fail if a required proof skips.",
+          "evidence": "Publish the redacted console log, TRX summary, and the three named proof outcomes."
+        }
+      ],
+      "evidencePolicy": {
+        "collect": [
+          "test names, pass counts, exit codes, duration, and MXC containment markers",
+          "redacted isolated-run logs and TRX files under TestResults\\MxcE2E",
+          "Windows, WSL, architecture, and MXC availability versions"
+        ],
+        "redact": [
+          "Windows user name, machine name, temporary paths, and WSL user name",
+          "command output that contains user content or host-specific paths"
+        ],
+        "neverCollect": [
+          "gateways.json, settings.json, device identity files, or raw approval stores",
+          "gateway tokens, setup codes, private keys, or raw command environment",
+          "an AllowSkip result presented as merge proof"
+        ]
+      },
+      "selection": {
+        "requiredWhen": [
+          "MXC sandboxing, system.run, exec approvals, or Windows command execution changes",
+          "gateway setup or connection changes can alter the MXC execution path"
+        ],
+        "doesNotProve": [
+          "a hosted-runner skip is MXC coverage",
+          "installer, Smart App Control, ARM64, GPU, or visual UI behavior"
+        ]
+      }
+    },
+    {
+      "id": "windows-11-arm64",
+      "displayName": "Native Windows 11 ARM64",
+      "purpose": "Prove native ARM64 build, packaging dependencies, launch, WebView2, and representative tray behavior on ARM64 Windows hardware.",
+      "scheduler": {
+        "runnerClass": "windows-11-arm64",
+        "dispatch": "maintainer-scheduled",
+        "availability": "capacity-dependent",
+        "requiresMaintainerApproval": true
+      },
+      "requiredCapabilities": [
+        "windows-11",
+        "arm64",
+        "interactive-desktop",
+        "webview2-runtime",
+        "dotnet-10",
+        "clean-restorable-state"
+      ],
+      "authoritativeCommands": [
+        {
+          "id": "build-arm64",
+          "kind": "repository",
+          "path": "src\\OpenClaw.Tray.WinUI\\OpenClaw.Tray.WinUI.csproj",
+          "command": "dotnet build .\\src\\OpenClaw.Tray.WinUI\\OpenClaw.Tray.WinUI.csproj -c Release -r win-arm64",
+          "purpose": "Build the native ARM64 tray payload on ARM64 Windows.",
+          "evidence": "Record the build exit code, architecture, and warning/error summary."
+        },
+        {
+          "id": "run-arm64-tray",
+          "kind": "repository",
+          "path": "run-app-local.ps1",
+          "command": ".\\run-app-local.ps1 -NoBuild -Configuration Release -RuntimeIdentifier win-arm64 -Isolated -AllowNonMain",
+          "purpose": "Launch the current native tray build with isolated state.",
+          "evidence": "Capture process architecture and consented screenshots of the tray, Settings, and a WebView2-backed surface."
+        }
+      ],
+      "evidencePolicy": {
+        "collect": [
+          "OS build, PROCESSOR_ARCHITECTURE, runtime identifier, build result, and process architecture",
+          "native dependency presence and public signature metadata for official payloads",
+          "consented screenshots of representative native and WebView2 surfaces"
+        ],
+        "redact": [
+          "Windows user name, machine name, user-profile paths, and unrelated tray icons",
+          "gateway endpoints, session names, and user-authored chat content"
+        ],
+        "neverCollect": [
+          "gateway tokens, setup codes, private keys, or device identity files",
+          "full environment dumps or unrelated desktop screenshots",
+          "x64 emulation results presented as native ARM64 proof"
+        ]
+      },
+      "selection": {
+        "requiredWhen": [
+          "native dependencies, runtime identifiers, WebView2, architecture-specific packaging, or ARM64 behavior changes",
+          "a release candidate must make a native ARM64 runtime claim"
+        ],
+        "doesNotProve": [
+          "GitHub ARM64 compilation alone proves interactive runtime behavior",
+          "DGX, Blackwell, MXC, Smart App Control, or upgrade behavior"
+        ]
+      }
+    },
+    {
+      "id": "windows-wsl-dgx-blackwell",
+      "displayName": "Windows and WSL with DGX or Blackwell GPU",
+      "purpose": "Prove local AI GPU detection, setup, restart, and representative inference against a WSL-visible NVIDIA DGX or Blackwell device.",
+      "scheduler": {
+        "runnerClass": "windows-wsl-dgx-blackwell",
+        "dispatch": "maintainer-scheduled",
+        "availability": "capacity-dependent",
+        "requiresMaintainerApproval": true
+      },
+      "requiredCapabilities": [
+        "windows-11",
+        "wsl2",
+        "nvidia-dgx-or-blackwell",
+        "wsl-gpu-paravirtualization",
+        "nvidia-smi",
+        "clean-restorable-state"
+      ],
+      "authoritativeCommands": [
+        {
+          "id": "record-gpu-model",
+          "kind": "host",
+          "command": "wsl.exe -d $env:OPENCLAW_PROOF_DISTRO -- nvidia-smi --query-gpu=name,driver_version --format=csv,noheader",
+          "purpose": "Confirm that the selected WSL distro can see the expected DGX or Blackwell GPU.",
+          "evidence": "Record GPU model and driver version only."
+        },
+        {
+          "id": "run-local-ai-gpu-tests",
+          "kind": "proof-test",
+          "path": "scripts\\run-proof-tests.ps1",
+          "command": ".\\scripts\\run-proof-tests.ps1 -Project 'tests\\OpenClaw.SetupEngine.Tests\\OpenClaw.SetupEngine.Tests.csproj' -Filter 'FullyQualifiedName~LocalAiGpu' -ResultName 'local-ai-gpu'",
+          "purpose": "Run focused local AI GPU setup and restart policy tests before hardware proof.",
+          "evidence": "Publish the nonzero test count, exit status, and local-ai-gpu.trx."
+        },
+        {
+          "id": "exercise-local-ai",
+          "kind": "manual",
+          "command": "Use isolated tray state to install or select the local AI provider, restart its managed runtime, and send a fixed non-sensitive prompt.",
+          "purpose": "Prove the current build reaches real GPU-backed inference after setup and restart.",
+          "evidence": "Capture redacted provider status, model identifier, bounded response timing, and GPU utilization summary."
+        }
+      ],
+      "evidencePolicy": {
+        "collect": [
+          "GPU product name, driver version, WSL version, model identifier, and coarse utilization",
+          "focused test counts, setup outcome, restart outcome, and bounded inference timing",
+          "redacted diagnostics from isolated tray and WSL state"
+        ],
+        "redact": [
+          "GPU UUID, serial number, machine name, WSL user, and user-profile paths",
+          "model prompts and responses except the fixed reviewed proof prompt"
+        ],
+        "neverCollect": [
+          "API keys, model service credentials, gateway tokens, setup codes, or private keys",
+          "nvidia-smi process lists, full environment dumps, or arbitrary local model content",
+          "CPU fallback presented as DGX or Blackwell GPU proof"
+        ]
+      },
+      "selection": {
+        "requiredWhen": [
+          "local AI GPU detection, GPU setup, managed model routing, or GPU restart behavior changes",
+          "a release candidate must claim DGX or Blackwell compatibility"
+        ],
+        "doesNotProve": [
+          "mocked GPU unit tests are hardware inference proof",
+          "generic ARM64, MXC, Smart App Control, installer, or gateway pairing behavior"
+        ]
+      }
+    },
+    {
+      "id": "windows-clean-installer-upgrade",
+      "displayName": "Clean Windows installer and upgrade",
+      "purpose": "Prove clean install, previous-version upgrade, current-version repair, and uninstall behavior with exact official artifacts on a restorable Windows host.",
+      "scheduler": {
+        "runnerClass": "windows-clean-installer-upgrade",
+        "dispatch": "maintainer-scheduled",
+        "availability": "capacity-dependent",
+        "requiresMaintainerApproval": true
+      },
+      "requiredCapabilities": [
+        "windows-11",
+        "clean-restorable-state",
+        "interactive-desktop",
+        "official-signed-installers",
+        "administrator-install-context",
+        "network-capture-disabled"
+      ],
+      "authoritativeCommands": [
+        {
+          "id": "verify-installer-signatures",
+          "kind": "host",
+          "command": "$env:OPENCLAW_PROOF_OLD_INSTALLER, $env:OPENCLAW_PROOF_NEW_INSTALLER | Get-AuthenticodeSignature | Select-Object Path, Status, @{n='Subject';e={$_.SignerCertificate.Subject}}",
+          "purpose": "Bind the run to two exact signed installer artifacts.",
+          "evidence": "Record file names, SHA-256 values, versions, signature status, and public signer subject."
+        },
+        {
+          "id": "run-installer-source-assertions",
+          "kind": "proof-test",
+          "path": "scripts\\run-proof-tests.ps1",
+          "command": ".\\scripts\\run-proof-tests.ps1 -Project 'tests\\OpenClaw.Tray.Tests\\OpenClaw.Tray.Tests.csproj' -Filter 'FullyQualifiedName~InstallerIssAssertionTests' -ResultName 'installer-source'",
+          "purpose": "Run current installer source, payload, cleanup, identity, and protocol assertions.",
+          "evidence": "Publish the nonzero test count, exit status, and installer-source.trx."
+        },
+        {
+          "id": "verify-installed-payload",
+          "kind": "repository",
+          "path": "scripts\\Test-ReleaseExecutableSignatures.ps1",
+          "command": ".\\scripts\\Test-ReleaseExecutableSignatures.ps1 -PayloadPath $env:OPENCLAW_PROOF_INSTALL_DIR -RequireSignedOpenClaw",
+          "purpose": "Verify signing policy against the payload installed from the new official artifact.",
+          "evidence": "Record the verifier result and public signer metadata."
+        },
+        {
+          "id": "exercise-upgrade-matrix",
+          "kind": "manual",
+          "command": "Restore the clean snapshot, install $env:OPENCLAW_PROOF_OLD_INSTALLER, seed only reviewed non-secret settings, install $env:OPENCLAW_PROOF_NEW_INSTALLER, launch, repair, uninstall, and verify expected preserved and removed state.",
+          "purpose": "Exercise stateful upgrade behavior that source assertions do not cover.",
+          "evidence": "Capture artifact hashes, exit codes, version transitions, expected state assertions, and consented first-run or upgrade screenshots."
+        }
+      ],
+      "evidencePolicy": {
+        "collect": [
+          "artifact file names, versions, SHA-256 values, signature status, exit codes, and installer assertion results",
+          "explicit assertions for expected preserved settings and removed files",
+          "consented screenshots of clean first run and post-upgrade app version"
+        ],
+        "redact": [
+          "Windows user name, machine name, user-profile paths, and installed unrelated software",
+          "gateway endpoints and any seeded settings not required by the reviewed scenario"
+        ],
+        "neverCollect": [
+          "real user AppData, gateway records, tokens, setup codes, device identities, or private keys",
+          "signing credentials, certificate private material, or release environment variables",
+          "an unsigned local installer presented as official release proof"
+        ]
+      },
+      "selection": {
+        "requiredWhen": [
+          "installer, updater, file layout, setup prerequisites, state migration, repair, or uninstall behavior changes",
+          "a release candidate must claim clean install or upgrade compatibility"
+        ],
+        "doesNotProve": [
+          "installer source assertions alone prove upgrade preservation",
+          "gateway, MXC, GPU, Smart App Control, or native ARM64 behavior"
+        ]
+      }
+    },
+    {
+      "id": "windows-wsl-gateway-e2e",
+      "displayName": "Windows and WSL Gateway end-to-end",
+      "purpose": "Prove product-owned WSL Gateway setup, bootstrap, operator pairing, Windows node pairing, and representative Gateway invocation.",
+      "scheduler": {
+        "runnerClass": "windows-wsl-gateway-e2e",
+        "dispatch": "maintainer-scheduled",
+        "availability": "capacity-dependent",
+        "requiresMaintainerApproval": true
+      },
+      "requiredCapabilities": [
+        "windows-11",
+        "wsl2",
+        "interactive-desktop",
+        "loopback-networking",
+        "clean-restorable-state",
+        "node-22"
+      ],
+      "authoritativeCommands": [
+        {
+          "id": "run-gateway-product-path",
+          "kind": "proof-test",
+          "path": "scripts\\run-proof-tests.ps1",
+          "command": "$env:OPENCLAW_RUN_E2E = '1'; .\\scripts\\run-proof-tests.ps1 -Project 'tests\\OpenClaw.E2ETests\\OpenClaw.E2ETests.csproj' -Filter 'FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests' -ResultName 'gateway-setup-connect' -RuntimeIdentifier win-x64",
+          "purpose": "Run the current real WSL Gateway setup, bootstrap, pairing, and node invocation E2E class.",
+          "evidence": "Publish the nonzero test count, gateway-setup-connect.trx, and redacted loopback diagnostics emitted by the E2E run."
+        }
+      ],
+      "evidencePolicy": {
+        "collect": [
+          "exact Gateway and Node versions, protocol version, test outcomes, and pairing state names",
+          "gateway-setup-connect.trx, aggregate test counts, and redacted loopback-only network diagnostics",
+          "representative command name, status, and duration without arguments or payload"
+        ],
+        "redact": [
+          "Windows and WSL user names, machine name, user-profile paths, and gateway record identifiers",
+          "session names, command arguments, response content, and endpoint details beyond loopback port"
+        ],
+        "neverCollect": [
+          "setup codes, bootstrap or device tokens, private keys, gateways.json, or settings.json",
+          "raw QR payloads, device identity files, or arbitrary command output",
+          "PreflightOnly or a skipped pairing stage presented as complete Gateway proof"
+        ]
+      },
+      "selection": {
+        "requiredWhen": [
+          "WSL Gateway setup, bootstrap, pairing, reconnect, recovery, protocol, or Gateway-mediated node behavior changes",
+          "a Gateway release candidate is promoted for Windows compatibility"
+        ],
+        "doesNotProve": [
+          "unit tests or local MCP invocation prove the real Gateway path",
+          "MXC containment unless windows-wsl-mxc also runs",
+          "installer, Smart App Control, GPU, ARM64, or visual acceptance"
+        ]
+      }
+    },
+    {
+      "id": "windows-winui-interactive",
+      "displayName": "Interactive Windows WinUI",
+      "purpose": "Collect current-head visible proof for changed tray, Settings, onboarding, chat, canvas, Command Center, accessibility, or permission behavior.",
+      "scheduler": {
+        "runnerClass": "windows-winui-interactive",
+        "dispatch": "maintainer-scheduled",
+        "availability": "capacity-dependent",
+        "requiresMaintainerApproval": true
+      },
+      "requiredCapabilities": [
+        "windows-11",
+        "interactive-desktop",
+        "webview2-runtime",
+        "computer-use",
+        "isolated-tray-data",
+        "screen-capture-consent"
+      ],
+      "authoritativeCommands": [
+        {
+          "id": "launch-isolated-tray",
+          "kind": "repository",
+          "path": "run-app-local.ps1",
+          "command": ".\\run-app-local.ps1 -Isolated -AllowNonMain",
+          "purpose": "Launch the current worktree build without mutating real tray settings.",
+          "evidence": "Record the commit, isolated data directory class, process start result, and consented screenshots of the changed state."
+        },
+        {
+          "id": "run-accessibility-scan",
+          "kind": "proof-test",
+          "path": "scripts\\run-proof-tests.ps1",
+          "command": ".\\scripts\\run-proof-tests.ps1 -Project 'tests\\OpenClaw.Tray.UITests\\OpenClaw.Tray.UITests.csproj' -Filter 'Category=Accessibility' -ResultName 'winui-accessibility' -RuntimeIdentifier win-x64",
+          "purpose": "Run the existing real-process accessibility quality gate for UI changes.",
+          "evidence": "Publish the nonzero test count, winui-accessibility.trx, and Axe finding summaries."
+        },
+        {
+          "id": "exercise-changed-ui",
+          "kind": "manual",
+          "command": "Use computer-use against the isolated current-head app to exercise the changed path and capture only the relevant app window.",
+          "purpose": "Show the active changed state rather than an adjacent or empty UI.",
+          "evidence": "Attach focused screenshots or video with exact reproduction steps and observed result."
+        }
+      ],
+      "evidencePolicy": {
+        "collect": [
+          "current commit, OS build, app version, exact reproduction steps, and accessibility summary",
+          "focused screenshots or video of the OpenClaw app window with user consent",
+          "redacted UI diagnostics containing state names, counts, and coarse error categories"
+        ],
+        "redact": [
+          "user-authored chat, session titles, gateway endpoints, Windows user name, and machine name",
+          "unrelated windows, desktop notifications, tray icons, and user-profile paths"
+        ],
+        "neverCollect": [
+          "tokens, setup codes, private keys, device identities, raw settings, or gateway files",
+          "full-desktop capture when an app-window capture is sufficient",
+          "screenshots from a different commit presented as current-head proof"
+        ]
+      },
+      "selection": {
+        "requiredWhen": [
+          "tray, Settings, onboarding, chat, canvas, Command Center, permissions, diagnostics, or accessibility behavior changes",
+          "automated tests cannot directly show the user-visible changed state"
+        ],
+        "doesNotProve": [
+          "a screenshot alone proves Gateway, MCP, installer, MXC, GPU, or ARM64 behavior",
+          "unit tests alone are visual acceptance"
+        ]
+      }
+    }
+  ]
+}

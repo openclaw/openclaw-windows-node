@@ -848,6 +848,67 @@ public class McpToolBridgeTests
     }
 
     [Fact]
+    public async Task ToolsList_OllamaModels_HasCuratedDescription()
+    {
+        var caps = new List<INodeCapability> { new FakeCapability("local-inference", "ollama.models") };
+        var bridge = CreateBridge(caps);
+        var resp = await bridge.HandleRequestAsync(@"{""jsonrpc"":""2.0"",""id"":1,""method"":""tools/list""}");
+
+        using var doc = JsonDocument.Parse(resp!);
+        var description = doc.RootElement.GetProperty("result")
+            .GetProperty("tools")[0]
+            .GetProperty("description")
+            .GetString()!;
+
+        Assert.Contains("Ollama", description);
+        Assert.Contains("Read-only", description, System.StringComparison.OrdinalIgnoreCase);
+        // Privacy: must mention the opt-in gate so MCP clients know this
+        // is not always available.
+        Assert.Contains("NodeOllamaInferenceEnabled", description);
+        Assert.DoesNotContain("local-inference capability:", description);
+    }
+
+    [Fact]
+    public async Task ToolsList_OllamaChat_HasCuratedDescription()
+    {
+        var caps = new List<INodeCapability> { new FakeCapability("local-inference", "ollama.chat") };
+        var bridge = CreateBridge(caps);
+        var resp = await bridge.HandleRequestAsync(@"{""jsonrpc"":""2.0"",""id"":1,""method"":""tools/list""}");
+
+        using var doc = JsonDocument.Parse(resp!);
+        var description = doc.RootElement.GetProperty("result")
+            .GetProperty("tools")[0]
+            .GetProperty("description")
+            .GetString()!;
+
+        Assert.Contains("prompt", description, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Privacy", description);
+        Assert.Contains("NodeOllamaInferenceEnabled", description);
+    }
+
+    [Fact]
+    public async Task ToolsList_Ollama_Absent_WhenOllamaCapabilityNotRegistered()
+    {
+        // Ollama capability is gated by NodeOllamaInferenceEnabled in
+        // NodeService; when disabled, no OllamaCapability is constructed
+        // and tools/list must omit both ollama.* tools.
+        var caps = new List<INodeCapability>
+        {
+            new FakeCapability("device", "device.status"),
+        };
+        var bridge = CreateBridge(caps);
+        var resp = await bridge.HandleRequestAsync(@"{""jsonrpc"":""2.0"",""id"":1,""method"":""tools/list""}");
+
+        using var doc = JsonDocument.Parse(resp!);
+        var toolNames = new HashSet<string>();
+        foreach (var t in doc.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray())
+            toolNames.Add(t.GetProperty("name").GetString()!);
+
+        Assert.DoesNotContain("ollama.models", toolNames);
+        Assert.DoesNotContain("ollama.chat", toolNames);
+    }
+
+    [Fact]
     public async Task ToolsList_SystemRun_Present_WhenSystemCapabilityIncludesRunCommands()
     {
         // Default SystemCapability (includeRunCommands: true) — the

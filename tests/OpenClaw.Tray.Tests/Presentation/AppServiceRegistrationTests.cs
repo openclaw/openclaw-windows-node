@@ -2,6 +2,7 @@ using System.IO;
 using Microsoft.Extensions.DependencyInjection;
 using OpenClaw.Shared;
 using OpenClaw.Shared.ExecApprovals;
+using OpenClaw.Shared.Inference;
 using OpenClawTray.Chat;
 using OpenClawTray.Presentation;
 using OpenClawTray.Services;
@@ -68,6 +69,10 @@ public sealed class AppServiceRegistrationTests
             Assert.Same(settings, provider.GetRequiredService<SettingsManager>());
             Assert.Same(execApprovalsStore, provider.GetRequiredService<IExecApprovalsPresentationStore>());
             Assert.Same(runtimeHost, provider.GetRequiredService<IPermissionsPageRuntimeHost>());
+            Assert.IsType<CudaHostHardwareProbe>(provider.GetRequiredService<IHostHardwareProbe>());
+            Assert.Same(
+                provider.GetRequiredService<IHostHardwareProbe>(),
+                provider.GetRequiredService<IHostHardwareProbe>());
             Assert.Same(provider.GetRequiredService<ISettingsStore>(), provider.GetRequiredService<ISettingsStore>());
             Assert.Same(provider.GetRequiredService<IPermissionsPageRuntimeSource>(), provider.GetRequiredService<IPermissionsPageRuntimeSource>());
         }

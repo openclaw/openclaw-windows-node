@@ -124,12 +124,20 @@ internal sealed partial class ChatComposerController : IDisposable
     /// <summary>Handles a session-picker selection. Reuses the same handoff delegate
     /// the lifecycle "/new" flow uses to select a freshly created session. No-ops
     /// after disposal.</summary>
-    public void SelectChannel(string threadId)
-    {
-        if (_disposed)
-            return;
+    public void SelectChannel(string threadId) => TrySelectChannel(threadId);
 
-        _selectedSessionHandoff?.Invoke(threadId);
+    /// <summary>Returns false until the root is ready, or after disposal, so an
+    /// external host can retain its initial-selection handoff instead.</summary>
+    internal bool TrySelectChannel(string threadId)
+    {
+        if (_disposed || _selectedSessionHandoff is null)
+            return false;
+
+        _selectedSessionHandoff(threadId);
+        if (_disposed)
+            return false;
+        _hostActions.SessionSelected?.Invoke(threadId);
+        return true;
     }
 
     /// <summary>Full composer send workflow: local admission first, snapshot of draft
@@ -256,11 +264,16 @@ internal sealed partial class ChatComposerController : IDisposable
                     return false;
             }
 
+            if (command == ChatLifecycleCommandKind.New)
+                _hostActions.SessionNavigationStarting?.Invoke();
+            if (!StillLive())
+                return false;
+
             var result = await _port.ExecuteLifecycleCommandAsync(threadId, command).ConfigureAwait(true);
             if (!StillLive())
                 return false;
             if (result.Succeeded && result.NewSessionKey is { } sessionKey)
-                _selectedSessionHandoff?.Invoke(sessionKey);
+                TrySelectChannel(sessionKey);
             return result.Succeeded;
         }
 
@@ -290,9 +303,7 @@ internal sealed partial class ChatComposerController : IDisposable
 
     public void SetModel(string model)
     {
-        if (_disposed)
-            return;
-        if (_vm.Inputs?.CurrentThread.Id is not { } threadId)
+        if (!TryGetSessionOptionThread(out var threadId))
             return;
 
         FireAndForget(_ => _port.SetModelAsync(threadId, model, _lifetimeToken));
@@ -300,9 +311,7 @@ internal sealed partial class ChatComposerController : IDisposable
 
     public void ClearModel()
     {
-        if (_disposed)
-            return;
-        if (_vm.Inputs?.CurrentThread.Id is not { } threadId)
+        if (!TryGetSessionOptionThread(out var threadId))
             return;
 
         FireAndForget(_ => _port.ClearModelAsync(threadId, _lifetimeToken));
@@ -310,12 +319,37 @@ internal sealed partial class ChatComposerController : IDisposable
 
     public void SetThinkingLevel(string level)
     {
-        if (_disposed)
+        if (!TryGetSessionOptionThread(out var threadId))
             return;
-        if (_vm.Inputs?.CurrentThread.Id is not { } threadId)
+        if (_vm.Inputs?.ThinkingProfile?.Levels?.Any(option => option.Id == level) != true)
+        {
+            System.Diagnostics.Trace.WriteLine("[chat] Thinking change ignored because the current profile does not advertise that choice.");
             return;
+        }
 
         FireAndForget(_ => _port.SetThinkingLevelAsync(threadId, level, _lifetimeToken));
+    }
+
+    public void ClearThinkingLevel()
+    {
+        if (!TryGetSessionOptionThread(out var threadId))
+            return;
+
+        FireAndForget(_ => _port.ClearThinkingLevelAsync(threadId, _lifetimeToken));
+    }
+
+    private bool TryGetSessionOptionThread(out string threadId)
+    {
+        threadId = string.Empty;
+        if (_disposed || _vm.Inputs is not { } inputs)
+            return false;
+        if (!inputs.CanChangeSessionOptions)
+        {
+            System.Diagnostics.Trace.WriteLine("[chat] Session option change ignored while disconnected or message options are disabled.");
+            return false;
+        }
+        threadId = inputs.CurrentThread.Id;
+        return true;
     }
 
     /// <summary>Requests a command-catalog refresh. Assigns a monotonic operation ID
@@ -439,6 +473,24 @@ internal sealed partial class ChatComposerController : IDisposable
             cancellation = _voiceCancellation;
         }
 
+        TryCancel(cancellation);
+    }
+
+    /// <summary>Suspends hidden-host capture without accepting a late transcript
+    /// or discarding the composer's existing draft and attachments.</summary>
+    internal void CancelVoiceRecording()
+    {
+        CancellationTokenSource? cancellation;
+        lock (_operationGate)
+        {
+            if (_disposed)
+                return;
+            cancellation = _voiceCancellation;
+            _voiceCancellation = null;
+            _voiceOperation++;
+            _voiceStopOperation = 0;
+            _vm.SetRecording(false);
+        }
         TryCancel(cancellation);
     }
 

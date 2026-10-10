@@ -41,7 +41,11 @@ public sealed class CreateWslInstanceStep : SetupStep
 
         ctx.Logger.Info($"Creating clean app-owned WSL distro '{distro}' from '{baseDistro}' at '{installPath}'");
 
-        var existing = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--list", "--quiet"], TimeSpan.FromSeconds(15), ct: ct);
+        var existing = await ctx.Commands.RunAsyncAllowingInheritedPipeHandleEscape(
+            WslConstants.WslExePath,
+            ["--list", "--quiet"],
+            TimeSpan.FromSeconds(15),
+            ct: ct);
         if (existing.ExitCode != 0)
             return StepResult.Fail($"Failed to list WSL distros before creating '{distro}': {existing.Stderr}");
 
@@ -51,6 +55,24 @@ public sealed class CreateWslInstanceStep : SetupStep
         var pathCheck = EnsureInstallPathReady(installPath);
         if (!pathCheck.IsSuccess)
             return pathCheck;
+
+        try
+        {
+            await ManagedDistroOwnership.WriteMarkerAsync(
+                ctx.LocalDataDir,
+                distro,
+                installPath,
+                ct);
+        }
+        catch (Exception ex) when (
+            ex is IOException
+            or UnauthorizedAccessException
+            or ArgumentException
+            or NotSupportedException)
+        {
+            return StepResult.Fail(
+                $"OpenClaw could not record ownership before creating WSL distro '{distro}': {ex.Message}");
+        }
 
         Directory.CreateDirectory(Path.GetDirectoryName(installPath)!);
 
@@ -108,7 +130,11 @@ public sealed class CreateWslInstanceStep : SetupStep
 
     private static async Task<StepResult> VerifyFreshDistro(SetupContext ctx, string distro, string installPath, CancellationToken ct)
     {
-        var list = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--list", "--quiet"], TimeSpan.FromSeconds(15), ct: ct);
+        var list = await ctx.Commands.RunAsyncAllowingInheritedPipeHandleEscape(
+            WslConstants.WslExePath,
+            ["--list", "--quiet"],
+            TimeSpan.FromSeconds(15),
+            ct: ct);
         if (list.ExitCode != 0 || !WslInstallSupport.ContainsDistro(list.Stdout, distro))
         {
             var environmentIssue = await PreflightWslStep.DetectEnvironmentIssueAsync(ctx, ct);
@@ -116,7 +142,7 @@ public sealed class CreateWslInstanceStep : SetupStep
             return StepResult.Fail(environmentIssue != null ? $"{baseMessage} {environmentIssue}" : baseMessage);
         }
 
-        var verbose = await ctx.Commands.RunAsync(
+        var verbose = await ctx.Commands.RunAsyncAllowingInheritedPipeHandleEscape(
             WslConstants.WslExePath,
             ["--list", "--verbose"],
             DistroVersionVerificationTimeout,
@@ -164,7 +190,11 @@ public sealed class CreateWslInstanceStep : SetupStep
     {
         var cleanupErrors = new List<string>();
         var installPathExists = Directory.Exists(installPath) || File.Exists(installPath);
-        var list = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--list", "--quiet"], TimeSpan.FromSeconds(15), ct: ct);
+        var list = await ctx.Commands.RunAsyncAllowingInheritedPipeHandleEscape(
+            WslConstants.WslExePath,
+            ["--list", "--quiet"],
+            TimeSpan.FromSeconds(15),
+            ct: ct);
         var registrationStateKnown = list.ExitCode == 0;
         var distroExists = registrationStateKnown && WslInstallSupport.ContainsDistro(list.Stdout, distro);
         var canDeleteInstallPath = registrationStateKnown && !distroExists;
@@ -200,9 +230,16 @@ public sealed class CreateWslInstanceStep : SetupStep
                 cleanupErrors.Add(delete.Message ?? "install directory cleanup failed");
         }
 
-        return cleanupErrors.Count == 0
-            ? ""
-            : $" Partial app-owned distro cleanup also failed: {string.Join("; ", cleanupErrors)}";
+        if (cleanupErrors.Count == 0)
+        {
+            ManagedDistroOwnership.DeleteMarker(
+                ctx.LocalDataDir,
+                distro,
+                installPath);
+            return "";
+        }
+
+        return $" Partial app-owned distro cleanup also failed: {string.Join("; ", cleanupErrors)}";
     }
 
     private static async Task<bool> TryUnregisterPartialInstall(SetupContext ctx, string distro, List<string> cleanupErrors, CancellationToken ct)

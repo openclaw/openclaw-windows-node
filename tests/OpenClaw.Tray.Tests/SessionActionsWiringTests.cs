@@ -12,6 +12,30 @@ namespace OpenClaw.Tray.Tests;
 public sealed class SessionActionsWiringTests
 {
     [Fact]
+    public void ArchiveBrowsingBelongsToSettingsNotWorkspace()
+    {
+        var workspaceXaml = ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml");
+        var workspace = ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml.cs");
+        var settingsXaml = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "SessionsPage.xaml");
+        var settings = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "SessionsPage.xaml.cs");
+        Assert.DoesNotContain("WorkspaceArchivedToggle", workspaceXaml);
+        Assert.DoesNotContain("ArchivedHeader", workspaceXaml);
+        Assert.DoesNotContain("WorkspaceArchivedSession", workspaceXaml);
+        Assert.DoesNotContain("_archived", workspace);
+        Assert.DoesNotContain("ArchivedSessionsSource", workspace);
+        Assert.Contains("SessionsPageArchived", settingsXaml);
+        Assert.Contains("OnUnarchiveSession", settingsXaml);
+        Assert.Contains("new ArchivedSessionsSource", settings);
+        Assert.Contains("new WorkspaceSessionOperation", settings);
+        Assert.Contains("new SessionPatch { Archived = false }", settings);
+        var document = XDocument.Parse(settingsXaml);
+        var section = Assert.Single(document.Descendants(),
+            element => element.Attributes().Any(attribute => attribute.Name.LocalName == "Name" && attribute.Value == "ArchivedSection"));
+        Assert.Equal("StackPanel", section.Parent!.Name.LocalName);
+        Assert.DoesNotContain(section.Ancestors(), element => element.Name.LocalName == "Button");
+    }
+
+    [Fact]
     public void SessionsPage_ConfirmsDestructiveActions_ViaPlanner()
     {
         var source = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "SessionsPage.xaml.cs");

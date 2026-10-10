@@ -43,8 +43,40 @@ public static class LocalInferenceEligibility
     public const long RuntimeWorkspaceReserveBytes = LocalModelCatalog.RuntimeWorkspaceReserveBytes;
     public static Version MinimumNvidiaDriverVersion { get; } = new(615, 0);
 
-    public static long GetRequiredMemoryBytes(LocalModelInfo model) =>
-        LocalInferenceQualificationPolicy.GetRequiredMemoryBytes(model);
+    public static long GetRequiredMemoryBytes(
+        LocalModelInfo model,
+        LocalInferenceRunProfile profile) =>
+        LocalInferenceQualificationPolicy.GetRequiredMemoryBytes(model, profile);
+
+    /// <summary>
+    /// Device eligibility for deciding whether Local AI stays available, given the model
+    /// already configured on this machine.
+    /// </summary>
+    /// <remarks>
+    /// A SKU with no recommended default is a statement about what to install by default,
+    /// not about what the device can run. Gating availability purely on the default pick
+    /// would switch Local AI off on a setup rerun for a machine that already has a working
+    /// configured model, so once a model is configured this reports on that model: a
+    /// selection that still passes the full capacity fit-test is retained, and one that does
+    /// not carries its own failure (unknown model, or the model name with its required and
+    /// detected memory) rather than the SKU's generic no-recommendation reason. With no model
+    /// configured, the device result stands and fresh setup is unchanged.
+    /// </remarks>
+    public static LocalInferenceEligibilityResult EvaluateForConfiguredAvailability(
+        HostHardwareInfo hardware,
+        string? configuredModelId)
+    {
+        ArgumentNullException.ThrowIfNull(hardware);
+        LocalInferenceEligibilityResult device = Evaluate(hardware);
+        if (device.CanInstall ||
+            device.SelectionFailureCode != LocalInferenceSelectionFailureCode.NotRecommendedForSku ||
+            string.IsNullOrWhiteSpace(configuredModelId))
+        {
+            return device;
+        }
+
+        return Evaluate(hardware, configuredModelId);
+    }
 
     public static LocalInferenceEligibilityResult Evaluate(
         HostHardwareInfo hardware,
@@ -52,7 +84,25 @@ public static class LocalInferenceEligibility
     {
         ArgumentNullException.ThrowIfNull(hardware);
 
-        LocalInferenceSelectionResult selection = LocalInferenceSelector.Select(hardware, requestedModelId);
+        return Evaluate(hardware, LocalInferenceSelector.Select(hardware, requestedModelId));
+    }
+
+    /// <summary>
+    /// Evaluates the explicit model recorded by an existing installation receipt,
+    /// including a retired model that is no longer offered for fresh selection.
+    /// </summary>
+    public static LocalInferenceEligibilityResult EvaluateInstalled(
+        HostHardwareInfo hardware,
+        string installedModelId)
+    {
+        ArgumentNullException.ThrowIfNull(hardware);
+        return Evaluate(hardware, LocalInferenceSelector.SelectInstalled(hardware, installedModelId));
+    }
+
+    private static LocalInferenceEligibilityResult Evaluate(
+        HostHardwareInfo hardware,
+        LocalInferenceSelectionResult selection)
+    {
         if (!selection.IsSelected || selection.Plan is null)
         {
             return Unsupported(
@@ -61,10 +111,18 @@ public static class LocalInferenceEligibility
         }
 
         LocalInferencePlan plan = selection.Plan;
-        long requiredMemoryBytes = GetRequiredMemoryBytes(plan.Model);
-        CandidateAssessment? selected = hardware.NvidiaGpus
+        long requiredMemoryBytes = GetRequiredMemoryBytes(plan.Model, plan.Profile);
+        // A plan bound to one adapter (an RTX Spark SKU recipe) must be assessed only
+        // against that adapter. Ranking every NVIDIA GPU here would let the recipe
+        // chosen for the Spark be reported against, and then launched on, a different
+        // GPU on a mixed host.
+        IEnumerable<GpuInfo> candidateGpus = plan.BoundGpuStableId is { Length: > 0 } boundId
+            ? hardware.NvidiaGpus.Where(gpu => string.Equals(gpu.StableId, boundId, StringComparison.Ordinal))
+            : hardware.NvidiaGpus;
+        CandidateAssessment? selected = candidateGpus
             .Select(gpu => Assess(gpu, plan.Runtime, requiredMemoryBytes))
             .OrderBy(candidate => StatusRank(candidate.Status))
+            .ThenBy(candidate => DefinitivenessRank(candidate.FailureCode))
             .ThenByDescending(candidate => candidate.FreeMemoryBytes.HasValue)
             .ThenByDescending(candidate => candidate.FreeMemoryBytes ?? long.MinValue)
             .ThenByDescending(candidate => candidate.TotalMemoryBytes)
@@ -118,16 +176,6 @@ public static class LocalInferenceEligibility
                 freeMemoryBytes);
         }
 
-        if (!Version.TryParse(gpu.DriverVersion, out Version? driverVersion) ||
-            driverVersion < MinimumNvidiaDriverVersion)
-        {
-            return UnsupportedCandidate(
-                gpu,
-                LocalInferenceEligibilityFailureCode.DriverTooOld,
-                totalMemoryBytes,
-                freeMemoryBytes);
-        }
-
         if (gpu.CudaMajorVersion < runtime.CudaVersion.Major)
         {
             return UnsupportedCandidate(
@@ -176,6 +224,15 @@ public static class LocalInferenceEligibility
         LocalInferenceEligibilityStatus.EligibleButBusy => 1,
         _ => 2,
     };
+
+    /// <summary>
+    /// Ranks an inconclusive candidate ahead of a definitively incompatible one.
+    /// A GPU whose facts could not be read might still work, so reporting the
+    /// retryable state keeps recheck available instead of showing a permanent
+    /// "this device cannot run Local AI" verdict from a different adapter.
+    /// </summary>
+    private static int DefinitivenessRank(LocalInferenceEligibilityFailureCode failureCode) =>
+        failureCode == LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete ? 0 : 1;
 
     private sealed record CandidateAssessment(
         GpuInfo Gpu,

@@ -1,3 +1,22 @@
+// <summary>
+// Shared runtime state models for the local AI subsystem: runtime/ownership/model-availability
+// enums, LocalAiModelEvidence (digest-backed model verification), LocalAiRuntimeSnapshot
+// (published state including process and KV-cache details), its change-event args, and the
+// ILocalAiRuntime contract that LlamaServerRuntimeService implements.
+// </summary>
+// Usage:
+//   runtime.StateChanged += (_, args) =>
+//   {
+//       LocalAiRuntimeSnapshot s = args.Snapshot;
+//       Log($"{s.State} ownership={s.Ownership} model={s.ModelId} at {s.Endpoint}");
+//       if (s.ModelEvidence.State is
+//           LocalAiModelAvailabilityState.Verified or LocalAiModelAvailabilityState.Loaded)
+//       {
+//           /* ready; Verified is the healthy lazy-unloaded state */
+//       }
+//   };
+using OpenClaw.Shared.Inference.Catalog;
+
 namespace OpenClaw.Connection.LocalAi;
 
 public enum LocalAiRuntimeState
@@ -85,8 +104,16 @@ public sealed record LocalAiRuntimeSnapshot(
     int? ProcessId,
     DateTimeOffset? ProcessStartedAtUtc,
     string? Detail,
-    DateTimeOffset UpdatedAtUtc)
+    DateTimeOffset UpdatedAtUtc,
+    int? ContextLength = null,
+    KvCachePrecision? KeyCachePrecision = null,
+    KvCachePrecision? ValueCachePrecision = null,
+    KvCachePrecision? DraftKeyCachePrecision = null,
+    KvCachePrecision? DraftValueCachePrecision = null)
 {
+    /// <summary>False only when the runtime confirmed publication or terminal route cleanup.</summary>
+    public bool GatewayRouteRequiresResolution { get; init; } = true;
+
     public static LocalAiRuntimeSnapshot Initial(Uri endpoint, DateTimeOffset now) =>
         new(
             LocalAiRuntimeState.Stopped,
@@ -108,9 +135,15 @@ public sealed class LocalAiRuntimeSnapshotChangedEventArgs(LocalAiRuntimeSnapsho
 
 public interface ILocalAiRuntime : IAsyncDisposable
 {
+    bool HasReleasableOwnership => false;
+    Task<LocalAiRuntimeSnapshot> ReleaseOwnershipAsync(CancellationToken cancellationToken = default)
+        => throw new InvalidOperationException("There is no native Local AI ownership to release.");
     LocalAiRuntimeSnapshot Snapshot { get; }
     event EventHandler<LocalAiRuntimeSnapshotChangedEventArgs>? StateChanged;
     Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken = default);
+    Task<LocalAiRuntimeSnapshot> ResumeAsync(CancellationToken cancellationToken = default);
+    Task<LocalAiRuntimeSnapshot> ReconcileStoppedAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(Snapshot);
     Task<LocalAiRuntimeSnapshot> StopAsync(CancellationToken cancellationToken = default);
     Task<LocalAiRuntimeSnapshot> RestartAsync(CancellationToken cancellationToken = default);
     Task<LocalAiRuntimeSnapshot> RefreshAsync(CancellationToken cancellationToken = default);
