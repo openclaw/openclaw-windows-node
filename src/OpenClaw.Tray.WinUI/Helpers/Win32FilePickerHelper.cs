@@ -168,7 +168,7 @@ internal static class Win32FilePickerHelper
     [ComImport, Guid("C0B4E2F3-BA21-4773-8DBA-335EC946EB8B")]
     private class FileSaveDialogClass { }
 
-    [ComImport, Guid("42f85136-db7e-439c-85f1-e4075d135fc8")]
+    [ComImport, Guid("d57c7288-d4ad-4768-be02-9d969532d960")]
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     private interface IFileOpenDialog
     {
