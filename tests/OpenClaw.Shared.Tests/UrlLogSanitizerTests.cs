@@ -40,6 +40,17 @@ public sealed class UrlLogSanitizerTests
     }
 
     [Theory]
+    [InlineData("https://example.com/reset-password%2Fsecret", "https://example.com/reset-password/…")]
+    [InlineData("https://example.com/oauth%3Fcode=secret", "https://example.com/oauth")]
+    [InlineData("https://example.com/cb%23token=secret", "https://example.com/cb")]
+    public void Sanitize_DropsEncodedSeparators(string input, string expected)
+    {
+        var sanitized = UrlLogSanitizer.Sanitize(input);
+        Assert.Equal(expected, sanitized);
+        Assert.DoesNotContain("secret", sanitized, System.StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
     [InlineData(null, "<empty>")]
     [InlineData("", "<empty>")]
     [InlineData("not a url", "<unparseable URL>")]

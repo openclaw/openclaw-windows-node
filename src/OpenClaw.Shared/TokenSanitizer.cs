@@ -538,15 +538,8 @@ public static class TokenSanitizer
         // encoded tail as a single "first segment" and leak past the truncation.
         // Then strip control characters: UnescapeDataString also decodes %0A/%0D/%00/%1B/%09 into
         // raw bytes, which would forge log entries or break JSONL framing if written verbatim.
-        var path = ControlCharPattern.Replace(Uri.UnescapeDataString(uri.AbsolutePath), string.Empty);
-
-        if (string.IsNullOrEmpty(path) || path == "/")
-            return $"{schemePart}://<host>{portPart}/{trailing}";
-
-        var firstSlash = path.IndexOf('/', 1);
-        var firstSegment = firstSlash < 0 ? path : path[..firstSlash];
-        var tail = firstSlash < 0 ? string.Empty : "/…";
-        return $"{schemePart}://<host>{portPart}{firstSegment}{tail}{trailing}";
+        var path = ControlCharPattern.Replace(UrlLogSanitizer.ReduceLoggedPath(uri.AbsolutePath), string.Empty);
+        return $"{schemePart}://<host>{portPart}{path}{trailing}";
     }
 
     private static string RedactLocalPaths(string message)

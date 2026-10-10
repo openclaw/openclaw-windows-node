@@ -592,6 +592,8 @@ public class TokenSanitizerTests
     }
 
     [Theory]
+    [InlineData("Encoded query: https://example.com/oauth%3Fcode=secret end", "secret")]
+    [InlineData("Encoded hash: https://example.com/cb%23token=secret end", "secret")]
     [InlineData("Encoded slash: https://example.com/path%2Fsecret%2Ftoken end", "secret")]
     [InlineData("Lowercase: https://example.com/a%2fb%2ftoken123 end", "token123")]
     public void SanitizeLogMessage_PercentEncodedSlashes_DoNotBypassFirstSegmentTruncation(

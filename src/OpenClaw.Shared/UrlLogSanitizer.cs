@@ -21,13 +21,33 @@ public static class UrlLogSanitizer
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return "<unparseable URL>";
 
         var origin = uri.GetLeftPart(UriPartial.Authority);
-        var path = uri.AbsolutePath;
-        if (string.IsNullOrEmpty(path) || path == "/") return origin + "/";
+        return origin + ReduceLoggedPath(uri.AbsolutePath);
+    }
 
-        // Keep only the first segment so a /reset-password/<token> style path
-        // doesn't leak the bearer-equivalent secret in the segment itself.
+    internal static string ReduceLoggedPath(string absolutePath)
+    {
+        var path = UnescapePath(absolutePath);
+        var cut = path.IndexOfAny(['?', '#']);
+        if (cut >= 0)
+            path = path[..cut];
+        if (string.IsNullOrEmpty(path) || path == "/")
+            return "/";
+
         var firstSlash = path.IndexOf('/', 1);
-        var firstSegment = firstSlash < 0 ? path : path.Substring(0, firstSlash);
-        return origin + firstSegment + (firstSlash < 0 ? string.Empty : "/…");
+        if (firstSlash < 0)
+            return path;
+        return path[..firstSlash] + "/…";
+    }
+
+    private static string UnescapePath(string absolutePath)
+    {
+        try
+        {
+            return Uri.UnescapeDataString(absolutePath);
+        }
+        catch (UriFormatException)
+        {
+            return absolutePath;
+        }
     }
 }
