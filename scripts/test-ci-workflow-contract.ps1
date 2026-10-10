@@ -602,6 +602,11 @@ foreach ($lane in $e2eLanes.GetEnumerator()) {
             "fetch-depth: 0",
             "needs.change-classification.outputs.$($lane.Value.Output) == 'true'",
             "OPENCLAW_RUN_E2E: 1",
+            'matrix: ${{ fromJSON(needs.change-classification.outputs.gateway_matrix) }}',
+            'fail-fast: false',
+            'OPENCLAW_E2E_GATEWAY_VERSION: ${{ matrix.version }}',
+            'GATEWAY_RELEASE_JSON: ${{ toJSON(matrix) }}',
+            "name: e2e-test-results-$($lane.Value.Name)-`${{ matrix.channel }}",
             "./scripts/Invoke-CiE2e.ps1",
             "-Name $($lane.Value.Name)",
             $lane.Value.Filter,
@@ -612,6 +617,20 @@ foreach ($lane in $e2eLanes.GetEnumerator()) {
             -Expected $token `
             -Message "E2E lane '$($lane.Key)' is missing '$token'."
     }
+    $jobHeader = ($job -split '(?m)^    steps:\s*$', 2)[0]
+    Assert-NotContains -Text $jobHeader -Unexpected 'continue-on-error:' `
+        -Message "Both Gateway versions must be required in '$($lane.Key)'."
+    Assert-NotContains -Text $job -Unexpected 'Resolve-CiGateway.ps1' `
+        -Message 'E2E shards must consume the workflow snapshot, never re-resolve moving selectors.'
+}
+$snapshot = Get-StepBlock -Text (Get-JobBlock 'change-classification') -Name 'Snapshot packaged and latest Gateway baselines'
+Assert-Contains -Text $snapshot -Expected './scripts/Resolve-CiGateway.ps1 @arguments' `
+    -Message 'CI must resolve both Gateway baselines once.'
+Assert-NotContains -Text $snapshot -Unexpected 'continue-on-error:' `
+    -Message 'An unresolved baseline must fail CI rather than fall back.'
+foreach ($lane in @('setup_e2e', 'revocation_e2e', 'network_e2e')) {
+    Assert-Contains -Text $snapshot -Expected "steps.classify.outputs.$lane == 'true'" `
+        -Message 'Baseline resolution must run only when an E2E lane needs it.'
 }
 foreach ($proofName in @(
         "RealGateway_SystemRun_ExecutesThroughWindowsNodeMxcSandbox",

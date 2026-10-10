@@ -132,6 +132,27 @@ proof must remain reported as blocked.
 
 ### CI impact fast paths
 
+The setup/connect, revocation recovery and network recovery E2E jobs each run a
+required `Packaged` / `Latest` Gateway matrix with `fail-fast: false`.
+`scripts\Resolve-CiGateway.ps1` resolves both baselines once in change-classification and supplies
+the exact version to the existing candidate-version setup path, so setup and
+assertions use the same version even if the tag moves during a run. No npm
+resolution failure falls back to the Store or another channel. The channel-specific
+artifact includes `gateway-release.json`: npm selector/version/integrity for Latest;
+release tag, packaging commit, MSIX digest, embedded Gateway version/commit/build ID
+and Node runtime for Packaged. Packaged's version comes from the released payload,
+never the MSIX tag or packaging policy. Resolution runs only when E2E is selected.
+Both matrix results contribute to the existing CI Gate.
+
+These are real WSL Gateway-to-Windows-node compatibility lanes, not native MSIX
+runtime proof. The Packaged WSL lane installs the exact corresponding npm version.
+Native developer builds use the verified npm archive for Latest, or released app
+bytes and the release packaging commit for Packaged. `scripts\test-gateway-npm-release.ps1` covers
+channel selection, source/Store overrides, exact pins, archive integrity and
+provenance without network access or changing installed packages.
+`scripts\test-gateway-packaged-release.ps1` covers release/tag resolution, embedded
+payload identity, asset digest, extraction safety and inventory-verified cache reuse.
+
 The `change-classification` job emits explicit booleans for `core_tests`,
 `tray_tests`, `ui_tests`, `setup_e2e`, `revocation_e2e`, `network_e2e`,
 `x64_release`, `arm64_release`, and `full`. Jobs consume those outputs directly.

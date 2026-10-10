@@ -7,8 +7,16 @@ on:
   pull_request:
     branches: [ main, master ]
   workflow_dispatch:
+    inputs:
+      packaging_release:
+        description: 'Exact Gateway packaging release tag (empty selects latest published)'
+        type: string
+        required: false
   workflow_call:
     inputs:
+      packaging_release:
+        type: string
+        required: false
       promotion_alpha:
         type: string
         required: true
@@ -50,6 +58,7 @@ jobs:
       arm64_release: ${{ steps.classify.outputs.arm64_release }}
       full: ${{ steps.classify.outputs.full }}
       promotion_record: ${{ steps.promotion.outputs.record }}
+      gateway_matrix: ${{ steps.gateway.outputs.matrix }}
     steps:
     - uses: actions/checkout@v7
       with:
@@ -113,6 +122,18 @@ jobs:
         }
         "CI change classification: $($impact.classification)" >> $env:GITHUB_STEP_SUMMARY
 
+    - name: Snapshot packaged and latest Gateway baselines
+      id: gateway
+      if: ${{ steps.classify.outputs.setup_e2e == 'true' || steps.classify.outputs.revocation_e2e == 'true' || steps.classify.outputs.network_e2e == 'true' }}
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PACKAGING_RELEASE: ${{ inputs.packaging_release }}
+      run: |
+        $arguments = @{}
+        if ($env:PACKAGING_RELEASE) { $arguments.PackagingRelease = $env:PACKAGING_RELEASE }
+        ./scripts/Resolve-CiGateway.ps1 @arguments
+
   fast-validation:
     runs-on: windows-latest
     steps:
@@ -148,6 +169,14 @@ jobs:
     - name: Test native Gateway source build safety
       shell: pwsh
       run: ./scripts/test-native-gateway-source-build.ps1
+
+    - name: Test Gateway npm release selection
+      shell: pwsh
+      run: ./scripts/test-gateway-npm-release.ps1
+
+    - name: Test packaged Gateway provenance
+      shell: pwsh
+      run: ./scripts/test-gateway-packaged-release.ps1
 
     - name: Validate CI change classifier
       shell: pwsh
@@ -722,13 +751,17 @@ jobs:
         if-no-files-found: warn
 
   setup-e2e:
-    name: Setup and connect E2E
+    name: Setup and connect E2E (${{ matrix.channel }})
     needs: [change-classification, fast-validation]
     if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.fast-validation.result == 'success' && needs.change-classification.outputs.setup_e2e == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.change-classification.outputs.gateway_matrix) }}
     env:
       OPENCLAW_REPO_ROOT: ${{ github.workspace }}
+      OPENCLAW_E2E_GATEWAY_VERSION: ${{ matrix.version }}
     steps:
     - uses: actions/checkout@v7
       with:
@@ -737,6 +770,14 @@ jobs:
         persist-credentials: false
 
     - *promotion-version-tag
+
+    - name: Record exact Gateway baseline
+      shell: pwsh
+      env:
+        GATEWAY_RELEASE_JSON: ${{ toJSON(matrix) }}
+      run: |
+        New-Item -ItemType Directory -Path TestResults/E2E -Force | Out-Null
+        $env:GATEWAY_RELEASE_JSON | Set-Content TestResults/E2E/gateway-release.json
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
@@ -774,19 +815,23 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: e2e-test-results-setup-connect
+        name: e2e-test-results-setup-connect-${{ matrix.channel }}
         path: |
           TestResults/E2E/
         if-no-files-found: warn
 
   revocation-e2e:
-    name: Revocation recovery E2E
+    name: Revocation recovery E2E (${{ matrix.channel }})
     needs: [change-classification, fast-validation]
     if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.fast-validation.result == 'success' && needs.change-classification.outputs.revocation_e2e == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.change-classification.outputs.gateway_matrix) }}
     env:
       OPENCLAW_REPO_ROOT: ${{ github.workspace }}
+      OPENCLAW_E2E_GATEWAY_VERSION: ${{ matrix.version }}
     steps:
     - uses: actions/checkout@v7
       with:
@@ -795,6 +840,14 @@ jobs:
         persist-credentials: false
 
     - *promotion-version-tag
+
+    - name: Record exact Gateway baseline
+      shell: pwsh
+      env:
+        GATEWAY_RELEASE_JSON: ${{ toJSON(matrix) }}
+      run: |
+        New-Item -ItemType Directory -Path TestResults/E2E -Force | Out-Null
+        $env:GATEWAY_RELEASE_JSON | Set-Content TestResults/E2E/gateway-release.json
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
@@ -832,19 +885,23 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: e2e-test-results-revocation-recovery
+        name: e2e-test-results-revocation-recovery-${{ matrix.channel }}
         path: |
           TestResults/E2E/
         if-no-files-found: warn
 
   network-e2e:
-    name: Network recovery E2E
+    name: Network recovery E2E (${{ matrix.channel }})
     needs: [change-classification, fast-validation]
     if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.fast-validation.result == 'success' && needs.change-classification.outputs.network_e2e == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.change-classification.outputs.gateway_matrix) }}
     env:
       OPENCLAW_REPO_ROOT: ${{ github.workspace }}
+      OPENCLAW_E2E_GATEWAY_VERSION: ${{ matrix.version }}
     steps:
     - uses: actions/checkout@v7
       with:
@@ -853,6 +910,14 @@ jobs:
         persist-credentials: false
 
     - *promotion-version-tag
+
+    - name: Record exact Gateway baseline
+      shell: pwsh
+      env:
+        GATEWAY_RELEASE_JSON: ${{ toJSON(matrix) }}
+      run: |
+        New-Item -ItemType Directory -Path TestResults/E2E -Force | Out-Null
+        $env:GATEWAY_RELEASE_JSON | Set-Content TestResults/E2E/gateway-release.json
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
@@ -890,7 +955,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: e2e-test-results-network-recovery
+        name: e2e-test-results-network-recovery-${{ matrix.channel }}
         path: |
           TestResults/E2E/
         if-no-files-found: warn

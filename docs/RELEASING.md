@@ -18,6 +18,32 @@ packages with their matching public certificates, provenance metadata, and
 installation instructions. Unsigned Store packages stay in Actions for manual
 Partner Center submission.
 
+## Gateway compatibility channels
+
+Keep Companion development and compatibility fixes on one branch. There is no
+separate `release/extended-stable` branch to synchronize. Native development
+defaults to npm `latest`; `-GatewayChannel Packaged` on
+`scripts\Build-NativeGatewayFromSource.ps1` or `run-app-local.ps1` selects the latest
+published `openclaw/openclaw-windows-packaging` release while retaining MSIX isolation.
+Use `-PackagingRelease <tag>` to select a specific shipping baseline. Both channels are required in
+the Gateway E2E matrix, from the same Companion commit. Record the resolved exact
+versions from the channel-specific `gateway-release.json` CI artifacts.
+
+CI resolves both baselines once per workflow. Packaged's Gateway version is read
+from the digest-verified released MSIX, not inferred from the MSIX tag or moving
+`release-policy.json`. The release may intentionally ship an older Gateway under a
+newer MSIX version. Workflow dispatch and reusable CI accept `packaging_release`
+for an exact baseline; an empty value selects the latest published release.
+GitHub publication does not establish Store rollout availability.
+
+Native Packaged reuses the released application bytes, with a development launcher
+rebuilt from the exact packaging release commit. The WSL CI lane installs npm at
+the payload's exact Gateway version and proves protocol/version compatibility,
+not byte-identical native MSIX behavior. Keep both lanes even when versions match.
+Store Gateway packaging and release policy remain
+owned by `openclaw/openclaw-windows-packaging`; these development switches neither
+replace the installed Store package nor change WSL setup's npm-latest default.
+
 ## Inno-to-Store migration foundation
 
 Issue #1374 is delivered in two PRs: the preservation/startup foundation, then

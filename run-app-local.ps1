@@ -17,6 +17,11 @@
     launching a stale or experimental worktree. Use -AllowNonMain when you
     intentionally want to preview a PR or feature branch.
 
+    Native development uses an isolated npm-latest MSIX Gateway by default.
+    -GatewayChannel Packaged selects a published packaging release instead. Both use the same
+    Companion source. An explicit OPENCLAW_NATIVE_GATEWAY_DEV_PATCH is reused
+    without rebuilding. Use -UseStoreGateway for the installed Store runtime.
+
 .PARAMETER NoBuild
     Skip the build step and launch the existing Debug output.
 
@@ -58,6 +63,17 @@
 
 .PARAMETER DryRun
     Print the launch command and environment without starting the app.
+
+.PARAMETER GatewayChannel
+    Latest (default) builds/registers npm latest as npm-latest.
+    Packaged uses the published MSIX application payload as the packaged patch.
+
+.PARAMETER PackagingRelease
+    Exact packaging release tag. Requires -GatewayChannel Packaged.
+    Omit to use the latest published GitHub packaging release.
+
+.PARAMETER UseStoreGateway
+    Skip development Gateway packaging and use the installed Store Gateway.
 
 .EXAMPLE
     .\run-app-local.ps1
@@ -104,7 +120,14 @@ param(
 
     [switch]$Wait,
 
-    [switch]$DryRun
+    [switch]$DryRun,
+    [ValidateSet('Latest', 'Packaged')]
+    [string]$GatewayChannel,
+
+    [ValidatePattern('\Av\d{4}\.\d{1,2}\.\d+(?:-\d+)?-msix\.\d+\z')]
+    [string]$PackagingRelease,
+
+    [switch]$UseStoreGateway
 )
 
 $ErrorActionPreference = "Stop"
@@ -151,6 +174,15 @@ if ($branch -ne "main" -and -not $AllowNonMain) {
 if ($PSBoundParameters.ContainsKey("RuntimeIdentifier") -and -not $NoBuild) {
     throw "-RuntimeIdentifier requires -NoBuild. Build the requested RID explicitly before launching it."
 }
+
+Import-Module (Join-Path $repoRoot 'scripts\GatewayNpmRelease.psm1') -Force
+$gatewayArguments = @{}
+if ($PSBoundParameters.ContainsKey('GatewayChannel')) { $gatewayArguments.GatewayChannel = $GatewayChannel }
+if ($PSBoundParameters.ContainsKey('PackagingRelease')) { $gatewayArguments.PackagingRelease = $PackagingRelease }
+$gatewayInput = Resolve-GatewayLaunchInput -UseStoreGateway:$UseStoreGateway @gatewayArguments `
+    -ExistingPatch $env:OPENCLAW_NATIVE_GATEWAY_DEV_PATCH
+$buildGateway = $gatewayInput.Build
+$gatewayPatch = $gatewayInput.Patch
 
 if (-not $NoBuild) {
     $buildArgs = @{
@@ -218,17 +250,22 @@ if ($UseWinApp -and -not (Test-Path $manifestPath)) {
 
 $previousDataDir = $env:OPENCLAW_TRAY_DATA_DIR
 $previousUpdateChannel = $env:OPENCLAW_UPDATE_CHANNEL
+$previousGatewayPatch = $env:OPENCLAW_NATIVE_GATEWAY_DEV_PATCH
 $exitCode = 0
 
 try {
+    $env:OPENCLAW_NATIVE_GATEWAY_DEV_PATCH = $gatewayPatch
     $effectiveDataDir = $null
     if ($DataDir) {
         $effectiveDataDir = Resolve-FullPath $DataDir
-    } elseif ($Isolated) {
+    } elseif ($Isolated -or $gatewayPatch) {
         $repoName = Get-SafePathSegment (Split-Path -Leaf $repoRoot)
         $safeBranch = Get-SafePathSegment $branch
         $repoHash = Get-ShortHash $repoRoot
         $effectiveDataDir = Join-Path $env:TEMP "OpenClawTray\$repoName-$safeBranch-$repoHash"
+        if ($gatewayPatch) {
+            $effectiveDataDir += "-" + (Get-SafePathSegment $gatewayPatch)
+        }
     }
 
     if ($effectiveDataDir) {
@@ -252,6 +289,7 @@ try {
     Write-Host "  Configuration: $Configuration"
     Write-Host "  Identity:      $(if ($actualIdentity -eq 'dev') { 'Dev (opt-in)' } else { 'Release (default)' })"
     Write-Host "  Runtime:       $RuntimeIdentifier"
+    Write-Host "  Gateway:       $(if ($gatewayPatch) { $gatewayPatch } else { 'Microsoft Store' })"
     Write-Host "  Output:        $outputDir"
     Write-Host "  Mode:          $(if ($UseWinApp) { 'WinAppCLI manifest activation' } else { 'Direct unpackaged executable' })"
     if ($env:OPENCLAW_TRAY_DATA_DIR) {
@@ -271,6 +309,10 @@ try {
         return
     }
 
+    if ($buildGateway) {
+        & "$repoRoot\scripts\Build-NativeGatewayFromSource.ps1" @gatewayArguments -Patch $gatewayPatch
+    }
+
     if ($UseWinApp) {
         & $winapp.Source @winappArgs
         $exitCode = $LASTEXITCODE
@@ -286,6 +328,7 @@ try {
 } finally {
     $env:OPENCLAW_TRAY_DATA_DIR = $previousDataDir
     $env:OPENCLAW_UPDATE_CHANNEL = $previousUpdateChannel
+    $env:OPENCLAW_NATIVE_GATEWAY_DEV_PATCH = $previousGatewayPatch
 }
 
 exit $exitCode

@@ -517,6 +517,38 @@ Release identity is the default for every configuration. Use `-DevBuild` on `bui
 
 #### Onboarding and setup workflow helpers
 
+Native Gateway development follows npm `latest`, not the Store MSIX payload.
+The existing MSIX isolation/runtime is retained by packaging the npm archive with
+`openclaw/openclaw-windows-packaging` under a separate development identity:
+
+```powershell
+.\run-app-local.ps1 -Isolated -AllowNonMain
+.\run-app-local.ps1 -Isolated -AllowNonMain -GatewayChannel Packaged
+.\run-app-local.ps1 -Isolated -AllowNonMain -GatewayChannel Packaged -PackagingRelease v2026.9.9-msix.0
+```
+
+`-GatewayChannel Packaged` tests the latest published packaging release from the same Companion source,
+without a long-lived release fork. The launcher selects `npm-latest` or
+`packaged` and automatically isolates each channel's app data. `-NoBuild`
+skips only the Companion build; Gateway tags are still resolved to exact versions.
+An explicit `OPENCLAW_NATIVE_GATEWAY_DEV_PATCH` reuses a prepared patch without
+rebuilding. `-UseStoreGateway` opts back into the installed Store runtime.
+
+For Gateway-only preparation, use `.\scripts\Build-NativeGatewayFromSource.ps1`
+with the same `-GatewayChannel` and `-PackagingRelease` parameters. Packaged reuses
+the verified released MSIX application payload and builds its development launcher
+from the release's packaging commit, rather than repacking npm at the same version.
+Use an exact `-PackagingRelease` for a reproducible baseline. Latest published on
+GitHub does not necessarily mean deployed to Store. For an exact npm reproduction,
+pass `-OpenClawNpmVersion <exact-version> -PackagingRef <commit> -Patch <name>`.
+Explicit `-OpenClawRef main`, local source and prebuilt-package inputs remain
+supported. See the [native Gateway skill](.agents/skills/native-gateway-from-source/SKILL.md)
+for prerequisites, provenance, verification and removal.
+
+This changes development tooling, not installed Companion's Store acquisition or
+normal WSL setup. WSL already defaults to npm `latest`; set `Gateway.Version`
+explicitly for a WSL version-specific install.
+
 The first-run Windows gateway onboarding wizard lives in `OpenClaw.SetupEngine.UI` and is hosted by `OpenClaw.Tray.WinUI`; see [docs/ONBOARDING_WIZARD.md](docs/ONBOARDING_WIZARD.md) for the page flow. The setup pipeline itself is documented in [docs/SETUP_ENGINE_REDESIGN.md](docs/SETUP_ENGINE_REDESIGN.md), including the Windows node context step that injects agent instructions into the WSL workspace.
 
 Useful local scripts:
