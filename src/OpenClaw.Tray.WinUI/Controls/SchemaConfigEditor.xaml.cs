@@ -29,6 +29,7 @@ public sealed partial class SchemaConfigEditor : UserControl
     private bool _loading;
     private readonly Dictionary<string, object?> _changes = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _validationErrors = new(StringComparer.Ordinal);
+    private readonly Dictionary<PasswordBox, string> _keptArraySecrets = new();
     private static readonly TimeSpan PatternValidationTimeout = TimeSpan.FromMilliseconds(200);
 
     private static readonly Regex CamelCaseSplitPattern = new(
@@ -53,6 +54,7 @@ public sealed partial class SchemaConfigEditor : UserControl
         _config = config;
         _changes.Clear();
         _validationErrors.Clear();
+        _keptArraySecrets.Clear();
         FieldsPanel.Children.Clear();
 
         try
@@ -119,7 +121,12 @@ public sealed partial class SchemaConfigEditor : UserControl
 
                 var childType = ExtractSchemaType(childSchema);
 
-                if (childType == "object" && childSchema.TryGetProperty("properties", out _))
+                if (ConfigEditorModel.UseHiddenObjectEditor(childPath, childSchema))
+                {
+                    var required = IsRequired(schema, prop.Name);
+                    RenderField(childPath, prop.Name, childSchema, childConfig, parent, required);
+                }
+                else if (childType == "object" && childSchema.TryGetProperty("properties", out _))
                 {
                     RenderObjectSection(childPath, prop.Name, childSchema, childConfig, parent, depth);
                 }
@@ -225,8 +232,19 @@ public sealed partial class SchemaConfigEditor : UserControl
         }
         else if (type == "array" && schema.TryGetProperty("items", out var itemsSchema))
         {
-            control = RenderArrayField(path, headerText, description, itemsSchema, effectiveConfig, errorBlock,
+            control = RenderArrayField(path, headerText, description, schema, itemsSchema, effectiveConfig, errorBlock,
                 value => StageValue(path, value, schema, required, errorBlock));
+        }
+        else if (ConfigEditorModel.UseHiddenObjectEditor(path, schema))
+        {
+            control = BuildSensitiveArrayEditor(
+                path,
+                headerText,
+                CountObjectProperties(effectiveConfig),
+                description,
+                value => StageValue(path, value, schema, required, errorBlock),
+                expectedKind: JsonValueKind.Object,
+                valueSchema: schema);
         }
         else if (type == "object")
         {
@@ -373,12 +391,12 @@ public sealed partial class SchemaConfigEditor : UserControl
     }
 
     private UIElement RenderArrayField(string path, string label, string? description,
-        JsonElement itemsSchema, JsonElement config, TextBlock errorBlock, Action<object?> onChanged)
+        JsonElement schema, JsonElement itemsSchema, JsonElement config, TextBlock errorBlock, Action<object?> onChanged)
     {
         var itemType = ExtractSchemaType(itemsSchema) ?? "string";
         if (itemType is not ("string" or "integer" or "number" or "boolean"))
         {
-            return RenderJsonArrayField(path, label, description, config, errorBlock, onChanged);
+            return RenderJsonArrayField(path, label, description, config, errorBlock, onChanged, schema);
         }
 
         var panel = new StackPanel { Spacing = 6 };
@@ -404,7 +422,7 @@ public sealed partial class SchemaConfigEditor : UserControl
         {
             foreach (var item in config.EnumerateArray())
             {
-                AddArrayItem(itemsPanel, path, itemType, FormatScalar(item), onChanged);
+                AddArrayItem(itemsPanel, path, itemType, FormatScalar(item), onChanged, existingRow: true);
             }
         }
 
@@ -435,8 +453,15 @@ public sealed partial class SchemaConfigEditor : UserControl
     }
 
     private UIElement RenderJsonArrayField(string path, string label, string? description,
-        JsonElement config, TextBlock errorBlock, Action<object?> onChanged)
+        JsonElement config, TextBlock errorBlock, Action<object?> onChanged, JsonElement valueSchema)
     {
+        if (IsSensitive(path))
+        {
+            var existingCount = config.ValueKind == JsonValueKind.Array ? config.GetArrayLength() : 0;
+            return BuildSensitiveArrayEditor(
+                path, label, existingCount, description, onChanged, valueSchema: valueSchema);
+        }
+
         var panel = new StackPanel { Spacing = 6 };
         panel.Children.Add(new InfoBar
         {
@@ -494,6 +519,175 @@ public sealed partial class SchemaConfigEditor : UserControl
             ConfigChanged?.Invoke(this, new SchemaConfigChangedEventArgs(GetChanges(), GetValidationErrors()));
         };
         panel.Children.Add(textBox);
+        return panel;
+    }
+
+    private UIElement BuildSensitiveArrayEditor(string path, string label, int existingCount,
+        string? description, Action<object?> onChanged,
+        JsonValueKind expectedKind = JsonValueKind.Array,
+        JsonElement valueSchema = default)
+    {
+        var session = new SensitiveArrayEditSession(existingCount, expectedKind);
+        var valueNoun = expectedKind == JsonValueKind.Object ? "object" : "array";
+        var panel = new StackPanel { Spacing = 6 };
+        var status = new TextBlock
+        {
+            FontSize = 12,
+            Foreground = SecondaryBrush,
+            TextWrapping = TextWrapping.Wrap
+        };
+        var errorBlock = CreateErrorBlock();
+        var editor = new TextBox
+        {
+            Text = "",
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.NoWrap,
+            FontFamily = new FontFamily("Consolas"),
+            MinHeight = 120,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            PlaceholderText = $"Enter a JSON {valueNoun}. This box starts empty."
+        };
+        var replacePanel = new StackPanel { Spacing = 6, Visibility = Visibility.Collapsed };
+        var confirmPanel = new StackPanel { Spacing = 6, Visibility = Visibility.Collapsed };
+
+        void ShowStatus(string text) => status.Text = text;
+
+        panel.Children.Add(new InfoBar
+        {
+            IsOpen = true,
+            IsClosable = false,
+            Severity = InfoBarSeverity.Informational,
+            Title = label,
+            Message = session.CountText
+        });
+        if (!string.IsNullOrEmpty(description))
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = description,
+                FontSize = 11,
+                Foreground = SecondaryBrush,
+                TextWrapping = TextWrapping.Wrap
+            });
+        }
+
+        var replaceButton = new Button { Content = "Replace all", Margin = new Thickness(0, 4, 8, 0) };
+        var clearButton = new Button { Content = "Clear all" };
+        var actions = new StackPanel { Orientation = Orientation.Horizontal };
+        actions.Children.Add(replaceButton);
+        actions.Children.Add(clearButton);
+        panel.Children.Add(actions);
+
+        replaceButton.Click += (_, _) =>
+        {
+            if (_loading) return;
+            session.BeginReplace();
+            editor.Text = "";
+            replacePanel.Visibility = Visibility.Visible;
+            confirmPanel.Visibility = Visibility.Collapsed;
+            errorBlock.Visibility = Visibility.Collapsed;
+        };
+
+        var applyButton = new Button { Content = "Apply" };
+        var cancelReplaceButton = new Button { Content = "Cancel", Margin = new Thickness(8, 0, 0, 0) };
+        applyButton.Click += (_, _) =>
+        {
+            if (_loading) return;
+            session.SetDraft(editor.Text);
+            if (!session.TryReadDraft(out var replacement))
+            {
+                RejectSensitiveDraft(path, session.Error, errorBlock);
+                return;
+            }
+
+            var schemaError = valueSchema.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null
+                ? null
+                : ValidateValue(replacement, valueSchema, false);
+            if (!string.IsNullOrWhiteSpace(schemaError))
+            {
+                RejectSensitiveDraft(path, schemaError, errorBlock);
+                return;
+            }
+
+            session.CommitReplace(replacement);
+            editor.Text = "";
+            replacePanel.Visibility = Visibility.Collapsed;
+            SetValidationError(path, null, errorBlock);
+            ShowStatus("Replacement is ready to save.");
+            onChanged(replacement);
+        };
+        cancelReplaceButton.Click += (_, _) =>
+        {
+            if (_loading) return;
+            session.CancelReplace();
+            editor.Text = "";
+            replacePanel.Visibility = Visibility.Collapsed;
+            SetValidationError(path, null, errorBlock);
+            if (session.Decision == SensitiveArrayDecision.Preserve)
+            {
+                status.Text = "";
+                onChanged(RemovePendingValue);
+            }
+            else if (session.Replacement is JsonElement previous)
+            {
+                onChanged(previous);
+            }
+            else
+            {
+                AbandonSensitiveDraft(path, errorBlock);
+            }
+        };
+        var replaceActions = new StackPanel { Orientation = Orientation.Horizontal };
+        replaceActions.Children.Add(applyButton);
+        replaceActions.Children.Add(cancelReplaceButton);
+        replacePanel.Children.Add(editor);
+        replacePanel.Children.Add(errorBlock);
+        replacePanel.Children.Add(replaceActions);
+        panel.Children.Add(replacePanel);
+
+        confirmPanel.Children.Add(new TextBlock
+        {
+            Text = $"Clear all stored entries? This removes every stored value in this {valueNoun}.",
+            TextWrapping = TextWrapping.Wrap
+        });
+        var confirmClearButton = new Button { Content = "Clear all" };
+        var cancelClearButton = new Button { Content = "Cancel", Margin = new Thickness(8, 0, 0, 0) };
+        confirmClearButton.Click += (_, _) =>
+        {
+            if (_loading) return;
+            session.ConfirmClear();
+            confirmPanel.Visibility = Visibility.Collapsed;
+            replacePanel.Visibility = Visibility.Collapsed;
+            editor.Text = "";
+            SetValidationError(path, null, errorBlock);
+            ShowStatus($"This {valueNoun} will be cleared on save.");
+            onChanged(session.EmptyReplacement());
+        };
+        cancelClearButton.Click += (_, _) =>
+        {
+            if (_loading) return;
+            session.CancelClear();
+            confirmPanel.Visibility = Visibility.Collapsed;
+            if (session.TryRestoreCommittedReplacement(out var previous))
+                onChanged(previous);
+            else
+                AbandonSensitiveDraft(path, errorBlock);
+        };
+        var confirmActions = new StackPanel { Orientation = Orientation.Horizontal };
+        confirmActions.Children.Add(confirmClearButton);
+        confirmActions.Children.Add(cancelClearButton);
+        confirmPanel.Children.Add(confirmActions);
+        panel.Children.Add(confirmPanel);
+        panel.Children.Add(status);
+
+        clearButton.Click += (_, _) =>
+        {
+            if (_loading) return;
+            session.BeginClear();
+            replacePanel.Visibility = Visibility.Collapsed;
+            confirmPanel.Visibility = Visibility.Visible;
+        };
+
         return panel;
     }
 
@@ -560,7 +754,7 @@ public sealed partial class SchemaConfigEditor : UserControl
         return panel;
     }
 
-    private void AddArrayItem(StackPanel itemsPanel, string path, string itemType, string value, Action<object?> onChanged)
+    private void AddArrayItem(StackPanel itemsPanel, string path, string itemType, string value, Action<object?> onChanged, bool existingRow = false)
     {
         var row = new Grid
         {
@@ -570,24 +764,48 @@ public sealed partial class SchemaConfigEditor : UserControl
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        var textBox = new TextBox
+        FrameworkElement editor;
+        if (itemType == "string" && IsSensitive(path))
         {
-            Text = value,
-            MinWidth = 250,
-            Height = 34,
-            PlaceholderText = itemType switch
+            var passwordBox = new PasswordBox
             {
-                "boolean" => "true or false",
-                "integer" => "Integer value",
-                "number" => "Number value",
-                _ => "Value"
-            }
-        };
-        textBox.TextChanged += (s, e) =>
+                MinWidth = 250,
+                Height = 34,
+                PlaceholderText = existingRow
+                    ? "Leave blank to keep existing value"
+                    : "Value"
+            };
+            if (existingRow)
+                _keptArraySecrets[passwordBox] = value;
+            passwordBox.PasswordChanged += (s, e) =>
+            {
+                if (_loading) return;
+                UpdateArrayChanges(itemsPanel, path, itemType, onChanged);
+            };
+            editor = passwordBox;
+        }
+        else
         {
-            if (_loading) return;
-            UpdateArrayChanges(itemsPanel, path, itemType, onChanged);
-        };
+            var textBox = new TextBox
+            {
+                Text = value,
+                MinWidth = 250,
+                Height = 34,
+                PlaceholderText = itemType switch
+                {
+                    "boolean" => "true or false",
+                    "integer" => "Integer value",
+                    "number" => "Number value",
+                    _ => "Value"
+                }
+            };
+            textBox.TextChanged += (s, e) =>
+            {
+                if (_loading) return;
+                UpdateArrayChanges(itemsPanel, path, itemType, onChanged);
+            };
+            editor = textBox;
+        }
 
         var removeBtn = new Button
         {
@@ -599,14 +817,16 @@ public sealed partial class SchemaConfigEditor : UserControl
         ToolTipService.SetToolTip(removeBtn, "Remove item");
         removeBtn.Click += (s, e) =>
         {
+            if (row.Children[0] is PasswordBox removed)
+                _keptArraySecrets.Remove(removed);
             if (row.Parent is Border border)
                 itemsPanel.Children.Remove(border);
             UpdateArrayChanges(itemsPanel, path, itemType, onChanged);
         };
 
-        Grid.SetColumn(textBox, 0);
+        Grid.SetColumn(editor, 0);
         Grid.SetColumn(removeBtn, 1);
-        row.Children.Add(textBox);
+        row.Children.Add(editor);
         row.Children.Add(removeBtn);
         itemsPanel.Children.Add(new Border
         {
@@ -624,11 +844,20 @@ public sealed partial class SchemaConfigEditor : UserControl
         var values = new List<object?>();
         foreach (var child in itemsPanel.Children)
         {
-            if (child is Border { Child: Grid row } && row.Children.Count > 0
-                && row.Children[0] is TextBox tb)
+            if (child is not Border { Child: Grid row } || row.Children.Count == 0)
+                continue;
+
+            if (row.Children[0] is PasswordBox password)
             {
-                values.Add(CoerceArrayItem(tb.Text, itemType));
+                if (!string.IsNullOrEmpty(password.Password))
+                    values.Add(password.Password);
+                else if (_keptArraySecrets.TryGetValue(password, out var existing))
+                    values.Add(existing);
+                continue;
             }
+
+            if (row.Children[0] is TextBox tb)
+                values.Add(CoerceArrayItem(tb.Text, itemType));
         }
         onChanged(values.ToArray());
     }
@@ -643,13 +872,7 @@ public sealed partial class SchemaConfigEditor : UserControl
         return result;
     }
 
-    private static bool IsSensitive(string path)
-    {
-        var normalizedPath = path.ToLowerInvariant();
-        return normalizedPath.Contains("token") || normalizedPath.Contains("secret")
-            || normalizedPath.Contains("password") || normalizedPath.Contains("apikey")
-            || normalizedPath.Contains("api_key");
-    }
+    private static bool IsSensitive(string path) => ConfigPathSensitivity.IsSensitive(path);
 
     private static bool IsRequired(JsonElement parentSchema, string propName)
     {
@@ -669,11 +892,40 @@ public sealed partial class SchemaConfigEditor : UserControl
 
     private void StageValue(string path, object? value, JsonElement schema, bool required, TextBlock errorBlock)
     {
-        _changes[path] = value;
         var error = ValidateValue(value, schema, required);
+        _changes[path] = !string.IsNullOrWhiteSpace(error) && value is JsonElement
+            ? RemovePendingValue
+            : value;
         SetValidationError(path, error, errorBlock);
         ConfigChanged?.Invoke(this, new SchemaConfigChangedEventArgs(GetChanges(), GetValidationErrors()));
     }
+
+    private void RejectSensitiveDraft(string path, string? error, TextBlock errorBlock)
+    {
+        _changes[path] = RemovePendingValue;
+        SetValidationError(path, error, errorBlock);
+        ConfigChanged?.Invoke(this, new SchemaConfigChangedEventArgs(GetChanges(), GetValidationErrors()));
+    }
+
+    private void AbandonSensitiveDraft(string path, TextBlock errorBlock)
+    {
+        SetValidationError(path, null, errorBlock);
+        ConfigChanged?.Invoke(this, new SchemaConfigChangedEventArgs(GetChanges(), GetValidationErrors()));
+    }
+
+    private void StageDirectChange(string path, object? edited)
+    {
+        if (_loading)
+            return;
+        if (ReferenceEquals(edited, RemovePendingValue))
+            _changes.Remove(path);
+        else
+            _changes[path] = edited;
+        ConfigChanged?.Invoke(this, new SchemaConfigChangedEventArgs(GetChanges(), GetValidationErrors()));
+    }
+
+    private static int CountObjectProperties(JsonElement value) =>
+        value.ValueKind == JsonValueKind.Object ? value.EnumerateObject().Count() : 0;
 
     private static TextBlock CreateErrorBlock() => new()
     {
@@ -719,6 +971,12 @@ public sealed partial class SchemaConfigEditor : UserControl
                 value is not Array &&
                 value is not JsonElement { ValueKind: JsonValueKind.Array })
                 return "Must be a list.";
+            if (value is JsonElement kindElement)
+            {
+                var kindError = ConfigEditorModel.JsonKindMismatch(kindElement, expectedType);
+                if (kindError != null)
+                    return kindError;
+            }
         }
 
         if (value is string text)
@@ -767,6 +1025,10 @@ public sealed partial class SchemaConfigEditor : UserControl
 
             if (schema.TryGetProperty("items", out var itemSchema))
             {
+                var kindError = ConfigEditorModel.FirstArrayItemKindError(jsonArray, itemSchema);
+                if (kindError != null)
+                    return kindError;
+
                 var index = 0;
                 foreach (var item in jsonArray.EnumerateArray())
                 {
@@ -868,6 +1130,16 @@ public sealed partial class SchemaConfigEditor : UserControl
 
             switch (value.ValueKind)
             {
+                case JsonValueKind.Object when IsSensitive(childPath):
+                    parent.Children.Add(BuildSensitiveArrayEditor(
+                        childPath,
+                        GetLabel(childPath, prop.Name),
+                        CountObjectProperties(value),
+                        null,
+                        edited => StageDirectChange(childPath, edited),
+                        expectedKind: JsonValueKind.Object));
+                    break;
+
                 case JsonValueKind.Object:
                     var expander = new Expander
                     {
@@ -946,6 +1218,17 @@ public sealed partial class SchemaConfigEditor : UserControl
                     break;
 
                 case JsonValueKind.Array:
+                    if (IsSensitive(childPath))
+                    {
+                        parent.Children.Add(BuildSensitiveArrayEditor(
+                            childPath,
+                            GetLabel(childPath, prop.Name),
+                            value.GetArrayLength(),
+                            null,
+                            edited => StageDirectChange(childPath, edited)));
+                        break;
+                    }
+
                     var arrayLabel = new TextBlock { Text = GetLabel(childPath, prop.Name), FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 8, 0, 4) };
                     parent.Children.Add(arrayLabel);
                     var arrayText = new TextBox
