@@ -368,8 +368,10 @@ public sealed class AudioPipelineFirstAudioTimeoutTests
         public void StartRecording()
         {
             StartRecordingEntered.Set();
+            // The test waits up to 2s to observe the entered signal. This block
+            // has to outlive that wait, or StopAsync finishes before the assertion.
             if (BlockStartRecording)
-                AllowStartRecording.Wait(TimeSpan.FromSeconds(2));
+                AllowStartRecording.Wait(TimeSpan.FromSeconds(15));
         }
 
         public void StopRecording()
@@ -377,7 +379,7 @@ public sealed class AudioPipelineFirstAudioTimeoutTests
             StopCount++;
             StopRecordingEntered.Set();
             if (BlockStopRecording)
-                AllowStopRecording.Wait(TimeSpan.FromSeconds(2));
+                AllowStopRecording.Wait(TimeSpan.FromSeconds(15));
         }
 
         public void Dispose() => DisposeCount++;

@@ -45,6 +45,14 @@ dotnet test .\tests\OpenClaw.WinNode.Cli.Tests\OpenClaw.WinNode.Cli.Tests.csproj
 | Gateway path | When relevant and available, prove `openclaw nodes invoke --command <name> --params '<json-object>'`; otherwise state the gateway blocker. |
 | Rubber-duck | Ask a rubber-duck reviewer to inspect the final implementation/proof plan; verify any finding before changing code. |
 
+## When local MCP proof is refused
+
+Connection refused on `http://127.0.0.1:8765/` means the tray MCP server is not running. Do not reinstall `winnode`. Write PascalCase `settings.json` with `EnableMcpServer` true and `EnableNodeMode` false, launch the tray with `OPENCLAW_TRAY_DATA_DIR` and `OPENCLAW_SKIP_UPDATE_CHECK=1`, and pass that same data directory to `winnode`. `StartupSetupState.RequiresSetup` stays false when MCP is already enabled, so the first-run wizard does not block. An isolated data directory uses its own mutex. Wait until `mcp-token.txt` exists and the port accepts a connection.
+
+`browser.proxy` stays off `tools/list` until the app has a gateway client, a non-empty shared gateway token, and a verified browser endpoint. `Unknown tool: browser.proxy` is that rule. A refused port is not successful discovery. The review can accept a concrete gateway-availability blocker. It does not accept the refused port as the `browser.proxy` call.
+
+When the review asks for the production HTTP client, drive that client against a real socket. `HttpClient.Timeout` does not cancel a body read that starts after `HttpCompletionOption.ResponseHeadersRead`.
+
 For isolated tray runs, copy the data directory printed by `run-app-local.ps1 -Isolated` and set it before MCP proof commands:
 
 ```powershell

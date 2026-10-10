@@ -2406,8 +2406,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                                     cancellationToken)
                                 .ConfigureAwait(false);
                     }
-                    if (_managedLocalPortProvenance is null ||
-                        GatewayRecordEditing.ResolveManagedDistroName(record) is null)
+                    if (GatewayRecordEditing.ResolveManagedDistroName(record) is null)
+                    {
+                        return FixtureLoopbackListenerOwner.IsOwnedByCurrentProcessParent(uri.Port);
+                    }
+
+                    if (_managedLocalPortProvenance is null)
                     {
                         return false;
                     }

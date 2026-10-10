@@ -234,20 +234,34 @@ public sealed class GatewayScenario
             allowSessionMutations: allowSessionMutations);
     }
 
-    internal object CreateHello(string connectionId) => new
+    internal object CreateHello(string connectionId, string role = "operator")
     {
-        type = GatewayProtocolContract.HelloOkType,
-        protocol = ProtocolVersion,
-        server = new { version = "fixture-1", connId = connectionId },
-        features = new { methods = ReadMethods, events = new[] { "connect.challenge", "sessions.changed", "agent" } },
-        snapshot = new
+        if (role is not ("operator" or "node"))
+            throw new ArgumentOutOfRangeException(nameof(role));
+        var hello = new
         {
-            presence = Array.Empty<object>(), health = _reads["health"],
-            sessionDefaults = new { defaultAgentId = "main", mainKey = "main", mainSessionKey = MainSessionKey, scope = "per-sender" }
-        },
-        auth = new { role = "operator", scopes = _allowAgentCreation || _allowSessionMutations ? new[] { "operator.admin", "operator.read" } : new[] { _setup is null ? "operator.read" : "operator.admin" } },
-        policy = new { maxPayload = 1_048_576, maxBufferedBytes = 1_048_576, tickIntervalMs = 30_000 }
-    };
+            type = GatewayProtocolContract.HelloOkType,
+            protocol = ProtocolVersion,
+            server = new { version = "fixture-1", connId = connectionId },
+            features = new { methods = ReadMethods, events = new[] { "connect.challenge", "sessions.changed", "agent" } },
+            snapshot = new
+            {
+                presence = Array.Empty<object>(), health = _reads["health"],
+                sessionDefaults = new { defaultAgentId = "main", mainKey = "main", mainSessionKey = MainSessionKey, scope = "per-sender" }
+            },
+            auth = new
+            {
+                role,
+                scopes = role == "node"
+                    ? Array.Empty<string>()
+                    : _allowAgentCreation || _allowSessionMutations
+                        ? new[] { "operator.admin", "operator.read" }
+                        : new[] { _setup is null ? "operator.read" : "operator.admin" }
+            },
+            policy = new { maxPayload = 1_048_576, maxBufferedBytes = 1_048_576, tickIntervalMs = 30_000 }
+        };
+        return hello;
+    }
 
     internal bool ContainsSession(string key) => _sessions.Any(s => s.Key == key);
 

@@ -52,8 +52,25 @@ public sealed class GatewayFixtureProfileTests
             "NodeOllamaInferenceEnabled", "VoiceTtsEnabled", "UseLegacyWebChat"
         })
             Assert.False(settings.RootElement.GetProperty(disabled).GetBoolean(), disabled);
+        Assert.False(profile.NodeBrowserProxyEnabled);
         Assert.False(File.Exists(Path.Combine(profile.DataDirectory, "device-key-ed25519.json")));
         Assert.Empty(Directory.EnumerateFiles(profile.SetupDirectory));
+    }
+
+    [Fact]
+    public void BrowserProxyProfileKeepsExecutionCapabilitiesOff()
+    {
+        using var profile = new GatewayFixtureProfile(Endpoint, "only-this-fixture", enableNodeBrowserProxy: true);
+        Assert.True(profile.NodeBrowserProxyEnabled);
+        using var settings = JsonDocument.Parse(File.ReadAllText(Path.Combine(profile.DataDirectory, "settings.json")));
+        Assert.True(settings.RootElement.GetProperty("EnableNodeMode").GetBoolean());
+        Assert.True(settings.RootElement.GetProperty("EnableMcpServer").GetBoolean());
+        Assert.True(settings.RootElement.GetProperty("NodeBrowserProxyEnabled").GetBoolean());
+        foreach (var disabled in new[]
+        {
+            "NodeSystemRunEnabled", "NodeScreenEnabled", "NodeCameraEnabled", "NodeLocationEnabled", "NodeCanvasEnabled"
+        })
+            Assert.False(settings.RootElement.GetProperty(disabled).GetBoolean(), disabled);
     }
 
     [Fact]
