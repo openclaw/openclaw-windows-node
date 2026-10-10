@@ -127,6 +127,14 @@ public sealed class ReactorMarkdownDisclosureProofTests(UIThreadFixture ui)
                 Assert.Empty(FindLogical<RichTextBlock>(host!).SelectMany(text =>
                     text.Blocks.OfType<Paragraph>().SelectMany(paragraph => paragraph.Inlines.OfType<Hyperlink>())));
             });
+            await ui.YieldToRenderAsync();
+            if (Environment.GetEnvironmentVariable("OPENCLAW_VISUAL_TEST") == "1")
+            {
+                // Screenshots only: let the Expander content and chevron transitions finish
+                // so the capture is not taken mid-animation. Assertions never rely on this.
+                await Task.Delay(1000);
+                await ui.YieldToRenderAsync();
+            }
             await ui.RunOnUIAsync(() => VisualTestCapture.CaptureAsync(surface!, $"MarkdownDisclosure-{theme}"));
             await ui.RunOnUIAsync(() =>
             {
