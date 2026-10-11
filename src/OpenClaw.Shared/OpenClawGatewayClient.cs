@@ -12,6 +12,8 @@ using System.Threading.Tasks;
 
 namespace OpenClaw.Shared;
 
+public sealed record SessionUsageSnapshot(SessionInfo[] Sessions, long? Timestamp);
+
 public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
 {
     private const string OperatorClientId = "cli";
@@ -252,6 +254,12 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     public event EventHandler<AgentActivity>? ActivityChanged;
     public event EventHandler<ChannelHealth[]>? ChannelHealthUpdated;
     public event EventHandler<SessionInfo[]>? SessionsUpdated;
+    /// <summary>
+    /// Raised only for fresh <c>sessions.list</c> responses. Unlike
+    /// <see cref="SessionsUpdated"/>, this event is not raised when a tool or
+    /// job activity update republishes the cached session collection.
+    /// </summary>
+    public event EventHandler<SessionUsageSnapshot>? SessionUsageSnapshotUpdated;
     public event EventHandler<GatewayUsageInfo>? UsageUpdated;
     public event EventHandler<GatewayUsageStatusInfo>? UsageStatusUpdated;
     public event EventHandler<GatewayCostUsageInfo>? UsageCostUpdated;
@@ -541,7 +549,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 throw new InvalidOperationException("Gateway connection changed before chat.send could be sent.");
             var result = await WaitForGatewayResponseAsync(
                 pending.Task,
-                TimeSpan.FromSeconds(5),
+                TimeSpan.FromSeconds(30),
                 CancellationToken,
                 "Timed out waiting for chat.send response from gateway");
             _logger.Info($"Sent chat message ({message.Length} chars{(hasAttachments ? $", {attachments!.Count} attachment(s)" : "")})");
@@ -665,9 +673,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
 
         // Bounded wait. Approval-resolve is interactive and the response may
-        // traverse gateway → operator → optional UI confirm → ack, so we give
-        // it a larger budget than the chat.send sibling's 5s. A timeout keeps
-        // the banner visible for the user to retry rather than hanging the UI.
+        // traverse gateway → operator → optional UI confirm → ack. A timeout
+        // keeps the banner visible for the user to retry rather than hanging the UI.
         try
         {
             await WaitForGatewayResponseAsync(
@@ -4433,6 +4440,12 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         try
         {
             SessionInfo[] snapshot;
+            var timestamp = sessions.ValueKind == JsonValueKind.Object &&
+                sessions.TryGetProperty("ts", out var ts) &&
+                ts.ValueKind == JsonValueKind.Number &&
+                ts.TryGetInt64(out var value) && value > 0
+                    ? (long?)value
+                    : null;
             lock (_sessionsLock)
             {
                 var envelope = sessions;
@@ -4522,6 +4535,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             }
 
             SessionsUpdated?.Invoke(this, snapshot);
+            SessionUsageSnapshotUpdated?.Invoke(this, new(snapshot, timestamp));
         }
         catch (Exception ex)
         {

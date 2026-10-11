@@ -116,7 +116,7 @@ public sealed class ChatConversationStateTests
             metadata,
             context);
 
-        state.SnapshotAssistantUsageContribution("main", metadata, context);
+        state.SnapshotAssistantUsageFrame("main", metadata, context);
 
         Assert.Equal(120, state.GetEntryMetadata("main")["e1"].ResponseTokens);
     }

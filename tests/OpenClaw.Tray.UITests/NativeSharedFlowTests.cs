@@ -74,7 +74,22 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
             await SaveViewportsAsync(window, ready, $"native-shared-ready-{destination}-{theme}");
             var target = Assert.Single(choices.Children.Cast<SettingsCard>(), choice => (string)choice.Tag == destination.ToString());
             TestSupport.InvokeSettingsCardAction(ready, target, "Choose_Click");
-            await WaitAsync(() => completed.Count == 1, "native publication");
+            await TestSupport.WaitForRenderedConditionAsync(
+                () => completed.Count == 1, "native publication", () =>
+                {
+                    var error = Find<InfoBar>(ready, "ErrorBar");
+                    var requests = server.Requests;
+                    var methods = string.Join(", ", requests
+                        .GroupBy(request => request.Method)
+                        .OrderBy(group => group.Key, StringComparer.Ordinal)
+                        .Select(group => $"{group.Key}:{group.Count()}"));
+                    return $"CompletedCount={completed.Count}, " +
+                        $"ErrorOpen={error.IsOpen}, ErrorVisibility={error.Visibility}, " +
+                        $"ErrorMessage={error.Message}, " +
+                        $"Status={Find<TextBlock>(ready, "StatusText").Text}, " +
+                        $"BusyVisibility={Find<ProgressBar>(ready, "BusyProgress").Visibility}, " +
+                        $"Requests=[{methods}]";
+                });
             Assert.Equal(destination, Assert.Single(completed).Target.Destination);
             Assert.False(runtime.Running);
             Assert.Equal("native-ui", registry.ActiveGatewayId);
