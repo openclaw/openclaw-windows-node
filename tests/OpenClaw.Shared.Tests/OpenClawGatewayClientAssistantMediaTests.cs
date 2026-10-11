@@ -108,7 +108,7 @@ public sealed class OpenClawGatewayClientAssistantMediaTests
                 {
                     id = "artifact_managed_media_dbedbff5-b83b-4da5-abaf-c479f4f40bb0",
                     type = "file",
-                    title = "sett-images.zip",
+                    title = "agent-images.zip",
                     mimeType = "application/zip",
                     sizeBytes = 64690236,
                     download = new { mode = "url" },
