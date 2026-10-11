@@ -91,6 +91,10 @@ public sealed record ChatEntryMetadata(
     [System.Text.Json.Serialization.JsonIgnore]
     public long? UsageSnapshotTimestamp { get; init; }
 
+    // A usage-free final advances the fence without making older counters newer.
+    [System.Text.Json.Serialization.JsonIgnore]
+    public long? UsageMeasurementTimestamp { get; init; }
+
     [System.Text.Json.Serialization.JsonIgnore]
     public bool UsageSnapshotIsAuthoritative { get; init; }
 }

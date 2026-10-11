@@ -611,7 +611,15 @@ internal sealed class ChatHistoryLoader : IDisposable
                 AssistantContent: role == "assistant"
                     ? ChatAssistantContentProjector.Project(
                         replayPart.AssistantContentParts)
-                    : null);
+                    : null)
+            {
+                UsageSnapshotTimestamp = role == "assistant" && message.Ts > 0
+                    ? message.Ts
+                    : null,
+                UsageMeasurementTimestamp = role == "assistant" && message.Ts > 0 &&
+                    (message.ResponseTokens is > 0 || message.InputTokens is > 0 || message.OutputTokens is > 0)
+                    ? message.Ts : null,
+            };
             var text = ChatContentFormatting.TruncateForChatEntry(
                 ChatMetadataStore.EscapeUntrustedAttachmentMarkerLines(
                     userProjection?.HasMediaEnvelope == true
