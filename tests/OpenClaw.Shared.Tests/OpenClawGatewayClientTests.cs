@@ -2493,7 +2493,7 @@ public class OpenClawGatewayClientTests
                     "artifactId": "artifact_managed_media_dbedbff5-b83b-4da5-abaf-c479f4f40bb0",
                     "url": "/api/chat/media/outgoing/agent%3Amain%3Amain/dbedbff5-b83b-4da5-abaf-c479f4f40bb0/full",
                     "kind": "document",
-                    "label": "sett-images-2026-10-02.zip",
+                    "label": "agent-images-2026-10-02.zip",
                     "mimeType": "application/zip",
                     "sizeBytes": 64690236
                   }
@@ -2515,7 +2515,7 @@ public class OpenClawGatewayClientTests
         Assert.Equal(ChatMediaContentSource.Structured, media.Source);
         Assert.Equal("attachment", media.Type);
         Assert.Equal("application/zip", media.MimeType);
-        Assert.Equal("sett-images-2026-10-02.zip", media.FileName);
+        Assert.Equal("agent-images-2026-10-02.zip", media.FileName);
         Assert.Equal("artifact_managed_media_dbedbff5-b83b-4da5-abaf-c479f4f40bb0", media.ArtifactId);
         Assert.Equal(64690236, media.SizeBytes);
     }
