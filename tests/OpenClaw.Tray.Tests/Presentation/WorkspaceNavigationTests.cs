@@ -531,6 +531,18 @@ public sealed class WorkspaceNavigationTests
     }
 
     [Fact]
+    public void ComposerSessionSelection_SynchronizesWorkspaceDestination()
+    {
+        var chat = File.ReadAllText(Source("Pages", "ChatPage.xaml.cs"));
+        var handler = chat[chat.IndexOf("internal void OnComposerSessionSelected", StringComparison.Ordinal)..
+            chat.IndexOf("private void OnWorkspaceOpenConnection", StringComparison.Ordinal)];
+        Assert.Contains("_ownerWindow is WorkspaceWindow workspace", handler);
+        Assert.Contains("workspace.Destination.Page != WorkspacePageId.Home", handler);
+        Assert.Contains("!string.Equals(workspace.Destination.SessionKey, sessionKey, StringComparison.Ordinal)", handler);
+        Assert.Contains("workspace.SelectSession(sessionKey)", handler);
+    }
+
+    [Fact]
     public void Projection_UsesRealIdentitiesAndNeverManufacturesAnAgent()
     {
         Assert.Empty(WorkspaceProjection.Agents(null, []));
