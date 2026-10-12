@@ -518,8 +518,11 @@ internal sealed class ChatHistoryLoader : IDisposable
             .Select(static tool => tool.CallId)
             .Where(static callId => !string.IsNullOrWhiteSpace(callId))
             .ToHashSet(StringComparer.Ordinal);
-        // One history row can replay as several entries (text, tool, text) but
-        // reports a single cost. Show it once, on the row's last text part.
+        // One history row can replay as several entries (text, tool, media) but
+        // reports a single cost. Show it once, on the row's last assistant
+        // entry (text or media), which is where the footer renders.
+        static bool RendersAssistantEntry(ChatHistoryReplayPart part) =>
+            part.Text.Length > 0 || part.AssistantContentParts.Count > 0;
         var costCarriers = new Dictionary<ChatMessageInfo, ChatHistoryReplayPart>(
             ReferenceEqualityComparer.Instance);
         foreach (var part in replayParts)
@@ -527,8 +530,8 @@ internal sealed class ChatHistoryLoader : IDisposable
             if (part.Message.CostUsd is null)
                 continue;
             if (!costCarriers.TryGetValue(part.Message, out var carrier) ||
-                part.Text.Length > 0 ||
-                carrier.Text.Length == 0)
+                RendersAssistantEntry(part) ||
+                !RendersAssistantEntry(carrier))
             {
                 costCarriers[part.Message] = part;
             }

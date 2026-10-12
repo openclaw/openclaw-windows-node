@@ -15170,6 +15170,54 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task LoadHistoryAsync_TextThenMediaRow_ShowsCostOnceOnFinalMediaEntry()
+    {
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    Role = "assistant",
+                    Text = "Here it is",
+                    State = "final",
+                    Ts = 1714600001000,
+                    CostUsd = 0.5,
+                    ContentParts =
+                    [
+                        new ChatMessageContentPartInfo { Kind = ChatMessageContentPartKind.Text, Text = "Here it is" },
+                        new ChatMessageContentPartInfo
+                        {
+                            Kind = ChatMessageContentPartKind.Media,
+                            Media = new ChatMediaContentInfo
+                            {
+                                Kind = ChatMediaContentKind.Image,
+                                Source = ChatMediaContentSource.Structured,
+                                ArtifactId = "artifact-cost",
+                                FileName = "banner.png",
+                            },
+                        },
+                    ],
+                },
+            ],
+        });
+        await provider.LoadAsync();
+
+        await provider.LoadHistoryAsync("main");
+
+        var entries = (await provider.LoadAsync()).Timelines["main"].Entries;
+        var assistantEntries = entries.Where(entry => entry.Kind == ChatTimelineItemKind.Assistant).ToArray();
+        Assert.Equal(2, assistantEntries.Length);
+        var meta = provider.GetEntryMetadata("main");
+        var priced = entries.Where(entry => meta.TryGetValue(entry.Id, out var m) && m.CostUsd is not null).ToArray();
+        var only = Assert.Single(priced);
+        Assert.Equal(assistantEntries[^1].Id, only.Id);
+        Assert.Equal(0.5, meta[only.Id].CostUsd);
+    }
+
+    [Fact]
     public async Task LoadHistoryAsync_HistoryRowWithoutCost_ReplacesLiveCost()
     {
         var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
