@@ -536,6 +536,19 @@ foreach ($token in @(
     Assert-Contains -Text $trayJob -Expected $token -Message "Tray lane is missing '$token'."
 }
 
+$devSettingsStep = Get-StepBlock -Text $trayJob -Name "Run Dev containment settings tests"
+foreach ($token in @(
+        "dotnet test tests/OpenClaw.Tray.Tests",
+        "-p:DevBuild=true",
+        "FullyQualifiedName~SettingsManagerIsolationTests",
+        "FullyQualifiedName~AppRefactorContractTests.SandboxPage_",
+        "OpenClaw.Tray.DevSettings.Tests.trx"
+    )) {
+    Assert-Contains -Text $devSettingsStep -Expected $token -Message "Dev settings coverage is missing '$token'."
+}
+Assert-NotContains -Text $devSettingsStep -Unexpected "--no-build" `
+    -Message "Dev settings tests must recompile the linked AppIdentity source with DEV_BUILD."
+
 $uiJob = Get-JobBlock "ui-tests"
 foreach ($token in @(
         "Install WindowsAppRuntime",

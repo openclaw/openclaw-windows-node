@@ -2008,6 +2008,28 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void SandboxPage_SuppressesXamlInitializationUntilSavedSettingsAreLoaded()
+    {
+        var source = ReadSandboxPageSource();
+        Assert.Contains("private bool _suppress = true;", source);
+
+        var constructorMatch = Regex.Match(source, @"public SandboxPage\(\)\s*\{(?<body>[^}]+)\}");
+        Assert.True(constructorMatch.Success);
+        var constructor = constructorMatch.Groups["body"].Value;
+        Assert.Contains("InitializeComponent();", constructor);
+        Assert.DoesNotContain("_suppress = false", constructor);
+
+        var loadState = ExtractMethod(source, "LoadState");
+        AssertInOrder(
+            loadState,
+            "_suppress = true;",
+            "TimeoutSlider.Value = secs;",
+            "_suppress = false;");
+        var timeoutChanged = ExtractMethod(source, "OnTimeoutChanged");
+        AssertInOrder(timeoutChanged, "if (_suppress) return;", "s.SandboxTimeoutMs =", "Save();");
+    }
+
+    [Fact]
     public void SandboxPage_NormalizesDefinitiveUnavailableMxcOff()
     {
         var source = ReadSandboxPageSource();

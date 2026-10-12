@@ -41,10 +41,34 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private Task? _disposal;
     private int _connectionCount;
     private int _activeConnectionCount;
+    private int _sharedCredentialConnects;
+    private int _deviceTokenRejections;
     private static readonly JsonElement EmptyParameters = JsonSerializer.SerializeToElement(new { });
     private sealed record ActiveConnection(WebSocket Socket, SemaphoreSlim SendLock, CancellationToken CancellationToken);
 
     public Uri Endpoint { get; }
+
+    /// <summary>
+    /// The only device token this fixture accepts. A connect carrying any other
+    /// device token is answered with <c>AUTH_DEVICE_TOKEN_MISMATCH</c>, modelling a
+    /// gateway whose pairing record no longer matches the caller's stored credential.
+    /// When null, every presented device token is rejected.
+    /// </summary>
+    public string? AcceptedDeviceToken { get; set; }
+
+    /// <summary>
+    /// Raised on the server side immediately before a presented device token is
+    /// answered with <c>AUTH_DEVICE_TOKEN_MISMATCH</c>. Lets a test change the
+    /// authority a caller will re-verify during recovery, so recovery-time
+    /// rejection can be exercised through the production connect path.
+    /// </summary>
+    public Action? DeviceTokenRejected { get; set; }
+
+    /// <summary>Connect attempts that presented no device token, so the shared credential was judged.</summary>
+    public int SharedCredentialConnects => Volatile.Read(ref _sharedCredentialConnects);
+
+    /// <summary>Connect attempts whose presented device token was rejected.</summary>
+    public int DeviceTokenRejections => Volatile.Read(ref _deviceTokenRejections);
     public Task HandshakeCompleted => _handshake.Task;
     public Task ConnectionAccepted => _accepted.Task;
     public int ConnectionCount => Volatile.Read(ref _connectionCount);
@@ -478,9 +502,27 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     {
         if (p.ValueKind != JsonValueKind.Object)
             throw new FixtureRequestException("INVALID_PARAMS", "connect params must be an object.");
-        if (!p.TryGetProperty("auth", out var auth) || ReadString(auth, "token") is not { } token
-            || !CryptographicOperations.FixedTimeEquals(_tokenHash, SHA256.HashData(Encoding.UTF8.GetBytes(token))))
-            throw new FixtureRequestException("AUTH_TOKEN_MISMATCH", "Unauthorized: fixture token mismatch.");
+        p.TryGetProperty("auth", out var auth);
+        var presentedDeviceToken = auth.ValueKind == JsonValueKind.Object ? ReadString(auth, "deviceToken") : null;
+        if (!string.IsNullOrEmpty(presentedDeviceToken))
+        {
+            // A paired caller sends its device token alone, so it is the sole credential to judge.
+            if (AcceptedDeviceToken is null || !CryptographicOperations.FixedTimeEquals(
+                    SHA256.HashData(Encoding.UTF8.GetBytes(AcceptedDeviceToken)),
+                    SHA256.HashData(Encoding.UTF8.GetBytes(presentedDeviceToken))))
+            {
+                Interlocked.Increment(ref _deviceTokenRejections);
+                DeviceTokenRejected?.Invoke();
+                throw new FixtureRequestException("AUTH_DEVICE_TOKEN_MISMATCH", "Unauthorized: device token mismatch.");
+            }
+        }
+        else
+        {
+            Interlocked.Increment(ref _sharedCredentialConnects);
+            if (auth.ValueKind != JsonValueKind.Object || ReadString(auth, "token") is not { } token
+                || !CryptographicOperations.FixedTimeEquals(_tokenHash, SHA256.HashData(Encoding.UTF8.GetBytes(token))))
+                throw new FixtureRequestException("AUTH_TOKEN_MISMATCH", "Unauthorized: fixture token mismatch.");
+        }
         if (ReadString(p, "role") != "operator")
             throw new FixtureRequestException("INVALID_PARAMS", "Fixture Gateway supports only the operator role.");
         if (!p.TryGetProperty("minProtocol", out var min) || min.ValueKind != JsonValueKind.Number || !min.TryGetInt32(out var minimum)
