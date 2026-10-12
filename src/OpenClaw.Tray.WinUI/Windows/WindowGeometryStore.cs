@@ -52,35 +52,23 @@ internal static class WindowGeometryStore
         PropertyNameCaseInsensitive = true,
     };
 
-    // Target size, matching the harness/WorkBuddy companion windows which occupy about
-    // 1295x823 on this display.
-    private const int DefaultPixelWidth = 1295;
-    private const int DefaultPixelHeight = 823;
-    private const int WorkAreaWidthFallback = 1536;
-    private const int WorkAreaHeightFallback = 816;
+    // Target size, expressed as a fraction of the display's work area rather than a fixed
+    // pixel count: a hardcoded 1295x823 overflows the bottom of a 1536x816 work area (e.g.
+    // a 125%-scaled 1920x1080 display) and lands differently again on a laptop panel, so the
+    // default has to be derived from the display it is about to open on.
+    //
+    // On this machine a 1036-unit request renders 829 units wide, i.e. the platform applies
+    // the display scale (125%) a second time before the window is shown, so the visible
+    // window is 0.8x of what was asked for. Because everything below works in the
+    // device-independent units shared by DisplayArea.WorkArea, AppWindow.Size and
+    // MoveAndResize, that double-scaling is worked around by deriving sizes from the work
+    // area directly rather than by dividing a physical pixel count by the scale factor.
+    private const double DefaultWorkAreaFraction = 0.8;
 
-    /// <summary>
-    /// Empirically measured difference between the size handed to
-    /// <c>AppWindow.MoveAndResize</c> and the size the window actually ends up with.
-    /// </summary>
-    /// <remarks>
-    /// On this machine a 1036-unit request renders 829 units wide, i.e. the platform applies
-    /// the display scale (125%) a second time before the window is shown, so the visible
-    /// window is 0.8x of what was asked for. Dividing by that factor compensates, giving the
-    /// requested pixel size as the visible size. If a future Windows App SDK release fixes
-    /// the unit handling in MoveAndResize, set this to 1.0.
-    /// </remarks>
-    private const double MoveAndResizeAppliedScale = 0.8;
-
-    private static int ToMoveAndResizeUnits(int desiredPixels) =>
-        (int)Math.Round(desiredPixels / MoveAndResizeAppliedScale);
-
-    /// <summary>
-    /// The same pixel count expressed in the units the platform applies scaling to.
-    /// Used both to bound a request and to compare against a persisted size.
-    /// </summary>
-    private static int MoveAndResizeUnitsFor(int pixels) =>
-        (int)Math.Round(pixels / MoveAndResizeAppliedScale);
+    // Companion windows still open around 1295x823 on a large desktop; the fraction above is
+    // clamped to this so an ultra-wide monitor does not produce an implausibly huge window.
+    private const int DefaultPixelWidthCap = 1295;
+    private const int DefaultPixelHeightCap = 823;
 
     internal static string PathFor(string windowName) => Path.Combine(
         AppIdentity.ResolveLocalDataDirectory(),
@@ -92,8 +80,9 @@ internal static class WindowGeometryStore
     /// </summary>
     /// <remarks>
     /// Call this from the window constructor. Restoring the last geometry is what makes a
-    /// resize stick; sizing to the work area is what keeps the window fully visible on
-    /// displays smaller than <see cref="DefaultMaxWidth"/> x <see cref="DefaultMaxHeight"/>.
+    /// resize stick; sizing to a fraction of the work area is what keeps the window fully
+    /// visible on displays smaller than <see cref="DefaultPixelWidthCap"/> x
+    /// <see cref="DefaultPixelHeightCap"/>.
     /// </remarks>
     internal static void Attach(WindowEx window, string windowName)
     {
@@ -105,13 +94,34 @@ internal static class WindowGeometryStore
 
     private static void AttachCore(WindowEx window, string windowName)
     {
-        // Register persistence immediately: the window may be shown later (pre-warmed
-        // instances are constructed once and only activated on demand), and we must not
-        // miss a resize that happens before the first activation.
+        // Restoring geometry is a two-step dance: the platform sizes the window itself as
+        // soon as it is created, and only later (on first activation) do we get an HWND and
+        // display area we can trust. Anything the platform does before we have restored is
+        // noise, so persistence stays muted until the restore has actually happened;
+        // otherwise that initial default-sized rectangle is written over the user's real
+        // saved geometry and "resize then restart" silently loses the resize.
+        var restored = false;
+
+        // Set around our own MoveAndResize so the ProgrammaticChanged event it raises is not
+        // mistaken for a user resize and written straight back to disk.
+        var applying = false;
+
         try
         {
-            window.AppWindow.Changed += (sender, args) => Persist(sender, args, windowName);
-            window.Closed += (_, _) => SaveCurrent(window.AppWindow, windowName);
+            window.AppWindow.Changed += (sender, args) =>
+            {
+                if (!restored || applying)
+                    return;
+                Persist(sender, args, windowName);
+            };
+            window.Closed += (_, _) =>
+            {
+                // A close before the first activation (started and quit immediately) must not
+                // overwrite the saved rectangle with the platform default either.
+                if (!restored)
+                    return;
+                SaveCurrent(window.AppWindow, windowName);
+            };
         }
         catch (Exception ex)
         {
@@ -128,14 +138,26 @@ internal static class WindowGeometryStore
                 return;
             applied = true;
             window.Activated -= ApplyOnce;
-            Apply(window, windowName);
+
+            applying = true;
+            try
+            {
+                Apply(window, windowName);
+            }
+            finally
+            {
+                applying = false;
+                // Unmute persistence only once the restored rectangle is on screen, so the
+                // positions/sizes the platform applied before this point are never persisted.
+                restored = true;
+            }
         }
 
         window.Activated += ApplyOnce;
     }
 
     /// <summary>
-    /// Moves the window to the restored geometry, or to the companion-window default when
+    /// Moves the window to the restored geometry, or to a work-area-derived default when
     /// there is nothing usable to restore.
     /// </summary>
     /// <remarks>
@@ -170,13 +192,13 @@ internal static class WindowGeometryStore
             }
 
             // First run, or the saved rectangle no longer fits (monitor removed, resolution
-            // reduced, work area shrunk). Use the companion-window size, shrunk if this
-            // display is too small for it.
+            // reduced, work area shrunk). Derive the default from the work area so it always
+            // fits the display it is opening on, then shrink further if even that is too small.
             var width = Math.Min(
-                ToMoveAndResizeUnits(DefaultPixelWidth),
+                DefaultSizeFor(workWidth, DefaultWorkAreaFraction, DefaultPixelWidthCap),
                 Math.Max(WindowGeometry.MinimumWidth, workWidth));
             var height = Math.Min(
-                ToMoveAndResizeUnits(DefaultPixelHeight),
+                DefaultSizeFor(workHeight, DefaultWorkAreaFraction, DefaultPixelHeightCap),
                 Math.Max(WindowGeometry.MinimumHeight, workHeight));
 
             // Centre horizontally and align to the top of the work area, which keeps the whole
@@ -192,6 +214,17 @@ internal static class WindowGeometryStore
             // Geometry problems must never stop a window from working.
             Logger.Warn($"[WindowGeometry] {windowName} geometry apply failed: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Picks a default window dimension as a fraction of the work area, never exceeding
+    /// <paramref name="cap"/>. Returns the value in the same units <see cref="Clamp"/>
+    /// expects, so it can be compared against the work area directly.
+    /// </summary>
+    private static int DefaultSizeFor(int workAreaExtent, double fraction, int cap)
+    {
+        var byFraction = (int)Math.Round(workAreaExtent * fraction);
+        return Math.Min(byFraction, cap);
     }
 
     /// <summary>
@@ -214,9 +247,9 @@ internal static class WindowGeometryStore
     }
 
     /// <summary>
-    /// Keeps the rectangle inside the work area and converts it to the physical pixels that
-    /// <c>MoveAndResize</c> expects. This is what guarantees the title bar and the bottom
-    /// edge stay reachable instead of sitting off-screen or under the taskbar.
+    /// Called when the user moves or resizes the window, so the new rectangle is recorded.
+    /// The rectangle is first kept inside the work area, which guarantees the title bar and
+    /// the bottom edge stay reachable instead of sitting off-screen or under the taskbar.
     /// </summary>
     private static void Persist(
         Microsoft.UI.Windowing.AppWindow sender,
