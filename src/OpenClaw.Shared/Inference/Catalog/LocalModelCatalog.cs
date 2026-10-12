@@ -62,7 +62,8 @@ public sealed record LocalModelRunRecipe
             throw new ArgumentOutOfRangeException(nameof(keyValueHeadCount));
         if (keyValueHeadDimension <= 0)
             throw new ArgumentOutOfRangeException(nameof(keyValueHeadDimension));
-        if (speculativeDraftMaxTokens <= 0)
+        if (speculativeDraftMaxTokens < 0 ||
+            (speculativeDraftMaxTokens == 0 && speculativeDecoding != SpeculativeDecodingMode.None))
             throw new ArgumentOutOfRangeException(nameof(speculativeDraftMaxTokens));
         ArgumentNullException.ThrowIfNull(sampling);
 
@@ -106,7 +107,10 @@ public sealed record LocalModelInfo(
     bool IsDefault,
     bool IsExplicitAlternative,
     bool SupportsVision,
-    int RecommendationPriority = 0);
+    int RecommendationPriority = 0,
+    string RuntimeFamily = "llama.cpp",
+    long MinimumSystemMemoryBytes = 0,
+    long MinimumFreeDiskBytes = 0);
 
 /// <summary>The capacity-sensitive settings selected for one model launch.</summary>
 public sealed record LocalInferenceRunProfile
@@ -147,6 +151,7 @@ public sealed record LocalInferenceRunProfile
 /// <summary>Immutable Hugging Face model pins offered by the Windows local inference flow.</summary>
 public static class LocalModelCatalog
 {
+    public const string Bonsai2ModelId = "bonsai-2-27b-ptq1-0";
     public const string Qwen38_27BModelId = "qwen3.8-27b-mtp-ud-q4-k-m";
     public const string Qwen35BModelId = "qwen3.6-35b-a3b-mtp-q4-k-m";
     public const string Qwen27BModelId = "qwen3.6-27b-mtp-q4-k-m";
@@ -319,6 +324,33 @@ public static class LocalModelCatalog
                 IsExplicitAlternative: false,
                 SupportsVision: false,
                 RecommendationPriority: 0),
+            new LocalModelInfo(
+                Bonsai2ModelId,
+                "Bonsai 2 27B (PTQ1_0, experimental)",
+                "Qwen3.8",
+                "PTQ1_0",
+                new PinnedArtifact(
+                    Bonsai2ModelId,
+                    ArtifactRole.ModelWeights,
+                    new HuggingFaceRevisionSource("prism-ml/Ternary-Bonsai-2-27B-gguf",
+                        "b072e1d3b35a0a630cece372c2127528e0994386"),
+                    "Ternary-Bonsai-2-27B-PTQ1_0.gguf",
+                    5_946_648_928,
+                    new Sha256Digest("53107f530aa52eb00912263ab1ee29bd199261c87cd7b4ad4ca1318c1fe33ee3"),
+                    new CatalogProvenance("prism-bonsai-2", "Bonsai 2 27B", "Prism ML",
+                        new Uri("https://huggingface.co/prism-ml/Ternary-Bonsai-2-27B-gguf"),
+                        "Apache-2.0",
+                        new Uri("https://huggingface.co/prism-ml/Ternary-Bonsai-2-27B-gguf/blob/b072e1d3b35a0a630cece372c2127528e0994386/LICENSE"),
+                        "Pinned PTQ1_0 text-only profile with an 8K context and no speculative decoding.")),
+                new LocalModelRunRecipe(512, 128, 1, 16, 4, 256, true, true,
+                    SpeculativeDecodingMode.None, 0, new ModelSamplingPreset(1.0, 20, 0.95, 0.05, 1.0, 0.0)),
+                IsDefault: false,
+                IsExplicitAlternative: true,
+                SupportsVision: false,
+                RecommendationPriority: 100,
+                RuntimeFamily: BonsaiRuntimeCatalog.Family,
+                MinimumSystemMemoryBytes: 16L * 1024 * 1024 * 1024,
+                MinimumFreeDiskBytes: 8L * 1024 * 1024 * 1024),
         });
 
     // Retired from new installs and never offered, recommended, or selectable.
@@ -372,7 +404,11 @@ public static class LocalModelCatalog
     private static readonly IReadOnlyDictionary<string, ReadOnlyCollection<LocalInferenceRunProfile>>
         s_profilesByModel = s_models
             .Select(model => (model, profiles: Array.AsReadOnly(
-                string.Equals(model.Id, Qwen35B_Q4KSModelId, StringComparison.Ordinal)
+                model.Id == Bonsai2ModelId
+                    ? [new LocalInferenceRunProfile("ctx-8192-f16", 8192,
+                        KvCachePrecision.F16, KvCachePrecision.F16, KvCachePrecision.F16, KvCachePrecision.F16,
+                        1536L * 1024 * 1024)]
+                    : string.Equals(model.Id, Qwen35B_Q4KSModelId, StringComparison.Ordinal)
                     ? CreateRtxSpark48GbProfiles(model)
                     : CreateProfiles(model))))
             .Concat(s_legacyModels

@@ -939,6 +939,47 @@ public sealed class LocalAiPageViewModelTests
         }
     }
 
+    [Fact]
+    public async Task EightGiBHardware_OffersSmallerProfileAndKeepsSetupAvailable()
+    {
+        const long gib = 1024L * 1024 * 1024;
+        HostHardwareInfo hardware = new(Architecture.X64, 32 * gib, 24 * gib,
+            [new GpuInfo(GpuVendor.Nvidia, "NVIDIA RTX 4060", 8 * gib, 8 * gib,
+                CudaMajorVersion: 13, StableId: "GPU-synthetic-4060")], false, 20 * gib);
+        using var viewModel = CreateViewModel(
+            LocalAiRuntimeSnapshot.Initial(new Uri("http://127.0.0.1:18080"), DateTimeOffset.UtcNow),
+            hardware, out _, out PermissionsPageRuntimeSource source);
+        using (source)
+        {
+            await ActivateAndWaitForAvailabilityAsync(viewModel);
+            Assert.True(viewModel.IsLocalAiAvailable);
+            Assert.True(viewModel.CanRetrySetup);
+            Assert.Null(viewModel.LocalAiUnavailableReason);
+            Assert.Contains("Bonsai 2", viewModel.ProfileRecommendation!.SelectedModelName);
+            Assert.Equal(8192, viewModel.ProfileRecommendation.ContextTokens);
+            Assert.False(viewModel.ShowAvailabilityInfoBar);
+        }
+    }
+
+    [Fact]
+    public async Task OversizedInstalledModel_KeepsReplacementSetupReachableWithoutSwitchingReceipt()
+    {
+        const long gib = 1024L * 1024 * 1024;
+        var hardware = new HostHardwareInfo(Architecture.X64, 32 * gib, 24 * gib,
+            [new GpuInfo(GpuVendor.Nvidia, "NVIDIA RTX 4060", 8 * gib, 8 * gib,
+                CudaMajorVersion: 13, StableId: "GPU-synthetic-4060")], false, 20 * gib);
+        var installed = CreateInstalledSnapshot(LocalAiRuntimeState.Failed) with
+        { ModelId = LocalModelCatalog.Default.Id };
+        using var viewModel = CreateViewModel(installed, hardware, out _, out PermissionsPageRuntimeSource source);
+        using (source)
+        {
+            await ActivateAndWaitForAvailabilityAsync(viewModel);
+            Assert.True(viewModel.CanChangeModel);
+            Assert.Equal(LocalModelCatalog.Default.DisplayName, viewModel.ModelName);
+            Assert.Contains("Bonsai 2", viewModel.ProfileRecommendation!.SelectedModelName);
+        }
+    }
+
     private static HostHardwareInfo CreateQualifiedHardware() =>
         new(
             Architecture.X64,

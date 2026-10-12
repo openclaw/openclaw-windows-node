@@ -131,6 +131,8 @@ public static class LlamaServerRouterConfiguration
         {
             throw new InvalidDataException("The managed local AI architecture and runtime receipt do not match.");
         }
+        if (!string.Equals(runtime.Family, model.RuntimeFamily, StringComparison.Ordinal))
+            throw new InvalidDataException("The managed model requires a different llama-server runtime family.");
         if (!string.Equals(manifest.EngineVersion, runtime.ReleaseTag, StringComparison.Ordinal) ||
             !string.Equals(manifest.ModelAlias, model.Id, StringComparison.Ordinal))
         {
@@ -223,7 +225,7 @@ public static class LlamaServerRouterConfiguration
         preset.Append("model = ").AppendLine(modelPath);
         preset.AppendLine("load-on-startup = false");
         preset.Append("ctx-size = ").AppendLine(Invariant(profile.ContextTokens));
-        preset.Append("n-predict = ").AppendLine(Invariant(LocalAiGatewayProviderDefinition.MaximumOutputTokens));
+        preset.Append("n-predict = ").AppendLine(Invariant(LocalAiGatewayProviderDefinition.GetMaximumOutputTokens(profile.ContextTokens)));
         preset.Append("parallel = ").AppendLine(Invariant(recipe.ParallelRequests));
         preset.Append("cache-type-k = ").AppendLine(LocalModelCatalog.ToLlamaServerCacheType(profile.KeyCachePrecision));
         preset.Append("cache-type-v = ").AppendLine(LocalModelCatalog.ToLlamaServerCacheType(profile.ValueCachePrecision));

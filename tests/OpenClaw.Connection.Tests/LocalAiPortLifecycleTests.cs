@@ -3412,6 +3412,53 @@ public sealed class LocalAiPortLifecycleTests
         }
     }
 
+    [Fact]
+    public async Task BonsaiReceipt_UsesPrismRuntimeAndBoundsOutputToSmallContext()
+    {
+        using var temp = new TempDirectory("local-ai-bonsai-");
+        var paths = new LocalAiPaths(temp.Path);
+        var model = LocalModelCatalog.Find(LocalModelCatalog.Bonsai2ModelId)!;
+        var runtime = BonsaiRuntimeCatalog.X64;
+        var source = (HuggingFaceRevisionSource)model.Weights.Source;
+        static LocalAiAssetReceipt Receipt(PinnedArtifact artifact) => new()
+        {
+            FileName = Path.GetFileName(artifact.RelativePath), SourceUrl = artifact.DownloadUri.AbsoluteUri,
+            SizeBytes = artifact.SizeBytes, Sha256 = artifact.Sha256.Value,
+        };
+        var manifest = ValidManifest() with
+        {
+            Architecture = "x64", EngineVersion = runtime.ReleaseTag, RuntimeId = runtime.Id,
+            ModelCatalogId = model.Id, ModelAlias = model.Id,
+            ModelPath = Path.Combine("models", model.Weights.RelativePath),
+            ExecutablePath = Path.Combine("engines", runtime.Id, LlamaRuntimeCatalog.ServerExecutableName),
+            ModelId = $"{source.RepositoryId}@{source.RevisionSha}", ModelAsset = Receipt(model.Weights),
+            RuntimeAssets = runtime.Artifacts.Select(Receipt).ToImmutableArray(),
+            ContextLength = 8192, Endpoint = "http://127.0.0.1:28765/v1",
+            KeyCachePrecision = KvCachePrecision.F16, ValueCachePrecision = KvCachePrecision.F16,
+            DraftKeyCachePrecision = KvCachePrecision.F16, DraftValueCachePrecision = KvCachePrecision.F16,
+        };
+        var store = new LocalAiManifestStore(paths);
+        await store.SaveAsync(manifest);
+        var install = (await store.LoadAsync())!;
+        var launch = LlamaServerRouterConfiguration.Build(paths, install);
+        Assert.Contains("ctx-size = 8192", launch.PresetContent);
+        Assert.Contains("n-predict = 2048", launch.PresetContent);
+        Assert.DoesNotContain("spec-type", launch.PresetContent);
+        using var provider = JsonDocument.Parse(LocalAiGatewayProviderDefinition.BuildProviderJson(install));
+        Assert.Equal(2048, provider.RootElement.GetProperty("models")[0].GetProperty("maxTokens").GetInt32());
+
+        // Even a structurally valid stock-runtime receipt cannot launch ternary weights.
+        var stock = LlamaRuntimeCatalog.Find(System.Runtime.InteropServices.Architecture.X64)!;
+        await store.SaveAsync(manifest with
+        {
+            RuntimeId = stock.Id, EngineVersion = stock.ReleaseTag,
+            RuntimeAssets = stock.Artifacts.Select(Receipt).ToImmutableArray(),
+        });
+        install = (await store.LoadAsync())!;
+        var error = Assert.Throws<InvalidDataException>(() => LlamaServerRouterConfiguration.Build(paths, install));
+        Assert.Contains("runtime family", error.Message);
+    }
+
     private static LocalAiInstallManifest ValidManifest()
     {
         LlamaRuntimeVariant runtime = LlamaRuntimeCatalog.Find(

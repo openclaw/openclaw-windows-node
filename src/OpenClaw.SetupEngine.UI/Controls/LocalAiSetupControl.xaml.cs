@@ -62,6 +62,7 @@ public sealed partial class LocalAiSetupControl : UserControl
         LocalAiSetupAvailabilitySnapshot checking =
             startedAvailability ?? _localAiAvailability.StartProbe();
         ShowLocalAiAvailabilityChecking(checking);
+        LocalAiProfileSelectionText.Visibility = Visibility.Collapsed;
         SetupWindow? setupWindow = _setupWindow;
         Task<HostHardwareInfo> hardwareTask = setupWindow is not null
             ? setupWindow.GetLocalAiHardwareAsync(forceRefresh: refreshHardwareProbe)
@@ -96,6 +97,12 @@ public sealed partial class LocalAiSetupControl : UserControl
                 }
                 return;
             }
+            if (LocalInferenceProfileRecommendation.From(deviceEligibility) is { } recommendation)
+            {
+                LocalAiProfileSelectionText.Text = SetupLocalization.Format("LocalAi_ProfileFallback",
+                    recommendation.PreferredModelName, recommendation.SelectedModelName, recommendation.ContextTokens);
+                LocalAiProfileSelectionText.Visibility = Visibility.Visible;
+            }
             _localAiRecommendedModelId = deviceEligibility.CanInstall
                 ? deviceEligibility.Plan?.Model.Id
                 : null;
@@ -107,7 +114,8 @@ public sealed partial class LocalAiSetupControl : UserControl
             LocalInferenceEligibilityResult availability =
                 LocalInferenceEligibility.EvaluateForConfiguredAvailability(
                     _localAiHardware,
-                    _config!.LocalAi.SelectedModelId);
+                    _config!.LocalAi.SelectedModelId,
+                    hasInstalledReceipt: _localAiRecoveryModelPinned);
 
             if (!availability.CanInstall || availability.Plan is null || availability.SelectedGpu is null)
             {
@@ -327,6 +335,10 @@ public sealed partial class LocalAiSetupControl : UserControl
                     reason.DetectedGigabytes is { } detected
                         ? FormatGigabytes(detected)
                         : SetupLocalization.GetString("LocalAi_Reason_UnknownMemoryAmount")),
+            LocalInferenceUnavailableReasonKind.InsufficientSystemMemory =>
+                SetupLocalization.Format("LocalAi_Reason_InsufficientSystemMemory", FormatGigabytes(reason.RequiredSystemGigabytes)),
+            LocalInferenceUnavailableReasonKind.InsufficientDiskSpace =>
+                SetupLocalization.Format("LocalAi_Reason_InsufficientDiskSpace", FormatGigabytes(reason.RequiredDiskGigabytes)),
             LocalInferenceUnavailableReasonKind.DriverTooOld =>
                 SetupLocalization.Format(
                     "LocalAi_Reason_DriverTooOld",

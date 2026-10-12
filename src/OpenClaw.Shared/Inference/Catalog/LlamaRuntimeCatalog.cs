@@ -15,7 +15,8 @@ public sealed record LlamaRuntimeVariant
         Version cudaVersion,
         IReadOnlyList<PinnedArtifact> artifacts,
         string? releaseTag = null,
-        IReadOnlyList<LlamaRuntimeFile>? requiredFiles = null)
+        IReadOnlyList<LlamaRuntimeFile>? requiredFiles = null,
+        string family = "llama.cpp")
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentNullException.ThrowIfNull(cudaVersion);
@@ -39,9 +40,11 @@ public sealed record LlamaRuntimeVariant
         Artifacts = artifacts;
         ReleaseTag = releaseTag ?? LlamaRuntimeCatalog.ReleaseTag;
         RequiredFiles = requiredFiles ?? [];
+        Family = family;
     }
 
     public string Id { get; }
+    public string Family { get; }
     public Architecture Architecture { get; }
     public Version CudaVersion { get; }
     public IReadOnlyList<PinnedArtifact> Artifacts { get; }
@@ -239,6 +242,11 @@ public static class LlamaRuntimeCatalog
     public static LlamaRuntimeVariant? Find(Architecture architecture) =>
         s_variants.SingleOrDefault(variant => variant.Architecture == architecture);
 
+    public static LlamaRuntimeVariant? Find(Architecture architecture, string family) =>
+        family == BonsaiRuntimeCatalog.Family
+            ? BonsaiRuntimeCatalog.Find(architecture)
+            : family == "llama.cpp" ? Find(architecture) : null;
+
     /// <summary>
     /// Resolves a runtime id from an already-installed receipt, including a retired
     /// runtime from before the last version bump. Use this only on installed-receipt
@@ -250,6 +258,7 @@ public static class LlamaRuntimeCatalog
         string.IsNullOrWhiteSpace(id)
             ? null
             : s_variants.SingleOrDefault(variant => string.Equals(variant.Id, id, StringComparison.Ordinal))
+                ?? (string.Equals(BonsaiRuntimeCatalog.X64.Id, id, StringComparison.Ordinal) ? BonsaiRuntimeCatalog.X64 : null)
                 ?? s_legacyVariants.SingleOrDefault(variant => string.Equals(variant.Id, id, StringComparison.Ordinal));
 
     private static IReadOnlyList<LlamaRuntimeFile> X64RuntimeFiles() =>

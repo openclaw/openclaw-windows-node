@@ -8005,4 +8005,7 @@ Suas configurações, gateway, arquivos e modelos permanecem onde estão.</value
   <data name="ChatPage_SetupCheckAgain.Content" xml:space="preserve">
     <value>Verificar novamente</value>
   </data>
+  <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>O perfil preferido {0} não cabe neste hardware. A configuração pode usar {1} com {2:N0} tokens de contexto. Revise este perfil na configuração antes de instalar.</value></data>
+  <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>Este perfil requer pelo menos {0} de RAM do sistema.</value></data>
+  <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>Este perfil requer pelo menos {0} livres nos volumes do cache de modelos e do mecanismo.</value></data>
 </root>

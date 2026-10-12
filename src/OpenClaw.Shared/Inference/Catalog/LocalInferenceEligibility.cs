@@ -15,6 +15,8 @@ public enum LocalInferenceEligibilityFailureCode
     InsufficientGpuMemory = 3,
     DriverTooOld = 4,
     CudaCapabilityTooLow = 5,
+    InsufficientSystemMemory = 6,
+    InsufficientDiskSpace = 7,
 }
 
 public sealed record LocalInferenceEligibilityResult(
@@ -26,7 +28,11 @@ public sealed record LocalInferenceEligibilityResult(
     long RequiredTotalMemoryBytes,
     long? DetectedTotalMemoryBytes,
     long RequiredFreeMemoryBytes,
-    long? AvailableFreeMemoryBytes)
+    long? AvailableFreeMemoryBytes,
+    long RequiredSystemMemoryBytes = 0,
+    long? DetectedSystemMemoryBytes = null,
+    long RequiredDiskBytes = 0,
+    long? AvailableDiskBytes = null)
 {
     public bool CanInstall => Status is
         LocalInferenceEligibilityStatus.Eligible or
@@ -64,10 +70,17 @@ public static class LocalInferenceEligibility
     /// </remarks>
     public static LocalInferenceEligibilityResult EvaluateForConfiguredAvailability(
         HostHardwareInfo hardware,
-        string? configuredModelId)
+        string? configuredModelId,
+        bool hasInstalledReceipt = false)
     {
         ArgumentNullException.ThrowIfNull(hardware);
         LocalInferenceEligibilityResult device = Evaluate(hardware);
+        if (!device.CanInstall && hasInstalledReceipt && !string.IsNullOrWhiteSpace(configuredModelId))
+        {
+            LocalInferenceEligibilityResult installed = EvaluateInstalled(hardware, configuredModelId);
+            if (installed.CanInstall)
+                return installed;
+        }
         if (device.CanInstall ||
             device.SelectionFailureCode != LocalInferenceSelectionFailureCode.NotRecommendedForSku ||
             string.IsNullOrWhiteSpace(configuredModelId))
@@ -96,12 +109,13 @@ public static class LocalInferenceEligibility
         string installedModelId)
     {
         ArgumentNullException.ThrowIfNull(hardware);
-        return Evaluate(hardware, LocalInferenceSelector.SelectInstalled(hardware, installedModelId));
+        return Evaluate(hardware, LocalInferenceSelector.SelectInstalled(hardware, installedModelId), installed: true);
     }
 
     private static LocalInferenceEligibilityResult Evaluate(
         HostHardwareInfo hardware,
-        LocalInferenceSelectionResult selection)
+        LocalInferenceSelectionResult selection,
+        bool installed = false)
     {
         if (!selection.IsSelected || selection.Plan is null)
         {
@@ -133,16 +147,25 @@ public static class LocalInferenceEligibility
         if (selected is null)
             return Unsupported(LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete);
 
+        var managedProfile = new LocalManagedInferenceProfile(plan.Runtime, plan.Model, plan.Profile);
+        LocalInferenceEligibilityFailureCode resourceFailure = managedProfile.CheckHostResources(hardware, installed);
+        bool resourcesBlocked = selected.Status != LocalInferenceEligibilityStatus.Unsupported &&
+            resourceFailure != LocalInferenceEligibilityFailureCode.None;
+
         return new LocalInferenceEligibilityResult(
-            selected.Status,
-            selected.FailureCode,
+            resourcesBlocked ? LocalInferenceEligibilityStatus.Unsupported : selected.Status,
+            resourcesBlocked ? resourceFailure : selected.FailureCode,
             LocalInferenceSelectionFailureCode.None,
             plan,
             selected.Gpu,
             requiredMemoryBytes,
             selected.TotalMemoryBytes > 0 ? selected.TotalMemoryBytes : null,
             requiredMemoryBytes,
-            selected.FreeMemoryBytes);
+            selected.FreeMemoryBytes,
+            managedProfile.MinimumSystemMemoryBytes,
+            hardware.TotalPhysicalMemoryBytes,
+            installed ? 0 : managedProfile.MinimumFreeDiskBytes,
+            hardware.AvailableLocalAiDiskBytes);
     }
 
     private static LocalInferenceEligibilityResult Unsupported(

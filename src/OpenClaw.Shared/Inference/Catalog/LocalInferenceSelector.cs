@@ -149,7 +149,7 @@ public static class LocalInferenceSelector
                         LocalInferenceSelectionFailureCode.NotRecommendedForSku);
                 }
 
-                (model, profile) = SelectDefaultModelAndProfile(genericHardware, runtime);
+                (runtime, model, profile) = SelectDefaultModelAndProfile(genericHardware, runtime);
             }
 
             modelSelectionOrigin = LocalInferenceModelSelectionOrigin.Default;
@@ -161,6 +161,9 @@ public static class LocalInferenceSelector
                 : LocalModelCatalog.Find(requestedModelId);
             if (model is null)
                 return LocalInferenceSelectionResult.Unsupported(LocalInferenceSelectionFailureCode.UnknownModel);
+            runtime = LlamaRuntimeCatalog.Find(hardware.CpuArchitecture, model.RuntimeFamily);
+            if (runtime is null)
+                return LocalInferenceSelectionResult.Unsupported(LocalInferenceSelectionFailureCode.RuntimeUnavailable);
             if (sparkPick is { } recommended &&
                 string.Equals(recommended.Model.Id, model.Id, StringComparison.OrdinalIgnoreCase))
             {
@@ -176,7 +179,7 @@ public static class LocalInferenceSelector
             }
             else
             {
-                profile = SelectBestFittingProfile(hardware, runtime, model) ??
+                profile = SelectBestFittingProfile(hardware, runtime, model, includeRetiredInstalledModel) ??
                     LocalModelCatalog.GetProfiles(model)[^1];
             }
 
@@ -187,7 +190,7 @@ public static class LocalInferenceSelector
             new LocalInferencePlan(runtime, model, profile, modelSelectionOrigin, boundGpuStableId));
     }
 
-    private static (LocalModelInfo Model, LocalInferenceRunProfile Profile) SelectDefaultModelAndProfile(
+    private static (LlamaRuntimeVariant Runtime, LocalModelInfo Model, LocalInferenceRunProfile Profile) SelectDefaultModelAndProfile(
         HostHardwareInfo hardware,
         LlamaRuntimeVariant runtime)
     {
@@ -205,26 +208,29 @@ public static class LocalInferenceSelector
                      .OrderByDescending(model => model.RecommendationPriority)
                      .ThenByDescending(LocalModelCatalog.TotalDownloadSizeBytes))
         {
-            LocalInferenceRunProfile? profile = SelectBestFittingProfile(hardware, runtime, candidate);
+            LlamaRuntimeVariant? candidateRuntime = LlamaRuntimeCatalog.Find(hardware.CpuArchitecture, candidate.RuntimeFamily);
+            if (candidateRuntime is null)
+                continue;
+            LocalInferenceRunProfile? profile = SelectBestFittingProfile(hardware, candidateRuntime, candidate);
             if (profile is not null)
-                return (candidate, profile);
+                return (candidateRuntime, candidate, profile);
         }
 
         LocalModelInfo fallback = genericDefaultCandidates
+            .Where(model => LlamaRuntimeCatalog.Find(hardware.CpuArchitecture, model.RuntimeFamily) is not null)
             .OrderBy(LocalModelCatalog.TotalDownloadSizeBytes)
             .First();
-        return (fallback, LocalModelCatalog.GetProfiles(fallback)[^1]);
+        return (LlamaRuntimeCatalog.Find(hardware.CpuArchitecture, fallback.RuntimeFamily)!,
+            fallback, LocalModelCatalog.GetProfiles(fallback)[^1]);
     }
 
     private static LocalInferenceRunProfile? SelectBestFittingProfile(
         HostHardwareInfo hardware,
         LlamaRuntimeVariant runtime,
-        LocalModelInfo model) =>
+        LocalModelInfo model,
+        bool installed = false) =>
         LocalModelCatalog.GetProfiles(model).FirstOrDefault(profile =>
-            hardware.NvidiaGpus.Any(gpu =>
-                LocalInferenceQualificationPolicy.HasRuntimePrerequisites(gpu, runtime) &&
-                LocalInferenceQualificationPolicy.GetEffectiveTotalMemoryBytes(gpu) >=
-                    LocalInferenceQualificationPolicy.GetRequiredMemoryBytes(model, profile)));
+            new LocalManagedInferenceProfile(runtime, model, profile).Fits(hardware, installed));
 }
 
 internal static class LocalInferenceQualificationPolicy
