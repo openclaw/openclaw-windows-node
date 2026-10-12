@@ -2951,6 +2951,88 @@ Use one of these options:
   <data name="Chat_ZeroState_WelcomeSubtitle" xml:space="preserve">
     <value>How can I help you today?</value>
   </data>
+  <data name="Chat_ZeroState_RecentChats" xml:space="preserve"><value>Recent chats</value></data>
+  <data name="Chat_Placement_Environment" xml:space="preserve">
+    <value>Environment</value>
+  </data>
+  <data name="Chat_Placement_Workspace" xml:space="preserve">
+    <value>Workspace</value>
+  </data>
+  <data name="Chat_Placement_Devices" xml:space="preserve">
+    <value>Your devices</value>
+  </data>
+  <data name="Chat_Placement_Projects" xml:space="preserve">
+    <value>Projects</value>
+  </data>
+  <data name="Chat_Placement_Folders" xml:space="preserve">
+    <value>Gateway folders</value>
+  </data>
+  <data name="Chat_Placement_SearchDevices" xml:space="preserve">
+    <value>Search environments</value>
+  </data>
+  <data name="Chat_Placement_SearchProjects" xml:space="preserve">
+    <value>Search projects or paste a Git URL</value>
+  </data>
+  <data name="Chat_Placement_Path" xml:space="preserve">
+    <value>Enter a folder path</value>
+  </data>
+  <data name="Chat_Placement_DefaultWorkspace" xml:space="preserve">
+    <value>Default workspace</value>
+  </data>
+  <data name="Chat_Placement_Browse" xml:space="preserve">
+    <value>Browse folders</value>
+  </data>
+  <data name="Chat_Placement_Up" xml:space="preserve">
+    <value>Up</value>
+  </data>
+  <data name="Chat_Placement_UseFolder" xml:space="preserve">
+    <value>Use this folder</value>
+  </data>
+  <data name="Chat_Placement_Back" xml:space="preserve">
+    <value>Back to projects</value>
+  </data>
+  <data name="Chat_Placement_Clone" xml:space="preserve">
+    <value>Clone repository on send</value>
+  </data>
+  <data name="Chat_Placement_Retry" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="Chat_Placement_Loading" xml:space="preserve">
+    <value>Loading locations...</value>
+  </data>
+  <data name="Chat_Placement_Preparing" xml:space="preserve">
+    <value>Preparing chat location...</value>
+  </data>
+  <data name="Chat_Placement_NoMatches" xml:space="preserve">
+    <value>No matching locations</value>
+  </data>
+  <data name="Chat_Placement_Offline" xml:space="preserve">
+    <value>Offline</value>
+  </data>
+  <data name="Chat_Placement_HostingDisabled" xml:space="preserve">
+    <value>Session hosting is not enabled</value>
+  </data>
+  <data name="Chat_Placement_CapacityUnknown" xml:space="preserve">
+    <value>Session capacity is not advertised</value>
+  </data>
+  <data name="Chat_Placement_NoCapacity" xml:space="preserve">
+    <value>No available session slots</value>
+  </data>
+  <data name="Chat_Placement_CommandUnavailable" xml:space="preserve">
+    <value>Required command is not approved</value>
+  </data>
+  <data name="Chat_Placement_UpdateRequired" xml:space="preserve">
+    <value>Host update required</value>
+  </data>
+  <data name="Chat_Placement_RuntimeUnsupported" xml:space="preserve">
+    <value>This agent runtime does not support device sessions</value>
+  </data>
+  <data name="Chat_Placement_Gateway" xml:space="preserve">
+    <value>Gateway host</value>
+  </data>
+  <data name="Chat_Placement_Remote" xml:space="preserve">
+    <value>Remote session host</value>
+  </data>
   <data name="Chat_Status_Done" xml:space="preserve">
     <value>Done</value>
   </data>
@@ -8022,4 +8104,7 @@ Your settings, gateway, files, and models stay where they are.</value>
   <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>The preferred {0} profile does not fit this hardware. Setup can use {1} with {2:N0} context tokens. Review this profile in setup before installing.</value></data>
   <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>This profile requires at least {0} of system RAM.</value></data>
   <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>This profile requires at least {0} free on both the model cache and runtime volumes.</value></data>
+  <data name="Chat_Welcome_Loading" xml:space="preserve"><value>Loading welcome content from your Gateway...</value></data>
+  <data name="Chat_Welcome_Unsupported" xml:space="preserve"><value>This Gateway does not provide shared welcome content. You can still start a chat below.</value></data>
+  <data name="Chat_Welcome_Failed" xml:space="preserve"><value>Welcome content could not be loaded. Reconnect to retry, or start a chat below.</value></data>
 </root>

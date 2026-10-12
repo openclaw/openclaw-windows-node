@@ -16,6 +16,7 @@ public interface IChatGatewayBridge : IDisposable
     string? MainSessionKey { get; }
     /// <summary>True once the gateway handshake has resolved session defaults.</summary>
     bool HasHandshakeSnapshot { get; }
+    IChatPlacementGateway? PlacementGateway => null;
     SessionInfo[] GetSessionList();
     ModelsListInfo? GetCurrentModelsList();
 
@@ -48,6 +49,9 @@ public interface IChatGatewayBridge : IDisposable
     /// does not implement the method. Request/response — no event subscription.
     /// </summary>
     Task<CommandCatalog> ListCommandsAsync(CommandCatalogQuery? query = null);
+    /// <summary>Returns null only when the Gateway does not support shared welcome content.</summary>
+    Task<ChatWelcomeCatalog?> GetWelcomeCatalogAsync(string locale) =>
+        Task.FromResult<ChatWelcomeCatalog?>(null);
     Task<SessionCreateResult> CreateSessionAsync(SessionCreateRequest request) =>
         Task.FromResult(new SessionCreateResult
         {
@@ -129,6 +133,7 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
     public GatewayClientChatBridge(OpenClawGatewayClient client)
     {
         _client = client;
+        PlacementGateway = client.CreateChatPlacementGateway();
         _statusChangedHandler = (s, e) =>
         {
             _currentStatus = e;
@@ -200,6 +205,7 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
     }
 
     public bool IsConnected => _client.IsConnectedToGateway;
+    public IChatPlacementGateway PlacementGateway { get; }
     public ConnectionStatus CurrentStatus => _currentStatus;
     public string? MainSessionKey => _client.MainSessionKey;
     public bool HasHandshakeSnapshot => _client.HasHandshakeSnapshot;
@@ -231,6 +237,9 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
 
     public Task<CommandCatalog> ListCommandsAsync(CommandCatalogQuery? query = null) =>
         _client.ListCommandsAsync(query);
+
+    public Task<ChatWelcomeCatalog?> GetWelcomeCatalogAsync(string locale) =>
+        _client.GetChatWelcomeCatalogAsync(locale);
 
     public Task<SessionCreateResult> CreateSessionAsync(SessionCreateRequest request) =>
         _client.CreateSessionAsync(request);

@@ -2899,6 +2899,88 @@ Gebruik een van deze opties:
   <data name="DebugPage_ChatOverride_ForceNative_Tray.Content" xml:space="preserve">
     <value>Companion-chatinterface forceren</value>
   </data>
+  <data name="Chat_ZeroState_RecentChats" xml:space="preserve"><value>Recente chats</value></data>
+  <data name="Chat_Placement_Environment" xml:space="preserve">
+    <value>Omgeving</value>
+  </data>
+  <data name="Chat_Placement_Workspace" xml:space="preserve">
+    <value>Werkruimte</value>
+  </data>
+  <data name="Chat_Placement_Devices" xml:space="preserve">
+    <value>Je apparaten</value>
+  </data>
+  <data name="Chat_Placement_Projects" xml:space="preserve">
+    <value>Projecten</value>
+  </data>
+  <data name="Chat_Placement_Folders" xml:space="preserve">
+    <value>Gateway-mappen</value>
+  </data>
+  <data name="Chat_Placement_SearchDevices" xml:space="preserve">
+    <value>Omgevingen zoeken</value>
+  </data>
+  <data name="Chat_Placement_SearchProjects" xml:space="preserve">
+    <value>Projecten zoeken of een Git-URL plakken</value>
+  </data>
+  <data name="Chat_Placement_Path" xml:space="preserve">
+    <value>Voer een mappad in</value>
+  </data>
+  <data name="Chat_Placement_DefaultWorkspace" xml:space="preserve">
+    <value>Standaardwerkruimte</value>
+  </data>
+  <data name="Chat_Placement_Browse" xml:space="preserve">
+    <value>Mappen doorbladeren</value>
+  </data>
+  <data name="Chat_Placement_Up" xml:space="preserve">
+    <value>Bovenliggende map</value>
+  </data>
+  <data name="Chat_Placement_UseFolder" xml:space="preserve">
+    <value>Deze map gebruiken</value>
+  </data>
+  <data name="Chat_Placement_Back" xml:space="preserve">
+    <value>Terug naar projecten</value>
+  </data>
+  <data name="Chat_Placement_Clone" xml:space="preserve">
+    <value>Repository klonen bij verzenden</value>
+  </data>
+  <data name="Chat_Placement_Retry" xml:space="preserve">
+    <value>Opnieuw proberen</value>
+  </data>
+  <data name="Chat_Placement_Loading" xml:space="preserve">
+    <value>Locaties laden...</value>
+  </data>
+  <data name="Chat_Placement_Preparing" xml:space="preserve">
+    <value>Chatlocatie voorbereiden...</value>
+  </data>
+  <data name="Chat_Placement_NoMatches" xml:space="preserve">
+    <value>Geen overeenkomende locaties</value>
+  </data>
+  <data name="Chat_Placement_Offline" xml:space="preserve">
+    <value>Niet verbonden</value>
+  </data>
+  <data name="Chat_Placement_HostingDisabled" xml:space="preserve">
+    <value>Sessiehosting is niet ingeschakeld</value>
+  </data>
+  <data name="Chat_Placement_CapacityUnknown" xml:space="preserve">
+    <value>Sessiecapaciteit wordt niet gemeld</value>
+  </data>
+  <data name="Chat_Placement_NoCapacity" xml:space="preserve">
+    <value>Geen beschikbare sessieplaatsen</value>
+  </data>
+  <data name="Chat_Placement_CommandUnavailable" xml:space="preserve">
+    <value>De vereiste opdracht is niet goedgekeurd</value>
+  </data>
+  <data name="Chat_Placement_UpdateRequired" xml:space="preserve">
+    <value>Hostupdate vereist</value>
+  </data>
+  <data name="Chat_Placement_RuntimeUnsupported" xml:space="preserve">
+    <value>Deze agentruntime ondersteunt geen apparaatsessies</value>
+  </data>
+  <data name="Chat_Placement_Gateway" xml:space="preserve">
+    <value>Gateway-host</value>
+  </data>
+  <data name="Chat_Placement_Remote" xml:space="preserve">
+    <value>Externe sessiehost</value>
+  </data>
   <data name="Chat_ZeroState_WelcomeTitle" xml:space="preserve">
     <value>Welkom bij OpenClaw</value>
   </data>
@@ -7960,4 +8042,7 @@ Uw instellingen, gateway, bestanden en modellen blijven op hun plaats.</value>
   <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>Het voorkeursprofiel {0} past niet bij deze hardware. De installatie kan {1} gebruiken met {2:N0} contexttokens. Controleer dit profiel in de installatie voordat u het installeert.</value></data>
   <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>Dit profiel vereist minimaal {0} systeemgeheugen.</value></data>
   <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>Dit profiel vereist minimaal {0} vrije ruimte op zowel het modelcachevolume als het runtimevolume.</value></data>
+  <data name="Chat_Welcome_Loading" xml:space="preserve"><value>Welkomstinhoud wordt geladen vanaf je Gateway...</value></data>
+  <data name="Chat_Welcome_Unsupported" xml:space="preserve"><value>Deze Gateway biedt geen gedeelde welkomstinhoud. Je kunt hieronder wel een chat starten.</value></data>
+  <data name="Chat_Welcome_Failed" xml:space="preserve"><value>De welkomstinhoud kon niet worden geladen. Maak opnieuw verbinding om het nogmaals te proberen of start hieronder een chat.</value></data>
 </root>

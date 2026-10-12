@@ -28,6 +28,7 @@ internal sealed partial class ChatComposerController : IDisposable
     private readonly ChatComposerViewModel _vm;
     private readonly IChatComposerRuntimePort _port;
     private readonly ChatComposerHostActions _hostActions;
+    private readonly ChatPlacementController? _placement;
     private readonly object _operationGate = new();
 
     /// <summary>Canceled and disposed exactly once, in <see cref="Dispose"/>. Never
@@ -100,11 +101,13 @@ internal sealed partial class ChatComposerController : IDisposable
     public ChatComposerController(
         ChatComposerViewModel viewModel,
         IChatComposerRuntimePort port,
-        ChatComposerHostActions hostActions)
+        ChatComposerHostActions hostActions,
+        ChatPlacementController? placement = null)
     {
         _vm = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
         _port = port ?? throw new ArgumentNullException(nameof(port));
         _hostActions = hostActions ?? throw new ArgumentNullException(nameof(hostActions));
+        _placement = placement;
         _lifetimeToken = _lifetimeCts.Token;
     }
     /// <summary>Binds the root's session-selection handoff exactly once. Safe to call
@@ -133,6 +136,7 @@ internal sealed partial class ChatComposerController : IDisposable
         if (_disposed || _selectedSessionHandoff is null)
             return false;
 
+        _placement?.NavigateTo(threadId);
         _selectedSessionHandoff(threadId);
         if (_disposed)
             return false;
@@ -276,6 +280,13 @@ internal sealed partial class ChatComposerController : IDisposable
             return result.Succeeded;
         }
 
+        if (_placement is not null)
+        {
+            var requiresPreparation = _placement.RequiresPreparation;
+            if (!await _placement.PrepareAsync(threadId, _lifetimeToken).ConfigureAwait(true)
+                || !StillLive() || (requiresPreparation && !_placement.IsCurrent(threadId)))
+                return false;
+        }
         var accepted = await _port.SendMessageAsync(threadId, message, attachments, _lifetimeToken).ConfigureAwait(true);
         return StillLive() && accepted;
     }

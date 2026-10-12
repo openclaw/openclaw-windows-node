@@ -2898,6 +2898,88 @@
   <data name="DebugPage_ChatOverride_ForceNative_Tray.Content" xml:space="preserve">
     <value>强制使用伴侣聊天 UI</value>
   </data>
+  <data name="Chat_ZeroState_RecentChats" xml:space="preserve"><value>最近的聊天</value></data>
+  <data name="Chat_Placement_Environment" xml:space="preserve">
+    <value>环境</value>
+  </data>
+  <data name="Chat_Placement_Workspace" xml:space="preserve">
+    <value>工作区</value>
+  </data>
+  <data name="Chat_Placement_Devices" xml:space="preserve">
+    <value>你的设备</value>
+  </data>
+  <data name="Chat_Placement_Projects" xml:space="preserve">
+    <value>项目</value>
+  </data>
+  <data name="Chat_Placement_Folders" xml:space="preserve">
+    <value>网关文件夹</value>
+  </data>
+  <data name="Chat_Placement_SearchDevices" xml:space="preserve">
+    <value>搜索环境</value>
+  </data>
+  <data name="Chat_Placement_SearchProjects" xml:space="preserve">
+    <value>搜索项目或粘贴 Git URL</value>
+  </data>
+  <data name="Chat_Placement_Path" xml:space="preserve">
+    <value>输入文件夹路径</value>
+  </data>
+  <data name="Chat_Placement_DefaultWorkspace" xml:space="preserve">
+    <value>默认工作区</value>
+  </data>
+  <data name="Chat_Placement_Browse" xml:space="preserve">
+    <value>浏览文件夹</value>
+  </data>
+  <data name="Chat_Placement_Up" xml:space="preserve">
+    <value>上一级</value>
+  </data>
+  <data name="Chat_Placement_UseFolder" xml:space="preserve">
+    <value>使用此文件夹</value>
+  </data>
+  <data name="Chat_Placement_Back" xml:space="preserve">
+    <value>返回项目</value>
+  </data>
+  <data name="Chat_Placement_Clone" xml:space="preserve">
+    <value>发送时克隆仓库</value>
+  </data>
+  <data name="Chat_Placement_Retry" xml:space="preserve">
+    <value>重试</value>
+  </data>
+  <data name="Chat_Placement_Loading" xml:space="preserve">
+    <value>正在加载位置...</value>
+  </data>
+  <data name="Chat_Placement_Preparing" xml:space="preserve">
+    <value>正在准备聊天位置...</value>
+  </data>
+  <data name="Chat_Placement_NoMatches" xml:space="preserve">
+    <value>没有匹配的位置</value>
+  </data>
+  <data name="Chat_Placement_Offline" xml:space="preserve">
+    <value>离线</value>
+  </data>
+  <data name="Chat_Placement_HostingDisabled" xml:space="preserve">
+    <value>未启用会话托管</value>
+  </data>
+  <data name="Chat_Placement_CapacityUnknown" xml:space="preserve">
+    <value>未提供会话容量信息</value>
+  </data>
+  <data name="Chat_Placement_NoCapacity" xml:space="preserve">
+    <value>没有可用的会话名额</value>
+  </data>
+  <data name="Chat_Placement_CommandUnavailable" xml:space="preserve">
+    <value>所需命令尚未获批</value>
+  </data>
+  <data name="Chat_Placement_UpdateRequired" xml:space="preserve">
+    <value>需要更新主机</value>
+  </data>
+  <data name="Chat_Placement_RuntimeUnsupported" xml:space="preserve">
+    <value>此智能体运行时不支持设备会话</value>
+  </data>
+  <data name="Chat_Placement_Gateway" xml:space="preserve">
+    <value>网关主机</value>
+  </data>
+  <data name="Chat_Placement_Remote" xml:space="preserve">
+    <value>远程会话主机</value>
+  </data>
   <data name="Chat_ZeroState_WelcomeTitle" xml:space="preserve">
     <value>欢迎使用 OpenClaw</value>
   </data>
@@ -7959,4 +8041,7 @@
   <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>首选的 {0} 配置不适合此硬件。设置可使用 {1}，上下文为 {2:N0} 个令牌。安装前请在设置中查看此配置。</value></data>
   <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>此配置至少需要 {0} 系统内存。</value></data>
   <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>此配置要求模型缓存和运行时所在的卷都至少有 {0} 可用空间。</value></data>
+  <data name="Chat_Welcome_Loading" xml:space="preserve"><value>正在从 Gateway 加载欢迎内容...</value></data>
+  <data name="Chat_Welcome_Unsupported" xml:space="preserve"><value>此 Gateway 不提供共享欢迎内容。你仍可在下方开始聊天。</value></data>
+  <data name="Chat_Welcome_Failed" xml:space="preserve"><value>无法加载欢迎内容。请重新连接以重试，或在下方开始聊天。</value></data>
 </root>

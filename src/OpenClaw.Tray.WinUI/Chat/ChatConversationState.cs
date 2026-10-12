@@ -469,6 +469,30 @@ internal sealed class ChatConversationState
         }
     }
 
+    internal bool TryBeginWelcomeFetch(out int epoch)
+    {
+        lock (_gate)
+        {
+            epoch = 0;
+            return !_disposed && _presentation.TryBeginWelcomeFetch(_status, out epoch);
+        }
+    }
+
+    internal bool CompleteWelcomeFetch(int epoch, ChatWelcomeContent content)
+    {
+        lock (_gate)
+            return !_disposed && _presentation.CompleteWelcomeFetch(epoch, _status, content);
+    }
+
+    internal ChatDataSnapshot? SnapshotWelcomeIfFresh(int epoch, ChatProjectionContext context)
+    {
+        lock (_gate)
+            return !_disposed && _status == ConnectionStatus.Connected &&
+                   _presentation.IsWelcomeEpochCurrent(epoch)
+                ? BuildSnapshotLocked(context)
+                : null;
+    }
+
     internal bool TryRaiseKeylessDiagnostic()
     {
         lock (_gate)

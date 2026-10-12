@@ -30,7 +30,8 @@ public sealed record OpenClawReactorChatRootProps(
     Action<string>? OnOpenCheckpoints = null,
     bool IsCompact = false,
     Func<string, bool>? TryCopyText = null,
-    bool ShowSessionPicker = true);
+    bool ShowSessionPicker = true,
+    bool InitialThreadIsExplicitSelection = true);
 
 /// <summary>
 /// Production Reactor root for the native chat surface. It owns the provider
@@ -43,6 +44,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
     private static event EventHandler? ToolCallsVisibilityChanged;
 
     private string? _pendingSelectedThreadId;
+    private bool _initialSelectionApplied;
 
     public static void SetToolCallsVisible(bool visible)
     {
@@ -60,8 +62,14 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
     {
         var props = Props;
         var (snapshot, setSnapshot) = UseState<ChatDataSnapshot?>(null, threadSafe: true);
+        var (viewportWidth, setViewportWidth) = UseState(props.IsCompact ? 480d : 800d);
         var initialSelection = props.InitialThreadId
             ?? (props.Provider as OpenClawChatDataProvider)?.CachedLastChatState?.DefaultThreadId;
+        if (!_initialSelectionApplied)
+        {
+            _pendingSelectedThreadId = props.InitialThreadIsExplicitSelection ? props.InitialThreadId : null;
+            _initialSelectionApplied = true;
+        }
         var (selectedId, setSelectedId) = UseState<string?>(initialSelection, threadSafe: true);
         var selectedIdRef = UseRef<string?>(initialSelection);
         selectedIdRef.Current = selectedId;
@@ -136,7 +144,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
         }
 
         var effectiveThread = selectedMaterializedThread ?? CreateComposeOnlyThread(props.Provider, snapshot);
-        if (effectiveThread is { } selected && string.Equals(_pendingSelectedThreadId, selected.Id, StringComparison.Ordinal))
+        if (selectedMaterializedThread is { } selected && string.Equals(_pendingSelectedThreadId, selected.Id, StringComparison.Ordinal))
             _pendingSelectedThreadId = null;
 
         var connectionState = ToConnectionState(snapshot.ConnectionStatus);
@@ -186,14 +194,14 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
         var isEmptyConversation = entries.Count == 0 && queuedMessages.Count == 0
             && !showThinking && timeline.PendingPermission is null;
         var isComposeOnly = effectiveThread is not null && selectedMaterializedThread is null;
-        var hasRealThreads = snapshot.Threads.Length > 0;
         var welcomeEligible = isEmptyConversation
             && isGatewayConnected
             && (
-                (isComposeOnly && !hasRealThreads)
+                (isComposeOnly && snapshot.ComposeTarget.IsReady
+                    && snapshot.ComposeTarget.SessionKey == effectiveThread?.Id)
                 || (!isComposeOnly && timeline.HistoryLoaded));
         var welcomeEligibilityKey = welcomeEligible
-            ? $"{effectiveThread?.Id}|{isComposeOnly}|{timeline.HistoryLoaded}|{hasRealThreads}"
+            ? $"{effectiveThread?.Id}|{isComposeOnly}|{timeline.HistoryLoaded}"
             : null;
         var welcomeEligibilityKeyRef = UseRef<string?>(welcomeEligibilityKey);
         welcomeEligibilityKeyRef.Current = welcomeEligibilityKey;
@@ -290,19 +298,25 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
 
                 setFirstSendInFlight(true);
                 setScrollToBottomToken(scrollToBottomToken + 1);
-                ObserveFireAndForget(props.ComposerSession.Controller.SendCoreAsync(
-                    suggestionThread.Id,
-                    suggestionThread.Title,
-                    suggestion,
-                    Array.Empty<ChatAttachment>()));
+                async Task SendSuggestionAsync()
+                {
+                    try
+                    {
+                        await props.ComposerSession.Controller.SendCoreAsync(
+                            suggestionThread.Id, suggestionThread.Title, suggestion, Array.Empty<ChatAttachment>());
+                    }
+                    finally
+                    {
+                        setFirstSendInFlight(false);
+                    }
+                }
+                ObserveFireAndForget(SendSuggestionAsync());
             };
         }
 
         var timelineElement = Component<ReactorChatTimeline, ReactorChatTimelineProps>(new(
             mode,
             timelineProps,
-            onSuggestionPicked,
-            firstSendInFlight,
             OnOpenCheckpoints: props.OnOpenCheckpoints,
             HistoryRevision: historyRevision,
             TryCopyText: props.TryCopyText));
@@ -324,7 +338,11 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 MessageOptionsDisabled: timeline.TurnActive || hasPendingQueuedSend,
                 QueuedMessages: queuedMessages,
                 AvailableCommands: snapshot.AvailableCommands,
-                CommandsSupported: snapshot.CommandsSupported);
+                CommandsSupported: snapshot.CommandsSupported)
+            {
+                ShowPlacementPickers = mode == ReactorChatTimelineMode.Empty,
+                PlacementTargetIsEmpty = isEmptyConversation
+            };
             composerElement = Component<ReactorChatComposer, ReactorChatComposerViewProps>(new(
                 props.ComposerSession,
                 composerInputs,
@@ -334,22 +352,47 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 props.ShowSessionPicker));
         }
 
+        var showWelcome = mode == ReactorChatTimelineMode.Empty;
+        // Keep the composer at the same tree position across the first send. Moving
+        // the control into a different parent would lose focus, caret and flyouts.
+        var composerArea = ScrollViewer(
+            Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto],
+                composerElement.WithKey("chat-composer").Grid(row: 0),
+                showWelcome
+                    ? ReactorChatWelcome.Secondary(
+                            ChatWelcomePresentation.RecentChats(snapshot.Threads, effectiveThread?.Id, effectiveThread?.AgentId),
+                            props.ComposerSession.Controller.SelectChannel, onSuggestionPicked, firstSendInFlight,
+                            snapshot.WelcomeContent)
+                        .Margin(ChatVisuals.Gutter(viewportWidth), 12, ChatVisuals.Gutter(viewportWidth), 24)
+                        .Grid(row: 1)
+                    : Empty().Grid(row: 1))
+                .Margin(0, showWelcome ? 24 : 0, 0, 0)
+                .VAlign(showWelcome ? VerticalAlignment.Center : VerticalAlignment.Top))
+            .Set(scroll =>
+            {
+                scroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
+                scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
+                scroll.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+                scroll.VerticalContentAlignment = showWelcome ? VerticalAlignment.Center : VerticalAlignment.Top;
+            })
+            .AutomationId("ChatComposerArea")
+            .WithKey("chat-composer-area");
         return Grid(
             [GridSize.Star()],
-            [GridSize.Star(), GridSize.Auto],
-            timelineElement.Grid(row: 0),
-            composerElement.Grid(row: 1))
+            [showWelcome ? GridSize.Auto : GridSize.Star(), showWelcome ? GridSize.Star() : GridSize.Auto],
+            showWelcome ? Empty().Grid(row: 0) : timelineElement.Grid(row: 0),
+            composerArea.Grid(row: 1))
             .Background(Theme.Ref("ChatCanvasBrush"))
             .HAlign(HorizontalAlignment.Stretch)
-            .VAlign(VerticalAlignment.Stretch);
+            .VAlign(VerticalAlignment.Stretch)
+            .OnMount(control => ChatVisuals.Observe(control, setViewportWidth))
+            .OnUnmount(ChatVisuals.StopObserving);
     }
 
     private static Element RenderLoading() =>
         Component<ReactorChatTimeline, ReactorChatTimelineProps>(new(
             ReactorChatTimelineMode.Loading,
-            new ChatTimelinePresentationContext(null, Array.Empty<ChatTimelineItem>(), false, null),
-            null,
-            false));
+            new ChatTimelinePresentationContext(null, Array.Empty<ChatTimelineItem>(), false, null)));
 
     private ChatThread? CreateComposeOnlyThread(
         IChatDataProvider provider,
@@ -364,7 +407,10 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
         return new ChatThread
         {
             Id = composeKey,
-            AgentId = snapshot.ComposeTarget.AgentId,
+            AgentId = _pendingSelectedThreadId is null
+                ? snapshot.ComposeTarget.AgentId
+                : SessionDisplayResolver.Resolve(new SessionInfo { Key = composeKey }).AgentId
+                    ?? snapshot.ComposeTarget.AgentId,
             Title = _pendingSelectedThreadId is null
                 ? cached?.ThreadTitle ?? "OpenClaw Windows Tray"
                 : LocalizationHelper.GetString("Chat_PendingNewSessionTitle"),

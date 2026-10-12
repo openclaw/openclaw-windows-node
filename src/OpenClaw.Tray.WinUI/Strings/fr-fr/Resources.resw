@@ -2898,6 +2898,88 @@ Utilisez l'une de ces options :
   <data name="DebugPage_ChatOverride_ForceNative_Tray.Content" xml:space="preserve">
     <value>Forcer l'interface de discussion du compagnon</value>
   </data>
+  <data name="Chat_ZeroState_RecentChats" xml:space="preserve"><value>Discussions récentes</value></data>
+  <data name="Chat_Placement_Environment" xml:space="preserve">
+    <value>Environnement</value>
+  </data>
+  <data name="Chat_Placement_Workspace" xml:space="preserve">
+    <value>Espace de travail</value>
+  </data>
+  <data name="Chat_Placement_Devices" xml:space="preserve">
+    <value>Vos appareils</value>
+  </data>
+  <data name="Chat_Placement_Projects" xml:space="preserve">
+    <value>Projets</value>
+  </data>
+  <data name="Chat_Placement_Folders" xml:space="preserve">
+    <value>Dossiers de la passerelle</value>
+  </data>
+  <data name="Chat_Placement_SearchDevices" xml:space="preserve">
+    <value>Rechercher des environnements</value>
+  </data>
+  <data name="Chat_Placement_SearchProjects" xml:space="preserve">
+    <value>Rechercher des projets ou coller une URL Git</value>
+  </data>
+  <data name="Chat_Placement_Path" xml:space="preserve">
+    <value>Saisir un chemin de dossier</value>
+  </data>
+  <data name="Chat_Placement_DefaultWorkspace" xml:space="preserve">
+    <value>Espace de travail par défaut</value>
+  </data>
+  <data name="Chat_Placement_Browse" xml:space="preserve">
+    <value>Parcourir les dossiers</value>
+  </data>
+  <data name="Chat_Placement_Up" xml:space="preserve">
+    <value>Dossier parent</value>
+  </data>
+  <data name="Chat_Placement_UseFolder" xml:space="preserve">
+    <value>Utiliser ce dossier</value>
+  </data>
+  <data name="Chat_Placement_Back" xml:space="preserve">
+    <value>Retour aux projets</value>
+  </data>
+  <data name="Chat_Placement_Clone" xml:space="preserve">
+    <value>Cloner le dépôt lors de l'envoi</value>
+  </data>
+  <data name="Chat_Placement_Retry" xml:space="preserve">
+    <value>Réessayer</value>
+  </data>
+  <data name="Chat_Placement_Loading" xml:space="preserve">
+    <value>Chargement des emplacements...</value>
+  </data>
+  <data name="Chat_Placement_Preparing" xml:space="preserve">
+    <value>Préparation de l'emplacement de la conversation...</value>
+  </data>
+  <data name="Chat_Placement_NoMatches" xml:space="preserve">
+    <value>Aucun emplacement correspondant</value>
+  </data>
+  <data name="Chat_Placement_Offline" xml:space="preserve">
+    <value>Hors ligne</value>
+  </data>
+  <data name="Chat_Placement_HostingDisabled" xml:space="preserve">
+    <value>L'hébergement de sessions n'est pas activé</value>
+  </data>
+  <data name="Chat_Placement_CapacityUnknown" xml:space="preserve">
+    <value>La capacité de sessions n'est pas annoncée</value>
+  </data>
+  <data name="Chat_Placement_NoCapacity" xml:space="preserve">
+    <value>Aucune place disponible pour une session</value>
+  </data>
+  <data name="Chat_Placement_CommandUnavailable" xml:space="preserve">
+    <value>La commande requise n'est pas approuvée</value>
+  </data>
+  <data name="Chat_Placement_UpdateRequired" xml:space="preserve">
+    <value>Mise à jour de l'hôte requise</value>
+  </data>
+  <data name="Chat_Placement_RuntimeUnsupported" xml:space="preserve">
+    <value>Ce moteur d'agent ne prend pas en charge les sessions sur appareil</value>
+  </data>
+  <data name="Chat_Placement_Gateway" xml:space="preserve">
+    <value>Hôte de la passerelle</value>
+  </data>
+  <data name="Chat_Placement_Remote" xml:space="preserve">
+    <value>Hôte de session distant</value>
+  </data>
   <data name="Chat_ZeroState_WelcomeTitle" xml:space="preserve">
     <value>Bienvenue dans OpenClaw</value>
   </data>
@@ -7959,4 +8041,7 @@ Vos paramètres, votre passerelle, vos fichiers et vos modèles restent en place
   <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>Le profil préféré {0} ne convient pas à ce matériel. La configuration peut utiliser {1} avec {2:N0} jetons de contexte. Vérifiez ce profil dans la configuration avant de l’installer.</value></data>
   <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>Ce profil nécessite au moins {0} de mémoire vive système.</value></data>
   <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>Ce profil nécessite au moins {0} libres sur les volumes du cache des modèles et du moteur.</value></data>
+  <data name="Chat_Welcome_Loading" xml:space="preserve"><value>Chargement du contenu d'accueil depuis votre Gateway...</value></data>
+  <data name="Chat_Welcome_Unsupported" xml:space="preserve"><value>Ce Gateway ne fournit pas de contenu d'accueil partagé. Vous pouvez quand même démarrer une discussion ci-dessous.</value></data>
+  <data name="Chat_Welcome_Failed" xml:space="preserve"><value>Impossible de charger le contenu d'accueil. Reconnectez-vous pour réessayer ou démarrez une discussion ci-dessous.</value></data>
 </root>

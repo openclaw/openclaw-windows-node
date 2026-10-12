@@ -566,7 +566,8 @@ public sealed partial class ChatPage : Page
                 onReadAloud: readAloud,
                 onStopSpeaking: () => app?.StopChatSpeaking(),
                 onOpenCheckpoints: OpenSessionCheckpoints,
-                showSessionPicker: _ownerWindow is not WorkspaceWindow);
+                showSessionPicker: _ownerWindow is not WorkspaceWindow,
+                initialThreadIsExplicitSelection: !string.IsNullOrEmpty(pendingSessionKey));
             _reactorHost = mountedHost;
         }
         catch (InvalidOperationException)

@@ -52,6 +52,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         var props = Props;
         var vm = props.Session.ViewModel;
         var controller = props.Session.Controller;
+        var placement = props.Session.Placement;
         var inputs = props.Inputs;
         var sessionItemStatus = GatewayFixtureRenderObservation.Create(
             props.InputSnapshot, inputs.CurrentThread.Id, GatewayFixtureIsolation.IsEnabled);
@@ -61,7 +62,8 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         // The Reactor view subscribes to the view model exactly once per mount and
         // unsubscribes on unmount. This render-invalidation counter is an adapter
         // detail: it is not a second copy of composer state, only a re-render token.
-        var (renderRevision, setRenderRevision) = UseState(vm.RenderRevision, threadSafe: true);
+        long CurrentRevision() => vm.RenderRevision + (placement?.Revision ?? 0);
+        var (renderRevision, setRenderRevision) = UseState(CurrentRevision(), threadSafe: true);
         var inputControl = UseRef<TextBox?>(null);
         var slashPopup = UseRef<Microsoft.UI.Xaml.Controls.Primitives.Popup?>(null);
         var slashPopupContentRef = UseRef<(string Key, FrameworkElement? Content)>((string.Empty, null));
@@ -81,13 +83,16 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
 
         UseEffect((Func<Action>)(() =>
         {
-            void OnChanged(object? sender, PropertyChangedEventArgs args) => setRenderRevision(vm.RenderRevision);
+            void OnChanged(object? sender, PropertyChangedEventArgs args) => setRenderRevision(CurrentRevision());
+            void OnPlacementChanged() => setRenderRevision(CurrentRevision());
             vm.PropertyChanged += OnChanged;
-            if (renderRevision != vm.RenderRevision)
-                setRenderRevision(vm.RenderRevision);
+            if (placement is not null) placement.Changed += OnPlacementChanged;
+            if (renderRevision != CurrentRevision())
+                setRenderRevision(CurrentRevision());
             return () =>
             {
                 vm.PropertyChanged -= OnChanged;
+                if (placement is not null) placement.Changed -= OnPlacementChanged;
                 CloseSlashPopup(slashPopup);
             };
         }), Array.Empty<object>());
@@ -96,7 +101,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         {
             props.Session.ApplyInputs(inputs);
             return static () => { };
-        }), props.InputSnapshot, inputs.CurrentThread);
+        }), props.InputSnapshot, inputs.CurrentThread, inputs.ShowPlacementPickers, inputs.PlacementTargetIsEmpty);
 
         var text = vm.Draft;
         var isSending = vm.IsSending;
@@ -214,12 +219,19 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             string automationId,
             bool enabled,
             double maxLabelWidth,
-            string? itemStatus = null)
+            string? itemStatus = null,
+            string? leadingGlyph = null)
         {
             return Button(
                     Grid(
-                        [GridSize.Star(), GridSize.Auto],
+                        [GridSize.Auto, GridSize.Star(), GridSize.Auto],
                         [GridSize.Auto],
+                        leadingGlyph is null ? Empty() :
+                            TextBlock(leadingGlyph).FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
+                                .FontSize(16).Margin(0, 0, 8, 0).VAlign(VerticalAlignment.Center)
+                                .AccessibilityView(AccessibilityView.Raw)
+                                .Set(text => text.IsTextScaleFactorEnabled = false)
+                                .AutomationId(automationId + "Icon").Grid(column: 0),
                         TextBlock(label)
                             .MaxWidth(maxLabelWidth)
                             .FontSize(13)
@@ -227,7 +239,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                             .TextWrapping(TextWrapping.NoWrap)
                             .HAlign(HorizontalAlignment.Stretch)
                             .VAlign(VerticalAlignment.Center)
-                            .Grid(column: 0),
+                            .Grid(column: 1),
                         TextBlock(FluentIconCatalog.ChevronDown)
                             .Margin(4, 0, 0, 0)
                             .VAlign(VerticalAlignment.Center)
@@ -235,7 +247,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                             .FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
                             .FontSize(12)
                             .Set(text => text.IsTextScaleFactorEnabled = false)
-                            .Grid(column: 1)),
+                            .Grid(column: 2)),
                     () => { })
                 .AutomationName(automationName)
                 .Foreground(Theme.Ref("ChatSecondaryTextBrush"))
@@ -658,6 +670,17 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 .LiveRegion(Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite));
         if (isRecording)
             composerChildren.Add(voiceFeedback);
+        if (placement?.State is { Error: { } placementError })
+            composerChildren.Add(TextBlock(placementError)
+                .FontSize(12).TextWrapping(TextWrapping.Wrap)
+                .Foreground(Theme.Ref("ChatSecondaryTextBrush"))
+                .AutomationId("ChatPlacementError")
+                .LiveRegion(AutomationLiveSetting.Polite));
+        else if (placement?.State.Preparing == true)
+            composerChildren.Add(TextBlock(Localized("Chat_Placement_Preparing", "Preparing chat location..."))
+                .FontSize(12).Foreground(Theme.Ref("ChatSecondaryTextBrush"))
+                .AutomationId("ChatPlacementProgress")
+                .LiveRegion(AutomationLiveSetting.Polite));
         if (attachmentRows.Length > 0)
             composerChildren.Add(ScrollViewer(HStack(8, attachmentRows))
                 .AutomationId("ChatAttachmentRail")
@@ -676,12 +699,50 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             .BorderThickness(1)
             .CornerRadius(ChatVisuals.ComposerRadius)
             .MinHeight(112)
-            .MaxWidth(ChatVisuals.ReadingWidth)
-            .Margin(ChatVisuals.Gutter(viewportWidth), 12)
             .Background(Theme.Ref("ChatComposerBrush"))
             .BorderBrush(Theme.Ref("ChatStrokeBrush"))
-            .HAlign(HorizontalAlignment.Stretch);
-        return Border(writingSurface)
+            .HAlign(HorizontalAlignment.Stretch)
+            .AutomationId("ChatWritingSurface");
+        var surfaces = new List<Element>();
+        var agentId = inputs.CurrentThread.AgentId;
+        var catalog = placement?.State.Catalog;
+        surfaces.Add(inputs.ShowPlacementPickers
+            ? ReactorChatWelcome.Header(
+                ChatWelcomePresentation.AgentIdentity(catalog, agentId),
+                props.InputSnapshot.WelcomeContent, viewportWidth)
+            : Empty());
+        if (inputs.ShowPlacementPickers && placement is not null)
+        {
+            Element LocationPicker(bool environment)
+            {
+                var title = environment
+                    ? Localized("Chat_Placement_Environment", "Environment")
+                    : Localized("Chat_Placement_Workspace", "Workspace");
+                var selection = placement.State.Selection;
+                var label = environment ? selection?.Environment.Label
+                    : selection is null ? null : NativeChatPlacementPicker.WorkspaceLabel(selection.Workspace);
+                var target = PickerButton(label ?? title, $"{title}: {label ?? title}",
+                    environment ? "ChatEnvironmentPicker" : "ChatWorkspacePicker",
+                    placement.CanEdit, Math.Max(40, (viewportWidth - 148) / 2),
+                    leadingGlyph: environment ? FluentIconCatalog.System : FluentIconCatalog.Folder);
+                return Component<ChatPlacementPicker, ChatPlacementPickerProps>(
+                    new(target, placement, environment, viewportWidth));
+            }
+            surfaces.Add(Grid([GridSize.Star(), GridSize.Star()], [GridSize.Auto],
+                LocationPicker(true).Grid(column: 0),
+                LocationPicker(false).Margin(8, 0, 0, 0).Grid(column: 1))
+                .MaxWidth(480).HAlign(HorizontalAlignment.Left)
+                .AutomationId("ChatPlacementPickers"));
+        }
+        else
+        {
+            surfaces.Add(Empty());
+        }
+        surfaces.Add(writingSurface.WithKey("chat-writing-surface"));
+        return Border(VStack(8, surfaces.ToArray())
+                .MaxWidth(ChatVisuals.ReadingWidth)
+                .Margin(ChatVisuals.Gutter(viewportWidth), 12)
+                .HAlign(HorizontalAlignment.Stretch))
             .OnMount(control => ChatVisuals.Observe(control, setViewportWidth))
             .OnUnmount(ChatVisuals.StopObserving);
     }

@@ -104,6 +104,80 @@ Gateway dashboard management lives in a Connection settings card rather than
 occupying a row above the chat surface. Settings' Chat rail action opens Workspace
 without changing the selected Settings page or discarding the chat draft.
 
+An authoritative empty conversation shows **Recent chats** instead of quick-start
+suggestions when the active agent has eligible conversations. The list uses native
+picker visibility, excludes the current session, background, archived and channel
+sessions, and shows at most five chats by last update (session key breaks ties).
+`ChatWelcomePresentation` owns this pure projection. Rows retain native button
+focus/hover states and open the original session through the composer controller's
+selection handoff, preserving the draft and notifying the host. No message is sent
+by opening a recent chat. When none qualify, the upstream welcome suggestions appear.
+Recent titles align left and truncate before a trailing last-used timestamp, matching
+the web dashboard's row hierarchy. Relative ages use the existing localized time-ago resources;
+the tooltip and accessible help expose the full local timestamp. Unknown times stay
+empty rather than inventing activity.
+A ready compose-only session can show this welcome state even when other sessions
+exist; materialized sessions still wait for loaded, settled empty history.
+
+The new-chat block is vertically centered within the content viewport: selected
+agent name, new-session guidance, placement controls and composer, then recent
+chats or starter prompts. It shares the 768-pixel reading width and responsive
+gutters. A native ScrollViewer makes the entire block reachable at short heights
+and large text scales. Existing transcripts keep the composer at the bottom.
+The composer's parent and input control survive the transition to a transcript.
+The selected Gateway agent's `identity.name`, then `name`, then ID supplies the
+heading through the placement catalog; a session title is never used as an agent name.
+The agent avatar, name and guidance are horizontally centered. The avatar uses the
+same `AgentIdentityBadge` image loader, emoji and initials fallback as the Workspace
+agent picker, without its adjacent labels. It is 96 pixels, or 64 pixels at viewport
+widths of 768 pixels and below. The existing `agents.list` response supplies the
+selected agent's image and emoji, with no new request or copied identity.
+
+Welcome copy comes from the connected Gateway's advertised, authenticated
+`controlUi.welcome.get` RPC, with `{ locale }` set to the app's UI language.
+Version 1 returns `requestedLocale`, `resolvedLocale`, `hint`,
+`recentChatsLabel`, and ordered `suggestions` containing `id`, `displayText`,
+and `sendText`. The Gateway derives this catalog from the same welcome key list
+and i18n sources as the web UI during its normal build. The native app does not
+bundle a second prompt list, pin a copy revision, fetch GitHub sources, or execute
+web assets. Unknown suggestion IDs and their supplied order work without a
+Companion update; clicking sends the exact advertised `sendText`.
+
+Content is fetched once per connection and discarded on disconnect. Reconnection
+loads the current Gateway's content, and epoch checks reject late responses and
+queued UI deliveries from the previous connection. The language is fixed for the
+provider lifetime, matching the app's startup-only language override. Missing
+method advertisement or an unknown-method response shows an explicit
+unavailable message, not stale copied prompts. Invalid catalogs and failed
+requests show a separate error with reconnect guidance. In either case the
+composer and recent-chat navigation remain usable; the native localized recent
+chat caption is used when a Gateway caption is unavailable. These compatibility
+messages are the only welcome copy maintained in native resources.
+
+The shared RPC requires the companion upstream Gateway change. Released Gateways
+without it, including the previously tested 2026.9.9 preview, use the explicit
+unavailable state until upgraded to a build containing that contract.
+
+An authoritative empty chat also shows **Environment** and **Workspace** pickers
+above the writing surface. They use the same native toolbar chrome and searchable,
+single-selection flyouts as the model picker. Labels shrink at narrow widths;
+native selection, disabled reasons, keyboard focus, and system theme resources
+remain intact, with computer and folder glyphs on the environment/workspace triggers and their
+native menu rows. These decorative glyphs use `FluentIconCatalog` and do not replace
+the controls' accessible names. The workspace picker offers the agent's default workspace,
+registered projects, explicit Git URLs, and Gateway-side folder browsing. It never
+interprets a Gateway path as a folder on the Companion machine.
+
+`ChatPlacementController` owns each mounted host's local selection and cancellation
+scope. Discovery and selection are read-only. On first send, `GatewayChatPlacementClient`
+rechecks device availability, applies the workspace to the exact empty session key,
+and, for remote hosts, creates a session-owned worktree and requires an active
+dispatch acknowledgment before the existing chat send path runs. Preparation
+errors remain visible and preserve draft/attachments. Navigation, disconnect,
+or disposal fences late results; reconnect preserves explicit selection intent.
+Unconfirmed remote placement is not retried or redirected locally. Review that
+session in the Gateway before another placement attempt.
+
 The footer has a leading Attach/session group, model/reasoning selectors, and
 quiet secondary actions beside the primary Send/Stop action. Every control stays
 in one bottom row: model text shrinks rather than moving the selectors above

@@ -48,6 +48,54 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
     }
 
     [Fact]
+    public async Task WelcomeCatalog_UsesAdvertisedAuthenticatedRpcAndRequestedLocale()
+    {
+        using var server = new LoopbackGatewayServer();
+        server.OnMethod("connect", _ => new
+        {
+            type = "hello-ok", protocol = GatewayProtocolContract.CurrentVersion,
+            features = new { methods = new[] { "controlUi.welcome.get" } }
+        });
+        server.OnMethod("controlUi.welcome.get", parameters =>
+        {
+            Assert.Equal("fr-FR", parameters.GetProperty("locale").GetString());
+            return new
+            {
+                version = 1, requestedLocale = "fr-FR", resolvedLocale = "fr",
+                hint = "Live Gateway hint", recentChatsLabel = "Live recents",
+                suggestions = new[] { new { id = "new-key", displayText = "Visible", sendText = "Exact prompt" } }
+            };
+        });
+        using var client = new OpenClawGatewayClient(server.WebSocketUrl, "test-token", identityPath: _identityDir);
+        await ConnectAndWaitAsync(client, server, configureHandshake: false);
+        var catalog = await client.GetChatWelcomeCatalogAsync("fr-FR");
+        Assert.NotNull(catalog);
+        Assert.Equal("fr", catalog.Locale);
+        Assert.Equal("Exact prompt", Assert.Single(catalog.Suggestions).Prompt);
+        _output.WriteLine(server.FrameFor("controlUi.welcome.get"));
+        await client.DisconnectAsync();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task WelcomeCatalog_UnavailableDoesNotReturnBundledContent(bool advertised)
+    {
+        using var server = new LoopbackGatewayServer();
+        server.OnMethod("connect", _ => new
+        {
+            type = "hello-ok", protocol = GatewayProtocolContract.CurrentVersion,
+            features = new { methods = advertised ? new[] { "controlUi.welcome.get" } : Array.Empty<string>() }
+        });
+        server.OnMethod("controlUi.welcome.get", _ => LoopbackResponse.Fail("unknown method: controlUi.welcome.get"));
+        using var client = new OpenClawGatewayClient(server.WebSocketUrl, "test-token", identityPath: _identityDir);
+        await ConnectAndWaitAsync(client, server, configureHandshake: false);
+        Assert.Null(await client.GetChatWelcomeCatalogAsync("en-US"));
+        Assert.Equal(advertised, server.HasFrame("controlUi.welcome.get"));
+        await client.DisconnectAsync();
+    }
+
+    [Fact]
     public async Task ApplicationRpc_BeforeHelloOk_DoesNotReachWire()
     {
         using var server = new LoopbackGatewayServer(sendHandshakeChallenge: false);
@@ -560,7 +608,8 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
             Assert.Contains("sessions.reset", reset2);
         }
 
-    private static async Task ConnectAndWaitAsync(OpenClawGatewayClient client, LoopbackGatewayServer server)
+    private static async Task ConnectAndWaitAsync(OpenClawGatewayClient client, LoopbackGatewayServer server,
+        bool configureHandshake = true)
     {
         // #1418: the readiness gate (IsConnectedToGateway) now requires the
         // hello-ok handshake, so the loopback gateway performs the real
@@ -568,7 +617,8 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         // post-handshake auto-request burst (health/sessions/usage/nodes/
         // agents); FrameFor/WaitFrameAsync filter by method, so those extra
         // frames never collide with a test's own method assertions.
-        server.EnableHandshake();
+        if (configureHandshake)
+            server.EnableHandshake();
         var connected = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         void OnStatus(object? _, ConnectionStatus s)
         {
