@@ -33,7 +33,7 @@ public sealed class LocalAiHardwareProfileTests(UIThreadFixture ui, ITestOutputH
             ui.Container.Children.Add(page);
             try
             {
-                viewModel.Activate();
+                viewModel.Activate(null);
                 await TestSupport.WaitForRenderedConditionAsync(
                     () => page.IsLoaded && viewModel.IsAvailabilityKnown, "Local AI hardware eligibility");
                 var fallback = Assert.IsType<TextBlock>(page.FindName("LocalAiProfileSelectionText"));
