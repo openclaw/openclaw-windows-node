@@ -164,8 +164,8 @@ public static class LocalInferenceEligibility
             selected.FreeMemoryBytes,
             managedProfile.MinimumSystemMemoryBytes,
             hardware.TotalPhysicalMemoryBytes,
-            installed ? 0 : managedProfile.MinimumFreeDiskBytes,
-            hardware.AvailableLocalAiDiskBytes);
+            installed ? 0 : managedProfile.RequiredDiskBytes(hardware),
+            hardware.LocalAiDiskSpace?.AvailableBytes);
     }
 
     private static LocalInferenceEligibilityResult Unsupported(

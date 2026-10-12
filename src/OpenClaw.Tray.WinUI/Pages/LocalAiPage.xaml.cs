@@ -122,7 +122,7 @@ public sealed partial class LocalAiPage : Page
                     ? "LocalAiPage_UnavailableProbeMessage"
                     : "LocalAiPage_UnavailableRequirementsMessage");
         }
-        LocalAiRecheckAvailabilityButton.Visibility = _viewModel.HasAvailabilityProbeError
+        LocalAiRecheckAvailabilityButton.Visibility = _viewModel.CanRecheckAvailability
             ? Visibility.Visible
             : Visibility.Collapsed;
         LocalAiRecheckAvailabilityButton.IsEnabled = _viewModel.CanRecheckAvailability;

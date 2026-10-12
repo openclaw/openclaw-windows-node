@@ -129,7 +129,9 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
     public bool ShowAvailabilityInfoBar =>
         (_isAvailabilityKnown && !_isLocalAiAvailable) || _hasAvailabilityProbeError || IsCheckingAvailability;
     public bool IsSetupAvailable => !_isAvailabilityKnown || _isLocalAiAvailable;
-    public bool CanRecheckAvailability => _hasAvailabilityProbeError && _availabilityCancellation is null && !IsBusy;
+    public bool CanRecheckAvailability =>
+        (_hasAvailabilityProbeError || _localAiUnavailableReason?.Kind == LocalInferenceUnavailableReasonKind.InsufficientDiskSpace) &&
+        _availabilityCancellation is null && !IsBusy;
     public LocalInferenceUnavailableReason? LocalAiUnavailableReason => _localAiUnavailableReason;
     public LocalInferenceProfileRecommendation? ProfileRecommendation { get; private set; }
     public bool CanStart => !IsBusy && HasManagedInstall &&

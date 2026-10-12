@@ -10,6 +10,8 @@ public sealed record LocalManagedInferenceProfile(
     public long RequiredGpuMemoryBytes => LocalInferenceEligibility.GetRequiredMemoryBytes(Model, RunProfile);
     public long MinimumSystemMemoryBytes => Model.MinimumSystemMemoryBytes;
     public long MinimumFreeDiskBytes => Model.MinimumFreeDiskBytes;
+    public long RequiredDiskBytes(HostHardwareInfo hardware) =>
+        hardware.LocalAiDiskSpace?.RequiredBytes(MinimumFreeDiskBytes) ?? MinimumFreeDiskBytes;
 
     internal LocalInferenceEligibilityFailureCode CheckHostResources(HostHardwareInfo hardware, bool installed)
     {
@@ -23,9 +25,11 @@ public sealed record LocalManagedInferenceProfile(
         // Existing receipts do not need room to download their already-installed files.
         if (!installed && MinimumFreeDiskBytes > 0)
         {
-            if (hardware.AvailableLocalAiDiskBytes is null)
+            if (hardware.LocalAiDiskSpace is null)
                 return LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete;
-            if (hardware.AvailableLocalAiDiskBytes < MinimumFreeDiskBytes)
+            // Installation keeps both a cached model and a compatibility copy next to
+            // the runtime. Their reserves must add up when they share a volume.
+            if (hardware.LocalAiDiskSpace.AvailableBytes < RequiredDiskBytes(hardware))
                 return LocalInferenceEligibilityFailureCode.InsufficientDiskSpace;
         }
         return LocalInferenceEligibilityFailureCode.None;

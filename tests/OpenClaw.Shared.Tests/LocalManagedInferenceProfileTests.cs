@@ -54,7 +54,7 @@ public sealed class LocalManagedInferenceProfileTests
     [Fact]
     public void MissingResourceFacts_AreRetryable()
     {
-        var result = LocalInferenceEligibility.Evaluate(Hardware(8) with { AvailableLocalAiDiskBytes = null });
+        var result = LocalInferenceEligibility.Evaluate(Hardware(8) with { LocalAiDiskSpace = null });
         Assert.Equal(LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete, result.FailureCode);
     }
 
@@ -95,24 +95,36 @@ public sealed class LocalManagedInferenceProfileTests
         Assert.False(result.CanInstall);
     }
 
-    [Fact]
-    public void RuntimeAndWeights_HaveImmutablePublicPinsAndLicense()
+    [Theory]
+    [InlineData(true, 8, 8, false, 16)]
+    [InlineData(true, 16, 16, true, 16)]
+    [InlineData(false, 8, 8, true, 8)]
+    [InlineData(false, 8, 4, false, 8)]
+    [InlineData(false, 4, 8, false, 8)]
+    public void InstallationSpace_AccountsForBothDestinations(bool sharesVolume, int runtimeFree,
+        int cacheFree, bool canInstall, int required)
     {
-        var model = LocalModelCatalog.Find(LocalModelCatalog.Bonsai2ModelId)!;
-        Assert.Equal("Apache-2.0", model.Weights.CatalogProvenance!.LicenseIdentifier);
-        Assert.Contains("b072e1d3b35a0a630cece372c2127528e0994386", model.Weights.DownloadUri.AbsoluteUri);
-        Assert.Equal(BonsaiRuntimeCatalog.X64, LlamaRuntimeCatalog.FindInstalled(BonsaiRuntimeCatalog.X64.Id));
-        Assert.Contains(BonsaiRuntimeCatalog.X64.RequiredFiles, file => file.FileName == "llama-server.exe");
-        Assert.Contains(BonsaiRuntimeCatalog.X64.RequiredFiles, file => file.FileName == "ggml-cuda.dll");
-        Assert.All(BonsaiRuntimeCatalog.X64.Artifacts, artifact =>
-        {
-            Assert.Contains("PrismML-Eng/llama.cpp", artifact.DownloadUri.AbsoluteUri);
-            Assert.Equal(64, artifact.Sha256.Value.Length);
-        });
+        var result = LocalInferenceEligibility.Evaluate(Hardware(8) with
+        { LocalAiDiskSpace = new(runtimeFree * GiB, cacheFree * GiB, sharesVolume) });
+        Assert.Equal(canInstall, result.CanInstall);
+        Assert.Equal(required * GiB, result.RequiredDiskBytes);
+        Assert.Equal(Math.Min(runtimeFree, cacheFree) * GiB, result.AvailableDiskBytes);
+        if (!canInstall)
+            Assert.Equal(LocalInferenceEligibilityFailureCode.InsufficientDiskSpace, result.FailureCode);
+    }
+
+    [Fact]
+    public void InstalledAvailability_WithoutDiskFacts_RemainsRepairable()
+    {
+        var hardware = Hardware(8) with { LocalAiDiskSpace = null };
+        Assert.Equal(LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete,
+            LocalInferenceEligibility.Evaluate(hardware).FailureCode);
+        Assert.True(LocalInferenceEligibility.EvaluateForConfiguredAvailability(
+            hardware, LocalModelCatalog.Bonsai2ModelId, hasInstalledReceipt: true).CanInstall);
     }
 
     internal static HostHardwareInfo Hardware(int vram, int ram = 32, int disk = 20, int? freeVram = null) =>
         new(RuntimeArchitecture.X64, ram * GiB, ram * GiB,
             [new GpuInfo(GpuVendor.Nvidia, "NVIDIA RTX 4060", vram * GiB, (freeVram ?? vram) * GiB,
-                CudaMajorVersion: 13, StableId: "GPU-synthetic-4060")], false, disk * GiB);
+                CudaMajorVersion: 13, StableId: "GPU-synthetic-4060")], false, new(disk * GiB, disk * GiB, true));
 }

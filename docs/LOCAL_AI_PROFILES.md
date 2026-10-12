@@ -22,8 +22,11 @@ speculative decoding or vision projector. Its output limit is 2,048 tokens in
 both the local server preset and Gateway provider definition. Other profiles
 retain their existing 8,192 output limit.
 
-The admission policy requires 16 GiB system RAM and 8 GiB free on both the
-runtime and model-cache volumes. GPU accounting includes the 5,946,648,928-byte
+The admission policy requires 16 GiB system RAM and 16 GiB free when the runtime
+and model cache share a volume, or 8 GiB on each separate volume. The two reserves
+cover the cached weights, a second compatibility copy, and runtime download/extraction.
+Disk shortages offer Recheck in setup and the Local AI page after freeing space.
+Existing installation repair does not require these download reserves. GPU accounting includes the 5,946,648,928-byte
 weights, 512 MiB KV cache, and a provisional 1.5 GiB workspace allowance, about
 7.54 GiB total. These are conservative product admission settings, not an
 upstream performance guarantee. Real RTX 4060 peak-memory, long-prompt, and

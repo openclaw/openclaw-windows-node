@@ -2,11 +2,16 @@ using OpenClaw.Shared.Inference.Catalog;
 
 namespace OpenClaw.Shared.Inference;
 
+/// <summary>Installation destinations, including whether their budgets consume the same volume.</summary>
+public sealed record LocalAiDiskSpaceInfo(long RuntimeAvailableBytes, long ModelCacheAvailableBytes, bool SharesVolume)
+{
+    public long AvailableBytes => Math.Min(RuntimeAvailableBytes, ModelCacheAvailableBytes);
+    public long RequiredBytes(long perDestinationBytes) => SharesVolume ? checked(2 * perDestinationBytes) : perDestinationBytes;
+}
+
 internal static class LocalAiDiskSpaceProbe
 {
-    // Both destinations must have the profile's reserve. Taking the lower budget
-    // is conservative when the runtime and model cache live on different volumes.
-    public static long? TryRead()
+    public static LocalAiDiskSpaceInfo? TryRead()
     {
         if (!OperatingSystem.IsWindows())
             return null;
@@ -15,7 +20,10 @@ internal static class LocalAiDiskSpaceProbe
             string runtimeRoot = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR")
                 ?? Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR")
                 ?? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            return Math.Min(ReadVolume(runtimeRoot), ReadVolume(HuggingFaceHubCache.ResolveCacheRoot()));
+            var runtimeVolume = ReadVolume(runtimeRoot);
+            var cacheVolume = ReadVolume(HuggingFaceHubCache.ResolveCacheRoot());
+            return new(runtimeVolume.AvailableFreeSpace, cacheVolume.AvailableFreeSpace,
+                string.Equals(runtimeVolume.Name, cacheVolume.Name, StringComparison.OrdinalIgnoreCase));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException)
         {
@@ -23,6 +31,6 @@ internal static class LocalAiDiskSpaceProbe
         }
     }
 
-    private static long ReadVolume(string path) =>
-        new DriveInfo(Path.GetPathRoot(Path.GetFullPath(path))!).AvailableFreeSpace;
+    private static DriveInfo ReadVolume(string path) =>
+        new(Path.GetPathRoot(Path.GetFullPath(path))!);
 }

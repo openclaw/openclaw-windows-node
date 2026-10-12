@@ -91,7 +91,7 @@ public sealed class CudaHostHardwareProbe : IHostHardwareProbe
             physicalMemory?.AvailableBytes,
             gpus,
             VulkanAvailable: false,
-            AvailableLocalAiDiskBytes: LocalAiDiskSpaceProbe.TryRead());
+            LocalAiDiskSpace: LocalAiDiskSpaceProbe.TryRead());
     }
 
     private IReadOnlyList<GpuInfo> CaptureCudaGpus()

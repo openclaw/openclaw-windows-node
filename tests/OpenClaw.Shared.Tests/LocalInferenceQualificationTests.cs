@@ -615,7 +615,7 @@ public class LocalInferenceQualificationTests
     {
         LocalInferenceEligibilityResult result = LocalInferenceEligibility.Evaluate(
             Hardware(RuntimeArchitecture.X64, Gpu("NVIDIA arbitrary adapter", "GPU-16", 16, 16)) with
-            { AvailableLocalAiDiskBytes = 20 * GiB });
+            { LocalAiDiskSpace = new(20 * GiB, 20 * GiB, true) });
 
         Assert.Equal(LocalInferenceEligibilityStatus.Eligible, result.Status);
         Assert.Equal(LocalInferenceEligibilityFailureCode.None, result.FailureCode);

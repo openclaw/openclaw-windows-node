@@ -209,7 +209,9 @@ public sealed class LocalAiSetupUxContractTests
         AssertInOrder(
             source,
             "deviceEligibility = LocalInferenceEligibility.Evaluate(",
-            "if (deviceEligibility.FailureCode == LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete)",
+            "LocalInferenceEligibility.EvaluateForConfiguredAvailability(",
+            "hasInstalledReceipt: _localAiRecoveryModelPinned",
+            "if (availability.FailureCode == LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete)",
             "TryApplyProbeFailure(",
             "ShowLocalAiProbeUnknown(incompleteSnapshot);");
         Assert.Contains("LocalAiOptionContent.IsHitTestVisible = isAvailable", source);
@@ -301,10 +303,11 @@ public sealed class LocalAiSetupUxContractTests
         AssertInOrder(
             method,
             "LocalInferenceEligibilityResult deviceEligibility = LocalInferenceEligibility.Evaluate(_localAiHardware);",
-            "_localAiRecommendedModelId = deviceEligibility.CanInstall",
             "LocalInferenceEligibility.EvaluateForConfiguredAvailability(",
             "_config!.LocalAi.SelectedModelId,",
             "hasInstalledReceipt: _localAiRecoveryModelPinned);",
+            "if (availability.FailureCode == LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete)",
+            "_localAiRecommendedModelId = deviceEligibility.CanInstall",
             "if (!availability.CanInstall || availability.Plan is null || availability.SelectedGpu is null)",
             "hardwareReason = DescribeLocalAiUnavailable(availability);",
             "LocalInferenceEligibilityResult selectedEligibility =",
