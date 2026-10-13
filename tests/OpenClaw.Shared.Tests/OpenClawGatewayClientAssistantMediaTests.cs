@@ -134,11 +134,16 @@ public sealed class OpenClawGatewayClientAssistantMediaTests
     [Fact]
     public async Task ResolveAssistantFileDownloadUri_NonFileMedia_ReturnsNullWithoutGatewayCall()
     {
+        // Connected and handshake-ready, so only the File-kind guard can stop the request.
+        using var server = new LoopbackWebSocketServer();
         using var identity = new TempDirectory("assistant-media-");
+        await server.StartAsync();
         using var client = new OpenClawGatewayClient(
-            "ws://127.0.0.1:9",
+            server.WebSocketUrl,
             "test-token",
             identityPath: identity.Path);
+        await client.ConnectAsync();
+        MarkHandshakeReady(client);
 
         var uri = await client.ResolveAssistantFileDownloadUriAsync(
             "agent:main:main",
@@ -146,10 +151,12 @@ public sealed class OpenClawGatewayClientAssistantMediaTests
             {
                 Kind = ChatMediaContentKind.Image,
                 Source = ChatMediaContentSource.Structured,
-                ArtifactId = "artifact-1",
-            });
+                ArtifactId = "artifact_managed_image_dbedbff5-b83b-4da5-abaf-c479f4f40bb0",
+            }).WaitAsync(TimeSpan.FromSeconds(2));
 
         Assert.Null(uri);
+        await Assert.ThrowsAsync<TimeoutException>(
+            () => server.ReceiveTextAsync().WaitAsync(TimeSpan.FromMilliseconds(300)));
     }
 
     [Fact]

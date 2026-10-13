@@ -22,8 +22,8 @@ internal static class ChatAssistantMediaRenderer
         string? sessionKey,
         Func<string, ChatMediaContentInfo, CancellationToken, Task<AssistantMediaResolutionResult>>?
             resolver,
-        Func<string, ChatMediaContentInfo, CancellationToken, Task<Uri?>>?
-            fileDownloadResolver = null)
+        Func<string, ChatMediaContentInfo, CancellationToken, Task<AssistantFileDownloadStatus>>?
+            fileDownloader = null)
     {
         if (media.Kind == ChatMediaContentKind.Image
             && !string.IsNullOrWhiteSpace(sessionKey)
@@ -37,10 +37,10 @@ internal static class ChatAssistantMediaRenderer
             && media.Reference.Source == ChatMediaContentSource.Structured
             && !string.IsNullOrWhiteSpace(media.Reference.ArtifactId)
             && !string.IsNullOrWhiteSpace(sessionKey)
-            && fileDownloadResolver is not null)
+            && fileDownloader is not null)
         {
             return Component<ChatAssistantFileCard, ChatAssistantFileCardProps>(
-                new(media, sessionKey, fileDownloadResolver));
+                new(media, sessionKey, fileDownloader));
         }
 
         return BuildUnavailableCard(media);
@@ -157,7 +157,7 @@ internal static class ChatAssistantMediaRenderer
 internal sealed record ChatAssistantFileCardProps(
     ChatAssistantMediaPresentation Media,
     string SessionKey,
-    Func<string, ChatMediaContentInfo, CancellationToken, Task<Uri?>> ResolveDownloadUri);
+    Func<string, ChatMediaContentInfo, CancellationToken, Task<AssistantFileDownloadStatus>> Download);
 
 internal sealed record ChatAssistantFileDownloadState(
     ChatMediaContentInfo Reference,
@@ -165,8 +165,9 @@ internal sealed record ChatAssistantFileDownloadState(
 
 /// <summary>
 /// A downloadable file attachment (for example a zip the agent produced). Files are
-/// never rendered inline: Download asks the Gateway for a short-lived ticketed URL and
-/// hands it to the default browser, which saves the file with the Gateway's name.
+/// never rendered inline. Download asks the connection-owned chat bridge to start a
+/// browser download and shows only the typed outcome; the card never sees the URL or
+/// its Gateway ticket.
 /// </summary>
 internal sealed class ChatAssistantFileCard : Component<ChatAssistantFileCardProps>
 {
@@ -191,17 +192,16 @@ internal sealed class ChatAssistantFileCard : Component<ChatAssistantFileCardPro
 
         async Task DownloadAsync(ChatMediaContentInfo reference)
         {
-            var launched = false;
+            var status = AssistantFileDownloadStatus.Failed;
             try
             {
-                var uri = await props.ResolveDownloadUri(props.SessionKey, reference, CancellationToken.None);
-                launched = uri is not null && await global::Windows.System.Launcher.LaunchUriAsync(uri);
+                status = await props.Download(props.SessionKey, reference, CancellationToken.None);
             }
             catch (Exception ex)
             {
                 Logger.Warn($"Assistant file download failed ({ex.GetType().Name}).");
             }
-            setStored(launched ? null : new(reference, Failed: true));
+            setStored(status == AssistantFileDownloadStatus.Started ? null : new(reference, Failed: true));
         }
 
         var failed = current is { Failed: true };

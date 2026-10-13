@@ -1158,11 +1158,11 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         CancellationToken cancellationToken) =>
         _bridge.ResolveAssistantMediaAsync(sessionKey, media, cancellationToken);
 
-    internal Task<Uri?> ResolveAssistantFileDownloadUriAsync(
+    internal Task<AssistantFileDownloadStatus> DownloadAssistantFileAsync(
         string sessionKey,
         ChatMediaContentInfo media,
         CancellationToken cancellationToken) =>
-        _bridge.ResolveAssistantFileDownloadUriAsync(sessionKey, media, cancellationToken);
+        _bridge.DownloadAssistantFileAsync(sessionKey, media, cancellationToken);
 
     // ── Event handlers ──
 

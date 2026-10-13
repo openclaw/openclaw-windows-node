@@ -65,10 +65,11 @@ public partial class OpenClawGatewayClient
     /// <summary>
     /// Resolves a structured file attachment (for example a zip the agent produced) to
     /// the Gateway's short-lived ticketed download URL. The ticket authorizes only this
-    /// attachment, so the URL can be handed to the browser, which saves the file under
-    /// the Gateway's Content-Disposition name. Returns null when the file is unavailable.
+    /// attachment. Only the connection-owned chat bridge may call this: it launches the
+    /// browser itself and hands renderers an <see cref="AssistantFileDownloadStatus"/>,
+    /// so the ticket never reaches presentation code. Returns null when unavailable.
     /// </summary>
-    public async Task<Uri?> ResolveAssistantFileDownloadUriAsync(
+    internal async Task<Uri?> ResolveAssistantFileDownloadUriAsync(
         string sessionKey,
         ChatMediaContentInfo media,
         CancellationToken cancellationToken = default)
