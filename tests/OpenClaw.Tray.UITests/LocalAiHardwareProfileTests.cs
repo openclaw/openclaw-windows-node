@@ -94,7 +94,7 @@ public sealed class LocalAiHardwareProfileTests(UIThreadFixture ui, ITestOutputH
         OnboardingNativeProof.AssertIsolatedRoots();
         using var directory = new TempDirectory("local-ai-profile-proof-");
         var configPath = directory.Combine("setup.json");
-        File.WriteAllText(configPath, JsonSerializer.Serialize(new SetupConfig { NativeLocalAiAcquisition = true }));
+        File.WriteAllText(configPath, JsonSerializer.Serialize(new SetupConfig()));
         await ui.RunOnUIAsync(async () =>
         {
             var resources = OnboardingWindowsFlowTests.LoadProgressResources(
@@ -105,6 +105,7 @@ public sealed class LocalAiHardwareProfileTests(UIThreadFixture ui, ITestOutputH
             {
                 window = OnboardingNativeProof.CreateWindow(() => new SetupWindow(configPath: configPath,
                     dataDir: directory.Combine("data"), localDataDir: directory.Combine("local"), commandLineArgs: []));
+                window.AccessDraft.Config.NativeLocalAiAcquisition = true;
                 FitWindow(window);
                 var probeField = typeof(SetupWindow).GetField("_localAiHardwareProbe", BindingFlags.NonPublic | BindingFlags.Instance)!;
                 probeField.SetValue(window, Activator.CreateInstance(probeField.FieldType,
@@ -113,6 +114,7 @@ public sealed class LocalAiHardwareProfileTests(UIThreadFixture ui, ITestOutputH
                 var frame = Assert.IsType<Frame>(root.FindName("RootFrame"));
                 using var navigation = OnboardingNativeProof.TrackNavigation(frame);
                 window.NavigateToLocalAiSetup();
+                OnboardingNativeProof.ActivateOwned(window);
                 await OnboardingNativeProof.ApplyThemeSurfaceAsync(root, theme);
                 var page = Assert.IsAssignableFrom<Page>(frame.Content);
                 var control = Assert.IsType<LocalAiSetupControl>(page.FindName("LocalAiOptions"));
