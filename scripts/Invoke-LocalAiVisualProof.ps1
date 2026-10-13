@@ -17,6 +17,9 @@ function Invoke-Capture([string]$Source, [string]$Stage, [bool]$Baseline) {
     Push-Location $Source
     try {
         $project = 'tests/OpenClaw.Tray.UITests/OpenClaw.Tray.UITests.csproj'
+        $expectedHead = (git rev-parse HEAD).Trim()
+        $env:GitVersion_NoNormalizeEnabled = 'true'
+        $env:GitVersion_NoFetchEnabled = 'true'
         dotnet build $project -c Debug -r win-x64 "-p:LocalAiProofBaseline=$($Baseline.ToString().ToLowerInvariant())"
         if ($LASTEXITCODE -ne 0) { throw "$Stage UI build failed." }
 
@@ -24,6 +27,7 @@ function Invoke-Capture([string]$Source, [string]$Stage, [bool]$Baseline) {
         $freeze = Join-Path $scratch "$Stage-freeze"
         New-Item -ItemType Directory -Path $freeze -Force | Out-Null
         $head = (git rev-parse HEAD).Trim()
+        if ($head -cne $expectedHead) { throw 'Proof build changed the pinned source revision.' }
         $files = @(git -c core.quotepath=false ls-files --cached --others --exclude-standard | Sort-Object -Unique | ForEach-Object {
             @{ path = $_; sha256 = (Get-FileHash -LiteralPath (Join-Path $Source $_) -Algorithm SHA256).Hash }
         })

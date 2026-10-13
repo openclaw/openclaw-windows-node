@@ -120,18 +120,22 @@ public sealed class LocalAiHardwareProfileTests(UIThreadFixture ui, ITestOutputH
                 var control = Assert.IsType<LocalAiSetupControl>(page.FindName("LocalAiOptions"));
                 var toggle = Assert.IsType<ToggleSwitch>(control.FindName("LocalAiToggle"));
                 var unavailable = Assert.IsType<InfoBar>(control.FindName("LocalAiUnavailablePanel"));
+                var selector = Assert.IsType<ComboBox>(control.FindName("LocalAiModelSelector"));
+                var progress = Assert.IsType<ProgressRing>(control.FindName("LocalAiAvailabilityProgressRing"));
                 var fits = !IsBaseline && vramGiB == 8;
                 await TestSupport.WaitForRenderedConditionAsync(
-                    () => control.IsLoaded && (toggle.IsEnabled || unavailable.Visibility == Visibility.Visible),
-                    "onboarding hardware eligibility");
-                Assert.Equal(fits, toggle.IsEnabled);
+                    () => control.IsLoaded && !progress.IsActive && (fits
+                        ? selector.SelectedItem is ComboBoxItem
+                        : unavailable.Visibility == Visibility.Visible && unavailable.Title == "Local AI is not available"),
+                    "completed onboarding hardware eligibility");
+                Assert.True(toggle.IsEnabled); // Preserve the existing opt-out escape hatch on unsupported hardware.
+                Assert.Equal(fits, selector.IsEnabled);
                 Assert.Equal(fits ? Visibility.Collapsed : Visibility.Visible, unavailable.Visibility);
                 string label;
                 if (fits)
                 {
                     toggle.IsOn = true;
                     var fallback = Assert.IsType<TextBlock>(control.FindName("LocalAiProfileSelectionText"));
-                    var selector = Assert.IsType<ComboBox>(control.FindName("LocalAiModelSelector"));
                     Assert.Contains("Bonsai 2", fallback.Text);
                     Assert.Contains("8,192", fallback.Text);
                     Assert.Contains("Bonsai 2", Assert.IsType<ComboBoxItem>(selector.SelectedItem).Content.ToString());
@@ -157,9 +161,13 @@ public sealed class LocalAiHardwareProfileTests(UIThreadFixture ui, ITestOutputH
         int vramGiB, ElementTheme theme, string label)
     {
         OnboardingNativeProof.ActivateOwned(window);
+        // OCR checks decision phrases, while the exact profile copy is asserted before capture.
+        string[] labels = !IsBaseline && vramGiB == 8
+            ? ["Setup can use Bonsai 2", "experimental", "8,192 context tokens"]
+            : ["not available"];
         using var capture = await OnboardingNativeProof.CaptureAsync(window,
-            $"{(IsBaseline ? "before" : "after")}-{surface}-{vramGiB}gib-{theme}", output, [label],
-            new { baseline = IsBaseline, surface, vramGiB, theme = theme.ToString(), syntheticHardware = true },
+            $"{(IsBaseline ? "before" : "after")}-{surface}-{vramGiB}gib-{theme}", output, labels,
+            new { baseline = IsBaseline, surface, vramGiB, theme = theme.ToString(), syntheticHardware = true, exactCopy = label },
             requiredContent: page);
         OnboardingNativeProof.AssertSourceUnchanged();
     }
