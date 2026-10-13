@@ -340,8 +340,8 @@ public sealed partial class ChatPage : Page
         _mountedThreadId = sessionKey;
 
         if (_ownerWindow is WorkspaceWindow workspace &&
-            (workspace.Destination.Page != WorkspacePageId.Home ||
-             !string.Equals(workspace.Destination.SessionKey, sessionKey, StringComparison.Ordinal)))
+            WorkspaceNavigation.ShouldSynchronizeComposerSelection(
+                _pageActive, workspace.Destination, sessionKey))
             workspace.SelectSession(sessionKey);
     }
 

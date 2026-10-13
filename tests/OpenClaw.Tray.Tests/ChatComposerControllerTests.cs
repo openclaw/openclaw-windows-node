@@ -2,6 +2,7 @@ using OpenClaw.Chat;
 using OpenClaw.Shared;
 using OpenClaw.Tray.Tests.Presentation;
 using OpenClawTray.Chat;
+using OpenClawTray.Presentation;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
@@ -308,6 +309,49 @@ public sealed class ChatComposerControllerTests
         Assert.Equal(ChatLifecycleCommandKind.New, port.LastLifecycleCall!.Value.Command);
         Assert.Equal("new-session-key", handedOff);
         Assert.Equal(0, port.SendMessageCallCount);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SendAsync_NewAfterDelayedGateway_RespectsWorkspaceNavigationAway(bool navigateAway)
+    {
+        var workspace = new WorkspaceNavigationHistory();
+        workspace.Navigate(new(WorkspacePageId.Home, "session-1"));
+        var chatPageActive = true;
+        string? selectedInReactor = null;
+        var actions = new ChatComposerHostActions(null, null, null, null, null,
+            SessionSelected: sessionKey =>
+            {
+                if (WorkspaceNavigation.ShouldSynchronizeComposerSelection(
+                    chatPageActive, workspace.Current, sessionKey))
+                    workspace.Navigate(new(WorkspacePageId.Home, sessionKey));
+            });
+        var (vm, controller, port, _) = MakeController(actions);
+        using (vm)
+        using (controller)
+        {
+            controller.BindSelectionHandoff(key => selectedInReactor = key);
+            vm.SetDraft("/new");
+            port.ExecuteLifecycleGate = new();
+            var send = controller.SendAsync();
+            Assert.False(send.IsCompleted);
+            Assert.Equal(1, port.ExecuteLifecycleCallCount);
+
+            if (navigateAway)
+            {
+                workspace.Navigate(new(WorkspacePageId.Notifications));
+                chatPageActive = false;
+            }
+
+            port.ExecuteLifecycleGate.SetResult(new(ChatLifecycleCommandKind.New, true, "created"));
+            Assert.True(await send);
+            Assert.Equal("created", selectedInReactor);
+            Assert.Equal(navigateAway
+                ? new WorkspaceDestination(WorkspacePageId.Notifications)
+                : new WorkspaceDestination(WorkspacePageId.Home, "created"), workspace.Current);
+            Assert.Equal(navigateAway ? "session-1" : "created", workspace.ChatDestination.SessionKey);
+        }
     }
 
     [Fact]
