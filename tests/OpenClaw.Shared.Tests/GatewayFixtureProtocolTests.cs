@@ -533,6 +533,20 @@ public sealed class GatewayFixtureProtocolTests
     public Task Upgrade_DisconnectedPeerIsRecordedWithoutPoisoningServerOrShutdown(string headers) =>
         AssertRejectedUpgradeAsync(headers, "error:UPGRADE_DISCONNECTED");
 
+    [Fact]
+    public async Task CloseConnectionsAsync_ToleratesAConnectionHandlerThatDisposedItsSendLock()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            var connected = await ConnectedClient.OpenAsync(server, token);
+            var restart = server.CloseConnectionsAsync();
+            await connected.DisposeAsync();
+            await restart.WaitAsync(Deadline);
+        }
+    }
+
     private static async Task AssertRejectedUpgradeAsync(string headers, string outcome)
     {
         var token = CreateToken();
@@ -563,6 +577,20 @@ public sealed class GatewayFixtureProtocolTests
         var diagnostic = JsonSerializer.Serialize(server.Requests);
         Assert.DoesNotContain(token, diagnostic);
         Assert.DoesNotContain("PRIVATE-UPGRADE-DATA", diagnostic);
+    }
+
+    [Fact]
+    public async Task RealNodeClient_FixtureAcceptsTheNodeRole()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
+        using var data = new TempDirectory(".fixture-node-");
+        using var node = new WindowsNodeClient(server.Endpoint.AbsoluteUri, token, data.Path);
+        var handshake = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        node.HandshakeSucceeded += (_, _) => handshake.TrySetResult();
+        await node.ConnectAsync();
+        await handshake.Task.WaitAsync(Deadline);
+        Assert.Contains(server.Requests, request => request.Method == "connect" && request.Outcome == "ok");
     }
 
     private static string CreateToken() => Convert.ToHexString(RandomNumberGenerator.GetBytes(32));

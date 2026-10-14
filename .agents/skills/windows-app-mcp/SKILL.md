@@ -35,9 +35,19 @@ Copy the data directory printed by the launcher:
 $env:OPENCLAW_TRAY_DATA_DIR = '<isolated-data-dir>'
 ```
 
-Enable **Local MCP Server** in Permissions. MCP-only mode is supported:
-`EnableMcpServer=true` with `EnableNodeMode=false` starts local capabilities
-without requiring gateway credentials.
+Enable **Local MCP Server** in Permissions, or write that choice into the
+isolated `settings.json` before launch. The property names are PascalCase.
+`EnableMcpServer=true` with `EnableNodeMode=false` starts the loopback MCP
+server without a gateway credential, and `RequiresSetup` stays false so the
+first-run wizard does not block startup. Set `OPENCLAW_TRAY_DATA_DIR` to that
+same directory when you run `winnode`, or the CLI reads a different token file.
+`OPENCLAW_SKIP_UPDATE_CHECK=1` skips the startup update check.
+
+A connection refused on `http://127.0.0.1:8765/` means the tray MCP server is
+not running. Do not reinstall `winnode`. Start this isolated tray, wait until
+`mcp-token.txt` appears, then run `winnode --list-tools`. An isolated data
+directory uses its own mutex, so it can run beside the normal tray. The listen
+port stays 8765 unless `OPENCLAW_MCP_PORT` is set.
 
 ## Discover the live surface
 
@@ -103,12 +113,19 @@ node mode, so local MCP can exercise capability implementations directly:
 
 - `system.*`, `device.*`, `screen.*`, `camera.*`, `location.*`
 - `canvas.*`, including A2UI
-- `browser.proxy`
 - `tts.*`, `stt.*`
 - `ollama.models`, `ollama.chat` when **Share Windows Ollama** is enabled
 
+`browser.proxy` is not in that MCP-only list. `BrowserProxyActivation` registers
+it only when the running app has a gateway client, that gateway's shared token,
+and a verified browser endpoint. `winnode --command browser.proxy` then returns
+`Unknown tool: browser.proxy`. A refused connection on port 8765 is not a
+successful discovery. Re-read `tools/list` after the gateway client is attached.
+
 This proves the local capability path only. Add a real gateway invocation when
-the change affects paired-gateway behavior.
+the change affects paired-gateway behavior. The review can accept a concrete
+gateway-availability blocker. It does not accept a refused MCP port as the
+`browser.proxy` call.
 
 ## Required closeout
 
