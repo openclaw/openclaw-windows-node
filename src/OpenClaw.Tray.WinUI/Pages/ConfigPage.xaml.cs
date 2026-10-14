@@ -59,6 +59,7 @@ public sealed partial class ConfigPage : Page
 
     private readonly Dictionary<TreeViewNode, (string Path, JsonElement Element)> _nodeMap = new();
     private readonly Dictionary<string, object?> _pendingChanges = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _replacePaths = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _validationErrors = new(StringComparer.Ordinal);
 
     public ConfigPage()
@@ -457,6 +458,7 @@ public sealed partial class ConfigPage : Page
             if (ReferenceEquals(value, SchemaConfigEditor.RemovePendingValue))
             {
                 _pendingChanges.Remove(fullPath);
+                _replacePaths.Remove(fullPath);
                 _validationErrors.Remove(fullPath);
             }
             else
@@ -464,6 +466,8 @@ public sealed partial class ConfigPage : Page
                 _pendingChanges[fullPath] = value;
             }
         }
+
+        SyncReplacePaths(sectionPath, args.ReplacePaths);
 
         RemoveSectionEntries(sectionPath, _validationErrors);
         foreach (var (path, error) in args.ValidationErrors)
@@ -476,6 +480,27 @@ public sealed partial class ConfigPage : Page
         UpdateSelectedJsonPreviewForCurrentSelection();
         UpdateMetaAndButtons();
     }
+
+    private void SyncReplacePaths(string sectionPath, IReadOnlyCollection<string> relativePaths)
+    {
+        var incoming = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var relative in relativePaths)
+        {
+            incoming.Add(string.IsNullOrEmpty(sectionPath) ? relative : $"{sectionPath}.{relative}");
+        }
+
+        _replacePaths.RemoveWhere(path => IsPathInSection(sectionPath, path) && !incoming.Contains(path));
+        foreach (var path in incoming)
+            _replacePaths.Add(path);
+    }
+
+    private void RemoveReplacePathsUnder(string sectionPath) =>
+        _replacePaths.RemoveWhere(path => IsPathInSection(sectionPath, path));
+
+    private static bool IsPathInSection(string sectionPath, string path) =>
+        string.IsNullOrEmpty(sectionPath)
+            ? true
+            : path == sectionPath || path.StartsWith(sectionPath + ".", StringComparison.Ordinal);
 
     private void OnSave(object sender, RoutedEventArgs e) =>
         AsyncEventHandlerGuard.Run(
@@ -550,7 +575,9 @@ public sealed partial class ConfigPage : Page
         try
         {
             var updated = ConfigEditorModel.ApplyChanges(saveBase.Root, _pendingChanges);
-            var result = await client.PatchConfigDetailedAsync(updated, saveBase.BaseHash);
+            var replacePaths = _replacePaths.Where(_pendingChanges.ContainsKey).ToArray();
+            var result = await client.PatchConfigDetailedAsync(
+                updated, saveBase.BaseHash, replacePaths: replacePaths);
             if (!result.Ok)
             {
                 if (result.LooksLikeStaleBaseHash)
@@ -575,6 +602,7 @@ public sealed partial class ConfigPage : Page
             }
 
             _pendingChanges.Clear();
+            _replacePaths.Clear();
             _validationErrors.Clear();
             _editSnapshot = ConfigEditorSnapshot.Empty;
             _refreshConfigAfterReconnect = true;
@@ -678,6 +706,7 @@ public sealed partial class ConfigPage : Page
     private void OnResetSection(object sender, RoutedEventArgs e)
     {
         RemoveSectionEntries(_selectedPath, _pendingChanges);
+        RemoveReplacePathsUnder(_selectedPath);
         RemoveSectionEntries(_selectedPath, _validationErrors);
         var sectionLabel = string.IsNullOrEmpty(_selectedPath) ? L("ConfigPage_FullConfig") : _selectedPath;
         ShowStatus(

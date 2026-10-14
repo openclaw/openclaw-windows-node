@@ -38,7 +38,8 @@ public sealed class GatewayScenario
 
     private static readonly DateTimeOffset Epoch = new(2026, 8, 20, 12, 0, 0, TimeSpan.Zero);
     private readonly Session[] _sessions;
-    private readonly IReadOnlyDictionary<string, JsonElement> _reads;
+    private readonly Dictionary<string, JsonElement> _reads;
+    private bool _allowConfigPatch;
     private readonly Func<string, JsonElement, object>? _setup;
     private static readonly string[] SetupMethods =
     [
@@ -66,7 +67,7 @@ public sealed class GatewayScenario
         bool allowSessionMutations = false)
     {
         _sessions = sessions;
-        _reads = reads;
+        _reads = new Dictionary<string, JsonElement>(reads, StringComparer.Ordinal);
         _setup = setup;
         _allowAgentCreation = allowAgentCreation;
         _allowSessionMutations = allowSessionMutations;
@@ -93,6 +94,50 @@ public sealed class GatewayScenario
     {
         var browse = CreateBrowse();
         return new(browse._sessions, browse._reads, responder, advertiseSetup);
+    }
+
+    public string? LastConfigPatchRaw { get; private set; }
+    public string LastConfigReplacePaths { get; private set; } = "";
+    public int ConfigGetCount { get; private set; }
+
+    /// <summary>
+    /// Browse fixture plus one hidden webhook array, and a config.patch that
+    /// updates the next config.get. The shared browse scenario stays read-only.
+    /// </summary>
+    public static GatewayScenario CreateSensitiveConfig()
+    {
+        var scenario = CreateBrowse();
+        scenario._allowConfigPatch = true;
+        var config = JsonSerializer.SerializeToElement(new
+        {
+            webhookUrl = new[] { new { url = "https://stored.example/old-hook" } }
+        });
+        var schema = JsonSerializer.SerializeToElement(new
+        {
+            schema = new
+            {
+                type = "object",
+                properties = new
+                {
+                    webhookUrl = new
+                    {
+                        type = "array",
+                        title = "Webhook URL",
+                        items = new
+                        {
+                            type = "object",
+                            properties = new { url = new { type = "string", title = "URL" } }
+                        }
+                    }
+                }
+            },
+            uiHints = new Dictionary<string, object>(),
+            version = "fixture-sensitive-1",
+            generatedAt = Epoch.ToString("O")
+        });
+        scenario._reads["config.schema"] = schema;
+        scenario.StoreConfig(config);
+        return scenario;
     }
 
     public static GatewayScenario CreateBrowse(bool allowAgentCreation = false, bool requireAgentSelection = false,
@@ -245,7 +290,15 @@ public sealed class GatewayScenario
             presence = Array.Empty<object>(), health = _reads["health"],
             sessionDefaults = new { defaultAgentId = "main", mainKey = "main", mainSessionKey = MainSessionKey, scope = "per-sender" }
         },
-        auth = new { role = "operator", scopes = _allowAgentCreation || _allowSessionMutations ? new[] { "operator.admin", "operator.read" } : new[] { _setup is null ? "operator.read" : "operator.admin" } },
+        auth = new
+        {
+            role = "operator",
+            scopes = _allowConfigPatch
+                ? new[] { "operator.read", "operator.write" }
+                : _allowAgentCreation || _allowSessionMutations
+                    ? new[] { "operator.admin", "operator.read" }
+                    : new[] { _setup is null ? "operator.read" : "operator.admin" }
+        },
         policy = new { maxPayload = 1_048_576, maxBufferedBytes = 1_048_576, tickIntervalMs = 30_000 }
     };
 
@@ -283,8 +336,12 @@ public sealed class GatewayScenario
             return ResolveApproval(parameters);
         if (_allowSessionMutations && method is "sessions.patch" or "sessions.delete")
             return MutateSession(method, parameters);
+        if (method == "config.patch" && _allowConfigPatch)
+            return PatchConfig(parameters);
         if (IsWrite(method))
             throw new FixtureRequestException("FIXTURE_READ_ONLY", "Fixture Gateway is read-only. This operation is not executed.");
+        if (method == "config.get")
+            ConfigGetCount++;
         return method switch
         {
             "sessions.list" => ListSessions(parameters),
@@ -296,6 +353,86 @@ public sealed class GatewayScenario
             _ when _reads.ContainsKey(method) => Read(method, parameters),
             _ => throw new FixtureRequestException("METHOD_NOT_FOUND", "Unknown fixture Gateway method.", unexpected: true)
         };
+    }
+
+    private JsonNode? CurrentConfigNode()
+    {
+        if (!_reads.TryGetValue("config.get", out var payload) ||
+            !payload.TryGetProperty("config", out var config))
+            return null;
+        return JsonNode.Parse(config.GetRawText());
+    }
+
+    private static string[] ReadReplacePaths(JsonElement parameters)
+    {
+        if (!parameters.TryGetProperty("replacePaths", out var paths) || paths.ValueKind != JsonValueKind.Array)
+            return [];
+        return paths.EnumerateArray()
+            .Where(item => item.ValueKind == JsonValueKind.String)
+            .Select(item => item.GetString() ?? "")
+            .Where(item => item.Length > 0)
+            .ToArray();
+    }
+
+    private static JsonNode? MergeGatewayConfig(JsonNode? current, JsonElement incoming, IReadOnlyList<string> replacePaths)
+    {
+        var incomingNode = JsonNode.Parse(incoming.GetRawText());
+        return MergeGatewayNode(current, incomingNode, "", new HashSet<string>(replacePaths, StringComparer.Ordinal));
+    }
+
+    private static JsonNode? MergeGatewayNode(JsonNode? current, JsonNode? incoming, string path, HashSet<string> replacePaths)
+    {
+        if (path.Length > 0 && replacePaths.Contains(path))
+            return incoming?.DeepClone();
+        if (current is JsonObject currentObject && incoming is JsonObject incomingObject)
+        {
+            var merged = new JsonObject();
+            foreach (var property in currentObject)
+                merged[property.Key] = property.Value?.DeepClone();
+            foreach (var property in incomingObject)
+            {
+                var child = path.Length == 0 ? property.Key : path + "." + property.Key;
+                merged[property.Key] = MergeGatewayNode(currentObject[property.Key], property.Value, child, replacePaths);
+            }
+            return merged;
+        }
+
+        if (current is JsonArray && incoming is JsonArray && !JsonNode.DeepEquals(current, incoming))
+            throw new FixtureRequestException("INVALID_REQUEST", "replacePaths required for " + path);
+
+        return incoming?.DeepClone();
+    }
+
+    private void StoreConfig(JsonElement config)
+    {
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(config.GetRawText()))).ToLowerInvariant();
+        _reads["config.get"] = JsonSerializer.SerializeToElement(new
+        {
+            path = "/fixture/openclaw.json",
+            exists = true,
+            raw = config.GetRawText(),
+            parsed = config,
+            config,
+            valid = true,
+            hash,
+            issues = Array.Empty<object>(),
+            warnings = Array.Empty<object>(),
+            legacyIssues = Array.Empty<object>()
+        });
+    }
+
+    private object PatchConfig(JsonElement parameters)
+    {
+        if (!parameters.TryGetProperty("raw", out var rawElement) || rawElement.ValueKind != JsonValueKind.String)
+            throw new FixtureRequestException("INVALID_REQUEST", "config.patch requires a raw string.");
+        var raw = rawElement.GetString() ?? "";
+        var replacePaths = ReadReplacePaths(parameters);
+        using var incoming = JsonDocument.Parse(raw);
+        var merged = MergeGatewayConfig(CurrentConfigNode(), incoming.RootElement, replacePaths);
+        LastConfigPatchRaw = raw;
+        LastConfigReplacePaths = string.Join(",", replacePaths);
+        StoreConfig(JsonSerializer.SerializeToElement(merged));
+        return new { ok = true };
     }
 
     private static object ResolveApproval(JsonElement p)

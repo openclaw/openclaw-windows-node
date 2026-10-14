@@ -1619,10 +1619,21 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// <see cref="PatchConfigAsync"/> stays for legacy callers that don't
     /// care about the gateway's reply.
     /// </summary>
-    public async Task<ConfigPatchResult> PatchConfigDetailedAsync(JsonElement fullConfig, string? baseHash, int timeoutMs = 15000)
+    public async Task<ConfigPatchResult> PatchConfigDetailedAsync(
+        JsonElement fullConfig,
+        string? baseHash,
+        int timeoutMs = 15000,
+        IReadOnlyList<string>? replacePaths = null)
     {
         var raw = fullConfig.GetRawText();
-        object payload = baseHash != null ? new { raw, baseHash } : (object)new { raw };
+        var paths = replacePaths is { Count: > 0 } ? replacePaths : null;
+        object payload = (baseHash, paths) switch
+        {
+            (not null, not null) => new { raw, baseHash, replacePaths = paths },
+            (not null, null) => new { raw, baseHash },
+            (null, not null) => new { raw, replacePaths = paths },
+            _ => new { raw },
+        };
         try
         {
             var response = await SendWizardRequestAsync("config.patch", payload, timeoutMs);

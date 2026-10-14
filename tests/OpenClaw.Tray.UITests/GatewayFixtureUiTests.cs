@@ -401,6 +401,56 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
+    public async Task ConfigPage_ReplacementSurvivesInvalidRetryAndCanceledClear()
+    {
+        var scenario = GatewayScenario.CreateSensitiveConfig();
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "config" });
+            await WaitUiAsync(run, () => FindButton(run, "Replace all") is not null, "Replace all on the Config page");
+            Invoke(FindButton(run, "Replace all")!);
+            await WaitUiAsync(run, () => JsonEdit(run) is not null, "replacement box");
+            SetEdit(JsonEdit(run)!, """[{"url":"https://example.invalid/hook-dummy"}]""");
+            Invoke(RequireButton(run, "Apply"));
+            await WaitUiAsync(run, () => FindText(run, "Replacement is ready to save.") is not null, "committed replacement");
+
+            Invoke(RequireButton(run, "Replace all"));
+            await WaitUiAsync(run, () => JsonEdit(run) is not null, "retry box");
+            SetEdit(JsonEdit(run)!, "not-json");
+            Invoke(RequireButton(run, "Apply"));
+            await WaitUiAsync(run, () => FindText(run, "Invalid JSON:") is not null, "invalid retry");
+
+            Invoke(FindButton(run, "Clear all")!);
+            await WaitUiAsync(run, () => FindText(run, "Clear all stored entries?") is not null, "clear confirmation");
+            Invoke(FindButton(run, "Cancel")!);
+            await WaitUiAsync(run, () => FindText(run, "Replacement is ready to save.") is not null, "canceled clear restored the replacement");
+
+            var getsBeforeSave = scenario.ConfigGetCount;
+            Invoke(RequireLabeledButton(run, "Save Changes"));
+            await run.WaitForAsync(() => Task.FromResult(
+                scenario.LastConfigPatchRaw?.Contains("hook-dummy", StringComparison.Ordinal) == true
+                && !scenario.LastConfigPatchRaw.Contains("old-hook", StringComparison.Ordinal)
+                && scenario.LastConfigReplacePaths.Contains("webhookUrl", StringComparison.Ordinal)),
+                "save sent the replacement");
+            await run.WaitForAsync(() => Task.FromResult(
+                scenario.ConfigGetCount > getsBeforeSave
+                && scenario.LastConfigPatchRaw!.Contains("hook-dummy", StringComparison.Ordinal)),
+                "reload read the saved replacement");
+            await WaitUiAsync(run, () => FindText(run, "1 entry is configured. Stored values stay hidden.") is not null,
+                "reloaded Config page shows the saved entry and hides the value");
+            await File.WriteAllTextAsync(
+                Path.Combine(run.ArtifactsDirectory, "config-replacement-proof.json"),
+                JsonSerializer.Serialize(new
+                {
+                    patchContainsReplacement = true,
+                    patchOmitsStoredHook = true,
+                    reloadedEntryCount = 1
+                }));
+        }, scenario: scenario);
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
     public async Task ApprovalCardsGateAllowAndResolveThroughGateway()
     {
         await WithAppAsync(async run =>
@@ -558,6 +608,55 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         using var rendered = JsonDocument.Parse(composer.Current.ItemStatus);
         return rendered.RootElement.GetProperty("loadedThreadIds").EnumerateArray()
             .Any(thread => thread.GetString() == key);
+    }
+
+    private static AutomationElement RequireLabeledButton(GatewayFixtureRun run, string name)
+    {
+        var button = FindButton(run, name);
+        if (button is not null)
+            return button;
+        var text = FindText(run, name);
+        var parent = text is null ? null : TreeWalker.ControlViewWalker.GetParent(text);
+        if (parent is not null && parent.Current.ControlType == ControlType.Button)
+            return parent;
+        throw new InvalidOperationException($"No '{name}' button. Buttons: {string.Join(", ", ButtonNames(run))}");
+    }
+
+    private static AutomationElement RequireButton(GatewayFixtureRun run, string name) =>
+        FindButton(run, name) ?? throw new InvalidOperationException(
+            $"No '{name}' button. Buttons: {string.Join(", ", ButtonNames(run))}");
+
+    private static IEnumerable<string> ButtonNames(GatewayFixtureRun run)
+    {
+        foreach (var window in AppWindows(run))
+        {
+            var buttons = window.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button));
+            foreach (AutomationElement button in buttons)
+                yield return button.Current.Name;
+        }
+    }
+
+    private static AutomationElement? JsonEdit(GatewayFixtureRun run)
+    {
+        foreach (var window in AppWindows(run))
+        {
+            var edits = window.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit));
+            foreach (AutomationElement edit in edits)
+            {
+                var label = edit.Current.Name + " " + edit.Current.HelpText;
+                if (label.Contains("JSON", StringComparison.OrdinalIgnoreCase))
+                    return edit;
+            }
+        }
+        return null;
+    }
+
+    private static void SetEdit(AutomationElement edit, string text)
+    {
+        var value = (ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern);
+        value.SetValue(text);
     }
 
     private static void Invoke(AutomationElement element)
