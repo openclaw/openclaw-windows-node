@@ -6,6 +6,9 @@ if (-not $RepoRoot) { $RepoRoot = Split-Path -Parent $PSScriptRoot }
 . (Join-Path $PSScriptRoot 'ProofEvidence.ps1')
 $root = Join-Path $RepoRoot ('TestResults\proof-contract-' + [guid]::NewGuid().ToString('N'))
 $sourceProbe = Join-Path $RepoRoot ('scripts\proof-source-probe-' + [guid]::NewGuid().ToString('N') + '.txt')
+$artifactRoot = Join-Path $RepoRoot ('artifacts\proof-contract-' + [guid]::NewGuid().ToString('N'))
+$unsupportedRoot = Join-Path $RepoRoot ('proof-output-' + [guid]::NewGuid().ToString('N'))
+$lookalikeRoot = Join-Path $RepoRoot ('TestResults-lookalike-' + [guid]::NewGuid().ToString('N'))
 $shell = (Get-Process -Id $PID).Path
 $checks = 0
 $runnerInvocations = 0
@@ -67,6 +70,17 @@ try {
     Write-Trx $report
     (Get-Item $report).LastWriteTimeUtc = $start.AddMinutes(-1)
     Assert-Rejected { Read-TestResultContract $report $start 0 } 'stale'
+    Write-Trx $report
+    foreach ($lagMilliseconds in @(10, 1000)) {
+        (Get-Item $report).LastWriteTimeUtc = $start.AddMilliseconds(-$lagMilliseconds)
+        $fresh = Read-TestResultContract $report $start 0
+        if ($fresh.executed -ne 1 -or $fresh.outcome -ne 'passed') { throw 'Fresh report with filesystem clock granularity was rejected.' }
+        $checks++
+    }
+    (Get-Item $report).LastWriteTimeUtc = $start.AddMilliseconds(-1001)
+    Assert-Rejected { Read-TestResultContract $report $start 0 } 'stale'
+    Write-Trx $report 1 0 0 $start.AddSeconds(-2)
+    Assert-Rejected { Read-TestResultContract $report $start 0 } 'TRX start time'
     foreach ($replacement in @(
         @{ old = "total='1'"; new = "total='2'" },
         @{ old = "passed='1'"; new = "passed='-1'" },
@@ -113,11 +127,18 @@ try {
         RuntimeIdentifier = 'win-x64'
     }
     $previousGate = [Environment]::GetEnvironmentVariable('OPENCLAW_RUN_E2E')
+    $previousOllamaGate = [Environment]::GetEnvironmentVariable('OPENCLAW_RUN_OLLAMA_E2E')
     try {
         $env:OPENCLAW_RUN_E2E = $null
+        $env:OPENCLAW_RUN_OLLAMA_E2E = $null
         Assert-Rejected { Get-ProofCommandBinding @gatewayArguments } 'requires OPENCLAW_RUN_E2E=1'
         $env:OPENCLAW_RUN_E2E = '1'
+        Assert-Rejected { Get-ProofCommandBinding @gatewayArguments } 'requires OPENCLAW_RUN_OLLAMA_E2E=1'
+        $env:OPENCLAW_RUN_OLLAMA_E2E = '1'
         $gatewayBinding = Get-ProofCommandBinding @gatewayArguments
+        if ($gatewayBinding.environment.Count -ne 2 -or $gatewayBinding.environment.OPENCLAW_RUN_E2E -cne '1' -or
+            $gatewayBinding.environment.OPENCLAW_RUN_OLLAMA_E2E -cne '1') { throw 'Gateway binding omitted a required selected-test gate.' }
+        $checks++
         $gatewayInvocation = New-TestInvocation -ResultsDirectory $root -TrxFileName 'gateway-setup-connect.trx'
         Write-Trx $gatewayInvocation.report
         $gatewayResult = Read-TestResultContract $gatewayInvocation.report ([DateTime]$gatewayInvocation.startedUtc) 0
@@ -125,6 +146,7 @@ try {
         $gatewaySummaryPath = Join-Path $gatewayInvocation.directory 'evidence-summary.json'
         $gatewaySummaryText = Get-Content $gatewaySummaryPath -Raw
         $env:OPENCLAW_RUN_E2E = $null
+        $env:OPENCLAW_RUN_OLLAMA_E2E = $null
         $gateChecked = Test-ProofEvidence $RepoRoot @($gatewaySummaryPath) @($gatewayBinding.poolId)
         if (-not $gateChecked.validExecutionEvidence) { throw 'Recorded environment was incorrectly tied to the validating shell.' }
         $checks++
@@ -132,10 +154,24 @@ try {
         $tamperedGate.environment.OPENCLAW_RUN_E2E = '0'
         $tamperedGate | ConvertTo-Json -Depth 12 | Set-Content $gatewaySummaryPath
         Assert-Rejected { Test-ProofEvidence $RepoRoot @($gatewaySummaryPath) @($gatewayBinding.poolId) } 'environment gate'
+        $tamperedGate = $gatewaySummaryText | ConvertFrom-Json
+        $tamperedGate.environment.OPENCLAW_RUN_OLLAMA_E2E = '0'
+        $tamperedGate | ConvertTo-Json -Depth 12 | Set-Content $gatewaySummaryPath
+        Assert-Rejected { Test-ProofEvidence $RepoRoot @($gatewaySummaryPath) @($gatewayBinding.poolId) } 'OPENCLAW_RUN_OLLAMA_E2E=1 environment gate'
+        $tamperedGate.environment.PSObject.Properties.Remove('OPENCLAW_RUN_OLLAMA_E2E')
+        $tamperedGate | ConvertTo-Json -Depth 12 | Set-Content $gatewaySummaryPath
+        Assert-Rejected { Test-ProofEvidence $RepoRoot @($gatewaySummaryPath) @($gatewayBinding.poolId) } 'environment observations'
+        $tamperedGate = $gatewaySummaryText | ConvertFrom-Json
+        $tamperedGate.environment | Add-Member -NotePropertyName 'PRIVATE_VALUE' -NotePropertyValue 'not-permitted'
+        $tamperedGate | ConvertTo-Json -Depth 12 | Set-Content $gatewaySummaryPath
+        Assert-Rejected { Test-ProofEvidence $RepoRoot @($gatewaySummaryPath) @($gatewayBinding.poolId) } 'undeclared environment'
         $tamperedGate.PSObject.Properties.Remove('environment')
         $tamperedGate | ConvertTo-Json -Depth 12 | Set-Content $gatewaySummaryPath
         Assert-Rejected { Test-ProofEvidence $RepoRoot @($gatewaySummaryPath) @($gatewayBinding.poolId) } 'environment observations'
-    } finally { $env:OPENCLAW_RUN_E2E = $previousGate }
+    } finally {
+        $env:OPENCLAW_RUN_E2E = $previousGate
+        $env:OPENCLAW_RUN_OLLAMA_E2E = $previousOllamaGate
+    }
 
     $binding = Get-ProofCommandBinding $RepoRoot 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' 'Category=Accessibility' 'winui-accessibility' 'win-x64'
     if ($binding.poolId -ne 'windows-winui-interactive') { throw 'Inventory command binding failed.' }
@@ -153,6 +189,11 @@ try {
     $checked = Test-ProofEvidence $RepoRoot @($summaryPath) @($binding.poolId)
     if (-not $checked.validExecutionEvidence -or $checked.completePoolProof) { throw 'Evidence must not claim a complete pool.' }
     $checks++
+    Assert-Rejected { Assert-ProofResultsDirectory $unsupportedRoot $RepoRoot } 'under TestResults or artifacts'
+    Assert-Rejected { Assert-ProofResultsDirectory $lookalikeRoot $RepoRoot } 'under TestResults or artifacts'
+    Assert-Rejected { Assert-ProofResultsDirectory $RepoRoot $RepoRoot } 'under TestResults or artifacts'
+    Assert-Rejected { Test-ProofEvidence $RepoRoot @((Join-Path $unsupportedRoot 'evidence-summary.json')) @($binding.poolId) } 'under TestResults or artifacts'
+    Assert-Rejected { Write-ProofEvidence $RepoRoot $binding @{ directory = $unsupportedRoot } $source 0 $valid '' } 'under TestResults or artifacts'
     $cli = (& (Join-Path $RepoRoot 'scripts\validate-proof-evidence.ps1') -RepoRoot $RepoRoot -SummaryPath $summaryPath -RequiredPoolId $binding.poolId) | ConvertFrom-Json
     if (-not $cli.validExecutionEvidence -or $cli.completePoolProof) { throw 'Read-only evidence CLI overclaims proof.' }
     $checks++
@@ -192,6 +233,13 @@ try {
     Assert-Rejected { Get-ProofArtifact (Join-Path $root 'settings.json') $RepoRoot 'fixture-receipt' } 'missing|allowlisted'
     if ($null -ne (Get-ProofCommandBinding $RepoRoot 'private' 'private' 'private' 'win-x64')) { throw 'Arbitrary command became inventory evidence.' }
     $checks++
+    $noGate = Get-ProofRequiredEnvironment -Command 'runner' -ExecutedCommand 'runner'
+    $oneGate = Get-ProofRequiredEnvironment -Command "`$env:OPENCLAW_RUN_E2E = '1'; runner" -ExecutedCommand 'runner'
+    if ($noGate.Count -ne 0 -or $oneGate.Count -ne 1 -or $oneGate.OPENCLAW_RUN_E2E -cne '1') {
+        throw 'Existing zero-gate or single-gate proof contract changed.'
+    }
+    $checks++
+    Assert-Rejected { Get-ProofRequiredEnvironment -Command "`$env:PRIVATE_VALUE = '1'; runner" -ExecutedCommand 'runner' } 'inventory contract'
 
     # Child PowerShell supplies a controlled command instead of launching dotnet,
     # exercising the actual runner wiring without builds, apps, or machine changes.
@@ -200,8 +248,12 @@ try {
     Set-Content $harness @'
 param([string]$Repo, [string]$Runner, [string]$Case, [string]$Results)
 $ErrorActionPreference = 'Stop'
+. (Join-Path $Repo 'scripts\ProofEvidence.ps1')
 $sourceProbe = Join-Path $Repo ('scripts\runner-source-probe-' + [guid]::NewGuid().ToString('N') + '.txt')
 function global:dotnet {
+    if ($Case -in @('unsupported-output', 'lookalike-output', 'missing-e2e-gate', 'missing-ollama-gate')) {
+        throw 'Unexpected test execution before prerequisite rejection.'
+    }
     $values = @($args)
     $directory = $values[[Array]::IndexOf($values, '--results-directory') + 1]
     $logger = @($values | Where-Object { $_ -like 'trx;LogFileName=*' })[0]
@@ -223,27 +275,61 @@ function global:dotnet {
     Add-Content $harness ("function Write-Trx {`n" + $writer + "`n}")
     Add-Content $harness @'
 try {
-    if ($Runner -eq 'proof') {
+    if ($Runner -eq 'gateway') {
+        $env:OPENCLAW_RUN_E2E = if ($Case -eq 'missing-e2e-gate') { $null } else { '1' }
+        $env:OPENCLAW_RUN_OLLAMA_E2E = if ($Case -eq 'missing-ollama-gate') { $null } else { '1' }
+        & (Join-Path $Repo 'scripts\run-proof-tests.ps1') -Project 'tests\OpenClaw.E2ETests\OpenClaw.E2ETests.csproj' -Filter 'FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests' -ResultName 'gateway-setup-connect' -RuntimeIdentifier win-x64 -ResultsDirectory $Results
+    } elseif ($Runner -eq 'adhoc') {
+        & (Join-Path $Repo 'scripts\run-proof-tests.ps1') -Project 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' -Filter 'Category=AdHoc' -ResultName 'adhoc-proof' -RuntimeIdentifier win-x64 -ResultsDirectory $Results
+        if (@(Get-ChildItem -LiteralPath $Results -Filter 'evidence-summary.json' -Recurse).Count) {
+            throw 'Ad hoc command generated inventory evidence.'
+        }
+    } elseif ($Runner -eq 'proof') {
         & (Join-Path $Repo 'scripts\run-proof-tests.ps1') -Project 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' -Filter 'Category=Accessibility' -ResultName 'winui-accessibility' -RuntimeIdentifier win-x64 -ResultsDirectory $Results
     } else {
         $env:OPENCLAW_CI_COLLECT_COVERAGE = 'false'
         & (Join-Path $Repo 'scripts\Invoke-CiTest.ps1') -Project 'unused.csproj' -ResultsDirectory $Results -TrxFileName 'ci.trx'
     }
+    if ($Runner -in @('proof', 'gateway') -and $Case -in @('passed', 'artifact-output')) {
+        $summary = @(Get-ChildItem -LiteralPath $Results -Filter 'evidence-summary.json' -Recurse | Sort-Object LastWriteTimeUtc)[-1].FullName
+        $checked = Test-ProofEvidence $Repo @($summary) @()
+        if (-not $checked.validExecutionEvidence) { throw 'Runner generated invalid evidence.' }
+    }
 } finally { if (Test-Path -LiteralPath $sourceProbe) { Remove-Item -LiteralPath $sourceProbe } }
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 '@
-    foreach ($runner in @('proof', 'ci')) {
+    foreach ($runner in @('proof', 'ci', 'gateway', 'adhoc')) {
         $runnerCases = @('passed', 'missing', 'malformed', 'zero', 'all-skipped', 'mixed', 'nonzero', 'stale')
-        if ($runner -eq 'proof') { $runnerCases += 'nonzero-source-change' }
+        if ($runner -eq 'proof') { $runnerCases += @('nonzero-source-change', 'artifact-output', 'unsupported-output', 'lookalike-output') }
+        if ($runner -eq 'gateway') { $runnerCases = @('passed', 'missing-e2e-gate', 'missing-ollama-gate') }
+        if ($runner -eq 'adhoc') { $runnerCases = @('passed') }
         foreach ($case in $runnerCases) {
+            $results = switch ($case) {
+                'artifact-output' { $artifactRoot }
+                'unsupported-output' { $unsupportedRoot }
+                'lookalike-output' { $lookalikeRoot }
+                default { $root }
+            }
+            if ($runner -eq 'adhoc') { $results = $unsupportedRoot }
             $savedPreference = $ErrorActionPreference
             try {
                 $ErrorActionPreference = 'Continue'
-                $output = & $shell -NoProfile -ExecutionPolicy Bypass -File $harness -Repo $RepoRoot -Runner $runner -Case $case -Results $root 2>&1
+                $output = & $shell -NoProfile -ExecutionPolicy Bypass -File $harness -Repo $RepoRoot -Runner $runner -Case $case -Results $results 2>&1
                 $exit = $LASTEXITCODE
             } finally { $ErrorActionPreference = $savedPreference }
-            $expectedPass = $case -eq 'passed' -or ($case -eq 'mixed' -and $runner -eq 'ci')
+            $expectedPass = $case -in @('passed', 'artifact-output') -or ($case -eq 'mixed' -and $runner -eq 'ci')
             if (($exit -eq 0) -ne $expectedPass) { throw "$runner/$case unexpected exit ${exit}: $output" }
+            $expectedRejection = switch ($case) {
+                'unsupported-output' { 'under TestResults or artifacts' }
+                'lookalike-output' { 'under TestResults or artifacts' }
+                'missing-e2e-gate' { 'requires OPENCLAW_RUN_E2E=1' }
+                'missing-ollama-gate' { 'requires OPENCLAW_RUN_OLLAMA_E2E=1' }
+            }
+            if ($expectedRejection -and (($output -join "`n") -notmatch $expectedRejection -or
+                ($output -join "`n") -match 'Unexpected test execution')) { throw "Prerequisite was not rejected before execution: $output" }
+            if ($case -in @('unsupported-output', 'lookalike-output') -and (Test-Path -LiteralPath $results)) {
+                throw 'Unsupported output was created before rejection.'
+            }
             if ($case -eq 'nonzero-source-change' -and
                 (($output -join "`n") -notmatch 'Test command failed with exit code 9' -or
                  ($output -join "`n") -notmatch 'Secondary proof-evidence failure')) {
@@ -257,5 +343,7 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 } finally {
     if (Test-Path $sourceProbe) { Remove-Item -LiteralPath $sourceProbe -Force }
     Remove-Item -LiteralPath $root -Recurse -Force
+    if (Test-Path -LiteralPath $artifactRoot) { Remove-Item -LiteralPath $artifactRoot -Recurse -Force }
+    if (Test-Path -LiteralPath $unsupportedRoot) { Remove-Item -LiteralPath $unsupportedRoot -Recurse -Force }
 }
 $global:LASTEXITCODE = 0

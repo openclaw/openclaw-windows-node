@@ -55,7 +55,7 @@ if ([string]::IsNullOrWhiteSpace($ResultsDirectory)) {
 }
 
 $binding = Get-ProofCommandBinding -RepoRoot $repoRoot -Project $Project -Filter $Filter -ResultName $ResultName -RuntimeIdentifier $RuntimeIdentifier
-if ($null -ne $binding) { [void](Assert-RepositoryPath -Path $ResultsDirectory -Root $repoRoot) }
+if ($null -ne $binding) { [void](Assert-ProofResultsDirectory -Path $ResultsDirectory -RepoRoot $repoRoot) }
 $invocation = New-TestInvocation -ResultsDirectory $ResultsDirectory -TrxFileName "$ResultName.trx"
 $ResultsDirectory = $invocation.directory
 $trxPath = $invocation.report

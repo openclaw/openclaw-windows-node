@@ -30,6 +30,32 @@ function Get-ProofSourceIdentity([string]$RepoRoot) {
     [pscustomobject][ordered]@{ head = [string]$head; dirtySha256 = $digest; dirtyFileCount = $entries.Count }
 }
 
+function Assert-ProofResultsDirectory {
+    param([string]$Path, [string]$RepoRoot)
+    $full = Assert-RepositoryPath -Path ([IO.Path]::GetFullPath($Path)) -Root $RepoRoot
+    $relative = $full.Substring([IO.Path]::GetFullPath($RepoRoot).TrimEnd('\', '/').Length).TrimStart('\', '/')
+    if ($relative -notmatch '^(TestResults|artifacts)([\\/]|$)') {
+        throw 'Inventory-bound proof results must be stored under TestResults or artifacts. Use -ResultsDirectory .\TestResults\proof-output.'
+    }
+    return $full
+}
+
+function Get-ProofRequiredEnvironment {
+    param([string]$Command, [string]$ExecutedCommand)
+    $environment = [ordered]@{}
+    if ($Command -ceq $ExecutedCommand) { return $environment }
+    $prefix = "`$env:OPENCLAW_RUN_E2E = '1'; "
+    if ($Command -ceq ($prefix + $ExecutedCommand)) {
+        $environment.OPENCLAW_RUN_E2E = '1'
+    } elseif ($Command -ceq ($prefix + "`$env:OPENCLAW_RUN_OLLAMA_E2E = '1'; " + $ExecutedCommand)) {
+        $environment.OPENCLAW_RUN_E2E = '1'
+        $environment.OPENCLAW_RUN_OLLAMA_E2E = '1'
+    } else {
+        throw 'Evidence command does not match its inventory contract.'
+    }
+    return $environment
+}
+
 function Get-ProofCommandBinding {
     param([string]$RepoRoot, [string]$Project, [string]$Filter, [string]$ResultName, [string]$RuntimeIdentifier)
     # Only inventory-owned commands may be recorded. Never persist arbitrary
@@ -42,13 +68,13 @@ function Get-ProofCommandBinding {
             foreach ($command in $pool.authoritativeCommands) {
                 if ($command.kind -ne 'proof-test') { continue }
                 if ($command.command -ceq $invoked -or
-                    $command.command -ceq ("`$env:OPENCLAW_RUN_E2E = '1'; " + $invoked)) {
-                    $environment = [ordered]@{}
-                    if ($command.command -cne $invoked) {
-                        if ([Environment]::GetEnvironmentVariable('OPENCLAW_RUN_E2E') -cne '1') {
-                            throw 'Inventory proof requires OPENCLAW_RUN_E2E=1 before execution.'
+                    $command.command -ceq ("`$env:OPENCLAW_RUN_E2E = '1'; " + $invoked) -or
+                    $command.command -ceq ("`$env:OPENCLAW_RUN_E2E = '1'; `$env:OPENCLAW_RUN_OLLAMA_E2E = '1'; " + $invoked)) {
+                    $environment = Get-ProofRequiredEnvironment -Command $command.command -ExecutedCommand $invoked
+                    foreach ($name in $environment.Keys) {
+                        if ([Environment]::GetEnvironmentVariable($name) -cne $environment[$name]) {
+                            throw "Inventory proof requires $name=1 before execution."
                         }
-                        $environment.OPENCLAW_RUN_E2E = '1'
                     }
                     [pscustomobject]@{ poolId = $pool.id; commandId = $command.id; command = $command.command; executedCommand = $invoked; environment = $environment }
                 }
@@ -84,6 +110,7 @@ function Write-ProofEvidence {
         [string]$RepoRoot, $Binding, $Invocation, $Source, [int]$ExitCode,
         $Result, [string]$BlockedReason, [object[]]$Artifacts = @()
     )
+    [void](Assert-ProofResultsDirectory -Path $Invocation.directory -RepoRoot $RepoRoot)
     $current = Get-ProofSourceIdentity $RepoRoot
     if (($current | ConvertTo-Json -Compress) -cne ($Source | ConvertTo-Json -Compress)) {
         $BlockedReason = 'source-changed-during-run'
@@ -130,6 +157,7 @@ function Test-ProofEvidence {
     $seenCommands = @()
     foreach ($path in $SummaryPath) {
         $summaryFile = Assert-RepositoryPath -Path ([IO.Path]::GetFullPath($path)) -Root $RepoRoot
+        [void](Assert-ProofResultsDirectory -Path (Split-Path $summaryFile -Parent) -RepoRoot $RepoRoot)
         if ([IO.Path]::GetFileName($summaryFile) -cne 'evidence-summary.json') { throw 'Expected an evidence-summary.json, not arbitrary JSON.' }
         $summary = Get-Content -LiteralPath $summaryFile -Raw | ConvertFrom-Json
         if ($summary.schemaVersion -ne 1 -or $summary.outcome -ne 'passed' -or $summary.blockedReason -or $summary.exitCode -ne 0) {
@@ -140,21 +168,22 @@ function Test-ProofEvidence {
         $pool = @($inventory.pools | Where-Object { $_.id -ceq $summary.poolId })
         if ($pool.Count -ne 1) { throw 'Evidence pool is not declared in inventory.' }
         $command = @($pool[0].authoritativeCommands | Where-Object { $_.id -ceq $summary.commandId -and $_.kind -ceq 'proof-test' })
-        if ($command.Count -ne 1 -or $command[0].command -cne $summary.command -or
-            ($summary.command -cne $summary.executedCommand -and $summary.command -cne ("`$env:OPENCLAW_RUN_E2E = '1'; " + $summary.executedCommand))) {
+        if ($command.Count -ne 1 -or $command[0].command -cne $summary.command) {
             throw 'Evidence command does not match its inventory contract.'
         }
+        $requiredEnvironment = Get-ProofRequiredEnvironment -Command $summary.command -ExecutedCommand $summary.executedCommand
         if ($null -eq $summary.PSObject.Properties['environment'] -or $summary.environment -isnot [pscustomobject]) {
             throw 'Evidence is missing its declared environment observations.'
         }
         $environmentNames = @($summary.environment.PSObject.Properties | ForEach-Object { $_.Name })
-        if ($summary.command -cne $summary.executedCommand) {
-            if ($environmentNames.Count -ne 1 -or $environmentNames[0] -cne 'OPENCLAW_RUN_E2E' -or
-                $summary.environment.OPENCLAW_RUN_E2E -cne '1') {
-                throw 'Evidence did not observe the required OPENCLAW_RUN_E2E=1 environment gate.'
+        if ($environmentNames.Count -ne $requiredEnvironment.Count -or
+            @($environmentNames | Where-Object { $_ -cnotin $requiredEnvironment.Keys }).Count) {
+            throw 'Evidence contains missing or undeclared environment observations.'
+        }
+        foreach ($name in $requiredEnvironment.Keys) {
+            if ($summary.environment.$name -cne $requiredEnvironment[$name]) {
+                throw "Evidence did not observe the required $name=1 environment gate."
             }
-        } elseif ($environmentNames.Count -ne 0) {
-            throw 'Evidence contains undeclared environment observations.'
         }
         if ($summary.source.head -cne $source.head -or $summary.source.dirtySha256 -cne $source.dirtySha256 -or
             $summary.source.dirtyFileCount -ne $source.dirtyFileCount) { throw 'Evidence source identity is stale.' }
@@ -175,8 +204,11 @@ function Test-ProofEvidence {
             $full = Join-Path $RepoRoot $artifact.path
             $actual = Get-ProofArtifact -Path $full -RepoRoot $RepoRoot -Kind $artifact.kind
             if ($actual.sha256 -cne $artifact.sha256) { throw 'Evidence artifact digest mismatch.' }
-            if ($artifact.kind -eq 'test-report' -and (Split-Path (Split-Path $full -Parent) -Leaf) -cne $summary.invocationId) {
-                throw 'TRX is not from the evidence invocation.'
+            if ($artifact.kind -eq 'test-report') {
+                [void](Assert-ProofResultsDirectory -Path (Split-Path $full -Parent) -RepoRoot $RepoRoot)
+                if ([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($full)) -ine (Split-Path $summaryFile -Parent)) {
+                    throw 'TRX is not from the evidence invocation.'
+                }
             }
         }
         $result = Read-TestResultContract -Path (Join-Path $RepoRoot $reports[0].path) -StartedUtc $start.UtcDateTime -ExitCode $summary.exitCode

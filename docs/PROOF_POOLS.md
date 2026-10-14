@@ -103,9 +103,20 @@ TestResults/ProofPools/<result-name>/<invocation-id>/
 An unbound ad hoc filter still receives strict test-result validation, but it
 does not receive an inventory-bound evidence summary. Follow the inventory's
 exact project, filter, result name, runtime identifier, and environment gates.
-The Gateway recipe requires and records `OPENCLAW_RUN_E2E=1` before execution;
-validation checks that recorded observation, not the validating shell's
-current environment. No arbitrary environment values are collected.
+The Gateway recipe requires and records both `OPENCLAW_RUN_E2E=1` and
+`OPENCLAW_RUN_OLLAMA_E2E=1` before execution. The latter enables the selected
+Ollama permission case, which uses a fake loopback server rather than a
+downloaded model or a real Ollama service. Validation checks those recorded
+observations, not the validating shell's current environment. No arbitrary
+environment values are collected.
+
+For inventory-bound runs, custom `-ResultsDirectory` locations must be under
+the repository's `TestResults` or `artifacts` directory, for example
+`-ResultsDirectory .\TestResults\proof-output`. Other locations are rejected
+before test execution so generated reports cannot invalidate source identity.
+Existing summaries outside these roots must be regenerated in a supported
+location. Ad hoc runs without an inventory binding retain custom destinations
+but do not produce pool evidence summaries.
 
 Validate an existing authorized accessibility run locally:
 

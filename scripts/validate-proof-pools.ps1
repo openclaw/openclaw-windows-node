@@ -740,7 +740,7 @@ foreach ($pool in $inventory.pools) {
         $normalizedCommand = ([string]$command.command).
             Replace([string][char]39, "").
             Replace([string][char]34, "")
-        $proofTestPattern = "^(?:\`$env:OPENCLAW_RUN_E2E = '1'; )?\.\\scripts\\run-proof-tests\.ps1 -Project '(?<project>[^']+)' -Filter '[^']+' -ResultName '[a-z0-9]+(?:-[a-z0-9]+)*'(?: -RuntimeIdentifier (?:win-x64|win-arm64))?$"
+        $proofTestPattern = "^(?:\`$env:OPENCLAW_RUN_E2E = '1'; (?:\`$env:OPENCLAW_RUN_OLLAMA_E2E = '1'; )?)?\.\\scripts\\run-proof-tests\.ps1 -Project '(?<project>[^']+)' -Filter '[^']+' -ResultName '[a-z0-9]+(?:-[a-z0-9]+)*'(?: -RuntimeIdentifier (?:win-x64|win-arm64))?$"
         $commandPathProperty = Get-JsonProperty -Value $command -Name "path"
         $commandPath = if ($null -eq $commandPathProperty) {
             ""

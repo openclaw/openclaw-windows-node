@@ -24,7 +24,8 @@ function Read-TestResultContract {
     if ($ExitCode -ne 0) { throw "Test command failed with exit code $ExitCode." }
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "Expected TRX report is missing." }
     $file = Get-Item -LiteralPath $Path
-    if ($file.LastWriteTimeUtc -lt $StartedUtc.ToUniversalTime()) { throw "TRX report is stale." }
+    # Windows file timestamps can lag the high-resolution invocation clock.
+    if ($file.LastWriteTimeUtc -lt $StartedUtc.ToUniversalTime().AddSeconds(-1)) { throw "TRX report is stale." }
     $settings = [Xml.XmlReaderSettings]::new()
     $settings.DtdProcessing = [Xml.DtdProcessing]::Prohibit
     $settings.XmlResolver = $null

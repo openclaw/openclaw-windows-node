@@ -376,6 +376,9 @@ credible regression, and the risk not covered by existing tests.
 `Invoke-CiTest.ps1` and `run-proof-tests.ps1` use invocation-specific result
 directories. Their expected TRX must be fresh, parseable, internally consistent,
 and contain actual executed tests; successful process exit alone is insufficient.
+File modification times and embedded TRX invocation times permit one second
+of clock granularity tolerance. Reports older than that remain stale; each run
+still uses a fresh invocation directory and validates the embedded timestamps.
 Generic custom proof requires every selected result to pass. Ordinary CI may
 report supported skipped cases alongside executed passing tests, but all-skipped
 or zero-execution runs fail. Existing hosted MXC skip policy is not native MXC
