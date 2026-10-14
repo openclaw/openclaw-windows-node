@@ -17,7 +17,7 @@ description: Invoke and troubleshoot OpenClaw Windows-node commands through the 
 
 `winnode.exe` invokes OpenClaw Windows-node commands on the local tray over a
 loopback MCP HTTP endpoint (default `http://127.0.0.1:8765/`). Enable
-**Local MCP Server** in the tray's Settings → Advanced before calling.
+**Local MCP Server** in Settings > Permissions > Integrations before calling.
 
 This document is the agent-facing reference: every supported command, its
 argument shape, and the A2UI v0.8 JSONL grammar. It is shipped alongside
@@ -27,7 +27,7 @@ argument shape, and the A2UI v0.8 JSONL grammar. It is shipped alongside
 
 ## Invocation shape
 
-```
+```text
 winnode --command <name> [--params '<json-object>'] [--invoke-timeout <ms>] [--identity release|dev]
 winnode --list-tools [--mcp-url <url>|--mcp-port <port>] [--identity release|dev]
 ```

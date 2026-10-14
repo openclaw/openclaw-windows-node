@@ -49,8 +49,36 @@ winnode --list-tools
 ```
 
 The live `tools/list` response is authoritative. The complete static command
-reference is `.agents\skills\winnode\SKILL.md`, and
+reference is [winnode](../winnode/SKILL.md), and
 `McpToolBridge.CommandDescriptions` is the canonical description source.
+
+## Diagnose the boundary before changing code
+
+Keep the same selected profile, endpoint, app build, and command while
+reproducing. Choose the narrowest check that distinguishes the suspected
+boundary; do not reset settings or restart an unowned process to hide the fault.
+
+| Symptom | Check and interpretation |
+|---|---|
+| Listener unavailable or token missing | Inspect Permissions > Integrations > Local MCP Server in the authorized app. Match its endpoint and selected profile; the token is created when MCP starts. Never print the token. |
+| A static command is absent from `tools/list` | Inspect capability settings and live registration before changing the catalog or Gateway allowlist. |
+| Discovery works but invocation fails | Compare the JSON object with the command reference; preserve the tool/transport error and bounded reproduction. A visible tool is not permission for every operation. |
+| Local MCP passes but pairing or remote invocation fails | Investigate the [Gateway connection owner](../../../docs/CONNECTION_ARCHITECTURE.md). Local MCP did not exercise that boundary. |
+| Snapshot looks correct but the UI is wrong | Inspect the mounted UI on a qualified isolated desktop. Snapshot data is supporting evidence, not proof of pixels or selection. |
+
+If access, authorization, or a qualified host is missing, report the specific
+blocked assertion rather than substituting a different transport.
+
+For an authorized Gateway, an HTTP health probe can distinguish listener
+liveness from a connection failure. Use the health URL for the selected
+Gateway, not an assumed default port:
+
+```powershell
+Invoke-WebRequest -UseBasicParsing -Uri '<selected-gateway-health-url>' -TimeoutSec 10
+```
+
+An HTTP success is only liveness evidence. It does not prove operator
+authentication, node pairing, or permission to invoke a capability.
 
 ## Invoke through winnode
 
@@ -121,5 +149,7 @@ For a new or changed Windows node command:
 5. Prove `winnode --list-tools` and `winnode --command ...`.
 6. Prove the gateway path separately when gateway-mediated behavior changed.
 
-Follow `.agents\skills\openclaw-proof-validation\SKILL.md` for the complete
-validation and PR evidence checklist.
+Follow the [proof skill](../openclaw-proof-validation/SKILL.md) for the complete
+validation and PR evidence checklist. For ordinary changes to this guide,
+use [documentation validation](../../../docs/AGENTS.md#format-and-checks);
+do not invoke live commands solely to validate prose.

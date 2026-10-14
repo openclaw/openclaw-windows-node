@@ -15,6 +15,9 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "TestResultContract.ps1")
+$invocation = New-TestInvocation -ResultsDirectory $ResultsDirectory -TrxFileName $TrxFileName
+$ResultsDirectory = $invocation.directory
 
 $testArguments = [System.Collections.Generic.List[string]]::new()
 @(
@@ -69,3 +72,8 @@ if ($collectCoverage) {
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
+$result = Read-TestResultContract -Path $invocation.report -StartedUtc $invocation.startedUtc -ExitCode 0 -AllowSkipped
+Write-Host ("CI test results: " + ($result | ConvertTo-Json -Compress))
+Write-Host "CI TRX: $($invocation.report)"
+# Ordinary CI retains environment-gated skips. This is not native/custom proof.
+$global:LASTEXITCODE = 0

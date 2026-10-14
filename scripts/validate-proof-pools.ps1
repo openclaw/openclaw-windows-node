@@ -703,6 +703,13 @@ if (-not $ForceFallback -and $testJson -and $testJson.Parameters.ContainsKey("Sc
         -ErrorAction SilentlyContinue `
         -ErrorVariable schemaErrors
     if (-not $schemaValid) {
+        # Some Test-Json versions return false without capturable error details.
+        # Preserve the repository's precise diagnostic; never admit a rejected input.
+        Assert-JsonSchemaValue `
+            -Value $inventory `
+            -ValueSchema $schema `
+            -RootSchema $schema `
+            -JsonPath '$'
         $details = ($schemaErrors | ForEach-Object { $_.Exception.Message }) -join [Environment]::NewLine
         throw "Proof-pool inventory does not match its schema.$([Environment]::NewLine)$details"
     }

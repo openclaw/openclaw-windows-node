@@ -151,6 +151,14 @@ jobs:
       shell: pwsh
       run: ./scripts/test-agent-skills-validator.ps1
 
+    - name: Test proof results and local evidence
+      shell: pwsh
+      run: ./scripts/test-proof-evidence.ps1
+
+    - name: Test read-only agent readiness
+      shell: pwsh
+      run: ./scripts/test-agent-readiness.ps1
+
     - name: Test native Gateway source build safety
       shell: pwsh
       run: ./scripts/test-native-gateway-source-build.ps1
