@@ -29,6 +29,7 @@ public sealed partial class SessionsPage : Page
     private IOperatorGatewayClient? _subscribedClient;
     private bool _unloaded;
     private bool _syncingShowCompletedToggle;
+    private bool _catalogRetryInFlight;
     private bool _showBackgroundSessions;
     private readonly ArchivedSessionsSource _archived;
 
@@ -48,6 +49,8 @@ public sealed partial class SessionsPage : Page
             if (_subscribedClient != null)
             {
                 _subscribedClient.SessionCommandCompleted -= OnSessionCommandCompleted;
+                _subscribedClient.SessionsUpdated -= OnSessionsUpdatedForRetry;
+                _subscribedClient.SessionCatalogRefreshStateChanged -= OnCatalogRefreshStateChanged;
                 _subscribedClient = null;
             }
         };
@@ -154,11 +157,21 @@ public sealed partial class SessionsPage : Page
         if (_subscribedClient != client)
         {
             if (_subscribedClient != null)
+            {
                 _subscribedClient.SessionCommandCompleted -= OnSessionCommandCompleted;
+                _subscribedClient.SessionsUpdated -= OnSessionsUpdatedForRetry;
+                _subscribedClient.SessionCatalogRefreshStateChanged -= OnCatalogRefreshStateChanged;
+            }
             _subscribedClient = client;
             if (_subscribedClient != null)
+            {
                 _subscribedClient.SessionCommandCompleted += OnSessionCommandCompleted;
+                _subscribedClient.SessionsUpdated += OnSessionsUpdatedForRetry;
+                _subscribedClient.SessionCatalogRefreshStateChanged += OnCatalogRefreshStateChanged;
+            }
         }
+
+        UpdateCatalogRetryState();
 
         if (client == null)
         {
@@ -196,6 +209,7 @@ public sealed partial class SessionsPage : Page
         _sessionLoading.Complete(_allSessions.Length);
         RebuildChannelTabs();
         ApplyFilter();
+        UpdateCatalogRetryState();
     }
 
     private IEnumerable<SessionInfo> SessionsForCurrentBackgroundScope() =>
@@ -329,11 +343,13 @@ public sealed partial class SessionsPage : Page
             case nameof(AppState.Sessions):
                 UpdateSessions(_appState!.Sessions);
                 _ = _archived.RefreshAsync(CurrentApp.GatewayClient);
+                UpdateCatalogRetryState();
                 break;
             case nameof(AppState.Status):
                 if (_appState!.Status != ConnectionStatus.Connected)
                     _archived.Clear();
                 ApplyArchivedSessions();
+                UpdateCatalogRetryState();
                 _ = _archived.RefreshAsync(CurrentApp.GatewayClient);
                 break;
         }
@@ -790,6 +806,7 @@ public sealed partial class SessionsPage : Page
         ApplyFilter();
         _ = client.RequestSessionsAsync();
         _ = client.RequestModelsListAsync();
+        UpdateCatalogRetryState();
 
         _ = _archived.RefreshAsync(client);
         if (RefreshLabel is not null)
@@ -800,6 +817,71 @@ public sealed partial class SessionsPage : Page
             _refreshTimer.Interval = TimeSpan.FromSeconds(1);
             _refreshTimer.Tick += (t, a) => { RefreshLabel.Text = "Refresh"; _refreshTimer.Stop(); };
             _refreshTimer.Start();
+        }
+    }
+
+    private void UpdateCatalogRetryState()
+    {
+        if (CatalogRetryInfoBar is null) return;
+        // A queued callback must not touch a page that has unloaded or been rebound to a new client.
+        if (_unloaded) return;
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            DispatcherQueue.TryEnqueue(UpdateCatalogRetryState);
+            return;
+        }
+        // Read current authority, not a captured sender.
+        var client = CurrentApp.GatewayClient;
+        var connected = client is { IsConnectedToGateway: true };
+        var retryRequired = client is { SessionCatalogRetryRequired: true };
+        var inProgress = client is { SessionCatalogAcquisitionInProgress: true } || _catalogRetryInFlight;
+        CatalogRetryInfoBar.IsOpen = SessionCatalogRetryActionPolicy.IsRetryPromptVisible(connected, retryRequired);
+        if (CatalogRetryButton is not null)
+        {
+            // Disable Retry until the acquisition reaches an actual terminal transition
+            // (in-progress false), not merely until the socket send completes.
+            CatalogRetryButton.IsEnabled = SessionCatalogRetryActionPolicy.IsRetryEnabled(
+                connected, retryRequired, inProgress, sendInFlight: false);
+        }
+    }
+
+    private void OnSessionsUpdatedForRetry(object? sender, SessionInfo[] sessions)
+        => DispatcherQueue.TryEnqueue(UpdateCatalogRetryState);
+
+    private void OnCatalogRefreshStateChanged(object? sender, SessionCatalogRefreshStateChangedEventArgs e)
+        => DispatcherQueue.TryEnqueue(UpdateCatalogRetryState);
+
+    private async void OnRetryCatalogClick(object sender, RoutedEventArgs e)
+    {
+        var client = CurrentApp.GatewayClient;
+        if (client is not { IsConnectedToGateway: true })
+        {
+            ShowDisconnected();
+            return;
+        }
+        // Coalesce until the acquisition's actual terminal transition: a click while one is in
+        // progress (or a send is in flight) is ignored so repeat presses cannot supersede the deadline.
+        if (!SessionCatalogRetryActionPolicy.CanStartRetry(
+                connected: true,
+                retryRequired: client.SessionCatalogRetryRequired,
+                acquisitionInProgress: client.SessionCatalogAcquisitionInProgress,
+                sendInFlight: _catalogRetryInFlight))
+            return;
+        _catalogRetryInFlight = true;
+        if (CatalogRetryButton is not null) CatalogRetryButton.IsEnabled = false;
+        try
+        {
+            await client.RequestSessionsAsync();
+        }
+        catch (Exception ex)
+        {
+            new AppLogger().Warn($"[Sessions] catalog retry failed: {ex.Message}");
+        }
+        finally
+        {
+            _catalogRetryInFlight = false;
+            // Re-evaluate from the client's acquisition state: stays disabled if still in progress.
+            UpdateCatalogRetryState();
         }
     }
 

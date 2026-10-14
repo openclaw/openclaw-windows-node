@@ -310,28 +310,35 @@ public sealed class GatewayScenario
 
     private object ListSessions(JsonElement p)
     {
-        ValidateProperties(p, "agentId", "limit", "activeMinutes", "includeGlobal", "includeUnknown", "includeDerivedTitles", "includeLastMessage", "archived");
+        ValidateProperties(p, "agentId", "limit", "offset", "activeMinutes", "includeGlobal", "includeUnknown", "includeDerivedTitles", "includeLastMessage", "archived");
         var agent = OptionalString(p, "agentId");
         if (agent is not null && agent is not ("main" or "research"))
             throw new FixtureRequestException("INVALID_PARAMS", "Unknown fixture agentId.");
         var limit = PositiveInt(p, "limit", _sessions.Length);
+        var offset = NonNegativeInt(p, "offset", 0);
         var activeMinutes = PositiveInt(p, "activeMinutes", int.MaxValue);
         foreach (var flag in new[] { "includeGlobal", "includeUnknown", "includeDerivedTitles", "includeLastMessage" })
             OptionalBoolean(p, flag);
-        JsonObject[] rows;
+        JsonObject[] all;
         lock (_sessionChanges)
         {
-            rows = _sessions.Where(s => agent is null || s.AgentId == agent)
+            all = _sessions.Where(s => agent is null || s.AgentId == agent)
                 .Where(s => Epoch.ToUnixTimeMilliseconds() - s.UpdatedAt <= (long)activeMinutes * 60_000)
                 .Select(s => _sessionChanges.TryGetValue(s.Key, out var changed)
                     ? changed?.DeepClone().AsObject() : JsonSerializer.SerializeToNode(s.Row)!.AsObject())
                 .OfType<JsonObject>()
                 .Where(row => (row["archived"]?.GetValue<bool>() ?? false) == (OptionalBoolean(p, "archived") ?? false))
-                .Take(limit).ToArray();
+                .ToArray();
         }
+        // Bounded window with the pinned Gateway paging contract: count = page rows,
+        // totalCount = filtered inventory total, hasMore/nextOffset describe pending pages.
+        var totalCount = all.Length;
+        var rows = all.Skip(offset).Take(limit).ToArray();
+        int? nextOffset = offset + rows.Length < totalCount ? offset + rows.Length : null;
         return new
         {
             ts = Epoch.ToUnixTimeMilliseconds(), count = rows.Length,
+            totalCount, hasMore = nextOffset is not null, nextOffset,
             defaults = new { modelProvider = "fixture", model = "browse", contextTokens = 128_000 },
             sessions = rows
         };
@@ -366,13 +373,38 @@ public sealed class GatewayScenario
 
     private object History(JsonElement p)
     {
-        ValidateProperties(p, "sessionKey", "limit");
+        ValidateProperties(p, "sessionKey", "limit", "maxBytes", "offset");
         var session = FindSession(RequiredString(p, "sessionKey"));
         var limit = PositiveInt(p, "limit", LongMessageCount);
+        if (p.TryGetProperty("maxBytes", out var mb) &&
+            (mb.ValueKind != JsonValueKind.Number || !mb.TryGetInt32(out var mbV) || mbV < 1024))
+            throw new FixtureRequestException("INVALID_PARAMS", "maxBytes must be an integer >= 1024.");
+        var hasOffset = p.TryGetProperty("offset", out var off);
+        var offset = 0;
+        if (hasOffset && (off.ValueKind != JsonValueKind.Number || !off.TryGetInt32(out offset) || offset < 0))
+            throw new FixtureRequestException("INVALID_PARAMS", "offset must be a non-negative integer.");
+
+        var all = session.Messages;
+        if (!hasOffset)
+            return new
+            {
+                sessionKey = session.Key, sessionId = session.Id,
+                messages = all.TakeLast(limit).ToArray(), thinkingLevel = "off"
+            };
+
+        // Paged branch: the admitted WebSocket handler treats offset 0 as the TAIL and increasing
+        // offsets as older history, so the window ends `offset` rows from the end and reads backwards.
+        // Rows stay chronological (oldest first) within a page; the echoed `offset` remains the
+        // requested distance-from-tail so the client can validate request/response identity.
+        var end = Math.Max(0, all.Length - offset);
+        var start = Math.Max(0, end - limit);
+        var window = all[start..end];
+        var hasMore = start > 0;
+        var next = hasMore ? offset + window.Length : (int?)null;
         return new
         {
-            sessionKey = session.Key, sessionId = session.Id,
-            messages = session.Messages.TakeLast(limit).ToArray(), thinkingLevel = "off"
+            sessionKey = session.Key, sessionId = session.Id, messages = window, thinkingLevel = "off",
+            offset, nextOffset = next, hasMore, totalMessages = all.Length
         };
     }
 
@@ -482,6 +514,15 @@ public sealed class GatewayScenario
             return fallback;
         if (value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out var result) || result <= 0)
             throw new FixtureRequestException("INVALID_PARAMS", $"{name} must be a positive integer.");
+        return result;
+    }
+
+    private static int NonNegativeInt(JsonElement p, string name, int fallback)
+    {
+        if (!p.TryGetProperty(name, out var value))
+            return fallback;
+        if (value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out var result) || result < 0)
+            throw new FixtureRequestException("INVALID_PARAMS", $"{name} must be a non-negative integer.");
         return result;
     }
 

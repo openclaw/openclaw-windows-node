@@ -114,6 +114,7 @@ internal sealed class ChatPresentationState
                 timelineGenerations: new Dictionary<string, long>(),
                 historyRevisions: new Dictionary<string, long>(),
                 queuedMessages: new Dictionary<string, IReadOnlyList<ChatQueuedMessage>>(),
+                acceptedSessionIds: new Dictionary<string, string>(),
                 status: ConnectionStatus.Disconnected,
                 context));
         var session = defaultThreadId is { Length: > 0 }
@@ -248,6 +249,7 @@ internal sealed class ChatPresentationState
         IReadOnlyDictionary<string, long> timelineGenerations,
         IReadOnlyDictionary<string, long> historyRevisions,
         IReadOnlyDictionary<string, IReadOnlyList<ChatQueuedMessage>> queuedMessages,
+        IReadOnlyDictionary<string, string> acceptedSessionIds,
         ConnectionStatus status,
         ChatProjectionContext context) => new(
         Sessions: _sessions.ToArray(),
@@ -265,7 +267,8 @@ internal sealed class ChatPresentationState
         RememberedDefaultThreadId: _lastChatState?.DefaultThreadId,
         RememberedThreadTitle: _lastChatState?.ThreadTitle,
         RememberedModel: _lastChatState?.Model,
-        RememberedModelProvider: _lastChatState?.ModelProvider);
+        RememberedModelProvider: _lastChatState?.ModelProvider,
+        AcceptedSessionIds: acceptedSessionIds);
 
     internal string ResolveTimelineKey(
         SessionInfo session,

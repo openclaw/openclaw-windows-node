@@ -293,9 +293,17 @@ public class OpenClawGatewayClientTests
             return (parsed ?? Array.Empty<ChannelHealth>(), parsed != null);
         }
 
-        public void ParseSessionsPayload(string payloadJson)
+        public void ParseSessionsPayload(string payloadJson) => InvokeParseSessions(payloadJson, null);
+
+        public void ParseSessionsPayloadScoped(string payloadJson, string agentScope) => InvokeParseSessions(payloadJson, agentScope);
+
+        private void InvokeParseSessions(string payloadJson, string? agentScope)
         {
-            InvokePrivatePayloadParser("ParseSessions", payloadJson);
+            using var doc = JsonDocument.Parse(payloadJson);
+            var method = typeof(OpenClawGatewayClient).GetMethod(
+                "ParseSessions",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            method!.Invoke(_client, new object?[] { doc.RootElement.Clone(), agentScope, true, true });
         }
 
         public void SetMainSessionKey(string key, bool isCanonical = true)
@@ -3749,8 +3757,13 @@ public class OpenClawGatewayClientTests
         Assert.Null(session.ThinkingDefaults!.Profile);
     }
 
-    [Fact]
-    public void ParseSessions_EmptyArray_ClearsPreviousSessions()
+    [Theory]
+    [InlineData("[]", 2)]
+    [InlineData("{\"sessions\":[],\"count\":2}", 2)]
+    [InlineData("{\"sessions\":[],\"count\":0}", 0)]
+    [InlineData("{\"sessions\":{},\"count\":0}", 0)]
+    [InlineData("[{\"key\":\"agent:main:main\",\"status\":\"active\"}]", 1)]
+    public void ParseSessions_RefreshRetainsUnqualifiedEmptyAndHonorsDeletion(string refresh, int expectedCount)
     {
         var helper = new GatewayClientTestHelper();
 
@@ -3763,9 +3776,10 @@ public class OpenClawGatewayClientTests
         """);
         Assert.Equal(2, helper.GetSessionList().Length);
 
-        // Now parse an empty array — sessions should be cleared
-        helper.ParseSessionsPayload("[]");
-        Assert.Empty(helper.GetSessionList());
+        // Unqualified or contradictory empty responses retain the catalog.
+        // Explicit zero and a nonempty replacement can remove previous rows.
+        helper.ParseSessionsPayload(refresh);
+        Assert.Equal(expectedCount, helper.GetSessionList().Length);
     }
 
     [Fact]
@@ -5612,5 +5626,632 @@ public class OpenClawGatewayClientTests
         Assert.True(helper.GetAuthFailedFlag());
         Assert.Single(authEvents);
         Assert.Contains("device signature", authEvents[0], StringComparison.OrdinalIgnoreCase);
+    }
+
+    // --- page-vs-total catalog authority (Mini Gateway source finding) ---
+
+    [Fact]
+    public void ParseSessions_PartialPageWithHasMore_RetainsAbsentHeldKeys()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""
+        [{"key":"agent:main:main","status":"active"},{"key":"agent:main:other","status":"active"}]
+        """);
+        Assert.Equal(2, helper.GetSessionList().Length);
+
+        // First page of a multi-page inventory returns only one of the held keys.
+        helper.ParseSessionsPayload("""
+        {"sessions":[{"key":"agent:main:main","status":"active"}],"count":1,"totalCount":5,"hasMore":true,"nextOffset":1}
+        """);
+
+        Assert.Equal(2, helper.GetSessionList().Length);
+    }
+
+    [Fact]
+    public void ParseSessions_PositiveTotalWithZeroRows_RetainsHeldCatalog()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""
+        [{"key":"agent:main:main","status":"active"},{"key":"agent:main:other","status":"active"}]
+        """);
+
+        helper.ParseSessionsPayload("""
+        {"sessions":[],"count":0,"totalCount":7}
+        """);
+
+        Assert.Equal(2, helper.GetSessionList().Length);
+    }
+
+    [Fact]
+    public void ParseSessions_CompleteEmptyUnfilteredInventory_DeletesHeldCatalog()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""
+        [{"key":"agent:main:main","status":"active"},{"key":"agent:main:other","status":"active"}]
+        """);
+
+        helper.ParseSessionsPayload("""
+        {"sessions":[],"count":0,"totalCount":0}
+        """);
+
+        Assert.Empty(helper.GetSessionList());
+    }
+
+    [Fact]
+    public void ParseSessions_NonAuthoritativeRefresh_MarksRetryAndRetains()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""
+        [{"key":"agent:main:main","status":"active"}]
+        """);
+
+        helper.ParseSessionsPayload("""{"sessions":[]}""");
+
+        Assert.Single(helper.GetSessionList());
+        Assert.True(helper.Client.SessionCatalogRetryRequired);
+    }
+
+    [Fact]
+    public void ParseSessions_InflatedCountWithFewRows_RetainsHeldKeys()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""
+        [{"key":"agent:main:main","status":"active"},{"key":"agent:main:other","status":"active"}]
+        """);
+
+        // Declared count/total claim five rows but only one is returned: not authoritative.
+        helper.ParseSessionsPayload("""
+        {"sessions":[{"key":"agent:main:main","status":"active"}],"count":5,"totalCount":5,"hasMore":false}
+        """);
+
+        Assert.Equal(2, helper.GetSessionList().Length);
+    }
+
+    [Fact]
+    public void ParseSessions_ContradictoryNextOffset_RetainsHeldKeys()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""
+        [{"key":"agent:main:main","status":"active"},{"key":"agent:main:other","status":"active"}]
+        """);
+
+        // hasMore false contradicts a positive nextOffset; the installed contract forbids it.
+        helper.ParseSessionsPayload("""
+        {"sessions":[{"key":"agent:main:main","status":"active"}],"count":1,"hasMore":false,"nextOffset":1}
+        """);
+
+        Assert.Equal(2, helper.GetSessionList().Length);
+    }
+
+    [Fact]
+    public void ParseSessions_InvalidPagingMetadata_RetainsHeldKeys()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""
+        [{"key":"agent:main:main","status":"active"}]
+        """);
+
+        // Present-but-invalid metadata must not silently fall back to a complete window.
+        helper.ParseSessionsPayload("""
+        {"sessions":[],"count":-1}
+        """);
+
+        Assert.Single(helper.GetSessionList());
+    }
+
+    [Fact]
+    public void ParseSessions_CompleteEmptyEnvelopeWithNullNextOffset_DeletesHeldCatalog()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""
+        [{"key":"agent:main:main","status":"active"},{"key":"agent:main:other","status":"active"}]
+        """);
+
+        // Exact installed terminal shape: nextOffset:null means the page set is done.
+        helper.ParseSessionsPayload("""
+        {"sessions":[],"count":0,"totalCount":0,"hasMore":false,"nextOffset":null}
+        """);
+
+        Assert.Empty(helper.GetSessionList());
+    }
+
+    [Fact]
+    public void ParseSessions_CompleteNonemptyEnvelopeWithNullNextOffset_DeletesAbsentHeld()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""
+        [{"key":"agent:main:main","status":"active"},{"key":"agent:main:other","status":"active"}]
+        """);
+
+        helper.ParseSessionsPayload("""
+        {"sessions":[{"key":"agent:main:main","status":"active"}],"count":1,"totalCount":1,"hasMore":false,"nextOffset":null}
+        """);
+
+        var sessions = helper.GetSessionList();
+        Assert.Single(sessions);
+        Assert.Equal("agent:main:main", sessions[0].Key);
+    }
+
+    [Fact]
+    public void ParseSessions_ScopedComplete_DeletesOnlyScopeAgentKeys()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""
+        [{"key":"agent:main:main","status":"active"},{"key":"agent:other:one","status":"active"}]
+        """);
+
+        // A complete inventory scoped to agent "main" must not delete other agents' sessions.
+        helper.ParseSessionsPayloadScoped("""
+        {"sessions":[],"count":0,"totalCount":0,"hasMore":false,"nextOffset":null}
+        """, "main");
+
+        var sessions = helper.GetSessionList();
+        Assert.Single(sessions);
+        Assert.Equal("agent:other:one", sessions[0].Key);
+    }
+
+    [Fact]
+    public void ParseSessions_ScopedPartial_PreservesAllHeld()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""
+        [{"key":"agent:main:main","status":"active"},{"key":"agent:other:one","status":"active"}]
+        """);
+
+        helper.ParseSessionsPayloadScoped("""
+        {"sessions":[{"key":"agent:main:main","status":"active"}],"count":1,"hasMore":true,"nextOffset":1}
+        """, "main");
+
+        Assert.Equal(2, helper.GetSessionList().Length);
+    }
+
+    // --- production-wiring controls for the bounded page-set acquisition ---
+
+    private static JsonElement El(string json) => JsonDocument.Parse(json).RootElement.Clone();
+
+    [Fact]
+    public void SessionsList_StaleOldResponse_AfterSupersession_DoesNotMutate()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""[{"key":"agent:main:main"},{"key":"agent:other:one"}]""");
+        var current = new SessionCatalogPageSet("main", 2, Environment.TickCount64);
+        helper.Client.TestSetAcquisition(2, current);
+
+        // Response carries an OLD generation for the same page set object.
+        helper.Client.TestFeedSessionsList(
+            El("""{"sessions":[],"count":0,"totalCount":0,"hasMore":false,"nextOffset":null}"""),
+            "main", requestedOffset: 0, generation: 1, pageSet: current);
+
+        Assert.Equal(2, helper.Client.TestCatalogCount);
+    }
+
+    [Fact]
+    public void SessionsList_ForeignScopeResponse_DoesNotMutate()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""[{"key":"agent:main:main"},{"key":"agent:other:one"}]""");
+        var current = new SessionCatalogPageSet("main", 5, Environment.TickCount64);
+        helper.Client.TestSetAcquisition(5, current);
+
+        helper.Client.TestFeedSessionsList(
+            El("""{"sessions":[],"count":0,"totalCount":0,"hasMore":false,"nextOffset":null}"""),
+            "other", requestedOffset: 0, generation: 5, pageSet: current);
+
+        Assert.Equal(2, helper.Client.TestCatalogCount);
+    }
+
+    [Fact]
+    public void SessionsList_OverBudgetFirstPage_DoesNotMutate()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""[{"key":"agent:main:main"},{"key":"agent:other:one"}]""");
+        var current = new SessionCatalogPageSet("main", 6, Environment.TickCount64, maxBytes: 5);
+        helper.Client.TestSetAcquisition(6, current);
+
+        helper.Client.TestFeedSessionsList(
+            El("""{"sessions":[],"count":0,"totalCount":0,"hasMore":false,"nextOffset":null}"""),
+            "main", 0, 6, current);
+
+        Assert.Equal(2, helper.Client.TestCatalogCount);
+        Assert.Null(helper.Client.TestAcquisition);
+    }
+
+    [Fact]
+    public void SessionsList_MalformedTerminalCumulative_FailsWithoutMutation()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""[{"key":"agent:main:main"},{"key":"agent:other:one"}]""");
+        var current = new SessionCatalogPageSet(null, 7, Environment.TickCount64);
+        helper.Client.TestSetAcquisition(7, current);
+
+        // Declares a complete inventory totalling 5 rows but returns 1.
+        helper.Client.TestFeedSessionsList(
+            El("""{"sessions":[{"key":"agent:main:main"}],"count":1,"totalCount":5,"hasMore":false,"nextOffset":null}"""),
+            null, 0, 7, current);
+
+        Assert.Equal(2, helper.Client.TestCatalogCount);
+    }
+
+    [Fact]
+    public void SessionsList_UnicodeBytesCountedByUtf8_NotChars()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""[{"key":"agent:main:main"}]""");
+        var current = new SessionCatalogPageSet(null, 8, Environment.TickCount64, maxBytes: 150);
+        helper.Client.TestSetAcquisition(8, current);
+
+        var multibyte = new string('\u00e9', 100); // 100 chars, 200 UTF8 bytes
+        var payload = El("{\"sessions\":[{\"key\":\"agent:main:main\",\"note\":\"" + multibyte + "\"}],\"count\":1,\"totalCount\":1,\"hasMore\":false,\"nextOffset\":null}");
+
+        helper.Client.TestFeedSessionsList(payload, null, 0, 8, current);
+
+        // 100 chars would pass a 150-char budget; 200 UTF8 bytes must fail it.
+        Assert.Equal(1, helper.Client.TestCatalogCount);
+        Assert.Null(helper.Client.TestAcquisition);
+    }
+
+    [Fact]
+    public void SessionsList_NormalCompleteFirstPage_Applies()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""[{"key":"agent:main:main"},{"key":"agent:main:other"}]""");
+        var current = new SessionCatalogPageSet(null, 9, Environment.TickCount64);
+        helper.Client.TestSetAcquisition(9, current);
+
+        helper.Client.TestFeedSessionsList(
+            El("""{"sessions":[{"key":"agent:main:main"}],"count":1,"totalCount":1,"hasMore":false,"nextOffset":null}"""),
+            null, 0, 9, current);
+
+        Assert.Equal(1, helper.Client.TestCatalogCount);
+        Assert.Null(helper.Client.TestAcquisition);
+    }
+
+    [Fact]
+    public void SessionsList_MultiPage_SecondPageFailure_PreservesHeld()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""[{"key":"agent:main:main"},{"key":"agent:other:one"}]""");
+        var current = new SessionCatalogPageSet(null, 10, Environment.TickCount64);
+        helper.Client.TestSetPageSender((_, _) => System.Threading.Tasks.Task.FromResult(true));
+        helper.Client.TestSetAcquisition(10, current);
+
+        helper.Client.TestFeedSessionsList(
+            El("""{"sessions":[{"key":"agent:main:main"}],"count":1,"totalCount":3,"hasMore":true,"nextOffset":1}"""),
+            null, 0, 10, current);
+        Assert.NotNull(helper.Client.TestAcquisition);
+
+        // Second page contradicts totalCount -> fail, held catalog preserved.
+        helper.Client.TestFeedSessionsList(
+            El("""{"sessions":[{"key":"agent:other:one"}],"count":1,"totalCount":9,"hasMore":false,"nextOffset":null}"""),
+            null, 1, 10, current);
+
+        Assert.Equal(2, helper.Client.TestCatalogCount);
+        Assert.Null(helper.Client.TestAcquisition);
+    }
+
+    [Fact]
+    public void SessionsList_StaleCompletion_DoesNotClearNewerAcquisition()
+    {
+        var helper = new GatewayClientTestHelper();
+        var older = new SessionCatalogPageSet("main", 1, Environment.TickCount64);
+        var newer = new SessionCatalogPageSet("main", 2, Environment.TickCount64);
+        helper.Client.TestSetAcquisition(2, newer);
+
+        helper.Client.TestCompleteAcquisition(older);
+
+        Assert.Same(newer, helper.Client.TestAcquisition);
+    }
+
+    [Fact]
+    public void SessionsList_ContinuationSendNotAccepted_PreservesHeldAndMarksRetry()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""[{"key":"agent:main:main"},{"key":"agent:other:one"}]""");
+        var current = new SessionCatalogPageSet(null, 11, Environment.TickCount64);
+        helper.Client.TestSetPageSender((_, _) => System.Threading.Tasks.Task.FromResult(false));
+        helper.Client.TestSetAcquisition(11, current);
+
+        helper.Client.TestFeedSessionsList(
+            El("""{"sessions":[{"key":"agent:main:main"}],"count":1,"totalCount":3,"hasMore":true,"nextOffset":1}"""),
+            null, 0, 11, current);
+
+        // Page accepted (Continue) but the continuation send is not accepted -> preserve + retry.
+        Assert.Equal(2, helper.Client.TestCatalogCount);
+        Assert.Null(helper.Client.TestAcquisition);
+        Assert.True(helper.Client.SessionCatalogRetryRequired);
+    }
+
+    [Fact]
+    public void SessionsList_DisconnectInvalidatesAcquisition()
+    {
+        var helper = new GatewayClientTestHelper();
+        var current = new SessionCatalogPageSet("main", 12, Environment.TickCount64);
+        helper.Client.TestSetAcquisition(12, current);
+
+        helper.Client.TestInvalidateAcquisition();
+
+        Assert.Null(helper.Client.TestAcquisition);
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task SessionsList_NoResponseDeadline_ClearsAndMarksRetry()
+    {
+        var helper = new GatewayClientTestHelper();
+        var current = new SessionCatalogPageSet(null, 13, Environment.TickCount64);
+        var gate = new System.Threading.Tasks.TaskCompletionSource();
+        helper.Client.TestSetDelay((_, _) => gate.Task);
+        helper.Client.TestInstallAcquisitionWithDeadline(current, 13, TimeSpan.FromMilliseconds(50));
+
+        Assert.Same(current, helper.Client.TestAcquisition);
+        gate.SetResult(); // controlled barrier instead of a fixed sleep
+        for (var i = 0; i < 400 && helper.Client.TestAcquisition is not null; i++)
+            await System.Threading.Tasks.Task.Delay(5);
+        Assert.Null(helper.Client.TestAcquisition);
+        Assert.True(helper.Client.SessionCatalogRetryRequired);
+    }
+
+    [Fact]
+    public void SessionsList_BarrierSupersession_BetweenValidationAndAdmission_LeavesCatalogUnchanged()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""[{"key":"agent:main:main"},{"key":"agent:other:one"}]""");
+        var current = new SessionCatalogPageSet(null, 30, Environment.TickCount64);
+        helper.Client.TestSetPageSender((_, _) => System.Threading.Tasks.Task.FromResult(true));
+        helper.Client.TestSetAcquisition(30, current);
+
+        // Fires inside the acquisition lock, after validation and before admission: simulate a
+        // supersession/disconnect landing in the gap.
+        helper.Client.TestBeforeAdmissionHook = () => helper.Client.TestInvalidateAcquisition();
+
+        helper.Client.TestFeedSessionsList(
+            El("""{"sessions":[{"key":"agent:main:main"}],"count":1,"totalCount":1,"hasMore":false,"nextOffset":null}"""),
+            null, 0, 30, current);
+
+        helper.Client.TestBeforeAdmissionHook = null;
+        // The stale page must not have mutated or pruned the held catalog.
+        Assert.Equal(2, helper.Client.TestCatalogCount);
+    }
+
+    [Fact]
+    public void SessionsList_ConcurrentSupersession_CompletionAndDeadline_KeepNewer()
+    {
+        var helper = new GatewayClientTestHelper();
+        var older = new SessionCatalogPageSet("main", 20, Environment.TickCount64);
+        var newer = new SessionCatalogPageSet("main", 21, Environment.TickCount64);
+        helper.Client.TestInstallAcquisitionWithDeadline(older, 20, TimeSpan.FromMilliseconds(50));
+        helper.Client.TestSetAcquisition(21, newer);
+
+        helper.Client.TestCompleteAcquisition(older); // stale completion must not clear the newer set
+        Assert.Same(newer, helper.Client.TestAcquisition);
+    }
+
+    [Fact]
+    public void ParseSessions_ValidRowThenMalformedRow_LeavesHeldCatalogUnchanged()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""[{"key":"agent:main:main","status":"idle","label":"Held"}]""");
+        var seeded = helper.GetSessionList().Single(s => s.Key == "agent:main:main");
+        Assert.Equal("idle", seeded.Status);
+        Assert.Equal("Held", seeded.Label);
+
+        // Row 1 is valid and would mutate the held session; row 2 is a malformed non-object row.
+        helper.ParseSessionsPayload("""[{"key":"agent:main:main","status":"busy","label":"Changed"}, 123]""");
+
+        var after = helper.GetSessionList().Single(s => s.Key == "agent:main:main");
+        Assert.Equal("idle", after.Status);
+        Assert.Equal("Held", after.Label);
+        Assert.True(helper.Client.SessionCatalogRetryRequired);
+    }
+
+    [Fact]
+    public void ParseSessions_MalformedFieldOnHeldSession_LeavesFieldsUnchanged()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""[{"key":"agent:main:main","status":"idle","label":"Held"}]""");
+
+        // startedAt far outside the DateTimeOffset range throws after earlier fields were applied.
+        helper.ParseSessionsPayload("""[{"key":"agent:main:main","status":"busy","label":"Changed","startedAt":99999999999999999}]""");
+
+        var after = helper.GetSessionList().Single(s => s.Key == "agent:main:main");
+        Assert.Equal("idle", after.Status);
+        Assert.Equal("Held", after.Label);
+        Assert.True(helper.Client.SessionCatalogRetryRequired);
+    }
+
+    [Fact]
+    public void ParseSessions_MalformedDefaultsWithThrowingRow_LeaveHeldStateUnchanged()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""[{"key":"agent:main:main","status":"idle"}]""");
+
+        // Defaults present AND a throwing row: the abort must not commit the staged defaults either.
+        helper.ParseSessionsPayload("""{"sessions":[{"key":"agent:main:main","status":"busy"}, 123],"defaults":{"thinkingLevel":"high"}}""");
+
+        var after = helper.GetSessionList().Single(s => s.Key == "agent:main:main");
+        Assert.Equal("idle", after.Status);
+        Assert.True(helper.Client.SessionCatalogRetryRequired);
+    }
+
+    [Fact]
+    public void CatalogRefreshStateChanged_FiresOnRejectedPage_WithoutSessionChange()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""[{"key":"agent:main:main"},{"key":"agent:other:one"}]""");
+        var events = new List<bool>();
+        helper.Client.SessionCatalogRefreshStateChanged += (_, e) => events.Add(e.RetryRequired);
+
+        var current = new SessionCatalogPageSet(null, 40, Environment.TickCount64, maxBytes: 5);
+        helper.Client.TestSetAcquisition(40, current);
+        helper.Client.TestFeedSessionsList(
+            El("""{"sessions":[],"count":0,"totalCount":0,"hasMore":false,"nextOffset":null}"""),
+            null, 0, 40, current);
+
+        Assert.Equal(2, helper.Client.TestCatalogCount);      // session collection unchanged
+        Assert.Contains(true, events);                        // retry surfaced without a session event
+    }
+
+    [Fact]
+    public void CatalogRefreshStateChanged_ClearsOnSuccessfulRefresh()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""[{"key":"agent:main:main"},{"key":"agent:other:one"}]""");
+        var current0 = new SessionCatalogPageSet(null, 41, Environment.TickCount64, maxBytes: 5);
+        helper.Client.TestSetAcquisition(41, current0);
+        helper.Client.TestFeedSessionsList(
+            El("""{"sessions":[],"count":0,"totalCount":0,"hasMore":false,"nextOffset":null}"""),
+            null, 0, 41, current0);
+        Assert.True(helper.Client.SessionCatalogRetryRequired);
+
+        var events = new List<bool>();
+        helper.Client.SessionCatalogRefreshStateChanged += (_, e) => events.Add(e.RetryRequired);
+        var current1 = new SessionCatalogPageSet(null, 42, Environment.TickCount64);
+        helper.Client.TestSetAcquisition(42, current1);
+        helper.Client.TestFeedSessionsList(
+            El("""{"sessions":[{"key":"agent:main:main"}],"count":1,"totalCount":1,"hasMore":false,"nextOffset":null}"""),
+            null, 0, 42, current1);
+
+        Assert.False(helper.Client.SessionCatalogRetryRequired);
+        Assert.Contains(false, events);
+    }
+
+    [Fact]
+    public void CatalogRefreshStateChanged_FiresOnParseFailure_WithoutSessionChange()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""[{"key":"agent:main:main","status":"idle"}]""");
+        var events = new List<bool>();
+        helper.Client.SessionCatalogRefreshStateChanged += (_, e) => events.Add(e.RetryRequired);
+
+        helper.Client.TestFeedLegacySessionsList(El("""[{"key":"agent:main:main","status":"busy"}, 123]"""));
+
+        Assert.Equal("idle", helper.GetSessionList().Single(s => s.Key == "agent:main:main").Status);
+        Assert.Contains(true, events);
+    }
+
+    [Fact]
+    public void CatalogRefreshStateChanged_FiresOnDisconnectInvalidation()
+    {
+        var helper = new GatewayClientTestHelper();
+        var events = new List<bool>();
+        helper.Client.SessionCatalogRefreshStateChanged += (_, e) => events.Add(e.RetryRequired);
+
+        var current = new SessionCatalogPageSet("main", 43, Environment.TickCount64);
+        helper.Client.TestSetAcquisition(43, current);
+        helper.Client.TestInvalidateAcquisition();
+
+        Assert.Null(helper.Client.TestAcquisition);
+        Assert.NotEmpty(events); // UI re-evaluates and hides the prompt when not connected
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task CatalogRefreshStateChanged_FiresOnNoResponseDeadline()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""[{"key":"agent:main:main"}]""");
+        var events = new List<bool>();
+        helper.Client.SessionCatalogRefreshStateChanged += (_, e) => events.Add(e.RetryRequired);
+
+        var gate = new System.Threading.Tasks.TaskCompletionSource();
+        helper.Client.TestSetDelay((_, _) => gate.Task);
+        var current = new SessionCatalogPageSet(null, 44, Environment.TickCount64);
+        helper.Client.TestInstallAcquisitionWithDeadline(current, 44, TimeSpan.FromMilliseconds(25));
+
+        gate.SetResult();
+        for (var i = 0; i < 400 && events.Count == 0; i++)
+            await System.Threading.Tasks.Task.Delay(5);
+
+        Assert.Contains(true, events);
+        Assert.Equal(1, helper.Client.TestCatalogCount); // collection unchanged, no empty session event
+    }
+
+    [Fact]
+    public void AcquisitionInProgress_TrueAtBegin_FalseAtTerminalComplete()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""[{"key":"agent:main:main"}]""");
+        var states = new List<bool>();
+        helper.Client.SessionCatalogRefreshStateChanged += (_, e) => states.Add(e.AcquisitionInProgress);
+
+        var current = new SessionCatalogPageSet(null, 50, Environment.TickCount64);
+        helper.Client.TestSetAcquisition(50, current);
+        Assert.True(helper.Client.SessionCatalogAcquisitionInProgress);
+
+        helper.Client.TestFeedSessionsList(
+            El("""{"sessions":[{"key":"agent:main:main"}],"count":1,"totalCount":1,"hasMore":false,"nextOffset":null}"""),
+            null, 0, 50, current);
+
+        Assert.False(helper.Client.SessionCatalogAcquisitionInProgress);
+        Assert.Contains(false, states); // terminal transition observed
+    }
+
+    [Fact]
+    public void AcquisitionInProgress_FalseAfterRejectedPageAndAfterDisconnect()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""[{"key":"agent:main:main"}]""");
+
+        var rejected = new SessionCatalogPageSet(null, 51, Environment.TickCount64, maxBytes: 5);
+        helper.Client.TestSetAcquisition(51, rejected);
+        Assert.True(helper.Client.SessionCatalogAcquisitionInProgress);
+        helper.Client.TestFeedSessionsList(
+            El("""{"sessions":[],"count":0,"totalCount":0,"hasMore":false,"nextOffset":null}"""),
+            null, 0, 51, rejected);
+        Assert.False(helper.Client.SessionCatalogAcquisitionInProgress);
+
+        var invalidated = new SessionCatalogPageSet("main", 52, Environment.TickCount64);
+        helper.Client.TestSetAcquisition(52, invalidated);
+        Assert.True(helper.Client.SessionCatalogAcquisitionInProgress);
+        helper.Client.TestInvalidateAcquisition();
+        Assert.False(helper.Client.SessionCatalogAcquisitionInProgress);
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task AcquisitionInProgress_InitialSendThrow_EndsAcquisitionPromptly()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""[{"key":"agent:main:main"}]""");
+        var states = new List<bool>();
+        helper.Client.SessionCatalogRefreshStateChanged += (_, e) => states.Add(e.AcquisitionInProgress);
+
+        helper.Client.TestSetPageSender((_, _) =>
+            System.Threading.Tasks.Task.FromException<bool>(new InvalidOperationException("send boom")));
+
+        await helper.Client.RequestSessionsAsync();
+
+        Assert.False(helper.Client.SessionCatalogAcquisitionInProgress);
+        Assert.True(helper.Client.SessionCatalogRetryRequired);
+        Assert.Equal(1, helper.Client.TestCatalogCount); // held catalog preserved
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task BoundedTimeoutTerminal_EnablesRetry_ViaConsumedPolicy()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""[{"key":"agent:main:main"}]""");
+        var gate = new System.Threading.Tasks.TaskCompletionSource();
+        helper.Client.TestSetDelay((_, _) => gate.Task);
+        var current = new SessionCatalogPageSet(null, 60, Environment.TickCount64);
+        helper.Client.TestInstallAcquisitionWithDeadline(current, 60, TimeSpan.FromMilliseconds(25));
+
+        // While the acquisition is loading, the consumed policy keeps Retry disabled.
+        Assert.True(helper.Client.SessionCatalogAcquisitionInProgress);
+        Assert.False(SessionCatalogRetryActionPolicy.IsRetryEnabled(
+            connected: true,
+            retryRequired: helper.Client.SessionCatalogRetryRequired,
+            acquisitionInProgress: helper.Client.SessionCatalogAcquisitionInProgress,
+            sendInFlight: false));
+
+        gate.SetResult();
+        for (var i = 0; i < 600 && helper.Client.SessionCatalogAcquisitionInProgress; i++)
+            await System.Threading.Tasks.Task.Delay(5);
+
+        // Terminal timeout: acquisition ended + retry required -> consumed policy enables Retry.
+        Assert.False(helper.Client.SessionCatalogAcquisitionInProgress);
+        Assert.True(helper.Client.SessionCatalogRetryRequired);
+        Assert.True(SessionCatalogRetryActionPolicy.IsRetryEnabled(
+            connected: true,
+            retryRequired: helper.Client.SessionCatalogRetryRequired,
+            acquisitionInProgress: helper.Client.SessionCatalogAcquisitionInProgress,
+            sendInFlight: false));
     }
 }

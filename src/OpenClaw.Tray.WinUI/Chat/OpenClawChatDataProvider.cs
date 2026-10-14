@@ -730,6 +730,135 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             cancellationToken,
             authoritative);
 
+    /// <summary>
+    /// Load-earlier presentation bookkeeping, bound to the exact accepted window (token + revision)
+    /// captured when the request started. Guarded by its own lock and never held across state reads,
+    /// snapshots, callbacks or awaits, so a delayed failure can never attach to a newer window.
+    /// </summary>
+    private sealed record LoadOlderOperation(ChatHistoryWindowLease Lease, bool InFlight, bool Failed);
+
+    private readonly object _loadOlderGate = new();
+    private readonly Dictionary<string, LoadOlderOperation> _loadOlder = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Explicit load-earlier state for a thread, bound to the CURRENT accepted window. Loading is only
+    /// reported while the tracked operation still matches the current window; a stale operation is
+    /// pruned. Unknown/unavailable (no accepted window) is never reported as exhaustion.
+    /// </summary>
+    internal ChatLoadOlderState GetLoadOlderState(string threadId)
+    {
+        // Capture the CURRENT accepted lease (full token + revision + window) OUTSIDE the bookkeeping
+        // lock. Comparing only the paging tuple is insufficient: a forced initial refresh can commit an
+        // identical tuple under a NEWER revision, and an old operation must not colour it.
+        var current = _state.TryCaptureHistoryWindowLease(threadId, out var captured)
+            ? captured
+            : (ChatHistoryWindowLease?)null;
+        LoadOlderOperation? tracked;
+        lock (_loadOlderGate)
+        {
+            if (current is { } lease &&
+                _loadOlder.TryGetValue(threadId, out var candidate) &&
+                Equals(candidate.Lease, lease))
+            {
+                tracked = candidate;
+            }
+            else
+            {
+                // No current window, or a newer revision/identity (even with an identical paging
+                // tuple), or reset/reconnect/exhaustion: the tracked operation is stale and is pruned.
+                _loadOlder.Remove(threadId);
+                tracked = null;
+            }
+        }
+
+        if (tracked is { InFlight: true })
+            return ChatLoadOlderState.Loading;
+        if (current is null)
+            return ChatLoadOlderState.Unavailable;
+        if (!current.Value.Window.HasMore)
+            return ChatLoadOlderState.Exhausted;
+        return tracked is { Failed: true } ? ChatLoadOlderState.Error : ChatLoadOlderState.Available;
+    }
+
+    /// <summary>
+    /// Loads ONE older bounded page for the thread (single-flight per accepted window, server-supplied
+    /// offset, exhaustion no-op, no unbounded fallback). Faults are observed here and surfaced as a
+    /// generic retryable Error only while the SAME accepted window is still current; cancellation is not
+    /// an error; the held transcript and accepted window are always preserved.
+    /// </summary>
+    public async Task LoadOlderAsync(string threadId, CancellationToken cancellationToken = default)
+    {
+        if (!_state.TryCaptureHistoryWindowLease(threadId, out var lease))
+            return;
+        if (!lease.Window.HasMore || lease.Window.NextOffset is null)
+            return;
+
+        lock (_loadOlderGate)
+        {
+            if (_loadOlder.TryGetValue(threadId, out var existing) && existing.InFlight)
+                return;                    // single-flight: loading disables a repeated action
+            _loadOlder[threadId] = new LoadOlderOperation(lease, InFlight: true, Failed: false);
+        }
+
+        PublishCurrentSnapshot();
+        try
+        {
+            await _historyLoader.LoadOlderAsync(threadId, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancellation: held transcript/window preserved; not an error state.
+        }
+        catch (Exception)
+        {
+            // Record a generic error ONLY if the CAPTURED lease (token + revision + window) is still the
+            // accepted one. A delayed failure against a superseded revision (even an identical paging
+            // tuple) must not colour the new presentation.
+            var current = _state.TryCaptureHistoryWindowLease(threadId, out var captured)
+                ? captured
+                : (ChatHistoryWindowLease?)null;
+            lock (_loadOlderGate)
+            {
+                if (_loadOlder.TryGetValue(threadId, out var op) &&
+                    Equals(op.Lease, lease) &&
+                    current is { } leaseNow && Equals(op.Lease, leaseNow))
+                {
+                    _loadOlder[threadId] = op with { Failed = true };
+                }
+            }
+        }
+        finally
+        {
+            lock (_loadOlderGate)
+            {
+                if (_loadOlder.TryGetValue(threadId, out var op) && Equals(op.Lease, lease))
+                    _loadOlder[threadId] = op with { InFlight = false };
+            }
+            PublishCurrentSnapshot();
+        }
+    }
+
+    private void PublishCurrentSnapshot()
+    {
+        // Refresh republish only: it never mutates state and never surfaces raw detail. A failure here
+        // means the UI did not get a repaint notification; it does not by itself prove the retry state
+        // was seen, and it must not be reported as if it were.
+        try
+        {
+            Publish(_state.Snapshot(ProjectionContext()));
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    /// <summary>
+    /// The accepted bounded page window for a thread, or null when unknown/unavailable (never
+    /// silently reported as complete).
+    /// </summary>
+    internal ChatHistoryWindowState? GetHistoryWindow(string threadId) =>
+        _state.GetHistoryWindow(threadId);
+
     internal Task ReplaceHistoryAfterCheckpointRestoreAsync(
         string threadId,
         CancellationToken cancellationToken = default)
@@ -754,11 +883,16 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     {
         void Deliver()
         {
-            var snapshot = _state.SnapshotIfHistoryTokenCurrent(
-                result.Token,
+            // Source-owned fence: generation token AND the full original window lease. QueueFencedDelivery
+            // re-runs this at DELIVERY time, so a same-cursor refresh landing between emit and delivery
+            // still fences the obsolete error.
+            var snapshot = _state.SnapshotIfHistoryResultCurrent(
+                result,
                 ProjectionContext());
             if (snapshot is null)
                 return;
+            // (The usage/topology revision is bumped INSIDE the state gate on accepted commits, so a
+            //  reader can never observe new state with a stale revision.)
             if (result.PublishSnapshot)
                 DeliverPublishBatch(
                     snapshot,
@@ -1099,6 +1233,94 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     public IReadOnlyDictionary<string, ChatEntryMetadata> GetEntryMetadata(string threadId)
         => _state.GetEntryMetadata(threadId);
 
+    /// <summary>
+    /// Latest qualifying assistant usage over the FULL retained timeline (never the windowed slice), so
+    /// windowing cannot lose it nor fall back to a stale thread summary. Cached per thread; invalidated by
+    /// entries-reference, metadata revision or session identity change (see ChatLatestUsageProjection).
+    /// </summary>
+    /// <summary>
+    /// Global latest qualifying usage for a thread. The COHERENT state-owned retained input (timeline +
+    /// accepted identity + usage revision captured under one lock) is passed to the projection, so an older
+    /// timeline can never be cached against a newer revision/metadata. Returns the summary AND the global
+    /// latest entry id so consumers label only that row.
+    /// </summary>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _usageFlights =
+        new(StringComparer.Ordinal);
+
+    /// <summary>Test-only seam: invoked once immediately before the flight publishes (null in production).</summary>
+    internal Action? BeforeUsageFlightPublishForTests { get; set; }
+
+    public (string? Summary, string? EntryId) GetLatestUsage(string threadId)
+    {
+        // The STATE computes this coherently under its single lock (bounded, resumable per call), so there
+        // is no window in which newer metadata is combined with an older timeline/revision. This method is
+        // NOT the job driver: when the scan is incomplete it starts ONE owned background flight that drives
+        // the bounded slices to completion and publishes, so no further render/request is required.
+        var (summary, entryId, complete) = _state.AdvanceLatestUsage(threadId);
+        if (!complete)
+            StartUsageFlight(threadId);
+        return (summary, entryId);
+    }
+
+    /// <summary>
+    /// One owned background flight per thread advances the bounded usage scan (fixed slice budget per
+    /// step, yielding between slices, never holding the state lock across await) to completion and then
+    /// publishes the accepted snapshot, so completion is autonomous and does not depend on a future
+    /// re-render. The flight ends early when the state is disposed (cancellation on dispose).
+    /// </summary>
+    private void StartUsageFlight(string threadId)
+    {
+        if (_state.IsDisposed || !_usageFlights.TryAdd(threadId, 0))
+            return;   // single-flight per thread
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                while (!_state.IsDisposed)
+                {
+                    if (!_state.AdvanceLatestUsage(threadId).Complete)
+                    {
+                        await Task.Yield();   // bounded slice done; let the pool/UI breathe
+                        continue;
+                    }
+                    // Re-verify at completion: a mutation (metadata/topology/identity) that arrived right
+                    // at the boundary must RESTART the scan rather than be lost because the flight key was
+                    // already present. A zero-step probe stays incomplete when the scan was restarted.
+                    if (_state.AdvanceLatestUsage(threadId, maxSteps: 0).Complete)
+                        break;
+                }
+                if (_state.IsDisposed)
+                    return;   // dispose cancels: never publish after disposal
+                BeforeUsageFlightPublishForTests?.Invoke();
+                if (_state.IsDisposed)
+                    return;
+                PublishCurrentSnapshot();
+            }
+            catch (Exception)
+            {
+                // Never fault on a background usage flight.
+            }
+            finally
+            {
+                _usageFlights.TryRemove(threadId, out _);
+                // HANDOFF SHAKE: a mutation that arrived while we owned the key (e.g. during publication)
+                // may have restarted the scan. Re-acquire continuation so pending work is never left
+                // unowned just because the key was present when the new request came in. A removed thread
+                // resolves Complete, so no flight is leaked for it.
+                if (!_state.IsDisposed && !_state.AdvanceLatestUsage(threadId, maxSteps: 0).Complete)
+                    StartUsageFlight(threadId);
+            }
+        });
+    }
+
+    /// <summary>Bounded metadata snapshot for the visible entries only.</summary>
+    public IReadOnlyDictionary<string, ChatEntryMetadata> GetVisibleEntryMetadata(
+        string threadId, IReadOnlyCollection<string> entryIds) =>
+        _state.GetEntryMetadataFor(threadId, entryIds);
+
+    /// <summary>Drops the cached usage projection for a thread (reset / identity change).</summary>
+    public void ForgetLatestUsage(string threadId) => _state.ForgetUsageScan(threadId);
+
     internal Task<AssistantMediaResolutionResult> ResolveAssistantMediaAsync(
         string sessionKey,
         ChatMediaContentInfo media,
@@ -1140,8 +1362,9 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     {
         if (_state.IsDisposed)
             return;
+        var updatedSessions = sessions ?? [];
         var transition = _state.ApplySessions(
-            sessions ?? [],
+            updatedSessions,
             ProjectionContext());
         Publish(transition.Snapshot);
 
@@ -1299,7 +1522,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     message.OpenClawSeq,
                     openClawKind: message.OpenClawKind,
                     compactionTokensBefore: message.CompactionTokensBefore,
-                    compactionTokensAfter: message.CompactionTokensAfter));
+                    compactionTokensAfter: message.CompactionTokensAfter,
+                    gatewayDisplayItemId: message.OpenClawDisplayItemId));
             return;
         }
 

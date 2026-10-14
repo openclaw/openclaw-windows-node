@@ -73,6 +73,16 @@
                     </InfoBar.ActionButton>
                 </InfoBar>
 
+                <InfoBar x:Uid="SessionsPage_CatalogRetry"
+                         x:Name="CatalogRetryInfoBar"
+                         IsOpen="False" IsClosable="False" Severity="Warning"
+                         Title="Session list incomplete"
+                         Message="Some sessions could not be confirmed. Retry to refresh the catalog.">
+                    <InfoBar.ActionButton>
+                        <Button x:Uid="SessionsPage_CatalogRetryAction" x:Name="CatalogRetryButton" Content="Retry" Click="OnRetryCatalogClick"/>
+                    </InfoBar.ActionButton>
+                </InfoBar>
+
                 <!-- Loading / empty / list share this slot; only one is Visible at a time. -->
                 <Grid MinHeight="160">
                     <StackPanel x:Name="LoadingState"

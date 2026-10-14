@@ -19,7 +19,55 @@ internal sealed class ChatConversationState
     private readonly ChatLifecycleState _lifecycle = new();
     private readonly ChatResetState _reset = new();
     private readonly Dictionary<string, ChatTimelineState> _timelines = new();
-    private readonly Dictionary<string, Dictionary<string, ChatEntryMetadata>> _entryMeta = new();
+
+    // Explicit USAGE/TOPOLOGY revision, mutated ONLY under _gate. Bumped when the retained usage
+    // topology or usage metadata changes (accepted commit, older page, session usage) - NOT on
+    // text-only streaming edits, so the usage projection is not invalidated per streamed token.
+    private readonly Dictionary<string, long> _usageRevisions = new(StringComparer.Ordinal);
+
+    // RETAINED-CONTENT version: bumped under _gate for EVERY retained timeline or metadata mutation
+    // (streaming text/tool/media/permission, ingest, commits, reset/replacement, session usage). It is the
+    // EXACT compare-and-commit guard for the older-page merge: a history lease alone cannot detect a
+    // concurrent content/metadata change, so a stale older merge must be rejected rather than applied.
+    private readonly Dictionary<string, long> _retainedVersions = new(StringComparer.Ordinal);
+
+    private void BumpRetainedVersionLocked(string threadId) =>
+        _retainedVersions[threadId] =
+            (_retainedVersions.TryGetValue(threadId, out var currentVersion) ? currentVersion : 0) + 1;
+
+    /// <summary>Exact retained-content version for a thread (under _gate).</summary>
+    internal long RetainedVersion(string threadId)
+    {
+        lock (_gate)
+            return _retainedVersions.TryGetValue(threadId, out var current) ? current : 0;
+    }
+
+    /// <summary>
+    /// Atomically captures the accepted window lease AND the exact retained-content version, so an
+    /// older-page merge can prove nothing changed between capture and commit.
+    /// </summary>
+    internal bool TryCaptureOlderMergeLease(
+        string threadId, out ChatHistoryWindowLease lease, out long retainedVersion)
+    {
+        lock (_gate)
+        {
+            if (_history.CaptureWindow(
+                    threadId,
+                    GetResetVersionLocked(threadId),
+                    _disposed) is not { } captured)
+            {
+                lease = default;
+                retainedVersion = 0;
+                return false;
+            }
+            lease = captured;
+            retainedVersion = _retainedVersions.TryGetValue(threadId, out var current) ? current : 0;
+            return true;
+        }
+    }
+    // COW: each thread's entry metadata is an IMMUTABLE map, so an off-lock capture by reference is safe and
+    // any later write produces a NEW reference (cheap exact identity compare) without cloning under the lock.
+    private readonly Dictionary<string, System.Collections.Immutable.ImmutableDictionary<string, ChatEntryMetadata>> _entryMeta = new();
     private ConnectionStatus _status;
     private bool _disposed;
 
@@ -101,6 +149,305 @@ internal sealed class ChatConversationState
                 ? new Dictionary<string, ChatEntryMetadata>(metadata)
                 : new Dictionary<string, ChatEntryMetadata>();
         }
+    }
+
+    /// <summary>Metadata for ONE entry id (no full-dictionary copy) - used by the usage projection.</summary>
+    internal ChatEntryMetadata? GetEntryMetadataById(string threadId, string entryId)
+    {
+        lock (_gate)
+            return _entryMeta.TryGetValue(threadId, out var metadata) &&
+                   metadata.TryGetValue(entryId, out var entry)
+                ? entry
+                : null;
+    }
+
+    /// <summary>
+    /// Bounded metadata snapshot: copies ONLY the requested (visible) entry ids, so a windowed render
+    /// does not copy the entire retained metadata dictionary under the lock.
+    /// </summary>
+    internal IReadOnlyDictionary<string, ChatEntryMetadata> GetEntryMetadataFor(
+        string threadId, IReadOnlyCollection<string> entryIds)
+    {
+        lock (_gate)
+        {
+            var visible = new Dictionary<string, ChatEntryMetadata>(entryIds.Count, StringComparer.Ordinal);
+            if (_entryMeta.TryGetValue(threadId, out var metadata))
+            {
+                foreach (var id in entryIds)
+                {
+                    if (metadata.TryGetValue(id, out var entry))
+                        visible[id] = entry;
+                }
+            }
+            return visible;
+        }
+    }
+
+    /// <summary>Cheap metadata/history revision for projection invalidation (bumped by accepted commits).</summary>
+    internal long MetadataRevision(string threadId)
+    {
+        lock (_gate)   // ChatHistoryState requires serialization under the root lock
+            return _history.SnapshotRevisions().TryGetValue(threadId, out var revision) ? revision : 0;
+    }
+
+    /// <summary>
+    /// Atomically captures the ACCEPTED identity and usage/topology revision as a coherent pair (the
+    /// projection key), so a concurrent writer cannot produce a torn identity/revision combination.
+    /// </summary>
+    internal (string? AcceptedIdentity, long UsageRevision) TryCaptureUsageSnapshot(string threadId)
+    {
+        lock (_gate)
+        {
+            var identity = _history.GetAcceptedTranscriptId(threadId);
+            var revision = _usageRevisions.TryGetValue(threadId, out var current) ? current : 0;
+            return (identity, revision);
+        }
+    }
+
+    /// <summary>
+    /// Per-thread BOUNDED, RESUMABLE usage scan. Everything (retained timeline, per-entry metadata and
+    /// the usage revision) is read under _gate, so the produced result is coherent by construction - there
+    /// is no capture/release window in which metadata can advance under an older revision. A revision or
+    /// identity change resets the scan (stale partial work is discarded).
+    /// </summary>
+    private sealed class UsageScanState
+    {
+        public long Revision;
+        public string? Identity;
+        public int NextIndex;
+        public string? Summary;
+        public string? EntryId;
+        public bool Complete;
+        public bool SummaryFromThisPass;
+    }
+
+    private readonly Dictionary<string, UsageScanState> _usageScans = new(StringComparer.Ordinal);
+
+    /// <summary>Entries examined per call - keeps a first initialization/miss off the unbounded-UI path.</summary>
+    internal const int UsageScanStepsPerCall = 64;
+
+    /// <summary>Drops the bounded usage scan for a thread (reset / identity change / removal).</summary>
+    internal void ForgetUsageScan(string threadId)
+    {
+        lock (_gate)
+            _usageScans.Remove(threadId);
+    }
+
+    /// <summary>
+    /// Advances the bounded usage scan by at most <paramref name="maxSteps"/> entries and returns the
+    /// current faithful result. While incomplete the PREVIOUS faithful result (if any) is returned together
+    /// with Complete=false, so the UI never stalls unboundedly and never shows a torn value.
+    /// </summary>
+    internal (string? Summary, string? EntryId, bool Complete) AdvanceLatestUsage(
+        string threadId, int maxSteps = UsageScanStepsPerCall)
+    {
+        lock (_gate)
+        {
+            if (!_timelines.TryGetValue(threadId, out var timeline))
+                return (null, null, true);
+            var identity = _history.GetAcceptedTranscriptId(threadId);
+            var revision = _usageRevisions.TryGetValue(threadId, out var current) ? current : 0;
+            if (!_usageScans.TryGetValue(threadId, out var scan))
+            {
+                scan = new UsageScanState
+                {
+                    Revision = revision,
+                    Identity = identity,
+                    NextIndex = timeline.Entries.Count - 1,
+                };
+                _usageScans[threadId] = scan;
+            }
+            else if (scan.Revision != revision ||
+                     !string.Equals(scan.Identity, identity, StringComparison.Ordinal))
+            {
+                // New revision/identity: discard stale partial work and restart from the retained tail.
+                // The previous faithful result is carried ONLY while the transcript identity is unchanged,
+                // so a pending pass never shows a torn/older value; an identity change clears it.
+                var sameTranscript = string.Equals(scan.Identity, identity, StringComparison.Ordinal);
+                scan = new UsageScanState
+                {
+                    Revision = revision,
+                    Identity = identity,
+                    NextIndex = timeline.Entries.Count - 1,
+                    Summary = sameTranscript ? scan.Summary : null,
+                    EntryId = sameTranscript ? scan.EntryId : null,
+                    SummaryFromThisPass = false,
+                };
+                _usageScans[threadId] = scan;
+            }
+
+            var steps = 0;
+            while (!scan.Complete && steps < maxSteps && scan.NextIndex >= 0)
+            {
+                var entry = timeline.Entries[scan.NextIndex];
+                scan.NextIndex--;
+                steps++;
+                if (entry.Kind != ChatTimelineItemKind.Assistant)
+                    continue;
+                var metadata = _entryMeta.TryGetValue(threadId, out var map) &&
+                               map.TryGetValue(entry.Id, out var entryMeta)
+                    ? entryMeta
+                    : null;
+                if (metadata is null)
+                    continue;
+                var text = ChatUsageFormatter.Format(metadata);
+                if (string.IsNullOrWhiteSpace(text))
+                    continue;
+                scan.Summary = text;
+                scan.EntryId = entry.Id;
+                scan.Complete = true;
+                scan.SummaryFromThisPass = true;
+            }
+            if (scan.NextIndex < 0)
+                scan.Complete = true;
+            if (scan.Complete && !scan.SummaryFromThisPass)
+            {
+                // The pass found nothing for the new revision: drop a carried (now stale) result.
+                scan.Summary = null;
+                scan.EntryId = null;
+            }
+
+            return (scan.Summary, scan.EntryId, scan.Complete);
+        }
+    }
+
+
+    /// <summary>
+    /// Immutable roots captured UNDER the gate for an OFF-LOCK tentative older-page merge. The retained
+    /// ChatTimelineState reference changes on ANY timeline write (streaming/permission/local-user/status),
+    /// and the immutable metadata map reference changes on ANY metadata write, so comparing these two
+    /// references at commit is an exact, comprehensive guard (a content-revision counter alone is not).
+    /// </summary>
+    internal sealed record OlderMergeRoots(
+        ChatHistoryWindowLease Lease,
+        int ExpectedOffset,
+        string ThreadId,
+        ChatTimelineState Timeline,
+        System.Collections.Immutable.ImmutableDictionary<string, ChatEntryMetadata> Metadata,
+        ChatHistoryWindowState Window,
+        long RetainedVersion);
+
+    /// <summary>
+    /// Captures the cheap immutable roots for an older-page merge AFTER the page fetch, so the tentative
+    /// reconstruction can run OFF LOCK against a consistent snapshot.
+    /// </summary>
+    internal bool TryPrepareOlderMergeRoots(
+        string threadId, int expectedOffset, ChatHistoryWindowState window,
+        ChatHistoryWindowLease originalLease, out OlderMergeRoots roots)
+    {
+        roots = null!;
+        lock (_gate)
+        {
+            if (_disposed)
+                return false;
+            // The ORIGINAL NETWORK lease (captured when the request started) is the window authority; the
+            // content roots are merely refreshed after the fetch. A fresh capture here would admit a stale
+            // older response against a NEWER window revision committed while the request was in flight.
+            if (!_history.IsCurrent(originalLease.Token, GetResetVersionLocked(threadId), _disposed))
+                return false;
+            if (_history.CaptureWindow(
+                    threadId,
+                    GetResetVersionLocked(threadId),
+                    _disposed) is not { } lease ||
+                lease.Revision != originalLease.Revision ||
+                !Equals(lease.Window, originalLease.Window))
+            {
+                return false;
+            }
+            if (lease.Window.NextOffset != expectedOffset)
+                return false;
+            var timeline = GetOrCreateTimelineLocked(threadId);
+            var metadata = _entryMeta.TryGetValue(threadId, out var map)
+                ? map
+                : System.Collections.Immutable.ImmutableDictionary<string, ChatEntryMetadata>.Empty;
+            roots = new OlderMergeRoots(
+                lease,
+                expectedOffset,
+                threadId,
+                timeline,
+                metadata,
+                window,
+                _retainedVersions.TryGetValue(threadId, out var rv) ? rv : 0);
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Atomic compare-and-commit for an OFF-LOCK tentative older merge. Publishes ONLY when the captured
+    /// timeline AND metadata references are still current (plus the lease/identity/offset guards), so a
+    /// concurrent streaming/permission/local-user/metadata change rejects the tentative result instead of
+    /// overwriting newer state. Rejection is cheap and does not require refetching the network page.
+    /// </summary>
+    internal bool TryCommitPreparedOlderMerge(
+        OlderMergeRoots roots,
+        ChatHistoryRebuildPlan olderPlan,
+        ChatTimelineState mergedTimeline,
+        System.Collections.Immutable.ImmutableDictionary<string, ChatEntryMetadata> mergedMetadata,
+        CancellationToken cancellationToken)
+    {
+        lock (_gate)
+        {
+            if (cancellationToken.IsCancellationRequested || _disposed)
+                return false;
+            var threadId = roots.ThreadId;
+            if (!_history.IsCurrent(roots.Lease.Token, GetResetVersionLocked(threadId), _disposed))
+                return false;
+            if (_history.CaptureWindow(
+                    threadId,
+                    GetResetVersionLocked(threadId),
+                    _disposed) is not { } current ||
+                current.Revision != roots.Lease.Revision ||
+                !Equals(current.Window, roots.Lease.Window))
+            {
+                return false;
+            }
+            if (!SameIdentity(current.Window.SessionId, olderPlan.SessionId) ||
+                !SameIdentity(current.Window.SessionId, roots.Window.SessionId) ||
+                !string.Equals(roots.Window.SessionKey, threadId, StringComparison.Ordinal) ||
+                roots.Window.ResponseOffset != roots.ExpectedOffset)
+            {
+                return false;
+            }
+            // EXACT captured-root compare: any timeline or metadata write since capture rejects.
+            if (!ReferenceEquals(GetOrCreateTimelineLocked(threadId), roots.Timeline))
+                return false;
+            var metadataNow = _entryMeta.TryGetValue(threadId, out var map)
+                ? map
+                : System.Collections.Immutable.ImmutableDictionary<string, ChatEntryMetadata>.Empty;
+            if (!ReferenceEquals(metadataNow, roots.Metadata))
+                return false;
+            if ((_retainedVersions.TryGetValue(threadId, out var rvNow) ? rvNow : 0) != roots.RetainedVersion)
+                return false;
+
+            _timelines[threadId] = mergedTimeline;
+            _entryMeta[threadId] = mergedMetadata;   // already immutable: O(1) assignment, no conversion under the gate
+            _history.MarkOlderCommitted(roots.Lease.Token, roots.Window);
+            BumpUsageRevisionLocked(threadId);
+            BumpRetainedVersionLocked(threadId);
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Signals a retained usage/topology change (accepted history commit, older page, session usage).
+    /// Callers must NOT call this for text-only streaming edits.
+    /// </summary>
+    internal void NoteUsageTopologyChanged(string threadId)
+    {
+        lock (_gate)
+            BumpUsageRevisionLocked(threadId);
+    }
+
+    /// <summary>Bumps the usage/topology revision. Callers must already hold _gate.</summary>
+    private void BumpUsageRevisionLocked(string threadId) =>
+        _usageRevisions[threadId] =
+            (_usageRevisions.TryGetValue(threadId, out var current) ? current : 0) + 1;
+
+    /// <summary>The accepted retained-transcript identity for a thread (null when none has been accepted).</summary>
+    internal string? GetAcceptedTranscriptId(string threadId)
+    {
+        lock (_gate)
+            return _history.GetAcceptedTranscriptId(threadId);
     }
 
     internal OpenClawChatDataProvider.LastChatState? RememberSelectedThread(string threadId)
@@ -204,6 +551,19 @@ internal sealed class ChatConversationState
                 _disposed);
     }
 
+    /// <summary>
+    /// The accepted bounded page window for a thread, generation-validated against the current
+    /// reset/connection/replacement generations. Null when no valid window has been accepted.
+    /// </summary>
+    internal ChatHistoryWindowState? GetHistoryWindow(string threadId)
+    {
+        lock (_gate)
+            return _history.GetWindow(
+                threadId,
+                GetResetVersionLocked(threadId),
+                _disposed);
+    }
+
     internal bool CanRetryHistory(
         ChatHistoryCommitToken token,
         bool authoritative)
@@ -221,7 +581,8 @@ internal sealed class ChatConversationState
         ChatHistoryCommitToken token,
         ChatHistoryRebuildPlan plan,
         DateTimeOffset requestStartedAt,
-        bool authoritative)
+        bool authoritative,
+        ChatHistoryWindowState? window = null)
     {
         lock (_gate)
         {
@@ -233,23 +594,96 @@ internal sealed class ChatConversationState
                 return false;
             }
 
-            var prior = GetOrCreateTimelineLocked(token.ThreadId);
-            var priorMetadata = _entryMeta.TryGetValue(
-                token.ThreadId,
-                out var metadata)
-                ? metadata
-                : new Dictionary<string, ChatEntryMetadata>();
+            // A bounded initial page is an INCOMPLETE tail. It must never take the authoritative
+            // replacement path, which would drop previously seen older entries. Only a complete
+            // window (or a caller that supplied no window) keeps the authoritative merge.
+            var effectiveAuthoritative =
+                authoritative && (window is null || !window.Value.HasMore);
+
+            // Explicit initial-page identity replacement: if the accepted identity for this key changed
+            // (e.g. a new session UUID), drop the previous identity's entries instead of silently mixing
+            // two sessions under one key. Same-identity commits keep prior entries.
+            // Use the ACCEPTED history/window identity first, NOT the (possibly catalog-seeded) session
+            // id: ApplySessions can seed a new UUID before the first commit for a new transcript, which
+            // must not be mistaken for the identity of the retained timeline. An empty/failed catalog
+            // never clears anything (the fallback keeps the prior behaviour).
+            var acceptedSessionId =
+                _history.GetAcceptedTranscriptId(token.ThreadId)
+                ?? _history.GetWindow(token.ThreadId, GetResetVersionLocked(token.ThreadId), _disposed)?.SessionId
+                ?? _history.ResolveSessionId(token.ThreadId);
+            var identityReplaced =
+                !string.IsNullOrEmpty(plan.SessionId) &&
+                !string.IsNullOrEmpty(acceptedSessionId) &&
+                !string.Equals(plan.SessionId, acceptedSessionId, StringComparison.Ordinal);
+            var prior = identityReplaced
+                ? ChatTimelineState.Initial()
+                : GetOrCreateTimelineLocked(token.ThreadId);
+            var priorMetadata = identityReplaced
+                ? System.Collections.Immutable.ImmutableDictionary<string, ChatEntryMetadata>.Empty
+                : _entryMeta.TryGetValue(
+                    token.ThreadId,
+                    out var metadata)
+                    ? metadata
+                    : System.Collections.Immutable.ImmutableDictionary<string, ChatEntryMetadata>.Empty;
             var merged = ChatHistoryState.MergeWithLiveEntries(
                 plan,
                 prior,
                 priorMetadata,
                 requestStartedAt,
-                authoritative);
+                effectiveAuthoritative);
             _timelines[token.ThreadId] = merged.Timeline;
-            _entryMeta[token.ThreadId] = merged.Metadata;
-            _history.MarkCommitted(token, plan.SessionId);
+            _entryMeta[token.ThreadId] = System.Collections.Immutable.ImmutableDictionary.CreateRange(StringComparer.Ordinal, merged.Metadata);
+            // Window storage shares this token-validated, locked commit: a stale or failed
+            // reconstruction can never publish window metadata.
+            _history.MarkCommitted(token, plan.SessionId, window);
+            BumpUsageRevisionLocked(token.ThreadId);   // accepted history commit changes usage topology
+            BumpRetainedVersionLocked(token.ThreadId); // ... and retained content
             return true;
         }
+    }
+
+    /// <summary>
+    /// Atomic older-page commit. Identity-validated against the accepted window and the plan; merges
+    /// the older page into the held timeline (older entries prepended, replay overlap dropped, newer
+    /// and live entries preserved) and advances the window. A mismatched identity is rejected WITHOUT
+    /// clearing held state.
+    /// </summary>
+    /// <summary>
+    /// Atomically captures the accepted window with its token/revision so an older-page request can be
+    /// compared against it at commit time.
+    /// </summary>
+    internal bool TryCaptureHistoryWindowLease(string threadId, out ChatHistoryWindowLease lease)
+    {
+        lock (_gate)
+        {
+            if (_history.CaptureWindow(
+                    threadId,
+                    GetResetVersionLocked(threadId),
+                    _disposed) is { } captured)
+            {
+                lease = captured;
+                return true;
+            }
+            lease = default;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Strict session identity: both sides must be a known, non-empty, ordinal-equal UUID. An unknown
+    /// or empty candidate against a known accepted identity is refused (unsupported/failure), never
+    /// admitted as verified identity.
+    /// </summary>
+    private static bool SameIdentity(string? accepted, string? candidate) =>
+        !string.IsNullOrEmpty(accepted) &&
+        !string.IsNullOrEmpty(candidate) &&
+        string.Equals(accepted, candidate, StringComparison.Ordinal);
+
+    /// <summary>The current model for a thread (used by the older-page reconstruction worker).</summary>
+    internal string? ModelForThread(string threadId)
+    {
+        lock (_gate)
+            return _presentation.ModelForThread(threadId);
     }
 
     internal ChatDataSnapshot? SnapshotIfHistoryTokenCurrent(
@@ -265,6 +699,40 @@ internal sealed class ChatConversationState
                 ? BuildSnapshotLocked(context)
                 : null;
         }
+    }
+
+    /// <summary>
+    /// SOURCE-OWNED delivery fence reused exactly by the WinUI provider consumer. Builds the snapshot
+    /// only when the generation token AND (when the result carries one) the FULL ORIGINAL WINDOW LEASE are
+    /// still current. A same-cursor refresh keeps the generation token but replaces the window revision, so
+    /// a generation token alone cannot fence an exhausted/error notification; the lease compare closes it.
+    /// The fence and the snapshot are one atomic observation under _gate (no second-read race).
+    /// </summary>
+    internal ChatDataSnapshot? SnapshotIfHistoryResultCurrent(
+        ChatHistoryLoadResult result,
+        ChatProjectionContext context)
+    {
+        lock (_gate)
+        {
+            return IsHistoryResultCurrentLocked(result)
+                ? BuildSnapshotLocked(context)
+                : null;
+        }
+    }
+
+    private bool IsHistoryResultCurrentLocked(ChatHistoryLoadResult result)
+    {
+        var threadId = result.Token.ThreadId;
+        var reset = GetResetVersionLocked(threadId);
+        if (!_history.IsCurrent(result.Token, reset, _disposed))
+            return false;
+        if (result.Lease is not { } lease)
+            return true;   // no window authority attached: generation-token fence only
+        // FULL LEASE AUTHORITY: deliverable only while the accepted window is still exactly the original
+        // lease (revision + echoed window identity/cursor).
+        return _history.CaptureWindow(threadId, reset, _disposed) is { } current &&
+               current.Revision == lease.Revision &&
+               Equals(current.Window, lease.Window);
     }
 
     internal bool IsCurrentResetGeneration(string threadId, long generation)
@@ -533,8 +1001,7 @@ internal sealed class ChatConversationState
             {
                 return false;
             }
-            metadata[timeline.Entries[i].Id] =
-                (existing ?? BuildLiveMetaLocked(threadId)) with
+            metadata = metadata.SetItem(timeline.Entries[i].Id, (existing ?? BuildLiveMetaLocked(threadId)) with
             {
                 InputTokens = ToIntIfPositive(session.InputTokens),
                 OutputTokens = ToIntIfPositive(session.OutputTokens),
@@ -542,7 +1009,10 @@ internal sealed class ChatConversationState
                 ContextTokens = contextTokens,
                 ContextPercent = existing?.ContextPercent,
                 UsageContributionTokens = existing?.UsageContributionTokens,
-            };
+            });
+            _entryMeta[threadId] = metadata;   // publish the new immutable snapshot (COW)
+            BumpUsageRevisionLocked(threadId);   // session usage mutation, atomically with the write
+            BumpRetainedVersionLocked(threadId); // metadata-only writes must invalidate the merge snapshot
             return true;
         }
         return false;
@@ -1007,11 +1477,12 @@ internal sealed class ChatConversationState
             current,
             request.EffectiveTimelineText,
             request.LocalNonce);
-        GetOrCreateThreadMetaLocked(threadId)[entryId] = BuildLiveMetaLocked(
+        var localMeta = GetOrCreateThreadMetaLocked(threadId);
+        _entryMeta[threadId] = localMeta.SetItem(entryId, BuildLiveMetaLocked(
             threadId,
             isLocalQueuedSend: true,
             localQueuedMessageId: request.Id,
-            attachments: request.AttachmentPresentations);
+            attachments: request.AttachmentPresentations));
         var dispatch = _queue.StartDirect(
             request,
             _history.ResolveSessionId(threadId),
@@ -1109,7 +1580,8 @@ internal sealed class ChatConversationState
                 isLocalQueuedSend: true,
                 localQueuedMessageId: messageId,
                 attachments: request?.AttachmentPresentations);
-        GetOrCreateThreadMetaLocked(threadId)[entryId] = meta;
+        var queuedMeta = GetOrCreateThreadMetaLocked(threadId);
+        _entryMeta[threadId] = queuedMeta.SetItem(entryId, meta);
         return true;
     }
 
@@ -1178,7 +1650,8 @@ internal sealed class ChatConversationState
         long? compactionTokensBefore = null,
         long? compactionTokensAfter = null,
         IReadOnlyList<ChatAttachmentPresentation>? attachments = null,
-        ChatAssistantContentPresentation? assistantContent = null)
+        ChatAssistantContentPresentation? assistantContent = null,
+        string? gatewayDisplayItemId = null)
     {
         lock (_gate)
         {
@@ -1193,7 +1666,8 @@ internal sealed class ChatConversationState
                 compactionTokensBefore,
                 compactionTokensAfter,
                 attachments,
-                assistantContent);
+                assistantContent,
+                gatewayDisplayItemId: gatewayDisplayItemId);
         }
     }
 
@@ -1374,7 +1848,8 @@ internal sealed class ChatConversationState
                         threadId,
                         message.Ts,
                         message.OpenClawId,
-                        message.OpenClawSeq);
+                        message.OpenClawSeq,
+                        gatewayDisplayItemId: message.OpenClawDisplayItemId);
                     if (ReconcileQueuedMessageEchoLocked(
                             threadId,
                             queuedMessageId,
@@ -1429,7 +1904,8 @@ internal sealed class ChatConversationState
                 threadId,
                 message.Ts,
                 message.OpenClawId,
-                message.OpenClawSeq);
+                message.OpenClawSeq,
+                gatewayDisplayItemId: message.OpenClawDisplayItemId);
             return new(
                 true,
                 !removeQueuedMessage &&
@@ -1458,7 +1934,8 @@ internal sealed class ChatConversationState
                 message.Ts,
                 message.OpenClawId,
                 message.OpenClawSeq,
-                attachments: attachments);
+                attachments: attachments,
+                gatewayDisplayItemId: message.OpenClawDisplayItemId);
             if (TryReconcileExistingLocalQueuedUserEchoLocked(
                     threadId,
                     userText,
@@ -1550,7 +2027,7 @@ internal sealed class ChatConversationState
         if (mergedMeta == existingMeta)
             return null;
 
-        threadMeta[matched.Id] = mergedMeta;
+        _entryMeta[threadId] = threadMeta.SetItem(matched.Id, mergedMeta);
         return HasRendererVisibleUserMetadataChange(existingMeta, mergedMeta)
             ? BuildSnapshotLocked(context)
             : null;
@@ -1632,7 +2109,8 @@ internal sealed class ChatConversationState
                 message.SessionKey!,
                 message.Ts,
                 message.OpenClawId,
-                message.OpenClawSeq);
+                message.OpenClawSeq,
+                gatewayDisplayItemId: message.OpenClawDisplayItemId);
             _lifecycle.TryGetActiveRun(message.SessionKey!, out var runId);
             return (metadata, runId);
         }
@@ -1680,7 +2158,8 @@ internal sealed class ChatConversationState
                 message.Ts,
                 message.OpenClawId,
                 message.OpenClawSeq,
-                assistantContent: assistantContent);
+                assistantContent: assistantContent,
+                gatewayDisplayItemId: message.OpenClawDisplayItemId);
             var hasUsage = message.InputTokens is not null ||
                            message.OutputTokens is not null ||
                            message.ResponseTokens is not null ||
@@ -2109,7 +2588,8 @@ internal sealed class ChatConversationState
                 message.Ts,
                 message.OpenClawId,
                 message.OpenClawSeq,
-                attachments: attachments);
+                attachments: attachments,
+                gatewayDisplayItemId: message.OpenClawDisplayItemId);
             var snapshot = ApplyProjectedRemoteUserMessageLocked(
                 threadId,
                 ChatContentFormatting.TruncateForChatEntry(
@@ -2257,7 +2737,7 @@ internal sealed class ChatConversationState
             {
                 return false;
             }
-            threadMetadata[entry.Id] = (existing ?? BuildLiveMetaLocked(threadId)) with
+            threadMetadata = threadMetadata.SetItem(entry.Id, (existing ?? BuildLiveMetaLocked(threadId)) with
             {
                 InputTokens = metadata.InputTokens ?? existing?.InputTokens,
                 OutputTokens = metadata.OutputTokens ?? existing?.OutputTokens,
@@ -2265,7 +2745,10 @@ internal sealed class ChatConversationState
                 ContextPercent = metadata.ContextPercent ?? existing?.ContextPercent,
                 ContextTokens = contextTokens ?? existing?.ContextTokens,
                 UsageContributionTokens = currentUsage,
-            };
+            });
+            _entryMeta[threadId] = threadMetadata;   // publish the new immutable snapshot (COW)
+            BumpUsageRevisionLocked(threadId);   // metadata mutation, atomically with the write
+            BumpRetainedVersionLocked(threadId); // metadata-only writes must invalidate the merge snapshot
             return true;
         }
         return false;
@@ -2343,12 +2826,12 @@ internal sealed class ChatConversationState
         var matched = candidates.First(candidate =>
             string.Equals(candidate.Id, matchedMessageId, StringComparison.Ordinal));
         var matchedMeta = metadata[matched.Id];
-        metadata[matched.Id] = confirmed with
+        _entryMeta[threadId] = metadata.SetItem(matched.Id, confirmed with
         {
             IsLocalQueuedSend = false,
             LocalQueuedMessageId = matchedMeta.LocalQueuedMessageId,
             Attachments = matchedMeta.Attachments,
-        };
+        });
         return true;
     }
 
@@ -2383,12 +2866,12 @@ internal sealed class ChatConversationState
                 StringComparison.Ordinal));
         if (string.IsNullOrEmpty(match.Key))
             return false;
-        metadata[match.Key] = confirmed with
+        _entryMeta[threadId] = metadata.SetItem(match.Key, confirmed with
         {
             IsLocalQueuedSend = false,
             LocalQueuedMessageId = messageId,
             Attachments = match.Value.Attachments,
-        };
+        });
         return true;
     }
 
@@ -2533,10 +3016,10 @@ internal sealed class ChatConversationState
                 if (!string.IsNullOrEmpty(gatewayMessageId) &&
                     string.IsNullOrEmpty(existing.GatewayMessageId))
                 {
-                    metadata[entry.Id] = existing with
+                    _entryMeta[threadId] = metadata.SetItem(entry.Id, existing with
                     {
                         GatewayMessageId = gatewayMessageId,
-                    };
+                    });
                 }
                 return true;
             }
@@ -2549,18 +3032,33 @@ internal sealed class ChatConversationState
         ChatEvent evt,
         ChatEntryMetadata? metadata)
     {
+        // ANY ingest can change retained content/metadata: bump the exact merge version.
+        BumpRetainedVersionLocked(threadId);
         var current = GetOrCreateTimelineLocked(threadId);
-        var beforeIds = current.Entries.Select(entry => entry.Id)
-            .ToHashSet(StringComparer.Ordinal);
+        var currentCount = current.Entries.Count;
         var next = ChatTimelineReducer.Apply(current, evt);
         _timelines[threadId] = next;
         if (metadata is null)
             return;
         var threadMetadata = GetOrCreateThreadMetaLocked(threadId);
-        foreach (var entry in next.Entries)
+        // BOUNDED ingest bookkeeping: only entries APPENDED by this event can be new, so no id HashSet and
+        // no full retained scan under the lock.
+        var assignedNewEntry = false;
+        for (var i = currentCount; i < next.Entries.Count; i++)
         {
-            if (!beforeIds.Contains(entry.Id) && !threadMetadata.ContainsKey(entry.Id))
-                threadMetadata[entry.Id] = metadata;
+            var appended = next.Entries[i];
+            if (!threadMetadata.ContainsKey(appended.Id))
+            {
+                threadMetadata = threadMetadata.SetItem(appended.Id, metadata);
+                assignedNewEntry = true;
+            }
+        }
+        // Selective invalidation: ONLY a newly ingested entry can change the usage topology. A streaming
+        // reconcile of an existing entry with UNCHANGED metadata must not reset a completed usage scan.
+        if (assignedNewEntry)
+        {
+            _entryMeta[threadId] = threadMetadata;   // publish the new immutable snapshot (COW)
+            BumpUsageRevisionLocked(threadId);
         }
 
         // Streaming assistant frames reconcile into the SAME entry id
@@ -2580,7 +3078,7 @@ internal sealed class ChatConversationState
                 if (entry.Kind != ChatTimelineItemKind.Assistant)
                     continue;
 
-                if (beforeIds.Contains(entry.Id) &&
+                if (i < currentCount &&
                     threadMetadata.TryGetValue(entry.Id, out var existingEntryMeta))
                 {
                     var mergedContent = ChatAssistantContentProjector.MergeLiveUpdate(
@@ -2588,10 +3086,10 @@ internal sealed class ChatConversationState
                         metadata.AssistantContent);
                     if (!ReferenceEquals(mergedContent, existingEntryMeta.AssistantContent))
                     {
-                        threadMetadata[entry.Id] = existingEntryMeta with
-                        {
-                            AssistantContent = mergedContent,
-                        };
+                        threadMetadata = threadMetadata.SetItem(
+                            entry.Id,
+                            existingEntryMeta with { AssistantContent = mergedContent });
+                        _entryMeta[threadId] = threadMetadata;   // publish the new immutable snapshot (COW)
                     }
                 }
                 break;
@@ -2599,12 +3097,13 @@ internal sealed class ChatConversationState
         }
     }
 
-    private Dictionary<string, ChatEntryMetadata> GetOrCreateThreadMetaLocked(
-        string threadId)
+    private System.Collections.Immutable.ImmutableDictionary<string, ChatEntryMetadata>
+        GetOrCreateThreadMetaLocked(string threadId)
     {
         if (!_entryMeta.TryGetValue(threadId, out var metadata))
         {
-            metadata = new Dictionary<string, ChatEntryMetadata>(StringComparer.Ordinal);
+            metadata = System.Collections.Immutable.ImmutableDictionary<string, ChatEntryMetadata>
+                .Empty.WithComparers(StringComparer.Ordinal);
             _entryMeta[threadId] = metadata;
         }
         return metadata;
@@ -2621,7 +3120,10 @@ internal sealed class ChatConversationState
         long? compactionTokensBefore = null,
         long? compactionTokensAfter = null,
         IReadOnlyList<ChatAttachmentPresentation>? attachments = null,
-        ChatAssistantContentPresentation? assistantContent = null)
+        ChatAssistantContentPresentation? assistantContent = null,
+        // Optional PROJECTED/DISPLAY item identity from the live gateway message, carried separately from
+        // the raw GatewayMessageId. Appended LAST so existing positional callers are unaffected.
+        string? gatewayDisplayItemId = null)
     {
         var timestamp = tsMs is { } value && value > 0
             ? DateTimeOffset.FromUnixTimeMilliseconds(value).ToLocalTime()
@@ -2631,6 +3133,7 @@ internal sealed class ChatConversationState
             _presentation.ModelForThread(threadId),
             GatewayMessageId: gatewayMessageId,
             OpenClawSeq: openClawSeq,
+            GatewayDisplayItemId: gatewayDisplayItemId,
             OpenClawKind: openClawKind,
             CompactionTokensBefore: compactionTokensBefore,
             CompactionTokensAfter: compactionTokensAfter,
@@ -2694,6 +3197,7 @@ internal sealed class ChatConversationState
             timelineGenerations: _reset.SnapshotVersions(),
             historyRevisions: _history.SnapshotRevisions(),
             queuedMessages: _queue.SnapshotMessages(),
+            acceptedSessionIds: _history.SnapshotAcceptedTranscriptIds(),
             status: _status,
             context);
 

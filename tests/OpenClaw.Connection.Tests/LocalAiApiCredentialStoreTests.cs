@@ -47,6 +47,43 @@ public sealed class LocalAiApiCredentialStoreTests : IDisposable
         Assert.Empty(Directory.GetFiles(paths.RootDirectory, "*.pending"));
     }
 
+    [Fact]
+    public async Task ExistingCredential_RetriesTransientSharingViolationWithoutRotation()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var paths = new LocalAiPaths(_directory);
+        var store = new LocalAiApiCredentialStore(paths);
+        var expected = store.GetOrCreate();
+        var path = paths.ResolveContainedPath("api-credential.dpapi", "credential");
+        using var lease = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None);
+        using var started = new ManualResetEventSlim();
+        var read = Task.Run(() =>
+        {
+            started.Set();
+            return store.GetOrCreate();
+        });
+        Assert.True(started.Wait(TimeSpan.FromSeconds(5)));
+        await Task.Delay(100);
+        lease.Dispose();
+        Assert.Equal(expected, await read.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Empty(Directory.GetFiles(paths.RootDirectory, "*.pending"));
+    }
+
+    [Fact]
+    public void ExistingCredential_StopsRetryingWhenTheSharingLeasePersists()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var paths = new LocalAiPaths(_directory);
+        var store = new LocalAiApiCredentialStore(paths);
+        _ = store.GetOrCreate();
+        var path = paths.ResolveContainedPath("api-credential.dpapi", "credential");
+        using var lease = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        Assert.Throws<IOException>(() => store.GetOrCreate());
+        Assert.InRange(clock.Elapsed, TimeSpan.FromMilliseconds(250), TimeSpan.FromSeconds(3));
+        Assert.Empty(Directory.GetFiles(paths.RootDirectory, "*.pending"));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_directory)) Directory.Delete(_directory, recursive: true);

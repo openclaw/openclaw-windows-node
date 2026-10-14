@@ -1867,6 +1867,12 @@ public class ChatMessageInfo
     /// <summary>Gateway-assigned unique message ID from the <c>__openclaw.id</c> field.</summary>
     public string? OpenClawId { get; set; }
 
+    /// <summary>
+    /// Optional PROJECTED/DISPLAY item identity from the wire <c>openclawStreamFallback.itemId</c> when it is a
+    /// string. Kept SEPARATE from the raw <see cref="OpenClawId"/>; ordinary messages leave this null.
+    /// </summary>
+    public string? OpenClawDisplayItemId { get; set; }
+
     /// <summary>Monotonic sequence number within the session from <c>__openclaw.seq</c>.</summary>
     public int? OpenClawSeq { get; set; }
 
@@ -1972,6 +1978,88 @@ public sealed class ChatMediaContentInfo
 /// reasoning-flagged payloads, and oversized messages) so consumers can
 /// render the messages directly.
 /// </summary>
+/// <summary>
+/// Typed, source-grounded chat.history page request options. Only the fields the installed handler
+/// accepts are sent; offset/maxBytes are omitted when null so the exact no-offset branch is used.
+/// Cursor is delta synchronization and is deliberately NOT modelled here as old-history paging.
+/// </summary>
+public sealed record ChatHistoryPageOptions(int Limit, int? MaxBytes = null, int? Offset = null);
+
+/// <summary>A bounded chat.history page plus the handler's paging metadata.</summary>
+public sealed record GatewayChatHistoryPage(
+    string SessionKey,
+    string? SessionId,
+    IReadOnlyList<ChatMessageInfo> Messages,
+    bool HasMore,
+    int? NextOffset,
+    int? ResponseOffset,
+    int? Total,
+    // WIRE signals only. completeSnapshot is set by the source ONLY for a complete CLI import; an ordinary
+    // paginated page OMITS it by design, so a missing flag is NOT evidence of omission. Actual loss is reported
+    // separately via the omission object (omittedCount/normalizedBytes), emitted only when the count is > 0.
+    bool? CompleteSnapshot = null,
+    int? OmittedCount = null,
+    long? NormalizedBytes = null,
+    // SOURCE-BACKED budget provenance: the ACTUAL producer sets this ONLY for a complete CLI import, whose
+    // legitimate bound is the source GLOBAL budget (not the requested envelope). It is provenance, NOT a
+    // licence to ignore budgets in general - an arbitrary omission alone is never accepted as such.
+    bool CompleteCliImport = false)
+{
+    /// <summary>
+    /// Source-grounded completeness state. Ordinary paginated pages are NOT partial: only an ACTUAL reported
+    /// omission (or a malformed/legacy shape) downgrades the page.
+    /// </summary>
+    public ChatHistoryPageCompleteness Completeness
+    {
+        get
+        {
+            if (OmittedCount is > 0) return ChatHistoryPageCompleteness.ReportedLoss;
+            if (CompleteSnapshot == true) return ChatHistoryPageCompleteness.SnapshotExplicitComplete;
+            // More pages remain: pagination is known and incomplete.
+            if (HasMore || NextOffset is not null)
+                return ChatHistoryPageCompleteness.PaginatedNotYetComplete;
+            // A valid ORDINARY terminal page: the source omits completeSnapshot for every non-CLI page, so a
+            // missing flag is NOT evidence of omission. The handler's OWN pagination metadata (hasMore,
+            // totalMessages, offset) proves this is a KNOWN ordinary page, never a legacy/unknown shape.
+            if (CompleteSnapshot == false || ResponseOffset is not null || Total is not null)
+                return ChatHistoryPageCompleteness.OrdinaryTerminalPage;
+            return ChatHistoryPageCompleteness.UnknownLegacy;
+        }
+    }
+
+    /// <summary>True only when the source EXPLICITLY proved snapshot completeness on the wire.</summary>
+    public bool ContentComplete => Completeness == ChatHistoryPageCompleteness.SnapshotExplicitComplete;
+
+    /// <summary>True only when the source ACTUALLY reported lost content (never a mere missing flag).</summary>
+    public bool ContentLossReported => Completeness == ChatHistoryPageCompleteness.ReportedLoss;
+}
+
+/// <summary>Source-grounded completeness of an admitted history page.</summary>
+public enum ChatHistoryPageCompleteness
+{
+    /// <summary>No completeness evidence and no pagination markers: legacy/unknown shape.</summary>
+    UnknownLegacy,
+    /// <summary>A normal paginated page that is not yet complete (more pages remain).</summary>
+    PaginatedNotYetComplete,
+    /// <summary>A valid ORDINARY terminal page (pagination ended, snapshot completeness not claimed). Not loss.</summary>
+    OrdinaryTerminalPage,
+    /// <summary>The source explicitly marked the snapshot complete on the wire.</summary>
+    SnapshotExplicitComplete,
+    /// <summary>The source actually reported omitted content (omittedCount &gt; 0).</summary>
+    ReportedLoss,
+}
+
+/// <summary>
+/// Raised when a bounded chat.history page response cannot be admitted: the payload is not an object,
+/// required metadata (sessionKey echo, messages array, hasMore, totalMessages) is missing or ill-typed,
+/// or the paging progression is inconsistent. Callers must surface this as an unsupported/retry state
+/// and must never present an unknown window as complete history.
+/// </summary>
+public sealed class ChatHistoryPageException : Exception
+{
+    public ChatHistoryPageException(string message) : base(message) { }
+}
+
 public class ChatHistoryInfo
 {
     /// <summary>Immutable session UUID assigned by the gateway.</summary>

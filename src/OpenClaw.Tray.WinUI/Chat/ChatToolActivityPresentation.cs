@@ -33,9 +33,18 @@ public sealed record ChatToolActivityRow(
     string Key,
     ChatTimelineItem? Entry,
     IReadOnlyList<ChatTimelineItem> Tools,
-    ChatToolActivitySummary? Summary)
+    ChatToolActivitySummary? Summary,
+    int HiddenEarlierToolCount = 0,
+    bool ContinuesAfterWindow = false,
+    // True while the source-fact context for this window is PROVISIONAL (async completion pending). The
+    // consumer must hold any expansion/continuation state rather than treating the row as a fresh group.
+    bool Pending = false)
 {
-    public bool IsActivityGroup => Tools.Count >= 2;
+    // A span is a logical activity GROUP when it has at least two visible tools OR it continues a group
+    // whose earlier tools are hidden BEFORE the bounded window - so a moved/clipped window never demotes a
+    // mid-group tool to a standalone row.
+    public bool IsActivityGroup =>
+        Tools.Count >= 2 || HiddenEarlierToolCount > 0 || ContinuesAfterWindow;
 }
 
 /// <summary>
@@ -52,8 +61,14 @@ public static class ChatToolActivityPresentation
         IReadOnlyList<ChatTimelineItem> entries,
         string? sessionId,
         long timelineGeneration,
-        bool showToolCalls = true)
+        bool showToolCalls = true,
+        ChatToolActivityWindowContext? windowContext = null,
+        bool pending = false)
     {
+        var context = windowContext ?? ChatToolActivityWindowContext.None;
+        // PENDING: no faithful source-fact context yet. Rows are marked Pending so the ACTUAL consumer shows a
+        // clear loading state and never treats the local (visible) boundary as a fabricated logical identity.
+        var isPending = pending || context.Provisional;
         var rows = new List<ChatToolActivityRow>(entries.Count);
         for (var index = 0; index < entries.Count;)
         {
@@ -88,18 +103,32 @@ public static class ChatToolActivityPresentation
             }
 
             var count = end - index;
-            if (count == 1)
+            // SOURCE-FAITHFUL identity: a span clipped at the FRONT of the window is a CONTINUATION of the
+            // logical group that began earlier in the full accepted history - keep its original key and mark
+            // it a group even when only one tool remains visible.
+            var isLeadingSpan = index == 0 && context.LeadingGroupFirstToolId is not null;
+            // A span whose logical group CONTINUES past the window end (hidden LATER tools) is still a GROUP
+            // even when only one tool is visible - so a one-item first/middle/last window never collapses a
+            // full-source activity group into a standalone row.
+            var continuesAfter = end == entries.Count && context.LeadingGroupContinuesAfter;
+            if (count == 1 && !isLeadingSpan && !continuesAfter)
             {
-                rows.Add(Standalone(entry, sessionId, timelineGeneration));
+                rows.Add(Standalone(entry, sessionId, timelineGeneration) with { Pending = isPending });
             }
             else
             {
                 var tools = entries.Skip(index).Take(count).ToArray();
+                var firstToolId = isLeadingSpan
+                    ? context.LeadingGroupFirstToolId!
+                    : tools[0].Id;
                 rows.Add(new ChatToolActivityRow(
-                    ActivityKey(sessionId, timelineGeneration, tools[0].Id),
+                    ActivityKey(sessionId, timelineGeneration, firstToolId),
                     null,
                     tools,
-                    Summarize(tools)));
+                    Summarize(tools),
+                    isLeadingSpan ? context.LeadingHiddenToolCount : 0,
+                    continuesAfter,
+                    isPending));
             }
 
             index = end;
@@ -110,6 +139,431 @@ public static class ChatToolActivityPresentation
 
     public static string ActivityKey(string? sessionId, long timelineGeneration, string firstToolEntryId) =>
         $"thread:{sessionId ?? "none"}|generation:{timelineGeneration}|activity:{firstToolEntryId}";
+
+    /// <summary>
+    /// A single assistant run span within a (possibly clipped) visible slice.
+    /// </summary>
+    public readonly record struct ChatAssistantRunSpan(bool IsStart, bool IsEnd);
+
+    /// <summary>
+    /// Source-faithful assistant-run continuation policy shared by the ACTUAL timeline consumer and the tests.
+    /// A run clipped at the FRONT of a bounded window CONTINUES a run that began earlier in the full accepted
+    /// history, so it is not a run START (continuation/finalization semantics stay correct across window moves).
+    /// </summary>
+    public static class ChatAssistantRunPolicy
+    {
+        public static IReadOnlyList<ChatAssistantRunSpan> Describe(
+            IReadOnlyList<ChatTimelineItem> entries,
+            bool leadingRunContinuesBefore = false,
+            bool trailingRunContinuesAfter = false)
+        {
+            var spans = new ChatAssistantRunSpan[entries.Count];
+            for (var index = 0; index < entries.Count; index++)
+            {
+                if (entries[index].Kind != ChatTimelineItemKind.Assistant)
+                    continue;
+                var isStart = index == 0
+                    ? !leadingRunContinuesBefore
+                    : entries[index - 1].Kind != ChatTimelineItemKind.Assistant;
+                // A run clipped at the BACK of the window CONTINUES past the window, so the last visible
+                // assistant is not a run END either.
+                var isEnd = index == entries.Count - 1
+                    ? !trailingRunContinuesAfter
+                    : entries[index + 1].Kind != ChatTimelineItemKind.Assistant;
+                spans[index] = new ChatAssistantRunSpan(isStart, isEnd);
+            }
+            return spans;
+        }
+    }
+
+    /// <summary>
+    /// Source-faithful window context for a bounded visible slice of the FULL accepted timeline. It carries the
+    /// LOGICAL boundary facts (a group/run may begin BEFORE and/or continue AFTER the window) so the bounded
+    /// projection never invents a new activity run at the clip boundary. Plain value: it holds no reference to
+    /// the retained root.
+    /// </summary>
+    public sealed record ChatToolActivityWindowContext(
+        string? LeadingGroupFirstToolId,
+        int LeadingHiddenToolCount,
+        bool LeadingGroupContinuesAfter,
+        bool LeadingAssistantRunContinuesBefore,
+        bool LeadingAssistantRunContinuesAfter,
+        bool Provisional = false)
+    {
+        public static readonly ChatToolActivityWindowContext None = new(null, 0, false, false, false);
+    }
+
+    /// <summary>
+    /// Computes source-faithful activity/run context for a bounded visible window over the full accepted
+    /// timeline. Uses a BOUNDED resume from the window edges (never a full-retained index on the UI render
+    /// path) plus a small fixed-capacity cache keyed by a WEAK root identity and the window coordinates and
+    /// generation, so repeated renders/moves reuse the facts. The weak-root table never lets the cache keep an
+    /// abandoned retained root alive (same discipline as the projection cache).
+    /// </summary>
+    public sealed class ChatToolActivitySourceFacts
+    {
+        private sealed class RootToken
+        {
+        }
+
+        private readonly int _capacity;
+        private readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, RootToken> _tokens = new();
+        private readonly Dictionary<(RootToken Root, int Start, int End, long Generation), ChatToolActivityWindowContext> _facts = new();
+        private readonly Queue<(RootToken Root, int Start, int End, long Generation)> _order = new();
+        private readonly object _sync = new();
+        private readonly Dictionary<RootToken, long> _activeGeneration = new();
+        private readonly Queue<RootToken> _activeGenerationOrder = new();
+
+        public ChatToolActivitySourceFacts(int capacity = 64)
+        {
+            _capacity = Math.Max(1, capacity);
+        }
+
+        /// <summary>
+        /// Hard bound on synchronous edge-resume work per render. A window whose logical span exceeds this
+        /// renders with PROVISIONAL facts and the full resume is completed asynchronously OFF the UI thread.
+        /// </summary>
+        public const int BoundedResumeOperations = 256;
+
+        /// Synchronous, UNBOUNDED resume (deterministic; tests and the async completion use this).
+        public ChatToolActivityWindowContext ForWindow(
+            IReadOnlyList<ChatTimelineItem> full, int windowStart, int windowEnd, long generation,
+            CancellationToken cancellationToken = default) =>
+            Resolve(full, windowStart, windowEnd, generation, int.MaxValue, cancellationToken);
+
+        /// <summary>
+        /// Bounded synchronous fast path for the UI render: never scans more than BoundedResumeOperations, so
+        /// the render cannot become O(full retained history). Facts are Provisional when the bound was hit.
+        /// </summary>
+        public ChatToolActivityWindowContext ForWindowBounded(
+            IReadOnlyList<ChatTimelineItem> full, int windowStart, int windowEnd, long generation,
+            CancellationToken cancellationToken = default) =>
+            Resolve(full, windowStart, windowEnd, generation, BoundedResumeOperations, cancellationToken);
+
+        /// <summary>
+        /// Completes a PROVISIONAL window off the UI thread (generation/cancellation guarded) and invokes
+        /// onResolved once with faithful facts. Never runs a full-retained scan on the render path.
+        /// </summary>
+        /// <summary>
+        /// Schedules the off-UI completion. Returns FALSE when the facts are ALREADY faithful (nothing was
+        /// started), so the caller can read the bounded path again instead of waiting for a lost wakeup.
+        /// </summary>
+        public bool ScheduleCompletion(
+            IReadOnlyList<ChatTimelineItem> full, int windowStart, int windowEnd, long generation,
+            CancellationToken cancellationToken, Action onResolved)
+        {
+            ArgumentNullException.ThrowIfNull(onResolved);
+            var start = Math.Clamp(windowStart, 0, full.Count);
+            var end = Math.Clamp(windowEnd, start, full.Count);
+            var token = _tokens.GetValue(full, static _ => new RootToken());
+            lock (_sync)
+            {
+                RecordActiveGenerationLocked(token, generation);
+                var key = (token, start, end, generation);
+                if (_facts.TryGetValue(key, out var cached) && !cached.Provisional)
+                    return false;   // already faithful: no background work; caller reads the bounded path
+                // NO per-key pending gate: a superseded (cancelled) flight for the same key must not block a
+                // NEW active flight from taking over. The owning ChatToolActivityRenderCoordinator keeps
+                // exactly one flight per active lease; a cancelled flight returns early on its token.
+            }
+            _ = Task.Run(() =>
+            {
+                if (cancellationToken.IsCancellationRequested)
+                    return;
+                // Compute OUTSIDE the lock; the full resume must never block the UI fast path.
+                var completed = Compute(full, start, end, int.MaxValue, cancellationToken);
+                if (completed.Provisional || cancellationToken.IsCancellationRequested)
+                    return;
+                if (!IsActiveGeneration(token, generation))
+                    return;    // superseded (session/root/generation changed): fence the callback
+                Publish(token, start, end, generation, completed);
+                onResolved();   // off the render path, only when still current
+            }, CancellationToken.None);
+            return true;
+        }
+
+        private ChatToolActivityWindowContext Resolve(
+            IReadOnlyList<ChatTimelineItem> full, int windowStart, int windowEnd, long generation,
+            int maxOperations, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(full);
+            var start = Math.Clamp(windowStart, 0, full.Count);
+            var end = Math.Clamp(windowEnd, start, full.Count);
+            var token = _tokens.GetValue(full, static _ => new RootToken());
+            lock (_sync)
+            {
+                RecordActiveGenerationLocked(token, generation);
+                if (_facts.TryGetValue((token, start, end, generation), out var cached) && !cached.Provisional)
+                    return cached;
+            }
+            // Compute OUTSIDE the lock so the short cache lock is never held during a long scan.
+            var computed = Compute(full, start, end, maxOperations, cancellationToken);
+            if (!computed.Provisional)
+                Publish(token, start, end, generation, computed);
+            return computed;
+        }
+
+        private void Publish(
+            RootToken token, int start, int end, long generation, ChatToolActivityWindowContext computed)
+        {
+            lock (_sync)
+            {
+                var key = (token, start, end, generation);
+                if (_facts.TryGetValue(key, out var existing) && !existing.Provisional)
+                    return;   // never regress a faithful entry
+                _facts[key] = computed;
+                _order.Enqueue(key);
+                while (_order.Count > _capacity)
+                    _facts.Remove(_order.Dequeue());
+            }
+        }
+
+        private const int MaxActiveGenerations = 64;
+
+        private void RecordActiveGenerationLocked(RootToken token, long generation)
+        {
+            // Bounded on ALL paths: a provisional/cancelled root that never publishes still records here, so
+            // the map is capped (oldest first) rather than relying on the facts-cache eviction.
+            if (!_activeGeneration.ContainsKey(token))
+            {
+                _activeGenerationOrder.Enqueue(token);
+                while (_activeGenerationOrder.Count > MaxActiveGenerations)
+                    _activeGeneration.Remove(_activeGenerationOrder.Dequeue());
+            }
+            _activeGeneration[token] =
+                _activeGeneration.TryGetValue(token, out var current) ? Math.Max(current, generation) : generation;
+        }
+
+        public int ActiveGenerationCount => _activeGeneration.Count;
+
+        private bool IsActiveGeneration(RootToken token, long generation)
+        {
+            lock (_sync)
+                return _activeGeneration.TryGetValue(token, out var active) && active == generation;
+        }
+
+        private static ChatToolActivityWindowContext Compute(
+            IReadOnlyList<ChatTimelineItem> full, int start, int end, int maxOperations,
+            CancellationToken cancellationToken)
+        {
+            static bool IsLiveTool(ChatTimelineItem entry) =>
+                entry.Kind == ChatTimelineItemKind.ToolCall &&
+                entry.ToolResult != ChatToolCallStatus.Error;
+
+            // HARD operation budget for the synchronous edge resume. When the budget is exceeded the facts so
+            // far are returned PROVISIONAL and the full resume is completed asynchronously - the logical source
+            // is never silently truncated.
+            var operations = 0;
+            var provisional = false;
+            bool Budget()
+            {
+                if (++operations > maxOperations)
+                    return false;
+                if ((operations & 63) == 0 && cancellationToken.IsCancellationRequested)
+                {
+                    provisional = true;
+                    return false;
+                }
+                return true;
+            }
+
+            string? leadingFirstToolId = null;
+            var leadingHidden = 0;
+            if (start < end && IsLiveTool(full[start]))
+            {
+                var i = start - 1;
+                while (i >= 0 && Budget() && IsLiveTool(full[i]))
+                {
+                    leadingHidden++;
+                    i--;
+                }
+                if (i >= 0 && IsLiveTool(full[i]))
+                    provisional = true;    // budget hit before the true span start
+                else if (leadingHidden > 0)
+                    leadingFirstToolId = full[i + 1].Id;
+            }
+
+            var leadingGroupContinuesAfter = false;
+            var leadingRunContinuesBefore = false;
+            var leadingRunContinuesAfter = false;
+            if (start < end)
+            {
+                var i = end;
+                while (i < full.Count && Budget() && IsLiveTool(full[i]))
+                    i++;
+                if (i < full.Count && IsLiveTool(full[i]))
+                    provisional = true;
+                leadingGroupContinuesAfter = i > end;
+                leadingRunContinuesBefore =
+                    full[start].Kind == ChatTimelineItemKind.Assistant &&
+                    start > 0 &&
+                    full[start - 1].Kind == ChatTimelineItemKind.Assistant;
+                leadingRunContinuesAfter =
+                    full[end - 1].Kind == ChatTimelineItemKind.Assistant &&
+                    end < full.Count &&
+                    full[end].Kind == ChatTimelineItemKind.Assistant;
+            }
+
+            return new ChatToolActivityWindowContext(
+                leadingFirstToolId, leadingHidden, leadingGroupContinuesAfter,
+                leadingRunContinuesBefore, leadingRunContinuesAfter, provisional);
+        }
+    }
+
+    /// <summary>
+    /// A single render lease: the EXACT (session, retained root, window, generation) a projection belongs to,
+    /// with its own cancellation source. Owned by ChatToolActivityRenderCoordinator.
+    /// </summary>
+    public sealed class ChatToolActivityRenderLease
+    {
+        internal ChatToolActivityRenderLease(
+            string? sessionId, IReadOnlyList<ChatTimelineItem> root, int start, int end, long generation,
+            long version)
+        {
+            SessionId = sessionId;
+            Root = root;
+            Start = start;
+            End = end;
+            Generation = generation;
+            Version = version;
+        }
+
+        public string? SessionId { get; }
+        public IReadOnlyList<ChatTimelineItem> Root { get; }
+        public int Start { get; }
+        public int End { get; }
+        public long Generation { get; }
+        internal long Version { get; }
+        internal CancellationTokenSource Cancellation { get; } = new();
+    }
+
+    /// <summary>
+    /// Lifecycle owner of the bounded activity/run fact work for ONE chat root. Begin(...) is called EVERY
+    /// render and cancels + supersedes the previous lease BEFORE any bounded compute, so a long provisional
+    /// window replaced by a short faithful window - or a different session/root/window/edit/generation - can
+    /// never publish or re-render. Dispose() cancels everything on unmount.
+    /// </summary>
+    public sealed class ChatToolActivityRenderCoordinator : IDisposable
+    {
+        private readonly ChatToolActivitySourceFacts _facts;
+        private readonly object _sync = new();
+        private ChatToolActivityRenderLease? _active;
+        private ChatToolActivityRenderLease? _flight;   // the ONE lease with a completion in flight
+        private long _renderVersion;
+        private bool _disposed;
+
+        public ChatToolActivityRenderCoordinator(ChatToolActivitySourceFacts facts) =>
+            _facts = facts ?? throw new ArgumentNullException(nameof(facts));
+
+        public ChatToolActivityRenderLease Begin(
+            string? sessionId, IReadOnlyList<ChatTimelineItem> root, int start, int end, long generation)
+        {
+            lock (_sync)
+            {
+                // REUSE the lease for an IDENTICAL logical scope (session UUID + retained root + window +
+                // generation): an unrelated same-scope render must not cancel/restart in-flight work.
+                if (_active is { } current &&
+                    string.Equals(current.SessionId, sessionId, StringComparison.Ordinal) &&
+                    ReferenceEquals(current.Root, root) &&
+                    current.Start == start &&
+                    current.End == end &&
+                    current.Generation == generation)
+                {
+                    return current;
+                }
+
+                _active?.Cancellation.Cancel();   // DIFFERENT scope: invalidate the previous lease
+                var version = ++_renderVersion;
+                var lease = new ChatToolActivityRenderLease(sessionId, root, start, end, generation, version);
+                if (_disposed)
+                {
+                    lease.Cancellation.Cancel();
+                    return lease;
+                }
+                _active = lease;
+                return lease;
+            }
+        }
+
+        /// <summary>
+        /// Bounded synchronous facts for the lease, or NULL when the window needs the async completion
+        /// (PENDING). Never scans the full retained history and never invents identity from provisional facts.
+        /// </summary>
+        public ChatToolActivityWindowContext? TryBounded(ChatToolActivityRenderLease lease)
+        {
+            var context = _facts.ForWindowBounded(
+                lease.Root, lease.Start, lease.End, lease.Generation, lease.Cancellation.Token);
+            return context.Provisional ? null : context;
+        }
+
+        /// <summary>
+        /// Schedules the off-UI completion. onResolved runs ONLY when this exact lease is still the active one
+        /// (fence checked atomically against the render version), so a superseded window/session cannot
+        /// re-render or publish.
+        /// </summary>
+        /// <summary>
+        /// Returns TRUE when a completion flight was started; FALSE when the facts are already faithful (or
+        /// the lease is superseded) - the caller then reads the bounded path instead of awaiting a wakeup.
+        /// </summary>
+        public bool RequestCompletion(ChatToolActivityRenderLease lease, Action onResolved)
+        {
+            ArgumentNullException.ThrowIfNull(onResolved);
+            lock (_sync)
+            {
+                if (_disposed || !ReferenceEquals(_active, lease))
+                    return false;   // superseded: never start work for a stale lease
+                if (ReferenceEquals(_flight, lease))
+                    return true;    // one owned flight per lease
+                _flight = lease;
+            }
+            var scheduled = _facts.ScheduleCompletion(
+                lease.Root, lease.Start, lease.End, lease.Generation, lease.Cancellation.Token,
+                () =>
+                {
+                    lock (_sync)
+                    {
+                        if (!ReferenceEquals(_flight, lease))
+                            return;    // a newer flight for this lease already committed
+                        _flight = null;
+                        if (_disposed || !ReferenceEquals(_active, lease))
+                            return;    // lease superseded while the flight drained: do not commit
+                        // COMMIT under the same fence the check used: no post-check callback race.
+                        onResolved();
+                    }
+                });
+            if (!scheduled)
+            {
+                lock (_sync)
+                {
+                    if (ReferenceEquals(_flight, lease))
+                        _flight = null;   // nothing to own: facts were already faithful
+                }
+            }
+            return scheduled;
+        }
+
+        /// <summary>Cancels in-flight work but keeps this coordinator USABLE (provider change, not unmount).</summary>
+        public void Reset()
+        {
+            lock (_sync)
+            {
+                _active?.Cancellation.Cancel();
+                _active = null;
+                _flight = null;
+            }
+        }
+
+        public void Dispose()
+        {
+            lock (_sync)
+            {
+                _disposed = true;
+                _active?.Cancellation.Cancel();
+                _active = null;
+                _flight = null;
+            }
+        }
+    }
 
     public static ChatToolActivitySummary Summarize(IReadOnlyList<ChatTimelineItem> tools)
     {

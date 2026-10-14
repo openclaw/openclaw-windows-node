@@ -10,14 +10,37 @@ public static class ChatTimelineReducer
     private const int MaxTerminalToolCorrelations = 768;
     private const int MaxRetainedToolTurns = 2;
 
-    public static ChatTimelineState RebuildActiveToolTracking(ChatTimelineState state)
+    /// <summary>
+    /// Recomputes the active (in-progress) tool-call projection. Optional cancellation is observed at
+    /// entry, exit, and every 64 real entries of the outer scan and the inner correlation loop, so a large
+    /// full-history rebuild cannot run to completion after cancellation (the enclosing Task.Run token alone
+    /// is not sufficient).
+    /// </summary>
+    public static ChatTimelineState RebuildActiveToolTracking(
+        ChatTimelineState state,
+        CancellationToken cancellationToken = default,
+        Action<long>? operationObserver = null)
     {
+        cancellationToken.ThrowIfCancellationRequested();   // stage entry
         var activeToolCallId = default(string);
         var activeToolCalls =
             System.Collections.Immutable.ImmutableDictionary<ChatToolCorrelationKey, string>.Empty;
 
+        // ONE shared operation budget across the outer entry scan AND every inner correlation loop, so the
+        // token is checked at most every 64 REAL operations regardless of how the work is nested (a
+        // per-loop counter could otherwise accumulate ~63 correlations x 63 entries between checks).
+        long operations = 0;
+        void Checkpoint()
+        {
+            if ((++operations & 63) != 0)
+                return;
+            operationObserver?.Invoke(operations);
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+
         foreach (var entry in state.Entries)
         {
+            Checkpoint();
             if (entry.Kind != ChatTimelineItemKind.ToolCall
                 || entry.ToolResult is not (null or ChatToolCallStatus.InProgress))
             {
@@ -31,12 +54,15 @@ public static class ChatTimelineReducer
                 correlationIds = correlationIds.Add(entry.ToolCallId);
             foreach (var correlationId in correlationIds)
             {
+                Checkpoint();
                 activeToolCalls = activeToolCalls.SetItem(
                     CorrelationKey(entry.ToolRunId, entry.ToolLegacyTurn, correlationId),
                     entry.Id);
             }
         }
 
+        operationObserver?.Invoke(operations);
+        cancellationToken.ThrowIfCancellationRequested();   // stage exit
         return state with
         {
             ActiveToolCallId = activeToolCallId,

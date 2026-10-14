@@ -20,7 +20,8 @@ internal sealed record ChatSnapshotProjectionInput(
     string? RememberedDefaultThreadId,
     string? RememberedThreadTitle,
     string? RememberedModel,
-    string? RememberedModelProvider);
+    string? RememberedModelProvider,
+    IReadOnlyDictionary<string, string>? AcceptedSessionIds = null);
 
 internal static class ChatSnapshotProjector
 {
@@ -91,7 +92,8 @@ internal static class ChatSnapshotProjector
             CommandsSupported: input.CommandCatalog?.IsSupported ?? true,
             TimelineGenerations: input.TimelineGenerations,
             HistoryRevisions: input.HistoryRevisions,
-            QueuedMessagesByThread: input.QueuedMessages);
+            QueuedMessagesByThread: input.QueuedMessages,
+            AcceptedSessionIds: input.AcceptedSessionIds);
     }
 
     internal static string? ResolveDefaultThreadId(ChatSnapshotProjectionInput input)

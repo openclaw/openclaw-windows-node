@@ -79,6 +79,8 @@ public sealed record ChatEntryMetadata(
     int? UsageContributionTokens = null,
     string? GatewayMessageId = null,
     int? OpenClawSeq = null,
+    // Optional PROJECTED/DISPLAY item identity (separate from the raw GatewayMessageId). Null for ordinary messages.
+    string? GatewayDisplayItemId = null,
     string? OpenClawKind = null,
     long? CompactionTokensBefore = null,
     long? CompactionTokensAfter = null,

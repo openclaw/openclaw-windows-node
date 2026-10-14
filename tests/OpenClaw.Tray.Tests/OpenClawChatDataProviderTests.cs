@@ -218,6 +218,34 @@ public class OpenClawChatDataProviderTests
                 ?? Task.FromResult(new ChatHistoryInfo { SessionKey = sessionKey ?? "" });
         }
 
+        // Bounded page requests actually observed through the production loader page path.
+        public List<ChatHistoryPageOptions> PageRequests { get; } = new();
+        public Func<ChatHistoryPageOptions, Task<GatewayChatHistoryPage>>? PageBehavior { get; set; }
+
+        // Synthetic bounded page derived from the same HistoryBehavior (or PageBehavior when set), so
+        // the actual loader's production page path is exercised without a legacy unbounded fallback.
+        public async Task<GatewayChatHistoryPage> RequestChatHistoryPageAsync(
+            string? sessionKey,
+            ChatHistoryPageOptions options,
+            CancellationToken cancellationToken = default)
+        {
+            PageRequests.Add(options);
+            RequestedHistoryKeys.Add(sessionKey);
+            if (PageBehavior is not null)
+                return await PageBehavior(options).ConfigureAwait(false);
+            var info = HistoryBehavior is not null
+                ? await HistoryBehavior(sessionKey).ConfigureAwait(false)
+                : new ChatHistoryInfo { SessionKey = sessionKey ?? "" };
+            return new GatewayChatHistoryPage(
+                info.SessionKey,
+                info.SessionId,
+                info.Messages,
+                HasMore: false,
+                NextOffset: null,
+                ResponseOffset: options.Offset,
+                Total: info.Messages.Count);
+        }
+
         public Task SendChatAbortAsync(string runId, string? sessionKey = null)
         {
             AbortedRunIds.Add(runId);
@@ -765,9 +793,503 @@ public class OpenClawChatDataProviderTests
             Assert.Empty(bridge.CompactSessionKeys);
             Assert.Equal(["main"], bridge.RequestedHistoryKeys);
             Assert.Empty(bridge.SentMessages);
+            // Independent diagnosis: command completion acknowledges the command, not its
+            // fire-and-forget reconstruction. Observe the actual expected commit within a bound
+            // (no blind sleep, Status assertion preserved).
+            var expectedCommitObserved = false;
+            for (var attempt = 0; attempt < 200; attempt++)
+            {
+                var observed = (await provider.LoadAsync()).Timelines["main"];
+                if (observed.Entries.Count == 1 &&
+                    observed.Entries[0].Kind == ChatTimelineItemKind.Status)
+                {
+                    expectedCommitObserved = true;
+                    break;
+                }
+                await Task.Delay(10);
+            }
+            Assert.True(expectedCommitObserved, "Expected compacted history commit was not observed within the bound.");
             var timeline = (await provider.LoadAsync()).Timelines["main"];
             var compactedEntry = Assert.Single(timeline.Entries);
             Assert.Equal(ChatTimelineItemKind.Status, compactedEntry.Kind);
+        }
+    }
+
+    private static ChatMessageInfo PageMsg(string text, int seq) =>
+        new() { SessionKey = "main", Role = "user", Text = text, OpenClawSeq = seq };
+
+    [Fact]
+    public async Task Provider_LoadOlder_RequestsNextServerOffsetOnceAndPublishesAcceptedTimeline()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            bridge.PageBehavior = options => Task.FromResult(options.Offset == 0
+                ? new GatewayChatHistoryPage("main", "sess-1", [PageMsg("tail", 9)],
+                    HasMore: true, NextOffset: 200, ResponseOffset: 0, Total: 800)
+                : new GatewayChatHistoryPage("main", "sess-1", [PageMsg("older", 1)],
+                    HasMore: false, NextOffset: null, ResponseOffset: 200, Total: 800));
+
+            await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+            await provider.LoadOlderAsync("main");
+
+            var olderRequest = Assert.Single(bridge.PageRequests, o => o.Offset == 200);
+            Assert.Equal(ChatHistoryLoader.InitialHistoryPageLimit, olderRequest.Limit);
+            Assert.Equal(ChatHistoryLoader.InitialHistoryPageMaxBytes, olderRequest.MaxBytes);
+
+            var timeline = (await provider.LoadAsync()).Timelines["main"];
+            Assert.Contains(timeline.Entries, e => e.Text.Contains("older", StringComparison.Ordinal));
+            Assert.Contains(timeline.Entries, e => e.Text.Contains("tail", StringComparison.Ordinal));
+            Assert.False(provider.GetHistoryWindow("main")!.Value.HasMore);   // exhausted => hide load-more
+        }
+    }
+
+    [Fact]
+    public async Task Provider_LoadOlder_ExhaustedWindowIssuesNoFurtherRequest()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            bridge.PageBehavior = options => Task.FromResult(options.Offset == 0
+                ? new GatewayChatHistoryPage("main", "sess-1", [PageMsg("tail", 9)],
+                    HasMore: true, NextOffset: 200, ResponseOffset: 0, Total: 800)
+                : new GatewayChatHistoryPage("main", "sess-1", [PageMsg("older", 1)],
+                    HasMore: false, NextOffset: null, ResponseOffset: 200, Total: 800));
+
+            await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+            await provider.LoadOlderAsync("main");
+            await provider.LoadOlderAsync("main");
+
+            Assert.Equal(1, bridge.PageRequests.Count(o => o.Offset == 200));   // exactly one bounded page
+        }
+    }
+
+    [Fact]
+    public async Task Provider_LoadOlder_FailurePreservesHeldTimelineAndWindow()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            bridge.PageBehavior = options => Task.FromResult(options.Offset == 0
+                ? new GatewayChatHistoryPage("main", "sess-1", [PageMsg("tail", 9)],
+                    HasMore: true, NextOffset: 200, ResponseOffset: 0, Total: 800)
+                : throw new TimeoutException("fixture older-page failure"));
+
+            await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+            var windowBefore = provider.GetHistoryWindow("main");
+
+            // Observed action: a fault never escapes; it surfaces as a generic retryable Error state.
+            await provider.LoadOlderAsync("main");
+            Assert.Equal(ChatLoadOlderState.Error, provider.GetLoadOlderState("main"));
+
+            var timeline = (await provider.LoadAsync()).Timelines["main"];
+            Assert.Equal(["tail"], timeline.Entries.Select(e => e.Text));
+            Assert.Equal(windowBefore, provider.GetHistoryWindow("main"));
+        }
+    }
+
+    // PUBLIC PROVIDER + REAL CLIENT: paired actual fixtures (success 200-tail at offset0; ACTUAL source error at
+    // offset200) through the real OpenClawGatewayClient socket into the actual public OpenClawChatDataProvider.
+    [Fact]
+    public async Task Provider_LoadOlder_RealClientPairedOversizeError_HoldsState()
+    {
+        var key = OpenClaw.TestSupport.Gateway.GatewayScenario.LongSessionKey;
+        var token = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+        var server = await OpenClaw.TestSupport.Gateway.FixtureGatewayServer.StartAsync(OpenClaw.TestSupport.Gateway.GatewayScenario.CreateBrowse(), token);
+        var client = new OpenClawGatewayClient(server.Endpoint.AbsoluteUri, token, (OpenClaw.Shared.IOpenClawLogger?)null,
+            identityPath: Path.Combine(Directory.CreateTempSubdirectory("oc-prov-").FullName, "device.json"), ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false);
+        try
+        {
+            var successFrame = LoadJsonFixture("success-tail-frame.json");
+            var errorFrame = LoadJsonFixture("oversize-older-error-frame.json");
+            var requested = new List<int>();
+            server.HistoryResponseOverride = p =>
+            {
+                var payload = (System.Text.Json.Nodes.JsonObject)successFrame["payload"]!.DeepClone();
+                payload["sessionKey"] = key;   // canonical fixture key adapter (identity only)
+                return payload;
+            };
+            server.HistoryErrorOverride = p =>
+            {
+                var off = p.TryGetProperty("offset", out var o) && o.ValueKind == System.Text.Json.JsonValueKind.Number ? o.GetInt32() : 0;
+                requested.Add(off);
+                return off == 200 ? errorFrame["error"]!.DeepClone() : null;
+            };
+            var handshake = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            client.HandshakeSucceeded += (_, _) => handshake.TrySetResult(true);
+            await client.ConnectAsync();
+            await handshake.Task.WaitAsync(TimeSpan.FromSeconds(20));
+            var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+            await using (provider)
+            {
+                bridge.PageBehavior = options => client.RequestChatHistoryPageAsync(key, options);
+                await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+                var windowBefore = provider.GetHistoryWindow("main");
+                var beforeEntries = (await provider.LoadAsync()).Timelines["main"].Entries.ToArray();
+                Assert.Equal(200, beforeEntries.Length);
+                await provider.LoadOlderAsync("main");
+                Assert.Equal(ChatLoadOlderState.Error, provider.GetLoadOlderState("main"));
+                Assert.Equal(beforeEntries, (await provider.LoadAsync()).Timelines["main"].Entries.ToArray());
+                Assert.Equal(windowBefore, provider.GetHistoryWindow("main"));
+                await provider.LoadOlderAsync("main");   // retry: same actual error, no lost history
+                Assert.Equal(ChatLoadOlderState.Error, provider.GetLoadOlderState("main"));
+                Assert.Equal(beforeEntries, (await provider.LoadAsync()).Timelines["main"].Entries.ToArray());
+                Assert.Equal(windowBefore, provider.GetHistoryWindow("main"));
+                Assert.Equal(new[] { 0, 200, 200 }, requested.ToArray());
+            }
+        }
+        finally
+        {
+            try { await client.DisconnectAsync(); } catch { }
+            await server.DisposeAsync();
+        }
+    }
+
+    private static System.Text.Json.Nodes.JsonObject LoadJsonFixture(string fileName)
+    {
+        var dir = AppContext.BaseDirectory;
+        for (var i = 0; i < 10 && dir is not null; i++)
+        {
+            var c = Path.Combine(dir, "fixtures", fileName);
+            if (File.Exists(c)) return System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(c))!.AsObject();
+            dir = Path.GetDirectoryName(dir);
+        }
+        throw new FileNotFoundException(fileName);
+    }
+
+    private static Func<ChatHistoryPageOptions, Task<GatewayChatHistoryPage>> TwoPageBehavior(
+        Func<GatewayChatHistoryPage> older) =>
+        options => Task.FromResult(options.Offset == 0
+            ? new GatewayChatHistoryPage("main", "sess-1", [PageMsg("tail", 9)],
+                HasMore: true, NextOffset: 200, ResponseOffset: 0, Total: 800)
+            : older());
+
+    [Fact]
+    public async Task Provider_LoadOlder_ErrorSurfacesRetryableStateAndPreservesHeldState()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            bridge.PageBehavior = TwoPageBehavior(() => throw new TimeoutException("older transport fault"));
+            await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+            var windowBefore = provider.GetHistoryWindow("main");
+
+            await provider.LoadOlderAsync("main");   // observed: faults never escape
+
+            Assert.Equal(ChatLoadOlderState.Error, provider.GetLoadOlderState("main"));
+            var timeline = (await provider.LoadAsync()).Timelines["main"];
+            Assert.Equal(["tail"], timeline.Entries.Select(e => e.Text));
+            Assert.Equal(windowBefore, provider.GetHistoryWindow("main"));
+        }
+    }
+
+    [Fact]
+    public async Task Provider_LoadOlder_RetryAfterErrorSucceedsReusingAcceptedOffset()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            var fail = true;
+            bridge.PageBehavior = TwoPageBehavior(() => fail
+                ? throw new TimeoutException("older transport fault")
+                : new GatewayChatHistoryPage("main", "sess-1", [PageMsg("older", 1)],
+                    HasMore: false, NextOffset: null, ResponseOffset: 200, Total: 800));
+            await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+
+            await provider.LoadOlderAsync("main");
+            Assert.Equal(ChatLoadOlderState.Error, provider.GetLoadOlderState("main"));
+
+            fail = false;
+            await provider.LoadOlderAsync("main");   // retry reuses the unchanged accepted offset
+
+            Assert.Equal(ChatLoadOlderState.Exhausted, provider.GetLoadOlderState("main"));
+            var timeline = (await provider.LoadAsync()).Timelines["main"];
+            Assert.Contains(timeline.Entries, e => e.Text.Contains("older", StringComparison.Ordinal));
+            Assert.Equal(2, bridge.PageRequests.Count(o => o.Offset == 200));
+        }
+    }
+
+    [Fact]
+    public async Task Provider_LoadOlder_ThreadChangeShowsNoStaleError()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            bridge.PageBehavior = TwoPageBehavior(() => throw new TimeoutException("older transport fault"));
+            await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+            await provider.LoadOlderAsync("main");
+            Assert.Equal(ChatLoadOlderState.Error, provider.GetLoadOlderState("main"));
+
+            // Another thread never inherits the failure: state is per-thread.
+            Assert.Equal(ChatLoadOlderState.Unavailable, provider.GetLoadOlderState("other-thread"));
+        }
+    }
+
+    [Fact]
+    public async Task Provider_LoadOlder_CancellationPreservesHeldStateAndStaysAvailable()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            var held = new TaskCompletionSource<GatewayChatHistoryPage>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            bridge.PageBehavior = options => options.Offset == 0
+                ? Task.FromResult(new GatewayChatHistoryPage("main", "sess-1", [PageMsg("tail", 9)],
+                    HasMore: true, NextOffset: 200, ResponseOffset: 0, Total: 800))
+                : held.Task;
+            await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+            var windowBefore = provider.GetHistoryWindow("main");
+
+            using var cts = new CancellationTokenSource();
+            var load = provider.LoadOlderAsync("main", cts.Token);
+            cts.Cancel();
+            held.TrySetCanceled(cts.Token);
+            await load;
+
+            Assert.Equal(ChatLoadOlderState.Available, provider.GetLoadOlderState("main"));
+            var timeline = (await provider.LoadAsync()).Timelines["main"];
+            Assert.Equal(["tail"], timeline.Entries.Select(e => e.Text));
+            Assert.Equal(windowBefore, provider.GetHistoryWindow("main"));
+        }
+    }
+
+    [Fact]
+    public async Task Provider_LoadOlder_SingleFlightLoadingDisablesRepeatedAction()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            var held = new TaskCompletionSource<GatewayChatHistoryPage>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            bridge.PageBehavior = options => options.Offset == 0
+                ? Task.FromResult(new GatewayChatHistoryPage("main", "sess-1", [PageMsg("tail", 9)],
+                    HasMore: true, NextOffset: 200, ResponseOffset: 0, Total: 800))
+                : held.Task;
+            await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+
+            var first = provider.LoadOlderAsync("main");
+            Assert.Equal(ChatLoadOlderState.Loading, provider.GetLoadOlderState("main"));
+            await provider.LoadOlderAsync("main");   // in-flight: no second request
+            held.TrySetResult(new GatewayChatHistoryPage("main", "sess-1", [PageMsg("older", 1)],
+                HasMore: false, NextOffset: null, ResponseOffset: 200, Total: 800));
+            await first;
+
+            Assert.Equal(1, bridge.PageRequests.Count(o => o.Offset == 200));
+        }
+    }
+
+    [Fact]
+    public async Task Provider_LoadOlder_HeldFailureAfterNewWindowCommitDoesNotShowStaleError()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            var nextForTail = 200;
+            var held = new TaskCompletionSource<GatewayChatHistoryPage>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            bridge.PageBehavior = options => options.Offset == 0
+                ? Task.FromResult(new GatewayChatHistoryPage("main", "sess-1", [PageMsg("tail", 9)],
+                    HasMore: true, NextOffset: nextForTail, ResponseOffset: 0, Total: 800))
+                : held.Task;
+
+            await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+            var inFlight = provider.LoadOlderAsync("main");        // held at offset 200
+            Assert.Equal(ChatLoadOlderState.Loading, provider.GetLoadOlderState("main"));
+
+            // A newer accepted window is committed while the older request is still in flight.
+            nextForTail = 400;
+            await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+
+            // The delayed older request now fails against the superseded window.
+            held.TrySetException(new TimeoutException("late older failure"));
+            await inFlight;
+
+            // No stale Error, no cursor rollback: the new window owns the presentation.
+            Assert.Equal(ChatLoadOlderState.Available, provider.GetLoadOlderState("main"));
+            Assert.Equal(400, provider.GetHistoryWindow("main")!.Value.NextOffset);
+            var timeline = (await provider.LoadAsync()).Timelines["main"];
+            Assert.Equal(["tail"], timeline.Entries.Select(e => e.Text));
+        }
+    }
+
+    [Fact]
+    public async Task Provider_LoadOlder_ConcurrentQueriesAndTwoCallsIssueOnePage()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            var held = new TaskCompletionSource<GatewayChatHistoryPage>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            bridge.PageBehavior = options => options.Offset == 0
+                ? Task.FromResult(new GatewayChatHistoryPage("main", "sess-1", [PageMsg("tail", 9)],
+                    HasMore: true, NextOffset: 200, ResponseOffset: 0, Total: 800))
+                : held.Task;
+            await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+
+            var first = provider.LoadOlderAsync("main");
+            var second = provider.LoadOlderAsync("main");
+            var observed = await Task.WhenAll(
+                Task.Run(() => provider.GetLoadOlderState("main")),
+                Task.Run(() => provider.GetLoadOlderState("main")),
+                Task.Run(() => provider.GetLoadOlderState("main")));
+            Assert.All(observed, state => Assert.Equal(ChatLoadOlderState.Loading, state));
+
+            held.TrySetResult(new GatewayChatHistoryPage("main", "sess-1", [PageMsg("older", 1)],
+                HasMore: false, NextOffset: null, ResponseOffset: 200, Total: 800));
+            await Task.WhenAll(first, second);
+
+            Assert.Equal(1, bridge.PageRequests.Count(o => o.Offset == 200));   // single-flight
+            Assert.Equal(ChatLoadOlderState.Exhausted, provider.GetLoadOlderState("main"));
+        }
+    }
+
+    [Fact]
+    public async Task Provider_GetLatestUsage_AutonomouslyCompletesLargeScanWithoutAnotherRender()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            // Retained timeline longer than one bounded usage slice (64 entries).
+            for (var i = 0; i < 200; i++)
+                bridge.RaiseChat(new ChatMessageInfo
+                {
+                    SessionKey = "main",
+                    Role = "user",
+                    Text = $"m{i}",
+                    State = "final",
+                    OpenClawSeq = i + 1,
+                });
+
+            var published = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            provider.Changed += (_, _) => published.TrySetResult(true);
+
+            // ONE request: the owned background flight must drive the remaining bounded slices and publish
+            // on its own, without requiring another render/request.
+            _ = provider.GetLatestUsage("main");
+            await published.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+    }
+
+    // Adopted from Mini-Actual-Usage-Flight-Counterexample (was 1 executed / 1 FAILED at 4b56f957):
+    // the publish seam is held after the final probe; real events then restart the scan while the flight
+    // key is still present, so the pending work must be handed off, not lost.
+    [Fact]
+    public async Task Mini_UsageFlight_MutationAtPublicationCompletesWithoutLostRequest()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            for (var i = 0; i < 200; i++)
+                bridge.RaiseChat(new ChatMessageInfo { SessionKey = "main", Role = "user", Text = $"m{i}", State = "final", OpenClawSeq = i + 1 });
+            using var entered = new ManualResetEventSlim();
+            using var release = new ManualResetEventSlim();
+            provider.BeforeUsageFlightPublishForTests = () => { entered.Set(); Assert.True(release.Wait(TimeSpan.FromSeconds(10))); };
+            _ = provider.GetLatestUsage("main");
+            Assert.True(await Task.Run(() => entered.Wait(TimeSpan.FromSeconds(10))));
+            try
+            {
+                for (var i = 0; i < 200; i++)
+                    bridge.RaiseChat(new ChatMessageInfo { SessionKey = "main", Role = "user", Text = $"late{i}", State = "final", OpenClawSeq = 1000 + i });
+                _ = provider.GetLatestUsage("main");
+            }
+            finally { release.Set(); }
+            var state = (ChatConversationState)typeof(OpenClawChatDataProvider).GetField("_state", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(provider)!;
+            var flights = (System.Collections.Concurrent.ConcurrentDictionary<string, byte>)typeof(OpenClawChatDataProvider).GetField("_usageFlights", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(provider)!;
+            var until = DateTime.UtcNow.AddSeconds(10);
+            while (flights.ContainsKey("main") && DateTime.UtcNow < until) await Task.Delay(10);
+            Assert.False(flights.ContainsKey("main"));
+            Assert.True(state.AdvanceLatestUsage("main", maxSteps: 0).Complete);
+        }
+    }
+
+    [Fact]
+    public async Task Provider_UsageFlight_MutationAfterCompletionIsNotLostAndRepublishes()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            for (var i = 0; i < 200; i++)
+                bridge.RaiseChat(new ChatMessageInfo
+                {
+                    SessionKey = "main", Role = "user", Text = $"m{i}", State = "final", OpenClawSeq = i + 1,
+                });
+
+            var publications = 0;
+            provider.Changed += (_, _) => Interlocked.Increment(ref publications);
+
+            _ = provider.GetLatestUsage("main");
+            var deadline = DateTime.UtcNow.AddSeconds(10);
+            while (Volatile.Read(ref publications) == 0 && DateTime.UtcNow < deadline)
+                await Task.Delay(10);
+            Assert.True(Volatile.Read(ref publications) >= 1);
+
+            // A mutation after the first flight finished must not be lost: a fresh request restarts the
+            // scan (the flight key was removed) and publishes again.
+            bridge.RaiseChat(new ChatMessageInfo
+            {
+                SessionKey = "main", Role = "assistant", Text = "late", State = "final", OpenClawSeq = 999,
+            });
+            var before = Volatile.Read(ref publications);
+            _ = provider.GetLatestUsage("main");
+            var deadline2 = DateTime.UtcNow.AddSeconds(10);
+            while (Volatile.Read(ref publications) <= before && DateTime.UtcNow < deadline2)
+                await Task.Delay(10);
+            Assert.True(Volatile.Read(ref publications) > before);   // republished for the new revision
+        }
+    }
+
+    [Fact]
+    public async Task Provider_UsageFlight_DisposalPreventsStalePublication()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        for (var i = 0; i < 200; i++)
+            bridge.RaiseChat(new ChatMessageInfo
+            {
+                SessionKey = "main", Role = "user", Text = $"m{i}", State = "final", OpenClawSeq = i + 1,
+            });
+
+        var publishedAfterDispose = false;
+        var disposed = false;
+        provider.Changed += (_, _) => { if (Volatile.Read(ref disposed)) publishedAfterDispose = true; };
+        _ = provider.GetLatestUsage("main");   // starts the flight
+
+        await provider.DisposeAsync();
+        Volatile.Write(ref disposed, true);
+        await Task.Delay(200);   // give any in-flight slice a chance to (wrongly) publish
+
+        Assert.False(publishedAfterDispose);
+    }
+
+    [Fact]
+    public async Task Provider_LoadOlder_HeldFailureAfterIdenticalTupleRefreshShowsNoStaleState()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            var held = new TaskCompletionSource<GatewayChatHistoryPage>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            // Every offset-0 response is the IDENTICAL paging tuple (same session id/offset/total/HasMore).
+            bridge.PageBehavior = options => options.Offset == 0
+                ? Task.FromResult(new GatewayChatHistoryPage("main", "sess-1", [PageMsg("tail", 9)],
+                    HasMore: true, NextOffset: 200, ResponseOffset: 0, Total: 800))
+                : held.Task;
+
+            await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+            var inFlight = provider.LoadOlderAsync("main");        // held at offset 200
+            Assert.Equal(ChatLoadOlderState.Loading, provider.GetLoadOlderState("main"));
+
+            // A forced initial refresh commits an IDENTICAL tuple under a NEWER revision.
+            await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+            Assert.Equal(ChatLoadOlderState.Available, provider.GetLoadOlderState("main"));   // no stale Loading
+
+            // The delayed old fault must not attach Error to the new accepted window.
+            held.TrySetException(new TimeoutException("late older failure"));
+            await inFlight;
+
+            Assert.Equal(ChatLoadOlderState.Available, provider.GetLoadOlderState("main"));
+            Assert.Equal(200, provider.GetHistoryWindow("main")!.Value.NextOffset);
+            var timeline = (await provider.LoadAsync()).Timelines["main"];
+            Assert.Equal(["tail"], timeline.Entries.Select(e => e.Text));
         }
     }
 
@@ -1144,10 +1666,24 @@ public class OpenClawChatDataProviderTests
             });
             await initialLoad;
 
-            for (var attempt = 0; attempt < 20 && bridge.RequestedHistoryKeys.Count < 2; attempt++)
+            for (var attempt = 0; attempt < 200 && bridge.RequestedHistoryKeys.Count < 2; attempt++)
                 await Task.Delay(10);
 
             Assert.Equal(2, bridge.RequestedHistoryKeys.Count);
+
+            // Await the ACTUAL accepted commit (bounded snapshot readiness), not request-start: the
+            // queued authoritative reload may still be in flight when the request is merely observed.
+            var committed = false;
+            for (var attempt = 0; attempt < 200 && !committed; attempt++)
+            {
+                var observed = (await provider.LoadAsync()).Timelines["main"];
+                if (observed.Entries.Count == 1 &&
+                    observed.Entries[0].Kind == ChatTimelineItemKind.Status)
+                    committed = true;
+                else
+                    await Task.Delay(10);
+            }
+
             var timeline = (await provider.LoadAsync()).Timelines["main"];
             var compactedEntry = Assert.Single(timeline.Entries);
             Assert.Equal(ChatTimelineItemKind.Status, compactedEntry.Kind);

@@ -224,6 +224,11 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         if (props.Mode == ReactorChatTimelineMode.Loading)
             return [ReactorTimelineRow.Loading(props)];
 
+        // ACTUAL pending consumer FIRST: while a deep anchor is unresolved, render an explicit LOADING row so
+        // neither a fake resolved slice NOR the empty/welcome surface is shown.
+        if (props.Timeline.WindowPending)
+            return [ReactorTimelineRow.Loading(props)];
+
         if (props.Mode == ReactorChatTimelineMode.Empty)
             return [ReactorTimelineRow.Empty(props)];
 
@@ -232,7 +237,12 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             rows.Add(ReactorTimelineRow.LoadEarlier(props));
 
         var chronologicalEntries = props.Timeline.Entries;
-        var assistantRunPositions = ChatTimelineAssistantRuns.Describe(chronologicalEntries);
+        var toolActivityWindow =
+            props.Timeline.ToolActivityWindow ?? ChatToolActivityPresentation.ChatToolActivityWindowContext.None;
+        var assistantRunPositions = ChatTimelineAssistantRuns.Describe(
+            chronologicalEntries,
+            toolActivityWindow.LeadingAssistantRunContinuesBefore,
+            toolActivityWindow.LeadingAssistantRunContinuesAfter);
         var assistantRunsByEntryId = new Dictionary<string, ChatAssistantRunPosition>(
             chronologicalEntries.Count,
             StringComparer.Ordinal);
@@ -241,12 +251,19 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         var latestAssistantEntryId = chronologicalEntries
             .LastOrDefault(static entry => entry.Kind == ChatTimelineItemKind.Assistant)
             ?.Id;
+        // Only the GLOBAL latest qualifying assistant may carry the full-retained usage summary; an earlier
+        // window's slice-local last assistant keeps its own row metadata (no newer-usage mislabel).
+        var usageAttributionEntryId = ChatTimelineUsageAttribution.Resolve(
+            props.Timeline.LatestUsageEntryId,
+            latestAssistantEntryId);
 
         var projectedRows = ChatToolActivityPresentation.Project(
             chronologicalEntries,
             props.Timeline.SessionId,
             props.Timeline.TimelineGeneration,
-            props.Timeline.ShowToolCalls);
+            props.Timeline.ShowToolCalls,
+            toolActivityWindow,
+            props.Timeline.ToolActivityPending);
         foreach (var projectedRow in projectedRows)
         {
             if (projectedRow.IsActivityGroup)
@@ -259,7 +276,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             rows.Add(ReactorTimelineRow.FromEntry(
                 props,
                 entry,
-                string.Equals(entry.Id, latestAssistantEntryId, StringComparison.Ordinal),
+                ChatTimelineUsageAttribution.IsGlobalLatestAssistant(entry.Id, usageAttributionEntryId),
                 assistantRunsByEntryId.TryGetValue(entry.Id, out var position) ? position : default));
         }
 
@@ -271,6 +288,10 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             foreach (var message in queuedMessages)
                 rows.Add(ReactorTimelineRow.FromQueuedMessage(props, message));
         }
+
+        // After navigating earlier, the retained newer/live entries remain reachable.
+        if (props.Timeline.CanShowNewerHistory)
+            rows.Add(ReactorTimelineRow.ShowNewer(props));
 
         return rows;
     }
@@ -287,6 +308,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         ReactorTimelineRowKind.Loading => BuildLoading(row),
         ReactorTimelineRowKind.Empty => BuildEmpty(row),
         ReactorTimelineRowKind.LoadEarlier => BuildLoadEarlier(row),
+        ReactorTimelineRowKind.ShowNewer => BuildShowNewer(row),
         ReactorTimelineRowKind.Thinking => BuildThinking(row),
         ReactorTimelineRowKind.Activity when row.Activity is { } activity =>
             ToolCallCardRenderer.BuildActivity(
@@ -380,8 +402,46 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
 
     private static Element BuildLoadEarlier(ReactorTimelineRow row)
     {
-        var label = LocalizedOrDefault("Chat_Timeline_LoadEarlier", "Load earlier messages");
-        return Button(label, () => row.Props.Timeline.OnLoadMoreHistory?.Invoke())
+        // Consumes the explicit load-earlier state: loading shows a progress label, a generic
+        // retryable error offers Retry, and the available case keeps the existing load-earlier button.
+        switch (row.Props.Timeline.LoadOlderState)
+        {
+            case ChatLoadOlderState.Loading:
+            {
+                var loading = LocalizedOrDefault(
+                    "Chat_Timeline_LoadingEarlier", "Loading earlier messages…");
+                return Text(loading, 12)
+                    .Margin(0, 8)
+                    .HAlign(HorizontalAlignment.Center)
+                    .AutomationName(loading);
+            }
+            case ChatLoadOlderState.Error:
+            {
+                var retry = LocalizedOrDefault(
+                    "Chat_Timeline_RetryLoadEarlier", "Couldn't load earlier messages. Retry");
+                return Button(
+                        retry,
+                        () => (row.Props.Timeline.OnRetryLoadOlder
+                            ?? row.Props.Timeline.OnLoadMoreHistory)?.Invoke())
+                    .Margin(0, 8)
+                    .HAlign(HorizontalAlignment.Center)
+                    .AutomationName(retry);
+            }
+            default:
+            {
+                var label = LocalizedOrDefault("Chat_Timeline_LoadEarlier", "Load earlier messages");
+                return Button(label, () => row.Props.Timeline.OnLoadMoreHistory?.Invoke())
+                    .Margin(0, 8)
+                    .HAlign(HorizontalAlignment.Center)
+                    .AutomationName(label);
+            }
+        }
+    }
+
+    private static Element BuildShowNewer(ReactorTimelineRow row)
+    {
+        var label = LocalizedOrDefault("Chat_Timeline_ShowNewer", "Newer messages");
+        return Button(label, () => row.Props.Timeline.OnShowNewerHistory?.Invoke())
             .Margin(0, 8)
             .HAlign(HorizontalAlignment.Center)
             .AutomationName(label);
@@ -1227,7 +1287,10 @@ internal sealed record ReactorTimelineRow(
     bool IsLatestAssistant = false,
     bool IsAssistantRunStart = false,
     bool IsAssistantRunEnd = false,
-    ChatQueuedMessage? QueuedMessage = null)
+    ChatQueuedMessage? QueuedMessage = null,
+    // True while the bounded source-fact context for this row is PROVISIONAL (async completion pending): the
+    // ACTUAL consumer reads this to hold expansion/continuation state instead of remounting the group.
+    bool Pending = false)
 {
     public static ReactorTimelineRow FromQueuedMessage(
         ReactorChatTimelineProps props,
@@ -1262,7 +1325,8 @@ internal sealed record ReactorTimelineRow(
             ReactorTimelineRowKind.Activity,
             props,
             null,
-            activity);
+            activity,
+            Pending: activity.Pending);
 
     public static ReactorTimelineRow Thinking(ReactorChatTimelineProps props) =>
         new(
@@ -1284,6 +1348,16 @@ internal sealed record ReactorTimelineRow(
             props,
             null);
 
+    public static ReactorTimelineRow ShowNewer(ReactorChatTimelineProps props) =>
+        new(
+            ReactorChatTimeline.SyntheticRowKey(
+                props.Timeline,
+                "__show-newer__",
+                ChatTimelineItemKind.Status),
+            ReactorTimelineRowKind.ShowNewer,
+            props,
+            null);
+
     public static ReactorTimelineRow Loading(ReactorChatTimelineProps props) =>
         new("timeline:loading", ReactorTimelineRowKind.Loading, props, null);
 
@@ -1298,6 +1372,7 @@ internal enum ReactorTimelineRowKind
     Activity,
     Thinking,
     LoadEarlier,
+    ShowNewer,
     Loading,
     Empty,
 }
@@ -1307,19 +1382,16 @@ internal readonly record struct ChatAssistantRunPosition(bool IsStart, bool IsEn
 internal static class ChatTimelineAssistantRuns
 {
     public static IReadOnlyList<ChatAssistantRunPosition> Describe(
-        IReadOnlyList<ChatTimelineItem> entries)
+        IReadOnlyList<ChatTimelineItem> entries,
+        bool leadingRunContinuesBefore = false,
+        bool trailingRunContinuesAfter = false)
     {
-        var positions = new ChatAssistantRunPosition[entries.Count];
-        for (var index = 0; index < entries.Count; index++)
-        {
-            if (entries[index].Kind != ChatTimelineItemKind.Assistant)
-                continue;
-
-            var isStart = index == 0 || entries[index - 1].Kind != ChatTimelineItemKind.Assistant;
-            var isEnd = index == entries.Count - 1 || entries[index + 1].Kind != ChatTimelineItemKind.Assistant;
-            positions[index] = new ChatAssistantRunPosition(isStart, isEnd);
-        }
-
+        // The ACTUAL consumer uses the SAME shared source policy the portable tests exercise.
+        var spans = ChatToolActivityPresentation.ChatAssistantRunPolicy.Describe(
+            entries, leadingRunContinuesBefore, trailingRunContinuesAfter);
+        var positions = new ChatAssistantRunPosition[spans.Count];
+        for (var index = 0; index < spans.Count; index++)
+            positions[index] = new ChatAssistantRunPosition(spans[index].IsStart, spans[index].IsEnd);
         return positions;
     }
 }

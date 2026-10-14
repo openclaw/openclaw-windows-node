@@ -30,10 +30,24 @@ internal static class ChatHistoryReplayProjection
     }
 
     public static IEnumerable<ChatHistoryReplayPart> Project(
-        IEnumerable<ChatMessageInfo> messages)
+        IEnumerable<ChatMessageInfo> messages,
+        CancellationToken cancellationToken = default)
     {
+        // Finite in-enumeration checks counted by ACTUAL yielded parts (not outer messages only),
+        // checked while yielding rather than only around the caller's ToArray.
+        var interval = OpenClaw.Shared.HistoryPagingBudget.DefaultItemsPerTick;
+        var sincePartCheck = 0;
+        void TickPart()
+        {
+            if (++sincePartCheck >= interval)
+            {
+                sincePartCheck = 0;
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+        }
         foreach (var message in messages)
         {
+            TickPart();
             if (message.ContentParts.Count == 0)
             {
                 yield return new ChatHistoryReplayPart(
@@ -48,6 +62,7 @@ internal static class ChatHistoryReplayProjection
             var isFirstPart = true;
             foreach (var part in message.ContentParts)
             {
+                TickPart(); // count ACTUAL parts, not outer messages
                 if (part.Kind == ChatMessageContentPartKind.Text)
                 {
                     yield return new ChatHistoryReplayPart(

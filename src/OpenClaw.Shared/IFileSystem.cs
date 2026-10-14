@@ -13,6 +13,9 @@ public interface IFileSystem
     void CopyFile(string source, string destination, bool overwrite);
     void DeleteFile(string path);
     void MoveFile(string source, string destination, bool overwrite) => File.Move(source, destination, overwrite);
+
+    /// <summary>Length in bytes, or -1 when the implementation cannot report it (bounded-read guard).</summary>
+    long GetFileLength(string path) => -1;
 }
 
 /// <summary>
@@ -32,4 +35,5 @@ public sealed class RealFileSystem : IFileSystem
         File.Copy(source, destination, overwrite);
     public void DeleteFile(string path) => File.Delete(path);
     public void MoveFile(string source, string destination, bool overwrite) => File.Move(source, destination, overwrite);
+    public long GetFileLength(string path) => new FileInfo(path).Length;
 }

@@ -85,6 +85,17 @@ public interface IChatGatewayBridge : IDisposable
     /// </summary>
     Task ClearSessionThinkingLevelAsync(string sessionKey);
     Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey);
+    /// <summary>
+    /// Bounded, typed chat.history page (limit/maxBytes/offset) carrying source-shaped paging metadata.
+    /// The explicit unsupported default keeps existing implementers source-compatible; production
+    /// bridges override it. Callers must not treat a bounded tail as complete history.
+    /// </summary>
+    Task<GatewayChatHistoryPage> RequestChatHistoryPageAsync(
+        string? sessionKey,
+        ChatHistoryPageOptions options,
+        CancellationToken cancellationToken = default) =>
+        Task.FromException<GatewayChatHistoryPage>(
+            new NotSupportedException("Bounded chat.history pages are not supported by this chat bridge."));
     Task<AssistantMediaResolutionResult> ResolveAssistantMediaAsync(
         string sessionKey,
         ChatMediaContentInfo media,
@@ -252,6 +263,12 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
 
     public Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey) =>
         _client.RequestChatHistoryAsync(sessionKey);
+
+    public Task<GatewayChatHistoryPage> RequestChatHistoryPageAsync(
+        string? sessionKey,
+        ChatHistoryPageOptions options,
+        CancellationToken cancellationToken = default) =>
+        _client.RequestChatHistoryPageAsync(sessionKey, options, cancellationToken: cancellationToken);
 
     public Task<AssistantMediaResolutionResult> ResolveAssistantMediaAsync(
         string sessionKey,

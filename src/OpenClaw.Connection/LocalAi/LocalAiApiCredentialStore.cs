@@ -52,7 +52,7 @@ public sealed class LocalAiApiCredentialStore(LocalAiPaths paths)
     {
         if (new FileInfo(path).Length is < 1 or > 4096)
             throw new InvalidDataException("The protected Local AI API credential is invalid.");
-        byte[] plain = ProtectedData.Unprotect(File.ReadAllBytes(path), Entropy, DataProtectionScope.CurrentUser);
+        byte[] plain = ProtectedData.Unprotect(ReadProtectedBytes(path), Entropy, DataProtectionScope.CurrentUser);
         try
         {
             if (plain.Length != 32)
@@ -60,5 +60,20 @@ public sealed class LocalAiApiCredentialStore(LocalAiPaths paths)
             return Convert.ToHexString(plain);
         }
         finally { CryptographicOperations.ZeroMemory(plain); }
+    }
+
+    private static byte[] ReadProtectedBytes(string path)
+    {
+        // Concurrent first publication can briefly hold the winning file. Retry only
+        // Windows sharing/lock violations, with at most 500 ms of retry delays.
+        // Corruption, access denial and missing files still fail without rotation.
+        for (var attempt = 0; ; attempt++)
+        {
+            try { return File.ReadAllBytes(path); }
+            catch (IOException error) when (attempt < 20 && (error.HResult & 0xffff) is 32 or 33)
+            {
+                Thread.Sleep(25);
+            }
+        }
     }
 }

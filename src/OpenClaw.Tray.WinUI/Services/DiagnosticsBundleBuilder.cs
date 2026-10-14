@@ -53,7 +53,9 @@ internal static class DiagnosticsBundleBuilder
     public static string Build(
         GatewayCommandCenterState state,
         IReadOnlyList<ConnectionDiagnosticEvent>? connectionEvents = null,
-        DiagnosticsBundlePaths? paths = null)
+        DiagnosticsBundlePaths? paths = null,
+        UiThreadStackCollector? hangCollector = null,
+        UiThreadTarget? hangTarget = null)
     {
         ArgumentNullException.ThrowIfNull(state);
         paths ??= DiagnosticsBundlePaths.Default();
@@ -93,6 +95,16 @@ internal static class DiagnosticsBundleBuilder
         builder.Append(DiagnosticsLogTailReader.BuildSection("Structured Diagnostics JSONL Tail", paths.DiagnosticsJsonlPath, JsonlTail));
         builder.Append(DiagnosticsLogTailReader.BuildSection("Crash Log Tail", paths.CrashLogPath, ShortTail));
         AppendLatestSetupLogs(builder, paths.SetupLogDirectory);
+
+        // ACTUAL collector caller seam: capture the EXACT UI thread's bounded stack + wait chain OFF the UI path
+        // and emit it as a redacted section. A frozen UI cannot service its own button, so the caller collects
+        // before/outside the frozen thread and passes the target identity here.
+        if (hangCollector is not null && hangTarget is { } uiTarget)
+        {
+            builder.AppendLine("## UI Thread Stack & Wait Chain");
+            builder.AppendLine(UiThreadStackCollector.FormatSection(hangCollector.Collect(uiTarget)).TrimEnd());
+            builder.AppendLine();
+        }
 
         return TruncateBundle(builder.ToString());
     }
