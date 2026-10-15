@@ -44,9 +44,18 @@ internal sealed class UpdateBackendLoader(Func<IUpdateBackend> factory)
 
     public static bool IsDependencyFailure(Exception error) => error switch
     {
-        FileLoadException or FileNotFoundException or BadImageFormatException
-            or TypeLoadException or MissingMemberException or DllNotFoundException => true,
+        FileLoadException file => IsAssemblyName(file.FileName),
+        FileNotFoundException file => IsAssemblyName(file.FileName),
+        BadImageFormatException or TypeLoadException or MissingMemberException or DllNotFoundException => true,
         TypeInitializationException { InnerException: { } inner } => IsDependencyFailure(inner),
         _ => false
     };
+
+    private static bool IsAssemblyName(string? name) =>
+        string.IsNullOrEmpty(name) ||
+        name.Contains(", Version=", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains(", Culture=", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains(", PublicKeyToken=", StringComparison.OrdinalIgnoreCase) ||
+        name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) ||
+        (!Path.IsPathRooted(name) && string.IsNullOrEmpty(Path.GetExtension(name)));
 }

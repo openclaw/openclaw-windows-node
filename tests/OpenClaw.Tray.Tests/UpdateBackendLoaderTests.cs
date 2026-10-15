@@ -11,6 +11,8 @@ public sealed class UpdateBackendLoaderTests
     {
         new BlockedAssemblyException(),
         new FileNotFoundException("Updater missing", "Updatum.dll"),
+        new FileLoadException("Windows blocked the updater", @"C:\App\Updatum.dll"),
+        new FileNotFoundException("Updater missing", "Updatum, Version=1.3.4.0, Culture=neutral, PublicKeyToken=null"),
         new BadImageFormatException("Invalid updater"),
         new TypeLoadException("Incompatible updater"),
         new MissingMethodException("Incompatible updater method"),
@@ -104,7 +106,9 @@ public sealed class UpdateBackendLoaderTests
         new UnauthorizedAccessException("Access denied"),
         new OperationCanceledException(),
         new TypeInitializationException("Unrelated", new InvalidOperationException()),
-        new AggregateException(new FileLoadException())
+        new AggregateException(new FileLoadException()),
+        new FileNotFoundException("Downloaded installer missing", @"C:\Downloads\update.exe"),
+        new FileLoadException("Downloaded archive unavailable", "update.zip")
     };
 
     [Theory]
