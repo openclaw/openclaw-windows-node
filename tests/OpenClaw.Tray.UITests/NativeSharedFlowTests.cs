@@ -512,12 +512,14 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
             await WithNativeAsync(async (_, frame, _, _, server, _) =>
             {
                 var wizard = await EnterFallbackAsync(frame);
-                var more = Assert.IsType<Button>(typeof(WizardPage)
-                    .GetField("_moreOptionsButton", BindingFlags.NonPublic | BindingFlags.Instance)!
-                    .GetValue(wizard));
+                var moreField = typeof(WizardPage)
+                    .GetField("_moreOptionsButton", BindingFlags.NonPublic | BindingFlags.Instance)!;
+                Button? more = null;
+                await WaitAsync(() => (more = moreField.GetValue(wizard) as Button) is { IsLoaded: true },
+                    "Gateway More button loaded");
                 var continueButton = Find<Button>(wizard, "PrimaryButton");
 
-                Invoke(more);
+                Invoke(more!);
                 Assert.True(nextStarted.Wait(TimeSpan.FromSeconds(5)));
                 await WaitAsync(() => !continueButton.IsEnabled, "Continue disabled while More is in flight");
 
