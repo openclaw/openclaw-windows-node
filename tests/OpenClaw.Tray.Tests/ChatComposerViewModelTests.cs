@@ -751,6 +751,7 @@ public sealed class ChatComposerViewModelTests
         var vm = new ChatComposerViewModel(dispatcher, initialSpeakerMuted: false);
         vm.SetDraft("hello");
         var submittedRevision = vm.DraftRevision;
+        var submittedRenderRevision = vm.RenderRevision;
 
         dispatcher.HasThreadAccess = false;
         dispatcher.RunEnqueuedImmediately = false;
@@ -760,6 +761,7 @@ public sealed class ChatComposerViewModelTests
 
         Assert.Equal("hello!", vm.Draft);
         Assert.NotEqual(submittedRevision, vm.DraftRevision);
+        Assert.Equal(submittedRenderRevision + 1, vm.RenderRevision);
     }
 
     [Fact]

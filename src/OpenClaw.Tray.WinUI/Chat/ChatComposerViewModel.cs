@@ -172,12 +172,13 @@ internal sealed class ChatComposerViewModel : INotifyPropertyChanged, IDisposabl
     /// </summary>
     public void ClearDraftIfUnchanged(long submittedRevision)
     {
-        Mutate(() =>
+        MutateIfChanged(() =>
         {
             if (!ChatComposerSubmissionPolicy.ShouldClearInput(submittedRevision, _draftRevision))
-                return;
+                return false;
 
             ApplyClearDraft();
+            return true;
         });
     }
 
