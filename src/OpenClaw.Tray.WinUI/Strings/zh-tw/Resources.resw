@@ -3334,6 +3334,9 @@
   <data name="Chat_Error_SendFailedFormat" xml:space="preserve">
     <value>傳送失敗：{0}</value>
   </data>
+  <data name="Chat_Error_ConnectionDroppedBeforeGatewayAcceptedMessage" xml:space="preserve">
+    <value>閘道接受此訊息前連線已中斷。</value>
+  </data>
   <data name="Chat_Notification_AbortFailed" xml:space="preserve">
     <value>中止失敗</value>
   </data>

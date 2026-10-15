@@ -6,7 +6,7 @@ namespace OpenClaw.Tray.Tests;
 public class ChatQueueReconnectTests
 {
     [Fact]
-    public void Reconnect_KeepsUnsentMessagesAsFailed()
+    public void Reconnect_KeepsQueuedMessagesAsFailedAndDropsSendingMessages()
     {
         var queue = new ChatQueueState();
         var created = DateTimeOffset.Parse("2026-10-07T00:00:00Z");
@@ -25,14 +25,15 @@ public class ChatQueueReconnectTests
         queue.ClearForReconnect();
 
         var messages = queue.SnapshotMessages()["main"];
-        Assert.Equal(3, messages.Count);
+        Assert.Equal(2, messages.Count);
         Assert.All(messages, message =>
             Assert.Equal(ChatQueuedMessageSendState.Failed, message.SendState));
+        Assert.DoesNotContain(messages, message => message.Id == "q-sending");
         Assert.Equal(
             "The connection dropped before the gateway accepted this message.",
-            messages.Single(message => message.Id == "q-sending").ErrorText);
+            messages.Single(message => message.Id == "q-queued").ErrorText);
         Assert.Equal("earlier", messages.Single(message => message.Id == "q-failed").ErrorText);
-        Assert.NotNull(queue.FindRequest("main", "q-sending"));
+        Assert.Null(queue.FindRequest("main", "q-sending"));
         Assert.Null(queue.FindRequest("main", "gone"));
     }
 }

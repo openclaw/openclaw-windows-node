@@ -2526,8 +2526,28 @@ public class OpenClawChatDataProviderTests
         Assert.Equal(
             "The connection dropped before the gateway accepted this message.",
             pending.ErrorText);
+        Assert.Equal(["active across reconnect"], bridge.SentMessages);
+
         sendGate.SetResult();
         await sendTask;
+
+        queued = GetQueuedMessages(snapshots[^1], "main");
+        pending = Assert.Single(queued, message => message.Text == "pending across reconnect");
+        Assert.Equal(ChatQueuedMessageSendState.Failed, pending.SendState);
+        Assert.Equal(["active across reconnect"], bridge.SentMessages);
+        Assert.DoesNotContain(
+            snapshots[^1].Timelines["main"].Entries,
+            entry => entry.Kind == ChatTimelineItemKind.User &&
+                     entry.Text == "pending across reconnect");
+
+        bridge.RaiseSessions([MainSession()]);
+        await Task.Delay(ChatSendQueuePolicy.DrainDelay + TimeSpan.FromMilliseconds(100));
+
+        Assert.Equal(["active across reconnect"], bridge.SentMessages);
+        Assert.Contains(
+            GetQueuedMessages(snapshots[^1], "main"),
+            message => message.Text == "pending across reconnect" &&
+                       message.SendState == ChatQueuedMessageSendState.Failed);
     }
 
     [Fact]

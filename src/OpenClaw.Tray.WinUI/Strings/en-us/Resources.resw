@@ -3381,6 +3381,9 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
   <data name="Chat_Error_SendFailedFormat" xml:space="preserve">
     <value>Send failed: {0}</value>
   </data>
+  <data name="Chat_Error_ConnectionDroppedBeforeGatewayAcceptedMessage" xml:space="preserve">
+    <value>The connection dropped before the gateway accepted this message.</value>
+  </data>
   <data name="Chat_Notification_AbortFailed" xml:space="preserve">
     <value>Abort failed</value>
   </data>
