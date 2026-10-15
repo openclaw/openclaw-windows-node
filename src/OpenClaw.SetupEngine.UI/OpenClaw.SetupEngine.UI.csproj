@@ -40,4 +40,24 @@
              CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!--
+    WinUI's resource pipeline relocates linked setup assets into the
+    library-qualified output directory, but a clean build can expose those
+    files to a consuming project before every relocated file exists. Re-copy
+    the source assets after this project's Build completes so both the loose
+    content contract and the ms-appx library-qualified contract are complete
+    before OpenClaw.Tray.WinUI copies project-reference outputs.
+  -->
+  <Target Name="CopySetupAssetsAfterResourceBuild" AfterTargets="Build">
+    <ItemGroup>
+      <_SetupAssetOutputSource Include="..\OpenClaw.Tray.WinUI\Assets\Setup\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_SetupAssetOutputSource)"
+          DestinationFiles="@(_SetupAssetOutputSource->'$(TargetDir)Assets\Setup\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_SetupAssetOutputSource)"
+          DestinationFiles="@(_SetupAssetOutputSource->'$(TargetDir)$(AssemblyName)\Assets\Setup\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>

@@ -7,6 +7,36 @@ namespace OpenClaw.Tray.Tests;
 public sealed class SetupAssetPublishTests
 {
     [Fact]
+    public async Task Build_CopiesSetupImagesBeforeProjectReferenceConsumersRun()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var trayDirectory = Path.Combine(root, "src", "OpenClaw.Tray.WinUI");
+        var sourceDirectory = Path.Combine(trayDirectory, "Assets", "Setup");
+        var setupProject = XDocument.Load(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.SetupEngine.UI",
+            "OpenClaw.SetupEngine.UI.csproj"));
+        var target = new XElement(Assert.Single(setupProject.Root!.Elements("Target"),
+            element => (string?)element.Attribute("Name") == "CopySetupAssetsAfterResourceBuild"));
+        Assert.Equal("Build", (string?)target.Attribute("AfterTargets"));
+
+        using var temp = new TempDirectory();
+        var outputDirectory = temp.Combine("output");
+        var harnessPath = temp.Combine("build-assets.proj");
+        target.Descendants("_SetupAssetOutputSource").Single()
+            .SetAttributeValue("Include", Path.Combine(sourceDirectory, "**", "*"));
+        new XDocument(new XElement("Project",
+            new XElement("PropertyGroup",
+                new XElement("TargetDir", outputDirectory + Path.DirectorySeparatorChar),
+                new XElement("AssemblyName", "OpenClaw.SetupEngine.UI")),
+            target)).Save(harnessPath);
+
+        await RunTargetAsync(root, harnessPath, "CopySetupAssetsAfterResourceBuild");
+        AssertSetupAssetsCopied(sourceDirectory, outputDirectory);
+    }
+
+    [Fact]
     public async Task Publish_CopiesSetupImagesToTheirLibraryQualifiedPaths()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
@@ -29,6 +59,12 @@ public sealed class SetupAssetPublishTests
                 new XElement("PublishDir", publishDirectory + Path.DirectorySeparatorChar)),
             target)).Save(harnessPath);
 
+        await RunTargetAsync(root, harnessPath, "CopySetupAssetsLooseForPublish");
+        AssertSetupAssetsCopied(sourceDirectory, publishDirectory);
+    }
+
+    private static async Task RunTargetAsync(string root, string harnessPath, string targetName)
+    {
         var startInfo = new ProcessStartInfo("dotnet")
         {
             WorkingDirectory = root,
@@ -39,7 +75,7 @@ public sealed class SetupAssetPublishTests
         };
         foreach (var argument in new[]
         {
-            "msbuild", harnessPath, "-t:CopySetupAssetsLooseForPublish", "-nologo", "-v:minimal",
+            "msbuild", harnessPath, $"-t:{targetName}", "-nologo", "-v:minimal",
         })
         {
             startInfo.ArgumentList.Add(argument);
@@ -62,6 +98,10 @@ public sealed class SetupAssetPublishTests
         }
 
         Assert.True(process.ExitCode == 0, $"{await stdout}\n{await stderr}");
+    }
+
+    private static void AssertSetupAssetsCopied(string sourceDirectory, string outputDirectory)
+    {
         var images = Directory.GetFiles(sourceDirectory, "*", SearchOption.AllDirectories);
         Assert.NotEmpty(images);
         Assert.Contains(images, path => path.EndsWith("ProviderIcon-claude.svg", StringComparison.OrdinalIgnoreCase));
@@ -71,8 +111,8 @@ public sealed class SetupAssetPublishTests
             var relativePath = Path.GetRelativePath(sourceDirectory, source);
             foreach (var assetRoot in new[]
             {
-                Path.Combine(publishDirectory, "Assets", "Setup"),
-                Path.Combine(publishDirectory, "OpenClaw.SetupEngine.UI", "Assets", "Setup"),
+                Path.Combine(outputDirectory, "Assets", "Setup"),
+                Path.Combine(outputDirectory, "OpenClaw.SetupEngine.UI", "Assets", "Setup"),
             })
             {
                 var published = Path.Combine(assetRoot, relativePath);
