@@ -431,6 +431,27 @@
   </Target>
 
   <!--
+    PRI expansion adds library-qualified SetupEngine.UI assets to the consumer
+    copy list using transient files under the referenced project's bin folder.
+    On a clean build, some of those generated files can disappear before the
+    consumer Copy task opens them. Replace only those qualified setup entries
+    with the stable repository sources while preserving their runtime paths.
+  -->
+  <Target Name="UseSourceSetupAssetsForPriConsumerCopy"
+          AfterTargets="AddPriPayloadFilesToCopyToOutputDirectoryItems">
+    <ItemGroup>
+      <_AllChildProjectItemsWithTargetPath
+          Remove="@(_AllChildProjectItemsWithTargetPath)"
+          Condition="$([System.String]::Copy('%(_AllChildProjectItemsWithTargetPath.TargetPath)').StartsWith('OpenClaw.SetupEngine.UI\Assets\Setup\'))" />
+      <_SetupPriAssetSource Include="Assets\Setup\**\*" />
+      <_AllChildProjectItemsWithTargetPath Include="@(_SetupPriAssetSource)">
+        <TargetPath>OpenClaw.SetupEngine.UI\Assets\Setup\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </_AllChildProjectItemsWithTargetPath>
+    </ItemGroup>
+  </Target>
+
+  <!--
     Tray's <Content Include="Assets\**\*"> matches Assets\Setup\*.png, so MSBuild
     propagates them as copy-to-output items through every transitive consumer
     (OpenClaw.Tray.UITests, etc.). WinUI's MakePri/Resources pipeline relocates
