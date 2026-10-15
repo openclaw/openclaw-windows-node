@@ -35,7 +35,6 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using Updatum;
 using WinUIEx;
 using SetupCompletedEventArgs = OpenClaw.SetupEngine.UI.SetupCompletedEventArgs;
 
@@ -43,12 +42,6 @@ namespace OpenClawTray;
 
 public partial class App : Application, OpenClawTray.Services.IAppCommands, IPermissionsPageRuntimeHost
 {
-    internal static readonly UpdatumManager AppUpdater = new("openclaw", "openclaw-windows-node")
-    {
-        FetchOnlyLatestRelease = true,
-        InstallUpdateSingleFileExecutableName = "OpenClaw.Tray.WinUI",
-    };
-
     private ITrayController? _trayController;
     private IWindowManager? _windowManager;
     private GatewayConnectionManager? _connectionManager;
@@ -706,7 +699,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                     AutoStartManager.ApplySetupPreferenceAsync, ct),
                 GetSettingsStore: () => SettingsStore));
         _updateCoordinator = new UpdateCoordinator(
-            AppUpdater,
             _appState,
             _settings,
             () => _connectionManager?.OperatorClient,

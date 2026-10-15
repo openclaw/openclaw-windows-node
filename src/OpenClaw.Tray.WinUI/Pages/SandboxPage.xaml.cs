@@ -16,7 +16,8 @@ public sealed partial class SandboxPage : Page
     private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private static string L(string key) => LocalizationHelper.GetString(key);
     private static string Lf(string key, params object?[] args) => LocalizationHelper.Format(key, args);
-    private bool _suppress;
+    // XAML raises change events before LoadState can restore the saved values.
+    private bool _suppress = true;
     private bool _dialogOpen;
 
     public ObservableCollection<CustomFolderRow> CustomFolders { get; } = new();

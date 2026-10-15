@@ -336,6 +336,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// application-send paths.
     /// </summary>
     public virtual bool IsConnectedToGateway => TryGetReadyConnectionGeneration(out _);
+    public long? SessionMutationConnectionEpoch =>
+        TryGetReadyConnectionGeneration(out var generation) ? generation : null;
     private string[] _advertisedServerMethods = [];
     private long _serverHandshakeGeneration;
     public IReadOnlyList<string> AdvertisedServerMethods => Array.AsReadOnly(Volatile.Read(ref _advertisedServerMethods));
@@ -1300,9 +1302,15 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private const string HandshakePendingError =
         "Gateway handshake has not completed (hello-ok pending)";
 
-    public async Task<JsonElement> SendWizardRequestAsync(string method, object? parameters = null, int timeoutMs = 30000)
+    public Task<JsonElement> SendWizardRequestAsync(string method, object? parameters = null, int timeoutMs = 30000) =>
+        SendResponseRequestAsync(method, parameters, timeoutMs);
+
+    private async Task<JsonElement> SendResponseRequestAsync(
+        string method, object? parameters, int timeoutMs, long? expectedConnectionEpoch = null)
     {
         var connectionGeneration = GetReadyConnectionGeneration(method);
+        if (expectedConnectionEpoch.HasValue && connectionGeneration != expectedConnectionEpoch.Value)
+            throw new InvalidOperationException("The Gateway connection changed before the request could be sent.");
 
         // #1418: wizard requests are application RPCs (models.list,
         // device.pair.list, pairing approvals, update.status, chat.abort,
@@ -4633,6 +4641,38 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         if (item.TryGetProperty("isBackground", out var isBackground)
             && isBackground.ValueKind is JsonValueKind.True or JsonValueKind.False)
             session.IsBackground = isBackground.GetBoolean();
+        if (item.TryGetProperty("pinned", out var pinned)
+            && pinned.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            session.Pinned = pinned.GetBoolean();
+        else if (authoritativeSessionList)
+            session.Pinned = false;
+        if (item.TryGetProperty("pinnedAt", out var pinnedAt)
+            && pinnedAt.ValueKind == JsonValueKind.Number
+            && pinnedAt.TryGetInt64(out var parsedPinnedAt))
+            session.PinnedAt = parsedPinnedAt;
+        else if (authoritativeSessionList)
+            session.PinnedAt = null;
+        if (item.TryGetProperty("unread", out var unread)
+            && unread.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            session.Unread = unread.GetBoolean();
+        else if (authoritativeSessionList)
+            session.Unread = false;
+        if (item.TryGetProperty("markedUnreadAt", out var markedUnreadAt)
+            && markedUnreadAt.ValueKind == JsonValueKind.Number
+            && markedUnreadAt.TryGetInt64(out var parsedMarkedUnreadAt))
+            session.MarkedUnreadAt = parsedMarkedUnreadAt;
+        else if (authoritativeSessionList)
+            session.MarkedUnreadAt = null;
+        // Write-once upstream; compact/sparse rows may omit it, so omission keeps the known value.
+        if (item.TryGetProperty("createdAt", out var createdAt)
+            && createdAt.ValueKind == JsonValueKind.Number
+            && createdAt.TryGetInt64(out var parsedCreatedAt))
+            session.CreatedAt = parsedCreatedAt;
+        if (item.TryGetProperty("archived", out var archived)
+            && archived.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            session.Archived = archived.GetBoolean();
+        else if (authoritativeSessionList)
+            session.Archived = false;
         if (item.TryGetProperty("execNode", out _)) session.ExecNode = GetString(item, "execNode");
         if (item.TryGetProperty("parentSessionKey", out _))
             session.ParentSessionKey = GetString(item, "parentSessionKey");

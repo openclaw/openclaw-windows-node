@@ -150,6 +150,12 @@ public sealed class LocalAiConfig
     /// <summary>Runtime-only effective profile selected from detected GPU capacity.</summary>
     [JsonIgnore]
     public string? SelectedProfileId { get; set; }
+    /// <summary>
+    /// Runtime-only model ID proven by the existing installation receipt for a pinned
+    /// recovery. It authorizes retired-catalog lookup only for that exact selection.
+    /// </summary>
+    [JsonIgnore]
+    internal string? InstalledReceiptModelId { get; set; }
     /// <summary>Managed llama-server port. Zero selects a free loopback port during setup.</summary>
     public int Port { get; set; }
     public bool WslMirroredNetworkingConsent { get; set; }

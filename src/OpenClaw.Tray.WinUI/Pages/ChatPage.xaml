@@ -60,6 +60,13 @@
 
         <!-- Native chat host: the Reactor tree mounts into this Border (default UI). -->
         <Border x:Name="ChatHost" Grid.Row="1"/>
+        <TextBlock x:Name="RemovedSessionPlaceholder" x:Uid="WorkspaceShell_SelectConversation"
+                   AutomationProperties.AutomationId="WorkspaceSelectConversation"
+                   Grid.Row="1" Visibility="Collapsed"
+                   Text="Select a conversation or create a new one to start chatting."
+                   TextWrapping="Wrap" MaxWidth="360"
+                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                   Style="{StaticResource BodyTextBlockStyle}"/>
 
         <!-- WebView2 host: only created/used when "Use standard Gateway Chat interface" is enabled. -->
         <WebView2 x:Name="WebView" Grid.Row="1" Visibility="Collapsed"/>
@@ -96,9 +103,16 @@
                     Click="OnWorkspaceOpenConnection" HorizontalAlignment="Center"/>
         </StackPanel>
 
-        <!-- WebView2 navigation error panel. -->
         <InfoBar x:Name="NativeSetupError" Grid.Row="1" IsOpen="False" Visibility="Collapsed"
-                 IsClosable="False" Severity="Error" VerticalAlignment="Top" />
+                 AutomationProperties.AutomationId="ChatNativeSetupError"
+                 IsClosable="False" Severity="Error" VerticalAlignment="Top">
+            <InfoBar.ActionButton>
+                <Button x:Name="NativeSetupCheckAgain" x:Uid="ChatPage_SetupCheckAgain"
+                        AutomationProperties.AutomationId="ChatNativeSetupCheckAgain"
+                        Content="Check again" IsEnabled="False" Click="OnNativeSetupCheckAgain"/>
+            </InfoBar.ActionButton>
+        </InfoBar>
+        <!-- WebView2 navigation error panel. -->
         <ScrollViewer x:Name="ErrorPanel" Grid.Row="1" Visibility="Collapsed" Padding="20">
             <StackPanel Spacing="12">
                 <TextBlock x:Uid="WebChatErrorTitle" Text="Web Chat Unavailable" Style="{StaticResource SubtitleTextBlockStyle}"

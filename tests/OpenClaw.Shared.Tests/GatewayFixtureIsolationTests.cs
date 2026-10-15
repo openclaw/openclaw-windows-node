@@ -145,6 +145,47 @@ public sealed class GatewayFixtureIsolationTests
         Assert.Empty(Directory.EnumerateFileSystemEntries(temp.Path));
     }
 
+    [Fact]
+    public void Get_ModernLocalRoot_ValidatesTheEffectiveSetupDirectory()
+    {
+        using var temp = new TempDirectory();
+        var environment = ValidEnvironment(temp);
+        environment[GatewayFixtureIsolation.LocalAppDataDirectoryEnvironmentVariable] = temp.Combine("local");
+        environment[GatewayFixtureIsolation.LocalDataDirectoryEnvironmentVariable] =
+            temp.Combine("local", "unused", "..", "OpenClawTray") + Path.DirectorySeparatorChar;
+
+        var context = GatewayFixtureIsolation.Get(environment.GetValueOrDefault);
+
+        Assert.Equal(temp.Combine("local", "OpenClawTray"), context.LocalDataDirectory);
+        Assert.Empty(Directory.EnumerateFileSystemEntries(temp.Path));
+    }
+
+    [Fact]
+    public void Get_ModernRootCannotShadowADifferentValidatedLegacyDirectory()
+    {
+        using var temp = new TempDirectory();
+        var environment = ValidEnvironment(temp);
+        environment[GatewayFixtureIsolation.LocalAppDataDirectoryEnvironmentVariable] = temp.Combine("local");
+
+        var error = Assert.Throws<InvalidOperationException>(() => GatewayFixtureIsolation.Get(environment.GetValueOrDefault));
+
+        Assert.Contains("to match", error.Message);
+        Assert.Empty(Directory.EnumerateFileSystemEntries(temp.Path));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("relative")]
+    public void Get_ModernRootDoesNotAllowMissingOrInvalidDirectSetupPath(string? legacy)
+    {
+        using var temp = new TempDirectory();
+        var environment = ValidEnvironment(temp);
+        environment[GatewayFixtureIsolation.LocalAppDataDirectoryEnvironmentVariable] = temp.Combine("local");
+        environment[GatewayFixtureIsolation.LocalDataDirectoryEnvironmentVariable] = legacy;
+        Assert.Throws<InvalidOperationException>(() => GatewayFixtureIsolation.Get(environment.GetValueOrDefault));
+    }
+
     private static Dictionary<string, string?> ValidEnvironment(TempDirectory temp) => new()
     {
         [GatewayFixtureIsolation.ModeEnvironmentVariable] = "1",

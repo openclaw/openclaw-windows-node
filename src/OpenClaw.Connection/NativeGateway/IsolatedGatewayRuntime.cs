@@ -72,6 +72,8 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
         {
             NativeGatewayPackage package = await ResolveAsync(record, cancellationToken).ConfigureAwait(false);
             IsolatedGatewayStatus status = await _client.StatusAsync(package, cancellationToken).ConfigureAwait(false);
+            status = await RepairConfigurationAsync(
+                record, endpoint, package, status, cancellationToken).ConfigureAwait(false);
             if (status.State is "not-started" or "stopped")
             {
                 var conflict = InspectSnapshot(endpoint.Port, null);
@@ -108,6 +110,41 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
             }
             throw;
         }
+    }
+
+    private async Task<IsolatedGatewayStatus> RepairConfigurationAsync(
+        GatewayRecord record,
+        Uri endpoint,
+        NativeGatewayPackage package,
+        IsolatedGatewayStatus status,
+        CancellationToken cancellationToken)
+    {
+        bool staleSession = status.SessionState == "stale";
+        bool missingConfiguration = status.SessionState == "running" &&
+            status.ReadinessState == "absent" &&
+            status.ReadinessReason == "config-file-missing";
+        if (!staleSession && !missingConfiguration)
+            return status;
+
+        if (string.IsNullOrEmpty(record.SharedGatewayToken))
+            throw new NativeGatewayContractException(
+                "Companion cannot restore the package-managed Gateway because its saved token is missing. " +
+                "Remove this connection and add the local native Gateway again.");
+        if (staleSession)
+            await _client.SetupAsync(package, cancellationToken).ConfigureAwait(false);
+
+        // A superseded attempt must not reach the package's persistent credential write.
+        cancellationToken.ThrowIfCancellationRequested();
+        IsolatedGatewayConfiguration restored = await _client.RestoreAsync(
+            package, endpoint.Port, record.SharedGatewayToken, cancellationToken).ConfigureAwait(false);
+        if (restored.Port != endpoint.Port ||
+            !string.Equals(restored.Token, record.SharedGatewayToken, StringComparison.Ordinal))
+        {
+            throw new NativeGatewayContractException(
+                "The Gateway package did not restore Companion's saved endpoint credential. " +
+                "Remove this connection and add the local native Gateway again.");
+        }
+        return await _client.StatusAsync(package, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<IsolatedGatewayStatus> StartAndWaitAsync(

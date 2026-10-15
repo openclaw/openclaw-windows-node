@@ -88,6 +88,27 @@ internal sealed class WorkspaceNavigationHistory
     public bool CanGoBack => _back.Count > 0;
     public bool CanGoForward => _forward.Count > 0;
 
+    public bool RemoveSession(string key, string? replacementKey)
+    {
+        var replacement = new WorkspaceDestination(WorkspacePageId.Home, replacementKey);
+        var wasCurrent = Current.SessionKey == key;
+        RemoveFrom(_back, key);
+        RemoveFrom(_forward, key);
+        if (ChatDestination.SessionKey == key)
+            ChatDestination = replacement;
+        if (wasCurrent)
+            SetCurrent(replacement);
+        return wasCurrent;
+    }
+
+    private static void RemoveFrom(Stack<WorkspaceDestination> history, string key)
+    {
+        var retained = history.Reverse().Where(destination => destination.SessionKey != key).ToArray();
+        history.Clear();
+        foreach (var destination in retained)
+            history.Push(destination);
+    }
+
     public bool Navigate(WorkspaceDestination destination)
     {
         if (destination == Current)

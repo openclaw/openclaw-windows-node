@@ -968,6 +968,13 @@ public sealed partial class CronPage : Page
                         if (_historyJobId == vm.Id && CurrentApp.GatewayClient != null)
                             _ = CurrentApp.GatewayClient.RequestCronRunsAsync(vm.Id, limit: 20, offset: 0);
                     }
+                    else if (oldVm != null && CronRunningLatch.ShouldClearBecauseNextRunMoved(
+                        vm.RunningAtMs,
+                        vm.NextRunAtMs,
+                        oldVm.NextRunAtMs))
+                    {
+                        ClearRunningJob(vm.Id);
+                    }
                 }
             }
 

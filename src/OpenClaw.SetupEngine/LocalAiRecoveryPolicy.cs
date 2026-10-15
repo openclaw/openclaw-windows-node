@@ -36,6 +36,7 @@ internal sealed record LocalAiRecoveryConfigurationBaseline(
     int GatewayPort,
     string? GatewayUrl,
     string? SelectedProfileId,
+    string? InstalledReceiptModelId,
     bool NetworkingConsent)
 {
     public static LocalAiRecoveryConfigurationBaseline Capture(SetupConfig config) =>
@@ -49,6 +50,7 @@ internal sealed record LocalAiRecoveryConfigurationBaseline(
             config.GatewayPort,
             config.GatewayUrl,
             config.LocalAi.SelectedProfileId,
+            config.LocalAi.InstalledReceiptModelId,
             config.LocalAi.WslMirroredNetworkingConsent);
 
     public void Restore(SetupConfig config)
@@ -62,6 +64,7 @@ internal sealed record LocalAiRecoveryConfigurationBaseline(
         config.GatewayPort = GatewayPort;
         config.GatewayUrl = GatewayUrl;
         config.LocalAi.SelectedProfileId = SelectedProfileId;
+        config.LocalAi.InstalledReceiptModelId = InstalledReceiptModelId;
         config.LocalAi.WslMirroredNetworkingConsent = NetworkingConsent;
     }
 }

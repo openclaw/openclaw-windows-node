@@ -49,7 +49,7 @@ public sealed class ChatTimelineRenderIdentityContractTests
     }
 
     [Fact]
-    public void QueuedMessages_RenderInComposerAboveInput()
+    public void QueuedMessages_RenderAsSyntheticTimelineRowsWithoutChangingQueueOwnership()
     {
         var models = Read("src", "OpenClaw.Chat", "ChatModels.cs");
         var provider = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatDataProvider.cs");
@@ -58,6 +58,7 @@ public sealed class ChatTimelineRenderIdentityContractTests
         var projector = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatSnapshotProjector.cs");
         var root = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawReactorChatRoot.cs");
         var composer = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatComposer.cs");
+        var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatTimeline.cs");
 
         Assert.Contains("public record ChatQueuedMessage", models);
         Assert.Contains("QueuedMessagesByThread", models);
@@ -68,20 +69,12 @@ public sealed class ChatTimelineRenderIdentityContractTests
         Assert.Contains("QueuedMessagesByThread: input.QueuedMessages", projector);
         Assert.Contains("snapshot.QueuedMessagesByThread", root);
         Assert.Contains("QueuedMessages: queuedMessages", root);
-        Assert.Contains("var queuedRows = inputs.QueuedMessages", composer);
-        Assert.Contains("Element queuedPanel = queuedRows.Length == 0", composer);
-        Assert.Contains("ScrollView(VStack(4, queuedRows))", composer);
-        Assert.Contains("Chat_Composer_QueuedMessageCancel", composer);
-        Assert.Contains("Chat_Composer_QueuedMessageCancelAutomationFormat", composer);
-        Assert.Contains("Chat_Composer_QueuedMessageRemoveFailed", composer);
-        Assert.Contains("Chat_Composer_QueuedMessageRemoveFailedAutomationFormat", composer);
-        Assert.Contains("ChatQueuedMessageRemoveFailed", composer);
-        Assert.Contains("ChatQueuedMessageCancel", composer);
-        Assert.Contains("Chat_Composer_QueuedCountFormat", composer);
-        Assert.Contains("Chat_Composer_QueuedMessageAutomationFormat", composer);
-        Assert.Contains("Chat_Composer_QueuedMessageFailedAutomationFormat", composer);
-        Assert.Contains("Chat_Composer_QueuedMessageFailed", composer);
-        Assert.Contains("ChatQueuedMessageSendState.Sending", composer);
+        Assert.DoesNotContain("inputs.QueuedMessages", composer);
+        Assert.Contains("ReactorChatTimeline.SyntheticRowKey(props.Timeline, $\"queued:{message.Id}\", ChatTimelineItemKind.User)", timeline);
+        Assert.Contains("Chat_Composer_QueuedMessageCancel", timeline);
+        Assert.Contains("Chat_Composer_QueuedMessageRemoveFailed", timeline);
+        Assert.Contains("Chat_Composer_QueuedMessageFailed", timeline);
+        Assert.Contains("ChatQueuedMessageSendState.Sending", timeline);
     }
 
     [Fact]

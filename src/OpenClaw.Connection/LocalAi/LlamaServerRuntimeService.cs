@@ -11,6 +11,7 @@
 //   await using var _ = runtime; // StopAsync/RestartAsync/RefreshAsync also available on ILocalAiRuntime
 // </summary>
 using OpenClaw.Shared;
+using OpenClaw.Shared.Inference;
 using OpenClaw.Shared.Inference.Catalog;
 using System.Net;
 using System.Text;
@@ -123,7 +124,9 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
     private readonly ILlamaServerRuntimePlatform _platform;
     private readonly ILlamaServerClient _client;
     private readonly ILocalAiModelFileVerifier _modelFileVerifier;
+    private readonly IHostHardwareProbe _hardwareProbe;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
+    private readonly CancellationTokenSource _lifetime = new();
     private readonly object _exitTasksGate = new();
     private readonly HashSet<Task> _exitTasks = [];
     private readonly object _snapshotGate = new();
@@ -160,7 +163,8 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         ILocalAiManagedProcessHost processHost,
         ILlamaServerRuntimePlatform platform,
         ILlamaServerClient client,
-        ILocalAiModelFileVerifier? modelFileVerifier = null)
+        ILocalAiModelFileVerifier? modelFileVerifier = null,
+        IHostHardwareProbe? hardwareProbe = null)
     {
         _options = ValidateOptions(options);
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -168,6 +172,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         _platform = platform ?? throw new ArgumentNullException(nameof(platform));
         _client = client ?? throw new ArgumentNullException(nameof(client));
         _modelFileVerifier = modelFileVerifier ?? new HuggingFaceLocalAiModelFileVerifier();
+        _hardwareProbe = hardwareProbe ?? new CudaHostHardwareProbe();
         _manifestStore = new LocalAiManifestStore(options.Paths);
         _snapshot = LocalAiRuntimeSnapshot.Initial(options.InitialEndpoint, platform.UtcNow);
     }
@@ -509,6 +514,22 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                 _runtimeModelPath,
                 draftModelPath,
                 requestedPort);
+            if (string.Equals(install.Manifest.ModelCatalogId, LocalModelCatalog.NemotronBoltModelId,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                HostHardwareInfo hardware;
+                try { hardware = _hardwareProbe.Probe(); }
+                catch (Exception ex)
+                {
+                    throw new InvalidDataException("Memory availability could not be confirmed. Recheck before starting Local AI.", ex);
+                }
+                // Recheck the receipt's exact tier after file verification. A
+                // restart must never rewrite it to a smaller current-fit tier.
+                var eligibility = LocalInferenceEligibility.EvaluateRecordedProfile(hardware,
+                    LlamaServerRouterConfiguration.ResolveInstalledPlan(install));
+                if (!eligibility.CanOffer)
+                    throw new InvalidDataException("The installed Local AI profile does not fit current memory or hardware. Free memory and recheck before starting.");
+            }
             if (_options.GetApiKey?.Invoke() is { } apiKey)
                 launchPlan = launchPlan with
                 {
@@ -549,16 +570,21 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
 
         try
         {
+            using var startupTimeout = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                _lifetime.Token);
+            startupTimeout.CancelAfter(_options.StartupTimeout);
+            CancellationToken startToken = startupTimeout.Token;
             _managedProcess = await _processHost.StartProcessAsync(
                     spec,
                     exit => OnManagedProcessExited(generation, exit),
-                    cancellationToken)
+                    startToken)
                 .ConfigureAwait(false);
 
             DateTimeOffset deadline = _platform.UtcNow + _options.StartupTimeout;
             while (_platform.UtcNow < deadline)
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                startToken.ThrowIfCancellationRequested();
                 if (_managedProcess.HasExited)
                     throw new InvalidOperationException("Managed llama-server exited during startup.");
 
@@ -588,7 +614,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                             ownership.Endpoint,
                             install.Manifest.ModelAlias,
                             runtimeModelPath,
-                            cancellationToken)
+                            startToken)
                         .ConfigureAwait(false);
                     if (probe.IsReadyForManagedModel(runtimeModelPath))
                     {
@@ -616,13 +642,23 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                     }
                 }
 
-                await _platform.DelayAsync(_options.HealthPollInterval, cancellationToken).ConfigureAwait(false);
+                await _platform.DelayAsync(_options.HealthPollInterval, startToken).ConfigureAwait(false);
             }
 
             return await FailStartupAsync(
                     LocalAiRuntimeState.Failed,
                     "The local AI router did not become healthy before the startup timeout.",
                     install)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (
+            !cancellationToken.IsCancellationRequested &&
+            !_lifetime.IsCancellationRequested)
+        {
+            return await FailStartupAsync(
+                    LocalAiRuntimeState.Failed,
+                    "The local AI router did not become healthy before the startup timeout.",
+                    _install ?? install)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -1585,7 +1621,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                     LocalAiRuntimeSnapshot restarted;
                     try
                     {
-                        restarted = await EnsureStartedCoreAsync(CancellationToken.None)
+                        restarted = await EnsureStartedCoreAsync(_lifetime.Token)
                             .ConfigureAwait(false);
                     }
                     catch
@@ -1810,6 +1846,8 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         if (Interlocked.Exchange(ref _disposeStarted, 1) != 0)
             return;
 
+        _lifetime.Cancel();
+
         Task[] exitTasks;
         lock (_exitTasksGate)
         {
@@ -1858,6 +1896,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         {
             await Task.WhenAll(exitTasks).ConfigureAwait(false);
             _operationGate.Dispose();
+            _lifetime.Dispose();
         }
     }
 
