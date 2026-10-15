@@ -357,6 +357,12 @@
   <data name="Update_Title_Failed" xml:space="preserve">
     <value>Kan niet op updates controleren</value>
   </data>
+  <data name="Update_Message_Unavailable" xml:space="preserve">
+    <value>Automatic updates are unavailable because an updater component could not be loaded. You can keep using OpenClaw and download updates from the official releases page.</value>
+  </data>
+  <data name="Update_ManualDownload" xml:space="preserve">
+    <value>Open official releases</value>
+  </data>
   <data name="Update_Message_Failed" xml:space="preserve">
     <value>Er is iets misgegaan tijdens het controleren op updates.
 
