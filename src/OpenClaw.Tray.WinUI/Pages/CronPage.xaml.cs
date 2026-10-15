@@ -1389,6 +1389,7 @@ public sealed partial class CronPage : Page
         headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });               // 6: chevron
 
         var nameText = new TextBlock { Text = vm.Name, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 14, VerticalAlignment = VerticalAlignment.Center };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(nameText, $"CronJobTitle:{vm.Id}");
         Grid.SetColumn(nameText, 0);
         headerGrid.Children.Add(nameText);
 
@@ -1593,6 +1594,9 @@ public sealed partial class CronPage : Page
             IsEnabled = _cronLoading.CanEdit
         };
         btn.Content = MakeActionButtonContent(glyph, text);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(btn, $"Cron{actionName}:{jobId}");
+        if (actionName == "Edit")
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(btn, text);
         btn.Click += handler;
         return btn;
     }
