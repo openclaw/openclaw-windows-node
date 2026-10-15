@@ -20,14 +20,65 @@ internal enum GatewayLogTailIssue
 /// stdout instead of as a <c>wizard.payload</c> WS frame, leaving the tray UI
 /// blank.
 ///
-/// Spawns <c>wsl.exe -- tail -F /tmp/openclaw/openclaw-*.log</c> and parses
+/// Spawns <c>wsl.exe</c> with a bash loop that waits for
+/// <c>/tmp/openclaw/openclaw-*.log</c> and then runs <c>tail -F</c>. Parses
 /// its stdout (the <c>\\wsl$\</c> 9P share is unreliable). Silently no-ops if
 /// wsl.exe or the distro is unavailable (remote/Tailscale gateway case).
 /// </summary>
 internal sealed class WizardConsoleTail : IDisposable
 {
     private const string DefaultDistroName = "OpenClawGateway";
-    private const string LogGlob = "/tmp/openclaw/openclaw-*.log";
+    // Keep discovering matching files because a stale log can exist before the
+    // Gateway creates the log for this wizard run. Existing logs start at EOF;
+    // logs first seen after launch include their initial instructions.
+    internal const string TailCommand = """
+        dir=/tmp/openclaw
+        watcher=
+        stop_watcher() {
+          trap - EXIT HUP INT TERM
+          if [[ -n "$watcher" ]]; then
+            kill "$watcher" 2>/dev/null || true
+            wait "$watcher" 2>/dev/null || true
+          fi
+        }
+        trap 'stop_watcher; exit 0' HUP INT TERM
+        trap stop_watcher EXIT
+        watch_logs() {
+          declare -A seen=()
+          pids=()
+          cleanup_tails() {
+            trap - EXIT HUP INT TERM
+            if ((${#pids[@]})); then
+              kill "${pids[@]}" 2>/dev/null || true
+              wait "${pids[@]}" 2>/dev/null || true
+            fi
+          }
+          trap 'cleanup_tails; exit 0' HUP INT TERM
+          trap cleanup_tails EXIT
+          start_tail() {
+            local count="$1"
+            local file="$2"
+            seen["$file"]=1
+            tail -n "$count" -F -- "$file" &
+            pids+=("$!")
+          }
+          shopt -s nullglob
+          for file in "$dir"/openclaw-*.log; do
+            start_tail 0 "$file"
+          done
+          while true; do
+            for file in "$dir"/openclaw-*.log; do
+              if [[ -z "${seen[$file]+x}" ]]; then
+                start_tail +1 "$file"
+              fi
+            done
+            sleep 0.2
+          done
+        }
+        watch_logs &
+        watcher=$!
+        read -r _ || true
+        """;
     private static readonly Regex s_ansiEscapeRegex = new(
         @"\x1B(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1B\\)|[PX^_].*?\x1B\\|[@-Z\\-_])",
         RegexOptions.Compiled | RegexOptions.Singleline);
@@ -83,7 +134,7 @@ internal sealed class WizardConsoleTail : IDisposable
             return;
         }
 
-        Process? process;
+        Process? process = null;
         try
         {
             var psi = new ProcessStartInfo
@@ -91,6 +142,7 @@ internal sealed class WizardConsoleTail : IDisposable
                 FileName = "wsl.exe",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+                RedirectStandardInput = true,
                 StandardOutputEncoding = Encoding.UTF8,
                 StandardErrorEncoding = Encoding.UTF8,
                 UseShellExecute = false,
@@ -100,15 +152,27 @@ internal sealed class WizardConsoleTail : IDisposable
             psi.ArgumentList.Add(_distroName);
             psi.ArgumentList.Add("--");
             psi.ArgumentList.Add("bash");
-            psi.ArgumentList.Add("-c");
-            // -n 0 = start at end of file (don't replay history).
-            // 2>/dev/null = drop "cannot open" if the file doesn't exist yet; -F will pick it up on creation.
-            psi.ArgumentList.Add($"tail -F -n 0 {LogGlob} 2>/dev/null");
+            psi.ArgumentList.Add("-s");
 
             process = Process.Start(psi);
+            if (process != null)
+            {
+                process.StandardInput.Write(TailCommand);
+                process.StandardInput.Write('\n');
+                process.StandardInput.Flush();
+            }
         }
         catch (Exception ex)
         {
+            try
+            {
+                if (process is { HasExited: false })
+                    process.Kill(entireProcessTree: true);
+            }
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
+            catch { }
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
+            try { process?.Dispose(); } catch { }
             _logger.Warn($"WizardConsoleTail: failed to launch wsl.exe ({ex.GetType().Name}: {ex.Message}); console banner will be empty");
             return;
         }
@@ -142,7 +206,7 @@ internal sealed class WizardConsoleTail : IDisposable
         {
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
-            _logger.Debug($"WizardConsoleTail: attached to {_distroName}:{LogGlob} (pid {process.Id})");
+            _logger.Debug($"WizardConsoleTail: attached to {_distroName}:/tmp/openclaw/openclaw-*.log (pid {process.Id})");
         }
         catch (Exception ex)
         {
@@ -305,9 +369,14 @@ internal sealed class WizardConsoleTail : IDisposable
 
         if (process == null) return;
 
+        // Closing stdin asks the Bash supervisor to reap every tail process.
+        // Fall back to killing wsl.exe if the cooperative stop does not finish.
+        try { process.StandardInput.Close(); }
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
+        catch { /* already gone */ }
         try
         {
-            if (!process.HasExited)
+            if (!process.WaitForExit(1_000))
                 process.Kill(entireProcessTree: true);
         }
         // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.

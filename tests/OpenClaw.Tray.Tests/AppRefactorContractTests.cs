@@ -6,6 +6,25 @@ namespace OpenClaw.Tray.Tests;
 public sealed class AppRefactorContractTests
 {
     [Fact]
+    public void Startup_InvalidCleanupDataIsReportedBeforeSettingsLoad()
+    {
+        var source = ReadAppSources();
+        var cleanup = source[source.IndexOf("GatewayPackageCleanup.InitializeAsync(", StringComparison.Ordinal)..];
+        cleanup = cleanup[..cleanup.IndexOf("var appUserModelIdRegistration", StringComparison.Ordinal)];
+
+        // Retire when packaged startup admission has an executable, WinUI-free seam.
+        Assert.Contains("InvalidDataException", cleanup);
+        AssertInOrder(cleanup, "catch (Exception error)", "NativeRestartAdmission.Notify(error.Message", "Exit();", "return;");
+
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var owner = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine", "GatewayPackageCleanup.cs"));
+        var worker = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine", "GatewayPackageCleanup.ps1"));
+        Assert.Contains("RunAsync(commands, register, null, null, false, ct, preserve: keep)", owner);
+        Assert.Contains("""registration.Stderr.Contains("OPENCLAW_CLEANUP_RECEIPT_INVALID", StringComparison.Ordinal)""", owner);
+        AssertInOrder(worker, "    Assert-ValidRemovalReceipt", "    $record = if", "    if ($Preserve)", "'--unregister '");
+    }
+
+    [Fact]
     public void E2ESetupTeardown_UsesFixtureOwnedUninstallArguments()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();

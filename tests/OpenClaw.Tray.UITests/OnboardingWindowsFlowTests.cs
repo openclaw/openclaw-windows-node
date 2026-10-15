@@ -65,33 +65,35 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
     [Theory]
     [InlineData(SetupGatewayRoute.Native)]
     [InlineData(SetupGatewayRoute.ManagedWsl)]
-    public async Task Capabilities_ConsentPrecedesNativeInstallationOnly(SetupGatewayRoute route)
+    public async Task Capabilities_ShowPresetsWithoutGatewayInstallationDisclosure(SetupGatewayRoute route)
     {
         await WithWindowAsync(async (window, frame, data) =>
         {
             window.SelectGatewayRoute(route);
             window.NavigateToCapabilities();
             var page = await MountedPageAsync<CapabilitiesPage>(window, frame);
-            var consent = Find<TextBlock>(page, "NativeInstallConsent");
+            Assert.Null(page.FindName("NativeInstallConsent"));
+            var selector = Find<ListView>(page, "ProfileSelector");
             var next = Find<Button>(page, "ContinueButton");
             var native = route == SetupGatewayRoute.Native;
-            Assert.Equal(native ? Visibility.Visible : Visibility.Collapsed, consent.Visibility);
+            Assert.Equal(3, selector.Items.Count);
             Assert.Equal(native ? "Set up gateway" : "Next", next.Content);
             Assert.Same(page, frame.Content);
             Assert.False(File.Exists(Path.Combine(data, "gateways.json")));
             Assert.False(window.AccessDraft.WslInspectionComplete);
             if (native)
             {
-                Assert.Contains("WinGet", consent.Text);
-                Assert.Contains("accept the package and Store source agreements", consent.Text);
                 var scale = page.XamlRoot.RasterizationScale;
                 window.AppWindow.Resize(new((int)Math.Ceiling(720 * scale), (int)Math.Ceiling(560 * scale)));
                 await ui.YieldToRenderAsync();
-                await BringIntoViewportAsync(page, consent);
-                AssertFullyVisible(consent, PageScroll(page));
+                foreach (var item in selector.Items)
+                {
+                    var choice = Assert.IsType<ListViewItem>(item);
+                    await BringIntoViewportAsync(page, choice);
+                    AssertFullyVisible(choice, PageScroll(page));
+                }
                 AssertFullyVisible(next, Assert.IsType<Grid>(window.Content));
-                Assert.False(consent.IsTextTrimmed);
-                await SavePageProofAsync(window, page, "native-winget-consent-before-install");
+                await SavePageProofAsync(window, page, "native-capabilities-without-install-disclosure");
             }
         });
     }

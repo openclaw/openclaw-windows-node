@@ -117,7 +117,7 @@ the owned `NativeGatewaySetupConnection` authorization and upstream
 checks Windows package registration and package-qualified aliases.
 `NativeGatewayMsixInstaller` installs the fixed Store product using the current-user
 App Installer alias and `CommandRunner`:
-`winget install --id 9NV70LV3D6XC --source msstore --silent --accept-package-agreements --accept-source-agreements --disable-interactivity --no-upgrade`.
+`winget install --id 9NV70LV3D6XC --source msstore --silent --accept-package-agreements --accept-source-agreements --disable-interactivity`.
 The shared capabilities page shows the native installation and agreement
 disclosure before its **Set up gateway** action; other routes retain **Next**.
 This preserves consent without adding a separate native review step.
@@ -129,8 +129,8 @@ diagnostics and retry guidance instead of opening a manual Store page.
 the original development identity for existing installations. Multiple matching
 registrations fail explicitly for new setup. Existing runtime profiles resolve only
 their saved family, allowing both packages to coexist without an implicit migration.
-`NativeGatewayPackageAcquisition` invokes installation once only for missing
-registration. Installation and verified package readiness share a five-minute
+`NativeGatewayPackageAcquisition` invokes acquisition once for a missing or existing Store
+package; an existing development package is reused without Store migration. Installation and verified package readiness share a five-minute
 deadline. Cancellation stops the WinGet request, but Windows deployment may
 continue. Repair errors and timeouts stay visible, with explicit retry rather
 than repeated installer launches; retries recheck registration before installing.

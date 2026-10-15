@@ -1,15 +1,19 @@
 # Test Coverage Summary
 
-**Last audited**: 2026-08-06<br>
+**Historical count snapshot**: 2026-08-06 (source revision not recorded)<br>
 **Framework**: xUnit / .NET 10.0<br>
-**Required validation status**: passing (`.\build.ps1`, Shared tests, Tray tests)
+**Snapshot validation status**: passing (`.\build.ps1`, Shared tests, Tray tests)
+
+These dated totals are not current-head validation. Use fresh result reports
+for completion claims. The maintained sections below describe suite ownership,
+selection, and proof boundaries; they do not imply that every lane ran.
 
 ## Required validation suites
 
 These are the suites every agent must run after code changes, as documented in
 `AGENTS.md`.
 
-| Suite | Latest runtime result |
+| Suite | Historical runtime result |
 |---|---:|
 | `OpenClaw.Shared.Tests` | 3,444 total: 3,412 passed, 32 skipped |
 | `OpenClaw.Tray.Tests` | 2,165 total: 2,165 passed, 0 skipped |
@@ -19,7 +23,7 @@ method counts because some `[Theory]` tests expand into multiple cases.
 
 ## Test project inventory
 
-| Project | Primary scope | Test methods |
+| Project | Primary scope | Test methods at snapshot |
 |---|---|---:|
 | `OpenClaw.Connection.Tests` | Gateway registry, credential resolution, connection manager/state machine, setup codes, pairing, diagnostics | 452 |
 | `OpenClaw.Shared.Tests` | Shared models, gateway client, capabilities, MCP, exec approval, A2UI security, URL handling, notification categorization | 2,373 |
@@ -113,6 +117,8 @@ required closeout lane for code changes.
 | Fixture-backed app smoke | `.\scripts\test-gateway-fixture.ps1 -AppPath '<built-app.exe>'` | Chat session switching/history/scrolling and populated navigation changes; run both Debug and production-shaped Release for runtime regressions |
 | Proof-pool inventory | `.\scripts\validate-proof-pools.ps1`, `.\scripts\test-proof-pool-validator.ps1`, and `.\scripts\test-validate-docs-proof-pool-flow.ps1` | Every inventory or proof scheduling change; the documentation gate runs core schema and parent-flow checks, while CI runs the full malformed-contract matrix |
 | Agent skills | `.\scripts\validate-agent-skills.ps1` and `.\scripts\test-agent-skills-validator.ps1` | Changes under `.agents\skills`; validates skill metadata, agent-facing prose, and local links |
+| Result and evidence contracts | `.\scripts\test-proof-evidence.ps1` | Changes to report admission, generic proof, CI test wrappers, evidence summaries, or their source/artifact correspondence |
+| Agent readiness | `.\scripts\test-agent-readiness.ps1` | Changes to read-only host and optional agent-tool readiness reporting |
 | GitHub-hosted PR/main CI | `.github\workflows\ci.yml` | Every pull request and push to `main`; explicit conservative impact outputs select the required test, E2E, and release-publish lanes |
 | Accessibility scan | `.\scripts\run-proof-tests.ps1 -Project 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' -Filter 'Category=Accessibility' -ResultName 'winui-accessibility' -RuntimeIdentifier win-x64` | UI changes and CI quality gate; runs real-process Axe.Windows scans; see `docs\ACCESSIBILITY.md` |
 | Local E2E | `OPENCLAW_RUN_E2E=1` with `OpenClaw.E2ETests` | Gateway setup/connect, recovery, or pairing changes that need real WSL Gateway coverage |
@@ -129,6 +135,39 @@ Capacity-dependent Windows validation is named in
 [`PROOF_POOLS.md`](./PROOF_POOLS.md). Pull requests declare the exact pool IDs
 they need. A declaration does not claim that the pool ran, and unavailable
 proof must remain reported as blocked.
+
+### Explain the validation plan
+
+Use the existing classifier in read-only planning mode:
+
+```powershell
+.\scripts\Get-CiChangeClassification.ps1 -EventName pull_request `
+  -ChangedPaths 'src\OpenClaw.Cli\Program.cs' -Human
+.\scripts\Get-CiChangeClassification.ps1 -EventName pull_request `
+  -ChangedPaths 'README.md' -Explain
+```
+
+For actual branch comparison, pass known `-BaseSha` and `-HeadSha` values.
+`-ChangedPaths` is an explicit scenario, not discovery of all current edits.
+Include staged, unstaged, and relevant untracked changes when planning an
+uncommitted task. Invalid revisions, empty/unknown inputs, and infrastructure
+changes remain conservative.
+
+The default JSON stays compatible with CI. `-Explain` adds schema-versioned
+path reasons, hosted lanes, mandatory local closeout, and inventory proof
+candidates. `-Human` renders the same decisions for a reader. Code changes
+still require full build, Shared, and Tray even when hosted lanes are narrower.
+The shipped `winnode` reference keeps its CLI/core contract treatment.
+Hosted lanes describe impact-selected CI Gate jobs, including release metadata
+and MSIX jobs where selected. Event/authorization-conditioned reservation and
+publication jobs remain governed by the workflow, not a path-only prediction.
+
+Non-documentation plans list the inventory pools for applicability review.
+They are **not automatically required or scheduled**: use each pool's
+`requiredWhen`, prerequisites, and `doesNotProve` against the behavior change.
+The planner does not run tests, authenticate, launch an app, acquire a host,
+or dispatch CI. The [proof skill](../.agents/skills/openclaw-proof-validation/SKILL.md)
+owns the evidence checklist.
 
 ### CI impact fast paths
 
@@ -304,6 +343,52 @@ the serialized proof matrix from product paths. Estimated full-infrastructure
 runner minutes remain below the 30% rejection threshold, while ordinary code
 latency falls to the longest required lane instead of the sum of every lane and
 release publish.
+
+## Writing a regression test
+
+Use the [test-audit skill](../.agents/skills/test-audit/SKILL.md) when adding or
+reviewing tests. Start with the observable contract, its production owner, a
+credible regression, and the risk not covered by existing tests.
+
+- Assert independent expected values, not values computed by the same helper.
+  A mock should control external input, not supply the result being asserted.
+- For a bug fix, show the test failing for the intended pre-fix defect and
+  passing after repair, or explicitly report unavailable baseline proof.
+  A fixture setup failure is not the negative control.
+- Prefer one faithful owner regression. Add another layer only for a distinct
+  transport, persistence, permission, lifecycle, or rendering risk.
+- Reuse `TempDirectory`, `EnvironmentScope`, `CliHarness`, and the
+  [Gateway fixture](GATEWAY_FIXTURE_TESTING.md) rather than introducing duplicate
+  state or process hosts. Bind test listeners to loopback.
+- Keep legitimate independent static contracts. WinUI source-shape guards
+  protect concrete prohibited patterns and require the
+  [ledger's retirement condition](ARCHITECTURE.md#how-to-use-this-document).
+  The shipped winnode-to-capability registry check is not disposable.
+- A snapshot is not a rendering assertion. The fixture's session/history
+  tests observe the selected mounted controls and visible text; they still
+  do not prove live Gateway pairing, provider behavior, installer state, or MXC.
+- Preserve serial native-input/desktop constraints. Measure cost when making
+  a performance claim; do not hide a race with sleeps, blind retries, weaker
+  assertions, or blanket skips.
+
+### Accepting result reports
+
+`Invoke-CiTest.ps1` and `run-proof-tests.ps1` use invocation-specific result
+directories. Their expected TRX must be fresh, parseable, internally consistent,
+and contain actual executed tests; successful process exit alone is insufficient.
+File modification times and embedded TRX invocation times permit one second
+of clock granularity tolerance. Reports older than that remain stale; each run
+still uses a fresh invocation directory and validates the embedded timestamps.
+Generic custom proof requires every selected result to pass. Ordinary CI may
+report supported skipped cases alongside executed passing tests, but all-skipped
+or zero-execution runs fail. Existing hosted MXC skip policy is not native MXC
+proof.
+Skipped counts come from actual result rows and must match total minus executed.
+VSTest may leave its aggregate `notExecuted` counter at zero even when skipped
+rows are present; a contradictory nonzero aggregate still fails validation.
+
+See [local execution evidence](PROOF_POOLS.md#validate-local-execution-evidence)
+for inventory-bound summaries and their assurance limits.
 
 ## Running tests
 

@@ -692,6 +692,37 @@ try {
         -TestInventoryPath $missingPrefixedProjectPath `
         -TestSchemaPath $schemaPath `
         -ExpectedMessage "is not a repository file"
+
+    $gatewayCommand = (Get-Content -LiteralPath $inventoryPath -Raw | ConvertFrom-Json).pools[5].authoritativeCommands[0].command
+    $gatewayRunner = $gatewayCommand.Substring($gatewayCommand.IndexOf('.\scripts\run-proof-tests.ps1'))
+    $invalidPrefixes = @(
+        "`$env:OPENCLAW_RUN_OLLAMA_E2E = '1'; ",
+        "`$env:OPENCLAW_RUN_E2E = '1'; `$env:OPENCLAW_RUN_OLLAMA_E2E = '0'; ",
+        "`$env:OPENCLAW_RUN_E2E = '1'; `$env:PRIVATE_VALUE = '1'; ",
+        "`$env:OPENCLAW_RUN_OLLAMA_E2E = '1'; `$env:OPENCLAW_RUN_E2E = '1'; "
+    )
+    for ($index = 0; $index -lt $invalidPrefixes.Count; $index++) {
+        $inventory = Get-Content -LiteralPath $inventoryPath -Raw | ConvertFrom-Json
+        $inventory.pools[5].authoritativeCommands[0].command = $invalidPrefixes[$index] + $gatewayRunner
+        $invalidGatePath = Join-Path $tempRoot "invalid-proof-environment-$index.json"
+        Write-JsonFile -Value $inventory -Path $invalidGatePath
+        Assert-RejectedByAllModes `
+            -Name "restricted proof environment $index" `
+            -TestInventoryPath $invalidGatePath `
+            -TestSchemaPath $schemaPath `
+            -ExpectedMessage "must use the restricted"
+    }
+
+    $inventory = Get-Content -LiteralPath $inventoryPath -Raw | ConvertFrom-Json
+    $inventory.pools[5].authoritativeCommands[0].command =
+        "`$env:OPENCLAW_RUN_E2E = '1'; `$env:OPENCLAW_RUN_OLLAMA_E2E = '1'; .\scripts\run-proof-tests.ps1 -Project 'tests\DoesNotExist\Nope.csproj' -Filter 'FullyQualifiedName~SetupAndConnectTests' -ResultName 'missing-e2e' -RuntimeIdentifier win-x64"
+    $missingTwoGateProjectPath = Join-Path $tempRoot 'missing-two-gate-proof-project.json'
+    Write-JsonFile -Value $inventory -Path $missingTwoGateProjectPath
+    Assert-RejectedByAllModes `
+        -Name "missing two-gate proof project" `
+        -TestInventoryPath $missingTwoGateProjectPath `
+        -TestSchemaPath $schemaPath `
+        -ExpectedMessage "is not a repository file"
     $script:harnessCompleted = $true
 } finally {
     if ($script:activeValidatorChildCount -ne 0) {

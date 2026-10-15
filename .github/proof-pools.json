@@ -361,7 +361,7 @@
           "id": "run-gateway-product-path",
           "kind": "proof-test",
           "path": "scripts\\run-proof-tests.ps1",
-          "command": "$env:OPENCLAW_RUN_E2E = '1'; .\\scripts\\run-proof-tests.ps1 -Project 'tests\\OpenClaw.E2ETests\\OpenClaw.E2ETests.csproj' -Filter 'FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests' -ResultName 'gateway-setup-connect' -RuntimeIdentifier win-x64",
+          "command": "$env:OPENCLAW_RUN_E2E = '1'; $env:OPENCLAW_RUN_OLLAMA_E2E = '1'; .\\scripts\\run-proof-tests.ps1 -Project 'tests\\OpenClaw.E2ETests\\OpenClaw.E2ETests.csproj' -Filter 'FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests' -ResultName 'gateway-setup-connect' -RuntimeIdentifier win-x64",
           "purpose": "Run the current real WSL Gateway setup, bootstrap, pairing, and node invocation E2E class.",
           "evidence": "Publish the nonzero test count, gateway-setup-connect.trx, and redacted loopback diagnostics emitted by the E2E run."
         }
