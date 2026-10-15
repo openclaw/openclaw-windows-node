@@ -25,6 +25,9 @@ public static class LocalAiGatewayProviderDefinition
     public const int ProviderTimeoutSeconds = 300;
     public const int MaximumOutputTokens = 8_192;
 
+    public static int GetMaximumOutputTokens(int contextTokens) =>
+        Math.Min(MaximumOutputTokens, contextTokens / 4);
+
     public static string BuildProviderJson(LocalAiResolvedInstall install)
     {
         return BuildProviderJson(install, "llama-local");
@@ -120,7 +123,7 @@ public static class LocalAiGatewayProviderDefinition
                     cost = new { input = 0, output = 0, cacheRead = 0, cacheWrite = 0 },
                     contextWindow = install.Manifest.ContextLength,
                     contextTokens = install.Manifest.ContextLength,
-                    maxTokens = MaximumOutputTokens,
+                    maxTokens = GetMaximumOutputTokens(install.Manifest.ContextLength),
                     compat = new { supportsTools = true, supportsUsageInStreaming = true },
                     api = ApiType,
                 },

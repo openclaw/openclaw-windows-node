@@ -404,7 +404,29 @@ public class DeviceIdentity
     /// <c>true</c> if the token was cleared; <c>false</c> if the file was
     /// absent or the role token was already null/empty.
     /// </returns>
-    public static bool TryClearDeviceTokenForRole(string dataPath, string role, IOpenClawLogger? logger = null)
+    public static bool TryClearDeviceTokenForRole(string dataPath, string role, IOpenClawLogger? logger = null) =>
+        ClearDeviceTokenForRoleCore(dataPath, role, expectedToken: null, logger);
+
+    /// <summary>
+    /// Clears the role-specific device token only while it still exactly equals
+    /// <paramref name="expectedToken"/>. The comparison happens under the identity
+    /// file lock, so a credential another connection refreshed in the meantime is
+    /// never discarded. Use this to retire a token a gateway has just rejected; the
+    /// keypair, device id, and unrelated role tokens are preserved.
+    /// </summary>
+    /// <returns>
+    /// <c>true</c> only when the matching token was cleared; <c>false</c> if the file
+    /// was absent, the token was already empty, or it no longer matched.
+    /// </returns>
+    public static bool TryClearDeviceTokenForRoleIfMatches(
+        string dataPath, string role, string expectedToken, IOpenClawLogger? logger = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(expectedToken);
+        return ClearDeviceTokenForRoleCore(dataPath, role, expectedToken, logger);
+    }
+
+    private static bool ClearDeviceTokenForRoleCore(
+        string dataPath, string role, string? expectedToken, IOpenClawLogger? logger)
     {
         var tokenRole = ParseDeviceTokenRole(role);
         var keyPath = Path.Combine(dataPath, "device-key-ed25519.json");
@@ -427,6 +449,16 @@ public class DeviceIdentity
                         : data.DeviceToken;
                     if (string.IsNullOrEmpty(token))
                         return false;
+
+                    // Re-read and compare inside the lock: a concurrent handshake may
+                    // already have replaced the rejected credential with a valid one.
+                    if (expectedToken is not null &&
+                        !string.Equals(token, expectedToken, StringComparison.Ordinal))
+                    {
+                        logger?.Info(
+                            "Stored device token no longer matches the rejected credential; leaving it in place.");
+                        return false;
+                    }
 
                     if (tokenRole == DeviceTokenRole.Node)
                     {
