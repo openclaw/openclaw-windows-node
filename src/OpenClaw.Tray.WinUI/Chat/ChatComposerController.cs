@@ -57,6 +57,7 @@ internal sealed partial class ChatComposerController : IDisposable
     private int _sendOperation;
     private int _catalogOperation;
     private int _generation;
+    private long _selectionRevision;
 
     /// <summary>Controller-owned single-flight send gate, independent of the
     /// rendered/projected <see cref="ChatComposerViewModel.IsSending"/> value.
@@ -129,6 +130,8 @@ internal sealed partial class ChatComposerController : IDisposable
     /// after disposal.</summary>
     public void SelectChannel(string threadId) => TrySelectChannel(threadId);
 
+    internal void InvalidatePendingSessionNavigation() => _selectionRevision++;
+
     /// <summary>Returns false until the root is ready, or after disposal, so an
     /// external host can retain its initial-selection handoff instead.</summary>
     internal bool TrySelectChannel(string threadId)
@@ -136,6 +139,7 @@ internal sealed partial class ChatComposerController : IDisposable
         if (_disposed || _selectedSessionHandoff is null)
             return false;
 
+        InvalidatePendingSessionNavigation();
         _placement?.NavigateTo(threadId);
         _selectedSessionHandoff(threadId);
         if (_disposed)
@@ -272,10 +276,12 @@ internal sealed partial class ChatComposerController : IDisposable
             if (!StillLive())
                 return false;
 
+            var selectionRevision = _selectionRevision;
             var result = await _port.ExecuteLifecycleCommandAsync(threadId, command).ConfigureAwait(true);
             if (!StillLive())
                 return false;
-            if (result.Succeeded && result.NewSessionKey is { } sessionKey)
+            if (result.Succeeded && result.NewSessionKey is { } sessionKey &&
+                selectionRevision == _selectionRevision)
                 TrySelectChannel(sessionKey);
             return result.Succeeded;
         }

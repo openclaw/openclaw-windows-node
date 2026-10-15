@@ -75,6 +75,8 @@ public sealed class ChatPlacementControllerTests
         context.Vm.SetDraft("keep");
         var sending = duringPreparation ? context.Composer.SendAsync() : null;
         context.Session.ApplyInputs(Inputs() with { PlacementTargetIsEmpty = false, ShowPlacementPickers = false });
+        if (duringPreparation)
+            Assert.True(context.Gateway.PrepareToken.IsCancellationRequested);
         completion.SetResult();
         Assert.False(await (sending ?? context.Composer.SendAsync()));
         Assert.Equal("keep", context.Vm.Draft);
@@ -84,6 +86,29 @@ public sealed class ChatPlacementControllerTests
         Assert.True(await context.Composer.SendAsync());
         Assert.Equal(1, context.Port.SendMessageCallCount);
         Assert.Equal(duringPreparation ? 1 : 0, context.Gateway.PrepareCalls);
+    }
+
+    [Fact]
+    public async Task HistoryArrival_BlocksFurtherSendsUntilAdmittedPreparationDrains()
+    {
+        using var context = new Context();
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        context.Gateway.Prepare = _ => completion.Task;
+        context.Placement.SelectWorkspace(FakeGateway.Project);
+        var preparing = context.Placement.PrepareAsync(Key, default);
+        context.Session.ApplyInputs(Inputs() with { PlacementTargetIsEmpty = false, ShowPlacementPickers = false });
+        Assert.True(context.Gateway.PrepareToken.IsCancellationRequested);
+        for (var i = 0; i < 2; i++)
+        {
+            Assert.False(await context.Composer.SendCoreAsync(Key, "Existing chat", "keep", []));
+            Assert.True(context.Placement.RequiresPreparation);
+            Assert.Equal(0, context.Port.SendMessageCallCount);
+        }
+        completion.SetResult();
+        Assert.False(await preparing);
+        Assert.Contains("may have changed", context.Placement.State.Error);
+        Assert.True(await context.Composer.SendCoreAsync(Key, "Existing chat", "continue", []));
+        Assert.Equal(1, context.Gateway.PrepareCalls);
     }
 
     [Fact]
@@ -166,11 +191,104 @@ public sealed class ChatPlacementControllerTests
                 break;
             case "history":
                 context.Session.ApplyInputs(Inputs() with { PlacementTargetIsEmpty = false, ShowPlacementPickers = false });
+                Assert.True(context.Gateway.PrepareToken.IsCancellationRequested);
                 break;
         }
         completion.SetResult();
         Assert.False(await sending);
         Assert.Equal(0, context.Port.SendMessageCallCount);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task InterruptedPreparation_RestoresIntentAndWarningAfterNavigation(bool returnBeforeCompletion)
+    {
+        using var context = new Context();
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        context.Gateway.Prepare = _ => completion.Task;
+        context.Placement.SelectEnvironment("node:windows");
+        context.Placement.SelectWorkspace(FakeGateway.Project);
+        context.Vm.SetDraft("keep this draft");
+        var sending = context.Composer.SendAsync();
+        context.Composer.BindSelectionHandoff(key => context.Session.ApplyInputs(Inputs(key)));
+        context.Composer.SelectChannel("agent:main:other");
+        Assert.True(context.Gateway.PrepareToken.IsCancellationRequested);
+        Assert.Null(context.Placement.State.Error);
+
+        if (returnBeforeCompletion)
+        {
+            context.Composer.SelectChannel(Key);
+            Assert.True(context.Placement.State.Preparing);
+            Assert.False(context.Placement.CanEdit);
+            Assert.False(await context.Composer.SendCoreAsync(Key, "New chat", "another send", []));
+            Assert.Equal(1, context.Gateway.PrepareCalls);
+        }
+        completion.SetResult();
+        Assert.False(await sending);
+        if (!returnBeforeCompletion)
+            context.Composer.SelectChannel(Key);
+
+        Assert.False(context.Placement.State.Preparing);
+        Assert.True(context.Placement.RequiresPreparation);
+        Assert.Equal("node:windows", context.Placement.State.Selection?.Environment.Id);
+        Assert.Equal(FakeGateway.Project, context.Placement.State.Selection?.Workspace);
+        Assert.Contains("may have changed", context.Placement.State.Error);
+        Assert.Equal("keep this draft", context.Vm.Draft);
+        Assert.Equal(0, context.Port.SendMessageCallCount);
+
+        // Retrying must reach the Gateway preflight, not silently send with the displayed defaults.
+        context.Gateway.Prepare = _ => Task.FromException(new InvalidOperationException("Placement already active"));
+        Assert.False(await context.Composer.SendAsync());
+        Assert.Equal(2, context.Gateway.PrepareCalls);
+        Assert.Equal("Placement already active", context.Placement.State.Error);
+        Assert.Equal(0, context.Port.SendMessageCallCount);
+    }
+
+    [Fact]
+    public async Task CompletedLocation_RemainsSelectedWhenReturningWithoutRepeatedPreparation()
+    {
+        using var context = new Context();
+        context.Placement.SelectWorkspace(FakeGateway.Project);
+        Assert.True(await context.Placement.PrepareAsync(Key, default));
+        context.Composer.BindSelectionHandoff(key => context.Session.ApplyInputs(Inputs(key)));
+        context.Composer.SelectChannel("agent:main:other");
+        Assert.Equal("default", context.Placement.State.Selection?.Workspace.Id);
+        context.Composer.SelectChannel(Key);
+        Assert.Equal(FakeGateway.Project, context.Placement.State.Selection?.Workspace);
+        Assert.False(context.Placement.RequiresPreparation);
+        context.Vm.SetDraft("next");
+        Assert.True(await context.Composer.SendAsync());
+        Assert.Equal(1, context.Gateway.PrepareCalls);
+    }
+
+    [Fact]
+    public async Task DisconnectDuringPreparation_RetainsRequiredPreflightAfterOfflineCompletion()
+    {
+        using var context = new Context();
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        context.Gateway.Prepare = _ => completion.Task;
+        context.Placement.SelectEnvironment("node:windows");
+        context.Placement.SelectWorkspace(FakeGateway.Project);
+        context.Vm.SetDraft("send remotely");
+        var sending = context.Composer.SendAsync();
+        context.Gateway.ConnectionEpoch = null;
+        context.Session.ApplyInputs(Inputs() with { ConnectionState = "disconnected" });
+        Assert.True(context.Gateway.PrepareToken.IsCancellationRequested);
+        completion.SetResult();
+        Assert.False(await sending);
+        Assert.True(context.Placement.RequiresPreparation);
+        Assert.Contains("may have changed", context.Placement.State.Error);
+
+        context.Gateway.ConnectionEpoch = 8;
+        context.Session.ApplyInputs(Inputs());
+        context.Gateway.Prepare = _ => Task.CompletedTask;
+        Assert.True(await context.Composer.SendAsync());
+        Assert.Equal(2, context.Gateway.PrepareCalls);
+        Assert.Equal("node:windows", context.Gateway.LastSelection?.Environment.Id);
+        Assert.Equal(FakeGateway.Project, context.Gateway.LastSelection?.Workspace);
+        Assert.Equal(8, context.Gateway.LastEpoch);
+        Assert.Equal(1, context.Port.SendMessageCallCount);
     }
 
     [Fact]

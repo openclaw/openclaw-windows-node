@@ -151,6 +151,8 @@ public sealed class MountedReactorChat(
 
     internal bool TrySelectSession(string sessionKey) => session.Controller.TrySelectChannel(sessionKey);
 
+    internal void InvalidatePendingSessionNavigation() => session.Controller.InvalidatePendingSessionNavigation();
+
     internal void CancelVoiceRecording() => session.Controller.CancelVoiceRecording();
 
     public void AttachFile(ChatAttachment attachment) => AttachFiles(new[] { attachment });

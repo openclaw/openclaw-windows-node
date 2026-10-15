@@ -357,6 +357,47 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
     }
 
     [Fact]
+    public async Task PlacementInterruptedNavigation_RestoresChoiceAndVisibleUncertainty()
+    {
+        var gateway = new PlacementProofGateway
+        {
+            PrepareCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously)
+        };
+        await WithChatAsync(800, async (surface, _, session, provider) =>
+        {
+            await Task.Delay(1000);
+            await SettleAsync();
+            Task<bool>? sending = null;
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.True(session.Placement!.CanEdit);
+                session.Placement!.SelectEnvironment("node:windows");
+                session.Placement.SelectWorkspace(new("project:one", "Repository"));
+                sending = session.Controller.SendAsync();
+                Assert.Equal(1, gateway.Preparations);
+                Assert.False(sending.IsCompleted);
+                session.Controller.SelectChannel("other");
+            });
+            await SettleAsync();
+            gateway.PrepareCompletion.SetResult();
+            Assert.False(await sending!);
+            await ui.RunOnUIAsync(() => session.Controller.SelectChannel("proof"));
+            await Task.Delay(1000);
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Contains("Windows host", AutomationProperties.GetName(FindControl<Button>(surface, "ChatEnvironmentPicker")));
+                Assert.Contains("Repository", AutomationProperties.GetName(FindControl<Button>(surface, "ChatWorkspacePicker")));
+                Assert.Contains("may have changed", FindControl<TextBlock>(surface, "ChatPlacementError").Text);
+                Assert.Equal(Draft, FindControl<TextBox>(surface, "ChatComposerInput").Text);
+                Assert.True(session.Placement!.RequiresPreparation);
+                Assert.Empty(provider.SentMessages);
+            });
+            await CaptureAsync(surface, "PlacementInterruptedReturn");
+        }, "empty", placementGateway: gateway);
+    }
+
+    [Fact]
     public async Task PlacementWorkspace_BrowsesGatewayFoldersAndKeepsDraft()
     {
         var gateway = new PlacementProofGateway();
@@ -2626,6 +2667,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         internal int Preparations { get; private set; }
         internal string? BrowsedPath { get; private set; }
         internal ChatPlacementSelection? Selection { get; private set; }
+        internal TaskCompletionSource? PrepareCompletion { get; init; }
         public Task<ChatPlacementCatalog> LoadAsync(string agentId, CancellationToken cancellationToken) =>
             Task.FromResult(new ChatPlacementCatalog(5, agentId,
                 [new("local:gateway", "Gateway machine", true, ChatEnvironmentUnavailable.None),
@@ -2644,7 +2686,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         {
             Preparations++;
             Selection = selection;
-            return Task.CompletedTask;
+            return PrepareCompletion?.Task ?? Task.CompletedTask;
         }
     }
 

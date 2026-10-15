@@ -177,6 +177,7 @@ public sealed partial class WorkspaceWindow : WindowEx
 
     private void RenderDestination()
     {
+        _chat.InvalidatePendingSessionNavigation();
         _chat.RetainNativeSetupForDestination(Destination);
         if (Destination.Page == WorkspacePageId.Home && Destination.SessionKey is { } sessionKey)
         {

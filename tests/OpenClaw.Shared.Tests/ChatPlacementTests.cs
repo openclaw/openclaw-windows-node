@@ -257,6 +257,31 @@ public sealed class ChatPlacementTests
     }
 
     [Fact]
+    public async Task CancellationWhileAddingRepository_DrainsRequestWithoutCreatingOrDispatchingSession()
+    {
+        var calls = new List<(string, JsonElement)>();
+        using var cancellation = new CancellationTokenSource();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var client = Client(calls, wait: async method =>
+        {
+            if (method != "projects.add") return;
+            entered.SetResult();
+            await completion.Task;
+        });
+        var preparing = client.PrepareAsync(Key, "main",
+            Selection(remote: true, workspace: new("repository:test", "Repository", GitUrl: "https://example.com/repo.git")),
+            42, cancellation.Token);
+        await entered.Task;
+        cancellation.Cancel();
+        Assert.False(preparing.IsCompleted);
+        completion.SetResult();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => preparing);
+        Assert.Contains(calls, call => call.Item1 == "projects.add");
+        Assert.DoesNotContain(calls, call => call.Item1 is "sessions.create" or "sessions.dispatch");
+    }
+
+    [Fact]
     public async Task Browse_PreservesCanonicalGatewayPathAndNeverSuppliesLocalNode()
     {
         var calls = new List<(string, JsonElement)>();
@@ -268,25 +293,28 @@ public sealed class ChatPlacementTests
     }
 
     private static GatewayChatPlacementClient Client(List<(string, JsonElement)> calls,
-        Func<string, JsonElement, JsonElement?>? response = null, Func<long?>? epoch = null) =>
-        new(epoch ?? (() => 42), (method, parameters, _, expectedEpoch) =>
+        Func<string, JsonElement, JsonElement?>? response = null, Func<long?>? epoch = null,
+        Func<string, Task>? wait = null) =>
+        new(epoch ?? (() => 42), async (method, parameters, _, expectedEpoch) =>
         {
             Assert.Equal(42, expectedEpoch);
             var json = JsonSerializer.SerializeToElement(parameters);
             calls.Add((method, json));
-            return Task.FromResult(response?.Invoke(method, json) ?? method switch
+            if (wait is not null) await wait(method);
+            return response?.Invoke(method, json) ?? method switch
             {
                 "agents.list" => Agents,
                 "environments.list" => Environments,
                 "sessions.describe" => JsonSerializer.SerializeToElement(new { session = new { } }),
                 "sessions.create" => JsonSerializer.SerializeToElement(new { ok = true, key = Key }),
                 "sessions.dispatch" => JsonSerializer.SerializeToElement(new { ok = true, key = Key, placement = new { state = "active" } }),
+                "projects.add" => JsonSerializer.SerializeToElement(new { id = "one", displayName = "Repository", repoRoot = "/srv/repo" }),
                 "fs.listDir" => JsonSerializer.SerializeToElement(new
                 {
                     path = "/srv/agent/canonical", parent = "/srv/agent", home = "/srv/agent",
                     entries = new[] { new { name = "child", path = "/srv/agent/canonical/child" } }
                 }),
                 _ => throw new InvalidOperationException("Unexpected method " + method)
-            });
+            };
         });
 }

@@ -177,6 +177,13 @@ errors remain visible and preserve draft/attachments. Navigation, disconnect,
 or disposal fences late results; reconnect preserves explicit selection intent.
 Unconfirmed remote placement is not retried or redirected locally. Review that
 session in the Gateway before another placement attempt.
+Losing empty-session eligibility cancels pending preparation before subsequent RPCs;
+already admitted Gateway mutations are drained, not rolled back. Interrupted
+preparation shows an explicit uncertainty notice. Each mounted host retains explicit
+location intent and in-flight preparation by session across navigation, so returning
+cannot silently display Local/default or skip placement preflight after an interruption.
+A completed `/new` request cannot override a newer session or page navigation;
+the successful session remains discoverable without pulling the user back into chat.
 
 The footer has a leading Attach/session group, model/reasoning selectors, and
 quiet secondary actions beside the primary Send/Stop action. Every control stays

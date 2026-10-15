@@ -26,15 +26,27 @@ internal sealed class ChatPlacementController(IChatPlacementGateway gateway, IUi
     private int _generation;
     private int _browseGeneration;
     private bool _canEdit;
+    private bool _canChangeSessionOptions;
     private bool _targetEmpty;
-    private bool _dirty;
+    // Accepted Gateway mutations outlive navigation. Keep their intent and drain state with the session.
+    private readonly Dictionary<(string ThreadId, string AgentId), LocationIntent> _intents = new();
+    private LocationIntent? _intent;
     private bool _disposed;
+
+    private sealed class LocationIntent(ChatPlacementSelection selection)
+    {
+        internal ChatPlacementSelection Selection = selection;
+        internal bool Dirty = true;
+        internal bool Preparing;
+        internal bool OutcomeUncertain;
+        internal string? Error;
+    }
 
     internal event Action? Changed;
     internal long Revision { get; private set; }
     internal ChatPlacementState State { get { lock (_gate) return _state; } }
     internal bool CanEdit { get { lock (_gate) return !_disposed && _canEdit && !_state.Preparing; } }
-    internal bool RequiresPreparation { get { lock (_gate) return _dirty; } }
+    internal bool RequiresPreparation { get { lock (_gate) return _intent?.Dirty == true; } }
 
     internal void ApplyInputs(ChatComposerInputs inputs)
     {
@@ -47,19 +59,27 @@ internal sealed class ChatPlacementController(IChatPlacementGateway gateway, IUi
             var epoch = inputs.ConnectionState == "connected" ? gateway.ConnectionEpoch : null;
             if (_threadId != inputs.CurrentThread.Id || _agentId != agentId || _epoch != epoch)
             {
-                var sameThread = _threadId == inputs.CurrentThread.Id && _agentId == agentId;
                 _generation++;
                 _browseGeneration++;
                 _threadId = inputs.CurrentThread.Id;
                 _agentId = agentId;
                 _epoch = epoch;
-                _dirty = sameThread && _dirty;
-                _state = new(Selection: sameThread ? _state.Selection : null);
+                _intent = _intents.GetValueOrDefault((_threadId, _agentId));
+                _state = new(Selection: _intent?.Selection, Preparing: _intent?.Preparing == true,
+                    Error: _intent?.Error);
                 previous = _scopeCancellation;
                 _scopeCancellation = new();
             }
             _canEdit = inputs.ShowPlacementPickers && inputs.CanChangeSessionOptions;
-            _targetEmpty = inputs.PlacementTargetIsEmpty && inputs.CanChangeSessionOptions;
+            var targetEmpty = inputs.PlacementTargetIsEmpty;
+            if (_targetEmpty && _canChangeSessionOptions &&
+                (!targetEmpty || !inputs.CanChangeSessionOptions) && _state.Preparing && previous is null)
+            {
+                previous = _scopeCancellation;
+                _scopeCancellation = new();
+            }
+            _targetEmpty = targetEmpty;
+            _canChangeSessionOptions = inputs.CanChangeSessionOptions;
             load = _canEdit && _epoch.HasValue && _state.Catalog is null &&
                 !_state.Loading && _state.Error is null;
         }
@@ -99,7 +119,9 @@ internal sealed class ChatPlacementController(IChatPlacementGateway gateway, IUi
                         Environment = environment ?? selected.Environment with { Unavailable = ChatEnvironmentUnavailable.Offline }
                     };
                 }
-                return state with { Catalog = catalog, Selection = selected, Loading = false };
+                if (_intent is not null && selected is not null)
+                    _intent.Selection = selected;
+                return state with { Catalog = catalog, Selection = selected, Loading = false, Error = _intent?.Error };
             });
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
@@ -117,8 +139,7 @@ internal sealed class ChatPlacementController(IChatPlacementGateway gateway, IUi
                 return;
             var environment = catalog.Environments.FirstOrDefault(item => item.Id == id);
             if (environment?.IsSelectable != true) return;
-            _dirty |= selection.Environment != environment;
-            _state = _state with { Selection = selection with { Environment = environment }, Error = null };
+            SetSelection(selection with { Environment = environment }, selection.Environment != environment);
         }
         Notify();
     }
@@ -141,17 +162,29 @@ internal sealed class ChatPlacementController(IChatPlacementGateway gateway, IUi
                 System.Diagnostics.Trace.WriteLine("[chat] Workspace activation ignored because its catalog or folder listing is no longer current.");
                 return;
             }
-            _dirty |= selection.Workspace != workspace;
+            SetSelection(selection with { Workspace = workspace }, selection.Workspace != workspace);
             _browseGeneration++;
             _state = _state with
             {
-                Selection = selection with { Workspace = workspace },
                 Browsing = false,
                 BrowsingLoading = false,
                 Error = null
             };
         }
         Notify();
+    }
+
+    private void SetSelection(ChatPlacementSelection selection, bool changed)
+    {
+        if (changed)
+        {
+            _intent ??= new(selection);
+            _intent.Selection = selection;
+            _intent.Dirty = true;
+            _intent.Error = null;
+            _intents[(_threadId!, _agentId)] = _intent;
+        }
+        _state = _state with { Selection = selection, Error = _intent?.Error };
     }
 
     internal async Task BrowseAsync(string? path = null)
@@ -205,16 +238,23 @@ internal sealed class ChatPlacementController(IChatPlacementGateway gateway, IUi
         long epoch;
         ChatPlacementSelection selection;
         CancellationTokenSource operation;
+        LocationIntent intent;
         lock (_gate)
         {
-            if (!_dirty) return true;
+            if (_intent?.Preparing == true)
+            {
+                _state = _state with { Error = "Location preparation is still finishing. Wait before sending again." };
+                Notify();
+                return false;
+            }
+            if (_intent is not { Dirty: true } currentIntent) return true;
             if (!IsCurrent(threadId)) return false;
             if (!_targetEmpty)
             {
                 CancelStaleIntent();
                 return false;
             }
-            if (_threadId != threadId || _state.Preparing || _state.Loading ||
+            if (_threadId != threadId || !_canChangeSessionOptions || _state.Loading ||
                 _epoch is not { } currentEpoch || gateway.ConnectionEpoch != currentEpoch ||
                 _state.Selection is not { } selected || !selected.Environment.IsSelectable)
             {
@@ -226,6 +266,10 @@ internal sealed class ChatPlacementController(IChatPlacementGateway gateway, IUi
             agent = _agentId;
             epoch = currentEpoch;
             selection = selected;
+            intent = currentIntent;
+            intent.Selection = selection;
+            intent.Preparing = true;
+            intent.Error = null;
             operation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _scopeCancellation.Token);
             _state = _state with { Preparing = true, Error = null };
         }
@@ -237,31 +281,51 @@ internal sealed class ChatPlacementController(IChatPlacementGateway gateway, IUi
             lock (_gate)
             {
                 if (_disposed || generation != _generation || gateway.ConnectionEpoch != epoch)
-                    return false;
-                if (!_targetEmpty)
                 {
-                    CancelStaleIntent();
+                    InterruptIntent(intent);
                     return false;
                 }
-                _dirty = false;
+                if (!_targetEmpty)
+                {
+                    InterruptIntent(intent);
+                    return false;
+                }
+                intent.Dirty = false;
+                intent.OutcomeUncertain = false;
             }
             return true;
         }
         catch (OperationCanceledException)
         {
-            Update(generation, state => state with { Error = "Location preparation was interrupted. Review the session before retrying." });
+            lock (_gate)
+                InterruptIntent(intent);
             return false;
         }
         catch (Exception ex)
         {
-            Fail(generation, ex, state => state);
+            System.Diagnostics.Trace.WriteLine($"[chat] Location preparation failed: {ex}");
+            lock (_gate) intent.Error = ex.Message;
             return false;
         }
         finally
         {
             operation.Dispose();
-            Update(generation, state => state with { Preparing = false });
+            lock (_gate)
+            {
+                intent.Preparing = false;
+                if (ReferenceEquals(_intent, intent))
+                    _state = _state with { Preparing = false, Error = intent.Error };
+            }
+            Notify();
         }
+    }
+
+    private void InterruptIntent(LocationIntent intent)
+    {
+        intent.OutcomeUncertain = true;
+        intent.Error = "Location preparation was interrupted and may have changed this session's location. Review it in the Gateway before you send again.";
+        if (ReferenceEquals(_intent, intent) && _epoch.HasValue && !_targetEmpty)
+            intent.Dirty = false;
     }
 
     internal void NavigateTo(string threadId)
@@ -273,7 +337,8 @@ internal sealed class ChatPlacementController(IChatPlacementGateway gateway, IUi
             _generation++;
             _threadId = threadId;
             _epoch = null;
-            _canEdit = _targetEmpty = _dirty = false;
+            _canEdit = _canChangeSessionOptions = _targetEmpty = false;
+            _intent = null;
             _state = new();
             previous = _scopeCancellation;
             _scopeCancellation = new();
@@ -284,10 +349,15 @@ internal sealed class ChatPlacementController(IChatPlacementGateway gateway, IUi
 
     private void CancelStaleIntent()
     {
-        _dirty = false;
+        if (_intent is not null)
+        {
+            _intent.Dirty = false;
+            if (!_intent.OutcomeUncertain)
+                _intent.Error = "This session is no longer empty, so the pending location selection was cancelled. Review the session and send again to continue in its current location.";
+        }
         _state = _state with
         {
-            Error = "This session is no longer empty, so the pending location selection was cancelled. Review the session and send again to continue in its current location."
+            Error = _intent?.Error
         };
         Notify();
     }
