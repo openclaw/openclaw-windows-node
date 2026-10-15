@@ -7,33 +7,25 @@ public class HotkeyRegistrationStateTests
     [Fact]
     public void SettingsChordStaysLiveWhenVoiceRegistrationFails()
     {
-        var state = new HotkeyRegistrationState()
-            .WithVoice(false)
-            .WithSettings(true);
+        var state = new HotkeyRegistrationState(Voice: false, Settings: true);
 
         Assert.True(state.AnyLive);
+        Assert.False(state.AllLive);
         Assert.False(state.Voice);
         Assert.True(state.Settings);
+        Assert.True(state.NeedsVoiceRegistration);
+        Assert.False(state.NeedsSettingsRegistration);
     }
 
     [Fact]
     public void NeitherChord_IsNotLive()
     {
-        var state = new HotkeyRegistrationState()
-            .WithVoice(false)
-            .WithSettings(false);
+        var state = new HotkeyRegistrationState(Voice: false, Settings: false);
 
         Assert.False(state.AnyLive);
-    }
-
-    [Fact]
-    public void Clear_DropsBothChords()
-    {
-        var state = new HotkeyRegistrationState(true, true).Cleared();
-
-        Assert.False(state.AnyLive);
-        Assert.False(state.Voice);
-        Assert.False(state.Settings);
+        Assert.False(state.AllLive);
+        Assert.True(state.NeedsVoiceRegistration);
+        Assert.True(state.NeedsSettingsRegistration);
     }
 
     [Fact]
@@ -57,32 +49,17 @@ public class HotkeyRegistrationStateTests
     }
 
     [Fact]
-    public void Service_UnregistersSettingsWhenVoiceDidNotRegister()
+    public void Service_WiresIndependentRegistrationAndUnregistration()
     {
         var source = File.ReadAllText(Path.Combine(
-            FindRepoRoot(),
+            TestRepositoryPaths.GetRepositoryRoot(),
             "src", "OpenClaw.Tray.WinUI", "Services", "GlobalHotkeyService.cs"));
 
-        Assert.Contains("_hotkeys.AnyLive", source, StringComparison.Ordinal);
+        Assert.Contains("GetHotkeys().AllLive", source, StringComparison.Ordinal);
+        Assert.Contains("previous.NeedsSettingsRegistration", source, StringComparison.Ordinal);
         Assert.Contains("TryUnregisterHotkey(hWnd, HOTKEY_ID_SETTINGS, \"settings\")", source, StringComparison.Ordinal);
         Assert.Contains("Failed to unregister {name} hotkey", source, StringComparison.Ordinal);
+        Assert.Contains("SetHotkeys(default)", source, StringComparison.Ordinal);
         Assert.DoesNotContain("if (_registered)", source, StringComparison.Ordinal);
-    }
-
-    private static string FindRepoRoot()
-    {
-        var env = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT");
-        if (!string.IsNullOrWhiteSpace(env) && Directory.Exists(env))
-            return env;
-
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory != null)
-        {
-            if (File.Exists(Path.Combine(directory.FullName, "openclaw-windows-node.slnx")))
-                return directory.FullName;
-            directory = directory.Parent;
-        }
-
-        throw new InvalidOperationException("Could not find repository root.");
     }
 }

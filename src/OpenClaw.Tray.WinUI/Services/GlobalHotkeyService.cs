@@ -106,6 +106,7 @@ public class GlobalHotkeyService : IDisposable
     }
 
     private IntPtr _hwnd;
+    private readonly object _hotkeysLock = new();
     private HotkeyRegistrationState _hotkeys;
     private bool _disposed;
     private Thread? _messageThread;
@@ -125,7 +126,7 @@ public class GlobalHotkeyService : IDisposable
 
     public bool Register()
     {
-        if (_hotkeys.AnyLive) return true;
+        if (GetHotkeys().AllLive) return true;
 
         try
         {
@@ -156,7 +157,7 @@ public class GlobalHotkeyService : IDisposable
                 Logger.Warn("Timed out waiting for hotkey registration operation to complete");
                 return false;
             }
-            return _hotkeys.AnyLive;
+            return GetHotkeys().AnyLive;
         }
         catch (Exception ex)
         {
@@ -173,6 +174,7 @@ public class GlobalHotkeyService : IDisposable
         // Reset state in case the previous thread died
         _messageThread = null;
         _hwnd = IntPtr.Zero;
+        SetHotkeys(default);
         _windowReady.Reset();
 
         _running = true;
@@ -227,26 +229,36 @@ public class GlobalHotkeyService : IDisposable
         if (msg == WM_APP_REGISTER)
         {
             // Register from the message-loop thread that owns hWnd.
-            // Voice hotkey: Ctrl+Alt+Shift+V
-            var voiceRegistered = RegisterHotKey(hWnd, HOTKEY_ID_VOICE,
-                MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT,
-                VK_V);
-            var settingsRegistered = RegisterHotKey(hWnd, HOTKEY_ID_SETTINGS,
-                MOD_CONTROL | MOD_ALT | MOD_NOREPEAT,
-                VK_OEM_1);
-            _hotkeys = new HotkeyRegistrationState(voiceRegistered, settingsRegistered);
+            var previous = GetHotkeys();
+            var voiceRegistered = previous.Voice;
+            var settingsRegistered = previous.Settings;
 
-            if (voiceRegistered)
-                Logger.Info("Voice hotkey registered: Ctrl+Alt+Shift+V");
-            else
-                Logger.Warn("Failed to register voice hotkey Ctrl+Alt+Shift+V");
+            if (previous.NeedsVoiceRegistration)
+            {
+                // Voice hotkey: Ctrl+Alt+Shift+V
+                voiceRegistered = RegisterHotKey(hWnd, HOTKEY_ID_VOICE,
+                    MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT,
+                    VK_V);
+                if (voiceRegistered)
+                    Logger.Info("Voice hotkey registered: Ctrl+Alt+Shift+V");
+                else
+                    Logger.Warn("Failed to register voice hotkey Ctrl+Alt+Shift+V");
+            }
 
-            // Settings hotkey: Ctrl+Alt+; opens Companion Settings.
-            // Win+; is reserved by Windows for the emoji panel.
-            if (settingsRegistered)
-                Logger.Info("Settings hotkey registered: Ctrl+Alt+;");
-            else
-                Logger.Warn("Failed to register settings hotkey Ctrl+Alt+;");
+            if (previous.NeedsSettingsRegistration)
+            {
+                // Settings hotkey: Ctrl+Alt+; opens Companion Settings.
+                // Win+; is reserved by Windows for the emoji panel.
+                settingsRegistered = RegisterHotKey(hWnd, HOTKEY_ID_SETTINGS,
+                    MOD_CONTROL | MOD_ALT | MOD_NOREPEAT,
+                    VK_OEM_1);
+                if (settingsRegistered)
+                    Logger.Info("Settings hotkey registered: Ctrl+Alt+;");
+                else
+                    Logger.Warn("Failed to register settings hotkey Ctrl+Alt+;");
+            }
+
+            SetHotkeys(new HotkeyRegistrationState(voiceRegistered, settingsRegistered));
 
             _opCompleted.Set();
             return IntPtr.Zero;
@@ -256,14 +268,15 @@ public class GlobalHotkeyService : IDisposable
         {
             try
             {
-                var previous = _hotkeys;
+                var previous = GetHotkeys();
                 var voiceUnregistered = !previous.Voice ||
                     TryUnregisterHotkey(hWnd, HOTKEY_ID_VOICE, "voice");
                 var settingsUnregistered = !previous.Settings ||
                     TryUnregisterHotkey(hWnd, HOTKEY_ID_SETTINGS, "settings");
-                _hotkeys = previous.AfterUnregister(voiceUnregistered, settingsUnregistered);
+                var remaining = previous.AfterUnregister(voiceUnregistered, settingsUnregistered);
+                SetHotkeys(remaining);
 
-                if (previous.AnyLive && !_hotkeys.AnyLive)
+                if (previous.AnyLive && !remaining.AnyLive)
                     Logger.Info("Global hotkeys unregistered");
             }
             catch (Exception ex)
@@ -300,9 +313,21 @@ public class GlobalHotkeyService : IDisposable
         return false;
     }
 
+    private HotkeyRegistrationState GetHotkeys()
+    {
+        lock (_hotkeysLock)
+            return _hotkeys;
+    }
+
+    private void SetHotkeys(HotkeyRegistrationState hotkeys)
+    {
+        lock (_hotkeysLock)
+            _hotkeys = hotkeys;
+    }
+
     public void Unregister()
     {
-        if (!_hotkeys.AnyLive) return;
+        if (!GetHotkeys().AnyLive) return;
 
         try
         {

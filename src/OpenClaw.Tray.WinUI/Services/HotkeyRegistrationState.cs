@@ -8,12 +8,12 @@ public readonly record struct HotkeyRegistrationState(bool Voice, bool Settings)
 {
     public bool AnyLive => Voice || Settings;
 
-    public HotkeyRegistrationState WithVoice(bool registered) => this with { Voice = registered };
+    public bool AllLive => Voice && Settings;
 
-    public HotkeyRegistrationState WithSettings(bool registered) => this with { Settings = registered };
+    public bool NeedsVoiceRegistration => !Voice;
+
+    public bool NeedsSettingsRegistration => !Settings;
 
     public HotkeyRegistrationState AfterUnregister(bool voiceUnregistered, bool settingsUnregistered) =>
         new(Voice && !voiceUnregistered, Settings && !settingsUnregistered);
-
-    public HotkeyRegistrationState Cleared() => new(false, false);
 }
