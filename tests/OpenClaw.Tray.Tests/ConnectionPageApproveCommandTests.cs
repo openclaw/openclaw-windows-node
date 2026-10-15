@@ -173,11 +173,30 @@ public sealed class ConnectionPageApproveCommandTests
 
         var operatorPlan = BuildOperatorPairingPlan(requestId);
         var nodePlan = BuildNodePairingPlan(requestId, PairingApprovalKind.NodePair);
+        var devicePlan = BuildNodePairingPlan(requestId, PairingApprovalKind.DevicePair);
 
         Assert.Equal("openclaw devices list", operatorPlan.RecoveryApproveCommand);
         Assert.Equal("openclaw nodes pending", nodePlan.NodeTrustApproveCommand);
+        Assert.Equal("openclaw devices list", devicePlan.NodeApproveCommand);
         Assert.DoesNotContain(requestId, operatorPlan.RecoveryApproveCommand);
         Assert.DoesNotContain("…", operatorPlan.RecoveryApproveCommand);
+    }
+
+    [Fact]
+    public void UnsafeRequestId_UsesDiscoveryForEveryApprovalSurface()
+    {
+        const string requestId = "request-1;whoami";
+
+        var operatorPlan = BuildOperatorPairingPlan(requestId);
+        var nodePlan = BuildNodePairingPlan(requestId, PairingApprovalKind.NodePair);
+        var devicePlan = BuildNodePairingPlan(requestId, PairingApprovalKind.DevicePair);
+
+        Assert.Equal("openclaw devices list", operatorPlan.RecoveryApproveCommand);
+        Assert.Equal("openclaw nodes pending", nodePlan.NodeTrustApproveCommand);
+        Assert.Equal("openclaw devices list", devicePlan.NodeApproveCommand);
+        Assert.DoesNotContain(requestId, operatorPlan.RecoveryApproveCommand);
+        Assert.DoesNotContain(requestId, nodePlan.NodeTrustApproveCommand);
+        Assert.DoesNotContain(requestId, devicePlan.NodeApproveCommand);
     }
 
     [Fact]
