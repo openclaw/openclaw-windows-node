@@ -329,15 +329,14 @@ public sealed partial class CronPage : Page
         FormScheduleKind.SelectedIndex = kind switch { "at" => 1, "cron" => 2, _ => 0 };
         UpdateScheduleFieldVisibility(kind);
         _preservedScheduleTz = null;
+        FormTimezone.SelectedIndex = -1;
 
         if (kind == "cron")
         {
             FormCronExpr.Text = vm.ScheduleExpr;
             var timezoneEdit = CronScheduleTimezone.BeginEdit(vm.ScheduleTz, ListedComboTags(FormTimezone));
             _preservedScheduleTz = timezoneEdit.PreservedUnlisted;
-            if (timezoneEdit.SelectedTag == null)
-                FormTimezone.SelectedIndex = -1;
-            else
+            if (timezoneEdit.SelectedTag != null)
                 SelectComboByTag(FormTimezone, timezoneEdit.SelectedTag);
             HighlightPreset(vm.ScheduleExpr);
         }
@@ -727,19 +726,17 @@ public sealed partial class CronPage : Page
         }
     }
 
-    private static bool SelectComboByTag(ComboBox combo, string? tag)
+    private static void SelectComboByTag(ComboBox combo, string? tag)
     {
-        if (string.IsNullOrEmpty(tag)) return false;
+        if (string.IsNullOrEmpty(tag)) return;
         for (int i = 0; i < combo.Items.Count; i++)
         {
             if (combo.Items[i] is ComboBoxItem item && item.Tag as string == tag)
             {
                 combo.SelectedIndex = i;
-                return true;
+                return;
             }
         }
-
-        return false;
     }
 
     public void UpdateFromGateway(JsonElement data)

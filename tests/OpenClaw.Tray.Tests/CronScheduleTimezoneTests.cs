@@ -47,9 +47,17 @@ public class CronScheduleTimezoneTests
         Assert.Contains("FormTimezone.SelectedIndex = -1", source, StringComparison.Ordinal);
         Assert.Contains("CronScheduleTimezone.ResolveSave", source, StringComparison.Ordinal);
         Assert.Contains("if (kind != \"cron\")", source, StringComparison.Ordinal);
+        var editMethod = ExtractMethod(source, "OnEditJobClick");
+        Assert.Contains("FormTimezone.SelectedIndex = -1", editMethod, StringComparison.Ordinal);
+        Assert.Contains("if (kind == \"cron\")", editMethod, StringComparison.Ordinal);
+        Assert.True(
+            editMethod.IndexOf("FormTimezone.SelectedIndex = -1", StringComparison.Ordinal)
+                < editMethod.IndexOf("if (kind == \"cron\")", StringComparison.Ordinal),
+            "Editing any job must clear the previous timezone selection before cron-specific initialization.");
         Assert.Contains("_preservedScheduleTz = null;", ExtractMethod(source, "OnScheduleKindChanged"), StringComparison.Ordinal);
         Assert.Contains("_preservedScheduleTz = null;", ExtractMethod(source, "OnFormCancelClick"), StringComparison.Ordinal);
         Assert.Contains("_preservedScheduleTz = null;", ExtractMethod(source, "ResetForm"), StringComparison.Ordinal);
+        Assert.Contains("_preservedScheduleTz = null;", ExtractMethod(source, "SaveFormAsync"), StringComparison.Ordinal);
     }
 
     private static string FindRepoRoot()
@@ -90,8 +98,15 @@ public class CronScheduleTimezoneTests
 
     private static string ExtractMethod(string source, string methodName)
     {
-        var marker = $"private void {methodName}";
-        var start = source.IndexOf(marker, StringComparison.Ordinal);
+        var markers = new[]
+        {
+            $"private void {methodName}",
+            $"private async Task {methodName}"
+        };
+        var marker = markers.FirstOrDefault(candidate => source.Contains(candidate, StringComparison.Ordinal));
+        Assert.NotNull(marker);
+
+        var start = source.IndexOf(marker!, StringComparison.Ordinal);
         Assert.True(start >= 0, $"Could not find {methodName}.");
 
         var brace = source.IndexOf('{', start);
