@@ -407,7 +407,9 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 PlaceholderFor(inputs.ConnectionState))
             .AutomationId("ChatComposerInput")
             .AutomationName(PlaceholderFor(inputs.ConnectionState))
-            .OnKeyDown((sender, args) =>
+            // Multiline TextBox consumes Enter before bubbling KeyDown. Handle
+            // composer shortcuts in preview so only Shift+Enter inserts a newline.
+            .OnPreviewKeyDown((sender, args) =>
             {
                 if (slashDisplay.IsVisible)
                 {

@@ -243,3 +243,10 @@ These commands restore and build the test projects when needed. Use `--no-restor
 ## License
 
 [MIT](LICENSE)
+
+## Managed Local AI profiles
+
+Local AI selects a compatible runtime/model profile for detected hardware and
+explains when it chooses a smaller profile. Windows x64 NVIDIA GPUs with 8 GiB
+VRAM can use the experimental Bonsai 2 27B profile. See
+[profile requirements and verified sources](docs/LOCAL_AI_PROFILES.md).
