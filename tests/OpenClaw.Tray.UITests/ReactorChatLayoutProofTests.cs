@@ -276,7 +276,8 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         const string edited = "Keep this newer draft";
         await WithChatAsync(800, async (surface, _, session, provider) =>
         {
-            provider.SendMessageGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            var sendMessageGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            provider.SendMessageGate = sendMessageGate;
             Task<bool>? sendTask = null;
             await ui.RunOnUIAsync(() =>
             {
@@ -284,15 +285,27 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 sendTask = session.Controller.SendAsync();
             });
 
-            await ui.RunOnUIAsync(() => session.ViewModel.SetDraft(edited));
-            provider.SendMessageGate.SetResult();
-            Assert.True(await sendTask!);
+            var renderRevisionAfterEdit = await ui.RunOnUIAsync(() =>
+            {
+                session.ViewModel.SetDraft(edited);
+                return Task.FromResult(session.ViewModel.RenderRevision);
+            });
+            try
+            {
+                sendMessageGate.SetResult();
+                Assert.True(await sendTask!);
+            }
+            finally
+            {
+                sendMessageGate.TrySetResult();
+            }
             await SettleAsync();
 
             await ui.RunOnUIAsync(() =>
             {
                 Assert.Equal(new[] { ("proof", submitted) }, provider.SentMessages);
                 Assert.Equal(edited, session.ViewModel.Draft);
+                Assert.Equal(renderRevisionAfterEdit + 2, session.ViewModel.RenderRevision);
                 Assert.Equal(edited, FindControl<TextBox>(surface, "ChatComposerInput").Text);
             });
             await CaptureAsync(surface, "Composer-inflight-edit-preserved");
@@ -2186,8 +2199,10 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         public async Task SendMessageAsync(string threadId, string message, CancellationToken cancellationToken = default)
         {
             SentMessages.Add((threadId, message));
-            if (SendMessageGate is not null)
-                await SendMessageGate.Task.WaitAsync(cancellationToken);
+            var sendMessageGate = SendMessageGate;
+            SendMessageGate = null;
+            if (sendMessageGate is not null)
+                await sendMessageGate.Task.WaitAsync(cancellationToken);
             if (scenario != "pending")
                 return;
             var snapshot = await LoadAsync(cancellationToken);
