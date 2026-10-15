@@ -7121,7 +7121,7 @@ Make sure the gateway is running.</value>
   <data name="LocalAiPage_UnavailableDetailsButton.Content" xml:space="preserve"><value>See why</value></data>
   <data name="LocalAiPage_UnavailableDetailsTip.Title" xml:space="preserve"><value>Why Local AI is unavailable</value></data>
   <data name="LocalAiPage_RecheckAvailabilityButton.Content" xml:space="preserve"><value>Recheck</value></data>
-  <data name="LocalAiPage_UnavailableRequirementsMessage" xml:space="preserve"><value>This device does not meet one or more Local AI requirements.</value></data>
+  <data name="LocalAiPage_UnavailableRequirementsMessage" xml:space="preserve"><value>No supported managed Local AI profile fits this device. See why for the limiting requirement.</value></data>
   <data name="LocalAiPage_UnavailableProbeMessage" xml:space="preserve"><value>OpenClaw could not verify Local AI requirements right now. Recheck after confirming the NVIDIA driver is available.</value></data>
   <data name="LocalAiPage_EngineHeading.Text" xml:space="preserve"><value>llama-server</value></data>
   <data name="LocalAiPage_VersionLabel.Text" xml:space="preserve"><value>Version</value></data>
@@ -7174,7 +7174,7 @@ Make sure the gateway is running.</value>
   <data name="LocalAi_Reason_RuntimeUnavailable" xml:space="preserve"><value>This Local AI release does not include a native llama-server runtime for the detected Windows architecture.</value></data>
   <data name="LocalAi_Reason_NoNvidiaGpu" xml:space="preserve"><value>No NVIDIA GPU was reported by the NVIDIA driver. Install or repair the NVIDIA driver, then try setup again.</value></data>
   <data name="LocalAi_Reason_UnknownModel" xml:space="preserve"><value>The selected model is not available in this Local AI release.</value></data>
-  <data name="LocalAi_Reason_HardwareFactsIncomplete" xml:space="preserve"><value>OpenClaw could not read a stable NVIDIA GPU identifier, memory, driver, or CUDA capability.</value></data>
+  <data name="LocalAi_Reason_HardwareFactsIncomplete" xml:space="preserve"><value>OpenClaw could not read all required GPU, system memory, or disk facts. Recheck to try again.</value></data>
   <data name="LocalAi_Reason_InsufficientGpuMemory" xml:space="preserve"><value>{0} requires {1} of GPU memory for model weights, KV cache, and runtime workspace. OpenClaw detected {2}.</value></data>
   <data name="LocalAi_Reason_DriverTooOld" xml:space="preserve"><value>NVIDIA driver {0} was detected. Local AI requires version {1} or newer.</value></data>
   <data name="LocalAi_Reason_CudaCapabilityTooLow" xml:space="preserve"><value>The NVIDIA driver does not provide CUDA 13 support. A separate CUDA Toolkit is not required.</value></data>
@@ -8014,4 +8014,7 @@ Your settings, gateway, files, and models stay where they are.</value>
   <data name="ChatPage_SetupCheckAgain.Content" xml:space="preserve">
     <value>Check again</value>
   </data>
+  <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>The preferred {0} profile does not fit this hardware. Setup can use {1} with {2:N0} context tokens. Review this profile in setup before installing.</value></data>
+  <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>This profile requires at least {0} of system RAM.</value></data>
+  <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>This profile requires at least {0} free on both the model cache and runtime volumes.</value></data>
 </root>

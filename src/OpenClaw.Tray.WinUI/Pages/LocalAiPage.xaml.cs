@@ -43,6 +43,12 @@ public sealed partial class LocalAiPage : Page
     {
         if (_viewModel is null)
             return;
+        LocalAiProfileSelectionText.Text = _viewModel.ProfileRecommendation is { } recommendation
+            ? LocalizationHelper.Format("LocalAi_ProfileFallback", recommendation.PreferredModelName,
+                recommendation.SelectedModelName, recommendation.ContextTokens)
+            : string.Empty;
+        LocalAiProfileSelectionText.Visibility = _viewModel.ProfileRecommendation is null
+            ? Visibility.Collapsed : Visibility.Visible;
         EngineStatusText.Text = LocalizationHelper.GetString(_viewModel.EngineStatusResourceKey);
         EngineOwnershipText.Text = LocalizationHelper.GetString(_viewModel.EngineOwnershipResourceKey);
         EngineVersionText.Text = _viewModel.EngineVersion ?? LocalizationHelper.GetString("LocalAiPage_Value_Unknown");
@@ -116,7 +122,7 @@ public sealed partial class LocalAiPage : Page
                     ? "LocalAiPage_UnavailableProbeMessage"
                     : "LocalAiPage_UnavailableRequirementsMessage");
         }
-        LocalAiRecheckAvailabilityButton.Visibility = _viewModel.HasAvailabilityProbeError
+        LocalAiRecheckAvailabilityButton.Visibility = _viewModel.CanRecheckAvailability
             ? Visibility.Visible
             : Visibility.Collapsed;
         LocalAiRecheckAvailabilityButton.IsEnabled = _viewModel.CanRecheckAvailability;
@@ -176,6 +182,10 @@ public sealed partial class LocalAiPage : Page
                 reason.DetectedGigabytes is { } detected
                     ? FormatGigabytes(detected)
                     : LocalizationHelper.GetString("LocalAi_Reason_UnknownMemoryAmount")),
+        LocalInferenceUnavailableReasonKind.InsufficientSystemMemory =>
+            LocalizationHelper.Format("LocalAi_Reason_InsufficientSystemMemory", FormatGigabytes(reason.RequiredSystemGigabytes)),
+        LocalInferenceUnavailableReasonKind.InsufficientDiskSpace =>
+            LocalizationHelper.Format("LocalAi_Reason_InsufficientDiskSpace", FormatGigabytes(reason.RequiredDiskGigabytes)),
         LocalInferenceUnavailableReasonKind.DriverTooOld =>
             LocalizationHelper.Format(
                 "LocalAi_Reason_DriverTooOld",

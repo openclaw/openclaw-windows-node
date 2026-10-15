@@ -506,6 +506,17 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Assert.Empty(input.Text);
                 Assert.Empty(session.ViewModel.Draft);
             });
+            // A second Enter must neither send again nor add a newline to the
+            // empty draft, including after the send has re-rendered the input.
+            await PressAsync(global::Windows.System.VirtualKey.Enter);
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Single(provider.SentMessages);
+                Assert.Empty(input.Text);
+                Assert.Empty(session.ViewModel.Draft);
+            });
+            if (start == 5 && length == 0)
+                await CaptureAsync(surface, "Composer-keyboard-enter-sent");
         }, interactiveKeyboard: true);
     }
 

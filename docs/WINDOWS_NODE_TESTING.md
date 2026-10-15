@@ -81,6 +81,60 @@ that entry is gone from its original bucket. Also check equal patterns in both
 buckets and adding a main rule while inheriting wildcard Full. These editor
 checks do not require executing a command and are not MXC containment proof.
 
+### Node Sandbox settings persistence
+
+Node containment (filesystem, network, clipboard, Windows UI compatibility,
+timeout, output limit, and sandbox/fallback switches) is saved in `settings.json`,
+not the gateway configuration or `exec-approvals.json`. The runtime reads the
+same app-owned settings.
+
+The build/release matrix in `.github\workflows\ci.yml`, `build.ps1`, and
+`installer.iss` uses the following profiles for both x64 and ARM64:
+
+| Distribution | Runtime identity | Settings profile |
+| --- | --- | --- |
+| GitHub `OpenClawCompanion-Setup-<arch>.exe` (Inno) | Release | `%APPDATA%\OpenClawTray\settings.json` |
+| GitHub `OpenClawTray-<version>-win-<arch>.zip` (portable executable and DLLs) | Release | Same release profile, not the extracted ZIP directory |
+| GitHub `OpenClaw-Dev-<arch>.zip` (signed MSIX, certificate, metadata, and `INSTALL.txt`) | Dev | `OpenClawTray-Dev` through Windows package storage |
+| Store `.msix` and multi-architecture `.msixbundle` (unsigned CI submission artifacts, signed by the Store) | Release | `OpenClawTray` through Windows package storage |
+| `OpenClaw-MigrationTest-<arch>.msix` (workflow-only, test-signed production package) | Release, despite "dev" in the workflow artifact name | Same Store identity/profile; use a disposable machine |
+| Local `-DevBuild` executable/publish output and `/DDevBuild=1` Inno installer with a matching Dev payload | Dev | `%APPDATA%\OpenClawTray-Dev\settings.json` |
+
+Stable and alpha describe the update/version channel, not the app identity.
+Both channels ship release-identity EXE/portable artifacts and Dev-identity MSIX
+ZIPs. Debug also defaults to release identity unless `DevBuild=true`.
+
+For MSIX, Windows can redirect the logical roaming path into
+`%LOCALAPPDATA%\Packages\<CompanionPackageFamilyName>\LocalCache\Roaming\<OpenClawTray-or-OpenClawTray-Dev>\settings.json`.
+Resolve the installed package family rather than hard-coding a publisher suffix.
+The app continues using the Windows roaming-folder API and its compiled profile
+name; do not scan and merge package-private and unpackaged copies. Store adoption
+is owned by the explicit migration flow described in [RELEASING.md](RELEASING.md).
+
+For isolated development runs, `%OPENCLAW_TRAY_DATA_DIR%\settings.json` overrides
+the profile for either identity. This is not a way to run production Store
+migration against scratch data; its admission guard rejects redirected paths.
+
+Use the profile of the running Companion, not an old unpackaged copy or the
+native Gateway's package. `exec-approvals.json` separately stores command
+approval policy in the app data directory, or `OPENCLAW_STATE_DIR` when set.
+A missing approval file is not evidence that sandbox settings were lost.
+
+For a persistence smoke, set a non-default command timeout (for example,
+95 seconds), navigate away and back, then restart the isolated app and reopen
+Node Sandbox. Confirm the displayed and persisted timeout stays at 95 seconds,
+and repeat with a preset and individual controls. Merely constructing the page
+must not save its XAML defaults over existing settings.
+
+`SettingsManagerIsolationTests` checks default compiled-identity routing,
+isolated overrides, persistence and runtime policy in ordinary and package-private
+directory layouts, and preservation of the other identity's settings.
+The normal tray suite runs release identity; CI recompiles these tests and the
+Sandbox page initialization guards with `-p:DevBuild=true` as a separate step.
+Directory-layout tests do not emulate MSIX virtualization or replace installed
+package proof. When validating deployment changes, repeat the smoke above on
+each installed package identity and the unpackaged executable.
+
 ### 1. Settings Toggle
 - Verify the toggle appears in Settings under "ADVANCED"
 - Verify it saves and persists across app restarts

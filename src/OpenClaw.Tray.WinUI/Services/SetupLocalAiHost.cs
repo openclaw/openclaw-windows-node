@@ -120,9 +120,25 @@ internal sealed class SetupLocalAiHost(
         catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException) { damaged = true; }
         progress?.Report(LocalAiSetupStage.CheckingHardware);
         var hardware = await probeHardware(ct);
-        var eligibility = install is null
-            ? LocalInferenceEligibility.Evaluate(hardware)
-            : LocalInferenceEligibility.EvaluateInstalled(hardware, install.Manifest.ModelCatalogId);
+        LocalInferenceEligibilityResult eligibility;
+        try
+        {
+            eligibility = install is null
+                ? LocalInferenceEligibility.Evaluate(hardware)
+                : string.Equals(install.Manifest.ModelCatalogId, LocalModelCatalog.NemotronBoltModelId, StringComparison.OrdinalIgnoreCase)
+                    ? LocalInferenceEligibility.EvaluateRecordedProfile(hardware,
+                        LlamaServerRouterConfiguration.ResolveInstalledPlan(install))
+                    : LocalInferenceEligibility.EvaluateInstalled(hardware, install.Manifest.ModelCatalogId);
+        }
+        catch (InvalidDataException) when (install is not null && string.Equals(
+            install.Manifest.ModelCatalogId, LocalModelCatalog.NemotronBoltModelId, StringComparison.OrdinalIgnoreCase))
+        {
+            // File repair retains qualified recipe pins. An unqualified receipt
+            // needs explicit recovery before it can authorize repair or model use.
+            return new(LocalAiOnboardingState.ManagementBlocked, target,
+                ReceiptIdentity: Identity(install), ReasonKey: "LocalOwnershipInvalid",
+                HasInstallationEvidence: true);
+        }
         bool verified = false;
         if (install is not null)
         {

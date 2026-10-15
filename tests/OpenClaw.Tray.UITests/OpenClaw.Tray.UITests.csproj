@@ -26,6 +26,7 @@
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
     <RootNamespace>OpenClaw.Tray.UITests</RootNamespace>
+    <DefineConstants Condition="'$(LocalAiProofBaseline)' == 'true'">$(DefineConstants);LOCAL_AI_BASELINE</DefineConstants>
 
     <!-- System.Drawing.Common 4.7.0 advisory comes in transitively via the
          Tray.WinUI ProjectReference. The main project warns; we don't want it
@@ -71,6 +72,8 @@
     <Copy SourceFiles="@(_TrayTestResourceRoot->'%(RootDir)%(Directory)Windows\StoreMigrationWindow.xbf')"
           DestinationFolder="$(TargetDir)Windows" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_TrayTestResourceRoot->'%(RootDir)%(Directory)Pages\ChatPage.xbf')"
+          DestinationFolder="$(TargetDir)Pages" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_TrayTestResourceRoot->'%(RootDir)%(Directory)Pages\LocalAiPage.xbf')"
           DestinationFolder="$(TargetDir)Pages" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_TrayTestResourceRoot->'%(RootDir)%(Directory)OpenClaw.Tray.WinUI.pri')"
           DestinationFiles="$(TargetDir)resources.pri" SkipUnchangedFiles="true" />
