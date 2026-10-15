@@ -803,9 +803,6 @@ Use one of these options:
   <data name="ExecApproval_ArmHint" xml:space="preserve">
     <value>Allow becomes available in a moment</value>
   </data>
-  <data name="ExecApproval_ScrollHint" xml:space="preserve">
-    <value>Scroll to the end of the command before allowing</value>
-  </data>
   <data name="ExecApproval_ConfusableWarning" xml:space="preserve">
     <value>This command mixes character sets and may not read the way it looks. Check it carefully.</value>
   </data>

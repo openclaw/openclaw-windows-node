@@ -762,9 +762,6 @@ Utilisez l'une de ces options :
   <data name="ExecApproval_ArmHint" xml:space="preserve">
     <value>L'autorisation sera disponible dans un instant</value>
   </data>
-  <data name="ExecApproval_ScrollHint" xml:space="preserve">
-    <value>Faites défiler jusqu'à la fin de la commande avant d'autoriser</value>
-  </data>
   <data name="ExecApproval_ConfusableWarning" xml:space="preserve">
     <value>Cette commande mélange des jeux de caractères et peut ne pas être ce qu'elle paraît. Vérifiez-la attentivement.</value>
   </data>

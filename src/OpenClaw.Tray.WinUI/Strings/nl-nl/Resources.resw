@@ -763,9 +763,6 @@ Gebruik een van deze opties:
   <data name="ExecApproval_ArmHint" xml:space="preserve">
     <value>Toestaan is zo dadelijk beschikbaar</value>
   </data>
-  <data name="ExecApproval_ScrollHint" xml:space="preserve">
-    <value>Scroll naar het einde van de opdracht voordat u toestaat</value>
-  </data>
   <data name="ExecApproval_ConfusableWarning" xml:space="preserve">
     <value>Deze opdracht mengt tekensets en is mogelijk niet wat het lijkt. Controleer hem zorgvuldig.</value>
   </data>

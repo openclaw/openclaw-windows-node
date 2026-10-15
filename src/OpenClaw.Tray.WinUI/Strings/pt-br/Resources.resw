@@ -803,9 +803,6 @@ Use uma destas opções:
   <data name="ExecApproval_ArmHint" xml:space="preserve">
     <value>A opção Permitir ficará disponível em instantes</value>
   </data>
-  <data name="ExecApproval_ScrollHint" xml:space="preserve">
-    <value>Role até o final do comando antes de permitir sua execução</value>
-  </data>
   <data name="ExecApproval_ConfusableWarning" xml:space="preserve">
     <value>Este comando mistura conjuntos de caracteres e pode não ser exibido como parece. Verifique-o cuidadosamente.</value>
   </data>

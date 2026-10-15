@@ -762,9 +762,6 @@
   <data name="ExecApproval_ArmHint" xml:space="preserve">
     <value>允許按鈕稍後可用</value>
   </data>
-  <data name="ExecApproval_ScrollHint" xml:space="preserve">
-    <value>請捲動至命令結尾後再允許</value>
-  </data>
   <data name="ExecApproval_ConfusableWarning" xml:space="preserve">
     <value>此命令混用了不同的字元集，可能與其外觀不符。請仔細核對。</value>
   </data>
