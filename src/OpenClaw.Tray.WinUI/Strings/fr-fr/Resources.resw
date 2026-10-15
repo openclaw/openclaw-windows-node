@@ -6533,7 +6533,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Les commandes s'exécuteront sur l'hôte sans protection de sandbox tant que le sandboxing est indisponible.</value>
   </data>
   <data name="SandboxPage_UnavailableBehaviorBlocked" xml:space="preserve">
-    <value>Les commandes sont bloquées tant que le sandboxing est indisponible, car le blocage strict du repli est activé.</value>
+    <value>Le Sandbox du nœud est activé. Les commandes sont bloquées jusqu'à ce que le confinement soit disponible.</value>
   </data>
   <data name="SandboxPage_ProbeErrorTitle" xml:space="preserve">
     <value>Impossible de vérifier la disponibilité du sandbox</value>
@@ -7939,4 +7939,40 @@ Vos paramètres, votre passerelle, vos fichiers et vos modèles restent en place
   <data name="SandboxPage_OneDriveNotIncluded" xml:space="preserve"><value>Aucune racine OneDrive configurée disponible n'a été résolue. Aucun emplacement OneDrive supplémentaire n'est inclus.</value></data>
   <data name="SandboxPage_WindowsCompatibilityTitle" xml:space="preserve"><value>Isolation Windows indisponible : commandes sans isolation</value></data>
   <data name="SandboxPage_WindowsCompatibilityText" xml:space="preserve"><value>Cette version de Windows ne fournit pas l'isolation MXC requise. Les commandes approuvées s'exécutent directement sur cet ordinateur. Les restrictions de fichiers, de réseau, de presse-papiers et d'interface Windows ne sont pas appliquées. Les autorisations enregistrées sont conservées et les approbations de commandes restent actives. Mettez Windows à jour pour activer l'isolation. La version minimale de Windows requise par Companion reste applicable.</value></data>
+  <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
+    <value>Sandbox du nœud</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_OpenSettings" xml:space="preserve">
+    <value>Paramètres du bac à sable</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Available" xml:space="preserve">
+    <value>Disponible</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Compatibility" xml:space="preserve">
+    <value>Compatibilité</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Unavailable" xml:space="preserve">
+    <value>Indisponible</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Disabled" xml:space="preserve">
+    <value>Outils désactivés</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Checking" xml:space="preserve">
+    <value>Vérification</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_AvailableDescription" xml:space="preserve">
+    <value>Windows prend en charge le sandboxing. Chaque commande est vérifiée avant son exécution.</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_CompatibilityDescription" xml:space="preserve">
+    <value>Cette version de Windows ne prend pas en charge le sandboxing. Les commandes approuvées s'exécutent sans cette protection.</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_UnavailableDescription" xml:space="preserve">
+    <value>Le sandboxing n'a pas pu être vérifié. Les commandes sont bloquées.</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_DisabledDescription" xml:space="preserve">
+    <value>Les outils système sont désactivés. Aucune commande ne peut s'exécuter sur ce nœud.</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_CheckingDescription" xml:space="preserve">
+    <value>Vérification de la prise en charge du sandboxing Windows.</value>
+  </data>
 </root>

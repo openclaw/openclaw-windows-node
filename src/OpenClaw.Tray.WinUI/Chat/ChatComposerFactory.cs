@@ -5,12 +5,15 @@ using System;
 namespace OpenClawTray.Chat;
 
 /// <summary>
-/// Production <see cref="IChatComposerFactory"/>. Stateless apart from the injected,
-/// App-owned <see cref="IUiDispatcher"/> singleton; starts no background work.
+/// Production <see cref="IChatComposerFactory"/>. Borrows shared presentation
+/// services; each session owns its settings subscription.
 /// </summary>
-internal sealed class ChatComposerFactory(IUiDispatcher dispatcher) : IChatComposerFactory
+internal sealed class ChatComposerFactory(
+    IUiDispatcher dispatcher, ISettingsStore settingsStore, SandboxStatusStore sandboxStatus) : IChatComposerFactory
 {
     private readonly IUiDispatcher _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
+    private readonly ISettingsStore _settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
+    private readonly SandboxStatusStore _sandboxStatus = sandboxStatus ?? throw new ArgumentNullException(nameof(sandboxStatus));
 
     public ChatComposerSession Create(
         IChatDataProvider provider,
@@ -23,6 +26,6 @@ internal sealed class ChatComposerFactory(IUiDispatcher dispatcher) : IChatCompo
         var port = new ChatComposerRuntimePort(provider);
         var viewModel = new ChatComposerViewModel(_dispatcher, initialSpeakerMuted);
         var controller = new ChatComposerController(viewModel, port, hostActions);
-        return new ChatComposerSession(viewModel, controller, hostActions);
+        return new ChatComposerSession(viewModel, controller, hostActions, _settingsStore, _sandboxStatus);
     }
 }

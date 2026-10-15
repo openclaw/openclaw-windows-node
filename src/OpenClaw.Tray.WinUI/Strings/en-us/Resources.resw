@@ -6537,7 +6537,7 @@ Make sure the gateway is running.</value>
     <value>Commands will run on the host without sandbox protection while sandboxing is unavailable.</value>
   </data>
   <data name="SandboxPage_UnavailableBehaviorBlocked" xml:space="preserve">
-    <value>Commands are blocked while sandboxing is unavailable because strict fallback blocking is enabled.</value>
+    <value>Node Sandbox is on. Commands are blocked until containment is available.</value>
   </data>
   <data name="SandboxPage_ProbeErrorTitle" xml:space="preserve">
     <value>Couldn't verify sandbox availability</value>
@@ -8006,4 +8006,40 @@ Your settings, gateway, files, and models stay where they are.</value>
   <data name="SandboxPage_OneDriveNotIncluded" xml:space="preserve"><value>No available configured OneDrive root was resolved. No additional OneDrive location is included.</value></data>
   <data name="SandboxPage_WindowsCompatibilityTitle" xml:space="preserve"><value>Windows containment unavailable: commands run uncontained</value></data>
   <data name="SandboxPage_WindowsCompatibilityText" xml:space="preserve"><value>This Windows version cannot provide the required MXC containment. Approved commands run directly on this computer. Sandbox file, network, clipboard and Windows UI restrictions are not enforced. Saved permissions are preserved and command approvals remain active. Update Windows to enable containment. Companion's own minimum Windows version still applies.</value></data>
+  <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
+    <value>Node Sandbox</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_OpenSettings" xml:space="preserve">
+    <value>Sandbox settings</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Available" xml:space="preserve">
+    <value>Available</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Compatibility" xml:space="preserve">
+    <value>Compatibility</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Unavailable" xml:space="preserve">
+    <value>Unavailable</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Disabled" xml:space="preserve">
+    <value>Tools off</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Checking" xml:space="preserve">
+    <value>Checking</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_AvailableDescription" xml:space="preserve">
+    <value>Windows supports sandboxing. Each command is checked before it runs.</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_CompatibilityDescription" xml:space="preserve">
+    <value>This Windows version does not support sandboxing. Approved commands run without it.</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_UnavailableDescription" xml:space="preserve">
+    <value>Sandboxing could not be verified. Commands are blocked.</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_DisabledDescription" xml:space="preserve">
+    <value>System tools are off. Commands cannot run on this node.</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_CheckingDescription" xml:space="preserve">
+    <value>Checking Windows sandbox support.</value>
+  </data>
 </root>

@@ -6533,7 +6533,7 @@
     <value>在沙箱無法使用期間，命令將在主機上執行，且沒有沙箱保護。</value>
   </data>
   <data name="SandboxPage_UnavailableBehaviorBlocked" xml:space="preserve">
-    <value>由於已啟用嚴格回退封鎖，沙箱無法使用期間命令會被封鎖。</value>
+    <value>節點沙箱已開啟。命令會被封鎖，直到隔離可用。</value>
   </data>
   <data name="SandboxPage_ProbeErrorTitle" xml:space="preserve">
     <value>無法驗證沙箱可用性</value>
@@ -7939,4 +7939,40 @@
   <data name="SandboxPage_OneDriveNotIncluded" xml:space="preserve"><value>未解析到已設定且可用的 OneDrive 根目錄。不包括額外的 OneDrive 位置。</value></data>
   <data name="SandboxPage_WindowsCompatibilityTitle" xml:space="preserve"><value>Windows 隔離無法使用：命令將在未隔離環境中執行</value></data>
   <data name="SandboxPage_WindowsCompatibilityText" xml:space="preserve"><value>此 Windows 版本無法提供所需的 MXC 隔離。已核准的命令將直接在此電腦上執行。沙箱檔案、網路、剪貼簿及 Windows 介面限制不會生效。已儲存的權限會保留，命令核准仍然有效。請更新 Windows 以啟用隔離。Companion 本身的最低 Windows 版本要求仍然適用。</value></data>
+  <data name="Chat_Composer_Sandbox_Title" xml:space="preserve">
+    <value>節點沙箱</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_OpenSettings" xml:space="preserve">
+    <value>沙盒設定</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Available" xml:space="preserve">
+    <value>可用</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Compatibility" xml:space="preserve">
+    <value>相容模式</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Unavailable" xml:space="preserve">
+    <value>無法使用</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Disabled" xml:space="preserve">
+    <value>工具已關閉</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_Checking" xml:space="preserve">
+    <value>正在檢查</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_AvailableDescription" xml:space="preserve">
+    <value>Windows 支援沙箱。每個命令都會在執行前接受檢查。</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_CompatibilityDescription" xml:space="preserve">
+    <value>此 Windows 版本不支援沙箱。已核准的命令將在沙箱外執行。</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_UnavailableDescription" xml:space="preserve">
+    <value>無法驗證沙箱。命令已遭封鎖。</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_DisabledDescription" xml:space="preserve">
+    <value>系統工具已關閉。命令無法在此節點上執行。</value>
+  </data>
+  <data name="Chat_Composer_Sandbox_CheckingDescription" xml:space="preserve">
+    <value>正在檢查 Windows 沙箱支援。</value>
+  </data>
 </root>
