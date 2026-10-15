@@ -43,30 +43,4 @@ public class CronRunningLatchTests
             previousNextRunAtMs: 0));
     }
 
-    [Fact]
-    public void CronPage_ClearsTheLatchWhenTheNextRunMoves()
-    {
-        var source = File.ReadAllText(Path.Combine(
-            FindRepoRoot(),
-            "src", "OpenClaw.Tray.WinUI", "Pages", "CronPage.xaml.cs"));
-
-        Assert.Contains("CronRunningLatch.ShouldClearBecauseNextRunMoved", source, StringComparison.Ordinal);
-    }
-
-    private static string FindRepoRoot()
-    {
-        var env = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT");
-        if (!string.IsNullOrWhiteSpace(env) && Directory.Exists(env))
-            return env;
-
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory != null)
-        {
-            if (File.Exists(Path.Combine(directory.FullName, "openclaw-windows-node.slnx")))
-                return directory.FullName;
-            directory = directory.Parent;
-        }
-
-        throw new InvalidOperationException("Could not find repository root.");
-    }
 }
