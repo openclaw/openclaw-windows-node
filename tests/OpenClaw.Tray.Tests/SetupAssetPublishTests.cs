@@ -12,28 +12,39 @@ public sealed class SetupAssetPublishTests
         var root = TestRepositoryPaths.GetRepositoryRoot();
         var trayDirectory = Path.Combine(root, "src", "OpenClaw.Tray.WinUI");
         var sourceDirectory = Path.Combine(trayDirectory, "Assets", "Setup");
-        var setupProject = XDocument.Load(Path.Combine(
-            root,
-            "src",
-            "OpenClaw.SetupEngine.UI",
-            "OpenClaw.SetupEngine.UI.csproj"));
-        var target = new XElement(Assert.Single(setupProject.Root!.Elements("Target"),
-            element => (string?)element.Attribute("Name") == "CopySetupAssetsAfterResourceBuild"));
-        Assert.Equal("Build", (string?)target.Attribute("AfterTargets"));
+        var trayProject = XDocument.Load(Path.Combine(trayDirectory, "OpenClaw.Tray.WinUI.csproj"));
+        var target = new XElement(Assert.Single(trayProject.Root!.Elements("Target"),
+            element => (string?)element.Attribute("Name") == "UseSourceSetupAssetsForPriConsumerCopy"));
+        Assert.Equal("AddPriPayloadFilesToCopyToOutputDirectoryItems", (string?)target.Attribute("AfterTargets"));
 
         using var temp = new TempDirectory();
         var outputDirectory = temp.Combine("output");
         var harnessPath = temp.Combine("build-assets.proj");
-        target.Descendants("_SetupAssetOutputSource").Single()
+        var missingGeneratedAsset = temp.Combine("missing-generated-provider-icon.svg");
+        target.Descendants("_SetupPriAssetSource").Single()
             .SetAttributeValue("Include", Path.Combine(sourceDirectory, "**", "*"));
         new XDocument(new XElement("Project",
             new XElement("PropertyGroup",
-                new XElement("TargetDir", outputDirectory + Path.DirectorySeparatorChar),
-                new XElement("AssemblyName", "OpenClaw.SetupEngine.UI")),
-            target)).Save(harnessPath);
+                new XElement("OutputDirectory", outputDirectory + Path.DirectorySeparatorChar)),
+            new XElement("ItemGroup",
+                new XElement("_AllChildProjectItemsWithTargetPath",
+                    new XAttribute("Include", missingGeneratedAsset),
+                    new XElement("TargetPath",
+                        @"OpenClaw.SetupEngine.UI\Assets\Setup\ProviderIcons\ProviderIcon-claude.svg"),
+                    new XElement("CopyToOutputDirectory", "PreserveNewest"))),
+            target,
+            new XElement("Target",
+                new XAttribute("Name", "CopyResolvedSetupAssets"),
+                new XAttribute("DependsOnTargets", "UseSourceSetupAssetsForPriConsumerCopy"),
+                new XElement("Copy",
+                    new XAttribute("SourceFiles", "@(_AllChildProjectItemsWithTargetPath)"),
+                    new XAttribute("DestinationFiles",
+                        "@(_AllChildProjectItemsWithTargetPath->'$(OutputDirectory)%(TargetPath)')")))))
+            .Save(harnessPath);
 
-        await RunTargetAsync(root, harnessPath, "CopySetupAssetsAfterResourceBuild");
-        AssertSetupAssetsCopied(sourceDirectory, outputDirectory);
+        await RunTargetAsync(root, harnessPath, "CopyResolvedSetupAssets");
+        AssertSetupAssetsCopied(sourceDirectory,
+            Path.Combine(outputDirectory, "OpenClaw.SetupEngine.UI", "Assets", "Setup"));
     }
 
     [Fact]
@@ -60,7 +71,9 @@ public sealed class SetupAssetPublishTests
             target)).Save(harnessPath);
 
         await RunTargetAsync(root, harnessPath, "CopySetupAssetsLooseForPublish");
-        AssertSetupAssetsCopied(sourceDirectory, publishDirectory);
+        AssertSetupAssetsCopied(sourceDirectory,
+            Path.Combine(publishDirectory, "Assets", "Setup"),
+            Path.Combine(publishDirectory, "OpenClaw.SetupEngine.UI", "Assets", "Setup"));
     }
 
     private static async Task RunTargetAsync(string root, string harnessPath, string targetName)
@@ -100,7 +113,7 @@ public sealed class SetupAssetPublishTests
         Assert.True(process.ExitCode == 0, $"{await stdout}\n{await stderr}");
     }
 
-    private static void AssertSetupAssetsCopied(string sourceDirectory, string outputDirectory)
+    private static void AssertSetupAssetsCopied(string sourceDirectory, params string[] assetRoots)
     {
         var images = Directory.GetFiles(sourceDirectory, "*", SearchOption.AllDirectories);
         Assert.NotEmpty(images);
@@ -109,11 +122,7 @@ public sealed class SetupAssetPublishTests
         foreach (var source in images)
         {
             var relativePath = Path.GetRelativePath(sourceDirectory, source);
-            foreach (var assetRoot in new[]
-            {
-                Path.Combine(outputDirectory, "Assets", "Setup"),
-                Path.Combine(outputDirectory, "OpenClaw.SetupEngine.UI", "Assets", "Setup"),
-            })
+            foreach (var assetRoot in assetRoots)
             {
                 var published = Path.Combine(assetRoot, relativePath);
                 Assert.True(File.Exists(published), $"Published setup asset is missing: {published}");
