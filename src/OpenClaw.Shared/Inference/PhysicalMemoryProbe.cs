@@ -6,6 +6,9 @@ namespace OpenClaw.Shared.Inference;
 /// <summary>Installed and currently-free physical memory, in bytes.</summary>
 public readonly record struct PhysicalMemorySnapshot(long TotalBytes, long AvailableBytes)
 {
+    /// <summary>Additional memory this process can commit, bounded by the Windows commit limit.</summary>
+    public long? AvailableCommitBytes { get; init; }
+
     /// <summary>Percentage of physical memory currently in use, rounded to one decimal.</summary>
     public double UsagePercent => TotalBytes > 0
         ? Math.Round((1.0 - (double)AvailableBytes / TotalBytes) * 100, 1)
@@ -30,7 +33,10 @@ public static class PhysicalMemoryProbe
         if (!GlobalMemoryStatusEx(ref status))
             throw new InvalidOperationException("GlobalMemoryStatusEx failed");
 
-        return new PhysicalMemorySnapshot((long)status.ullTotalPhys, (long)status.ullAvailPhys);
+        return new PhysicalMemorySnapshot((long)status.ullTotalPhys, (long)status.ullAvailPhys)
+        {
+            AvailableCommitBytes = (long)status.ullAvailPageFile,
+        };
     }
 
     /// <summary>

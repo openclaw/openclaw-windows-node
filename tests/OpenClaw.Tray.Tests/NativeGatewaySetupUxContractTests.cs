@@ -377,7 +377,12 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.Contains("owner.AuthorizeAsync", adapter);
         Assert.Contains("NativeGatewaySetupSession.GetPairingGuidance(requestId)", adapter);
         Assert.Contains("await owner.ApproveWizardPairingAsync(error.RequestId, linked.Token)", adapter);
-        Assert.Contains("allowPairing && attempt == 0", adapter);
+        // Pairing and device-token recovery are each budgeted once per connect sequence,
+        // and recovery never runs on the finalization path (allowPairing: false).
+        Assert.Contains("allowPairing && !pairingAttempted", adapter);
+        Assert.Contains("allowPairing && !recoveryAttempted", adapter);
+        Assert.Contains("observedFailure == GatewayErrorKind.DeviceTokenMismatch", adapter);
+        Assert.Contains("await owner.RecoverRejectedOperatorTokenAsync(storedDeviceToken, linked.Token)", adapter);
         var nativeConnection = adapter[
             adapter.IndexOf("private static async Task<NativeGatewaySetupConnection> ConnectCoreAsync", StringComparison.Ordinal)..
             adapter.IndexOf("public async Task<JsonElement> RequestAsync", StringComparison.Ordinal)];
@@ -614,5 +619,7 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.Contains("\"Microsoft\", \"WindowsApps\", family", source);
         Assert.DoesNotContain("AddPackageAsync", source);
         Assert.DoesNotContain("Add-AppxPackage", source);
+        Assert.Contains("NativeGatewayDataPathMapper.Resolve(", source);
+        Assert.DoesNotContain("LogFileLauncher.ResolveRealPath", source);
     }
 }

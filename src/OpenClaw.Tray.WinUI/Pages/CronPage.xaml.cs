@@ -381,6 +381,7 @@ public sealed partial class CronPage : Page
         RestoreFormFromInline();
         JobFormPanel.Visibility = Visibility.Collapsed;
         _editingJobId = null;
+        _preservedScheduleTz = null;
     }
 
     private void OnFormSaveClick(object sender, RoutedEventArgs e) =>
@@ -534,6 +535,7 @@ public sealed partial class CronPage : Page
             RestoreFormFromInline();
             JobFormPanel.Visibility = Visibility.Collapsed;
             _editingJobId = null;
+            _preservedScheduleTz = null;
             JobCompletedInfoBar.Title = string.Empty;
             JobCompletedInfoBar.Message = LocalizationHelper.GetString("WorkspaceShell_AutomationSubmitted");
             JobCompletedInfoBar.Severity = InfoBarSeverity.Informational;
@@ -554,6 +556,8 @@ public sealed partial class CronPage : Page
     private void OnScheduleKindChanged(object sender, SelectionChangedEventArgs e)
     {
         var kind = GetSelectedTag(FormScheduleKind) ?? "cron";
+        if (kind != "cron")
+            _preservedScheduleTz = null;
         UpdateScheduleFieldVisibility(kind);
     }
 
@@ -986,6 +990,13 @@ public sealed partial class CronPage : Page
                         ClearRunningJob(vm.Id);
                         if (_historyJobId == vm.Id && CurrentApp.GatewayClient != null)
                             _ = CurrentApp.GatewayClient.RequestCronRunsAsync(vm.Id, limit: 20, offset: 0);
+                    }
+                    else if (oldVm != null && CronRunningLatch.ShouldClearBecauseNextRunMoved(
+                        vm.RunningAtMs,
+                        vm.NextRunAtMs,
+                        oldVm.NextRunAtMs))
+                    {
+                        ClearRunningJob(vm.Id);
                     }
                 }
             }

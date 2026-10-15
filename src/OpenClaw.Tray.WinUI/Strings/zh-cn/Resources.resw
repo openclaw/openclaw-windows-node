@@ -356,6 +356,12 @@
   <data name="Update_Title_Failed" xml:space="preserve">
     <value>无法检查更新</value>
   </data>
+  <data name="Update_Message_Unavailable" xml:space="preserve">
+    <value>Automatic updates are unavailable because an updater component could not be loaded. You can keep using OpenClaw and download updates from the official releases page.</value>
+  </data>
+  <data name="Update_ManualDownload" xml:space="preserve">
+    <value>Open official releases</value>
+  </data>
   <data name="Update_Message_Failed" xml:space="preserve">
     <value>检查更新时出错。
 
@@ -3333,6 +3339,9 @@
   </data>
   <data name="Chat_Error_SendFailedFormat" xml:space="preserve">
     <value>发送失败：{0}</value>
+  </data>
+  <data name="Chat_Error_ConnectionDroppedBeforeGatewayAcceptedMessage" xml:space="preserve">
+    <value>网关接受此消息前连接已中断。</value>
   </data>
   <data name="Chat_Notification_AbortFailed" xml:space="preserve">
     <value>中止失败</value>
@@ -7951,4 +7960,7 @@
   <data name="ChatPage_SetupCheckAgain.Content" xml:space="preserve">
     <value>再次检查</value>
   </data>
+  <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>首选的 {0} 配置不适合此硬件。设置可使用 {1}，上下文为 {2:N0} 个令牌。安装前请在设置中查看此配置。</value></data>
+  <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>此配置至少需要 {0} 系统内存。</value></data>
+  <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>此配置要求模型缓存和运行时所在的卷都至少有 {0} 可用空间。</value></data>
 </root>

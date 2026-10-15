@@ -163,16 +163,34 @@ internal sealed class ChatComposerViewModel : INotifyPropertyChanged, IDisposabl
 
     public void ClearDraft()
     {
-        Mutate(() =>
+        Mutate(() => ApplyClearDraft());
+    }
+
+    /// <summary>
+    /// Clears the draft only if no edit queued ahead of this call changed it.
+    /// The revision check runs inside the mutation, after those edits apply.
+    /// </summary>
+    public void ClearDraftIfUnchanged(long submittedRevision)
+    {
+        MutateIfChanged(() =>
         {
-            _draftRevision++;
-            _draft = string.Empty;
-            _slashMenuState = ReactorSlashCommandController.ReconcileState(
-                _draft,
-                _inputs?.AvailableCommands,
-                _slashMenuState);
-            RecomputeSlashDisplay();
+            if (!ChatComposerSubmissionPolicy.ShouldClearInput(submittedRevision, _draftRevision))
+                return false;
+
+            ApplyClearDraft();
+            return true;
         });
+    }
+
+    private void ApplyClearDraft()
+    {
+        _draftRevision++;
+        _draft = string.Empty;
+        _slashMenuState = ReactorSlashCommandController.ReconcileState(
+            _draft,
+            _inputs?.AvailableCommands,
+            _slashMenuState);
+        RecomputeSlashDisplay();
     }
 
     public void AppendVoiceTranscript(string transcript)

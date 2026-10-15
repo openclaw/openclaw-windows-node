@@ -377,6 +377,98 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
+    public async Task ReconnectKeepsDefinitelyUnsentQueuedMessageFailedAndVisible()
+    {
+        var scenario = GatewayScenario.CreateBrowse(allowChatSend: true);
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            await SelectSessionAsync(
+                run,
+                GatewayScenario.MainTitle,
+                GatewayScenario.MainSessionKey);
+            run.Gateway.HoldChatSends();
+
+            var activeSend = run.InvokeAsync("app.chat.send", new
+            {
+                threadId = GatewayScenario.MainSessionKey,
+                message = "active-1669-current-head"
+            });
+            await run.Gateway.WaitForRequestAsync(
+                "chat.send",
+                GatewayScenario.MainSessionKey);
+            await run.InvokeAsync("app.chat.send", new
+            {
+                threadId = GatewayScenario.MainSessionKey,
+                message = "queued-1669-current-head"
+            });
+
+            JsonElement queued = default;
+            await run.WaitForAsync(async () =>
+            {
+                var result = await run.InvokeAsync("app.chat.queue.list", new
+                {
+                    threadId = GatewayScenario.MainSessionKey
+                });
+                queued = result.GetProperty("selectedThread")
+                    .GetProperty("messages")
+                    .EnumerateArray()
+                    .SingleOrDefault(message =>
+                        message.GetProperty("text").GetString() ==
+                        "queued-1669-current-head");
+                return queued.ValueKind == JsonValueKind.Object &&
+                       queued.GetProperty("sendState").GetString() == "Queued";
+            }, "queued message visible before reconnect");
+            var queuedId = queued.GetProperty("id").GetString()!;
+            await WaitUiAsync(
+                run,
+                () => FindById(run, $"ChatQueuedMessage_{queuedId}") is not null,
+                "queued message card before reconnect");
+            await CaptureIfRequestedAsync(run, "reconnect-queued-before.png");
+
+            await run.Gateway.CloseConnectionsAsync();
+            run.Gateway.ReleaseChatSends();
+            _ = await activeSend;
+
+            await run.WaitForAsync(async () =>
+            {
+                var status = await run.InvokeAsync("app.status");
+                return status.GetProperty("operatorState").GetString() ==
+                    "Connected";
+            }, "fixture reconnect");
+            await run.WaitForAsync(async () =>
+            {
+                var result = await run.InvokeAsync("app.chat.queue.list", new
+                {
+                    threadId = GatewayScenario.MainSessionKey
+                });
+                queued = result.GetProperty("selectedThread")
+                    .GetProperty("messages")
+                    .EnumerateArray()
+                    .SingleOrDefault(message =>
+                        message.GetProperty("id").GetString() == queuedId);
+                return queued.ValueKind == JsonValueKind.Object &&
+                       queued.GetProperty("sendState").GetString() == "Failed";
+            }, "queued message failed after reconnect");
+
+            Assert.Equal(
+                "The connection dropped before the gateway accepted this message.",
+                queued.GetProperty("errorText").GetString());
+            Assert.Single(
+                run.Gateway.Requests,
+                request => request.Method == "chat.send");
+            await WaitUiAsync(
+                run,
+                () => FindById(
+                    run,
+                    $"ChatQueuedMessageRemoveFailed_{queuedId}") is not null,
+                "failed queued message remove action");
+            await CaptureIfRequestedAsync(run, "reconnect-queued-after.png");
+        }, scenario: scenario);
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
     public async Task LateHistoryForPreviousSessionCannotReplaceSelectedTranscript()
     {
         await WithAppAsync(async run =>

@@ -71,11 +71,15 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
         NativeGatewaySetupSession owner, Func<CancellationToken, Task> authorize, bool allowPairing, CancellationToken ct)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, owner.LifetimeToken);
-        for (var attempt = 0; attempt < 2; attempt++)
+        var pairingAttempted = false;
+        var recoveryAttempted = false;
+        // Worst case: rejected device token -> retire it -> shared credential -> pairing approval -> connected.
+        for (var attempt = 0; attempt < 3; attempt++)
         {
             linked.Token.ThrowIfCancellationRequested();
             owner.RequireCurrentProfile();
-            var token = DeviceIdentity.TryReadStoredDeviceToken(owner.IdentityDirectory)
+            var storedDeviceToken = DeviceIdentity.TryReadStoredDeviceToken(owner.IdentityDirectory);
+            var token = storedDeviceToken
                 ?? owner.Record.SharedGatewayToken
                 ?? throw new InvalidOperationException("No native Gateway credential found.");
             var client = new OpenClawGatewayClient(owner.Record.Url, token,
@@ -87,6 +91,10 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
                 return ReconnectAuthorizationResult.AllowedResult;
             };
             var connected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            // The gateway reports a typed failure kind before the terminal error status,
+            // so recovery keys off the authoritative code rather than error text.
+            GatewayErrorKind? observedFailure = null;
+            void ConnectionFailure(object? sender, GatewayErrorKind kind) => observedFailure ??= kind;
             void StatusChanged(object? sender, ConnectionStatus status)
             {
                 if (status == ConnectionStatus.Connected) connected.TrySetResult();
@@ -95,6 +103,7 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
             }
             void PairingRequired(object? sender, string? requestId) =>
                 connected.TrySetException(new NativePairingException(requestId));
+            client.ConnectionFailure += ConnectionFailure;
             client.StatusChanged += StatusChanged;
             client.PairingRequired += PairingRequired;
             using var cancellation = linked.Token.Register(client.Dispose);
@@ -105,10 +114,23 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
                 linked.Token.ThrowIfCancellationRequested();
                 return new(owner, client, authorize);
             }
-            catch (NativePairingException error) when (allowPairing && attempt == 0)
+            catch (NativePairingException error) when (allowPairing && !pairingAttempted)
             {
+                pairingAttempted = true;
                 client.Dispose();
                 await owner.ApproveWizardPairingAsync(error.RequestId, linked.Token);
+            }
+            catch (Exception error) when (
+                allowPairing && !recoveryAttempted && storedDeviceToken is not null &&
+                error is not OperationCanceledException &&
+                observedFailure == GatewayErrorKind.DeviceTokenMismatch)
+            {
+                recoveryAttempted = true;
+                client.Dispose();
+                // Retire only this rejected operator credential; the shared setup token
+                // then re-pairs the unchanged device identity on the next attempt.
+                if (!await owner.RecoverRejectedOperatorTokenAsync(storedDeviceToken, linked.Token))
+                    throw;
             }
             catch
             {
@@ -117,6 +139,7 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
             }
             finally
             {
+                client.ConnectionFailure -= ConnectionFailure;
                 client.StatusChanged -= StatusChanged;
                 client.PairingRequired -= PairingRequired;
             }

@@ -755,6 +755,13 @@ When **another** device or node requests pairing, the gateway broadcasts `device
 
 ## SSH tunnel integration
 
+The Connection page and Connection Status validate remote and local forward
+ports with `SshForwardPorts` before entering the direct-connect transaction.
+Both fields require an integer from 1 through 65535. Blank or invalid input
+shows the existing field-specific error without substituting default ports or
+changing the active connection. SSH command-line range validation remains a
+separate downstream guard.
+
 `SshTunnelService` manages an SSH local port-forward process and implements `ISshTunnelManager` directly for the connection manager.
 
 When a `GatewayRecord` has `SshTunnel` config, the connection manager starts the tunnel before connecting the WebSocket client to `ws://localhost:<localPort>`. The config stores the SSH daemon port (`sshPort`, default `22`) separately from the remote gateway port forwarded by `-L`. Startup allows up to 20 seconds for SSH transport, key exchange, authentication, and local-forward binding, while every sample still fails closed on incomplete listener capture or a conflicting loopback/wildcard owner. Same-number listeners bound only to non-loopback interfaces are irrelevant to the local forward and are ignored.

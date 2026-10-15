@@ -27,6 +27,10 @@ public class LocalizationValidationTests
 
     private static readonly HashSet<string> InvariantOrDeferredResourceKeys = new(StringComparer.Ordinal)
     {
+        // Updater dependency recovery is seeded in English across every locale.
+        // Translate the explanation and manual-release action together after review.
+        "Update_Message_Unavailable",
+        "Update_ManualDownload",
         // Canonical setup product/transport names, not untranslated prose.
         "Onboarding_V2_NodeMode.Header",
         "Onboarding_V2_NodeModeToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",

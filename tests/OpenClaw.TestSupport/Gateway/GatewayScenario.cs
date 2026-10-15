@@ -49,10 +49,12 @@ public sealed class GatewayScenario
 
     private readonly bool _allowAgentCreation;
     private readonly bool _allowSessionMutations;
+    private readonly bool _allowChatSend;
     private readonly Dictionary<string, JsonObject?> _sessionChanges = new(StringComparer.Ordinal);
     private readonly List<object> _createdAgents = [];
+    private int _chatSendCount;
 
-    public string Name => _setup is not null ? "native-setup" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation" : BrowseName;
+    public string Name => _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation" : BrowseName;
     public int Version => 1;
     public int ProtocolVersion => GatewayProtocolContract.CurrentVersion;
     public string ContractProvenance =>
@@ -63,13 +65,14 @@ public sealed class GatewayScenario
 
     private GatewayScenario(Session[] sessions, IReadOnlyDictionary<string, JsonElement> reads,
         Func<string, JsonElement, object>? setup = null, bool advertiseSetup = true, bool allowAgentCreation = false,
-        bool allowSessionMutations = false)
+        bool allowSessionMutations = false, bool allowChatSend = false)
     {
         _sessions = sessions;
         _reads = reads;
         _setup = setup;
         _allowAgentCreation = allowAgentCreation;
         _allowSessionMutations = allowSessionMutations;
+        _allowChatSend = allowChatSend;
         SessionKeys = Array.AsReadOnly(sessions.Select(s => s.Key).ToArray());
         ReadMethods = Array.AsReadOnly(new[]
         {
@@ -96,7 +99,7 @@ public sealed class GatewayScenario
     }
 
     public static GatewayScenario CreateBrowse(bool allowAgentCreation = false, bool requireAgentSelection = false,
-        bool allowSessionMutations = false)
+        bool allowSessionMutations = false, bool allowChatSend = false)
     {
         Session[] sessions =
         [
@@ -231,7 +234,7 @@ public sealed class GatewayScenario
             })
         };
         return new GatewayScenario(sessions, reads, allowAgentCreation: allowAgentCreation,
-            allowSessionMutations: allowSessionMutations);
+            allowSessionMutations: allowSessionMutations, allowChatSend: allowChatSend);
     }
 
     internal object CreateHello(string connectionId) => new
@@ -283,6 +286,14 @@ public sealed class GatewayScenario
             return ResolveApproval(parameters);
         if (_allowSessionMutations && method is "sessions.patch" or "sessions.delete")
             return MutateSession(method, parameters);
+        if (_allowChatSend && method == "chat.send")
+        {
+            return new
+            {
+                runId = $"fixture-chat-{Interlocked.Increment(ref _chatSendCount)}",
+                status = "started"
+            };
+        }
         if (IsWrite(method))
             throw new FixtureRequestException("FIXTURE_READ_ONLY", "Fixture Gateway is read-only. This operation is not executed.");
         return method switch

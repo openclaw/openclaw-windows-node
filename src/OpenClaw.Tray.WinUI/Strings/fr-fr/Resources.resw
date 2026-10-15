@@ -356,6 +356,12 @@
   <data name="Update_Title_Failed" xml:space="preserve">
     <value>Impossible de vérifier les mises à jour</value>
   </data>
+  <data name="Update_Message_Unavailable" xml:space="preserve">
+    <value>Automatic updates are unavailable because an updater component could not be loaded. You can keep using OpenClaw and download updates from the official releases page.</value>
+  </data>
+  <data name="Update_ManualDownload" xml:space="preserve">
+    <value>Open official releases</value>
+  </data>
   <data name="Update_Message_Failed" xml:space="preserve">
     <value>Une erreur s'est produite lors de la vérification des mises à jour.
 
@@ -3333,6 +3339,9 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
   </data>
   <data name="Chat_Error_SendFailedFormat" xml:space="preserve">
     <value>Échec de l’envoi : {0}</value>
+  </data>
+  <data name="Chat_Error_ConnectionDroppedBeforeGatewayAcceptedMessage" xml:space="preserve">
+    <value>La connexion a été interrompue avant que la passerelle accepte ce message.</value>
   </data>
   <data name="Chat_Notification_AbortFailed" xml:space="preserve">
     <value>Échec de l'abandon</value>
@@ -7951,4 +7960,7 @@ Vos paramètres, votre passerelle, vos fichiers et vos modèles restent en place
   <data name="ChatPage_SetupCheckAgain.Content" xml:space="preserve">
     <value>Vérifier à nouveau</value>
   </data>
+  <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>Le profil préféré {0} ne convient pas à ce matériel. La configuration peut utiliser {1} avec {2:N0} jetons de contexte. Vérifiez ce profil dans la configuration avant de l’installer.</value></data>
+  <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>Ce profil nécessite au moins {0} de mémoire vive système.</value></data>
+  <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>Ce profil nécessite au moins {0} libres sur les volumes du cache des modèles et du moteur.</value></data>
 </root>

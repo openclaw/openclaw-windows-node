@@ -2,19 +2,12 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenClawTray.Helpers;
-using Updatum;
 
 namespace OpenClawTray.Dialogs;
 
 public sealed class DownloadProgressDialog
 {
     private Window? _window;
-    private readonly UpdatumManager? _updater;
-
-    public DownloadProgressDialog(UpdatumManager updater)
-    {
-        _updater = updater;
-    }
 
     public void ShowAsync()
     {

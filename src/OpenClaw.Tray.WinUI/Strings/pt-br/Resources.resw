@@ -384,6 +384,12 @@
   <data name="Update_Title_Failed" xml:space="preserve">
     <value>Não foi possível verificar se há atualizações</value>
   </data>
+  <data name="Update_Message_Unavailable" xml:space="preserve">
+    <value>Automatic updates are unavailable because an updater component could not be loaded. You can keep using OpenClaw and download updates from the official releases page.</value>
+  </data>
+  <data name="Update_ManualDownload" xml:space="preserve">
+    <value>Open official releases</value>
+  </data>
   <data name="Update_Message_Failed" xml:space="preserve">
     <value>Algo deu errado ao verificar se há atualizações.
 
@@ -3352,6 +3358,9 @@ Os comandos são bloqueados enquanto o sandboxing está indisponível porque o b
   </data>
   <data name="Chat_Error_SendFailedFormat" xml:space="preserve">
     <value>Falha ao enviar: {0}</value>
+  </data>
+  <data name="Chat_Error_ConnectionDroppedBeforeGatewayAcceptedMessage" xml:space="preserve">
+    <value>A conexão caiu antes que o Gateway aceitasse esta mensagem.</value>
   </data>
   <data name="Chat_Notification_AbortFailed" xml:space="preserve">
     <value>Falha ao abortar</value>
@@ -8005,4 +8014,7 @@ Suas configurações, gateway, arquivos e modelos permanecem onde estão.</value
   <data name="ChatPage_SetupCheckAgain.Content" xml:space="preserve">
     <value>Verificar novamente</value>
   </data>
+  <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>O perfil preferido {0} não cabe neste hardware. A configuração pode usar {1} com {2:N0} tokens de contexto. Revise este perfil na configuração antes de instalar.</value></data>
+  <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>Este perfil requer pelo menos {0} de RAM do sistema.</value></data>
+  <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>Este perfil requer pelo menos {0} livres nos volumes do cache de modelos e do mecanismo.</value></data>
 </root>

@@ -46,6 +46,10 @@ public class CronScheduleTimezoneTests
         Assert.Contains("CronScheduleTimezone.BeginEdit", source, StringComparison.Ordinal);
         Assert.Contains("FormTimezone.SelectedIndex = -1", source, StringComparison.Ordinal);
         Assert.Contains("CronScheduleTimezone.ResolveSave", source, StringComparison.Ordinal);
+        Assert.Contains("if (kind != \"cron\")", source, StringComparison.Ordinal);
+        Assert.Contains("_preservedScheduleTz = null;", ExtractMethod(source, "OnScheduleKindChanged"), StringComparison.Ordinal);
+        Assert.Contains("_preservedScheduleTz = null;", ExtractMethod(source, "OnFormCancelClick"), StringComparison.Ordinal);
+        Assert.Contains("_preservedScheduleTz = null;", ExtractMethod(source, "ResetForm"), StringComparison.Ordinal);
     }
 
     private static string FindRepoRoot()
@@ -71,5 +75,41 @@ public class CronScheduleTimezoneTests
         var edit = CronScheduleTimezone.BeginEdit("Asia/Kathmandu", Listed);
 
         Assert.Equal("UTC", CronScheduleTimezone.ResolveSave(edit.PreservedUnlisted, "UTC"));
+    }
+
+    [Fact]
+    public void StartingAnotherEdit_ReplacesPreviouslyPreservedState()
+    {
+        var first = CronScheduleTimezone.BeginEdit("Asia/Kathmandu", Listed);
+        var second = CronScheduleTimezone.BeginEdit(null, Listed);
+
+        Assert.Equal("Asia/Kathmandu", first.PreservedUnlisted);
+        Assert.Null(second.PreservedUnlisted);
+        Assert.Null(CronScheduleTimezone.ResolveSave(second.PreservedUnlisted, second.SelectedTag));
+    }
+
+    private static string ExtractMethod(string source, string methodName)
+    {
+        var marker = $"private void {methodName}";
+        var start = source.IndexOf(marker, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"Could not find {methodName}.");
+
+        var brace = source.IndexOf('{', start);
+        Assert.True(brace >= 0, $"Could not find {methodName} body.");
+
+        var depth = 0;
+        for (var i = brace; i < source.Length; i++)
+        {
+            if (source[i] == '{') depth++;
+            else if (source[i] == '}')
+            {
+                depth--;
+                if (depth == 0)
+                    return source[start..(i + 1)];
+            }
+        }
+
+        Assert.Fail($"Could not parse {methodName} body.");
+        return string.Empty;
     }
 }

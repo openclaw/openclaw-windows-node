@@ -4,12 +4,9 @@ using OpenClaw.Shared;
 using OpenClawTray.Dialogs;
 using OpenClawTray.Helpers;
 using System;
-using System.Collections.Generic;
-using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
-using Updatum;
 
 namespace OpenClawTray.Services;
 
@@ -18,18 +15,17 @@ namespace OpenClawTray.Services;
 /// All public methods must be called from the UI thread.
 /// </summary>
 internal sealed class UpdateCoordinator(
-    UpdatumManager updater,
     AppState appState,
     SettingsManager? settings,
     Func<IOperatorGatewayClient?> getGatewayClient,
     Func<XamlRoot?> getXamlRoot,
     Action refreshStatus,
     Action exit,
-    IUpdateCheckBoundary? updateCheckBoundary = null)
+    Func<IUpdateBackend>? createUpdater = null)
 {
     private readonly SettingsManager? _settings = settings;
-    private readonly IUpdateCheckBoundary _updateCheckBoundary =
-        updateCheckBoundary ?? new UpdatumUpdateCheckBoundary(updater);
+    private readonly UpdateBackendLoader _updaterLoader =
+        new(createUpdater ?? ReleaseUpdateBackendFactory.Create);
     private readonly Func<IOperatorGatewayClient?> _getGatewayClient =
         getGatewayClient ?? throw new ArgumentNullException(nameof(getGatewayClient));
 
@@ -69,7 +65,7 @@ internal sealed class UpdateCoordinator(
 
         if (PackageHelper.IsPackaged)
         {
-            // A Store-installed package is updated by Windows, not by Updatum.
+            // A Store-installed package is updated by Windows, not by the release updater.
             // Self-updating from GitHub releases would bypass the Store, and the
             // packaged app must not claim update ownership from a legacy install.
             Logger.Info("Skipping update check in packaged build; updates are managed by the Microsoft Store");
@@ -120,8 +116,16 @@ internal sealed class UpdateCoordinator(
 #else
         string releaseTag;
         string changelog;
+        IUpdateBackend updater;
         try
         {
+            var backend = _updaterLoader.Load();
+            if (backend is null)
+            {
+                ReportUpdaterUnavailable(_updaterLoader.Failure!);
+                return true;
+            }
+            updater = backend;
             Logger.Info("Checking for updates...");
             appState.UpdateInfo = new UpdateCommandCenterInfo
             {
@@ -130,7 +134,7 @@ internal sealed class UpdateCoordinator(
                 CheckedAt = DateTime.UtcNow
             };
             var checkOutcome = await UpdateCheckPipeline.CheckAsync(
-                _updateCheckBoundary,
+                updater,
                 AppVersionInfo.Version);
             var updateFound = checkOutcome.UpdateFound;
             if (checkOutcome.ActivatedFallbackTag is not null)
@@ -171,10 +175,10 @@ internal sealed class UpdateCoordinator(
                 return true;
             }
 
-            var release = updater.LatestRelease!;
-            if (string.IsNullOrEmpty(release.TagName))
+            var release = checkOutcome.SelectedRelease;
+            if (string.IsNullOrEmpty(release?.TagName))
             {
-                // Defensive: AppUpdater says an update is available but the
+                // Defensive: the updater says an update is available but the
                 // release has no tag. Don't silently claim "up to date" —
                 // surface as Failed so the user sees something is off.
                 Logger.Warn("Update reported available but release has no TagName");
@@ -189,7 +193,7 @@ internal sealed class UpdateCoordinator(
             }
 
             releaseTag = release.TagName;
-            changelog = updater.GetChangelog(true) ?? "No release notes available.";
+            changelog = updater.GetChangelog() ?? "No release notes available.";
             Logger.Info($"Update available: {releaseTag}");
             appState.UpdateInfo = new UpdateCommandCenterInfo
             {
@@ -217,6 +221,11 @@ internal sealed class UpdateCoordinator(
                 };
                 return true;
             }
+        }
+        catch (Exception ex) when (UpdateBackendLoader.IsDependencyFailure(ex))
+        {
+            ReportUpdaterUnavailable(ex);
+            return true;
         }
         catch (OperationCanceledException)
         {
@@ -309,8 +318,8 @@ internal sealed class UpdateCoordinator(
                     _settings.SkippedUpdateTag = string.Empty;
                     _settings.Save();
                 }
-                var installed = await DownloadAndInstallUpdateAsync();
-                if (!installed)
+                var installed = await DownloadAndInstallUpdateAsync(updater);
+                if (!installed && _updaterLoader.Failure is null)
                 {
                     appState.UpdateInfo = new UpdateCommandCenterInfo
                     {
@@ -500,6 +509,20 @@ internal sealed class UpdateCoordinator(
         }
     }
 
+    private void ReportUpdaterUnavailable(Exception error)
+    {
+        _updaterLoader.MarkUnavailable(error);
+        Logger.Warn($"Updater dependency unavailable: {error}");
+        appState.UpdateInfo = new UpdateCommandCenterInfo
+        {
+            Status = "Failed",
+            CurrentVersion = AppVersionInfo.Version,
+            CheckedAt = DateTime.UtcNow,
+            Detail = LocalizationHelper.GetString("Update_Message_Unavailable") +
+                "\n\n" + UpdateBackendLoader.ReleasesUrl
+        };
+    }
+
     private async Task ShowUpdateInfoDialogAsync(string logKey, string title, string message)
     {
         // Prefer the Hub window when open so the dialog appears modal to what
@@ -520,6 +543,17 @@ internal sealed class UpdateCoordinator(
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = xamlRoot
         };
+        if (logKey == "Failed" && _updaterLoader.Failure is not null)
+        {
+            var content = new StackPanel { Spacing = 12 };
+            content.Children.Add(new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap });
+            content.Children.Add(new HyperlinkButton
+            {
+                Content = LocalizationHelper.GetString("Update_ManualDownload"),
+                NavigateUri = new Uri(UpdateBackendLoader.ReleasesUrl)
+            });
+            dialog.Content = content;
+        }
         try
         {
             await dialog.ShowAsync();
@@ -541,27 +575,21 @@ internal sealed class UpdateCoordinator(
         }
     }
 
-    private async Task<bool> DownloadAndInstallUpdateAsync()
+    private async Task<bool> DownloadAndInstallUpdateAsync(IUpdateBackend updater)
     {
         DownloadProgressDialog? progressDialog = null;
         try
         {
-            progressDialog = new DownloadProgressDialog(updater);
+            progressDialog = new DownloadProgressDialog();
             progressDialog.ShowAsync(); // Fire and forget
 
-            var downloadedAsset = await updater.DownloadUpdateAsync();
-
+            return await updater.DownloadAndInstallAsync(() => TryCloseProgressDialog(progressDialog));
+        }
+        catch (Exception ex) when (UpdateBackendLoader.IsDependencyFailure(ex))
+        {
+            ReportUpdaterUnavailable(ex);
             TryCloseProgressDialog(progressDialog);
-
-            if (downloadedAsset == null || !File.Exists(downloadedAsset.FilePath))
-            {
-                Logger.Error("Update download failed or file missing");
-                return false;
-            }
-
-            Logger.Info("Installing update and restarting...");
-            await updater.InstallUpdateAsync(downloadedAsset);
-            return true;
+            return false;
         }
         catch (Exception ex)
         {
@@ -591,30 +619,4 @@ internal sealed class UpdateCoordinator(
             // Same as above for other "already-disposed" race variants.
         }
     }
-}
-
-internal sealed class UpdatumUpdateCheckBoundary(UpdatumManager updater) : IUpdateCheckBoundary
-{
-    public Task<bool> CheckForUpdatesAsync() => updater.CheckForUpdatesAsync();
-
-    public UpdateReleaseCandidate? GetSelectedRelease() =>
-        updater.LatestRelease is { } release
-            ? CreateCandidate(release)
-            : null;
-
-    public IEnumerable<UpdateReleaseCandidate> GetReleaseCandidates()
-    {
-        foreach (var release in updater.Releases)
-            yield return CreateCandidate(release);
-    }
-
-    private UpdateReleaseCandidate CreateCandidate(Octokit.Release release) => new(
-        release.TagName,
-        release.Body,
-        HasTrustedMetadata: true,
-        release.Draft,
-        release.Prerelease,
-        release.PublishedAt is not null,
-        () => updater.GetCompatibleReleaseAsset(release) is not null,
-        () => updater.ForceTriggerUpdateFromRelease(release));
 }
