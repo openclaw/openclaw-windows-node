@@ -1,9 +1,48 @@
 ---
 name: uninstall
-description: Run the headless CLI uninstall path for a local OpenClaw Companion dev build (--uninstall --dry-run, then --confirm-destructive) to remove the WSL gateway distro, gateway CLI/service, gateway identity/tokens, exec approvals, autostart entries, node-context state, Local AI, Tailscale state, and other AppData artifacts. Use when the user asks to uninstall, clean up, or reset a local dev install/gateway, or to test the uninstall engine.
+description: Uninstall or hard-clean OpenClaw Companion, Windows node, native Gateway/MXC, WSL Gateway, and managed llama.cpp/Local AI state for a clean retest. Choose the existing dev CLI uninstall or the reviewed hard-clean procedure, inventory exact targets, and obtain destructive confirmation before acting.
 ---
 
-# Uninstall (dev build)
+# Uninstall and clean retest
+
+## Choose the cleanup scope first
+
+Creating or updating cleanup tooling is not permission to uninstall anything.
+Inventory first, show the exact proposed targets and preserved resources, then
+ask for confirmation before stopping processes or changing installed state.
+
+| User intent | Procedure |
+| --- | --- |
+| Exercise the dev build's WSL uninstall engine | **Dev-build engine uninstall** below. |
+| Clean reinstall, hard wipe, remove native Gateway/MXC or all managed llama.cpp state | Read [HARD-CLEAN.md](HARD-CLEAN.md) before acting. The dev engine path alone is not a native hard clean. |
+| Demo/test device without Copilot | Copy `scripts\clean-uninstall.ps1` to the device. Run with Windows PowerShell 5.1; default is preview, `-ConfirmDestructive` applies. See [standalone usage](HARD-CLEAN.md#standalone-script-no-copilot-required). |
+| Ordinary installed-app removal | Settings > Apps > Installed apps. See `docs\SETUP.md`, Uninstalling. Retained state is intentional. |
+
+The standalone script's `-All` flag enables dev state, receipt-backed cached models,
+and owned release/dev WSL distro removal. It does not imply `-ConfirmDestructive`
+or discover custom profile paths. Review and confirm the expanded scope first.
+Use `-All -ExcludeCachedModels` to preserve external shared cached models while
+selecting the other built-in scopes. The exclusion overrides `-RemoveCachedModels`
+too; models inside deleted profiles or WSL filesystems are still removed.
+For explicitly identified leftover Windows isolated-profile registrations, use
+`-RemoveIsolatedProfilePath` with exact paths. Preview first; confirmed removal
+requires elevation as the same user and accepts only unloaded, non-special
+`S-1-5-110` profiles. `-All` never selects these automatically. See HARD-CLEAN.md
+for the distinction between profile cleanup and native session teardown.
+
+Existing helpers are narrower than a hard clean:
+
+- `scripts\dev-reset-rebuild-launch.ps1` resets production tray state and can wipe
+  the production WSL distro. It mutates by default; use `-WhatIf` to preview.
+- `scripts\reset-openclaw-wsl-validation-state.ps1` is a production-WSL validation
+  reset with backups and a `-ConfirmDestructiveClean` gate. It is not a native
+  Gateway/MXC package teardown.
+- `scripts\_uninstall-helpers.ps1` supplies utilities, not a complete uninstaller.
+
+Do not chain these helpers together as an "all" wipe. Their identities, backup
+behavior, process selection, and WSL scope differ.
+
+## Dev-build engine uninstall
 
 `OpenClaw.Tray.WinUI.exe` embeds the SetupEngine and accepts `--uninstall` directly, so
 no installer is required to exercise this path; a local `dotnet build` output works.
@@ -15,7 +54,7 @@ This is destructive. Confirm with the user before the final `--confirm-destructi
 run, and call out anything it will touch that isn't disposable dev state (e.g. a WSL
 distro or Tailscale session actually in use).
 
-## Procedure
+### Procedure
 
 1. **Build with the dev identity, for the matching architecture.** `.\build.ps1`
    alone defaults to release identity even in a Debug configuration, and a
@@ -37,6 +76,7 @@ distro or Tailscale session actually in use).
    if ($identity -ne 'dev') { throw "Build output identity is '$identity', not 'dev' - rebuild with -DevBuild." }
 
    $pathOverrides = 'OPENCLAW_TRAY_DATA_DIR',
+       'OPENCLAW_TRAY_APPDATA_DIR',
        'OPENCLAW_TRAY_LOCALAPPDATA_DIR',
        'OPENCLAW_TRAY_LOCAL_DATA_DIR',
        'OPENCLAW_STATE_DIR'
@@ -131,11 +171,12 @@ distro or Tailscale session actually in use).
    is normal. A `Failed to delete...` warning naming any other file, or leftover files
    from earlier runs, means a process is still holding them open (see step 2).
 
-## Notes
+### Notes
 
 - Log and journal for each run are printed at the end of stdout, under
   `%APPDATA%\OpenClawTray[-Dev]\Logs\Setup\uninstall-engine-<timestamp>.jsonl`.
 - For a real installed app (not a dev build), the user-facing path is **Settings → Apps
   → Installed apps → OpenClaw Companion → Uninstall**; see `docs/SETUP.md#uninstalling`
-  and the README's Uninstall section. This skill is for exercising the underlying CLI
-  path directly, e.g. for dev cleanup or testing the uninstall engine itself.
+  and the README's Uninstall section. The procedure above exercises the underlying
+  CLI path directly. For a native or full clean-retest workflow, use
+  [HARD-CLEAN.md](HARD-CLEAN.md).

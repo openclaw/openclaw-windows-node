@@ -317,6 +317,22 @@ Assert-Contains `
     -Message "CI cancellation must apply only to pull_request runs."
 
 $classificationJob = Get-JobBlock "change-classification"
+$classificationGuard = [regex]::Match(
+    $classificationJob,
+    '(?ms)^        if \(\$impact\.classification -notin @\([^\r\n]+\)\) \{\r?\n.*?^        \}')
+if (-not $classificationGuard.Success) {
+    throw "Classification output must retain its fail-closed admission guard."
+}
+$guard = [scriptblock]::Create($classificationGuard.Value)
+foreach ($classification in @("docs_only", "fast_only", "targeted", "full", "", "unknown")) {
+    $impact = [pscustomobject]@{ classification = $classification }
+    $accepted = $true
+    try { & $guard } catch { $accepted = $false }
+    $expected = $classification -in @("docs_only", "fast_only", "targeted", "full")
+    if ($accepted -ne $expected) {
+        throw "Workflow classification guard expected '$classification' accepted=$expected."
+    }
+}
 foreach ($token in @(
         "fetch-depth: 0",
         "./scripts/Get-CiChangeClassification.ps1",
@@ -338,6 +354,14 @@ foreach ($token in @(
 }
 
 $fastValidationJob = Get-JobBlock "fast-validation"
+$triageStep = Get-StepBlock -Text $fastValidationJob -Name "Test repository triage automation and dashboard"
+Assert-Contains -Text $triageStep `
+    -Expected "run: node --test .github/scripts/repository-triage.test.cjs .github/extensions/openclaw-triage-dashboard/triage-state.test.mjs" `
+    -Message "The exact fast-only tooling suite must run in fast-validation."
+foreach ($token in @("if:", "continue-on-error:")) {
+    Assert-NotContains -Text $triageStep -Unexpected $token `
+        -Message "Fast-only tooling tests must not be conditional or tolerate failures."
+}
 foreach ($token in @(
         "Ensure .squad stays untracked",
         "node --test .github/scripts/repository-triage.test.cjs",
@@ -358,6 +382,12 @@ foreach ($token in @(
 }
 
 $proofJob = Get-JobBlock "proof-pool-contracts"
+foreach ($job in @($fastValidationJob, $proofJob)) {
+    $jobHeader = ($job -split '(?m)^    steps:\s*$', 2)[0]
+    if ($jobHeader -match '(?m)^    (?:if|needs|continue-on-error):') {
+        throw "Fast validation and proof-pool contracts must remain unconditional required jobs."
+    }
+}
 foreach ($token in @(
         "./scripts/Get-CiProofPoolRegressionDecision.ps1",
         "steps.proof_pool_regression.outcome != 'success' || steps.proof_pool_regression.outputs.run != 'false'",
@@ -505,6 +535,19 @@ foreach ($token in @(
     )) {
     Assert-Contains -Text $trayJob -Expected $token -Message "Tray lane is missing '$token'."
 }
+
+$devSettingsStep = Get-StepBlock -Text $trayJob -Name "Run Dev containment settings tests"
+foreach ($token in @(
+        "dotnet test tests/OpenClaw.Tray.Tests",
+        "-p:DevBuild=true",
+        "FullyQualifiedName~SettingsManagerIsolationTests",
+        "FullyQualifiedName~AppRefactorContractTests.SandboxPage_",
+        "OpenClaw.Tray.DevSettings.Tests.trx"
+    )) {
+    Assert-Contains -Text $devSettingsStep -Expected $token -Message "Dev settings coverage is missing '$token'."
+}
+Assert-NotContains -Text $devSettingsStep -Unexpected "--no-build" `
+    -Message "Dev settings tests must recompile the linked AppIdentity source with DEV_BUILD."
 
 $uiJob = Get-JobBlock "ui-tests"
 foreach ($token in @(
@@ -692,7 +735,7 @@ foreach ($token in @(
         '-MsixBaseVersion $info.packageBaseVersion',
         '-VersionInfoPath "$env:RUNNER_TEMP\openclaw-msix-version.json"',
         'Assert-MsixVersionInfo',
-        '-SourceCommit $env:GITHUB_SHA -SourceVersion $env:MSIX_SOURCE_VERSION',
+        '-SourceCommit $env:OPENCLAW_RELEASE_SOURCE_SHA -SourceVersion $env:MSIX_SOURCE_VERSION',
         'refusing to build with a fallback version',
         '-CertificateThumbprint $thumbprint',
         'name: openclaw-msix-store-unsigned-${{ matrix.architecture }}',
@@ -724,7 +767,7 @@ foreach ($token in @(
     'name: openclaw-msix-store-unsigned-bundle',
     'path: artifacts/msix/bundle/OpenClaw.msixbundle',
     'Assert-MsixVersionInfo',
-    '-SourceCommit $env:GITHUB_SHA -SourceVersion $env:MSIX_SOURCE_VERSION',
+    '-SourceCommit $env:OPENCLAW_RELEASE_SOURCE_SHA -SourceVersion $env:MSIX_SOURCE_VERSION',
     'refusing to bundle with a fallback version'
 )) {
     Assert-Contains -Text $buildMsixBundleJob -Expected $token -Message "MSIX bundle lane is missing '$token'."
@@ -743,7 +786,7 @@ foreach ($token in @(
     'contents: write', 'persist-credentials: false',
     'versionInfo: ${{ steps.reserve.outputs.versionInfo }}',
     'sourceVersion: ${{ steps.reserve.outputs.sourceVersion }}',
-    '-SourceRef $env:GITHUB_REF -Repository $env:GITHUB_REPOSITORY -Reserve'
+    '-SourceRef $env:OPENCLAW_RELEASE_REF -Repository $env:GITHUB_REPOSITORY -Reserve'
 )) {
     Assert-Contains -Text $reserveMsixJob -Expected $token -Message "Official MSIX allocation is missing '$token'."
 }
@@ -772,11 +815,16 @@ function Convert-MsixGuard {
         Replace('needs.metadata.result', '$metadataResult').
         Replace('github.repository', '$repository').
         Replace('github.event_name', '$eventName').
-        Replace('==', '-eq').Replace('&&', '-and').Replace('||', '-or').Replace('!(', '-not (')
-    [scriptblock]::Create('param($repository,$ref,$eventName,$metadataResult,$cancelled)' + "`n($condition)")
+        Replace('inputs.promotion_alpha', '$promotionAlpha').
+        Replace('!=', '-ne').Replace('==', '-eq').Replace('&&', '-and').Replace('||', '-or').Replace('!(', '-not (')
+    [scriptblock]::Create('param($repository,$ref,$eventName,$metadataResult,$cancelled,$promotionAlpha = '''')' + "`n($condition)")
 }
 $reserveGuard = Convert-MsixGuard $reserveMsixJob
 $previewGuard = Convert-MsixGuard $previewStep
+if (-not (& $reserveGuard 'openclaw/openclaw-windows-node' 'refs/heads/main' 'workflow_dispatch' 'success' $false 'v2026.9.5-alpha.93') -or
+    (& $previewGuard 'openclaw/openclaw-windows-node' 'refs/heads/main' 'workflow_dispatch' 'success' $false 'v2026.9.5-alpha.93')) {
+    throw 'Validated main-based promotion must reserve an official version, not use a preview.'
+}
 foreach ($repository in @('openclaw/openclaw-windows-node', 'contributor/openclaw-windows-node')) {
     foreach ($ref in @('refs/tags/v2026.9.4', 'refs/tags/v2026.9.4-1', 'refs/tags/v2026.9.4-alpha.1', 'refs/heads/main', 'refs/pull/1/merge', 'refs/tags/msix-package/2026.9.4/401')) {
         foreach ($eventName in @('push', 'workflow_dispatch', 'pull_request', 'pull_request_target')) {
@@ -800,6 +848,14 @@ foreach ($token in @(
         "if: `${{ always() }}",
         "needs: [change-classification, fast-validation, proof-pool-contracts, metadata, core-tests, tray-tests, ui-tests, setup-e2e, revocation-e2e, network-e2e, build-x64, build-arm64, build-msix, build-msix-bundle]",
         "./scripts/Assert-CiGateResults.ps1",
+        "CLASSIFICATION_RESULT: `${{ needs.change-classification.result }}",
+        "CLASSIFICATION: `${{ needs.change-classification.outputs.classification }}",
+        "FAST_VALIDATION_RESULT: `${{ needs.fast-validation.result }}",
+        "PROOF_POOL_CONTRACTS_RESULT: `${{ needs.proof-pool-contracts.result }}",
+        "-ClassificationResult `$env:CLASSIFICATION_RESULT",
+        "-Classification `$env:CLASSIFICATION",
+        "-FastValidationResult `$env:FAST_VALIDATION_RESULT",
+        "-ProofPoolContractsResult `$env:PROOF_POOL_CONTRACTS_RESULT",
         "-FullRequired `$env:FULL_REQUIRED",
         "-CoreRequired `$env:CORE_REQUIRED",
         "-TrayRequired `$env:TRAY_REQUIRED",
@@ -864,7 +920,7 @@ Assert-Contains -Text $msixArm64Download -Expected 'name: openclaw-msix-dev-arm6
 foreach ($step in @($msixX64Download, $msixArm64Download)) {
     Assert-NotContains -Text $step -Unexpected 'openclaw-msix-store-unsigned-' -Message 'Unsigned Store packages must stay workflow-only.'
 }
-Assert-Contains -Text $msixStage -Expected '-ExpectedSourceCommit $env:GITHUB_SHA' -Message "Release staging must bind artifacts to the tag's source."
+Assert-Contains -Text $msixStage -Expected '-ExpectedSourceCommit $env:OPENCLAW_RELEASE_SOURCE_SHA' -Message "Release staging must bind artifacts to the tag's source."
 Assert-Contains -Text $msixStage -Expected '-Version $env:RELEASE_VERSION' -Message "Release staging must validate the release version."
 Assert-Contains -Text $msixStage -Expected '-ExpectedRevision $env:DEV_MSIX_REVISION' -Message 'Release staging must bind the Dev package revision.'
 Assert-Contains -Text $msixStage -Expected '-ExpectedWorkflowRunId $env:GITHUB_RUN_ID' -Message 'Release staging must bind artifacts to the publishing run.'
@@ -922,11 +978,36 @@ try {
     $unrelatedPath = Join-Path $tempRoot "docs\unrelated.md"
     New-Item -ItemType Directory -Path (Split-Path -Parent $unrelatedPath) -Force | Out-Null
     Set-Content -LiteralPath $unrelatedPath -Value "baseline"
+    $toolingPaths = @(
+        ".github/scripts/repository-triage.cjs",
+        ".github/scripts/repository-triage.test.cjs"
+    )
+    foreach ($toolingPath in $toolingPaths) {
+        $fullPath = Join-Path $tempRoot $toolingPath
+        New-Item -ItemType Directory -Path (Split-Path -Parent $fullPath) -Force | Out-Null
+        Set-Content -LiteralPath $fullPath -Value "tooling baseline"
+    }
 
     & git -C $tempRoot add .
     & git -C $tempRoot commit --quiet -m "baseline"
     if ($LASTEXITCODE -ne 0) {
         throw "Could not commit temporary baseline."
+    }
+
+    foreach ($toolingPath in $toolingPaths) {
+        $baseSha = (& git -C $tempRoot rev-parse HEAD).Trim()
+        Add-Content -LiteralPath (Join-Path $tempRoot $toolingPath) -Value "tooling change"
+        & git -C $tempRoot add .
+        & git -C $tempRoot commit --quiet -m "tooling-only change"
+        if ($LASTEXITCODE -ne 0) { throw "Could not commit tooling-only fixture." }
+        $headSha = (& git -C $tempRoot rev-parse HEAD).Trim()
+        $impact = (& (Join-Path $repoRootPath "scripts\Get-CiChangeClassification.ps1") `
+            -EventName pull_request -BaseSha $baseSha -HeadSha $headSha -RepoRoot $tempRoot) | ConvertFrom-Json
+        $decision = & $selectorPath -EventName pull_request `
+            -BaseSha $baseSha -HeadSha $headSha -RepoRoot $tempRoot
+        if ($impact.classification -ne "fast_only" -or $decision -ne "false") {
+            throw "Tooling-only diff must be fast_only without changing proof-boundary selection."
+        }
     }
 
     foreach ($triggerPath in $triggerPaths) {
@@ -944,6 +1025,21 @@ try {
             -RepoRoot $tempRoot
         if ($decision -ne "true") {
             throw "Proof-pool trigger '$triggerPath' produced decision '$decision'."
+        }
+        # Keep the same base so the next diff includes the boundary and tooling.
+        foreach ($toolingPath in $toolingPaths) {
+            Add-Content -LiteralPath (Join-Path $tempRoot $toolingPath) -Value "mixed tooling change"
+        }
+        & git -C $tempRoot add .
+        & git -C $tempRoot commit --quiet -m "mix tooling with $triggerPath"
+        if ($LASTEXITCODE -ne 0) { throw "Could not commit mixed boundary fixture." }
+        $headSha = (& git -C $tempRoot rev-parse HEAD).Trim()
+        $mixedDecision = & $selectorPath -EventName pull_request `
+            -BaseSha $baseSha -HeadSha $headSha -RepoRoot $tempRoot
+        $mixedImpact = (& (Join-Path $repoRootPath "scripts\Get-CiChangeClassification.ps1") `
+            -EventName pull_request -BaseSha $baseSha -HeadSha $headSha -RepoRoot $tempRoot) | ConvertFrom-Json
+        if ($mixedDecision -ne "true" -or $mixedImpact.classification -ne "full") {
+            throw "Tooling mixed with proof boundary '$triggerPath' must run full validation and proof regressions."
         }
     }
 

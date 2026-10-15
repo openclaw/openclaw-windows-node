@@ -38,7 +38,7 @@ internal static class RtxSparkInferenceSelector
         return totalBytes switch
         {
             _ when totalBytes < s_boundary32_48 => null, // 32GB SKU: no local AI recommended
-            _ when totalBytes < s_boundary48_64 => Recipe(LocalModelCatalog.Qwen35B_IQ4XSModelId),
+            _ when totalBytes < s_boundary48_64 => Recipe(LocalModelCatalog.Qwen35B_Q4KSModelId),
             _ when totalBytes < s_boundary64_128 => Recipe(LocalModelCatalog.Qwen38_27BModelId, ReducedQ8_0ProfileId),
             _ => Recipe(LocalModelCatalog.Qwen38_27B_DFlashModelId),
         };
