@@ -50,7 +50,7 @@ public sealed partial class WizardPage : Page
     private readonly Dictionary<string, int> _stepVisits = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<WizardOptionValue> _options = [];
     private volatile bool _expectedTerminalRestart;
-    private int _answerInFlight;
+    private readonly WizardAnswerGate _answerGate = new();
     // "More ▾" overflow toggle lives as a sibling of SelectOptions, so track it to remove between steps.
     private Button? _moreOptionsButton;
     // wizard.payload frames do not include plugin console output, so tail the gateway log inline.
@@ -783,7 +783,7 @@ public sealed partial class WizardPage : Page
     {
         var connection = _connection;
         if (connection is null) return;
-        if (!WizardAnswerGate.TryBegin(ref _answerInFlight))
+        if (!_answerGate.TryBegin(out var answerLease))
             return;
 
         var generation = _operationGeneration;
@@ -804,8 +804,8 @@ public sealed partial class WizardPage : Page
         }
         finally
         {
-            WizardAnswerGate.End(ref _answerInFlight);
-            UpdateContinueState();
+            if (_answerGate.End(answerLease) && generation == _operationGeneration)
+                UpdateContinueState();
         }
     }
 
@@ -813,8 +813,9 @@ public sealed partial class WizardPage : Page
     {
         var connection = _connection;
         if (connection is null) return;
-        if (!WizardAnswerGate.TryBegin(ref _answerInFlight))
+        if (!_answerGate.TryBegin(out var answerLease))
             return;
+        UpdateContinueState();
 
         var generation = _operationGeneration;
         try
@@ -867,8 +868,8 @@ public sealed partial class WizardPage : Page
         }
         finally
         {
-            WizardAnswerGate.End(ref _answerInFlight);
-            UpdateContinueState();
+            if (_answerGate.End(answerLease) && generation == _operationGeneration)
+                UpdateContinueState();
         }
     }
 
@@ -906,7 +907,7 @@ public sealed partial class WizardPage : Page
         var generation = _operationGeneration;
         var answeredQuestion = "";
         string? answeredLabel = null;
-        var beganAnswer = false;
+        long answerLease = 0;
         try
         {
             object? answerValue = null;
@@ -922,9 +923,8 @@ public sealed partial class WizardPage : Page
                 return;
             }
 
-            if (!WizardAnswerGate.TryBegin(ref _answerInFlight))
+            if (!_answerGate.TryBegin(out answerLease))
                 return;
-            beganAnswer = true;
 
             SetBusy(skip ? "Skipping..." : "Submitting...");
             // The console banner shows output that arrived between the last payload
@@ -1005,11 +1005,8 @@ public sealed partial class WizardPage : Page
         }
         finally
         {
-            if (beganAnswer)
-            {
-                WizardAnswerGate.End(ref _answerInFlight);
+            if (_answerGate.End(answerLease) && generation == _operationGeneration)
                 UpdateContinueState();
-            }
             if (generation == _operationGeneration)
                 _expectedTerminalRestart = false;
         }
@@ -1194,7 +1191,7 @@ public sealed partial class WizardPage : Page
 
     private void UpdateContinueState()
     {
-        if (!WizardAnswerGate.AllowsContinue(_answerInFlight))
+        if (!_answerGate.AllowsContinue)
         {
             PrimaryButton.IsEnabled = false;
             return;
@@ -1796,7 +1793,11 @@ public sealed partial class WizardPage : Page
             await DisconnectAsync(connection);
     }
 
-    private int AdvanceOperationGeneration() => unchecked(++_operationGeneration);
+    private int AdvanceOperationGeneration()
+    {
+        _answerGate.Invalidate();
+        return unchecked(++_operationGeneration);
+    }
 
     private void ShowRecoveryActions()
     {
