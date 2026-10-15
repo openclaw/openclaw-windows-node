@@ -148,14 +148,12 @@ public class GlobalHotkeyService : IDisposable
             if (!PostMessage(_hwnd, WM_APP_REGISTER, IntPtr.Zero, IntPtr.Zero))
             {
                 Logger.Warn("Failed to post WM_APP_REGISTER message for hotkey registration");
-                _hotkeys = _hotkeys.Cleared();
                 return false;
             }
 
             if (!_opCompleted.Wait(TimeSpan.FromSeconds(2)))
             {
                 Logger.Warn("Timed out waiting for hotkey registration operation to complete");
-                _hotkeys = _hotkeys.Cleared();
                 return false;
             }
             return _hotkeys.AnyLive;
@@ -258,13 +256,15 @@ public class GlobalHotkeyService : IDisposable
         {
             try
             {
-                if (_hotkeys.Voice)
-                    UnregisterHotKey(hWnd, HOTKEY_ID_VOICE);
-                if (_hotkeys.Settings)
-                    UnregisterHotKey(hWnd, HOTKEY_ID_SETTINGS);
-                if (_hotkeys.AnyLive)
+                var previous = _hotkeys;
+                var voiceUnregistered = !previous.Voice ||
+                    TryUnregisterHotkey(hWnd, HOTKEY_ID_VOICE, "voice");
+                var settingsUnregistered = !previous.Settings ||
+                    TryUnregisterHotkey(hWnd, HOTKEY_ID_SETTINGS, "settings");
+                _hotkeys = previous.AfterUnregister(voiceUnregistered, settingsUnregistered);
+
+                if (previous.AnyLive && !_hotkeys.AnyLive)
                     Logger.Info("Global hotkeys unregistered");
-                _hotkeys = _hotkeys.Cleared();
             }
             catch (Exception ex)
             {
@@ -290,6 +290,16 @@ public class GlobalHotkeyService : IDisposable
         return DefWindowProc(hWnd, msg, wParam, lParam);
     }
 
+    private static bool TryUnregisterHotkey(IntPtr hWnd, int id, string name)
+    {
+        if (UnregisterHotKey(hWnd, id))
+            return true;
+
+        var error = Marshal.GetLastWin32Error();
+        Logger.Warn($"Failed to unregister {name} hotkey (Win32 error {error}: {new Win32Exception(error).Message})");
+        return false;
+    }
+
     public void Unregister()
     {
         if (!_hotkeys.AnyLive) return;
@@ -302,14 +312,12 @@ public class GlobalHotkeyService : IDisposable
             if (!PostMessage(_hwnd, WM_APP_UNREGISTER, IntPtr.Zero, IntPtr.Zero))
             {
                 Logger.Warn("Failed to post WM_APP_UNREGISTER message; message loop may have exited");
-                _hotkeys = _hotkeys.Cleared();
                 return;
             }
 
             if (!_opCompleted.Wait(TimeSpan.FromSeconds(2)))
             {
                 Logger.Warn("Timed out waiting for hotkey unregistration to complete");
-                _hotkeys = _hotkeys.Cleared();
             }
         }
         catch (Exception ex)

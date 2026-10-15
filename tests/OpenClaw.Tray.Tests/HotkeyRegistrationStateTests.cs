@@ -37,6 +37,26 @@ public class HotkeyRegistrationStateTests
     }
 
     [Fact]
+    public void SuccessfulUnregister_DropsBothChords()
+    {
+        var state = new HotkeyRegistrationState(true, true)
+            .AfterUnregister(voiceUnregistered: true, settingsUnregistered: true);
+
+        Assert.False(state.AnyLive);
+    }
+
+    [Fact]
+    public void FailedSettingsUnregister_RemainsLiveForRetry()
+    {
+        var state = new HotkeyRegistrationState(true, true)
+            .AfterUnregister(voiceUnregistered: true, settingsUnregistered: false);
+
+        Assert.False(state.Voice);
+        Assert.True(state.Settings);
+        Assert.True(state.AnyLive);
+    }
+
+    [Fact]
     public void Service_UnregistersSettingsWhenVoiceDidNotRegister()
     {
         var source = File.ReadAllText(Path.Combine(
@@ -44,8 +64,8 @@ public class HotkeyRegistrationStateTests
             "src", "OpenClaw.Tray.WinUI", "Services", "GlobalHotkeyService.cs"));
 
         Assert.Contains("_hotkeys.AnyLive", source, StringComparison.Ordinal);
-        Assert.Contains("if (_hotkeys.Settings)", source, StringComparison.Ordinal);
-        Assert.Contains("UnregisterHotKey(hWnd, HOTKEY_ID_SETTINGS)", source, StringComparison.Ordinal);
+        Assert.Contains("TryUnregisterHotkey(hWnd, HOTKEY_ID_SETTINGS, \"settings\")", source, StringComparison.Ordinal);
+        Assert.Contains("Failed to unregister {name} hotkey", source, StringComparison.Ordinal);
         Assert.DoesNotContain("if (_registered)", source, StringComparison.Ordinal);
     }
 
