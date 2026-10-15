@@ -741,6 +741,40 @@ public sealed class ChatComposerViewModelTests
     }
 
     [Fact]
+    public void ClearDraftIfUnchanged_KeepsAKeystrokeQueuedAheadOfIt()
+    {
+        var dispatcher = new RecordingUiDispatcher
+        {
+            HasThreadAccess = true,
+            RunEnqueuedImmediately = true,
+        };
+        var vm = new ChatComposerViewModel(dispatcher, initialSpeakerMuted: false);
+        vm.SetDraft("hello");
+        var submittedRevision = vm.DraftRevision;
+
+        dispatcher.HasThreadAccess = false;
+        dispatcher.RunEnqueuedImmediately = false;
+        vm.SetDraft("hello!");
+        vm.ClearDraftIfUnchanged(submittedRevision);
+        dispatcher.FlushPending();
+
+        Assert.Equal("hello!", vm.Draft);
+        Assert.NotEqual(submittedRevision, vm.DraftRevision);
+    }
+
+    [Fact]
+    public void ClearDraftIfUnchanged_ClearsWhenNothingWasTyped()
+    {
+        var vm = new ChatComposerViewModel(new RecordingUiDispatcher(), initialSpeakerMuted: false);
+        vm.SetDraft("hello");
+        var submittedRevision = vm.DraftRevision;
+
+        vm.ClearDraftIfUnchanged(submittedRevision);
+
+        Assert.Equal(string.Empty, vm.Draft);
+    }
+
+    [Fact]
     public void Disposed_FieldIsDeclaredVolatile()
     {
         // The stress test above proves the *externally observable* disposal
