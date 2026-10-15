@@ -7951,4 +7951,7 @@ Vos paramètres, votre passerelle, vos fichiers et vos modèles restent en place
   <data name="ChatPage_SetupCheckAgain.Content" xml:space="preserve">
     <value>Vérifier à nouveau</value>
   </data>
+  <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>Le profil préféré {0} ne convient pas à ce matériel. La configuration peut utiliser {1} avec {2:N0} jetons de contexte. Vérifiez ce profil dans la configuration avant de l’installer.</value></data>
+  <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>Ce profil nécessite au moins {0} de mémoire vive système.</value></data>
+  <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>Ce profil nécessite au moins {0} libres sur les volumes du cache des modèles et du moteur.</value></data>
 </root>
