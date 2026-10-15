@@ -23,11 +23,19 @@ public class CronRunningLatchTests
     }
 
     [Fact]
-    public void NextRunUnchanged_KeepsTheLatch()
+    public void NextRunDoesNotAdvance_KeepsTheLatch()
     {
         Assert.False(CronRunningLatch.ShouldClearBecauseNextRunMoved(
             runningAtMs: 0,
             nextRunAtMs: 1_000,
+            previousNextRunAtMs: 1_000));
+        Assert.False(CronRunningLatch.ShouldClearBecauseNextRunMoved(
+            runningAtMs: 0,
+            nextRunAtMs: 500,
+            previousNextRunAtMs: 1_000));
+        Assert.False(CronRunningLatch.ShouldClearBecauseNextRunMoved(
+            runningAtMs: 0,
+            nextRunAtMs: 0,
             previousNextRunAtMs: 1_000));
         Assert.False(CronRunningLatch.ShouldClearBecauseNextRunMoved(
             runningAtMs: 0,
