@@ -4,6 +4,8 @@ using OpenClaw.Shared;
 using OpenClaw.Shared.Mxc;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
+using OpenClawTray.Presentation;
+using Microsoft.Extensions.DependencyInjection;
 using System.Collections.ObjectModel;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
@@ -53,6 +55,8 @@ public sealed partial class SandboxPage : Page
         finally
         {
             _probeInFlight = false;
+            if (_availability is { } availability)
+                CurrentApp.Services?.GetRequiredService<SandboxStatusStore>().Publish(availability);
             LoadFolders();
             UpdateStatus();
         }

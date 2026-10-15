@@ -498,6 +498,7 @@ public sealed partial class ChatPage : Page
 
         PlaceholderPanel.Visibility = Visibility.Collapsed;
         ChatHost.Visibility = Visibility.Visible;
+        var ownerWindow = _ownerWindow ?? throw new InvalidOperationException("Chat requires an owning window.");
         MountedReactorChat? mountedHost = null;
         var composerSession = ReactorChatHostExtensions.CreateComposerSession(
             ChatHost,
@@ -507,6 +508,7 @@ public sealed partial class ChatPage : Page
             onAttachClick: OnAttachClicked,
             onSpeakerMuteChanged: muted => _ = OnSpeakerMuteChangedAsync(muted),
             initialMuted: ShouldStartSpeakerMuted(CurrentApp.Settings),
+            onSandboxSettingsClick: () => CurrentApp.ShowHub("sandbox"),
             onSessionNavigationStarting: () =>
             {
                 if (_pageActive && ReferenceEquals(_reactorHost, mountedHost))
@@ -517,24 +519,16 @@ public sealed partial class ChatPage : Page
                 if (ReferenceEquals(_reactorHost, mountedHost))
                     OnComposerSessionSelected(sessionKey, previousSessionKey);
             });
-        try
-        {
-            mountedHost = (_ownerWindow ?? throw new InvalidOperationException("Chat requires an owning window.")).MountReactorChat(
-                ChatHost,
-                provider,
-                composerSession,
-                initialThreadId: threadIdToMount,
-                onReadAloud: readAloud,
-                onStopSpeaking: () => app?.StopChatSpeaking(),
-                onOpenCheckpoints: OpenSessionCheckpoints,
-                initialThreadIsExplicitSelection: !string.IsNullOrEmpty(pendingSessionKey));
-            _reactorHost = mountedHost;
-        }
-        catch (InvalidOperationException)
-        {
-            composerSession.Dispose();
-            throw;
-        }
+        mountedHost = ownerWindow.MountReactorChat(
+            ChatHost,
+            provider,
+            composerSession,
+            initialThreadId: threadIdToMount,
+            onReadAloud: readAloud,
+            onStopSpeaking: () => app?.StopChatSpeaking(),
+            onOpenCheckpoints: OpenSessionCheckpoints,
+            initialThreadIsExplicitSelection: !string.IsNullOrEmpty(pendingSessionKey));
+        _reactorHost = mountedHost;
         _mountedProvider = provider;
         _mountedThreadId = threadIdToMount;
 

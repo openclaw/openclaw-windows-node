@@ -498,6 +498,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 ValidateOnBuild = true,
             });
             Logger.Info("Service provider initialized.");
+            if (_sandboxRiskAvailabilityCache is { } availability)
+                _services.GetRequiredService<SandboxStatusStore>().Publish(availability);
         }
         catch (Exception ex)
         {
@@ -3312,6 +3314,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         }
 
         _sandboxRiskAvailabilityCache = availability;
+        _services?.GetRequiredService<SandboxStatusStore>().Publish(availability);
         PublishSandboxRiskNotification(availability);
     }
 

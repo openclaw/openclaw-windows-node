@@ -95,6 +95,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatComposerSession.cs" Link="Chat\ChatComposerSession.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\IChatComposerFactory.cs" Link="Chat\IChatComposerFactory.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatComposerFactory.cs" Link="Chat\ChatComposerFactory.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\SandboxStatusStore.cs" Link="Presentation\SandboxStatusStore.cs" />
   </ItemGroup>
 
   <ItemGroup>

@@ -63,6 +63,7 @@ aliases. Other Send glyph aliases are unchanged.
 | `ChatCodeTextStyle` | Native code Foreground binding to `ChatSecondaryTextBrush` |
 | `ChatCopySuccessBrush` | `SystemFillColorSuccess`; system window text in HC |
 | `ChatPickerAccentBrush` | Light/dark system accent variants; system window text in HC |
+| `ChatSandboxOnBrush` | Fixed blue: `#005FB8` in Light, `#60CDFF` in Dark; system window text in HC |
 
 HC maps surfaces, strokes and text to system window/button/highlight colors.
 An HC resource simulation is not evidence that Windows HC mode was enabled.
@@ -202,8 +203,17 @@ quiet secondary actions beside the primary Send/Stop action. Every control stays
 in one bottom row: model text shrinks rather than moving the selectors above
 the actions. At viewport widths of 560 pixels or less, effort uses a gauge and
 chevron with a 44-pixel target, retaining the full textual automation name and
-tooltip. Attach, model, effort, voice and Send remain reachable in narrow
+tooltip. Attach, model, effort, Node Sandbox, voice and Send remain reachable in narrow
 layouts through actual-width observation rather than a compact-window mode.
+The [Node Sandbox icon](design/reference/concepts/states/node-sandbox.md) beside
+the microphone in the right-hand action group is blue when the latest SDK probe
+supports containment and gray otherwise. It opens a compact native flyout with
+Available, Compatibility, Unavailable, Checking, or Tools off status and a Sandbox
+settings action, not a toggle. Compatibility warns about approved uncontained
+execution on positively unsupported Windows. Failed/uncertain probes never imply
+compatibility; the runner independently admits each command. This does not describe
+Gateway tools or per-command results. Status and system-tools setting changes
+refresh the mounted native composer without replacing drafts or attachments.
 The compact effort trigger has a transparent idle background and the same
 4-pixel interaction corners as the other toolbar controls. Its gauge and
 chevron are vertically centered within the 44-pixel target. The shared toolbar

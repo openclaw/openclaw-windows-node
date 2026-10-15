@@ -41,6 +41,7 @@ public static class ReactorChatHostExtensions
         Action? onAttachClick,
         Action<bool>? onSpeakerMuteChanged,
         bool initialMuted,
+        Action onSandboxSettingsClick,
         Action? onSessionNavigationStarting = null,
         Action<string, string?>? onSessionSelected = null)
     {
@@ -81,10 +82,12 @@ public static class ReactorChatHostExtensions
             onVoiceRequest,
             onSpeakerMuteChanged,
             onSessionNavigationStarting,
-            onSessionSelected);
+            onSessionSelected,
+            onSandboxSettingsClick);
         return composerFactory.Create(provider, hostActions, initialMuted);
     }
 
+    /// <summary>Transfers ownership of the session, including disposal if mounting fails.</summary>
     public static MountedReactorChat MountReactorChat(
         this Window window,
         Border target,
@@ -96,35 +99,47 @@ public static class ReactorChatHostExtensions
         Action<string>? onOpenCheckpoints = null,
         bool initialThreadIsExplicitSelection = true)
     {
-        ArgumentNullException.ThrowIfNull(window);
-        ArgumentNullException.ThrowIfNull(target);
-        ArgumentNullException.ThrowIfNull(provider);
         ArgumentNullException.ThrowIfNull(composerSession);
-
-        // External attachment/voice/mute ingress binds directly to the session, once,
-        // instead of being reassigned by the Reactor tree on every render.
-        var callbacks = new ReactorChatHostCallbacks
+        MountedReactorChat? mounted = null;
+        try
         {
-            AttachFiles = attachments => composerSession.Controller.AddAttachments(attachments),
-            SetVoiceTranscript = text => composerSession.ViewModel.SetVoiceTranscript(text),
-            SetVoiceAudioLevel = level => composerSession.ViewModel.SetVoiceAudioLevel(level),
-            TriggerVoiceRecording = () => composerSession.Controller.StartVoiceRecording(),
-            SetSpeakerMuted = muted => composerSession.ViewModel.SetSpeakerMuted(muted),
-        };
+            ArgumentNullException.ThrowIfNull(window);
+            ArgumentNullException.ThrowIfNull(target);
+            ArgumentNullException.ThrowIfNull(provider);
 
-        var props = new OpenClawReactorChatRootProps(
-            provider,
-            composerSession,
-            initialThreadId,
-            onReadAloud,
-            onStopSpeaking,
-            onOpenCheckpoints,
-            InitialThreadIsExplicitSelection: initialThreadIsExplicitSelection);
-        var host = new ReactorHostControl();
-        host.Mount(_ => Component<OpenClawReactorChatRoot, OpenClawReactorChatRootProps>(props));
-        target.Child = host;
-        VisualTestCapture.ScheduleSignalCapture(target);
-        return new MountedReactorChat(target, host, callbacks, composerSession);
+            // External ingress is bound once per session, not on every render.
+            var callbacks = new ReactorChatHostCallbacks
+            {
+                AttachFiles = attachments => composerSession.Controller.AddAttachments(attachments),
+                SetVoiceTranscript = text => composerSession.ViewModel.SetVoiceTranscript(text),
+                SetVoiceAudioLevel = level => composerSession.ViewModel.SetVoiceAudioLevel(level),
+                TriggerVoiceRecording = () => composerSession.Controller.StartVoiceRecording(),
+                SetSpeakerMuted = muted => composerSession.ViewModel.SetSpeakerMuted(muted),
+            };
+
+            var props = new OpenClawReactorChatRootProps(
+                provider,
+                composerSession,
+                initialThreadId,
+                onReadAloud,
+                onStopSpeaking,
+                onOpenCheckpoints,
+                InitialThreadIsExplicitSelection: initialThreadIsExplicitSelection);
+            var host = new ReactorHostControl();
+            mounted = new MountedReactorChat(target, host, callbacks, composerSession);
+            host.Mount(_ => Component<OpenClawReactorChatRoot, OpenClawReactorChatRootProps>(props));
+            target.Child = host;
+            VisualTestCapture.ScheduleSignalCapture(target);
+            return mounted;
+        }
+        catch
+        {
+            if (mounted is not null)
+                mounted.Dispose();
+            else
+                composerSession.Dispose();
+            throw;
+        }
     }
 }
 
