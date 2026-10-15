@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text;
 
 namespace OpenClaw.Shared.Sessions;
@@ -41,6 +42,39 @@ public static class SessionTranscriptFormatter
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Formats the transcript as a Markdown document mirroring the web chat's
+    /// "Copy as Markdown": one <c>## Speaker</c> section per non-blank message,
+    /// with an ISO-8601 UTC timestamp when known. Returns <c>null</c> when no
+    /// message has text.
+    /// </summary>
+    public static string? FormatMarkdown(ChatHistoryInfo history, string title)
+    {
+        if (history is null) throw new ArgumentNullException(nameof(history));
+
+        var blocks = new List<string>();
+        foreach (var m in history.Messages)
+        {
+            if (string.IsNullOrWhiteSpace(m.Text))
+                continue;
+            var speaker = m.Role is not null && m.Role.Equals("user", StringComparison.OrdinalIgnoreCase)
+                ? "User"
+                : m.Role is not null && m.Role.Equals("assistant", StringComparison.OrdinalIgnoreCase)
+                    ? "Assistant"
+                    : "Tool";
+            var heading = $"## {speaker}";
+            if (m.Ts > 0)
+            {
+                var ts = DateTimeOffset.FromUnixTimeMilliseconds(m.Ts).UtcDateTime.ToString("o");
+                heading += $" ({ts})";
+            }
+            blocks.Add($"{heading}\n\n{m.Text}");
+        }
+        if (blocks.Count == 0)
+            return null;
+        return $"# {title}\n\n{string.Join("\n\n", blocks)}";
     }
 
     /// <summary>

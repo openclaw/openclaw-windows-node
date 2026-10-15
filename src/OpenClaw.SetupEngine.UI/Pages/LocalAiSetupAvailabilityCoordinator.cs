@@ -11,13 +11,14 @@ internal enum LocalAiSetupAvailabilityStatus
 internal readonly record struct LocalAiSetupAvailabilitySnapshot(
     int Generation,
     LocalAiSetupAvailabilityStatus Status,
-    string? Reason)
+    string? Reason,
+    bool IsRecoverable = false)
 {
     public bool IsChecking => Status == LocalAiSetupAvailabilityStatus.Checking;
     public bool IsUnknown => Status == LocalAiSetupAvailabilityStatus.Unknown;
     public bool IsAvailable => Status == LocalAiSetupAvailabilityStatus.Available;
     public bool IsUnsupported => Status == LocalAiSetupAvailabilityStatus.Unsupported;
-    public bool CanRecheck => Status == LocalAiSetupAvailabilityStatus.Unknown;
+    public bool CanRecheck => Status == LocalAiSetupAvailabilityStatus.Unknown || IsRecoverable;
 }
 
 internal sealed class LocalAiSetupAvailabilityCoordinator
@@ -46,14 +47,15 @@ internal sealed class LocalAiSetupAvailabilityCoordinator
         return true;
     }
 
-    public bool TryApplyAvailable(int generation, out LocalAiSetupAvailabilitySnapshot snapshot) =>
-        TryApply(generation, LocalAiSetupAvailabilityStatus.Available, reason: null, out snapshot);
+    public bool TryApplyAvailable(int generation, out LocalAiSetupAvailabilitySnapshot snapshot, bool isRecoverable = false) =>
+        TryApply(generation, LocalAiSetupAvailabilityStatus.Available, reason: null, out snapshot, isRecoverable);
 
     public bool TryApplyUnsupported(
         int generation,
         string reason,
-        out LocalAiSetupAvailabilitySnapshot snapshot) =>
-        TryApply(generation, LocalAiSetupAvailabilityStatus.Unsupported, reason, out snapshot);
+        out LocalAiSetupAvailabilitySnapshot snapshot,
+        bool isRecoverable = false) =>
+        TryApply(generation, LocalAiSetupAvailabilityStatus.Unsupported, reason, out snapshot, isRecoverable);
 
     public bool TryApplyProbeFailure(
         int generation,
@@ -72,7 +74,8 @@ internal sealed class LocalAiSetupAvailabilityCoordinator
         int generation,
         LocalAiSetupAvailabilityStatus status,
         string? reason,
-        out LocalAiSetupAvailabilitySnapshot snapshot)
+        out LocalAiSetupAvailabilitySnapshot snapshot,
+        bool isRecoverable = false)
     {
         if (!IsCurrent(generation))
         {
@@ -80,7 +83,7 @@ internal sealed class LocalAiSetupAvailabilityCoordinator
             return false;
         }
 
-        _current = new(generation, status, reason);
+        _current = new(generation, status, reason, isRecoverable);
         snapshot = _current;
         return true;
     }

@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text.RegularExpressions;
 using OpenClaw.Connection.LocalAi;
 using OpenClaw.Shared.Inference;
+using OpenClaw.Shared.IO;
 using OpenClaw.Shared.Inference.Catalog;
 
 namespace OpenClaw.SetupEngine;
@@ -288,16 +289,7 @@ public sealed class VerifyLocalAiGpuLoadStep : SetupStep
                 baseline,
                 new LocalAiPaths(ctx.LocalDataDir),
                 ct);
-            string engineDirectory = Path.TrimEndingDirectorySeparator(
-                Path.GetFullPath(Path.GetDirectoryName(install.ExecutablePath)!));
-            string cudaModule = Path.GetFullPath(evidence.CudaModulePath);
-            if (!cudaModule.StartsWith(
-                    engineDirectory + Path.DirectorySeparatorChar,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidDataException(
-                    "llama-server loaded CUDA from outside the managed runtime directory.");
-            }
+            ValidateCudaModulePath(install.ExecutablePath, evidence.CudaModulePath);
             long minimumDelta = Math.Max(
                 512L * 1024 * 1024,
                 LocalModelCatalog.TotalDownloadSizeBytes(plan.Model) / 2);
@@ -361,6 +353,24 @@ public sealed class VerifyLocalAiGpuLoadStep : SetupStep
         SetupContext ctx,
         CancellationToken cancellationToken) =>
         new LocalAiManifestStore(new LocalAiPaths(ctx.LocalDataDir)).LoadAsync(cancellationToken);
+
+    internal static void ValidateCudaModulePath(
+        string executablePath,
+        string cudaModulePath,
+        Func<string, string>? resolvePath = null)
+    {
+        resolvePath ??= WindowsExistingPathResolver.Resolve;
+        // Process.Modules reports physical paths. Resolve the receipt's MSIX alias too,
+        // rather than guessing a package cache location or weakening containment.
+        string engineDirectory = WindowsPathSafety.NormalizePath(
+            Path.GetDirectoryName(resolvePath(executablePath))!);
+        string cudaModule = WindowsPathSafety.NormalizePath(resolvePath(cudaModulePath));
+        if (!WindowsPathSafety.IsStrictDescendant(cudaModule, engineDirectory))
+        {
+            throw new InvalidDataException(
+                "llama-server loaded CUDA from outside the managed runtime directory.");
+        }
+    }
 
     internal static bool HasRequiredGpuLoadEvidence(
         LocalAiGpuLoadEvidence evidence,

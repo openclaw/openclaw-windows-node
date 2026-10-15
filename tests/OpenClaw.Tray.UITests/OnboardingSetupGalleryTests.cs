@@ -523,7 +523,11 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                                     "read-only native capability probe completed");
                                 // Render both production visual states without changing host capabilities.
                                 var available = scene.State == "available";
-                                Find<ListViewItem>(welcome, "NativeChoice").IsEnabled = available;
+                                var selector = Find<ListView>(welcome, "GatewayChoiceSelector");
+                                var nativeChoice = Find<ListViewItem>(welcome, "NativeChoice");
+                                nativeChoice.IsEnabled = available;
+                                selector.Items.Remove(nativeChoice);
+                                selector.Items.Insert(available ? 0 : selector.Items.Count, nativeChoice);
                                 Find<RecommendedBadge>(welcome, "WslRecommendedBadge").Visibility =
                                     available ? Visibility.Collapsed : Visibility.Visible;
                                 Find<Border>(welcome, "NativeSupportCard").Visibility =
@@ -537,7 +541,8 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                                 result.Facts.Add("Synthetic availability projection using production visual states, not host eligibility proof.");
                             }
                             if (scene.State == "existing")
-                                Find<ListView>(welcome, "GatewayChoiceSelector").SelectedIndex = 1;
+                                Find<ListView>(welcome, "GatewayChoiceSelector").SelectedItem =
+                                    Find<ListViewItem>(welcome, "ConnectChoice");
                             if (scene.State is "checking" or "blocked" or "failure")
                             {
                                 pendingWsl = SeedPendingWsl(window);

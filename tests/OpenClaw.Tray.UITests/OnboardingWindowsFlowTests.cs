@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Markup;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.Windows.ApplicationModel.Resources;
 using OpenClaw.SetupEngine;
 using OpenClaw.SetupEngine.UI;
 using OpenClaw.SetupEngine.UI.Controls;
@@ -770,6 +771,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
                 System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(window, [route]);
             var editor = await MountedPageAsync<SetupNativeConnectionPage>(window, frame);
             AssertProgress(editor, stageCount: 5, current: 1);
+            AssertNativeConnectionLabels(editor);
             Find<Button>(editor, "CancelButton").Visibility = Visibility.Visible;
             var scale = editor.XamlRoot.RasterizationScale;
             window.AppWindow.Resize(new((int)(480 * scale), (int)(820 * scale)));
@@ -809,6 +811,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
             var editor = await MountedPageAsync<SetupNativeConnectionPage>(window, frame);
             Assert.Equal(route, window.AccessDraft.Route);
             AssertProgress(editor, stageCount: 5, current: 1);
+            AssertNativeConnectionLabels(editor);
             Find<TextBox>(editor, "AddressInput").Text = "wss://mounted-flow.invalid";
             Find<PasswordBox>(editor, "TokenInput").Password = "synthetic-unsent-test-token";
             Invoke(Find<Button>(editor, "CheckButton"));
@@ -827,16 +830,59 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
             Invoke(Find<Button>(editor, "CheckButton"));
             await WaitAsync(() => host.Checks.Count == 2, "pending fake Check");
             Assert.False(Find<Button>(editor, "NextButton").IsEnabled);
+            var resultBar = Find<InfoBar>(editor, "ResultBar");
+            Assert.True(resultBar.IsOpen);
+            AssertNativeConnectionText("Checking", resultBar.Message);
+            Invoke(Find<Button>(editor, "CancelButton"));
+            await WaitAsync(() => Find<Button>(editor, "CheckButton").IsEnabled, "cancelled fake Check");
+            Assert.True(resultBar.IsOpen);
+            Assert.Equal(InfoBarSeverity.Informational, resultBar.Severity);
+            AssertNativeConnectionText("Cancelled", resultBar.Message);
+            Assert.Same(editor, frame.Content);
+            Assert.False(File.Exists(Path.Combine(data, "gateways.json")));
+
+            Invoke(Find<Button>(editor, "CheckButton"));
+            await WaitAsync(() => host.Checks.Count == 3, "pending fake Check before close");
             var cleanup = editor.DisposeAsync().AsTask();
             await cleanup.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.Same(cleanup, editor.DisposeAsync().AsTask());
-            Assert.Equal(1, host.CancelledChecks);
+            Assert.Equal(2, host.CancelledChecks);
             Assert.True(host.Discards > 0);
             Assert.Equal("", Find<PasswordBox>(editor, "TokenInput").Password);
             Assert.False(window.AccessDraft.GatewayAvailable);
         }, host);
         Assert.Single(host.Connects);
         Assert.All(host.Checks.Concat(host.Connects), request => Assert.Equal("wss://mounted-flow.invalid", request.GatewayUrl));
+    }
+
+    private static void AssertNativeConnectionText(string suffix, object actual)
+    {
+        // Resolve expected copy independently, using the same default language context as the page.
+        var resources = new ResourceManager(Path.Combine(AppContext.BaseDirectory, "OpenClaw.Tray.WinUI.pri"));
+        var expected = resources.MainResourceMap.GetValue(
+            "Resources/Onboarding_NativeConnection_" + suffix, resources.CreateResourceContext()).ValueAsString;
+        var label = Assert.IsType<string>(actual);
+        Assert.False(string.IsNullOrWhiteSpace(label));
+        Assert.DoesNotContain("Onboarding_", label);
+        Assert.Equal(expected, label);
+    }
+
+    private static void AssertNativeConnectionLabels(SetupNativeConnectionPage editor)
+    {
+        AssertNativeConnectionText("Title", Find<TextBlock>(editor, "TitleText").Text);
+        AssertNativeConnectionText("Description", Find<TextBlock>(editor, "DescriptionText").Text);
+        foreach (var suffix in new[] { "Back", "Cancel", "Check", "Next" })
+            AssertNativeConnectionText(suffix, Find<Button>(editor, suffix + "Button").Content);
+        foreach (var suffix in new[] { "Address", "Code", "Token", "SshEnabled", "SshHost", "SshUser", "SshPort", "RemotePort", "LocalPort" })
+        {
+            AssertNativeConnectionText(suffix, Find<SettingsCard>(editor, suffix + "Card").Header);
+            var input = Assert.IsAssignableFrom<FrameworkElement>(
+                editor.FindName(suffix == "SshEnabled" ? suffix : suffix + "Input"));
+            AssertNativeConnectionText(suffix, AutomationProperties.GetName(input));
+        }
+        var ssh = Find<SettingsExpander>(editor, "SshExpander");
+        AssertNativeConnectionText("Ssh", ssh.Header);
+        AssertNativeConnectionText("SshDescription", ssh.Description);
     }
 
     private async Task WithWindowAsync(
