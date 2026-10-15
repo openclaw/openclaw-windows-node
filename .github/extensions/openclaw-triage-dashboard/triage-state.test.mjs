@@ -247,8 +247,10 @@ test("real open handler serves inert bootstrap and preserves explicit-state refr
     assert.equal(refreshed.isBootstrap, undefined);
     assert.equal(refreshed.items[0].live.number, 1308);
     assert.ok(refreshed.liveUpdatedAt);
-    assert.equal(timers.size, 1);
-    assert.equal([...timers][0].milliseconds, 60_000);
+    assert.deepEqual(
+        [...timers].map((timer) => timer.milliseconds).sort((left, right) => left - right),
+        [2_000, 60_000],
+    );
     assert.deepEqual(gh.calls.map((args) => args.slice(0, 2)), [["pr", "list"], ["issue", "list"]]);
 
     gh.pause();
@@ -1088,6 +1090,7 @@ test("uses legacy queue and day-plan guidance only when no structured plan exist
         ["Queue task", "Shared task", "Day task"],
     );
     assert.equal(lanes[0].levels[0][0].legacy, true);
+    assert.deepEqual(lanes[0].levels[0][0].gates, []);
 });
 
 test("rejects unknown and cyclic plan dependencies", () => {
@@ -1182,6 +1185,7 @@ test("the renderer exposes live filters and guarded action controls", () => {
     assert.match(html, /renderSessionTasks\(state\.sessionTasks, state\.sessionDataError\)/);
     assert.match(html, /function createAdversarialReview\(review\)/);
     assert.match(html, /item\.adversarialReview/);
+    assert.ok(html.includes("matchAll(/#(\\d+)/g)"));
     assert.match(html, /Adversarial review: /);
     assert.match(html, /stale head/);
     assert.match(html, /function itemDecisionLabel\(item\)/);
@@ -1232,7 +1236,7 @@ test("the renderer exposes live filters and guarded action controls", () => {
       /catch \(error\) \{\s*showNotice\(error\.message\);\s*action\.disabled = false;/,
     );
     assert.match(html, /const refreshButton = event\.currentTarget;/);
-    assert.match(html, /finally \{\s*refreshButton\.disabled = false;/);
+    assert.match(html, /finally \{\s*refreshButton\.disabled = state\?\.isBootstrap === true;/);
     assert.doesNotMatch(html, /finally \{\s*event\.currentTarget\.disabled = false;/);
     assert.match(html, /actions\.append\(action\)/);
     assert.doesNotMatch(html, /actions\.append\(next\)/);
@@ -1501,11 +1505,11 @@ test("live GitHub collection and session review data are reflected in the canvas
     assert.match(source, /entry\.taskTimer = setInterval\(\(\) => refreshSessionData\(entry\), 2_000\)/);
     assert.match(
         source,
-        /catch \(error\) \{\s*entry\.triage = reconcileOpenInventory\(entry\.triage, entry\.pullRequests, entry\.issues\);/,
+        /catch \(error\) \{\s*if \(entry\.triage !== triage\) return entry\.state;\s*entry\.triage = reconcileOpenInventory\(entry\.triage, entry\.pullRequests, entry\.issues\);/,
     );
     assert.match(
         source,
-        /function reconfigureInstance\(entry, triage\) \{\s*entry\.triage = reconcileOpenInventory\(triage, entry\.pullRequests, entry\.issues\);/,
+        /entry\.triage = reconcileOpenInventory\(triage, entry\.pullRequests, entry\.issues\);\s*entry\.state = mergeSessionData/,
     );
 });
 

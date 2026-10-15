@@ -922,7 +922,7 @@ export function renderDashboardHtml() {
       root.replaceChildren();
       const liveNumbers = new Set((reviews ?? []).map((review) => review.prNumber));
       const remainingStaticReviews = staticReviews.filter((review) => {
-        const numbers = [...String(review.item ?? "").matchAll(/#(\d+)/g)]
+        const numbers = [...String(review.item ?? "").matchAll(/#(\\d+)/g)]
           .map((match) => Number(match[1]));
         return numbers.length === 0 || numbers.some((number) => !liveNumbers.has(number));
       });

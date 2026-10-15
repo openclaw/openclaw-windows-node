@@ -6,6 +6,7 @@ export function buildPlanLanes(plan, legacyDayPlan = [], legacyQueue = []) {
             kind: "independent",
             levels: [[{
                 dependsOn: [],
+                gates: [],
                 id: `legacy-${index}`,
                 itemNumbers: [],
                 legacy: true,
