@@ -489,18 +489,22 @@ public class WizardConsoleTailTests
     }
 
     [Fact]
-    public void TailCommand_WaitsUntilALogExists()
+    public void TailCommand_FollowsExistingAndLateCreatedLogsWithoutReplayingHistory()
     {
         var command = WizardConsoleTail.TailCommand;
 
-        Assert.Contains("tail -n 0 -F", command, StringComparison.Ordinal);
+        Assert.Contains("declare -A seen=()", command, StringComparison.Ordinal);
+        Assert.Contains("start_tail 0 \"$file\"", command, StringComparison.Ordinal);
         Assert.Contains("while true", command, StringComparison.Ordinal);
-        Assert.Contains("exec tail -n +1 -F", command, StringComparison.Ordinal);
-        var existing = command.IndexOf("tail -n 0 -F", StringComparison.Ordinal);
-        var created = command.IndexOf("tail -n +1 -F", StringComparison.Ordinal);
+        Assert.Contains("start_tail +1 \"$file\"", command, StringComparison.Ordinal);
+        var existing = command.IndexOf("start_tail 0 \"$file\"", StringComparison.Ordinal);
+        var created = command.IndexOf("start_tail +1 \"$file\"", StringComparison.Ordinal);
         Assert.True(existing >= 0 && created > existing);
         Assert.Contains("\"$dir\"/openclaw-*.log", command, StringComparison.Ordinal);
-        Assert.DoesNotContain("bash -c", command, StringComparison.Ordinal);
-        Assert.DoesNotContain("2>/dev/null", command, StringComparison.Ordinal);
+        Assert.Contains("tail -n \"$count\" -F -- \"$file\" &", command, StringComparison.Ordinal);
+        Assert.Contains("watch_logs &", command, StringComparison.Ordinal);
+        Assert.Contains("read -r _ || true", command, StringComparison.Ordinal);
+        Assert.Contains("trap 'stop_watcher; exit 0' HUP INT TERM", command, StringComparison.Ordinal);
+        Assert.Contains("trap 'cleanup_tails; exit 0' HUP INT TERM", command, StringComparison.Ordinal);
     }
 }

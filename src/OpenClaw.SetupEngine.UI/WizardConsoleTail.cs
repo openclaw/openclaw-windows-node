@@ -28,10 +28,57 @@ internal enum GatewayLogTailIssue
 internal sealed class WizardConsoleTail : IDisposable
 {
     private const string DefaultDistroName = "OpenClawGateway";
-    // Bash expands a glob once, before tail starts. The loop waits until a
-    // log exists, then replaces this process with tail -F on those names.
-    internal const string TailCommand =
-        "dir=/tmp/openclaw; set -- \"$dir\"/openclaw-*.log; if [ -e \"$1\" ]; then exec tail -n 0 -F \"$@\"; fi; while true; do set -- \"$dir\"/openclaw-*.log; if [ -e \"$1\" ]; then exec tail -n +1 -F \"$@\"; fi; sleep 0.2; done";
+    // Keep discovering matching files because a stale log can exist before the
+    // Gateway creates the log for this wizard run. Existing logs start at EOF;
+    // logs first seen after launch include their initial instructions.
+    internal const string TailCommand = """
+        dir=/tmp/openclaw
+        watcher=
+        stop_watcher() {
+          trap - EXIT HUP INT TERM
+          if [[ -n "$watcher" ]]; then
+            kill "$watcher" 2>/dev/null || true
+            wait "$watcher" 2>/dev/null || true
+          fi
+        }
+        trap 'stop_watcher; exit 0' HUP INT TERM
+        trap stop_watcher EXIT
+        watch_logs() {
+          declare -A seen=()
+          pids=()
+          cleanup_tails() {
+            trap - EXIT HUP INT TERM
+            if ((${#pids[@]})); then
+              kill "${pids[@]}" 2>/dev/null || true
+              wait "${pids[@]}" 2>/dev/null || true
+            fi
+          }
+          trap 'cleanup_tails; exit 0' HUP INT TERM
+          trap cleanup_tails EXIT
+          start_tail() {
+            local count="$1"
+            local file="$2"
+            seen["$file"]=1
+            tail -n "$count" -F -- "$file" &
+            pids+=("$!")
+          }
+          shopt -s nullglob
+          for file in "$dir"/openclaw-*.log; do
+            start_tail 0 "$file"
+          done
+          while true; do
+            for file in "$dir"/openclaw-*.log; do
+              if [[ -z "${seen[$file]+x}" ]]; then
+                start_tail +1 "$file"
+              fi
+            done
+            sleep 0.2
+          done
+        }
+        watch_logs &
+        watcher=$!
+        read -r _ || true
+        """;
     private static readonly Regex s_ansiEscapeRegex = new(
         @"\x1B(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1B\\)|[PX^_].*?\x1B\\|[@-Z\\-_])",
         RegexOptions.Compiled | RegexOptions.Singleline);
@@ -87,7 +134,7 @@ internal sealed class WizardConsoleTail : IDisposable
             return;
         }
 
-        Process? process;
+        Process? process = null;
         try
         {
             var psi = new ProcessStartInfo
@@ -112,11 +159,20 @@ internal sealed class WizardConsoleTail : IDisposable
             {
                 process.StandardInput.Write(TailCommand);
                 process.StandardInput.Write('\n');
-                process.StandardInput.Close();
+                process.StandardInput.Flush();
             }
         }
         catch (Exception ex)
         {
+            try
+            {
+                if (process is { HasExited: false })
+                    process.Kill(entireProcessTree: true);
+            }
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
+            catch { }
+            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
+            try { process?.Dispose(); } catch { }
             _logger.Warn($"WizardConsoleTail: failed to launch wsl.exe ({ex.GetType().Name}: {ex.Message}); console banner will be empty");
             return;
         }
@@ -313,9 +369,14 @@ internal sealed class WizardConsoleTail : IDisposable
 
         if (process == null) return;
 
+        // Closing stdin asks the Bash supervisor to reap every tail process.
+        // Fall back to killing wsl.exe if the cooperative stop does not finish.
+        try { process.StandardInput.Close(); }
+        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
+        catch { /* already gone */ }
         try
         {
-            if (!process.HasExited)
+            if (!process.WaitForExit(1_000))
                 process.Kill(entireProcessTree: true);
         }
         // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
