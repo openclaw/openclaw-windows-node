@@ -269,6 +269,36 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         }, scenario: "pending", tryCopy: text => { copied = text; return true; });
     }
 
+    [Fact]
+    public async Task AcceptedSend_PreservesDraftEditedWhileSendIsInFlight()
+    {
+        const string submitted = "Send this message";
+        const string edited = "Keep this newer draft";
+        await WithChatAsync(800, async (surface, _, session, provider) =>
+        {
+            provider.SendMessageGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            Task<bool>? sendTask = null;
+            await ui.RunOnUIAsync(() =>
+            {
+                session.ViewModel.SetDraft(submitted);
+                sendTask = session.Controller.SendAsync();
+            });
+
+            await ui.RunOnUIAsync(() => session.ViewModel.SetDraft(edited));
+            provider.SendMessageGate.SetResult();
+            Assert.True(await sendTask!);
+            await SettleAsync();
+
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Equal(new[] { ("proof", submitted) }, provider.SentMessages);
+                Assert.Equal(edited, session.ViewModel.Draft);
+                Assert.Equal(edited, FindControl<TextBox>(surface, "ChatComposerInput").Text);
+            });
+            await CaptureAsync(surface, "Composer-inflight-edit-preserved");
+        });
+    }
+
     private static IEnumerable<TextBlock> RealizedTimelineText(DependencyObject root) =>
         FindDescendants<TextBlock>(Assert.Single(FindDescendants<ItemsView>(root)))
             .Where(text => Ancestors(text).OfType<ItemContainer>().FirstOrDefault() is { } container
@@ -2039,6 +2069,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         public string? SelectedThinkingLevel { get; private set; }
         public int SetThinkingLevelCalls { get; private set; }
         public int ClearThinkingLevelCalls { get; private set; }
+        public TaskCompletionSource? SendMessageGate { get; set; }
         public void Publish(ChatDataSnapshot snapshot)
         {
             _snapshot = snapshot;
@@ -2155,6 +2186,8 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         public async Task SendMessageAsync(string threadId, string message, CancellationToken cancellationToken = default)
         {
             SentMessages.Add((threadId, message));
+            if (SendMessageGate is not null)
+                await SendMessageGate.Task.WaitAsync(cancellationToken);
             if (scenario != "pending")
                 return;
             var snapshot = await LoadAsync(cancellationToken);
