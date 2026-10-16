@@ -60,11 +60,8 @@ public sealed partial class GatewayFixtureUiTests
             await WaitUiAsync(run, () => FindById(run, "NotificationsPageMarker") is not null, "Notifications before acceptance");
             await CaptureIfRequestedAsync(run, "composer-pending-notifications.png");
             run.Gateway.ReleaseSessionMutations();
-            await run.WaitForAsync(async () =>
-            {
-                var snapshot = await run.InvokeAsync("app.chat.snapshot");
-                return snapshot.GetProperty("defaultThreadId").GetString() == ComposerCreatedKey;
-            }, "composer handoff completed while Notifications is active");
+            var loaded = await run.Gateway.WaitForCompletedRequestAsync("chat.history", ComposerCreatedKey);
+            Assert.Equal("ok", loaded.Outcome);
             await WaitUiAsync(run, () => FindById(run, $"WorkspaceSession:{ComposerCreatedKey}") is not null,
                 "created conversation present in sidebar");
             Assert.NotNull(FindById(run, "NotificationsPageMarker"));
