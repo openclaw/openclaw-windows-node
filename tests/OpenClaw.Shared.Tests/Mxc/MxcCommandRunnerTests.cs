@@ -166,41 +166,88 @@ public sealed class MxcCommandRunnerTests : IDisposable
         for (var iteration = 0; iteration < 10; iteration++)
         {
             var identityPath = Path.Combine(_root, $"{pipe}-{iteration}.identity");
-            var command = FixtureCommand("inherit-mxc-pipes", identityPath, pipe, length.ToString());
+            var releasePath = identityPath + ".release";
+            var command = FixtureCommand("inherit-mxc-pipes", identityPath, pipe, length.ToString(), releasePath);
             command.Cwd = _root;
-            command.TimeoutMs = 1_500;
+            command.TimeoutMs = 30_000;
+            using var cancellation = new CancellationTokenSource();
+            var execution = Runner(_ => throw new Exception("must not spawn"),
+                availability: new(false, false, false, [], isWindowsUnsupported: true))
+                .RunAsync(command, cancellation.Token);
+            Process? parent = null;
+            Process? child = null;
             long elapsed = 0;
             try
             {
+                using var readyDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                while (!File.Exists(identityPath + ".parent"))
+                {
+                    Assert.False(execution.IsCompleted, "The fixture exited before publishing its process identities.");
+                    await Task.Delay(10, readyDeadline.Token);
+                }
+                parent = ReadOwnedFixture(identityPath + ".parent");
+                child = ReadOwnedFixture(identityPath);
+                Assert.False(parent.HasExited);
+                Assert.False(child.HasExited);
+                Assert.False(execution.IsCompleted);
+                File.WriteAllText(releasePath, "release");
+                await parent.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+
+                // Bound draining after root exit, not cold fixture startup.
                 var clock = Stopwatch.StartNew();
-                var result = await Runner(_ => throw new Exception("must not spawn"),
-                    availability: new(false, false, false, [], isWindowsUnsupported: true)).RunAsync(command);
-                Assert.False(result.TimedOut);
+                var result = await execution.WaitAsync(TimeSpan.FromSeconds(3));
+                Assert.False(result.TimedOut, result.Stderr);
                 Assert.Equal(0, result.ExitCode);
                 Assert.StartsWith(new string('o', length), result.Stdout);
                 Assert.StartsWith(new string('e', length), result.Stderr);
                 Assert.True(clock.Elapsed < TimeSpan.FromSeconds(3));
                 elapsed = clock.ElapsedMilliseconds;
-                using var child = ReadOwnedChild(identityPath);
                 Assert.False(child.HasExited);
                 await WaitForScratchCleanup();
             }
             finally
             {
-                if (File.Exists(identityPath))
+                try
                 {
-                    using var child = ReadOwnedChild(identityPath);
-                    if (!child.HasExited) child.Kill();
-                    await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
-                    if (evidence is not null)
+                    if (child is null && File.Exists(identityPath))
+                        child = ReadOwnedFixture(identityPath);
+                }
+                finally
+                {
+                    await cancellation.CancelAsync();
+                    try
                     {
-                        var name = Path.GetFileName(_root) + "-" + Path.GetFileName(identityPath);
-                        File.Copy(identityPath + ".json", Path.Combine(evidence, name + ".json"));
-                        File.WriteAllText(Path.Combine(evidence, name + ".cleanup.json"),
-                            System.Text.Json.JsonSerializer.Serialize(new { child.Id, Exited = child.HasExited, ElapsedMs = elapsed }));
+                        await execution.WaitAsync(TimeSpan.FromSeconds(5));
+                    }
+                    catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+                    {
+                        // Cancellation is teardown, not the failure from the drain assertion.
+                    }
+                    finally
+                    {
+                        try
+                        {
+                            if (child is not null)
+                            {
+                                if (!child.HasExited) child.Kill();
+                                await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+                                if (evidence is not null)
+                                {
+                                    var name = Path.GetFileName(_root) + "-" + Path.GetFileName(identityPath);
+                                    File.Copy(identityPath + ".json", Path.Combine(evidence, name + ".json"));
+                                    File.WriteAllText(Path.Combine(evidence, name + ".cleanup.json"),
+                                        System.Text.Json.JsonSerializer.Serialize(new { child.Id, Exited = child.HasExited, PostRootExitElapsedMs = elapsed }));
+                                }
+                            }
+                        }
+                        finally
+                        {
+                            child?.Dispose();
+                            parent?.Dispose();
+                        }
+                        await WaitForScratchCleanup();
                     }
                 }
-                await WaitForScratchCleanup();
             }
         }
     }
@@ -923,7 +970,7 @@ public sealed class MxcCommandRunnerTests : IDisposable
         return new() { Argv = [image, "--process-fixture", .. arguments], TimeoutMs = 10_000 };
     }
 
-    private static Process ReadOwnedChild(string path)
+    private static Process ReadOwnedFixture(string path)
     {
         var identity = File.ReadAllText(path).Trim().Split('|');
         var child = Process.GetProcessById(int.Parse(identity[0]));

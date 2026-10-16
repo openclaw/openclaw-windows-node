@@ -28,6 +28,7 @@ public sealed record MxcRequestContext
         {
             denied.Add(Path.Combine(profile, ".ssh"));
             denied.Add(Path.Combine(profile, ".openclaw"));
+            denied.Add(Path.Combine(profile, OpenClawAppIdentity.CompanionHomeDirectoryName));
         }
         if (!string.IsNullOrWhiteSpace(local))
             denied.AddRange([

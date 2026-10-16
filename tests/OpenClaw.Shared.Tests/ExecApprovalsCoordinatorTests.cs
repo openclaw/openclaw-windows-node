@@ -926,11 +926,15 @@ public class ExecApprovalsCoordinatorTests : IDisposable
     }
 
     [Theory]
-    [InlineData(false, false)]
-    [InlineData(false, true)]
-    [InlineData(true, false)]
-    [InlineData(true, true)]
-    public async Task ApprovedCombinedCmdSwitches_AreRejectedBeforeLaunch(bool prompt, bool unsupportedWindows)
+    [InlineData(false, false, "/d/s/c")]
+    [InlineData(false, true, "/d/s/c")]
+    [InlineData(true, false, "/d/s/c")]
+    [InlineData(true, true, "/d/s/c")]
+    [InlineData(false, false, "x/c")]
+    [InlineData(false, true, "x/c")]
+    [InlineData(true, false, "x/c")]
+    [InlineData(true, true, "x/c")]
+    public async Task ApprovedCombinedCmdSwitches_AreRejectedBeforeLaunch(bool prompt, bool unsupportedWindows, string mode)
     {
         WriteStoreFile(prompt
             ? """{"version":1,"defaults":{"security":"full","ask":"always"}}"""
@@ -949,7 +953,7 @@ public class ExecApprovalsCoordinatorTests : IDisposable
             scratchRoot: Path.Combine(_dir, "runs"),
             contextProvider: () => MxcSyntheticContext.Create(_dir)));
         var response = await cap.ExecuteAsync(Req(JsonSerializer.Serialize(
-            new { command = new[] { SystemCmdPath, "/d/s/c", "echo \"test value\"" } })));
+            new { command = new[] { SystemCmdPath, mode, "echo \"test value\"" } })));
 
         Assert.False(response.Ok);
         Assert.Contains("canonical cmd", response.Error);

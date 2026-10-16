@@ -146,11 +146,11 @@ static async Task<int> RunProcessFixtureAsync(string[] args)
         return 0;
     }
 
-    if (args is ["inherit-mxc-pipes", var mxcIdentity, var pipe, var lengthText] &&
+    if (args is ["inherit-mxc-pipes", var mxcIdentity, var pipe, var lengthText, var releasePath] &&
         int.TryParse(lengthText, out var length))
     {
         using var child = StartSelfWithRedirection(pipe == "stderr", pipe == "stdout",
-            "--process-fixture", "hold-silent", "8000");
+            "--process-fixture", "hold-silent", "60000");
         WriteProcessIdentity(mxcIdentity, child);
         using var parent = Process.GetCurrentProcess();
         File.WriteAllText(mxcIdentity + ".json", JsonSerializer.Serialize(new
@@ -160,11 +160,19 @@ static async Task<int> RunProcessFixtureAsync(string[] args)
             {
                 Pid = p.Id, StartTimeUtc = p.StartTime.ToUniversalTime(),
                 Executable = p.MainModule!.FileName,
-                CommandLine = p.Id == Environment.ProcessId ? Environment.CommandLine : "--process-fixture hold-silent 8000",
+                CommandLine = p.Id == Environment.ProcessId ? Environment.CommandLine : "--process-fixture hold-silent 60000",
             }).ToArray(),
             DataRoots = new[] { "OPENCLAW_TRAY_DATA_DIR", "OPENCLAW_TRAY_APPDATA_DIR", "OPENCLAW_TRAY_LOCALAPPDATA_DIR" }
                 .Select(Environment.GetEnvironmentVariable).ToArray(),
         }));
+        WriteProcessIdentity(mxcIdentity + ".parent", parent);
+        var wait = Stopwatch.StartNew();
+        while (!File.Exists(releasePath))
+        {
+            if (wait.Elapsed > TimeSpan.FromSeconds(10))
+                throw new TimeoutException("MXC pipe fixture launcher release gate was not opened.");
+            await Task.Delay(10);
+        }
         Console.Out.Write(new string('o', length));
         Console.Error.Write(new string('e', length));
         Console.Out.Flush();

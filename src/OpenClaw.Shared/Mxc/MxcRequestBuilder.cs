@@ -181,17 +181,11 @@ public static class MxcRequestBuilder
 
     private static bool SelectsCmdCommandMode(IReadOnlyList<string> argv)
     {
-        foreach (var token in argv.Skip(1))
-        {
-            // cmd accepts combined switches and attached payloads, not just a leading /c.
-            var argument = token.Trim();
-            if (argument.StartsWith('/') &&
-                (argument.Contains("/c", StringComparison.OrdinalIgnoreCase) ||
-                 argument.Contains("/k", StringComparison.OrdinalIgnoreCase) ||
-                 argument.Contains("/r", StringComparison.OrdinalIgnoreCase)))
-                return true;
-        }
-        return false;
+        // cmd scans its raw tail, including switches embedded in otherwise unrecognized text.
+        return argv.Skip(1).Any(argument =>
+            argument.Contains("/c", StringComparison.OrdinalIgnoreCase) ||
+            argument.Contains("/k", StringComparison.OrdinalIgnoreCase) ||
+            argument.Contains("/r", StringComparison.OrdinalIgnoreCase));
     }
 
     internal static string ValidateExecutable(string image)

@@ -339,6 +339,8 @@ public sealed class MxcRequestBuilderTests : IDisposable
     public void ProtectedRoots_AreEmittedEvenWhenAbsent_ParentGrantKeepsNativeExceptions()
     {
         var context = MxcRequestContext.Capture(Settings);
+        Assert.Contains(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".openclaw-companion"), context.ProtectedPaths);
         var request = MxcRequestBuilder.Build(Command, new()
         {
             SandboxCustomFolders = [new() { Path = _root, Access = SandboxFolderAccess.ReadWrite }],
@@ -349,6 +351,33 @@ public sealed class MxcRequestBuilderTests : IDisposable
             Assert.Contains(request.Filesystem.DeniedPaths, denied =>
                 path.Equals(denied, StringComparison.OrdinalIgnoreCase) ||
                 path.StartsWith(denied + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CompanionCleanupState_StaysProtectedUnderOpenAndExplicitGrants(bool exists)
+    {
+        var context = MxcSyntheticContext.Create(_root);
+        var profile = context.RequireFolder("Profile");
+        var cleanupRoot = Path.Combine(profile, ".openclaw-companion");
+        if (!exists) Directory.Delete(cleanupRoot);
+        var settings = SystemRunPermissionPresets.Apply(new(), SystemRunAccessPreset.Open);
+
+        var request = MxcRequestBuilder.Build(Command, settings, Settings, Scratch, context);
+
+        Assert.Contains(profile, request.Filesystem!.ReadwritePaths);
+        Assert.Contains(cleanupRoot, request.Filesystem.DeniedPaths);
+        Assert.Equal(exists, Directory.Exists(cleanupRoot));
+        foreach (var grant in new[] { cleanupRoot, Path.Combine(cleanupRoot, "cleanup", "fixture-family") })
+        {
+            var explicitSettings = settings with
+            {
+                SandboxCustomFolders = [new() { Path = grant, Access = SandboxFolderAccess.ReadWrite }],
+            };
+            Assert.Contains("protected", Assert.Throws<NotSupportedException>(() =>
+                MxcRequestBuilder.Build(Command, explicitSettings, Settings, Scratch, context)).Message);
+        }
     }
 
     [Fact]
@@ -638,6 +667,11 @@ public sealed class MxcRequestBuilderTests : IDisposable
     [InlineData("/d/k")]
     [InlineData(" /c")]
     [InlineData("\t/d/s/c")]
+    [InlineData("x/c")]
+    [InlineData("prefix/d/s/c")]
+    [InlineData("prefix /c")]
+    [InlineData("x/k")]
+    [InlineData("x/r")]
     public void NoncanonicalCmdCommandMode_IsRejected(string mode) =>
         Assert.Throws<NotSupportedException>(() => MxcRequestBuilder.RenderArgv(
             [Path.Combine(Environment.SystemDirectory, "cmd.exe"), mode, "echo hi"]));

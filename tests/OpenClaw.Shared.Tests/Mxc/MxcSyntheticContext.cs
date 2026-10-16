@@ -21,6 +21,7 @@ internal static class MxcSyntheticContext
             Path.Combine(profile, "AppData", "Roaming", "OpenClawTray"),
             Path.Combine(profile, "AppData", "Local", "Microsoft", "Edge", "User Data"),
             Path.Combine(profile, "AppData", "Roaming", "Microsoft", "Windows", "PowerShell", "PSReadLine"),
+            Path.Combine(profile, ".openclaw-companion"),
         };
         foreach (var folder in folders) Directory.CreateDirectory(folder.Path!);
         foreach (var path in denied) Directory.CreateDirectory(path);
