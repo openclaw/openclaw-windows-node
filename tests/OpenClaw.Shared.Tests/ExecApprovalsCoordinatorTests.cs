@@ -9,6 +9,10 @@ using Xunit;
 using Xunit.Abstractions;
 using OpenClaw.Shared;
 using OpenClaw.Shared.ExecApprovals;
+using OpenClaw.Shared.Capabilities;
+using OpenClaw.Shared.Mxc;
+using OpenClaw.Shared.Tests.Mxc;
+using Microsoft.Mxc.Sdk.V1;
 
 namespace OpenClaw.Shared.Tests;
 
@@ -850,6 +854,83 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         Assert.EndsWith("where.exe", command.Argv![0], StringComparison.OrdinalIgnoreCase);
         Assert.StartsWith(command.Argv[0], line);
         Assert.DoesNotContain("cmd.exe", line);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task ApprovedMultilinePowerShell_ReachesRunnerVerbatim(bool prompt, bool unsupportedWindows)
+    {
+        WriteStoreFile(prompt
+            ? """{"version":1,"defaults":{"security":"full","ask":"always"}}"""
+            : """{"version":1,"defaults":{"security":"full","ask":"off"}}""");
+        var coordinator = MakeCoordinator(
+            canPresent: AlwaysCanPresentEvaluator.Instance,
+            prompt: new FixedDecisionPromptHandler(ExecApprovalPromptOutcome.AllowOnce));
+        var executable = Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe");
+        const string script = "Write-Output 'first'\r\nWrite-Output 'second'";
+        string[] argv = [executable, "-NoProfile", "-NonInteractive", "-Command", script];
+        var request = Req(JsonSerializer.Serialize(new { command = argv, timeoutMs = 10_000 }));
+        ContainerRequest? captured = null;
+        var cap = new SystemCapability(NullLogger.Instance);
+        cap.SetV2Handler(coordinator);
+        cap.SetCommandRunner(new MxcCommandRunner(
+            () => new(), () => Path.Combine(_dir, "settings"),
+            () => unsupportedWindows
+                ? new(false, false, true, [], isWindowsUnsupported: true)
+                : new(true, false, true, [], isolationTier: "base-container", supportsProtectedPathDenies: true),
+            spawn: sdkRequest =>
+            {
+                captured = sdkRequest;
+                return Task.FromResult<IMxcProcess>(new MxcCommandRunnerTests.FakeProcess(stdout: "first\r\nsecond\r\n"));
+            },
+            probe: _ => MxcAvailabilityTests.BaseProbe(),
+            scratchRoot: Path.Combine(_dir, "runs"),
+            contextProvider: () => MxcSyntheticContext.Create(_dir)));
+
+        var response = await cap.ExecuteAsync(request);
+
+        Assert.True(response.Ok, response.Error);
+        var payload = JsonSerializer.SerializeToElement(response.Payload);
+        Assert.True(payload.GetProperty("success").GetBoolean());
+        Assert.Equal("first\r\nsecond\r\n", payload.GetProperty("stdout").GetString());
+        if (unsupportedWindows)
+            Assert.Null(captured);
+        else
+            Assert.Equal($"{executable} -NoProfile -NonInteractive -Command \"{script}\"", captured!.Command);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task ApprovedCombinedCmdSwitches_AreRejectedBeforeLaunch(bool prompt, bool unsupportedWindows)
+    {
+        WriteStoreFile(prompt
+            ? """{"version":1,"defaults":{"security":"full","ask":"always"}}"""
+            : """{"version":1,"defaults":{"security":"full","ask":"off"}}""");
+        var cap = new SystemCapability(NullLogger.Instance);
+        cap.SetV2Handler(MakeCoordinator(
+            canPresent: AlwaysCanPresentEvaluator.Instance,
+            prompt: new FixedDecisionPromptHandler(ExecApprovalPromptOutcome.AllowOnce)));
+        cap.SetCommandRunner(new MxcCommandRunner(
+            () => new(), () => Path.Combine(_dir, "settings"),
+            () => unsupportedWindows
+                ? new(false, false, true, [], isWindowsUnsupported: true)
+                : new(true, false, true, [], isolationTier: "base-container", supportsProtectedPathDenies: true),
+            spawn: _ => throw new InvalidOperationException("Noncanonical argv must not reach native spawn."),
+            probe: _ => throw new InvalidOperationException("Noncanonical argv must not reach native admission."),
+            scratchRoot: Path.Combine(_dir, "runs"),
+            contextProvider: () => MxcSyntheticContext.Create(_dir)));
+        var response = await cap.ExecuteAsync(Req(JsonSerializer.Serialize(
+            new { command = new[] { SystemCmdPath, "/d/s/c", "echo \"test value\"" } })));
+
+        Assert.False(response.Ok);
+        Assert.Contains("canonical cmd", response.Error);
+        Assert.Null(response.Payload);
     }
 
     // Allow payload is built from the RESOLVED path, fail-closed if unresolved

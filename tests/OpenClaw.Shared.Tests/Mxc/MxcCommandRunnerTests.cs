@@ -757,6 +757,40 @@ public sealed class MxcCommandRunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task EightActiveCommands_ReportBusyWithoutClaimingCleanupOrContainment()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var processes = Enumerable.Range(0, 8).Select(_ => new FakeProcess
+        {
+            RootExited = false,
+            WaitCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously),
+        }).ToArray();
+        var index = -1;
+        var runner = Runner(_ => Task.FromResult<IMxcProcess>(processes[Interlocked.Increment(ref index)]));
+        var calls = processes.Select(_ => runner.RunAsync(Command, cancellation.Token)).ToArray();
+        try
+        {
+            await Task.WhenAll(processes.Select(p => p.ExitProbed.Task)).WaitAsync(TimeSpan.FromSeconds(5));
+            var busy = await runner.RunAsync(Command);
+            Assert.Equal(NodeToolErrorCategory.NodeBusy, busy.ErrorCategory);
+            Assert.Null(busy.ExecutionMode);
+            Assert.Null(busy.SandboxDenialReason);
+            Assert.Null(NodeToolInvocation.GetSandboxTelemetry(busy.ExecutionMode, busy.ErrorCategory));
+            Assert.Contains("eight commands running or finishing cleanup", busy.Stderr);
+            Assert.All(processes, p => Assert.False(p.RootExited || p.Killed || p.Disposed));
+            Assert.All(calls, call => Assert.False(call.IsCompleted));
+        }
+        finally
+        {
+            cancellation.Cancel();
+            foreach (var call in calls)
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => call.WaitAsync(TimeSpan.FromSeconds(2)));
+            await Task.WhenAll(processes.Select(p => p.DisposedCompletion.Task)).WaitAsync(TimeSpan.FromSeconds(5));
+            await WaitForScratchCleanup();
+        }
+    }
+
+    [Fact]
     public async Task EightFinalizations_HoldCapacityUntilActualCleanupCompletes()
     {
         using var cancellation = new CancellationTokenSource();
@@ -774,7 +808,7 @@ public sealed class MxcCommandRunnerTests : IDisposable
             foreach (var call in calls)
                 await Assert.ThrowsAnyAsync<OperationCanceledException>(() => call.WaitAsync(TimeSpan.FromSeconds(2)));
             var denied = await runner.RunAsync(Command);
-            Assert.Equal(NodeToolErrorCategory.SandboxDenied, denied.ErrorCategory);
+            Assert.Equal(NodeToolErrorCategory.NodeBusy, denied.ErrorCategory);
             Assert.Contains("eight commands", denied.Stderr);
             Assert.Equal(8, Directory.GetDirectories(_root).Length);
             Assert.All(processes, p => Assert.False(p.Disposed || p.Killed || p.Finalized));
@@ -812,7 +846,7 @@ public sealed class MxcCommandRunnerTests : IDisposable
             foreach (var call in calls)
                 await Assert.ThrowsAnyAsync<OperationCanceledException>(() => call.WaitAsync(TimeSpan.FromSeconds(2)));
             var denied = await runner.RunAsync(Command);
-            Assert.Equal(NodeToolErrorCategory.SandboxDenied, denied.ErrorCategory);
+            Assert.Equal(NodeToolErrorCategory.NodeBusy, denied.ErrorCategory);
             Assert.Contains("eight commands", denied.Stderr);
             Assert.Equal(8, Directory.GetDirectories(_root).Length);
         }

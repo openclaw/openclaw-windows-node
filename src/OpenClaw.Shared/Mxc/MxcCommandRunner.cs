@@ -71,7 +71,8 @@ public sealed class MxcCommandRunner : ICommandRunner
         if (request.ExpectedMxcPolicy is not null && request.ExpectedMxcPolicy != fingerprint)
             return Block("Permissions changed while the command was awaiting approval. Retry for a fresh approval.");
         if (!OwnedOperations.Wait(0))
-            return Block("MXC is still cleaning up eight commands. Wait for owned native operations to finish, then retry.");
+            return Block("Command execution is busy: eight commands running or finishing cleanup. Wait for capacity, then retry.",
+                NodeToolErrorCategory.NodeBusy, mode: null);
 
         var stopwatch = Stopwatch.StartNew();
         var stop = new CancellationTokenSource();
@@ -286,7 +287,7 @@ public sealed class MxcCommandRunner : ICommandRunner
         request > 0 && setting > 0 ? Math.Min(request, setting) : request > 0 ? request : setting > 0 ? setting : 30_000;
 
     private CommandResult Block(string reason, NodeToolErrorCategory category = NodeToolErrorCategory.SandboxDenied,
-        NodeToolExecutionMode mode = NodeToolExecutionMode.Sandbox)
+        NodeToolExecutionMode? mode = NodeToolExecutionMode.Sandbox)
     {
         _logger.Warn($"[mxc] operation=blocked category={category} applied=unknown");
         return new()

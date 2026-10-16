@@ -399,7 +399,7 @@ public class SystemCapability : NodeCapabilityBase
                 executionMode,
                 sandboxDenialReason: result.SandboxDenialReason);
 
-            if (errorCategory is NodeToolErrorCategory.SandboxDenied or NodeToolErrorCategory.SandboxUnavailable or
+            if (errorCategory is NodeToolErrorCategory.NodeBusy or NodeToolErrorCategory.SandboxDenied or NodeToolErrorCategory.SandboxUnavailable or
                 NodeToolErrorCategory.SandboxFailure or NodeToolErrorCategory.ExecPolicyDenied or NodeToolErrorCategory.CommandUnavailable)
                 return ErrorWithDiagnostic(result.Stderr, errorCategory, executionMode);
             var response = Success(new

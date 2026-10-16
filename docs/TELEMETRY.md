@@ -442,6 +442,11 @@ cannot distinguish a command failure caused by an in-container policy from
 other nonzero process exits without unsafe message parsing or a sandbox
 protocol change.
 
+Command-runner capacity rejection is a `node_busy` tool error before an
+execution route is selected. It has no execution mode, sandbox provider or
+applied-containment claim. Running commands and pending cleanup both retain
+their capacity slots.
+
 The public SDK exposes capture metadata, not an applied-tier readback. Native
 request admission is not post-launch telemetry. Local MXC logs keep applied
 tier `unknown` and include only operation, requested mode, grant counts,

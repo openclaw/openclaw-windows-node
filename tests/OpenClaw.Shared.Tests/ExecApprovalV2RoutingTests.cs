@@ -391,6 +391,30 @@ public class ExecApprovalV2RoutingTests
     }
 
     [Fact]
+    public async Task V2Allow_NodeBusy_IsProtocolErrorWithoutAppliedSandbox()
+    {
+        var cap = new SystemCapability(NullLogger.Instance);
+        cap.SetV2Handler(new FixedResultHandler(ExecApprovalV2Result.Allow(ApprovedEcho())));
+        cap.SetCommandRunner(new FakeRunner
+        {
+            Result = new()
+            {
+                ExitCode = -1,
+                Stderr = "Eight commands are active. Retry when capacity is available.",
+                ErrorCategory = OpenClaw.Shared.Telemetry.NodeToolErrorCategory.NodeBusy,
+            },
+        });
+
+        var response = await cap.ExecuteAsync(RunRequest());
+
+        Assert.False(response.Ok);
+        Assert.Null(response.Payload);
+        Assert.Equal(OpenClaw.Shared.Telemetry.NodeToolErrorCategory.NodeBusy, response.Diagnostic!.ErrorCategory);
+        Assert.Null(response.Diagnostic.ExecutionMode);
+        Assert.Null(response.Diagnostic.SandboxDenialReason);
+    }
+
+    [Fact]
     public async Task V2_RunnerWithoutArgvSupportContract_IsNeverGated()
     {
         // The existing ICommandRunner seam still dispatches every request through approvals.
@@ -427,12 +451,13 @@ public class ExecApprovalV2RoutingTests
         public string Name => "fake";
         public CommandRequest? LastRequest { get; private set; }
         public CancellationToken LastToken { get; private set; }
+        public CommandResult Result { get; init; } = new() { Stdout = "ok", ExitCode = 0 };
 
         public Task<CommandResult> RunAsync(CommandRequest request, System.Threading.CancellationToken ct = default)
         {
             LastRequest = request;
             LastToken = ct;
-            return Task.FromResult(new CommandResult { Stdout = "ok", ExitCode = 0 });
+            return Task.FromResult(Result);
         }
     }
 

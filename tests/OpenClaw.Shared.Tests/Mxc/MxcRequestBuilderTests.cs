@@ -632,14 +632,60 @@ public sealed class MxcRequestBuilderTests : IDisposable
     [InlineData("/k")]
     [InlineData("/cecho")]
     [InlineData("/r")]
+    [InlineData("/d/s/c")]
+    [InlineData("/d/s/cecho hi")]
+    [InlineData("/d/s/recho hi")]
+    [InlineData("/d/k")]
+    [InlineData(" /c")]
+    [InlineData("\t/d/s/c")]
     public void NoncanonicalCmdCommandMode_IsRejected(string mode) =>
         Assert.Throws<NotSupportedException>(() => MxcRequestBuilder.RenderArgv(
             [Path.Combine(Environment.SystemDirectory, "cmd.exe"), mode, "echo hi"]));
+
+    [Fact]
+    public void LateCmdCommandMode_IsRejected() =>
+        Assert.Throws<NotSupportedException>(() => MxcRequestBuilder.RenderArgv(
+            ["cmd.exe", "/q", "/d/s/c", "echo hi"]));
 
     [Theory]
     [InlineData("bad\nargument")]
     [InlineData("bad\rargument")]
     [InlineData("bad\0argument")]
-    public void TransportControls_AreRejected(string argument) =>
-        Assert.Throws<NotSupportedException>(() => MxcRequestBuilder.RenderArgv(["tool.exe", argument]));
+    public void CmdTransportControls_AreRejected(string argument) =>
+        Assert.Throws<NotSupportedException>(() => MxcRequestBuilder.RenderArgv(
+            ["cmd.exe", "/d", "/s", "/c", argument]));
+
+    [Fact]
+    public void DirectArgvNul_IsRejected() =>
+        Assert.Throws<NotSupportedException>(() => MxcRequestBuilder.RenderArgv(["tool.exe", "bad\0argument"]));
+
+    [Theory]
+    [InlineData("\n")]
+    [InlineData("\r")]
+    [InlineData("\r\n")]
+    [InlineData("first\n\"second\"\\")]
+    public void DirectMultilineArgv_RoundTrips(string argument)
+    {
+        string[] expected = [@"C:\tool dir\tool.exe", "", argument, "last"];
+        var argv = CommandLineToArgvW(MxcRequestBuilder.RenderArgv(expected), out var argc);
+        Assert.NotEqual(IntPtr.Zero, argv);
+        try
+        {
+            var actual = Enumerable.Range(0, argc)
+                .Select(i => System.Runtime.InteropServices.Marshal.PtrToStringUni(
+                    System.Runtime.InteropServices.Marshal.ReadIntPtr(argv, i * IntPtr.Size))!)
+                .ToArray();
+            Assert.Equal(expected, actual);
+        }
+        finally
+        {
+            Assert.Equal(IntPtr.Zero, LocalFree(argv));
+        }
+    }
+
+    [System.Runtime.InteropServices.DllImport("shell32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr CommandLineToArgvW(string commandLine, out int argc);
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr LocalFree(IntPtr memory);
 }

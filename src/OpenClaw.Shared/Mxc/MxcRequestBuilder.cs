@@ -162,18 +162,36 @@ public static class MxcRequestBuilder
     internal static string RenderArgv(IReadOnlyList<string> argv)
     {
         if (argv.Count == 0) throw new NotSupportedException("Approved executable argv is required.");
-        if (argv.Any(a => a is null || a.Contains('\0') || a.Contains('\r') || a.Contains('\n')))
-            throw new NotSupportedException("Command arguments cannot contain NUL or line breaks.");
-        if (CanonicalCmdCarrier.IsCmdExecutable(argv[0]) &&
-            argv.Skip(1).Any(a => a.StartsWith("/c", StringComparison.OrdinalIgnoreCase) ||
-                a.StartsWith("/k", StringComparison.OrdinalIgnoreCase) || a.StartsWith("/r", StringComparison.OrdinalIgnoreCase)))
+        if (argv.Any(a => a is null || a.Contains('\0')))
+            throw new NotSupportedException("Command arguments cannot be null or contain NUL.");
+        if (CanonicalCmdCarrier.IsCmdExecutable(argv[0]))
         {
-            if (!CanonicalCmdCarrier.TryGetCanonicalPayload(argv, out var payload))
-                throw new NotSupportedException("Only the canonical cmd /d /s /c carrier can be transported.");
-            return $"{Quote(argv[0])} {argv[1]} {argv[2]} {argv[3]} \"{payload}\"";
+            if (argv.Any(a => a.Contains('\r') || a.Contains('\n')))
+                throw new NotSupportedException("Cmd arguments cannot contain line breaks.");
+            if (SelectsCmdCommandMode(argv))
+            {
+                if (!CanonicalCmdCarrier.TryGetCanonicalPayload(argv, out var payload))
+                    throw new NotSupportedException("Only the canonical cmd /d /s /c carrier can be transported.");
+                return $"{Quote(argv[0])} {argv[1]} {argv[2]} {argv[3]} \"{payload}\"";
+            }
         }
 
         return string.Join(" ", argv.Select(Quote));
+    }
+
+    private static bool SelectsCmdCommandMode(IReadOnlyList<string> argv)
+    {
+        foreach (var token in argv.Skip(1))
+        {
+            // cmd accepts combined switches and attached payloads, not just a leading /c.
+            var argument = token.Trim();
+            if (argument.StartsWith('/') &&
+                (argument.Contains("/c", StringComparison.OrdinalIgnoreCase) ||
+                 argument.Contains("/k", StringComparison.OrdinalIgnoreCase) ||
+                 argument.Contains("/r", StringComparison.OrdinalIgnoreCase)))
+                return true;
+        }
+        return false;
     }
 
     internal static string ValidateExecutable(string image)
