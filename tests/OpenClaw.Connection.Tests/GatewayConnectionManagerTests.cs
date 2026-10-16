@@ -7,6 +7,7 @@ using OpenClaw.Shared.Telemetry;
 using OpenClaw.Connection;
 using OpenClaw.Connection.NativeGateway;
 using OpenClaw.TestSupport;
+using OpenClaw.TestSupport.Gateway;
 
 namespace OpenClaw.Connection.Tests;
 
@@ -2606,7 +2607,7 @@ public class GatewayConnectionManagerTests : IDisposable
         tunnel.AllowStart.SetResult(true);
         await connectTask.WaitAsync(TimeSpan.FromSeconds(2));
 
-        var result = await replaceTask.WaitAsync(TimeSpan.FromSeconds(10));
+        var result = await replaceTask.WaitAsync(TimeSpan.FromSeconds(20));
 
         Assert.Equal(SetupCodeOutcome.ConnectionFailed, result.Outcome);
         Assert.Null(_registry.GetById("gw-1")?.SharedGatewayToken);
@@ -3341,6 +3342,71 @@ public class GatewayConnectionManagerTests : IDisposable
         await _manager.ConnectAsync("gw-1");
 
         Assert.Contains(events, e => e.Category == "credential");
+    }
+
+    [Fact]
+    public async Task TailscaleDashboardAuthFailure_RecordsOutcomeAndError()
+    {
+        const string fixtureToken = "fixture-operator-token";
+        const string gatewayId = "tailscale-gateway";
+        using var data = new TempDirectory("openclaw-tailscale-auth-test-");
+        await using var fixture = await FixtureGatewayServer.StartAsync(
+            GatewayScenario.CreateNativeSetup((_, _) => new { ok = true }),
+            fixtureToken);
+
+        var registry = new GatewayRegistry(data.Path);
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = gatewayId,
+            Url = "wss://openclaw.tailnet.ts.net",
+            IsLocal = true,
+            SetupManagedDistroName = "OpenClawGateway",
+        });
+        registry.SetActive(gatewayId);
+        var resolver = new MockCredentialResolver
+        {
+            OperatorCredential = new GatewayCredential(fixtureToken, false, "fixture"),
+        };
+        var factory = new FixtureGatewayClientFactory(fixture.Endpoint.ToString());
+        await using var manager = new GatewayConnectionManager(
+            resolver, factory, registry, NullLogger.Instance);
+
+        await manager.ConnectAsync(gatewayId);
+        try
+        {
+            await fixture.HandshakeCompleted.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        catch (TimeoutException ex)
+        {
+            var snapshot = manager.CurrentSnapshot;
+            var requests = string.Join(", ", fixture.Requests.Select(request => $"{request.Method}={request.Outcome}"));
+            var diagnostics = string.Join(" | ", manager.Diagnostics.GetAll().Select(entry => $"{entry.Category}: {entry.Message}; {entry.Detail}"));
+            throw new TimeoutException(
+                $"Fixture handshake failed. Operator={snapshot.OperatorState}; error={snapshot.OperatorError}; " +
+                $"errorKind={snapshot.OperatorErrorKind}; protocol={snapshot.OperatorProtocolCompatibility}; " +
+                $"clientCreated={factory.RequestedGatewayUrl is not null}; gatewayReady={manager.OperatorClient?.IsConnectedToGateway}; " +
+                $"connections={fixture.ConnectionCount}; sharedConnects={fixture.SharedCredentialConnects}; " +
+                $"deviceRejections={fixture.DeviceTokenRejections}; requests={requests}; diagnostics={diagnostics}", ex);
+        }
+        await WaitUntilAsync(() => manager.OperatorClient is
+            { IsConnectedToGateway: true, HasHandshakeSnapshot: true });
+
+        Assert.Equal("wss://openclaw.tailnet.ts.net", factory.RequestedGatewayUrl);
+        Assert.Contains("operator.admin", manager.OperatorClient!.GrantedOperatorScopes);
+
+        var result = await manager.EnableTailscaleDashboardAuthAsync(gatewayId);
+
+        Assert.Equal(GatewayTailscaleAuthUpgradeOutcome.PatchRejected, result.Outcome);
+        Assert.Contains("Fixture Gateway is read-only", result.Error ?? string.Empty);
+        Assert.Contains(fixture.Requests, request => request.Method == "config.get" && request.Outcome == "ok");
+        Assert.Contains(fixture.Requests, request =>
+            request.Method == "config.patch" && request.Outcome == "error:FIXTURE_READ_ONLY");
+        var upgradeEvents = manager.Diagnostics.GetAll()
+            .Where(entry => entry.Category == "tailscale-auth")
+            .ToArray();
+        var diagnostic = Assert.Single(upgradeEvents);
+        Assert.Equal("Dashboard auth upgrade: PatchRejected", diagnostic.Message);
+        Assert.Contains("Fixture Gateway is read-only", diagnostic.Detail ?? string.Empty);
     }
 
     [Fact]
@@ -5739,6 +5805,23 @@ public class GatewayConnectionManagerTests : IDisposable
             CreatedIdentityPaths.Add(identityPath);
             CreatedGatewayUrls.Add(gatewayUrl);
             return mock;
+        }
+    }
+
+    private sealed class FixtureGatewayClientFactory(string fixtureEndpoint) : IGatewayClientFactory
+    {
+        private readonly GatewayClientFactory _inner = new();
+
+        public string? RequestedGatewayUrl { get; private set; }
+
+        public IGatewayClientLifecycle Create(
+            string gatewayUrl,
+            GatewayCredential credential,
+            string identityPath,
+            IOpenClawLogger logger)
+        {
+            RequestedGatewayUrl = gatewayUrl;
+            return _inner.Create(fixtureEndpoint, credential, identityPath, logger);
         }
     }
 

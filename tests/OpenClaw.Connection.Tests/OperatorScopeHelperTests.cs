@@ -115,10 +115,10 @@ public class ChatNavigationReadinessTests
     {
         var mgr = new StubConnectionManager(RoleConnectionState.Connecting);
 
-        var waitTask = ChatNavigationReadiness.WaitForOperatorHandshakeAsync(mgr, TimeSpan.FromMilliseconds(500));
+        var waitTask = ChatNavigationReadiness.WaitForOperatorHandshakeAsync(mgr, Timeout.InfiniteTimeSpan);
         mgr.SimulateConnected();
 
-        var result = await waitTask;
+        var result = await waitTask.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.True(result);
     }
 

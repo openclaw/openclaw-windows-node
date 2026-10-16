@@ -223,7 +223,7 @@ public sealed partial class GatewayScenario
             ["config.get"] = JsonSerializer.SerializeToElement(new
             {
                 path = "/fixture/openclaw.json", exists = true, raw = config.GetRawText(),
-                parsed = config, config, valid = true, hash = configHash,
+                parsed = config, sourceConfig = config, config, valid = true, hash = configHash,
                 issues = Array.Empty<object>(), warnings = Array.Empty<object>(), legacyIssues = Array.Empty<object>()
             }),
             ["config.schema"] = JsonSerializer.SerializeToElement(new

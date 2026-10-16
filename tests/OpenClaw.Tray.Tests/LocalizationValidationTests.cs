@@ -687,6 +687,31 @@ public class LocalizationValidationTests
     }
 
     [Fact]
+    public void ConfigReadOnlyGuidance_UsesTheRequiredAdminScopeInEveryLocale()
+    {
+        string[] keys =
+        [
+            "ConfigPage_StatusReadOnlyMessage",
+            "ConfigPage_ConfigIsReadOnlyMessage",
+            "ConfigPage_SaveStatusReadOnlyMissingWrite",
+        ];
+
+        foreach (var localeDir in Directory.GetDirectories(GetStringsDirectory()))
+        {
+            var locale = Path.GetFileName(localeDir);
+            var resources = LoadResw(Path.Combine(localeDir, "Resources.resw"));
+
+            foreach (var key in keys)
+            {
+                Assert.True(resources.TryGetValue(key, out var value), $"Locale '{locale}' is missing '{key}'.");
+                Assert.NotNull(value);
+                Assert.Contains("operator.admin", value, StringComparison.OrdinalIgnoreCase);
+                Assert.DoesNotContain("operator.write", value, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+    }
+
+    [Fact]
     public void AccessibilityNames_ExistInEveryLocale()
     {
         foreach (var localeDir in Directory.GetDirectories(GetStringsDirectory()).OrderBy(p => p, StringComparer.Ordinal))

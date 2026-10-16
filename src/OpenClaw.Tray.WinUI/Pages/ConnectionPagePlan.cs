@@ -131,6 +131,19 @@ internal enum RecoveryCategory
 /// </summary>
 internal sealed record ConnectionPagePlan
 {
+    public static string TailscaleAuthFailureMessageResourceKey(
+        GatewayTailscaleAuthUpgradeOutcome outcome) => outcome switch
+    {
+        GatewayTailscaleAuthUpgradeOutcome.Ineligible => "ConnectionPage_TailscaleDashboardAuthFailureIneligible",
+        GatewayTailscaleAuthUpgradeOutcome.NotActive => "ConnectionPage_TailscaleDashboardAuthFailureNotActive",
+        GatewayTailscaleAuthUpgradeOutcome.NotConnected => "ConnectionPage_TailscaleDashboardAuthFailureNotConnected",
+        GatewayTailscaleAuthUpgradeOutcome.MissingConfigScope => "ConnectionPage_TailscaleDashboardAuthFailureMissingConfigScope",
+        GatewayTailscaleAuthUpgradeOutcome.ConfigUnavailable => "ConnectionPage_TailscaleDashboardAuthFailureConfigUnavailable",
+        GatewayTailscaleAuthUpgradeOutcome.PatchRejected => "ConnectionPage_TailscaleDashboardAuthFailurePatchRejected",
+        GatewayTailscaleAuthUpgradeOutcome.PersistenceFailed => "ConnectionPage_TailscaleDashboardAuthFailurePersistenceFailed",
+        _ => "ConnectionPage_TailscaleDashboardAuthFailureGeneric",
+    };
+
     public ConnectionPageMode Mode { get; init; } = ConnectionPageMode.Welcome;
 
     // ─── Status strip ───

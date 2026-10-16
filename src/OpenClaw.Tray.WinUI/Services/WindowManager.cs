@@ -136,11 +136,14 @@ internal sealed class WindowManager : IWindowManager
 
     private bool _dashboardFailureVisible;
 
-    public async Task ShowDashboardLaunchFailureAsync(Action? retry)
+    public async Task ShowDashboardLaunchFailureAsync(Action? retry, string? localizedReason = null)
     {
         if (_isShuttingDown || _dashboardFailureVisible)
             return;
-        var message = LocalizationHelper.GetString("Onboarding_DashboardLaunchFailed");
+        var guidance = LocalizationHelper.GetString("Onboarding_DashboardLaunchFailed");
+        var message = string.IsNullOrWhiteSpace(localizedReason)
+            ? guidance
+            : $"{localizedReason}{Environment.NewLine}{guidance}";
         _callbacks.GetAppNotificationService()?.Show(new AppNotification
         {
             Id = GatewayDashboardLauncher.FailureNotificationId,

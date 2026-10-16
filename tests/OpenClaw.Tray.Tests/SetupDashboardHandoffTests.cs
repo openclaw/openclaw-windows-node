@@ -120,10 +120,9 @@ public sealed class SetupDashboardHandoffTests
     public async Task OrdinaryDashboard_UsesRequestedPathAndNormalCredentials(string? path, string suffix)
     {
         string? launched = null;
-        var launcher = new GatewayDashboardLauncher(() => true,
-            () => new(Gateway.Url, "synthetic shared", false, CredentialResolver.SourceSharedGatewayToken),
-            url => { launched = url; return Task.FromResult(true); },
-            () => throw new InvalidOperationException("Unexpected failure"));
+        var launcher = CreateDashboardLauncher(
+            _ => new(Gateway.Url, path, "synthetic shared", true),
+            url => { launched = url; return Task.FromResult(true); });
         Assert.True(await launcher.OpenAsync(path));
         Assert.Equal("https://gateway.example/control" + suffix + "#token=synthetic%20shared", launched);
         Assert.DoesNotContain("custodian", launched);
@@ -135,12 +134,186 @@ public sealed class SetupDashboardHandoffTests
     public async Task DeviceAndBootstrapTokens_NeverEnterBrowserUrl(string source, bool bootstrap)
     {
         string? launched = null;
-        var launcher = new GatewayDashboardLauncher(() => true,
-            () => new(Gateway.Url, "do-not-export", bootstrap, source),
-            url => { launched = url; return Task.FromResult(true); },
-            () => throw new InvalidOperationException("Unexpected failure"));
+        Assert.Equal(bootstrap ? CredentialResolver.SourceBootstrapToken : CredentialResolver.SourceDeviceToken, source);
+        var launcher = CreateDashboardLauncher(
+            _ => new(Gateway.Url, null, "do-not-export", false),
+            url => { launched = url; return Task.FromResult(true); });
         Assert.True(await launcher.OpenAsync());
         Assert.Equal("https://gateway.example/control", launched);
+    }
+
+    [Fact]
+    public async Task SavedDashboard_WithoutBrowserCredential_BypassesCredentialFallbackValidation()
+    {
+        string? launched = null;
+        var validationCalls = 0;
+        var service = new GatewayDashboardLinkService((_, _) => Task.FromResult(false), key => key);
+        var launcher = new GatewayDashboardLauncher(
+            () => throw new InvalidOperationException("Saved rows do not require an active tunnel."),
+            _ => null,
+            service,
+            url => { launched = url; return Task.FromResult(true); },
+            _ => throw new InvalidOperationException("Unexpected Dashboard link failure"),
+            _ => throw new InvalidOperationException("Unexpected launch failure"));
+
+        var opened = await launcher.OpenSavedAsync(
+            new GatewayDashboardLinkRequest(Gateway.Url, null, null, AppendBrowserCredential: false),
+            _ => { validationCalls++; return Task.FromResult(false); });
+
+        Assert.True(opened);
+        Assert.Equal(0, validationCalls);
+        Assert.Equal("https://gateway.example/control", launched);
+    }
+
+    [Fact]
+    public async Task SavedDashboard_SharedCredentialStillRequiresEndpointAuthorization()
+    {
+        var launches = 0;
+        var validationCalls = 0;
+        var service = new GatewayDashboardLinkService((_, _) => Task.FromResult(false), key => key);
+        var launcher = new GatewayDashboardLauncher(
+            () => throw new InvalidOperationException("Saved rows do not require an active tunnel."),
+            _ => null,
+            service,
+            _ => { launches++; return Task.FromResult(true); },
+            _ => throw new InvalidOperationException("Unexpected Dashboard link failure"),
+            _ => throw new InvalidOperationException("Unexpected launch failure"));
+
+        var opened = await launcher.OpenSavedAsync(
+            new GatewayDashboardLinkRequest(Gateway.Url, null, "shared-token", AppendBrowserCredential: true),
+            result =>
+            {
+                Assert.True(result.BrowserCredentialIncluded);
+                validationCalls++;
+                return Task.FromResult(false);
+            });
+
+        Assert.False(opened);
+        Assert.Equal(1, validationCalls);
+        Assert.Equal(0, launches);
+    }
+
+    [Fact]
+    public async Task SavedDashboard_EmbeddedTokenStillRequiresEndpointAuthorization()
+    {
+        var launches = 0;
+        var validationCalls = 0;
+        var service = new GatewayDashboardLinkService((_, _) => Task.FromResult(false), key => key);
+        var launcher = new GatewayDashboardLauncher(
+            () => throw new InvalidOperationException("Saved rows do not require an active tunnel."),
+            _ => null,
+            service,
+            _ => { launches++; return Task.FromResult(true); },
+            _ => throw new InvalidOperationException("Unexpected Dashboard link failure"),
+            _ => throw new InvalidOperationException("Unexpected launch failure"));
+
+        var opened = await launcher.OpenSavedAsync(
+            new GatewayDashboardLinkRequest(
+                "wss://gateway.example/control/#token=stale&view=compact",
+                null,
+                null,
+                AppendBrowserCredential: false),
+            result =>
+            {
+                Assert.True(result.BrowserCredentialIncluded);
+                validationCalls++;
+                return Task.FromResult(false);
+            });
+
+        Assert.False(opened);
+        Assert.Equal(1, validationCalls);
+        Assert.Equal(0, launches);
+    }
+
+    [Fact]
+    public async Task SavedDashboard_CancellationAfterLinkPreparationSkipsAuthorizationAndLaunch()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var validationCalls = 0;
+        var launches = 0;
+        var service = new GatewayDashboardLinkService((_, _) =>
+        {
+            cancellation.Cancel();
+            return Task.FromResult(false);
+        }, key => key);
+        var launcher = new GatewayDashboardLauncher(
+            () => throw new InvalidOperationException("Saved rows do not require an active tunnel."),
+            _ => null,
+            service,
+            _ => { launches++; return Task.FromResult(true); },
+            _ => throw new InvalidOperationException("Unexpected Dashboard link failure"),
+            _ => throw new InvalidOperationException("Unexpected launch failure"));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => launcher.OpenSavedAsync(
+            new GatewayDashboardLinkRequest(Gateway.Url, null, "shared-token", true, "gateway-a"),
+            _ => { validationCalls++; return Task.FromResult(true); },
+            cancellation.Token));
+
+        Assert.Equal(0, validationCalls);
+        Assert.Equal(0, launches);
+    }
+
+    [Fact]
+    public async Task SavedDashboard_CancellationAfterAuthorizationSkipsBrowserDispatch()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var launches = 0;
+        var service = new GatewayDashboardLinkService((_, _) => Task.FromResult(false), key => key);
+        var launcher = new GatewayDashboardLauncher(
+            () => throw new InvalidOperationException("Saved rows do not require an active tunnel."),
+            _ => null,
+            service,
+            _ => { launches++; return Task.FromResult(true); },
+            _ => throw new InvalidOperationException("Unexpected Dashboard link failure"),
+            _ => throw new InvalidOperationException("Unexpected launch failure"));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => launcher.OpenSavedAsync(
+            new GatewayDashboardLinkRequest(Gateway.Url, null, "shared-token", true),
+            _ => { cancellation.Cancel(); return Task.FromResult(true); },
+            cancellation.Token));
+
+        Assert.Equal(0, launches);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DashboardLinkFailure_PassesLocalizedReasonToRecoveryWithoutLaunchingOrRetrying(bool saved)
+    {
+        var revalidations = 0;
+        var launches = 0;
+        var validations = 0;
+        var failureMessages = new List<string?>();
+        var opened = 0;
+        var linkFailures = new List<GatewayDashboardLinkResult>();
+        var request = new GatewayDashboardLinkRequest(Gateway.Url, "channels", null, false, "gateway-a");
+        var service = new GatewayDashboardLinkService((_, _) =>
+        {
+            revalidations++;
+            return Task.FromResult(false);
+        }, key => "localized:" + key);
+        var launcher = new GatewayDashboardLauncher(
+            () => true,
+            _ => request,
+            service,
+            _ => { launches++; return Task.FromResult(true); },
+            result => linkFailures.Add(result),
+            reason => failureMessages.Add(reason),
+            () => opened++);
+
+        var success = saved
+            ? await launcher.OpenSavedAsync(request, _ => { validations++; return Task.FromResult(true); })
+            : await launcher.OpenAsync("channels");
+
+        Assert.False(success);
+        Assert.Equal(1, revalidations);
+        var failure = Assert.Single(linkFailures);
+        Assert.Equal("localized:DashboardLink_NoBrowserCompatibleCredential", failure.Error);
+        Assert.Null(failure.Url);
+        Assert.Equal("localized:DashboardLink_NoBrowserCompatibleCredential", Assert.Single(failureMessages));
+        Assert.Equal(0, launches);
+        Assert.Equal(0, validations);
+        Assert.Equal(0, opened);
     }
 
     [Theory]
@@ -151,18 +324,20 @@ public sealed class SetupDashboardHandoffTests
     public async Task Failure_IsReportedOnceWithoutAutomaticRetry(string failure)
     {
         var launches = 0;
-        var failures = 0;
-        var launcher = new GatewayDashboardLauncher(() => failure != "tunnel",
-            () => failure == "credential" ? null : new(Gateway.Url, "shared", false, CredentialResolver.SourceSharedGatewayToken),
+        var failureMessages = new List<string?>();
+        var launcher = CreateDashboardLauncher(
+            _ => failure == "credential" ? null : new(Gateway.Url, null, "shared", true),
             _ =>
             {
                 launches++;
                 if (failure == "exception") throw new InvalidOperationException("synthetic-secret-url");
                 return Task.FromResult(false);
-            }, () => failures++);
+            },
+            ensureTunnel: () => failure != "tunnel",
+            reportFailure: reason => failureMessages.Add(reason));
         Assert.False(await launcher.OpenAsync());
         Assert.Equal(failure is "browser" or "exception" ? 1 : 0, launches);
-        Assert.Equal(1, failures);
+        Assert.Null(Assert.Single(failureMessages));
     }
 
     [Fact]
@@ -179,20 +354,35 @@ public sealed class SetupDashboardHandoffTests
     public async Task ExplicitDashboardRetry_KeepsRequestedPathAndClearsFailureOnlyAfterOpen()
     {
         var urls = new List<string>();
-        var failures = 0;
+        var failureMessages = new List<string?>();
         var opened = 0;
-        var launcher = new GatewayDashboardLauncher(() => true,
-            () => new(Gateway.Url, "synthetic", false, CredentialResolver.SourceSharedGatewayToken),
+        var launcher = CreateDashboardLauncher(
+            path => new(Gateway.Url, path, "synthetic", true),
             url => { urls.Add(url); return Task.FromResult(urls.Count == 2); },
-            () => failures++, () => opened++);
+            reportFailure: reason => failureMessages.Add(reason), reportOpened: () => opened++);
         Assert.False(await launcher.OpenAsync("channels"));
         Assert.Equal(0, opened);
         Assert.Single(urls);
         Assert.True(await launcher.OpenAsync("channels"));
         Assert.Equal(urls[0], urls[1]);
-        Assert.Equal(1, failures);
+        Assert.Null(Assert.Single(failureMessages));
         Assert.Equal(1, opened);
     }
+
+    private static GatewayDashboardLauncher CreateDashboardLauncher(
+        Func<string?, GatewayDashboardLinkRequest?> resolveRequest,
+        Func<string, Task<bool>> launchBrowser,
+        Func<bool>? ensureTunnel = null,
+        Action<string?>? reportFailure = null,
+        Action? reportOpened = null) =>
+        new(
+            ensureTunnel ?? (() => true),
+            resolveRequest,
+            new GatewayDashboardLinkService((_, _) => Task.FromResult(true), key => key),
+            launchBrowser,
+            _ => throw new InvalidOperationException("Unexpected Dashboard link failure"),
+            reportFailure ?? (_ => throw new InvalidOperationException("Unexpected launch failure")),
+            reportOpened);
 
     private sealed class StartupClock : TimeProvider
     {
