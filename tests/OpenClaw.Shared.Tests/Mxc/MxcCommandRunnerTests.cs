@@ -15,7 +15,19 @@ public sealed class MxcCommandRunnerTests : IDisposable
         ".mxc-test-runs", Guid.NewGuid().ToString("N"));
     private SettingsData _settings = new();
     private static CommandRequest Command => new() { Argv = [Path.Combine(Environment.SystemDirectory, "whoami.exe")], TimeoutMs = 10_000 };
-    public void Dispose() { if (Directory.Exists(_root)) Directory.Delete(_root, true); }
+    public void Dispose()
+    {
+        var cleanup = Stopwatch.StartNew();
+        while (Directory.Exists(_root))
+        {
+            try { Directory.Delete(_root, true); }
+            catch (IOException ex) when ((ex.HResult & 0xffff) == 32 && cleanup.Elapsed < TimeSpan.FromSeconds(2))
+            {
+                // Windows can briefly retain fixture directory handles after process exit.
+                Thread.Sleep(20);
+            }
+        }
+    }
     private MxcCommandRunner Runner(Func<ContainerRequest, Task<IMxcProcess>> spawn, Func<ContainerRequest, ProbeOutput>? probe = null,
         MxcAvailability? availability = null) => new(() => _settings, () => Path.Combine(_root, "settings"),
             () => availability ?? new(true, false, true, [], isolationTier: "base-container", supportsProtectedPathDenies: true),
