@@ -57,6 +57,102 @@ public sealed class GatewayFixtureProfileTests
     }
 
     [Fact]
+    public void SecondaryPeerIsSavedInactiveWithIndependentDestinationAndCredential()
+    {
+        var secondary = new GatewayFixtureSecondaryPeer(new Uri("ws://127.0.0.1:49232/"),
+            "secondary-fixture-token", "Fixture bravo");
+        using var profile = new GatewayFixtureProfile(Endpoint, "primary-fixture-token", secondaryPeer: secondary);
+        var registry = new GatewayRegistry(profile.DataDirectory);
+        registry.Load();
+        Assert.Equal(2, registry.GetAll().Count);
+        Assert.Equal(profile.GatewayId, registry.ActiveGatewayId);
+        var primary = Assert.Single(registry.GetAll(), record => record.Id == profile.GatewayId);
+        var saved = Assert.Single(registry.GetAll(), record => record.Id == profile.SecondaryGatewayId);
+        Assert.NotEqual(primary.Id, saved.Id);
+        Assert.Equal(Endpoint.AbsoluteUri, primary.Url);
+        Assert.Equal("primary-fixture-token", primary.SharedGatewayToken);
+        Assert.Equal(secondary.Endpoint.AbsoluteUri, saved.Url);
+        Assert.Equal(secondary.Token, saved.SharedGatewayToken);
+        Assert.Equal(secondary.FriendlyName, saved.FriendlyName);
+        Assert.False(saved.IsLocal);
+        Assert.Null(saved.SetupManagedDistroName);
+        Assert.Null(saved.BootstrapToken);
+        using var settings = JsonDocument.Parse(File.ReadAllText(Path.Combine(profile.DataDirectory, "settings.json")));
+        Assert.Equal(Endpoint.AbsoluteUri, settings.RootElement.GetProperty("GatewayUrl").GetString());
+        Assert.False(settings.RootElement.GetProperty("EnableNodeMode").GetBoolean());
+    }
+
+    [Theory]
+    [InlineData("ws://127.0.0.1:49231/", "secondary-fixture-token")]
+    [InlineData("ws://127.0.0.1:49232/", "primary-fixture-token")]
+    public void SecondaryPeerCannotShareThePrimaryEndpointOrCredential(string endpoint, string token)
+    {
+        var secondary = new GatewayFixtureSecondaryPeer(new Uri(endpoint), token, "Fixture bravo");
+        Assert.Throws<ArgumentException>(() =>
+            new GatewayFixtureProfile(Endpoint, "primary-fixture-token", secondaryPeer: secondary));
+    }
+
+    [Fact]
+    public void McpOnlyProfileCannotAcquireAnInactiveSavedGateway()
+    {
+        var secondary = new GatewayFixtureSecondaryPeer(new Uri("ws://127.0.0.1:49232/"),
+            "secondary-fixture-token", "Fixture bravo");
+        Assert.Throws<ArgumentException>(() => new GatewayFixtureProfile(Endpoint, "primary-fixture-token",
+            startupMode: GatewayFixtureStartupMode.McpOnly, secondaryPeer: secondary));
+    }
+
+    [Fact]
+    public void McpPortCannotOverlapTheSecondaryPeer()
+    {
+        using var app = CreateFakeSupportedApp();
+        var secondary = new GatewayFixtureSecondaryPeer(new Uri("ws://127.0.0.1:49232/"),
+            "secondary-fixture-token", "Fixture bravo");
+        using var profile = new GatewayFixtureProfile(Endpoint, "primary-fixture-token", secondaryPeer: secondary);
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            profile.CreateStartInfo(app.Combine("OpenClaw.Tray.WinUI.exe"), secondary.Endpoint.Port));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void PreferenceSeedsCannotEnableHostEffects(bool showToolCalls)
+    {
+        using var profile = new GatewayFixtureProfile(Endpoint, "fixture-token", showToolCalls);
+        using var settings = JsonDocument.Parse(File.ReadAllText(Path.Combine(profile.DataDirectory, "settings.json")));
+        Assert.Equal(showToolCalls, settings.RootElement.GetProperty("ShowChatToolCalls").GetBoolean());
+        foreach (var name in new[] { "EnableNodeMode", "AutoStart", "NodeSystemRunEnabled", "GlobalHotkeyEnabled" })
+            Assert.False(settings.RootElement.GetProperty(name).GetBoolean(), name);
+    }
+
+    [Fact]
+    public void McpOnlyProfileHasNoGatewayTargetOrStoredGatewayCredential()
+    {
+        using var profile = new GatewayFixtureProfile(Endpoint, "synthetic-unused", startupMode: GatewayFixtureStartupMode.McpOnly);
+        using var settings = JsonDocument.Parse(File.ReadAllText(Path.Combine(profile.DataDirectory, "settings.json")));
+        Assert.Equal("", settings.RootElement.GetProperty("GatewayUrl").GetString());
+        Assert.True(settings.RootElement.GetProperty("EnableMcpServer").GetBoolean());
+        Assert.False(settings.RootElement.GetProperty("EnableNodeMode").GetBoolean());
+        Assert.False(File.Exists(Path.Combine(profile.DataDirectory, "gateways.json")));
+        Assert.False(Directory.Exists(Path.Combine(profile.DataDirectory, "gateways")));
+    }
+
+    [Fact]
+    public void UnavailableGatewayProfileRetainsItsConfiguredDestination()
+    {
+        using var profile = new GatewayFixtureProfile(Endpoint, "synthetic-unused",
+            startupMode: GatewayFixtureStartupMode.GatewayUnavailable);
+        var registry = new GatewayRegistry(profile.DataDirectory);
+        registry.Load();
+        Assert.Equal(Endpoint.AbsoluteUri, Assert.Single(registry.GetAll()).Url);
+        Assert.Equal(profile.GatewayId, registry.ActiveGatewayId);
+    }
+
+    [Fact]
+    public void UnsupportedStartupModeIsRejectedBeforeCreatingAProfile() =>
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new GatewayFixtureProfile(Endpoint, "synthetic", startupMode: (GatewayFixtureStartupMode)999));
+
+    [Fact]
     public void TwoProfilesNeverShareIdentityOrStateAndCleanupIsOwned()
     {
         using var sentinel = new TempDirectory();

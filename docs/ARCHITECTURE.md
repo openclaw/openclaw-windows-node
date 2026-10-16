@@ -90,8 +90,11 @@ new attempt. This boundary does not change release signing or Windows policy.
 | CLI stdout/stderr/env capture | `OpenClaw.TestSupport.CliHarness` | authoritative |
 | Loopback MCP server for tests | `OpenClaw.TestSupport.FakeMcpServer` | authoritative |
 | Authenticated MCP HTTP client for app fixtures | `OpenClaw.TestSupport.McpClient` | authoritative |
+| Pinned external UIA journey driver and response admission | `OpenClaw.TestSupport.Ui.LvtUiaSession` + `LvtProtocol`; `OwnedStdioMcpClient` owns the server lifetime and the official MCP SDK owns framing | authoritative |
 | Synthetic Gateway protocol/scenarios | `OpenClaw.TestSupport.Gateway.FixtureGatewayServer` + `GatewayScenario` | authoritative |
+| Synthetic per-peer identity and catalog naming | `OpenClaw.TestSupport.Gateway.GatewayPeerProfile`; default browse data remains unchanged | authoritative |
 | Fixture-backed app profile/process lifetime | `OpenClaw.GatewayFixtureHost.GatewayFixtureProfile` + `GatewayFixtureRun` | authoritative |
+| Contract journey phase evidence and safe real-profile metadata differences | `ContractJourneyReport` + `OpenClaw.TestSupport.Ui.ProfileMetadataSnapshot`; the runner keeps qualification separate from observed behavior | authoritative |
 | Explicit fixture context and host-effect isolation gate | `OpenClaw.Shared.GatewayFixtureIsolation` | authoritative |
 | Passive fixture chat-render acknowledgement | `GatewayFixtureRenderObservation` (pure metadata) + `ReactorChatComposer` (UI applicator) | authoritative |
 | External chat session selection without remounting | `MountedReactorChat` forwards to `ChatComposerController`'s existing root selection handoff; `ChatPage` retains initial-mount fallback for an unready or replaced provider | authoritative |

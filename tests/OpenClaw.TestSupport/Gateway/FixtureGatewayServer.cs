@@ -15,6 +15,25 @@ public sealed record GatewayFixtureRequest(
     string? Decision = null,
     string? ApprovalId = null);
 
+public enum GatewayFixtureChatPhase
+{
+    ResponseHeld,
+    Streaming,
+    DeltasHeld,
+    CompletionHeld,
+    Completed,
+    Aborted,
+    Cancelled
+}
+
+/// <summary>Fixture-owned correlation and counts only, never caller content or request IDs.</summary>
+public sealed record GatewayFixtureChatRun(
+    string RunId,
+    string SessionKey,
+    GatewayFixtureChatPhase Phase,
+    int DeltaCount,
+    bool FinalPublished);
+
 /// <summary>
 /// An independently owned, operator-only loopback Gateway. Responses are selected by
 /// method and parameters, not consumed from a tape. No request is forwarded anywhere.
@@ -33,6 +52,11 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private readonly HashSet<string> _issuedApprovalIds = new(StringComparer.Ordinal);
     private readonly Dictionary<int, ActiveConnection> _authenticatedConnections = [];
     private readonly Dictionary<string, TaskCompletionSource> _historyGates = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, TaskCompletionSource> _chatResponseGates = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ChatDeltaGate> _chatDeltaGates = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, TaskCompletionSource> _chatCompletionGates = new(StringComparer.Ordinal);
+    private readonly List<ChatRun> _chatRuns = [];
+    private TaskCompletionSource _chatChanged = NewSignal();
     private TaskCompletionSource? _sessionMutationGate;
     private TaskCompletionSource? _chatSendGate;
     private readonly TaskCompletionSource _handshake = NewSignal();
@@ -44,8 +68,30 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private int _activeConnectionCount;
     private int _sharedCredentialConnects;
     private int _deviceTokenRejections;
+    private readonly bool _rejectOperatorConnections;
+    private int _operatorConnectionRejections;
     private static readonly JsonElement EmptyParameters = JsonSerializer.SerializeToElement(new { });
     private sealed record ActiveConnection(WebSocket Socket, SemaphoreSlim SendLock, CancellationToken CancellationToken);
+    private sealed record ChatDeltaGate(TaskCompletionSource Signal, int AfterDeltaCount);
+    private sealed class ChatRun(
+        GatewayFixtureChatRun observation, int connectionId, string wireRunId, Task? responseGate,
+        ChatDeltaGate? deltaGate, Task? completionGate, CancellationToken connectionToken) : IDisposable
+    {
+        public GatewayFixtureChatRun Observation { get; set; } = observation;
+        public int ConnectionId { get; } = connectionId;
+        public string WireRunId { get; } = wireRunId;
+        public Task? ResponseGate { get; } = responseGate;
+        public ChatDeltaGate? DeltaGate { get; } = deltaGate;
+        public Task? CompletionGate { get; } = completionGate;
+        public CancellationTokenSource Stop { get; } = CancellationTokenSource.CreateLinkedTokenSource(connectionToken);
+        public SemaphoreSlim Publication { get; } = new(1, 1);
+
+        public void Dispose()
+        {
+            Stop.Dispose();
+            Publication.Dispose();
+        }
+    }
 
     public Uri Endpoint { get; }
 
@@ -70,6 +116,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
 
     /// <summary>Connect attempts whose presented device token was rejected.</summary>
     public int DeviceTokenRejections => Volatile.Read(ref _deviceTokenRejections);
+    public int OperatorConnectionRejections => Volatile.Read(ref _operatorConnectionRejections);
     public Task HandshakeCompleted => _handshake.Task;
     public Task ConnectionAccepted => _accepted.Task;
     public int ConnectionCount => Volatile.Read(ref _connectionCount);
@@ -86,10 +133,16 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     {
         get { lock (_sync) return _unexpectedIndices.Select(i => _requests[i]).ToArray(); }
     }
+    public IReadOnlyList<GatewayFixtureChatRun> ChatRuns
+    {
+        get { lock (_sync) return _chatRuns.Select(run => run.Observation).ToArray(); }
+    }
 
-    private FixtureGatewayServer(GatewayScenario scenario, string token, CancellationToken cancellationToken)
+    private FixtureGatewayServer(GatewayScenario scenario, string token, CancellationToken cancellationToken,
+        bool rejectOperatorConnections)
     {
         _scenario = scenario;
+        _rejectOperatorConnections = rejectOperatorConnections;
         _tokenHash = SHA256.HashData(Encoding.UTF8.GetBytes(token));
         _lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _listener = new TcpListener(IPAddress.Loopback, 0);
@@ -99,12 +152,13 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     }
 
     public static Task<FixtureGatewayServer> StartAsync(
-        GatewayScenario scenario, string token, CancellationToken cancellationToken = default)
+        GatewayScenario scenario, string token, CancellationToken cancellationToken = default,
+        bool rejectOperatorConnections = false)
     {
         ArgumentNullException.ThrowIfNull(scenario);
         ArgumentException.ThrowIfNullOrWhiteSpace(token);
         cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult(new FixtureGatewayServer(scenario, token, cancellationToken));
+        return Task.FromResult(new FixtureGatewayServer(scenario, token, cancellationToken, rejectOperatorConnections));
     }
 
     public async Task CloseConnectionsAsync(CancellationToken cancellationToken = default)
@@ -187,6 +241,104 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             _chatSendGate = null;
             gate.TrySetResult();
         }
+    }
+
+    /// <summary>Holds chat.send acknowledgements for this known session, without blocking other RPCs.</summary>
+    public void HoldChatResponse(string sessionKey)
+    {
+        RequireChatSession(sessionKey);
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposal is not null, this);
+            if (!_chatResponseGates.TryAdd(sessionKey, NewSignal()))
+                throw new InvalidOperationException("Chat responses are already held for this session.");
+        }
+    }
+
+    public void ReleaseChatResponse(string sessionKey)
+    {
+        lock (_sync)
+        {
+            if (!_chatResponseGates.Remove(sessionKey, out var gate))
+                throw new InvalidOperationException("Chat responses are not held for this session.");
+            gate.TrySetResult();
+        }
+    }
+
+    /// <summary>Holds before delta zero or one of the fixed two-delta response. No lock is held while waiting.</summary>
+    public void HoldChatDeltas(string sessionKey, int afterDeltaCount = 0)
+    {
+        RequireChatSession(sessionKey);
+        ArgumentOutOfRangeException.ThrowIfNegative(afterDeltaCount);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(afterDeltaCount, 1);
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposal is not null, this);
+            if (!_chatDeltaGates.TryAdd(sessionKey, new ChatDeltaGate(NewSignal(), afterDeltaCount)))
+                throw new InvalidOperationException("Chat deltas are already held for this session.");
+        }
+    }
+
+    public void ReleaseChatDeltas(string sessionKey)
+    {
+        lock (_sync)
+        {
+            if (!_chatDeltaGates.Remove(sessionKey, out var gate))
+                throw new InvalidOperationException("Chat deltas are not held for this session.");
+            gate.Signal.TrySetResult();
+        }
+    }
+
+    /// <summary>Holds lifecycle end after the final is sent, so interrupted completion can be proved.</summary>
+    public void HoldChatCompletion(string sessionKey)
+    {
+        RequireChatSession(sessionKey);
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposal is not null, this);
+            if (!_chatCompletionGates.TryAdd(sessionKey, NewSignal()))
+                throw new InvalidOperationException("Chat completion is already held for this session.");
+        }
+    }
+
+    public void ReleaseChatCompletion(string sessionKey)
+    {
+        lock (_sync)
+        {
+            if (!_chatCompletionGates.Remove(sessionKey, out var gate))
+                throw new InvalidOperationException("Chat completion is not held for this session.");
+            gate.TrySetResult();
+        }
+    }
+
+    public async Task<GatewayFixtureChatRun> WaitForChatRunAsync(
+        string sessionKey, GatewayFixtureChatPhase phase, int occurrence = 1,
+        CancellationToken cancellationToken = default)
+    {
+        RequireChatSession(sessionKey);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(occurrence);
+        using var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
+        while (true)
+        {
+            Task changed;
+            lock (_sync)
+            {
+                var run = _chatRuns.Where(run => run.Observation.SessionKey == sessionKey)
+                    .Skip(occurrence - 1).FirstOrDefault();
+                if (run?.Observation.Phase == phase)
+                    return run.Observation;
+                changed = _chatChanged.Task;
+            }
+            await changed.WaitAsync(wait.Token);
+        }
+    }
+
+    private void RequireChatSession(string sessionKey)
+    {
+        if (!_scenario.AllowsChat)
+            throw new InvalidOperationException("The controlled-chat scenario is required.");
+        if (!_scenario.ContainsSession(sessionKey))
+            throw new ArgumentException("Unknown fixture session key.", nameof(sessionKey));
     }
 
     /// <summary>Releases the gate immediately. Await response/UI readiness separately after releasing.</summary>
@@ -344,7 +496,8 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                 var nonce = Convert.ToHexString(RandomNumberGenerator.GetBytes(24));
                 await SendAsync(socket, sendLock, new
                 {
-                    type = "event", @event = "connect.challenge",
+                    type = "event",
+                    @event = "connect.challenge",
                     payload = new { nonce, ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() }
                 }, connection.Token);
                 var authenticated = false;
@@ -401,10 +554,18 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                                 throw new FixtureRequestException("INVALID_REQUEST", "Operator is already connected.");
                             if (method != "connect")
                                 throw new FixtureRequestException("AUTH_REQUIRED", "Operator connect is required before reading fixture data.");
+                            if (_rejectOperatorConnections)
+                            {
+                                Interlocked.Increment(ref _operatorConnectionRejections);
+                                throw new FixtureRequestException("UNAVAILABLE", "Synthetic Gateway is unavailable for this startup scenario.");
+                            }
                             Authenticate(parameters, nonce);
                             await SendAsync(socket, sendLock, new
                             {
-                                type = "res", id, ok = true, payload = _scenario.CreateHello($"fixture-connection-{connectionId}")
+                                type = "res",
+                                id,
+                                ok = true,
+                                payload = _scenario.CreateHello($"fixture-connection-{connectionId}")
                             }, connection.Token);
                             authenticated = true;
                             lock (_sync)
@@ -456,6 +617,8 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                     {
                         _subscriptions.Remove(connectionId);
                         _authenticatedConnections.Remove(connectionId);
+                        foreach (var run in _chatRuns.Where(run => run.ConnectionId == connectionId))
+                            run.Dispose();
                     }
                     Interlocked.Decrement(ref _activeConnectionCount);
                 }
@@ -474,6 +637,13 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             {
                 if (parameters.ValueKind != JsonValueKind.Object)
                     throw new FixtureRequestException("INVALID_PARAMS", "params must be an object.");
+                if (_scenario.AllowsChat && method == "chat.send")
+                {
+                    var sessionKey = _scenario.ValidateChatSend(parameters);
+                    await RespondChatSendAsync(socket, sendLock, id, sessionKey, ReadString(parameters, "idempotencyKey")!,
+                        requestIndex, connectionId, cancellationToken);
+                    return;
+                }
                 if (method == "exec.approval.resolve")
                 {
                     var approvalId = ReadString(parameters, "id");
@@ -485,7 +655,9 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                                 "Approval ID was not issued by the fixture.");
                     }
                 }
-                payload = _scenario.Respond(method, parameters);
+                payload = _scenario.AllowsChat && method == "chat.abort"
+                    ? await AbortChatRunAsync(socket, sendLock, parameters, connectionId, cancellationToken)
+                    : _scenario.Respond(method, parameters);
                 if (method == "exec.approval.resolve")
                 {
                     var approvalId = ReadString(parameters, "id");
@@ -521,6 +693,207 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         {
             Complete(requestIndex, "disconnected");
         }
+    }
+
+    private async Task RespondChatSendAsync(
+        WebSocket socket, SemaphoreSlim sendLock, string id, string sessionKey, string wireRunId,
+        int requestIndex, int connectionId, CancellationToken cancellationToken)
+    {
+        ChatRun run;
+        lock (_sync)
+        {
+            if (_chatRuns.Any(existing => existing.WireRunId == wireRunId))
+                throw new FixtureRequestException("INVALID_PARAMS", "This fixture does not model idempotency replay.");
+            _chatResponseGates.TryGetValue(sessionKey, out var responseGate);
+            _chatDeltaGates.TryGetValue(sessionKey, out var deltaGate);
+            _chatCompletionGates.TryGetValue(sessionKey, out var completionGate);
+            run = new ChatRun(new GatewayFixtureChatRun(
+                $"fixture-chat-run-{_chatRuns.Count + 1}", sessionKey,
+                responseGate is null ? GatewayFixtureChatPhase.Streaming : GatewayFixtureChatPhase.ResponseHeld,
+                0, false), connectionId, wireRunId, responseGate?.Task, deltaGate, completionGate?.Task, cancellationToken);
+            _chatRuns.Add(run);
+            SignalChatChanged();
+        }
+
+        try
+        {
+            if (run.ResponseGate is not null)
+                await run.ResponseGate.WaitAsync(run.Stop.Token);
+            await run.Publication.WaitAsync(cancellationToken);
+            try
+            {
+                run.Stop.Token.ThrowIfCancellationRequested();
+                await SendAsync(socket, sendLock, new
+                {
+                    type = "res",
+                    id,
+                    ok = true,
+                    payload = new { runId = run.WireRunId, sessionKey, status = "started" }
+                }, cancellationToken);
+                Complete(requestIndex, "ok");
+            }
+            finally { run.Publication.Release(); }
+
+            SetChatPhase(run, GatewayFixtureChatPhase.Streaming);
+            await PublishChatAgentAsync(run, socket, sendLock, 1, "lifecycle", new { phase = "start" }, cancellationToken);
+            var deltas = GatewayScenario.ChatDeltas(sessionKey);
+            for (var index = 0; index < deltas.Count; index++)
+            {
+                if (run.DeltaGate?.AfterDeltaCount == index)
+                {
+                    SetChatPhase(run, GatewayFixtureChatPhase.DeltasHeld);
+                    await run.DeltaGate.Signal.Task.WaitAsync(run.Stop.Token);
+                    SetChatPhase(run, GatewayFixtureChatPhase.Streaming);
+                }
+                await PublishChatAgentAsync(run, socket, sendLock, index + 2, "assistant",
+                    new { delta = deltas[index] }, cancellationToken);
+                lock (_sync)
+                {
+                    run.Observation = run.Observation with { DeltaCount = index + 1 };
+                    SignalChatChanged();
+                }
+            }
+
+            await run.Publication.WaitAsync(cancellationToken);
+            try
+            {
+                run.Stop.Token.ThrowIfCancellationRequested();
+                await SendAsync(socket, sendLock, new
+                {
+                    type = "event",
+                    @event = "chat",
+                    payload = new
+                    {
+                        runId = run.WireRunId,
+                        sessionKey,
+                        seq = 4,
+                        state = "final",
+                        message = new
+                        {
+                            role = "assistant",
+                            content = new[] { new { type = "text", text = string.Concat(deltas) } },
+                            timestamp = 1_787_227_200_000L
+                        }
+                    }
+                }, cancellationToken);
+                lock (_sync)
+                {
+                    run.Observation = run.Observation with { FinalPublished = true };
+                    SignalChatChanged();
+                }
+            }
+            finally { run.Publication.Release(); }
+
+            if (run.CompletionGate is not null)
+            {
+                SetChatPhase(run, GatewayFixtureChatPhase.CompletionHeld);
+                await run.CompletionGate.WaitAsync(run.Stop.Token);
+            }
+            await PublishChatAgentAsync(run, socket, sendLock, 5, "lifecycle", new { phase = "end" }, cancellationToken);
+            SetChatPhase(run, GatewayFixtureChatPhase.Completed);
+        }
+        catch (OperationCanceledException) when (run.Stop.IsCancellationRequested)
+        {
+            SetChatPhase(run, GatewayFixtureChatPhase.Cancelled);
+            lock (_sync)
+                if (_requests[requestIndex].Outcome == "pending")
+                    Complete(requestIndex, "cancelled");
+        }
+        catch (WebSocketException) when (socket.State != WebSocketState.Open)
+        {
+            SetChatPhase(run, GatewayFixtureChatPhase.Cancelled);
+            lock (_sync)
+                if (_requests[requestIndex].Outcome == "pending")
+                    Complete(requestIndex, "disconnected");
+        }
+    }
+
+    private async Task<object> AbortChatRunAsync(
+        WebSocket socket, SemaphoreSlim sendLock, JsonElement parameters, int connectionId,
+        CancellationToken cancellationToken)
+    {
+        var sessionKey = _scenario.ValidateChatAbort(parameters);
+        var runId = ReadString(parameters, "runId");
+        ChatRun run;
+        lock (_sync)
+            run = _chatRuns.FirstOrDefault(run => run.WireRunId == runId
+                && run.Observation.SessionKey == sessionKey && run.ConnectionId == connectionId)
+                ?? throw new FixtureRequestException("INVALID_PARAMS", "Run does not belong to this fixture session and connection.");
+
+        await run.Publication.WaitAsync(cancellationToken);
+        try
+        {
+            lock (_sync)
+            {
+                if (run.Observation.FinalPublished ||
+                    run.Observation.Phase is GatewayFixtureChatPhase.Completed or GatewayFixtureChatPhase.Aborted or GatewayFixtureChatPhase.Cancelled)
+                    throw new FixtureRequestException("INVALID_PARAMS", "Fixture run is not active.");
+                run.Observation = run.Observation with { Phase = GatewayFixtureChatPhase.Aborted };
+                SignalChatChanged();
+            }
+            // Cancel gate waits, not an in-flight WebSocket send. Publication never owns a gate wait.
+            await run.Stop.CancelAsync();
+            await SendAsync(socket, sendLock, new
+            {
+                type = "event", @event = "chat",
+                payload = new
+                {
+                    runId = run.WireRunId, sessionKey, seq = run.Observation.DeltaCount + 2,
+                    state = "aborted", stopReason = "rpc"
+                }
+            }, cancellationToken);
+            return new { ok = true, aborted = true, runIds = new[] { run.WireRunId } };
+        }
+        finally { run.Publication.Release(); }
+    }
+
+    private async Task PublishChatAgentAsync(
+        ChatRun run, WebSocket socket, SemaphoreSlim sendLock, int sequence, string stream,
+        object data, CancellationToken cancellationToken)
+    {
+        await run.Publication.WaitAsync(cancellationToken);
+        try
+        {
+            run.Stop.Token.ThrowIfCancellationRequested();
+            await SendChatAgentAsync(run, socket, sendLock, sequence, stream, data, cancellationToken);
+        }
+        finally { run.Publication.Release(); }
+    }
+
+    private static Task SendChatAgentAsync(
+        ChatRun run, WebSocket socket, SemaphoreSlim sendLock, int sequence, string stream,
+        object data, CancellationToken cancellationToken) =>
+        SendAsync(socket, sendLock, new
+        {
+            type = "event",
+            @event = "agent",
+            payload = new
+            {
+                runId = run.WireRunId,
+                sessionKey = run.Observation.SessionKey,
+                seq = sequence,
+                stream,
+                ts = 1_787_227_200_000L + sequence,
+                data
+            }
+        }, cancellationToken);
+
+    private void SetChatPhase(ChatRun run, GatewayFixtureChatPhase phase)
+    {
+        lock (_sync)
+        {
+            if (run.Observation.Phase is GatewayFixtureChatPhase.Aborted or GatewayFixtureChatPhase.Cancelled)
+                return;
+            run.Observation = run.Observation with { Phase = phase };
+            SignalChatChanged();
+        }
+    }
+
+    private void SignalChatChanged()
+    {
+        var previous = _chatChanged;
+        _chatChanged = NewSignal();
+        previous.TrySetResult();
     }
 
     private void Authenticate(JsonElement p, string nonce)
@@ -626,7 +999,9 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         WebSocket socket, SemaphoreSlim sendLock, string? id, string code, string message, CancellationToken ct) =>
         SendAsync(socket, sendLock, new
         {
-            type = "res", id, ok = false,
+            type = "res",
+            id,
+            ok = false,
             error = new { code, message, details = new { code } }
         }, ct);
 
@@ -700,6 +1075,15 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             _sessionMutationGate = null;
             _chatSendGate?.TrySetCanceled();
             _chatSendGate = null;
+            foreach (var gate in _chatResponseGates.Values)
+                gate.TrySetCanceled(_lifetime.Token);
+            _chatResponseGates.Clear();
+            foreach (var gate in _chatDeltaGates.Values)
+                gate.Signal.TrySetCanceled(_lifetime.Token);
+            _chatDeltaGates.Clear();
+            foreach (var gate in _chatCompletionGates.Values)
+                gate.TrySetCanceled(_lifetime.Token);
+            _chatCompletionGates.Clear();
         }
         await _acceptLoop;
         Task[] connections;

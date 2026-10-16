@@ -1,0 +1,34 @@
+{
+  "upstreamCommit": "f4d6e4d457baf0282dc7cdb98f1b0a6848852417",
+  "scope": "Explicit controlled-chat fixture subset, not the complete upstream chat API",
+  "sources": {
+    "schema": "packages/gateway-protocol/src/schema/logs-chat.ts#L334-L381",
+    "runIdentity": "src/gateway/server-methods/chat-send-session.ts#L213",
+    "started": "src/gateway/server-methods/chat-send-input-dispatch.ts#L575-L584",
+    "abortResult": "src/gateway/server-methods/chat-abort-handler.ts#L366-L371",
+    "abortedEvent": "src/gateway/chat-abort.ts#L422-L445"
+  },
+  "send": {
+    "requestFields": ["sessionKey", "message", "idempotencyKey"],
+    "status": "started",
+    "runIdSource": "idempotencyKey"
+  },
+  "abort": {
+    "requestFields": ["sessionKey", "runId"],
+    "resultFields": ["ok", "aborted", "runIds"],
+    "terminalState": "aborted",
+    "stopReason": "rpc"
+  },
+  "final": {
+    "state": "final",
+    "role": "assistant",
+    "contentType": "text"
+  },
+  "notModeled": [
+    "idempotency replay",
+    "attachments",
+    "persisted aborted partials",
+    "cross-connection administrator cancellation",
+    "providers or inference"
+  ]
+}

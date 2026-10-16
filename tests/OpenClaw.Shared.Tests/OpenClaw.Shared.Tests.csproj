@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <None Update="Protocol\gateway-chat-fixture-contract.json" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="..\..\src\OpenClaw.Shared\OpenClaw.Shared.csproj" />
     <ProjectReference Include="..\OpenClaw.TestSupport\OpenClaw.TestSupport.csproj" />
     <ProjectReference Include="..\OpenClaw.Shared.TestHost\OpenClaw.Shared.TestHost.csproj"

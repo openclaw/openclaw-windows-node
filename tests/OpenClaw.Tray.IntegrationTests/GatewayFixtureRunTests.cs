@@ -1,9 +1,52 @@
 using OpenClaw.GatewayFixtureHost;
+using System.Text.Json;
 
 namespace OpenClaw.Tray.IntegrationTests;
 
 public sealed class GatewayFixtureRunTests
 {
+    [Theory]
+    [InlineData(GatewayFixtureStartupMode.Connected, "Connected", 5, 0, true)]
+    [InlineData(GatewayFixtureStartupMode.Connected, "Connected", 0, 0, false)]
+    [InlineData(GatewayFixtureStartupMode.Connected, "Disconnected", 5, 0, false)]
+    [InlineData(GatewayFixtureStartupMode.McpOnly, "Disconnected", 0, 0, true)]
+    [InlineData(GatewayFixtureStartupMode.McpOnly, "Connected", 0, 0, false)]
+    [InlineData(GatewayFixtureStartupMode.McpOnly, "Disconnected", 5, 0, false)]
+    [InlineData(GatewayFixtureStartupMode.GatewayUnavailable, "Error", 0, 1, true)]
+    [InlineData(GatewayFixtureStartupMode.GatewayUnavailable, "Disconnected", 0, 0, false)]
+    [InlineData(GatewayFixtureStartupMode.GatewayUnavailable, "Connected", 0, 1, false)]
+    public void StartupReadinessMatchesTheDeclaredScenario(GatewayFixtureStartupMode mode, string state,
+        int sessions, int rejections, bool expected)
+    {
+        var status = JsonSerializer.SerializeToElement(new { operatorState = state, sessionCount = sessions });
+        Assert.Equal(expected, GatewayFixtureRun.IsReady(mode, status, rejections));
+    }
+
+    [Theory]
+    [InlineData(true, true, null, "contract-passed")]
+    [InlineData(false, true, null, "contract-failed")]
+    [InlineData(true, false, null, "contract-failed")]
+    [InlineData(true, true, "synthetic assertion failure", "contract-failed")]
+    public async Task FinalReportRequiresAssertionsCleanupAndIsolation(bool cleanup, bool isolation, string? error, string outcome)
+    {
+        using var artifacts = new TempDirectory();
+        await File.WriteAllTextAsync(artifacts.Combine("run.json"), """{"outcome":"contract-assertions-passed","RunId":"synthetic"}""");
+        await GatewayFixtureRun.FinalizeContractReportAsync(artifacts.Path, cleanup, isolation, error);
+        using var report = JsonDocument.Parse(await File.ReadAllTextAsync(artifacts.Combine("run.json")));
+        Assert.Equal(outcome, report.RootElement.GetProperty("outcome").GetString());
+        Assert.Equal(cleanup, report.RootElement.GetProperty("cleanupSucceeded").GetBoolean());
+        Assert.Equal(isolation, report.RootElement.GetProperty("isolationUnchanged").GetBoolean());
+        Assert.Equal("synthetic", report.RootElement.GetProperty("RunId").GetString());
+    }
+
+    [Fact]
+    public async Task MissingRunEvidenceCannotBecomeSuccessfulCloseout()
+    {
+        using var artifacts = new TempDirectory();
+        await Assert.ThrowsAsync<FileNotFoundException>(() =>
+            GatewayFixtureRun.FinalizeContractReportAsync(artifacts.Path, true, true, null));
+    }
+
     private const string Description = "history loaded for agent:main:fixture-long";
     private const string ArtifactsDirectory = @"C:\fixture-artifacts\test-run";
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(5);

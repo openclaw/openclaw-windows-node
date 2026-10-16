@@ -4,6 +4,8 @@ internal static class Program
 {
     private static async Task<int> Main(string[] args)
     {
+        if (args is ["--stdio-fixture", var mode, var identityPath])
+            return await StdioMcpFixture.RunAsync(mode, identityPath);
         if (args.Length == 0 || args.Contains("--help"))
         {
             Console.WriteLine("Usage: dotnet OpenClaw.GatewayFixtureHost.dll --app <built-app.exe> [--artifacts <directory>] [--duration-seconds <1..86400>]");

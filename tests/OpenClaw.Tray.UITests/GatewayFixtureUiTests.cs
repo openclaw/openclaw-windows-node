@@ -606,7 +606,7 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         }
     }
 
-    private static async Task SelectSessionAsync(GatewayFixtureRun run, string title, string key, bool waitForHistory = true)
+    internal static async Task SelectSessionAsync(GatewayFixtureRun run, string title, string key, bool waitForHistory = true)
     {
         await WaitUiAsync(run, () => FindById(run, "WorkspaceAssistantSelector") is not null, "agent selector");
         var selector = FindById(run, "WorkspaceAssistantSelector")!;

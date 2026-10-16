@@ -11,6 +11,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="OpenClaw.Tray.IntegrationTests" />
+    <PackageReference Include="ModelContextProtocol.Core" Version="1.4.1" />
     <ProjectReference Include="..\..\src\OpenClaw.Shared\OpenClaw.Shared.csproj" />
   </ItemGroup>
 

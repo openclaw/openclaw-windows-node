@@ -53,6 +53,29 @@ Use `.\scripts\test-gateway-fixture.ps1 -AppPath '<built-app.exe>'` for the
 opt-in real-app lane. It rejects skipped or zero-test runs and preserves
 per-run artifacts. Existing MCP-only integration defaults remain unchanged.
 
+### Product contract coverage
+
+Live journeys are organized around product promises, not test counts or a list
+of recent fixes. Every completed contract needs a user-visible assertion and an
+independent wire, persistence, or runtime oracle. The following matrix records
+partial coverage honestly; no row is fully covered merely by adding lvt.
+
+| ID | Promise and forbidden effect | Current live mapping | Remaining proof |
+|---|---|---|---|
+| C01 | Navigation reaches the intended window without incidental preference writes | `ContractJourneyTests.NavigationPreservesPreferences`, `McpOnlyStartsWithoutGatewayCredential` and `UnavailableGatewayStillOpensWorkspace`: back/forward and real no-argument startup with independent profile/peer checks | Accepted proof for every current-tree case, fresh setup, tray activation and packaged routes |
+| C02 | Gateway selection, visible status and actual request destination agree; stale results cannot restore the old owner | `GatewayTwoPeerRoutingTests` and `ContractJourneyTests.SwitchingSavedPeerRoutesWorkToOnlyNewPeer`: distinct authenticated peers, saved-gateway UI switch, active registry/connection and independent history destination | Current-tree live eight-case acceptance; UI-level stale replies, credential recovery and real runtime replacement |
+| C03 | Conversation actions/results remain scoped to their session; failure and cancellation remain truthful | Controlled chat protocol suite plus `SendStreamsIntoSelectedConversation` and `CancelStopsOutputAndAllowsNextSend` journey sources; existing session/history/removal assets | Current-tree live chat acceptance, in-flight cross-session UI ownership, retries/replay and persistence boundaries |
+| C04 | Viewing is read-only; an explicit edit survives restart and changes only its intended scope | `ContractJourneyTests.PreferenceOffToOnSurvivesRestart` and `PreferenceOnToOffSurvivesRestart`: both directions, persisted allowlist, restart readback, untouched independent profile | Broader settings, graceful shutdown and real upgrade/migration |
+| C05 | Denial prevents execution, not just a button action | Existing permission/exec tests and MXC E2E | Live deny/allow journey through each relevant entry point on a capable disposable host |
+| C06 | Setup completion means usable configuration; cancel/retry cannot publish premature readiness | Existing onboarding UI and real setup E2E | Complete interrupted native/WSL setup journeys and restart verification |
+| C07 | Installed, running, healthy and usable Local AI states are distinct | Existing Local AI service/policy and hardware proof lanes | Integrated live lifecycle/recovery and actual inference proof |
+| C08 | Essential tasks are accessible and visibly usable | Axe.Windows, native keyboard and owned-window capture lanes | Risk-based DPI/theme/language/resize/input combinations |
+
+The first lvt increment exercises C01/C04 against the real app and synthetic
+Gateway. It is an opt-in Windows x64/ARM64 lane, not a required CI check.
+See [contract journey execution](GATEWAY_FIXTURE_TESTING.md#contract-journeys-with-lvt).
+Missing interactive proof remains blocked, not passed.
+
 ### OpenClaw.Shared.Tests
 
 - **Model and display formatting** - activity glyphs, app version display, session labels, gateway usage/node display, channel status, and rich text helpers.

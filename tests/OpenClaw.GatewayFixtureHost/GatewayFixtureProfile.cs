@@ -8,10 +8,18 @@ using OpenClaw.TestSupport;
 
 namespace OpenClaw.GatewayFixtureHost;
 
+/// <summary>
+/// A second synthetic gateway record seeded as an inactive saved peer before app startup.
+/// This exists only so switching between saved gateways can be exercised through the real
+/// Connection UI. It carries a synthetic loopback endpoint and a redacted fixture token.
+/// </summary>
+public sealed record GatewayFixtureSecondaryPeer(Uri Endpoint, string Token, string FriendlyName);
+
 /// <summary>Owns synthetic app state. No installed settings or identities are imported.</summary>
 public sealed class GatewayFixtureProfile : IDisposable
 {
     private readonly TempDirectory _directory;
+    private readonly int? _secondaryGatewayPort;
     private bool _disposed;
 
     public string RunId { get; } = Guid.NewGuid().ToString("N");
@@ -23,10 +31,29 @@ public sealed class GatewayFixtureProfile : IDisposable
     public string GatewayId { get; } = Guid.NewGuid().ToString();
     public Uri GatewayEndpoint { get; }
 
-    public GatewayFixtureProfile(Uri endpoint, string token)
+    /// <summary>The id of the inactive second saved peer, when one was seeded.</summary>
+    public string? SecondaryGatewayId { get; private set; }
+
+    public GatewayFixtureProfile(Uri endpoint, string token, bool showChatToolCalls = true,
+        GatewayFixtureStartupMode startupMode = GatewayFixtureStartupMode.Connected,
+        GatewayFixtureSecondaryPeer? secondaryPeer = null)
     {
+        if (!Enum.IsDefined(startupMode)) throw new ArgumentOutOfRangeException(nameof(startupMode));
         ValidateEndpoint(endpoint);
         ArgumentException.ThrowIfNullOrWhiteSpace(token);
+        if (startupMode == GatewayFixtureStartupMode.McpOnly && secondaryPeer is not null)
+            throw new ArgumentException("A secondary saved peer requires a Connected startup profile.", nameof(secondaryPeer));
+        if (secondaryPeer is not null)
+        {
+            ValidateEndpoint(secondaryPeer.Endpoint);
+            ArgumentException.ThrowIfNullOrWhiteSpace(secondaryPeer.Token);
+            ArgumentException.ThrowIfNullOrWhiteSpace(secondaryPeer.FriendlyName);
+            if (secondaryPeer.Endpoint.Port == endpoint.Port)
+                throw new ArgumentException("The secondary saved peer must bind a distinct loopback port.", nameof(secondaryPeer));
+            if (string.Equals(secondaryPeer.Token, token, StringComparison.Ordinal))
+                throw new ArgumentException("The secondary saved peer must use a distinct credential.", nameof(secondaryPeer));
+        }
+        _secondaryGatewayPort = secondaryPeer?.Endpoint.Port;
         GatewayEndpoint = endpoint;
         _directory = new TempDirectory("openclaw-gateway-fixture-");
         try
@@ -37,7 +64,7 @@ public sealed class GatewayFixtureProfile : IDisposable
             Directory.CreateDirectory(LocalRoot);
             var settings = new SettingsData
             {
-                GatewayUrl = endpoint.AbsoluteUri,
+                GatewayUrl = startupMode == GatewayFixtureStartupMode.McpOnly ? "" : endpoint.AbsoluteUri,
                 EnableMcpServer = true,
                 EnableNodeMode = false,
                 AutoStart = false,
@@ -61,10 +88,12 @@ public sealed class GatewayFixtureProfile : IDisposable
                 VoiceAudioFeedback = false,
                 UseLegacyWebChat = false,
                 ShowCompletedSessions = true,
+                ShowChatToolCalls = showChatToolCalls,
                 AppTheme = "Light",
                 OpenTelemetryEndpoint = null
             };
             File.WriteAllText(Path.Combine(DataDirectory, "settings.json"), settings.ToJson());
+            if (startupMode == GatewayFixtureStartupMode.McpOnly) return;
             var registry = new GatewayRegistry(DataDirectory);
             registry.AddOrUpdate(new GatewayRecord
             {
@@ -77,6 +106,21 @@ public sealed class GatewayFixtureProfile : IDisposable
                 IsLocal = false
             });
             registry.SetActive(GatewayId);
+            if (secondaryPeer is not null)
+            {
+                var secondaryId = Guid.NewGuid().ToString();
+                registry.AddOrUpdate(new GatewayRecord
+                {
+                    Id = secondaryId,
+                    Url = secondaryPeer.Endpoint.AbsoluteUri,
+                    FriendlyName = secondaryPeer.FriendlyName,
+                    SharedGatewayToken = secondaryPeer.Token,
+                    // A second unmanaged synthetic test server, seeded inactive. The app must
+                    // connect only to the active record until the UI switches to this one.
+                    IsLocal = false
+                });
+                SecondaryGatewayId = secondaryId;
+            }
             registry.Save();
         }
         catch
@@ -89,7 +133,8 @@ public sealed class GatewayFixtureProfile : IDisposable
     public ProcessStartInfo CreateStartInfo(string appPath, int mcpPort, string? postSetupLaunch = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (mcpPort is < 1 or > 65535 || mcpPort == GatewayEndpoint.Port || mcpPort is 8765 or 18789)
+        if (mcpPort is < 1 or > 65535 || mcpPort == GatewayEndpoint.Port
+            || mcpPort == _secondaryGatewayPort || mcpPort is 8765 or 18789)
             throw new ArgumentOutOfRangeException(nameof(mcpPort), "A distinct, non-default MCP port is required.");
         var executable = ValidateApp(appPath);
         var start = new ProcessStartInfo(executable)

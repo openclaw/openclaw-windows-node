@@ -152,6 +152,32 @@ public sealed class GatewayFixtureProtocolTests
     }
 
     [Fact]
+    public async Task UnavailableStartupPeerRejectsConnectWithoutInventingAHandshake()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token,
+            rejectOperatorConnections: true);
+        using var identity = CreateIdentity();
+        using var client = new OpenClawGatewayClient(server.Endpoint.AbsoluteUri, token, NullLogger.Instance,
+            identityPath: identity.Path, ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false);
+        try
+        {
+            await client.ConnectAsync();
+            using var deadline = new CancellationTokenSource(Deadline);
+            var response = await server.WaitForCompletedRequestAsync("connect", cancellationToken: deadline.Token);
+            Assert.Equal("error:UNAVAILABLE", response.Outcome);
+            Assert.False(client.HasHandshakeSnapshot);
+            Assert.True(server.OperatorConnectionRejections > 0);
+            Assert.False(server.HandshakeCompleted.IsCompletedSuccessfully);
+            Assert.Contains(server.Requests, request => request.Method == "connect" && request.Outcome == "error:UNAVAILABLE");
+            Assert.DoesNotContain(server.Requests, request => request.Outcome == "ok");
+            Assert.Empty(server.UnexpectedRequests);
+            Assert.DoesNotContain(token, JsonSerializer.Serialize(server.Requests));
+        }
+        finally { await client.DisconnectAsync(); }
+    }
+
+    [Fact]
     public async Task RealClient_LongHistoryHas240MixedRowsStableIdentitiesAndActualFinalSentinel()
     {
         var token = CreateToken();
@@ -323,6 +349,7 @@ public sealed class GatewayFixtureProtocolTests
 
     [Theory]
     [InlineData("chat.send")]
+    [InlineData("chat.abort")]
     [InlineData("sessions.patch")]
     [InlineData("sessions.delete")]
     [InlineData("config.patch")]
@@ -620,7 +647,7 @@ public sealed class GatewayFixtureProtocolTests
     private static TaskCompletionSource<T> Signal<T>() => new(TaskCreationOptions.RunContinuationsAsynchronously);
     private static TempDirectory CreateIdentity() => new(Path.Combine(Directory.GetCurrentDirectory(), ".fixture-identity-"));
 
-    private sealed class ConnectedClient(OpenClawGatewayClient client, TempDirectory identity) : IAsyncDisposable
+    internal sealed class ConnectedClient(OpenClawGatewayClient client, TempDirectory identity) : IAsyncDisposable
     {
         public OpenClawGatewayClient Client { get; } = client;
 
