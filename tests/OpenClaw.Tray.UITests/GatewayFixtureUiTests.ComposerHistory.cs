@@ -107,6 +107,8 @@ public sealed partial class GatewayFixtureUiTests
                 return false;
             using var rendered = JsonDocument.Parse(status);
             return rendered.RootElement.GetProperty("selectedThreadId").GetString() == key
-                && RenderConsumedHistory(run, key);
+                && RenderConsumedHistory(run, key)
+                && (key != ComposerCreatedKey
+                    || FindText(run, "Welcome to OpenClaw") is { Current.IsOffscreen: false });
         }, $"mounted composer and history selected {key}");
 }
