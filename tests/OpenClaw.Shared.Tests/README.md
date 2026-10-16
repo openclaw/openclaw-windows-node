@@ -4,8 +4,10 @@ Unit and focused integration coverage for `OpenClaw.Shared`.
 
 Do not maintain per-file test counts in this README. They drift whenever
 theories or focused regressions are added. The repository-wide source inventory
-and latest required-suite runtime totals live in
+and dated required-suite runtime snapshots live in
 [`docs/TEST_COVERAGE.md`](../../docs/TEST_COVERAGE.md).
+Use the current run's report for completion claims. For new regressions, follow
+[test authoring](../../docs/TEST_COVERAGE.md#writing-a-regression-test).
 
 ## Run the suite
 

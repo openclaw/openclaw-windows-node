@@ -33,7 +33,7 @@ function Assert-Contains {
         [Parameter(Mandatory)][string]$Message
     )
 
-    if (-not $Text.Contains($Expected, [StringComparison]::Ordinal)) {
+    if ($Text.IndexOf($Expected, [StringComparison]::Ordinal) -lt 0) {
         throw $Message
     }
 }
@@ -45,7 +45,7 @@ function Assert-NotContains {
         [Parameter(Mandatory)][string]$Message
     )
 
-    if ($Text.Contains($Unexpected, [StringComparison]::Ordinal)) {
+    if ($Text.IndexOf($Unexpected, [StringComparison]::Ordinal) -ge 0) {
         throw $Message
     }
 }
@@ -368,6 +368,8 @@ foreach ($token in @(
         "./scripts/validate-docs.ps1",
         "./scripts/validate-agent-skills.ps1",
         "./scripts/test-agent-skills-validator.ps1",
+        "./scripts/test-proof-evidence.ps1",
+        "./scripts/test-agent-readiness.ps1",
         "./scripts/test-ci-change-classifier.ps1",
         "./scripts/test-ci-gate-results.ps1",
         "./scripts/test-ci-workflow-contract.ps1",
@@ -536,6 +538,19 @@ foreach ($token in @(
     Assert-Contains -Text $trayJob -Expected $token -Message "Tray lane is missing '$token'."
 }
 
+$devSettingsStep = Get-StepBlock -Text $trayJob -Name "Run Dev containment settings tests"
+foreach ($token in @(
+        "dotnet test tests/OpenClaw.Tray.Tests",
+        "-p:DevBuild=true",
+        "FullyQualifiedName~SettingsManagerIsolationTests",
+        "FullyQualifiedName~AppRefactorContractTests.SandboxPage_",
+        "OpenClaw.Tray.DevSettings.Tests.trx"
+    )) {
+    Assert-Contains -Text $devSettingsStep -Expected $token -Message "Dev settings coverage is missing '$token'."
+}
+Assert-NotContains -Text $devSettingsStep -Unexpected "--no-build" `
+    -Message "Dev settings tests must recompile the linked AppIdentity source with DEV_BUILD."
+
 $uiJob = Get-JobBlock "ui-tests"
 foreach ($token in @(
         "Install WindowsAppRuntime",
@@ -571,7 +586,10 @@ foreach ($requiredRunnerToken in @(
         '"trx;LogFileName=$TrxFileName"',
         'dotnet-coverage collect',
         '--output-format cobertura',
-        '& dotnet @testArguments'
+        '& dotnet @testArguments',
+        'New-TestInvocation',
+        'Read-TestResultContract',
+        '-AllowSkipped'
     )) {
     Assert-Contains `
         -Text $runner `
@@ -943,10 +961,19 @@ $triggerPaths = @(
     "scripts/test-ci-gate-results.ps1",
     "scripts/validate-agent-skills.ps1",
     "scripts/test-agent-skills-validator.ps1",
-    "scripts/test-ci-workflow-contract.ps1"
+    "scripts/test-ci-workflow-contract.ps1",
+    "scripts/run-proof-tests.ps1",
+    "scripts/Invoke-CiTest.ps1",
+    "scripts/TestResultContract.ps1",
+    "scripts/ProofEvidence.ps1",
+    "scripts/validate-proof-evidence.ps1",
+    "scripts/test-proof-evidence.ps1",
+    "scripts/MarkdownValidation.ps1",
+    "scripts/setup-dev.ps1",
+    "scripts/test-agent-readiness.ps1"
 )
 
-$tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
+$tempRoot = Join-Path (Join-Path $repoRootPath "TestResults") (
     "openclaw-ci-contract-" + [guid]::NewGuid().ToString("N"))
 try {
     New-Item -ItemType Directory -Path $tempRoot | Out-Null

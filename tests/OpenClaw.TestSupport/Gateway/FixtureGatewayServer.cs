@@ -37,6 +37,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private readonly Dictionary<int, ActiveConnection> _authenticatedConnections = [];
     private readonly Dictionary<string, TaskCompletionSource> _historyGates = new(StringComparer.Ordinal);
     private TaskCompletionSource? _sessionMutationGate;
+    private TaskCompletionSource? _chatSendGate;
     private readonly TaskCompletionSource _handshake = NewSignal();
     private readonly TaskCompletionSource _accepted = NewSignal();
     private TaskCompletionSource _requestChanged = NewSignal();
@@ -207,6 +208,28 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         {
             var gate = _sessionMutationGate ?? throw new InvalidOperationException("Session mutations are not held.");
             _sessionMutationGate = null;
+            gate.TrySetResult();
+        }
+    }
+
+    public void HoldChatSends()
+    {
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposal is not null, this);
+            if (_chatSendGate is not null)
+                throw new InvalidOperationException("Chat sends are already held.");
+            _chatSendGate = NewSignal();
+        }
+    }
+
+    public void ReleaseChatSends()
+    {
+        lock (_sync)
+        {
+            var gate = _chatSendGate ??
+                throw new InvalidOperationException("Chat sends are not held.");
+            _chatSendGate = null;
             gate.TrySetResult();
         }
     }
@@ -447,6 +470,8 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                     lock (_sync)
                         gate = method is "sessions.patch" or "sessions.delete"
                             ? _sessionMutationGate?.Task
+                            : method == "chat.send"
+                                ? _chatSendGate?.Task
                             : method == "chat.history" && key is not null && _historyGates.TryGetValue(key, out var held)
                                 ? held.Task : null;
                     pending.RemoveAll(task => task.IsCompletedSuccessfully);
@@ -735,6 +760,8 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             _historyGates.Clear();
             _sessionMutationGate?.TrySetCanceled();
             _sessionMutationGate = null;
+            _chatSendGate?.TrySetCanceled();
+            _chatSendGate = null;
         }
         await _acceptLoop;
         Task[] connections;

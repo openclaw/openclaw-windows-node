@@ -80,6 +80,11 @@ public interface INativeGatewayRuntime : IAsyncDisposable
         await EnsureRunningAsync(record, cancellationToken).ConfigureAwait(false);
     }
     Task StopAsync(CancellationToken cancellationToken);
+    /// <summary>
+    /// Hands a verified Gateway to its next owner without stopping it. Runtimes whose Gateway
+    /// cannot outlive this owner stop instead.
+    /// </summary>
+    Task ReleaseAsync(CancellationToken cancellationToken) => StopAsync(cancellationToken);
     Task<GatewayEndpointProvenance> InspectAsync(GatewayRecord record, CancellationToken cancellationToken);
     /// <summary>Fresh ownership inspection without starting or waiting for a lifecycle operation. Busy runtimes deny handoff.</summary>
     GatewayEndpointProvenance Inspect(GatewayRecord record);

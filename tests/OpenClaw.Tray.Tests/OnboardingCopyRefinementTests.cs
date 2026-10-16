@@ -22,6 +22,23 @@ public sealed class OnboardingCopyRefinementTests
     }
 
     [Fact]
+    public void CapabilityPageHasNoGatewayInstallationDisclosure()
+    {
+        var xaml = XDocument.Parse(Read(@"src\OpenClaw.SetupEngine.UI\Pages\CapabilitiesPage.xaml"));
+        var code = Read(@"src\OpenClaw.SetupEngine.UI\Pages\CapabilitiesPage.xaml.cs");
+        XNamespace names = "http://schemas.microsoft.com/winfx/2006/xaml";
+        Assert.DoesNotContain(xaml.Descendants(), element =>
+            (string?)element.Attribute(names + "Name") == "NativeInstallConsent" ||
+            (string?)element.Attribute(names + "Uid") == "Onboarding_Native_Review");
+        Assert.DoesNotContain("NativeInstallConsent", code);
+        Assert.DoesNotContain("WinGet", xaml.ToString());
+        Assert.Contains(xaml.Descendants(), element =>
+            (string?)element.Attribute(names + "Name") == "ProfileSelector");
+        Assert.Contains(xaml.Descendants(), element =>
+            (string?)element.Attribute(names + "Uid") == "Onboarding_V3_ProfileHelp");
+    }
+
+    [Fact]
     public void RetiredSetupResources_AreRemovedWithoutLosingCurrentRecoveryOrSettingsCopy()
     {
         foreach (var locale in new[] { "en-us", "fr-fr", "nl-nl", "pt-br", "zh-cn", "zh-tw" })
@@ -33,7 +50,7 @@ public sealed class OnboardingCopyRefinementTests
             foreach (var key in new[] { "Onboarding_V2_Notifications", "Onboarding_V2_Microphone",
                          "Onboarding_V2_ScreenStatus", "Onboarding_V2_OpenSettings",
                          "Onboarding_V2_OpenPermissionSettings", "Onboarding_Ready_Skip.Content",
-                         "Onboarding_V4_ProfileHeading.Text" })
+                         "Onboarding_V4_ProfileHeading.Text", "Onboarding_Native_Review.Text" })
                 Assert.False(strings.ContainsKey(key), key);
             foreach (var key in new[] { "Onboarding_Ready_Return.Content", "Onboarding_V2_Back.Content",
                          "Onboarding_V2_NativeSettings.Text", "PermissionsPage_Cap_Camera_Label",

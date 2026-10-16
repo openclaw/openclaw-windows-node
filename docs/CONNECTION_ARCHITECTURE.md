@@ -193,6 +193,9 @@ A floating-style subtle reopen button reserves a dedicated 56 DIP row at
 the content's top-left below the titlebar, never covering hosted hit targets.
 The pane toggle retains a 40 DIP target and 16 DIP glyph in both states; focus
 moves to the surviving toggle. Pane changes do not remount chat or reset drafts.
+Both Workspace toggle states and the Settings toggle use the native
+`SubtleButtonStyle` with zero padding for icon-only content. The style's default
+text-button padding must not squeeze the glyph inside the fixed 40 DIP target.
 The companion uses a native TitleBar titled OpenClaw Settings with shared claw
 artwork. Search, Back, and Forward live beside the toggle in its stable sidebar
 toolbar. The native pane reserves 56 DIP above its items, including in compact mode.
@@ -754,6 +757,13 @@ When **another** device or node requests pairing, the gateway broadcasts `device
 `PairingApprovalCoordinator` (tray) reconciles those snapshots through the pure `PairingApprovalQueue` (OpenClaw.Connection) into add/resolve deltas, de-duplicating, suppressing already-decided requests, and filtering out the local node's own pending request (handled by the auto-approve path above). For genuinely new requests - when `ShowPairingApprovalDialog` is enabled and the operator holds pairing scope - it raises `ApprovalRequested`, and the app presents a focused **`PairingApprovalDialog`** plus an awareness toast (with a "Review" action). The dialog shows the requester's identity and the **operator scopes being granted** (mapped to friendly text by `PairingScopeDescriptions`), with Approve / Reject / Decide-later. Approve is briefly disabled on each new request to prevent click-through. Approve/Reject call the `IOperatorGatewayClient.{Device,Node}Pair{Approve,Reject}Async` RPCs; the queue advances and the dialog closes when empty. The existing Connections-page "Pending approvals" banner remains as the passive fallback when the dialog is disabled. Pure queue/scope logic is unit-tested in `OpenClaw.Connection.Tests`.
 
 ## SSH tunnel integration
+
+The Connection page and Connection Status validate remote and local forward
+ports with `SshForwardPorts` before entering the direct-connect transaction.
+Both fields require an integer from 1 through 65535. Blank or invalid input
+shows the existing field-specific error without substituting default ports or
+changing the active connection. SSH command-line range validation remains a
+separate downstream guard.
 
 `SshTunnelService` manages an SSH local port-forward process and implements `ISshTunnelManager` directly for the connection manager.
 

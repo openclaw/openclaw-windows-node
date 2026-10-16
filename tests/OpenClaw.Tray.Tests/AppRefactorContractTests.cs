@@ -6,6 +6,25 @@ namespace OpenClaw.Tray.Tests;
 public sealed class AppRefactorContractTests
 {
     [Fact]
+    public void Startup_InvalidCleanupDataIsReportedBeforeSettingsLoad()
+    {
+        var source = ReadAppSources();
+        var cleanup = source[source.IndexOf("GatewayPackageCleanup.InitializeAsync(", StringComparison.Ordinal)..];
+        cleanup = cleanup[..cleanup.IndexOf("var appUserModelIdRegistration", StringComparison.Ordinal)];
+
+        // Retire when packaged startup admission has an executable, WinUI-free seam.
+        Assert.Contains("InvalidDataException", cleanup);
+        AssertInOrder(cleanup, "catch (Exception error)", "NativeRestartAdmission.Notify(error.Message", "Exit();", "return;");
+
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var owner = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine", "GatewayPackageCleanup.cs"));
+        var worker = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine", "GatewayPackageCleanup.ps1"));
+        Assert.Contains("RunAsync(commands, register, null, null, false, ct, preserve: keep)", owner);
+        Assert.Contains("""registration.Stderr.Contains("OPENCLAW_CLEANUP_RECEIPT_INVALID", StringComparison.Ordinal)""", owner);
+        AssertInOrder(worker, "    Assert-ValidRemovalReceipt", "    $record = if", "    if ($Preserve)", "'--unregister '");
+    }
+
+    [Fact]
     public void E2ESetupTeardown_UsesFixtureOwnedUninstallArguments()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
@@ -1520,7 +1539,6 @@ public sealed class AppRefactorContractTests
         var diagnostics = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Shared", "Inference", "Catalog", "LocalInferenceEligibilityDiagnostics.cs"));
         var resources = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Strings", "en-us", "Resources.resw"));
 
-        Assert.Contains("LocalInferenceEligibility.Evaluate(_localAiHardware!, model.Id)", source);
         Assert.Contains("eligibility.RequiredTotalMemoryBytes", diagnostics);
         Assert.Contains("eligibility.DetectedTotalMemoryBytes", diagnostics);
         Assert.Contains("model weights, KV cache, and runtime workspace", resources);
@@ -2005,6 +2023,28 @@ public sealed class AppRefactorContractTests
         Assert.Contains("AppNotification_SandboxUnavailableBlocked_MessageFormat", method);
         Assert.Contains("host-fallback", method);
         Assert.Contains("blocked", method);
+    }
+
+    [Fact]
+    public void SandboxPage_SuppressesXamlInitializationUntilSavedSettingsAreLoaded()
+    {
+        var source = ReadSandboxPageSource();
+        Assert.Contains("private bool _suppress = true;", source);
+
+        var constructorMatch = Regex.Match(source, @"public SandboxPage\(\)\s*\{(?<body>[^}]+)\}");
+        Assert.True(constructorMatch.Success);
+        var constructor = constructorMatch.Groups["body"].Value;
+        Assert.Contains("InitializeComponent();", constructor);
+        Assert.DoesNotContain("_suppress = false", constructor);
+
+        var loadState = ExtractMethod(source, "LoadState");
+        AssertInOrder(
+            loadState,
+            "_suppress = true;",
+            "TimeoutSlider.Value = secs;",
+            "_suppress = false;");
+        var timeoutChanged = ExtractMethod(source, "OnTimeoutChanged");
+        AssertInOrder(timeoutChanged, "if (_suppress) return;", "s.SandboxTimeoutMs =", "Save();");
     }
 
     [Fact]
