@@ -41,6 +41,8 @@ public class SettingsManager
 
     private readonly object _saveLock = new();
     private SettingsData _data = CreateDefaultData();
+    private string? _preservedElevenLabsCipher;
+    private string? _preservedMiniMaxCipher;
 
     // Connection
     public string GatewayUrl { get => _data.GatewayUrl ?? AppIdentity.SetupGatewayUrl; set => _data = _data with { GatewayUrl = value }; }
@@ -147,10 +149,18 @@ public class SettingsManager
     /// </summary>
     public bool NodeOllamaInferenceEnabled { get => _data.NodeOllamaInferenceEnabled; set => _data = _data with { NodeOllamaInferenceEnabled = value }; }
     public string TtsProvider { get => string.IsNullOrWhiteSpace(_data.TtsProvider) ? TtsCapability.PiperProvider : _data.TtsProvider; set => _data = _data with { TtsProvider = value }; }
-    public string TtsElevenLabsApiKey { get => _data.TtsElevenLabsApiKey ?? ""; set => _data = _data with { TtsElevenLabsApiKey = value }; }
+    public string TtsElevenLabsApiKey
+    {
+        get => _data.TtsElevenLabsApiKey ?? "";
+        set => SetProtectedApiKey(value, cipher => _preservedElevenLabsCipher = cipher, () => _preservedElevenLabsCipher, stored => _data = _data with { TtsElevenLabsApiKey = stored });
+    }
     public string TtsElevenLabsModel { get => _data.TtsElevenLabsModel ?? ""; set => _data = _data with { TtsElevenLabsModel = value }; }
     public string TtsElevenLabsVoiceId { get => _data.TtsElevenLabsVoiceId ?? ""; set => _data = _data with { TtsElevenLabsVoiceId = value }; }
-    public string TtsMiniMaxApiKey { get => _data.TtsMiniMaxApiKey ?? ""; set => _data = _data with { TtsMiniMaxApiKey = value }; }
+    public string TtsMiniMaxApiKey
+    {
+        get => _data.TtsMiniMaxApiKey ?? "";
+        set => SetProtectedApiKey(value, cipher => _preservedMiniMaxCipher = cipher, () => _preservedMiniMaxCipher, stored => _data = _data with { TtsMiniMaxApiKey = stored });
+    }
     public string TtsMiniMaxModel { get => string.IsNullOrWhiteSpace(_data.TtsMiniMaxModel) ? MiniMaxTextToSpeechClient.DefaultModel : _data.TtsMiniMaxModel; set => _data = _data with { TtsMiniMaxModel = value }; }
     public string TtsMiniMaxVoiceId { get => _data.TtsMiniMaxVoiceId ?? ""; set => _data = _data with { TtsMiniMaxVoiceId = value }; }
     public string TtsMiniMaxRegion { get => string.IsNullOrWhiteSpace(_data.TtsMiniMaxRegion) ? MiniMaxTextToSpeechClient.GlobalRegion : _data.TtsMiniMaxRegion; set => _data = _data with { TtsMiniMaxRegion = value }; }
@@ -229,6 +239,8 @@ public class SettingsManager
         _persistedJson = null;
         LegacyToken = null;
         LegacyBootstrapToken = null;
+        _preservedElevenLabsCipher = null;
+        _preservedMiniMaxCipher = null;
         _data = CreateDefaultData();
 
         try
@@ -251,6 +263,8 @@ public class SettingsManager
             Logger.Warn($"Failed to load settings: {ex.Message}");
             LegacyToken = null;
             LegacyBootstrapToken = null;
+            _preservedElevenLabsCipher = null;
+            _preservedMiniMaxCipher = null;
         }
         if (loadSucceeded && _hasPersistenceConflict)
         {
@@ -339,9 +353,13 @@ public class SettingsManager
         SandboxMaxOutputBytes = 4 * 1024 * 1024
     };
 
-    private static SettingsData NormalizeLoadedData(SettingsData loaded, string? rawJson = null)
+    private SettingsData NormalizeLoadedData(SettingsData loaded, string? rawJson = null)
     {
         var defaults = CreateDefaultData();
+        var elevenLabs = PreserveFailedSecret(loaded.TtsElevenLabsApiKey);
+        var miniMax = PreserveFailedSecret(loaded.TtsMiniMaxApiKey);
+        _preservedElevenLabsCipher = elevenLabs.Preserved;
+        _preservedMiniMaxCipher = miniMax.Preserved;
         var data = loaded with
         {
             SettingsSchemaVersion = CurrentSettingsSchemaVersion,
@@ -356,10 +374,10 @@ public class SettingsManager
             SttModelName = string.IsNullOrWhiteSpace(loaded.SttModelName) ? defaults.SttModelName : loaded.SttModelName,
             SttSilenceTimeout = loaded.SttSilenceTimeout > 0 ? loaded.SttSilenceTimeout : defaults.SttSilenceTimeout,
             TtsProvider = string.IsNullOrWhiteSpace(loaded.TtsProvider) ? defaults.TtsProvider : loaded.TtsProvider,
-            TtsElevenLabsApiKey = UnprotectSettingSecret(loaded.TtsElevenLabsApiKey) ?? defaults.TtsElevenLabsApiKey,
+            TtsElevenLabsApiKey = elevenLabs.Plaintext ?? defaults.TtsElevenLabsApiKey,
             TtsElevenLabsModel = loaded.TtsElevenLabsModel ?? defaults.TtsElevenLabsModel,
             TtsElevenLabsVoiceId = loaded.TtsElevenLabsVoiceId ?? defaults.TtsElevenLabsVoiceId,
-            TtsMiniMaxApiKey = UnprotectSettingSecret(loaded.TtsMiniMaxApiKey) ?? defaults.TtsMiniMaxApiKey,
+            TtsMiniMaxApiKey = miniMax.Plaintext ?? defaults.TtsMiniMaxApiKey,
             TtsMiniMaxModel = loaded.TtsMiniMaxModel ?? defaults.TtsMiniMaxModel,
             TtsMiniMaxVoiceId = loaded.TtsMiniMaxVoiceId ?? defaults.TtsMiniMaxVoiceId,
             TtsMiniMaxRegion = loaded.TtsMiniMaxRegion ?? defaults.TtsMiniMaxRegion,
@@ -550,9 +568,11 @@ public class SettingsManager
             OpenClaw.Shared.Mcp.McpAuthToken.TryRestrictDataDirectoryAcl(_settingsDirectory);
 
             var data = ToSettingsData();
-            // Apply DPAPI protection to the API key for on-disk storage only
-            data.TtsElevenLabsApiKey = ProtectSettingSecret(data.TtsElevenLabsApiKey);
-            data.TtsMiniMaxApiKey = ProtectSettingSecret(data.TtsMiniMaxApiKey);
+            // Apply DPAPI protection to the API key for on-disk storage only.
+            // A failed decrypt keeps the original ciphertext so this save cannot
+            // replace it with null.
+            data.TtsElevenLabsApiKey = _preservedElevenLabsCipher ?? ProtectSettingSecret(data.TtsElevenLabsApiKey);
+            data.TtsMiniMaxApiKey = _preservedMiniMaxCipher ?? ProtectSettingSecret(data.TtsMiniMaxApiKey);
 
             var json = data.ToJson();
             if (current is not null)
@@ -611,6 +631,37 @@ public class SettingsManager
             try { edit(); SaveOrThrow(); }
             catch { _data = before; throw; }
         }
+    }
+
+    private readonly record struct LoadedSettingSecret(string? Plaintext, string? Preserved);
+
+    private static LoadedSettingSecret PreserveFailedSecret(string? stored)
+    {
+        if (string.IsNullOrWhiteSpace(stored) ||
+            !stored.StartsWith(ProtectedSecretPrefix, StringComparison.Ordinal))
+        {
+            return new(stored, null);
+        }
+
+        var plain = UnprotectSettingSecret(stored);
+        return plain is null ? new(null, stored) : new(plain, null);
+    }
+
+    private static void SetProtectedApiKey(
+        string? value,
+        Action<string?> setPreserved,
+        Func<string?> getPreserved,
+        Action<string?> storePlaintext)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            if (getPreserved() is null)
+                storePlaintext(value);
+            return;
+        }
+
+        setPreserved(null);
+        storePlaintext(value);
     }
 
     internal static string? ProtectSettingSecret(string? value)

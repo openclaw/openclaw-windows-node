@@ -575,6 +575,83 @@ public class SettingsRoundTripTests
         Assert.Null(SettingsManager.UnprotectSettingSecret("dpapi:not-base64"));
     }
 
+    [Fact]
+    public void SettingsManager_SaveKeepsUnreadableProtectedSecrets()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
+        var settingsPath = Path.Combine(dir, "settings.json");
+        const string blob = "dpapi:not-base64";
+
+        try
+        {
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(settingsPath, $$"""
+            {
+              "TtsElevenLabsApiKey": "{{blob}}",
+              "TtsMiniMaxApiKey": "{{blob}}"
+            }
+            """);
+
+            var settings = new SettingsManager(dir);
+            Assert.Equal("", settings.TtsElevenLabsApiKey);
+            Assert.Equal("", settings.TtsMiniMaxApiKey);
+
+            settings.NotificationSound = "chime";
+            settings.TtsElevenLabsApiKey = "";
+            settings.TtsMiniMaxApiKey = "";
+            settings.Save();
+
+            using var saved = JsonDocument.Parse(File.ReadAllText(settingsPath));
+            Assert.Equal(blob, saved.RootElement.GetProperty(nameof(SettingsData.TtsElevenLabsApiKey)).GetString());
+            Assert.Equal(blob, saved.RootElement.GetProperty(nameof(SettingsData.TtsMiniMaxApiKey)).GetString());
+            Assert.Equal("chime", saved.RootElement.GetProperty(nameof(SettingsData.NotificationSound)).GetString());
+        }
+        finally
+        {
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [WindowsFact]
+    public void SettingsManager_ReplacesUnreadableProtectedSecretWhenANewKeyIsSet()
+    {
+        if (!SettingsManager.CanProtectSettingSecretsForCurrentUser())
+            return;
+
+        var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
+        var settingsPath = Path.Combine(dir, "settings.json");
+
+        try
+        {
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(settingsPath, """
+            {
+              "TtsElevenLabsApiKey": "dpapi:not-base64"
+            }
+            """);
+
+            var settings = new SettingsManager(dir);
+            settings.TtsElevenLabsApiKey = "replacement-key";
+            settings.Save();
+
+            using var saved = JsonDocument.Parse(File.ReadAllText(settingsPath));
+            var stored = saved.RootElement.GetProperty(nameof(SettingsData.TtsElevenLabsApiKey)).GetString();
+            Assert.NotNull(stored);
+            Assert.StartsWith("dpapi:", stored);
+            Assert.NotEqual("dpapi:not-base64", stored);
+            Assert.DoesNotContain("replacement-key", stored);
+
+            var reloaded = new SettingsManager(dir);
+            Assert.Equal("replacement-key", reloaded.TtsElevenLabsApiKey);
+        }
+        finally
+        {
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, recursive: true);
+        }
+    }
+
     [WindowsFact]
     public void SettingsManager_SaveProtectsSecretsWithoutMutatingInMemoryData()
     {
