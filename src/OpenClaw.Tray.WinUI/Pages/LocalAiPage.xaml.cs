@@ -39,8 +39,13 @@ public sealed partial class LocalAiPage : Page
             _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
     }
 
-    private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) =>
-        RefreshFromViewModel();
+    private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(LocalAiPageViewModel.SwitchProgress) && _viewModel is { } viewModel)
+            RefreshSwitchProgress(viewModel);
+        else
+            RefreshFromViewModel();
+    }
 
     private void RefreshFromViewModel()
     {
@@ -189,26 +194,7 @@ public sealed partial class LocalAiPage : Page
         }
         ForceApplyModelButton.IsEnabled = !viewModel.IsBusy;
 
-        if (viewModel.SwitchProgress is { } progress)
-        {
-            string phase = LocalizationHelper.GetString($"LocalAiPage_SwitchPhase_{progress.Phase}");
-            ModelSwitchProgressText.Text = progress.TotalBytes > 0
-                ? $"{phase} {LocalizationHelper.Format("LocalAiPage_SwitchBytesFormat", progress.CompletedBytes / BytesPerGigabyte, progress.TotalBytes / BytesPerGigabyte)}"
-                : phase;
-            ModelSwitchProgressBar.IsIndeterminate = progress.TotalBytes <= 0;
-            ModelSwitchProgressBar.Value = progress.TotalBytes > 0 ? (double)progress.CompletedBytes / progress.TotalBytes : 0;
-            ModelSwitchProgressPanel.Visibility = Visibility.Visible;
-        }
-        else if (viewModel.IsSwitchingModel)
-        {
-            ModelSwitchProgressText.Text = LocalizationHelper.GetString("LocalAiPage_SwitchPhase_Resolving");
-            ModelSwitchProgressBar.IsIndeterminate = true;
-            ModelSwitchProgressPanel.Visibility = Visibility.Visible;
-        }
-        else
-        {
-            ModelSwitchProgressPanel.Visibility = Visibility.Collapsed;
-        }
+        RefreshSwitchProgress(viewModel);
 
         if (viewModel.SwitchError is { } error)
         {
@@ -230,6 +216,30 @@ public sealed partial class LocalAiPage : Page
         ApplyModelButton.IsEnabled = viewModel.CanApplyModel;
         CancelModelSwitchButton.Visibility = viewModel.IsSwitchingModel ? Visibility.Visible : Visibility.Collapsed;
         CancelModelSwitchButton.IsEnabled = viewModel.CanCancelModelSwitch;
+    }
+
+    private void RefreshSwitchProgress(LocalAiPageViewModel viewModel)
+    {
+        if (viewModel.SwitchProgress is { } progress)
+        {
+            string phase = LocalizationHelper.GetString($"LocalAiPage_SwitchPhase_{progress.Phase}");
+            ModelSwitchProgressText.Text = progress.TotalBytes > 0
+                ? $"{phase} {LocalizationHelper.Format("LocalAiPage_SwitchBytesFormat", progress.CompletedBytes / BytesPerGigabyte, progress.TotalBytes / BytesPerGigabyte)}"
+                : phase;
+            ModelSwitchProgressBar.IsIndeterminate = progress.TotalBytes <= 0;
+            ModelSwitchProgressBar.Value = progress.TotalBytes > 0 ? (double)progress.CompletedBytes / progress.TotalBytes : 0;
+            ModelSwitchProgressPanel.Visibility = Visibility.Visible;
+        }
+        else if (viewModel.IsSwitchingModel)
+        {
+            ModelSwitchProgressText.Text = LocalizationHelper.GetString("LocalAiPage_SwitchPhase_Resolving");
+            ModelSwitchProgressBar.IsIndeterminate = true;
+            ModelSwitchProgressPanel.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            ModelSwitchProgressPanel.Visibility = Visibility.Collapsed;
+        }
     }
 
     private static string FormatModelOption(LocalAiModelOption option)

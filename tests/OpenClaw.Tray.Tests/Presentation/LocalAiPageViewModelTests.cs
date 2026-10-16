@@ -806,6 +806,21 @@ public sealed class LocalAiPageViewModelTests
         Assert.True(viewModel.CanApplyModel);
     }
 
+    [Fact]
+    public async Task VerifyingALargeModel_DoesNotFloodTheUiWithFullRefreshes()
+    {
+        var switcher = new FakeLocalAiModelSwitcher { VerifyReports = 16 * 1024 };
+        using var viewModel = await CreateActivatedSwitchViewModelAsync(switcher);
+        viewModel.CustomModelReference = "owner/model-GGUF";
+        int fullRefreshes = 0;
+        viewModel.PropertyChanged += (_, e) => { if (e.PropertyName is null) fullRefreshes++; };
+
+        Assert.True(await viewModel.ApplyModelAsync(), viewModel.SwitchError);
+
+        // Start, two phase changes, and completion; never one per buffered report.
+        Assert.InRange(fullRefreshes, 1, 10);
+    }
+
     private static async Task<LocalAiPageViewModel> CreateActivatedSwitchViewModelAsync(FakeLocalAiModelSwitcher switcher)
     {
         LocalInferencePlan installed = LocalInferenceEligibility.Evaluate(CreateQualifiedHardware(), LocalModelCatalog.Models[0].Id).Plan!;
@@ -1170,6 +1185,7 @@ public sealed class LocalAiPageViewModelTests
         public bool RequiresForce { get; init; }
         public bool BlockSwitch { get; init; }
         public Exception? SwitchFailure { get; init; }
+        public int VerifyReports { get; init; }
         public List<string> Calls { get; } = [];
 
         public Task<LocalInferencePlan?> LoadInstalledPlanAsync(CancellationToken ct) => Task.FromResult(InstalledPlan);
@@ -1191,6 +1207,8 @@ public sealed class LocalAiPageViewModelTests
         {
             Calls.Add($"switch:{force}");
             progress?.Report(new(LocalAiModelSwitchPhase.Downloading, 1, 10));
+            for (long mib = 1; mib <= VerifyReports; mib++)
+                progress?.Report(new(LocalAiModelSwitchPhase.Verifying, mib << 20, (long)VerifyReports << 20));
             if (BlockSwitch)
                 await Task.Delay(Timeout.Infinite, ct);
             if (SwitchFailure is not null)

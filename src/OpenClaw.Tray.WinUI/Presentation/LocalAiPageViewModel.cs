@@ -314,11 +314,16 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
             LocalAiRuntimeSnapshot snapshot = await _modelSwitcher.SwitchAsync(
                 target,
                 force,
-                new InlineProgress(progress => ApplyOnUiThread(() =>
+                new CoalescingSwitchProgress(_dispatcher, progress =>
                 {
+                    if (_disposed || !_isSwitchingModel)
+                        return;
+                    bool phaseChanged = progress.Phase != _switchProgress?.Phase;
                     _switchProgress = progress;
-                    OnPropertyChanged(null);
-                })),
+                    // Byte-only updates refresh just the progress area; a phase change can
+                    // change which actions are available (cancel is only allowed early).
+                    OnPropertyChanged(phaseChanged ? null : nameof(SwitchProgress));
+                }),
                 ct);
             _isSwitchingModel = false;
             _customModelReference = string.Empty;
@@ -348,11 +353,6 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
             if (!_disposed)
                 OnPropertyChanged(null);
         }
-    }
-
-    private sealed class InlineProgress(Action<LocalAiModelSwitchProgress> report) : IProgress<LocalAiModelSwitchProgress>
-    {
-        public void Report(LocalAiModelSwitchProgress value) => report(value);
     }
 
     public bool RepairConnection() => RunCommand(CanRepairConnection, _appCommands.Reconnect);
