@@ -44,7 +44,6 @@ public class LocalizationValidationTests
         "Onboarding_V2_DetailTailscale",
         "CanvasWindow_TextBlock_31.Text",
         "CanvasWindow_winexWindowEx_2.Title",
-        "ChatWindow_winexWindowEx_2.Title",
         "HubWindow_winexWindowEx_2.Title",
         "TitleText.Text",
         "TokenPromptBox.Header",
@@ -55,7 +54,7 @@ public class LocalizationValidationTests
         "WindowTitle_TrayMenu",
         "WindowTitle_Update",
         // VoiceOverlayWindow window-title key — matches the convention
-        // for ChatWindow / HubWindow / CanvasWindow / TrayMenuWindow.
+        // for HubWindow / CanvasWindow / TrayMenuWindow.
         "VoiceOverlayWindow_winexWindowEx_2.Title",
         // Brand name — identical across all locales.
         "ConnectionPage_TopologyTailscale",
@@ -302,8 +301,6 @@ public class LocalizationValidationTests
         "Command_GoToSettings_Subtitle",
         "Command_GoToDiagnostics_Title",
         "Command_GoToDiagnostics_Subtitle",
-        "Command_OpenChatWindow_Title",
-        "Command_OpenChatWindow_Subtitle",
         "Command_OpenDashboard_Title",
         "Command_OpenDashboard_Subtitle",
         "Command_ToggleNodeMode_Title",

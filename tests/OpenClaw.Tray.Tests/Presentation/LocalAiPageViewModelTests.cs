@@ -81,7 +81,7 @@ public sealed class LocalAiPageViewModelTests
         Assert.Equal(1, commands.OpenLocalAiLogsCount);
         Assert.Equal(0, commands.ShowOnboardingCount);
         Assert.Equal(1, commands.ReconnectCount);
-        Assert.Equal(0, commands.ShowChatCount);
+        Assert.Empty(commands.Navigations);
         Assert.Equal(1, runtime.StopCount);
         Assert.Equal(1, runtime.RestartCount);
     }
@@ -111,7 +111,7 @@ public sealed class LocalAiPageViewModelTests
         Assert.False(viewModel.IsLocalAiAvailable);
         Assert.True(viewModel.CanOpenChat);
         Assert.True(viewModel.OpenChat());
-        Assert.Equal(1, commands.ShowChatCount);
+        Assert.Equal(["chat"], commands.Navigations);
     }
 
     [Fact]
@@ -493,7 +493,7 @@ public sealed class LocalAiPageViewModelTests
         Assert.True(viewModel.OpenLogs());
         Assert.True(viewModel.OpenChat());
         Assert.Equal(1, commands.OpenLocalAiLogsCount);
-        Assert.Equal(1, commands.ShowChatCount);
+        Assert.Equal(["chat"], commands.Navigations);
     }
 
     [Fact]

@@ -113,7 +113,7 @@ public sealed class OnboardingPresentationContractTests
     }
 
     [Fact]
-    public void DashboardAction_LivesInConnectionCardAndRetainsCompactFlyoutShortcut()
+    public void DashboardAction_LivesInConnectionCard()
     {
         var document = XDocument.Parse(Read(@"src\OpenClaw.Tray.WinUI\Pages\ConnectionPage.xaml"));
         var dashboard = Assert.Single(document.Descendants(),
@@ -123,10 +123,6 @@ public sealed class OnboardingPresentationContractTests
             element => (string?)element.Attribute("AutomationProperties.AutomationId") == "ConnectionDashboardCard");
         Assert.Contains("((IAppCommands)CurrentApp).OpenDashboard()",
             Read(@"src\OpenClaw.Tray.WinUI\Pages\ConnectionPage.xaml.cs"));
-        Assert.Contains("ChatFlyoutDashboardButton",
-            Read(@"src\OpenClaw.Tray.WinUI\Windows\ChatWindow.xaml"));
-        Assert.Contains("((IAppCommands)Application.Current).OpenDashboard()",
-            Read(@"src\OpenClaw.Tray.WinUI\Windows\ChatWindow.xaml.cs"));
     }
 
     [Fact]

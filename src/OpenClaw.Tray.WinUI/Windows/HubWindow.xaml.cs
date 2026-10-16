@@ -63,11 +63,6 @@ public sealed partial class HubWindow : WindowEx
     public bool NodeIsPendingApproval { get; set; }
     public string? LastAuthError { get; set; }
     public string? NodeShortDeviceId { get; set; }
-    public VoiceService? VoiceServiceInstance { get; set; }
-    /// <summary>When true, ChatPage should auto-start voice recording on next navigation. Consumed (reset to false) by ChatPage.</summary>
-    public bool PendingAutoStartVoice { get; set; }
-    /// <summary>Session key the chat surface should select on its next mount. Consumed (cleared) by ChatPage.</summary>
-    public string? PendingChatSessionKey { get; set; }
     public string? NodeFullDeviceId { get; set; }
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _gatewayNavHideTimer;
 
@@ -297,11 +292,7 @@ public sealed partial class HubWindow : WindowEx
             if (AppNotificationActionRoutes.TryGetChatSessionKey(route, out var sessionKey))
             {
                 CurrentApp.PendingChatSessionKey = sessionKey;
-                PendingChatSessionKey = sessionKey;
-                if (CurrentPage is ChatPage chatPage)
-                    chatPage.SelectSession(sessionKey!);
-                else
-                    NavigateTo("chat");
+                NavigateTo("chat");
             }
             else
             {
@@ -930,7 +921,6 @@ public sealed partial class HubWindow : WindowEx
     {
         switch (ContentFrame.Content)
         {
-            case ChatPage chat: chat.Initialize(); break;
             case SessionsPage sessions: sessions.Initialize(); break;
             case ConnectionPage connection: connection.Initialize(); break;
             case ChannelsPage channels: channels.Initialize(); break;

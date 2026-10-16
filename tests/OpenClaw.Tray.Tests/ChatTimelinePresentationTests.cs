@@ -279,7 +279,7 @@ public sealed class ChatTimelinePresentationTests
                 StringSplitOptions.None).Length - 1);
         Assert.Contains("\"ChatComposerAttach\"", composer);
         Assert.DoesNotContain("\"ChatComposerMore\"", composer);
-        Assert.Contains("\"ChatComposerSessionPicker\"", composer);
+        Assert.DoesNotContain("\"ChatComposerSessionPicker\"", composer);
         Assert.Contains("\"ChatComposerModelPicker\"", composer);
         Assert.Contains("\"ChatComposerReasoningPicker\"", composer);
         Assert.Contains("\"ChatComposerVoice\"", composer);

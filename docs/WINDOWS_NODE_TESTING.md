@@ -34,7 +34,7 @@ The [fixture Gateway harness](GATEWAY_FIXTURE_TESTING.md) can populate the real
 app without a running WSL Gateway or AI provider. Run
 `.\scripts\run-gateway-fixture.ps1 -AppPath '<built-app.exe>'` to explore, or
 `.\scripts\test-gateway-fixture.ps1 -AppPath '<built-app.exe>'` for automated
-picker, 240-message final-item, navigation and delayed-history proof. Use a
+Workspace sidebar selection, 240-message final-item, navigation and delayed-history proof. Use a
 non-Dev Release binary as well as Debug; an empty page or MCP snapshot is not
 equivalent to visible native history proof. Streaming still needs separate
 coverage.

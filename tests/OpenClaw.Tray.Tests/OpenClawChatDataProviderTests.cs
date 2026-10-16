@@ -809,10 +809,10 @@ public class OpenClawChatDataProviderTests
             await provider.SendMessageAsync("main", "first");
             bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
             using var composer = new ChatComposerFactory(new Presentation.RecordingUiDispatcher()).Create(
-                provider, new ChatComposerHostActions(null, null, null, null, null), initialSpeakerMuted: false);
+                provider, new ChatComposerHostActions(null, null, null, null), initialSpeakerMuted: false);
             composer.ApplyInputs(new ChatComposerInputs(
                 "connected", true, snapshots[^1].Threads.Single(thread => thread.Id == "main"),
-                [], [], null, true, [], null, false));
+                [], null, true, [], null, false));
             composer.ViewModel.SetDraft("second");
             var queuedSend = composer.Controller.SendAsync();
 

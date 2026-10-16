@@ -114,8 +114,6 @@ public record ChatThread
     public required string Title { get; init; }
     public string? AgentId { get; init; }
     public bool IsBackground { get; init; }
-    public bool IsVisibleInSessionPicker(string? activeThreadId) =>
-        !IsBackground || string.Equals(Id, activeThreadId, StringComparison.Ordinal);
     public ChatThreadStatus Status { get; init; }
     public ChatActivity Activity { get; init; }
     public string? Cwd { get; init; }

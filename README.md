@@ -128,7 +128,8 @@ This sandbox covers commands run through the Windows node. Commands run directly
 
 - Native tray flyout with gateway, session, usage, channel, node, and activity status
 - Companion Settings for connections, permissions, gateway configuration, diagnostics, and updates
-- Native chat and Quick Send with the `Ctrl+Alt+Shift+C` global hotkey
+- Native Workspace chat with an optional gateway WebView2 fallback
+- Global hotkeys: `Ctrl+Alt+Shift+V` for voice and `Ctrl+Alt+;` for Companion Settings
 - Command Center diagnostics with copyable repair guidance
 - Toast notifications with smart categorization
 - WebView2 Canvas and A2UI rendering
@@ -142,9 +143,8 @@ This sandbox covers commands run through the Windows node. Commands run directly
 |---|---|
 | `openclaw://settings` | Open Companion Settings |
 | `openclaw://setup` | Open the setup wizard |
-| `openclaw://chat` | Open Chat |
+| `openclaw://chat` | Open Workspace chat |
 | `openclaw://commandcenter` | Open Command Center |
-| `openclaw://send?message=Hello` | Open Quick Send with pre-filled text |
 | `openclaw://logs` | Open the current log file |
 | `openclaw://support-context` | Copy redacted support context |
 | `openclaw://capability-diagnostics` | Copy capability and allowlist diagnostics |

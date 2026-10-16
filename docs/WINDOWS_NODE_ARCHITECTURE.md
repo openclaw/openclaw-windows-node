@@ -42,7 +42,7 @@ Related issues: #5 (Canvas Panel), #6 (Skills Settings UI), #7 (DEVELOPMENT.md),
 | Component | Status | Details |
 |-----------|--------|---------|
 | `OpenClaw.Shared` | ✅ Working | Gateway WebSocket client library (.NET) |
-| `OpenClaw.Tray.WinUI` | ✅ Working | System tray app - status, Quick Send, WebChat (WebView2), toast notifications, channel control |
+| `OpenClaw.Tray.WinUI` | ✅ Working | Companion app with Workspace chat (native with an optional WebView2 fallback), tray status, toast notifications, and channel control |
 | Windows Node | ✅ Implemented | Canvas, screen, camera, location, device info/status, system.run, notifications - all working via Node Mode |
 | Windows Gateway | ❌ Unexplored | Gateway runs in WSL2 only |
 
@@ -118,7 +118,10 @@ The gold standard. Everything works out of the box. This is what Windows should 
 | **Setup complexity** | Medium - WSL2 + openclaw + configure tray app to point at `ws://localhost:18789` |
 | **UX Rating** | ⭐⭐⭐ Nice UI wrapper but agent still can't see or interact with Windows |
 
-This operator-only mode provides Quick Send, embedded WebChat, Command Center diagnostics, activity stream, and status display. But without Node Mode it is still a viewport into the agent, not a bridge for the agent to interact with Windows.
+This operator-only mode provides Workspace chat, Command Center diagnostics,
+activity stream, and status display. It has no separate Quick Send route.
+Without Node Mode it is still a viewport into the agent, not a bridge for the
+agent to interact with Windows.
 
 ---
 
@@ -793,13 +796,17 @@ WSL2 runs behind a NAT. The implications:
 
 ### 5. Dual canvas: WebChat + Node Canvas
 
-The tray app currently uses WebView2 for WebChat. The node canvas is a *separate* surface. Options:
+The historical options below predate Workspace-only chat. The current app uses
+native ChatPage in Workspace by default, with an optional WebView2 renderer;
+the node canvas remains a separate surface.
+
+Historical options:
 
 - **Two WebView2 instances** - one for chat, one for canvas (each in its own window/panel)
 - **Tab-based UI** - WebView2 with tab switching between chat and canvas
 - **Canvas as separate window** - floating overlay window with WebView2 (like macOS canvas)
 
-**Recommendation:** Separate floating window for canvas (matches macOS behavior). The chat WebView2 stays in the tray flyout/window. Canvas appears when the agent calls `canvas.present` and hides on `canvas.hide`.
+**Historical recommendation:** Separate floating window for canvas (matches macOS behavior). Chat no longer lives in a tray flyout/window; the optional chat WebView2 is hosted only by Workspace. Canvas appears when the agent calls `canvas.present` and hides on `canvas.hide`.
 
 ### 6. Device identity + pairing
 

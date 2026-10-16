@@ -39,7 +39,6 @@ public sealed class ChatComposerViewModelTests
             connectionState,
             turnActive,
             thread ?? MakeThread(),
-            System.Array.Empty<ChatThread>(),
             System.Array.Empty<string>(),
             null,
             false,
@@ -139,7 +138,6 @@ public sealed class ChatComposerViewModelTests
     [InlineData("session")]
     [InlineData("defaults")]
     [InlineData("catalog")]
-    [InlineData("channel")]
     public void ApplyInputs_IdenticalAdvertisedProfilesDoNotNotifyButChangedLabelsDo(string source)
     {
         ChatComposerInputs Snapshot(long revision, bool changed = false)
@@ -152,7 +150,6 @@ public sealed class ChatComposerViewModelTests
                 "session" => inputs with { CurrentThread = inputs.CurrentThread with { ThinkingContext = context } },
                 "defaults" => inputs with { CurrentThread = inputs.CurrentThread with { ThinkingDefaults = context } },
                 "catalog" => inputs with { ModelChoices = [new("m", "Model", "p", ThinkingContext: context)] },
-                "channel" => inputs with { AvailableChannels = [MakeThread("other") with { ThinkingContext = context }] },
                 _ => throw new System.ArgumentOutOfRangeException(nameof(source)),
             };
         }
@@ -197,7 +194,6 @@ public sealed class ChatComposerViewModelTests
             baseline with { ConnectionState = "disconnected", Revision = 2 },
             baseline with { TurnActive = true, Revision = 2 },
             baseline with { CurrentThread = MakeThread("other"), Revision = 2 },
-            baseline with { AvailableChannels = new[] { MakeThread("other") }, Revision = 2 },
             baseline with { AvailableModels = new[] { "model" }, Revision = 2 },
             baseline with { ModelChoices = new[] { new ChatModelChoice("model", "Model") }, Revision = 2 },
             baseline with { MessageOptionsDisabled = true, Revision = 2 },
