@@ -531,6 +531,21 @@ public sealed class WorkspaceNavigationTests
         Assert.DoesNotContain("RetryTriggerVoice", chat);
     }
 
+    [Theory]
+    [InlineData(true, false, "previous", true)]
+    [InlineData(true, false, "created", false)]
+    [InlineData(false, false, "previous", false)]
+    [InlineData(true, true, null, false)]
+    [InlineData(false, true, null, false)]
+    public void ComposerSessionSelection_SynchronizesOnlyWhenChatIsActive(
+        bool chatPageActive, bool notificationsPage, string? currentKey, bool expected)
+    {
+        var page = notificationsPage ? WorkspacePageId.Notifications : WorkspacePageId.Home;
+        var destination = new WorkspaceDestination(page, currentKey);
+        Assert.Equal(expected, WorkspaceNavigation.ShouldSynchronizeComposerSelection(
+            chatPageActive, destination, "created"));
+    }
+
     [Fact]
     public void Projection_UsesRealIdentitiesAndNeverManufacturesAnAgent()
     {

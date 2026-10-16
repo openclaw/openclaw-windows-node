@@ -69,6 +69,14 @@ internal static class WorkspaceNavigation
         return DeprecatedRoutes.Contains(route);
     }
 
+    // Late /new completion may update the retained Reactor selection, but it must
+    // not replace an explicit navigation away from the active Workspace chat.
+    public static bool ShouldSynchronizeComposerSelection(
+        bool chatPageActive, WorkspaceDestination destination, string sessionKey) =>
+        chatPageActive &&
+        destination.Page == WorkspacePageId.Home &&
+        !string.Equals(destination.SessionKey, sessionKey, StringComparison.Ordinal);
+
     public static string CompanionTag(CompanionPageId page, string agentId = "main") => page switch
     {
         CompanionPageId.LocalAi => "local-ai",

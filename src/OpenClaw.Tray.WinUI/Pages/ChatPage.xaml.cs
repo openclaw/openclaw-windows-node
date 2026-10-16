@@ -338,6 +338,11 @@ public sealed partial class ChatPage : Page
             sessionKey != request.Completion.Target.SessionKey)
             InvalidateNativeSetupForNavigation();
         _mountedThreadId = sessionKey;
+
+        if (_ownerWindow is WorkspaceWindow workspace &&
+            WorkspaceNavigation.ShouldSynchronizeComposerSelection(
+                _pageActive, workspace.Destination, sessionKey))
+            workspace.SelectSession(sessionKey);
     }
 
     private void OnWorkspaceOpenConnection(object sender, RoutedEventArgs e) =>

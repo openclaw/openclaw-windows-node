@@ -2,6 +2,7 @@ using OpenClaw.Chat;
 using OpenClaw.Shared;
 using OpenClaw.Tray.Tests.Presentation;
 using OpenClawTray.Chat;
+using OpenClawTray.Presentation;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
@@ -321,6 +322,49 @@ public sealed class ChatComposerControllerTests
         Assert.Equal(0, port.SendMessageCallCount);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SendAsync_NewAfterDelayedGateway_RespectsWorkspaceNavigationAway(bool navigateAway)
+    {
+        var workspace = new WorkspaceNavigationHistory();
+        workspace.Navigate(new(WorkspacePageId.Home, "session-1"));
+        var chatPageActive = true;
+        string? selectedInReactor = null;
+        var actions = new ChatComposerHostActions(null, null, null, null, null,
+            SessionSelected: sessionKey =>
+            {
+                if (WorkspaceNavigation.ShouldSynchronizeComposerSelection(
+                    chatPageActive, workspace.Current, sessionKey))
+                    workspace.Navigate(new(WorkspacePageId.Home, sessionKey));
+            });
+        var (vm, controller, port, _) = MakeController(actions);
+        using (vm)
+        using (controller)
+        {
+            controller.BindSelectionHandoff(key => selectedInReactor = key);
+            vm.SetDraft("/new");
+            port.ExecuteLifecycleGate = new();
+            var send = controller.SendAsync();
+            Assert.False(send.IsCompleted);
+            Assert.Equal(1, port.ExecuteLifecycleCallCount);
+
+            if (navigateAway)
+            {
+                workspace.Navigate(new(WorkspacePageId.Notifications));
+                chatPageActive = false;
+            }
+
+            port.ExecuteLifecycleGate.SetResult(new(ChatLifecycleCommandKind.New, true, "created"));
+            Assert.True(await send);
+            Assert.Equal("created", selectedInReactor);
+            Assert.Equal(navigateAway
+                ? new WorkspaceDestination(WorkspacePageId.Notifications)
+                : new WorkspaceDestination(WorkspacePageId.Home, "created"), workspace.Current);
+            Assert.Equal(navigateAway ? "session-1" : "created", workspace.ChatDestination.SessionKey);
+        }
+    }
+
     [Fact]
     public async Task NewNavigationReleasesSetupBindingBeforeAwaitAndReconnectCannotRestoreOldTarget()
     {
@@ -432,6 +476,38 @@ public sealed class ChatComposerControllerTests
             Assert.Same(attachment, Assert.Single(vm.PendingAttachments));
             Assert.False(controller.IsDisposed);
         }
+    }
+
+    [Fact]
+    public async Task SendAsync_AfterNew_FirstMessageTargetsPendingComposeOnlySession()
+    {
+        var (vm, controller, port, _) = MakeController();
+        vm.SetDraft("/new");
+        port.ExecuteLifecycleGate = new TaskCompletionSource<ChatLifecycleCommandResult>();
+        port.ExecuteLifecycleGate.SetResult(new ChatLifecycleCommandResult(
+            ChatLifecycleCommandKind.New, Succeeded: true, NewSessionKey: "new-session-key"));
+        string? selected = null;
+        controller.BindSelectionHandoff(key => selected = key);
+        Assert.True(await controller.SendAsync());
+        Assert.Equal("new-session-key", selected);
+
+        string? pending = selected;
+        for (var render = 0; render < 3; render++)
+        {
+            pending = ChatLifecycleSelectionPolicy.RetainPendingForSelection(
+                pending, selected, selectedMaterialized: false);
+            Assert.Equal(selected, pending);
+            Assert.False(ChatLifecycleSelectionPolicy.ShouldFallback(selected!, pending, "session-1"));
+            // The root projects its effective compose-only thread into inputs
+            // while the provider's real thread list still contains only Main.
+            vm.ApplyInputs(MakeInputs(revision: render + 2, thread: MakeThread(pending!)));
+        }
+
+        vm.SetDraft("first message");
+        Assert.True(await controller.SendAsync());
+        Assert.Equal(1, port.SendMessageCallCount);
+        Assert.Equal("new-session-key", port.LastSendMessageCall!.Value.ThreadId);
+        Assert.Equal("first message", port.LastSendMessageCall.Value.Message);
     }
 
     [Fact]
