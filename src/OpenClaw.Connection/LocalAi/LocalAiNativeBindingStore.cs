@@ -11,7 +11,16 @@ public sealed record LocalAiNativeBinding(
     string ConfigHash,
     bool AddedAllowlistEntry,
     bool Pending = false,
-    bool AutomaticRecoveryEnabled = true);
+    bool AutomaticRecoveryEnabled = true,
+    LocalAiNativeModelRebind? RebindFrom = null);
+
+/// <summary>
+/// Write-ahead record of a model rebind. The binding already names the new model while
+/// the installation manifest may still name the old one; the next manifest load settles
+/// the binding to whichever model the manifest committed. Rebinding writes nothing to the
+/// Gateway, so the binding's config hash stays valid for either outcome.
+/// </summary>
+public sealed record LocalAiNativeModelRebind(string ModelRef, bool AddedAllowlistEntry);
 
 /// <summary>
 /// Separate from the portable artifact receipt. The write-ahead pending flag survives

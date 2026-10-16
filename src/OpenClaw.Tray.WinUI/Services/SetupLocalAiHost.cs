@@ -125,13 +125,13 @@ internal sealed class SetupLocalAiHost(
         {
             eligibility = install is null
                 ? LocalInferenceEligibility.Evaluate(hardware)
-                : string.Equals(install.Manifest.ModelCatalogId, LocalModelCatalog.NemotronBoltModelId, StringComparison.OrdinalIgnoreCase)
+                : LocalModelCatalog.RequiresRecordedProfile(install.Manifest.ModelCatalogId)
                     ? LocalInferenceEligibility.EvaluateRecordedProfile(hardware,
                         LlamaServerRouterConfiguration.ResolveInstalledPlan(install))
                     : LocalInferenceEligibility.EvaluateInstalled(hardware, install.Manifest.ModelCatalogId);
         }
-        catch (InvalidDataException) when (install is not null && string.Equals(
-            install.Manifest.ModelCatalogId, LocalModelCatalog.NemotronBoltModelId, StringComparison.OrdinalIgnoreCase))
+        catch (InvalidDataException) when (install is not null &&
+            LocalModelCatalog.RequiresRecordedProfile(install.Manifest.ModelCatalogId))
         {
             // File repair retains qualified recipe pins. An unqualified receipt
             // needs explicit recovery before it can authorize repair or model use.

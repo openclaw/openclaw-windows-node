@@ -21,7 +21,7 @@ public sealed class LocalAiPageViewModelTests
         };
         using var gatewaySource = new PermissionsPageRuntimeSource(new FakePermissionsPageRuntimeHost());
         using var viewModel = new LocalAiPageViewModel(runtime, gatewaySource, new FakeAppCommands(),
-            new RecordingUiDispatcher(), new FixedHardwareProbe(HostHardwareInfo.Unknown));
+            new RecordingUiDispatcher(), new FixedHardwareProbe(HostHardwareInfo.Unknown), new FakeLocalAiModelSwitcher());
         Assert.True(viewModel.ShowReleaseOwnership);
         Assert.False(viewModel.CanReleaseOwnership);
         Assert.False(await viewModel.ReleaseOwnershipAsync());
@@ -51,11 +51,11 @@ public sealed class LocalAiPageViewModelTests
             gatewaySource,
             commands,
             new RecordingUiDispatcher(),
-            new FixedHardwareProbe(HostHardwareInfo.Unknown));
+            new FixedHardwareProbe(HostHardwareInfo.Unknown), new FakeLocalAiModelSwitcher());
 
         Assert.False(viewModel.IsAvailabilityKnown);
         Assert.True(viewModel.IsSetupAvailable);
-        Assert.True(viewModel.CanChangeModel);
+        Assert.False(viewModel.CanApplyModel);
 
         await ActivateAndWaitForAvailabilityAsync(viewModel);
 
@@ -68,14 +68,14 @@ public sealed class LocalAiPageViewModelTests
         Assert.True(viewModel.CanRestart);
         Assert.True(viewModel.CanOpenLogs);
         Assert.False(viewModel.CanRetrySetup);
-        Assert.False(viewModel.CanChangeModel);
+        Assert.False(viewModel.CanApplyModel);
         Assert.True(viewModel.CanRepairConnection);
         Assert.False(viewModel.CanOpenChat);
         Assert.True(await viewModel.StopAsync());
         Assert.True(await viewModel.RestartAsync());
         Assert.True(viewModel.OpenLogs());
         Assert.False(viewModel.RetrySetup());
-        Assert.False(viewModel.ChangeModel());
+        Assert.False(await viewModel.ApplyModelAsync());
         Assert.True(viewModel.RepairConnection());
         Assert.False(viewModel.OpenChat());
         Assert.Equal(1, commands.OpenLocalAiLogsCount);
@@ -104,7 +104,7 @@ public sealed class LocalAiPageViewModelTests
             gatewaySource,
             commands,
             new RecordingUiDispatcher(),
-            new FixedHardwareProbe(HostHardwareInfo.Unknown));
+            new FixedHardwareProbe(HostHardwareInfo.Unknown), new FakeLocalAiModelSwitcher());
 
         await ActivateAndWaitForAvailabilityAsync(viewModel);
 
@@ -124,7 +124,7 @@ public sealed class LocalAiPageViewModelTests
             gatewaySource,
             new FakeAppCommands(),
             new RecordingUiDispatcher(),
-            new FixedHardwareProbe(HostHardwareInfo.Unknown));
+            new FixedHardwareProbe(HostHardwareInfo.Unknown), new FakeLocalAiModelSwitcher());
 
         await ActivateAndWaitForAvailabilityAsync(viewModel);
 
@@ -158,7 +158,7 @@ public sealed class LocalAiPageViewModelTests
             gatewaySource,
             new FakeAppCommands(),
             new RecordingUiDispatcher(),
-            new FixedHardwareProbe(HostHardwareInfo.Unknown));
+            new FixedHardwareProbe(HostHardwareInfo.Unknown), new FakeLocalAiModelSwitcher());
 
         await ActivateAndWaitForAvailabilityAsync(viewModel);
 
@@ -197,7 +197,7 @@ public sealed class LocalAiPageViewModelTests
             gatewaySource,
             new FakeAppCommands(),
             new RecordingUiDispatcher(),
-            new FixedHardwareProbe(HostHardwareInfo.Unknown));
+            new FixedHardwareProbe(HostHardwareInfo.Unknown), new FakeLocalAiModelSwitcher());
 
         await ActivateAndWaitForAvailabilityAsync(viewModel);
 
@@ -219,7 +219,7 @@ public sealed class LocalAiPageViewModelTests
             gatewaySource,
             new FakeAppCommands(),
             new RecordingUiDispatcher(),
-            new FixedHardwareProbe(HostHardwareInfo.Unknown));
+            new FixedHardwareProbe(HostHardwareInfo.Unknown), new FakeLocalAiModelSwitcher());
 
         await ActivateAndWaitForAvailabilityAsync(viewModel);
 
@@ -248,7 +248,7 @@ public sealed class LocalAiPageViewModelTests
             gatewaySource,
             new FakeAppCommands(),
             new RecordingUiDispatcher(),
-            new FixedHardwareProbe(CreateQualifiedHardware()));
+            new FixedHardwareProbe(CreateQualifiedHardware()), new FakeLocalAiModelSwitcher());
 
         await ActivateAndWaitForAvailabilityAsync(viewModel);
 
@@ -281,7 +281,7 @@ public sealed class LocalAiPageViewModelTests
             gatewaySource,
             new FakeAppCommands(),
             new RecordingUiDispatcher(),
-            new FixedHardwareProbe(incomplete));
+            new FixedHardwareProbe(incomplete), new FakeLocalAiModelSwitcher());
 
         await ActivateAndWaitForAvailabilityResultAsync(viewModel);
 
@@ -306,7 +306,7 @@ public sealed class LocalAiPageViewModelTests
             new RecordingUiDispatcher(),
             new SequencedHardwareProbe(
                 () => throw new InvalidOperationException("probe failed"),
-                CreateQualifiedHardware));
+                CreateQualifiedHardware), new FakeLocalAiModelSwitcher());
 
         Assert.False(viewModel.RecheckAvailability());
 
@@ -355,7 +355,7 @@ public sealed class LocalAiPageViewModelTests
             gatewaySource,
             new FakeAppCommands(),
             new RecordingUiDispatcher(),
-            new GatedHardwareProbe(probeGate.Task, CreateQualifiedHardware));
+            new GatedHardwareProbe(probeGate.Task, CreateQualifiedHardware), new FakeLocalAiModelSwitcher());
 
         Assert.False(viewModel.IsCheckingAvailability);
 
@@ -396,7 +396,7 @@ public sealed class LocalAiPageViewModelTests
             new RecordingUiDispatcher(),
             new SequencedHardwareProbe(
                 () => throw new InvalidOperationException("probe failed"),
-                CreateQualifiedHardware));
+                CreateQualifiedHardware), new FakeLocalAiModelSwitcher());
 
         await ActivateAndWaitForAvailabilityResultAsync(viewModel);
         Assert.True(viewModel.HasAvailabilityProbeError);
@@ -436,7 +436,7 @@ public sealed class LocalAiPageViewModelTests
             new FakeAppCommands(),
             new RecordingUiDispatcher(),
             new SequencedHardwareProbe(
-                () => throw new InvalidOperationException("probe failed")));
+                () => throw new InvalidOperationException("probe failed")), new FakeLocalAiModelSwitcher());
 
         var observed = new List<(bool HasError, bool CanRecheck)>();
         var recheckAvailable = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -477,7 +477,7 @@ public sealed class LocalAiPageViewModelTests
             gatewaySource,
             commands,
             new RecordingUiDispatcher(),
-            new FixedHardwareProbe(CreateQualifiedHardware()));
+            new FixedHardwareProbe(CreateQualifiedHardware()), new FakeLocalAiModelSwitcher());
 
         await ActivateAndWaitForAvailabilityAsync(viewModel);
 
@@ -509,7 +509,7 @@ public sealed class LocalAiPageViewModelTests
             gatewaySource,
             new FakeAppCommands(),
             new RecordingUiDispatcher(),
-            probe);
+            probe, new FakeLocalAiModelSwitcher());
 
         viewModel.Activate(null);
         await probe.FirstProbeStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -543,7 +543,7 @@ public sealed class LocalAiPageViewModelTests
             gatewaySource,
             new FakeAppCommands(),
             dispatcher,
-            new FixedHardwareProbe(CreateQualifiedHardware()));
+            new FixedHardwareProbe(CreateQualifiedHardware()), new FakeLocalAiModelSwitcher());
 
         viewModel.Activate(null);
 
@@ -583,7 +583,7 @@ public sealed class LocalAiPageViewModelTests
             gatewaySource,
             new FakeAppCommands(),
             dispatcher,
-            new SequencedHardwareProbe(() => throw new InvalidOperationException("probe failed")));
+            new SequencedHardwareProbe(() => throw new InvalidOperationException("probe failed")), new FakeLocalAiModelSwitcher());
 
         viewModel.Activate(null);
 
@@ -622,7 +622,7 @@ public sealed class LocalAiPageViewModelTests
             gatewaySource,
             new FakeAppCommands(),
             dispatcher,
-            new FixedHardwareProbe(CreateQualifiedHardware()));
+            new FixedHardwareProbe(CreateQualifiedHardware()), new FakeLocalAiModelSwitcher());
 
         viewModel.Activate(null);
 
@@ -639,36 +639,17 @@ public sealed class LocalAiPageViewModelTests
     }
 
     [Theory]
-    [InlineData(LocalAiModelAvailabilityState.Verified)]
-    [InlineData(LocalAiModelAvailabilityState.Loaded)]
-    public void InstalledModel_OffersChangeModelThroughExistingSetupRoute(
-        LocalAiModelAvailabilityState modelState)
-    {
-        using var harness = new LocalAiHarness(modelState);
-
-        Assert.True(harness.ViewModel.CanChangeModel);
-        Assert.True(harness.ViewModel.HasInstalledModel);
-        Assert.False(harness.ViewModel.CanRetrySetup);
-
-        Assert.True(harness.ViewModel.ChangeModel());
-
-        Assert.Equal(0, harness.Commands.ShowGatewayWizardCount);
-        Assert.Equal(1, harness.Commands.ShowOnboardingCount);
-    }
-
-    [Theory]
     [InlineData(LocalAiModelAvailabilityState.Unknown)]
     [InlineData(LocalAiModelAvailabilityState.NotInstalled)]
-    public void MissingModel_UsesLocalAiSetupRouteAndDoesNotOfferChangeModel(
+    public void MissingModel_UsesLocalAiSetupRouteAndDoesNotOfferModelSwitch(
         LocalAiModelAvailabilityState modelState)
     {
         using var harness = new LocalAiHarness(modelState);
 
-        Assert.False(harness.ViewModel.CanChangeModel);
+        Assert.False(harness.ViewModel.CanApplyModel);
         Assert.False(harness.ViewModel.HasInstalledModel);
         Assert.True(harness.ViewModel.CanRetrySetup);
 
-        Assert.False(harness.ViewModel.ChangeModel());
         Assert.True(harness.ViewModel.RetrySetup());
 
         Assert.Equal(0, harness.Commands.ShowGatewayWizardCount);
@@ -677,37 +658,115 @@ public sealed class LocalAiPageViewModelTests
     }
 
     [Fact]
-    public async Task InstalledModel_RemainsVisibleButCannotOpenSetupDuringRuntimeAction()
+    public async Task ModelSwitch_IsUnavailableDuringRuntimeAction()
     {
         using var harness = new LocalAiHarness(
             LocalAiModelAvailabilityState.Verified,
             LocalAiRuntimeState.Stopped);
+        harness.ViewModel.CustomModelReference = "unsloth/Qwen3-0.6B-GGUF:Q4_K_M";
         harness.Runtime.BlockStart();
 
         Task<bool> startTask = harness.ViewModel.StartAsync();
 
         Assert.True(harness.ViewModel.HasInstalledModel);
-        Assert.False(harness.ViewModel.CanChangeModel);
-        Assert.False(harness.ViewModel.ChangeModel());
-        Assert.Equal(0, harness.Commands.ShowOnboardingCount);
+        Assert.False(harness.ViewModel.CanApplyModel);
+        Assert.False(await harness.ViewModel.ApplyModelAsync());
 
         harness.Runtime.CompleteStart();
         Assert.True(await startTask);
     }
 
     [Fact]
-    public void LocalAiPage_ChangeModelActionIsLocalizedAccessibleAndWired()
+    public async Task CustomReference_TakesPrecedenceOverSelectedCatalogModel()
     {
-        string root = TestRepositoryPaths.GetRepositoryRoot();
-        string pageDirectory = Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages");
-        string xaml = File.ReadAllText(Path.Combine(pageDirectory, "LocalAiPage.xaml"));
-        string codeBehind = File.ReadAllText(Path.Combine(pageDirectory, "LocalAiPage.xaml.cs"));
+        var switcher = new FakeLocalAiModelSwitcher();
+        using var viewModel = await CreateActivatedSwitchViewModelAsync(switcher);
+        viewModel.SelectedModelOptionId = viewModel.ModelOptions.First(option => !option.IsCurrent).ModelId;
+        viewModel.CustomModelReference = "  unsloth/Qwen3-0.6B-GGUF:Q4_K_M ";
 
-        Assert.Contains("x:Uid=\"LocalAiPage_ChangeModelButton\"", xaml);
-        Assert.Contains("x:Uid=\"LocalAiPage_ChangeModelDescription\"", xaml);
-        Assert.Contains("AutomationProperties.AutomationId=\"LocalAiChangeModel\"", xaml);
-        Assert.Contains("Click=\"OnChangeModel\"", xaml);
-        Assert.Contains("_viewModel?.ChangeModel()", codeBehind);
+        Assert.True(await viewModel.ApplyModelAsync(), viewModel.SwitchError);
+
+        Assert.Equal(["custom:unsloth/Qwen3-0.6B-GGUF:Q4_K_M", "switch:False"], switcher.Calls);
+        Assert.Equal(string.Empty, viewModel.CustomModelReference);
+    }
+
+    [Fact]
+    public async Task OversizedCustomModel_RequiresExplicitForceBeforeSwitching()
+    {
+        var switcher = new FakeLocalAiModelSwitcher { RequiresForce = true };
+        using var viewModel = await CreateActivatedSwitchViewModelAsync(switcher);
+        viewModel.CustomModelReference = "owner/huge-GGUF:Q8_0";
+
+        Assert.False(await viewModel.ApplyModelAsync());
+        Assert.NotNull(viewModel.FitWarning);
+        Assert.DoesNotContain(switcher.Calls, call => call.StartsWith("switch:", StringComparison.Ordinal));
+
+        Assert.True(await viewModel.ForceApplyModelAsync(), viewModel.SwitchError);
+        Assert.Equal("switch:True", switcher.Calls[^1]);
+        Assert.Null(viewModel.FitWarning);
+    }
+
+    [Fact]
+    public async Task SwitchFailure_SurfacesUserFacingMessageAndLeavesSelection()
+    {
+        var switcher = new FakeLocalAiModelSwitcher
+        {
+            SwitchFailure = new LocalAiModelSwitchException("The model download failed: disk full"),
+        };
+        using var viewModel = await CreateActivatedSwitchViewModelAsync(switcher);
+        viewModel.CustomModelReference = "owner/model-GGUF";
+
+        Assert.False(await viewModel.ApplyModelAsync());
+
+        Assert.Equal("The model download failed: disk full", viewModel.SwitchError);
+        Assert.Equal("owner/model-GGUF", viewModel.CustomModelReference);
+        Assert.False(viewModel.IsSwitchingModel);
+        Assert.True(viewModel.CanApplyModel);
+    }
+
+    [Fact]
+    public async Task CancelDuringDownload_ReportsCanceledAndReenablesApply()
+    {
+        var switcher = new FakeLocalAiModelSwitcher { BlockSwitch = true };
+        using var viewModel = await CreateActivatedSwitchViewModelAsync(switcher);
+        viewModel.CustomModelReference = "owner/model-GGUF";
+
+        Task<bool> apply = viewModel.ApplyModelAsync();
+        await WaitForAsync(viewModel, () => viewModel.SwitchProgress?.Phase == LocalAiModelSwitchPhase.Downloading);
+        Assert.True(viewModel.CanCancelModelSwitch);
+        viewModel.CancelModelSwitch();
+
+        Assert.False(await apply);
+        Assert.True(viewModel.SwitchCanceled);
+        Assert.True(viewModel.CanApplyModel);
+    }
+
+    [Fact]
+    public async Task VerifyingALargeModel_DoesNotFloodTheUiWithFullRefreshes()
+    {
+        var switcher = new FakeLocalAiModelSwitcher { VerifyReports = 16 * 1024 };
+        using var viewModel = await CreateActivatedSwitchViewModelAsync(switcher);
+        viewModel.CustomModelReference = "owner/model-GGUF";
+        int fullRefreshes = 0;
+        viewModel.PropertyChanged += (_, e) => { if (e.PropertyName is null) fullRefreshes++; };
+
+        Assert.True(await viewModel.ApplyModelAsync(), viewModel.SwitchError);
+
+        // Start, two phase changes, and completion; never one per buffered report.
+        Assert.InRange(fullRefreshes, 1, 10);
+    }
+
+    private static async Task<LocalAiPageViewModel> CreateActivatedSwitchViewModelAsync(FakeLocalAiModelSwitcher switcher)
+    {
+        LocalInferencePlan installed = LocalInferenceEligibility.Evaluate(CreateQualifiedHardware(), LocalModelCatalog.Models[0].Id).Plan!;
+        switcher.InstalledPlan = installed;
+        var runtime = new FakeLocalAiRuntime(CreateInstalledSnapshot());
+        var gatewaySource = new PermissionsPageRuntimeSource(new FakePermissionsPageRuntimeHost());
+        var viewModel = new LocalAiPageViewModel(runtime, gatewaySource, new FakeAppCommands(),
+            new RecordingUiDispatcher(), new FixedHardwareProbe(CreateQualifiedHardware()), switcher);
+        await ActivateAndWaitForAvailabilityAsync(viewModel);
+        Assert.True(viewModel.ModelOptions[0].IsCurrent);
+        return viewModel;
     }
 
     private static async Task ActivateAndWaitForAvailabilityAsync(LocalAiPageViewModel viewModel)
@@ -803,7 +862,7 @@ public sealed class LocalAiPageViewModelTests
             gatewaySource,
             commands,
             new RecordingUiDispatcher(),
-            new FixedHardwareProbe(hardware));
+            new FixedHardwareProbe(hardware), new FakeLocalAiModelSwitcher());
     }
 
     /// <summary>
@@ -861,7 +920,7 @@ public sealed class LocalAiPageViewModelTests
             Assert.False(viewModel.IsLocalAiAvailable);
             Assert.False(viewModel.IsSetupAvailable);
             Assert.False(viewModel.CanRetrySetup);
-            Assert.False(viewModel.CanChangeModel);
+            Assert.False(viewModel.CanApplyModel);
             // NotRecommendedForSku has no dedicated reason kind, so this currently surfaces the
             // generic Unknown copy. Asserted so the behavior is recorded rather than assumed.
             Assert.Equal(
@@ -899,7 +958,7 @@ public sealed class LocalAiPageViewModelTests
             gatewaySource,
             new FakeAppCommands(),
             new RecordingUiDispatcher(),
-            new FixedHardwareProbe(Create32GbSparkHardware()));
+            new FixedHardwareProbe(Create32GbSparkHardware()), new FakeLocalAiModelSwitcher());
 
         await ActivateAndWaitForAvailabilityAsync(viewModel);
 
@@ -974,7 +1033,9 @@ public sealed class LocalAiPageViewModelTests
         using (source)
         {
             await ActivateAndWaitForAvailabilityAsync(viewModel);
-            Assert.True(viewModel.CanChangeModel);
+            Assert.True(viewModel.CanApplyModel);
+            Assert.Contains(viewModel.ModelOptions, option => option.DisplayName.Contains("Bonsai 2"));
+            Assert.DoesNotContain(viewModel.ModelOptions, option => option.ModelId == LocalModelCatalog.Default.Id);
             Assert.Equal(LocalModelCatalog.Default.DisplayName, viewModel.ModelName);
             Assert.Contains("Bonsai 2", viewModel.ProfileRecommendation!.SelectedModelName);
         }
@@ -992,7 +1053,7 @@ public sealed class LocalAiPageViewModelTests
         using var source = new PermissionsPageRuntimeSource(new FakePermissionsPageRuntimeHost());
         using var viewModel = new LocalAiPageViewModel(runtime, source, new FakeAppCommands(),
             new RecordingUiDispatcher(), new SequencedHardwareProbe(() => hardware,
-                () => hardware with { LocalAiDiskSpace = new(16 * gib, 16 * gib, true) }));
+                () => hardware with { LocalAiDiskSpace = new(16 * gib, 16 * gib, true) }), new FakeLocalAiModelSwitcher());
         await ActivateAndWaitForAvailabilityAsync(viewModel);
         Assert.Equal(LocalInferenceUnavailableReasonKind.InsufficientDiskSpace, viewModel.LocalAiUnavailableReason?.Kind);
         Assert.False(viewModel.CanRetrySetup);
@@ -1051,6 +1112,50 @@ public sealed class LocalAiPageViewModelTests
     private sealed class FixedHardwareProbe(HostHardwareInfo hardware) : IHostHardwareProbe
     {
         public HostHardwareInfo Probe() => hardware;
+    }
+
+    private sealed class FakeLocalAiModelSwitcher : ILocalAiModelSwitcher
+    {
+        public LocalInferencePlan? InstalledPlan { get; set; }
+        public bool RequiresForce { get; init; }
+        public bool BlockSwitch { get; init; }
+        public Exception? SwitchFailure { get; init; }
+        public int VerifyReports { get; init; }
+        public List<string> Calls { get; } = [];
+
+        public Task<LocalInferencePlan?> LoadInstalledPlanAsync(CancellationToken ct) => Task.FromResult(InstalledPlan);
+
+        public Task<LocalAiModelSwitchTarget> PrepareCatalogAsync(HostHardwareInfo hardware, string modelId, CancellationToken ct)
+        {
+            Calls.Add($"catalog:{modelId}");
+            return Task.FromResult(Target(hardware));
+        }
+
+        public Task<LocalAiModelSwitchTarget> PrepareCustomAsync(HostHardwareInfo hardware, string reference, CancellationToken ct)
+        {
+            Calls.Add($"custom:{reference}");
+            return Task.FromResult(Target(hardware) with { RequiresForce = RequiresForce });
+        }
+
+        public async Task<LocalAiRuntimeSnapshot> SwitchAsync(
+            LocalAiModelSwitchTarget target, bool force, IProgress<LocalAiModelSwitchProgress>? progress, CancellationToken ct)
+        {
+            Calls.Add($"switch:{force}");
+            progress?.Report(new(LocalAiModelSwitchPhase.Downloading, 1, 10));
+            for (long mib = 1; mib <= VerifyReports; mib++)
+                progress?.Report(new(LocalAiModelSwitchPhase.Verifying, mib << 20, (long)VerifyReports << 20));
+            if (BlockSwitch)
+                await Task.Delay(Timeout.Infinite, ct);
+            if (SwitchFailure is not null)
+                throw SwitchFailure;
+            return CreateInstalledSnapshot() with { ModelId = target.Plan.Model.Id };
+        }
+
+        private static LocalAiModelSwitchTarget Target(HostHardwareInfo hardware)
+        {
+            LocalInferencePlan plan = LocalInferenceEligibility.Evaluate(hardware, LocalModelCatalog.Bonsai2ModelId).Plan!;
+            return new LocalAiModelSwitchTarget(plan, "GPU-test", "NVIDIA Test GPU", 10, 128_000_000_000, false);
+        }
     }
 
     private sealed class SequencedHardwareProbe(params Func<HostHardwareInfo>[] attempts) : IHostHardwareProbe
@@ -1123,7 +1228,7 @@ public sealed class LocalAiPageViewModelTests
                 _gatewaySource,
                 Commands,
                 _dispatcher,
-                new FixedHardwareProbe(HostHardwareInfo.Unknown));
+                new FixedHardwareProbe(HostHardwareInfo.Unknown), new FakeLocalAiModelSwitcher());
         }
 
         public FakeAppCommands Commands { get; }

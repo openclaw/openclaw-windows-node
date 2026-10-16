@@ -143,14 +143,50 @@
                             Content="Retry setup or download" Click="OnRetrySetup" HorizontalAlignment="Left"
                             AutomationProperties.AutomationId="LocalAiRetrySetup"/>
                     <StackPanel x:Name="ChangeModelPanel" Spacing="8" Visibility="Collapsed">
-                        <TextBlock x:Uid="LocalAiPage_ChangeModelDescription"
-                                  Text="Opens setup to choose another model. Replacing the existing Local Gateway still requires confirmation."
-                                  Style="{StaticResource CaptionTextBlockStyle}"
-                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                  TextWrapping="Wrap"/>
-                        <Button x:Name="ChangeModelButton" x:Uid="LocalAiPage_ChangeModelButton"
-                               Content="Change model" Click="OnChangeModel" HorizontalAlignment="Left"
-                               AutomationProperties.AutomationId="LocalAiChangeModel"/>
+                        <ComboBox x:Name="LocalAiModelSelector" x:Uid="LocalAiPage_ModelSelector"
+                                  Header="Model" MinWidth="320" HorizontalAlignment="Left"
+                                  SelectionChanged="OnModelSelectionChanged"
+                                  AutomationProperties.AutomationId="LocalAiModelSelector"/>
+                        <TextBox x:Name="LocalAiCustomModelBox" x:Uid="LocalAiPage_CustomModelBox"
+                                 Header="Custom Hugging Face model (optional)"
+                                 PlaceholderText="owner/repo, owner/repo:Q4_K_M, or a huggingface.co link"
+                                 Width="560" HorizontalAlignment="Left"
+                                 TextChanged="OnCustomModelChanged"
+                                 AutomationProperties.AutomationId="LocalAiCustomModel"/>
+                        <TextBlock x:Uid="LocalAiPage_CustomModelHint"
+                                   Text="Public, single-file GGUF models only. When this is filled in, it is used instead of the selection above."
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap"/>
+                        <InfoBar x:Name="LocalAiFitWarning" x:Uid="LocalAiPage_FitWarning"
+                                 Title="This model may not fit" Severity="Warning"
+                                 IsOpen="False" IsClosable="False"
+                                 AutomationProperties.AutomationId="LocalAiFitWarning">
+                            <InfoBar.ActionButton>
+                                <Button x:Name="ForceApplyModelButton" x:Uid="LocalAiPage_ForceApplyButton"
+                                        Content="Switch anyway" Click="OnForceApplyModel"
+                                        AutomationProperties.AutomationId="LocalAiForceApplyModel"/>
+                            </InfoBar.ActionButton>
+                        </InfoBar>
+                        <StackPanel x:Name="ModelSwitchProgressPanel" Spacing="4" Visibility="Collapsed">
+                            <TextBlock x:Name="ModelSwitchProgressText" TextWrapping="Wrap"
+                                       AutomationProperties.AutomationId="LocalAiModelSwitchProgress"
+                                       AutomationProperties.LiveSetting="Polite"/>
+                            <ProgressBar x:Name="ModelSwitchProgressBar" Maximum="1"
+                                         AutomationProperties.AccessibilityView="Raw"/>
+                        </StackPanel>
+                        <TextBlock x:Name="ModelSwitchStatusText" TextWrapping="Wrap" Visibility="Collapsed"
+                                   AutomationProperties.AutomationId="LocalAiModelSwitchStatus"
+                                   AutomationProperties.LiveSetting="Polite"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button x:Name="ApplyModelButton" x:Uid="LocalAiPage_ApplyModelButton"
+                                    Content="Switch model" Style="{StaticResource AccentButtonStyle}"
+                                    Click="OnApplyModel"
+                                    AutomationProperties.AutomationId="LocalAiApplyModel"/>
+                            <Button x:Name="CancelModelSwitchButton" x:Uid="LocalAiPage_CancelModelSwitchButton"
+                                    Content="Cancel" Visibility="Collapsed" Click="OnCancelModelSwitch"
+                                    AutomationProperties.AutomationId="LocalAiCancelModelSwitch"/>
+                        </StackPanel>
                     </StackPanel>
                 </StackPanel>
                 </Border>

@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page x:Class="OpenClawTray.Pages.DefaultModelPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <Grid HorizontalAlignment="Stretch">
+            <StackPanel Padding="24" Spacing="12" HorizontalAlignment="Stretch" MaxWidth="900">
+            <TextBlock x:Uid="DefaultModelPage_Title" Text="Default model"
+                       Style="{StaticResource TitleTextBlockStyle}"
+                       AutomationProperties.AutomationId="DefaultModelPageMarker"/>
+            <TextBlock x:Uid="DefaultModelPage_Intro"
+                       Text="The Gateway uses this model for new conversations. Each chat can still pick its own model."
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+
+            <InfoBar x:Name="DisconnectedInfoBar" x:Uid="DefaultModelPage_Disconnected"
+                     Title="Connect to a Gateway to choose its model"
+                     Severity="Informational" IsOpen="False" IsClosable="False"
+                     AutomationProperties.AutomationId="DefaultModelDisconnected">
+                <InfoBar.ActionButton>
+                    <Button x:Uid="DefaultModelPage_OpenConnectionButton" Content="Open Connection"
+                            Click="OnOpenConnection"
+                            AutomationProperties.AutomationId="DefaultModelOpenConnection"/>
+                </InfoBar.ActionButton>
+            </InfoBar>
+            <InfoBar x:Name="ReadOnlyInfoBar" x:Uid="DefaultModelPage_ReadOnly"
+                     Title="This Gateway connection cannot change configuration"
+                     Severity="Warning" IsOpen="False" IsClosable="False"
+                     AutomationProperties.AutomationId="DefaultModelReadOnly"/>
+
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                    CornerRadius="8" Padding="16">
+                <StackPanel Spacing="10">
+                    <ComboBox x:Name="DefaultModelSelector" x:Uid="DefaultModelPage_ModelSelector"
+                              Header="Default model" MinWidth="360" HorizontalAlignment="Left"
+                              SelectionChanged="OnSelectionChanged"
+                              AutomationProperties.AutomationId="DefaultModelSelector"/>
+                    <TextBlock x:Name="DefaultModelStatusText" TextWrapping="Wrap" Visibility="Collapsed"
+                               AutomationProperties.AutomationId="DefaultModelStatus"
+                               AutomationProperties.LiveSetting="Polite"/>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="ApplyDefaultModelButton" x:Uid="DefaultModelPage_ApplyButton"
+                                Content="Use this model" Style="{StaticResource AccentButtonStyle}"
+                                Click="OnApply"
+                                AutomationProperties.AutomationId="DefaultModelApply"/>
+                        <ProgressRing x:Name="DefaultModelBusyIndicator" Width="20" Height="20"
+                                      IsActive="False" Visibility="Collapsed"
+                                      AutomationProperties.AccessibilityView="Raw"/>
+                        <Button x:Uid="DefaultModelPage_RefreshButton" Content="Refresh"
+                                Click="OnRefresh"
+                                AutomationProperties.AutomationId="DefaultModelRefresh"/>
+                        <HyperlinkButton x:Uid="DefaultModelPage_ManageLocalAiButton" Content="Manage Local AI"
+                                         Click="OnManageLocalAi"
+                                         AutomationProperties.AutomationId="DefaultModelManageLocalAi"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+            </StackPanel>
+        </Grid>
+    </ScrollViewer>
+</Page>

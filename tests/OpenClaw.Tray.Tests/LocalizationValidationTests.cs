@@ -1113,7 +1113,8 @@ public class LocalizationValidationTests
                 // These ordinary words are spelled identically in these languages.
                 string[] naturalLoanwordLocales = key switch
                 {
-                    "Onboarding_V2_LocalAiModel.Header" => ["nl-nl"],
+                    "Onboarding_V2_LocalAiModel.Header" or "HubWindow_NavigationViewItemHeader_Model.Content" or
+                        "LocalAiPage_ModelSelector.Header" => ["nl-nl"],
                     "Onboarding_V2_ProfileReadOnlyTitle.Text" => ["fr-fr"],
                     "Onboarding_V2_ProfileFullTitle.Text" => ["nl-nl"],
                     "Onboarding_V2_Microphone" or "Onboarding_V2_Notifications" => ["fr-fr"],

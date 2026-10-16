@@ -12,6 +12,15 @@ internal enum LocalAiEnginePresentationState { Running, Starting, Stopped, Error
 internal enum LocalAiModelPresentationState { Unknown, NotInstalled, Verified, Loaded }
 internal enum LocalAiGatewayPresentationState { Connected, Connecting, NeedsAttention, Disconnected, Error }
 
+internal sealed record LocalAiModelOption(
+    string ModelId,
+    string DisplayName,
+    long DownloadBytes,
+    int ContextTokens,
+    KvCachePrecision KeyCachePrecision,
+    bool IsRecommended,
+    bool IsCurrent);
+
 /// <summary>WinUI-free presentation and action owner for the Local AI Hub page.</summary>
 internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INotifyPropertyChanged
 {
@@ -20,6 +29,7 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
     private readonly IAppCommands _appCommands;
     private readonly IUiDispatcher _dispatcher;
     private readonly IHostHardwareProbe _hardwareProbe;
+    private readonly ILocalAiModelSwitcher _modelSwitcher;
     private LocalAiRuntimeSnapshot _runtimeSnapshot;
     private GatewayConnectionSnapshot _gatewaySnapshot;
     private CancellationTokenSource? _refreshCancellation;
@@ -32,19 +42,32 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
     private bool _isLocalAiAvailable;
     private bool _hasAvailabilityProbeError;
     private LocalInferenceUnavailableReason? _localAiUnavailableReason;
+    private HostHardwareInfo? _hardware;
+    private LocalInferencePlan? _installedPlan;
+    private IReadOnlyList<LocalAiModelOption> _modelOptions = [];
+    private string? _selectedModelOptionId;
+    private string _customModelReference = string.Empty;
+    private bool _isSwitchingModel;
+    private LocalAiModelSwitchProgress? _switchProgress;
+    private string? _switchError;
+    private bool _switchCanceled;
+    private LocalAiModelSwitchTarget? _pendingForceTarget;
+    private CancellationTokenSource? _switchCancellation;
 
     public LocalAiPageViewModel(
         ILocalAiRuntime runtime,
         IPermissionsPageRuntimeSource gatewaySource,
         IAppCommands appCommands,
         IUiDispatcher dispatcher,
-        IHostHardwareProbe hardwareProbe)
+        IHostHardwareProbe hardwareProbe,
+        ILocalAiModelSwitcher modelSwitcher)
     {
         _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         _gatewaySource = gatewaySource ?? throw new ArgumentNullException(nameof(gatewaySource));
         _appCommands = appCommands ?? throw new ArgumentNullException(nameof(appCommands));
         _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
         _hardwareProbe = hardwareProbe ?? throw new ArgumentNullException(nameof(hardwareProbe));
+        _modelSwitcher = modelSwitcher ?? throw new ArgumentNullException(nameof(modelSwitcher));
         _runtimeSnapshot = runtime.Snapshot;
         _gatewaySnapshot = gatewaySource.Current.ConnectionSnapshot;
     }
@@ -76,7 +99,8 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
     public string Endpoint => _runtimeSnapshot.Endpoint.ToString();
     public string? ProcessId => _runtimeSnapshot.ProcessId?.ToString();
     public string? EngineDetail => _runtimeSnapshot.Detail;
-    public string? ModelName => LocalModelCatalog.FindInstalled(_runtimeSnapshot.ModelId)?.DisplayName ??
+    public string? ModelName => _installedPlan?.Model.DisplayName ??
+        LocalModelCatalog.FindInstalled(_runtimeSnapshot.ModelId)?.DisplayName ??
         _runtimeSnapshot.ModelId;
     public string ContextLengthText => _runtimeSnapshot.ContextLength is { } tokens
         ? FormatContext(tokens)
@@ -120,7 +144,7 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
 
     public string? GatewayDetail => _gatewaySnapshot.GatewayName ?? _gatewaySnapshot.GatewayUrl;
     public string? ActionError => _actionError;
-    public bool IsBusy => _isBusy;
+    public bool IsBusy => _isBusy || _isSwitchingModel;
     public bool IsAvailabilityKnown => _isAvailabilityKnown;
     public bool IsLocalAiAvailable => _isAvailabilityKnown && _isLocalAiAvailable;
     public bool HasAvailabilityProbeError => _hasAvailabilityProbeError;
@@ -154,7 +178,45 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
         LocalAiModelPresentationState.NotInstalled or LocalAiModelPresentationState.Unknown;
     public bool HasInstalledModel => ModelState is
         LocalAiModelPresentationState.Verified or LocalAiModelPresentationState.Loaded;
-    public bool CanChangeModel => IsSetupAvailable && !IsBusy && HasInstalledModel;
+    public IReadOnlyList<LocalAiModelOption> ModelOptions => _modelOptions;
+
+    public string? SelectedModelOptionId
+    {
+        get => _selectedModelOptionId;
+        set
+        {
+            if (string.Equals(_selectedModelOptionId, value, StringComparison.Ordinal))
+                return;
+            _selectedModelOptionId = value;
+            ClearSwitchFeedback();
+        }
+    }
+
+    public string CustomModelReference
+    {
+        get => _customModelReference;
+        set
+        {
+            value ??= string.Empty;
+            if (string.Equals(_customModelReference, value, StringComparison.Ordinal))
+                return;
+            _customModelReference = value;
+            ClearSwitchFeedback();
+        }
+    }
+
+    public bool IsCustomModelActive => !string.IsNullOrWhiteSpace(_customModelReference);
+    public bool CanApplyModel => !IsBusy && HasInstalledModel && _hardware is not null &&
+        (IsCustomModelActive ||
+         (_selectedModelOptionId is { } id &&
+          !string.Equals(id, _installedPlan?.Model.Id ?? _runtimeSnapshot.ModelId, StringComparison.OrdinalIgnoreCase)));
+    public bool IsSwitchingModel => _isSwitchingModel;
+    public LocalAiModelSwitchProgress? SwitchProgress => _switchProgress;
+    public bool CanCancelModelSwitch => _isSwitchingModel && _switchProgress?.Phase is null
+        or LocalAiModelSwitchPhase.Resolving or LocalAiModelSwitchPhase.Downloading or LocalAiModelSwitchPhase.Verifying;
+    public string? SwitchError => _switchError;
+    public bool SwitchCanceled => _switchCanceled;
+    public LocalAiModelSwitchTarget? FitWarning => _pendingForceTarget;
     public bool CanRepairConnection => !IsBusy && GatewayState is not
         (LocalAiGatewayPresentationState.Connected or LocalAiGatewayPresentationState.Connecting);
     public bool CanOpenChat => !IsBusy &&
@@ -162,10 +224,7 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
         _runtimeSnapshot.State == LocalAiRuntimeState.Healthy &&
         ModelState is LocalAiModelPresentationState.Verified or LocalAiModelPresentationState.Loaded;
 
-    private bool HasManagedInstall =>
-        _runtimeSnapshot.ModelEvidence.State is LocalAiModelAvailabilityState.Verified or LocalAiModelAvailabilityState.Loaded ||
-        (_runtimeSnapshot.Ownership == LocalAiOwnership.CompanionManaged &&
-         _runtimeSnapshot.State != LocalAiRuntimeState.NotInstalled);
+    private bool HasManagedInstall => LocalAiRuntimePresentation.HasManagedInstall(_runtimeSnapshot);
 
     public void Activate(object? parameter)
     {
@@ -187,6 +246,8 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
     {
         CancelRuntimeRefresh();
         CancelAvailabilityRefresh();
+        if (CanCancelModelSwitch)
+            _switchCancellation?.Cancel();
         if (_subscribed)
         {
             _runtime.StateChanged -= OnRuntimeStateChanged;
@@ -202,7 +263,93 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
     public Task<bool> RestartAsync() => RunRuntimeActionAsync(CanRestart, _runtime.RestartAsync);
     public bool OpenLogs() => RunCommand(CanOpenLogs, _appCommands.OpenLocalAiLogs);
     public bool RetrySetup() => RunCommand(CanRetrySetup, _appCommands.ShowLocalAiSetup);
-    public bool ChangeModel() => RunCommand(CanChangeModel, _appCommands.ShowLocalAiModelSetup);
+    public Task<bool> ApplyModelAsync() => RunModelSwitchAsync(force: false);
+    public Task<bool> ForceApplyModelAsync() => RunModelSwitchAsync(force: true);
+
+    public void CancelModelSwitch()
+    {
+        if (CanCancelModelSwitch)
+            _switchCancellation?.Cancel();
+    }
+
+    private void ClearSwitchFeedback()
+    {
+        _pendingForceTarget = null;
+        _switchError = null;
+        _switchCanceled = false;
+        OnPropertyChanged(null);
+    }
+
+    private async Task<bool> RunModelSwitchAsync(bool force)
+    {
+        ThrowIfDisposed();
+        if (IsBusy || (!force && !CanApplyModel) || (force && _pendingForceTarget is null))
+            return false;
+        var cancellation = new CancellationTokenSource();
+        _switchCancellation = cancellation;
+        _isSwitchingModel = true;
+        _switchError = null;
+        _switchCanceled = false;
+        OnPropertyChanged(null);
+        try
+        {
+            CancellationToken ct = cancellation.Token;
+            LocalAiModelSwitchTarget target = force
+                ? _pendingForceTarget!
+                : IsCustomModelActive
+                    ? await _modelSwitcher.PrepareCustomAsync(_hardware!, _customModelReference.Trim(), ct)
+                    : await _modelSwitcher.PrepareCatalogAsync(_hardware!, _selectedModelOptionId!, ct);
+            if (target.RequiresForce && !force)
+            {
+                _pendingForceTarget = target;
+                return false;
+            }
+
+            _pendingForceTarget = null;
+            LocalAiRuntimeSnapshot snapshot = await _modelSwitcher.SwitchAsync(
+                target,
+                force,
+                new CoalescingSwitchProgress(_dispatcher, progress =>
+                {
+                    if (_disposed || !_isSwitchingModel)
+                        return;
+                    bool phaseChanged = progress.Phase != _switchProgress?.Phase;
+                    _switchProgress = progress;
+                    // Byte-only updates refresh just the progress area; a phase change can
+                    // change which actions are available (cancel is only allowed early).
+                    OnPropertyChanged(phaseChanged ? null : nameof(SwitchProgress));
+                }),
+                ct);
+            _isSwitchingModel = false;
+            _customModelReference = string.Empty;
+            _selectedModelOptionId = null;
+            ApplyRuntimeSnapshot(snapshot);
+            if (IsActive)
+                StartAvailabilityRefresh();
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            _switchCanceled = true;
+            return false;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or InvalidDataException or IOException or HttpRequestException)
+        {
+            _switchError = ex.Message;
+            return false;
+        }
+        finally
+        {
+            _isSwitchingModel = false;
+            _switchProgress = null;
+            if (ReferenceEquals(_switchCancellation, cancellation))
+                _switchCancellation = null;
+            cancellation.Dispose();
+            if (!_disposed)
+                OnPropertyChanged(null);
+        }
+    }
+
     public bool RepairConnection() => RunCommand(CanRepairConnection, _appCommands.Reconnect);
     public bool OpenChat() => RunCommand(CanOpenChat, _appCommands.ShowChat);
     public bool RecheckAvailability()
@@ -247,6 +394,7 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
         _hasAvailabilityProbeError = false;
         _localAiUnavailableReason = null;
         ProfileRecommendation = null;
+        _hardware = null;
         var cancellation = new CancellationTokenSource();
         // Assign the new probe slot before notifying, so IsCheckingAvailability (which reads
         // _availabilityCancellation) already reports true in this notification. Notifying first
@@ -297,6 +445,8 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
         string? installedModelId = _runtimeSnapshot.ModelId;
         try
         {
+            LocalInferencePlan? installedPlan = await _modelSwitcher
+                .LoadInstalledPlanAsync(cancellation.Token).ConfigureAwait(false);
             HostHardwareInfo hardware = await Task.Run(
                 _hardwareProbe.Probe,
                 cancellation.Token).ConfigureAwait(false);
@@ -309,12 +459,13 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
             // 32 GB). That says nothing about whether this device can run what is already
             // installed, so the managed-install receipt is taken into account: an installed
             // model that still qualifies keeps this entry point available, which is what lets
-            // Retry Setup reach the manifest-aware recovery path and Change Model stay enabled.
+            // Retry Setup reach the manifest-aware recovery path and model switching stay enabled.
             // A machine with no managed receipt still reports unavailable, and a receipt whose
             // model is unknown or no longer fits reports that model's own reason.
             LocalInferenceEligibilityResult eligibility =
                 LocalInferenceEligibility.EvaluateForConfiguredAvailability(hardware, installedModelId,
-                    hasInstalledReceipt: !string.IsNullOrWhiteSpace(installedModelId));
+                    hasInstalledReceipt: !string.IsNullOrWhiteSpace(installedModelId), installedPlan);
+            ModelSelection selection = BuildModelSelection(hardware, installedPlan);
             if (eligibility.FailureCode == LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete)
             {
                 // Incomplete facts (a CUDA read that came back partial or transient) are
@@ -338,7 +489,7 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
                 isAvailabilityKnown: true,
                 isLocalAiAvailable: isAvailable,
                 hasAvailabilityProbeError: false,
-                unavailableReason, LocalInferenceProfileRecommendation.From(eligibility));
+                unavailableReason, LocalInferenceProfileRecommendation.From(eligibility), selection);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
@@ -358,6 +509,38 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
         }
     }
 
+    private sealed record ModelSelection(
+        HostHardwareInfo Hardware,
+        LocalInferencePlan? InstalledPlan,
+        IReadOnlyList<LocalAiModelOption> Options);
+
+    /// <summary>The installed model first, then every catalog model this PC can be offered.</summary>
+    private static ModelSelection BuildModelSelection(HostHardwareInfo hardware, LocalInferencePlan? installedPlan)
+    {
+        string? recommendedId = LocalInferenceEligibility.Evaluate(hardware) is { CanInstall: true, Plan: { } recommended }
+            ? recommended.Model.Id
+            : null;
+        var options = new List<LocalAiModelOption>();
+        if (installedPlan is not null)
+            options.Add(ToOption(installedPlan, recommendedId, isCurrent: true));
+        foreach (LocalInferencePlan plan in LocalInferenceEligibility.OfferedPlans(id => LocalInferenceEligibility.Evaluate(hardware, id)))
+        {
+            if (!string.Equals(plan.Model.Id, installedPlan?.Model.Id, StringComparison.OrdinalIgnoreCase))
+                options.Add(ToOption(plan, recommendedId, isCurrent: false));
+        }
+        return new ModelSelection(hardware, installedPlan, options);
+    }
+
+    private static LocalAiModelOption ToOption(LocalInferencePlan plan, string? recommendedId, bool isCurrent) =>
+        new(
+            plan.Model.Id,
+            plan.Model.DisplayName,
+            LocalModelCatalog.TotalDownloadSizeBytes(plan.Model),
+            plan.Profile.ContextTokens,
+            plan.Profile.KeyCachePrecision,
+            string.Equals(plan.Model.Id, recommendedId, StringComparison.OrdinalIgnoreCase),
+            isCurrent);
+
     /// <summary>
     /// Dispatches a completed availability probe's result to the UI thread, guaranteeing
     /// <paramref name="cancellation"/> is disposed exactly once no matter which path runs: applied
@@ -372,7 +555,8 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
         bool isLocalAiAvailable,
         bool hasAvailabilityProbeError,
         LocalInferenceUnavailableReason? unavailableReason,
-        LocalInferenceProfileRecommendation? recommendation = null)
+        LocalInferenceProfileRecommendation? recommendation = null,
+        ModelSelection? selection = null)
     {
         if (_disposed || !IsActive)
         {
@@ -390,7 +574,7 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
         if (_dispatcher.HasThreadAccess)
         {
             ApplyAvailabilityResult(
-                cancellation, isAvailabilityKnown, isLocalAiAvailable, hasAvailabilityProbeError, unavailableReason, recommendation);
+                cancellation, isAvailabilityKnown, isLocalAiAvailable, hasAvailabilityProbeError, unavailableReason, recommendation, selection);
             return;
         }
 
@@ -405,7 +589,7 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
                 return;
             }
             ApplyAvailabilityResult(
-                cancellation, isAvailabilityKnown, isLocalAiAvailable, hasAvailabilityProbeError, unavailableReason, recommendation);
+                cancellation, isAvailabilityKnown, isLocalAiAvailable, hasAvailabilityProbeError, unavailableReason, recommendation, selection);
         });
         if (!enqueued)
         {
@@ -449,7 +633,8 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
         bool isLocalAiAvailable,
         bool hasAvailabilityProbeError,
         LocalInferenceUnavailableReason? unavailableReason,
-        LocalInferenceProfileRecommendation? recommendation = null)
+        LocalInferenceProfileRecommendation? recommendation = null,
+        ModelSelection? selection = null)
     {
         if (!IsCurrentAvailabilityProbe(cancellation))
         {
@@ -462,6 +647,15 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
         _hasAvailabilityProbeError = hasAvailabilityProbeError;
         _localAiUnavailableReason = unavailableReason;
         ProfileRecommendation = recommendation;
+        if (selection is not null)
+        {
+            _hardware = selection.Hardware;
+            _installedPlan = selection.InstalledPlan;
+            _modelOptions = selection.Options;
+            if (_selectedModelOptionId is null ||
+                !_modelOptions.Any(option => string.Equals(option.ModelId, _selectedModelOptionId, StringComparison.OrdinalIgnoreCase)))
+                _selectedModelOptionId = _installedPlan?.Model.Id ?? _modelOptions.FirstOrDefault()?.ModelId;
+        }
         OnPropertyChanged(null);
         cancellation.Dispose();
     }

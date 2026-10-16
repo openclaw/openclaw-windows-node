@@ -196,6 +196,85 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         finally { _operationGate.Release(); }
     }
 
+    public async Task<LocalAiRuntimeSnapshot> ReplaceInstallAsync(
+        LocalAiInstallManifest replacement,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(replacement);
+        await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ThrowIfDisposed();
+            if (_install is null && !await TryLoadInstallAsync(cancellationToken).ConfigureAwait(false))
+                throw new LocalAiModelSwitchException("Local AI is not installed.");
+            LocalAiResolvedInstall previous = _install!;
+
+            // The old route is withdrawn with the old receipt before the new one is saved, so
+            // the Gateway never routes a primary model the receipt no longer describes.
+            _automaticResumeSuppressed = true;
+            await _options.EndpointLifecycle.SetAutomaticRecoveryEnabledAsync(false, cancellationToken).ConfigureAwait(false);
+            _explicitStopRequested = true;
+            LocalAiRuntimeSnapshot stopped = await StopCoreAsync(LocalAiQuiesceReason.Teardown, cancellationToken)
+                .ConfigureAwait(false);
+            if (stopped.State != LocalAiRuntimeState.Stopped || _gatewayRouteRequiresResolution)
+            {
+                throw new LocalAiModelSwitchException(stopped.Detail ??
+                    "The previous Local AI model could not be withdrawn from the Gateway. Its installation was kept.");
+            }
+
+            LocalAiResolvedInstall next = _manifestStore.ResolveAndValidate(replacement with
+            {
+                Endpoint = null,
+                RequestedPort = previous.Manifest.RequestedPort,
+                GatewayFallbackModel = previous.Manifest.GatewayFallbackModel,
+            });
+            // The binding journals the previous model before the manifest commit. Settle it
+            // to whichever manifest is on disk; a crash before settling is resolved by the
+            // next manifest load (TryLoadInstallAsync).
+            await _options.EndpointLifecycle.RebindModelAsync(previous, next, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await _manifestStore.SaveAsync(next.Manifest, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                await SettleRebindBestEffortAsync(previous).ConfigureAwait(false);
+                throw new LocalAiModelSwitchException(
+                    $"The new Local AI model could not be saved, so the previous model was kept: {Sanitize(ex.Message)}");
+            }
+            await SettleRebindBestEffortAsync(next).ConfigureAwait(false);
+            _install = next;
+            DisposeVerifiedModelHandle();
+            return Publish(
+                LocalAiRuntimeState.Stopped,
+                LocalAiOwnership.None,
+                null,
+                modelState: LocalAiModelAvailabilityState.Verified);
+        }
+        finally { _operationGate.Release(); }
+    }
+
+    public async Task SetGatewayFallbackModelAsync(string? model, CancellationToken cancellationToken = default)
+    {
+        LocalAiGatewayModelPolicy.ValidateFallbackModel(model);
+        await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ThrowIfDisposed();
+            if (_install is null && !await TryLoadInstallAsync(cancellationToken).ConfigureAwait(false))
+                return;
+            // The lifecycle receipt is updated first and is idempotent: if the manifest write
+            // below fails, retrying the same fallback repairs both instead of returning early.
+            await _options.EndpointLifecycle.SetFallbackModelAsync(model, cancellationToken).ConfigureAwait(false);
+            if (string.Equals(_install!.Manifest.GatewayFallbackModel, model, StringComparison.Ordinal))
+                return;
+            LocalAiInstallManifest updated = _install.Manifest with { GatewayFallbackModel = model };
+            await _manifestStore.SaveAsync(updated, cancellationToken).ConfigureAwait(false);
+            _install = _manifestStore.ResolveAndValidate(updated);
+        }
+        finally { _operationGate.Release(); }
+    }
+
     public LocalAiRuntimeSnapshot Snapshot
     {
         get { lock (_snapshotGate) return _snapshot; }
@@ -1047,9 +1126,34 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         }
 
         if (_install is not null)
+        {
+            try
+            {
+                await _options.EndpointLifecycle.SettleModelRebindAsync(_install, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException)
+            {
+                _logger.Error("Could not settle the Local AI Gateway binding with the installation manifest.", ex);
+                Publish(LocalAiRuntimeState.Failed, LocalAiOwnership.None, Sanitize(ex.Message));
+                return false;
+            }
             return true;
+        }
         Publish(LocalAiRuntimeState.NotInstalled, LocalAiOwnership.None, "Local AI is not installed.");
         return false;
+    }
+
+    private async Task SettleRebindBestEffortAsync(LocalAiResolvedInstall committed)
+    {
+        try
+        {
+            await _options.EndpointLifecycle.SettleModelRebindAsync(committed, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException)
+        {
+            // The journal stays on disk and the next manifest load settles it.
+            _logger.Warn($"Local AI Gateway binding settlement was deferred: {Sanitize(ex.Message)}");
+        }
     }
 
     private async Task ValidateInstalledFilesAsync(

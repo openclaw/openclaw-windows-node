@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Connection;
 using OpenClaw.Connection.LocalAi;
 using OpenClaw.Shared.Inference;
+using OpenClaw.Shared.Inference.Catalog;
 using OpenClaw.TestSupport;
 using OpenClawTray.Pages;
 using OpenClawTray.Presentation;
@@ -45,7 +46,7 @@ public sealed class LocalAiHardwareProfileTests(UIThreadFixture ui, ITestOutputH
             var originalPosition = ui.TestWindow.AppWindow.Position;
             FitWindow(ui.TestWindow);
             using var viewModel = new LocalAiPageViewModel(new InertRuntime(), new InertGateway(),
-                new InertCommands(), new WinUIDispatcher(ui.Dispatcher), new HardwareProbe(vramGiB));
+                new InertCommands(), new WinUIDispatcher(ui.Dispatcher), new HardwareProbe(vramGiB), new InertSwitcher());
             var page = new LocalAiPage { DataContext = viewModel };
             ui.Container.Children.Add(page);
             try
@@ -204,6 +205,17 @@ public sealed class LocalAiHardwareProfileTests(UIThreadFixture ui, ITestOutputH
         public Task<LocalAiRuntimeSnapshot> StopAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<LocalAiRuntimeSnapshot> RestartAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private sealed class InertSwitcher : ILocalAiModelSwitcher
+    {
+        public Task<LocalInferencePlan?> LoadInstalledPlanAsync(CancellationToken ct) => Task.FromResult<LocalInferencePlan?>(null);
+        public Task<LocalAiModelSwitchTarget> PrepareCatalogAsync(HostHardwareInfo hardware, string modelId, CancellationToken ct) =>
+            throw new NotSupportedException();
+        public Task<LocalAiModelSwitchTarget> PrepareCustomAsync(HostHardwareInfo hardware, string reference, CancellationToken ct) =>
+            throw new NotSupportedException();
+        public Task<LocalAiRuntimeSnapshot> SwitchAsync(LocalAiModelSwitchTarget target, bool force,
+            IProgress<LocalAiModelSwitchProgress>? progress, CancellationToken ct) => throw new NotSupportedException();
     }
 
     private sealed class InertGateway : IPermissionsPageRuntimeSource

@@ -56,7 +56,7 @@ public sealed class PreflightLocalAiHardwareStep : SetupStep
                 StringComparison.OrdinalIgnoreCase)
                 ? LocalInferenceEligibility.EvaluateInstalled(hardware, selectedModelId)
                 : LocalInferenceEligibility.Evaluate(hardware, selectedModelId);
-        if (string.Equals(selectedModelId, LocalModelCatalog.NemotronBoltModelId, StringComparison.OrdinalIgnoreCase) &&
+        if (LocalModelCatalog.RequiresRecordedProfile(selectedModelId) &&
             string.Equals(selectedModelId, ctx.Config.LocalAi.InstalledReceiptModelId, StringComparison.OrdinalIgnoreCase))
         {
             try
@@ -77,7 +77,7 @@ public sealed class PreflightLocalAiHardwareStep : SetupStep
         }
         ctx.LocalAiHardware = hardware;
         ctx.LocalAiEligibility = eligibility;
-        if (!string.Equals(selectedModelId, LocalModelCatalog.NemotronBoltModelId, StringComparison.OrdinalIgnoreCase))
+        if (!LocalModelCatalog.RequiresRecordedProfile(selectedModelId))
             ctx.Config.LocalAi.SelectedProfileId = eligibility.Plan?.Profile.Id;
 
         if (!eligibility.CanOffer)
@@ -675,79 +675,27 @@ public sealed class PersistLocalAiManifestStep : SetupStep
         }
 
         ImmutableArray<LocalAiAssetReceipt> runtimeAssets;
+        LocalAiInstallManifest manifest;
         try
         {
-            runtimeAssets = BuildRuntimeReceipts(plan.Runtime, runtimeInstall);
+            runtimeAssets = LocalAiManifestFactory.BuildRuntimeReceipts(plan.Runtime, runtimeInstall);
+            manifest = LocalAiManifestFactory.Create(
+                paths,
+                plan,
+                gpuId,
+                requestedPort,
+                plan.Runtime.ReleaseTag,
+                plan.Runtime.Id,
+                LocalAiManifestFactory.ArchitectureName(plan.Runtime.Architecture),
+                Path.GetRelativePath(paths.RootDirectory, runtimeInstall.ExecutablePath),
+                runtimeAssets,
+                modelInstall,
+                ctx.LocalAiAdditionalModelInstalls);
         }
         catch (InvalidDataException ex)
         {
             return StepResult.Terminal(ex.Message, ex);
         }
-
-        ImmutableArray<PinnedArtifact> additionalArtifacts = AcquireLocalAiModelStep.AdditionalArtifacts(plan.Model);
-        if (additionalArtifacts.Length != ctx.LocalAiAdditionalModelInstalls.Length)
-        {
-            return StepResult.Terminal(
-                "The Local AI installation receipt requires a completed additional-asset acquisition step.");
-        }
-
-        var additionalModelAssets = ImmutableArray.CreateBuilder<LocalAiAssetReceipt>(additionalArtifacts.Length);
-        var additionalModelPaths = ImmutableArray.CreateBuilder<string>(additionalArtifacts.Length);
-        for (int i = 0; i < additionalArtifacts.Length; i++)
-        {
-            PinnedArtifact artifact = additionalArtifacts[i];
-            additionalModelAssets.Add(new LocalAiAssetReceipt
-            {
-                FileName = Path.GetFileName(artifact.RelativePath),
-                SourceUrl = artifact.DownloadUri.AbsoluteUri,
-                SizeBytes = artifact.SizeBytes,
-                Sha256 = artifact.Sha256.Value,
-            });
-            additionalModelPaths.Add(ctx.LocalAiAdditionalModelInstalls[i].ModelPath);
-        }
-
-        LocalAiInstallManifest manifest = new()
-        {
-            SchemaVersion = additionalArtifacts.IsEmpty
-                ? LocalAiInstallManifest.HubCacheReceiptSchemaVersion
-                : LocalAiInstallManifest.AdditionalAssetsSchemaVersion,
-            EngineVersion = plan.Runtime.ReleaseTag,
-            Architecture = plan.Runtime.Architecture switch
-            {
-                Architecture.X64 => "x64",
-                Architecture.Arm64 => "arm64",
-                _ => throw new InvalidDataException("The selected Local AI runtime architecture is unsupported."),
-            },
-            RuntimeId = plan.Runtime.Id,
-            ModelCatalogId = plan.Model.Id,
-            SelectedGpuId = gpuId,
-            ExecutablePath = Path.GetRelativePath(paths.RootDirectory, runtimeInstall.ExecutablePath),
-            RuntimeAssets = runtimeAssets,
-            ModelPath = Path.GetRelativePath(paths.RootDirectory, modelInstall.LegacyModelPath),
-            ModelCacheRoot = modelInstall.CacheRoot,
-            CachedModelPath = modelInstall.ModelPath,
-            ModelId = $"{modelSource.RepositoryId}@{modelSource.RevisionSha}",
-            ModelAlias = plan.Model.Id,
-            ModelAsset = new LocalAiAssetReceipt
-            {
-                FileName = Path.GetFileName(plan.Model.Weights.RelativePath),
-                SourceUrl = plan.Model.Weights.DownloadUri.AbsoluteUri,
-                SizeBytes = plan.Model.Weights.SizeBytes,
-                Sha256 = plan.Model.Weights.Sha256.Value,
-            },
-            // Leave these at their unset default (not an explicitly-built empty
-            // array) when there is nothing to add, so schema-4 manifests omit
-            // them from JSON entirely -- see the properties' remarks.
-            AdditionalModelAssets = additionalArtifacts.IsEmpty ? default : additionalModelAssets.MoveToImmutable(),
-            AdditionalModelPaths = additionalArtifacts.IsEmpty ? default : additionalModelPaths.MoveToImmutable(),
-            RequestedPort = requestedPort,
-            Endpoint = null,
-            ContextLength = plan.Profile.ContextTokens,
-            KeyCachePrecision = plan.Profile.KeyCachePrecision,
-            ValueCachePrecision = plan.Profile.ValueCachePrecision,
-            DraftKeyCachePrecision = plan.Profile.DraftKeyCachePrecision,
-            DraftValueCachePrecision = plan.Profile.DraftValueCachePrecision,
-        };
         if (originalInstall is not null)
         {
             manifest = originalInstall.Manifest with
@@ -766,6 +714,7 @@ public sealed class PersistLocalAiManifestStep : SetupStep
                 ModelId = manifest.ModelId,
                 ModelAlias = manifest.ModelAlias,
                 ModelAsset = manifest.ModelAsset,
+                CustomModel = manifest.CustomModel,
                 AdditionalModelAssets = manifest.AdditionalModelAssets,
                 AdditionalModelPaths = manifest.AdditionalModelPaths,
                 RequestedPort = manifest.RequestedPort,
@@ -859,40 +808,6 @@ public sealed class PersistLocalAiManifestStep : SetupStep
         ctx.LocalAiResolvedInstall = store.ResolveAndValidate(originalInstall.Manifest);
         ctx.LocalAiManifestCreatedThisRun = false;
         ctx.LocalAiUpgradeOriginalInstall = null;
-    }
-
-    private static ImmutableArray<LocalAiAssetReceipt> BuildRuntimeReceipts(
-        LlamaRuntimeVariant runtime,
-        LlamaRuntimeInstallResult install)
-    {
-        if (install.VerifiedArchives.Count != runtime.Artifacts.Count)
-            throw new InvalidDataException("The installed llama-server archive receipt set is incomplete.");
-
-        var receipts = ImmutableArray.CreateBuilder<LocalAiAssetReceipt>(runtime.Artifacts.Count);
-        foreach (PinnedArtifact artifact in runtime.Artifacts)
-        {
-            string fileName = Path.GetFileName(artifact.RelativePath);
-            LocalAiVerifiedArchive verified = install.VerifiedArchives.SingleOrDefault(
-                candidate => string.Equals(candidate.FileName, fileName, StringComparison.Ordinal))
-                ?? throw new InvalidDataException(
-                    $"The installed llama-server archive receipt for '{fileName}' is missing.");
-            if (verified.SizeBytes != artifact.SizeBytes ||
-                !string.Equals(verified.Sha256, artifact.Sha256.Value, StringComparison.Ordinal))
-            {
-                throw new InvalidDataException(
-                    $"The installed llama-server archive receipt for '{fileName}' does not match its pin.");
-            }
-
-            receipts.Add(new LocalAiAssetReceipt
-            {
-                FileName = fileName,
-                SourceUrl = artifact.DownloadUri.AbsoluteUri,
-                SizeBytes = verified.SizeBytes,
-                Sha256 = verified.Sha256,
-            });
-        }
-
-        return receipts.MoveToImmutable();
     }
 }
 

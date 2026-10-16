@@ -32,6 +32,27 @@ public interface ILocalAiEndpointLifecycle
     Task SetAutomaticRecoveryEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
         => Task.CompletedTask;
 
+    /// <summary>
+    /// Moves durable route ownership to a new model after the old route was withdrawn. Durable
+    /// owners journal the previous model so <see cref="SettleModelRebindAsync"/> can recover
+    /// from an interrupted manifest commit.
+    /// </summary>
+    Task RebindModelAsync(LocalAiResolvedInstall previous, LocalAiResolvedInstall next, CancellationToken cancellationToken)
+        => Task.CompletedTask;
+
+    /// <summary>
+    /// Resolves a journaled rebind against the committed installation: keeps the new model
+    /// when the manifest names it, or restores the previous one when the manifest does.
+    /// </summary>
+    Task SettleModelRebindAsync(LocalAiResolvedInstall committed, CancellationToken cancellationToken)
+        => Task.CompletedTask;
+
+    /// <summary>
+    /// Records the non-Local-AI primary the Gateway returns to when Local AI withdraws.
+    /// Idempotent, so a retry repairs an update whose manifest write did not land.
+    /// </summary>
+    Task SetFallbackModelAsync(string? model, CancellationToken cancellationToken) => Task.CompletedTask;
+
     Task<LocalAiEndpointLifecycleResult> QuiesceAsync(
         LocalAiResolvedInstall install,
         LocalAiQuiesceReason reason = LocalAiQuiesceReason.Teardown,

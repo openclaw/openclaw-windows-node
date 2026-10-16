@@ -3773,6 +3773,29 @@ public sealed partial class LocalAiPortLifecycleTests
                 ? LocalAiEndpointLifecycleResult.Failed("publish failed")
                 : LocalAiEndpointLifecycleResult.Ok());
         }
+
+        public Action? OnRebind { get; set; }
+        public Task RebindModelAsync(LocalAiResolvedInstall previous, LocalAiResolvedInstall next, CancellationToken cancellationToken)
+        {
+            Rebinds.Add($"rebind:{next.Manifest.ModelAlias}");
+            OnRebind?.Invoke();
+            return Task.CompletedTask;
+        }
+
+        /// <summary>Rebind and settle calls, kept apart from <c>events</c> because every manifest load settles.</summary>
+        public List<string> Rebinds { get; } = [];
+        public Task SettleModelRebindAsync(LocalAiResolvedInstall committed, CancellationToken cancellationToken)
+        {
+            Rebinds.Add($"settle:{committed.Manifest.ModelAlias}");
+            return Task.CompletedTask;
+        }
+
+        public Exception? FallbackException { get; set; }
+        public Task SetFallbackModelAsync(string? model, CancellationToken cancellationToken)
+        {
+            events.Add($"fallback:{model}");
+            return FallbackException is null ? Task.CompletedTask : Task.FromException(FallbackException);
+        }
     }
 
     public enum RefreshOwnershipLoss

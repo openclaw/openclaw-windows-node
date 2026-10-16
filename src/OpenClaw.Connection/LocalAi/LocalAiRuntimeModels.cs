@@ -138,6 +138,15 @@ public interface ILocalAiRuntime : IAsyncDisposable
     bool HasReleasableOwnership => false;
     Task<LocalAiRuntimeSnapshot> ReleaseOwnershipAsync(CancellationToken cancellationToken = default)
         => throw new InvalidOperationException("There is no native Local AI ownership to release.");
+    /// <summary>
+    /// Withdraws and stops the current model, then commits <paramref name="replacement"/> as the
+    /// installation. The runtime stays stopped; callers start it explicitly.
+    /// </summary>
+    Task<LocalAiRuntimeSnapshot> ReplaceInstallAsync(LocalAiInstallManifest replacement, CancellationToken cancellationToken = default)
+        => throw new InvalidOperationException("This Local AI runtime cannot change its installation.");
+    /// <summary>Changes the non-Local-AI primary the Gateway returns to when Local AI withdraws.</summary>
+    Task SetGatewayFallbackModelAsync(string? model, CancellationToken cancellationToken = default)
+        => throw new InvalidOperationException("This Local AI runtime cannot change its Gateway fallback.");
     LocalAiRuntimeSnapshot Snapshot { get; }
     event EventHandler<LocalAiRuntimeSnapshotChangedEventArgs>? StateChanged;
     Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken = default);

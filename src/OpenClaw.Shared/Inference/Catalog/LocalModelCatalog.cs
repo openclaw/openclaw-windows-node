@@ -136,7 +136,8 @@ public sealed record LocalModelInfo(
     int RecommendationPriority = 0,
     string RuntimeFamily = "llama.cpp",
     long MinimumSystemMemoryBytes = 0,
-    long MinimumFreeDiskBytes = 0);
+    long MinimumFreeDiskBytes = 0,
+    LocalCustomModelRecipe? CustomRecipe = null);
 
 /// <summary>The capacity-sensitive settings selected for one model launch.</summary>
 public sealed record LocalInferenceRunProfile
@@ -466,10 +467,20 @@ public static partial class LocalModelCatalog
     public static IReadOnlyList<LocalInferenceRunProfile> GetProfiles(LocalModelInfo model)
     {
         ArgumentNullException.ThrowIfNull(model);
+        if (model.CustomRecipe is { } custom)
+            return LocalCustomModel.GetProfiles(custom);
         return s_profilesByModel.TryGetValue(model.Id, out ReadOnlyCollection<LocalInferenceRunProfile>? profiles)
             ? profiles
             : throw new ArgumentException("The model is not part of the local inference catalog.", nameof(model));
     }
+
+    /// <summary>
+    /// True when an installed receipt must be re-evaluated against its recorded plan
+    /// rather than re-selected from the catalog (Bolt's fixed tiers, custom models).
+    /// </summary>
+    public static bool RequiresRecordedProfile(string? id) =>
+        string.Equals(id, NemotronBoltModelId, StringComparison.OrdinalIgnoreCase) ||
+        LocalCustomModel.IsCustomId(id);
 
     public static LocalInferenceRunProfile? FindProfile(LocalModelInfo model, string? profileId) =>
         string.IsNullOrWhiteSpace(profileId)
