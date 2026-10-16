@@ -513,7 +513,8 @@ internal sealed class ChatConversationState
         if (string.IsNullOrEmpty(session.Key))
             return false;
         var usedTokens = session.TotalTokens;
-        if (usedTokens <= 0)
+        // Billing counters may omit cached context; only cached seeding may use this fallback.
+        if (usedTokens <= 0 && !authoritative)
             usedTokens = session.InputTokens + session.OutputTokens;
         if (usedTokens <= 0 ||
             string.IsNullOrEmpty(threadId) ||
@@ -2313,6 +2314,7 @@ internal sealed class ChatConversationState
                   (usageTimestamp is null || usageTimestamp == latest))))
                 return false;
             var usageSnapshot = currentUsage.Value;
+            contextTokens ??= existing?.ContextTokens;
             var contextPercent = metadata.ContextPercent;
             if (contextPercent is null &&
                 existing?.ResponseTokens == usageSnapshot &&
@@ -2320,24 +2322,34 @@ internal sealed class ChatConversationState
             {
                 contextPercent = existing.ContextPercent;
             }
-            if (existing?.ResponseTokens == usageSnapshot &&
+            var inputTokens = metadata.InputTokens ?? existing?.InputTokens;
+            var outputTokens = metadata.OutputTokens ?? existing?.OutputTokens;
+            var hasSameUsage = existing?.ResponseTokens == usageSnapshot &&
+                existing.InputTokens == inputTokens &&
+                existing.OutputTokens == outputTokens &&
                 existing.UsageContributionTokens == currentUsage &&
                 existing.ContextTokens == contextTokens &&
-                existing.UsageSnapshotTimestamp == usageTimestamp &&
-                existing.UsageMeasurementTimestamp == usageTimestamp)
+                existing.ContextPercent == contextPercent;
+            // An undated duplicate preserves known measurement time, not just the freshness fence.
+            var measurementTimestamp = usageTimestamp ??
+                (hasSameUsage ? existing?.UsageMeasurementTimestamp : null);
+            var snapshotTimestamp = usageTimestamp ?? existing?.UsageSnapshotTimestamp;
+            if (hasSameUsage &&
+                existing?.UsageSnapshotTimestamp == snapshotTimestamp &&
+                existing?.UsageMeasurementTimestamp == measurementTimestamp)
             {
                 return false;
             }
             threadMetadata[entry.Id] = (existing ?? BuildLiveMetaLocked(threadId)) with
             {
-                InputTokens = metadata.InputTokens ?? existing?.InputTokens,
-                OutputTokens = metadata.OutputTokens ?? existing?.OutputTokens,
+                InputTokens = inputTokens,
+                OutputTokens = outputTokens,
                 ResponseTokens = usageSnapshot,
                 ContextPercent = contextPercent,
-                ContextTokens = contextTokens ?? existing?.ContextTokens,
+                ContextTokens = contextTokens,
                 UsageContributionTokens = currentUsage,
-                UsageMeasurementTimestamp = usageTimestamp,
-                UsageSnapshotTimestamp = usageTimestamp ?? existing?.UsageSnapshotTimestamp,
+                UsageMeasurementTimestamp = measurementTimestamp,
+                UsageSnapshotTimestamp = snapshotTimestamp,
                 UsageSnapshotIsAuthoritative = false,
             };
             return true;

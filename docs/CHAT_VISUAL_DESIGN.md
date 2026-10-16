@@ -121,6 +121,15 @@ There is no composer overflow menu. Voice preferences remain available in
 Settings > Voice, where "Read responses aloud" controls the same shared
 speaker mute state. Native focus, hover and disabled states remain.
 
+The context-usage footer shows the latest assistant request measurement, not
+the sum of overlapping requests. Newer session snapshots may lower that value,
+including after compaction, but require an explicit positive total. A missing
+total does not make input/output billing counters authoritative because they
+may omit cached context. Cached seeding retains its existing fallback behavior.
+Undated duplicates preserve the known measurement timestamp only when their
+effective usage fields are unchanged, so matching older history cannot rewind
+the footer. Changed undated usage does not inherit a measurement timestamp.
+
 The compact effort gauge is an explicitly requested exception to the font-icon
 convention: `ChatEffortGauge` renders the published web SVG geometry with native
 WinUI paths and an ellipse, not a font approximation or WebView. It preserves the

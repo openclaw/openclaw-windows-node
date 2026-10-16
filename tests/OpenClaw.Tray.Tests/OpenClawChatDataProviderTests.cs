@@ -11456,6 +11456,60 @@ public class OpenClawChatDataProviderTests
     }
 
     [Theory]
+    [InlineData(1_500, 1_000, 500, true, false)]
+    [InlineData(1_500, null, null, true, false)]
+    [InlineData(1_500, null, null, true, true)]
+    [InlineData(1_250, 1_000, 250, false, false)]
+    [InlineData(1_500, 1_100, 400, false, false)]
+    public async Task LoadHistoryAsync_UndatedReplayPreservesOnlyEquivalentUsageMeasurement(
+        int replayTotal, int? replayInput, int? replayOutput, bool equivalent, bool missingCapacity)
+    {
+        var session = MainSession();
+        session.ContextTokens = 5_000;
+        var (bridge, provider, _, _) = CreateProvider([session]);
+        await using var _ = provider;
+        await provider.LoadAsync();
+        const long timestamp = 1714600005000;
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main", Role = "assistant", Text = "final", State = "final",
+            Ts = timestamp, InputTokens = 1_000, OutputTokens = 500, ResponseTokens = 1_500,
+        });
+        if (missingCapacity)
+            bridge.RaiseSessions([MainSession()], timestamp: timestamp + 10);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main", Role = "assistant", Text = "final", State = "final",
+            InputTokens = replayInput, OutputTokens = replayOutput, ResponseTokens = replayTotal,
+        });
+
+        var entry = Assert.Single((await provider.LoadAsync()).Timelines["main"].Entries);
+        var replayMetadata = provider.GetEntryMetadata("main")[entry.Id];
+        Assert.Equal(replayTotal, replayMetadata.ResponseTokens);
+        Assert.Equal(5_000, replayMetadata.ContextTokens);
+        Assert.Equal(timestamp, replayMetadata.UsageSnapshotTimestamp);
+        Assert.Equal(equivalent ? timestamp : (long?)null, replayMetadata.UsageMeasurementTimestamp);
+
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages = [new ChatMessageInfo
+            {
+                Role = "assistant", Text = "final", State = "final",
+                Ts = timestamp - 1, ResponseTokens = 1_000, ContextPercent = 20,
+            }],
+        });
+        await provider.LoadHistoryAsync("main", force: true);
+        entry = Assert.Single((await provider.LoadAsync()).Timelines["main"].Entries);
+        var historyMetadata = provider.GetEntryMetadata("main")[entry.Id];
+        Assert.Equal(equivalent ? 1_500 : 1_000, historyMetadata.ResponseTokens);
+        Assert.Equal(equivalent ? timestamp : timestamp - 1, historyMetadata.UsageMeasurementTimestamp);
+        Assert.Equal(timestamp, historyMetadata.UsageSnapshotTimestamp);
+        Assert.Equal(equivalent ? "1.5K/5.0K (30%)" : "1.0K/5.0K (20%)",
+            ChatUsageFormatter.Format(historyMetadata));
+    }
+
+    [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]
     [InlineData(true, true)]
@@ -11792,6 +11846,68 @@ public class OpenClawChatDataProviderTests
     }
 
     [Theory]
+    [InlineData(true, 12, 480)]
+    [InlineData(true, 60_000, 480)]
+    [InlineData(false, 12, 480)]
+    [InlineData(false, 60_000, 480)]
+    public async Task SessionUsageSnapshot_MissingTotalDoesNotPromoteBillingCounters(
+        bool hasMeasurement, long inputTokens, long outputTokens)
+    {
+        var session = MainSession();
+        session.ContextTokens = 200_000;
+        var (bridge, provider, _, _) = CreateProvider([session]);
+        await using var _ = provider;
+        await provider.LoadAsync();
+        const long timestamp = 1714600005000;
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main", Role = "assistant", Text = "final", State = "final",
+            Ts = timestamp, ResponseTokens = hasMeasurement ? 50_000 : null,
+        });
+        var entry = Assert.Single((await provider.LoadAsync()).Timelines["main"].Entries);
+        var before = provider.GetEntryMetadata("main")[entry.Id];
+        session.InputTokens = inputTokens;
+        session.OutputTokens = outputTokens;
+        bridge.RaiseSessions([session], timestamp: timestamp + 10);
+
+        var after = provider.GetEntryMetadata("main")[entry.Id];
+        Assert.Equal(before, after);
+        Assert.False(after.UsageSnapshotIsAuthoritative);
+        Assert.Equal(hasMeasurement ? "50.0K/200.0K (25%)" : null, ChatUsageFormatter.Format(after));
+
+        session.TotalTokens = 40_000;
+        bridge.RaiseSessions([session], timestamp: timestamp + 5);
+        after = provider.GetEntryMetadata("main")[entry.Id];
+        Assert.Equal(40_000, after.ResponseTokens);
+        Assert.Equal(timestamp + 5, after.UsageMeasurementTimestamp);
+        Assert.True(after.UsageSnapshotIsAuthoritative);
+        Assert.Equal("40.0K/200.0K (20%)", ChatUsageFormatter.Format(after));
+    }
+
+    [Fact]
+    public async Task ChatMessageReceived_UsageFreeFinalRetainsCachedBillingFallback()
+    {
+        var session = MainSession();
+        session.InputTokens = 100;
+        session.OutputTokens = 20;
+        session.ContextTokens = 1_000;
+        var (bridge, provider, _, _) = CreateProvider([session]);
+        await using var _ = provider;
+        await provider.LoadAsync();
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main", Role = "assistant", Text = "final", State = "final",
+            Ts = 1714600005000,
+        });
+
+        var entry = Assert.Single((await provider.LoadAsync()).Timelines["main"].Entries);
+        var metadata = provider.GetEntryMetadata("main")[entry.Id];
+        Assert.Equal(120, metadata.ResponseTokens);
+        Assert.False(metadata.UsageSnapshotIsAuthoritative);
+        Assert.Null(metadata.UsageMeasurementTimestamp);
+    }
+
+    [Theory]
     [InlineData(true)]
     [InlineData(false)]
     public async Task SessionUsageSnapshot_DelayedRepliesCannotRewindAssistantOrNewerCorrection(bool hasContribution)
@@ -12109,6 +12225,7 @@ public class OpenClawChatDataProviderTests
                 DisplayName = "Main session",
                 InputTokens = 3_000,
                 OutputTokens = 1_100,
+                TotalTokens = 4_100,
                 ContextTokens = 400_000,
             }
         });
@@ -12128,6 +12245,7 @@ public class OpenClawChatDataProviderTests
                 DisplayName = "Main session",
                 InputTokens = 3_000,
                 OutputTokens = 1_100,
+                TotalTokens = 4_100,
                 ContextTokens = 400_000,
             }
         });
@@ -12168,6 +12286,7 @@ public class OpenClawChatDataProviderTests
                 DisplayName = "Main session",
                 InputTokens = 1_000,
                 OutputTokens = 100,
+                TotalTokens = 1_100,
                 ContextTokens = 144_000,
             }
         });
