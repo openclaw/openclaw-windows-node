@@ -3022,6 +3022,12 @@ Use uma destas opções:
   <data name="Chat_Composer_Accessibility_Reasoning" xml:space="preserve">
     <value>Raciocínio</value>
   </data>
+  <data name="Chat_Throughput_Tooltip" xml:space="preserve">
+    <value>Tokens por segundo: última resposta do modelo, média (μ) e percentil 95 (p95) das chamadas de modelo recentes nesta sessão. ~ indica uma estimativa ao vivo durante a transmissão.</value>
+  </data>
+  <data name="Chat_ContextUsage_Tooltip" xml:space="preserve">
+    <value>Uso da janela de contexto</value>
+  </data>
   <data name="Chat_Composer_Placeholder_Connected" xml:space="preserve">
     <value>Mensagem para o Assistant (Enter para enviar)</value>
   </data>

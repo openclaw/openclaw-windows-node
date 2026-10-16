@@ -268,13 +268,14 @@ public class OpenClawChatDataProviderTests
             Func<TimeSpan, CancellationToken, Func<Task>, Task>? historyRetryScheduler = null,
             Action? historyFailureReservedForTesting = null,
             Func<Func<Task>, Task>? deferredAbortScheduler = null,
-            Action<Action>? post = null)
+            Action<Action>? post = null,
+            TimeProvider? throughputTimeProvider = null)
     {
         var bridge = new FakeBridge { Sessions = initial ?? Array.Empty<SessionInfo>() };
         var provider = toolMetaCachePath is null && attachmentMetaCachePath is null && lastChatStatePath is null &&
             lastChatStateSaveDelay is null && historyRetryScheduler is null && historyFailureReservedForTesting is null &&
             lastStateSaveReservedForTesting is null && beforeSelectedStateSaveForTesting is null &&
-            deferredAbortScheduler is null && post is null
+            deferredAbortScheduler is null && post is null && throughputTimeProvider is null
             ? new OpenClawChatDataProvider(bridge)
             : new OpenClawChatDataProvider(
                 bridge,
@@ -285,7 +286,8 @@ public class OpenClawChatDataProviderTests
                 lastChatStateSaveDelay: lastChatStateSaveDelay,
                 historyRetryScheduler: historyRetryScheduler,
                 historyFailureReservedForTesting: historyFailureReservedForTesting,
-                deferredAbortScheduler: deferredAbortScheduler);
+                deferredAbortScheduler: deferredAbortScheduler,
+                throughputTimeProvider: throughputTimeProvider);
         provider.SetPersistenceTestHooks(
             lastStateSaveReservedForTesting,
             beforeSelectedStateSaveForTesting);
@@ -6630,6 +6632,132 @@ public class OpenClawChatDataProviderTests
         var timeline = snap.Timelines["main"];
         Assert.False(timeline.TurnActive);
         Assert.Null(timeline.ActiveAssistantId);
+    }
+
+    [Fact]
+    public async Task AssistantStreamThenFinal_RecordsExactThroughputSample()
+    {
+        var clock = new OpenClaw.TestSupport.ManualTimeProvider();
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() }, throughputTimeProvider: clock);
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"Hello world"}""", runId: "run-1"));
+        clock.Advance(TimeSpan.FromSeconds(2));
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "Hello world",
+            State = "final",
+            OutputTokens = 100,
+        });
+
+        var stats = provider.GetThroughput("main");
+        Assert.Equal(1, stats.SampleCount);
+        Assert.Equal(50d, stats.LatestTokensPerSecond);
+    }
+
+    [Fact]
+    public async Task ThinkingThenUsageThenBurstReply_RecordsPerCallThroughputAndNotifies()
+    {
+        // Gateway order observed live: thinking deltas stream, the usage event closes the model
+        // call with the run-cumulative output tokens, then the reply text arrives in one burst.
+        var clock = new OpenClaw.TestSupport.ManualTimeProvider();
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() }, throughputTimeProvider: clock);
+        await provider.LoadAsync();
+        var changed = new List<string>();
+        provider.ThroughputChanged += changed.Add;
+
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("thinking", """{"text":"Let me","delta":"Let me"}""", runId: "run-1"));
+        clock.Advance(TimeSpan.FromSeconds(1));
+        bridge.RaiseAgent(MakeAgentEvent("thinking", """{"text":"Let me think","delta":" think"}""", runId: "run-1"));
+        Assert.NotNull(provider.GetThroughput("main").LiveTokensPerSecond);
+        clock.Advance(TimeSpan.FromSeconds(1));
+        bridge.RaiseAgent(MakeAgentEvent("usage", """{"outputTokens":100}""", runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"Hello world"}""", runId: "run-1"));
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "Hello world",
+            State = "final",
+            OutputTokens = 100,
+        });
+
+        var stats = provider.GetThroughput("main");
+        Assert.Equal(1, stats.SampleCount);
+        Assert.Equal(50d, stats.LatestTokensPerSecond);
+        Assert.Contains("main", changed);
+    }
+
+    [Fact]
+    public async Task UsageForRunStartedBeforeProvider_RecordsNoOutlierSample()
+    {
+        var clock = new OpenClaw.TestSupport.ManualTimeProvider();
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() }, throughputTimeProvider: clock);
+        await provider.LoadAsync();
+
+        // No lifecycle start observed: the run-cumulative total covers calls this provider never timed.
+        bridge.RaiseAgent(MakeAgentEvent("thinking", """{"text":"x","delta":"x"}""", runId: "run-1"));
+        clock.Advance(TimeSpan.FromSeconds(1));
+        bridge.RaiseAgent(MakeAgentEvent("usage", """{"outputTokens":5000}""", runId: "run-1"));
+
+        Assert.Equal(0, provider.GetThroughput("main").SampleCount);
+
+        // The adopted baseline makes the next call in the same run measurable.
+        bridge.RaiseAgent(MakeAgentEvent("thinking", """{"text":"xy","delta":"y"}""", runId: "run-1"));
+        clock.Advance(TimeSpan.FromSeconds(1));
+        bridge.RaiseAgent(MakeAgentEvent("usage", """{"outputTokens":5060}""", runId: "run-1"));
+        Assert.Equal(60d, provider.GetThroughput("main").LatestTokensPerSecond);
+    }
+
+    [Fact]
+    public async Task BufferedLifecycleStartAfterReset_ResetsThroughputBaseline()
+    {
+        // sessions.reset can buffer lifecycle start until chat.send is accepted. That open
+        // must start a new throughput run; otherwise the next usage total is subtracted from
+        // the previous run (150 - 100 over 2s = 25 tps instead of 75).
+        var sendGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var clock = new OpenClaw.TestSupport.ManualTimeProvider();
+        var (bridge, provider, _, _) = CreateProvider(
+            new[] { MainSession() },
+            throughputTimeProvider: clock);
+        bridge.SendBehavior = (_, _, _) => sendGate.Task;
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("thinking", """{"text":"x","delta":"x"}""", runId: "run-1"));
+        clock.Advance(TimeSpan.FromSeconds(2));
+        bridge.RaiseAgent(MakeAgentEvent("usage", """{"outputTokens":100}""", runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run-1"));
+        Assert.Equal(50d, provider.GetThroughput("main").LatestTokensPerSecond);
+
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+
+        var sendTask = provider.SendMessageAsync("main", "after reset");
+        var earlyStart = MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "new-run");
+        earlyStart.Ts = DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds();
+        bridge.RaiseAgent(earlyStart);
+        Assert.Equal(50d, provider.GetThroughput("main").LatestTokensPerSecond);
+
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "new-run" });
+        sendGate.SetResult();
+        await sendTask;
+
+        bridge.RaiseAgent(MakeAgentEvent("thinking", """{"text":"y","delta":"y"}""", runId: "new-run"));
+        clock.Advance(TimeSpan.FromSeconds(2));
+        bridge.RaiseAgent(MakeAgentEvent("usage", """{"outputTokens":150}""", runId: "new-run"));
+
+        var stats = provider.GetThroughput("main");
+        Assert.Equal(2, stats.SampleCount);
+        Assert.Equal(75d, stats.LatestTokensPerSecond);
     }
 
     [Fact]

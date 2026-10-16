@@ -3003,6 +3003,12 @@ Utilisez l'une de ces options :
   <data name="Chat_Composer_Accessibility_Reasoning" xml:space="preserve">
     <value>Raisonnement</value>
   </data>
+  <data name="Chat_Throughput_Tooltip" xml:space="preserve">
+    <value>Jetons par seconde : dernière réponse du modèle, moyenne (μ) et 95e centile (p95) des appels de modèle récents de cette session. ~ indique une estimation en direct pendant la diffusion.</value>
+  </data>
+  <data name="Chat_ContextUsage_Tooltip" xml:space="preserve">
+    <value>Utilisation de la fenêtre de contexte</value>
+  </data>
   <data name="Chat_Composer_Placeholder_Connected" xml:space="preserve">
     <value>Envoyer un message à l'assistant (Entrée pour envoyer)</value>
   </data>

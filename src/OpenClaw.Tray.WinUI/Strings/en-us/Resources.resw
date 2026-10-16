@@ -3050,6 +3050,12 @@ Use one of these options:
   <data name="Chat_Composer_Accessibility_Reasoning" xml:space="preserve">
     <value>Reasoning</value>
   </data>
+  <data name="Chat_Throughput_Tooltip" xml:space="preserve">
+    <value>Tokens per second: latest model response, mean (μ), and 95th percentile (p95) over recent model calls in this session. ~ marks a live estimate while streaming.</value>
+  </data>
+  <data name="Chat_ContextUsage_Tooltip" xml:space="preserve">
+    <value>Context window usage</value>
+  </data>
   <data name="Chat_Composer_Placeholder_Connected" xml:space="preserve">
     <value>Message Assistant (Enter to send)</value>
   </data>

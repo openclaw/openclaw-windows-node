@@ -3003,6 +3003,12 @@
   <data name="Chat_Composer_Accessibility_Reasoning" xml:space="preserve">
     <value>推理</value>
   </data>
+  <data name="Chat_Throughput_Tooltip" xml:space="preserve">
+    <value>每秒權杖數：本工作階段中最新模型回應、平均值 (μ) 以及近期模型呼叫的第 95 百分位數 (p95)。~ 表示串流期間的即時估計。</value>
+  </data>
+  <data name="Chat_ContextUsage_Tooltip" xml:space="preserve">
+    <value>內容視窗使用量</value>
+  </data>
   <data name="Chat_Composer_Placeholder_Connected" xml:space="preserve">
     <value>傳訊息給助理（按 Enter 傳送）</value>
   </data>
