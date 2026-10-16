@@ -123,11 +123,25 @@ static async Task<int> RunProcessFixtureAsync(string[] args)
         return 0;
     }
 
-    if (args is ["inherit-handles-identity", var identityChildHoldText, var identityPidFile]
+    if (args is ["inherit-handles-identity", var identityChildHoldText, var identityPidFile, .. var gateArgs]
+        && gateArgs.Length <= 1
         && int.TryParse(identityChildHoldText, out var identityChildHoldMs))
     {
-        using var child = StartSelf("--process-fixture", "hold", identityChildHoldMs.ToString());
+        using var child = StartSelf(
+            "--process-fixture",
+            gateArgs.Length == 0 ? "hold" : "hold-silent",
+            identityChildHoldMs.ToString());
         WriteProcessIdentity(identityPidFile, child);
+        if (gateArgs is [var releasePath])
+        {
+            var wait = Stopwatch.StartNew();
+            while (!File.Exists(releasePath))
+            {
+                if (wait.Elapsed > TimeSpan.FromSeconds(10))
+                    throw new TimeoutException("Process fixture launcher release gate was not opened.");
+                await Task.Delay(10);
+            }
+        }
         Console.Out.Write("parent-stdout");
         Console.Error.Write("parent-stderr");
         return 0;
@@ -146,7 +160,7 @@ static async Task<int> RunProcessFixtureAsync(string[] args)
         return 0;
     }
 
-    if (args is ["inherit-mxc-pipes", var mxcIdentity, var pipe, var lengthText, var releasePath] &&
+    if (args is ["inherit-mxc-pipes", var mxcIdentity, var pipe, var lengthText, var mxcReleasePath] &&
         int.TryParse(lengthText, out var length))
     {
         using var child = StartSelfWithRedirection(pipe == "stderr", pipe == "stdout",
@@ -167,7 +181,7 @@ static async Task<int> RunProcessFixtureAsync(string[] args)
         }));
         WriteProcessIdentity(mxcIdentity + ".parent", parent);
         var wait = Stopwatch.StartNew();
-        while (!File.Exists(releasePath))
+        while (!File.Exists(mxcReleasePath))
         {
             if (wait.Elapsed > TimeSpan.FromSeconds(10))
                 throw new TimeoutException("MXC pipe fixture launcher release gate was not opened.");
