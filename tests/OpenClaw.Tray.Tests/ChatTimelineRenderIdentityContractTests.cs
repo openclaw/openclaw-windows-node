@@ -98,7 +98,8 @@ public sealed class ChatTimelineRenderIdentityContractTests
     {
         var controller = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatComposerController.cs");
 
-        Assert.Contains("var accepted = await SendCoreAsync(", controller);
+        Assert.Contains("var result = await SendCoreAsync(", controller);
+        Assert.Contains("var accepted = result.AcceptedByLiveHost", controller);
         Assert.Contains("if (accepted)", controller);
         Assert.Contains("_vm.RemoveSubmittedAttachments(attachments);", controller);
         Assert.Matches(

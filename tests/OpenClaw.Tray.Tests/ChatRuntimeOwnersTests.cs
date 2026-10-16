@@ -342,6 +342,246 @@ public sealed class ChatConversationStateTests
             "attachment-run",
             fallback.OpenedLifecycle?.Event.RunId);
     }
+
+    [Fact]
+    public void RestoreFailedWelcomeSend_DropsFailedQueueAndStatusRow()
+    {
+        var state = new ChatConversationState(
+            ConnectionStatus.Connected,
+            lastChatState: null,
+            seedModels: null);
+        var context = new ChatProjectionContext("main", HasHandshakeSnapshot: true);
+        state.Load([new SessionInfo { Key = "main", IsMain = true }], context);
+        var admission = state.AdmitMessage(
+            "main",
+            "What can you do?",
+            "What can you do?",
+            "nonce-welcome",
+            attachments: null,
+            DateTimeOffset.UnixEpoch,
+            context);
+        Assert.NotNull(admission.Dispatch);
+
+        var failed = state.FailSend(
+            admission.Dispatch,
+            "gateway closed",
+            "gateway closed",
+            context);
+        Assert.NotNull(failed.Snapshot);
+        Assert.Contains(
+            failed.Snapshot.Timelines["main"].Entries,
+            entry => entry.Kind == ChatTimelineItemKind.User && entry.Text == "What can you do?");
+        Assert.Contains(
+            failed.Snapshot.Timelines["main"].Entries,
+            entry => entry.Kind == ChatTimelineItemKind.Status);
+
+        var restored = state.RestoreFailedWelcomeSend("main", "What can you do?", context);
+        Assert.Empty(restored.Timelines["main"].Entries);
+        Assert.False(restored.QueuedMessagesByThread?.TryGetValue("main", out var queued) == true
+            && queued.Count > 0);
+    }
+
+    [Fact]
+    public void RestoreFailedWelcomeSend_KeepsAnAcceptedUserRowWithoutAStatus()
+    {
+        var state = new ChatConversationState(
+            ConnectionStatus.Connected,
+            lastChatState: null,
+            seedModels: null);
+        var context = new ChatProjectionContext("main", HasHandshakeSnapshot: true);
+        state.Load([new SessionInfo { Key = "main", IsMain = true }], context);
+        state.AdmitMessage(
+            "main",
+            "hello",
+            "hello",
+            "nonce-accepted",
+            attachments: null,
+            DateTimeOffset.UnixEpoch,
+            context);
+
+        var restored = state.RestoreFailedWelcomeSend("main", "hello", context);
+
+        Assert.Contains(
+            restored.Timelines["main"].Entries,
+            entry => entry.Kind == ChatTimelineItemKind.User && entry.Text == "hello");
+    }
+
+    [Fact]
+    public void RestoreFailedWelcomeSend_KeepsAnUnrelatedLocalUserRow()
+    {
+        var state = new ChatConversationState(
+            ConnectionStatus.Connected,
+            lastChatState: null,
+            seedModels: null);
+        var context = new ChatProjectionContext("main", HasHandshakeSnapshot: true);
+        state.Load([new SessionInfo { Key = "main", IsMain = true }], context);
+        var chip = state.AdmitMessage(
+            "main",
+            "What can you do?",
+            "What can you do?",
+            "nonce-welcome",
+            attachments: null,
+            DateTimeOffset.UnixEpoch,
+            context);
+        Assert.NotNull(chip.Dispatch);
+        state.FailSend(chip.Dispatch, "gateway closed", "gateway closed", context);
+        state.AdmitMessage(
+            "main",
+            "hello",
+            "hello",
+            "nonce-other",
+            attachments: null,
+            DateTimeOffset.UnixEpoch,
+            context);
+
+        var restored = state.RestoreFailedWelcomeSend("main", "What can you do?", context);
+        var entries = restored.Timelines["main"].Entries;
+
+        Assert.Contains(entries, entry => entry.Kind == ChatTimelineItemKind.User && entry.Text == "hello");
+        Assert.Contains(entries, entry => entry.Kind == ChatTimelineItemKind.User && entry.Text == "What can you do?");
+    }
+
+    [Fact]
+    public void RestoreFailedWelcomeSend_KeepsAQueuedFollowUp()
+    {
+        var state = new ChatConversationState(
+            ConnectionStatus.Connected,
+            lastChatState: null,
+            seedModels: null);
+        var context = new ChatProjectionContext("main", HasHandshakeSnapshot: true);
+        state.Load([new SessionInfo { Key = "main", IsMain = true }], context);
+        var chip = state.AdmitMessage(
+            "main",
+            "What can you do?",
+            "What can you do?",
+            "nonce-welcome",
+            attachments: null,
+            DateTimeOffset.UnixEpoch,
+            context);
+        Assert.NotNull(chip.Dispatch);
+        var followUp = state.AdmitMessage(
+            "main",
+            "follow-up",
+            "follow-up",
+            "nonce-follow",
+            attachments: null,
+            DateTimeOffset.UnixEpoch,
+            context);
+        Assert.True(followUp.Queued);
+        state.FailSend(chip.Dispatch, "gateway closed", "gateway closed", context);
+
+        var restored = state.RestoreFailedWelcomeSend("main", "What can you do?", context);
+
+        Assert.Contains(
+            restored.Timelines["main"].Entries,
+            entry => entry.Kind == ChatTimelineItemKind.User && entry.Text == "What can you do?");
+        Assert.NotNull(restored.QueuedMessagesByThread);
+        Assert.True(restored.QueuedMessagesByThread.TryGetValue("main", out var queued));
+        Assert.Contains(queued, message => message.Text == "follow-up");
+    }
+
+    [Fact]
+    public void RestoreFailedWelcomeSend_KeepsAnAcceptedFollowUpWithTheSameText()
+    {
+        var state = new ChatConversationState(
+            ConnectionStatus.Connected,
+            lastChatState: null,
+            seedModels: null);
+        var context = new ChatProjectionContext("main", HasHandshakeSnapshot: true);
+        state.Load([new SessionInfo { Key = "main", IsMain = true }], context);
+        var chip = state.AdmitMessage(
+            "main",
+            "What can you do?",
+            "What can you do?",
+            "nonce-welcome",
+            attachments: null,
+            DateTimeOffset.UnixEpoch,
+            context);
+        Assert.NotNull(chip.Dispatch);
+        state.FailSend(chip.Dispatch, "gateway closed", "gateway closed", context);
+        state.AdmitMessage(
+            "main",
+            "What can you do?",
+            "What can you do?",
+            "nonce-follow",
+            attachments: null,
+            DateTimeOffset.UnixEpoch,
+            context);
+
+        var restored = state.RestoreFailedWelcomeSend("main", "What can you do?", context);
+        var timeline = restored.Timelines["main"];
+        var userRows = timeline.Entries.Count(entry =>
+            entry.Kind == ChatTimelineItemKind.User && entry.Text == "What can you do?");
+
+        Assert.True(timeline.TurnActive);
+        Assert.Equal(2, userRows);
+    }
+
+    [Fact]
+    public void RestoreFailedWelcomeSend_KeepsAFailedSameTextFollowUp()
+    {
+        var state = new ChatConversationState(
+            ConnectionStatus.Connected,
+            lastChatState: null,
+            seedModels: null);
+        var context = new ChatProjectionContext("main", HasHandshakeSnapshot: true);
+        state.Load([new SessionInfo { Key = "main", IsMain = true }], context);
+        var chip = state.AdmitMessage(
+            "main",
+            "What can you do?",
+            "What can you do?",
+            "nonce-welcome",
+            attachments: null,
+            DateTimeOffset.UnixEpoch,
+            context);
+        Assert.NotNull(chip.Dispatch);
+        var followUp = state.AdmitMessage(
+            "main",
+            "What can you do?",
+            "What can you do?",
+            "nonce-follow",
+            attachments: null,
+            DateTimeOffset.UnixEpoch,
+            context);
+        Assert.True(followUp.Queued);
+        state.FailSend(chip.Dispatch, "gateway closed", "gateway closed", context);
+        var started = state.TryStartNextQueuedSend("main", requireConnected: false, context);
+        Assert.NotNull(started.Dispatch);
+        state.FailSend(started.Dispatch!, "gateway closed", "gateway closed", context);
+
+        var restored = state.RestoreFailedWelcomeSend(
+            "main",
+            "What can you do?",
+            context,
+            chip.MessageId);
+
+        Assert.True(restored.QueuedMessagesByThread?.TryGetValue("main", out var queued) == true
+            && queued.Any(message => message.Id == followUp.MessageId
+                && message.SendState == ChatQueuedMessageSendState.Failed));
+        Assert.Contains(
+            restored.Timelines["main"].Entries,
+            entry => entry.Kind == ChatTimelineItemKind.User && entry.Text == "What can you do?");
+    }
+}
+
+public sealed class ChatQueueFailedWelcomeTests
+{
+    [Fact]
+    public void RemoveFailedMessage_RemovesOnlyTheNamedId()
+    {
+        var queue = new ChatQueueState();
+        queue.AddMessage("main", new ChatQueuedMessage(
+            "a", "What can you do?", DateTimeOffset.UnixEpoch, "n1", ChatQueuedMessageSendState.Failed));
+        queue.AddMessage("main", new ChatQueuedMessage(
+            "b", "What can you do?", DateTimeOffset.UnixEpoch, "n2", ChatQueuedMessageSendState.Failed));
+
+        var removed = queue.RemoveFailedMessage("main", "a");
+
+        Assert.True(removed);
+        var remaining = queue.SnapshotMessages()["main"];
+        Assert.Single(remaining);
+        Assert.Equal("b", remaining[0].Id);
+    }
 }
 
 public sealed class ChatResetStateTests

@@ -18,12 +18,15 @@ internal sealed class ChatComposerRuntimePort(IChatDataProvider provider) : ICha
 {
     public bool SupportsNativeLifecycle => provider is OpenClawChatDataProvider;
 
+    public string? LastFailedSendMessageId { get; private set; }
+
     public async Task<bool> SendMessageAsync(
         string threadId,
         string message,
         IReadOnlyList<ChatAttachment> attachments,
         CancellationToken cancellationToken)
     {
+        LastFailedSendMessageId = null;
         try
         {
             await provider.SendMessageAsync(threadId, message, cancellationToken, attachments).ConfigureAwait(true);
@@ -31,6 +34,8 @@ internal sealed class ChatComposerRuntimePort(IChatDataProvider provider) : ICha
         }
         catch (Exception ex)
         {
+            if (ex.Data[OpenClawChatDataProvider.FailedSendMessageIdDataKey] is string messageId)
+                LastFailedSendMessageId = messageId;
             System.Diagnostics.Trace.WriteLine($"[chat] send failed: {ex}");
             return false;
         }

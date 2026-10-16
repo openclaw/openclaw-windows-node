@@ -44,6 +44,7 @@
   <ItemGroup>
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\IChatGatewayBridge.cs" Link="Chat\IChatGatewayBridge.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatSurfaceResolver.cs" Link="Chat\ChatSurfaceResolver.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\WelcomeChipLatch.cs" Link="Chat\WelcomeChipLatch.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\GatewayFixtureRenderObservation.cs" Link="Chat\GatewayFixtureRenderObservation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\PendingVoiceActivation.cs" Link="Chat\PendingVoiceActivation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\DebugChatSurfaceOverrides.cs" Link="Chat\DebugChatSurfaceOverrides.cs" />
