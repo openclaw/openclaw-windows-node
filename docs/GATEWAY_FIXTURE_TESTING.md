@@ -98,6 +98,34 @@ call cannot prevent failure reporting and owned-process cleanup.
 Inspect the captured PNGs when claiming visual proof. UI Automation alone does
 not detect every overlap, clipping or theme defect.
 
+## Cron editor proof
+
+`GatewayScenario.CreateCronEditing()` explicitly opts into in-memory `cron.add`
+and `cron.update`, with listed, absent, unlisted, and interval schedules.
+`cron.list` returns the updated jobs; nothing is scheduled or executed.
+The normal browse scenario still rejects cron writes.
+
+The focused proof uses the existing isolated profile, real Gateway client and
+cron form. Its native title click verifies the owning process, foreground window,
+physical point and UIA target before sending input. Run it only with exclusive
+desktop access:
+
+```powershell
+$env:OPENCLAW_RUN_GATEWAY_FIXTURE_UI = '1'
+$env:OPENCLAW_GATEWAY_FIXTURE_APP = (Resolve-Path $app).Path
+$env:OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS = "$env:TEMP\openclaw-cron-proof"
+$env:OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS = '1'
+$env:OPENCLAW_REPO_ROOT = (Get-Location).Path
+dotnet test .\tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj -r win-arm64 -p:Platform=ARM64 -p:DevBuild=false --filter 'FullyQualifiedName~GatewayFixtureUiTests.CronEditor_' --logger 'console;verbosity=normal'
+```
+
+On x64 use `-r win-x64 -p:Platform=x64`. Keep the selected executable on the
+tested commit. The two tests must execute, not skip. They check timezone
+preservation and explicit replacement, switching jobs and schedule kinds,
+and resetting for a new job. Artifacts include owned-window editor captures
+and the exact synthetic schedules read back after accepted saves. This proves
+the app/fixture wire path, not production Gateway persistence or scheduling.
+
 ## Known runtime regression
 
 The strict cached-session tail assertion has exposed an intermittent failure:

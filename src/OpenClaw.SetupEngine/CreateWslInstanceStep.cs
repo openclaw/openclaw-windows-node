@@ -91,6 +91,8 @@ public sealed class CreateWslInstanceStep : SetupStep
                 $"Fresh WSL install failed for '{distro}' from '{baseDistro}' (exit {install.ExitCode}): {FirstNonEmpty(install.Stderr, install.Stdout)}{cleanupError}");
         }
 
+        await GatewayPackageCleanup.RegisterAsync(ctx.Commands, distro, installPath, ct: ct);
+
         var verify = await VerifyFreshDistro(ctx, distro, installPath, ct);
         if (!verify.IsSuccess)
         {
@@ -130,12 +132,9 @@ public sealed class CreateWslInstanceStep : SetupStep
 
     private static async Task<StepResult> VerifyFreshDistro(SetupContext ctx, string distro, string installPath, CancellationToken ct)
     {
-        var list = await ctx.Commands.RunAsyncAllowingInheritedPipeHandleEscape(
-            WslConstants.WslExePath,
-            ["--list", "--quiet"],
-            TimeSpan.FromSeconds(15),
-            ct: ct);
-        if (list.ExitCode != 0 || !WslInstallSupport.ContainsDistro(list.Stdout, distro))
+        // wsl.exe can stall on --list right after --install while the service finishes
+        // registering the new distro, so retry with escalating timeouts like the root probe.
+        if (!await IsDistroRegisteredAsync(ctx, distro, ct))
         {
             var environmentIssue = await PreflightWslStep.DetectEnvironmentIssueAsync(ctx, ct);
             var baseMessage = $"Fresh WSL install did not register expected distro '{distro}'.";
@@ -184,6 +183,29 @@ public sealed class CreateWslInstanceStep : SetupStep
         }
 
         return StepResult.Ok($"Created clean WSL2 distro '{distro}' at '{installPath}'");
+    }
+
+    private static async Task<bool> IsDistroRegisteredAsync(SetupContext ctx, string distro, CancellationToken ct)
+    {
+        for (var attempt = 0; attempt < FreshDistroProbeTimeouts.Length; attempt++)
+        {
+            var list = await ctx.Commands.RunAsyncAllowingInheritedPipeHandleEscape(
+                WslConstants.WslExePath,
+                ["--list", "--quiet"],
+                FreshDistroProbeTimeouts[attempt],
+                ct: ct);
+            if (list.ExitCode == 0 && WslInstallSupport.ContainsDistro(list.Stdout, distro))
+                return true;
+
+            if (attempt < FreshDistroProbeTimeouts.Length - 1)
+            {
+                ctx.Logger.Warn(
+                    $"Fresh WSL distro '{distro}' was not listed yet (exit={list.ExitCode}, " +
+                    $"attempt {attempt + 1}/{FreshDistroProbeTimeouts.Length}); retrying.");
+            }
+        }
+
+        return false;
     }
 
     private static async Task<string> CleanupPartialInstall(SetupContext ctx, string distro, string installPath, CancellationToken ct)

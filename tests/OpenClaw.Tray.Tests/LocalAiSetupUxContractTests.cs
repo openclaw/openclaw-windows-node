@@ -209,7 +209,9 @@ public sealed class LocalAiSetupUxContractTests
         AssertInOrder(
             source,
             "deviceEligibility = LocalInferenceEligibility.Evaluate(",
-            "if (deviceEligibility.FailureCode == LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete)",
+            "LocalInferenceEligibility.EvaluateForConfiguredAvailability(",
+            "hasInstalledReceipt: _localAiRecoveryModelPinned",
+            "if (availability.FailureCode == LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete)",
             "TryApplyProbeFailure(",
             "ShowLocalAiProbeUnknown(incompleteSnapshot);");
         Assert.Contains("LocalAiOptionContent.IsHitTestVisible = isAvailable", source);
@@ -301,9 +303,11 @@ public sealed class LocalAiSetupUxContractTests
         AssertInOrder(
             method,
             "LocalInferenceEligibilityResult deviceEligibility = LocalInferenceEligibility.Evaluate(_localAiHardware);",
-            "_localAiRecommendedModelId = deviceEligibility.CanInstall",
             "LocalInferenceEligibility.EvaluateForConfiguredAvailability(",
-            "_config!.LocalAi.SelectedModelId);",
+            "_config!.LocalAi.SelectedModelId,",
+            "hasInstalledReceipt: _localAiRecoveryModelPinned);",
+            "if (availability.FailureCode == LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete)",
+            "_localAiRecommendedModelId = deviceEligibility.CanInstall",
             "if (!availability.CanInstall || availability.Plan is null || availability.SelectedGpu is null)",
             "hardwareReason = DescribeLocalAiUnavailable(availability);",
             "LocalInferenceEligibilityResult selectedEligibility =",
@@ -314,7 +318,8 @@ public sealed class LocalAiSetupUxContractTests
             "else if (!selectedEligibility.CanInstall)",
             "_config.LocalAi.SelectedModelId = null;",
             "_config.LocalAi.SelectedModelId ??= _localAiRecommendedModelId ?? availability.Plan.Model.Id;",
-            "eligibility ??= _localAiRecoveryModelPinned",
+            "eligibility ??= _localAiPinnedPlan is { } recordedPlan",
+            "LocalInferenceEligibility.EvaluateRecordedProfile(_localAiHardware, recordedPlan)",
             "LocalInferenceEligibility.EvaluateInstalled(",
             "LocalInferenceEligibility.Evaluate(",
             "_config.LocalAi.SelectedModelId);");

@@ -462,7 +462,8 @@ internal sealed class LocalAiInstallReconciler
             System.Runtime.InteropServices.Architecture.Arm64 => "arm64",
             _ => throw new InvalidDataException("The selected Local AI runtime architecture is unsupported."),
         };
-        if (!string.Equals(manifest.EngineVersion, installedRuntime.ReleaseTag, StringComparison.Ordinal) ||
+        if (!string.Equals(installedRuntime.Family, plan.Model.RuntimeFamily, StringComparison.Ordinal) ||
+            !string.Equals(manifest.EngineVersion, installedRuntime.ReleaseTag, StringComparison.Ordinal) ||
             !string.Equals(manifest.Architecture, expectedArchitecture, StringComparison.Ordinal) ||
             !string.Equals(manifest.RuntimeId, installedRuntime.Id, StringComparison.Ordinal) ||
             !string.Equals(manifest.ModelCatalogId, plan.Model.Id, StringComparison.Ordinal) ||

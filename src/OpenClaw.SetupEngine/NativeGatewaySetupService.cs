@@ -180,8 +180,17 @@ public sealed class NativeGatewaySetupService(
         return completed;
     }
 
-    private static int SelectAvailablePort()
+    private static int SelectAvailablePort() => SelectAvailablePort(PreferredPort);
+
+    // The conventional Gateway port keeps the native endpoint predictable; any
+    // listener already holding it (WSL, CLI, or a source-built Gateway) wins.
+    internal const int PreferredPort = 18789;
+
+    internal static int SelectAvailablePort(int preferredPort)
     {
+        if (IsPortAvailable(preferredPort))
+            return preferredPort;
+
         for (var attempt = 0; attempt < 10; attempt++)
         {
             using var listener = new TcpListener(IPAddress.Loopback, 0) { ExclusiveAddressUse = true };
@@ -211,7 +220,9 @@ public sealed class NativeGatewaySetupService(
     }
 
     internal static string GetDraftPath(GatewayRegistry registry) =>
-        Path.Combine(Path.GetDirectoryName(registry.GetIdentityDirectory("native-setup"))!, "native-setup-draft.json");
+        Path.Combine(
+            Path.GetDirectoryName(registry.GetIdentityDirectory("native-setup"))!,
+            OpenClawAppIdentity.NativeGatewaySetupDraftFileName);
 
     public async Task<NativeGatewaySetupSession> PrepareAsync(
         NativeGatewaySetupDraft draft,

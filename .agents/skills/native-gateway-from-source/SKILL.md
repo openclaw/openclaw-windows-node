@@ -39,9 +39,9 @@ Use one Companion branch for both Gateway compatibility targets. Do not create o
 continually synchronize a `release/extended-stable` fork.
 
 ```powershell
-.\run-app-local.ps1 -Isolated -AllowNonMain
-.\run-app-local.ps1 -Isolated -AllowNonMain -GatewayChannel Packaged
-.\run-app-local.ps1 -Isolated -AllowNonMain -GatewayChannel Packaged -PackagingRelease v2026.9.9-msix.0
+.\run-app-local.ps1 -Isolated
+.\run-app-local.ps1 -Isolated -GatewayChannel Packaged
+.\run-app-local.ps1 -Isolated -GatewayChannel Packaged -PackagingRelease v2026.9.9-msix.0
 ```
 
 The first command resolves npm `latest` and builds/registers patch `npm-latest`.
@@ -145,7 +145,7 @@ Use isolated tray data so the user's real settings and gateways are untouched:
 .\build.ps1
 $env:OPENCLAW_NATIVE_GATEWAY_DEV_PATCH = 'source'
 $env:OPENCLAW_FORCE_ONBOARDING = '1'
-.\run-app-local.ps1 -NoBuild -AllowNonMain -DataDir "$env:TEMP\oc-devgw-source"
+.\run-app-local.ps1 -NoBuild -DataDir "$env:TEMP\oc-devgw-source"
 ```
 
 In setup choose **Install a local native gateway**, then **Set up gateway**. Expected:

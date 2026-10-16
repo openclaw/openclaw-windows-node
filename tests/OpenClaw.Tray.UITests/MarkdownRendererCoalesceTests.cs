@@ -13,11 +13,14 @@ namespace OpenClaw.Tray.UITests;
 /// their own chrome (code cards, table grids) — and any list that contains such
 /// a block — stay as their own selectable sibling controls.
 ///
-/// Assertions live at the FunctionalUI <see cref="Element"/> record level (no
-/// WinUI runtime): the Blocks of the RichTextBlock are populated imperatively
+/// Assertions live at the FunctionalUI <see cref="Element"/> record level:
+/// the Blocks of the RichTextBlock are populated imperatively
 /// by a setter at reconcile time, but the element shape is what pins the
 /// coalescing contract.
+/// They still load WinRT-backed types, so the shared UI collection keeps that
+/// initialization from racing the fixture's Windows App SDK bootstrap.
 /// </summary>
+[Collection(UICollection.Name)]
 public sealed class MarkdownRendererCoalesceTests
 {
     [Fact]
@@ -93,8 +96,8 @@ public sealed class MarkdownRendererCoalesceTests
         // or table too) is NOT simple — it keeps the Grid-based island so the
         // child's chrome survives. The intro prose stays its own sibling.
         // A block quote is used here rather than a code block because it renders
-        // without eager WinRT activation, keeping this record-level test
-        // runtime-free.
+        // without eager WinRT activation, so this record-level assertion does
+        // not materialize controls.
         var element = ChatMarkdownRenderer.Render(
             "intro paragraph\n\n- item one\n\n- item two\n\n  > side note");
 

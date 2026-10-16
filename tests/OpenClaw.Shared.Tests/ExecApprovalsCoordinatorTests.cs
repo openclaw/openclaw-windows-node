@@ -300,6 +300,29 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         Assert.True(capturing.Captured!.AllowAlwaysAvailable);
     }
 
+    [Fact]
+    public async Task Prompt_InlinePowerShellScript_MarksAllowAlwaysUnavailable()
+    {
+        WriteStoreFile("""{"version":1,"defaults":{"security":"allowlist","ask":"on-miss"}}""");
+        var capturing = new CapturingPromptHandler(ExecApprovalPromptOutcome.AllowOnce);
+        var command = new[]
+        {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),
+                "WindowsPowerShell", "v1.0", "powershell.exe"),
+            "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "Get-Date",
+        };
+
+        var result = await MakeCoordinator(
+            canPresent: AlwaysCanPresentEvaluator.Instance,
+            prompt: capturing).HandleAsync(
+                Req(JsonSerializer.Serialize(new { command })), "powershell-script-once");
+
+        Assert.True(result.IsAllow);
+        Assert.NotNull(capturing.Captured);
+        Assert.False(capturing.Captured!.AllowAlwaysAvailable);
+        Assert.Empty(new ExecApprovalsStore(_dir, NullLogger.Instance).ResolveReadOnly("main").Allowlist);
+    }
+
     // ── Policy-currency re-check on the prompt path (macOS parity) ──
 
     [Fact]

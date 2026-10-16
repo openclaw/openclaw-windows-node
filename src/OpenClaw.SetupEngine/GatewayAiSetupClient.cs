@@ -32,6 +32,7 @@ public sealed class GatewayAiSetupClient(
     public GatewayAiSetupWizardResult? Wizard { get; private set; }
     public string? SessionId { get; private set; }
     public string? VerifiedModelRef { get; private set; }
+    public string? VerificationFailure { get; private set; }
     public bool IsBusy => _busy;
     public GatewayAiSetupRoute Route => _route;
     public long ConnectionGeneration => transport.Generation;
@@ -167,6 +168,7 @@ public sealed class GatewayAiSetupClient(
             throw new NotSupportedException("This gateway does not advertise the selected setup method.");
         Selection = choice;
         VerifiedModelRef = null;
+        VerificationFailure = null;
         Phase = GatewayAiSetupPhase.Choosing;
     }
 
@@ -344,6 +346,7 @@ public sealed class GatewayAiSetupClient(
     {
         var generation = transport.Generation;
         VerifiedModelRef = null;
+        VerificationFailure = null;
         _verifiedGeneration = 0;
         var result = await ExecuteAsync<GatewayAiSetupVerification>("openclaw.setup.verify", RouteParams(), 120_000, ct);
         ct.ThrowIfCancellationRequested();
@@ -354,6 +357,7 @@ public sealed class GatewayAiSetupClient(
             throw new InvalidDataException("Verification did not confirm the selected model.");
         if (!result.Ok && (string.IsNullOrWhiteSpace(result.Status) || string.IsNullOrWhiteSpace(result.Error)))
             throw new InvalidDataException("The gateway returned an incomplete verification failure.");
+        VerificationFailure = result.Ok ? null : result.Error;
         VerifiedModelRef = result.Ok ? result.ModelRef : null;
         _verifiedGeneration = result.Ok ? generation : 0;
         return result;
