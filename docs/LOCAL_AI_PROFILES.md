@@ -50,6 +50,26 @@ is bound to. On any other Gateway it writes that Gateway's default and leaves
 Local AI alone. Models whose provider still needs sign-in are listed but cannot
 be made the default.
 
+## CUDA runtime routing
+
+The stock llama.cpp family pins two Windows x64 builds from ggml-org release
+`b11320`: CUDA 13.4 (`b11320-cuda13-x64`) and CUDA 12.4 (`b11320-cuda12-x64`).
+The hardware probe reads each GPU's compute capability through
+`cuDeviceGetAttribute`. Selection prefers CUDA 13 and uses CUDA 12 only when no
+NVIDIA GPU can run the CUDA 13 build:
+
+- CUDA 13 needs compute capability 7.5 or newer (Turing and later) and a driver
+  that exposes CUDA 13.
+- CUDA 12 covers compute capability 5.0 through 9.x (Maxwell through Hopper) on a
+  CUDA 12 or newer driver, for example a TITAN V (7.0) on an R580 driver.
+  Blackwell is not routed to it.
+
+A missing compute capability is reported as retryable incomplete facts. The CUDA
+12 build installs under `engines\llama-server\b11320\win-x64-cuda12`; CUDA 13
+keeps `win-x64`. ARM64, Bonsai, and Nemotron Bolt stay CUDA 13 only. A receipt
+whose runtime no longer matches the host is re-acquired by the existing runtime
+upgrade path.
+
 ## Experimental Bonsai 2 profile
 
 The Windows x64 profile uses **Bonsai 2 27B PTQ1_0**, derived from Qwen3.8, with

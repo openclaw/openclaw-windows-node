@@ -278,6 +278,7 @@ public class LocalInferenceQualificationTests
         public (long FreeBytes, long TotalBytes)? Memory { get; init; } = (32 * GiB, 32 * GiB);
         public Func<int, string?>? UuidByDevice { get; init; }
         public Func<Exception>? UuidFailure { get; init; }
+        public Version? ComputeCapability { get; init; } = new(12, 0);
 
         public CudaDriverAvailability TryInitialize() => Availability;
 
@@ -295,6 +296,8 @@ public class LocalInferenceQualificationTests
                 : UuidByDevice is not null ? UuidByDevice(device) : Uuid;
 
         public (long FreeBytes, long TotalBytes)? TryReadMemoryInfo(int device) => Memory;
+
+        public Version? TryReadComputeCapability(int device) => ComputeCapability;
     }
 
     [Theory]
@@ -776,6 +779,82 @@ public class LocalInferenceQualificationTests
         Assert.Equal(expectedFailure, result.FailureCode);
     }
 
+    [Theory]
+    [InlineData(7, 0, 13, LlamaRuntimeCatalog.X64Cuda12RuntimeId)] // TITAN V on an R580 driver
+    [InlineData(6, 1, 12, LlamaRuntimeCatalog.X64Cuda12RuntimeId)]
+    [InlineData(8, 9, 12, LlamaRuntimeCatalog.X64Cuda12RuntimeId)] // Ada on a CUDA-12-only driver
+    [InlineData(7, 5, 13, LlamaRuntimeCatalog.X64RuntimeId)]
+    [InlineData(12, 0, 13, LlamaRuntimeCatalog.X64RuntimeId)]
+    public void Evaluate_RoutesX64RuntimeByComputeCapabilityAndDriver(
+        int computeMajor,
+        int computeMinor,
+        int driverCudaMajor,
+        string expectedRuntimeId)
+    {
+        GpuInfo gpu = Gpu("NVIDIA routed", "GPU-routed", 48, 48) with
+        {
+            CudaMajorVersion = driverCudaMajor,
+            ComputeCapability = new Version(computeMajor, computeMinor),
+        };
+
+        LocalInferenceEligibilityResult result = LocalInferenceEligibility.Evaluate(
+            Hardware(RuntimeArchitecture.X64, gpu));
+
+        Assert.Equal(LocalInferenceEligibilityStatus.Eligible, result.Status);
+        Assert.Equal(expectedRuntimeId, result.Plan?.Runtime.Id);
+    }
+
+    [Theory]
+    [InlineData(RuntimeArchitecture.X64, 3, 7, 12)] // Kepler
+    [InlineData(RuntimeArchitecture.X64, 12, 0, 12)] // Blackwell on a CUDA-12-only driver
+    [InlineData(RuntimeArchitecture.Arm64, 7, 0, 13)] // no ARM64 CUDA 12 build
+    public void Evaluate_RejectsGpusNoCatalogRuntimeCanExecute(
+        RuntimeArchitecture architecture,
+        int computeMajor,
+        int computeMinor,
+        int driverCudaMajor)
+    {
+        GpuInfo gpu = Gpu("NVIDIA unsupported", "GPU-unsupported", 48, 48) with
+        {
+            CudaMajorVersion = driverCudaMajor,
+            ComputeCapability = new Version(computeMajor, computeMinor),
+        };
+
+        LocalInferenceEligibilityResult result = LocalInferenceEligibility.Evaluate(
+            Hardware(architecture, gpu));
+
+        Assert.Equal(LocalInferenceEligibilityStatus.Unsupported, result.Status);
+        Assert.Equal(LocalInferenceEligibilityFailureCode.CudaCapabilityTooLow, result.FailureCode);
+        Assert.Equal(13, result.Plan?.Runtime.CudaVersion.Major);
+    }
+
+    [Fact]
+    public void Evaluate_MixedHostKeepsCuda13AndNeverSelectsTheVoltaAdapter()
+    {
+        // The Volta has more free memory, so free-memory ranking alone would pick it.
+        GpuInfo volta = Gpu("NVIDIA TITAN V", "GPU-volta", 48, 48) with { ComputeCapability = new Version(7, 0) };
+        GpuInfo ada = Gpu("NVIDIA ada", "GPU-ada", 48, 47) with { ComputeCapability = new Version(8, 9) };
+
+        LocalInferenceEligibilityResult result = LocalInferenceEligibility.Evaluate(
+            Hardware(RuntimeArchitecture.X64, volta, ada));
+
+        Assert.Equal(LocalInferenceEligibilityStatus.Eligible, result.Status);
+        Assert.Equal(LlamaRuntimeCatalog.X64RuntimeId, result.Plan?.Runtime.Id);
+        Assert.Equal("GPU-ada", result.SelectedGpu?.StableId);
+    }
+
+    [Fact]
+    public void Evaluate_MissingComputeCapabilityIsRetryable()
+    {
+        GpuInfo gpu = Gpu("NVIDIA unread capability", "GPU-unread", 48, 48) with { ComputeCapability = null };
+
+        LocalInferenceEligibilityResult result = LocalInferenceEligibility.Evaluate(
+            Hardware(RuntimeArchitecture.X64, gpu));
+
+        Assert.Equal(LocalInferenceEligibilityStatus.Unsupported, result.Status);
+        Assert.Equal(LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete, result.FailureCode);
+    }
+
     [Fact]
     public void Evaluate_IdentifiedGpuWithoutMemoryIsIncompleteRatherThanAbsent()
     {
@@ -823,7 +902,8 @@ public class LocalInferenceQualificationTests
             freeGiB * GiB,
             DriverVersion: "616.30",
             CudaMajorVersion: 13,
-            StableId: stableId);
+            StableId: stableId,
+            ComputeCapability: new Version(12, 0));
 
     /// <summary>
     /// Every Qwen3.6-35B-A3B recipe in the 2026-09-30 set runs MTP with n=2, not the

@@ -123,5 +123,6 @@ public sealed class LocalAiDevelopmentModelTests
             freeGiB * GiB,
             DriverVersion: "616.30",
             CudaMajorVersion: 13,
-            StableId: stableId);
+            StableId: stableId,
+            ComputeCapability: new Version(12, 0));
 }

@@ -15,6 +15,7 @@ internal interface ICudaDeviceReader
     string? TryReadDeviceName(int device);
     string? TryReadDeviceUuid(int device);
     (long FreeBytes, long TotalBytes)? TryReadMemoryInfo(int device);
+    Version? TryReadComputeCapability(int device);
 }
 
 /// <summary>Reads device facts from the real NVIDIA driver.</summary>
@@ -34,6 +35,8 @@ internal sealed class NvcudaDeviceReader : ICudaDeviceReader
 
     public (long FreeBytes, long TotalBytes)? TryReadMemoryInfo(int device) =>
         NvcudaDriver.WithContext(device, NvcudaDriver.TryReadMemoryInfo, null);
+
+    public Version? TryReadComputeCapability(int device) => NvcudaDriver.TryReadComputeCapability(device);
 }
 
 public interface IHostHardwareProbe
@@ -146,7 +149,8 @@ public sealed class CudaHostHardwareProbe : IHostHardwareProbe
                 GpuVendor.Nvidia,
                 Read(() => _reader.TryReadDeviceName(device)) ?? UnidentifiedGpuName,
                 CudaMajorVersion: cudaMajorVersion,
-                StableId: Read(() => _reader.TryReadDeviceUuid(device)));
+                StableId: Read(() => _reader.TryReadDeviceUuid(device)),
+                ComputeCapability: Read(() => _reader.TryReadComputeCapability(device)));
 
             if (Read(() => _reader.TryReadMemoryInfo(device)) is not { } memory)
             {
@@ -172,6 +176,11 @@ public sealed class CudaHostHardwareProbe : IHostHardwareProbe
     }
 
     private static string? Read(Func<string?> read)
+    {
+        try { return read(); } catch { return null; }
+    }
+
+    private static Version? Read(Func<Version?> read)
     {
         try { return read(); } catch { return null; }
     }

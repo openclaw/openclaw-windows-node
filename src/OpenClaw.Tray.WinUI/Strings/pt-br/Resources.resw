@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <root>
   <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
     <xsd:element name="root" msdata:IsDataSet="true">
@@ -7125,7 +7125,7 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="DefaultModelPage_CustomApiKeyRequired" xml:space="preserve"><value>Este tipo de API precisa de uma chave de API.</value></data>
   <data name="DefaultModelPage_CustomMissingModels" xml:space="preserve"><value>Digite pelo menos um ID de modelo.</value></data>
   <data name="DefaultModelPage_CustomInvalidModelId" xml:space="preserve"><value>IDs de modelo não podem conter espaços.</value></data>
-  <data name="LocalAi_Reason_CudaCapabilityTooLow" xml:space="preserve"><value>O driver NVIDIA não oferece suporte a CUDA 13. Não é necessário um CUDA Toolkit separado.</value></data>
+  <data name="LocalAi_Reason_CudaCapabilityTooLow" xml:space="preserve"><value>A IA local não pode ser executada nesta GPU NVIDIA com o driver instalado. Instale o driver NVIDIA mais recente para esta GPU. Não é necessário um CUDA Toolkit separado.</value></data>
   <data name="LocalAi_Reason_DriverTooOld" xml:space="preserve"><value>O driver NVIDIA {0} foi detectado. A IA local requer a versão {1} ou mais recente.</value></data>
   <data name="LocalAi_Reason_Generic" xml:space="preserve"><value>O OpenClaw não conseguiu verificar os requisitos da IA local neste sistema.</value></data>
   <data name="LocalAi_Reason_GigabytesFormat" xml:space="preserve"><value>{0:0.#} GiB</value></data>

@@ -3288,7 +3288,8 @@ public class SetupStepsTests : IDisposable
                 FreeGpuVisibleMemoryBytes: 48_585_498_624,
                 DriverVersion: "616.00",
                 CudaMajorVersion: 13,
-                StableId: "GPU-SPARK"),
+                StableId: "GPU-SPARK",
+                ComputeCapability: new Version(12, 0)),
         ],
         VulkanAvailable: false);
 
@@ -3301,7 +3302,8 @@ public class SetupStepsTests : IDisposable
                 GpuVendor.Nvidia,
                 "NVIDIA RTX Spark N1X (6144-core Blackwell RTX GPU)",
                 CudaMajorVersion: 13,
-                StableId: "GPU-SPARK"),
+                StableId: "GPU-SPARK",
+                ComputeCapability: new Version(12, 0)),
         ],
         VulkanAvailable: false);
 
