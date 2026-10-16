@@ -51,6 +51,7 @@ public sealed partial class GatewayScenario
     private readonly bool _allowSessionMutations;
     private readonly bool _allowChatSend;
     private readonly Dictionary<string, JsonObject?> _sessionChanges = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Session> _createdSessions = new(StringComparer.Ordinal);
     private readonly List<object> _createdAgents = [];
     private int _chatSendCount;
 
@@ -82,6 +83,7 @@ public sealed partial class GatewayScenario
         }.Concat(reads.Keys).Concat(setup is null ? [] : advertiseSetup
             ? SetupMethods : ["wizard.start", "wizard.next", "wizard.cancel", "logs.tail"])
             .Concat(cronJobs is null ? [] : ["cron.list", "cron.status", "cron.add", "cron.update"])
+            .Concat(allowSessionMutations ? ["sessions.create", "sessions.patch", "sessions.delete"] : [])
             .Order(StringComparer.Ordinal).ToArray());
         var source = JsonSerializer.Serialize(new
         {
@@ -255,7 +257,11 @@ public sealed partial class GatewayScenario
         policy = new { maxPayload = 1_048_576, maxBufferedBytes = 1_048_576, tickIntervalMs = 30_000 }
     };
 
-    internal bool ContainsSession(string key) => _sessions.Any(s => s.Key == key);
+    internal bool ContainsSession(string key)
+    {
+        lock (_sessionChanges)
+            return _sessions.Any(s => s.Key == key) || _createdSessions.ContainsKey(key);
+    }
 
     internal object Respond(string method, JsonElement parameters)
     {
@@ -289,6 +295,8 @@ public sealed partial class GatewayScenario
         }
         if (method == "exec.approval.resolve")
             return ResolveApproval(parameters);
+        if (_allowSessionMutations && method == "sessions.create")
+            return CreateConversation(parameters);
         if (_allowSessionMutations && method is "sessions.patch" or "sessions.delete")
             return MutateSession(method, parameters);
         if (_allowChatSend && method == "chat.send")
@@ -330,14 +338,14 @@ public sealed partial class GatewayScenario
         var agent = OptionalString(p, "agentId");
         if (agent is not null && agent is not ("main" or "research"))
             throw new FixtureRequestException("INVALID_PARAMS", "Unknown fixture agentId.");
-        var limit = PositiveInt(p, "limit", _sessions.Length);
+        var limit = PositiveInt(p, "limit", int.MaxValue);
         var activeMinutes = PositiveInt(p, "activeMinutes", int.MaxValue);
         foreach (var flag in new[] { "includeGlobal", "includeUnknown", "includeDerivedTitles", "includeLastMessage" })
             OptionalBoolean(p, flag);
         JsonObject[] rows;
         lock (_sessionChanges)
         {
-            rows = _sessions.Where(s => agent is null || s.AgentId == agent)
+            rows = _sessions.Concat(_createdSessions.Values).Where(s => agent is null || s.AgentId == agent)
                 .Where(s => Epoch.ToUnixTimeMilliseconds() - s.UpdatedAt <= (long)activeMinutes * 60_000)
                 .Select(s => _sessionChanges.TryGetValue(s.Key, out var changed)
                     ? changed?.DeepClone().AsObject() : JsonSerializer.SerializeToNode(s.Row)!.AsObject())
@@ -351,6 +359,24 @@ public sealed partial class GatewayScenario
             defaults = new { modelProvider = "fixture", model = "browse", contextTokens = 128_000 },
             sessions = rows
         };
+    }
+
+    private object CreateConversation(JsonElement p)
+    {
+        ValidateProperties(p, "parentSessionKey", "emitCommandHooks", "succeedsParent");
+        var parent = FindSession(RequiredString(p, "parentSessionKey"));
+        OptionalBoolean(p, "emitCommandHooks");
+        if (OptionalBoolean(p, "succeedsParent") == true)
+            throw new FixtureRequestException("INVALID_PARAMS", "The fixture only supports parallel session creation.");
+        lock (_sessionChanges)
+        {
+            var number = _createdSessions.Count + 1;
+            var key = $"agent:{parent.AgentId}:fixture-created-{number}";
+            var session = CreateSession(key, $"Fixture: new conversation {number}", parent.AgentId,
+                parent.Row.GetProperty("model").GetString()!, _sessions.Length + _createdSessions.Count, []);
+            _createdSessions.Add(key, session);
+            return new { key, sessionId = session.Id };
+        }
     }
 
     private object MutateSession(string method, JsonElement p)
@@ -461,8 +487,12 @@ public sealed partial class GatewayScenario
         return _reads[method];
     }
 
-    private Session FindSession(string key) => _sessions.FirstOrDefault(s => s.Key == key)
-        ?? throw new FixtureRequestException("INVALID_PARAMS", "Unknown fixture session key.");
+    private Session FindSession(string key)
+    {
+        lock (_sessionChanges)
+            return _sessions.FirstOrDefault(s => s.Key == key) ?? _createdSessions.GetValueOrDefault(key)
+                ?? throw new FixtureRequestException("INVALID_PARAMS", "Unknown fixture session key.");
+    }
 
     private static bool IsWrite(string method) => method is
         "chat.send" or "chat.abort" or "chat.inject" or "config.set" or "config.patch" or "config.apply"

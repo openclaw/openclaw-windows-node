@@ -339,7 +339,11 @@ public sealed class ChatComposerControllerTests
                 binding.Invalidate();
                 presentation.Bind(binding.Request);
             },
-            SessionSelected: key => mountedThread = key);
+            SessionSelected: (key, previous) =>
+            {
+                Assert.Equal("session-1", previous);
+                mountedThread = key;
+            });
         var (vm, controller, port, _) = MakeController(actions);
         using (controller)
         using (vm)
@@ -374,7 +378,7 @@ public sealed class ChatComposerControllerTests
     {
         var selected = 0;
         var actions = new ChatComposerHostActions(null, null, null, null,
-            SessionSelected: _ => selected++);
+            SessionSelected: (_, _) => selected++);
         var (vm, controller, port, _) = MakeController(actions);
         using (vm)
         {
@@ -394,7 +398,7 @@ public sealed class ChatComposerControllerTests
     {
         var notifications = 0;
         var actions = new ChatComposerHostActions(null, null, null, null,
-            SessionSelected: _ => notifications++);
+            SessionSelected: (_, _) => notifications++);
         var (vm, controller, _, _) = MakeController(actions);
         using (vm)
         {

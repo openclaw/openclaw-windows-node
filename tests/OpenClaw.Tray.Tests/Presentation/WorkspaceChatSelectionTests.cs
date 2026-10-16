@@ -4,6 +4,46 @@ namespace OpenClaw.Tray.Tests.Presentation;
 
 public sealed class WorkspaceChatSelectionTests
 {
+    [Theory]
+    [InlineData("agent:main:main")]
+    [InlineData("agent:research:cached")]
+    public void InitialComposerConversation_IsThePreviousHistoryEntryAfterNew(string previous)
+    {
+        var history = new WorkspaceNavigationHistory();
+
+        Assert.True(history.SelectChatSession("agent:main:new", previous));
+        Assert.Equal("agent:main:new", history.Current.SessionKey);
+        Assert.True(history.GoBack());
+        Assert.Equal(new(WorkspacePageId.Home, previous), history.Current);
+        Assert.Equal(history.Current, history.ChatDestination);
+        Assert.False(history.CanGoBack);
+        Assert.True(history.GoForward());
+        Assert.Equal("agent:main:new", history.Current.SessionKey);
+        Assert.False(history.CanGoForward);
+    }
+
+    [Fact]
+    public void InitialSameSessionHandoff_BindsConversationWithoutAddingHistory()
+    {
+        var history = new WorkspaceNavigationHistory();
+
+        Assert.True(history.SelectChatSession("agent:main:main", "agent:main:main"));
+        Assert.Equal("agent:main:main", history.Current.SessionKey);
+        Assert.False(history.CanGoBack);
+        Assert.False(history.SelectChatSession("agent:main:main", "agent:main:main"));
+    }
+
+    [Fact]
+    public void PreviousComposerConversation_DoesNotReplaceExplicitNavigation()
+    {
+        var history = new WorkspaceNavigationHistory();
+        history.Navigate(new(WorkspacePageId.Home, "agent:main:explicit"));
+
+        history.SelectChatSession("agent:main:new", "agent:main:stale");
+        Assert.True(history.GoBack());
+        Assert.Equal("agent:main:explicit", history.Current.SessionKey);
+    }
+
     [Fact]
     public void ComposerNewSession_UpdatesCurrentConversationAndAddsOneHistoryEntry()
     {
@@ -32,7 +72,7 @@ public sealed class WorkspaceChatSelectionTests
         var notifications = new WorkspaceDestination(WorkspacePageId.Notifications);
         history.Navigate(notifications);
 
-        Assert.True(history.SelectChatSession("agent:main:new"));
+        Assert.True(history.SelectChatSession("agent:main:new", "agent:main:original"));
         Assert.Equal(notifications, history.Current);
         Assert.Equal(new(WorkspacePageId.Home, "agent:main:new"), history.ChatDestination);
         Assert.False(history.SelectChatSession("agent:main:new"));
@@ -77,7 +117,7 @@ public sealed class WorkspaceChatSelectionTests
             "src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml.cs"));
         var handler = source[source.IndexOf("private void OnChatSessionSelected(", StringComparison.Ordinal)..
             source.IndexOf("internal void NavigateNativeSetup(", StringComparison.Ordinal)];
-        Assert.Contains("_navigation.SelectChatSession(sessionKey)", handler);
+        Assert.Contains("_navigation.SelectChatSession(sessionKey, previousSessionKey)", handler);
         Assert.Contains("SessionDisplayResolver.Resolve(session).AgentId", handler);
         Assert.Contains("RefreshSidebar()", handler);
         Assert.Contains("UpdateNavigationSelection()", handler);

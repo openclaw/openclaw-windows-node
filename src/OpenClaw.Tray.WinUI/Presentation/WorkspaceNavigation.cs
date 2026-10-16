@@ -88,12 +88,18 @@ internal sealed class WorkspaceNavigationHistory
     public bool CanGoBack => _back.Count > 0;
     public bool CanGoForward => _forward.Count > 0;
 
-    public bool SelectChatSession(string sessionKey)
+    public bool SelectChatSession(string sessionKey, string? previousSessionKey = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionKey);
         var destination = new WorkspaceDestination(WorkspacePageId.Home, sessionKey);
         if (Current.Page == WorkspacePageId.Home)
-            return Navigate(destination);
+        {
+            // Initial cached/default selection lives in the composer until its first handoff.
+            var bindPrevious = Current.SessionKey is null && !string.IsNullOrWhiteSpace(previousSessionKey);
+            if (bindPrevious)
+                SetCurrent(new(WorkspacePageId.Home, previousSessionKey));
+            return Navigate(destination) || bindPrevious;
+        }
         if (ChatDestination == destination)
             return false;
 

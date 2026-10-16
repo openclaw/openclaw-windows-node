@@ -25,4 +25,4 @@ internal sealed record ChatComposerHostActions(
     Func<CancellationToken, Action?, Task<string?>>? VoiceCaptureRequest,
     Action<bool>? SpeakerMuteChanged,
     Action? SessionNavigationStarting = null,
-    Action<string>? SessionSelected = null);
+    Action<string, string?>? SessionSelected = null);

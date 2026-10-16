@@ -42,7 +42,7 @@ public static class ReactorChatHostExtensions
         Action<bool>? onSpeakerMuteChanged,
         bool initialMuted,
         Action? onSessionNavigationStarting = null,
-        Action<string>? onSessionSelected = null)
+        Action<string, string?>? onSessionSelected = null)
     {
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(composerFactory);

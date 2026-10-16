@@ -14,6 +14,53 @@ public sealed class GatewayFixtureProtocolTests
 {
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(20);
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SessionCreation_IsOptInResponseBoundAndPreservesParent(bool allow)
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(
+            GatewayScenario.CreateBrowse(allowSessionMutations: allow), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        var client = connected.Client;
+        server.HoldSessionMutations();
+        var create = client.CreateSessionAsync(new SessionCreateRequest
+        {
+            ParentSessionKey = GatewayScenario.OtherSessionKey,
+            EmitCommandHooks = true,
+            SucceedsParent = false
+        });
+        await server.WaitForRequestAsync("sessions.create", GatewayScenario.OtherSessionKey);
+        await client.SendWizardRequestAsync("health");
+        Assert.False(create.IsCompleted);
+        server.ReleaseSessionMutations();
+        var result = await create.WaitAsync(Deadline);
+        Assert.Equal(allow, result.Ok);
+        if (!allow)
+        {
+            Assert.Contains("read-only", result.Error);
+            Assert.Equal(5, (await client.SendWizardRequestAsync("sessions.list")).GetProperty("count").GetInt32());
+            return;
+        }
+
+        Assert.Equal("agent:research:fixture-created-1", result.Key);
+        Assert.False(string.IsNullOrWhiteSpace(result.SessionId));
+        var listed = (await client.SendWizardRequestAsync("sessions.list")).GetProperty("sessions");
+        Assert.Equal(6, listed.GetArrayLength());
+        Assert.Contains(listed.EnumerateArray(), row => row.GetProperty("key").GetString() == GatewayScenario.OtherSessionKey);
+        Assert.Contains(listed.EnumerateArray(), row => row.GetProperty("key").GetString() == result.Key);
+        var history = await client.SendWizardRequestAsync("chat.history", new { sessionKey = result.Key });
+        Assert.Empty(history.GetProperty("messages").EnumerateArray());
+        Assert.Equal(result.SessionId, history.GetProperty("sessionId").GetString());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendWizardRequestAsync(
+            "sessions.create", new { parentSessionKey = GatewayScenario.OtherSessionKey, fork = true }));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendWizardRequestAsync(
+            "sessions.create", new { parentSessionKey = "unknown" }));
+        Assert.Equal(6, (await client.SendWizardRequestAsync("sessions.list")).GetProperty("count").GetInt32());
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
     [Fact]
     public async Task CronEditing_StoresExactSchedulesAndKeepsOtherMutationsDisabled()
     {

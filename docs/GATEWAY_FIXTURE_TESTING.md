@@ -46,6 +46,15 @@ fields, returns a server-assigned ID, and exposes it through subsequent
 remain rejected. The test verifies the refreshed selector while retaining the
 existing session and unsent draft. Normal interactive browse runs remain read-only.
 
+The opt-in `session-mutations` scenario accepts in-memory `sessions.patch`,
+`sessions.delete`, and parallel `sessions.create` requests. Creation uses a known
+parent, returns a distinct server-assigned key/session ID, and exposes the empty
+conversation through session-list and history reads without replacing its parent.
+The response gate can hold creation while the UI navigates elsewhere. Composer
+`/new` tests use this path to check initial Home -> new conversation -> Back/Forward
+and delayed completion on Notifications. No provider, transcript file, or real
+Gateway is involved; other mutations and unsupported creation parameters still fail.
+
 The host is `tests\OpenClaw.GatewayFixtureHost`, a plain .NET console app, not a
 test container. The request-driven server and scenario live in
 `tests\OpenClaw.TestSupport\Gateway`. Repeated reads and different request

@@ -143,9 +143,9 @@ public sealed partial class WorkspaceWindow : WindowEx
     internal void SelectSession(string sessionKey) =>
         Navigate(new(WorkspacePageId.Home, sessionKey));
 
-    private void OnChatSessionSelected(string sessionKey)
+    private void OnChatSessionSelected(string sessionKey, string? previousSessionKey)
     {
-        if (IsClosed || !_navigation.SelectChatSession(sessionKey))
+        if (IsClosed || !_navigation.SelectChatSession(sessionKey, previousSessionKey))
             return;
 
         var session = _state.Sessions.FirstOrDefault(session => session.Key == sessionKey)

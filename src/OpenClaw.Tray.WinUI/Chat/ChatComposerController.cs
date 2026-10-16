@@ -127,10 +127,11 @@ internal sealed partial class ChatComposerController : IDisposable
         if (_disposed || _selectedSessionHandoff is null)
             return false;
 
+        var previousThreadId = _vm.Inputs?.CurrentThread.Id;
         _selectedSessionHandoff(threadId);
         if (_disposed)
             return false;
-        _hostActions.SessionSelected?.Invoke(threadId);
+        _hostActions.SessionSelected?.Invoke(threadId, previousThreadId);
         return true;
     }
 

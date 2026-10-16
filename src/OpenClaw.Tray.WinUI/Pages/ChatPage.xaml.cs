@@ -30,7 +30,7 @@ public sealed partial class ChatPage : Page
 {
     private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private Window? _ownerWindow;
-    internal event Action<string>? SessionSelected;
+    internal event Action<string, string?>? SessionSelected;
     private string? _pendingSessionKey;
     private readonly PendingVoiceActivation _pendingVoice = new();
     private MountedReactorChat? _reactorHost;
@@ -296,13 +296,13 @@ public sealed partial class ChatPage : Page
         RemovedSessionPlaceholder.Visibility = Visibility.Visible;
     }
 
-    internal void OnComposerSessionSelected(string sessionKey)
+    internal void OnComposerSessionSelected(string sessionKey, string? previousSessionKey = null)
     {
         if (_nativeSetupBinding.Request is { } request &&
             sessionKey != request.Completion.Target.SessionKey)
             InvalidateNativeSetupForNavigation();
         _mountedThreadId = sessionKey;
-        SessionSelected?.Invoke(sessionKey);
+        SessionSelected?.Invoke(sessionKey, previousSessionKey);
     }
 
     private void OnWorkspaceOpenConnection(object sender, RoutedEventArgs e) =>
@@ -509,10 +509,10 @@ public sealed partial class ChatPage : Page
                 if (_pageActive && ReferenceEquals(_reactorHost, mountedHost))
                     InvalidateNativeSetupForNavigation();
             },
-            onSessionSelected: sessionKey =>
+            onSessionSelected: (sessionKey, previousSessionKey) =>
             {
                 if (ReferenceEquals(_reactorHost, mountedHost))
-                    OnComposerSessionSelected(sessionKey);
+                    OnComposerSessionSelected(sessionKey, previousSessionKey);
             });
         try
         {
