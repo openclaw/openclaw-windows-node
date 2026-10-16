@@ -204,6 +204,9 @@ when an individual probe times out. Malformed or disconnected HTTP-upgrade peers
 are recorded as unexpected `<upgrade>` requests without retaining headers.
 They do not prevent other clients from connecting or make server cleanup throw;
 the unexpected-request assertions still surface them as smoke failures.
+Non-interactive scenario responder exceptions still propagate through server
+cleanup, preserving negative-test guards. Only interactive runtime faults are
+translated into `INTERNAL` responses and recorded as unexpected requests.
 
 Add new behavior at the server boundary. Do not introduce fixture providers,
 demo branches in pages, bypasses in the connection manager, or a second chat
@@ -284,12 +287,17 @@ is rejected, allowing the production client's existing queue to own queuing.
 | --- | --- |
 | `chat.send`, `chat.abort` | Text-only sends, acknowledgement before playback, named or session-wide stop, terminal state and partial transcript |
 | `chat.history`, `chat.inject` | Updated bounded histories and inert assistant-message insertion when idle |
-| `sessions.create` | New canonical keys and IDs, optional in-memory transcript fork |
+| `sessions.create` | New canonical keys and IDs, optional in-memory transcript fork from `parentSessionKey`; `forkFrom: "last-completed"` excludes an unfinished turn, including its tool-call/result entries |
 | `sessions.list`, `sessions.preview` | Current catalog and transcript data, filtering, limits and previews |
 | `sessions.patch`, `sessions.reset`, `sessions.delete` | Label/pin/unread/archive/model/thinking changes, guarded read acknowledgement, reset/delete when idle |
 | `question.request`, `question.list`, `question.get`, `question.waitAnswer`, `question.resolve` | One to three scalar questions, single/multi choice, custom text, defaults, cancellation, expiry, resolution-ID retry, recovery and multi-client broadcasts |
 | `exec.approval.resolve` | Only fixture-issued pending approvals; deny-only requests cannot be allowed |
 | Existing browse reads | Models, agents, health, usage, configuration and discovery remain available |
+
+Forks without `forkFrom` copy the full parent history. The `last-completed`
+selector copies through the last persisted assistant reply that is not a
+tool-use checkpoint; it produces an empty history if no such reply exists.
+The copied history is independent of later parent updates or resets.
 
 The implementation follows the upstream `packages/gateway-protocol/src/schema/`
 `logs-chat.ts`, `questions.ts`, session schemas and current Windows event consumers.

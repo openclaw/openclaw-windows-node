@@ -252,11 +252,66 @@ public sealed partial class GatewayFixtureProtocolTests
     }
 
     [Theory]
+    [InlineData(GatewayScenario.EmptySessionKey, "main")]
+    [InlineData(GatewayScenario.OtherSessionKey, "research")]
+    public async Task Interactive_LastCompletedForkExcludesUnfinishedToolTurn(string key, string agentId)
+    {
+        var token = CreateToken();
+        await using var server = await StartInteractiveAsync(token);
+        server.Interactive!.Playback.Pause();
+        server.Interactive.Playback.Select("tools");
+        await using var peer = await FixturePeer.ConnectAsync(server, token);
+        var completed = await peer.RequestAsync("chat.history", new { sessionKey = key });
+        var accepted = await peer.RequestAsync("chat.send", new { sessionKey = key, message = "Unfinished tool turn", idempotencyKey = "fork" });
+        for (var step = 0; step < 4; step++)
+        {
+            server.Interactive.Playback.Step();
+            await peer.ThroughAsync(e => e.GetProperty("event").GetString() == "agent");
+        }
+        var active = await peer.RequestAsync("chat.history", new { sessionKey = key });
+        Assert.Equal(completed.GetProperty("messages").GetArrayLength() + 3, active.GetProperty("messages").GetArrayLength());
+        Assert.Equal("toolResult", active.GetProperty("messages").EnumerateArray().Last().GetProperty("role").GetString());
+
+        var fork = await peer.RequestAsync("sessions.create", new { agentId, parentSessionKey = key, fork = true, forkFrom = "last-completed" });
+        var forkKey = fork.GetProperty("key").GetString();
+        Assert.NotEqual(key, forkKey);
+        Assert.NotEqual(completed.GetProperty("sessionId").GetString(), fork.GetProperty("sessionId").GetString());
+        var history = await peer.RequestAsync("chat.history", new { sessionKey = forkKey });
+        Assert.Equal(completed.GetProperty("messages").GetRawText(), history.GetProperty("messages").GetRawText());
+
+        var fullFork = await peer.RequestAsync("sessions.create", new { agentId, parentSessionKey = key, fork = true });
+        var fullHistory = await peer.RequestAsync("chat.history", new { sessionKey = fullFork.GetProperty("key").GetString() });
+        Assert.Equal(active.GetProperty("messages").GetRawText(), fullHistory.GetProperty("messages").GetRawText());
+        await peer.RequestAsync("chat.abort", new { sessionKey = key, runId = accepted.GetProperty("runId").GetString() });
+        await peer.RequestAsync("sessions.reset", new { key });
+        Assert.Equal(completed.GetProperty("messages").GetRawText(),
+            (await peer.RequestAsync("chat.history", new { sessionKey = forkKey })).GetProperty("messages").GetRawText());
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
+    [Fact]
+    public async Task Interactive_DisposedRuntimeStillReturnsInternalError()
+    {
+        var token = CreateToken();
+        await using var server = await StartInteractiveAsync(token);
+        await using var peer = await FixturePeer.ConnectAsync(server, token);
+        await server.Interactive!.DisposeAsync();
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            peer.RequestAsync("chat.history", new { sessionKey = GatewayScenario.EmptySessionKey }));
+        Assert.Contains("Interactive fixture failed", error.Message);
+        Assert.Equal("error:INTERNAL", Assert.Single(server.UnexpectedRequests).Outcome);
+        Assert.True((await peer.RequestAsync("health", new { })).GetProperty("ok").GetBoolean());
+    }
+
+    [Theory]
     [InlineData("config.apply", "{}")]
     [InlineData("node.invoke", "{}")]
     [InlineData("chat.send", "{\"sessionKey\":\"agent:main:fixture-empty\",\"message\":\"x\",\"idempotencyKey\":\"x\",\"attachments\":[]}")]
     [InlineData("chat.history", "{\"sessionKey\":\"agent:main:main\",\"limit\":\"bad\"}")]
     [InlineData("question.resolve", "{\"id\":\"fixture-nonexistent\",\"cancel\":true}")]
+    [InlineData("sessions.create", "{\"parentSessionKey\":\"agent:main:main\",\"fork\":true,\"forkFrom\":\"agent:main:main\"}")]
+    [InlineData("sessions.create", "{\"parentSessionKey\":\"agent:main:main\",\"fork\":false,\"forkFrom\":\"last-completed\"}")]
+    [InlineData("sessions.create", "{\"fork\":true,\"forkFrom\":\"last-completed\"}")]
     public async Task Interactive_UnsupportedAndInvalidRequestsAreErrors(string method, string json)
     {
         var token = CreateToken();

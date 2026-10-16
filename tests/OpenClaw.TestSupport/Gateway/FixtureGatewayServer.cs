@@ -528,7 +528,9 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                 await SendErrorAsync(socket, sendLock, id, ex.Code, ex.Message, cancellationToken);
                 return;
             }
-            catch (InvalidOperationException) when (!cancellationToken.IsCancellationRequested)
+            catch (InvalidOperationException) when (Interactive is not null
+                && InteractiveGatewayRuntime.Methods.Contains(method, StringComparer.Ordinal)
+                && !cancellationToken.IsCancellationRequested)
             {
                 Complete(requestIndex, "error:INTERNAL", unexpected: true);
                 await SendErrorAsync(socket, sendLock, id, "INTERNAL", "Interactive fixture failed. Check fixture playback diagnostics.", cancellationToken);

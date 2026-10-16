@@ -418,18 +418,26 @@ public sealed class InteractiveGatewayRuntime : IAsyncDisposable
             throw Invalid("key must be a bounded canonical fixture agent key.");
         if (_sessions.ContainsKey(key)) throw Invalid("Session key already exists.");
         if (_sessions.Count >= 100) throw Invalid("Fixture session limit reached.");
-        if (Optional(p, "parentSessionKey") is { } parent) _ = Session(parent);
+        var parent = Optional(p, "parentSessionKey");
+        if (parent is not null) _ = Session(parent);
         Boolean(p, "emitCommandHooks");
         if (Boolean(p, "succeedsParent") == true)
             throw new FixtureRequestException("FIXTURE_UNSUPPORTED", "Session succession is not simulated.");
         var fork = Boolean(p, "fork") ?? false;
-        var source = Optional(p, "forkFrom") ?? Optional(p, "parentSessionKey");
-        if (fork && source is null) throw Invalid("A fork needs forkFrom or parentSessionKey.");
-        if (source is not null) _ = Session(source);
+        var forkFrom = Optional(p, "forkFrom");
+        if (forkFrom is not null && (!fork || forkFrom != "last-completed"))
+            throw Invalid("forkFrom requires fork:true and the last-completed selector.");
+        if (fork && parent is null) throw Invalid("A fork needs parentSessionKey.");
+        var history = fork ? _histories[parent!] : [];
+        // Tool calls are mid-turn checkpoints, not completed assistant replies.
+        var count = forkFrom == "last-completed"
+            ? history.FindLastIndex(message => message["role"]!.GetValue<string>() == "assistant"
+                && message["stopReason"]?.GetValue<string>() != "toolUse") + 1
+            : history.Count;
         var id = Guid.NewGuid().ToString();
         _sessions[key] = Obj(new { key, sessionId = id, agentId = agent, label = "Fixture: new conversation", displayName = "Fixture: new conversation",
             kind = "direct", channel = "webchat", status = "idle", hasActiveRun = false, isMain = false, model = "browse", modelProvider = "fixture", updatedAt = Now });
-        _histories[key] = fork ? _histories[source!].Select(m => m.DeepClone().AsObject()).ToList() : [];
+        _histories[key] = history.Take(count).Select(m => m.DeepClone().AsObject()).ToList();
         await ChangedAsync(key);
         return new { ok = true, key, sessionId = id };
     }
