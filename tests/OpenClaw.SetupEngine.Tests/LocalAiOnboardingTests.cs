@@ -207,7 +207,8 @@ public sealed class LocalAiOnboardingTests
                 DriverVersion: "615.0", CudaMajorVersion: 13, StableId: "GPU-spark")], false);
         var host = new SetupLocalAiHost(
             () => Task.FromResult(new LocalAiSetupResolution(LocalAiSetupRoute.Recovery,
-                new("gateway", "Managed", 18789, install.Manifest.ModelCatalogId, install.Manifest.RequestedPort))),
+                new("gateway", "Managed", 18789, install.Manifest.ModelCatalogId, install.Manifest.RequestedPort,
+                    PinModelSelection: false))),
             () => registry, () => runtime, _ => Task.FromResult<LocalAiResolvedInstall?>(install),
             (_, _) => Task.FromResult(true), _ => Task.FromResult(hardware),
             () => throw new InvalidOperationException("Observation must not mutate the Gateway."));
@@ -275,7 +276,8 @@ public sealed class LocalAiOnboardingTests
         var inspections = 0;
         var host = new SetupLocalAiHost(
             () => Task.FromResult(new LocalAiSetupResolution(LocalAiSetupRoute.Recovery,
-                new("gateway", "Managed", 18789, model.Id, manifest.RequestedPort))),
+                new("gateway", "Managed", 18789, model.Id, manifest.RequestedPort,
+                    PinModelSelection: false))),
             () => registry, () => runtime, _ => Task.FromResult<LocalAiResolvedInstall?>(install),
             (_, _) => { inspections++; return Task.FromResult(false); }, _ => Task.FromResult(hardware),
             () => throw new InvalidOperationException("Observation must not mutate the Gateway."));
@@ -803,7 +805,8 @@ public sealed class LocalAiOnboardingTests
     private static SetupLocalAiHost Host(GatewayRegistry registry, FakeRuntime runtime,
         Func<LocalAiResolvedInstall?> install, Func<LocalAiGatewayProviderCoordinator>? provider = null) =>
         new(() => Task.FromResult(new LocalAiSetupResolution(LocalAiSetupRoute.Recovery,
-                new("gateway", "Managed", 18789, install()?.Manifest.ModelCatalogId, install()?.Manifest.RequestedPort))),
+                new("gateway", "Managed", 18789, install()?.Manifest.ModelCatalogId,
+                    install()?.Manifest.RequestedPort, PinModelSelection: false))),
             () => registry, () => runtime, _ => Task.FromResult(install()), (_, _) => Task.FromResult(true),
             _ => Task.FromResult(Hardware), provider ?? (() => throw new InvalidOperationException("No route mutation expected.")));
 
@@ -841,7 +844,13 @@ public sealed class LocalAiOnboardingTests
                 new LocalAiGatewayDistroResolver(registry), NullLogger.Instance), NullLogger.Instance);
         var host = new SetupLocalAiHost(
             () => Task.FromResult(new LocalAiSetupResolution(LocalAiSetupRoute.Recovery,
-                new("gateway", "Managed", 18789, install.Manifest.ModelCatalogId, install.Manifest.RequestedPort))),
+                new(
+                    "gateway",
+                    "Managed",
+                    18789,
+                    install.Manifest.ModelCatalogId,
+                    install.Manifest.RequestedPort,
+                    PinModelSelection: false))),
             () => registry, () => runtime, _ => Task.FromResult<LocalAiResolvedInstall?>(install),
             (_, _) => Task.FromResult(true), _ => Task.FromResult(Hardware),
             () => throw new InvalidOperationException("WSL admission must not run."),

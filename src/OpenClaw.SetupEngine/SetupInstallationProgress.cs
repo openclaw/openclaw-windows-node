@@ -74,19 +74,22 @@ public sealed class SetupInstallationProgress
     {
         "validate-distro-path" or "preflight-os" or "preflight-local-ai-hardware" or "preflight-wsl" or
         "preflight-windows-tailscale" or "ensure-wsl-platform" or "validate-local-ai-recovery-gateway" or
-        "preserve-local-ai-recovery-gateway" or "reconcile-local-ai-installation" or
+        "validate-local-ai-recovery-gateway-compatibility" or
+        "reconcile-local-ai-installation" or
         "cleanup-distro" or "cleanup-gateway" or "preflight-port" or "wsl-create" or "wsl-configure" or
         "validate-wsl-lockdown" => SetupInstallationPhase.Prepare,
         "acquire-local-ai-runtime" or "acquire-local-ai-model" or "persist-local-ai-manifest" or
         "start-local-ai-runtime" or "configure-local-ai-wsl-networking" =>
             localAiRecovery ? SetupInstallationPhase.Install : SetupInstallationPhase.Prepare,
         "capture-local-ai-gpu-baseline" or "verify-local-ai-inference" or "verify-local-ai-gpu-load" or
-        "revalidate-local-ai-recovery-gateway" or "install-cli" or "verify-local-ai-wsl" or
+        "revalidate-local-ai-recovery-gateway" or "preserve-local-ai-recovery-gateway" or
+        "install-cli" or "verify-local-ai-wsl" or
         "install-tailscale" or "authorize-tailscale" or "configure-gateway" or
         "configure-local-ai-gateway" or "install-service" => SetupInstallationPhase.Install,
         "start-gateway" or "restart-gateway" or "mint-token" or
         "finalize-tailscale-serve" or "pair-operator" or "pair-node" or "verify-e2e" or
-        "run-wizard" or "windows-node-context" or "start-keepalive" => SetupInstallationPhase.Connect,
+        "run-wizard" or "windows-node-context" or "start-keepalive" or
+        "finalize-local-ai-model-replacement" => SetupInstallationPhase.Connect,
         _ => throw new ArgumentOutOfRangeException(nameof(stepId), stepId, "Installation step needs an explicit presentation phase."),
     };
 }

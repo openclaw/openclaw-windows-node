@@ -67,6 +67,8 @@ internal sealed class SetupLocalAiHost(
         if (ReferenceEquals(_nativeTransport, transport)) _nativeTransport = null;
     }
 
+    public ILocalAiRuntime? BorrowManagedRuntime() => getRuntime();
+
     public GatewayRegistrySnapshot BeginGatewaySetup() => _setupRegistryBaseline =
         (getRegistry() ?? throw new InvalidOperationException("The Gateway registry is unavailable.")).CapturePersistedSnapshot();
 
