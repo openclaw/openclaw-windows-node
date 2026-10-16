@@ -15,7 +15,7 @@ public sealed record GatewayAiSetupRoute(
 public sealed record GatewayAiSetupCompletion(
     SetupCompletionIntent Intent, string GatewayId, string EndpointBinding,
     string ModelRef, string? AgentId, long VerifiedGeneration, string? ModelTarget = null,
-    string? IdentityBinding = null, string? SessionKey = null);
+    string? IdentityBinding = null, string? SessionKey = null, bool RequiresManagedLocalAi = false);
 
 public static class SetupCompletionAuthority
 {

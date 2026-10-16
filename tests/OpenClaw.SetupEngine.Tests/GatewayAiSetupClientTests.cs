@@ -664,6 +664,7 @@ public sealed class GatewayAiSetupClientTests
         await client.VerifyAsync();
         var completion = client.GetVerifiedCompletion();
         Assert.Equal(intent, completion.Intent);
+        Assert.False(completion.RequiresManagedLocalAi);
         Assert.Equal("gateway-a", completion.GatewayId);
         Assert.Equal("agent-a", completion.AgentId);
         Assert.Equal("demo/model", completion.ModelRef);
@@ -706,18 +707,43 @@ public sealed class GatewayAiSetupClientTests
     }
 
     [Theory]
-    [InlineData(SetupCompletionIntent.Dashboard)]
-    [InlineData(SetupCompletionIntent.CustodianOnboarding)]
-    public async Task ConfiguredVerification_PreservesExplicitExistingOrFreshInstallIntent(SetupCompletionIntent intent)
+    [InlineData(SetupCompletionIntent.Dashboard, false)]
+    [InlineData(SetupCompletionIntent.CustodianOnboarding, false)]
+    [InlineData(SetupCompletionIntent.Dashboard, true)]
+    [InlineData(SetupCompletionIntent.CustodianOnboarding, true)]
+    public async Task ConfiguredVerification_PreservesExplicitExistingOrFreshInstallIntent(
+        SetupCompletionIntent intent, bool managedLocalAi)
     {
         var transport = new FakeTransport();
-        var client = new GatewayAiSetupClient(transport, "demo/model", intent);
+        var client = new GatewayAiSetupClient(transport, "demo/model", intent, managedLocalAi);
         transport.Replies.Enqueue(Json(Verified));
         await client.VerifyConfiguredAsync("demo/model");
         Assert.Equal(intent, client.GetVerifiedCompletion().Intent);
+        Assert.Equal(managedLocalAi, client.GetVerifiedCompletion().RequiresManagedLocalAi);
         Assert.Equal("openclaw.setup.verify", Assert.Single(transport.Calls).Method);
         transport.Route = transport.Route with { AgentId = "different-agent" };
         Assert.Throws<InvalidOperationException>(() => client.GetVerifiedCompletion());
+    }
+
+    [Fact]
+    public async Task OrdinarySelectionDoesNotInheritPreviousManagedConfiguredVerification()
+    {
+        var transport = new FakeTransport();
+        var client = new GatewayAiSetupClient(transport, requiresManagedLocalAi: true);
+        transport.Replies.Enqueue(Json(Verified));
+        Assert.True((await client.VerifyConfiguredAsync("demo/model")).Ok);
+        Assert.True(client.GetVerifiedCompletion().RequiresManagedLocalAi);
+        transport.Replies.Enqueue(Json(Detection));
+        await client.DetectAsync();
+        client.SelectCandidate("provider-auto:demo", "demo/model");
+        await client.StartSelectedAsync();
+        transport.Replies.Enqueue(Json(Activated));
+        await client.RefreshAsync();
+        transport.Generation++;
+        transport.Replies.Enqueue(Json(Persisted));
+        transport.Replies.Enqueue(Json(Verified));
+        Assert.True((await client.VerifyAsync()).Ok);
+        Assert.False(client.GetVerifiedCompletion().RequiresManagedLocalAi);
     }
 
     [Fact]

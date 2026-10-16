@@ -330,6 +330,7 @@ public sealed partial class SetupWindow : Window
             if (!string.IsNullOrWhiteSpace(localAiRecoveryModelId))
             {
                 _config.LocalAi.SelectedModelId = localAiRecoveryModelId;
+                _config.LocalAi.InstalledReceiptModelId = localAiRecoveryModelId;
                 _pinLocalAiRecoveryModel = true;
             }
             if (localAiRecoveryRequestedPort is { } requestedPort &&
@@ -531,7 +532,7 @@ public sealed partial class SetupWindow : Window
                 if (!accepted)
                 {
                     NavigateToComplete(false, TimeSpan.Zero, _config.LogPath,
-                        result.Error ?? SetupLocalization.GetString("Onboarding_Native_Failed"));
+                        result.Error ?? SetupLocalization.GetString("Onboarding_NativeConnection_Failed"));
                     return;
                 }
                 SelectGatewayRoute(route, gatewayAvailable: true);
@@ -602,6 +603,7 @@ public sealed partial class SetupWindow : Window
         _config.GatewayPort = target.GatewayPort;
         _config.GatewayUrl = null;
         _config.LocalAi.SelectedModelId = target.ModelCatalogId;
+        _config.LocalAi.InstalledReceiptModelId = target.ModelCatalogId;
         if (target.RequestedLocalAiPort is { } port)
             _config.LocalAi.Port = port;
         _config.LocalAi.Enabled = true;
@@ -818,7 +820,8 @@ public sealed partial class SetupWindow : Window
             if (NativeSetupSession is { } native)
             {
                 await native.CompleteVerifiedAsync(proof, _config.Capabilities, ct,
-                    afterVerification: _localAiHost is INativeSetupLocalAiHost { HasNativeSelection: true } localAi
+                    afterVerification: proof.RequiresManagedLocalAi &&
+                        _localAiHost is INativeSetupLocalAiHost { HasNativeSelection: true } localAi
                         ? (transport, token) => localAi.ReconcileNativeAsync(transport, proof.ModelRef, token)
                         : null);
             }
@@ -826,7 +829,8 @@ public sealed partial class SetupWindow : Window
             {
                 var result = await ApplyWindowsNodeContextAsync();
                 if (!result.IsSuccess) throw new InvalidOperationException(result.Message);
-                if (_localAiHost is INativeSetupLocalAiHost { HasNativeSelection: true } localAi &&
+                if (proof.RequiresManagedLocalAi &&
+                    _localAiHost is INativeSetupLocalAiHost { HasNativeSelection: true } localAi &&
                     _connectionManager is { } manager)
                 {
                     var transport = await GatewayAiSetupTransport.BorrowNativeAsync(

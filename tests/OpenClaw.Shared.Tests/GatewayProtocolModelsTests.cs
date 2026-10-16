@@ -126,6 +126,53 @@ public class GatewayProtocolModelsTests
     }
 
     [Fact]
+    public void BuildSessionCreateParameters_ForkEmitsForkKeys()
+    {
+        var request = new SessionCreateRequest
+        {
+            ParentSessionKey = "agent:main:main",
+            Fork = true,
+            ForkFrom = "last-completed"
+        };
+
+        var parameters = OpenClawGatewayClient.BuildSessionCreateParameters(request);
+        Assert.Equal(true, parameters["fork"]);
+        Assert.Equal("last-completed", parameters["forkFrom"]);
+        Assert.Equal("agent:main:main", parameters["parentSessionKey"]);
+
+        var forkOnly = OpenClawGatewayClient.BuildSessionCreateParameters(
+            new SessionCreateRequest { ParentSessionKey = "agent:main:main", Fork = true });
+        Assert.Equal(true, forkOnly["fork"]);
+        Assert.DoesNotContain("forkFrom", forkOnly);
+
+        var plain = OpenClawGatewayClient.BuildSessionCreateParameters(
+            new SessionCreateRequest { ParentSessionKey = "agent:main:main" });
+        Assert.DoesNotContain("fork", plain);
+        Assert.DoesNotContain("forkFrom", plain);
+    }
+
+    [Fact]
+    public void SessionPatch_ExpectedMarkedUnreadAtAlone_IsNotAChange()
+    {
+        // The read acknowledgement guard is only valid alongside unread:false;
+        // on its own it must not be treated as a mutation.
+        var patch = new SessionPatch { ExpectedMarkedUnreadAt = 5L };
+
+        Assert.False(patch.HasChanges);
+    }
+
+    [Fact]
+    public void SessionPatch_ClearLabelEmitsExplicitNull()
+    {
+        var patch = new SessionPatch { Label = SessionPatch.Clear };
+
+        var payload = patch.ToPayload("agent:main:main");
+
+        Assert.True(payload.ContainsKey("label"));
+        Assert.Null(payload["label"]);
+    }
+
+    [Fact]
     public void ParseSessionCompactResult_PreservesTerminalOutcomeAndMetrics()
     {
         var result = OpenClawGatewayClient.ParseSessionCompactResult(Parse("""
@@ -554,19 +601,26 @@ public class GatewayProtocolModelsTests
             ExecAsk = "on-miss",
             ExecNode = "n",
             SendPolicy = SessionSendPolicy.Allow,
-            GroupActivation = SessionGroupActivation.Mention
+            GroupActivation = SessionGroupActivation.Mention,
+            Label = "l",
+            Pinned = true,
+            Unread = true,
+            Archived = true,
+            ExpectedMarkedUnreadAt = 1L
         };
 
         var keys = patch.ToPayload("agent:main").Keys.OrderBy(k => k).ToArray();
 
         var expected = new[]
         {
-            "elevatedLevel", "execAsk", "execHost", "execNode", "execSecurity",
-            "fastMode", "groupActivation", "key", "model", "reasoningLevel",
-            "responseUsage", "sendPolicy", "thinkingLevel", "traceLevel", "verboseLevel"
+            "archived", "elevatedLevel", "execAsk", "execHost", "execNode", "execSecurity",
+            "expectedMarkedUnreadAt", "fastMode", "groupActivation", "key", "label", "model",
+            "pinned", "reasoningLevel", "responseUsage", "sendPolicy", "thinkingLevel",
+            "traceLevel", "unread", "verboseLevel"
         }.OrderBy(k => k).ToArray();
 
         Assert.Equal(expected, keys);
+
     }
 
     // ── sessions.files.list / get ──

@@ -20,6 +20,9 @@ public enum LocalAiQuiesceReason
 public interface ILocalAiEndpointLifecycle
 {
     bool HasReleasableOwnership => false;
+    /// <summary>Presentation hint only. Start must still revalidate the selected Gateway.</summary>
+    bool RequiresNativeSelection => false;
+    event EventHandler? SelectionChanged { add { } remove { } }
     bool AutomaticRecoveryEnabled => true;
     Task ReleaseOwnershipAsync(CancellationToken cancellationToken)
         => throw new InvalidOperationException("There is no native Local AI ownership to release.");

@@ -476,12 +476,12 @@ public sealed class SetupNativeHandoffTests
         var launcher = new SetupNativeHandoffLauncher(() => gateway,
             (_, _) =>
             {
-                if (expiry) clock.Now += TimeSpan.FromMinutes(6);
+                if (expiry) clock.Now += SetupNativeCompletionTiming.Execution;
                 else gateway = gateway with { Url = "wss://other.example/" };
                 return Task.FromResult(new SetupVerifiedNativeRoute(Proof, Choice.Target.SessionKey));
             },
             (_, _) => throw new InvalidOperationException("Must not open"),
-            failure => Assert.Equal(SetupNativeLaunchFailure.Changed, failure));
+            failure => Assert.Equal(expiry ? SetupNativeLaunchFailure.Invalid : SetupNativeLaunchFailure.Changed, failure));
         Assert.False(await launcher.OpenAsync(store, handle));
         Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle, explicitRetry: true).Status);
     }
@@ -525,7 +525,7 @@ public sealed class SetupNativeHandoffTests
         var launcher = new SetupNativeHandoffLauncher(() => Gateway,
             (_, ct) =>
             {
-                Assert.Equal(TimeSpan.FromMinutes(4.5), clock.Deadline);
+                Assert.Equal(SetupNativeCompletionTiming.Execution, clock.Deadline);
                 clock.Now += TimeSpan.FromSeconds(60 + 120);
                 Assert.False(ct.IsCancellationRequested);
                 return Task.FromResult(new SetupVerifiedNativeRoute(Proof, Choice.Target.SessionKey));
@@ -567,23 +567,120 @@ public sealed class SetupNativeHandoffTests
     }
 
     [Fact]
-    public async Task DelayedAcquisitionCannotExtendTheOriginalReceiptLifetime()
+    public async Task UnacquiredReceiptStillExpiresAfterFiveMinutes()
     {
         using var temp = new TempDirectory();
         var clock = new Clock();
         var store = new SetupDashboardHandoffStore(temp.Path, clock);
         var handle = store.Issue(Choice);
-        clock.Now += TimeSpan.FromMinutes(4);
+        clock.Now += TimeSpan.FromMinutes(5);
         var launcher = new SetupNativeHandoffLauncher(() => Gateway,
+            (_, _) => throw new InvalidOperationException("An expired receipt must not verify."),
+            (_, _) => throw new InvalidOperationException("Must not open."),
+            failure => Assert.Equal(SetupNativeLaunchFailure.Invalid, failure), clock);
+        Assert.False(await launcher.OpenAsync(store, handle));
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle, explicitRetry: true).Status);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SlowPublishedPhasesOpenExactlyOnceWithinTheExecutionLease(bool recoverModel)
+    {
+        using var temp = new TempDirectory();
+        var clock = new ManualTimeProvider();
+        var store = new SetupDashboardHandoffStore(temp.Path, clock);
+        var handle = store.Issue(Choice);
+        var opens = 0;
+        var verifications = 0;
+        var failures = new List<SetupNativeLaunchFailure>();
+        var launcher = new SetupNativeHandoffLauncher(() => Gateway,
+            async (_, ct) =>
+            {
+                verifications++;
+                var phases = recoverModel ? new[] { 200, 200, 200, 145 } : new[] { 175, 100 };
+                foreach (var seconds in phases)
+                {
+                    clock.Advance(TimeSpan.FromSeconds(seconds));
+                    await Task.Yield();
+                    ct.ThrowIfCancellationRequested();
+                }
+                return new SetupVerifiedNativeRoute(Proof, Choice.Target.SessionKey);
+            },
             (_, ct) =>
             {
-                Assert.Equal(TimeSpan.FromMinutes(1), clock.Deadline);
-                clock.Now += TimeSpan.FromMinutes(1);
-                clock.Expire!();
+                clock.Advance(TimeSpan.FromSeconds(25));
                 ct.ThrowIfCancellationRequested();
-                throw new InvalidOperationException("An expired receipt must not verify.");
-            }, (_, _) => throw new InvalidOperationException("Must not open."),
+                opens++;
+                return Task.CompletedTask;
+            }, failures.Add, clock);
+        Assert.True(await launcher.OpenAsync(store, handle));
+        Assert.Empty(failures);
+        Assert.False(await launcher.OpenAsync(store, handle, explicitRetry: true));
+        Assert.Equal(1, verifications);
+        Assert.Equal(1, opens);
+    }
+
+    [Fact]
+    public async Task ExpiredExecutionCannotNavigateAfterAnUncooperativeVerificationReturns()
+    {
+        using var temp = new TempDirectory();
+        var clock = new ManualTimeProvider();
+        var store = new SetupDashboardHandoffStore(temp.Path, clock);
+        var handle = store.Issue(Choice);
+        var result = new TaskCompletionSource<SetupVerifiedNativeRoute>(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken verificationToken = default;
+        var launcher = new SetupNativeHandoffLauncher(() => Gateway,
+            (_, ct) => { verificationToken = ct; return result.Task; },
+            (_, _) => throw new InvalidOperationException("Late verification cannot navigate."),
+            failure => Assert.Equal(SetupNativeLaunchFailure.Invalid, failure), clock);
+        var opening = launcher.OpenAsync(store, handle);
+        clock.Advance(SetupNativeCompletionTiming.Execution);
+        Assert.True(verificationToken.IsCancellationRequested);
+        result.SetResult(new(Proof, Choice.Target.SessionKey));
+        Assert.False(await opening);
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle, explicitRetry: true).Status);
+    }
+
+    [Fact]
+    public async Task NavigationDeadlineCancelsLatePresentationWithoutConsumingOrRenewingReceipt()
+    {
+        using var temp = new TempDirectory();
+        var clock = new ManualTimeProvider();
+        var store = new SetupDashboardHandoffStore(temp.Path, clock);
+        var handle = store.Issue(Choice);
+        var opened = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken navigationToken = default;
+        var launcher = new SetupNativeHandoffLauncher(() => Gateway,
+            (_, _) => Task.FromResult(new SetupVerifiedNativeRoute(Proof, Choice.Target.SessionKey)),
+            (_, ct) => { navigationToken = ct; return opened.Task; },
             failure => Assert.Equal(SetupNativeLaunchFailure.Unavailable, failure), clock);
+        var opening = launcher.OpenAsync(store, handle);
+        clock.Advance(SetupNativeCompletionTiming.Navigation);
+        Assert.True(navigationToken.IsCancellationRequested);
+        opened.SetResult();
+        Assert.False(await opening);
+        Assert.Equal(SetupHandoffAcquisitionStatus.RetryRequired, store.Acquire(handle).Status);
+        using var retry = store.Acquire(handle, explicitRetry: true).Lease!;
+        Assert.Equal(SetupNativeCompletionTiming.Execution - SetupNativeCompletionTiming.Navigation, retry.RemainingLifetime);
+        retry.Consume();
+    }
+
+    [Fact]
+    public async Task BackwardClockDuringVerificationInvalidatesReceiptWithoutOfferingRetry()
+    {
+        using var temp = new TempDirectory();
+        var clock = new Clock();
+        var store = new SetupDashboardHandoffStore(temp.Path, clock);
+        var handle = store.Issue(Choice);
+        var launcher = new SetupNativeHandoffLauncher(() => Gateway,
+            (_, _) =>
+            {
+                clock.Now -= TimeSpan.FromSeconds(1);
+                return Task.FromResult(new SetupVerifiedNativeRoute(Proof, Choice.Target.SessionKey));
+            },
+            (_, _) => throw new InvalidOperationException("Invalid lease must not navigate."),
+            failure => Assert.Equal(SetupNativeLaunchFailure.Invalid, failure), clock);
         Assert.False(await launcher.OpenAsync(store, handle));
         Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle, explicitRetry: true).Status);
     }

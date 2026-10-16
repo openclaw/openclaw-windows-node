@@ -87,8 +87,8 @@ public sealed class ReleaseSigningWorkflowTests
         Assert.Contains("O=Microsoft Corporation", workflow);
         Assert.Contains("-InstallerVCRedistPath vc_redist.x64.exe", workflow);
         Assert.Contains("publish-arm64 -RequireAppLocalVCRuntime -RequireInstallerVCRedist -InstallerVCRedistPath vc_redist.arm64.exe -SkipNativeLoadProbe", workflow);
-        Assert.Contains("/DvcRedist=vc_redist.x64.exe", workflow);
-        Assert.Contains("/DvcRedist=vc_redist.arm64.exe", workflow);
+        Assert.Contains(@"/DvcRedist=$env:GITHUB_WORKSPACE\vc_redist.x64.exe", workflow);
+        Assert.Contains(@"/DvcRedist=$env:GITHUB_WORKSPACE\vc_redist.arm64.exe", workflow);
         Assert.DoesNotContain("copy vc_redist.x64.exe publish-x64", workflow);
         Assert.DoesNotContain("copy vc_redist.x64.exe publish-arm64", workflow);
         Assert.Contains("OpenClawTray-${{ needs.metadata.outputs.semVer }}-win-arm64.zip", workflow);
@@ -115,11 +115,11 @@ public sealed class ReleaseSigningWorkflowTests
     }
 
     [Fact]
-    public void ReleaseWorkflow_PublishesUnsignedStoreMsixForEveryTag()
+    public void ReleaseWorkflow_PublishesSignedDevMsixForEveryTag()
     {
         var workflow = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), ".github", "workflows", "ci.yml"));
 
-        Assert.Contains("Dev packages stay workflow-only.", workflow);
+        Assert.Contains("Dev-signed packages publish on tag releases. Unsigned Store packages stay workflow-only.", workflow);
         Assert.Contains("global-json-file: global.json", workflow);
         Assert.Contains(@".\scripts\Build-StoreMsix.ps1 -Architecture", workflow);
         Assert.Contains(@".\scripts\Export-DevMsixArtifact.ps1", workflow);
@@ -129,22 +129,57 @@ public sealed class ReleaseSigningWorkflowTests
         Assert.Contains("MSIX_BUNDLE_RESULT: ${{ needs.build-msix-bundle.result }}", workflow);
         Assert.Contains(@".\scripts\Build-StoreMsixBundle.ps1", workflow);
         Assert.Contains("name: openclaw-msix-store-unsigned-bundle", workflow);
-        Assert.Contains("needs: [change-classification, metadata, reserve-msix-version, build-x64, build-arm64, build-msix-bundle, ci-gate]", workflow);
+        Assert.Contains("needs: [change-classification, metadata, reserve-msix-version, prepare-release-assets, build-msix-bundle, ci-gate]", workflow);
+        Assert.Contains("needs.prepare-release-assets.result == 'success'", workflow);
         Assert.Contains("needs.build-msix-bundle.result == 'success'", workflow);
         Assert.DoesNotContain("Download win-x64 MSIX artifact", workflow);
         Assert.DoesNotContain("Download win-arm64 MSIX artifact", workflow);
         Assert.DoesNotContain("Sign Release MSIX Packages", workflow);
-        Assert.Contains("pattern: openclaw-msix-store-unsigned-*", workflow);
-        Assert.Contains(@".\scripts\Stage-StoreMsixReleaseAssets.ps1", workflow);
-        Assert.Contains("name: Download Store MSIX release artifacts", workflow);
-        Assert.Contains("name: Stage Store MSIX release assets", workflow);
+        Assert.DoesNotContain("pattern: openclaw-msix-store-unsigned-*", workflow);
+        Assert.Contains(@".\scripts\Stage-DevMsixReleaseAssets.ps1", workflow);
+        Assert.Contains("name: Download x64 signed Dev MSIX release artifact", workflow);
+        Assert.Contains("name: Download ARM64 signed Dev MSIX release artifact", workflow);
+        Assert.Contains("name: Trust signed Dev MSIX certificates for validation", workflow);
+        Assert.Contains(@"$storePath = 'Cert:\LocalMachine\TrustedPeople'", workflow);
+        Assert.DoesNotContain(@"Cert:\CurrentUser\TrustedPeople", workflow);
+        Assert.Contains("name: Stage signed Dev MSIX release assets", workflow);
+        Assert.Contains("name: Remove trusted Dev MSIX certificates", workflow);
+        Assert.Contains("Get-AuthenticodeSignature -LiteralPath $packagePath", File.ReadAllText(
+            Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "scripts", "Stage-DevMsixReleaseAssets.ps1")));
+        Assert.Contains("-ExpectedWorkflowRunId $env:GITHUB_RUN_ID", workflow);
         Assert.DoesNotContain("if: needs.metadata.outputs.isMsixAlpha == 'true'", workflow);
         var releaseStep = ExtractReleaseStep(workflow);
         Assert.Contains("${{ steps.msix_release.outputs.files }}", releaseStep);
         Assert.Contains("${{ steps.msix_release.outputs.notes }}", releaseStep);
         Assert.DoesNotContain("OpenClaw-x64.msix", releaseStep);
         Assert.DoesNotContain("OpenClaw-arm64.msix", releaseStep);
-        Assert.DoesNotContain("openclaw-msix-dev-", releaseStep);
+        Assert.DoesNotContain("OpenClaw.msixbundle", releaseStep);
+    }
+
+    [Fact]
+    public void ReleaseWorkflow_PreparesSignedAssetsBeforeTheFullCiGate()
+    {
+        var workflow = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), ".github", "workflows", "ci.yml"));
+        var preparationStart = workflow.IndexOf("  prepare-release-assets:", StringComparison.Ordinal);
+        var releaseStart = workflow.IndexOf("  release:", StringComparison.Ordinal);
+
+        Assert.True(preparationStart >= 0, "Could not find release preparation job.");
+        Assert.True(releaseStart > preparationStart, "Release publication must follow asset preparation.");
+
+        var preparationJob = workflow[preparationStart..releaseStart];
+        var releaseJob = workflow[releaseStart..];
+        Assert.Contains("needs: [change-classification, metadata, reserve-msix-version, proof-pool-contracts, core-tests, tray-tests, build-x64, build-arm64]", preparationJob);
+        Assert.DoesNotContain("ci-gate", preparationJob);
+        Assert.Contains("name: Sign Installers", preparationJob);
+        Assert.Contains("name: Upload prepared release assets", preparationJob);
+        Assert.Contains("name: openclaw-release-assets", preparationJob);
+
+        Assert.Contains("needs: [change-classification, metadata, reserve-msix-version, prepare-release-assets, build-msix-bundle, ci-gate]", releaseJob);
+        Assert.Contains("needs.prepare-release-assets.result == 'success'", releaseJob);
+        Assert.Contains("name: Download prepared release assets", releaseJob);
+        Assert.Contains("name: openclaw-release-assets", releaseJob);
+        Assert.Contains("name: Create Release", releaseJob);
+        Assert.DoesNotContain("name: Sign Installers", releaseJob);
     }
 
     private static string ExtractReleaseStep(string workflow)

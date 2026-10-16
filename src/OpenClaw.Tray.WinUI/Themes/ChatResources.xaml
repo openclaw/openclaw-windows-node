@@ -11,6 +11,7 @@
             <SolidColorBrush x:Key="ChatTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="ChatSecondaryTextBrush" Color="{ThemeResource TextFillColorSecondary}" />
             <SolidColorBrush x:Key="ChatUserBrush" Color="{ThemeResource SystemAccentColorLight2}" Opacity="0.12" />
+            <SolidColorBrush x:Key="ChatPendingUserBrush" Color="Transparent" />
             <SolidColorBrush x:Key="ChatUserTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="ChatCopySuccessBrush" Color="{ThemeResource SystemFillColorSuccess}" />
             <Style x:Key="ChatRichTextStyle" TargetType="RichTextBlock">
@@ -47,6 +48,7 @@
             <SolidColorBrush x:Key="ChatTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="ChatSecondaryTextBrush" Color="{ThemeResource TextFillColorSecondary}" />
             <SolidColorBrush x:Key="ChatUserBrush" Color="{ThemeResource SystemAccentColorDark1}" Opacity="0.08" />
+            <SolidColorBrush x:Key="ChatPendingUserBrush" Color="Transparent" />
             <SolidColorBrush x:Key="ChatUserTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="ChatCopySuccessBrush" Color="{ThemeResource SystemFillColorSuccess}" />
             <Style x:Key="ChatRichTextStyle" TargetType="RichTextBlock">
@@ -83,6 +85,7 @@
             <SolidColorBrush x:Key="ChatTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatSecondaryTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatUserBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="ChatPendingUserBrush" Color="Transparent" />
             <SolidColorBrush x:Key="ChatUserTextBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
             <SolidColorBrush x:Key="ChatCopySuccessBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <Style x:Key="ChatRichTextStyle" TargetType="RichTextBlock">

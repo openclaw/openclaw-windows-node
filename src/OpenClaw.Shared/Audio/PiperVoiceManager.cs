@@ -396,7 +396,7 @@ public sealed class PiperVoiceManager
             RedirectStandardError = true,
         };
         cancellationToken.ThrowIfCancellationRequested();
-        using var proc = System.Diagnostics.Process.Start(psi)
+        var proc = System.Diagnostics.Process.Start(psi)
             ?? throw new InvalidOperationException("Could not start tar to extract Piper voice");
 
         BoundedProcessResult result;

@@ -129,9 +129,13 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
     public bool ShowAvailabilityInfoBar =>
         (_isAvailabilityKnown && !_isLocalAiAvailable) || _hasAvailabilityProbeError || IsCheckingAvailability;
     public bool IsSetupAvailable => !_isAvailabilityKnown || _isLocalAiAvailable;
-    public bool CanRecheckAvailability => _hasAvailabilityProbeError && _availabilityCancellation is null && !IsBusy;
+    public bool CanRecheckAvailability =>
+        (_hasAvailabilityProbeError || _localAiUnavailableReason?.Kind == LocalInferenceUnavailableReasonKind.InsufficientDiskSpace) &&
+        _availabilityCancellation is null && !IsBusy;
     public LocalInferenceUnavailableReason? LocalAiUnavailableReason => _localAiUnavailableReason;
-    public bool CanStart => !IsBusy && HasManagedInstall &&
+    public LocalInferenceProfileRecommendation? ProfileRecommendation { get; private set; }
+    public bool RequiresNativeSelection => _runtime.RequiresNativeSelection;
+    public bool CanStart => !IsBusy && !RequiresNativeSelection && HasManagedInstall &&
         (_runtimeSnapshot.State == LocalAiRuntimeState.Stopped ||
             (_runtimeSnapshot.State == LocalAiRuntimeState.Failed &&
                 _runtimeSnapshot.Ownership != LocalAiOwnership.CompanionManaged));
@@ -141,7 +145,8 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
             (HasManagedInstall &&
                 _runtimeSnapshot.Ownership == LocalAiOwnership.CompanionManaged &&
                 _runtimeSnapshot.State is LocalAiRuntimeState.Starting or LocalAiRuntimeState.Healthy));
-    public bool CanRestart => !IsBusy && _runtimeSnapshot.Ownership == LocalAiOwnership.CompanionManaged &&
+    public bool CanRestart => !IsBusy && !RequiresNativeSelection &&
+        _runtimeSnapshot.Ownership == LocalAiOwnership.CompanionManaged &&
         _runtimeSnapshot.State == LocalAiRuntimeState.Healthy;
     public bool ShowReleaseOwnership => _runtime.HasReleasableOwnership;
     public bool CanReleaseOwnership => !IsBusy && ShowReleaseOwnership &&
@@ -172,6 +177,7 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
         if (!_subscribed)
         {
             _runtime.StateChanged += OnRuntimeStateChanged;
+            _runtime.SelectionChanged += OnSelectionChanged;
             _gatewaySource.Changed += OnGatewayChanged;
             _subscribed = true;
         }
@@ -188,6 +194,7 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
         if (_subscribed)
         {
             _runtime.StateChanged -= OnRuntimeStateChanged;
+            _runtime.SelectionChanged -= OnSelectionChanged;
             _gatewaySource.Changed -= OnGatewayChanged;
             _subscribed = false;
         }
@@ -244,6 +251,7 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
         _isLocalAiAvailable = false;
         _hasAvailabilityProbeError = false;
         _localAiUnavailableReason = null;
+        ProfileRecommendation = null;
         var cancellation = new CancellationTokenSource();
         // Assign the new probe slot before notifying, so IsCheckingAvailability (which reads
         // _availabilityCancellation) already reports true in this notification. Notifying first
@@ -310,7 +318,8 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
             // A machine with no managed receipt still reports unavailable, and a receipt whose
             // model is unknown or no longer fits reports that model's own reason.
             LocalInferenceEligibilityResult eligibility =
-                LocalInferenceEligibility.EvaluateForConfiguredAvailability(hardware, installedModelId);
+                LocalInferenceEligibility.EvaluateForConfiguredAvailability(hardware, installedModelId,
+                    hasInstalledReceipt: !string.IsNullOrWhiteSpace(installedModelId));
             if (eligibility.FailureCode == LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete)
             {
                 // Incomplete facts (a CUDA read that came back partial or transient) are
@@ -334,7 +343,7 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
                 isAvailabilityKnown: true,
                 isLocalAiAvailable: isAvailable,
                 hasAvailabilityProbeError: false,
-                unavailableReason);
+                unavailableReason, LocalInferenceProfileRecommendation.From(eligibility));
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
@@ -367,7 +376,8 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
         bool isAvailabilityKnown,
         bool isLocalAiAvailable,
         bool hasAvailabilityProbeError,
-        LocalInferenceUnavailableReason? unavailableReason)
+        LocalInferenceUnavailableReason? unavailableReason,
+        LocalInferenceProfileRecommendation? recommendation = null)
     {
         if (_disposed || !IsActive)
         {
@@ -385,7 +395,7 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
         if (_dispatcher.HasThreadAccess)
         {
             ApplyAvailabilityResult(
-                cancellation, isAvailabilityKnown, isLocalAiAvailable, hasAvailabilityProbeError, unavailableReason);
+                cancellation, isAvailabilityKnown, isLocalAiAvailable, hasAvailabilityProbeError, unavailableReason, recommendation);
             return;
         }
 
@@ -400,7 +410,7 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
                 return;
             }
             ApplyAvailabilityResult(
-                cancellation, isAvailabilityKnown, isLocalAiAvailable, hasAvailabilityProbeError, unavailableReason);
+                cancellation, isAvailabilityKnown, isLocalAiAvailable, hasAvailabilityProbeError, unavailableReason, recommendation);
         });
         if (!enqueued)
         {
@@ -443,7 +453,8 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
         bool isAvailabilityKnown,
         bool isLocalAiAvailable,
         bool hasAvailabilityProbeError,
-        LocalInferenceUnavailableReason? unavailableReason)
+        LocalInferenceUnavailableReason? unavailableReason,
+        LocalInferenceProfileRecommendation? recommendation = null)
     {
         if (!IsCurrentAvailabilityProbe(cancellation))
         {
@@ -455,6 +466,7 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
         _isLocalAiAvailable = isLocalAiAvailable;
         _hasAvailabilityProbeError = hasAvailabilityProbeError;
         _localAiUnavailableReason = unavailableReason;
+        ProfileRecommendation = recommendation;
         OnPropertyChanged(null);
         cancellation.Dispose();
     }
@@ -523,6 +535,8 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
 
     private void OnRuntimeStateChanged(object? sender, LocalAiRuntimeSnapshotChangedEventArgs e) =>
         ApplyOnUiThread(() => ApplyRuntimeSnapshot(e.Snapshot));
+    private void OnSelectionChanged(object? sender, EventArgs e) =>
+        ApplyOnUiThread(() => OnPropertyChanged(null));
     private void OnGatewayChanged(object? sender, PermissionsRuntimeSourceChangedEventArgs e) =>
         ApplyOnUiThread(() => ApplyGatewaySnapshot(e.Snapshot.ConnectionSnapshot));
 

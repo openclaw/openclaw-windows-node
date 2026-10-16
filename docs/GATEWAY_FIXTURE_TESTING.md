@@ -57,7 +57,7 @@ orders work; this is deliberately not sequential packet playback.
 .\scripts\test-gateway-fixture.ps1 -AppPath $app
 ```
 
-For screenshots, use the already installed Windows App CLI:
+For screenshots, use owned-window native capture (no Windows App CLI installation is needed):
 
 ```powershell
 .\scripts\test-gateway-fixture.ps1 -AppPath $app -Screenshots
@@ -97,6 +97,34 @@ call cannot prevent failure reporting and owned-process cleanup.
 
 Inspect the captured PNGs when claiming visual proof. UI Automation alone does
 not detect every overlap, clipping or theme defect.
+
+## Cron editor proof
+
+`GatewayScenario.CreateCronEditing()` explicitly opts into in-memory `cron.add`
+and `cron.update`, with listed, absent, unlisted, and interval schedules.
+`cron.list` returns the updated jobs; nothing is scheduled or executed.
+The normal browse scenario still rejects cron writes.
+
+The focused proof uses the existing isolated profile, real Gateway client and
+cron form. Its native title click verifies the owning process, foreground window,
+physical point and UIA target before sending input. Run it only with exclusive
+desktop access:
+
+```powershell
+$env:OPENCLAW_RUN_GATEWAY_FIXTURE_UI = '1'
+$env:OPENCLAW_GATEWAY_FIXTURE_APP = (Resolve-Path $app).Path
+$env:OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS = "$env:TEMP\openclaw-cron-proof"
+$env:OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS = '1'
+$env:OPENCLAW_REPO_ROOT = (Get-Location).Path
+dotnet test .\tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj -r win-arm64 -p:Platform=ARM64 -p:DevBuild=false --filter 'FullyQualifiedName~GatewayFixtureUiTests.CronEditor_' --logger 'console;verbosity=normal'
+```
+
+On x64 use `-r win-x64 -p:Platform=x64`. Keep the selected executable on the
+tested commit. The two tests must execute, not skip. They check timezone
+preservation and explicit replacement, switching jobs and schedule kinds,
+and resetting for a new job. Artifacts include owned-window editor captures
+and the exact synthetic schedules read back after accepted saves. This proves
+the app/fixture wire path, not production Gateway persistence or scheduling.
 
 ## Known runtime regression
 
@@ -142,10 +170,36 @@ The important controls are:
 | --- | --- |
 | `OPENCLAW_GATEWAY_FIXTURE=1` | Explicit host-side-effect suppression; normal isolated runs retain normal behavior. |
 | `OPENCLAW_TRAY_DATA_DIR` | Synthetic settings, registry, identities, MCP token, logs, caches and instance mutex. |
-| `OPENCLAW_TRAY_LOCAL_DATA_DIR` | Separate synthetic setup/Local AI state. |
+| `OPENCLAW_TRAY_LOCALAPPDATA_DIR` | Isolated local root; setup appends `OpenClawTray`. |
+| `OPENCLAW_TRAY_LOCAL_DATA_DIR` | Legacy direct setup path, matching the local root with `OpenClawTray` appended. |
 | `OPENCLAW_TRAY_APPDATA_DIR` | Isolated roaming fallback root. |
 | `OPENCLAW_MCP_PORT` | Dedicated, non-default MCP port. |
 | Runtimeconfig `OpenClaw.GatewayFixtureIsolationVersion=1` | Preflight rejects old binaries before they can execute unguarded startup paths. |
+
+The fixture guard validates the effective local path using SetupEngine's root
+precedence. A supplied modern local root must be absolute and resolve to the same
+directory as the validated legacy direct path; mismatches fail before startup.
+Legacy launchers without a modern root still require an absolute direct path.
+These checks do not change path resolution or side effects outside explicit fixture
+mode. The launcher retains ownership and reparse-point cleanup checks.
+
+The opt-in native setup warning regression uses a synthetic `native-setup`
+scenario and an actual disposable signing identity and handoff receipt.
+`--post-setup-launch` exercises the product authority check and model-verification
+protocol, then connection loss, recovery with the same unsent composer draft,
+changed identity, and ordinary navigation.
+Model replies are synthetic; this is not real Gateway or inference proof.
+Captured frames use `PrintWindow(PW_RENDERFULLCONTENT)` on the owned App HWND,
+reject blank content and cropped asserted controls, and record SHA256 plus UIA
+evidence beside each PNG.
+
+Composer/controller tests separately cover `/new` releasing the setup binding
+before async session creation, reporting the selected session back to the page,
+and keeping the subsequent send on that session. Mounted UI tests cover
+binding invalidation and voice activation waiting for visible, verified readiness.
+Temporary unavailability retains draft/attachments but cancels capture; actual
+authority failure still disposes the host. The synthetic full-app scenario does
+not claim a real Gateway session-creation or microphone proof.
 
 WSL keepalive/startup cleanup and Windows autostart writes are explicitly
 guarded. A loopback URL alone is not enough to prevent the regular keepalive

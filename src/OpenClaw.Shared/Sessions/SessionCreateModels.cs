@@ -8,6 +8,8 @@ public sealed class SessionCreateRequest
     public string? ParentSessionKey { get; init; }
     public bool EmitCommandHooks { get; init; } = true;
     public bool? SucceedsParent { get; init; }
+    public bool Fork { get; init; }
+    public string? ForkFrom { get; init; }
 }
 
 /// <summary>Typed result of <c>sessions.create</c>.</summary>

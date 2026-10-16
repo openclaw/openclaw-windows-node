@@ -240,34 +240,78 @@ internal static class SetupPairingCredentialPolicy
         ctx.SharedGatewayToken ?? ctx.BootstrapToken;
 }
 
+/// <summary>
+/// Windows-side counterpart of <see cref="StartGatewayStep.WaitForHealthAsync"/>: confirms the
+/// gateway is reachable through the URL Companion pairs with, and waits while it still reports
+/// startup in progress there. It sends no credentials; callers run
+/// <see cref="PairOperatorStep.EnsurePairingEndpointTrustedAsync"/> before any credential handoff.
+/// </summary>
 internal static class WindowsGatewayReachability
 {
+    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
+
     public static async Task<StepResult> VerifyAsync(SetupContext ctx, string pairingRole, CancellationToken ct)
     {
-        try
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+        var probeUri = BuildStartupProbeUri(ctx.GatewayUrl!);
+        var timeoutSeconds = ctx.Config.Gateway.HealthTimeoutSeconds;
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(timeoutSeconds);
+
+        while (true)
         {
-            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-            var healthUri = BuildHealthUri(ctx.GatewayUrl!);
-            var resp = await http.GetAsync(healthUri, ct);
-            ctx.Logger.Debug($"Gateway health check: HTTP {(int)resp.StatusCode}");
-            return StepResult.Ok();
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            return StepResult.Fail($"Gateway not reachable before {pairingRole} pairing: {ex.Message}");
+            int status;
+            bool isJson;
+            string body;
+            try
+            {
+                using var resp = await http.GetAsync(probeUri, ct);
+                status = (int)resp.StatusCode;
+                isJson = string.Equals(
+                    resp.Content.Headers.ContentType?.MediaType, "application/json", StringComparison.OrdinalIgnoreCase);
+                body = status == 503 && isJson ? await resp.Content.ReadAsStringAsync(ct) : "";
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                return StepResult.Fail($"Gateway not reachable before {pairingRole} pairing: {ex.Message}");
+            }
+
+            if (status == 200 && isJson)
+            {
+                ctx.Logger.Info("Gateway startup probe from Windows reports started (/startupz HTTP 200)");
+                return StepResult.Ok();
+            }
+
+            if (status != 503 || !isJson)
+            {
+                // Gateways before 2026.8.1 and remote ingress (Tailscale) do not serve the probe;
+                // any HTTP answer still proves Windows can reach the endpoint.
+                ctx.Logger.Debug($"Gateway reachable from Windows (HTTP {status}); /startupz is not a startup probe on this endpoint");
+                return StepResult.Ok();
+            }
+
+            var detail = StartGatewayStep.BoundedProbeBody(body);
+            if (DateTimeOffset.UtcNow >= deadline)
+            {
+                return StepResult.Fail(
+                    $"Gateway did not finish starting before {pairingRole} pairing within {timeoutSeconds}s " +
+                    $"(last /startupz from Windows: HTTP 503 {detail})");
+            }
+
+            ctx.Logger.Debug($"Gateway still starting as seen from Windows (/startupz HTTP 503 {detail})");
+            await Task.Delay(PollInterval, ct);
         }
     }
 
-    internal static Uri BuildHealthUri(string gatewayUrl)
+    internal static Uri BuildStartupProbeUri(string gatewayUrl)
     {
         var gatewayUri = new Uri(gatewayUrl);
         var scheme = gatewayUri.Scheme.Equals("wss", StringComparison.OrdinalIgnoreCase)
             ? Uri.UriSchemeHttps
             : Uri.UriSchemeHttp;
-        return new UriBuilder(gatewayUri) { Scheme = scheme, Port = gatewayUri.Port }.Uri;
+        return new UriBuilder(gatewayUri) { Scheme = scheme, Port = gatewayUri.Port, Path = "/startupz", Query = "" }.Uri;
     }
 }

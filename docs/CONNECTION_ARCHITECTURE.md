@@ -85,7 +85,12 @@ Legacy Windows artifact receipts alone do not authorize background WSL startup.
 `LocalAiGatewayLifecycle` admits automatic WSL startup only with one pinned,
 explicit setup-managed WSL owner and no native binding, active native Gateway or
 staged native selection. Explicit startup revalidates ownership before runtime
-mutation. An unbound runtime with no attempted route write does not report pending
+mutation. Without a native binding, an active native Gateway or staged native
+selection also blocks explicit Start and Restart, even when a pinned WSL owner
+exists. Local AI settings disable these actions and direct the user to choose
+Use Local AI for the native Gateway or select the owning WSL Gateway in Connection.
+Stop remains available for a running or unresolved route.
+An unbound runtime with no attempted route write does not report pending
 route reconciliation; a durable native binding or an actual uncertain write still
 does. Native setup can review damaged legacy artifacts without a WSL Gateway.
 Repair blocked by owned runtime or pending routing directs users to reconnect the
@@ -109,6 +114,9 @@ explicit Start or Release, or observation loads a repaired installation receipt.
 Loading that receipt resumes read-only status checks, not automatic startup.
 Canceled or rejected Release retains the ownership and stopped intent; successful
 Release lets observation report the missing installation.
+Setup cancellation releases its selected ownership through the same guarded
+withdrawal checks. Once that binding is gone, read-only refresh also resumes
+normal installation observation without restarting the router.
 This receiptless confirmation also blocks if an originally Companion-added allowlist
 entry now contains user customizations. Restore the original installation receipt
 from an external backup and use the normal Stop path, which can preserve the edited
@@ -128,6 +136,43 @@ A reopened, verified installation with an owned failed listener or unresolved
 route offers **Recover and use Local AI**, not artifact Repair. It follows the
 same guarded endpoint-recovery and inference path. Edited provider, primary or
 Companion-added allowlist fields are not adopted or overwritten.
+
+Setup also observes the current profile's durable native binding through
+`LocalAiGatewayLifecycle`, so a pending receipt or changed revision can expose
+recovery even before the in-memory runtime has rediscovered a failure. This
+read-only assessment checks the authenticated route and versioned configuration;
+it never starts a listener, settles a receipt, reads or creates an API credential,
+or performs inference. Explicit Use still revalidates and executes the existing
+guarded recovery. The assessment is not publication authority.
+
+A portable artifact receipt, matching endpoint or successful previous inference
+does not prove this profile owns an existing provider. Missing, invalid or
+mismatched native ownership keeps management blocked and directs the user to the
+original Companion profile and Gateway. No receipt or credential import occurs.
+Independently detected models remain usable through the ordinary Gateway choice;
+that choice does not restore Companion management. Native duplicate suppression
+requires a usable same-owner managed choice, not just a matching artifact model.
+Pending ownership and changed revisions keep the independently detected model
+visible alongside recovery: neither proves compatibility with current provider
+or primary-model fields. Only a confirmed same-owner revision can suppress that
+duplicate. Connection loss during inspection retains the native target and
+unavailable guidance so **Check again** can refresh it after reconnection;
+caller cancellation still propagates without publishing stale observation.
+Verified completion carries an explicit `RequiresManagedLocalAi` flag from
+`LocalAiOnboardingUse.Expected`, not provider/model equality or destination intent.
+Only that managed choice joins runtime recovery and reconciles the native Local AI
+receipt during finalization. Ordinary detected choices still reverify the exact
+Gateway, identity, session and model through inference, but do not acquire managed
+runtime dependencies from a coincidentally matching or pending binding. Fresh
+verification and restart receipts preserve this flag. Refresh after an uncertain
+managed Use rebuilds the verification client from the retained expectation without
+replaying Use, including the consumed install-and-use continuation.
+An unavailable configuration read blocks managed setup until a fresh check
+succeeds, even on a first installation; unknown provider ownership is not treated
+as an empty Gateway. Ordinary detected-model choices remain independent.
+File-repair guidance blocks review only while the runtime is owned or its route
+is unresolved. Once those conditions clear, the existing guarded Repair flow
+remains available; retaining the durable binding alone does not prohibit repair.
 
 Withdrawal can preserve unrelated configuration edits using a fresh CAS revision.
 An exact unredacted credential or successful inference through the same provider
@@ -190,6 +235,9 @@ A floating-style subtle reopen button reserves a dedicated 56 DIP row at
 the content's top-left below the titlebar, never covering hosted hit targets.
 The pane toggle retains a 40 DIP target and 16 DIP glyph in both states; focus
 moves to the surviving toggle. Pane changes do not remount chat or reset drafts.
+Both Workspace toggle states and the Settings toggle use the native
+`SubtleButtonStyle` with zero padding for icon-only content. The style's default
+text-button padding must not squeeze the glyph inside the fixed 40 DIP target.
 The companion uses a native TitleBar titled OpenClaw Settings with shared claw
 artwork. Search, Back, and Forward live beside the toggle in its stable sidebar
 toolbar. The native pane reserves 56 DIP above its items, including in compact mode.
@@ -751,6 +799,13 @@ When **another** device or node requests pairing, the gateway broadcasts `device
 `PairingApprovalCoordinator` (tray) reconciles those snapshots through the pure `PairingApprovalQueue` (OpenClaw.Connection) into add/resolve deltas, de-duplicating, suppressing already-decided requests, and filtering out the local node's own pending request (handled by the auto-approve path above). For genuinely new requests - when `ShowPairingApprovalDialog` is enabled and the operator holds pairing scope - it raises `ApprovalRequested`, and the app presents a focused **`PairingApprovalDialog`** plus an awareness toast (with a "Review" action). The dialog shows the requester's identity and the **operator scopes being granted** (mapped to friendly text by `PairingScopeDescriptions`), with Approve / Reject / Decide-later. Approve is briefly disabled on each new request to prevent click-through. Approve/Reject call the `IOperatorGatewayClient.{Device,Node}Pair{Approve,Reject}Async` RPCs; the queue advances and the dialog closes when empty. The existing Connections-page "Pending approvals" banner remains as the passive fallback when the dialog is disabled. Pure queue/scope logic is unit-tested in `OpenClaw.Connection.Tests`.
 
 ## SSH tunnel integration
+
+The Connection page and Connection Status validate remote and local forward
+ports with `SshForwardPorts` before entering the direct-connect transaction.
+Both fields require an integer from 1 through 65535. Blank or invalid input
+shows the existing field-specific error without substituting default ports or
+changing the active connection. SSH command-line range validation remains a
+separate downstream guard.
 
 `SshTunnelService` manages an SSH local port-forward process and implements `ISshTunnelManager` directly for the connection manager.
 

@@ -6,6 +6,7 @@ using OpenClaw.Shared.Inference.Catalog;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
 using Xunit.Abstractions;
 
@@ -3423,6 +3424,43 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public async Task CreateWslInstance_RetriesTransientFreshDistroListTimeout()
+    {
+        var installed = false;
+        var postInstallListAttempts = 0;
+        var commands = new FakeCommandRunner(args =>
+        {
+            if (args.SequenceEqual(["--list", "--quiet"]))
+            {
+                if (!installed)
+                    return Ok("");
+                postInstallListAttempts++;
+                return postInstallListAttempts == 1
+                    ? new CommandResult(-1, "", "", TimeSpan.FromSeconds(30), TimedOut: true)
+                    : Ok("OpenClawGateway\n");
+            }
+            if (args.Contains("--install"))
+            {
+                installed = true;
+                return Ok("Installing Ubuntu-24.04\n");
+            }
+            if (args.SequenceEqual(["--list", "--verbose"]))
+                return Ok("  NAME              STATE           VERSION\n* OpenClawGateway   Stopped         2\n");
+            if (args.SequenceEqual(["-d", "OpenClawGateway", "-u", "root", "--", "sh", "-lc", "id -u && test -d / && echo OPENCLAW_FRESH_WSL_READY"]))
+                return Ok("0\nOPENCLAW_FRESH_WSL_READY\n");
+
+            return Fail($"unexpected args: {string.Join(' ', args)}");
+        });
+        var ctx = CreateContext(commands: commands);
+
+        var result = await new CreateWslInstanceStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Equal(2, postInstallListAttempts);
+        Assert.DoesNotContain(commands.Calls, call => call.Arguments.Contains("--unregister"));
+    }
+
+    [Fact]
     public async Task CreateWslInstance_BoundsPersistentFreshDistroRootProbeTimeouts()
     {
         var installed = false;
@@ -4346,7 +4384,8 @@ public class SetupStepsTests : IDisposable
             (_, command, _) => command switch
             {
                 var value when value.Contains("config set gateway.reload.mode off") => Ok(),
-                var value when value.Contains("curl -s") => Ok("200"),
+                var value when value.Contains("/startupz") =>
+                    Ok("{\"ok\":true,\"status\":\"started\"}\n200 application/json; charset=utf-8"),
                 _ => Fail($"Unexpected command: {command}"),
             });
         var ctx = CreateContext(commands: commands);
@@ -6276,6 +6315,106 @@ public class SetupStepsTests : IDisposable
 
         Assert.Equal(StepOutcome.Failed, result.Outcome);
         Assert.Contains("not reachable", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private const string StartupStartingJson =
+        """{"ok":false,"status":"starting","pendingReason":"startup-sidecars"}""";
+
+    [Fact]
+    public async Task WindowsReachability_WaitsWhileStartupzReportsStarting()
+    {
+        using var server = new ScriptedHttpServer(request => request == 1
+            ? (503, "application/json; charset=utf-8", StartupStartingJson)
+            : (200, "application/json; charset=utf-8", """{"ok":true,"status":"started"}"""));
+        var ctx = CreateContext(new SetupConfig { GatewayPort = server.Port });
+
+        var result = await WindowsGatewayReachability.VerifyAsync(ctx, "operator", CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Equal(["/startupz", "/startupz"], server.Paths);
+    }
+
+    [Fact]
+    public async Task WindowsReachability_FailsWithPendingReasonWhenStartupNeverCompletes()
+    {
+        using var server = new ScriptedHttpServer(_ => (503, "application/json; charset=utf-8", StartupStartingJson));
+        var config = new SetupConfig { GatewayPort = server.Port };
+        config.Gateway.HealthTimeoutSeconds = 1;
+        var ctx = CreateContext(config);
+
+        var result = await WindowsGatewayReachability.VerifyAsync(ctx, "operator", CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.StartsWith("Gateway did not finish starting before operator pairing within 1s", result.Message);
+        Assert.Contains("startup-sidecars", result.Message);
+    }
+
+    [Fact]
+    public async Task WindowsReachability_AcceptsEndpointsWithoutTheStartupProbe()
+    {
+        using var server = new ScriptedHttpServer(_ => (404, "text/plain", "Not Found"));
+        var ctx = CreateContext(new SetupConfig { GatewayPort = server.Port });
+
+        var result = await WindowsGatewayReachability.VerifyAsync(ctx, "node", CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Single(server.Paths);
+    }
+
+    /// <summary>Loopback HTTP/1.1 responder; the script maps the 1-based request number to a response.</summary>
+    private sealed class ScriptedHttpServer : IDisposable
+    {
+        private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
+        private readonly Func<int, (int Status, string ContentType, string Body)> _script;
+        private readonly List<string> _paths = [];
+
+        public ScriptedHttpServer(Func<int, (int Status, string ContentType, string Body)> script)
+        {
+            _script = script;
+            _listener.Start();
+            Port = ((IPEndPoint)_listener.LocalEndpoint).Port;
+            _ = AcceptLoopAsync();
+        }
+
+        public int Port { get; }
+
+        public IReadOnlyList<string> Paths { get { lock (_paths) return _paths.ToArray(); } }
+
+        private async Task AcceptLoopAsync()
+        {
+            while (true)
+            {
+                TcpClient tcp;
+                try { tcp = await _listener.AcceptTcpClientAsync(); }
+                catch { return; }
+                using (tcp)
+                {
+                    var stream = tcp.GetStream();
+                    var request = new StringBuilder();
+                    var buffer = new byte[4096];
+                    while (!request.ToString().Contains("\r\n\r\n"))
+                    {
+                        var read = await stream.ReadAsync(buffer);
+                        if (read <= 0) break;
+                        request.Append(Encoding.ASCII.GetString(buffer, 0, read));
+                    }
+                    int number;
+                    lock (_paths)
+                    {
+                        _paths.Add(request.ToString().Split(' ')[1]);
+                        number = _paths.Count;
+                    }
+                    var (status, contentType, body) = _script(number);
+                    var payload = Encoding.UTF8.GetBytes(body);
+                    var head = $"HTTP/1.1 {status} X\r\nContent-Type: {contentType}\r\n" +
+                        $"Content-Length: {payload.Length}\r\nConnection: close\r\n\r\n";
+                    await stream.WriteAsync(Encoding.ASCII.GetBytes(head));
+                    await stream.WriteAsync(payload);
+                }
+            }
+        }
+
+        public void Dispose() => _listener.Stop();
     }
 
     [Fact]

@@ -21,13 +21,13 @@ public static class ChatSurfaceResolver
         string? currentChatUrl,
         string? resolvedChatUrl)
     {
-        var useLegacy = DebugChatSurfaceOverrides.ResolveUseLegacy(
-            GetOverride(target),
-            useLegacyWebChatSetting);
-
+        var useLegacy = UseLegacyWebChat(target, useLegacyWebChatSetting);
         var urlChanged = !string.Equals(resolvedChatUrl, currentChatUrl, StringComparison.Ordinal);
         return new ChatSurfaceDecision(useLegacy, resolvedChatUrl, urlChanged);
     }
+
+    public static bool UseLegacyWebChat(ChatSurfaceTarget target, bool useLegacyWebChatSetting) =>
+        DebugChatSurfaceOverrides.ResolveUseLegacy(GetOverride(target), useLegacyWebChatSetting);
 
     public static string? BuildChatUrl(string? gatewayUrl, string? token)
     {

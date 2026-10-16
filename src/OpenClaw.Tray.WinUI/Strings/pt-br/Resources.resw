@@ -384,6 +384,12 @@
   <data name="Update_Title_Failed" xml:space="preserve">
     <value>Não foi possível verificar se há atualizações</value>
   </data>
+  <data name="Update_Message_Unavailable" xml:space="preserve">
+    <value>Automatic updates are unavailable because an updater component could not be loaded. You can keep using OpenClaw and download updates from the official releases page.</value>
+  </data>
+  <data name="Update_ManualDownload" xml:space="preserve">
+    <value>Open official releases</value>
+  </data>
   <data name="Update_Message_Failed" xml:space="preserve">
     <value>Algo deu errado ao verificar se há atualizações.
 
@@ -796,9 +802,6 @@ Use uma destas opções:
   </data>
   <data name="ExecApproval_ArmHint" xml:space="preserve">
     <value>A opção Permitir ficará disponível em instantes</value>
-  </data>
-  <data name="ExecApproval_ScrollHint" xml:space="preserve">
-    <value>Role até o final do comando antes de permitir sua execução</value>
   </data>
   <data name="ExecApproval_ConfusableWarning" xml:space="preserve">
     <value>Este comando mistura conjuntos de caracteres e pode não ser exibido como parece. Verifique-o cuidadosamente.</value>
@@ -3070,6 +3073,9 @@ Use uma destas opções:
   <data name="Chat_Composer_QueuedMessageFailed" xml:space="preserve">
     <value>Falhou</value>
   </data>
+  <data name="Chat_Timeline_Pending" xml:space="preserve">
+    <value>Pendente</value>
+  </data>
   <data name="Chat_Composer_QueuedMessageCancel" xml:space="preserve">
     <value>Cancelar mensagem em fila</value>
   </data>
@@ -3349,6 +3355,9 @@ Os comandos são bloqueados enquanto o sandboxing está indisponível porque o b
   </data>
   <data name="Chat_Error_SendFailedFormat" xml:space="preserve">
     <value>Falha ao enviar: {0}</value>
+  </data>
+  <data name="Chat_Error_ConnectionDroppedBeforeGatewayAcceptedMessage" xml:space="preserve">
+    <value>A conexão caiu antes que o Gateway aceitasse esta mensagem.</value>
   </data>
   <data name="Chat_Notification_AbortFailed" xml:space="preserve">
     <value>Falha ao abortar</value>
@@ -4962,10 +4971,10 @@ Os controles de arquivo, rede, área de transferência, tempo limite e aprovaç�
     <value>Abrir configuração inicial</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Title" xml:space="preserve">
-    <value>Instalação MSIX detectada</value>
+    <value>Limpeza do Gateway</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Message" xml:space="preserve">
-    <value>Remover o OpenClaw pelas Configurações do Windows → Aplicativos NÃO removerá o Gateway local (distro WSL, imagem de disco). Use Remover Gateway local abaixo PRIMEIRO e só depois desinstale o OpenClaw.</value>
+    <value>Desinstalar o OpenClaw nas Configurações do Windows remove automaticamente os Gateways gerenciados. Use Remover Gateway Local abaixo para remover um Gateway e manter o aplicativo.</value>
   </data>
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>Remove a distro WSL (OpenClawGateway), sua imagem de disco, a entrada de inicialização automática, e apaga as credenciais do Gateway. Seu token MCP é preservado. A integração será reiniciada.</value>
@@ -7099,6 +7108,7 @@ O binário wxc-exec não pôde ser localizado. {1} Se esta for uma build de dese
   <data name="LocalAiPage_EndpointLabel.Text" xml:space="preserve"><value>Ponto de extremidade</value></data>
   <data name="LocalAiPage_ProcessLabel.Text" xml:space="preserve"><value>Processo</value></data>
   <data name="LocalAiPage_StartButton.Content" xml:space="preserve"><value>Iniciar roteador</value></data>
+  <data name="LocalAiPage_NativeSelectionRequired" xml:space="preserve"><value>Antes de iniciar ou reiniciar o Local AI, escolha Usar Local AI na configuração do Gateway nativo selecionado ou selecione o Gateway WSL responsável em Conexão.</value></data>
   <data name="LocalAiPage_StopButton.Content" xml:space="preserve"><value>Parar</value></data>
   <data name="LocalAiPage_RestartButton.Content" xml:space="preserve"><value>Reiniciar</value></data>
   <data name="LocalAiPage_OpenLogsButton.Content" xml:space="preserve"><value>Abrir logs</value></data>
@@ -7269,24 +7279,26 @@ O binário wxc-exec não pôde ser localizado. {1} Se esta for uma build de dese
   <data name="Onboarding_AiSetup_InvalidInput" xml:space="preserve"><value>O provedor não aceitou esta resposta. Revise a etapa atual e tente novamente.</value></data>
   <data name="Onboarding_NativeConnection_Title" xml:space="preserve"><value>Conectar a um Gateway</value></data>
   <data name="Onboarding_NativeConnection_Description" xml:space="preserve"><value>Verifique a conexão sem salvar. Avançar verifica novamente e salva este Gateway antes de revisar o acesso deste PC.</value></data>
-  <data name="Onboarding_Native_Address" xml:space="preserve"><value>Endereço do Gateway</value></data>
-  <data name="Onboarding_Native_Code" xml:space="preserve"><value>Código de configuração</value></data>
-  <data name="Onboarding_Native_Token" xml:space="preserve"><value>Token compartilhado (em vez de um código)</value></data>
-  <data name="Onboarding_Native_Ssh" xml:space="preserve"><value>Túnel SSH</value></data>
-  <data name="Onboarding_Native_SshDescription" xml:space="preserve"><value>Opcional. Usa suas chaves e configurações existentes do OpenSSH. Mantenha o endereço do Gateway da conexão salva ou do código de configuração. A porta remota do Gateway é encaminhada a partir do host SSH.</value></data>
-  <data name="Onboarding_Native_SshEnabled" xml:space="preserve"><value>Usar um túnel SSH</value></data>
-  <data name="Onboarding_Native_SshHost" xml:space="preserve"><value>Host SSH</value></data>
-  <data name="Onboarding_Native_SshUser" xml:space="preserve"><value>Usuário SSH</value></data>
-  <data name="Onboarding_Native_SshPort" xml:space="preserve"><value>Porta SSH</value></data>
-  <data name="Onboarding_Native_RemotePort" xml:space="preserve"><value>Porta remota do Gateway</value></data>
-  <data name="Onboarding_Native_LocalPort" xml:space="preserve"><value>Porta local do túnel</value></data>
+  <data name="Onboarding_NativeConnection_Address" xml:space="preserve"><value>Endereço do Gateway</value></data>
+  <data name="Onboarding_NativeConnection_Code" xml:space="preserve"><value>Código de configuração</value></data>
+  <data name="Onboarding_NativeConnection_Token" xml:space="preserve"><value>Token compartilhado (em vez de um código)</value></data>
+  <data name="Onboarding_NativeConnection_Ssh" xml:space="preserve"><value>Túnel SSH</value></data>
+  <data name="Onboarding_NativeConnection_SshDescription" xml:space="preserve"><value>Opcional. Usa suas chaves e configurações existentes do OpenSSH. Mantenha o endereço do Gateway da conexão salva ou do código de configuração. A porta remota do Gateway é encaminhada a partir do host SSH.</value></data>
+  <data name="Onboarding_NativeConnection_SshEnabled" xml:space="preserve"><value>Usar um túnel SSH</value></data>
+  <data name="Onboarding_NativeConnection_SshHost" xml:space="preserve"><value>Host SSH</value></data>
+  <data name="Onboarding_NativeConnection_SshUser" xml:space="preserve"><value>Usuário SSH</value></data>
+  <data name="Onboarding_NativeConnection_SshPort" xml:space="preserve"><value>Porta SSH</value></data>
+  <data name="Onboarding_NativeConnection_RemotePort" xml:space="preserve"><value>Porta remota do Gateway</value></data>
+  <data name="Onboarding_NativeConnection_LocalPort" xml:space="preserve"><value>Porta local do túnel</value></data>
   <data name="Onboarding_NativeConnection_Back" xml:space="preserve"><value>Voltar</value></data>
-  <data name="Onboarding_Native_Check" xml:space="preserve"><value>Verificar conexão</value></data>
-  <data name="Onboarding_Native_Next" xml:space="preserve"><value>Avançar</value></data>
+  <data name="Onboarding_NativeConnection_Check" xml:space="preserve"><value>Verificar conexão</value></data>
+  <data name="Onboarding_NativeConnection_Next" xml:space="preserve"><value>Avançar</value></data>
   <data name="Onboarding_NativeConnection_Cancel" xml:space="preserve"><value>Cancelar</value></data>
   <data name="Onboarding_Native_Checking" xml:space="preserve"><value>Verificando o pacote Gateway instalado e seus aliases de execução...</value></data>
-  <data name="Onboarding_Native_Checked" xml:space="preserve"><value>Conexão verificada. Nada foi salvo. Avançar verificará novamente e salvará este Gateway.</value></data>
-  <data name="Onboarding_Native_Failed" xml:space="preserve"><value>Não foi possível confirmar o resultado da conexão. Revise o Gateway ativo em Companion Settings antes de continuar.</value></data>
+  <data name="Onboarding_NativeConnection_Checking" xml:space="preserve"><value>Verificando a conexão com o Gateway...</value></data>
+  <data name="Onboarding_NativeConnection_Cancelled" xml:space="preserve"><value>Tentativa de conexão cancelada.</value></data>
+  <data name="Onboarding_NativeConnection_Checked" xml:space="preserve"><value>Conexão verificada. Nada foi salvo. Avançar verificará novamente e salvará este Gateway.</value></data>
+  <data name="Onboarding_NativeConnection_Failed" xml:space="preserve"><value>Não foi possível confirmar o resultado da conexão. Revise o Gateway ativo em Companion Settings antes de continuar.</value></data>
   <data name="Onboarding_V2_AlternativesTitle.Text" xml:space="preserve"><value>Escolha outra forma de configuração</value></data>
   <data name="Onboarding_V2_ExistingRoute.Header" xml:space="preserve"><value>Gateway existente</value></data>
   <data name="Onboarding_V2_ExistingRoute.Description" xml:space="preserve"><value>Use uma conexão salva ou existente. Sem instalação do WSL.</value></data>
@@ -7505,6 +7517,11 @@ O binário wxc-exec não pôde ser localizado. {1} Se esta for uma build de dese
   <data name="Onboarding_Ready_Opening" xml:space="preserve"><value>Abrindo a página escolhida...</value></data>
   <data name="Onboarding_Ready_OwnershipChanged" xml:space="preserve"><value>Não foi possível verificar o Gateway, agente ou modelo principal. Volte à configuração da IA e verifique novamente.</value></data>
   <data name="Onboarding_Ready_Timeout" xml:space="preserve"><value>A verificação expirou ou foi cancelada. Escolha novamente para tentar ou volte à configuração da IA.</value></data>
+  <data name="Onboarding_Ready_TimeoutPageDrain" xml:space="preserve"><value>O fechamento da página anterior de configuração da IA excedeu o tempo limite. Tente novamente ou volte à configuração da IA.</value></data>
+  <data name="Onboarding_Ready_TimeoutConnection" xml:space="preserve"><value>A conexão com o Gateway nativo excedeu o tempo limite. Verifique se o Gateway está pronto e tente novamente.</value></data>
+  <data name="Onboarding_Ready_TimeoutModelRecovery" xml:space="preserve"><value>A espera pela recuperação da IA local excedeu o tempo limite. Verifique o status da IA local e tente novamente.</value></data>
+  <data name="Onboarding_Ready_TimeoutModelVerification" xml:space="preserve"><value>A verificação do modelo de IA selecionado excedeu o tempo limite. Verifique se o modelo consegue responder e tente novamente.</value></data>
+  <data name="Onboarding_Ready_TimeoutGatewayStartup" xml:space="preserve"><value>A inicialização do Gateway nativo ou a confirmação da porta de escuta excedeu o tempo limite. Verifique o status do Gateway e tente novamente.</value></data>
   <data name="Onboarding_Ready_VerifyingFailed" xml:space="preserve"><value>A verificação da IA está indisponível no momento. Confira a conexão com o Gateway e a disponibilidade do modelo e tente novamente ou volte à configuração da IA.</value></data>
   <data name="Onboarding_Ready_FinalizingFailed" xml:space="preserve"><value>Não foi possível concluir a configuração do Windows. O destino não foi aberto. Tente novamente ou volte à configuração da IA.</value></data>
   <data name="Onboarding_Ready_OpeningFailed" xml:space="preserve"><value>O aplicativo não conseguiu abrir o destino escolhido. Escolha novamente para tentar. Nenhum login de canal foi iniciado.</value></data>
@@ -7779,7 +7796,6 @@ Suas configurações, gateway, arquivos e modelos permanecem onde estão.</value
   <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>Iniciar e verificar o Gateway</value></data>
   <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>Tentar configurar novamente</value></data>
   <data name="Onboarding_Native_Preview" xml:space="preserve"><value>Somente visualização. Nenhum pacote será instalado e nenhum Gateway será iniciado.</value></data>
-  <data name="Onboarding_Native_Review.Text" xml:space="preserve"><value>Ao selecionar Configurar Gateway, você autoriza o WinGet a instalar o pacote Gateway ausente pela Microsoft Store e aceita os contratos do pacote e da fonte Store. O Companion verifica o pacote, prepara um perfil dedicado e abre a configuração do Gateway. A entrada no provedor permanece interativa. Este caminho não instala WSL, IA local nem Tailscale.</value></data>
   <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>Esses recursos do Windows ficam disponíveis após o Modo Nó se conectar e emparelhar com o Gateway. As permissões do Windows e as aprovações de comandos continuam sendo aplicáveis.</value></data>
   <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>Gateway nativo configurado</value></data>
   <data name="Onboarding_Native_CapabilitySummary" xml:space="preserve"><value>{0}. Você pode alterar essas escolhas nas configurações do Companion.</value></data>
@@ -7869,6 +7885,44 @@ Suas configurações, gateway, arquivos e modelos permanecem onde estão.</value
   <data name="WorkspaceShell_SessionUnsupported" xml:space="preserve"><value>This gateway does not support creating sessions. Update the gateway to use this action.</value></data>
   <data name="WorkspaceShell_TrayUnavailable" xml:space="preserve"><value>The Windows tray menu is not available.</value></data>
   <data name="WorkspaceShell_LinkFailed" xml:space="preserve"><value>Windows could not open the link.</value></data>
+  <data name="WorkspaceShell_SessionMenu_LastActiveFormat" xml:space="preserve"><value>Last active {0}</value></data>
+  <data name="WorkspaceShell_SessionMenu_Pin" xml:space="preserve"><value>Pin session</value></data>
+  <data name="WorkspaceShell_SessionMenu_Unpin" xml:space="preserve"><value>Unpin session</value></data>
+  <data name="WorkspaceShell_SessionMenu_Rename" xml:space="preserve"><value>Rename…</value></data>
+  <data name="WorkspaceShell_SessionMenu_MarkUnread" xml:space="preserve"><value>Mark as unread</value></data>
+  <data name="WorkspaceShell_SessionMenu_MarkRead" xml:space="preserve"><value>Mark as read</value></data>
+  <data name="WorkspaceShell_SessionMenu_Archive" xml:space="preserve"><value>Archive session</value></data>
+  <data name="WorkspaceShell_SessionMenu_Unarchive" xml:space="preserve"><value>Unarchive session</value></data>
+  <data name="WorkspaceShell_SessionMenu_Fork" xml:space="preserve"><value>Fork conversation</value></data>
+  <data name="WorkspaceShell_SessionMenu_Copy" xml:space="preserve"><value>Copy</value></data>
+  <data name="WorkspaceShell_SessionMenu_CopyKey" xml:space="preserve"><value>Copy session key</value></data>
+  <data name="WorkspaceShell_SessionMenu_CopyId" xml:space="preserve"><value>Copy session ID</value></data>
+  <data name="WorkspaceShell_SessionMenu_CopyMarkdown" xml:space="preserve"><value>Copy as Markdown</value></data>
+  <data name="WorkspaceShell_SessionMenu_Reset" xml:space="preserve"><value>Reset session…</value></data>
+  <data name="WorkspaceShell_SessionMenu_Compact" xml:space="preserve"><value>Compact session…</value></data>
+  <data name="WorkspaceShell_SessionMenu_Export" xml:space="preserve"><value>Export transcript…</value></data>
+  <data name="WorkspaceShell_SessionMenu_Delete" xml:space="preserve"><value>Delete…</value></data>
+  <data name="WorkspaceShell_SessionRename_Title" xml:space="preserve"><value>Rename session</value></data>
+  <data name="WorkspaceShell_SessionRename_Body" xml:space="preserve"><value>Leave blank to use the default title.</value></data>
+  <data name="WorkspaceShell_SessionRename_Save" xml:space="preserve"><value>Save</value></data>
+  <data name="WorkspaceShell_SessionPinned" xml:space="preserve"><value>Pinned</value></data>
+  <data name="WorkspaceShell_SessionUnread" xml:space="preserve"><value>Unread</value></data>
+  <data name="WorkspaceShell_SessionWorking" xml:space="preserve"><value>Working</value></data>
+  <data name="SessionsPage_Archived" xml:space="preserve"><value>Arquivadas</value></data>
+  <data name="SessionsPage_ArchivedEmpty" xml:space="preserve"><value>Nenhuma sessão arquivada.</value></data>
+  <data name="SessionsPage_ArchivedUnavailable" xml:space="preserve"><value>As sessões arquivadas não estão disponíveis neste Gateway.</value></data>
+  <data name="SessionsPage_Unarchive" xml:space="preserve"><value>Desarquivar sessão</value></data>
+  <data name="WorkspaceShell_SessionActionFailed" xml:space="preserve"><value>The gateway didn't accept the request. Try again.</value></data>
+  <data name="WorkspaceShell_SessionConnectionChanged" xml:space="preserve"><value>The Gateway connection changed. Refresh sessions to check the outcome before trying again.</value></data>
+  <data name="WorkspaceShell_SessionActionTimedOut" xml:space="preserve"><value>The Gateway did not respond in time. The outcome is unknown. Refresh the session before trying again.</value></data>
+  <data name="WorkspaceShell_SelectConversation.Text" xml:space="preserve"><value>Select a conversation or create a new one to start chatting.</value></data>
+  <data name="WorkspaceShell_ForkFailed" xml:space="preserve"><value>The gateway could not fork this conversation.</value></data>
+  <data name="WorkspaceShell_ForkUnsupported" xml:space="preserve"><value>This gateway does not support forking conversations. Update the gateway to use this action.</value></data>
+  <data name="WorkspaceShell_CopyFailed" xml:space="preserve"><value>Windows could not copy to the clipboard.</value></data>
+  <data name="WorkspaceShell_CopyEmpty" xml:space="preserve"><value>This session has no messages to copy.</value></data>
+  <data name="WorkspaceShell_HistoryUnsupported" xml:space="preserve"><value>This gateway does not support reading transcripts. Update the gateway to use this action.</value></data>
+  <data name="WorkspaceShell_ExportEmpty" xml:space="preserve"><value>This session has no transcript yet.</value></data>
+  <data name="WorkspaceShell_ExportDone" xml:space="preserve"><value>Saved {0} messages to {1}.</value></data>
   <data name="WorkspaceShell_AgentsEmpty" xml:space="preserve"><value>Connect and refresh to load agents. Manage agent configuration in the companion.</value></data>
   <data name="WorkspaceShell_SelectAgentFirst" xml:space="preserve"><value>Select an agent from the Agents page to view its details.</value></data>
   <data name="WorkspaceShell_AgentSummary" xml:space="preserve"><value>{0} · {1} conversations</value></data>
@@ -7941,4 +7995,24 @@ Suas configurações, gateway, arquivos e modelos permanecem onde estão.</value
   <data name="AgentCreation_PermissionRequired" xml:space="preserve"><value>Conecte-se a um gateway com a permissão operator.admin para criar um agente.</value></data>
   <data name="AgentCreation_Failed" xml:space="preserve"><value>Não foi possível confirmar a criação do agente. Feche esta caixa de diálogo e atualize os agentes antes de tentar novamente.</value></data>
   <data name="Onboarding_AiSetup_LocalRepairRequiresStop" xml:space="preserve"><value>Abra as configurações do Local AI, reconecte o Gateway original e pare o Local AI com sucesso antes de reparar seus arquivos. Se houver recuperação de rota pendente, conclua-a primeiro. Preserve o registro de propriedade e os modelos baixados.</value></data>
+  <data name="Onboarding_AiSetup_LocalState_ManagementBlocked" xml:space="preserve"><value>O gerenciamento pelo Companion está indisponível.</value></data>
+  <data name="Onboarding_AiSetup_LocalOwnershipMissing" xml:space="preserve"><value>Este perfil não possui um comprovante de propriedade do provedor de IA local existente. Se o Companion o criou em uma tentativa anterior, reabra o perfil original do Companion e escolha Recuperar e usar IA local. Nada foi alterado. Usar um modelo detectado não restaura o gerenciamento pelo Companion.</value></data>
+  <data name="Onboarding_AiSetup_LocalOwnershipInvalid" xml:space="preserve"><value>A propriedade salva da IA local, o modelo ou a configuração do gateway não corresponde mais. No perfil original do Companion, revise o gateway original e suas configurações de modelo, incluindo entradas alteradas na lista de modelos permitidos. Mantenha o comprovante de propriedade; não copie credenciais nem substitua o provedor.</value></data>
+  <data name="Onboarding_AiSetup_LocalOwnershipUnavailable" xml:space="preserve"><value>Não foi possível verificar a propriedade ou a configuração do gateway original. Reconecte esse gateway e verifique novamente. Nada foi alterado.</value></data>
+  <data name="Onboarding_AiSetup_LocalOwnershipFiles" xml:space="preserve"><value>Os arquivos da instalação de IA local gerenciada precisam de reparo. Nas configurações de IA local, pare o runtime e resolva a rota do gateway original antes de reparar os arquivos. Mantenha o comprovante de propriedade.</value></data>
+  <data name="ChatPage_SetupUnavailable" xml:space="preserve">
+    <value>O Gateway verificado durante a configuração não está conectado. Confira Conexão ou verifique novamente quando ele estiver disponível.</value>
+  </data>
+  <data name="ChatPage_SetupAuthorityUnconfirmed" xml:space="preserve">
+    <value>Não foi possível confirmar o Gateway e o agente verificados durante a configuração. Abra Conexão para verificá-los.</value>
+  </data>
+  <data name="ChatPage_SetupRenderingFailed" xml:space="preserve">
+    <value>Não foi possível exibir Chat. Verifique novamente. Se o problema persistir, abra Diagnóstico.</value>
+  </data>
+  <data name="ChatPage_SetupCheckAgain.Content" xml:space="preserve">
+    <value>Verificar novamente</value>
+  </data>
+  <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>O perfil preferido {0} não cabe neste hardware. A configuração pode usar {1} com {2:N0} tokens de contexto. Revise este perfil na configuração antes de instalar.</value></data>
+  <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>Este perfil requer pelo menos {0} de RAM do sistema.</value></data>
+  <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>Este perfil requer pelo menos {0} livres nos volumes do cache de modelos e do mecanismo.</value></data>
 </root>

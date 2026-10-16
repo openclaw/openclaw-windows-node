@@ -87,7 +87,17 @@ internal sealed class SetupDashboardHandoffStore
                 pending.ExpiresUtc - pending.IssuedUtc != Lifetime)
                 return new(SetupHandoffAcquisitionStatus.Invalid);
             var now = _time.GetUtcNow();
-            if (now < pending.IssuedUtc || now >= pending.ExpiresUtc)
+            var executionStarted = pending.ExecutionStartedUtc;
+            var executionExpires = pending.ExecutionExpiresUtc;
+            if ((executionStarted is null) != (executionExpires is null) ||
+                (executionStarted is { } started &&
+                (started < pending.IssuedUtc || started >= pending.ExpiresUtc || now < started ||
+                 executionExpires - started != SetupNativeCompletionTiming.Execution)) ||
+                (pending.State == "ready" && executionStarted is not null) ||
+                (pending.State is "retry" or "inflight" && executionStarted is null))
+                return new(SetupHandoffAcquisitionStatus.Invalid);
+            var expires = executionExpires ?? pending.ExpiresUtc;
+            if (now < pending.IssuedUtc || now >= expires)
             {
                 File.Delete(PendingPath);
                 return new(SetupHandoffAcquisitionStatus.Invalid);
@@ -98,7 +108,14 @@ internal sealed class SetupDashboardHandoffStore
             // admit either unstarted ready or settled retry, never abandoned inflight.
             if (pending.State != "ready" && !(explicitRetry && pending.State == "retry"))
                 return new(SetupHandoffAcquisitionStatus.Invalid);
-            var inFlight = pending with { State = "inflight" };
+            // Admission remains five minutes. Only the first exclusive acquisition
+            // starts execution time; retries and another process cannot renew it.
+            var inFlight = pending with
+            {
+                State = "inflight",
+                ExecutionStartedUtc = executionStarted ?? now,
+                ExecutionExpiresUtc = executionExpires ?? now + SetupNativeCompletionTiming.Execution
+            };
             Write(inFlight);
             var lease = new Lease(this, gate, inFlight);
             gate = null!;
@@ -149,7 +166,8 @@ internal sealed class SetupDashboardHandoffStore
 
     internal sealed record PendingRecord(
         string RunId, string HandleHash, GatewayAiSetupCompletion Completion,
-        DateTimeOffset IssuedUtc, DateTimeOffset ExpiresUtc, string State, SetupNativeTarget? NativeTarget = null);
+        DateTimeOffset IssuedUtc, DateTimeOffset ExpiresUtc, string State, SetupNativeTarget? NativeTarget = null,
+        DateTimeOffset? ExecutionStartedUtc = null, DateTimeOffset? ExecutionExpiresUtc = null);
 
     internal sealed class Lease : IDisposable
     {
@@ -160,9 +178,10 @@ internal sealed class SetupDashboardHandoffStore
         private bool _disposed;
         public GatewayAiSetupCompletion Completion => _pending.Completion;
         public SetupNativeTarget? NativeTarget => _pending.NativeTarget;
-        public bool IsExpired => _owner._time.GetUtcNow() >= _pending.ExpiresUtc ||
-            _owner._time.GetUtcNow() < _pending.IssuedUtc;
-        public TimeSpan RemainingLifetime => _pending.ExpiresUtc - _owner._time.GetUtcNow();
+        private DateTimeOffset ExecutionExpiresUtc => _pending.ExecutionExpiresUtc!.Value;
+        public bool IsExpired => _owner._time.GetUtcNow() >= ExecutionExpiresUtc ||
+            _owner._time.GetUtcNow() < _pending.ExecutionStartedUtc!.Value;
+        public TimeSpan RemainingLifetime => ExecutionExpiresUtc - _owner._time.GetUtcNow();
 
         internal Lease(SetupDashboardHandoffStore owner, FileStream gate, PendingRecord pending)
         {

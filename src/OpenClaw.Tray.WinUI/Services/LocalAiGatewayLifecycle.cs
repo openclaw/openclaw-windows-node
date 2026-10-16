@@ -31,6 +31,8 @@ internal sealed class LocalAiGatewayLifecycle(
     public bool IsNativeMode => _store.Exists || _registeredTarget is not null ||
         getRegistry()?.GetActive()?.NativePackageFamilyName is not null;
     public bool CanStartWslAutomatically => !IsNativeMode && _wslOwner.Resolve().Success;
+    public bool RequiresNativeSelection => !_store.Exists && IsNativeMode;
+    public event EventHandler? SelectionChanged;
     public bool HasNativeBinding => _store.Exists;
     public bool HasReleasableOwnership => _store.Exists;
     public bool AutomaticRecoveryEnabled => _store.Load()?.AutomaticRecoveryEnabled ?? true;
@@ -41,6 +43,74 @@ internal sealed class LocalAiGatewayLifecycle(
         recovery.ModelRef == LocalAiGatewayProviderDefinition.BuildPrimaryModel(install)
             ? recovery.Endpoint.Port : null;
     public void EndEndpointRecovery() => _endpointRecovery = null;
+
+    public async Task<NativeLocalAiOwnershipState> ObserveOwnershipAsync(
+        GatewayRecord record, IGatewayAiSetupTransport transport, LocalAiResolvedInstall? install, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        LocalAiNativeBinding? binding;
+        try { binding = _store.Load(); }
+        catch (Exception ex) when (ex is InvalidDataException or JsonException or ArgumentException)
+        {
+            logger.Warn("Local AI ownership discovery found an invalid saved receipt.");
+            return NativeLocalAiOwnershipState.InvalidReceipt;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            logger.Warn("Local AI ownership discovery could not read the saved receipt.");
+            return NativeLocalAiOwnershipState.Unavailable;
+        }
+        try
+        {
+            var target = NativeLocalAiGatewayTarget.Capture(record, transport.Route);
+            if (binding is not null)
+            {
+                RequireBinding(binding, target);
+                if (install is not null && binding.ModelRef != LocalAiGatewayProviderDefinition.BuildPrimaryModel(install))
+                    return NativeLocalAiOwnershipState.DifferentOwner;
+            }
+            var current = await new LocalAiGatewayRpcConfigurationTransport(target, transport).CaptureAsync(ct)
+                .ConfigureAwait(false);
+            // A concurrent receipt writer invalidates presentation evidence, not just mutation admission.
+            if (_store.Load() != binding) return NativeLocalAiOwnershipState.Unavailable;
+            var config = JsonNode.Parse(current.Config.GetRawText())!;
+            if (binding is null)
+            {
+                var primary = config["agents"]?["defaults"]?["model"]?["primary"]?.GetValue<string>();
+                return config["models"]?["providers"]?["llamacpp"] is not null ||
+                    primary?.StartsWith("llamacpp/", StringComparison.OrdinalIgnoreCase) == true
+                    ? NativeLocalAiOwnershipState.MissingReceipt : NativeLocalAiOwnershipState.Unselected;
+            }
+            try { RequireOwnedAllowlist(binding, config); }
+            catch (InvalidOperationException)
+            {
+                logger.Warn("Local AI ownership discovery found an edited owned model allowlist entry.");
+                return NativeLocalAiOwnershipState.InvalidReceipt;
+            }
+            // Provider authentication and revision reconciliation remain explicit Use operations.
+            return binding.Pending || binding.ConfigHash != current.Hash
+                ? NativeLocalAiOwnershipState.RecoveryRequired : NativeLocalAiOwnershipState.SameOwner;
+        }
+        catch (LocalAiSelectionRejectedException)
+        {
+            return NativeLocalAiOwnershipState.DifferentOwner;
+        }
+        catch (GatewayConnectionLostException) when (!ct.IsCancellationRequested)
+        {
+            logger.Warn("Local AI ownership discovery lost its Gateway connection. Reconnect and check again.");
+            return NativeLocalAiOwnershipState.Unavailable;
+        }
+        catch (Exception ex) when (ex is InvalidDataException or JsonException)
+        {
+            logger.Warn("Local AI ownership discovery found invalid ownership evidence.");
+            return NativeLocalAiOwnershipState.InvalidReceipt;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException or TimeoutException)
+        {
+            logger.Warn($"Local AI ownership discovery is unavailable ({ex.GetType().Name}).");
+            return NativeLocalAiOwnershipState.Unavailable;
+        }
+    }
 
     public async Task SetAutomaticRecoveryEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
     {
@@ -57,6 +127,7 @@ internal sealed class LocalAiGatewayLifecycle(
             throw new InvalidOperationException("The native Local AI ownership receipt is not safe to release.");
         await CaptureWithdrawnAsync(binding, ct).ConfigureAwait(false);
         _store.Delete();
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public Task PrepareUnownedStopAsync(CancellationToken ct)
@@ -140,6 +211,7 @@ internal sealed class LocalAiGatewayLifecycle(
     {
         _registeredTarget = NativeLocalAiGatewayTarget.Capture(record, transport.Route);
         _registeredTransport = transport;
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void Release(IGatewayAiSetupTransport transport)
@@ -148,10 +220,13 @@ internal sealed class LocalAiGatewayLifecycle(
         _endpointRecovery = null;
         _registeredTransport = null;
         _registeredTarget = null;
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void Attach(GatewayConnectionManager manager, ILocalAiRuntime runtime)
     {
+        if (getRegistry() is { } registry)
+            registry.Changed += (_, _) => SelectionChanged?.Invoke(this, EventArgs.Empty);
         manager.StateChanged += (_, snapshot) =>
         {
             lock (_recoveryGate)
@@ -176,6 +251,8 @@ internal sealed class LocalAiGatewayLifecycle(
 
     public Task WaitForRuntimeAsync(GatewayAiSetupCompletion expected, ILocalAiRuntime runtime, CancellationToken ct)
     {
+        // A matching receipt does not turn ordinary detected-model use into managed use.
+        if (!expected.RequiresManagedLocalAi) return Task.CompletedTask;
         var binding = _store.Load();
         if (binding is null || binding.GatewayId != expected.GatewayId || binding.ModelRef != expected.ModelRef)
             return Task.CompletedTask;
@@ -315,6 +392,7 @@ internal sealed class LocalAiGatewayLifecycle(
             target.Route.IdentityBinding!, model, previous, current.Hash,
             allowlist is JsonObject entries && !entries.ContainsKey(model),
             AutomaticRecoveryEnabled: false));
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public Task<LocalAiEndpointLifecycleResult> QuiesceAsync(LocalAiResolvedInstall install,

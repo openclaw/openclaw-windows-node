@@ -8,8 +8,14 @@ public sealed class SetupNativeCompletionCoordinator(
     Func<CancellationToken, Task> drain,
     Func<GatewayAiSetupCompletion, CancellationToken, Task<SetupVerifiedNativeRoute>> verify,
     Func<GatewayAiSetupCompletion, CancellationToken, Task> finalize,
-    Func<SetupNativeCompletion, CancellationToken, Task> publish) : IDisposable
+    Func<SetupNativeCompletion, CancellationToken, Task> publish,
+    TimeProvider? timeProvider = null) : IDisposable
 {
+    internal static readonly TimeSpan DrainTimeout = TimeSpan.FromSeconds(30);
+    // Authorization may start the owned runtime. Provider writes and finalization
+    // are not part of this verification deadline.
+    internal static readonly TimeSpan VerificationTimeout =
+        SetupNativeCompletionTiming.Connection + SetupNativeCompletionTiming.ModelVerification;
     private readonly CancellationTokenSource _lifetime = new();
     private int _busy;
     private bool _disposed;
@@ -34,13 +40,12 @@ public sealed class SetupNativeCompletionCoordinator(
         var lifetime = _lifetime.Token;
         try
         {
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(lifetime);
-            timeout.CancelAfter(TimeSpan.FromSeconds(30));
             Stage = SetupNativeCompletionStage.Verifying;
             StateChanged?.Invoke();
-            await drain(timeout.Token);
-            var current = await verify(Proof, timeout.Token);
-            timeout.Token.ThrowIfCancellationRequested();
+            await SetupNativeCompletionTiming.RunAsync(async ct => { await drain(ct); return true; },
+                DrainTimeout, SetupNativeCompletionPhase.PageDrain, lifetime, timeProvider);
+            var current = await SetupNativeCompletionTiming.RunAsync(ct => verify(Proof, ct),
+                VerificationTimeout, SetupNativeCompletionPhase.Verification, lifetime, timeProvider);
             SetupNativeVerification.RequireSame(Proof, current);
             if (!_finalized)
             {

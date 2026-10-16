@@ -5,7 +5,14 @@ namespace OpenClaw.SetupEngine;
 
 public enum LocalAiOnboardingState
 {
-    Checking, SetUp, StartAndUse, Use, Repair, BusyGpu, Unsupported, Unknown, UnsupportedGateway, Working, Reconcile
+    Checking, SetUp, StartAndUse, Use, Repair, BusyGpu, Unsupported, Unknown, UnsupportedGateway, Working, Reconcile,
+    ManagementBlocked
+}
+
+/// <summary>Read-only discovery evidence, never authorization to mutate or adopt a route.</summary>
+public enum NativeLocalAiOwnershipState
+{
+    Unselected, SameOwner, RecoveryRequired, MissingReceipt, InvalidReceipt, DifferentOwner, Unavailable
 }
 
 public enum LocalAiSetupStage
@@ -40,7 +47,8 @@ public sealed record LocalAiOnboardingSnapshot(
     string? ModelName = null,
     string? ReasonKey = null,
     LocalInferenceEligibilityResult? Eligibility = null,
-    bool HasInstallationEvidence = false)
+    bool HasInstallationEvidence = false,
+    NativeLocalAiOwnershipState? NativeOwnership = null)
 {
     // Only a fresh, conclusively incompatible device loses this choice. Configuration,
     // catalog and driver failures still need attention, as does any known installation.
@@ -53,14 +61,37 @@ public sealed record LocalAiOnboardingSnapshot(
 
     public bool CanReview => Target is not null && State is LocalAiOnboardingState.SetUp or LocalAiOnboardingState.Repair;
     public bool CanUse => Target is not null && State is LocalAiOnboardingState.StartAndUse or LocalAiOnboardingState.Use or LocalAiOnboardingState.Reconcile;
+    // A changed revision can contain incompatible provider edits. Keep ordinary
+    // model use available until explicit recovery confirms the managed route.
+    public bool ReplacesDetectedChoice => CanUse && (Target?.IsNative != true ||
+        NativeOwnership == NativeLocalAiOwnershipState.SameOwner);
     public bool CanRefresh => State is LocalAiOnboardingState.BusyGpu or LocalAiOnboardingState.Unknown or
-        LocalAiOnboardingState.Unsupported or LocalAiOnboardingState.UnsupportedGateway or LocalAiOnboardingState.Working;
+        LocalAiOnboardingState.Unsupported or LocalAiOnboardingState.UnsupportedGateway or LocalAiOnboardingState.Working or
+        LocalAiOnboardingState.ManagementBlocked;
 
     public static LocalAiOnboardingSnapshot Project(
         SetupLocalAiTarget? target, LocalInferenceEligibilityResult? eligibility,
         LocalAiResolvedInstall? install, bool filesVerified, bool receiptDamaged,
-        LocalAiRuntimeSnapshot? runtime, string? receiptIdentity = null, bool installationKnown = false)
+        LocalAiRuntimeSnapshot? runtime, string? receiptIdentity = null, bool installationKnown = false,
+        NativeLocalAiOwnershipState? nativeOwnership = null)
     {
+        if (target?.IsNative == true && nativeOwnership is { } ownership)
+        {
+            var reason = ownership switch
+            {
+                NativeLocalAiOwnershipState.MissingReceipt => "LocalOwnershipMissing",
+                NativeLocalAiOwnershipState.InvalidReceipt or NativeLocalAiOwnershipState.DifferentOwner => "LocalOwnershipInvalid",
+                NativeLocalAiOwnershipState.Unavailable => "LocalOwnershipUnavailable",
+                NativeLocalAiOwnershipState.SameOwner or NativeLocalAiOwnershipState.RecoveryRequired
+                    when (receiptDamaged || install is null || !filesVerified) &&
+                        (runtime?.Ownership == LocalAiOwnership.CompanionManaged ||
+                         runtime?.GatewayRouteRequiresResolution == true) => "LocalOwnershipFiles",
+                _ => null
+            };
+            if (reason is not null)
+                return new(LocalAiOnboardingState.ManagementBlocked, target, ReasonKey: reason,
+                    HasInstallationEvidence: true, NativeOwnership: ownership);
+        }
         var hasInstallationEvidence = installationKnown || install is not null || receiptDamaged ||
             receiptIdentity is not null || target?.ModelCatalogId is not null ||
             runtime?.ModelId is not null || runtime?.Ownership == LocalAiOwnership.CompanionManaged ||
@@ -75,7 +106,7 @@ public sealed record LocalAiOnboardingSnapshot(
         var result = new LocalAiOnboardingSnapshot(LocalAiOnboardingState.Unsupported, target,
             install is null ? null : LocalAiGatewayProviderDefinition.BuildPrimaryModel(install),
             receiptIdentity, eligibility.SelectedGpu?.Name, eligibility.Plan?.Model.DisplayName,
-            eligibility.CanInstall ? null : Reason(eligibility), eligibility, hasInstallationEvidence);
+            eligibility.CanInstall ? null : Reason(eligibility), eligibility, hasInstallationEvidence, nativeOwnership);
         if (!eligibility.CanInstall)
             return result;
         if (runtime?.State is LocalAiRuntimeState.Starting or LocalAiRuntimeState.Stopping)
@@ -88,7 +119,8 @@ public sealed record LocalAiOnboardingSnapshot(
             !(exactHealthyRuntime && runtime!.ModelEvidence.State == LocalAiModelAvailabilityState.Loaded))
             return result with { State = LocalAiOnboardingState.BusyGpu };
         if (target.IsNative && install is not null && filesVerified &&
-            (runtime?.GatewayRouteRequiresResolution == true ||
+            (nativeOwnership == NativeLocalAiOwnershipState.RecoveryRequired ||
+             runtime?.GatewayRouteRequiresResolution == true ||
              runtime is { State: LocalAiRuntimeState.Failed, Ownership: LocalAiOwnership.CompanionManaged }))
             return result with { State = LocalAiOnboardingState.Reconcile };
         if (receiptDamaged || install is not null && (!filesVerified ||

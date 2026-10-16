@@ -23,10 +23,22 @@ namespace OpenClaw.Tray.UITests;
 /// </summary>
 public static class TestSupport
 {
+    public static Task WaitForSettingsCardReadyAsync(Page page, SettingsCard card) =>
+        WaitForRenderedConditionAsync(
+            () => card.IsLoaded && card.IsEnabled && card.IsClickEnabled &&
+                page.XamlRoot is not null && ReferenceEquals(page.XamlRoot, card.XamlRoot),
+            $"{page.GetType().Name}.{card.Name} ready for invocation",
+            () => $"IsLoaded={card.IsLoaded}, IsEnabled={card.IsEnabled}, " +
+                $"IsClickEnabled={card.IsClickEnabled}, PageHasXamlRoot={page.XamlRoot is not null}, " +
+                $"SameXamlRoot={ReferenceEquals(page.XamlRoot, card.XamlRoot)}");
+
     /// <summary>Exercise the XAML-wired action boundary, not the toolkit's native input provider.</summary>
     public static void InvokeSettingsCardAction(Page page, SettingsCard card, string handler)
     {
-        Assert.True(card.IsLoaded && card.IsEnabled && card.IsClickEnabled);
+        Assert.True(card.IsLoaded && card.IsEnabled && card.IsClickEnabled,
+            $"{page.GetType().Name}.{card.Name}: IsLoaded={card.IsLoaded}, " +
+            $"IsEnabled={card.IsEnabled}, IsClickEnabled={card.IsClickEnabled}.");
+        Assert.NotNull(page.XamlRoot);
         Assert.Same(page.XamlRoot, card.XamlRoot);
         // The toolkit advertises Invoke but its managed and native providers reject it.
         // Keep actual keyboard/pointer coverage in NativeOnboardingProof, never synthesize OS input here.
@@ -63,7 +75,8 @@ public static class TestSupport
         action.Invoke(page, [card, new RoutedEventArgs()]);
     }
 
-    public static async Task WaitForRenderedConditionAsync(Func<bool> predicate, string operation)
+    public static async Task WaitForRenderedConditionAsync(
+        Func<bool> predicate, string operation, Func<string>? diagnostics = null)
     {
         var settled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         void Check(object? sender, object args)
@@ -78,7 +91,8 @@ public static class TestSupport
         }
         catch (TimeoutException)
         {
-            Assert.Fail($"Timed out waiting for {operation}.");
+            Assert.Fail($"Timed out waiting for {operation}." +
+                (diagnostics is null ? "" : $" {diagnostics()}"));
         }
         finally
         {

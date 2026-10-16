@@ -75,9 +75,20 @@ reachability from the final ownership stage exceeding its deadline, even if
 the ownership probe returned success before the final deadline check.
 The result remains terminal and does not authorize another restart.
 
-HTTP 200/401/403 still means only endpoint reachability. Neither this HTTP
-probe nor listener provenance establishes an authenticated ready Gateway.
-Authentication and pairing retain their existing owners and gates.
+The HTTP gate polls `GET /startupz` inside WSL. HTTP 200 JSON means the
+Gateway finished startup (dispatch ready and startup sidecars settled), which
+is the same condition the Gateway uses to admit operator WebSocket connects.
+HTTP 503 JSON means it is still starting or draining; its `pendingReason` is
+logged and reported on timeout. Gateways before 2026.8.1 do not serve
+`/startupz`, so a non-probe reply falls back to the root-path check, where
+HTTP 200/401/403 means only endpoint reachability. Before operator and node
+pairing, `WindowsGatewayReachability` repeats `GET /startupz` from Windows on
+the URL Companion pairs through, waiting up to `HealthTimeoutSeconds` while it
+returns 503 JSON. Transport failures fail immediately, and a non-probe answer
+(an older Gateway or remote ingress) counts as reachable. Neither probe nor
+listener provenance establishes an authenticated Gateway session; the
+ownership check still runs before any credential handoff. Authentication and
+pairing retain their existing owners and gates.
 
 **Why the order is unchanged:** at upstream commit
 [`eb377ac59e6c9fd6c7705028034812becf00271b`](https://github.com/openclaw/openclaw/tree/eb377ac59e6c9fd6c7705028034812becf00271b),
@@ -117,7 +128,7 @@ the owned `NativeGatewaySetupConnection` authorization and upstream
 checks Windows package registration and package-qualified aliases.
 `NativeGatewayMsixInstaller` installs the fixed Store product using the current-user
 App Installer alias and `CommandRunner`:
-`winget install --id 9NV70LV3D6XC --source msstore --silent --accept-package-agreements --accept-source-agreements --disable-interactivity --no-upgrade`.
+`winget install --id 9NV70LV3D6XC --source msstore --silent --accept-package-agreements --accept-source-agreements --disable-interactivity`.
 The shared capabilities page shows the native installation and agreement
 disclosure before its **Set up gateway** action; other routes retain **Next**.
 This preserves consent without adding a separate native review step.
@@ -129,8 +140,8 @@ diagnostics and retry guidance instead of opening a manual Store page.
 the original development identity for existing installations. Multiple matching
 registrations fail explicitly for new setup. Existing runtime profiles resolve only
 their saved family, allowing both packages to coexist without an implicit migration.
-`NativeGatewayPackageAcquisition` invokes installation once only for missing
-registration. Installation and verified package readiness share a five-minute
+`NativeGatewayPackageAcquisition` invokes acquisition once for a missing or existing Store
+package; an existing development package is reused without Store migration. Installation and verified package readiness share a five-minute
 deadline. Cancellation stops the WinGet request, but Windows deployment may
 continue. Repair errors and timeouts stay visible, with explicit retry rather
 than repeated installer launches; retries recheck registration before installing.
@@ -395,7 +406,7 @@ Executed sequentially. Each step is a small class (30–120 lines) in its own fi
 | 13 | `AuthorizeTailscaleStep` | Authorize the configured Tailscale identity and trust mode |
 | 14 | `ConfigureGatewayStep` | Write gateway config (bind, port, auth) |
 | 15 | `InstallGatewayServiceStep` | `openclaw gateway install --force` |
-| 16 | `StartGatewayStep` | Start service, poll health endpoint (90s timeout) |
+| 16 | `StartGatewayStep` | Start service, poll `/startupz` until started (90s timeout) |
 | 17 | `FinalizeTailscaleServeStep` | Apply the final Tailscale Serve endpoint after gateway startup |
 | 18 | `MintBootstrapTokenStep` | Generate bootstrap token via CLI |
 | 19 | `PairOperatorStep` | WebSocket operator connection + device approval |
@@ -514,6 +525,12 @@ rollback baseline. A successful repair always writes schema 4 with the verified
 hub-cache snapshot as the active model path, while preserving the legacy
 compatibility path and the prior gateway fallback, install time, and rollback
 metadata.
+
+Before restoring the original endpoint receipt, recovery resolves its model
+through the same existing-file handle resolver used for native runtime launch.
+The health probe compares physical model paths; receipts and cleanup ownership
+remain logical. If resolution fails, rollback warns and keeps the replacement
+receipt rather than probing with the unresolved alias.
 
 Runtime upgrades validate the installed executable against its recorded runtime
 release, not the current catalog release. A verified schema-3 model is migrated

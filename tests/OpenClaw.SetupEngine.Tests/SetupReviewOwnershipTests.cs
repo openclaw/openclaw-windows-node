@@ -11,6 +11,7 @@ public sealed class SetupReviewOwnershipTests
         Assert.Contains("LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete", source);
         Assert.Contains("TryApplyProbeFailure", source);
         Assert.Contains("if (_localAiRecoveryModelPinned)", source);
+        Assert.Contains("LocalInferenceEligibility.EvaluateInstalled(_localAiHardware, selectedModelId)", source);
         Assert.Contains("LocalAiToggle.IsEnabled = !_localAiRecoveryOnly", source);
         Assert.Contains("_localAiAvailability.CancelCurrent()", source);
     }

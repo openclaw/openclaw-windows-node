@@ -150,10 +150,22 @@ public sealed class LocalAiConfig
     /// <summary>Runtime-only effective profile selected from detected GPU capacity.</summary>
     [JsonIgnore]
     public string? SelectedProfileId { get; set; }
+    /// <summary>
+    /// Runtime-only model ID proven by the existing installation receipt for a pinned
+    /// recovery. It authorizes retired-catalog lookup only for that exact selection.
+    /// </summary>
+    [JsonIgnore]
+    internal string? InstalledReceiptModelId { get; set; }
     /// <summary>Managed llama-server port. Zero selects a free loopback port during setup.</summary>
     public int Port { get; set; }
     public bool WslMirroredNetworkingConsent { get; set; }
-    public int HealthTimeoutSeconds { get; set; } = 15;
+    /// <summary>
+    /// How long the managed llama-server router may take to report healthy. The first
+    /// start after an install pays a Windows Defender scan of the freshly extracted
+    /// ~700 MB CUDA runtime (measured 26.0 s cold, 0.17 s once cached), so this has to
+    /// clear that comfortably or a clean install fails the race non-deterministically.
+    /// </summary>
+    public int HealthTimeoutSeconds { get; set; } = 90;
     public int AcquisitionTimeoutSeconds { get; set; } = 7_200;
     public int InferenceTimeoutSeconds { get; set; } = 600;
 }

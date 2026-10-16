@@ -996,6 +996,71 @@ public sealed class LocalAiInstallRecoveryTests
     }
 
     [Fact]
+    public async Task Reconciler_StagesVcRuntimeForExistingInstall_WithoutMutatingReceipt()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var temp = new TempDirectory();
+        using var app = new TempDirectory();
+        using var environment = new EnvironmentScope("HF_HUB_CACHE", CacheRoot(temp.Path));
+        LocalInferencePlan plan = CatalogPlan();
+        const string gpuId = "GPU-0";
+        LocalAiInstallManifest manifest = CreateManifest(temp.Path, plan, gpuId);
+        var paths = new LocalAiPaths(temp.Path);
+        await new LocalAiManifestStore(paths).SaveAsync(manifest);
+        LocalAiResolvedInstall install = new LocalAiManifestStore(paths).ResolveAndValidate(manifest);
+        Directory.CreateDirectory(Path.GetDirectoryName(install.ExecutablePath)!);
+        foreach (string fileName in LocalAiVcRuntimeStager.RequiredFiles)
+            await File.WriteAllTextAsync(Path.Combine(app.Path, fileName), fileName);
+        byte[] original = await File.ReadAllBytesAsync(paths.ManifestPath);
+
+        var reconciler = new LocalAiInstallReconciler(
+            new VcRuntimeAssertingInspector(),
+            new AcceptingModelVerifier(),
+            vcRuntimeStager: new LocalAiVcRuntimeStager(app.Path));
+
+        LocalAiReconcileResult result = await reconciler.ReconcileAsync(
+            temp.Path,
+            plan,
+            gpuId,
+            CancellationToken.None);
+
+        Assert.True(result.Reused);
+        Assert.Equal(original, await File.ReadAllBytesAsync(paths.ManifestPath));
+        Assert.All(
+            LocalAiVcRuntimeStager.RequiredFiles,
+            fileName => Assert.Equal(
+                fileName,
+                File.ReadAllText(Path.Combine(Path.GetDirectoryName(install.ExecutablePath)!, fileName))));
+    }
+
+    [Fact]
+    public async Task ReadOnlyInspection_DoesNotStageVcRuntime()
+    {
+        using var temp = new TempDirectory();
+        using var app = new TempDirectory();
+        LocalInferencePlan plan = CatalogPlan();
+        LocalAiInstallManifest manifest = CreateManifest(temp.Path, plan, "GPU-0");
+        var paths = new LocalAiPaths(temp.Path);
+        await new LocalAiManifestStore(paths).SaveAsync(manifest);
+        LocalAiResolvedInstall install = new LocalAiManifestStore(paths).ResolveAndValidate(manifest);
+        string runtimeDirectory = Path.GetDirectoryName(install.ExecutablePath)!;
+        Directory.CreateDirectory(runtimeDirectory);
+        foreach (string fileName in LocalAiVcRuntimeStager.RequiredFiles)
+            await File.WriteAllTextAsync(Path.Combine(app.Path, fileName), fileName);
+        var reconciler = new LocalAiInstallReconciler(
+            new VcRuntimeAbsentInspector(),
+            new AcceptingModelVerifier(),
+            vcRuntimeStager: new LocalAiVcRuntimeStager(app.Path));
+
+        Assert.False(await reconciler.InspectAsync(install, CancellationToken.None));
+        Assert.DoesNotContain(
+            LocalAiVcRuntimeStager.RequiredFiles,
+            fileName => File.Exists(Path.Combine(runtimeDirectory, fileName)));
+    }
+
+    [Fact]
     public async Task Reconciler_ExplicitlyMigratesAndAdoptsVerifiedSchemaFourReceipt()
     {
         using var temp = new TempDirectory();
@@ -1152,7 +1217,7 @@ public sealed class LocalAiInstallRecoveryTests
     }
 
     [Fact]
-    public async Task Reconciler_RecoveryWithValidModelStillPopulatesAdditionalAssetInstalls()
+    public async Task Reconciler_IncompleteRuntimeReacquiresWithoutRecoveryModeOrModelDownload()
     {
         // Regression: recovery for a broken runtime (model + additional assets
         // still verified valid) must give the caller everything it needs to
@@ -1235,8 +1300,7 @@ public sealed class LocalAiInstallRecoveryTests
                 temp.Path,
                 plan,
                 "GPU-0",
-                CancellationToken.None,
-                allowIncompleteInstallation: true);
+                CancellationToken.None);
 
         Assert.False(result.Reused);
         Assert.Null(result.RuntimeInstall);
@@ -1369,7 +1433,7 @@ public sealed class LocalAiInstallRecoveryTests
             new UpgradeCheckpointStep("after-persist", ctx =>
             {
                 LocalAiResolvedInstall upgraded = Assert.IsType<LocalAiResolvedInstall>(ctx.LocalAiResolvedInstall);
-                Assert.Equal("b11026", upgraded.Manifest.EngineVersion);
+                Assert.Equal(LlamaRuntimeCatalog.ReleaseTag, upgraded.Manifest.EngineVersion);
                 Assert.Equal(LocalAiInstallManifest.HubCacheReceiptSchemaVersion, upgraded.Manifest.SchemaVersion);
                 Assert.Equal(cacheRoot, upgraded.Manifest.ModelCacheRoot);
                 Assert.Equal(cachedModel, upgraded.ModelPath);
@@ -1398,7 +1462,7 @@ public sealed class LocalAiInstallRecoveryTests
         if (failureStage is null)
         {
             Assert.Equal(newExecutable, persisted.ExecutablePath);
-            Assert.Equal("b11026", persisted.Manifest.EngineVersion);
+            Assert.Equal(LlamaRuntimeCatalog.ReleaseTag, persisted.Manifest.EngineVersion);
         }
         else
         {
@@ -2452,16 +2516,46 @@ public sealed class LocalAiInstallRecoveryTests
     {
         public Task<LlamaRuntimeInspection> InspectAsync(
             string installDirectory,
+            LlamaRuntimeVariant runtime,
             CancellationToken cancellationToken) =>
-            Task.FromResult(new LlamaRuntimeInspection(true, "valid", null));
+            Task.FromResult(new LlamaRuntimeInspection(true, null));
     }
 
     private sealed class InvalidRuntimeInspector : ILlamaRuntimeInspector
     {
         public Task<LlamaRuntimeInspection> InspectAsync(
             string installDirectory,
+            LlamaRuntimeVariant runtime,
             CancellationToken cancellationToken) =>
-            Task.FromResult(new LlamaRuntimeInspection(false, "invalid", "simulated corrupted runtime"));
+            Task.FromResult(new LlamaRuntimeInspection(false, "simulated corrupted runtime"));
+    }
+
+    private sealed class VcRuntimeAssertingInspector : ILlamaRuntimeInspector
+    {
+        public Task<LlamaRuntimeInspection> InspectAsync(
+            string installDirectory,
+            LlamaRuntimeVariant runtime,
+            CancellationToken cancellationToken)
+        {
+            Assert.All(
+                LocalAiVcRuntimeStager.RequiredFiles,
+                fileName => Assert.True(File.Exists(Path.Combine(installDirectory, fileName))));
+            return Task.FromResult(new LlamaRuntimeInspection(true, null));
+        }
+    }
+
+    private sealed class VcRuntimeAbsentInspector : ILlamaRuntimeInspector
+    {
+        public Task<LlamaRuntimeInspection> InspectAsync(
+            string installDirectory,
+            LlamaRuntimeVariant runtime,
+            CancellationToken cancellationToken)
+        {
+            Assert.DoesNotContain(
+                LocalAiVcRuntimeStager.RequiredFiles,
+                fileName => File.Exists(Path.Combine(installDirectory, fileName)));
+            return Task.FromResult(new LlamaRuntimeInspection(false, "missing VC runtime"));
+        }
     }
 
     /// <summary>Accepts the runtime but cancels the install as inspection returns.</summary>
@@ -2469,10 +2563,11 @@ public sealed class LocalAiInstallRecoveryTests
     {
         public Task<LlamaRuntimeInspection> InspectAsync(
             string installDirectory,
+            LlamaRuntimeVariant runtime,
             CancellationToken cancellationToken)
         {
             cancellation.Cancel();
-            return Task.FromResult(new LlamaRuntimeInspection(true, "valid", null));
+            return Task.FromResult(new LlamaRuntimeInspection(true, null));
         }
     }
 

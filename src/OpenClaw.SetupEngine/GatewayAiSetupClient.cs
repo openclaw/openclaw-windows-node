@@ -8,7 +8,8 @@ namespace OpenClaw.SetupEngine;
 /// </summary>
 public sealed class GatewayAiSetupClient(
     IGatewayAiSetupTransport transport, string? expectedConfiguredModelRef = null,
-    SetupCompletionIntent configuredCompletionIntent = SetupCompletionIntent.Dashboard)
+    SetupCompletionIntent configuredCompletionIntent = SetupCompletionIntent.Dashboard,
+    bool requiresManagedLocalAi = false)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly GatewayAiSetupRoute _route = transport.Route;
@@ -21,6 +22,7 @@ public sealed class GatewayAiSetupClient(
     private bool _hasActivationReceipt;
     private readonly SetupCompletionIntent _configuredCompletionIntent = configuredCompletionIntent;
     private SetupCompletionIntent _completionIntent = configuredCompletionIntent;
+    private bool _requiresManagedLocalAi;
     private long _verifiedGeneration;
     public bool GatewayRestartRequired { get; private set; }
 
@@ -30,6 +32,7 @@ public sealed class GatewayAiSetupClient(
     public GatewayAiSetupWizardResult? Wizard { get; private set; }
     public string? SessionId { get; private set; }
     public string? VerifiedModelRef { get; private set; }
+    public string? VerificationFailure { get; private set; }
     public bool IsBusy => _busy;
     public GatewayAiSetupRoute Route => _route;
     public long ConnectionGeneration => transport.Generation;
@@ -48,7 +51,7 @@ public sealed class GatewayAiSetupClient(
             throw new InvalidOperationException("AI setup completion requires a current, exact-model verification.");
         return new(_completionIntent, _route.GatewayId, _route.EndpointBinding,
             model, _route.AgentId, _verifiedGeneration, IdentityBinding: _route.IdentityBinding,
-            SessionKey: _route.SessionKey);
+            SessionKey: _route.SessionKey, RequiresManagedLocalAi: _requiresManagedLocalAi);
     }
 
     internal void RequireSameRoute()
@@ -165,6 +168,7 @@ public sealed class GatewayAiSetupClient(
             throw new NotSupportedException("This gateway does not advertise the selected setup method.");
         Selection = choice;
         VerifiedModelRef = null;
+        VerificationFailure = null;
         Phase = GatewayAiSetupPhase.Choosing;
     }
 
@@ -216,6 +220,7 @@ public sealed class GatewayAiSetupClient(
         _before = Detection;
         _completionIntent = choice is { Kind: GatewayAiSetupChoiceKind.Candidate, Id: "existing-model" }
             ? SetupCompletionIntent.Dashboard : SetupCompletionIntent.CustodianOnboarding;
+        _requiresManagedLocalAi = false;
         _expectedModel = choice.ModelRef;
         _attemptGeneration = transport.Generation;
         _hasActivationReceipt = false;
@@ -304,6 +309,7 @@ public sealed class GatewayAiSetupClient(
         EnsureAuthorized();
         _expectedModel = expectedModelRef;
         _completionIntent = _configuredCompletionIntent;
+        _requiresManagedLocalAi = requiresManagedLocalAi;
         var result = await VerifyRouteAsync(expectedModelRef, ct);
         Phase = result.Ok ? GatewayAiSetupPhase.Verified : GatewayAiSetupPhase.Rejected;
         return result;
@@ -340,6 +346,7 @@ public sealed class GatewayAiSetupClient(
     {
         var generation = transport.Generation;
         VerifiedModelRef = null;
+        VerificationFailure = null;
         _verifiedGeneration = 0;
         var result = await ExecuteAsync<GatewayAiSetupVerification>("openclaw.setup.verify", RouteParams(), 120_000, ct);
         ct.ThrowIfCancellationRequested();
@@ -350,6 +357,7 @@ public sealed class GatewayAiSetupClient(
             throw new InvalidDataException("Verification did not confirm the selected model.");
         if (!result.Ok && (string.IsNullOrWhiteSpace(result.Status) || string.IsNullOrWhiteSpace(result.Error)))
             throw new InvalidDataException("The gateway returned an incomplete verification failure.");
+        VerificationFailure = result.Ok ? null : result.Error;
         VerifiedModelRef = result.Ok ? result.ModelRef : null;
         _verifiedGeneration = result.Ok ? generation : 0;
         return result;

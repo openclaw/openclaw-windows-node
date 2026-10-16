@@ -1,3 +1,5 @@
+using OpenClaw.TestSupport;
+
 namespace OpenClaw.SetupEngine.Tests;
 
 public sealed class SetupNativeCompletionCoordinatorTests
@@ -6,6 +8,71 @@ public sealed class SetupNativeCompletionCoordinatorTests
         "gateway-a", new string('A', 64), "provider/model", "primary", 2,
         IdentityBinding: new string('B', 64), SessionKey: "agent:primary:main");
     private static SetupVerifiedNativeRoute Route => new(Proof, "agent:primary:main");
+
+    [Fact]
+    public async Task SlowDrainAuthorityChecksAndModelProofHaveIndependentBudgets()
+    {
+        var clock = new ManualTimeProvider();
+        var calls = new List<string>();
+        using var owner = new SetupNativeCompletionCoordinator(Proof,
+            ct => { clock.Advance(TimeSpan.FromSeconds(25)); ct.ThrowIfCancellationRequested(); return Task.CompletedTask; },
+            (_, ct) =>
+            {
+                // Fresh authority subprocesses followed by the observed 22.5-second model RPC.
+                clock.Advance(TimeSpan.FromSeconds(20));
+                clock.Advance(TimeSpan.FromSeconds(22.5));
+                ct.ThrowIfCancellationRequested();
+                calls.Add("verified");
+                return Task.FromResult(Route);
+            },
+            (_, ct) =>
+            {
+                clock.Advance(TimeSpan.FromSeconds(136));
+                ct.ThrowIfCancellationRequested();
+                calls.Add("finalized");
+                return Task.CompletedTask;
+            },
+            (_, ct) =>
+            {
+                clock.Advance(TimeSpan.FromSeconds(136));
+                ct.ThrowIfCancellationRequested();
+                calls.Add("published");
+                return Task.CompletedTask;
+            }, clock);
+
+        await owner.SelectAsync(SetupNativeDestination.Chat);
+        Assert.Equal(["verified", "finalized", "published"], calls);
+        Assert.True(owner.IsCompleted);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => owner.SelectAsync(SetupNativeDestination.Chat));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ReadOnlyPhaseTimeoutNamesPhaseAndNeverFinalizesOrPublishes(bool drain)
+    {
+        var clock = new ManualTimeProvider();
+        using var owner = new SetupNativeCompletionCoordinator(Proof,
+            ct =>
+            {
+                if (drain) clock.Advance(SetupNativeCompletionCoordinator.DrainTimeout);
+                ct.ThrowIfCancellationRequested();
+                return Task.CompletedTask;
+            },
+            (_, ct) =>
+            {
+                clock.Advance(SetupNativeCompletionCoordinator.VerificationTimeout);
+                ct.ThrowIfCancellationRequested();
+                return Task.FromResult(Route);
+            },
+            (_, _) => throw new InvalidOperationException("Must not finalize"),
+            (_, _) => throw new InvalidOperationException("Must not publish"), clock);
+        var error = await Assert.ThrowsAsync<SetupNativeCompletionTimeoutException>(() => owner.SelectAsync(SetupNativeDestination.Chat));
+        Assert.Contains(drain ? "closing the previous AI setup page" : "checking AI setup readiness", error.Message);
+        Assert.Equal(drain ? SetupNativeCompletionPhase.PageDrain : SetupNativeCompletionPhase.Verification, error.Phase);
+        Assert.False(owner.IsBusy);
+        Assert.False(owner.IsCompleted);
+    }
 
     [Theory]
     [InlineData(SetupNativeDestination.Chat)]

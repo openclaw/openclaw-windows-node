@@ -243,7 +243,10 @@ try {
         'Microsoft.ui.xaml.dll',
         'OpenClaw.SetupEngine.dll',
         'OpenClaw.SetupEngine.UI.dll',
-        "tools/mxc/$Architecture/wxc-exec.exe"
+        "tools/mxc/$Architecture/wxc-exec.exe",
+        'tools/local-ai-vc-runtime/msvcp140.dll',
+        'tools/local-ai-vc-runtime/vcruntime140.dll',
+        'tools/local-ai-vc-runtime/vcruntime140_1.dll'
     )
     # The MSIX resolves the CRT through the VCLibs framework dependency, and
     # Partner Center rejects a package that is already signed.

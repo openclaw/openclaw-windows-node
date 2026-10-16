@@ -227,7 +227,8 @@ public class WizardConsoleTailTests
     [InlineData(true)]
     public async Task IsolatedTailRetriesTransientFailureWithoutLosingItsCursor(bool reconnect)
     {
-        var delivered = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var delivered = new TaskCompletionSource<(string Message, long?[] Cursors)>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
         var cursors = new List<long?>();
         var issues = new List<GatewayLogTailIssue>();
         using var tail = new WizardConsoleTail(gatewayLogTail: (cursor, _) =>
@@ -243,17 +244,21 @@ public class WizardConsoleTailTests
                 """{"_meta":{"name":"openclaw","path":{"method":"console.log"}},"message":"new OAuth instructions"}"""));
         });
 
-        await tail.StartGatewayAsync(message => delivered.TrySetResult(message), issues.Add, default);
-        Assert.Equal("new OAuth instructions", await delivered.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        // Snapshot cursors inside onMessage: it runs in the same sequential flow as the
+        // gatewayLogTail delegate, so a late test continuation cannot observe the next poll.
+        await tail.StartGatewayAsync(message => delivered.TrySetResult((message, cursors.ToArray())), issues.Add, default);
+        var (message, observed) = await delivered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         tail.Stop();
-        Assert.Equal(new long?[] { null, 100, 100 }, cursors);
+        Assert.Equal("new OAuth instructions", message);
+        Assert.Equal(new long?[] { null, 100, 100 }, observed);
         Assert.Empty(issues);
     }
 
     [Fact]
     public async Task IsolatedTailRetriesInitialAnchorBeforeDisplayingOnlyNewConsoleOutput()
     {
-        var delivered = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var delivered = new TaskCompletionSource<(string Message, long?[] Cursors)>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
         var cursors = new List<long?>();
         var issues = new List<GatewayLogTailIssue>();
         using var tail = new WizardConsoleTail(gatewayLogTail: (cursor, _) =>
@@ -268,10 +273,11 @@ public class WizardConsoleTailTests
                     """{"_meta":{"name":"openclaw","path":{"method":"console.log"}},"message":"new instructions"}"""));
         });
 
-        await tail.StartGatewayAsync(message => delivered.TrySetResult(message), issues.Add, default);
-        Assert.Equal("new instructions", await delivered.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        await tail.StartGatewayAsync(message => delivered.TrySetResult((message, cursors.ToArray())), issues.Add, default);
+        var (message, observed) = await delivered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         tail.Stop();
-        Assert.Equal(new long?[] { null, null, 100 }, cursors);
+        Assert.Equal("new instructions", message);
+        Assert.Equal(new long?[] { null, null, 100 }, observed);
         Assert.Empty(issues);
     }
 
@@ -480,5 +486,25 @@ public class WizardConsoleTailTests
         var extracted = WizardConsoleTail.TryExtractConsoleMessage(line);
 
         Assert.Equal("install failed: npm ENOSPC", extracted);
+    }
+
+    [Fact]
+    public void TailCommand_FollowsExistingAndLateCreatedLogsWithoutReplayingHistory()
+    {
+        var command = WizardConsoleTail.TailCommand;
+
+        Assert.Contains("declare -A seen=()", command, StringComparison.Ordinal);
+        Assert.Contains("start_tail 0 \"$file\"", command, StringComparison.Ordinal);
+        Assert.Contains("while true", command, StringComparison.Ordinal);
+        Assert.Contains("start_tail +1 \"$file\"", command, StringComparison.Ordinal);
+        var existing = command.IndexOf("start_tail 0 \"$file\"", StringComparison.Ordinal);
+        var created = command.IndexOf("start_tail +1 \"$file\"", StringComparison.Ordinal);
+        Assert.True(existing >= 0 && created > existing);
+        Assert.Contains("\"$dir\"/openclaw-*.log", command, StringComparison.Ordinal);
+        Assert.Contains("tail -n \"$count\" -F -- \"$file\" &", command, StringComparison.Ordinal);
+        Assert.Contains("watch_logs &", command, StringComparison.Ordinal);
+        Assert.Contains("read -r _ || true", command, StringComparison.Ordinal);
+        Assert.Contains("trap 'stop_watcher; exit 0' HUP INT TERM", command, StringComparison.Ordinal);
+        Assert.Contains("trap 'cleanup_tails; exit 0' HUP INT TERM", command, StringComparison.Ordinal);
     }
 }

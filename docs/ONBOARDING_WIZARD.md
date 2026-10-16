@@ -9,10 +9,23 @@ the provider, reconnecting and testing real Gateway inference. File verification
 can take a minute or more for large models; it is not a download. Artifact acquisition
 retains the installation progress page and its actual download progress.
 
+Reopening an incomplete native Local AI setup uses this Companion profile's saved
+Gateway ownership to offer **Recover and use Local AI**, including pending
+configuration writes not yet reflected in runtime status. Recovery preserves the
+healthy managed listener and uses the existing exact-model verification and
+conditional configuration guards, rather than reinstalling it.
+
+An existing provider without matching saved ownership remains unmanaged by this
+profile. Setup explains how to reopen the original Companion profile and reconnect
+its original Gateway. Keep the ownership receipt; do not copy credentials or
+replace the provider. An independently detected **Use this model** choice remains
+separate and does not claim or restore Companion management.
+
 After setup restarts Companion, destination handoff waits for native connection
 startup and any already-admitted Local AI recovery before fresh model verification.
-The attempt is bounded to four and a half minutes, still subject to the original
-five-minute receipt expiry. A failed attempt remains available for explicit Retry,
+An unused receipt must still be acquired within five minutes. First exclusive
+acquisition persists one 13.5-minute execution window for the bounded phases below;
+neither restart nor retry renews it. A failed attempt remains available for explicit Retry,
 but automatic reactivation does not show the same failure dialog again. Successful
 runtime checks alone do not prove that a full, potentially longer chat turn has finished.
 
@@ -156,10 +169,12 @@ It does not suppress that exception or repair the upstream full-wizard finalizer
 See the [implementation results and limitations](GATEWAY_SETUP_RESPONSIBILITIES.md#package-aware-implementation-results)
 for launch, shutdown, verification details and the pre-assignment crash window.
 
-**Install a local native gateway** is the first Welcome choice and retains its
-**Recommended** badge even while disabled, with WinUI disabled brushes for the
-title, description, badge and icon instead of active accent colors. Only a successful native capability
-check enables it. The separate isolation warning and acknowledgment checkbox
+**Install a local native gateway** remains visible with **Recommended** while support
+is checked. WSL and **Connect to an existing gateway** appear before the disabled
+native choice until the capability check succeeds. A successful check enables native
+and moves it to the first position. Unsupported or failed checks leave native disabled
+in the last position with the support card and Windows Update recovery directly below
+the choice list. The separate isolation warning and acknowledgment checkbox
 remain removed; the general security notice and provider/onboarding consent
 remain explicit. With an isolated-session Gateway package, the package provisions
 and runs the agent account; the known legacy proof package retains its original
@@ -167,8 +182,9 @@ same-user runtime. The UI capability gate alone never proves isolation.
 Native and WSL use the **same focused `AiSetupPage` and three-choice `AiReadyPage`**,
 not separate normal provider/model wizards. The classic `WizardPage` is an explicit
 compatibility option only when the required setup methods are unavailable.
-WSL is always shown as the second Welcome choice after native,
-followed by **Connect to an existing gateway**.
+WSL is always visible. It is first when native is unavailable and second after a
+supported native choice, with **Connect to an existing gateway** between WSL and a
+disabled native choice.
 
 Companion checks current-user registration for the Store package
 `OpenClawFoundation.OpenClawGateway` and publisher
@@ -178,15 +194,15 @@ from `PATH`. Native setup uses the same Windows capabilities and permission
 selection as WSL, with native package installation consent on that same page.
 Selecting **Set up gateway** starts native progress without WSL, Local AI or
 Tailscale provisioning and without an additional review page.
-A missing package is installed automatically using
-`winget install --id 9NV70LV3D6XC --source msstore --silent --accept-package-agreements --accept-source-agreements --disable-interactivity --no-upgrade`;
+A Store package is installed or refreshed automatically using
+`winget install --id 9NV70LV3D6XC --source msstore --silent --accept-package-agreements --accept-source-agreements --disable-interactivity`;
 unhealthy registration or unavailable aliases show an explicit repair error.
 The fixed product is [OpenClaw Gateway in Microsoft Store](https://apps.microsoft.com/detail/9NV70LV3D6XC).
 No MSIX version or download URL is pinned; Store selects the current compatible
-release. Existing healthy installations are not silently upgraded during setup.
+release. Native setup checks for available Store updates before reusing a healthy Store package. Existing development profiles keep their package identity.
 To explicitly refresh one, run
 `winget install --id 9NV70LV3D6XC --source msstore --accept-package-agreements --accept-source-agreements`
-without `--no-upgrade`. WinGet may report that no newer package is available.
+WinGet reporting that no newer package is available is a successful no-op.
 
 An unfinished draft saved against a different package family (for example, the
 older development Gateway) offers **Discard and set up again**, just like a
@@ -194,7 +210,11 @@ runtime-contract change. Keeping the draft changes nothing. Confirming replaces
 only its descriptor with a new profile for the installed package; old workspace
 files, configuration and credentials are preserved. Published profiles cannot
 be discarded through this recovery.
-No local MSIX path or environment-variable configuration is required.
+No local MSIX path or environment-variable configuration is required. To test a
+Gateway built from `openclaw/openclaw` source instead, register it with
+`scripts\Build-NativeGatewayFromSource.ps1 -Patch <patch>` and start Companion with
+`OPENCLAW_NATIVE_GATEWAY_DEV_PATCH=<patch>`. Native setup then uses only
+`OpenClawFoundation.OpenClawGateway-<patch>` and never falls back to the Store or WinGet.
 The original `OpenClaw.Gateway` / OpenClaw Foundation development publisher pair
 is still accepted for existing installations. If both identities are installed,
 new setup reports duplicate registrations instead of guessing which to use. Existing
@@ -216,11 +236,13 @@ without a shell or elevation. Companion verifies actual package registration and
 automatically prepares the profile and opens **Connect your AI**.
 Installation and verification share a cancellable five-minute deadline. Cancellation
 stops the WinGet request, but Windows may still finish an in-progress deployment.
-Missing WinGet, Store policy/source failures, nonzero exit codes and timeouts show
-explicit repair guidance and **Retry setup**, not a manual Store-page fallback. The normal
+If WinGet reports stale Microsoft Store certificate pins (`0x8A15005E`), Companion
+runs one current-user `Repair-WinGetPackageManager -Force -Latest` bootstrap and retries once.
+The repair installs Microsoft's WinGet client module; it never bypasses certificate validation.
+Other failures show explicit repair guidance and **Retry setup**. The normal
 path has no separate install, availability-check or wizard-launch buttons.
-An already installed healthy package skips installation. Retry checks registration
-again before invoking WinGet. Companion does not download packages directly,
+An already installed healthy development/patch package skips installation. Store packages are checked for updates.
+Retry checks registration again before invoking WinGet. Companion does not download Gateway packages directly,
 change certificate trust, or uninstall packages on cancellation.
 
 Progress reuses the WSL spinner/checkmark rows. Normal completion uses the same
@@ -346,10 +368,11 @@ and verifies endpoint ownership. See [Welcome](#welcome) for the current UI.
   number or the presence of `IsolationProxy.exe`.
 - **Recommendation order:** Recommend the MXC native Gateway when the OS
   supports sessions and the Gateway session integration is available. If the
-  OS is unsupported, first recommend updating Windows to a supported version,
-  with a capability recheck after updating. Present WSL as the secondary
-  fallback, not the initial recommendation. Do not automatically change the
-  Windows update channel or enable preview features.
+  OS is unsupported, present WSL first as the immediately available recommendation.
+  Keep native Gateway visible as a disabled recommended option after the existing-
+  Gateway choice, with Windows Update guidance and a capability recheck after
+  updating. Do not automatically change the Windows update channel or enable
+  preview features.
 - **Actionable failures:** Distinguish an unsupported OS from a failed probe,
   disabled/unavailable session features, and a missing Gateway package/runtime.
   A probe error offers retry and diagnostics rather than asserting that an OS
@@ -408,12 +431,100 @@ Legacy WhatsApp/Telegram receipt destinations retain their numeric mappings and
 channel focus behavior, but are not separate choices on this screen.
 
 Each explicit choice drains the prior AI page, rechecks the same Gateway,
-endpoint, agent, model and main session through a bounded read-only verification,
-then finalizes Windows choices once. Failures stay on the chooser with retry or
+endpoint, agent, model and main session through bounded verification,
+then finalizes Windows choices once. The prior page drain has its own 30-second
+deadline. Fresh proof has a separate six-minute ceiling, allowing the
+native owner's 210-second reconnect budget, the existing 120-second exact-model
+RPC budget and authority-check overhead. Neither deadline runs across finalization
+or destination publication: those retain caller cancellation and their underlying
+operation budgets, without abandoning or automatically replaying mutations.
+Verification does not publish provider configuration or finalize setup, but its
+authorization may start the selected owned Gateway and roll that start back.
+Failures stay on the chooser with retry or
 return-to-AI guidance. **Back to AI setup** is available only inside the error
 message, so changed verification has an actionable recovery without a permanent
 footer escape. Returning invalidates its admission and requires another
 verification. MCP-only/deferred routes do not claim verified AI.
+
+### Native startup and completion deadlines
+
+A reported slow native cold start took about 136 seconds. Conditional on a
+successful package acknowledgement, Companion uses a three-minute startup
+budget, with ten seconds for confirmation after a late acknowledgement, subject
+to the caller deadline (at most 190 seconds for start/status), then still requires fresh selected-port and process-sequence ownership
+proof. It never treats an `unhealthy`/`starting` observation as ready, waits for
+an unrelated pre-existing start, or retries the start command while polling.
+If a listener appears between a pending status and the host snapshot, one immediate
+status recheck may admit only a fresh `running` attestation. The full selected-port,
+listener and process-sequence checks still run; another pending status or failed
+attribution rejects the start.
+The published native connection borrow gets up to 210 seconds for startup,
+authenticated handshake and authorization before exact-model verification.
+Preflight and final inspection also consume that outer budget; the confirmation
+allowance never extends it. Slow surrounding work can therefore cancel confirmation.
+Native credential reauthorization also has a bounded 210-second allowance instead
+of the unrelated five-second SSH/listener-check budget. Non-native authorization
+keeps its existing deadline. Caller cancellation, superseded attempts, record drift
+and connection error states still reject admission.
+Page drain, selection
+verification, runtime startup and published-owner handoff are distinct lifetimes.
+
+`SetupNativeCompletionTiming` defines the published path's enforced phase ceilings:
+210 seconds for the first borrow, 210 seconds to join already-admitted Local AI
+recovery, 210 seconds for a fresh post-recovery borrow, 150 seconds for exact-model
+verification (including the existing 120-second RPC and authorization), and
+30 seconds for navigation. Their 810-second total bounds the exclusive execution
+lease. A phase can fail earlier due to its underlying owner or caller cancellation;
+unused phase time is not a guarantee that a different phase may overrun its ceiling.
+Recovery waits never initiate or replay a provider mutation.
+Timeouts retain a typed, finite phase (page drain, connection, Local AI recovery,
+model verification, or native startup). The aggregate pre-publication verification
+deadline uses neutral readiness guidance because it includes both connection and model
+work; it does not incorrectly attribute a connection stall to model inference.
+The chooser displays localized phase-specific
+guidance and local diagnostics record only the phase/type, never raw package output,
+model content or credentials.
+
+The five-minute unused-handle admission window is unchanged. The first acquisition
+atomically stores its execution start and deadline under the existing file lock. Retries,
+reacquisition by another process and app restarts use that same absolute deadline.
+Expired, malformed, abandoned in-flight and legacy retry records lacking execution
+provenance cannot grant a new window. Legacy unused records retain their original
+five-minute admission deadline. No Gateway credential lifetime changes.
+Fresh route/device/session proof and single-use consumption still fence navigation,
+and deadline cancellation reaches the active navigation request before settlement.
+
+**Installed package limitation:** package commit
+[`133deeb`](https://github.com/openclaw/openclaw-windows-packaging/tree/133deeb1a5efac2bcbc6564c90c038a999e6e842)
+(MSIX 2026.9.700.0, payload 2026.9.7) cannot safely expose its pending start:
+[`GatewayController`](https://github.com/openclaw/openclaw-windows-packaging/blob/133deeb1a5efac2bcbc6564c90c038a999e6e842/src/OpenClaw.Launcher/Gateway/GatewayController.cs)
+returns `Starting` after its 90-second listener wait;
+[`Program.WriteGatewayStartResult`](https://github.com/openclaw/openclaw-windows-packaging/blob/133deeb1a5efac2bcbc6564c90c038a999e6e842/src/OpenClaw.Launcher/Program.cs)
+maps it to exit 1; and
+[`ClawCtlJson.FromGateway`](https://github.com/openclaw/openclaw-windows-packaging/blob/133deeb1a5efac2bcbc6564c90c038a999e6e842/src/OpenClaw.Launcher/ClawCtlJson.cs)
+omits the Gateway object for that failed start. Only `ok:false` and a generic
+`cli_error` with human text remain. Its subsequent `unhealthy` status supplies no
+pending sandbox/process ownership proof. Companion intentionally rejects that
+ambiguous failure and preserves rollback rather than parsing prose or accepting
+arbitrary failures. The bounded polling change does **not** fix this package's
+90-second failure path.
+The successful pending-start fixtures describe conditional client behavior, not
+an acknowledged pending-start contract supported by that installed package.
+
+The packaging contract needs an explicit, versioned pending-start acknowledgement
+with defined exit/`ok` semantics and stable session/launch ownership identity,
+available on subsequent pending status checks and guarded stop operations.
+That must distinguish this launch from another start, exited/replaced processes,
+port changes and inspection failures. No guessed additional protocol fields are
+accepted by Companion here.
+
+A successful setup on payload 2026.9.4 followed by these failures on 2026.9.7 is
+a concrete version difference, not a controlled regression measurement. Package
+launcher timing, payload startup work and Companion's former combined 30-second
+selection deadline are separate contributors. The reported 22.5-second successful
+verification RPC plus authority subprocesses can exceed that former deadline;
+fixture tests reproduce that budget collision, but do not prove the exception
+shown by an installed UI whose original exception was not persisted.
 
 The original verification retains the exact main session and a SHA256 binding
 over the normalized identity directory and the local device ID that signed the
@@ -472,7 +583,8 @@ Run-key fallback. It may complete only if Task Scheduler confirms the exact
 enabled executable/action, principal, task path and logon trigger. A definite
 rejection with confirmed absence retains the legitimate Run-key fallback.
 
-The trusted profile-local handoff retains exclusive leasing, five-minute expiry,
+The trusted profile-local handoff retains exclusive leasing, five-minute unused
+admission and a non-renewable bounded execution deadline,
 consumption on successful native presentation and explicit failure retry. New
 `ai-v3:` opaque handles carry a typed native destination and exact verified
 session in the protected record, not in public activation JSON. The experimental
@@ -525,7 +637,7 @@ The setup flow walks users through:
 
 1. **Welcome and trust** - Three feature rows and an inline device-trust notice
 2. **Gateway** - Capability-gated native Gateway recommendation (with WSL fallback), existing, remote, local MCP only, or deferred setup
-3. **PC capabilities** - Strict, Balanced (Recommended), Open, and inline Fine-tune; Node mode, local MCP and Ollama sharing stay independent. No Windows-access advisory panel or probe runs here.
+3. **PC capabilities** - Strict, Balanced (Recommended), Open, and inline Fine-tune; Node mode, local MCP and Ollama sharing stay independent. No Gateway-installation disclosure, Windows-access advisory panel, or probe runs here.
 4. **Gateway setup** - Managed WSL reviews installation and replacement consent; native Gateway checks its package and prepares a dedicated profile without WSL or Local AI installation.
 5. **AI setup** - Native Gateway, WSL and existing/remote gateways use focused AI setup and live model verification, followed by the same three destination choices. Native uses its setup-owned runtime until finalization; WSL workspace integration remains WSL-only.
 6. **Completion** - Both verified focused AI flows open Chat, Channels or Skills. Only the explicit classic compatibility fallback retains its setup-complete and connection handoff.
@@ -1098,6 +1210,11 @@ The browser-only profile route is not implemented through native credentials.
 
 The connection editor shows the Gateway-stage progress indicator above a
 separate row of wrapping Back, Cancel, Check and Next actions.
+Both the Welcome existing-Gateway choice and Advanced existing/remote routes
+use this editor. Its labels, accessible names and status messages use
+`Onboarding_NativeConnection_*` resources in every supported locale.
+Connection checking and cancellation copy is separate from the native
+installer's package-check and WinGet cancellation messages.
 
 Check connection authenticates with an isolated identity copy and optional
 temporary owned SSH listener, without saving a gateway or changing the active

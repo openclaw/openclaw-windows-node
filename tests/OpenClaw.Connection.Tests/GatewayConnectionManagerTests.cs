@@ -6,6 +6,7 @@ using OpenClaw.Shared;
 using OpenClaw.Shared.Telemetry;
 using OpenClaw.Connection;
 using OpenClaw.Connection.NativeGateway;
+using OpenClaw.TestSupport;
 
 namespace OpenClaw.Connection.Tests;
 
@@ -323,6 +324,57 @@ public class GatewayConnectionManagerTests : IDisposable
         Assert.Equal(0, runtime.StopCount);
         runtime.Kind = GatewayEndpointProvenanceKind.UnknownListener;
         Assert.False((await client.HandshakeAuthorizationAsync!(CancellationToken.None)).Allowed);
+    }
+
+    [Theory]
+    [InlineData("ready")]
+    [InlineData("expired")]
+    [InlineData("changed")]
+    [InlineData("cancelled")]
+    public async Task NativeGateway_ReconnectAllowsColdStartupButKeepsDeadlineAndAuthorityFences(string outcome)
+    {
+        SetupNativeGateway();
+        var clock = new ManualTimeProvider();
+        var reconnecting = false;
+        using var handshake = new CancellationTokenSource();
+        var runtime = new FakeNativeGatewayRuntime
+        {
+            BeforeEnsure = () =>
+            {
+                if (!reconnecting) return;
+                clock.Advance(outcome == "expired" ? TimeSpan.FromSeconds(210) : TimeSpan.FromSeconds(187));
+                if (outcome == "changed")
+                    _registry.AddOrUpdate(_registry.GetById("native")! with { Url = "ws://127.0.0.1:19999" });
+                if (outcome == "cancelled") handshake.Cancel();
+            }
+        };
+        await using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance, nativeGatewayRuntime: runtime,
+            credentialHandoffTimeProvider: clock);
+        await manager.ConnectAsync();
+        runtime.Running = false;
+        reconnecting = true;
+        var client = Assert.Single(_factory.CreatedClients).DataClient;
+        var result = await client.ReconnectAuthorizationAsync!(handshake.Token);
+        Assert.Equal(outcome == "ready", result.Allowed);
+        if (outcome == "expired")
+        {
+            Assert.Equal(GatewayErrorKind.Network, result.FailureKind);
+            Assert.Contains("native Gateway", result.Detail);
+            Assert.DoesNotContain("SSH", result.Detail);
+        }
+        if (outcome == "changed") Assert.Equal(GatewayErrorKind.LocalPortConflict, result.FailureKind);
+    }
+
+    [Fact]
+    public async Task NativeGateway_PackageInspectionTimeoutHasSanitizedDiagnostic()
+    {
+        SetupNativeGateway();
+        var runtime = new FakeNativeGatewayRuntime { StartException = new TimeoutException("sensitive package fixture output") };
+        var result = await NativeGatewayEndpointSecurity.AuthorizeAsync(runtime, _registry.GetById("native")!, default);
+        Assert.False(result.Allowed);
+        Assert.Contains("readiness check timed out", result.Detail);
+        Assert.DoesNotContain("sensitive", result.Detail);
     }
 
     [Theory]

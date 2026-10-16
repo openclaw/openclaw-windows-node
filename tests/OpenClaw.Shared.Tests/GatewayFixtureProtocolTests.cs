@@ -15,6 +15,93 @@ public sealed class GatewayFixtureProtocolTests
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(20);
 
     [Fact]
+    public async Task CronEditing_StoresExactSchedulesAndKeepsOtherMutationsDisabled()
+    {
+        var token = CreateToken();
+        var scenario = GatewayScenario.CreateCronEditing();
+        await using var server = await FixtureGatewayServer.StartAsync(scenario, token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        var client = connected.Client;
+        var listed = await client.SendWizardRequestAsync("cron.list", new { includeDisabled = true });
+        Assert.Equal(4, listed.GetProperty("jobs").GetArrayLength());
+
+        foreach (var schedule in new object[]
+        {
+            new { kind = "cron", expr = "0 4 * * *", tz = "Pacific/Auckland" },
+            new { kind = "cron", expr = "0 4 * * *", tz = "UTC" },
+            new { kind = "cron", expr = "0 4 * * *" },
+            new { kind = "every", everyMs = 60_000 }
+        })
+        {
+            var response = await client.SendWizardRequestAsync("cron.update", new
+            {
+                id = "unlisted", patch = new { name = "Fixture cron unlisted", schedule }
+            });
+            var refreshed = await client.SendWizardRequestAsync("cron.list", new { includeDisabled = true });
+            var stored = refreshed.GetProperty("jobs").EnumerateArray().Single(job => job.GetProperty("id").GetString() == "unlisted");
+            Assert.Equal(JsonSerializer.Serialize(schedule), response.GetProperty("schedule").GetRawText());
+            Assert.Equal(response.GetProperty("schedule").GetRawText(), stored.GetProperty("schedule").GetRawText());
+        }
+        var added = await client.SendWizardRequestAsync("cron.add", new
+        {
+            name = "New fixture job", schedule = new { kind = "cron", expr = "0 5 * * *" }
+        });
+        Assert.Equal("created-4", added.GetProperty("id").GetString());
+        Assert.False(added.GetProperty("schedule").TryGetProperty("tz", out _));
+        Assert.Equal(5, scenario.GetCronJobs().Length);
+        var toggled = await client.SendWizardRequestAsync("cron.update", new
+        {
+            id = "listed", patch = new { enabled = false }
+        });
+        Assert.False(toggled.GetProperty("enabled").GetBoolean());
+        Assert.Equal("America/Chicago", toggled.GetProperty("schedule").GetProperty("tz").GetString());
+        var beforeInvalid = JsonSerializer.Serialize(scenario.GetCronJobs());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendWizardRequestAsync("cron.update",
+            new { id = "listed", patch = new { schedule = new { kind = "every", everyMs = "invalid" } } }));
+        Assert.Equal(beforeInvalid, JsonSerializer.Serialize(scenario.GetCronJobs()));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendWizardRequestAsync("cron.update",
+            new { id = "unknown", patch = new { name = "Unknown" } }));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendWizardRequestAsync("cron.run", new { id = "listed" }));
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SessionMutations_AuthenticatedAcceptanceIsOptInAndResponseBound(bool allow)
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(
+            GatewayScenario.CreateBrowse(allowSessionMutations: allow), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        var client = connected.Client;
+        var epoch = client.SessionMutationConnectionEpoch!.Value;
+        server.HoldSessionMutations();
+        var patch = client.PatchSessionConfirmedAsync(GatewayScenario.OtherSessionKey,
+            new SessionPatch { Archived = true }, epoch);
+        await server.WaitForRequestAsync("sessions.patch", GatewayScenario.OtherSessionKey);
+        // Drain an independent authenticated request while the mutation response is held.
+        await client.SendWizardRequestAsync("health");
+        Assert.False(patch.IsCompleted);
+        server.ReleaseSessionMutations();
+        if (!allow)
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() => patch);
+            return;
+        }
+        await patch.WaitAsync(Deadline);
+        var active = await client.SendWizardRequestAsync("sessions.list");
+        Assert.DoesNotContain(active.GetProperty("sessions").EnumerateArray(),
+            row => row.GetProperty("key").GetString() == GatewayScenario.OtherSessionKey);
+        var archived = await client.ListArchivedSessionsAsync();
+        Assert.Equal(GatewayScenario.OtherSessionKey, Assert.Single(archived.Sessions).Key);
+        await client.DeleteSessionConfirmedAsync(GatewayScenario.OtherSessionKey, epoch);
+        Assert.Empty((await client.ListArchivedSessionsAsync()).Sessions);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.DeleteSessionConfirmedAsync(GatewayScenario.MainSessionKey, epoch));
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
+    [Fact]
     public void BrowseScenario_HasStableSingleSourceMetadataAndRejectsUnknownScenario()
     {
         var first = GatewayScenario.CreateBrowse();

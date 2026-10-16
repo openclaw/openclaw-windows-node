@@ -76,7 +76,8 @@ public static class NativeGatewayPaths
     internal static void ValidateFamilyName(string? familyName)
     {
         if (familyName is null || !Regex.IsMatch(familyName,
-            @"\A(?:OpenClaw\.Gateway|OpenClawFoundation\.OpenClawGateway)_[a-z0-9]{13}\z", RegexOptions.CultureInvariant))
+            @"\A(?:OpenClaw\.Gateway|OpenClawFoundation\.OpenClawGateway(?:-[a-z0-9](?:[a-z0-9-]{0,13}[a-z0-9])?)?)_[a-z0-9]{13}\z",
+            RegexOptions.CultureInvariant))
         {
             throw new ArgumentException("An installed OpenClaw Gateway package family is required.");
         }
@@ -91,8 +92,11 @@ public static class NativeGatewayPaths
         {
             throw new InvalidOperationException("The installed native gateway package does not match the saved package identity.");
         }
-        ValidateAlias(package.OpenClawAliasPath, expectedFamily, "openclaw.exe");
-        ValidateAlias(package.ClawCtlAliasPath, expectedFamily, "clawctl.exe");
+        string packageName = expectedFamily[..expectedFamily.LastIndexOf('_')];
+        ValidateAlias(package.OpenClawAliasPath, expectedFamily,
+            NativeGatewayPackageIdentity.GetAliasFileName(packageName, "openclaw"));
+        ValidateAlias(package.ClawCtlAliasPath, expectedFamily,
+            NativeGatewayPackageIdentity.GetAliasFileName(packageName, "clawctl"));
     }
 
     private static void ValidateAlias(string path, string family, string alias)

@@ -391,7 +391,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             Assert.False(Find<ItemsControl>(page, "CandidateChoices").IsEnabled);
             Assert.Equal(0, completed());
             typeof(AiSetupPage).GetMethod("ShowError", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
-                .Invoke(page, ["Failed"]);
+                .Invoke(page, ["Failed", null]);
             var error = Find<InfoBar>(page, "ProviderActivityError");
             Assert.True(error.IsOpen);
             Assert.False(string.IsNullOrWhiteSpace(error.Message));
@@ -426,7 +426,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow, $"followup-provider-loading-{theme}", output,
                 ["Connect your AI", "Synthetic provider loading", "Cancel"], requiredContent: page)) { }
             typeof(AiSetupPage).GetMethod("ShowError", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
-                .Invoke(page, ["Failed"]);
+                .Invoke(page, ["Failed", null]);
             Assert.True(Find<InfoBar>(page, "ProviderActivityError").IsOpen);
             using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow, $"followup-provider-inline-error-{theme}", output,
                 ["Connect your AI", "Cancel"], requiredContent: page)) { }
@@ -1392,6 +1392,76 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
     }
 
     [Fact]
+    public async Task LocalAi_ReadinessTimeoutReportsCardStateWithoutInvoking()
+    {
+        var host = new PageLocalAiHost(LocalAiOnboardingState.Use);
+        await WithPageAsync(async (page, _, completed) =>
+        {
+            var card = Find<SettingsCard>(page, "LocalAiCard");
+            await TestSupport.WaitForSettingsCardReadyAsync(page, card);
+            card.IsClickEnabled = false;
+            var error = await Assert.ThrowsAnyAsync<Xunit.Sdk.XunitException>(() => InvokeLocalAiAsync(page));
+            Assert.Contains("AiSetupPage.LocalAiCard ready for invocation", error.Message);
+            Assert.Contains("IsLoaded=True", error.Message);
+            Assert.Contains("IsEnabled=True", error.Message);
+            Assert.Contains("IsClickEnabled=False", error.Message);
+            Assert.Contains("PageHasXamlRoot=True", error.Message);
+            Assert.Contains("SameXamlRoot=True", error.Message);
+            Assert.Equal(0, host.Actions);
+            Assert.Equal(0, completed());
+        }, localAiHost: host);
+    }
+
+    [Theory]
+    [InlineData("IsLoaded")]
+    [InlineData("IsEnabled")]
+    [InlineData("IsClickEnabled")]
+    public async Task LocalAi_InvocationWaitsForCardReadiness(string condition)
+    {
+        var host = new PageLocalAiHost(LocalAiOnboardingState.Use);
+        await WithPageAsync(async (page, _, completed) =>
+        {
+            var card = Find<SettingsCard>(page, "LocalAiCard");
+            var section = Find<StackPanel>(page, "LocalAiSection");
+            await TestSupport.WaitForSettingsCardReadyAsync(page, card);
+            var index = section.Children.IndexOf(card);
+            Task? invocation = null;
+            try
+            {
+                switch (condition)
+                {
+                    case "IsLoaded":
+                        section.Children.RemoveAt(index);
+                        await TestSupport.WaitForRenderedConditionAsync(() => !card.IsLoaded, "Local AI card Unloaded");
+                        break;
+                    case "IsEnabled":
+                        card.IsEnabled = false;
+                        break;
+                    case "IsClickEnabled":
+                        card.IsClickEnabled = false;
+                        break;
+                }
+                invocation = InvokeCardAsync(card);
+                await ui.YieldToRenderAsync();
+                Assert.False(invocation.IsCompleted, $"Invocation must wait for {condition}.");
+                Assert.Equal(0, host.Actions);
+                Assert.Equal(0, completed());
+            }
+            finally
+            {
+                if (!section.Children.Contains(card))
+                    section.Children.Insert(index, card);
+                card.IsEnabled = true;
+                card.IsClickEnabled = true;
+                if (invocation is not null)
+                    await invocation;
+            }
+            await WaitAsync(() => completed() == 1);
+            Assert.Equal(1, host.Actions);
+        }, localAiHost: host);
+    }
+
+    [Fact]
     public async Task LocalAi_PreStartTargetRejectionRestoresChoicesInsteadOfVerificationOnly()
     {
         var host = new PageLocalAiHost(LocalAiOnboardingState.StartAndUse)
@@ -1473,6 +1543,38 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             Assert.DoesNotContain("openclaw.setup.verify", transport.MethodCalls);
             Assert.Equal(0, completed());
         }, localAiHost: host);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LocalAi_UncertainUseRefreshPreservesManagedCompletion(bool installedContinuation)
+    {
+        var intent = installedContinuation
+            ? new LocalAiInstallAndUseIntent(new("ui-proof", "", 18789, null, null, true, "binding"), "test-model", 0)
+            : null;
+        var host = new PageLocalAiHost(LocalAiOnboardingState.Use)
+        {
+            ModelRef = intent?.Expected.ModelRef ?? "openai/test-model",
+            UseFailure = new IOException("Synthetic lost publication response.")
+        };
+        GatewayAiSetupCompletion? completion = null;
+        await WithPageAsync(async (page, transport, completed) =>
+        {
+            if (!installedContinuation)
+                await InvokeLocalAiAsync(page);
+            await WaitAsync(() => Find<InfoBar>(page, "ErrorBar").IsOpen && Find<Button>(page, "RefreshButton").IsEnabled);
+            Invoke(Find<Button>(page, "RefreshButton"));
+            await WaitAsync(() => completed() == 1);
+            Assert.Equal(1, host.Actions);
+            Assert.Equal(1, transport.MethodCalls.Count(method => method == "openclaw.setup.verify"));
+            Assert.NotNull(completion);
+            Assert.True(completion.RequiresManagedLocalAi);
+            Assert.Equal(SetupCompletionIntent.CustodianOnboarding, completion.Intent);
+            Assert.Equal(host.ModelRef, completion.ModelRef);
+        }, localAiHost: host, installAndUse: intent,
+            configure: transport => transport.VerificationModelRef = host.ModelRef,
+            completedProof: proof => completion = proof);
     }
 
     [Fact]
@@ -1564,7 +1666,8 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
         Func<LocalAiOnboardingSnapshot, Task>? reviewLocalAi = null,
         PageTransport? reconnectTransport = null,
         string? expectedGatewayId = null, bool nativeProof = false, ElementTheme theme = ElementTheme.Light,
-        double width = 720, LocalAiInstallAndUseIntent? installAndUse = null, Func<bool>? ready = null)
+        double width = 720, LocalAiInstallAndUseIntent? installAndUse = null, Func<bool>? ready = null,
+        Action<GatewayAiSetupCompletion>? completedProof = null)
     {
         await ui.ResetContainerAsync();
         await ui.RunOnUIAsync(async () =>
@@ -1608,7 +1711,13 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                     ExpectedConfiguredModelRef: expectedModelRef,
                     TransportFactory: () => connects++ == 0 ? transport : reconnectTransport ?? transport,
                     LocalAiHost: localAiHost, ReviewLocalAi: reviewLocalAi, ExpectedGatewayId: expectedGatewayId,
-                    InstallAndUse: installAndUse);
+                    InstallAndUse: installAndUse,
+                    CompleteVerifiedSetup: completedProof is null ? null : proof =>
+                    {
+                        completedProof(proof);
+                        completions++;
+                        return Task.CompletedTask;
+                    });
                 frame = nativeProof ? new Frame() : new Frame { Width = width, Height = 820 };
                 navigation = OnboardingNativeProof.TrackNavigation(frame);
                 ui.Container.Children.Add(frame);
@@ -1701,13 +1810,20 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             "RecommendedInstallCard" => "RecommendedInstall_Click",
             _ => throw new InvalidOperationException($"Unsupported AI setup card: {card.Name}")
         };
+        return InvokeReadyCardAsync(page, card, handler);
+    }
+
+    private async Task InvokeReadyCardAsync(AiSetupPage page, SettingsCard card, string handler)
+    {
+        await TestSupport.WaitForSettingsCardReadyAsync(page, card);
         TestSupport.InvokeSettingsCardAction(page, card, handler);
-        return ui.YieldToRenderAsync();
+        await ui.YieldToRenderAsync();
     }
 
     private sealed class PageTransport(bool focusedSupported) : IGatewayAiSetupTransport
     {
-        public GatewayAiSetupRoute Route { get; init; } = new("ui-proof", "main", "ui-proof-authority");
+        public GatewayAiSetupRoute Route { get; init; } = new("ui-proof", "main", "ui-proof-authority",
+            EndpointBinding: new string('A', 64), IdentityBinding: new string('B', 64), SessionKey: "agent:main:main");
         public long Generation => 1;
         public bool IsConnected => true;
         public IReadOnlyCollection<string> OperatorScopes { get; set; } = ["operator.admin"];

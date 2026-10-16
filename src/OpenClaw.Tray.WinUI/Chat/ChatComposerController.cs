@@ -134,6 +134,9 @@ internal sealed partial class ChatComposerController : IDisposable
             return false;
 
         _selectedSessionHandoff(threadId);
+        if (_disposed)
+            return false;
+        _hostActions.SessionSelected?.Invoke(threadId);
         return true;
     }
 
@@ -161,7 +164,7 @@ internal sealed partial class ChatComposerController : IDisposable
         var thread = inputs.CurrentThread;
         var draft = _vm.Draft;
         var attachments = _vm.PendingAttachments;
-        var message = draft.Trim();
+        var message = draft.Trim().Replace("\r\n", "\n").Replace('\r', '\n');
         if ((message.Length == 0 && attachments.Count == 0)
             || _vm.SlashDisplay.IsLoading
             || inputs.ConnectionState != "connected")
@@ -186,8 +189,7 @@ internal sealed partial class ChatComposerController : IDisposable
 
                 if (accepted)
                 {
-                    if (ChatComposerSubmissionPolicy.ShouldClearInput(submittedRevision, _vm.DraftRevision))
-                        _vm.ClearDraft();
+                    _vm.ClearDraftIfUnchanged(submittedRevision);
                     _vm.RemoveSubmittedAttachments(attachments);
                 }
 
@@ -261,11 +263,16 @@ internal sealed partial class ChatComposerController : IDisposable
                     return false;
             }
 
+            if (command == ChatLifecycleCommandKind.New)
+                _hostActions.SessionNavigationStarting?.Invoke();
+            if (!StillLive())
+                return false;
+
             var result = await _port.ExecuteLifecycleCommandAsync(threadId, command).ConfigureAwait(true);
             if (!StillLive())
                 return false;
             if (result.Succeeded && result.NewSessionKey is { } sessionKey)
-                _selectedSessionHandoff?.Invoke(sessionKey);
+                TrySelectChannel(sessionKey);
             return result.Succeeded;
         }
 
@@ -465,6 +472,24 @@ internal sealed partial class ChatComposerController : IDisposable
             cancellation = _voiceCancellation;
         }
 
+        TryCancel(cancellation);
+    }
+
+    /// <summary>Suspends hidden-host capture without accepting a late transcript
+    /// or discarding the composer's existing draft and attachments.</summary>
+    internal void CancelVoiceRecording()
+    {
+        CancellationTokenSource? cancellation;
+        lock (_operationGate)
+        {
+            if (_disposed)
+                return;
+            cancellation = _voiceCancellation;
+            _voiceCancellation = null;
+            _voiceOperation++;
+            _voiceStopOperation = 0;
+            _vm.SetRecording(false);
+        }
         TryCancel(cancellation);
     }
 

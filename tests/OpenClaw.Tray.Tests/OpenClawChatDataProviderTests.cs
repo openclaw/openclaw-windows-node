@@ -808,7 +808,18 @@ public class OpenClawChatDataProviderTests
             bridge.RaiseStatus(ConnectionStatus.Connected);
             await provider.SendMessageAsync("main", "first");
             bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
-            await provider.SendMessageAsync("main", "second");
+            using var composer = new ChatComposerFactory(new Presentation.RecordingUiDispatcher()).Create(
+                provider, new ChatComposerHostActions(null, null, null, null, null), initialSpeakerMuted: false);
+            composer.ApplyInputs(new ChatComposerInputs(
+                "connected", true, snapshots[^1].Threads.Single(thread => thread.Id == "main"),
+                [], [], null, true, [], null, false));
+            composer.ViewModel.SetDraft("second");
+            var queuedSend = composer.Controller.SendAsync();
+
+            Assert.True(queuedSend.IsCompletedSuccessfully);
+            Assert.True(await queuedSend);
+            Assert.Empty(composer.ViewModel.Draft);
+            Assert.False(composer.ViewModel.IsSending);
 
             var result = await provider.ExecuteLifecycleCommandAsync(
                 "main",
@@ -2496,7 +2507,7 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
-    public async Task Status_ReconnectClearsUncorrelatedQueuedMessagesBeforeHistoryReload()
+    public async Task Status_ReconnectKeepsUnsentQueuedMessagesAsFailed()
     {
         var sendGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
@@ -2509,9 +2520,34 @@ public class OpenClawChatDataProviderTests
 
         bridge.RaiseStatus(ConnectionStatus.Connected);
 
-        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
+        var queued = GetQueuedMessages(snapshots[^1], "main");
+        var pending = Assert.Single(queued, message => message.Text == "pending across reconnect");
+        Assert.Equal(ChatQueuedMessageSendState.Failed, pending.SendState);
+        Assert.Equal(
+            "The connection dropped before the gateway accepted this message.",
+            pending.ErrorText);
+        Assert.Equal(["active across reconnect"], bridge.SentMessages);
+
         sendGate.SetResult();
         await sendTask;
+
+        queued = GetQueuedMessages(snapshots[^1], "main");
+        pending = Assert.Single(queued, message => message.Text == "pending across reconnect");
+        Assert.Equal(ChatQueuedMessageSendState.Failed, pending.SendState);
+        Assert.Equal(["active across reconnect"], bridge.SentMessages);
+        Assert.DoesNotContain(
+            snapshots[^1].Timelines["main"].Entries,
+            entry => entry.Kind == ChatTimelineItemKind.User &&
+                     entry.Text == "pending across reconnect");
+
+        bridge.RaiseSessions([MainSession()]);
+        await Task.Delay(ChatSendQueuePolicy.DrainDelay + TimeSpan.FromMilliseconds(100));
+
+        Assert.Equal(["active across reconnect"], bridge.SentMessages);
+        Assert.Contains(
+            GetQueuedMessages(snapshots[^1], "main"),
+            message => message.Text == "pending across reconnect" &&
+                       message.SendState == ChatQueuedMessageSendState.Failed);
     }
 
     [Fact]

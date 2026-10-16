@@ -793,7 +793,7 @@ internal sealed class WindowManager : IWindowManager
             _callbacks.GetAppNotificationService()?.Show(new AppNotification
             {
                 Title = LocalizationHelper.GetString("Onboarding_NativeConnection_Title"),
-                Message = LocalizationHelper.GetString("Onboarding_Native_Failed"),
+                Message = LocalizationHelper.GetString("Onboarding_NativeConnection_Failed"),
                 Severity = AppNotificationSeverity.Error,
                 Source = "connection",
                 DedupeKey = "native-setup-incomplete-commit",

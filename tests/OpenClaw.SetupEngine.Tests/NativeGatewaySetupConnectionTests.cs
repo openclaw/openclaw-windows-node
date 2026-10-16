@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using OpenClaw.Connection;
 using OpenClaw.Connection.NativeGateway;
 using OpenClaw.Shared;
+using OpenClaw.TestSupport;
 using OpenClaw.TestSupport.Gateway;
 
 namespace OpenClaw.SetupEngine.Tests;
@@ -11,6 +12,131 @@ public sealed class NativeGatewaySetupConnectionTests
 {
     private const string Token = "native-loopback-fixture-token-not-a-production-credential";
     private const string Model = "fixture/native-model";
+    private const string StaleDeviceToken = "stale-operator-device-token-not-a-production-credential";
+
+    /// <summary>
+    /// A gateway that no longer honours the stored operator device token must not wedge
+    /// onboarding: the rejected credential is retired and the shared setup token reconnects.
+    /// </summary>
+    [Fact]
+    public async Task RejectedOperatorDeviceToken_IsRetiredSoSetupReconnectsWithTheSharedCredential()
+    {
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(Reply), Token);
+        using var fixture = CreateFixture(server, isolated: true);
+        await using var owner = await fixture.PrepareAsync();
+        var identity = new DeviceIdentity(owner.IdentityDirectory);
+        identity.Initialize();
+        identity.StoreDeviceToken(StaleDeviceToken);
+        Assert.Equal(StaleDeviceToken, DeviceIdentity.TryReadStoredDeviceToken(owner.IdentityDirectory));
+
+        await using var connection = await NativeGatewaySetupConnection.ConnectAsync(owner);
+
+        Assert.True(connection.IsConnected);
+        Assert.Null(DeviceIdentity.TryReadStoredDeviceToken(owner.IdentityDirectory));
+        var reloaded = new DeviceIdentity(owner.IdentityDirectory);
+        reloaded.Initialize();
+        Assert.Equal(identity.DeviceId, reloaded.DeviceId);
+    }
+
+    /// <summary>
+    /// A device token the gateway still honours must survive the connect unchanged.
+    /// </summary>
+    [Fact]
+    public async Task AcceptedOperatorDeviceToken_IsPreservedAcrossSetupConnect()
+    {
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(Reply), Token);
+        server.AcceptedDeviceToken = StaleDeviceToken;
+        using var fixture = CreateFixture(server, isolated: true);
+        await using var owner = await fixture.PrepareAsync();
+        var identity = new DeviceIdentity(owner.IdentityDirectory);
+        identity.Initialize();
+        identity.StoreDeviceToken(StaleDeviceToken);
+
+        await using var connection = await NativeGatewaySetupConnection.ConnectAsync(owner);
+
+        Assert.True(connection.IsConnected);
+        Assert.Equal(StaleDeviceToken, DeviceIdentity.TryReadStoredDeviceToken(owner.IdentityDirectory));
+    }
+
+    /// <summary>
+    /// Recovery must fail closed when the listener is no longer the verified managed Gateway.
+    /// Driven through the production connect path: the gateway rejects the stored token, the
+    /// endpoint's ownership changes before recovery re-verifies it, and nothing is retired,
+    /// disclosed, or paired on the word of a process whose ownership cannot be proven.
+    /// </summary>
+    [Fact]
+    public async Task Recovery_IsRefusedThroughConnectWhenGatewayOwnershipFailsVerification()
+    {
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(Reply), Token);
+        using var fixture = CreateFixture(server, isolated: true);
+        await using var owner = await fixture.PrepareAsync();
+        var identity = new DeviceIdentity(owner.IdentityDirectory);
+        identity.Initialize();
+        identity.StoreDeviceToken(StaleDeviceToken);
+
+        // Ownership changes only once the gateway has rejected the stored token, so the
+        // staged authorization still succeeds and recovery is genuinely reached.
+        server.DeviceTokenRejected = () =>
+            fixture.Runtime.Provenance = GatewayEndpointProvenanceKind.UnknownListener;
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => NativeGatewaySetupConnection.ConnectAsync(owner));
+
+        Assert.Contains("ownership could not be verified", error.Message);
+        Assert.Equal(1, server.DeviceTokenRejections);
+        Assert.Equal(StaleDeviceToken, DeviceIdentity.TryReadStoredDeviceToken(owner.IdentityDirectory));
+        Assert.Equal(0, server.SharedCredentialConnects);
+        Assert.Null(fixture.Host.ApprovedId);
+    }
+
+    /// <summary>
+    /// Recovery must fail closed when the isolated setup credential or port drifted, since the
+    /// shared token it would fall back to is no longer the one this session was staged against.
+    /// Driven through the production connect path.
+    /// </summary>
+    [Fact]
+    public async Task Recovery_IsRefusedThroughConnectWhenSetupCredentialChanged()
+    {
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(Reply), Token);
+        using var fixture = CreateFixture(server, isolated: true);
+        await using var owner = await fixture.PrepareAsync();
+        var identity = new DeviceIdentity(owner.IdentityDirectory);
+        identity.Initialize();
+        identity.StoreDeviceToken(StaleDeviceToken);
+
+        server.DeviceTokenRejected = () => fixture.Host.IsolatedConfiguration =
+            new(server.Endpoint.Port, "rotated-setup-token-not-a-production-credential");
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => NativeGatewaySetupConnection.ConnectAsync(owner));
+
+        Assert.Contains("port or token changed", error.Message);
+        Assert.Equal(1, server.DeviceTokenRejections);
+        Assert.Equal(StaleDeviceToken, DeviceIdentity.TryReadStoredDeviceToken(owner.IdentityDirectory));
+        Assert.Equal(0, server.SharedCredentialConnects);
+        Assert.Null(fixture.Host.ApprovedId);
+    }
+
+    /// <summary>
+    /// Recovery is budgeted once per staged session so a gateway that keeps rejecting cannot
+    /// drive repeated credential deletion.
+    /// </summary>
+    [Fact]
+    public async Task Recovery_IsBudgetedOncePerStagedSession()
+    {
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(Reply), Token);
+        using var fixture = CreateFixture(server, isolated: true);
+        await using var owner = await fixture.PrepareAsync();
+        var identity = new DeviceIdentity(owner.IdentityDirectory);
+        identity.Initialize();
+        identity.StoreDeviceToken(StaleDeviceToken);
+
+        Assert.True(await owner.RecoverRejectedOperatorTokenAsync(StaleDeviceToken, default));
+        identity.StoreDeviceToken(StaleDeviceToken);
+
+        Assert.False(await owner.RecoverRejectedOperatorTokenAsync(StaleDeviceToken, default));
+        Assert.Equal(StaleDeviceToken, DeviceIdentity.TryReadStoredDeviceToken(owner.IdentityDirectory));
+    }
 
     [Theory]
     [InlineData(false)]
@@ -93,6 +219,8 @@ public sealed class NativeGatewaySetupConnectionTests
     {
         await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(Reply), Token);
         using var fixture = CreateFixture(server, isolated);
+        var released = false;
+        fixture.Runtime.Release = () => released = fixture.Registry.ActiveGatewayId is not null;
         await using var owner = await fixture.PrepareAsync();
         var connection = await NativeGatewaySetupConnection.ConnectAsync(owner);
         var client = new GatewayAiSetupClient(connection);
@@ -116,10 +244,14 @@ public sealed class NativeGatewaySetupConnectionTests
                     Assert.Contains("restart", fixture.Events);
                     Assert.True(fixture.Events.IndexOf("restart") < fixture.Events.IndexOf("stop"),
                         "An isolated verified restart must retain its original detach/stop ownership.");
+                    Assert.True(fixture.Events.IndexOf("restart") < fixture.Events.IndexOf("release"),
+                        "A verified isolated Gateway must be handed to Companion instead of stopped.");
+                    Assert.True(released, "The isolated Gateway must be released only after publication.");
                     Assert.Equal(new CapabilitiesConfig { Camera = false }.GetEnabledCommandIds(), fixture.Host.AppliedCommands);
                 }
                 else
                 {
+                    Assert.DoesNotContain("release", fixture.Events);
                     Assert.Equal("hybrid", fixture.Config()["gateway"]!["reload"]!["mode"]!.GetValue<string>());
                     Assert.Equal("preserved", fixture.Config()["models"]!["sentinel"]!.GetValue<string>());
                 }
@@ -332,5 +464,73 @@ public sealed class NativeGatewaySetupConnectionTests
         fixture.Registry.Save();
         await Assert.ThrowsAsync<SetupNativeOwnershipException>(() =>
             SetupNativeCompletionVerifier.VerifyAsync(fixture.Temp.Path, proof, deadline.Token, manager));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PublishedVerifierEnforcesRecoveryAndModelPhaseTokens(bool blockModel)
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var releaseModel = new ManualResetEventSlim();
+        var block = false;
+        object Respond(string method, JsonElement parameters)
+        {
+            if (block && blockModel && method == "openclaw.setup.verify")
+            {
+                entered.TrySetResult();
+                if (!releaseModel.Wait(TimeSpan.FromSeconds(20)))
+                    throw new TimeoutException("The test did not release model verification.");
+            }
+            return Reply(method, parameters);
+        }
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(Respond), Token);
+        using var fixture = CreateFixture(server, isolated: true);
+        GatewayAiSetupCompletion proof;
+        await using (var owner = await fixture.PrepareAsync())
+        {
+            await using (var connection = await NativeGatewaySetupConnection.ConnectAsync(owner))
+            {
+                var client = new GatewayAiSetupClient(connection, Model);
+                await client.VerifyConfiguredAsync(Model);
+                proof = client.GetVerifiedCompletion();
+            }
+            await owner.CompleteVerifiedAsync(proof, new CapabilitiesConfig(), default);
+        }
+        var runtime = new NativeGatewaySetupTests.Runtime(fixture.Events)
+        {
+            StopConnections = () => server.CloseConnectionsAsync()
+        };
+        await using var manager = new GatewayConnectionManager(
+            new CredentialResolver(DeviceIdentityFileReader.Instance), new GatewayClientFactory(),
+            fixture.Registry, NullLogger.Instance, nativeGatewayRuntime: runtime);
+        await manager.ConnectAsync(proof.GatewayId);
+        var clock = new ManualTimeProvider();
+        using var caller = new CancellationTokenSource();
+        CancellationToken recoveryToken = default;
+        async Task Recover(GatewayAiSetupCompletion _, CancellationToken ct)
+        {
+            recoveryToken = ct;
+            if (blockModel) return;
+            entered.TrySetResult();
+            await Task.Delay(Timeout.Infinite, ct);
+        }
+        block = true;
+        var verifying = SetupNativeCompletionVerifier.VerifyAsync(
+            fixture.Temp.Path, proof, caller.Token, manager, Recover, clock);
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(15));
+            clock.Advance(blockModel ? SetupNativeCompletionTiming.ModelVerification : SetupNativeCompletionTiming.ModelRecovery);
+            var error = await Assert.ThrowsAsync<SetupNativeCompletionTimeoutException>(() => verifying.WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.Contains(blockModel ? "selected AI model" : "Local AI recovery", error.Message);
+            Assert.False(caller.IsCancellationRequested);
+            if (!blockModel) Assert.True(recoveryToken.IsCancellationRequested);
+        }
+        finally { block = false; releaseModel.Set(); caller.Cancel(); }
+        using var retryDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var verified = await SetupNativeCompletionVerifier.VerifyAsync(
+            fixture.Temp.Path, proof, retryDeadline.Token, manager, timeProvider: clock);
+        SetupNativeVerification.RequireSame(proof, verified);
     }
 }
