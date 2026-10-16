@@ -11,6 +11,7 @@
 //   await using var _ = runtime; // StopAsync/RestartAsync/RefreshAsync also available on ILocalAiRuntime
 // </summary>
 using OpenClaw.Shared;
+using OpenClaw.Shared.Inference;
 using OpenClaw.Shared.Inference.Catalog;
 using System.Net;
 using System.Text;
@@ -123,6 +124,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
     private readonly ILlamaServerRuntimePlatform _platform;
     private readonly ILlamaServerClient _client;
     private readonly ILocalAiModelFileVerifier _modelFileVerifier;
+    private readonly IHostHardwareProbe _hardwareProbe;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
     private readonly CancellationTokenSource _lifetime = new();
     private readonly object _exitTasksGate = new();
@@ -161,7 +163,8 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         ILocalAiManagedProcessHost processHost,
         ILlamaServerRuntimePlatform platform,
         ILlamaServerClient client,
-        ILocalAiModelFileVerifier? modelFileVerifier = null)
+        ILocalAiModelFileVerifier? modelFileVerifier = null,
+        IHostHardwareProbe? hardwareProbe = null)
     {
         _options = ValidateOptions(options);
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -169,6 +172,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         _platform = platform ?? throw new ArgumentNullException(nameof(platform));
         _client = client ?? throw new ArgumentNullException(nameof(client));
         _modelFileVerifier = modelFileVerifier ?? new HuggingFaceLocalAiModelFileVerifier();
+        _hardwareProbe = hardwareProbe ?? new CudaHostHardwareProbe();
         _manifestStore = new LocalAiManifestStore(options.Paths);
         _snapshot = LocalAiRuntimeSnapshot.Initial(options.InitialEndpoint, platform.UtcNow);
     }
@@ -510,6 +514,22 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                 _runtimeModelPath,
                 draftModelPath,
                 requestedPort);
+            if (string.Equals(install.Manifest.ModelCatalogId, LocalModelCatalog.NemotronBoltModelId,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                HostHardwareInfo hardware;
+                try { hardware = _hardwareProbe.Probe(); }
+                catch (Exception ex)
+                {
+                    throw new InvalidDataException("Memory availability could not be confirmed. Recheck before starting Local AI.", ex);
+                }
+                // Recheck the receipt's exact tier after file verification. A
+                // restart must never rewrite it to a smaller current-fit tier.
+                var eligibility = LocalInferenceEligibility.EvaluateRecordedProfile(hardware,
+                    LlamaServerRouterConfiguration.ResolveInstalledPlan(install));
+                if (!eligibility.CanOffer)
+                    throw new InvalidDataException("The installed Local AI profile does not fit current memory or hardware. Free memory and recheck before starting.");
+            }
             if (_options.GetApiKey?.Invoke() is { } apiKey)
                 launchPlan = launchPlan with
                 {

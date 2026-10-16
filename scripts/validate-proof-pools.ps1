@@ -703,6 +703,13 @@ if (-not $ForceFallback -and $testJson -and $testJson.Parameters.ContainsKey("Sc
         -ErrorAction SilentlyContinue `
         -ErrorVariable schemaErrors
     if (-not $schemaValid) {
+        # Some Test-Json versions return false without capturable error details.
+        # Preserve the repository's precise diagnostic; never admit a rejected input.
+        Assert-JsonSchemaValue `
+            -Value $inventory `
+            -ValueSchema $schema `
+            -RootSchema $schema `
+            -JsonPath '$'
         $details = ($schemaErrors | ForEach-Object { $_.Exception.Message }) -join [Environment]::NewLine
         throw "Proof-pool inventory does not match its schema.$([Environment]::NewLine)$details"
     }
@@ -733,7 +740,7 @@ foreach ($pool in $inventory.pools) {
         $normalizedCommand = ([string]$command.command).
             Replace([string][char]39, "").
             Replace([string][char]34, "")
-        $proofTestPattern = "^(?:\`$env:OPENCLAW_RUN_E2E = '1'; )?\.\\scripts\\run-proof-tests\.ps1 -Project '(?<project>[^']+)' -Filter '[^']+' -ResultName '[a-z0-9]+(?:-[a-z0-9]+)*'(?: -RuntimeIdentifier (?:win-x64|win-arm64))?$"
+        $proofTestPattern = "^(?:\`$env:OPENCLAW_RUN_E2E = '1'; (?:\`$env:OPENCLAW_RUN_OLLAMA_E2E = '1'; )?)?\.\\scripts\\run-proof-tests\.ps1 -Project '(?<project>[^']+)' -Filter '[^']+' -ResultName '[a-z0-9]+(?:-[a-z0-9]+)*'(?: -RuntimeIdentifier (?:win-x64|win-arm64))?$"
         $commandPathProperty = Get-JsonProperty -Value $command -Name "path"
         $commandPath = if ($null -eq $commandPathProperty) {
             ""

@@ -292,6 +292,24 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
         }
     }
 
+    /// <summary>
+    /// The package service outlives Companion, so a successor adopts it through its own
+    /// status and listener proof instead of a cold restart.
+    /// </summary>
+    public async Task ReleaseAsync(CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            _proofs.Clear();
+            _ownedStarts.Clear();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public async Task RestartAsync(GatewayRecord record, CancellationToken cancellationToken)
     {
         Uri endpoint = RequireRecord(record);
@@ -512,6 +530,9 @@ public sealed class NativeGatewayRuntimeRouter(
 
     public Task StopAsync(CancellationToken cancellationToken) =>
         Task.WhenAll(legacy.StopAsync(cancellationToken), isolated.StopAsync(cancellationToken));
+
+    public Task ReleaseAsync(CancellationToken cancellationToken) =>
+        Task.WhenAll(legacy.ReleaseAsync(cancellationToken), isolated.ReleaseAsync(cancellationToken));
 
     public async ValueTask DisposeAsync()
     {

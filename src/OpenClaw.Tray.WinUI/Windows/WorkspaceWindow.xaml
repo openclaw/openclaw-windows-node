@@ -200,13 +200,13 @@
         <Button x:Name="CollapsePaneButton" x:Uid="WorkspaceShell_TogglePane" Click="OnTogglePane"
                 AutomationProperties.AutomationId="WorkspaceTogglePane"
                 HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,8,0,0"
-                Width="40" Height="40" Style="{StaticResource SubtleButtonStyle}">
+                Width="40" Height="40" Padding="0" Style="{StaticResource SubtleButtonStyle}">
             <FontIcon Glyph="&#xE90C;" FontSize="16"/>
         </Button>
         <Button x:Name="ReopenPaneButton" x:Uid="WorkspaceShell_TogglePane" Click="OnTogglePane"
                 AutomationProperties.AutomationId="WorkspaceReopenPane"
                 Visibility="Collapsed" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,8,0,0"
-                Width="40" Height="40" Style="{StaticResource SubtleButtonStyle}">
+                Width="40" Height="40" Padding="0" Style="{StaticResource SubtleButtonStyle}">
             <FontIcon Glyph="&#xE90C;" FontSize="16"/>
         </Button>
         </Grid>

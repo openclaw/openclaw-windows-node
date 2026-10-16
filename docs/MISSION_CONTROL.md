@@ -1,6 +1,12 @@
 # Mission Control: Topology-Aware Command Center Plan
 
-This plan turns the Windows tray from a "connected/not connected" companion into a Mission Control surface for any OpenClaw gateway topology. It is based on a deep audit of:
+> Historical plan, not a current backlog. Several phases have been implemented.
+> Use the [architecture ledger](ARCHITECTURE.md) and
+> [connection architecture](CONNECTION_ARCHITECTURE.md) before acting on a
+> recommendation below. Reassess each remaining claim against current source;
+> the original comparison did not record immutable upstream revisions.
+
+This plan proposed turning the Windows tray from a "connected/not connected" companion into a Mission Control surface for any OpenClaw gateway topology. It was based on an audit of:
 
 - Current Windows code in this repository on `mission-control-audit`.
 - Current upstream Mac app code in `openclaw/apps/macos/Sources/OpenClaw`.
@@ -18,7 +24,7 @@ The main product decision is deliberate: **do not make a native Windows gateway 
 
 ## 2. Audit findings
 
-### 2.1 Windows current state
+### 2.1 Windows state at the original audit
 
 Windows now has a strong foundation:
 
@@ -28,14 +34,19 @@ Windows now has a strong foundation:
 - Activity Stream and support-bundle copy path that avoid storing invoke payloads.
 - Deep links including `openclaw://commandcenter`.
 
-The biggest missing model is not another gateway implementation. It is **topology state**. Current settings collapse all topologies into:
+The original audit identified **topology state** as a missing model. At that
+time, settings collapsed topologies into:
 
 - `GatewayUrl`
 - `UseSshTunnel`
 - SSH host/user/ports
 - `EnableNodeMode`
 
-There is no first-class concept of "Mac over SSH", "WSL", "Windows native", "Tailscale", "LAN", or "unknown".
+This gap is no longer an instruction to add a new model. `GatewayKind`,
+`GatewayTopologyInfo`, and `GatewayTopologyClassifier` now live in
+[`Models.cs`](../src/OpenClaw.Shared/Models.cs), and
+[`CommandCenterStateBuilder`](../src/OpenClaw.Tray.WinUI/Services/CommandCenterStateBuilder.cs)
+uses the classifier and active-Gateway tunnel inputs.
 
 ### 2.2 Mac Mission Control behaviors worth porting
 
@@ -77,7 +88,11 @@ Important Mac security/privacy pieces:
 
 ### 2.3 Gateway and browser proxy findings
 
-`browser.proxy` is the main concrete remaining Mac node command gap.
+The original audit identified `browser.proxy` as a command gap. It is now
+registered by [`NodeService`](../src/OpenClaw.Tray.WinUI/Services/NodeService.cs)
+through `BrowserProxyCapability`. Availability still depends on capability
+settings, Gateway policy, and a compatible browser-control host; registration
+alone does not prove an end-to-end invocation.
 
 Gateway/browser facts:
 
@@ -550,13 +565,15 @@ dotnet test .\tests\OpenClaw.Tray.Tests\OpenClaw.Tray.Tests.csproj --no-restore
 6. Should WSL detection use process/port probing, `wsl.exe`, or gateway presence fields once available?
 7. Should support bundles include topology/tunnel diagnostics by default, and how should they redact host/user/IP? **Implemented for Command Center copy support context with redacted gateway URL, topology detail, tunnel endpoints/errors, and port details.**
 
-## 11. Immediate recommendation
+## 11. Original recommendation and current owner
 
-Implement Phase 1 now:
+The original recommendation was to implement Phase 1:
 
 - Add topology/tunnel models and classifier.
 - Surface them in Command Center.
 - Add topology/tunnel warnings.
 - Keep everything read-only and diagnostic.
 
-This is the cleanest bridge between today's working Command Center and the Mac-style Mission Control product vision. It does not require a native Windows gateway, protocol changes, or privacy-sensitive live tests.
+The topology model and Command Center integration now exist. Extend their
+current owners for a demonstrated remaining gap; do not repeat this phase or
+treat the historical recommendation as authorization for new runtime work.

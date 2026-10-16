@@ -7,6 +7,12 @@ on:
   pull_request:
     branches: [ main, master ]
   workflow_dispatch:
+    inputs:
+      local_ai_proof_baseline:
+        description: 'Optional full main SHA for before/after Local AI UI proof'
+        type: string
+        required: false
+        default: ''
   workflow_call:
     inputs:
       promotion_alpha:
@@ -144,6 +150,14 @@ jobs:
     - name: Test agent skill validator
       shell: pwsh
       run: ./scripts/test-agent-skills-validator.ps1
+
+    - name: Test proof results and local evidence
+      shell: pwsh
+      run: ./scripts/test-proof-evidence.ps1
+
+    - name: Test read-only agent readiness
+      shell: pwsh
+      run: ./scripts/test-agent-readiness.ps1
 
     - name: Test native Gateway source build safety
       shell: pwsh
@@ -567,6 +581,14 @@ jobs:
         -TrxFileName OpenClaw.SetupEngine.Tests.trx
         -Runtime win-x64
 
+    - name: Run Dev containment settings tests
+      run: >
+        dotnet test tests/OpenClaw.Tray.Tests
+        -c Debug -r win-x64 --no-restore -p:DevBuild=true
+        --filter "FullyQualifiedName~SettingsManagerIsolationTests|FullyQualifiedName~AppRefactorContractTests.SandboxPage_"
+        --results-directory TestResults\TrayDev
+        --logger "trx;LogFileName=OpenClaw.Tray.DevSettings.Tests.trx"
+
     - name: Upload Test Results
       if: always()
       uses: actions/upload-artifact@v7
@@ -712,6 +734,12 @@ jobs:
         }
 
         Write-Host "DevBuild identity marker verified at $($marker.FullName): $identity"
+
+    - name: Capture Local AI hardware profiles before and after
+      timeout-minutes: 20
+      env:
+        LOCAL_AI_PROOF_BASELINE: ${{ inputs.local_ai_proof_baseline }}
+      run: ./scripts/Invoke-LocalAiVisualProof.ps1 -BaselineRef $env:LOCAL_AI_PROOF_BASELINE
 
     - name: Upload Test Results
       if: always()

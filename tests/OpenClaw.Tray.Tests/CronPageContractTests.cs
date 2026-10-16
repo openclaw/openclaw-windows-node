@@ -59,6 +59,9 @@ public sealed class CronPageContractTests
         Assert.Contains("RebuildJobCards(preserveHistory: _historyJobId != null);", source);
         Assert.Contains("ShowHistoryLoading(_historyJobId);", source);
         Assert.Contains("Name = actionName", source);
+        Assert.Contains("SetAutomationId(nameText, $\"CronJobTitle:{vm.Id}\")", source);
+        Assert.Contains("SetAutomationId(btn, $\"Cron{actionName}:{jobId}\")", source);
+        Assert.Contains("SetName(btn, text)", source);
         Assert.Contains("LocalizationHelper.GetString(\"CronPage_OpenChat\")", source);
         Assert.DoesNotContain("SessionsPage_OpenChatButton.Content", source);
         Assert.Contains("Tag = $\"running_{vm.Id}\"", source);

@@ -391,7 +391,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             Assert.False(Find<ItemsControl>(page, "CandidateChoices").IsEnabled);
             Assert.Equal(0, completed());
             typeof(AiSetupPage).GetMethod("ShowError", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
-                .Invoke(page, ["Failed"]);
+                .Invoke(page, ["Failed", null]);
             var error = Find<InfoBar>(page, "ProviderActivityError");
             Assert.True(error.IsOpen);
             Assert.False(string.IsNullOrWhiteSpace(error.Message));
@@ -426,7 +426,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow, $"followup-provider-loading-{theme}", output,
                 ["Connect your AI", "Synthetic provider loading", "Cancel"], requiredContent: page)) { }
             typeof(AiSetupPage).GetMethod("ShowError", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
-                .Invoke(page, ["Failed"]);
+                .Invoke(page, ["Failed", null]);
             Assert.True(Find<InfoBar>(page, "ProviderActivityError").IsOpen);
             using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow, $"followup-provider-inline-error-{theme}", output,
                 ["Connect your AI", "Cancel"], requiredContent: page)) { }

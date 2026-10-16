@@ -219,6 +219,8 @@ public sealed class NativeGatewaySetupConnectionTests
     {
         await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(Reply), Token);
         using var fixture = CreateFixture(server, isolated);
+        var released = false;
+        fixture.Runtime.Release = () => released = fixture.Registry.ActiveGatewayId is not null;
         await using var owner = await fixture.PrepareAsync();
         var connection = await NativeGatewaySetupConnection.ConnectAsync(owner);
         var client = new GatewayAiSetupClient(connection);
@@ -242,10 +244,14 @@ public sealed class NativeGatewaySetupConnectionTests
                     Assert.Contains("restart", fixture.Events);
                     Assert.True(fixture.Events.IndexOf("restart") < fixture.Events.IndexOf("stop"),
                         "An isolated verified restart must retain its original detach/stop ownership.");
+                    Assert.True(fixture.Events.IndexOf("restart") < fixture.Events.IndexOf("release"),
+                        "A verified isolated Gateway must be handed to Companion instead of stopped.");
+                    Assert.True(released, "The isolated Gateway must be released only after publication.");
                     Assert.Equal(new CapabilitiesConfig { Camera = false }.GetEnabledCommandIds(), fixture.Host.AppliedCommands);
                 }
                 else
                 {
+                    Assert.DoesNotContain("release", fixture.Events);
                     Assert.Equal("hybrid", fixture.Config()["gateway"]!["reload"]!["mode"]!.GetValue<string>());
                     Assert.Equal("preserved", fixture.Config()["models"]!["sentinel"]!.GetValue<string>());
                 }
