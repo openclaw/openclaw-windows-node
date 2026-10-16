@@ -1,3 +1,7 @@
+using System.Text;
+using System.Text.Json;
+using OpenClaw.TestSupport.Gateway;
+
 namespace OpenClaw.GatewayFixtureHost;
 
 internal static class Program
@@ -6,22 +10,26 @@ internal static class Program
     {
         if (args.Length == 0 || args.Contains("--help"))
         {
-            Console.WriteLine("Usage: dotnet OpenClaw.GatewayFixtureHost.dll --app <built-app.exe> [--artifacts <directory>] [--duration-seconds <1..86400>]");
-            Console.WriteLine("Starts the multi-session-browse fixture and an isolated real app. Ctrl+C stops only this run.");
+            Console.WriteLine("Usage: dotnet OpenClaw.GatewayFixtureHost.dll --app <built-app.exe> [--scenario multi-session-browse|chat-interactive] [--interaction <name>] [--artifacts <directory>] [--duration-seconds <1..86400>]");
+            Console.WriteLine("Starts a synthetic Gateway and an isolated real app. Ctrl+C stops only this run.");
             return args.Length == 0 ? 2 : 0;
         }
         string? appPath = null;
         string? artifacts = null;
         int? durationSeconds = null;
+        var scenarioName = GatewayScenario.BrowseName;
+        string? interaction = null;
         for (var index = 0; index < args.Length; index += 2)
         {
-            if (index + 1 >= args.Length || args[index] is not ("--app" or "--artifacts" or "--duration-seconds"))
+            if (index + 1 >= args.Length || args[index] is not ("--app" or "--artifacts" or "--duration-seconds" or "--scenario" or "--interaction"))
             {
                 Console.Error.WriteLine($"Unknown or incomplete option: {args[index]}");
                 return 2;
             }
             if (args[index] == "--app") appPath = args[index + 1];
             else if (args[index] == "--artifacts") artifacts = args[index + 1];
+            else if (args[index] == "--scenario") scenarioName = args[index + 1];
+            else if (args[index] == "--interaction") interaction = args[index + 1];
             else if (int.TryParse(args[index + 1], out var duration) && duration is >= 1 and <= 86400)
                 durationSeconds = duration;
             else
@@ -40,20 +48,52 @@ internal static class Program
         Console.CancelKeyPress += cancel;
         try
         {
-            await using var run = await GatewayFixtureRun.StartAsync(appPath, artifacts, stop.Token);
+            var scenario = GatewayScenario.LoadBuiltin(scenarioName);
+            if (interaction is not null && (!scenario.IsInteractive || !FixturePlayback.Scenarios.Contains(interaction)))
+                throw new ArgumentException("--interaction requires chat-interactive and a supported interaction name.");
+            await using var run = await GatewayFixtureRun.StartAsync(appPath, artifacts, stop.Token, scenario: scenario);
+            if (interaction is not null) run.Gateway.Interactive!.Playback.Select(interaction);
             await run.InvokeAsync("app.navigate", new { page = "chat" });
             Console.WriteLine($"Fixture ready. App PID: {run.AppProcessId}");
             Console.WriteLine($"Gateway: {run.Gateway.Endpoint}");
             Console.WriteLine($"MCP: http://127.0.0.1:{run.McpPort}/");
             Console.WriteLine($"Profile: {run.Profile.DataDirectory}");
             Console.WriteLine($"Artifacts: {run.ArtifactsDirectory}");
-            Console.WriteLine("Synthetic read-only Gateway. Use Chat, Sessions, Settings and Configuration. Ctrl+C stops this run.");
+            Console.WriteLine(scenario.IsInteractive
+                ? "Synthetic interactive Gateway. No provider or host command executes. Type help for fixture controls."
+                : "Synthetic read-only Gateway. Use Chat, Sessions, Settings and Configuration. Ctrl+C stops this run.");
+            var input = new StringBuilder();
             if (durationSeconds is { } seconds)
                 stop.CancelAfter(TimeSpan.FromSeconds(seconds));
             try
             {
                 while (run.IsRunning)
+                {
+                    run.Gateway.Interactive?.ThrowIfFaulted();
+                    // Nonblocking console reads keep duration/Ctrl+C cleanup bounded.
+                    if (scenario.IsInteractive && !Console.IsInputRedirected)
+                        while (Console.KeyAvailable)
+                        {
+                            var key = Console.ReadKey(intercept: true);
+                            if (key.Key == ConsoleKey.Enter)
+                            {
+                                Console.WriteLine();
+                                await ControlAsync(run, input.ToString(), stop.Token);
+                                input.Clear();
+                            }
+                            else if (key.Key == ConsoleKey.Backspace && input.Length > 0)
+                            {
+                                input.Length--;
+                                Console.Write("\b \b");
+                            }
+                            else if (!char.IsControl(key.KeyChar) && input.Length < 16_384)
+                            {
+                                input.Append(key.KeyChar);
+                                Console.Write(key.KeyChar);
+                            }
+                        }
                     await Task.Delay(250, stop.Token);
+                }
             }
             catch (OperationCanceledException) when (stop.IsCancellationRequested)
             {
@@ -81,6 +121,42 @@ internal static class Program
         finally
         {
             Console.CancelKeyPress -= cancel;
+        }
+    }
+
+    private static async Task ControlAsync(GatewayFixtureRun run, string command, CancellationToken ct)
+    {
+        var runtime = run.Gateway.Interactive!;
+        try
+        {
+            switch (command.Trim())
+            {
+                case "help":
+                    Console.WriteLine($"Next response: {string.Join(", ", FixturePlayback.Scenarios)}");
+                    Console.WriteLine("Controls: pause, step, resume, disconnect, questions, resolve <question.resolve JSON params>");
+                    Console.WriteLine("Scenarios apply to the next accepted send, then return to streaming. Stop/answers remain available while paused.");
+                    break;
+                case "pause": runtime.Playback.Pause(); break;
+                case "step": runtime.Playback.Step(); break;
+                case "resume": runtime.Playback.Resume(); break;
+                case "disconnect": await run.Gateway.CloseConnectionsAsync(ct); break;
+                case "questions":
+                    Console.WriteLine(JsonSerializer.Serialize(await runtime.RespondAsync("question.list", JsonSerializer.SerializeToElement(new { }), ct)));
+                    break;
+                case var value when value.StartsWith("resolve ", StringComparison.Ordinal):
+                    using (var json = JsonDocument.Parse(value["resolve ".Length..]))
+                        Console.WriteLine(JsonSerializer.Serialize(await runtime.RespondAsync("question.resolve", json.RootElement, ct)));
+                    break;
+                case "": break;
+                default:
+                    runtime.Playback.Select(command.Trim());
+                    Console.WriteLine($"Next response: {command.Trim()}");
+                    break;
+            }
+        }
+        catch (Exception ex) when (ex is ArgumentException or JsonException or FixtureRequestException)
+        {
+            Console.Error.WriteLine($"Fixture control rejected: {ex.Message}");
         }
     }
 }

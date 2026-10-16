@@ -10,9 +10,10 @@ namespace OpenClaw.TestSupport.Gateway;
 /// Single synthetic source for the interactive host and protocol/UI tests.
 /// This is a browse fixture, not a Gateway emulator or a recording of user data.
 /// </summary>
-public sealed class GatewayScenario
+public sealed partial class GatewayScenario
 {
     public const string BrowseName = "multi-session-browse";
+    public const string InteractiveName = "chat-interactive";
     public const string MainSessionKey = "agent:main:main";
     public const string LongSessionKey = "agent:main:fixture-long";
     public const string OtherSessionKey = "agent:research:fixture-other";
@@ -49,10 +50,13 @@ public sealed class GatewayScenario
 
     private readonly bool _allowAgentCreation;
     private readonly bool _allowSessionMutations;
+    private readonly bool _allowChatSend;
+    public bool IsInteractive { get; }
     private readonly Dictionary<string, JsonObject?> _sessionChanges = new(StringComparer.Ordinal);
     private readonly List<object> _createdAgents = [];
+    private int _chatSendCount;
 
-    public string Name => _setup is not null ? "native-setup" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation" : BrowseName;
+    public string Name => IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation" : BrowseName;
     public int Version => 1;
     public int ProtocolVersion => GatewayProtocolContract.CurrentVersion;
     public string ContractProvenance =>
@@ -63,30 +67,46 @@ public sealed class GatewayScenario
 
     private GatewayScenario(Session[] sessions, IReadOnlyDictionary<string, JsonElement> reads,
         Func<string, JsonElement, object>? setup = null, bool advertiseSetup = true, bool allowAgentCreation = false,
-        bool allowSessionMutations = false)
+        bool allowSessionMutations = false, bool allowChatSend = false, JsonObject[]? cronJobs = null,
+        bool interactive = false)
     {
         _sessions = sessions;
         _reads = reads;
         _setup = setup;
         _allowAgentCreation = allowAgentCreation;
         _allowSessionMutations = allowSessionMutations;
+        IsInteractive = interactive;
+        _allowChatSend = allowChatSend;
+        _cronJobs = cronJobs?.ToDictionary(job => job["id"]!.GetValue<string>(), StringComparer.Ordinal);
         SessionKeys = Array.AsReadOnly(sessions.Select(s => s.Key).ToArray());
         ReadMethods = Array.AsReadOnly(new[]
         {
             "sessions.list", "sessions.subscribe", "sessions.preview", "chat.history",
             "models.list", "usage.cost"
         }.Concat(reads.Keys).Concat(setup is null ? [] : advertiseSetup
-            ? SetupMethods : ["wizard.start", "wizard.next", "wizard.cancel", "logs.tail"]).Order(StringComparer.Ordinal).ToArray());
+            ? SetupMethods : ["wizard.start", "wizard.next", "wizard.cancel", "logs.tail"])
+            .Concat(cronJobs is null ? [] : ["cron.list", "cron.status", "cron.add", "cron.update"])
+            .Order(StringComparer.Ordinal).ToArray());
         var source = JsonSerializer.Serialize(new
         {
             Name, Version, ProtocolVersion, ContractProvenance,
-            sessions = sessions.Select(s => new { s.Row, s.Messages }), reads
+            sessions = sessions.Select(s => new { s.Row, s.Messages }), reads, cronJobs
         });
         Sha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source))).ToLowerInvariant();
     }
 
-    public static GatewayScenario LoadBuiltin(string name) =>
-        name == BrowseName ? CreateBrowse() : throw new ArgumentException("Unknown fixture scenario.", nameof(name));
+    public static GatewayScenario LoadBuiltin(string name) => name switch
+    {
+        BrowseName => CreateBrowse(),
+        InteractiveName => CreateInteractive(),
+        _ => throw new ArgumentException("Unknown fixture scenario.", nameof(name))
+    };
+
+    public static GatewayScenario CreateInteractive()
+    {
+        var browse = CreateBrowse();
+        return new(browse._sessions, browse._reads, interactive: true);
+    }
 
     /// <summary>Explicit synthetic setup replies only. The host never executes provider or package operations.</summary>
     public static GatewayScenario CreateNativeSetup(Func<string, JsonElement, object> responder, bool advertiseSetup = true)
@@ -96,7 +116,7 @@ public sealed class GatewayScenario
     }
 
     public static GatewayScenario CreateBrowse(bool allowAgentCreation = false, bool requireAgentSelection = false,
-        bool allowSessionMutations = false)
+        bool allowSessionMutations = false, bool allowChatSend = false)
     {
         Session[] sessions =
         [
@@ -231,7 +251,7 @@ public sealed class GatewayScenario
             })
         };
         return new GatewayScenario(sessions, reads, allowAgentCreation: allowAgentCreation,
-            allowSessionMutations: allowSessionMutations);
+            allowSessionMutations: allowSessionMutations, allowChatSend: allowChatSend);
     }
 
     internal object CreateHello(string connectionId) => new
@@ -239,13 +259,21 @@ public sealed class GatewayScenario
         type = GatewayProtocolContract.HelloOkType,
         protocol = ProtocolVersion,
         server = new { version = "fixture-1", connId = connectionId },
-        features = new { methods = ReadMethods, events = new[] { "connect.challenge", "sessions.changed", "agent" } },
+        features = new
+        {
+            methods = IsInteractive ? ReadMethods.Concat(InteractiveGatewayRuntime.Methods).Distinct().ToArray() : ReadMethods,
+            events = IsInteractive
+                ? new[] { "connect.challenge", "sessions.changed", "agent", "chat", "question.requested", "question.resolved", "exec.approval.requested", "exec.approval.resolved" }
+                : new[] { "connect.challenge", "sessions.changed", "agent" }
+        },
         snapshot = new
         {
             presence = Array.Empty<object>(), health = _reads["health"],
             sessionDefaults = new { defaultAgentId = "main", mainKey = "main", mainSessionKey = MainSessionKey, scope = "per-sender" }
         },
-        auth = new { role = "operator", scopes = _allowAgentCreation || _allowSessionMutations ? new[] { "operator.admin", "operator.read" } : new[] { _setup is null ? "operator.read" : "operator.admin" } },
+        auth = new { role = "operator", scopes = IsInteractive
+            ? new[] { "operator.read", "operator.write", "operator.sessions.read", "operator.sessions.write", "operator.questions", "operator.approvals" }
+            : _allowAgentCreation || _allowSessionMutations || _cronJobs is not null ? new[] { "operator.admin", "operator.read" } : new[] { _setup is null ? "operator.read" : "operator.admin" } },
         policy = new { maxPayload = 1_048_576, maxBufferedBytes = 1_048_576, tickIntervalMs = 30_000 }
     };
 
@@ -253,6 +281,8 @@ public sealed class GatewayScenario
 
     internal object Respond(string method, JsonElement parameters)
     {
+        if (_cronJobs is not null && method is "cron.list" or "cron.status" or "cron.add" or "cron.update")
+            return RespondCron(method, parameters);
         if (_setup is not null && SetupMethods.Contains(method, StringComparer.Ordinal))
             return _setup(method, parameters);
         if (_allowAgentCreation && method is "agents.create" or "agents.list")
@@ -283,6 +313,14 @@ public sealed class GatewayScenario
             return ResolveApproval(parameters);
         if (_allowSessionMutations && method is "sessions.patch" or "sessions.delete")
             return MutateSession(method, parameters);
+        if (_allowChatSend && method == "chat.send")
+        {
+            return new
+            {
+                runId = $"fixture-chat-{Interlocked.Increment(ref _chatSendCount)}",
+                status = "started"
+            };
+        }
         if (IsWrite(method))
             throw new FixtureRequestException("FIXTURE_READ_ONLY", "Fixture Gateway is read-only. This operation is not executed.");
         return method switch

@@ -18,6 +18,38 @@ packages with their matching public certificates, provenance metadata, and
 installation instructions. Unsigned Store packages stay in Actions for manual
 Partner Center submission.
 
+## Gateway compatibility channels
+
+Keep Companion development and compatibility fixes on one branch. There is no
+separate `release/extended-stable` branch to synchronize. Native development
+defaults to npm `latest`; `-GatewayChannel Packaged` on
+`scripts\Build-NativeGatewayFromSource.ps1` or `run-app-local.ps1` selects the latest
+published `openclaw/openclaw-windows-packaging` release while retaining MSIX isolation.
+Use `-PackagingRelease <tag>` to select a specific native shipping baseline.
+Native Packaged reads the actual Gateway identity from the digest-verified released
+MSIX and reuses its application bytes, with a development launcher rebuilt from
+the exact packaging release commit. Do not infer the payload version from the
+MSIX tag or moving `release-policy.json`: packaging may ship an older Gateway
+under a newer MSIX version. GitHub publication does not establish Store rollout
+availability.
+
+WSL setup already follows npm `latest`, so its CI does not duplicate tests against
+the native packaging baseline. CI resolves npm Latest once per workflow and runs
+each selected setup/connect, revocation and network recovery job once against
+that exact version. Each job's `gateway-release.json` artifact records the npm
+selector, version, integrity and tarball URL. WSL CI does not download a packaging
+MSIX or accept a `packaging_release` input.
+
+Native Latest/Packaged runtime CI is still missing. Unit/helper and upstream
+packaging checks do not prove real isolated-session Gateway startup, pairing or
+recovery. That coverage requires a capability-qualified Windows client host and
+dedicated native runtime jobs, not a second WSL npm version. See the
+[development/CI matrix](../DEVELOPMENT.md#gateway-development-and-ci-matrix).
+
+Store Gateway packaging and release policy remain
+owned by `openclaw/openclaw-windows-packaging`; these development switches neither
+replace the installed Store package nor change WSL setup's npm-latest default.
+
 ## Inno-to-Store migration foundation
 
 Issue #1374 is delivered in two PRs: the preservation/startup foundation, then
@@ -37,8 +69,12 @@ Local AI payload. Its protected intent is stored under
 `%APPDATA%\OpenClawTray\store-migration\intent.dpapi`. Repeating preparation with
 unchanged state reuses the unexpired intent. Intent expires after 30 days; only
 new consent may renew it. Corrupt records require explicit recovery rather than
-silent replacement. Preparation is serialized and writes via a flushed sibling
-temporary file followed by atomic rename.
+silent replacement. The inventory includes saved Gateway identity directories and
+the credential-free `gateways\native-setup-draft.json` recovery descriptor; other
+unexpected files in that directory fail closed. Atomic-write temporary siblings
+for that descriptor are non-state and ignored only when their names contain the
+expected 32-digit lowercase hexadecimal identifier. Preparation is serialized and writes
+via a flushed sibling temporary file followed by atomic rename.
 
 `completed.dpapi` is a separate receipt, written only after exclusive source
 ownership, a fresh strict inventory matching the protected intent, and canonical
@@ -224,10 +260,15 @@ continue to normal startup, because refusing to launch cannot repair either one.
 Still confirm before the tag that the released Inno installer registers
 `DisplayVersion` `2026.9.5` and `DisplayName` `OpenClaw Companion version 2026.9.5`.
 Both are refused, and each produces a different message, so check for the right one.
-A prerelease suffix is a version refusal: that user is told to update the previous app
-to a supported version first. A mismatched name is an unsupported installation: that
-user is told migration is unavailable. Neither is offered migration, so the registered
-values still have to be exact.
+An alpha or other unsupported prerelease suffix is a version refusal: that user is told
+to update the previous app to a supported version first. The repository's numeric
+stable-correction form, such as `2026.9.8-1`, is accepted and ordered after its
+unsuffixed base; its executable file version remains the base numeric version
+(`2026.9.8.0`) while its product version must identify the exact correction.
+Build properties remain numeric, so pin a correction as `X.Y.Z.N` when a correction
+must be the minimum source (for example, `2026.9.8.1` for `2026.9.8-1`). A mismatched
+name is an unsupported installation: that user is told migration is unavailable.
+Refused sources are not offered migration, so the registered values still have to be exact.
 
 ### Developer migration test package
 

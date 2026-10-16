@@ -196,6 +196,15 @@ These features need the gateway to send `node.invoke` commands:
 | `ollama.models` | Discover local Ollama chat models | Requires Share Windows Ollama in Permissions; reads the separately installed Ollama service on `127.0.0.1:11434` |
 | `ollama.chat` | Run bounded local Ollama inference | Requires Share Windows Ollama, gateway command approval, and an exact local model returned by `ollama.models` |
 
+For the Windows command-approval dialog, verify a long command remains scrollable
+and selectable, but **Allow Once** becomes enabled after the 1.5-second
+anti-clickthrough delay without scrolling. **Deny** remains available immediately;
+initial focus stays on Deny, and Escape or closing the dialog denies the request.
+**Allow Always** follows the same delay when offered. It is hidden for
+`ask=always`, non-allowlist security, or commands without a reusable identity,
+including inline PowerShell `-Command` scripts. Check a simple resolved executable
+under `security=allowlist` and `ask=on-miss` to exercise the remembered-rule action.
+
 ### Cancelling an invocation
 
 The gateway may send the `node.invoke.cancel` event with

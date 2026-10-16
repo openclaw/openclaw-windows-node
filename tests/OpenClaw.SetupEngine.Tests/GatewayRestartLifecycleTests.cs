@@ -17,7 +17,54 @@ public class GatewayRestartLifecycleTests
 
         Assert.True(result.IsSuccess, result.Message);
         Assert.Equal(TimeSpan.FromSeconds(420), commands.Calls[0].Timeout);
-        Assert.Contains("curl", commands.Calls[1].Command);
+        Assert.Contains("/startupz", commands.Calls[1].Command);
+        Assert.Contains(commands.Calls, c => c.Command.Contains("127.0.0.1:18789/ --max-time"));
+    }
+
+    [Fact]
+    public async Task HealthGate_WaitsForStartupzStarted_EvenWhenRootAnswers()
+    {
+        var startupProbes = 0;
+        var commands = new Commands((command, _) =>
+            command.Contains("/startupz")
+                ? Ok(++startupProbes == 1 ? StartupStarting : StartupStarted)
+                : Ok("200"));
+
+        var result = await StartGatewayStep.WaitForHealthAsync(Context(commands), default);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Equal(2, commands.Calls.Count(c => c.Command.Contains("/startupz")));
+        Assert.DoesNotContain(commands.Calls, c => c.Command.Contains("/ --max-time"));
+    }
+
+    [Fact]
+    public async Task HealthGate_TimeoutReportsPendingReason()
+    {
+        var commands = new Commands((command, _) =>
+            command.Contains("/startupz") ? Ok(StartupStarting) : Ok(""));
+        var ctx = Context(commands);
+        ctx.Config.Gateway.HealthTimeoutSeconds = 1;
+
+        var result = await StartGatewayStep.WaitForHealthAsync(ctx, default);
+
+        Assert.False(result.IsSuccess);
+        Assert.StartsWith("Gateway did not become healthy within 1s", result.Message);
+        Assert.Contains("startup-sidecars", result.Message);
+        Assert.DoesNotContain(commands.Calls, c => c.Command.Contains("/ --max-time"));
+    }
+
+    [Fact]
+    public async Task HealthGate_FallsBackToRootWhenStartupzIsNotAProbe()
+    {
+        var commands = new Commands((command, _) =>
+            command.Contains("/startupz")
+                ? Ok("<!doctype html>\n200 text/html; charset=utf-8")
+                : Ok("401"));
+
+        var result = await StartGatewayStep.WaitForHealthAsync(Context(commands), default);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Contains(commands.Calls, c => c.Command.Contains("127.0.0.1:18789/ --max-time"));
     }
 
     [Theory]
@@ -401,7 +448,13 @@ public class GatewayRestartLifecycleTests
     private static SetupWizardRunner Runner(SetupContext ctx, TimeProvider? clock = null) =>
         new(ctx, (_, ct) => { ct.ThrowIfCancellationRequested(); return Task.CompletedTask; }, clock);
 
-    private static CommandResult Ok(string stdout = "200") => new(0, stdout, "", TimeSpan.Zero, false);
+    private const string StartupStarted =
+        "{\"ok\":true,\"status\":\"started\"}\n200 application/json; charset=utf-8";
+
+    private const string StartupStarting =
+        "{\"ok\":false,\"status\":\"starting\",\"pendingReason\":\"startup-sidecars\"}\n503 application/json; charset=utf-8";
+
+    private static CommandResult Ok(string stdout = StartupStarted) => new(0, stdout, "", TimeSpan.Zero, false);
 
     private static CommandResult Refusal(bool contention = false) => new(1,
         contention ? GatewayWizardRestartRecoveryPolicy.RestartIntentCoordinatorContentionError

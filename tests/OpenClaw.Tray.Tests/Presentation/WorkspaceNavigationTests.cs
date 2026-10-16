@@ -473,6 +473,7 @@ public sealed class WorkspaceNavigationTests
             Assert.Equal("{StaticResource SubtleButtonStyle}", (string?)toggle.Attribute("Style"));
             Assert.Equal("40", (string?)toggle.Attribute("Width"));
             Assert.Equal("40", (string?)toggle.Attribute("Height"));
+            Assert.Equal("0", (string?)toggle.Attribute("Padding"));
             var icon = Assert.Single(toggle.Descendants(), element => element.Name.LocalName == "FontIcon");
             Assert.Equal("16", (string?)icon.Attribute("FontSize"));
         }

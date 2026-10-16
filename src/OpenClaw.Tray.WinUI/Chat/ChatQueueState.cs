@@ -1,5 +1,8 @@
 using OpenClaw.Chat;
 using OpenClaw.Shared;
+#if !OPENCLAW_TRAY_TESTS
+using OpenClawTray.Helpers;
+#endif
 using OpenClawTray.Services;
 
 namespace OpenClawTray.Chat;
@@ -549,10 +552,77 @@ internal sealed class ChatQueueState
 
     internal void ClearForReconnect()
     {
+        const string droppedBeforeAcceptKey =
+            "Chat_Error_ConnectionDroppedBeforeGatewayAcceptedMessage";
+        var droppedBeforeAccept =
+            LocalizationHelper.GetString(droppedBeforeAcceptKey);
+        if (string.IsNullOrWhiteSpace(droppedBeforeAccept) ||
+            string.Equals(
+                droppedBeforeAccept,
+                droppedBeforeAcceptKey,
+                StringComparison.Ordinal))
+        {
+            droppedBeforeAccept =
+                "The connection dropped before the gateway accepted this message.";
+        }
+        var keptIdsByThread =
+            new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        foreach (var (threadId, messages) in _messages.ToArray())
+        {
+            var kept = new List<ChatQueuedMessage>(messages.Count);
+            foreach (var message in messages)
+            {
+                if (message.SendState == ChatQueuedMessageSendState.Failed)
+                {
+                    kept.Add(message);
+                }
+                else if (message.SendState == ChatQueuedMessageSendState.Queued)
+                {
+                    kept.Add(message with
+                    {
+                        SendState = ChatQueuedMessageSendState.Failed,
+                        ErrorText = string.IsNullOrEmpty(message.ErrorText)
+                            ? droppedBeforeAccept
+                            : message.ErrorText,
+                    });
+                }
+            }
+
+            if (kept.Count == 0)
+            {
+                _messages.Remove(threadId);
+                continue;
+            }
+
+            _messages[threadId] = kept;
+            keptIdsByThread[threadId] =
+                kept.Select(message => message.Id)
+                    .ToHashSet(StringComparer.Ordinal);
+        }
+
+        foreach (var (threadId, requests) in _requests.ToArray())
+        {
+            if (!keptIdsByThread.TryGetValue(threadId, out var keptIds))
+            {
+                _requests.Remove(threadId);
+                continue;
+            }
+
+            requests.RemoveAll(request => !keptIds.Contains(request.Id));
+            for (var index = 0; index < requests.Count; index++)
+            {
+                requests[index] = requests[index] with
+                {
+                    DeferredAdmissionRetryCount = 0,
+                    DeferredAdmissionRetryAfter = null,
+                };
+            }
+            if (requests.Count == 0)
+                _requests.Remove(threadId);
+        }
+
         _locallyInitiatedThreads.Clear();
         _localSentTexts.Clear();
-        _messages.Clear();
-        _requests.Clear();
         _drainScheduledThreads.Clear();
         _assistantFallbackPromotedThreads.Clear();
         _messageIdsByRunId.Clear();

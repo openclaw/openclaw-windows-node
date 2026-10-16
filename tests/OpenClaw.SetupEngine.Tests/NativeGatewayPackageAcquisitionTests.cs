@@ -7,15 +7,24 @@ public sealed class NativeGatewayPackageAcquisitionTests
     private static readonly NativeGatewayPackage Package = new(
         "OpenClawFoundation.OpenClawGateway_123456789abcd", "1.0.0.0", @"qualified\openclaw.exe", @"qualified\clawctl.exe");
 
-    [Fact]
-    public async Task PresentPackage_DoesNotOpenInstallerOrReportWaiting()
+    [Theory]
+    [InlineData("OpenClawFoundation.OpenClawGateway", true)]
+    [InlineData("OpenClawFoundation.OpenClawGateway-patch", false)]
+    [InlineData("OpenClaw.Gateway", false)]
+    public async Task PresentPackage_RefreshesStoreAndPreservesDevelopmentPackages(string name, bool refresh)
     {
-        var resolver = new Resolver(_ => Task.FromResult(Package));
+        var package = Package with { PackageFamilyName = name + "_test" };
+        var updated = package with { Version = "2.0.0.0" };
+        var installed = false;
+        var waiting = false;
+        var resolver = new Resolver(_ => Task.FromResult(installed ? updated : package));
         var actual = await NativeGatewayPackageAcquisition.EnsureAsync(resolver,
-            _ => throw new InvalidOperationException("Must not install"),
-            () => throw new InvalidOperationException("Must not wait"));
-        Assert.Same(Package, actual);
-        Assert.Equal(1, resolver.Calls);
+            _ => { installed = true; return Task.CompletedTask; },
+            () => waiting = true);
+        Assert.Same(refresh ? updated : package, actual);
+        Assert.Equal(refresh, installed);
+        Assert.Equal(refresh, waiting);
+        Assert.Equal(refresh ? 2 : 1, resolver.Calls);
     }
 
     [Fact]

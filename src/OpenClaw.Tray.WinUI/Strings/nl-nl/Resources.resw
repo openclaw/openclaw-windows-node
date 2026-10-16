@@ -357,6 +357,12 @@
   <data name="Update_Title_Failed" xml:space="preserve">
     <value>Kan niet op updates controleren</value>
   </data>
+  <data name="Update_Message_Unavailable" xml:space="preserve">
+    <value>Automatic updates are unavailable because an updater component could not be loaded. You can keep using OpenClaw and download updates from the official releases page.</value>
+  </data>
+  <data name="Update_ManualDownload" xml:space="preserve">
+    <value>Open official releases</value>
+  </data>
   <data name="Update_Message_Failed" xml:space="preserve">
     <value>Er is iets misgegaan tijdens het controleren op updates.
 
@@ -756,9 +762,6 @@ Gebruik een van deze opties:
   </data>
   <data name="ExecApproval_ArmHint" xml:space="preserve">
     <value>Toestaan is zo dadelijk beschikbaar</value>
-  </data>
-  <data name="ExecApproval_ScrollHint" xml:space="preserve">
-    <value>Scroll naar het einde van de opdracht voordat u toestaat</value>
   </data>
   <data name="ExecApproval_ConfusableWarning" xml:space="preserve">
     <value>Deze opdracht mengt tekensets en is mogelijk niet wat het lijkt. Controleer hem zorgvuldig.</value>
@@ -3321,6 +3324,9 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="Chat_Error_SendFailedFormat" xml:space="preserve">
     <value>Verzenden mislukt: {0}</value>
   </data>
+  <data name="Chat_Error_ConnectionDroppedBeforeGatewayAcceptedMessage" xml:space="preserve">
+    <value>De verbinding werd verbroken voordat de gateway dit bericht accepteerde.</value>
+  </data>
   <data name="Chat_Notification_AbortFailed" xml:space="preserve">
     <value>Afbreken mislukt</value>
   </data>
@@ -4934,10 +4940,10 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
     <value>Onboarding openen</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Title" xml:space="preserve">
-    <value>MSIX-installatie gedetecteerd</value>
+    <value>Gateway opruimen</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Message" xml:space="preserve">
-    <value>OpenClaw verwijderen via Windows Instellingen → Apps zal de lokale gateway NIET opruimen (WSL-distributie, schijfafbeelding). Gebruik EERST Lokale gateway verwijderen hieronder, en verwijder daarna OpenClaw.</value>
+    <value>Als u OpenClaw via Windows-instellingen verwijdert, worden beheerde gateways automatisch verwijderd. Gebruik hieronder Lokale gateway verwijderen om een gateway te verwijderen en de app te behouden.</value>
   </data>
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>Verwijdert de WSL-distributie (OpenClawGateway), de schijfafbeelding, het item voor automatisch starten en wist de gateway-referenties. Uw MCP-token blijft behouden. Onboarding wordt gereset.</value>
@@ -7673,7 +7679,6 @@ Uw instellingen, gateway, bestanden en modellen blijven op hun plaats.</value>
   <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>De Gateway starten en controleren</value></data>
   <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>Instelling opnieuw proberen</value></data>
   <data name="Onboarding_Native_Preview" xml:space="preserve"><value>Alleen een voorbeeld. Er wordt geen pakket geïnstalleerd of Gateway gestart.</value></data>
-  <data name="Onboarding_Native_Review.Text" xml:space="preserve"><value>Door Gateway instellen te selecteren, machtigt u WinGet om het ontbrekende Gateway-pakket vanuit Microsoft Store te installeren en accepteert u de pakket- en Store-bronovereenkomsten. Als WinGet nog niet gereed is, kan de installatie App Installer herstellen voordat opnieuw wordt geprobeerd. Companion controleert vervolgens het pakket, bereidt een apart profiel voor en opent de Gateway-instelling. Aanmelding bij de provider blijft interactief. Deze methode installeert geen WSL, lokale AI of Tailscale.</value></data>
   <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>Deze Windows-functies zijn bruikbaar nadat de nodemodus verbinding heeft gemaakt en met de Gateway is gekoppeld. Windows-machtigingen en opdrachtgoedkeuringen blijven van toepassing.</value></data>
   <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>Native Gateway geconfigureerd</value></data>
   <data name="Onboarding_Native_CapabilitySummary" xml:space="preserve"><value>{0}. U kunt deze keuzes wijzigen in de instellingen van Companion.</value></data>
@@ -7938,4 +7943,7 @@ Uw instellingen, gateway, bestanden en modellen blijven op hun plaats.</value>
   <data name="SandboxPage_OneDriveNotIncluded" xml:space="preserve"><value>Geen beschikbare geconfigureerde OneDrive-hoofdmap opgelost. Er is geen extra OneDrive-locatie opgenomen.</value></data>
   <data name="SandboxPage_WindowsCompatibilityTitle" xml:space="preserve"><value>Windows-isolatie niet beschikbaar: opdrachten zonder isolatie</value></data>
   <data name="SandboxPage_WindowsCompatibilityText" xml:space="preserve"><value>Deze Windows-versie biedt niet de vereiste MXC-isolatie. Goedgekeurde opdrachten worden rechtstreeks op deze computer uitgevoerd. Sandboxbeperkingen voor bestanden, netwerk, klembord en Windows-interface worden niet afgedwongen. Opgeslagen machtigingen blijven behouden en opdrachtgoedkeuringen blijven actief. Werk Windows bij om isolatie in te schakelen. De minimale Windows-versie voor Companion blijft van toepassing.</value></data>
+  <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>Het voorkeursprofiel {0} past niet bij deze hardware. De installatie kan {1} gebruiken met {2:N0} contexttokens. Controleer dit profiel in de installatie voordat u het installeert.</value></data>
+  <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>Dit profiel vereist minimaal {0} systeemgeheugen.</value></data>
+  <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>Dit profiel vereist minimaal {0} vrije ruimte op zowel het modelcachevolume als het runtimevolume.</value></data>
 </root>

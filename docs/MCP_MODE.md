@@ -1,6 +1,8 @@
 # Local MCP Mode
 
-**Status:** Implemented (initial cut). See `src/OpenClaw.Shared/Mcp/`, `src/OpenClaw.Shared/Mcp/McpHttpServer.cs`, and the Settings UI MCP section.
+**Status:** Implemented. For the common development/debugging path, start with
+the [local MCP guide](../.agents/skills/windows-app-mcp/SKILL.md). This page
+describes the transport, authentication, mode matrix, and implementation contract.
 
 ## Summary
 
@@ -8,7 +10,10 @@ The Windows tray app now ships a **local Model Context Protocol (MCP) server** a
 
 This means any local MCP client (Claude Desktop, Claude Code, Cursor, an MCP-aware CLI, a custom dev script) can reach into the running tray and drive Windows-native capabilities directly, without an OpenClaw gateway in the loop. The tray app can run in **MCP-only mode** with no gateway connection at all.
 
-The implementation is structured so that **adding a new node capability automatically exposes it via MCP** - no MCP-side code changes required. That is the central design constraint and the main reason we built MCP in-process rather than as a separate adapter.
+MCP and Gateway node mode share capability dispatch rather than maintaining
+separate implementations. A new command still needs registration, curated MCP
+descriptions, the shipped `winnode` reference, tests, and applicable live proof.
+Follow the [new-command checklist](../AGENTS.md#ui-mcp-and-pr-proof).
 
 ## Goals
 
@@ -92,7 +97,12 @@ The HTTP transport requires a bearer token on every request. Defense-in-depth on
 
 **On the wire.** Every request must carry `Authorization: Bearer <token>` when the server has a configured token. Missing or wrong token → `401 Unauthorized` with no body. `GET /` remains a "yes I'm here" probe after auth passes.
 
-**How users find it.** Settings → Developer Mode → MCP section shows the live token (masked, with Reveal/Copy buttons) and the storage path. For agents that read from disk (Claude Code, custom scripts), pointing them at `McpTokenPath` is preferable to embedding the token in their prompt or config - the path is stable, the token is a secret. For agents that only accept literal bearer values in config (Claude Desktop, Cursor), use Copy.
+**How users find it.** Settings > Permissions > Integrations > Local MCP Server
+shows the endpoint and status, with **Copy token** and **Copy URL** actions.
+Agents should read the selected profile's token file without printing it rather
+than placing the token in a prompt or command line. For clients that require a
+literal bearer value in configuration, use Copy token and keep that
+configuration private.
 
 ### Settings model
 
@@ -110,7 +120,9 @@ public bool EnableMcpServer { get; set; }     // run local MCP HTTP server
 | true | false | Gateway node, no MCP |
 | true | true | Gateway node + MCP |
 
-Settings UI exposes both toggles in the Advanced section, with the live MCP endpoint URL and current status (`Listening` / `Stopped - save and restart to start` / `Disabled`).
+The Local MCP Server control lives in Permissions > Integrations. Its endpoint
+and status describe the actual selected app instance. The two flags above remain
+independent; a running MCP-only listener is not evidence of Gateway pairing.
 
 A legacy `McpOnlyMode` field is migrated automatically on load and never re-written.
 

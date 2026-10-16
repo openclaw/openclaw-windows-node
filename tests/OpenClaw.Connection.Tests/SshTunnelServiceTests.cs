@@ -309,6 +309,35 @@ public sealed class SshTunnelServiceTests
     }
 
     [Fact]
+    public void ValidateListenerOwnership_RejectsWildcardOwnedByTheSshProcess()
+    {
+        var startedAt = DateTime.UtcNow;
+        var snapshot = new WindowsTcpListenerSnapshotResult(
+            [
+                new WindowsTcpListenerInfo(
+                    IPAddress.Any,
+                    45678,
+                    4321,
+                    "ssh",
+                    @"C:\Windows\System32\OpenSSH\ssh.exe",
+                    startedAt)
+            ],
+            Ipv4Complete: true,
+            Ipv6Complete: true);
+
+        var thrown = Assert.Throws<InvalidOperationException>(
+            () => SshTunnelService.ValidateListenerOwnership(snapshot, 45678, 4321, startedAt));
+        Assert.Contains("wildcard", thrown.Message, StringComparison.OrdinalIgnoreCase);
+
+        var ipv6 = snapshot with
+        {
+            Listeners = [snapshot.Listeners[0] with { Address = IPAddress.IPv6Any }]
+        };
+        Assert.Throws<InvalidOperationException>(
+            () => SshTunnelService.ValidateListenerOwnership(ipv6, 45678, 4321, startedAt));
+    }
+
+    [Fact]
     public void ValidateListenerOwnership_AcceptsOnlyExactLaunchedProcess()
     {
         var startedAt = DateTime.UtcNow;

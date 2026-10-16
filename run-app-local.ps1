@@ -3,8 +3,10 @@
     Builds and launches the WinUI tray app for local development.
 
 .DESCRIPTION
-    Builds the tray app, then launches the unpackaged WinUI executable directly
-    for the common local-development path.
+    Builds only the WinUI tray project graph with one incremental dotnet build,
+    then launches the unpackaged WinUI executable directly. It does not run
+    build.ps1's prerequisite checks, documentation validation, or CLI builds;
+    run .\build.ps1 for the full closeout gate.
 
     Use -UseWinApp when you specifically want Microsoft WinAppCLI (`winapp run`)
     to launch with Package.appxmanifest for packaged/MSIX-adjacent validation.
@@ -13,9 +15,10 @@
     and device identities. Use -Dev to opt into the side-by-side dev app
     identity with separate mutex, protocol, gateway distro, and gateway port.
 
-    By default this helper refuses to run outside `main` to avoid accidentally
-    launching a stale or experimental worktree. Use -AllowNonMain when you
-    intentionally want to preview a PR or feature branch.
+    Native development uses an isolated npm-latest MSIX Gateway by default.
+    -GatewayChannel Packaged selects a published packaging release instead. Both use the same
+    Companion source. An explicit OPENCLAW_NATIVE_GATEWAY_DEV_PATCH is reused
+    without rebuilding. Use -UseStoreGateway for the installed Store runtime.
 
 .PARAMETER NoBuild
     Skip the build step and launch the existing Debug output.
@@ -24,15 +27,12 @@
     Build/output configuration to use. Defaults to Debug.
 
 .PARAMETER RuntimeIdentifier
-    Explicit output runtime to launch. Use with -NoBuild after building that RID.
-    When omitted, the current PowerShell process architecture selects the RID.
+    Runtime to build and launch. When omitted, the current PowerShell process
+    architecture selects the RID.
 
 .PARAMETER Dev
     Build and launch with the side-by-side dev app identity. Defaults off so
     release identity remains the default local-launch behavior.
-
-.PARAMETER AllowNonMain
-    Allow launching from a branch other than main.
 
 .PARAMETER Isolated
     Set OPENCLAW_TRAY_DATA_DIR to a stable temp directory unique to this worktree
@@ -59,6 +59,17 @@
 .PARAMETER DryRun
     Print the launch command and environment without starting the app.
 
+.PARAMETER GatewayChannel
+    Latest (default) builds/registers npm latest as npm-latest.
+    Packaged uses the published MSIX application payload as the packaged patch.
+
+.PARAMETER PackagingRelease
+    Exact packaging release tag. Requires -GatewayChannel Packaged.
+    Omit to use the latest published GitHub packaging release.
+
+.PARAMETER UseStoreGateway
+    Skip development Gateway packaging and use the installed Store Gateway.
+
 .EXAMPLE
     .\run-app-local.ps1
 
@@ -72,7 +83,7 @@
     .\run-app-local.ps1 -Dev -Isolated
 
 .EXAMPLE
-    .\run-app-local.ps1 -Configuration Release -Isolated -UpdateChannel alpha -AllowNonMain
+    .\run-app-local.ps1 -Configuration Release -Isolated -UpdateChannel alpha
 
 .EXAMPLE
     .\run-app-local.ps1 -UseWinApp -NoBuild
@@ -89,8 +100,6 @@ param(
 
     [switch]$Dev,
 
-    [switch]$AllowNonMain,
-
     [switch]$Isolated,
 
     [string]$DataDir,
@@ -104,7 +113,14 @@ param(
 
     [switch]$Wait,
 
-    [switch]$DryRun
+    [switch]$DryRun,
+    [ValidateSet('Latest', 'Packaged')]
+    [string]$GatewayChannel,
+
+    [ValidatePattern('\Av\d{4}\.\d{1,2}\.\d+(?:-\d+)?-msix\.\d+\z')]
+    [string]$PackagingRelease,
+
+    [switch]$UseStoreGateway
 )
 
 $ErrorActionPreference = "Stop"
@@ -144,38 +160,20 @@ function Get-ShortHash {
 }
 
 $branch = (git -C $repoRoot rev-parse --abbrev-ref HEAD).Trim()
-if ($branch -ne "main" -and -not $AllowNonMain) {
-    throw "Refusing to run: current branch is '$branch', expected 'main'. Use -AllowNonMain to preview this branch intentionally."
-}
 
-if ($PSBoundParameters.ContainsKey("RuntimeIdentifier") -and -not $NoBuild) {
-    throw "-RuntimeIdentifier requires -NoBuild. Build the requested RID explicitly before launching it."
-}
-
-if (-not $NoBuild) {
-    $buildArgs = @{
-        Configuration = $Configuration
-    }
-    if ($Dev) {
-        $buildArgs["DevBuild"] = $true
-    }
-
-    & "$repoRoot\build.ps1" @buildArgs
-    if ($LASTEXITCODE -ne 0) {
-        exit $LASTEXITCODE
-    }
-}
+Import-Module (Join-Path $repoRoot 'scripts\GatewayNpmRelease.psm1') -Force
+$gatewayArguments = @{}
+if ($PSBoundParameters.ContainsKey('GatewayChannel')) { $gatewayArguments.GatewayChannel = $GatewayChannel }
+if ($PSBoundParameters.ContainsKey('PackagingRelease')) { $gatewayArguments.PackagingRelease = $PackagingRelease }
+$gatewayInput = Resolve-GatewayLaunchInput -UseStoreGateway:$UseStoreGateway @gatewayArguments `
+    -ExistingPatch $env:OPENCLAW_NATIVE_GATEWAY_DEV_PATCH
+$buildGateway = $gatewayInput.Build
+$gatewayPatch = $gatewayInput.Patch
 
 $projectPath = Join-Path $repoRoot "src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj"
 $manifestPath = Join-Path $repoRoot "src\OpenClaw.Tray.WinUI\Package.appxmanifest"
-[xml]$projectXml = Get-Content -LiteralPath $projectPath -Raw -Encoding UTF8
-$targetFramework = ($projectXml.Project.PropertyGroup | Where-Object { $_.TargetFramework } | Select-Object -First 1).TargetFramework
-if (-not $targetFramework) {
-    throw "Unable to determine TargetFramework from $projectPath."
-}
 
-# Without an explicit RID, match build.ps1's process-architecture detection so
-# this script looks in the output folder the build wrote to.
+# Without an explicit RID, pick the RID from the current process architecture, matching build.ps1.
 if ([string]::IsNullOrWhiteSpace($RuntimeIdentifier)) {
     $architecture = $env:PROCESSOR_ARCHITECTURE
     $RuntimeIdentifier = switch ($architecture) {
@@ -183,10 +181,30 @@ if ([string]::IsNullOrWhiteSpace($RuntimeIdentifier)) {
         default { "win-x64" }
     }
 }
+Write-Host "Selected runtime: $RuntimeIdentifier"
+
+if (-not $NoBuild) {
+    $dotnetArgs = @("build", $projectPath, "-c", $Configuration, "-r", $RuntimeIdentifier)
+    if ($Dev) {
+        $dotnetArgs += "-p:DevBuild=true"
+    }
+
+    Write-Host "Building OpenClaw Tray: dotnet $($dotnetArgs -join ' ')" -ForegroundColor Cyan
+    & dotnet @dotnetArgs
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Build failed. Close any running OpenClaw Tray that locks the output, or run .\build.ps1 to check prerequisites and trust the repo for GitVersion (.\scripts\setup-dev.ps1 -CheckOnly for setup diagnostics)." -ForegroundColor Yellow
+        exit $LASTEXITCODE
+    }
+}
+
+[xml]$projectXml = Get-Content -LiteralPath $projectPath -Raw -Encoding UTF8
+$targetFramework = ($projectXml.Project.PropertyGroup | Where-Object { $_.TargetFramework } | Select-Object -First 1).TargetFramework
+if (-not $targetFramework) {
+    throw "Unable to determine TargetFramework from $projectPath."
+}
 $outputDir = Join-Path $repoRoot "src\OpenClaw.Tray.WinUI\bin\$Configuration\$targetFramework\$RuntimeIdentifier"
 $exePath = Join-Path $outputDir "OpenClaw.Tray.WinUI.exe"
 $identityMarkerPath = Join-Path $outputDir "app-identity.txt"
-Write-Host "Selected runtime: $RuntimeIdentifier"
 
 if (-not (Test-Path $outputDir)) {
     throw "Build output folder not found: $outputDir. Run without -NoBuild first."
@@ -218,17 +236,22 @@ if ($UseWinApp -and -not (Test-Path $manifestPath)) {
 
 $previousDataDir = $env:OPENCLAW_TRAY_DATA_DIR
 $previousUpdateChannel = $env:OPENCLAW_UPDATE_CHANNEL
+$previousGatewayPatch = $env:OPENCLAW_NATIVE_GATEWAY_DEV_PATCH
 $exitCode = 0
 
 try {
+    $env:OPENCLAW_NATIVE_GATEWAY_DEV_PATCH = $gatewayPatch
     $effectiveDataDir = $null
     if ($DataDir) {
         $effectiveDataDir = Resolve-FullPath $DataDir
-    } elseif ($Isolated) {
+    } elseif ($Isolated -or $gatewayPatch) {
         $repoName = Get-SafePathSegment (Split-Path -Leaf $repoRoot)
         $safeBranch = Get-SafePathSegment $branch
         $repoHash = Get-ShortHash $repoRoot
         $effectiveDataDir = Join-Path $env:TEMP "OpenClawTray\$repoName-$safeBranch-$repoHash"
+        if ($gatewayPatch) {
+            $effectiveDataDir += "-" + (Get-SafePathSegment $gatewayPatch)
+        }
     }
 
     if ($effectiveDataDir) {
@@ -252,6 +275,7 @@ try {
     Write-Host "  Configuration: $Configuration"
     Write-Host "  Identity:      $(if ($actualIdentity -eq 'dev') { 'Dev (opt-in)' } else { 'Release (default)' })"
     Write-Host "  Runtime:       $RuntimeIdentifier"
+    Write-Host "  Gateway:       $(if ($gatewayPatch) { $gatewayPatch } else { 'Microsoft Store' })"
     Write-Host "  Output:        $outputDir"
     Write-Host "  Mode:          $(if ($UseWinApp) { 'WinAppCLI manifest activation' } else { 'Direct unpackaged executable' })"
     if ($env:OPENCLAW_TRAY_DATA_DIR) {
@@ -271,6 +295,10 @@ try {
         return
     }
 
+    if ($buildGateway) {
+        & "$repoRoot\scripts\Build-NativeGatewayFromSource.ps1" @gatewayArguments -Patch $gatewayPatch
+    }
+
     if ($UseWinApp) {
         & $winapp.Source @winappArgs
         $exitCode = $LASTEXITCODE
@@ -286,6 +314,7 @@ try {
 } finally {
     $env:OPENCLAW_TRAY_DATA_DIR = $previousDataDir
     $env:OPENCLAW_UPDATE_CHANNEL = $previousUpdateChannel
+    $env:OPENCLAW_NATIVE_GATEWAY_DEV_PATCH = $previousGatewayPatch
 }
 
 exit $exitCode

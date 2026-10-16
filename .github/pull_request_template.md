@@ -100,6 +100,8 @@ Include exact commands and pass/fail counts. Baseline after code changes:
 
 Add focused tests when relevant. In fresh worktrees, confirm tests actually ran
 and report non-zero test counts.
+For inventory-bound proof, link the local execution summary described in
+docs/PROOF_POOLS.md. A valid summary is not complete pool, visual, or binary-provenance proof.
 -->
 
 ## Real Behavior Proof

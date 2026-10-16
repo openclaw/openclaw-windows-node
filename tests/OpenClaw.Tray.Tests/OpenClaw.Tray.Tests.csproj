@@ -152,6 +152,7 @@
     <!-- GatewayHostAccess, GatewayTerminalLauncher, WslGatewayController and WslCommandRunner
          now live in OpenClaw.Connection (referenced above), so they no longer need linking. -->
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\WslKeepAlivePolicy.cs" Link="Services\WslKeepAlivePolicy.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\HotkeyRegistrationState.cs" Link="Services\HotkeyRegistrationState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ManagedLocalGatewayRepairCoordinator.cs" Link="Services\ManagedLocalGatewayRepairCoordinator.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ManagedLocalGatewayAutoRepairMonitor.cs" Link="Services\ManagedLocalGatewayAutoRepairMonitor.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ManagedLocalGatewayRepairAdapters.cs" Link="Services\ManagedLocalGatewayRepairAdapters.cs" />
@@ -171,6 +172,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SensitiveCaptureExecutor.cs" Link="Services\SensitiveCaptureExecutor.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ConsentPromptTimeoutGate.cs" Link="Services\ConsentPromptTimeoutGate.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\BrowserProxyTunnelState.cs" Link="Services\BrowserProxyTunnelState.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SshForwardPorts.cs" Link="Services\SshForwardPorts.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\CommandCenterTopologyTunnelResolver.cs" Link="Services\CommandCenterTopologyTunnelResolver.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\CommandCenterTunnelInfoBuilder.cs" Link="Services\CommandCenterTunnelInfoBuilder.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\PortDiagnosticsService.cs" Link="Services\PortDiagnosticsService.cs" />
@@ -186,6 +188,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\McpRuntimeStatePolicy.cs" Link="Services\McpRuntimeStatePolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\UsageCostApplicationPolicy.cs" Link="Services\UsageCostApplicationPolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\UpdateCheckPipeline.cs" Link="Services\UpdateCheckPipeline.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\UpdateBackendLoader.cs" Link="Services\UpdateBackendLoader.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SpeechSetupReadiness.cs" Link="Services\SpeechSetupReadiness.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\CanvasGatewayUrlRewriter.cs" Link="Helpers\CanvasGatewayUrlRewriter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\DiagnosticsGate.cs" Link="Helpers\DiagnosticsGate.cs" />
@@ -213,6 +216,8 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\GatewayChatUrlBuilder.cs" Link="Imported\GatewayChatUrlBuilder.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Pages\ConnectionPageChannelMetrics.cs" Link="Imported\ConnectionPageChannelMetrics.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Pages\ConnectionPagePlan.cs" Link="Imported\ConnectionPagePlan.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Pages\CronScheduleTimezone.cs" Link="Pages\CronScheduleTimezone.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Pages\CronRunningLatch.cs" Link="Pages\CronRunningLatch.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Pages\ConnectionPageRowState.cs" Link="Imported\ConnectionPageRowState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Pages\ChatPagePanelStates.cs" Link="Imported\ChatPagePanelStates.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Pages\ExecPolicyRuleList.cs" Link="Pages\ExecPolicyRuleList.cs" />
