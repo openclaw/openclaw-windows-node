@@ -95,8 +95,9 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         UseEffect((Func<Action>)(() =>
         {
             props.Session.ApplyInputs(inputs);
+            _ = controller.ReconcileModelCatalogAsync(inputs);
             return static () => { };
-        }), props.InputSnapshot, inputs.CurrentThread);
+        }), props.InputSnapshot, inputs.CurrentThread, inputs.ModelCatalogRevision);
 
         var text = vm.Draft;
         var isSending = vm.IsSending;
@@ -144,9 +145,27 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             _ = controller.SendAsync();
         }
 
-        var modelChoices = inputs.ModelChoices is { Count: > 0 }
-            ? inputs.ModelChoices
-            : inputs.AvailableModels
+        var scopedCatalog = inputs.SessionModelCatalogEligible
+            && vm.SessionModelCatalog is { } currentCatalog
+            && string.Equals(currentCatalog.SessionKey, inputs.CurrentThread.Id, StringComparison.Ordinal)
+                ? currentCatalog
+                : null;
+        var modelCatalogStatus = inputs.SessionModelCatalogEligible
+            ? scopedCatalog?.Status ?? ChatModelCatalogStatus.Loading
+            : ChatModelCatalogStatus.Default;
+        var projectedChoices = inputs.SessionModelCatalogEligible
+            ? scopedCatalog?.Choices ?? []
+            : inputs.ModelChoices;
+        var projectedModelIds = inputs.SessionModelCatalogEligible
+            ? scopedCatalog?.Choices
+                .Where(choice => choice.IsSelectable)
+                .Select(choice => choice.Id)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray() ?? []
+            : inputs.AvailableModels;
+        var modelChoices = projectedChoices is { Count: > 0 }
+            ? projectedChoices
+            : projectedModelIds
                 .Where(model => !string.IsNullOrWhiteSpace(model))
                 .Select(model => new ChatModelChoice(model, model))
                 .ToArray();
@@ -154,7 +173,11 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         var defaultReasoningLabel = Localized("Chat_Composer_Reasoning_Default", "Default");
         var selectedModel = catalogModels.FirstOrDefault(
             model => model.MatchesModel(inputs.CurrentThread.Model, inputs.CurrentThread.ModelProvider));
-        var thinkingLevels = inputs.ThinkingProfile?.Levels?.ToArray() ?? [];
+        var thinkingLevels = vm.ThinkingProfile?.Levels?.ToArray() ?? [];
+        var canChangeThinking = inputs.CanChangeSessionOptions
+            && modelCatalogStatus is not ChatModelCatalogStatus.Loading
+                and not ChatModelCatalogStatus.Unavailable
+            && (thinkingLevels.Length > 0 || !string.IsNullOrEmpty(inputs.CurrentThread.ThinkingLevel));
         var knownThinkingIndex = Array.FindIndex(thinkingLevels, option => option.Id == inputs.CurrentThread.ThinkingLevel);
         var thinkingIndex = string.IsNullOrEmpty(inputs.CurrentThread.ThinkingLevel)
             ? 0
@@ -263,7 +286,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         Element EffortIconButton()
         {
             var effectiveLevel = string.IsNullOrEmpty(inputs.CurrentThread.ThinkingLevel)
-                ? inputs.ThinkingProfile?.Default : inputs.CurrentThread.ThinkingLevel;
+                ? vm.ThinkingProfile?.Default : inputs.CurrentThread.ThinkingLevel;
             var gaugeIndex = Array.FindIndex(thinkingLevels, option => option.Id == effectiveLevel);
             // Resource overrides survive Reactor's generated theme-binding style on updates.
             return Button(HStack(4,
@@ -278,7 +301,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 .AutomationId("ChatComposerReasoningPicker")
                 .AutomationName($"{Localized("Chat_Composer_Accessibility_Reasoning", "Reasoning")}: {thinkingLabel}")
                 .ToolTip($"{Localized("Chat_Composer_Accessibility_Reasoning", "Reasoning")}: {thinkingLabel}")
-                .IsEnabled(inputs.CanChangeThinking)
+                .IsEnabled(canChangeThinking)
                 .Set(button => ComposerAutomationVisibility.Prepare(button))
                 .OnUnmount(control => ComposerAutomationVisibility.Detach((FrameworkElement)control));
         }
@@ -547,18 +570,28 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 ?? Localized("Chat_Composer_Accessibility_Model", "Model")
             : selectedModel?.DisplayName
                 ?? ChatModelChoice.BuildSelectionId(inputs.CurrentThread.Model!, inputs.CurrentThread.ModelProvider);
+        modelPickerLabel = modelCatalogStatus switch
+        {
+            ChatModelCatalogStatus.Loading => Localized("Chat_Composer_Model_Loading", "Loading models..."),
+            ChatModelCatalogStatus.Unavailable => Localized("Chat_Composer_Model_Unavailable", "Models unavailable"),
+            _ => modelPickerLabel,
+        };
         var modelPicker = Component<ChatModelPicker, ChatModelPickerProps>(new(
             PickerButton(
                 modelPickerLabel,
                 $"{Localized("Chat_Composer_Accessibility_Model", "Model")}: {modelPickerLabel}",
                 "ChatComposerModelPicker",
-                inputs.CanChangeSessionOptions,
+                inputs.CanChangeSessionOptions
+                    && modelCatalogStatus is not ChatModelCatalogStatus.Loading
+                        and not ChatModelCatalogStatus.Unavailable,
                 200)
                 .MinWidth(compactEffort ? 44 : 0)
                 .MinHeight(compactEffort ? 44 : 32)
                 .Padding(compactEffort ? 0 : 8, compactEffort ? 0 : 4),
             catalogModels, inputs.CurrentThread.Model, inputs.CurrentThread.ModelProvider,
-            inputs.CanChangeSessionOptions,
+            inputs.CanChangeSessionOptions
+                && modelCatalogStatus is not ChatModelCatalogStatus.Loading
+                    and not ChatModelCatalogStatus.Unavailable,
             choice => controller.SetModel(choice.SelectionId),
             viewportWidth));
 
@@ -567,11 +600,11 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 thinkingLabel,
                 $"{Localized("Chat_Composer_Accessibility_Reasoning", "Reasoning")}: {thinkingLabel}",
                 "ChatComposerReasoningPicker",
-                inputs.CanChangeThinking,
+                canChangeThinking,
                 96),
-            thinkingLevels, inputs.CurrentThread.ThinkingLevel, thinkingLabel, inputs.CanChangeThinking,
+            thinkingLevels, inputs.CurrentThread.ThinkingLevel, thinkingLabel, canChangeThinking,
             controller.SetThinkingLevel, controller.ClearThinkingLevel, viewportWidth,
-            inputs.ThinkingProfile?.Default));
+            vm.ThinkingProfile?.Default));
 
         var attachButton = IconButton(
             FluentIconCatalog.ChatAttach,

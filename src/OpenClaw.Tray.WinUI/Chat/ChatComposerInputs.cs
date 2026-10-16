@@ -6,6 +6,19 @@ using System.Linq;
 
 namespace OpenClawTray.Chat;
 
+internal enum ChatModelCatalogStatus
+{
+    Default,
+    Loading,
+    Ready,
+    Unavailable,
+}
+
+internal sealed record ChatSessionModelCatalog(
+    string SessionKey,
+    ChatModelCatalogStatus Status,
+    IReadOnlyList<ChatModelChoice> Choices);
+
 /// <summary>
 /// Immutable per-render projection that <see cref="OpenClawReactorChatRoot"/> passes
 /// to <see cref="ReactorChatComposer"/> after resolving the provider snapshot,
@@ -31,13 +44,13 @@ internal sealed record ChatComposerInputs(
     bool MessageOptionsDisabled,
     IReadOnlyList<ChatQueuedMessage> QueuedMessages,
     IReadOnlyList<GatewayCommand>? AvailableCommands,
-    bool CommandsSupported)
+    bool CommandsSupported,
+    bool SessionModelCatalogEligible = false,
+    long ModelCatalogRevision = 0)
 {
     internal long Revision { get; init; }
     internal bool CanChangeSessionOptions => ConnectionState == "connected" && !MessageOptionsDisabled;
     internal ThinkingProfile? ThinkingProfile => ChatThinkingProfile.Resolve(CurrentThread, ModelChoices);
-    internal bool CanChangeThinking => CanChangeSessionOptions
-        && (ThinkingProfile?.Levels is { Length: > 0 } || !string.IsNullOrEmpty(CurrentThread.ThinkingLevel));
 
     internal bool HasSameProjection(ChatComposerInputs other) =>
         string.Equals(ConnectionState, other.ConnectionState, StringComparison.Ordinal)
@@ -47,6 +60,8 @@ internal sealed record ChatComposerInputs(
         && AvailableModels.SequenceEqual(other.AvailableModels, StringComparer.Ordinal)
         && SequenceEqual(ModelChoices, other.ModelChoices)
         && MessageOptionsDisabled == other.MessageOptionsDisabled
+        && SessionModelCatalogEligible == other.SessionModelCatalogEligible
+        && ModelCatalogRevision == other.ModelCatalogRevision
         && QueuedMessages.SequenceEqual(other.QueuedMessages)
         && SequenceEqual(AvailableCommands, other.AvailableCommands)
         && CommandsSupported == other.CommandsSupported;

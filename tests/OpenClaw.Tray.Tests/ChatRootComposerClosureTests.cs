@@ -61,7 +61,9 @@ public sealed class ChatRootComposerClosureTests
         // Applying those inputs is a post-commit view effect keyed by stable source
         // values. It must never move back into the root's Render path.
         Assert.Contains("props.Session.ApplyInputs(inputs);", composer);
-        Assert.Contains("}), props.InputSnapshot, inputs.CurrentThread);", composer);
+        Assert.Contains(
+            "}), props.InputSnapshot, inputs.CurrentThread, inputs.ModelCatalogRevision);",
+            composer);
         Assert.DoesNotContain("if (vm.Inputs is not { } inputs)", composer);
     }
 }

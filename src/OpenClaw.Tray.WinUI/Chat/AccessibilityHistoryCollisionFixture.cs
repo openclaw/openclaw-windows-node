@@ -263,5 +263,11 @@ internal static class AccessibilityHistoryCollisionFixture
             add { }
             remove { }
         }
+
+        public event EventHandler? ModelCatalogInvalidated
+        {
+            add { }
+            remove { }
+        }
     }
 }

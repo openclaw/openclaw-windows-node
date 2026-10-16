@@ -34,7 +34,8 @@ public sealed class ChatComposerViewModelTests
         long revision = 1,
         string connectionState = "connected",
         bool turnActive = false,
-        ChatThread? thread = null) =>
+        ChatThread? thread = null,
+        bool sessionModelCatalogEligible = false) =>
         new(
             connectionState,
             turnActive,
@@ -45,7 +46,8 @@ public sealed class ChatComposerViewModelTests
             false,
             System.Array.Empty<ChatQueuedMessage>(),
             null,
-            false)
+            false,
+            sessionModelCatalogEligible)
         {
             Revision = revision,
         };
@@ -59,6 +61,30 @@ public sealed class ChatComposerViewModelTests
 
         Assert.Equal("hello", vm.Draft);
         Assert.Equal(1, vm.DraftRevision);
+    }
+
+    [Fact]
+    public void ThinkingProfile_UsesTheSessionScopedCatalog()
+    {
+        var vm = new ChatComposerViewModel(new RecordingUiDispatcher(), initialSpeakerMuted: false);
+        var inputs = MakeInputs(
+            thread: MakeThread(model: "worker") with { ModelProvider = "fixture" },
+            sessionModelCatalogEligible: true);
+        vm.ApplyInputs(inputs);
+        vm.SetSessionModelCatalog(new ChatSessionModelCatalog(
+            "session-1",
+            ChatModelCatalogStatus.Ready,
+            [new ChatModelChoice(
+                "worker",
+                "Worker",
+                Provider: "fixture",
+                ThinkingContext: new(
+                    new("fixture", "worker"),
+                    new([new("high", "High")])))]));
+
+        var levels = vm.ThinkingProfile!.Levels;
+        Assert.True(levels.HasValue);
+        Assert.Equal("high", Assert.Single(levels.Value).Id);
     }
 
     [Fact]
@@ -215,6 +241,8 @@ public sealed class ChatComposerViewModelTests
                 Revision = 2,
             },
             baseline with { CommandsSupported = true, Revision = 2 },
+            baseline with { SessionModelCatalogEligible = true, Revision = 2 },
+            baseline with { ModelCatalogRevision = 1, Revision = 2 },
         };
 
         Assert.True(baseline.HasSameProjection(baseline with { Revision = 2 }));

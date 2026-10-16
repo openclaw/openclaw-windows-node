@@ -141,9 +141,10 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
 
         var connectionState = ToConnectionState(snapshot.ConnectionStatus);
         var isGatewayConnected = string.Equals(connectionState, "connected", StringComparison.Ordinal);
+        var nativeProvider = props.Provider as OpenClawChatDataProvider;
         if (isGatewayConnected
             && selectedMaterializedThread is not null
-            && props.Provider is OpenClawChatDataProvider nativeProvider)
+            && nativeProvider is not null)
         {
             RunFireAndForget(ct => nativeProvider.LoadHistoryAsync(selectedMaterializedThread.Id, force: false, ct));
         }
@@ -324,7 +325,10 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 MessageOptionsDisabled: timeline.TurnActive || hasPendingQueuedSend,
                 QueuedMessages: queuedMessages,
                 AvailableCommands: snapshot.AvailableCommands,
-                CommandsSupported: snapshot.CommandsSupported);
+                CommandsSupported: snapshot.CommandsSupported,
+                SessionModelCatalogEligible: selectedMaterializedThread is not null
+                    && nativeProvider?.SupportsSessionScopedModelCatalog == true,
+                ModelCatalogRevision: nativeProvider?.ModelCatalogRevision ?? 0);
             composerElement = Component<ReactorChatComposer, ReactorChatComposerViewProps>(new(
                 props.ComposerSession,
                 composerInputs,

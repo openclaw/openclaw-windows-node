@@ -87,6 +87,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private int _activeDeliveries;
     private bool _publishScheduled;
     private bool _publishDisposed;
+    private long _modelCatalogRevision;
 
     /// <summary>Whether any thread is in an aborted state (suppress TTS/notifications).</summary>
     public bool IsResponseSuppressed => _state.IsResponseSuppressed;
@@ -95,6 +96,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
     /// <summary>Last-known chat state from a previous session, used for pre-connection UI.</summary>
     internal LastChatState? CachedLastChatState => _state.CachedLastChatState;
+    internal long ModelCatalogRevision => Interlocked.Read(ref _modelCatalogRevision);
 
     public event EventHandler<ChatDataChangedEventArgs>? Changed;
     public event EventHandler<ChatProviderNotificationEventArgs>? NotificationRequested;
@@ -174,6 +176,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         _bridge.ChatMessageReceived += OnChatMessageReceived;
         _bridge.AgentEventReceived += OnAgentEventReceived;
         _bridge.ModelsListUpdated += OnModelsListUpdated;
+        _bridge.ModelCatalogInvalidated += OnModelCatalogInvalidated;
 
         // Bridge ctor may have been invoked AFTER the gateway client was
         // already Connected, in which case the StatusChanged → Connected
@@ -201,6 +204,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         if (_state.RememberSelectedThread(threadId) is { } state)
             _persistence.SaveSelectedState(state);
     }
+
+    internal bool SupportsSessionScopedModelCatalog =>
+        _bridge.SupportsSessionScopedModelCatalog;
+
+    internal Task<ModelsListInfo?> RequestSessionModelsListAsync(string sessionKey) =>
+        _bridge.RequestSessionModelsListAsync(sessionKey);
 
     // Explicit interface implementation (no attachments).
     Task IChatDataProvider.SendMessageAsync(string threadId, string message, CancellationToken cancellationToken)
@@ -1082,6 +1091,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             _bridge.ChatMessageReceived -= OnChatMessageReceived;
             _bridge.AgentEventReceived -= OnAgentEventReceived;
             _bridge.ModelsListUpdated -= OnModelsListUpdated;
+            _bridge.ModelCatalogInvalidated -= OnModelCatalogInvalidated;
             _bridge.Dispose();
             return ValueTask.CompletedTask;
         }
@@ -1111,6 +1121,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     {
         if (_state.IsDisposed)
             return;
+        Interlocked.Increment(ref _modelCatalogRevision);
         var transition = _historyLoader.ApplyStatusAndAdvanceGeneration(
             status,
             ProjectionContext());
@@ -1240,6 +1251,14 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         var snapshot = _state.ApplyModels(info, ProjectionContext());
         Logger.Info($"[ChatBridge] OnModelsListUpdated: count={snapshot.AvailableModels.Length}");
         Publish(snapshot);
+    }
+
+    private void OnModelCatalogInvalidated(object? sender, EventArgs args)
+    {
+        if (_state.IsDisposed)
+            return;
+        Interlocked.Increment(ref _modelCatalogRevision);
+        Publish(_state.Snapshot(ProjectionContext()));
     }
 
     private void OnChatMessageReceived(object? sender, ChatMessageInfo message)
