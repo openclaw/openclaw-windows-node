@@ -217,6 +217,19 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
     internal static string InstallStatePath(SetupContext ctx) =>
         Path.Combine(ctx.LocalDataDir, InstallStateFileName);
 
+    internal static async Task ForgetRemovedDistroAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var state = await ReadInstallStateAsync(ctx, ct);
+        if (state.Targets.RemoveAll(target =>
+                string.Equals(target.DistroName, ctx.DistroName, StringComparison.OrdinalIgnoreCase)) == 0)
+            return;
+        if (state.Targets.Count == 0)
+            File.Delete(InstallStatePath(ctx));
+        else
+            await AtomicFile.WriteAllTextAsync(InstallStatePath(ctx),
+                JsonSerializer.Serialize(state, SetupConfig.JsonWriteOptions), ct);
+    }
+
     internal static async Task<bool> RecordAppliedTargetAsync(
         SetupContext ctx,
         WindowsNodeContextTarget target,

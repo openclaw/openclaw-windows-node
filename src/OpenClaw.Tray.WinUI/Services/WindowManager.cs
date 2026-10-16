@@ -649,6 +649,19 @@ internal sealed class WindowManager : IWindowManager
                 window.TryNavigateToExistingNativeLocalAi(native);
             return;
         }
+        if (_callbacks.GetGatewayRegistry()?.GetActive()?.NativePackageFamilyName is not null)
+        {
+            _callbacks.GetAppNotificationService()?.Show(new AppNotification
+            {
+                Title = LocalizationHelper.GetString("SettingsPage_LegacyNativeAiTitle"),
+                Message = LocalizationHelper.GetString("SettingsPage_LegacyNativeAiMessage"),
+                Severity = AppNotificationSeverity.Warning,
+                Source = "local-ai",
+                ActionRoute = "connection",
+            });
+            ShowHub("connection");
+            return;
+        }
         if (_callbacks.GetLocalAiGatewayLifecycle?.Invoke()?.HasNativeBinding == true)
         {
             Logger.Warn("Local AI WSL recovery is blocked by retained native Gateway ownership");
@@ -770,21 +783,31 @@ internal sealed class WindowManager : IWindowManager
 
     public async Task ShowGatewayWizardAsync()
     {
+        if (_callbacks.GetGatewayRegistry()?.GetActive()?.NativePackageFamilyName is not null)
+        {
+            if (LocalGatewaySettings.Classify(_callbacks.GetGatewayRegistry()?.GetActive()) != LocalGatewayKind.Native)
+            {
+                Logger.Warn("Native Gateway onboarding requires a supported isolated package.");
+                NotifyIncompleteNativeConnection();
+                return;
+            }
+            await ShowLocalAiSetupAsync();
+            return;
+        }
         var (setupWindow, created) = await EnsureSetupWindowAsync(
             startAtGatewayInstalledMilestone: true,
-            localAiRecoveryTarget: null);
+            localAiRecoveryTarget: null,
+            existingWslGateway: _callbacks.GetGatewayRegistry()?.GetActive() is { } active &&
+                LocalGatewaySettings.Classify(active) == LocalGatewayKind.Wsl ? active : null);
         if (!_isShuttingDown && !created && setupWindow is { IsClosed: false })
         {
-            if (setupWindow.TryNavigateToGatewayInstalledMilestone())
-            {
-                Logger.Info("Setup window already open; switched to direct OpenClaw onboard handoff");
-            }
-            else
-            {
-                Logger.Info("Setup window already open; leaving current setup page visible to avoid interrupting active setup");
-            }
+            Logger.Info("Setup window already open; retaining its pinned Gateway and current page.");
         }
     }
+
+    public Task ShowGatewaySetupAsync() =>
+        LocalGatewaySettings.Classify(_callbacks.GetGatewayRegistry()?.GetActive()) is LocalGatewayKind.Native or LocalGatewayKind.Wsl
+            ? ShowGatewayWizardAsync() : ShowOnboardingAsync();
 
     private void NotifyIncompleteNativeConnection()
     {
@@ -807,7 +830,8 @@ internal sealed class WindowManager : IWindowManager
 
     private async Task<(SetupWindow? Window, bool Created)> EnsureSetupWindowAsync(
         bool startAtGatewayInstalledMilestone,
-        LocalAiRecoveryTarget? localAiRecoveryTarget)
+        LocalAiRecoveryTarget? localAiRecoveryTarget,
+        GatewayRecord? existingWslGateway = null)
     {
         if (_isShuttingDown || _callbacks.GetSettings() is null)
         {
@@ -868,6 +892,7 @@ internal sealed class WindowManager : IWindowManager
                 localAiRecoveryRequestedPort: localAiRecoveryTarget?.RequestedLocalAiPort,
                 localAiHost: CreateLocalAiSetupHost(),
                 connectionManager: _callbacks.GetConnectionManager(),
+                existingWslGateway: existingWslGateway,
                 publishNativeCompletion: _callbacks.PublishNativeCompletion,
                 applyNativeStartup: _callbacks.ApplyNativeStartup,
                 startupRegistrationAllowed: !AppIdentity.IsIsolated,

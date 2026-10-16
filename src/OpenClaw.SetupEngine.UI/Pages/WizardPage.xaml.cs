@@ -13,12 +13,17 @@ using Windows.ApplicationModel.DataTransfer;
 
 namespace OpenClaw.SetupEngine.UI.Pages;
 
+public sealed record WizardPageArgs(
+    SetupConfig Config, string? ExpectedGatewayId, string? ExpectedEndpointBinding);
+
 public sealed partial class WizardPage : Page
 {
     private const int MaxWizardSteps = 50;
     private const int MaxSameStepVisits = 3;
 
     private SetupConfig _config = new();
+    private string? _expectedGatewayId;
+    private string? _expectedEndpointBinding;
     private NativeGatewaySetupSession? _nativeSession;
     private Task? _startTask;
     private Task? _closeTask;
@@ -69,7 +74,10 @@ public sealed partial class WizardPage : Page
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
-        _config = e.Parameter as SetupConfig ?? new SetupConfig();
+        var args = e.Parameter as WizardPageArgs;
+        _config = args?.Config ?? e.Parameter as SetupConfig ?? new SetupConfig();
+        _expectedGatewayId = args?.ExpectedGatewayId;
+        _expectedEndpointBinding = args?.ExpectedEndpointBinding;
         _nativeSession = SetupWindow.Active?.NativeSetupSession;
         if (_nativeSession is not null)
             SkipWizardMenuItem.Text = SetupLocalization.GetString("Onboarding_Native_Cancel.Content");
@@ -231,7 +239,8 @@ public sealed partial class WizardPage : Page
 
         var dataDir = SetupWindow.Active?.DataDir ?? SetupContext.ResolveDataDir();
         var session = await SetupGatewaySession.ConnectAsync(dataDir,
-            () => _expectedTerminalRestart, ct: _pageLifetime.Token);
+            () => _expectedTerminalRestart, ct: _pageLifetime.Token,
+            expectedGatewayId: _expectedGatewayId, expectedEndpointBinding: _expectedEndpointBinding);
         _hostAccessPlan = session.HostAccessPlan;
         return new(session.Client, null);
     }

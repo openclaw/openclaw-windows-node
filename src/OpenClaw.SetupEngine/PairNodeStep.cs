@@ -381,8 +381,7 @@ public sealed class PairNodeStep : SetupStep
         // Only clear if no external gateways remain (same logic as PairOperatorStep)
         var registry = new GatewayRegistry(ctx.DataDir, logger: new SetupOpenClawLogger(ctx.Logger));
         registry.Load();
-        var hasExternalGateways = registry.GetAll().Any(r =>
-            !r.IsLocal && !(r.SshTunnel is null && LocalGatewayUrlClassifier.IsLocalGatewayUrl(r.Url)));
+        var hasExternalGateways = registry.GetAll().Any(r => !PairOperatorStep.IsSetupManagedLocalRecord(r, ctx));
 
         if (hasExternalGateways)
         {

@@ -4919,6 +4919,45 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
   <data name="SettingsPage_Privacy.Text" xml:space="preserve">
     <value>Confidentialité</value>
   </data>
+  <data name="GatewayHostAccess_NativeManaged" xml:space="preserve">
+    <value>Cette passerelle native est gérée par son package Windows. Ouvrez l’assistant de configuration dans les paramètres pour la configurer.</value>
+  </data>
+  <data name="SettingsPage_SetupGatewayDescription" xml:space="preserve">
+    <value>Installez une passerelle native ou WSL, ou configurez une passerelle existante. Les installations existantes ne sont remplacées qu’après confirmation.</value>
+  </data>
+  <data name="SettingsPage_SetupNativeDescription" xml:space="preserve">
+    <value>Configurez le fournisseur d’IA et le modèle sur la passerelle native sélectionnée sans la réinstaller.</value>
+  </data>
+  <data name="SettingsPage_GatewayOnboardingDescription.Text" xml:space="preserve">
+    <value>Configurez le fournisseur d’IA et le modèle sur la passerelle locale sélectionnée sans la réinstaller.</value>
+  </data>
+  <data name="SettingsPage_RemoveNativeBody" xml:space="preserve">
+    <value>Supprime définitivement le compte de passerelle isolé de ce package Windows, son espace de travail, sa configuration, ses informations d’identification et ses entrées de démarrage. Les autres profils Companion utilisant le même package et le même compte Windows perdront également l’accès. L’application Gateway du Store, les passerelles WSL, les autres passerelles enregistrées, les paramètres de Companion et le jeton MCP sont conservés.</value>
+  </data>
+  <data name="SettingsPage_RemoveLegacyNativeBody" xml:space="preserve">
+    <value>Arrête cette ancienne passerelle native et supprime définitivement sa connexion enregistrée, ses informations d’identification et ses données de profil locales. L’application Gateway du Store, les passerelles WSL, les autres passerelles enregistrées, les paramètres de Companion et le jeton MCP sont conservés.</value>
+  </data>
+  <data name="SettingsPage_RemoveWslBody" xml:space="preserve">
+    <value>Supprime définitivement la passerelle WSL dans {0}, son image disque, sa connexion enregistrée et ses informations d’identification. Les autres passerelles, les fichiers d’IA locale, les paramètres de Companion, les entrées de démarrage, les autorisations d’exécution, le jeton MCP et la clé racine de l’appareil sont conservés.</value>
+  </data>
+  <data name="SettingsPage_GatewayRemovalTitle" xml:space="preserve">
+    <value>Supprimer la passerelle locale ?</value>
+  </data>
+  <data name="SettingsPage_GatewayRemovalPermanent" xml:space="preserve">
+    <value>Cette action est irréversible.</value>
+  </data>
+  <data name="SettingsPage_GatewayRemovalTargetChanged" xml:space="preserve">
+    <value>Sélectionnez la passerelle locale dans les paramètres de connexion, puis examinez à nouveau la suppression. La sélection précédente n’est plus à jour.</value>
+  </data>
+  <data name="SettingsPage_GatewayRemovalLocalAi" xml:space="preserve">
+    <value>Arrêtez l’IA locale et libérez son contrôle sur la passerelle dans les paramètres de l’IA locale avant de supprimer une passerelle. Aucune passerelle n’a été supprimée.</value>
+  </data>
+  <data name="SettingsPage_NativeGatewayRemoved" xml:space="preserve">
+    <value>La passerelle native et sa connexion enregistrée ont été supprimées. L’application Gateway du Store reste installée. Ouvrez l’assistant de configuration pour configurer une nouvelle passerelle.</value>
+  </data>
+  <data name="SettingsPage_RemovingGateway" xml:space="preserve">
+    <value>Suppression de la passerelle...</value>
+  </data>
   <data name="SettingsPage_LocalGateway.Text" xml:space="preserve">
     <value>Passerelle locale</value>
   </data>
@@ -7216,6 +7255,9 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   <data name="Onboarding_AiSetup_AdminRequired" xml:space="preserve"><value>Un opérateur connecté avec les droits administrateur est requis. Terminez l'association, puis actualisez.</value></data>
   <data name="Onboarding_AiSetup_Failed" xml:space="preserve"><value>La configuration IA ne peut pas continuer. Vérifiez la connexion au Gateway, puis actualisez.</value></data>
   <data name="Onboarding_AiSetup_VerificationFailed" xml:space="preserve"><value>La vérification du modèle a échoué. La configuration n'est pas terminée.</value></data>
+  <data name="Onboarding_AiSetup_NativeClassicUnavailable" xml:space="preserve">
+    <value>Ce Gateway natif ne prend pas en charge la configuration de l'IA. Mettez le Gateway à jour et réessayez. L'assistant classique ne peut pas être utilisé pour une installation native existante.</value>
+  </data>
   <data name="Onboarding_AiSetup_NavigationFailed" xml:space="preserve"><value>Impossible d'ouvrir la configuration classique. Gardez cette fenêtre ouverte et réessayez.</value></data>
   <data name="Onboarding_AiSetup_InvalidLink" xml:space="preserve"><value>Impossible d'ouvrir le lien. Seuls les liens HTTP ou HTTPS sont pris en charge.</value></data>
   <data name="Onboarding_AiSetup_NoChoices" xml:space="preserve"><value>Aucune option compatible reçue. Vérifiez les fournisseurs du Gateway et actualisez.</value></data>
@@ -7959,4 +8001,10 @@ Vos paramètres, votre passerelle, vos fichiers et vos modèles restent en place
   <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>Le profil préféré {0} ne convient pas à ce matériel. La configuration peut utiliser {1} avec {2:N0} jetons de contexte. Vérifiez ce profil dans la configuration avant de l’installer.</value></data>
   <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>Ce profil nécessite au moins {0} de mémoire vive système.</value></data>
   <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>Ce profil nécessite au moins {0} libres sur les volumes du cache des modèles et du moteur.</value></data>
+  <data name="ConnectionPage_LocalConflictAddress" xml:space="preserve"><value>Une autre application utilise l’adresse locale de cette passerelle.</value></data>
+  <data name="ConnectionPage_LocalConflictOwnership" xml:space="preserve"><value>Les processus inconnus ne sont jamais arrêtés automatiquement.</value></data>
+  <data name="ConnectionPage_LocalConflictRecovery" xml:space="preserve"><value>Fermez l’application à l’origine du conflit ou vérifiez l’état du service et l’adresse de l’installation de la passerelle, puis réessayez.</value></data>
+  <data name="SettingsPage_LegacyNativeAiTitle" xml:space="preserve"><value>La passerelle native doit être mise à jour</value></data>
+  <data name="SettingsPage_LegacyNativeAiMessage" xml:space="preserve"><value>L’IA locale gérée nécessite une passerelle native isolée. Mettez à jour le package Gateway et configurez une passerelle isolée avant d’utiliser l’IA locale.</value></data>
+  <data name="Onboarding_LocalAi_NativeCheckingMessage" xml:space="preserve"><value>OpenClaw vérifie les exigences relatives au GPU NVIDIA, au pilote, à CUDA et à la mémoire.</value></data>
 </root>

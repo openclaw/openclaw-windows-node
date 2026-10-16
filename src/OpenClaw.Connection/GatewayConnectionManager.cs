@@ -1122,6 +1122,30 @@ public sealed class GatewayConnectionManager :
         }
     }
 
+    public async Task RemoveNativeGatewayAsync(
+        GatewayRecord expected, INativeGatewayPackageResolver resolver, CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+        await _transitionSemaphore.WaitAsync(cancellationToken);
+        try
+        {
+            var removal = new NativeGatewayRemoval(_registry, resolver, new NativeGatewayPackageClient());
+            await removal.RemoveAsync(expected, async () =>
+            {
+                SetGatewayConnectionIntent(expected.Id, shouldBeConnected: false);
+                await DisconnectCoreAsync(stopNativeGateway: true);
+                if (expected.NativeRuntimeContract is null)
+                {
+                    var listeners = WindowsTcpListenerSnapshot.Capture();
+                    if (!listeners.Ipv4Complete || !listeners.Ipv6Complete ||
+                        listeners.Listeners.Any(listener => listener.Port == NativeGatewayPaths.ValidateRecord(expected).Port))
+                        throw new InvalidOperationException("The legacy native Gateway is still running or its listener could not be verified. Its data was retained.");
+                }
+            }, cancellationToken);
+        }
+        finally { _transitionSemaphore.Release(); }
+    }
+
     /// <summary>Core disconnect logic. Caller must hold <see cref="_transitionSemaphore"/>.</summary>
     private async Task DisconnectCoreAsync(bool stopNativeGateway = false)
     {

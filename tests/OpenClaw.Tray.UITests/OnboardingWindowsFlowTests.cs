@@ -24,6 +24,98 @@ namespace OpenClaw.Tray.UITests;
 [Collection(UICollection.Name)]
 public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHelper output)
 {
+    [Fact]
+    public async Task ExistingNativeClassicNavigationIsRejectedEvenAfterSelectionChanges()
+    {
+        await WithWindowAsync((window, frame, data) =>
+        {
+            var selected = new GatewayRecord
+            {
+                Id = "native-owner", Url = "ws://127.0.0.1:55123",
+                NativePackageFamilyName = "fixture-native-package",
+                NativeRuntimeContract = OpenClaw.Connection.NativeGateway.NativeGatewayPackageClient.IsolatedContract,
+            };
+            var registry = new GatewayRegistry(data);
+            registry.AddOrUpdate(selected);
+            registry.SetActive(selected.Id);
+            registry.Save();
+            window.AccessDraft.SelectExistingNativeGateway(selected);
+            var originalPage = frame.Content;
+            Assert.False(window.TryNavigateToLegacyWizard());
+            var replacement = registry.AddOrUpdate(new() { Id = "replacement", Url = "wss://replacement.invalid" });
+            registry.SetActive(replacement.Id);
+            registry.Save();
+            Assert.False(window.TryNavigateToLegacyWizard());
+            Assert.Same(originalPage, frame.Content);
+            Assert.Equal(selected.Id, window.AccessDraft.NativeGatewayId);
+            registry.Load();
+            Assert.Equal(replacement, registry.GetActive());
+            Assert.Equal(selected, registry.GetById(selected.Id));
+            return Task.CompletedTask;
+        });
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ReopenedWslSkipAndFinalizationRetryShowChangedTargetWithoutBecomingBusy(bool sameId)
+    {
+        await using var replacement = await FixtureGatewayServer.StartAsync(
+            GatewayScenario.CreateNativeSetup((_, _) => throw new InvalidOperationException("Must not invoke replacement")),
+            "test-auth-token");
+        var selected = new GatewayRecord
+        {
+            Id = "selected-wsl", Url = "wss://selected.invalid",
+            IsLocal = true, SetupManagedDistroName = "MountedFlow-NoRealDistro",
+        };
+        await WithWindowAsync(async (window, frame, data) =>
+        {
+            // Even a broken admission guard must not launch WSL from this fixture.
+            window.AccessDraft.Config.WindowsNodeContext.Enabled = false;
+            var registry = new GatewayRegistry(data);
+            registry.AddOrUpdate(selected);
+            var changed = registry.AddOrUpdate(selected with
+            {
+                Id = sameId ? selected.Id : "replacement", Url = replacement.Endpoint.ToString(),
+                SharedGatewayToken = "test-auth-token",
+            });
+            registry.SetActive(changed.Id);
+            registry.Save();
+            var saved = File.ReadAllText(Path.Combine(data, "gateways.json"));
+            Assert.True(window.TryNavigateToLegacyWizard());
+            var page = await MountedPageAsync<WizardPage>(window, frame);
+            await WaitAsync(() => Find<TextBlock>(page, "ErrorText").Visibility == Visibility.Visible,
+                "changed WSL target rejected before connection");
+            var moreOptions = Find<DropDownButton>(page, "MoreOptionsButton");
+            moreOptions.Flyout.ShowAt(moreOptions);
+            await ui.YieldToRenderAsync();
+            Invoke(Find<MenuFlyoutItem>(page, "SkipWizardMenuItem"));
+            await WaitAsync(() => Find<TextBlock>(page, "StatusText").Text == "Windows integration needs attention",
+                "Skip exposes finalization failure instead of leaving the spinner active");
+            AssertRecovery();
+            Invoke(Find<Button>(page, "PrimaryButton"));
+            await ui.YieldToRenderAsync();
+            await WaitAsync(() => Find<Button>(page, "PrimaryButton").IsEnabled,
+                "finalization retry restores error actions");
+            AssertRecovery();
+            Assert.Equal(saved, File.ReadAllText(Path.Combine(data, "gateways.json")));
+            Assert.Equal(0, replacement.ConnectionCount);
+            Assert.Empty(replacement.Requests);
+
+            void AssertRecovery()
+            {
+                Assert.Same(page, frame.Content);
+                Assert.Contains("Reopen onboarding for the selected Gateway", Find<TextBlock>(page, "ErrorText").Text);
+                Assert.False(Find<ProgressRing>(page, "BusyRing").IsActive);
+                Assert.Equal(Visibility.Collapsed, Find<ProgressRing>(page, "BusyRing").Visibility);
+                Assert.Equal(Visibility.Visible, Find<DropDownButton>(page, "MoreOptionsButton").Visibility);
+                Assert.True(Find<DropDownButton>(page, "MoreOptionsButton").IsEnabled);
+                Assert.Equal("Retry Windows integration", Find<Button>(page, "PrimaryButton").Content);
+                Assert.True(Find<Button>(page, "PrimaryButton").IsEnabled);
+            }
+        }, existingWslGateway: selected);
+    }
+
     [Theory]
     [InlineData(SetupGatewayRoute.Existing, false)]
     [InlineData(SetupGatewayRoute.Remote, false)]
@@ -889,7 +981,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
 
     private async Task WithWindowAsync(
         Func<SetupWindow, Frame, string, Task> assertion, ISetupNativeConnectionHost? host = null, bool recovery = false,
-        bool nativeProof = false, ElementTheme theme = ElementTheme.Light)
+        bool nativeProof = false, ElementTheme theme = ElementTheme.Light, GatewayRecord? existingWslGateway = null)
     {
         var repo = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT")
             ?? throw new InvalidOperationException("Set OPENCLAW_REPO_ROOT for mounted onboarding tests.");
@@ -925,7 +1017,8 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
                     window = OnboardingNativeProof.CreateWindow(() => new SetupWindow(configPath: configPath, dataDir: data,
                         localDataDir: Path.Combine(directory, "local-data"), commandLineArgs: [],
                         distroNameOverride: "MountedFlow-NoRealDistro", nativeConnectionHost: host,
-                        startAtLocalAiRecoveryReview: recovery, localAiRecoveryModelId: recovery ? "mounted-pinned-model" : null));
+                        startAtLocalAiRecoveryReview: recovery, localAiRecoveryModelId: recovery ? "mounted-pinned-model" : null,
+                        existingWslGateway: existingWslGateway));
                     var root = Assert.IsType<Grid>(window.Content);
                     frame = Find<Frame>(root, "RootFrame");
                     navigation = OnboardingNativeProof.TrackNavigation(frame);

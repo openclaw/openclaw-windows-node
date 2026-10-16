@@ -41,6 +41,7 @@ public sealed partial class DebugPage : Page
     private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
 
     private AppState? _appState;
+    private GatewayRegistry? _registry;
     private bool _suppressOverrideChange;
     private bool _suppressOpenTelemetryEndpointChange;
 
@@ -93,6 +94,7 @@ public sealed partial class DebugPage : Page
         Unloaded += (_, _) =>
         {
             if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
+            if (_registry != null) _registry.Changed -= OnGatewayRegistryChanged;
             CurrentApp.SettingsChanged -= OnSettingsChanged;
             StopCopyFeedbackTimer();
         };
@@ -105,9 +107,12 @@ public sealed partial class DebugPage : Page
         // and Initialize() runs twice on the same instance. Mirrors
         // SessionsPage.xaml.cs:34 (Hanselman v2 review #3).
         if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;
+        if (_registry != null) _registry.Changed -= OnGatewayRegistryChanged;
         CurrentApp.SettingsChanged -= OnSettingsChanged;
 
         _appState = CurrentApp.AppState!;
+        _registry = CurrentApp.Registry;
+        if (_registry != null) _registry.Changed += OnGatewayRegistryChanged;
         if (_appState != null) _appState.PropertyChanged += OnAppStateChanged;
         // Listen for Settings → Save round-trips so the gateway URL in
         // the top InfoBar updates without waiting for a Status flip
@@ -139,6 +144,14 @@ public sealed partial class DebugPage : Page
         LoadOpenTelemetryEndpoint();
     }
 
+    private void OnGatewayRegistryChanged(object? sender, GatewayRegistryChangedEventArgs e) =>
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!IsLoaded) return;
+            UpdateStatusInfoBar();
+            UpdateGatewayDoctorCard();
+        });
+
     /// <summary>
     /// Reset detail-mode state when the user navigates to a different
     /// page so any in-flight async log read becomes a no-op via the
@@ -157,7 +170,9 @@ public sealed partial class DebugPage : Page
 
     private void UpdateStatusInfoBar()
     {
-        var gatewayUrl = CurrentApp.Settings?.GetEffectiveGatewayUrl();
+        var gatewayUrl = LocalGatewaySettings.DisplayedGatewayUrl(
+            CurrentApp.Registry?.GetActive(), CurrentApp.ConnectionManager?.CurrentSnapshot,
+            CurrentApp.Settings?.GetEffectiveGatewayUrl());
         var gatewayDisplay = string.IsNullOrWhiteSpace(gatewayUrl)
             ? LocalizationHelper.GetString("DebugPage_NoGatewayConfigured")
             : gatewayUrl;

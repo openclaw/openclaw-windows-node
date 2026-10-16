@@ -79,7 +79,7 @@ public sealed class AppSurfaceCharacterizationTests
         Assert.Contains("SetupWindowArgumentProjection.Project(", source);
         Assert.Contains("AdvancedSetupRequested += _callbacks.AdvancedSetupRequested", source);
         Assert.Contains("SetupCompleted += _callbacks.SetupCompleted", source);
-        Assert.Contains("TryNavigateToGatewayInstalledMilestone()", source);
+        Assert.Contains("existingWslGateway: existingWslGateway", source);
         Assert.Contains("AdvancedSetupRequested -= _callbacks.AdvancedSetupRequested", source);
         Assert.Contains("SetupCompleted -= _callbacks.SetupCompleted", source);
     }
