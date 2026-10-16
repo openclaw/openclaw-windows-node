@@ -88,6 +88,8 @@ internal static class OnboardingSetupGalleryData
         new("10-ai-local-unknown", "ai", "Unknown"),
         new("10-ai-local-remote", "ai", "UnsupportedGateway"),
         new("10-ai-local-working", "ai", "Working"),
+        new("10-ai-local-reconcile", "ai", "Reconcile"),
+        new("10-ai-local-management-blocked", "ai", "ManagementBlocked"),
         new("12-ai-providers", "ai", "providers"),
         new("12-ai-more-sign-in", "ai", "more"),
         new("12-ai-api-key", "ai", "api-key"),

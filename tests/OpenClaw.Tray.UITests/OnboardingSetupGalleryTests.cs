@@ -278,6 +278,13 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
     }
 
     [Fact]
+    public void GallerySceneInventory_CoversEveryLocalAiState()
+    {
+        Assert.All(Enum.GetValues<LocalAiOnboardingState>(), state =>
+            Assert.Contains(RequiredScenes, scene => scene.Family == "ai" && scene.State == state.ToString()));
+    }
+
+    [Fact]
     [Trait("Category", "NativeOnboardingProof")]
     public async Task OwnedWindows_KeepProductDpiAcrossSharedCaptureAndAsyncGalleryCreation()
     {
@@ -830,7 +837,7 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
             result.Facts.Add("Detected Local AI and Gateway model choices precede Gateway preparation, provider cards, API Keys and the separate manual form.");
         }
         if (state == "catalog")
-            Assert.False(Find<CheckBox>(page, "CatalogPreference").IsChecked);
+            Assert.Null(page.FindName("CatalogPreference"));
         if (result.Scene.Family == "ai-return")
         {
             Assert.NotNull(reviewedModel);

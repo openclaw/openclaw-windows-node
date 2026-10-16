@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
@@ -61,6 +62,10 @@ public class McpHttpServerTests
         var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}/") };
         return (server, http, new Uri($"http://127.0.0.1:{port}/"));
     }
+
+    private static bool IsMcpServerFault(Exception error) =>
+        typeof(McpHttpServer).FullName is { } serverType &&
+        error.StackTrace?.Contains(serverType, StringComparison.Ordinal) == true;
 
     private sealed class GatedCapability : INodeCapability
     {
@@ -352,6 +357,20 @@ public class McpHttpServerTests
     }
 
     [Fact]
+    public async Task DisposalFaultObservation_ExcludesExceptionsFromOtherComponents()
+    {
+        var (server, http, _) = Boot();
+        using (http)
+        {
+            await server.DisposeAsync();
+            Assert.True(IsMcpServerFault(Assert.Throws<ObjectDisposedException>(server.Start)));
+        }
+        using var stream = new MemoryStream();
+        stream.Dispose();
+        Assert.False(IsMcpServerFault(Assert.Throws<ObjectDisposedException>(() => stream.ReadByte())));
+    }
+
+    [Fact]
     public async Task Dispose_DuringInFlightHandler_DoesNotSurfaceObjectDisposedException()
     {
         // CR-005: when the server is disposed while a handler is mid-flight,
@@ -364,11 +383,12 @@ public class McpHttpServerTests
         var cap = new GatedCapability(release);
         var (server, http, _) = BootWith(cap);
 
-        var unobserved = new List<Exception>();
+        var unobserved = new ConcurrentQueue<Exception>();
         EventHandler<UnobservedTaskExceptionEventArgs> handler = (_, e) =>
         {
-            foreach (var ex in e.Exception.InnerExceptions) unobserved.Add(ex);
-            e.SetObserved();
+            // This event is process-wide; other test collections can finalize unrelated IO tasks.
+            foreach (var ex in e.Exception.Flatten().InnerExceptions)
+                if (IsMcpServerFault(ex)) unobserved.Enqueue(ex);
         };
         TaskScheduler.UnobservedTaskException += handler;
 
@@ -403,6 +423,7 @@ public class McpHttpServerTests
             // Unblock the capability so its task doesn't hang the test runner.
             release.TrySetResult(true);
             await inflight;
+            await server.DisposeAsync();
 
             // Force any continuations + finalizers to run so unobserved
             // exception events fire deterministically.
@@ -417,6 +438,7 @@ public class McpHttpServerTests
         {
             TaskScheduler.UnobservedTaskException -= handler;
             release.TrySetResult(true);
+            await server.DisposeAsync();
             http.Dispose();
         }
     }
@@ -428,11 +450,11 @@ public class McpHttpServerTests
         var cap = new GatedCapability(release);
         var (server, http, _) = BootWith(cap);
 
-        var unobserved = new List<Exception>();
+        var unobserved = new ConcurrentQueue<Exception>();
         EventHandler<UnobservedTaskExceptionEventArgs> handler = (_, e) =>
         {
-            foreach (var ex in e.Exception.InnerExceptions) unobserved.Add(ex);
-            e.SetObserved();
+            foreach (var ex in e.Exception.Flatten().InnerExceptions)
+                if (IsMcpServerFault(ex)) unobserved.Enqueue(ex);
         };
         TaskScheduler.UnobservedTaskException += handler;
 
@@ -468,6 +490,7 @@ public class McpHttpServerTests
         {
             TaskScheduler.UnobservedTaskException -= handler;
             release.TrySetResult(true);
+            await server.DisposeAsync();
             http.Dispose();
         }
     }

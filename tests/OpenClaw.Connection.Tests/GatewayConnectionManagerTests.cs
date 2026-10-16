@@ -378,6 +378,26 @@ public class GatewayConnectionManagerTests : IDisposable
     }
 
     [Theory]
+    [InlineData(GatewayEndpointProvenanceKind.ExpectedManagedGateway, true)]
+    [InlineData(GatewayEndpointProvenanceKind.NoListener, false)]
+    [InlineData(GatewayEndpointProvenanceKind.UnknownListener, false)]
+    public async Task NativeReadyNavigationInspectsWithoutStartingRuntime(GatewayEndpointProvenanceKind kind, bool allowed)
+    {
+        SetupNativeGateway();
+        var runtime = new FakeNativeGatewayRuntime
+        {
+            Kind = kind,
+            BeforeEnsure = () => throw new InvalidOperationException("Navigation must never start a runtime"),
+        };
+        var result = await NativeGatewayEndpointSecurity.AuthorizeAsync(
+            runtime, _registry.GetById("native")!, default, allowStart: false);
+        Assert.Equal(allowed, result.Allowed);
+        Assert.Equal(1, runtime.InspectCount);
+        Assert.Equal(0, runtime.StartCount);
+        Assert.Equal(0, runtime.StopCount);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task NativeGateway_ExplicitDisconnectStopsRuntime(bool byUser)

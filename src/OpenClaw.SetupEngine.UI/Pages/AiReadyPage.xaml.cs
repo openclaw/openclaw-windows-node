@@ -4,15 +4,18 @@ using Microsoft.UI.Xaml.Navigation;
 using OpenClaw.Connection.NativeGateway;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
+using OpenClaw.SetupEngine.UI.Controls;
 
 namespace OpenClaw.SetupEngine.UI.Pages;
 
-internal sealed record AiReadyPageArgs(SetupNativeCompletionCoordinator Coordinator, SetupWindow Owner);
+public sealed record AiReadyPageArgs(SetupReadyCoordinator Coordinator, Action Recover, Func<bool> IsCurrent,
+    bool IsCommitted = false);
 
 public sealed partial class AiReadyPage : Page, IAsyncDisposable
 {
     private AiReadyPageArgs? _args;
     private bool _closed;
+    private bool _admitted;
 
     public AiReadyPage()
     {
@@ -24,10 +27,14 @@ public sealed partial class AiReadyPage : Page, IAsyncDisposable
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
-        if (e.Parameter is not AiReadyPageArgs args || !args.Owner.OwnsReadyChoice(args.Coordinator))
+        if (e.Parameter is not AiReadyPageArgs args || !args.IsCurrent())
             throw new InvalidOperationException("This page requires the current setup's verified completion.");
         _args = args;
-        args.Coordinator.StateChanged += UpdateStatus;
+        Heading.Text = SetupLocalization.GetString("Onboarding_Finishing_Heading.Text");
+        FlowProgress.Update([OnboardingStage.AiSetup, OnboardingStage.Ready], OnboardingStage.Ready);
+        _admitted = args.IsCommitted;
+        SetChoicesEnabled(_admitted);
+        if (_admitted) AdmitChoices();
         var model = args.Coordinator.Proof.ModelRef;
         ModelSummary.Text = model.Length <= 160 && !model.Any(char.IsControl)
             ? SetupLocalization.Format("Onboarding_Ready_Model", model) : "";
@@ -36,19 +43,12 @@ public sealed partial class AiReadyPage : Page, IAsyncDisposable
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
         if (_args is not { } args) return;
-        args.Coordinator.StateChanged -= UpdateStatus;
         args.Coordinator.Dispose();
-    }
-
-    private void UpdateStatus()
-    {
-        if (!_closed && _args is { } args)
-            StatusText.Text = SetupLocalization.GetString("Onboarding_Ready_" + args.Coordinator.Stage);
     }
 
     private void Choose_Click(object sender, RoutedEventArgs e)
     {
-        if (_closed || _args is not { } args || !args.Owner.OwnsReadyChoice(args.Coordinator) ||
+        if (_closed || !_admitted || _args is not { } args || !args.IsCurrent() ||
             args.Coordinator.IsBusy || args.Coordinator.IsCompleted ||
             sender is not FrameworkElement { Tag: string tag } || !Enum.TryParse<SetupNativeDestination>(tag, out var destination))
             return;
@@ -63,7 +63,18 @@ public sealed partial class AiReadyPage : Page, IAsyncDisposable
         try { await args.Coordinator.SelectAsync(destination); }
         catch (Exception error)
         {
-            if (_closed || args.Owner.IsClosed) return;
+            if (_closed || !args.IsCurrent()) return;
+            try
+            {
+                args.Coordinator.RequireCurrent();
+                RecoveryButton.Visibility = Visibility.Collapsed;
+            }
+            catch (Exception)
+            {
+                Heading.Text = SetupLocalization.GetString("Onboarding_Finishing_Heading.Text");
+                Choices.Visibility = Visibility.Collapsed;
+                RecoveryButton.Visibility = Visibility.Visible;
+            }
             ErrorBar.Message = SetupLocalization.GetString(error switch
             {
                 SetupNativeOwnershipException => "Onboarding_Ready_OwnershipChanged",
@@ -71,7 +82,7 @@ public sealed partial class AiReadyPage : Page, IAsyncDisposable
                 SetupNativeCompletionTimeoutException timeout => "Onboarding_Ready_Timeout" + timeout.Phase,
                 NativeGatewayStartupTimeoutException => "Onboarding_Ready_TimeoutGatewayStartup",
                 OperationCanceledException or TimeoutException => "Onboarding_Ready_Timeout",
-                _ => "Onboarding_Ready_" + args.Coordinator.Stage + "Failed",
+                _ => "Onboarding_Ready_OpeningFailed",
             });
             ErrorBar.IsOpen = true;
             System.Diagnostics.Trace.TraceWarning("Native setup completion needs retry ({0}; phase: {1}).",
@@ -82,26 +93,49 @@ public sealed partial class AiReadyPage : Page, IAsyncDisposable
 
     private void SetBusy(bool busy)
     {
-        foreach (var choice in Choices.Children.OfType<Control>())
-            choice.IsEnabled = !busy;
-        RecoveryButton.IsEnabled = !busy;
+        SetChoicesEnabled(!busy && _admitted);
         BusyProgress.Visibility = StatusText.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
-        StatusText.Text = SetupLocalization.GetString("Onboarding_Ready_Verifying");
+        StatusText.Text = SetupLocalization.GetString("Onboarding_Ready_Opening");
     }
 
     private void Return_Click(object sender, RoutedEventArgs e)
     {
-        if (!_closed && _args is { } args && !args.Coordinator.IsBusy)
-            args.Owner.ReturnFromReadyChoice(args.Coordinator);
+        if (!_closed && _admitted && _args is { } args && !args.Coordinator.IsBusy)
+            args.Recover();
+    }
+
+    public void ShowInvalidated()
+    {
+        Heading.Text = SetupLocalization.GetString("Onboarding_Finishing_Heading.Text");
+        Choices.Visibility = Visibility.Collapsed;
+        ErrorBar.Message = SetupLocalization.GetString("Onboarding_Ready_OwnershipChanged");
+        ErrorBar.IsOpen = true;
+        RecoveryButton.IsEnabled = _admitted;
+        RecoveryButton.Visibility = Visibility.Visible;
+    }
+
+    public void AdmitChoices()
+    {
+        _admitted = true;
+        Heading.Text = SetupLocalization.GetString("Onboarding_Ready_Heading.Text");
+        Prompt.Text = SetupLocalization.GetString("Onboarding_Ready_Prompt.Text");
+        MascotHero.Mood = OnboardingMascotMood.Celebrating;
+        Choices.Visibility = Visibility.Visible;
+        SetChoicesEnabled(true);
+    }
+
+    private void SetChoicesEnabled(bool enabled)
+    {
+        foreach (var choice in Choices.Children.OfType<Control>())
+            choice.IsEnabled = enabled;
+        RecoveryButton.IsEnabled = enabled;
     }
 
     public async ValueTask DisposeAsync()
     {
         _closed = true;
         if (_args is not { } args) return;
-        args.Coordinator.StateChanged -= UpdateStatus;
         args.Coordinator.Dispose();
-        try { await args.Coordinator.ActiveTask; }
-        catch (OperationCanceledException) { }
+        await args.Coordinator.CleanupCompleted;
     }
 }

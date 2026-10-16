@@ -74,7 +74,6 @@ Use isolated tray data so the user's real settings and gateways are untouched:
 ```powershell
 .\build.ps1
 $env:OPENCLAW_NATIVE_GATEWAY_DEV_PATCH = 'source'
-$env:OPENCLAW_FORCE_ONBOARDING = '1'
 .\run-app-local.ps1 -NoBuild -DataDir "$env:TEMP\oc-devgw-source"
 ```
 
@@ -83,7 +82,9 @@ all four native steps complete and **Connect your AI** loads from the source-bui
 `<data-dir>\gateways\native-setup-draft.json` records
 `PackageFamilyName = OpenClawFoundation.OpenClawGateway-source_rfcbke2p71se2`, and
 `clawctl-source gateway-service status` reports `[ok] listening` on the recorded port.
-No `winget.exe` should start. Clear both variables afterwards.
+No `winget.exe` should start. Clear the patch variable afterwards. Use a fresh
+isolated profile to enter onboarding; leave `OPENCLAW_FORCE_ONBOARDING` unset
+for restart proof so the replacement process can dispatch the completion handoff.
 
 The variable must be set in the shell that launches Companion; a running Companion does not
 pick it up. Profiles created this way resolve only while the variable names the same patch.

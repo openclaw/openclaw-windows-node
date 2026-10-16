@@ -121,8 +121,20 @@ public sealed class OnboardingMockPresentationTests
         Assert.Equal("48", (string?)details.Attribute("MinHeight"));
         Assert.Contains(details.Descendants(), element => element == Named(page, "OpenLogButton"));
         Assert.Contains(details.Descendants(), element => element == Named(page, "LogText"));
-        foreach (var name in new[] { "PreparePhase", "InstallPhase", "ConnectPhase", "CurrentActivity",
-                     "StepCount", "DownloadActivity", "DownloadProgress", "TailscaleAuthorizationPanel" })
+        Assert.DoesNotContain(page.Descendants(), element => (string?)element.Attribute(X + "Name") == "CurrentActivity");
+        Assert.DoesNotContain(page.Descendants(), element => (string?)element.Attribute(X + "Name") == "StepCount");
+        foreach (var prefix in new[] { "Prepare", "Install", "Connect" })
+        {
+            var phase = Named(page, prefix + "Phase");
+            var activity = Named(page, prefix + "Activity");
+            Assert.Equal("SettingsCard.Description", activity.Parent!.Name.LocalName);
+            Assert.Same(phase, activity.Parent.Parent);
+            Assert.Equal("Wrap", (string?)activity.Attribute("TextWrapping"));
+            Assert.Equal("Polite", (string?)activity.Attribute("AutomationProperties.LiveSetting"));
+        }
+        foreach (var name in new[] { "PreparePhase", "InstallPhase", "ConnectPhase",
+                     "PrepareActivity", "InstallActivity", "ConnectActivity",
+                     "DownloadActivity", "DownloadProgress", "TailscaleAuthorizationPanel" })
             Assert.DoesNotContain(Named(page, name).Ancestors(), element => element == details);
         Assert.DoesNotContain(page.Descendants(), element => (string?)element.Attribute(X + "Name") == "ActivityProgress");
         foreach (var name in new[] { "PrepareStatus", "InstallStatus", "ConnectStatus" })
@@ -131,7 +143,7 @@ public sealed class OnboardingMockPresentationTests
             "src", "OpenClaw.SetupEngine.UI", "Pages", "ProgressPage.xaml.cs"));
         Assert.Contains("_installationProgress?.Apply(e)", source);
         Assert.Contains("Onboarding_V4_RecoveryInstall", source);
-        Assert.Contains("progress.CompletedSteps, progress.TotalSteps", source);
+        Assert.DoesNotContain("Onboarding_V4_StepCount", source);
     }
 
     [Fact]

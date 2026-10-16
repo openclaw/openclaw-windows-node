@@ -11,7 +11,8 @@ internal static class NativeGatewayEndpointSecurity
     internal static async Task<EndpointCredentialAuthorization> AuthorizeAsync(
         INativeGatewayRuntime? runtime,
         GatewayRecord record,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool allowStart = true)
     {
         if (runtime is null)
         {
@@ -21,7 +22,8 @@ internal static class NativeGatewayEndpointSecurity
 
         try
         {
-            await runtime.EnsureRunningAsync(record, cancellationToken).ConfigureAwait(false);
+            if (allowStart)
+                await runtime.EnsureRunningAsync(record, cancellationToken).ConfigureAwait(false);
             var provenance = await runtime.InspectAsync(record, cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             if (provenance.Kind == GatewayEndpointProvenanceKind.ExpectedManagedGateway)

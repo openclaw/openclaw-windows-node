@@ -15,6 +15,39 @@ public sealed class GatewayFixtureProtocolTests
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(20);
 
     [Fact]
+    public async Task RestartClose_DrainsConcurrentClosesBeforeConnectionResourcesAreDisposed()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
+        for (var iteration = 0; iteration < 25; iteration++)
+        {
+            await using var connected = await ConnectedClient.OpenAsync(server, token);
+            using var deadline = new CancellationTokenSource(Deadline);
+            var closes = Enumerable.Range(0, 8)
+                .Select(_ => server.CloseConnectionsAsync(deadline.Token)).ToArray();
+            var disconnect = connected.Client.DisconnectAsync();
+            await Task.WhenAll(closes.Append(disconnect)).WaitAsync(Deadline);
+        }
+        await server.DisposeAsync().AsTask().WaitAsync(Deadline);
+        Assert.Equal(0, server.ActiveConnectionCount);
+        Assert.Equal(0, server.SubscriptionCount);
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
+    [Fact]
+    public async Task RestartClose_PreservesCallerCancellation()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => server.CloseConnectionsAsync(cancellation.Token));
+        Assert.Equal(GatewayScenario.MainSessionKey,
+            (await connected.Client.RequestChatHistoryAsync()).SessionKey);
+    }
+
+    [Fact]
     public async Task CronEditing_StoresExactSchedulesAndKeepsOtherMutationsDisabled()
     {
         var token = CreateToken();

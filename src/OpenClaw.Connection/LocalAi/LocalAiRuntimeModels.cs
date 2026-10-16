@@ -141,6 +141,13 @@ public interface ILocalAiRuntime : IAsyncDisposable
     LocalAiRuntimeSnapshot Snapshot { get; }
     event EventHandler<LocalAiRuntimeSnapshotChangedEventArgs>? StateChanged;
     Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken = default);
+    Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken,
+        IProgress<LocalAiRuntimeStartStage>? progress)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        progress?.Report(LocalAiRuntimeStartStage.StartingRuntime);
+        return EnsureStartedAsync(cancellationToken);
+    }
     Task<LocalAiRuntimeSnapshot> ResumeAsync(CancellationToken cancellationToken = default);
     Task<LocalAiRuntimeSnapshot> ReconcileStoppedAsync(CancellationToken cancellationToken = default)
         => Task.FromResult(Snapshot);

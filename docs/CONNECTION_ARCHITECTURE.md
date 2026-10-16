@@ -1,5 +1,18 @@
 # Connection Architecture
 
+Focused setup now publishes a destination-free preparation handoff before
+restarting Companion. The normal connection manager owns post-restart readiness.
+`GatewayAiSetupTransport.BorrowAsync` pins its exact operator, endpoint, persisted
+signing identity, agent and session; new Ready bindings also retain the live
+generation and configuration revision. Ready navigation uses inspection-only
+native request authorization (`allowRuntimeStart: false`), so checking a
+destination cannot start or restart a Gateway. Missing provenance fails closed.
+This restriction applies to the initial native borrow as well as each subsequent
+request. Lost freshness is classified separately from stable-authority drift;
+an explicit handoff retry requires read-only confirmation through the current
+manager and cannot reuse the expired process-local Ready binding.
+The default setup/recovery authorization behavior remains unchanged.
+
 ## Native Local AI ownership and configuration
 
 Native Local AI configuration uses authenticated Gateway RPC, not CLI batch

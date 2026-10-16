@@ -53,6 +53,15 @@ Use `.\scripts\test-gateway-fixture.ps1 -AppPath '<built-app.exe>'` for the
 opt-in real-app lane. It rejects skipped or zero-test runs and preserves
 per-run artifacts. Existing MCP-only integration defaults remain unchanged.
 
+Restart-close and event-publication snapshots retain their connection resources
+until admitted operations finish. Concurrent disconnect/restart tests exercise
+the send-lock lifetime and preserve caller cancellation.
+
+Native-window screenshot proof keeps exact labels and the original immutable
+capture. Each of its two possible Windows OCR passes has a 30-second deadline
+for cold recognition on shared CI runners. Timeout or recognition failure is
+still a failed proof, never a skipped label check or a successful fallback.
+
 ### OpenClaw.Shared.Tests
 
 - **Model and display formatting** - activity glyphs, app version display, session labels, gateway usage/node display, channel status, and rich text helpers.

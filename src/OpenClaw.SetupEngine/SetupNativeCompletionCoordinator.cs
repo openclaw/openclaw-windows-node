@@ -1,6 +1,6 @@
 namespace OpenClaw.SetupEngine;
 
-public enum SetupNativeCompletionStage { Verifying, Finalizing, Opening }
+public enum SetupNativeCompletionStage { Verifying, Finalizing, Opening, Draining }
 
 /// <summary>One chooser lifetime. Showing it grants nothing; every choice requires fresh read-only proof.</summary>
 public sealed class SetupNativeCompletionCoordinator(

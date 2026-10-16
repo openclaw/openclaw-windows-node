@@ -140,7 +140,7 @@ internal sealed class LocalAiGatewayLifecycle(
     }
 
     public async Task ReconcileVerifiedAsync(GatewayRecord record, IGatewayAiSetupTransport transport,
-        LocalAiResolvedInstall install, CancellationToken ct)
+        LocalAiResolvedInstall install, CancellationToken ct, IProgress<LocalAiRuntimeStartStage>? progress = null)
     {
         await using var lease = await _store.AcquireAsync(ct).ConfigureAwait(false);
         var binding = _store.Load() ?? throw new InvalidOperationException("The Local AI ownership receipt is unavailable.");
@@ -158,6 +158,8 @@ internal sealed class LocalAiGatewayLifecycle(
             throw new InvalidOperationException("The saved Local AI provider or primary model was changed. No ownership was adopted.");
         // A redacted credential cannot establish ownership. Explicit verification
         // must perform real inference through the exact primary, without fallback.
+        ct.ThrowIfCancellationRequested();
+        progress?.Report(LocalAiRuntimeStartStage.VerifyingEndpoint);
         var verified = await new GatewayAiSetupClient(transport).VerifyConfiguredAsync(binding.ModelRef, ct)
             .ConfigureAwait(false);
         if (!verified.Ok)
@@ -278,7 +280,11 @@ internal sealed class LocalAiGatewayLifecycle(
     }
 
     public Task<LocalAiEndpointLifecycleResult> CompleteStartAsync(LocalAiResolvedInstall install, CancellationToken ct) =>
-        _store.Exists ? PublishAsync(install, ct) : Task.FromResult(LocalAiEndpointLifecycleResult.Ok());
+        CompleteStartAsync(install, ct, null);
+
+    public Task<LocalAiEndpointLifecycleResult> CompleteStartAsync(LocalAiResolvedInstall install, CancellationToken ct,
+        IProgress<LocalAiRuntimeStartStage>? progress) =>
+        _store.Exists ? RunNativeAsync(install, null, ct, progress) : Task.FromResult(LocalAiEndpointLifecycleResult.Ok());
 
     private async Task PrepareCoreAsync(LocalAiResolvedInstall install, NativeLocalAiGatewayTarget target,
         IGatewayAiSetupTransport transport, CancellationToken ct)
@@ -347,14 +353,21 @@ internal sealed class LocalAiGatewayLifecycle(
 
     public Task<LocalAiEndpointLifecycleResult> PublishAsync(LocalAiResolvedInstall install,
         CancellationToken cancellationToken = default) =>
-        _store.Exists ? RunNativeAsync(install, null, cancellationToken) :
-            wsl.PublishAsync(install, cancellationToken);
+        PublishAsync(install, cancellationToken, null);
+
+    public Task<LocalAiEndpointLifecycleResult> PublishAsync(LocalAiResolvedInstall install,
+        CancellationToken cancellationToken, IProgress<LocalAiRuntimeStartStage>? progress) =>
+        _store.Exists ? RunNativeAsync(install, null, cancellationToken, progress) :
+            ((ILocalAiEndpointLifecycle)wsl).PublishAsync(install, cancellationToken, progress);
 
     private async Task<LocalAiEndpointLifecycleResult> RunNativeAsync(
-        LocalAiResolvedInstall install, LocalAiQuiesceReason? reason, CancellationToken ct)
+        LocalAiResolvedInstall install, LocalAiQuiesceReason? reason, CancellationToken ct,
+        IProgress<LocalAiRuntimeStartStage>? progress = null)
     {
         try
         {
+            ct.ThrowIfCancellationRequested();
+            progress?.Report(LocalAiRuntimeStartStage.CheckingConfiguration);
             await using var lease = await _store.AcquireAsync(ct).ConfigureAwait(false);
             var binding = _store.Load();
             if (binding is null)
@@ -413,6 +426,8 @@ internal sealed class LocalAiGatewayLifecycle(
                     publication.Endpoint == install.Endpoint && publication.ModelRef == binding.ModelRef &&
                     publication.ConfigHash == current.Hash && reason is null)
                 {
+                    ct.ThrowIfCancellationRequested();
+                    progress?.Report(LocalAiRuntimeStartStage.VerifyingEndpoint);
                     var verification = await new GatewayAiSetupClient(transport)
                         .VerifyConfiguredAsync(binding.ModelRef, ct).ConfigureAwait(false);
                     var after = await rpc.CaptureAsync(ct).ConfigureAwait(false);
@@ -433,6 +448,8 @@ internal sealed class LocalAiGatewayLifecycle(
                 reason == LocalAiQuiesceReason.Teardown);
             var coordinator = new LocalAiGatewayProviderCoordinator(guarded, _credentials.GetOrCreate, logger);
             var ownedInstall = install with { Manifest = install.Manifest with { GatewayFallbackModel = binding.PreviousPrimary } };
+            ct.ThrowIfCancellationRequested();
+            if (reason is null) progress?.Report(LocalAiRuntimeStartStage.PublishingProvider);
             var result = reason is { } withdrawal
                 ? await coordinator.QuiesceAsync(ownedInstall, withdrawal, ct).ConfigureAwait(false)
                 : await coordinator.PublishAsync(ownedInstall, ct).ConfigureAwait(false);
