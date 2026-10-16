@@ -637,7 +637,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         // Store protocol URI for processing after setup
         _pendingProtocolUri = protocolUri;
 
-        // Updatum copies over the old tree; the new binary owns this narrow, idempotent retirement.
+        // Updates overlay the old tree; the new binary owns this narrow, idempotent retirement.
         foreach (var warning in LegacyMxcFiles.Cleanup(AppContext.BaseDirectory, PackageHelper.IsPackaged))
             Logger.Warn($"Legacy MXC cleanup incomplete: {warning}");
 
