@@ -37,6 +37,7 @@ public sealed class LocalAiPaths
         StagingDirectory = Path.Combine(RootDirectory, "staging");
         LogsDirectory = Path.Combine(RootDirectory, "logs");
         RouterPresetPath = Path.Combine(RootDirectory, "llama-server-models.ini");
+        RecipeOverridesPath = Path.Combine(RootDirectory, LocalAiRecipeOverrides.FileName);
         StandardOutputLogPath = Path.Combine(LogsDirectory, "llama-server.stdout.log");
         StandardErrorLogPath = Path.Combine(LogsDirectory, "llama-server.stderr.log");
     }
@@ -50,6 +51,7 @@ public sealed class LocalAiPaths
     public string StagingDirectory { get; }
     public string LogsDirectory { get; }
     public string RouterPresetPath { get; }
+    public string RecipeOverridesPath { get; }
     public string StandardOutputLogPath { get; }
     public string StandardErrorLogPath { get; }
 

@@ -211,7 +211,7 @@ public sealed class SetupWizardRunner
             if (provenanceCheck is not null)
                 return provenanceCheck;
             var requestBaseline = await ApprovalRequestHelper.CapturePendingRequestBaselineAsync(
-                _ctx,
+                new CliPairingRequests(_ctx),
                 ApprovalRequestKind.Device,
                 ct);
             _ctx.CurrentDeviceApprovalBaseline = requestBaseline;
@@ -243,11 +243,10 @@ public sealed class SetupWizardRunner
                 await client.DisconnectAsync();
                 client.Dispose();
 
-                var approval = await PairOperatorStep.AutoApprovePairing(_ctx, requestId, ct);
+                var approval = await PairOperatorStep.AutoApprovePairing(_ctx, new CliPairingRequests(_ctx), requestId, ct);
                 if (!approval.IsSuccess)
                     return approval;
 
-                await Task.Delay(2000, ct);
                 provenanceCheck = await PairOperatorStep.EnsurePairingEndpointTrustedAsync(_ctx, ct);
                 if (provenanceCheck is not null)
                     return provenanceCheck;
@@ -258,6 +257,20 @@ public sealed class SetupWizardRunner
                     TimeSpan.FromSeconds(20),
                     ct,
                     allowInstalledVersionDiscovery: true);
+                if (connection == PairOperatorStep.ConnectionOutcome.PairingRequired)
+                {
+                    _ctx.Logger.Info("Wizard operator still pending right after approval; retrying reconnect once");
+                    await client.DisconnectAsync();
+                    client.Dispose();
+                    await Task.Delay(PairOperatorStep.PostApprovalReconnectRetryDelay, ct);
+                    client = CreateWizardClient(credential, identityPath, wsLogger);
+                    connection = await PairOperatorStep.WaitForConnectionOrPairing(
+                        client,
+                        _ctx,
+                        TimeSpan.FromSeconds(20),
+                        ct,
+                        allowInstalledVersionDiscovery: true);
+                }
             }
 
             if (connection != PairOperatorStep.ConnectionOutcome.Connected)
