@@ -56,12 +56,30 @@ $launch = Resolve-GatewayLaunchInput -GatewayChannel Packaged -PackagingRelease 
 Assert-True ($launch.Build -and $launch.Patch -ceq 'packaged') 'Local launch must prepare the published payload when requested.'
 $launch = Resolve-GatewayLaunchInput -ExistingPatch 'source'
 Assert-True (-not $launch.Build -and $launch.Patch -ceq 'source') 'Explicit source patch must not be rebuilt.'
+foreach ($existingPatch in @('Source', ' SOURCE ', "`tSource`r`n")) {
+    $launch = Resolve-GatewayLaunchInput -ExistingPatch $existingPatch
+    Assert-True (-not $launch.Build -and $launch.Patch -ceq 'source') 'Inherited patch names must trim and lowercase like Companion without rebuilding.'
+    $launch = Resolve-GatewayLaunchInput -UseStoreGateway -ExistingPatch $existingPatch
+    Assert-True (-not $launch.Build -and -not $launch.Patch) 'Store opt-out must still clear normalized inherited patches.'
+    Assert-Throws { Resolve-GatewayLaunchInput -GatewayChannel Packaged -ExistingPatch $existingPatch } 'cannot override'
+}
+foreach ($existingPatch in @($null, '', ' ', "`t`r`n")) {
+    $launch = Resolve-GatewayLaunchInput -ExistingPatch $existingPatch
+    Assert-True ($launch.Build -and $launch.Patch -ceq 'npm-latest') 'Blank inherited patches must preserve the default Latest preparation.'
+    $launch = Resolve-GatewayLaunchInput -GatewayChannel Latest -ExistingPatch $existingPatch
+    Assert-True ($launch.Build -and $launch.Patch -ceq 'npm-latest') 'Blank inherited patches must not conflict with explicit Latest selection.'
+    $launch = Resolve-GatewayLaunchInput -GatewayChannel Packaged -PackagingRelease 'v2026.9.9-msix.0' -ExistingPatch $existingPatch
+    Assert-True ($launch.Build -and $launch.Patch -ceq 'packaged') 'Blank inherited patches must not conflict with pinned Packaged selection.'
+    $launch = Resolve-GatewayLaunchInput -UseStoreGateway -ExistingPatch $existingPatch
+    Assert-True (-not $launch.Build -and -not $launch.Patch) 'Blank inherited patches must preserve Store opt-out.'
+}
 $launch = Resolve-GatewayLaunchInput -UseStoreGateway -ExistingPatch 'source'
 Assert-True (-not $launch.Build -and -not $launch.Patch) 'Store opt-out must clear inherited patch for the child.'
 Assert-Throws { Resolve-GatewayLaunchInput -UseStoreGateway -GatewayChannel Packaged } 'mutually exclusive'
 Assert-Throws { Resolve-GatewayLaunchInput -GatewayChannel Packaged -ExistingPatch 'source' } 'cannot override'
 Assert-Throws { Resolve-GatewayLaunchInput -PackagingRelease 'v2026.9.9-msix.0' } 'requires -GatewayChannel Packaged'
 Assert-Throws { Resolve-GatewayLaunchInput -ExistingPatch '../bad' } 'patch identity'
+Assert-Throws { Resolve-GatewayLaunchInput -ExistingPatch ' ../BAD ' } 'patch identity'
 
 $root = Join-Path ([IO.Path]::GetTempPath()) ('oc-npm-test-' + [guid]::NewGuid().ToString('N'))
 try {

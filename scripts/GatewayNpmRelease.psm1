@@ -50,6 +50,9 @@ function Resolve-GatewayLaunchInput {
         [string]$ExistingPatch
     )
 
+    $ExistingPatch = if ([string]::IsNullOrWhiteSpace($ExistingPatch)) { $null }
+        else { $ExistingPatch.Trim().ToLowerInvariant() }
+
     if ($UseStoreGateway -and ($GatewayChannel -or $PackagingRelease)) {
         throw '-UseStoreGateway and Gateway channel selection are mutually exclusive.'
     }

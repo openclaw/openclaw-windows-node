@@ -82,7 +82,8 @@ the released payload bytes.
 
 Use `-UseStoreGateway` on the local launcher to test the installed Store runtime.
 An existing `OPENCLAW_NATIVE_GATEWAY_DEV_PATCH` selects that patch without rebuilding
-it; clear the variable before explicitly using `-GatewayChannel`.
+it. Like Companion, the launcher trims and lowercases patch names and treats blank
+values as unset. Clear the variable before explicitly using `-GatewayChannel`.
 Neither flag changes WSL setup defaults. For a WSL version-specific setup, explicitly
 set `Gateway.Version` to the exact version.
 
