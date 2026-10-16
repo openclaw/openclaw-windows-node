@@ -54,6 +54,9 @@ public sealed partial class GatewayFixtureUiTests
             run.Gateway.HoldSessionMutations();
             await CreateFromComposerAsync(run);
             Invoke(FindById(run, "WorkspaceNotifications")!);
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceNotificationsOpenPage") is not null,
+                "full Notifications page action");
+            Invoke(FindById(run, "WorkspaceNotificationsOpenPage")!);
             await WaitUiAsync(run, () => FindById(run, "NotificationsPageMarker") is not null, "Notifications before acceptance");
             await CaptureIfRequestedAsync(run, "composer-pending-notifications.png");
             run.Gateway.ReleaseSessionMutations();
