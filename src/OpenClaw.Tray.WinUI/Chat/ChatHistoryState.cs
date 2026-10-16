@@ -32,6 +32,9 @@ internal sealed class ChatHistoryState
     internal IReadOnlyDictionary<string, long> SnapshotRevisions() =>
         new Dictionary<string, long>(_revisions);
 
+    internal IReadOnlySet<string> SnapshotCurrentHistoryThreads() =>
+        _loadedThreads.ToImmutableHashSet(StringComparer.Ordinal);
+
     internal ChatHistoryCommitToken CreateCommitToken(
         string threadId,
         long resetGeneration) =>

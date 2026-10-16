@@ -8045,4 +8045,31 @@ Uw instellingen, gateway, bestanden en modellen blijven op hun plaats.</value>
   <data name="Chat_Welcome_Loading" xml:space="preserve"><value>Welkomstinhoud wordt geladen vanaf je Gateway...</value></data>
   <data name="Chat_Welcome_Unsupported" xml:space="preserve"><value>Deze Gateway biedt geen gedeelde welkomstinhoud. Je kunt hieronder wel een chat starten.</value></data>
   <data name="Chat_Welcome_Failed" xml:space="preserve"><value>De welkomstinhoud kon niet worden geladen. Maak opnieuw verbinding om het nogmaals te proberen of start hieronder een chat.</value></data>
+  <data name="Chat_Placement_Unknown" xml:space="preserve">
+    <value>Niet geverifieerd</value>
+  </data>
+  <data name="Chat_Placement_Error_DiscoveryFailed" xml:space="preserve">
+    <value>Chatlocaties konden niet worden geladen. Probeer het opnieuw in de locatiekiezer.</value>
+  </data>
+  <data name="Chat_Placement_Error_BrowseFailed" xml:space="preserve">
+    <value>Gateway-mappen konden niet worden geladen. Probeer opnieuw te bladeren.</value>
+  </data>
+  <data name="Chat_Placement_Error_PreparationFailed" xml:space="preserve">
+    <value>De chatlocatie kon niet worden voorbereid. Controleer deze in de Gateway voordat u het opnieuw probeert.</value>
+  </data>
+  <data name="Chat_Placement_Error_PreparationPending" xml:space="preserve">
+    <value>De locatie wordt nog voorbereid. Wacht voordat u opnieuw verzendt.</value>
+  </data>
+  <data name="Chat_Placement_Error_NotReady" xml:space="preserve">
+    <value>De geselecteerde chatlocatie is niet gereed. Vernieuw de keuzes voordat u verzendt.</value>
+  </data>
+  <data name="Chat_Placement_Error_HistoryPending" xml:space="preserve">
+    <value>Wachten op de actuele chatgeschiedenis voordat de locatie wordt voorbereid. Verzend opnieuw zodra het laden is voltooid.</value>
+  </data>
+  <data name="Chat_Placement_Error_Interrupted" xml:space="preserve">
+    <value>De voorbereiding is onderbroken en heeft mogelijk de locatie van deze sessie gewijzigd. Controleer deze in de Gateway voordat u opnieuw verzendt.</value>
+  </data>
+  <data name="Chat_Placement_Error_NoLongerEmpty" xml:space="preserve">
+    <value>Deze sessie is niet meer leeg, dus de wachtende locatiekeuze is geannuleerd. Controleer de sessie en verzend opnieuw om op de huidige locatie door te gaan.</value>
+  </data>
 </root>

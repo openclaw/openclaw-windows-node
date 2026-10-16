@@ -184,7 +184,7 @@ internal sealed class NativeChatPlacementPicker : Control, IDisposable
     private void UpdateStatus()
     {
         if (_state is null) return;
-        _status.Text = _state.Error ?? (_state.Loading || _state.BrowsingLoading
+        _status.Text = _state.Error is { } error ? ErrorText(error) : (_state.Loading || _state.BrowsingLoading
             ? Localized("Chat_Placement_Loading", "Loading locations...")
             : _rows.Length == 0 ? Localized("Chat_Placement_NoMatches", "No matching locations") : "");
         _status.Visibility = _status.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -192,9 +192,13 @@ internal sealed class NativeChatPlacementPicker : Control, IDisposable
 
     internal void RestoreSelection()
     {
-        var id = _props?.EnvironmentPicker == true ? _state?.Selection?.Environment.Id : _state?.Selection?.Workspace.Id;
+        var id = _state?.SelectionIsKnown != true ? null
+            : _props?.EnvironmentPicker == true ? _state.Selection?.Environment.Id : _state.Selection?.Workspace.Id;
         _list.SelectedItem = _rows.FirstOrDefault(row => row.Id == id);
     }
+
+    internal static string ErrorText(ChatPlacementError error) =>
+        LocalizationHelper.GetString("Chat_Placement_Error_" + error);
 
     private void OnContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
     {

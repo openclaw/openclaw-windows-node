@@ -235,7 +235,8 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Timelines = new Dictionary<string, ChatTimelineState>(beforePublication.Timelines)
                 {
                     [key] = ChatTimelineState.Initial() with { HistoryLoaded = true }
-                }
+                },
+                CurrentHistoryThreads = new HashSet<string>(beforePublication.CurrentHistoryThreads ?? new HashSet<string>()) { key }
             }));
             await Task.Delay(1000);
             await SettleAsync();
@@ -299,10 +300,12 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                     Assert.True(button.Focus(FocusState.Keyboard));
                 }
                 var environment = FindControl<Button>(surface, "ChatEnvironmentPicker");
-                Assert.Contains("Gateway machine", AutomationProperties.GetName(environment));
+                Assert.Contains("Not verified", AutomationProperties.GetName(environment));
+                Assert.False(session.Placement!.State.SelectionIsKnown);
                 Assert.Equal(FluentIconCatalog.System, FindControl<TextBlock>(surface, "ChatEnvironmentPickerIcon").Text);
                 Assert.Equal(FluentIconCatalog.Folder, FindControl<TextBlock>(surface, "ChatWorkspacePickerIcon").Text);
             });
+            await CaptureAsync(surface, $"ChatUnverifiedLocation-{width}");
             await ChangeFlyoutAsync(surface, "ChatEnvironmentPicker", open: true);
             var environmentPopup = await ui.RunOnUIAsync(() => Task.FromResult(
                 Assert.IsType<NativeChatPlacementPicker>(
@@ -310,6 +313,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
             await ui.RunOnUIAsync(() =>
             {
                 Assert.False(FindControl<ListViewItem>(environmentPopup, "ChatPlacementChoice_node:unavailable").IsEnabled);
+                Assert.Null(FindControl<ListView>(environmentPopup, "ChatEnvironmentList").SelectedItem);
                 Assert.Contains(FindDescendants<TextBlock>(environmentPopup), text => text.Text == "Session hosting is not enabled");
                 var list = FindControl<ListView>(environmentPopup, "ChatEnvironmentList");
                 Assert.All(list.Items.Cast<ChatPlacementPickerRow>(), row => Assert.Equal(FluentIconCatalog.System, row.Glyph));
@@ -394,6 +398,32 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Assert.Empty(provider.SentMessages);
             });
             await CaptureAsync(surface, "PlacementInterruptedReturn");
+        }, "empty", placementGateway: gateway);
+    }
+
+    [Fact]
+    public async Task PlacementUnknownHistory_HidesPickersAndPreservesDraft()
+    {
+        var gateway = new PlacementProofGateway();
+        await WithChatAsync(800, async (surface, _, session, provider) =>
+        {
+            var snapshot = await provider.LoadAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                session.ViewModel.SetDraft("keep pending location");
+                provider.Publish(snapshot with { CurrentHistoryThreads = new HashSet<string>() });
+            });
+            await Task.Delay(1000);
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.False(session.ViewModel.Inputs!.PlacementHistoryReady);
+                Assert.DoesNotContain(FindDescendants<Button>(surface),
+                    button => AutomationProperties.GetAutomationId(button) is "ChatEnvironmentPicker" or "ChatWorkspacePicker");
+                Assert.Equal("keep pending location", FindControl<TextBox>(surface, "ChatComposerInput").Text);
+                Assert.Equal(0, gateway.Preparations);
+            });
+            await CaptureAsync(surface, "PlacementHistoryPending");
         }, "empty", placementGateway: gateway);
     }
 
@@ -496,6 +526,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
             {
                 Threads = composeOnly ? recents : [snapshot.Threads[0], .. recents],
                 Timelines = timelines,
+                CurrentHistoryThreads = timelines.Where(pair => pair.Value.HistoryLoaded).Select(pair => pair.Key).ToHashSet(),
             };
             await ui.RunOnUIAsync(() => provider.Publish(welcome));
             await Task.Delay(1000);
@@ -2819,7 +2850,9 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                             "The example message could not be sent. Try again when connected.")],
                     }
                     : null,
-                WelcomeContent: WelcomeFixture));
+                WelcomeContent: WelcomeFixture,
+                CurrentHistoryThreads: scenario != "disconnected" && timeline.HistoryLoaded
+                    ? new HashSet<string> { thread.Id } : new HashSet<string>()));
         }
         public async Task SendMessageAsync(string threadId, string message, CancellationToken cancellationToken = default)
         {

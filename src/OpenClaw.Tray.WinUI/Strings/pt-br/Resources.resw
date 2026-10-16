@@ -8098,4 +8098,31 @@ Suas configurações, gateway, arquivos e modelos permanecem onde estão.</value
   <data name="Chat_Welcome_Loading" xml:space="preserve"><value>Carregando conteúdo de boas-vindas do seu Gateway...</value></data>
   <data name="Chat_Welcome_Unsupported" xml:space="preserve"><value>Este Gateway não fornece conteúdo de boas-vindas compartilhado. Você ainda pode iniciar uma conversa abaixo.</value></data>
   <data name="Chat_Welcome_Failed" xml:space="preserve"><value>Não foi possível carregar o conteúdo de boas-vindas. Reconecte para tentar novamente ou inicie uma conversa abaixo.</value></data>
+  <data name="Chat_Placement_Unknown" xml:space="preserve">
+    <value>Não verificado</value>
+  </data>
+  <data name="Chat_Placement_Error_DiscoveryFailed" xml:space="preserve">
+    <value>Não foi possível carregar os locais de conversa. Tente novamente no seletor de local.</value>
+  </data>
+  <data name="Chat_Placement_Error_BrowseFailed" xml:space="preserve">
+    <value>Não foi possível carregar as pastas do Gateway. Tente navegar novamente.</value>
+  </data>
+  <data name="Chat_Placement_Error_PreparationFailed" xml:space="preserve">
+    <value>Não foi possível preparar o local da conversa. Verifique-o no Gateway antes de tentar novamente.</value>
+  </data>
+  <data name="Chat_Placement_Error_PreparationPending" xml:space="preserve">
+    <value>A preparação do local ainda está em andamento. Aguarde antes de enviar novamente.</value>
+  </data>
+  <data name="Chat_Placement_Error_NotReady" xml:space="preserve">
+    <value>O local de conversa selecionado não está pronto. Atualize as opções antes de enviar.</value>
+  </data>
+  <data name="Chat_Placement_Error_HistoryPending" xml:space="preserve">
+    <value>Aguardando o histórico atual da conversa antes de preparar o local. Tente enviar novamente quando o carregamento terminar.</value>
+  </data>
+  <data name="Chat_Placement_Error_Interrupted" xml:space="preserve">
+    <value>A preparação foi interrompida e pode ter alterado o local desta sessão. Verifique-o no Gateway antes de enviar novamente.</value>
+  </data>
+  <data name="Chat_Placement_Error_NoLongerEmpty" xml:space="preserve">
+    <value>Esta sessão não está mais vazia, então a seleção de local pendente foi cancelada. Verifique a sessão e envie novamente para continuar no local atual.</value>
+  </data>
 </root>

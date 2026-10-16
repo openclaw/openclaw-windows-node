@@ -200,9 +200,9 @@ public sealed class ChatPlacementTests
         var client = Client(calls, (method, _) => method == "sessions.dispatch"
             ? JsonSerializer.SerializeToElement(new { ok = true, key = Key, placement = new { state = "starting" } })
             : null);
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+        var error = await Assert.ThrowsAsync<ChatPlacementOutcomeUncertainException>(
             () => client.PrepareAsync(Key, "main", Selection(remote: true), 42, default));
-        Assert.Contains("not confirmed", error.Message);
+        Assert.Contains("not confirmed", error.InnerException!.Message);
     }
 
     [Theory]
@@ -290,6 +290,47 @@ public sealed class ChatPlacementTests
         Assert.False(calls.Single().Item2.TryGetProperty("nodeId", out _));
         Assert.Equal("/srv/agent/canonical", directory.Path);
         Assert.Equal("/srv/agent/canonical/child", Assert.Single(directory.Folders).Path);
+    }
+
+    [Theory]
+    [InlineData("projects.add", false)]
+    [InlineData("sessions.create", false)]
+    [InlineData("sessions.dispatch", false)]
+    [InlineData("projects.add", true)]
+    [InlineData("sessions.create", true)]
+    [InlineData("sessions.dispatch", true)]
+    public async Task AdmittedMutation_TimeoutOrLateEpochChangeReportsUncertainOutcome(string failingMethod, bool reconnect)
+    {
+        var calls = new List<(string, JsonElement)>();
+        long epoch = 42;
+        var client = Client(calls, (method, _) =>
+        {
+            if (method == failingMethod)
+            {
+                if (reconnect) epoch++;
+                else throw new TimeoutException("synthetic timeout after admission");
+            }
+            return null;
+        }, () => epoch);
+        var error = await Assert.ThrowsAsync<ChatPlacementOutcomeUncertainException>(() => client.PrepareAsync(
+            Key, "main", Selection(remote: true, workspace: new("repository:test", "Repository", GitUrl: "https://example.com/repo.git")),
+            42, default));
+        Assert.Equal(failingMethod, calls[^1].Item1);
+        Assert.NotNull(error.InnerException);
+        Assert.Equal(reconnect ? typeof(InvalidOperationException) : typeof(TimeoutException), error.InnerException.GetType());
+    }
+
+    [Theory]
+    [InlineData("agents.list")]
+    [InlineData("environments.list")]
+    [InlineData("sessions.describe")]
+    public async Task ReadOnlyPreflightTimeout_IsNotReportedAsUncertainMutation(string failingMethod)
+    {
+        var calls = new List<(string, JsonElement)>();
+        var client = Client(calls, (method, _) => method == failingMethod
+            ? throw new TimeoutException("synthetic preflight timeout") : null);
+        await Assert.ThrowsAsync<TimeoutException>(() => client.PrepareAsync(Key, "main", Selection(), 42, default));
+        Assert.DoesNotContain(calls, call => call.Item1 is "projects.add" or "sessions.create" or "sessions.dispatch");
     }
 
     private static GatewayChatPlacementClient Client(List<(string, JsonElement)> calls,

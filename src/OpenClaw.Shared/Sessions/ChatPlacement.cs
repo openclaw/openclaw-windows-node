@@ -49,6 +49,10 @@ public sealed record ChatWorkspaceDirectory(
 
 public sealed record ChatPlacementSelection(ChatEnvironment Environment, ChatWorkspace Workspace);
 
+/// <summary>A preparation failed after a mutation was handed to the Gateway transport.</summary>
+public sealed class ChatPlacementOutcomeUncertainException(Exception innerException)
+    : InvalidOperationException("The chat location may have changed before preparation failed.", innerException);
+
 /// <summary>Gateway-scoped discovery and first-turn location preparation. No host filesystem access.</summary>
 public interface IChatPlacementGateway
 {
@@ -135,60 +139,69 @@ public sealed class GatewayChatPlacementClient : IChatPlacementGateway
                 "This session already has an environment placement. Review it in the Gateway before changing location or retrying.");
         }
 
-        var workspace = selection.Workspace;
-        if (workspace.GitUrl is { } gitUrl)
+        var mutationAdmitted = false;
+        try
         {
-            var project = await RequestAsync("projects.add", new { gitUrl }, connectionEpoch,
-                cancellationToken, timeoutMs: 120_000).ConfigureAwait(false);
-            workspace = new("project:" + RequiredString(project, "id"),
-                RequiredString(project, "displayName"), OptionalString(project, "repoRoot"),
-                RequiredString(project, "id"));
+            var workspace = selection.Workspace;
+            if (workspace.GitUrl is { } gitUrl)
+            {
+                var project = await RequestAsync("projects.add", new { gitUrl }, connectionEpoch,
+                    cancellationToken, timeoutMs: 120_000, onAdmitted: () => mutationAdmitted = true).ConfigureAwait(false);
+                workspace = new("project:" + RequiredString(project, "id"),
+                    RequiredString(project, "displayName"), OptionalString(project, "repoRoot"),
+                    RequiredString(project, "id"));
+            }
+
+            var parameters = new Dictionary<string, object>
+            {
+                ["key"] = sessionKey,
+                ["agentId"] = agentId,
+                ["emitCommandHooks"] = false
+            };
+            if (workspace.ProjectId is { } projectId)
+                parameters["projectId"] = projectId;
+            else if (!string.IsNullOrWhiteSpace(workspace.Path))
+                parameters["cwd"] = workspace.Path;
+            else if (workspace.Id != "default")
+                throw new InvalidOperationException("The Gateway did not provide a workspace path. Choose a project or browse for a folder.");
+
+            if (!environment.IsLocal)
+            {
+                parameters["worktree"] = true;
+            }
+
+            // sessions.create can adopt an existing empty session's cwd without resetting its transcript.
+            var created = await RequestAsync("sessions.create", parameters, connectionEpoch,
+                cancellationToken, timeoutMs: 120_000, onAdmitted: () => mutationAdmitted = true).ConfigureAwait(false);
+            RequireSessionResult(created, sessionKey);
+            if (environment.IsLocal)
+                return;
+
+            var dispatched = await RequestAsync("sessions.dispatch",
+                new { key = sessionKey, agentId, deviceId = environment.Id["node:".Length..] },
+                connectionEpoch, cancellationToken, timeoutMs: 120_000, onAdmitted: () => mutationAdmitted = true).ConfigureAwait(false);
+            RequireSessionResult(dispatched, sessionKey);
+            if (!dispatched.TryGetProperty("placement", out var active) ||
+                OptionalString(active, "state") != "active")
+            {
+                throw new InvalidOperationException(
+                    "The Gateway has not confirmed the selected environment is ready. No message was sent.");
+            }
         }
-
-        var parameters = new Dictionary<string, object>
+        catch (Exception ex) when (mutationAdmitted && ex is not OperationCanceledException)
         {
-            ["key"] = sessionKey,
-            ["agentId"] = agentId,
-            ["emitCommandHooks"] = false
-        };
-        if (workspace.ProjectId is { } projectId)
-            parameters["projectId"] = projectId;
-        else if (!string.IsNullOrWhiteSpace(workspace.Path))
-            parameters["cwd"] = workspace.Path;
-        else if (workspace.Id != "default")
-            throw new InvalidOperationException("The Gateway did not provide a workspace path. Choose a project or browse for a folder.");
-
-        if (!environment.IsLocal)
-        {
-            parameters["worktree"] = true;
-        }
-
-        // sessions.create can adopt an existing empty session's cwd without resetting its transcript.
-        var created = await RequestAsync("sessions.create", parameters, connectionEpoch,
-            cancellationToken, timeoutMs: 120_000).ConfigureAwait(false);
-        RequireSessionResult(created, sessionKey);
-        if (environment.IsLocal)
-            return;
-
-        var dispatched = await RequestAsync("sessions.dispatch",
-            new { key = sessionKey, agentId, deviceId = environment.Id["node:".Length..] },
-            connectionEpoch, cancellationToken, timeoutMs: 120_000).ConfigureAwait(false);
-        RequireSessionResult(dispatched, sessionKey);
-        if (!dispatched.TryGetProperty("placement", out var active) ||
-            OptionalString(active, "state") != "active")
-        {
-            throw new InvalidOperationException(
-                "The Gateway has not confirmed the selected environment is ready. No message was sent.");
+            throw new ChatPlacementOutcomeUncertainException(ex);
         }
     }
 
     private async Task<JsonElement> RequestAsync(string method, object parameters, long epoch,
-        CancellationToken cancellationToken, int timeoutMs = 15_000)
+        CancellationToken cancellationToken, int timeoutMs = 15_000, Action? onAdmitted = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (ConnectionEpoch != epoch)
             throw new InvalidOperationException("The Gateway connection changed. Refresh the location choices.");
         // Drain an admitted mutation even when the view closes; do not imply that cancellation rolled it back.
+        onAdmitted?.Invoke();
         var result = await _request(method, parameters, timeoutMs, epoch).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
         if (ConnectionEpoch != epoch)

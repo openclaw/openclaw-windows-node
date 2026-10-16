@@ -297,6 +297,10 @@ public sealed record ChatWelcomeContent(
     public static ChatWelcomeContent Failed { get; } = new(ChatWelcomeContentStatus.Failed);
 }
 
+/// <remarks>
+/// <see cref="CurrentHistoryThreads"/> contains session keys whose history is authoritative for the current connection.
+/// Null means freshness is unknown, even when a cached timeline has HistoryLoaded.
+/// </remarks>
 public record ChatDataSnapshot(
     ChatThread[] Threads,
     IReadOnlyDictionary<string, ChatTimelineState> Timelines,
@@ -310,7 +314,8 @@ public record ChatDataSnapshot(
     IReadOnlyDictionary<string, long>? TimelineGenerations = null,
     IReadOnlyDictionary<string, long>? HistoryRevisions = null,
     IReadOnlyDictionary<string, IReadOnlyList<ChatQueuedMessage>>? QueuedMessagesByThread = null,
-    ChatWelcomeContent? WelcomeContent = null);
+    ChatWelcomeContent? WelcomeContent = null,
+    IReadOnlySet<string>? CurrentHistoryThreads = null);
 
 /// <summary>
 /// Describes where the UI may send the next chat message. Distinct from

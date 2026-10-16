@@ -36,6 +36,8 @@ internal sealed record ChatComposerInputs(
     internal long Revision { get; init; }
     internal bool ShowPlacementPickers { get; init; }
     internal bool PlacementTargetIsEmpty { get; init; }
+    internal bool PlacementHistoryReady { get; init; }
+    internal bool PlacementTargetIsNew { get; init; }
     internal bool CanChangeSessionOptions => ConnectionState == "connected" && !MessageOptionsDisabled;
     internal ThinkingProfile? ThinkingProfile => ChatThinkingProfile.Resolve(CurrentThread, ModelChoices);
     internal bool CanChangeThinking => CanChangeSessionOptions
@@ -53,7 +55,9 @@ internal sealed record ChatComposerInputs(
         && SequenceEqual(AvailableCommands, other.AvailableCommands)
         && CommandsSupported == other.CommandsSupported
         && ShowPlacementPickers == other.ShowPlacementPickers
-        && PlacementTargetIsEmpty == other.PlacementTargetIsEmpty;
+        && PlacementTargetIsEmpty == other.PlacementTargetIsEmpty
+        && PlacementHistoryReady == other.PlacementHistoryReady
+        && PlacementTargetIsNew == other.PlacementTargetIsNew;
 
     private static bool SequenceEqual<T>(IReadOnlyList<T>? left, IReadOnlyList<T>? right)
     {

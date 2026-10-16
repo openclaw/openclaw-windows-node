@@ -8044,4 +8044,31 @@ Vos paramètres, votre passerelle, vos fichiers et vos modèles restent en place
   <data name="Chat_Welcome_Loading" xml:space="preserve"><value>Chargement du contenu d'accueil depuis votre Gateway...</value></data>
   <data name="Chat_Welcome_Unsupported" xml:space="preserve"><value>Ce Gateway ne fournit pas de contenu d'accueil partagé. Vous pouvez quand même démarrer une discussion ci-dessous.</value></data>
   <data name="Chat_Welcome_Failed" xml:space="preserve"><value>Impossible de charger le contenu d'accueil. Reconnectez-vous pour réessayer ou démarrez une discussion ci-dessous.</value></data>
+  <data name="Chat_Placement_Unknown" xml:space="preserve">
+    <value>Non vérifié</value>
+  </data>
+  <data name="Chat_Placement_Error_DiscoveryFailed" xml:space="preserve">
+    <value>Impossible de charger les emplacements de conversation. Réessayez dans le sélecteur d'emplacement.</value>
+  </data>
+  <data name="Chat_Placement_Error_BrowseFailed" xml:space="preserve">
+    <value>Impossible de charger les dossiers du Gateway. Réessayez de les parcourir.</value>
+  </data>
+  <data name="Chat_Placement_Error_PreparationFailed" xml:space="preserve">
+    <value>Impossible de préparer l'emplacement de la conversation. Vérifiez-le dans le Gateway avant de réessayer.</value>
+  </data>
+  <data name="Chat_Placement_Error_PreparationPending" xml:space="preserve">
+    <value>La préparation de l'emplacement est toujours en cours. Patientez avant d'envoyer à nouveau.</value>
+  </data>
+  <data name="Chat_Placement_Error_NotReady" xml:space="preserve">
+    <value>L'emplacement sélectionné n'est pas prêt. Actualisez les choix avant d'envoyer.</value>
+  </data>
+  <data name="Chat_Placement_Error_HistoryPending" xml:space="preserve">
+    <value>En attente de l'historique actuel avant de préparer l'emplacement. Réessayez d'envoyer une fois le chargement terminé.</value>
+  </data>
+  <data name="Chat_Placement_Error_Interrupted" xml:space="preserve">
+    <value>La préparation a été interrompue et a peut-être modifié l'emplacement de cette session. Vérifiez-le dans le Gateway avant d'envoyer à nouveau.</value>
+  </data>
+  <data name="Chat_Placement_Error_NoLongerEmpty" xml:space="preserve">
+    <value>Cette session n'est plus vide, donc le choix d'emplacement en attente a été annulé. Vérifiez la session et envoyez à nouveau pour continuer à son emplacement actuel.</value>
+  </data>
 </root>

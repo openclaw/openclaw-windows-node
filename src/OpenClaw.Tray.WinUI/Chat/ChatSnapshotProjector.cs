@@ -1,6 +1,7 @@
 using OpenClaw.Chat;
 using OpenClaw.Shared;
 using OpenClawTray.Services;
+using System.Collections.Immutable;
 
 namespace OpenClawTray.Chat;
 
@@ -21,7 +22,8 @@ internal sealed record ChatSnapshotProjectionInput(
     string? RememberedThreadTitle,
     string? RememberedModel,
     string? RememberedModelProvider,
-    ChatWelcomeContent? WelcomeContent = null);
+    ChatWelcomeContent? WelcomeContent = null,
+    IReadOnlySet<string>? CurrentHistoryThreads = null);
 
 internal static class ChatSnapshotProjector
 {
@@ -93,7 +95,11 @@ internal static class ChatSnapshotProjector
             TimelineGenerations: input.TimelineGenerations,
             HistoryRevisions: input.HistoryRevisions,
             QueuedMessagesByThread: input.QueuedMessages,
-            WelcomeContent: input.WelcomeContent);
+            WelcomeContent: input.WelcomeContent,
+            CurrentHistoryThreads: input.Status == ConnectionStatus.Connected
+                ? input.CurrentHistoryThreads?.ToImmutableHashSet(StringComparer.Ordinal)
+                    ?? ImmutableHashSet<string>.Empty
+                : ImmutableHashSet<string>.Empty);
     }
 
     internal static string? ResolveDefaultThreadId(ChatSnapshotProjectionInput input)

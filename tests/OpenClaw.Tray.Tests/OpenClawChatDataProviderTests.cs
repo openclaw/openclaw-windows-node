@@ -10306,6 +10306,80 @@ public class OpenClawChatDataProviderTests
         Assert.Equal(new[] { "main" }, historyRequested);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Reconnect_CachedEmptyHistoryIsNotCurrentUntilFreshGenerationCommits(bool freshHistoryHasMessages)
+    {
+        var staleHistory = new TaskCompletionSource<ChatHistoryInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var freshHistory = new TaskCompletionSource<ChatHistoryInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var historyCalls = 0;
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var ownedProvider = provider;
+        bridge.MainSessionKey = "main";
+        bridge.HasHandshakeSnapshot = true;
+        bridge.HistoryBehavior = _ => (++historyCalls) switch
+        {
+            1 => Task.FromResult(new ChatHistoryInfo { SessionKey = "main" }),
+            2 => staleHistory.Task,
+            _ => freshHistory.Task,
+        };
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        await provider.LoadAsync();
+        await provider.LoadHistoryAsync("main");
+
+        var cached = snapshots[^1];
+        Assert.True(cached.Timelines["main"].HistoryLoaded);
+        Assert.Empty(cached.Timelines["main"].Entries);
+        Assert.Contains("main", cached.CurrentHistoryThreads!);
+        var cachedRevision = cached.HistoryRevisions!["main"];
+
+        var staleLoad = provider.LoadHistoryAsync("main", force: true);
+        bridge.RaiseStatus(ConnectionStatus.Disconnected);
+        Assert.Empty(snapshots[^1].CurrentHistoryThreads!);
+        Assert.True(snapshots[^1].Timelines["main"].HistoryLoaded);
+
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        var reconnected = snapshots[^1];
+        Assert.Empty(reconnected.CurrentHistoryThreads!);
+        Assert.True(reconnected.Timelines["main"].HistoryLoaded);
+        Assert.Empty(reconnected.Timelines["main"].Entries);
+        Assert.Equal(cachedRevision, reconnected.HistoryRevisions!["main"]);
+        Assert.Contains("main", cached.CurrentHistoryThreads!);
+
+        var freshLoad = provider.LoadHistoryAsync("main");
+        Assert.Equal(3, historyCalls);
+        Assert.False(freshLoad.IsCompleted);
+        Assert.Empty(snapshots[^1].CurrentHistoryThreads!);
+        Assert.True(snapshots[^1].Timelines["main"].HistoryLoaded);
+        Assert.Empty(snapshots[^1].Timelines["main"].Entries);
+
+        staleHistory.SetResult(new ChatHistoryInfo { SessionKey = "main" });
+        await staleLoad.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Empty(snapshots[^1].CurrentHistoryThreads!);
+        Assert.Equal(cachedRevision, snapshots[^1].HistoryRevisions!["main"]);
+
+        freshHistory.SetResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages = freshHistoryHasMessages
+                ? [new ChatMessageInfo { Role = "assistant", Text = "fresh", Ts = 2 }]
+                : [],
+        });
+        await freshLoad.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var committed = snapshots[^1];
+        Assert.Contains("main", committed.CurrentHistoryThreads!);
+        Assert.True(committed.Timelines["main"].HistoryLoaded);
+        Assert.Equal(cachedRevision + 1, committed.HistoryRevisions!["main"]);
+        if (freshHistoryHasMessages)
+            Assert.Equal("fresh", Assert.Single(committed.Timelines["main"].Entries).Text);
+        else
+            Assert.Empty(committed.Timelines["main"].Entries);
+        Assert.Empty(reconnected.CurrentHistoryThreads!);
+        Assert.Empty(cached.Timelines["main"].Entries);
+    }
+
     [Fact]
     public async Task Reconnect_FromConnectingToConnected_DoesNotReload()
     {

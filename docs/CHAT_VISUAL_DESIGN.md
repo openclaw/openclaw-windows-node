@@ -168,6 +168,13 @@ the controls' accessible names. The workspace picker offers the agent's default 
 registered projects, explicit Git URLs, and Gateway-side folder browsing. It never
 interprets a Gateway path as a folder on the Companion machine.
 
+An existing session's current location is not inferred from the agent's default
+workspace. Until there is explicit local selection intent, its picker labels show
+**Not verified**, with no selected flyout row. Sending without changing a picker
+preserves the existing session location. Explicitly choosing even the displayed
+default creates placement intent and runs preparation before sending. Genuinely
+new compose-only targets may show the agent defaults.
+
 `ChatPlacementController` owns each mounted host's local selection and cancellation
 scope. Discovery and selection are read-only. On first send, `GatewayChatPlacementClient`
 rechecks device availability, applies the workspace to the exact empty session key,
@@ -182,6 +189,16 @@ already admitted Gateway mutations are drained, not rolled back. Interrupted
 preparation shows an explicit uncertainty notice. Each mounted host retains explicit
 location intent and in-flight preparation by session across navigation, so returning
 cannot silently display Local/default or skip placement preflight after an interruption.
+Placement also requires history committed in the current connection generation;
+cached transcripts remain visible after reconnect but cannot authorize preparation.
+While history is unknown, explicit location intent and the draft are retained.
+Timeouts and other non-cancellation failures after handing a mutation to the Gateway
+preserve the same uncertainty notice as interruption. This is conservative when the
+transport cannot distinguish a rejection from a lost response; it does not assert
+rollback or duplicate allocation. Read-only discovery failures remain separate and
+are no longer displayed once the empty-chat pickers disappear. Native resources
+own recovery messages in every supported locale; raw exception details stay in
+diagnostics rather than being rendered as untranslated guidance.
 A completed `/new` request cannot override a newer session or page navigation;
 the successful session remains discoverable without pulling the user back into chat.
 

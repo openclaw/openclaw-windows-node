@@ -8044,4 +8044,31 @@
   <data name="Chat_Welcome_Loading" xml:space="preserve"><value>正在从 Gateway 加载欢迎内容...</value></data>
   <data name="Chat_Welcome_Unsupported" xml:space="preserve"><value>此 Gateway 不提供共享欢迎内容。你仍可在下方开始聊天。</value></data>
   <data name="Chat_Welcome_Failed" xml:space="preserve"><value>无法加载欢迎内容。请重新连接以重试，或在下方开始聊天。</value></data>
+  <data name="Chat_Placement_Unknown" xml:space="preserve">
+    <value>未验证</value>
+  </data>
+  <data name="Chat_Placement_Error_DiscoveryFailed" xml:space="preserve">
+    <value>无法加载聊天位置。请在位置选择器中重试。</value>
+  </data>
+  <data name="Chat_Placement_Error_BrowseFailed" xml:space="preserve">
+    <value>无法加载 Gateway 文件夹。请重新浏览。</value>
+  </data>
+  <data name="Chat_Placement_Error_PreparationFailed" xml:space="preserve">
+    <value>无法准备聊天位置。请先在 Gateway 中检查该位置，然后重试。</value>
+  </data>
+  <data name="Chat_Placement_Error_PreparationPending" xml:space="preserve">
+    <value>位置准备仍在进行中。请等待后再发送。</value>
+  </data>
+  <data name="Chat_Placement_Error_NotReady" xml:space="preserve">
+    <value>所选聊天位置尚未就绪。请先刷新选项，然后发送。</value>
+  </data>
+  <data name="Chat_Placement_Error_HistoryPending" xml:space="preserve">
+    <value>正在等待当前聊天记录，然后才能准备位置。请在加载完成后重新发送。</value>
+  </data>
+  <data name="Chat_Placement_Error_Interrupted" xml:space="preserve">
+    <value>位置准备已中断，可能已更改此会话的位置。请先在 Gateway 中检查，然后再发送。</value>
+  </data>
+  <data name="Chat_Placement_Error_NoLongerEmpty" xml:space="preserve">
+    <value>此会话已不再为空，因此已取消待定的位置选择。请检查会话并重新发送，以在当前位置继续。</value>
+  </data>
 </root>

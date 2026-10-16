@@ -2719,7 +2719,10 @@ internal sealed class ChatConversationState
             historyRevisions: _history.SnapshotRevisions(),
             queuedMessages: _queue.SnapshotMessages(),
             status: _status,
-            context);
+            context) with
+        {
+            CurrentHistoryThreads = _history.SnapshotCurrentHistoryThreads()
+        };
 
     private ChatTimelineState GetOrCreateTimelineLocked(string threadId)
     {

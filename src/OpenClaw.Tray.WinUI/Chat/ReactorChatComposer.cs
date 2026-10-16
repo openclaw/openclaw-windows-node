@@ -671,7 +671,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         if (isRecording)
             composerChildren.Add(voiceFeedback);
         if (placement?.State is { Error: { } placementError })
-            composerChildren.Add(TextBlock(placementError)
+            composerChildren.Add(TextBlock(NativeChatPlacementPicker.ErrorText(placementError))
                 .FontSize(12).TextWrapping(TextWrapping.Wrap)
                 .Foreground(Theme.Ref("ChatSecondaryTextBrush"))
                 .AutomationId("ChatPlacementError")
@@ -719,7 +719,9 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                     ? Localized("Chat_Placement_Environment", "Environment")
                     : Localized("Chat_Placement_Workspace", "Workspace");
                 var selection = placement.State.Selection;
-                var label = environment ? selection?.Environment.Label
+                var label = !placement.State.SelectionIsKnown
+                    ? Localized("Chat_Placement_Unknown", "Not verified")
+                    : environment ? selection?.Environment.Label
                     : selection is null ? null : NativeChatPlacementPicker.WorkspaceLabel(selection.Workspace);
                 var target = PickerButton(label ?? title, $"{title}: {label ?? title}",
                     environment ? "ChatEnvironmentPicker" : "ChatWorkspacePicker",

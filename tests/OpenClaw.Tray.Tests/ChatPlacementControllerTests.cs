@@ -13,7 +13,9 @@ public sealed class ChatPlacementControllerTests
         [], [], null, false, [], null, false)
     {
         ShowPlacementPickers = true,
-        PlacementTargetIsEmpty = true
+        PlacementTargetIsEmpty = true,
+        PlacementHistoryReady = true,
+        PlacementTargetIsNew = true
     };
 
     [Fact]
@@ -80,7 +82,8 @@ public sealed class ChatPlacementControllerTests
         completion.SetResult();
         Assert.False(await (sending ?? context.Composer.SendAsync()));
         Assert.Equal("keep", context.Vm.Draft);
-        Assert.Contains("send again", context.Placement.State.Error);
+        Assert.Equal(duringPreparation ? ChatPlacementError.Interrupted : ChatPlacementError.NoLongerEmpty,
+            context.Placement.State.Error);
         Assert.False(context.Placement.RequiresPreparation);
         Assert.Equal(0, context.Port.SendMessageCallCount);
         Assert.True(await context.Composer.SendAsync());
@@ -106,7 +109,7 @@ public sealed class ChatPlacementControllerTests
         }
         completion.SetResult();
         Assert.False(await preparing);
-        Assert.Contains("may have changed", context.Placement.State.Error);
+        Assert.Equal(ChatPlacementError.Interrupted, context.Placement.State.Error);
         Assert.True(await context.Composer.SendCoreAsync(Key, "Existing chat", "continue", []));
         Assert.Equal(1, context.Gateway.PrepareCalls);
     }
@@ -125,7 +128,7 @@ public sealed class ChatPlacementControllerTests
         Assert.Equal("  keep this draft  ", context.Vm.Draft);
         Assert.Same(attachment, Assert.Single(context.Vm.PendingAttachments));
         Assert.Equal(0, context.Port.SendMessageCallCount);
-        Assert.Equal("project unavailable", context.Placement.State.Error);
+        Assert.Equal(ChatPlacementError.PreparationFailed, context.Placement.State.Error);
         Assert.False(context.Vm.IsSending);
     }
 
@@ -233,7 +236,7 @@ public sealed class ChatPlacementControllerTests
         Assert.True(context.Placement.RequiresPreparation);
         Assert.Equal("node:windows", context.Placement.State.Selection?.Environment.Id);
         Assert.Equal(FakeGateway.Project, context.Placement.State.Selection?.Workspace);
-        Assert.Contains("may have changed", context.Placement.State.Error);
+        Assert.Equal(ChatPlacementError.Interrupted, context.Placement.State.Error);
         Assert.Equal("keep this draft", context.Vm.Draft);
         Assert.Equal(0, context.Port.SendMessageCallCount);
 
@@ -241,7 +244,7 @@ public sealed class ChatPlacementControllerTests
         context.Gateway.Prepare = _ => Task.FromException(new InvalidOperationException("Placement already active"));
         Assert.False(await context.Composer.SendAsync());
         Assert.Equal(2, context.Gateway.PrepareCalls);
-        Assert.Equal("Placement already active", context.Placement.State.Error);
+        Assert.Equal(ChatPlacementError.Interrupted, context.Placement.State.Error);
         Assert.Equal(0, context.Port.SendMessageCallCount);
     }
 
@@ -278,7 +281,7 @@ public sealed class ChatPlacementControllerTests
         completion.SetResult();
         Assert.False(await sending);
         Assert.True(context.Placement.RequiresPreparation);
-        Assert.Contains("may have changed", context.Placement.State.Error);
+        Assert.Equal(ChatPlacementError.Interrupted, context.Placement.State.Error);
 
         context.Gateway.ConnectionEpoch = 8;
         context.Session.ApplyInputs(Inputs());
@@ -333,6 +336,161 @@ public sealed class ChatPlacementControllerTests
     public void RepositoryInput_IsOnlyAnExplicitSupportedUrl(string input, bool expected) =>
         Assert.Equal(expected, ChatPlacementController.IsGitUrl(input));
 
+    [Fact]
+    public async Task ExistingSession_DefaultsRemainUnverifiedAndUntouchedSendDoesNotChangeLocation()
+    {
+        using var context = new Context(targetIsNew: false);
+        Assert.NotNull(context.Placement.State.Selection);
+        Assert.False(context.Placement.State.SelectionIsKnown);
+        context.Vm.SetDraft("keep existing location");
+        Assert.True(await context.Composer.SendAsync());
+        Assert.Equal(0, context.Gateway.PrepareCalls);
+        Assert.False(context.Placement.State.SelectionIsKnown);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExistingSession_ExplicitDefaultChoiceRequiresPreparation(bool environment)
+    {
+        using var context = new Context(targetIsNew: false);
+        if (environment)
+            context.Placement.SelectEnvironment("local:gateway");
+        else
+            context.Placement.SelectWorkspace(context.Placement.State.Catalog!.DefaultWorkspace);
+        Assert.True(context.Placement.State.SelectionIsKnown);
+        Assert.True(context.Placement.RequiresPreparation);
+        context.Vm.SetDraft("use the chosen defaults");
+        Assert.True(await context.Composer.SendAsync());
+        Assert.Equal(1, context.Gateway.PrepareCalls);
+        Assert.Equal("local:gateway", context.Gateway.LastSelection?.Environment.Id);
+        Assert.Equal("/gateway/workspace", context.Gateway.LastSelection?.Workspace.Path);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task NewTargetMaterializing_DropsInferredDefaultsUntilExplicitChoice(bool environment)
+    {
+        using var context = new Context();
+        Assert.True(context.Placement.State.SelectionIsKnown);
+        context.Session.ApplyInputs(Inputs() with { PlacementTargetIsNew = false });
+        Assert.False(context.Placement.State.SelectionIsKnown);
+        Assert.False(context.Placement.RequiresPreparation);
+        if (environment)
+            context.Placement.SelectEnvironment("local:gateway");
+        else
+            context.Placement.SelectWorkspace(context.Placement.State.Catalog!.DefaultWorkspace);
+        Assert.True(context.Placement.RequiresPreparation);
+        context.Vm.SetDraft("use defaults explicitly");
+        Assert.True(await context.Composer.SendAsync());
+        Assert.Equal(1, context.Gateway.PrepareCalls);
+    }
+
+    [Fact]
+    public async Task UnknownHistory_BlocksPreparationWithoutDiscardingIntent()
+    {
+        using var context = new Context();
+        context.Placement.SelectWorkspace(FakeGateway.Project);
+        context.Session.ApplyInputs(Inputs() with { PlacementHistoryReady = false, ShowPlacementPickers = false });
+        context.Vm.SetDraft("keep pending location");
+        Assert.False(await context.Composer.SendAsync());
+        Assert.Equal(ChatPlacementError.HistoryPending, context.Placement.State.Error);
+        context.Placement.ApplyInputs(Inputs() with { PlacementHistoryReady = false, ShowPlacementPickers = false });
+        Assert.Equal(ChatPlacementError.HistoryPending, context.Placement.State.Error);
+        Assert.True(context.Placement.RequiresPreparation);
+        Assert.False(context.Placement.CanEdit);
+        Assert.Equal(0, context.Gateway.PrepareCalls);
+        Assert.Equal(0, context.Port.SendMessageCallCount);
+
+        context.Session.ApplyInputs(Inputs());
+        Assert.True(await context.Composer.SendAsync());
+        Assert.Equal(FakeGateway.Project, context.Gateway.LastSelection?.Workspace);
+        Assert.Equal(1, context.Gateway.PrepareCalls);
+    }
+
+    [Fact]
+    public async Task HistoryBecomingUnknown_CancelsPendingPreparationButRetainsUncertainty()
+    {
+        using var context = new Context();
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        context.Gateway.Prepare = _ => completion.Task;
+        context.Placement.SelectWorkspace(FakeGateway.Project);
+        context.Vm.SetDraft("keep");
+        var sending = context.Composer.SendAsync();
+        context.Session.ApplyInputs(Inputs() with { PlacementHistoryReady = false, ShowPlacementPickers = false });
+        Assert.True(context.Gateway.PrepareToken.IsCancellationRequested);
+        completion.SetResult();
+        Assert.False(await sending);
+        Assert.Equal(ChatPlacementError.Interrupted, context.Placement.State.Error);
+        Assert.True(context.Placement.RequiresPreparation);
+        Assert.Equal(0, context.Port.SendMessageCallCount);
+    }
+
+    [Fact]
+    public async Task UncertainMutation_RetainsWarningAcrossRetrySelectionAndNonemptyHistory()
+    {
+        using var context = new Context();
+        context.Placement.SelectWorkspace(FakeGateway.Project);
+        context.Gateway.Prepare = _ => Task.FromException(
+            new ChatPlacementOutcomeUncertainException(new TimeoutException("synthetic timeout")));
+        context.Vm.SetDraft("keep");
+        Assert.False(await context.Composer.SendAsync());
+        Assert.Equal(ChatPlacementError.Interrupted, context.Placement.State.Error);
+        context.Placement.SelectEnvironment("node:windows");
+        Assert.Equal(ChatPlacementError.Interrupted, context.Placement.State.Error);
+        context.Gateway.Prepare = _ => Task.FromException(new InvalidOperationException("preflight rejected"));
+        Assert.False(await context.Composer.SendAsync());
+        Assert.Equal(ChatPlacementError.Interrupted, context.Placement.State.Error);
+        context.Session.ApplyInputs(Inputs() with { PlacementTargetIsEmpty = false, ShowPlacementPickers = false });
+        Assert.False(await context.Composer.SendAsync());
+        Assert.Equal(ChatPlacementError.Interrupted, context.Placement.State.Error);
+        Assert.Equal(0, context.Port.SendMessageCallCount);
+        Assert.Equal("keep", context.Vm.Draft);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DiscoveryFailure_DoesNotOutliveEmptyConversation(bool lateFailure)
+    {
+        using var context = new Context();
+        var completion = new TaskCompletionSource<ChatPlacementCatalog>(TaskCreationOptions.RunContinuationsAsynchronously);
+        context.Gateway.Load = () => completion.Task;
+        var loading = context.Placement.RefreshAsync();
+        if (!lateFailure)
+        {
+            completion.SetException(new TimeoutException("synthetic discovery timeout"));
+            await loading;
+            Assert.Equal(ChatPlacementError.DiscoveryFailed, context.Placement.State.Error);
+        }
+        context.Vm.SetDraft("normal send");
+        Assert.True(await context.Composer.SendAsync());
+        context.Session.ApplyInputs(Inputs() with { PlacementTargetIsEmpty = false, ShowPlacementPickers = false });
+        if (lateFailure)
+        {
+            completion.SetException(new TimeoutException("synthetic discovery timeout"));
+            await loading;
+        }
+        Assert.Null(context.Placement.State.Error);
+        Assert.Equal(0, context.Gateway.PrepareCalls);
+    }
+
+    [Fact]
+    public void PlacementRecoveryResources_CoverEveryTypedErrorInEveryLocale()
+    {
+        foreach (var locale in new[] { "en-us", "fr-fr", "nl-nl", "pt-br", "zh-cn", "zh-tw" })
+        {
+            var path = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src",
+                "OpenClaw.Tray.WinUI", "Strings", locale, "Resources.resw");
+            var values = System.Xml.Linq.XDocument.Load(path).Root!.Elements("data")
+                .ToDictionary(element => (string)element.Attribute("name")!, element => (string)element.Element("value")!);
+            foreach (var error in Enum.GetValues<ChatPlacementError>())
+                Assert.False(string.IsNullOrWhiteSpace(values["Chat_Placement_Error_" + error]));
+            Assert.False(string.IsNullOrWhiteSpace(values["Chat_Placement_Unknown"]));
+        }
+    }
+
     private sealed class Context : IDisposable
     {
         internal FakeGateway Gateway { get; } = new();
@@ -342,7 +500,7 @@ public sealed class ChatPlacementControllerTests
         internal ChatComposerController Composer { get; }
         internal ChatComposerSession Session { get; }
 
-        internal Context()
+        internal Context(bool targetIsNew = true)
         {
             var dispatcher = new RecordingUiDispatcher();
             var actions = new ChatComposerHostActions(null, null, null, null, null);
@@ -350,7 +508,7 @@ public sealed class ChatPlacementControllerTests
             Placement = new(Gateway, dispatcher);
             Composer = new(Vm, Port, actions, Placement);
             Session = new(Vm, Composer, actions, Placement);
-            Session.ApplyInputs(Inputs());
+            Session.ApplyInputs(Inputs() with { PlacementTargetIsNew = targetIsNew });
         }
 
         public void Dispose() => Session.Dispose();
@@ -361,6 +519,7 @@ public sealed class ChatPlacementControllerTests
         internal static readonly ChatWorkspace Project = new("project:one", "Repository", "/gateway/project", "one");
         public long? ConnectionEpoch { get; set; } = 7;
         internal Func<CancellationToken, Task> Prepare { get; set; } = _ => Task.CompletedTask;
+        internal Func<Task<ChatPlacementCatalog>>? Load { get; set; }
         internal Func<string?, Task<ChatWorkspaceDirectory>> Browse { get; set; } =
             path => Task.FromResult(new ChatWorkspaceDirectory(path ?? "/", null, "/", []));
         internal int PrepareCalls { get; private set; }
@@ -371,7 +530,7 @@ public sealed class ChatPlacementControllerTests
         internal CancellationToken PrepareToken { get; private set; }
 
         public Task<ChatPlacementCatalog> LoadAsync(string agentId, CancellationToken cancellationToken) =>
-            Task.FromResult(new ChatPlacementCatalog(ConnectionEpoch!.Value, agentId,
+            Load?.Invoke() ?? Task.FromResult(new ChatPlacementCatalog(ConnectionEpoch!.Value, agentId,
                 [new("local:gateway", "Gateway", true, ChatEnvironmentUnavailable.None),
                  new("node:windows", "Windows", false, ChatEnvironmentUnavailable.None)],
                 new("default", "workspace", "/gateway/workspace"), [Project]));

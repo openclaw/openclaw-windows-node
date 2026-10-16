@@ -194,6 +194,12 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
         var isEmptyConversation = entries.Count == 0 && queuedMessages.Count == 0
             && !showThinking && timeline.PendingPermission is null;
         var isComposeOnly = effectiveThread is not null && selectedMaterializedThread is null;
+        var placementHistoryReady = isGatewayConnected
+            && (isComposeOnly
+                ? snapshot.ComposeTarget.IsReady
+                    && string.Equals(snapshot.ComposeTarget.SessionKey, effectiveThread?.Id, StringComparison.Ordinal)
+                : effectiveThread is not null
+                    && snapshot.CurrentHistoryThreads?.Contains(effectiveThread.Id) == true);
         var welcomeEligible = isEmptyConversation
             && isGatewayConnected
             && (
@@ -340,8 +346,10 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 AvailableCommands: snapshot.AvailableCommands,
                 CommandsSupported: snapshot.CommandsSupported)
             {
-                ShowPlacementPickers = mode == ReactorChatTimelineMode.Empty,
-                PlacementTargetIsEmpty = isEmptyConversation
+                ShowPlacementPickers = placementHistoryReady && mode == ReactorChatTimelineMode.Empty,
+                PlacementTargetIsEmpty = isEmptyConversation,
+                PlacementHistoryReady = placementHistoryReady,
+                PlacementTargetIsNew = isComposeOnly
             };
             composerElement = Component<ReactorChatComposer, ReactorChatComposerViewProps>(new(
                 props.ComposerSession,

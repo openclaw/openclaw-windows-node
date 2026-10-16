@@ -8107,4 +8107,31 @@ Your settings, gateway, files, and models stay where they are.</value>
   <data name="Chat_Welcome_Loading" xml:space="preserve"><value>Loading welcome content from your Gateway...</value></data>
   <data name="Chat_Welcome_Unsupported" xml:space="preserve"><value>This Gateway does not provide shared welcome content. You can still start a chat below.</value></data>
   <data name="Chat_Welcome_Failed" xml:space="preserve"><value>Welcome content could not be loaded. Reconnect to retry, or start a chat below.</value></data>
+  <data name="Chat_Placement_Unknown" xml:space="preserve">
+    <value>Not verified</value>
+  </data>
+  <data name="Chat_Placement_Error_DiscoveryFailed" xml:space="preserve">
+    <value>Chat locations could not be loaded. Retry in the location picker.</value>
+  </data>
+  <data name="Chat_Placement_Error_BrowseFailed" xml:space="preserve">
+    <value>Gateway folders could not be loaded. Try browsing again.</value>
+  </data>
+  <data name="Chat_Placement_Error_PreparationFailed" xml:space="preserve">
+    <value>The chat location could not be prepared. Review it in the Gateway before trying again.</value>
+  </data>
+  <data name="Chat_Placement_Error_PreparationPending" xml:space="preserve">
+    <value>Location preparation is still finishing. Wait before sending again.</value>
+  </data>
+  <data name="Chat_Placement_Error_NotReady" xml:space="preserve">
+    <value>The selected chat location is not ready. Refresh the choices before sending.</value>
+  </data>
+  <data name="Chat_Placement_Error_HistoryPending" xml:space="preserve">
+    <value>Waiting for current chat history before preparing its location. Try sending again when loading finishes.</value>
+  </data>
+  <data name="Chat_Placement_Error_Interrupted" xml:space="preserve">
+    <value>Location preparation was interrupted and may have changed this session's location. Review it in the Gateway before you send again.</value>
+  </data>
+  <data name="Chat_Placement_Error_NoLongerEmpty" xml:space="preserve">
+    <value>This session is no longer empty, so the pending location selection was cancelled. Review the session and send again to continue in its current location.</value>
+  </data>
 </root>
