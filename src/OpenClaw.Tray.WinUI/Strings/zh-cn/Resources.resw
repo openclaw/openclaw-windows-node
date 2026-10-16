@@ -7044,6 +7044,7 @@
   <data name="DefaultModelPage_RefreshButton.Content" xml:space="preserve"><value>刷新</value></data>
   <data name="DefaultModelPage_ManageLocalAiButton.Content" xml:space="preserve"><value>管理本地 AI</value></data>
   <data name="DefaultModelPage_LocalAiOptionFormat" xml:space="preserve"><value>本地 AI：{0}</value></data>
+  <data name="DefaultModelPage_RequiresAuthFormat" xml:space="preserve"><value>{0}（请先登录提供商）</value></data>
   <data name="DefaultModelPage_Applied" xml:space="preserve"><value>默认模型已更新。</value></data>
   <data name="Onboarding_LocalAi_UnavailableDetailsButton.Content" xml:space="preserve"><value>查看原因</value></data>
   <data name="Onboarding_LocalAi_CheckingTitle" xml:space="preserve"><value>正在检查本地 AI 要求</value></data>

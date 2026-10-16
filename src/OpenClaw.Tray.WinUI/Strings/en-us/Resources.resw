@@ -7112,6 +7112,7 @@ Make sure the gateway is running.</value>
   <data name="DefaultModelPage_RefreshButton.Content" xml:space="preserve"><value>Refresh</value></data>
   <data name="DefaultModelPage_ManageLocalAiButton.Content" xml:space="preserve"><value>Manage Local AI</value></data>
   <data name="DefaultModelPage_LocalAiOptionFormat" xml:space="preserve"><value>Local AI: {0}</value></data>
+  <data name="DefaultModelPage_RequiresAuthFormat" xml:space="preserve"><value>{0} (sign in to the provider first)</value></data>
   <data name="DefaultModelPage_Applied" xml:space="preserve"><value>The default model was updated.</value></data>
   <data name="Onboarding_LocalAi_UnavailableDetailsButton.Content" xml:space="preserve"><value>See why</value></data>
   <data name="Onboarding_LocalAi_CheckingTitle" xml:space="preserve"><value>Checking Local AI requirements</value></data>

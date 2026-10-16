@@ -7044,6 +7044,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="DefaultModelPage_RefreshButton.Content" xml:space="preserve"><value>Actualiser</value></data>
   <data name="DefaultModelPage_ManageLocalAiButton.Content" xml:space="preserve"><value>Gérer l'IA locale</value></data>
   <data name="DefaultModelPage_LocalAiOptionFormat" xml:space="preserve"><value>IA locale : {0}</value></data>
+  <data name="DefaultModelPage_RequiresAuthFormat" xml:space="preserve"><value>{0} (connectez-vous d'abord au fournisseur)</value></data>
   <data name="DefaultModelPage_Applied" xml:space="preserve"><value>Le modèle par défaut a été mis à jour.</value></data>
   <data name="Onboarding_LocalAi_UnavailableDetailsButton.Content" xml:space="preserve"><value>Voir pourquoi</value></data>
   <data name="Onboarding_LocalAi_CheckingTitle" xml:space="preserve"><value>Vérification des exigences de l'IA locale</value></data>

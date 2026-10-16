@@ -53,7 +53,16 @@ public sealed partial class DefaultModelPage : Page
             _suppressSelection = true;
             DefaultModelSelector.Items.Clear();
             foreach (DefaultModelOption option in vm.Options)
-                DefaultModelSelector.Items.Add(new ComboBoxItem { Tag = option.Id, Content = Format(option) });
+            {
+                // A provider that still needs sign-in cannot become the default; the current
+                // primary stays selectable so the combo can show it.
+                DefaultModelSelector.Items.Add(new ComboBoxItem
+                {
+                    Tag = option.Id,
+                    Content = Format(option),
+                    IsEnabled = !option.RequiresAuth || option.Id == vm.CurrentOptionId,
+                });
+            }
             _suppressSelection = false;
         }
         _suppressSelection = true;
@@ -84,10 +93,13 @@ public sealed partial class DefaultModelPage : Page
         DefaultModelBusyIndicator.Visibility = vm.IsApplying ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private static string Format(DefaultModelOption option) =>
-        option.IsLocalAi
+    private static string Format(DefaultModelOption option)
+    {
+        string label = option.IsLocalAi
             ? LocalizationHelper.Format("DefaultModelPage_LocalAiOptionFormat", option.DisplayName)
             : option.Provider is null ? option.DisplayName : $"{option.DisplayName} ({option.Provider})";
+        return option.RequiresAuth ? LocalizationHelper.Format("DefaultModelPage_RequiresAuthFormat", label) : label;
+    }
 
     private void OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {

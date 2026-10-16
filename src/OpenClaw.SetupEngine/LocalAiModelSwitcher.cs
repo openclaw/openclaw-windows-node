@@ -160,9 +160,21 @@ public sealed class LocalAiModelSwitcher : ILocalAiModelSwitcher
             return stopped;
 
         progress?.Report(new(LocalAiModelSwitchPhase.StartingRuntime));
-        LocalAiRuntimeSnapshot started = await _runtime.EnsureStartedAsync(CancellationToken.None).ConfigureAwait(false);
-        if (started.State == LocalAiRuntimeState.Healthy)
-            return started;
+        string? startFailure;
+        try
+        {
+            LocalAiRuntimeSnapshot started = await _runtime.EnsureStartedAsync(CancellationToken.None).ConfigureAwait(false);
+            if (started.State == LocalAiRuntimeState.Healthy)
+                return started;
+            startFailure = started.Detail;
+        }
+        catch (Exception ex)
+        {
+            // A thrown start (for example a lost Gateway connection after the route was
+            // rebound) gets the same restoration as a returned failure; the new receipt is
+            // already committed and must not be left in place.
+            startFailure = ex.Message;
+        }
 
         progress?.Report(new(LocalAiModelSwitchPhase.RollingBack));
         try
@@ -176,7 +188,7 @@ public sealed class LocalAiModelSwitcher : ILocalAiModelSwitcher
                 $"The new model could not start and the previous model could not be restored: {ex.Message}");
         }
         throw new LocalAiModelSwitchException(
-            $"The new model could not start, so Local AI went back to the previous model. {started.Detail}".TrimEnd());
+            $"The new model could not start, so Local AI went back to the previous model. {startFailure}".TrimEnd());
     }
 
     private async Task<LocalAiInstallManifest> AcquireAsync(

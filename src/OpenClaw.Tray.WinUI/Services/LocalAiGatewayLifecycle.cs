@@ -66,6 +66,11 @@ internal sealed class LocalAiGatewayLifecycle(
         try
         {
             var target = NativeLocalAiGatewayTarget.Capture(record, transport.Route);
+            if (binding is { RebindFrom: not null } && install is not null)
+            {
+                await SettleModelRebindAsync(install, ct).ConfigureAwait(false);
+                binding = _store.Load();
+            }
             if (binding is not null)
             {
                 RequireBinding(binding, target);
@@ -186,7 +191,7 @@ internal sealed class LocalAiGatewayLifecycle(
         await using var lease = await _store.AcquireAsync(ct).ConfigureAwait(false);
         if (_store.Load() is not { } binding) return;
         if (binding.ModelRef != LocalAiGatewayProviderDefinition.BuildPrimaryModel(previous) ||
-            binding.Pending || binding.AutomaticRecoveryEnabled)
+            binding.Pending || binding.AutomaticRecoveryEnabled || binding.RebindFrom is not null)
             throw new InvalidOperationException("The native Local AI ownership receipt is not safe to change.");
         var (target, transport) = await GetTransportAsync(binding, ct).ConfigureAwait(false);
         var current = await new LocalAiGatewayRpcConfigurationTransport(target, transport).CaptureAsync(ct).ConfigureAwait(false);
@@ -195,18 +200,48 @@ internal sealed class LocalAiGatewayLifecycle(
             config["agents"]?["defaults"]?["model"]?["primary"]?.GetValue<string>() != binding.PreviousPrimary)
             throw new InvalidOperationException("The original Gateway has not confirmed withdrawal. Its ownership receipt was retained.");
         var model = LocalAiGatewayProviderDefinition.BuildPrimaryModel(next);
+        // The manifest commit follows this write; journal the previous model so an
+        // interrupted commit settles back to one coherent installation.
         _store.Save(binding with
         {
             ModelRef = model,
             ConfigHash = current.Hash,
             AddedAllowlistEntry = config["agents"]?["defaults"]?["models"] is JsonObject entries && !entries.ContainsKey(model),
+            RebindFrom = new(binding.ModelRef, binding.AddedAllowlistEntry),
         });
+    }
+
+    public async Task SettleModelRebindAsync(LocalAiResolvedInstall committed, CancellationToken ct)
+    {
+        // Every manifest load calls this; skip the cross-process lease when nothing is journaled.
+        if (_store.Load() is not { RebindFrom: not null }) return;
+        await using var lease = await _store.AcquireAsync(ct).ConfigureAwait(false);
+        if (_store.Load() is not { RebindFrom: { } from } binding) return;
+        var model = LocalAiGatewayProviderDefinition.BuildPrimaryModel(committed);
+        if (model == binding.ModelRef)
+        {
+            _store.Save(binding with { RebindFrom = null });
+        }
+        else if (model == from.ModelRef)
+        {
+            _store.Save(binding with
+            {
+                ModelRef = from.ModelRef,
+                AddedAllowlistEntry = from.AddedAllowlistEntry,
+                RebindFrom = null,
+            });
+        }
+        else
+        {
+            throw new InvalidOperationException(
+                "The native Local AI ownership receipt names neither the installed model nor the previous one.");
+        }
     }
 
     public async Task SetFallbackModelAsync(string? model, CancellationToken ct)
     {
         await using var lease = await _store.AcquireAsync(ct).ConfigureAwait(false);
-        if (_store.Load() is not { } binding) return;
+        if (_store.Load() is not { } binding || binding.PreviousPrimary == model) return;
         if (binding.Pending)
             throw new InvalidOperationException("Local AI has an unconfirmed Gateway change. Reconnect the original Gateway and review Local AI first.");
         _store.Save(binding with { PreviousPrimary = model });

@@ -7045,6 +7045,7 @@ Controleer of de gateway actief is.</value>
   <data name="DefaultModelPage_RefreshButton.Content" xml:space="preserve"><value>Vernieuwen</value></data>
   <data name="DefaultModelPage_ManageLocalAiButton.Content" xml:space="preserve"><value>Lokale AI beheren</value></data>
   <data name="DefaultModelPage_LocalAiOptionFormat" xml:space="preserve"><value>Lokale AI: {0}</value></data>
+  <data name="DefaultModelPage_RequiresAuthFormat" xml:space="preserve"><value>{0} (meld u eerst aan bij de provider)</value></data>
   <data name="DefaultModelPage_Applied" xml:space="preserve"><value>Het standaardmodel is bijgewerkt.</value></data>
   <data name="Onboarding_LocalAi_UnavailableDetailsButton.Content" xml:space="preserve"><value>Bekijk waarom</value></data>
   <data name="Onboarding_LocalAi_CheckingTitle" xml:space="preserve"><value>Vereisten voor lokale AI worden gecontroleerd</value></data>

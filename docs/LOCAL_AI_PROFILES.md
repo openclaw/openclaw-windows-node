@@ -32,9 +32,20 @@ large for GPU memory, the page asks before switching.
 
 The new weights are downloaded and verified while the current model keeps
 serving. The runtime then withdraws the old Gateway route, saves the new
-receipt, and restarts if it was running. If the new model does not start, the
-previous receipt is restored and restarted. Earlier weights stay in the shared
-Hugging Face cache, so switching back only verifies them.
+receipt, and restarts if it was running. If the new model does not start,
+whether the start fails or throws, the previous receipt is restored and
+restarted. Earlier weights stay in the shared Hugging Face cache, so switching
+back only verifies them.
+
+With a native Gateway, the ownership receipt (`gateway-binding.json`) records
+the previous model before the installation receipt is saved. Every load of the
+installation receipt settles that record to whichever model the receipt names,
+so an interrupted switch recovers one consistent installation.
+
+The Default model page changes Local AI's fallback only on the Gateway Local AI
+is bound to. On any other Gateway it writes that Gateway's default and leaves
+Local AI alone. Models whose provider still needs sign-in are listed but cannot
+be made the default.
 
 ## Experimental Bonsai 2 profile
 

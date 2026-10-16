@@ -7080,6 +7080,7 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="DefaultModelPage_RefreshButton.Content" xml:space="preserve"><value>Atualizar</value></data>
   <data name="DefaultModelPage_ManageLocalAiButton.Content" xml:space="preserve"><value>Gerenciar IA local</value></data>
   <data name="DefaultModelPage_LocalAiOptionFormat" xml:space="preserve"><value>IA local: {0}</value></data>
+  <data name="DefaultModelPage_RequiresAuthFormat" xml:space="preserve"><value>{0} (entre no provedor primeiro)</value></data>
   <data name="DefaultModelPage_Applied" xml:space="preserve"><value>O modelo padrão foi atualizado.</value></data>
   <data name="LocalAi_Reason_CudaCapabilityTooLow" xml:space="preserve"><value>O driver NVIDIA não oferece suporte a CUDA 13. Não é necessário um CUDA Toolkit separado.</value></data>
   <data name="LocalAi_Reason_DriverTooOld" xml:space="preserve"><value>O driver NVIDIA {0} foi detectado. A IA local requer a versão {1} ou mais recente.</value></data>

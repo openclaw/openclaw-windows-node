@@ -1396,6 +1396,36 @@ public sealed class NativeLocalAiLifecycleTests
             fixture.Rpc.Config["agents"]!["defaults"]!["model"]!["primary"]!.GetValue<string>());
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RebindModel_InterruptedCommitSettlesToTheCommittedManifest(bool manifestCommitted)
+    {
+        using var fixture = new Fixture();
+        LocalAiResolvedInstall next = LocalAiOnboardingTests.Install(OpenClaw.Shared.Inference.Catalog.LocalModelCatalog.Qwen27BModelId);
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        Assert.True((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+        await fixture.Lifecycle.SetAutomaticRecoveryEnabledAsync(false);
+        Assert.True((await fixture.Lifecycle.QuiesceAsync(fixture.Install)).Success);
+        LocalAiNativeBinding original = fixture.Store.Load()!;
+
+        await fixture.Lifecycle.RebindModelAsync(fixture.Install, next, default);
+        // The process stops here: the journal names the previous model and a second
+        // rebind is refused until a manifest load settles it.
+        Assert.NotNull(fixture.Store.Load()!.RebindFrom);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Lifecycle.RebindModelAsync(fixture.Install, next, default));
+
+        LocalAiResolvedInstall committed = manifestCommitted ? next : fixture.Install;
+        await fixture.Lifecycle.SettleModelRebindAsync(committed, default);
+
+        LocalAiNativeBinding settled = fixture.Store.Load()!;
+        Assert.Null(settled.RebindFrom);
+        Assert.Equal(LocalAiGatewayProviderDefinition.BuildPrimaryModel(committed), settled.ModelRef);
+        if (!manifestCommitted)
+            Assert.Equal(original.AddedAllowlistEntry, settled.AddedAllowlistEntry);
+        Assert.True((await fixture.Lifecycle.PublishAsync(committed)).Success);
+    }
+
     [Fact]
     public async Task SetFallbackModel_RefusesPendingBindingAndUpdatesClearOne()
     {

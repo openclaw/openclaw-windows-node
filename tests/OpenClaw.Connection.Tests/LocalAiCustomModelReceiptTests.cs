@@ -125,4 +125,57 @@ public sealed partial class LocalAiPortLifecycleTests
 
         Assert.Equal(before, await File.ReadAllBytesAsync(paths.ManifestPath));
     }
+
+    [Fact]
+    public async Task ReplaceInstall_ManifestSaveFailureSettlesBindingBackToPreviousModel()
+    {
+        using var temp = new TempDirectory("local-ai-replace-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        string previousAlias = (await new LocalAiManifestStore(paths).LoadAsync())!.Manifest.ModelAlias;
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        // The rebind lands, then the manifest commit fails, as when the process is interrupted.
+        var lifecycle = new FakeLifecycle(events) { OnRebind = () => File.SetAttributes(paths.ManifestPath, FileAttributes.ReadOnly) };
+        await using var runtime = CreateRuntime(paths,
+            new FakeProcessHost(platform, events, selectedPort: 28_797), platform, new FakeClient(events), lifecycle);
+        LocalAiInstallManifest replacement = CustomManifest(paths);
+        try
+        {
+            byte[] before = await File.ReadAllBytesAsync(paths.ManifestPath);
+            await Assert.ThrowsAsync<LocalAiModelSwitchException>(() => runtime.ReplaceInstallAsync(replacement));
+
+            Assert.Equal(before, await File.ReadAllBytesAsync(paths.ManifestPath));
+            Assert.Equal(
+                [$"rebind:{replacement.ModelAlias}", $"settle:{previousAlias}"],
+                lifecycle.Rebinds.SkipWhile(e => !e.StartsWith("rebind:", StringComparison.Ordinal)));
+        }
+        finally
+        {
+            File.SetAttributes(paths.ManifestPath, FileAttributes.Normal);
+        }
+    }
+
+    [Fact]
+    public async Task SetGatewayFallback_RejectedLifecycleLeavesManifestAndRetryRepairsBoth()
+    {
+        using var temp = new TempDirectory("local-ai-fallback-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        byte[] before = await File.ReadAllBytesAsync(paths.ManifestPath);
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var lifecycle = new FakeLifecycle(events) { FallbackException = new InvalidOperationException("pending") };
+        await using var runtime = CreateRuntime(paths,
+            new FakeProcessHost(platform, events, selectedPort: 28_798), platform, new FakeClient(events), lifecycle);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => runtime.SetGatewayFallbackModelAsync("openai/gpt-6"));
+        Assert.Equal(before, await File.ReadAllBytesAsync(paths.ManifestPath));
+
+        lifecycle.FallbackException = null;
+        await runtime.SetGatewayFallbackModelAsync("openai/gpt-6");
+        // A same-value retry still reaches the lifecycle, so a binding left behind is repaired.
+        await runtime.SetGatewayFallbackModelAsync("openai/gpt-6");
+
+        Assert.Equal("openai/gpt-6", (await new LocalAiManifestStore(paths).LoadAsync())!.Manifest.GatewayFallbackModel);
+        Assert.Equal(3, events.Count(e => e == "fallback:openai/gpt-6"));
+    }
 }

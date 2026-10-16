@@ -6,13 +6,15 @@ using OpenClawTray.Services;
 
 namespace OpenClawTray.Presentation;
 
-internal sealed record DefaultModelOption(string Id, string DisplayName, string? Provider, bool IsLocalAi);
+/// <param name="RequiresAuth">The provider still needs sign-in; the option is shown but cannot be applied.</param>
+internal sealed record DefaultModelOption(string Id, string DisplayName, string? Provider, bool IsLocalAi, bool RequiresAuth = false);
 
 /// <summary>
 /// WinUI-free owner of the Gateway default-model choice. Cloud models are written to
 /// <c>agents.defaults.model.primary</c>; the Local AI choice routes through the Local AI
-/// runtime, which owns publication. While Local AI is installed, a cloud choice is also
-/// recorded as Local AI's fallback so its publication guard stays consistent.
+/// runtime, which owns publication. Local AI keeps one fallback for the single Gateway it
+/// is bound to, so a cloud choice updates that fallback only when the active Gateway is
+/// Local AI's owner; choices on any other Gateway never touch Local AI state.
 /// </summary>
 internal sealed class DefaultModelPageViewModel : INavigationAware, IDisposable, INotifyPropertyChanged
 {
@@ -60,7 +62,8 @@ internal sealed class DefaultModelPageViewModel : INavigationAware, IDisposable,
     public string? Error => _error;
     public bool StatusApplied => _statusApplied;
     public bool CanApply => IsConnected && CanWrite && !_isApplying && _selectedOptionId is not null &&
-        !string.Equals(_selectedOptionId, _currentOptionId, StringComparison.Ordinal);
+        !string.Equals(_selectedOptionId, _currentOptionId, StringComparison.Ordinal) &&
+        _options.FirstOrDefault(option => option.Id == _selectedOptionId) is { RequiresAuth: false };
 
     public string? SelectedOptionId
     {
@@ -154,14 +157,17 @@ internal sealed class DefaultModelPageViewModel : INavigationAware, IDisposable,
 
     private async Task<bool> UseCloudModelAsync(string modelRef)
     {
-        bool installed = LocalAiRuntimePresentation.HasManagedInstall(_localAi.Snapshot);
-        if (installed && !IsValidFallback(modelRef))
+        // Local AI's fallback belongs to the Gateway it is bound to; another Gateway's
+        // default must not change it or stop Local AI.
+        bool ownsRoute = LocalAiRuntimePresentation.HasManagedInstall(_localAi.Snapshot) && _state.LocalAiRouteAvailable;
+        if (ownsRoute && !IsValidFallback(modelRef))
         {
             _error = "Local AI can only hand the Gateway back to a provider/model id with a single slash. Choose a different model.";
             return false;
         }
 
-        bool localActive = _localAi.Snapshot is { State: LocalAiRuntimeState.Healthy, Ownership: LocalAiOwnership.CompanionManaged } &&
+        bool localActive = ownsRoute &&
+            _localAi.Snapshot is { State: LocalAiRuntimeState.Healthy, Ownership: LocalAiOwnership.CompanionManaged } &&
             _state.PrimaryModel is { } primary && IsLocalAiPrimary(primary);
         if (localActive)
         {
@@ -179,7 +185,7 @@ internal sealed class DefaultModelPageViewModel : INavigationAware, IDisposable,
         }
 
         await _gateway.SetPrimaryModelAsync(modelRef);
-        if (installed)
+        if (ownsRoute)
             await _localAi.SetGatewayFallbackModelAsync(modelRef);
         return true;
     }
@@ -223,7 +229,8 @@ internal sealed class DefaultModelPageViewModel : INavigationAware, IDisposable,
             choice.SelectionId,
             choice.DisplayName,
             string.IsNullOrWhiteSpace(choice.Provider) ? null : ChatModelLabels.FormatProviderName(choice.Provider),
-            false)));
+            false,
+            choice.RequiresAuth)));
 
         bool hasLocalAi = LocalAiRuntimePresentation.HasManagedInstall(_localAi.Snapshot) && _state.LocalAiRouteAvailable;
         if (hasLocalAi)

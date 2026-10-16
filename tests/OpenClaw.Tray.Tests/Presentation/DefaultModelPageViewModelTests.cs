@@ -89,6 +89,38 @@ public sealed class DefaultModelPageViewModelTests
         Assert.DoesNotContain(foreign.Options, option => option.IsLocalAi);
     }
 
+    [Theory]
+    [InlineData(LocalAiRuntimeState.Healthy)]
+    [InlineData(LocalAiRuntimeState.Stopped)]
+    public async Task CloudChoiceOnGatewayThatDoesNotOwnLocalAi_WritesOnlyThatGateway(LocalAiRuntimeState localState)
+    {
+        // Local AI is bound to another Gateway; this Gateway's primary happens to be a llamacpp ref.
+        var gateway = new FakeGateway { State = State("llamacpp/other", localRoute: false) };
+        var runtime = new RecordingRuntime(Installed(localState));
+        using var viewModel = Create(gateway, runtime);
+
+        viewModel.SelectedOptionId = Gpt.SelectionId;
+        Assert.True(await viewModel.ApplyAsync(), viewModel.Error);
+
+        Assert.Equal(["openai/gpt-6"], gateway.PrimaryWrites);
+        Assert.Empty(runtime.Calls);
+    }
+
+    [Fact]
+    public async Task ChoiceWhoseProviderNeedsSignIn_IsListedButCannotBeApplied()
+    {
+        var needsAuth = new ChatModelChoice("o5", "o5", "openai", RequiresAuth: true);
+        var gateway = new FakeGateway { State = State(Sonnet.SelectionId, localRoute: false, extra: needsAuth) };
+        using var viewModel = Create(gateway, new RecordingRuntime(Installed(LocalAiRuntimeState.Stopped)));
+
+        Assert.Contains(viewModel.Options, option => option.Id == needsAuth.SelectionId && option.RequiresAuth);
+        viewModel.SelectedOptionId = needsAuth.SelectionId;
+
+        Assert.False(viewModel.CanApply);
+        Assert.False(await viewModel.ApplyAsync());
+        Assert.Empty(gateway.PrimaryWrites);
+    }
+
     [Fact]
     public void Envelope_ReadsPrimaryAndPatchExtendsExistingAllowlistOnly()
     {

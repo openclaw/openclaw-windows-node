@@ -111,11 +111,16 @@ public sealed class LocalAiModelSwitcherTests
         Assert.Equal(fixture.Original.ExecutablePath, committed.ExecutablePath);
     }
 
-    [Fact]
-    public async Task FailedStart_RestoresPreviousReceiptAndRestarts()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FailedStart_RestoresPreviousReceiptAndRestarts(bool startThrows)
     {
         using var fixture = await Fixture.CreateAsync(running: true);
-        fixture.Runtime.StartResults.Enqueue(LocalAiRuntimeState.Failed);
+        if (startThrows)
+            fixture.Runtime.StartFailure = new InvalidOperationException("The native Gateway is not connected.");
+        else
+            fixture.Runtime.StartResults.Enqueue(LocalAiRuntimeState.Failed);
         fixture.Runtime.StartResults.Enqueue(LocalAiRuntimeState.Healthy);
         LocalAiModelSwitchTarget target = await fixture.Switcher.PrepareCustomAsync(Hardware(48 * GiB), "owner/small", default);
 
@@ -249,9 +254,17 @@ public sealed class LocalAiModelSwitcherTests
             return Task.FromResult(Snapshot);
         }
 
+        /// <summary>Thrown by the next start only, then cleared.</summary>
+        public Exception? StartFailure { get; set; }
+
         public Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken = default)
         {
             Calls.Add("start");
+            if (StartFailure is { } failure)
+            {
+                StartFailure = null;
+                return Task.FromException<LocalAiRuntimeSnapshot>(failure);
+            }
             Snapshot = Create(StartResults.Count > 0 ? StartResults.Dequeue() : LocalAiRuntimeState.Healthy);
             return Task.FromResult(Snapshot);
         }
