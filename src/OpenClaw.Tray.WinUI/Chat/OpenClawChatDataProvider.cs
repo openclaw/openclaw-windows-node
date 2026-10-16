@@ -77,6 +77,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private readonly ChatStatePersistence _persistence;
     private readonly ChatConversationState _state;
     private readonly ChatHistoryLoader _historyLoader;
+    internal ChatQuestionCoordinator? Questions { get; }
     private readonly Action<Action>? _post;
     private readonly Func<Func<Task>, Task> _deferredAbortScheduler;
     private readonly object _publishGate = new();
@@ -145,6 +146,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         Func<Func<Task>, Task>? deferredAbortScheduler = null)
     {
         _bridge = bridge ?? throw new ArgumentNullException(nameof(bridge));
+        Questions = bridge is IChatQuestionGateway questionGateway
+            ? new ChatQuestionCoordinator(questionGateway) : null;
         _post = post;
         _deferredAbortScheduler =
             deferredAbortScheduler ?? (work => Task.Run(work));
@@ -189,6 +192,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     public Task<ChatDataSnapshot> LoadAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        Questions?.Start();
         var sessions = _bridge.GetSessionList() ?? Array.Empty<SessionInfo>();
         return Task.FromResult(_state.Load(sessions, ProjectionContext()));
     }
@@ -1074,6 +1078,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 ChatTurnTelemetryReason.Disposed);
             _historyLoader.Completed -= OnHistoryLoadCompleted;
             _historyLoader.Dispose();
+            Questions?.Dispose();
             _metadataStore.Dispose();
             _persistence.Dispose();
             _bridge.StatusChanged -= OnStatusChanged;
@@ -1459,14 +1464,14 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     {
         if (evt is null || _state.IsDisposed)
             return;
-        if (string.IsNullOrEmpty(evt.SessionKey))
+        var threadId = _state.ResolveAgentEventThread(evt);
+        if (threadId is null)
         {
             Logger.Warn($"[ChatProvider] Dropping agent event with empty sessionKey (stream={evt.Stream})");
             RaiseKeylessEventDiagnosticOnce();
             return;
         }
 
-        var threadId = evt.SessionKey;
         var terminal = ChatEventMapper.IsTerminalRunEvent(evt);
         var transition = _state.ProcessAgentEvent(
             evt,

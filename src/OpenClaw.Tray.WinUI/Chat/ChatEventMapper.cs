@@ -36,6 +36,11 @@ internal static class ChatEventMapper
             "patch" => new(MapPatch(evt)),
             "job" => new(MapJob(evt)),
             "approval" => MapApproval(evt),
+            "compaction" => new(MapCompaction(evt)),
+            "run_status" => new(MapRunStatus(evt)),
+            "fallback" => new(MapFallback(evt)),
+            "notice" => new(MapNotice(evt)),
+            "usage" => new(MapUsage(evt)),
             _ => new(null),
         };
     }
@@ -212,7 +217,10 @@ internal static class ChatEventMapper
 
         return phaseProperty.GetString()?.ToLowerInvariant() switch
         {
-            "start" => new ChatThinkingEvent(""),
+            "start" => new ChatThinkingEvent("", evt.RunId),
+            "waiting-approval" => new ChatProgressEvent("Waiting for approval"),
+            "approval-resolved" => new ChatProgressEvent("Working"),
+            "fallback" or "fallback_cleared" => MapFallback(evt),
             "end" => new ChatTurnEndEvent(),
             "error" => new ChatErrorEvent(
                 evt.Summary ??
@@ -236,6 +244,9 @@ internal static class ChatEventMapper
 
         return phase.ToLowerInvariant() switch
         {
+            "update" => new ChatToolProgressEvent(
+                NativeToolProjector.ExtractToolResultText(evt.Data, string.Empty, "partialResult"),
+                toolCallId, evt.RunId, evt.Seq),
             "start" => new ChatToolStartEvent(
                 label,
                 identity.Name,
@@ -372,14 +383,15 @@ internal static class ChatEventMapper
 
     private static ChatEvent? MapCommandOutput(AgentEventInfo evt)
     {
-        if (evt.Data.ValueKind != JsonValueKind.Object ||
-            !string.Equals(
-                StringProperty(evt.Data, "phase"),
-                "end",
-                StringComparison.OrdinalIgnoreCase))
-        {
+        if (evt.Data.ValueKind != JsonValueKind.Object)
             return null;
-        }
+        var phase = StringProperty(evt.Data, "phase").ToLowerInvariant();
+        if (phase is "update" or "delta")
+            return new ChatToolProgressEvent(
+                phase == "delta" ? StringProperty(evt.Data, "delta") : NativeToolProjector.ExtractCommandOutputText(evt.Data),
+                NativeToolProjector.ExtractToolCorrelationId(evt.Data), evt.RunId, evt.Seq, Append: phase == "delta");
+        if (phase != "end")
+            return null;
 
         var output = NativeToolProjector.ExtractCommandOutputText(evt.Data);
         var itemId = NativeToolProjector.ExtractToolCorrelationId(evt.Data);
@@ -432,6 +444,53 @@ internal static class ChatEventMapper
         string.Equals(status, "blocked", StringComparison.OrdinalIgnoreCase)
             ? "Tool blocked"
             : "Tool failed";
+
+    private static ChatEvent? MapCompaction(AgentEventInfo evt)
+    {
+        if (evt.Data.ValueKind != JsonValueKind.Object)
+            return null;
+        return StringProperty(evt.Data, "phase") switch
+        {
+            "start" => new ChatProgressEvent("Compacting context"),
+            "end" when evt.Data.TryGetProperty("willRetry", out var retry) && retry.ValueKind == JsonValueKind.True =>
+                new ChatProgressEvent("Retrying after context compaction"),
+            "end" => new ChatProgressEvent("Working"),
+            _ => null,
+        };
+    }
+
+    private static ChatEvent? MapRunStatus(AgentEventInfo evt) =>
+        evt.Data.ValueKind == JsonValueKind.Object && StringProperty(evt.Data, "phase") == "retrying"
+            ? new ChatProgressEvent("Retrying the model request") : null;
+
+    private static ChatEvent? MapUsage(AgentEventInfo evt) =>
+        !string.IsNullOrWhiteSpace(evt.RunId) && evt.Seq > 0
+        && evt.Data.ValueKind == JsonValueKind.Object
+        && evt.Data.TryGetProperty("outputTokens", out var value)
+        && value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var tokens) && tokens >= 0
+            ? new ChatRunUsageEvent(evt.RunId, tokens, evt.Seq) : null;
+
+    private static ChatEvent? MapFallback(AgentEventInfo evt)
+    {
+        if (evt.Data.ValueKind != JsonValueKind.Object)
+            return null;
+        var model = NativeToolProjector.SanitizeToolDisplayValue(
+            StringProperty(evt.Data, "activeModel"));
+        if (string.IsNullOrWhiteSpace(model))
+            model = NativeToolProjector.SanitizeToolDisplayValue(StringProperty(evt.Data, "toModel"));
+        return new ChatStatusEvent(
+            StringProperty(evt.Data, "phase") == "fallback_cleared" ? "Primary model restored"
+                : string.IsNullOrWhiteSpace(model) ? "Switching to a fallback model" : $"Using fallback model: {model}",
+            ChatTone.Warning);
+    }
+
+    private static ChatEvent? MapNotice(AgentEventInfo evt)
+    {
+        if (evt.Data.ValueKind != JsonValueKind.Object)
+            return null;
+        var text = NativeToolProjector.SanitizeToolDisplayValue(StringProperty(evt.Data, "message"));
+        return string.IsNullOrWhiteSpace(text) ? null : new ChatStatusEvent(text, ChatTone.Info);
+    }
 
     private static ChatEvent? MapJob(AgentEventInfo evt)
     {

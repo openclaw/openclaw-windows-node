@@ -195,7 +195,7 @@ internal sealed class ChatHistoryState
         var rebuiltMetadata = new Dictionary<string, ChatEntryMetadata>(
             plan.Metadata,
             StringComparer.Ordinal);
-        if (prior.Entries.Count == 0)
+        if (prior.Entries.Count == 0 && !prior.TurnActive && prior.TurnStartedAt is null && prior.RunUsage is null)
             return (rebuilt, rebuiltMetadata);
 
         static string ContentKey(ChatTimelineItemKind kind, string text) =>
@@ -323,6 +323,10 @@ internal sealed class ChatHistoryState
                 Entries = entries.ToImmutable(),
                 NextId = nextId,
                 TurnActive = prior.TurnActive,
+                TurnStartedAt = prior.TurnStartedAt,
+                TurnEndedAt = prior.TurnEndedAt,
+                ProgressText = prior.ProgressText,
+                RunUsage = prior.RunUsage,
                 PendingToolPresentations = prior.PendingToolPresentations,
                 PendingToolOutcomes = prior.PendingToolOutcomes,
                 TerminalToolCorrelations =

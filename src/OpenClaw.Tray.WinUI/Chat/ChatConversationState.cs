@@ -804,7 +804,7 @@ internal sealed class ChatConversationState
                     {
                         _timelines[threadId] = ChatTimelineReducer.Apply(
                             GetOrCreateTimelineLocked(threadId),
-                            new ChatTurnEndEvent());
+                            new ChatTurnEndEvent(), DateTimeOffset.UtcNow);
                     }
                     requeueRequired = true;
                     if (!string.IsNullOrEmpty(acceptedRunId))
@@ -979,7 +979,7 @@ internal sealed class ChatConversationState
         }
         _timelines[threadId] = ChatTimelineReducer.Apply(
             timeline,
-            new ChatTurnEndEvent());
+            new ChatTurnEndEvent(), DateTimeOffset.UtcNow);
         return BuildSnapshotLocked(context);
     }
 
@@ -1006,7 +1006,8 @@ internal sealed class ChatConversationState
         _timelines[threadId] = ChatTimelineReducer.AddLocalUser(
             current,
             request.EffectiveTimelineText,
-            request.LocalNonce);
+            request.LocalNonce,
+            DateTimeOffset.UtcNow);
         GetOrCreateThreadMetaLocked(threadId)[entryId] = BuildLiveMetaLocked(
             threadId,
             isLocalQueuedSend: true,
@@ -1046,7 +1047,7 @@ internal sealed class ChatConversationState
         {
             RegisterResetSubmissionLocked(dispatch);
             _timelines[threadId] = ChatTimelineReducer.BeginLocalUserTurn(
-                GetOrCreateTimelineLocked(threadId));
+                GetOrCreateTimelineLocked(threadId), DateTimeOffset.UtcNow);
         }
         return dispatch;
     }
@@ -1096,7 +1097,8 @@ internal sealed class ChatConversationState
         _timelines[threadId] = ChatTimelineReducer.AddLocalUser(
             current,
             request?.EffectiveTimelineText ?? queued.Text,
-            queued.LocalNonce);
+            queued.LocalNonce,
+            current.TurnStartedAt ?? DateTimeOffset.UtcNow);
         var meta = confirmedMeta is not null && HasGatewayIdentity(confirmedMeta)
             ? confirmedMeta with
             {
@@ -1713,6 +1715,18 @@ internal sealed class ChatConversationState
             if (!_queue.HasSendingMessages(threadId))
                 _queue.ClearLocallyInitiated(threadId);
             return completedRunId;
+        }
+    }
+
+    internal string? ResolveAgentEventThread(AgentEventInfo evt)
+    {
+        lock (_gate)
+        {
+            if (!string.IsNullOrEmpty(evt.SessionKey))
+                return evt.SessionKey;
+            return string.Equals(evt.Stream, "usage", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(evt.RunId)
+                    ? _lifecycle.ThreadForActiveRun(evt.RunId) : null;
         }
     }
 
@@ -2552,7 +2566,7 @@ internal sealed class ChatConversationState
         var current = GetOrCreateTimelineLocked(threadId);
         var beforeIds = current.Entries.Select(entry => entry.Id)
             .ToHashSet(StringComparer.Ordinal);
-        var next = ChatTimelineReducer.Apply(current, evt);
+        var next = ChatTimelineReducer.Apply(current, evt, DateTimeOffset.UtcNow);
         _timelines[threadId] = next;
         if (metadata is null)
             return;

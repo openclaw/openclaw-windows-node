@@ -138,6 +138,13 @@
     <Style x:Key="ChatPickerAccentTextStyle" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{ThemeResource ChatPickerAccentBrush}" />
     </Style>
+    <Style x:Key="ChatSecondaryTextStyle" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{ThemeResource ChatSecondaryTextBrush}" />
+    </Style>
+    <Style x:Key="ChatQuestionCardStyle" TargetType="Border">
+        <Setter Property="Background" Value="{ThemeResource ChatCardBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource ChatStrokeBrush}" />
+    </Style>
     <Style x:Key="ChatPickerFlyoutStyle" TargetType="FlyoutPresenter">
         <Setter Property="Padding" Value="0" />
         <Setter Property="MinWidth" Value="0" />

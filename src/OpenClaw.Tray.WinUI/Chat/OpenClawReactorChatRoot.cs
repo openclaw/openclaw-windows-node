@@ -60,6 +60,20 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
     {
         var props = Props;
         var (snapshot, setSnapshot) = UseState<ChatDataSnapshot?>(null, threadSafe: true);
+        var questionsOwner = (props.Provider as OpenClawChatDataProvider)?.Questions;
+        var (questionSnapshot, setQuestionSnapshot) = UseState(questionsOwner?.Snapshot(), threadSafe: true);
+        UseEffect((Func<Action>)(() =>
+        {
+            if (questionsOwner is null)
+            {
+                setQuestionSnapshot(null);
+                return static () => { };
+            }
+            EventHandler changed = (_, _) => setQuestionSnapshot(questionsOwner.Snapshot());
+            questionsOwner.Changed += changed;
+            setQuestionSnapshot(questionsOwner.Snapshot());
+            return () => questionsOwner.Changed -= changed;
+        }), questionsOwner);
         var initialSelection = props.InitialThreadId
             ?? (props.Provider as OpenClawChatDataProvider)?.CachedLastChatState?.DefaultThreadId;
         var (selectedId, setSelectedId) = UseState<string?>(initialSelection, threadSafe: true);
@@ -170,19 +184,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 : Array.Empty<ChatQueuedMessage>();
         var hasPendingQueuedSend = queuedMessages.Any(message =>
             message.SendState is ChatQueuedMessageSendState.Queued or ChatQueuedMessageSendState.Sending);
-        var currentTurnHasAssistant = false;
-        for (var index = timeline.Entries.Count - 1; index >= 0; index--)
-        {
-            if (timeline.Entries[index].Kind == ChatTimelineItemKind.User)
-                break;
-            if (timeline.Entries[index].Kind == ChatTimelineItemKind.Assistant)
-            {
-                currentTurnHasAssistant = true;
-                break;
-            }
-        }
-
-        var showThinking = timeline.TurnActive && !currentTurnHasAssistant;
+        var showThinking = timeline.TurnActive;
         var isEmptyConversation = entries.Count == 0 && queuedMessages.Count == 0
             && !showThinking && timeline.PendingPermission is null;
         var isComposeOnly = effectiveThread is not null && selectedMaterializedThread is null;
@@ -264,7 +266,11 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 : null,
             mediaResolver,
             queuedMessages,
-            props.ComposerSession.Controller.CancelQueuedMessage);
+            props.ComposerSession.Controller.CancelQueuedMessage,
+            ChatRunProgressProjection.Project(timeline,
+                effectiveThread is not null && questionSnapshot?.Prompts.Any(prompt =>
+                    prompt.Request.Status == "pending" && ChatQuestionCoordinator.Matches(
+                        prompt.Request, effectiveThread.Id, effectiveThread.AgentId)) == true));
 
         void SelectThread(string threadId)
         {
@@ -334,11 +340,17 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 props.ShowSessionPicker));
         }
 
+        var questions = props.Provider is OpenClawChatDataProvider { Questions: { } questionCoordinator }
+            && effectiveThread is not null
+                ? Component<ReactorQuestionPanel, ReactorQuestionPanelProps>(
+                    new(questionCoordinator, effectiveThread.Id, effectiveThread.AgentId))
+                : Empty();
         return Grid(
             [GridSize.Star()],
-            [GridSize.Star(), GridSize.Auto],
+            [GridSize.Star(), GridSize.Auto, GridSize.Auto],
             timelineElement.Grid(row: 0),
-            composerElement.Grid(row: 1))
+            questions.Grid(row: 1),
+            composerElement.Grid(row: 2))
             .Background(Theme.Ref("ChatCanvasBrush"))
             .HAlign(HorizontalAlignment.Stretch)
             .VAlign(VerticalAlignment.Stretch);

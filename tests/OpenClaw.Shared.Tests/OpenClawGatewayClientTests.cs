@@ -12,6 +12,114 @@ namespace OpenClaw.Shared.Tests;
 
 public class OpenClawGatewayClientTests
 {
+    [Theory]
+    [InlineData("QUESTION_NOT_FOUND", true)]
+    [InlineData("PERMISSION_DENIED", false)]
+    [InlineData("", false)]
+    public async Task QuestionGet_UsesStructuredNotFoundReason_NotUntrustedMessageText(string reason, bool unavailable)
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("question-recovery-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(gatewayUrl: server.WebSocketUrl, identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+        var getting = client.GetQuestionAsync("old-question");
+        var request = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        await server.SendTextAsync(JsonSerializer.Serialize(new
+        {
+            type = "res", id = ReadRequestId(request), ok = false,
+            error = new { message = "QUESTION_NOT_FOUND", details = new { reason } },
+        }));
+        if (unavailable)
+            await Assert.ThrowsAsync<GatewayQuestionUnavailableException>(() => getting.WaitAsync(TimeSpan.FromSeconds(5)));
+        else
+            await Assert.ThrowsAsync<InvalidOperationException>(() => getting.WaitAsync(TimeSpan.FromSeconds(5)));
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task QuestionResolve_WireRoundTripUsesNestedAnswersAndRequiresMatchingAcknowledgement(bool cancel, bool badAck)
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("question-rpc-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(gatewayUrl: server.WebSocketUrl, identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+        var sending = client.ResolveQuestionAsync("question-1",
+            cancel ? null : new Dictionary<string, string[]> { ["platform"] = ["win"] });
+        var request = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        using var frame = JsonDocument.Parse(request);
+        Assert.Equal("question.resolve", frame.RootElement.GetProperty("method").GetString());
+        var parameters = frame.RootElement.GetProperty("params");
+        Assert.Equal("question-1", parameters.GetProperty("id").GetString());
+        if (cancel)
+        {
+            Assert.True(parameters.GetProperty("cancel").GetBoolean());
+            Assert.False(parameters.TryGetProperty("answers", out _));
+        }
+        else
+            Assert.Equal("win", parameters.GetProperty("answers").GetProperty("answers").GetProperty("platform")[0].GetString());
+        Assert.False(sending.IsCompleted);
+        await server.SendTextAsync(JsonSerializer.Serialize(new
+        {
+            type = "res", id = ReadRequestId(request), ok = true,
+            payload = new { status = badAck ? "pending" : cancel ? "cancelled" : "answered" },
+        }));
+        if (badAck)
+            await Assert.ThrowsAsync<JsonException>(() => sending.WaitAsync(TimeSpan.FromSeconds(5)));
+        else
+            Assert.Equal(cancel ? "cancelled" : "answered", await sending.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal(0, helper.GetPendingRequestCount());
+    }
+
+    [Fact]
+    public void ChatAppendFrames_AreReconstructedBeforeReachingConsumers()
+    {
+        var helper = new GatewayClientTestHelper();
+        var messages = new List<ChatMessageInfo>();
+        helper.Client.ChatMessageReceived += (_, message) => messages.Add(message);
+        helper.ProcessRawMessage("""
+            {"type":"event","event":"chat","payload":{"sessionKey":"main","runId":"r","state":"delta",
+            "message":{"role":"assistant","content":[{"type":"text","text":"hello"}]},"deltaText":"hello"}}
+            """);
+        helper.ProcessRawMessage("""
+            {"type":"event","event":"chat","payload":{"sessionKey":"main","runId":"r","state":"delta","deltaText":" world"}}
+            """);
+        Assert.Equal(2, messages.Count);
+        Assert.Equal("hello", messages[0].Text);
+        Assert.Equal("hello world", messages[1].Text);
+    }
+
+    [Fact]
+    public void QuestionEvents_AreRoutedSeparatelyFromChat_AndMalformedRequestsAreVisible()
+    {
+        var helper = new GatewayClientTestHelper();
+        var events = new List<GatewayQuestionEvent>();
+        var invalid = 0;
+        var chat = 0;
+        helper.Client.QuestionReceived += (_, question) => events.Add(question);
+        helper.Client.QuestionProtocolError += (_, _) => invalid++;
+        helper.Client.ChatMessageReceived += (_, _) => chat++;
+        helper.ProcessRawMessage("""
+            {"type":"event","event":"question.requested","payload":{"id":"q","status":"pending",
+            "sessionKey":"main","createdAtMs":1000,"expiresAtMs":2000,
+            "questions":[{"questionId":"platform","header":"Platform","question":"Choose","options":[{"label":"Windows","value":"win"}]}]}}
+            """);
+        helper.ProcessRawMessage("""
+            {"type":"event","event":"question.resolved","payload":{"id":"q","status":"answered","answers":{"platform":["win"]}}}
+            """);
+        helper.ProcessRawMessage("""{"type":"event","event":"question.requested","payload":{"id":"bad"}}""");
+        Assert.Equal(new[] { "pending", "answered" }, events.Select(evt => evt.Status));
+        Assert.Equal(1, invalid);
+        Assert.Equal(0, chat);
+    }
+
     // Test helper to access private methods through reflection
     private class GatewayClientTestHelper
     {

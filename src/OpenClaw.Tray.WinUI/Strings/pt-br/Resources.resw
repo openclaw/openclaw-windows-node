@@ -8005,4 +8005,34 @@ Suas configurações, gateway, arquivos e modelos permanecem onde estão.</value
   <data name="ChatPage_SetupCheckAgain.Content" xml:space="preserve">
     <value>Verificar novamente</value>
   </data>
+  <data name="Chat_Questions_Refresh" xml:space="preserve"><value>Atualizar perguntas</value></data>
+  <data name="Chat_Questions_Answered" xml:space="preserve"><value>Pergunta respondida</value></data>
+  <data name="Chat_Questions_Cancelled" xml:space="preserve"><value>Pergunta cancelada</value></data>
+  <data name="Chat_Questions_Expired" xml:space="preserve"><value>Pergunta expirada</value></data>
+  <data name="Chat_Questions_Waiting" xml:space="preserve"><value>Aguardando sua resposta</value></data>
+  <data name="Chat_Questions_WebRequired" xml:space="preserve"><value>Abra o chat da web para responder. Esta pergunta exige seleção de recursos ou controles de armazenamento de segredos.</value></data>
+  <data name="Chat_Questions_Answer" xml:space="preserve"><value>Sua resposta</value></data>
+  <data name="Chat_Questions_OpenLink" xml:space="preserve"><value>Abrir link da pergunta</value></data>
+  <data name="Chat_Questions_LinkFailed" xml:space="preserve"><value>Não foi possível abrir o link da pergunta.</value></data>
+  <data name="Chat_Questions_SendFailed" xml:space="preserve"><value>Não foi possível enviar a resposta. Atualize e tente novamente.</value></data>
+  <data name="Chat_Questions_Reconnect" xml:space="preserve"><value>Reconecte e atualize as perguntas antes de responder.</value></data>
+  <data name="Chat_Questions_Submitting" xml:space="preserve"><value>Enviando...</value></data>
+  <data name="Chat_Questions_Submit" xml:space="preserve"><value>Enviar resposta</value></data>
+  <data name="Chat_Questions_Cancel" xml:space="preserve"><value>Cancelar pergunta</value></data>
+  <data name="Chat_Questions_RefreshFailed" xml:space="preserve"><value>Não foi possível atualizar as perguntas. Tente novamente ou abra o chat da web.</value></data>
+  <data name="Chat_Questions_Unavailable" xml:space="preserve"><value>Esta pergunta expirou ou a conexão foi perdida. Atualize antes de responder.</value></data>
+  <data name="Chat_Questions_Unconfirmed" xml:space="preserve"><value>A resposta não foi confirmada. Atualize para verificar o status antes de tentar novamente.</value></data>
+  <data name="Chat_Questions_Invalid" xml:space="preserve"><value>Não foi possível ler uma pergunta do agente. Atualize ou abra o chat da web para responder.</value></data>
+  <data name="Chat_Run_Finished" xml:space="preserve"><value>Concluído</value></data>
+  <data name="Chat_Run_Approval" xml:space="preserve"><value>Aguardando aprovação</value></data>
+  <data name="Chat_Run_Answer" xml:space="preserve"><value>Aguardando sua resposta</value></data>
+  <data name="Chat_Run_Compacting" xml:space="preserve"><value>Compactando contexto</value></data>
+  <data name="Chat_Run_CompactionRetry" xml:space="preserve"><value>Tentando novamente após compactar o contexto</value></data>
+  <data name="Chat_Run_Retry" xml:space="preserve"><value>Repetindo a solicitação ao modelo</value></data>
+  <data name="Chat_Run_Thinking" xml:space="preserve"><value>Pensando</value></data>
+  <data name="Chat_Run_Responding" xml:space="preserve"><value>Respondendo</value></data>
+  <data name="Chat_Run_Working" xml:space="preserve"><value>Trabalhando</value></data>
+  <data name="Chat_Run_Tool" xml:space="preserve"><value>Executando {0}</value></data>
+  <data name="Chat_Questions_NoLongerAvailable" xml:space="preserve"><value>Pergunta não está mais disponível</value></data>
+  <data name="Chat_Run_OutputTokens" xml:space="preserve"><value>{0:N0} tokens de saída</value></data>
 </root>

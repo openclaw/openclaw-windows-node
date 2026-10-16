@@ -13838,6 +13838,45 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task RunUsage_RoutesSessionlessActiveRun_AndFencesReplayForeignRunsAndNewTurns()
+    {
+        var (bridge, provider, snapshots, notifications) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        await provider.LoadAsync();
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run"));
+        var usage = MakeAgentEvent("usage", """{"outputTokens":120}""", sessionKey: "", runId: "run");
+        usage.Seq = 8;
+        bridge.RaiseAgent(usage);
+        Assert.Equal(120, snapshots[^1].Timelines["main"].RunUsage!.OutputTokens);
+        Assert.DoesNotContain(notifications, n => n.Title == "Chat_Notification_KeylessEventDropped");
+
+        usage.Data = JsonDocument.Parse("""{"outputTokens":999}""").RootElement.Clone();
+        usage.RunId = "foreign";
+        usage.Seq = 10;
+        bridge.RaiseAgent(usage);
+        Assert.Equal(120, snapshots[^1].Timelines["main"].RunUsage!.OutputTokens);
+        usage.RunId = "run";
+        usage.SessionKey = "other";
+        bridge.RaiseAgent(usage);
+        Assert.Null(snapshots[^1].Timelines["other"].RunUsage);
+        usage.SessionKey = "main";
+        usage.Seq = 7;
+        bridge.RaiseAgent(usage);
+        Assert.Equal(120, snapshots[^1].Timelines["main"].RunUsage!.OutputTokens);
+
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run"));
+        usage.Data = JsonDocument.Parse("""{"outputTokens":115}""").RootElement.Clone();
+        usage.Seq = 9;
+        bridge.RaiseAgent(usage);
+        Assert.Equal(115, snapshots[^1].Timelines["main"].RunUsage!.OutputTokens);
+        Assert.False(snapshots[^1].Timelines["main"].TurnActive);
+
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "next-run"));
+        bridge.RaiseAgent(usage);
+        Assert.Null(snapshots[^1].Timelines["main"].RunUsage!.OutputTokens);
+    }
+
+    [Fact]
     public async Task AgentEvent_WithEmptySessionKey_IsDroppedAndDiagnosed()
     {
         var (bridge, provider, snapshots, notifications) = CreateConnectedProviderWithNotifications("agent:main:main");
