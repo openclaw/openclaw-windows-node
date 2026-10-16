@@ -17,7 +17,6 @@ internal interface IAppCommands
     void CheckForUpdates();
     void ShowOnboarding();
     void ShowLocalAiSetup();
-    void ShowLocalAiModelSetup() => ShowOnboarding();
     void OpenLocalAiLogs() { }
     void ShowGatewayWizard();
     void ShowConnectionStatus();

@@ -78,11 +78,19 @@ public static class LocalInferenceEligibility
     public static LocalInferenceEligibilityResult EvaluateForConfiguredAvailability(
         HostHardwareInfo hardware,
         string? configuredModelId,
-        bool hasInstalledReceipt = false)
+        bool hasInstalledReceipt = false,
+        LocalInferencePlan? installedPlan = null)
     {
         ArgumentNullException.ThrowIfNull(hardware);
         LocalInferenceEligibilityResult device = Evaluate(hardware);
-        if (!device.CanInstall && hasInstalledReceipt && !string.IsNullOrWhiteSpace(configuredModelId))
+        if (!device.CanInstall && installedPlan?.Model.CustomRecipe is not null)
+        {
+            LocalInferenceEligibilityResult custom = EvaluateRecordedProfile(hardware, installedPlan);
+            if (custom.CanInstall)
+                return custom;
+        }
+        if (!device.CanInstall && hasInstalledReceipt && !string.IsNullOrWhiteSpace(configuredModelId) &&
+            !LocalCustomModel.IsCustomId(configuredModelId))
         {
             LocalInferenceEligibilityResult installed = EvaluateInstalled(hardware, configuredModelId);
             if (installed.CanInstall)
@@ -105,6 +113,24 @@ public static class LocalInferenceEligibility
         ArgumentNullException.ThrowIfNull(hardware);
 
         return Evaluate(hardware, LocalInferenceSelector.Select(hardware, requestedModelId));
+    }
+
+    /// <summary>Evaluates a user-supplied Hugging Face model with the catalog capacity rules.</summary>
+    public static LocalInferenceEligibilityResult EvaluateCustom(HostHardwareInfo hardware, LocalModelInfo model)
+    {
+        ArgumentNullException.ThrowIfNull(hardware);
+        return Evaluate(hardware, LocalInferenceSelector.SelectCustom(hardware, model));
+    }
+
+    /// <summary>The catalog models this PC can be offered, each with its selected plan.</summary>
+    public static IReadOnlyList<LocalInferencePlan> OfferedPlans(Func<string, LocalInferenceEligibilityResult> evaluate)
+    {
+        ArgumentNullException.ThrowIfNull(evaluate);
+        return LocalModelCatalog.Models
+            .Select(model => evaluate(model.Id))
+            .Where(eligibility => eligibility.CanOffer && eligibility.Plan is not null)
+            .Select(eligibility => eligibility.Plan!)
+            .ToArray();
     }
 
     /// <summary>

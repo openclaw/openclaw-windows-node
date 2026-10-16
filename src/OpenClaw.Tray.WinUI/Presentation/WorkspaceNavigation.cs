@@ -8,7 +8,7 @@ internal enum WorkspacePageId
 internal enum CompanionPageId
 {
     Connection, Sessions, Channels, Instances, Cron, AgentEvents, Agents,
-    Config, Usage, LocalAi, Voice, Permissions, Sandbox, Debug, Settings, About
+    Config, Usage, LocalAi, DefaultModel, Voice, Permissions, Sandbox, Debug, Settings, About
 }
 
 /// <summary>
@@ -96,6 +96,7 @@ internal static class WorkspaceNavigation
     public static string CompanionTag(CompanionPageId page, string agentId = "main") => page switch
     {
         CompanionPageId.LocalAi => "local-ai",
+        CompanionPageId.DefaultModel => "model",
         CompanionPageId.AgentEvents => "agentevents",
         CompanionPageId.Agents => $"agent:{agentId}",
         _ => page.ToString().ToLowerInvariant()

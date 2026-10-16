@@ -1376,6 +1376,41 @@ public sealed class NativeLocalAiLifecycleTests
     }
 
     [Fact]
+    public async Task RebindModel_MovesOwnershipOnlyAfterConfirmedWithdrawal()
+    {
+        using var fixture = new Fixture();
+        LocalAiResolvedInstall next = LocalAiOnboardingTests.Install(OpenClaw.Shared.Inference.Catalog.LocalModelCatalog.Qwen27BModelId);
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        Assert.True((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+        await fixture.Lifecycle.SetAutomaticRecoveryEnabledAsync(false);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Lifecycle.RebindModelAsync(fixture.Install, next, default));
+        Assert.Equal(fixture.Model, fixture.Store.Load()!.ModelRef);
+
+        Assert.True((await fixture.Lifecycle.QuiesceAsync(fixture.Install)).Success);
+        await fixture.Lifecycle.RebindModelAsync(fixture.Install, next, default);
+
+        Assert.Equal(LocalAiGatewayProviderDefinition.BuildPrimaryModel(next), fixture.Store.Load()!.ModelRef);
+        Assert.True((await fixture.Lifecycle.PublishAsync(next)).Success);
+        Assert.Equal(LocalAiGatewayProviderDefinition.BuildPrimaryModel(next),
+            fixture.Rpc.Config["agents"]!["defaults"]!["model"]!["primary"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task SetFallbackModel_RefusesPendingBindingAndUpdatesClearOne()
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        fixture.Store.Save(fixture.Store.Load()! with { Pending = true });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Lifecycle.SetFallbackModelAsync("openai/gpt-6", default));
+
+        fixture.Store.Save(fixture.Store.Load()! with { Pending = false });
+        await fixture.Lifecycle.SetFallbackModelAsync("openai/gpt-6", default);
+        Assert.Equal("openai/gpt-6", fixture.Store.Load()!.PreviousPrimary);
+    }
+
+    [Fact]
     public async Task SetupRegistrationExcludesExplicitRelease()
     {
         using var fixture = new Fixture();

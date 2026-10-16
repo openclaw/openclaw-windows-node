@@ -1001,6 +1001,7 @@ internal sealed partial class SettingsShellView : UserControl
         { "config",      "\uE90F" },
         { "usage",       "\uE9D9" },
         { "cron",        "\uE787" },
+        { "model",       "\uE8F1" },
         { "voice",       "\uE720" },
         { "settings",    "\uE713" },
         { "permissions", "\uEA18" },

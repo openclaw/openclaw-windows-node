@@ -73,9 +73,9 @@ public static class SetupReviewSummaryBuilder
                 installUrl,
                 requestedVersion,
                 isCustomInstaller ? null : GatewayInstallPolicy.NodeVersion);
-        LocalModelInfo localAiModel =
+        LocalModelInfo localAiModel = config.LocalAi.PinnedPlan?.Model ??
             LocalModelCatalog.Find(config.LocalAi.SelectedModelId) ?? LocalModelCatalog.Default;
-        LocalInferenceRunProfile? localAiProfile =
+        LocalInferenceRunProfile? localAiProfile = config.LocalAi.PinnedPlan?.Profile ??
             LocalModelCatalog.FindProfile(localAiModel, config.LocalAi.SelectedProfileId);
         string[] localAiCommands;
         if (config.LocalAi.Enabled)

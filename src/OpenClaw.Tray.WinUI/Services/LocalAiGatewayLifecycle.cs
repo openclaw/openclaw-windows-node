@@ -181,6 +181,37 @@ internal sealed class LocalAiGatewayLifecycle(
         await ForgetWithdrawnAsync(binding.GatewayId, ct).ConfigureAwait(false);
     }
 
+    public async Task RebindModelAsync(LocalAiResolvedInstall previous, LocalAiResolvedInstall next, CancellationToken ct)
+    {
+        await using var lease = await _store.AcquireAsync(ct).ConfigureAwait(false);
+        if (_store.Load() is not { } binding) return;
+        if (binding.ModelRef != LocalAiGatewayProviderDefinition.BuildPrimaryModel(previous) ||
+            binding.Pending || binding.AutomaticRecoveryEnabled)
+            throw new InvalidOperationException("The native Local AI ownership receipt is not safe to change.");
+        var (target, transport) = await GetTransportAsync(binding, ct).ConfigureAwait(false);
+        var current = await new LocalAiGatewayRpcConfigurationTransport(target, transport).CaptureAsync(ct).ConfigureAwait(false);
+        var config = JsonNode.Parse(current.Config.GetRawText())!;
+        if (config["models"]?["providers"]?["llamacpp"] is not null ||
+            config["agents"]?["defaults"]?["model"]?["primary"]?.GetValue<string>() != binding.PreviousPrimary)
+            throw new InvalidOperationException("The original Gateway has not confirmed withdrawal. Its ownership receipt was retained.");
+        var model = LocalAiGatewayProviderDefinition.BuildPrimaryModel(next);
+        _store.Save(binding with
+        {
+            ModelRef = model,
+            ConfigHash = current.Hash,
+            AddedAllowlistEntry = config["agents"]?["defaults"]?["models"] is JsonObject entries && !entries.ContainsKey(model),
+        });
+    }
+
+    public async Task SetFallbackModelAsync(string? model, CancellationToken ct)
+    {
+        await using var lease = await _store.AcquireAsync(ct).ConfigureAwait(false);
+        if (_store.Load() is not { } binding) return;
+        if (binding.Pending)
+            throw new InvalidOperationException("Local AI has an unconfirmed Gateway change. Reconnect the original Gateway and review Local AI first.");
+        _store.Save(binding with { PreviousPrimary = model });
+    }
+
     public async Task ReconcileVerifiedAsync(GatewayRecord record, IGatewayAiSetupTransport transport,
         LocalAiResolvedInstall install, CancellationToken ct, IProgress<LocalAiRuntimeStartStage>? progress = null)
     {
