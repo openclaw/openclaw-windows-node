@@ -91,6 +91,8 @@ public sealed class CreateWslInstanceStep : SetupStep
                 $"Fresh WSL install failed for '{distro}' from '{baseDistro}' (exit {install.ExitCode}): {FirstNonEmpty(install.Stderr, install.Stdout)}{cleanupError}");
         }
 
+        await GatewayPackageCleanup.RegisterAsync(ctx.Commands, distro, installPath, ct: ct);
+
         var verify = await VerifyFreshDistro(ctx, distro, installPath, ct);
         if (!verify.IsSuccess)
         {

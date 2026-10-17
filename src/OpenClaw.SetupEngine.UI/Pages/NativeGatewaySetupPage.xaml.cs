@@ -141,13 +141,16 @@ public sealed partial class NativeGatewaySetupPage : Page
             throw new InvalidOperationException(NativeGatewayEligibilityText.Get(eligibility));
         SetCurrentStep(1);
         StatusText.Text = SetupLocalization.GetString("Onboarding_Native_Checking");
+        var acquiredMissingPackage = false;
         await NativeGatewayPackageAcquisition.EnsureAsync(
-            _resolver, InstallAsync,
+            _resolver, async ct => { acquiredMissingPackage = await InstallAsync(ct); },
             () => StatusText.Text = SetupLocalization.GetString("Onboarding_Native_VerifyingPackage"),
             cancellationToken);
+        using var logger = new SetupLogger(filePath: null);
+        if (acquiredMissingPackage)
+            await GatewayPackageCleanup.RegisterAsync(new CommandRunner(logger), ownNativePackage: true, ct: CancellationToken.None);
         cancellationToken.ThrowIfCancellationRequested();
         SetCurrentStep(2);
-        using var logger = new SetupLogger(filePath: null);
         var appLogger = new SetupOpenClawLogger(logger);
         var registry = new GatewayRegistry(window.DataDir, logger: appLogger);
         var progressDispatcher = DispatcherQueue;
@@ -185,11 +188,19 @@ public sealed partial class NativeGatewaySetupPage : Page
         window.NavigateToNativeAiSetup(session);
     }
 
-    private async Task InstallAsync(CancellationToken cancellationToken)
+    private async Task<bool> InstallAsync(CancellationToken cancellationToken)
     {
         StatusText.Text = SetupLocalization.GetString("Onboarding_Native_InstallingPackage");
         using var logger = new SetupLogger(filePath: null);
-        await _installer.InstallAsync(new CommandRunner(logger), cancellationToken);
+        var commands = new CommandRunner(logger);
+        var missing = false;
+        try { await _resolver.ResolveAsync(cancellationToken); }
+        catch (NativeGatewayPackageNotInstalledException)
+        {
+            missing = true;
+        }
+        await _installer.InstallAsync(commands, cancellationToken);
+        return missing;
     }
 
     private void SetCurrentStep(int index)

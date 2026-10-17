@@ -171,7 +171,7 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.Contains("SetupInstallationStatus.Complete", source);
         Assert.Contains("SetupInstallationStatus.Failed", source);
         Assert.Contains("NativeGatewaySetupService", source);
-        Assert.Contains("_installer.InstallAsync(new CommandRunner(logger), cancellationToken)", source);
+        Assert.Contains("_installer.InstallAsync(commands, cancellationToken)", source);
         Assert.DoesNotContain("LaunchUriAsync", source);
         Assert.DoesNotContain("LaunchFileAsync", source);
         Assert.DoesNotContain("Architecture.Arm64", source);

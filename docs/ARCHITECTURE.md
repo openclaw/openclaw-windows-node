@@ -91,6 +91,7 @@ new attempt. This boundary does not change release signing or Windows policy.
 | Loopback MCP server for tests | `OpenClaw.TestSupport.FakeMcpServer` | authoritative |
 | Authenticated MCP HTTP client for app fixtures | `OpenClaw.TestSupport.McpClient` | authoritative |
 | Synthetic Gateway protocol/scenarios | `OpenClaw.TestSupport.Gateway.FixtureGatewayServer` + `GatewayScenario` | authoritative |
+| Interactive synthetic Gateway state and run lifetime | `InteractiveGatewayRuntime` owns memory-only sessions, transcripts, idempotency, runs and decisions; `FixtureQuestion` validates question records and `FixturePlayback` owns host-side pacing. No production provider or page bypass | authoritative |
 | Fixture-backed app profile/process lifetime | `OpenClaw.GatewayFixtureHost.GatewayFixtureProfile` + `GatewayFixtureRun` | authoritative |
 | Explicit fixture context and host-effect isolation gate | `OpenClaw.Shared.GatewayFixtureIsolation` | authoritative |
 | Passive fixture chat-render acknowledgement | `GatewayFixtureRenderObservation` (pure metadata) + `ReactorChatComposer` (UI applicator) | authoritative |
@@ -121,7 +122,7 @@ new attempt. This boundary does not change release signing or Windows policy.
 | Trusted Store and existing development Gateway registration identities | `NativeGatewayPackageIdentity` | authoritative |
 | Current-user Gateway package registration, health and package-qualified alias discovery | `NativeGatewayPackageResolver` | authoritative |
 | Prospective Companion-to-native-Gateway state/config/workspace path mapping | `NativeGatewayDataPathMapper`; `NativeGatewayPackageResolver` supplies package and known-folder context. Independent of existing-log resolution | authoritative |
-| Missing-package acquisition, one installation attempt and bounded registration verification | `NativeGatewayPackageAcquisition` | authoritative |
+| Store package install/update, one acquisition attempt and bounded registration verification | `NativeGatewayPackageAcquisition` | authoritative |
 | Shared Windows capability and permission selection, with runtime-specific install review | `CapabilitiesPage` | authoritative |
 | Native profile draft creation and canonical state/config launch paths | `NativeGatewaySetupService` + `NativeGatewayPaths` | authoritative |
 | Native onboarding capability admission and default/remembered gateway choice policy | `NativeGatewaySetupEligibility`, consuming `MxcAvailability` session probe metadata | authoritative |
@@ -227,6 +228,7 @@ new attempt. This boundary does not change release signing or Windows policy.
 | Post-save settings change effect ordering, detached snapshot comparison, and concurrent save serialization | `SettingsChangeCoordinator` | authoritative |
 | Exactly-once ordered app shutdown sequencing | `AppShutdownCoordinator` | authoritative |
 | App composition-root startup sequencing | `AppBootstrapper` (planned) | planned |
+| Packaged uninstall cleanup, preservation recovery and removed-target reconciliation | `GatewayPackageCleanup`; App only invokes its startup gate and presents recovery. Legacy name/path markers never grant unattended deletion authority; malformed receipts/settings retain pending evidence and fail closed | authoritative |
 | Inno migration records, preparation, and pre-start completion guard | `MigrationRecordCodec`, `MigrationPreparation`, `MigrationInventory`, `InnoMigrationStartupGuard` | authoritative |
 | Cross-session migration exclusion and source activity inspection | `MigrationOperationLock`, `InnoSourceActivityVerifier` (App only retains the runtime handle through process exit) | authoritative |
 | Store migration startup admission and finalization | `InnoInstallationDetector`, `InnoSourceRemovalVerifier`, `MigrationStartupRecordReader`, `MigrationInventoryCapture`, `StoreMigrationStartupCoordinator`, `StoreMigrationFinalizationCoordinator`, `StoreMigrationStartupGuard` | authoritative |
@@ -283,7 +285,7 @@ classifies these unavailable probes as network failures.
 `NativeGatewayMsixInstaller.InstallAsync` invokes the signed-in user's App Installer
 alias (`%LOCALAPPDATA%\Microsoft\WindowsApps\winget.exe`) through the existing
 `CommandRunner`, without a shell or elevation. The fixed command is
-`install --id 9NV70LV3D6XC --source msstore --silent --accept-package-agreements --accept-source-agreements --disable-interactivity --no-upgrade`.
+`install --id 9NV70LV3D6XC --source msstore --silent --accept-package-agreements --accept-source-agreements --disable-interactivity`.
 The native review explains that selecting **Set up gateway** authorizes installation
 and accepts the package and Store source agreements. Microsoft Store still owns
 architecture/package selection, signature validation and deployment. There is no
@@ -342,9 +344,9 @@ unset, selection, resolution and aliases are identical to the Store path.
 
 After native capability/permission review, `NativeGatewaySetupPage` starts
 automatically. It rechecks device support, then calls
-`NativeGatewayPackageAcquisition.EnsureAsync`. Only the typed
-`NativeGatewayPackageNotInstalledException` starts WinGet installation, once per attempt.
-Healthy registration skips installation; duplicate registration, unhealthy packages
+`NativeGatewayPackageAcquisition.EnsureAsync`. Missing packages and existing Store
+packages start WinGet install/update once per attempt; development packages skip it.
+Duplicate registration, unhealthy packages
 and missing aliases fail explicitly instead of triggering reinstall loops.
 The cancellable acquisition deadline is five minutes including installation and
 registration verification, with one-second polling after WinGet completes.

@@ -503,6 +503,91 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
     }
 
     [Fact]
+    public async Task NativeFallback_GatewayMoreRejectsAnOverlappingContinue()
+    {
+        using var nextStarted = new ManualResetEventSlim();
+        using var releaseNext = new ManualResetEventSlim();
+        try
+        {
+            await WithNativeAsync(async (_, frame, _, _, server, _) =>
+            {
+                var wizard = await EnterFallbackAsync(frame);
+                var moreField = typeof(WizardPage)
+                    .GetField("_moreOptionsButton", BindingFlags.NonPublic | BindingFlags.Instance)!;
+                Button? more = null;
+                await WaitAsync(() => (more = moreField.GetValue(wizard) as Button) is { IsLoaded: true },
+                    "Gateway More button loaded");
+                var continueButton = Find<Button>(wizard, "PrimaryButton");
+
+                Invoke(more!);
+                Assert.True(nextStarted.Wait(TimeSpan.FromSeconds(5)));
+                await WaitAsync(() => !continueButton.IsEnabled, "Continue disabled while More is in flight");
+
+                var overlapping = Assert.IsAssignableFrom<Task>(typeof(WizardPage)
+                    .GetMethod("SendCurrentAnswerAsync", BindingFlags.NonPublic | BindingFlags.Instance)!
+                    .Invoke(wizard, [false]));
+                await overlapping;
+                Assert.Single(server.Requests, request => request.Method == "wizard.next");
+
+                releaseNext.Set();
+                await WaitAsync(() => continueButton.IsEnabled, "Continue restored after More completes");
+                Assert.Single(server.Requests, request => request.Method == "wizard.next");
+            }, supported: false, wizardReply: (method, _) => method switch
+            {
+                "wizard.start" => new
+                {
+                    sessionId = "native-fallback",
+                    done = false,
+                    status = "running",
+                    step = new
+                    {
+                        id = "native-question",
+                        type = "select",
+                        title = "Native fallback question",
+                        message = "Synthetic local fixture.",
+                        options = new[]
+                        {
+                            new { value = "skip", label = "Skip for now" },
+                            new { value = "__more", label = "More" },
+                        },
+                    },
+                },
+                "wizard.next" => WaitForMoreReply(),
+                "wizard.cancel" => new { status = "cancelled" },
+                _ => throw new InvalidOperationException($"Unexpected wizard method: {method}"),
+            });
+        }
+        finally
+        {
+            releaseNext.Set();
+        }
+
+        object WaitForMoreReply()
+        {
+            nextStarted.Set();
+            Assert.True(releaseNext.Wait(TimeSpan.FromSeconds(10)));
+            return new
+            {
+                sessionId = "native-fallback",
+                done = false,
+                status = "running",
+                step = new
+                {
+                    id = "native-question-expanded",
+                    type = "select",
+                    title = "Native fallback question",
+                    message = "Synthetic local fixture.",
+                    options = new[]
+                    {
+                        new { value = "skip", label = "Skip for now" },
+                        new { value = "provider", label = "Provider" },
+                    },
+                },
+            };
+        }
+    }
+
+    [Fact]
     public async Task NativeFallback_StaleBindingCannotSendThroughReplacement()
     {
         var starts = 0;

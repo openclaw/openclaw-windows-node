@@ -19,11 +19,18 @@ release line and strictly advance that line's correction number. A correction
 tag must not be published if that exact tag already exists or a newer
 stable/correction release has already been published.
 
-Windows Hub release tags are an independent version domain. They are not
-validated against, or required to match, any other repository's releases.
-Managed Gateway setup resolves the npm `latest` package independently and
-verifies that the protocol-v4 handshake reports the installed package version.
-A Windows Hub correction release does not select a Gateway package version.
+Windows Hub stable and correction releases remain an independent version
+domain. Managed Gateway setup resolves the npm `latest` package independently
+and verifies that the protocol-v4 handshake reports the installed package
+version. A Windows Hub correction release does not select a Gateway package
+version.
+
+The daily Windows alpha train is the narrow exception. Before creating a tag,
+the workflow reads the canonical latest stable release from
+`openclaw/openclaw`. If that Gateway release line is numerically newer than the
+GitVersion-derived Windows line, the workflow starts the matching Windows train
+at `vX.Y.Z-alpha.1`. Equal or older Gateway lines leave GitVersion's result
+unchanged, so the lookup can advance but never downgrade Windows.
 
 `GitVersion.yml` controls how tag history becomes SemVer. The product build
 imports GitVersion through `src\Directory.Build.props`, so normal `dotnet build`,
@@ -90,9 +97,11 @@ and runs only the one matching the current Pacific UTC offset. It compares the
 default-branch head with all published GitHub Releases and does nothing when
 one already points at that commit. It defers while an unpublished non-alpha tag
 points at the head. When changes exist, it uses the same GitVersion 6.8.x line
-to create the next canonical `vX.Y.Z-alpha.N` tag and refuses to create a tag
-that is not strictly newer than the newest reachable canonical alpha tag. It
-then explicitly dispatches the Build and Test workflow at that tag. The
+and compares that alpha with the canonical latest stable `openclaw/openclaw`
+release. A newer Gateway line starts at `vX.Y.Z-alpha.1`; otherwise the
+GitVersion alpha is kept. The workflow refuses to create a tag that is not
+strictly newer than the newest reachable canonical alpha tag. It then explicitly
+dispatches the Build and Test workflow at that tag. The
 explicit dispatch is required because a tag pushed with the workflow's
 `GITHUB_TOKEN` does not itself start another workflow. The normal test, E2E,
 build, signing, and release jobs remain the publication gate; the alpha GitHub
@@ -170,8 +179,9 @@ For example:
 - Keep numeric correction tags behind the stable-ordering validation in both
   release resolution and publication; never classify every hyphenated tag as a
   prerelease without recognizing this exception.
-- Keep the correction validator free of other repositories' release APIs. Windows
-  Hub release tags and the pinned Gateway version are separate domains.
+- Keep the correction validator free of other repositories' release APIs.
+  Stable correction ordering and Gateway-aligned daily alpha selection are
+  separate policies.
 
 ## References
 

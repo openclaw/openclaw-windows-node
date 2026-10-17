@@ -194,15 +194,15 @@ from `PATH`. Native setup uses the same Windows capabilities and permission
 selection as WSL, with native package installation consent on that same page.
 Selecting **Set up gateway** starts native progress without WSL, Local AI or
 Tailscale provisioning and without an additional review page.
-A missing package is installed automatically using
-`winget install --id 9NV70LV3D6XC --source msstore --silent --accept-package-agreements --accept-source-agreements --disable-interactivity --no-upgrade`;
+A Store package is installed or refreshed automatically using
+`winget install --id 9NV70LV3D6XC --source msstore --silent --accept-package-agreements --accept-source-agreements --disable-interactivity`;
 unhealthy registration or unavailable aliases show an explicit repair error.
 The fixed product is [OpenClaw Gateway in Microsoft Store](https://apps.microsoft.com/detail/9NV70LV3D6XC).
 No MSIX version or download URL is pinned; Store selects the current compatible
-release. Existing healthy installations are not silently upgraded during setup.
+release. Native setup checks for available Store updates before reusing a healthy Store package. Existing development profiles keep their package identity.
 To explicitly refresh one, run
 `winget install --id 9NV70LV3D6XC --source msstore --accept-package-agreements --accept-source-agreements`
-without `--no-upgrade`. WinGet may report that no newer package is available.
+WinGet reporting that no newer package is available is a successful no-op.
 
 An unfinished draft saved against a different package family (for example, the
 older development Gateway) offers **Discard and set up again**, just like a
@@ -241,8 +241,8 @@ runs one current-user `Repair-WinGetPackageManager -Force -Latest` bootstrap and
 The repair installs Microsoft's WinGet client module; it never bypasses certificate validation.
 Other failures show explicit repair guidance and **Retry setup**. The normal
 path has no separate install, availability-check or wizard-launch buttons.
-An already installed healthy package skips installation. Retry checks registration
-again before invoking WinGet. Companion does not download Gateway packages directly,
+An already installed healthy development/patch package skips installation. Store packages are checked for updates.
+Retry checks registration again before invoking WinGet. Companion does not download Gateway packages directly,
 change certificate trust, or uninstall packages on cancellation.
 
 Progress reuses the WSL spinner/checkmark rows. Normal completion uses the same

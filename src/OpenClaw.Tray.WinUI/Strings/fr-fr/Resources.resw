@@ -762,9 +762,6 @@ Utilisez l'une de ces options :
   <data name="ExecApproval_ArmHint" xml:space="preserve">
     <value>L'autorisation sera disponible dans un instant</value>
   </data>
-  <data name="ExecApproval_ScrollHint" xml:space="preserve">
-    <value>Faites défiler jusqu'à la fin de la commande avant d'autoriser</value>
-  </data>
   <data name="ExecApproval_ConfusableWarning" xml:space="preserve">
     <value>Cette commande mélange des jeux de caractères et peut ne pas être ce qu'elle paraît. Vérifiez-la attentivement.</value>
   </data>
@@ -4995,10 +4992,10 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Ouvrir l'intégration</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Title" xml:space="preserve">
-    <value>Installation MSIX détectée</value>
+    <value>Nettoyage de la passerelle</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Message" xml:space="preserve">
-    <value>La suppression d'OpenClaw via Paramètres Windows → Applications ne nettoiera PAS la passerelle locale (distribution WSL, image disque). Utilisez d'abord Supprimer la passerelle locale ci-dessous, puis désinstallez OpenClaw.</value>
+    <value>La désinstallation d’OpenClaw dans les paramètres Windows supprime automatiquement les passerelles gérées. Utilisez Supprimer la passerelle locale ci-dessous pour supprimer une passerelle tout en conservant l’application.</value>
   </data>
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>Supprime la distribution WSL (OpenClawGateway), son image disque, l'entrée de démarrage automatique et efface les identifiants de la passerelle. Votre jeton MCP est conservé. L'intégration sera réinitialisée.</value>

@@ -803,9 +803,6 @@ Use one of these options:
   <data name="ExecApproval_ArmHint" xml:space="preserve">
     <value>Allow becomes available in a moment</value>
   </data>
-  <data name="ExecApproval_ScrollHint" xml:space="preserve">
-    <value>Scroll to the end of the command before allowing</value>
-  </data>
   <data name="ExecApproval_ConfusableWarning" xml:space="preserve">
     <value>This command mixes character sets and may not read the way it looks. Check it carefully.</value>
   </data>
@@ -5000,10 +4997,10 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>Open onboarding</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Title" xml:space="preserve">
-    <value>MSIX installation detected</value>
+    <value>Gateway cleanup</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Message" xml:space="preserve">
-    <value>Removing OpenClaw from Windows Settings → Apps will NOT clean up the Local Gateway (WSL distro, disk image). Use Remove Local Gateway below FIRST, then uninstall OpenClaw.</value>
+    <value>Uninstalling OpenClaw in Windows Settings automatically removes managed Gateways. Use Remove Local Gateway below to remove a Gateway while keeping the app.</value>
   </data>
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>Removes the WSL distro (OpenClawGateway), its disk image, autostart entry, and clears gateway credentials. Your MCP token is preserved. Onboarding will reset.</value>

@@ -55,6 +55,7 @@ per-run artifacts. Existing MCP-only integration defaults remain unchanged.
 
 ### OpenClaw.Shared.Tests
 
+- **MXC output-drain timing** - Measures from launcher exit, not descendant identity publication. A gated 1,250 ms pre-exit case preserves the one-second drain assertion, 100 ms cleanup budget, exact final output, and owned-process cleanup.
 - **Model and display formatting** - activity glyphs, app version display, session labels, gateway usage/node display, channel status, and rich text helpers.
 - **Gateway and WebSocket behavior** - gateway client parsing, session keys, WebSocket base handling, URL normalization, local gateway classification, and token sanitization.
 - **Capabilities and MCP** - app/canvas/screen/camera/system capabilities, MCP auth token reset, MCP HTTP server, MCP tool bridge, MXC availability, MXC policy building, and command runners.
@@ -97,6 +98,7 @@ Unset the opt-in after the run.
 
 - **OpenClaw.Connection.Tests** keeps connection architecture tests separate from tray UI concerns.
 - **OpenClaw.Tray.UITests** covers A2UI/native WinUI rendering behavior that is awkward to validate through pure unit tests.
+  Markdown renderer record-shape tests also belong to `UICollection`: their WinRT-backed types must not initialize concurrently with the shared Windows App SDK bootstrap. A smoke-test contract guards both Markdown test classes' collection membership.
 - Onboarding AI card-action tests wait up to 10 seconds for the target card to be loaded, enabled, click-enabled, and attached to the page's non-null XamlRoot. Readiness timeouts report each condition; regression tests hold each readiness flag false before releasing it and verify that a permanently blocked card never invokes its action. A dispatcher yield alone is not a control-loaded guarantee.
 - **OpenClaw.WinNode.Cli.Tests** covers the standalone Windows node CLI contract.
 - **OpenClaw.SetupEngine.Tests** covers gateway setup and local WSL installation policy.
@@ -170,6 +172,28 @@ or dispatch CI. The [proof skill](../.agents/skills/openclaw-proof-validation/SK
 owns the evidence checklist.
 
 ### CI impact fast paths
+
+The setup/connect, revocation recovery and network recovery E2E jobs each run once
+against npm Latest, matching normal WSL setup.
+`scripts\Resolve-CiGateway.ps1` resolves Latest once in change-classification and
+supplies the exact version to the existing candidate-version setup path, so setup
+and assertions use the same version even if the tag moves during a run. No npm
+resolution failure falls back to the Store or another channel. Each job's artifact
+includes `gateway-release.json` with the npm selector, exact version, integrity and
+tarball URL. Resolution runs only when E2E is selected, without downloading an MSIX
+or consulting native packaging releases. Every selected E2E job contributes to the
+existing CI Gate.
+
+These are real WSL Gateway-to-Windows-node lanes, not native MSIX runtime proof.
+There is no duplicate Packaged WSL lane and no native Latest/Packaged runtime matrix.
+Native unit/helper tests and upstream package build/install checks are not substitutes
+for live isolated-session startup, pairing and recovery on a capable Windows client.
+Native developer builds use the verified npm archive for Latest, or released app
+bytes and the release packaging commit for Packaged. `scripts\test-gateway-npm-release.ps1` covers
+channel selection, source/Store overrides, exact pins, archive integrity and
+provenance without network access or changing installed packages.
+`scripts\test-gateway-packaged-release.ps1` covers release/tag resolution, embedded
+payload identity, asset digest, extraction safety and inventory-verified cache reuse.
 
 The `change-classification` job emits explicit booleans for `core_tests`,
 `tray_tests`, `ui_tests`, `setup_e2e`, `revocation_e2e`, `network_e2e`,

@@ -2,7 +2,7 @@ using OpenClaw.Connection.NativeGateway;
 
 namespace OpenClaw.SetupEngine;
 
-/// <summary>Installs missing packages and waits for verified current-user registration.</summary>
+/// <summary>Refreshes Store packages and waits for verified current-user registration.</summary>
 public static class NativeGatewayPackageAcquisition
 {
     /// <summary>
@@ -34,7 +34,9 @@ public static class NativeGatewayPackageAcquisition
         {
             try
             {
-                return await ResolveAsync();
+                var package = await ResolveAsync();
+                if (!package.PackageFamilyName.StartsWith(NativeGatewayPackageIdentity.StoreName + "_", StringComparison.Ordinal))
+                    return package;
             }
             catch (NativeGatewayPackageNotInstalledException)
             {

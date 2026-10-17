@@ -204,14 +204,12 @@ dotnet build .\src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj -r win-x64 -p:
 
 ### Run
 
-`run-app-local.ps1` allows `main` by default. Pass `-AllowNonMain` when previewing a feature branch or linked worktree.
-
 ```powershell
 .\run-app-local.ps1
 .\run-app-local.ps1 -NoBuild
-.\run-app-local.ps1 -AllowNonMain -Isolated
-.\run-app-local.ps1 -AllowNonMain -Dev -Isolated
-.\run-app-local.ps1 -AllowNonMain -Configuration Release -Isolated -UpdateChannel alpha
+.\run-app-local.ps1 -Isolated
+.\run-app-local.ps1 -Dev -Isolated
+.\run-app-local.ps1 -Configuration Release -Isolated -UpdateChannel alpha
 ```
 
 ### Test

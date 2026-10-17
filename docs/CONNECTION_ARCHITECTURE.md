@@ -30,6 +30,12 @@ credential outside the artifact manifest. The child receives it through
 `LLAMA_API_KEY`, never arguments or the router preset. HTTP clients send Bearer
 headers only after loopback validation; RPC publication carries the provider key
 inside the authenticated request. WSL callers retain their existing behavior.
+Credential publication stages and flushes a protected sibling file before a
+non-overwriting rename. Readers share read and delete access, but not write
+access: Windows can expose the published name before the rename handle closes.
+The ciphertext length (1-4096 bytes) and bounded read use the same open handle;
+invalid ciphertext or a decrypted key other than 32 bytes fails closed without
+rotating the credential.
 `LocalAiGatewayLifecycle` composes this path with the existing WSL lifecycle.
 `LocalAI/gateway-binding.json` records the exact Gateway endpoint and device
 identity, selected model, previous primary, owned allowlist entry and acknowledged
@@ -193,6 +199,9 @@ A floating-style subtle reopen button reserves a dedicated 56 DIP row at
 the content's top-left below the titlebar, never covering hosted hit targets.
 The pane toggle retains a 40 DIP target and 16 DIP glyph in both states; focus
 moves to the surviving toggle. Pane changes do not remount chat or reset drafts.
+Both Workspace toggle states and the Settings toggle use the native
+`SubtleButtonStyle` with zero padding for icon-only content. The style's default
+text-button padding must not squeeze the glyph inside the fixed 40 DIP target.
 The companion uses a native TitleBar titled OpenClaw Settings with shared claw
 artwork. Search, Back, and Forward live beside the toggle in its stable sidebar
 toolbar. The native pane reserves 56 DIP above its items, including in compact mode.
@@ -354,6 +363,18 @@ orchestration. Three narrower owners sit behind it:
 `NodeConnector`, `SshTunnelService/Manager`, `SetupCodeDecoder`, and connection
 interfaces/DTOs/enums remain separate. This project has zero WinUI dependencies
 and is independently testable.
+
+`ChatNavigationReadiness` settles operator readiness, its real deadline, and
+caller cancellation through one atomic completion source. A connected event
+that completes first cannot become a timeout just because notification or UI
+resumption is delayed, and retains precedence over later cancellation. A timeout
+result rechecks caller cancellation when its continuation resumes, so canceled
+navigation propagates cancellation instead of consuming a stale timeout.
+Downstream continuations remain asynchronous because
+connection state events may be emitted while the manager holds its transition
+semaphore. The ready/null fast path and post-subscription snapshot check retain
+their existing precedence; every pending wait disposes its deadline and both
+cancellation registrations and detaches its state handler.
 
 Native Check/Next keeps device-token precedence. Only a typed
 `AUTH_DEVICE_TOKEN_MISMATCH` may trigger one recovery in the disposable

@@ -244,6 +244,7 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
 
     public void EnsureRunning()
     {
+        Gateway.Interactive?.ThrowIfFaulted();
         if (!IsRunning)
             throw new InvalidOperationException($"Fixture app exited (code {_process?.ExitCode}). Artifacts: {ArtifactsDirectory}");
     }
@@ -301,6 +302,8 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
             Redact(JsonSerializer.Serialize(metadata, new JsonSerializerOptions { WriteIndented = true })));
         await File.WriteAllLinesAsync(Path.Combine(ArtifactsDirectory, "gateway-requests.jsonl"),
             Gateway.Requests.Select(request => Redact(JsonSerializer.Serialize(request))));
+        await File.WriteAllLinesAsync(Path.Combine(ArtifactsDirectory, "gateway-events.jsonl"),
+            Gateway.Events.Select(item => JsonSerializer.Serialize(item)));
         foreach (var file in new[] { "crash.log", "openclaw-tray.log" })
         {
             var source = Path.Combine(Profile.DataDirectory, file);
