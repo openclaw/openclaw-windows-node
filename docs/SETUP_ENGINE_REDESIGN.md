@@ -296,6 +296,29 @@ absent or unregister succeeds. To replace such a legacy distro, uninstall it
 first, using `--uninstall --confirm-destructive` and the same distro name, then
 rerun setup with a supported new name.
 
+The Inno uninstall helper deletes the configured distro child under the exact
+generated local-data root, not the user-selected install folder or its basename.
+This runs in the same migration-admitted phase, after WSL reports the configured
+distro absent or unregister succeeds. There is no separate destructive
+post-uninstall script mode. If WSL is unavailable, distro directories and their
+ownership markers remain because registration state cannot be confirmed.
+An uncertain custom install folder is preserved with
+an `artifactWarnings` entry in `uninstall-gateway-result.json` and a warning in
+`uninstall-gateway-wsl.log` under that folder. Reparse points anywhere above,
+at, or inside the configured generated child stop recursive deletion.
+
+After successful distro cleanup, the helper removes only an ordinary ownership
+marker matching that distro and install path. Unreadable or mismatched markers
+remain with a warning. Inno then removes allowlisted generated files and caches
+only when the install folder is
+the generated-data root. Wrong-type or redirected children remain. External
+model caches, unknown files, sibling WSL children, chat metadata for preserved
+gateways, and `windows-node-context.json` (which can track workspace changes in
+other distros) are not blanket-deleted. `LocalAI` also remains: it can contain
+the only backup of the user's original `.wslconfig`, and this Inno path does not
+restore that configuration. Local AI teardown remains a separate operation.
+These checks do not replace signed-installer or native-WSL proof.
+
 ```json
 {
   "DistroName": "OpenClawGateway",
