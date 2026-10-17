@@ -12,6 +12,8 @@ namespace OpenClaw.Shared.Tests;
 
 public class OpenClawGatewayClientTests
 {
+    private static readonly TimeSpan CloseHandshakeTimeout = TimeSpan.FromSeconds(3);
+
     // Test helper to access private methods through reflection
     private class GatewayClientTestHelper
     {
@@ -1529,11 +1531,15 @@ public class OpenClawGatewayClientTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task AuthenticatedSigningIdentity_ComesFromConnectNotOptionalHelloEcho(bool spoofEcho)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task AuthenticatedSigningIdentity_ComesFromConnectNotOptionalHelloEcho(
+        bool spoofEcho,
+        bool useManagedWebSocket)
     {
-        using var server = new LoopbackWebSocketServer();
+        using var server = new LoopbackWebSocketServer(useManagedWebSocket);
         await server.StartAsync();
         var identityPath = CreateTempIdentityPath();
         using var client = new OpenClawGatewayClient(server.WebSocketUrl, "synthetic",
@@ -1574,7 +1580,9 @@ public class OpenClawGatewayClientTests
         File.Copy(Path.Combine(replacementPath, "device-key-ed25519.json"),
             Path.Combine(identityPath, "device-key-ed25519.json"), true);
         Assert.Equal(signedId, client.AuthenticatedSigningDeviceId);
-        await client.DisconnectAsync();
+        var disconnect = client.DisconnectAsync();
+        await server.CloseSocketAsync(0).WaitAsync(CloseHandshakeTimeout);
+        await disconnect.WaitAsync(CloseHandshakeTimeout);
         Assert.Null(client.AuthenticatedSigningDeviceId);
     }
 

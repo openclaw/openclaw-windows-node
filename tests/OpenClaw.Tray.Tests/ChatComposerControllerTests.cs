@@ -1101,16 +1101,21 @@ public sealed class ChatComposerControllerTests
         using var registration = port.LastStopToken!.Value.Register(() =>
         {
             callbackInvoked = true;
-            callbackWork = Task.Run(() =>
+            // Probe lock ownership without waiting for a shared thread-pool worker.
+            callbackWork = Task.Factory.StartNew(() =>
             {
                 controller.TestOnlyProbeOperationGate();
                 callbackObservedDisposed = controller.IsDisposed;
                 controller.StartVoiceRecording();
-            });
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
             callbackWorkCompleted = callbackWork.Wait(TimeSpan.FromSeconds(2));
         });
 
-        var disposeTask = Task.Run(controller.Dispose);
+        var disposeTask = Task.Factory.StartNew(
+            controller.Dispose,
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
         var exception = await Record.ExceptionAsync(
             async () => await disposeTask.WaitAsync(TimeSpan.FromSeconds(5)));
         if (callbackWork is not null)
