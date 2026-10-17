@@ -52,11 +52,12 @@ public sealed partial class GatewayScenario
     private readonly bool _allowSessionMutations;
     private readonly bool _allowChatSend;
     public bool IsInteractive { get; }
+    private readonly ContextUsageFixture? _contextUsage;
     private readonly Dictionary<string, JsonObject?> _sessionChanges = new(StringComparer.Ordinal);
     private readonly List<object> _createdAgents = [];
     private int _chatSendCount;
 
-    public string Name => IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation" : BrowseName;
+    public string Name => _contextUsage is not null ? ContextUsageFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation" : BrowseName;
     public int Version => 1;
     public int ProtocolVersion => GatewayProtocolContract.CurrentVersion;
     public string ContractProvenance =>
@@ -68,7 +69,7 @@ public sealed partial class GatewayScenario
     private GatewayScenario(Session[] sessions, IReadOnlyDictionary<string, JsonElement> reads,
         Func<string, JsonElement, object>? setup = null, bool advertiseSetup = true, bool allowAgentCreation = false,
         bool allowSessionMutations = false, bool allowChatSend = false, JsonObject[]? cronJobs = null,
-        bool interactive = false)
+        bool interactive = false, ContextUsageFixture? contextUsage = null)
     {
         _sessions = sessions;
         _reads = reads;
@@ -78,6 +79,7 @@ public sealed partial class GatewayScenario
         IsInteractive = interactive;
         _allowChatSend = allowChatSend;
         _cronJobs = cronJobs?.ToDictionary(job => job["id"]!.GetValue<string>(), StringComparer.Ordinal);
+        _contextUsage = contextUsage;
         SessionKeys = Array.AsReadOnly(sessions.Select(s => s.Key).ToArray());
         ReadMethods = Array.AsReadOnly(new[]
         {
@@ -106,6 +108,13 @@ public sealed partial class GatewayScenario
     {
         var browse = CreateBrowse();
         return new(browse._sessions, browse._reads, interactive: true);
+    }
+
+    public static GatewayScenario CreateContextUsage(ContextUsageFixture contextUsage)
+    {
+        ArgumentNullException.ThrowIfNull(contextUsage);
+        var browse = CreateBrowse();
+        return new(browse._sessions, browse._reads, contextUsage: contextUsage);
     }
 
     /// <summary>Explicit synthetic setup replies only. The host never executes provider or package operations.</summary>
@@ -261,9 +270,11 @@ public sealed partial class GatewayScenario
         server = new { version = "fixture-1", connId = connectionId },
         features = new
         {
-            methods = IsInteractive ? ReadMethods.Concat(InteractiveGatewayRuntime.Methods).Distinct().ToArray() : ReadMethods,
+            methods = IsInteractive ? ReadMethods.Concat(InteractiveGatewayRuntime.Methods).Distinct().ToArray()
+                : _contextUsage is not null ? ReadMethods.Concat(["chat.send"]).ToArray() : ReadMethods,
             events = IsInteractive
                 ? new[] { "connect.challenge", "sessions.changed", "agent", "chat", "question.requested", "question.resolved", "exec.approval.requested", "exec.approval.resolved" }
+                : _contextUsage is not null ? new[] { "connect.challenge", "sessions.changed", "agent", "chat" }
                 : new[] { "connect.challenge", "sessions.changed", "agent" }
         },
         snapshot = new
@@ -273,6 +284,7 @@ public sealed partial class GatewayScenario
         },
         auth = new { role = "operator", scopes = IsInteractive
             ? new[] { "operator.read", "operator.write", "operator.sessions.read", "operator.sessions.write", "operator.questions", "operator.approvals" }
+            : _contextUsage is not null ? new[] { "operator.read", "operator.write" }
             : _allowAgentCreation || _allowSessionMutations || _cronJobs is not null ? new[] { "operator.admin", "operator.read" } : new[] { _setup is null ? "operator.read" : "operator.admin" } },
         policy = new { maxPayload = 1_048_576, maxBufferedBytes = 1_048_576, tickIntervalMs = 30_000 }
     };
@@ -283,6 +295,8 @@ public sealed partial class GatewayScenario
     {
         if (_cronJobs is not null && method is "cron.list" or "cron.status" or "cron.add" or "cron.update")
             return RespondCron(method, parameters);
+        if (_contextUsage is not null && method == "chat.send")
+            return _contextUsage.Send(parameters);
         if (_setup is not null && SetupMethods.Contains(method, StringComparer.Ordinal))
             return _setup(method, parameters);
         if (_allowAgentCreation && method is "agents.create" or "agents.list")
@@ -367,12 +381,13 @@ public sealed partial class GatewayScenario
                 .Where(row => (row["archived"]?.GetValue<bool>() ?? false) == (OptionalBoolean(p, "archived") ?? false))
                 .Take(limit).ToArray();
         }
-        return new
+        var listing = JsonSerializer.SerializeToElement(new
         {
             ts = Epoch.ToUnixTimeMilliseconds(), count = rows.Length,
             defaults = new { modelProvider = "fixture", model = "browse", contextTokens = 128_000 },
             sessions = rows
-        };
+        });
+        return _contextUsage?.List(listing) ?? (object)listing;
     }
 
     private object MutateSession(string method, JsonElement p)
@@ -407,6 +422,8 @@ public sealed partial class GatewayScenario
         ValidateProperties(p, "sessionKey", "limit");
         var session = FindSession(RequiredString(p, "sessionKey"));
         var limit = PositiveInt(p, "limit", LongMessageCount);
+        if (_contextUsage is not null && session.Key == ContextUsageFixture.SessionKey)
+            return _contextUsage.History(session.Id, limit);
         return new
         {
             sessionKey = session.Key, sessionId = session.Id,

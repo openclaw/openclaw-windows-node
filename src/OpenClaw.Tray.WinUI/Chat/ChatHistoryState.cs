@@ -203,17 +203,21 @@ internal sealed class ChatHistoryState
         static string SequenceKey(ChatTimelineItemKind kind, int sequence) =>
             $"{kind}|{sequence}";
 
-        var contentTimestamps = new Dictionary<string, List<long>>(
+        var contentTimestamps = new Dictionary<string, List<(long Timestamp, ChatTimelineItem Entry)>>(
             StringComparer.Ordinal);
-        var messageIds = new HashSet<string>(StringComparer.Ordinal);
-        var sequenceCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+        var messageIds = new Dictionary<string, ChatTimelineItem>(StringComparer.Ordinal);
+        var sequenceEntries = new Dictionary<string, (ChatTimelineItem FinalEntry, int Count)>(StringComparer.Ordinal);
         foreach (var entry in rebuilt.Entries)
         {
             rebuiltMetadata.TryGetValue(entry.Id, out var metadata);
             if (!string.IsNullOrEmpty(metadata?.GatewayMessageId))
-                messageIds.Add(metadata.GatewayMessageId);
+            {
+                if (entry.Kind == ChatTimelineItemKind.Assistant ||
+                    !messageIds.ContainsKey(metadata.GatewayMessageId))
+                    messageIds[metadata.GatewayMessageId] = entry;
+            }
             if (metadata?.OpenClawSeq is { } sequence)
-                IncrementCount(sequenceCounts, SequenceKey(entry.Kind, sequence));
+                RecordSequenceEntry(sequenceEntries, SequenceKey(entry.Kind, sequence), entry);
             if (metadata?.Timestamp is { } timestamp && timestamp != default)
             {
                 var key = ContentKey(entry.Kind, entry.Text);
@@ -222,8 +226,41 @@ internal sealed class ChatHistoryState
                     timestamps = [];
                     contentTimestamps[key] = timestamps;
                 }
-                timestamps.Add(timestamp.ToUnixTimeSeconds());
+                timestamps.Add((timestamp.ToUnixTimeSeconds(), entry));
             }
+        }
+
+        void PreserveMatchedUsage(ChatTimelineItem historyEntry, ChatTimelineItemKind kind, ChatEntryMetadata? liveMetadata)
+        {
+            if (kind != ChatTimelineItemKind.Assistant ||
+                historyEntry.Kind != ChatTimelineItemKind.Assistant ||
+                liveMetadata?.UsageSnapshotTimestamp is not { } latest ||
+                !rebuiltMetadata.TryGetValue(historyEntry.Id, out var historyMetadata) ||
+                (historyMetadata.UsageSnapshotTimestamp > latest ||
+                 historyMetadata.UsageSnapshotTimestamp == latest && !liveMetadata.UsageSnapshotIsAuthoritative))
+            {
+                return;
+            }
+            // A usage-free final advances freshness without erasing known history usage.
+            var hasLiveUsage = liveMetadata.UsageContributionTokens is > 0 ||
+                               liveMetadata.UsageSnapshotIsAuthoritative;
+            var useLiveUsage = hasLiveUsage && liveMetadata.UsageMeasurementTimestamp is { } measured &&
+                (historyMetadata.UsageMeasurementTimestamp is not { } historyMeasured ||
+                 measured > historyMeasured ||
+                 measured == historyMeasured && liveMetadata.UsageSnapshotIsAuthoritative);
+            var usage = useLiveUsage ? liveMetadata : historyMetadata;
+            rebuiltMetadata[historyEntry.Id] = historyMetadata with
+            {
+                InputTokens = usage.InputTokens,
+                OutputTokens = usage.OutputTokens,
+                ResponseTokens = usage.ResponseTokens,
+                ContextPercent = usage.ContextPercent,
+                ContextTokens = usage.ContextTokens,
+                UsageContributionTokens = usage.UsageContributionTokens,
+                UsageMeasurementTimestamp = usage.UsageMeasurementTimestamp,
+                UsageSnapshotTimestamp = latest,
+                UsageSnapshotIsAuthoritative = usage.UsageSnapshotIsAuthoritative,
+            };
         }
 
         var existingIds = rebuilt.Entries
@@ -244,18 +281,21 @@ internal sealed class ChatHistoryState
         {
             priorMetadata.TryGetValue(entry.Id, out var metadata);
             if (!string.IsNullOrEmpty(metadata?.GatewayMessageId) &&
-                messageIds.Contains(metadata.GatewayMessageId))
+                messageIds.TryGetValue(metadata.GatewayMessageId, out var matchingId))
             {
+                PreserveMatchedUsage(matchingId, entry.Kind, metadata);
                 ConsumeAnyTimestamp(
                     contentTimestamps,
                     ContentKey(entry.Kind, entry.Text));
                 continue;
             }
             if (metadata?.OpenClawSeq is { } sequence &&
-                TryConsumeCount(
-                    sequenceCounts,
-                    SequenceKey(entry.Kind, sequence)))
+                TryConsumeEntry(
+                    sequenceEntries,
+                    SequenceKey(entry.Kind, sequence),
+                    out var sequenceEntryId))
             {
+                PreserveMatchedUsage(sequenceEntryId, entry.Kind, metadata);
                 ConsumeAnyTimestamp(
                     contentTimestamps,
                     ContentKey(entry.Kind, entry.Text));
@@ -277,9 +317,10 @@ internal sealed class ChatHistoryState
             {
                 var priorSeconds = timestamp.ToUnixTimeSeconds();
                 var match = rebuiltTimes.FindIndex(value =>
-                    Math.Abs(value - priorSeconds) <= 2);
+                    Math.Abs(value.Timestamp - priorSeconds) <= 2);
                 if (match >= 0)
                 {
+                    PreserveMatchedUsage(rebuiltTimes[match].Entry, entry.Kind, metadata);
                     rebuiltTimes.RemoveAt(match);
                     continue;
                 }
@@ -304,15 +345,16 @@ internal sealed class ChatHistoryState
                     timestamps = [];
                     contentTimestamps[key] = timestamps;
                 }
-                timestamps.Add(addedTimestamp.ToUnixTimeSeconds());
+                timestamps.Add((addedTimestamp.ToUnixTimeSeconds(), entryToAdd));
             }
             if (!string.IsNullOrEmpty(metadata?.GatewayMessageId))
-                messageIds.Add(metadata.GatewayMessageId);
+                messageIds.TryAdd(metadata.GatewayMessageId, entryToAdd);
             if (metadata?.OpenClawSeq is { } addedSequence)
             {
-                IncrementCount(
-                    sequenceCounts,
-                    SequenceKey(entryToAdd.Kind, addedSequence));
+                RecordSequenceEntry(
+                    sequenceEntries,
+                    SequenceKey(entryToAdd.Kind, addedSequence),
+                    entryToAdd);
             }
             if (metadata is not null)
                 rebuiltMetadata[entryToAdd.Id] = metadata;
@@ -347,26 +389,34 @@ internal sealed class ChatHistoryState
         metadata.Timestamp is { } timestamp && timestamp >= requestStartedAt ||
         metadata.IsLocalQueuedSend;
 
-    private static void IncrementCount(
-        Dictionary<string, int> counts,
-        string key) =>
-        counts[key] = counts.TryGetValue(key, out var count) ? count + 1 : 1;
-
-    private static bool TryConsumeCount(
-        Dictionary<string, int> counts,
-        string key)
+    private static void RecordSequenceEntry(
+        Dictionary<string, (ChatTimelineItem FinalEntry, int Count)> entries,
+        string key,
+        ChatTimelineItem entry)
     {
-        if (!counts.TryGetValue(key, out var count) || count <= 0)
+        entries.TryGetValue(key, out var existing);
+        entries[key] = (entry, existing.Count + 1);
+    }
+
+    private static bool TryConsumeEntry(
+        Dictionary<string, (ChatTimelineItem FinalEntry, int Count)> entries,
+        string key,
+        [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out ChatTimelineItem? entry)
+    {
+        entry = null;
+        if (!entries.TryGetValue(key, out var existing))
             return false;
-        if (count == 1)
-            counts.Remove(key);
+        // Each matching part preserves freshness on the final assistant usage owner.
+        entry = existing.FinalEntry;
+        if (existing.Count == 1)
+            entries.Remove(key);
         else
-            counts[key] = count - 1;
+            entries[key] = (existing.FinalEntry, existing.Count - 1);
         return true;
     }
 
     private static void ConsumeAnyTimestamp(
-        Dictionary<string, List<long>> timestamps,
+        Dictionary<string, List<(long Timestamp, ChatTimelineItem Entry)>> timestamps,
         string key)
     {
         if (timestamps.TryGetValue(key, out var values) && values.Count > 0)
