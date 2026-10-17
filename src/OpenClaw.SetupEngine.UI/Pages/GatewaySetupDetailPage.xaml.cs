@@ -59,9 +59,14 @@ public sealed partial class GatewaySetupDetailPage : Page
     private void Back_Click(object sender, RoutedEventArgs e)
     {
         if (_installing) return;
-        if (_args is { Detail: GatewaySetupDetail.Networking, ReturnToReview: false })
-            SetupWindow.Active?.NavigateToLocalAiSetup(back: true);
-        else if (SetupWindow.Active?.IsAiLocalReview == true)
+        if (_args is { Detail: GatewaySetupDetail.Networking } networking)
+        {
+            if (networking.ReturnToReview)
+                SetupWindow.Active?.NavigateToGatewaySetup(back: true);
+            else
+                SetupWindow.Active?.NavigateToLocalAiSetup(back: true);
+        }
+        else if (SetupWindow.Active?.IsLocalAiRecovery == true)
             SetupWindow.Active.CancelLocalAiReview();
         else
             SetupWindow.Active?.NavigateToGatewaySetup(back: true);
@@ -71,7 +76,7 @@ public sealed partial class GatewaySetupDetailPage : Page
 
     private void UpdatePrimaryAction()
     {
-        if (_args?.Detail != GatewaySetupDetail.LocalAi || SetupWindow.Active?.IsAiLocalReview != true)
+        if (_args?.Detail != GatewaySetupDetail.LocalAi || SetupWindow.Active?.IsLocalAiRecovery != true)
             return;
         PrimaryButton.Content = SetupLocalization.GetString("Onboarding_AiSetup_LocalInstall");
         PrimaryButton.IsEnabled = !_installing && _args.Draft.CanInstall(localAiRecovery: true);
@@ -82,7 +87,7 @@ public sealed partial class GatewaySetupDetailPage : Page
 
     private async Task PrimaryAsync(object sender, RoutedEventArgs e)
     {
-        if (_args?.Detail != GatewaySetupDetail.LocalAi || SetupWindow.Active?.IsAiLocalReview != true)
+        if (_args?.Detail != GatewaySetupDetail.LocalAi || SetupWindow.Active?.IsLocalAiRecovery != true)
         {
             Back_Click(sender, e);
             return;
