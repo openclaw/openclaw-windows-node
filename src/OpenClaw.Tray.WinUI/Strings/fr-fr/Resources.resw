@@ -7893,6 +7893,10 @@ Vos paramètres, votre passerelle, vos fichiers et vos modèles restent en place
   <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>Démarrer et vérifier le Gateway</value></data>
   <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>Réessayer la configuration</value></data>
   <data name="Onboarding_Native_Preview" xml:space="preserve"><value>Aperçu uniquement. Aucun package ne sera installé et aucun Gateway ne sera démarré.</value></data>
+=======
+  <data name="Onboarding_Native_Activity.Header" xml:space="preserve"><value>Activité détaillée</value></data>
+  <data name="Onboarding_Native_OpenLog.Content" xml:space="preserve"><value>Ouvrir le fichier journal</value></data>
+  <data name="Onboarding_Native_FailedStep" xml:space="preserve"><value>{0} n'a pas abouti</value></data>
   <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>Ces fonctionnalités Windows deviennent utilisables une fois le mode nœud connecté et associé au Gateway. Les autorisations Windows et les approbations de commandes restent applicables.</value></data>
   <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>Gateway natif configuré</value></data>
   <data name="Onboarding_Native_CapabilitySummary" xml:space="preserve"><value>{0}. Vous pouvez modifier ces choix dans les paramètres de Companion.</value></data>

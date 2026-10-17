@@ -32,7 +32,17 @@ public sealed record IsolatedGatewayStatus(
     IReadOnlyList<IsolatedGatewayListener> Listeners,
     string? SessionState = null,
     string? ReadinessState = null,
-    string? ReadinessReason = null);
+    string? ReadinessReason = null)
+{
+    /// <summary>Credential-free, SID-free status summary for setup logs and diagnostics.</summary>
+    public string Describe() =>
+        $"state {State}" +
+        (Port is { } port ? $", port {port}" : "") +
+        (SessionState is { } session ? $", session {session}" : "") +
+        (ReadinessState is { } readiness
+            ? $", readiness {readiness}" + (ReadinessReason is { } reason ? $" ({reason})" : "")
+            : "");
+}
 
 /// <summary>No matching trusted package is registered. Other validation failures are not install requests.</summary>
 public sealed class NativeGatewayPackageNotInstalledException : InvalidOperationException

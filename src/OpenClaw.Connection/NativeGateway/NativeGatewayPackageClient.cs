@@ -1,9 +1,10 @@
 using System.Diagnostics;
 using System.Text.Json;
+using OpenClaw.Shared;
 
 namespace OpenClaw.Connection.NativeGateway;
 
-public sealed record NativeGatewayCommandResult(int ExitCode, string StandardOutput);
+public sealed record NativeGatewayCommandResult(int ExitCode, string StandardOutput, string StandardError = "");
 
 /// <summary>Invokes only the installed package's qualified control alias and checks its JSON contract.</summary>
 public sealed class NativeGatewayPackageClient
@@ -12,26 +13,74 @@ public sealed class NativeGatewayPackageClient
 
     private readonly Func<NativeGatewayPackage, IReadOnlyList<string>, string?, CancellationToken,
         Task<NativeGatewayCommandResult>> _invoke;
+    private readonly IOpenClawLogger _logger;
 
-    public NativeGatewayPackageClient()
-        : this(InvokePackageAsync)
+    public NativeGatewayPackageClient(IOpenClawLogger? logger = null)
+        : this(InvokePackageAsync, logger)
     {
     }
 
     internal NativeGatewayPackageClient(
         Func<NativeGatewayPackage, IReadOnlyList<string>, CancellationToken,
-            Task<NativeGatewayCommandResult>> invoke) =>
-        _invoke = (package, arguments, _, cancellationToken) =>
-            invoke(package, arguments, cancellationToken);
+            Task<NativeGatewayCommandResult>> invoke,
+        IOpenClawLogger? logger = null)
+        : this((package, arguments, _, cancellationToken) => invoke(package, arguments, cancellationToken), logger)
+    {
+    }
 
     internal NativeGatewayPackageClient(
         Func<NativeGatewayPackage, IReadOnlyList<string>, string?, CancellationToken,
-            Task<NativeGatewayCommandResult>> invoke) => _invoke = invoke;
+            Task<NativeGatewayCommandResult>> invoke,
+        IOpenClawLogger? logger = null)
+    {
+        _invoke = invoke;
+        _logger = logger ?? NullLogger.Instance;
+    }
+
+    private async Task<NativeGatewayCommandResult> InvokeAsync(
+        NativeGatewayPackage package,
+        IReadOnlyList<string> arguments,
+        string? standardInput,
+        CancellationToken cancellationToken)
+    {
+        // Arguments never carry secrets: the restore token travels through stdin,
+        // and stdin is never logged.
+        string command = "clawctl " + string.Join(' ', arguments);
+        _logger.Debug($"Running {command}");
+        var startedAt = Stopwatch.GetTimestamp();
+        try
+        {
+            NativeGatewayCommandResult result = await _invoke(
+                package, arguments, standardInput, cancellationToken).ConfigureAwait(false);
+            LogCompletion(command, result, Stopwatch.GetElapsedTime(startedAt));
+            return result;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.Warn($"{command} failed after {Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:0} ms: {ex.GetType().Name}: {TokenSanitizer.SanitizeLogMessage(ex.Message)}");
+            throw;
+        }
+    }
+
+    private void LogCompletion(string command, NativeGatewayCommandResult result, TimeSpan elapsed)
+    {
+        void Level(string message)
+        {
+            if (result.ExitCode == 0) _logger.Debug(message);
+            else _logger.Warn(message);
+        }
+        Level($"{command} exited {result.ExitCode} in {elapsed.TotalMilliseconds:0} ms");
+        if (!string.IsNullOrWhiteSpace(result.StandardError))
+            Level($"{command} stderr: {Tail(TokenSanitizer.SanitizeLogMessage(result.StandardError.Trim()), 2000)}");
+    }
+
+    private static string Tail(string input, int max) =>
+        input.Length <= max ? input : "..." + input[^max..];
 
     public async Task<NativeGatewayContract> DetectAsync(
         NativeGatewayPackage package, CancellationToken cancellationToken)
     {
-        NativeGatewayCommandResult result = await _invoke(
+        NativeGatewayCommandResult result = await InvokeAsync(
             package, ["status", "--json"], null, cancellationToken).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(result.StandardOutput))
         {
@@ -42,7 +91,7 @@ public sealed class NativeGatewayPackageClient
         JsonDocument document;
         try
         {
-            document = Parse(result.StandardOutput);
+            document = Parse(result, "status");
         }
         catch (InvalidOperationException) when (
             IsLegacyProofVersion(package.Version))
@@ -68,11 +117,11 @@ public sealed class NativeGatewayPackageClient
     public async Task<IsolatedGatewayConfiguration> PrepareAsync(
         NativeGatewayPackage package, int port, CancellationToken cancellationToken)
     {
-        NativeGatewayCommandResult result = await _invoke(
+        NativeGatewayCommandResult result = await InvokeAsync(
             package, ["companion", "prepare", "--port", port.ToString(
                 System.Globalization.CultureInfo.InvariantCulture), "--json"], null, cancellationToken)
             .ConfigureAwait(false);
-        return ReadCompanionConfiguration(result);
+        return ReadCompanionConfiguration(result, "companion prepare");
     }
 
     public async Task<IsolatedGatewayConfiguration> RestoreAsync(
@@ -80,26 +129,26 @@ public sealed class NativeGatewayPackageClient
     {
         if (string.IsNullOrWhiteSpace(token) || token.Length > 4096 || token.Any(char.IsControl))
             throw new InvalidOperationException("Companion's saved Gateway token cannot be restored safely.");
-        NativeGatewayCommandResult result = await _invoke(
+        NativeGatewayCommandResult result = await InvokeAsync(
             package, ["companion", "prepare", "--port", port.ToString(
                 System.Globalization.CultureInfo.InvariantCulture), "--restore-token-stdin", "--json"],
             token, cancellationToken).ConfigureAwait(false);
-        return ReadCompanionConfiguration(result);
+        return ReadCompanionConfiguration(result, "companion prepare");
     }
 
     public async Task<IsolatedGatewayConfiguration> CheckAsync(
         NativeGatewayPackage package, CancellationToken cancellationToken)
     {
-        NativeGatewayCommandResult result = await _invoke(
+        NativeGatewayCommandResult result = await InvokeAsync(
             package, ["companion", "prepare", "--check", "--json"], null, cancellationToken)
             .ConfigureAwait(false);
-        return ReadCompanionConfiguration(result);
+        return ReadCompanionConfiguration(result, "companion prepare");
     }
 
     private static IsolatedGatewayConfiguration ReadCompanionConfiguration(
-        NativeGatewayCommandResult result)
+        NativeGatewayCommandResult result, string command)
     {
-        using JsonDocument document = Parse(result.StandardOutput);
+        using JsonDocument document = Parse(result, command);
         JsonElement root = document.RootElement;
         RequireIntegration(root, "companion prepare");
         RequireSuccess(root, result.ExitCode);
@@ -113,9 +162,9 @@ public sealed class NativeGatewayPackageClient
 
     public async Task SetupAsync(NativeGatewayPackage package, CancellationToken cancellationToken)
     {
-        NativeGatewayCommandResult result = await _invoke(
+        NativeGatewayCommandResult result = await InvokeAsync(
             package, ["setup", "--json"], null, cancellationToken).ConfigureAwait(false);
-        using JsonDocument document = Parse(result.StandardOutput);
+        using JsonDocument document = Parse(result, "setup");
         JsonElement root = document.RootElement;
         RequireIntegration(root, "setup");
         RequireSuccess(root, result.ExitCode);
@@ -129,9 +178,9 @@ public sealed class NativeGatewayPackageClient
     public async Task<IsolatedGatewayStatus> StatusAsync(
         NativeGatewayPackage package, CancellationToken cancellationToken)
     {
-        NativeGatewayCommandResult result = await _invoke(
+        NativeGatewayCommandResult result = await InvokeAsync(
             package, ["gateway-service", "status", "--json"], null, cancellationToken).ConfigureAwait(false);
-        using JsonDocument document = Parse(result.StandardOutput);
+        using JsonDocument document = Parse(result, "gateway-service status");
         JsonElement root = document.RootElement;
         RequireIntegration(root, "gateway-service status");
         JsonElement gateway = RequiredObject(root, "gateway");
@@ -190,21 +239,27 @@ public sealed class NativeGatewayPackageClient
     private async Task RunLifecycleAsync(
         NativeGatewayPackage package, string operation, CancellationToken cancellationToken)
     {
-        NativeGatewayCommandResult result = await _invoke(
+        NativeGatewayCommandResult result = await InvokeAsync(
             package, ["gateway-service", operation, "--json"], null, cancellationToken).ConfigureAwait(false);
-        using JsonDocument document = Parse(result.StandardOutput);
+        using JsonDocument document = Parse(result, $"gateway-service {operation}");
         RequireIntegration(document.RootElement, $"gateway-service {operation}");
         RequireSuccess(document.RootElement, result.ExitCode);
     }
 
-    private static JsonDocument Parse(string text)
+    private static JsonDocument Parse(NativeGatewayCommandResult result, string command)
     {
         try
         {
-            return JsonDocument.Parse(text);
+            return JsonDocument.Parse(result.StandardOutput);
         }
         catch (JsonException ex)
         {
+            // Stderr stays out of exception messages: the tray shows these too.
+            // It is logged at the InvokeAsync boundary instead.
+            if (result.ExitCode != 0)
+                throw new InvalidOperationException(
+                    $"The Gateway package command 'clawctl {command}' failed with exit code {result.ExitCode} and returned no JSON result.",
+                    ex);
             throw new InvalidOperationException(
                 "The Gateway package did not return a supported JSON contract. Update the Gateway MSIX.", ex);
         }
@@ -353,8 +408,8 @@ public sealed class NativeGatewayPackageClient
             }
             await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
             string stdout = await output.ConfigureAwait(false);
-            _ = await error.ConfigureAwait(false);
-            return new NativeGatewayCommandResult(process.ExitCode, stdout);
+            string stderr = await error.ConfigureAwait(false);
+            return new NativeGatewayCommandResult(process.ExitCode, stdout, stderr);
         }
         catch (OperationCanceledException)
         {

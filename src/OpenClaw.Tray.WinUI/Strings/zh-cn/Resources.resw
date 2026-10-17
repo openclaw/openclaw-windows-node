@@ -7893,6 +7893,10 @@
   <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>启动并验证 Gateway</value></data>
   <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>重试设置</value></data>
   <data name="Onboarding_Native_Preview" xml:space="preserve"><value>仅供预览。不会安装任何包或启动 Gateway。</value></data>
+=======
+  <data name="Onboarding_Native_Activity.Header" xml:space="preserve"><value>详细活动</value></data>
+  <data name="Onboarding_Native_OpenLog.Content" xml:space="preserve"><value>打开日志文件</value></data>
+  <data name="Onboarding_Native_FailedStep" xml:space="preserve"><value>{0}未完成</value></data>
   <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>节点模式连接 Gateway 并完成配对后，即可使用这些 Windows 功能。Windows 权限和命令审批仍然适用。</value></data>
   <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>原生 Gateway 已配置</value></data>
   <data name="Onboarding_Native_CapabilitySummary" xml:space="preserve"><value>{0}。您可以在 Companion 设置中更改这些选项。</value></data>

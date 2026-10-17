@@ -30,6 +30,45 @@
                            Style="{StaticResource BodyTextBlockStyle}"
                            AutomationProperties.AutomationId="NativeGatewaySetupStatus"
                            AutomationProperties.LiveSetting="Polite" />
+                <InfoBar x:Name="FailureBar" IsOpen="False" IsClosable="False" Severity="Error"
+                         AutomationProperties.AutomationId="NativeGatewaySetupFailure">
+                    <TextBlock x:Name="FailureDetails" TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                               Style="{StaticResource CaptionTextBlockStyle}" Margin="0,0,0,12"
+                               Visibility="Collapsed" />
+                </InfoBar>
+                <Expander x:Name="ActivityExpander" x:Uid="Onboarding_Native_Activity" IsExpanded="False"
+                          HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" MinHeight="48"
+                          AutomationProperties.AutomationId="NativeGatewaySetupActivity"
+                          Header="Detailed activity">
+                    <Expander.HeaderTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap" />
+                        </DataTemplate>
+                    </Expander.HeaderTemplate>
+                    <Grid RowDefinitions="*,Auto" Padding="12,8">
+                        <Border Grid.Row="0" CornerRadius="4" MinHeight="120" MaxHeight="200" Padding="12,8"
+                                Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                BorderThickness="1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+                            <ScrollViewer x:Name="LogScroller"
+                                          VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Auto">
+                                <TextBlock x:Name="LogText"
+                                           FontFamily="Cascadia Mono, Consolas"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                           TextWrapping="NoWrap"
+                                           IsTextSelectionEnabled="True"
+                                           AutomationProperties.AutomationId="NativeGatewaySetupLog" />
+                            </ScrollViewer>
+                        </Border>
+                        <HyperlinkButton x:Name="OpenLogButton" Grid.Row="1"
+                                x:Uid="Onboarding_Native_OpenLog"
+                                Content="Open log file"
+                                HorizontalAlignment="Right" Margin="0,4,0,0"
+                                AutomationProperties.AutomationId="NativeGatewaySetupOpenLog"
+                                Click="OpenLog_Click" Padding="8,4" />
+                    </Grid>
+                </Expander>
             </StackPanel>
         </ScrollViewer>
         <Grid x:Name="NavigationFooter" Grid.Row="2" RowDefinitions="Auto,Auto"
