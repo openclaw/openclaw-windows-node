@@ -1271,10 +1271,14 @@ internal sealed class ChatConversationState
         lock (_gate)
         {
             if (_disposed ||
-                CurrentRuntimeGenerationLocked(threadId) != expectedGeneration ||
-                !_lifecycle.TryGetActiveRun(threadId, out var activeRunId) ||
+                CurrentRuntimeGenerationLocked(threadId) != expectedGeneration)
+            {
+                return null;
+            }
+            if (!_lifecycle.TryGetActiveRun(threadId, out var activeRunId) ||
                 !string.Equals(activeRunId, runId, StringComparison.Ordinal))
             {
+                _lifecycle.ReleaseFailedAbort(runId);
                 return null;
             }
 
@@ -1363,9 +1367,25 @@ internal sealed class ChatConversationState
         var hasMediaEnvelope = projection?.HasMediaEnvelope ?? false;
         lock (_gate)
         {
+            if (role is "assistant" or "toolresult" or "tool_result" &&
+                _lifecycle.IsCancelledRun(message.RunId))
+            {
+                return new(
+                    Drop: false,
+                    Suppressed: true,
+                    RequestRemoteBackfill: false,
+                    Snapshot: null,
+                    OpenedLifecycle: null,
+                    CurrentRuntimeGenerationLocked(threadId));
+            }
             _lifecycle.TryGetActiveRun(
                 threadId,
                 out var activeRunId);
+            if (role == "assistant" && !message.IsFinal &&
+                IsTerminalRunDuringNewerTurnLocked(threadId, message.RunId))
+            {
+                return new(false, true, false, null, null, CurrentRuntimeGenerationLocked(threadId));
+            }
             var resetGate = _reset.EvaluateChatMessage(
                     threadId,
                     role,
@@ -1376,7 +1396,8 @@ internal sealed class ChatConversationState
                         text,
                         attachmentCorrelationSignature,
                         hasMediaEnvelope),
-                    activeRunId);
+                    activeRunId,
+                    message.RunId);
             var openedLifecycle =
                 ApplyBufferedLifecycleOpenLocked(
                     threadId,
@@ -1671,6 +1692,10 @@ internal sealed class ChatConversationState
         var threadId = message.SessionKey!;
         lock (_gate)
         {
+            _lifecycle.TryGetActiveRun(threadId, out var activeRunId);
+            var backgroundFinal = message.IsFinal && !string.IsNullOrWhiteSpace(message.RunId) &&
+                (activeRunId is not null && !string.Equals(activeRunId, message.RunId, StringComparison.Ordinal) ||
+                 IsTerminalRunDuringNewerTurnLocked(threadId, message.RunId));
             // A frame carrying only structured/legacy media directives (no
             // plain text) has nothing for the identified-duplicate/self-echo
             // classifier to compare against, and it never carries a gateway
@@ -1690,6 +1715,7 @@ internal sealed class ChatConversationState
                     message.OpenClawSeq);
             ChatDataSnapshot? promotionSnapshot = null;
             if (disposition == AssistantQueueFrameDisposition.Render &&
+                !backgroundFinal &&
                 _queue.IsLocallyInitiated(threadId) &&
                 _queue.TryGetSingleSendingMessage(threadId, out var queued) &&
                 !_lifecycle.HasActiveRun(threadId) &&
@@ -1723,10 +1749,21 @@ internal sealed class ChatConversationState
                         : metadata.ContextTokens,
                 };
             }
-            _lifecycle.TryGetActiveRun(threadId, out var activeRunId);
-            return new(disposition, promotionSnapshot, metadata, activeRunId);
+            ChatDataSnapshot? backgroundSnapshot = null;
+            if (backgroundFinal && disposition == AssistantQueueFrameDisposition.Render)
+            {
+                ApplyEventLocked(threadId, new ChatBackgroundFinalEvent(assistantText), metadata);
+                backgroundSnapshot = BuildSnapshotLocked(context);
+            }
+            return new(disposition, promotionSnapshot, metadata, activeRunId, backgroundFinal, backgroundSnapshot);
         }
     }
+
+    private bool IsTerminalRunDuringNewerTurnLocked(string threadId, string? runId) =>
+        _lifecycle.IsTerminalRun(threadId, runId) &&
+        _timelines.TryGetValue(threadId, out var timeline) && timeline.TurnActive &&
+        (!_lifecycle.TryGetActiveRun(threadId, out var activeRunId) ||
+         !string.Equals(activeRunId, runId, StringComparison.Ordinal));
 
     internal string? CompleteAssistantFinal(string threadId)
     {
@@ -1950,11 +1987,26 @@ internal sealed class ChatConversationState
         }
         if (resetGate.Drop)
         {
+            // Reset consumes the ignored run's terminal to reload history. Keep
+            // fencing that run's chat frames, which can arrive after the terminal.
+            if (resetGate.ReloadHistory && !string.IsNullOrWhiteSpace(evt.RunId))
+                _lifecycle.RetireResetRun(evt.RunId);
             return new(
                 false,
                 resetGate.ReloadHistory,
                 null,
                 openedLifecycle);
+        }
+        // A retired run's terminal was already handled, and a replayed start for
+        // an aborted run must not replace the current run. A retired run may only
+        // close the permission it left pending; it cannot add requests or output.
+        if ((_lifecycle.IsRetiredCancelledRun(evt.RunId) ||
+             IsTerminalRunDuringNewerTurnLocked(threadId, evt.RunId)) &&
+            !IsPendingTerminalApprovalLocked(evt, threadId, out _) ||
+            ChatEventMapper.IsLifecycleStart(evt) && _lifecycle.IsRunAborted(evt.RunId))
+        {
+            Logger.Debug($"[ChatProvider] Dropping cancelled-run agent event for threadId='{threadId}' stream='{evt.Stream}'");
+            return new(false, false, null, openedLifecycle);
         }
         if (ShouldDropTerminalAgentEventLocked(
                 evt,
@@ -2078,26 +2130,32 @@ internal sealed class ChatConversationState
         AgentEventInfo evt,
         string threadId)
     {
-        var terminal = ChatEventMapper.MapTerminalApproval(evt);
-        if (terminal is null)
+        if (!IsPendingTerminalApprovalLocked(evt, threadId, out var terminal))
             return false;
         var timeline = GetOrCreateTimelineLocked(threadId);
-        var pendingId = timeline.PendingPermission?.RequestId;
-        if (pendingId is null ||
-            !_approval.Matches(
-                pendingId,
-                terminal.ApprovalSlug,
-                terminal.ApprovalId))
-        {
-            return false;
-        }
+        var pendingId = timeline.PendingPermission!.RequestId;
         _timelines[threadId] = ChatTimelineReducer.ResolvePermission(
             timeline,
             pendingId,
             ChatEventMapper.MapTerminalApprovalDecision(
-                terminal.Phase,
+                terminal!.Phase,
                 terminal.Decision));
         return true;
+    }
+
+    private bool IsPendingTerminalApprovalLocked(
+        AgentEventInfo evt,
+        string threadId,
+        out ChatTerminalApprovalMapping? terminal)
+    {
+        terminal = ChatEventMapper.MapTerminalApproval(evt);
+        return terminal is not null &&
+               _timelines.TryGetValue(threadId, out var timeline) &&
+               timeline.PendingPermission?.RequestId is { } pendingId &&
+               _approval.Matches(
+                   pendingId,
+                   terminal.ApprovalSlug,
+                   terminal.ApprovalId);
     }
 
     internal void CompleteRemoteBackfill(string threadId)

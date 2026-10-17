@@ -565,6 +565,43 @@ The operator client is received through the `OperatorClientChanged` event. The a
 
 Inbound chat and agent timeline events must include the gateway's canonical `sessionKey`. The tray client must not synthesize a literal `main` key for keyless inbound events, because that can merge unrelated events into the wrong timeline. When a keyless chat or agent event arrives, the tray drops it and raises a one-shot diagnostic so the protocol issue is visible without exposing the dropped message contents.
 
+Live `chat` and `session.message` events also retain the payload's optional
+`runId`, separately from message identity. `ChatConversationState` asks
+`ChatLifecycleState.IsCancelledRun` before admitting assistant or tool chat
+output, so a run cancelled by Stop or by a session reset cannot replace output
+or end a newer turn. A cancelled run stays fenced after its terminal arrives:
+`ChatLifecycleState` retires it into a bounded set (64 run IDs, evicted by
+arrival order) so late chat finals and agent output still cannot reach the
+timeline, and a replayed lifecycle start for an aborted run cannot replace the
+current run. A rolled-back (failed) abort is not retired, and if the run's
+terminal arrived before the abort failed, the rollback releases that abort
+retirement without clearing an independent reset fence. Deferred abort failure
+also releases the run's cancellation state when its active identity has already
+been removed or replaced, but never clears or ends a newer active turn. This
+cleanup is fenced by the original connection/reset generation and disposal.
+A final from a different run is rendered independently while a newer turn is
+active. It cannot reconcile into that turn's streaming entry, contribute a
+cumulative-text prefix, end the turn or emit its completion notification.
+Once a run's terminal has been observed, its replayed start and non-final output
+also cannot resume over a newer active turn.
+A retired run may
+still close the permission request it left pending (matched by approval ID);
+it cannot add new requests or output. Reset admission also checks
+the supplied run against ignored reset runs before using timestamp admission.
+Runs that completed normally are not fenced. Frames without a run ID retain
+legacy thread-level handling; they cannot be reliably correlated to an older
+run.
+
+Chat admission also controls notification delivery. The synchronous provider
+marks rejected `ChatMessageInfo` frames with `SuppressNotification()` before
+the gateway parser emits its separate notification event. That per-frame veto
+is monotonic and does not suppress delivery to other chat subscribers. It
+prevents rejected finals from reaching notification history, toasts or TTS
+without adding another run cache or moving notification ownership into `App`.
+Consumers that do not apply a veto retain the existing notification behavior,
+including consumers that throw before vetoing. Duplicate-frame dedupe is not
+run admission, so identified duplicate finals keep their notification.
+
 ## Startup wiring (App.xaml.cs)
 
 ```
