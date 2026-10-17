@@ -401,6 +401,80 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         }, "empty", placementGateway: gateway);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task PlacementMaterialization_WaitsForFreshHistoryWithoutCancellingItsOwnSend(bool remainsEmpty)
+    {
+        var gateway = new PlacementProofGateway
+        {
+            PrepareCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously)
+        };
+        await WithChatAsync(800, async (surface, _, session, provider) =>
+        {
+            var materialized = await provider.LoadAsync();
+            var unloaded = new Dictionary<string, ChatTimelineState>
+            {
+                ["proof"] = ChatTimelineState.Initial()
+            };
+            var composeOnly = materialized with
+            {
+                Threads = materialized.Threads.Where(thread => thread.Id != "proof").ToArray(),
+                Timelines = unloaded,
+                CurrentHistoryThreads = new HashSet<string>()
+            };
+            Task<bool>? sending = null;
+            try
+            {
+                await ui.RunOnUIAsync(() => provider.Publish(composeOnly));
+                await Task.Delay(1000);
+                await SettleAsync();
+                await ui.RunOnUIAsync(() =>
+                {
+                    Assert.True(session.ViewModel.Inputs!.PlacementTargetIsNew);
+                    Assert.True(session.Placement!.CanEdit);
+                    session.Placement.SelectEnvironment("node:windows");
+                    sending = session.Controller.SendAsync();
+                    provider.Publish(materialized with { Timelines = unloaded, CurrentHistoryThreads = new HashSet<string>() });
+                });
+                await SettleAsync();
+                gateway.PrepareCompletion.SetResult();
+                await SettleAsync();
+                await ui.RunOnUIAsync(() =>
+                {
+                    Assert.False(session.ViewModel.Inputs!.PlacementTargetIsNew);
+                    Assert.False(session.ViewModel.Inputs.PlacementHistoryReady);
+                    Assert.True(session.Placement!.State.Preparing);
+                    Assert.Null(session.Placement.State.Error);
+                    Assert.False(sending!.IsCompleted);
+                    Assert.Equal(Draft, FindControl<TextBox>(surface, "ChatComposerInput").Text);
+                    Assert.Empty(provider.SentMessages);
+                });
+                await CaptureAsync(surface, $"MaterializationHistoryPending-{remainsEmpty}");
+                var fresh = ChatTimelineState.Initial() with
+                {
+                    HistoryLoaded = true,
+                    Entries = remainsEmpty ? ImmutableList<ChatTimelineItem>.Empty
+                        : ImmutableList.Create(new ChatTimelineItem("external", ChatTimelineItemKind.User, "External turn"))
+                };
+                await ui.RunOnUIAsync(() => provider.Publish(materialized with
+                {
+                    Timelines = new Dictionary<string, ChatTimelineState> { ["proof"] = fresh },
+                    CurrentHistoryThreads = new HashSet<string> { "proof" }
+                }));
+                await SettleAsync();
+                Assert.Equal(remainsEmpty, await sending!);
+                Assert.Equal(remainsEmpty ? 1 : 0, provider.SentMessages.Count);
+                Assert.Equal(1, gateway.Preparations);
+                Assert.Equal(remainsEmpty ? "" : Draft, session.ViewModel.Draft);
+            }
+            finally
+            {
+                gateway.PrepareCompletion.TrySetResult();
+            }
+        }, "empty", placementGateway: gateway);
+    }
+
     [Fact]
     public async Task PlacementUnknownHistory_HidesPickersAndPreservesDraft()
     {
@@ -458,6 +532,50 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
             Assert.Equal("/gateway/canonical", session.Placement?.State.Selection?.Workspace.Path);
             Assert.Equal(Draft, session.ViewModel.Draft);
             Assert.Equal(0, gateway.Preparations);
+            Assert.Empty(provider.SentMessages);
+        }, "empty", placementGateway: gateway);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PlacementWorkspace_UsesValidFolderAlongsidePreparationWarning(bool uncertain)
+    {
+        var gateway = new PlacementProofGateway
+        {
+            PrepareFailure = uncertain
+                ? new ChatPlacementOutcomeUncertainException(new TimeoutException("synthetic timeout"))
+                : new InvalidOperationException("synthetic preparation failure")
+        };
+        await WithChatAsync(800, async (surface, _, session, provider) =>
+        {
+            await Task.Delay(1000);
+            await SettleAsync();
+            await ui.RunOnUIAsync(async () =>
+            {
+                session.Placement!.SelectWorkspace(new("project:one", "Repository"));
+                Assert.False(await session.Controller.SendAsync());
+            });
+            await ChangeFlyoutAsync(surface, "ChatWorkspacePicker", open: true);
+            var popup = await ui.RunOnUIAsync(() => Task.FromResult(
+                Assert.IsType<NativeChatPlacementPicker>(
+                    Assert.IsType<Flyout>(FindControl<Button>(surface, "ChatWorkspacePicker").Flyout).Content)));
+            await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(popup, "ChatWorkspaceBrowse")));
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.True(FindControl<Button>(popup, "ChatWorkspaceUseFolder").IsEnabled);
+                Assert.Contains(FindDescendants<TextBlock>(popup), text => text.Text.Contains(
+                    uncertain ? "may have changed" : "could not be prepared", StringComparison.Ordinal));
+            });
+            await CapturePlacementAsync(popup, $"FolderRecovery-{uncertain}");
+            await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(popup, "ChatWorkspaceUseFolder")));
+            await SettleAsync();
+            Assert.Equal("/gateway/canonical", session.Placement!.State.Selection?.Workspace.Path);
+            if (uncertain)
+                Assert.Equal(ChatPlacementError.Interrupted, session.Placement.State.Error);
+            Assert.Equal(Draft, session.ViewModel.Draft);
+            Assert.Equal(1, gateway.Preparations);
             Assert.Empty(provider.SentMessages);
         }, "empty", placementGateway: gateway);
     }
@@ -2699,6 +2817,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         internal string? BrowsedPath { get; private set; }
         internal ChatPlacementSelection? Selection { get; private set; }
         internal TaskCompletionSource? PrepareCompletion { get; init; }
+        internal Exception? PrepareFailure { get; init; }
         public Task<ChatPlacementCatalog> LoadAsync(string agentId, CancellationToken cancellationToken) =>
             Task.FromResult(new ChatPlacementCatalog(5, agentId,
                 [new("local:gateway", "Gateway machine", true, ChatEnvironmentUnavailable.None),
@@ -2712,12 +2831,16 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
             return Task.FromResult(new ChatWorkspaceDirectory("/gateway/canonical", "/gateway", "/gateway",
                 [new("folder:child", "Child folder", "/gateway/canonical/child")]));
         }
-        public Task PrepareAsync(string sessionKey, string agentId, ChatPlacementSelection selection,
-            long connectionEpoch, CancellationToken cancellationToken)
+        public async Task PrepareAsync(string sessionKey, string agentId, ChatPlacementSelection selection,
+            long connectionEpoch, CancellationToken cancellationToken, Func<CancellationToken, Task>? beforeMutation = null)
         {
+            if (beforeMutation is not null)
+                await beforeMutation(cancellationToken);
             Preparations++;
             Selection = selection;
-            return PrepareCompletion?.Task ?? Task.CompletedTask;
+            if (PrepareFailure is { } failure)
+                throw failure;
+            await (PrepareCompletion?.Task ?? Task.CompletedTask);
         }
     }
 

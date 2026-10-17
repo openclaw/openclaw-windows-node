@@ -118,7 +118,7 @@ internal sealed class NativeChatPlacementPicker : Control, IDisposable
         AutomationProperties.SetAutomationId(_list, props.EnvironmentPicker ? "ChatEnvironmentList" : "ChatWorkspaceList");
         AutomationProperties.SetName(_list, _heading.Text);
         _search.IsEnabled = _list.IsEnabled = props.Controller.CanEdit && !state.Loading && !state.BrowsingLoading;
-        if (browsingChanged || browsing && rebuild)
+        if (browsingChanged || browsing && rebuild && !state.BrowsingLoading && state.Directory is not null)
         {
             _updatingSearch = true;
             _search.Text = browsing ? state.Directory?.Path ?? "" : "";
@@ -127,8 +127,8 @@ internal sealed class NativeChatPlacementPicker : Control, IDisposable
         _browse.Visibility = !props.EnvironmentPicker && !browsing ? Visibility.Visible : Visibility.Collapsed;
         _up.Visibility = _useFolder.Visibility = _back.Visibility = browsing ? Visibility.Visible : Visibility.Collapsed;
         _up.IsEnabled = props.Controller.CanEdit && !state.BrowsingLoading && state.Directory?.Parent is not null;
-        _useFolder.IsEnabled = props.Controller.CanEdit && !state.BrowsingLoading &&
-            state.Directory is not null && state.Error is null;
+        _useFolder.IsEnabled = browsing && props.Controller.CanEdit && !state.BrowsingLoading &&
+            state.Directory is not null;
         _browse.IsEnabled = props.Controller.CanEdit && state.Catalog is not null;
         _repository.IsEnabled = props.Controller.CanEdit && !state.Loading;
         _back.IsEnabled = props.Controller.CanEdit;
@@ -285,7 +285,7 @@ internal sealed class NativeChatPlacementPicker : Control, IDisposable
 
     private void OnUseFolder(object sender, RoutedEventArgs args)
     {
-        if (_props?.Controller.CanEdit != true || _state is not { BrowsingLoading: false, Error: null, Directory: { } directory })
+        if (_props?.Controller.CanEdit != true || _state is not { Browsing: true, BrowsingLoading: false, Directory: { } directory })
             return;
         _props.Controller.SelectWorkspace(new("folder:" + directory.Path, GatewayChatPlacementClient.FolderName(directory.Path), directory.Path));
         _close?.Invoke();

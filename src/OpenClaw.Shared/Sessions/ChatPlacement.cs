@@ -59,8 +59,9 @@ public interface IChatPlacementGateway
     long? ConnectionEpoch { get; }
     Task<ChatPlacementCatalog> LoadAsync(string agentId, CancellationToken cancellationToken);
     Task<ChatWorkspaceDirectory> BrowseAsync(string? path, long connectionEpoch, CancellationToken cancellationToken);
+    /// <summary>Rechecks the caller's session authority before each mutation when a guard is supplied.</summary>
     Task PrepareAsync(string sessionKey, string agentId, ChatPlacementSelection selection,
-        long connectionEpoch, CancellationToken cancellationToken);
+        long connectionEpoch, CancellationToken cancellationToken, Func<CancellationToken, Task>? beforeMutation = null);
 }
 
 public sealed class GatewayChatPlacementClient : IChatPlacementGateway
@@ -110,7 +111,7 @@ public sealed class GatewayChatPlacementClient : IChatPlacementGateway
     }
 
     public async Task PrepareAsync(string sessionKey, string agentId, ChatPlacementSelection selection,
-        long connectionEpoch, CancellationToken cancellationToken)
+        long connectionEpoch, CancellationToken cancellationToken, Func<CancellationToken, Task>? beforeMutation = null)
     {
         if (!selection.Environment.IsSelectable)
             throw new InvalidOperationException("The selected environment is unavailable.");
@@ -146,7 +147,8 @@ public sealed class GatewayChatPlacementClient : IChatPlacementGateway
             if (workspace.GitUrl is { } gitUrl)
             {
                 var project = await RequestAsync("projects.add", new { gitUrl }, connectionEpoch,
-                    cancellationToken, timeoutMs: 120_000, onAdmitted: () => mutationAdmitted = true).ConfigureAwait(false);
+                    cancellationToken, timeoutMs: 120_000, onAdmitted: () => mutationAdmitted = true,
+                    beforeAdmitted: beforeMutation).ConfigureAwait(false);
                 workspace = new("project:" + RequiredString(project, "id"),
                     RequiredString(project, "displayName"), OptionalString(project, "repoRoot"),
                     RequiredString(project, "id"));
@@ -172,14 +174,16 @@ public sealed class GatewayChatPlacementClient : IChatPlacementGateway
 
             // sessions.create can adopt an existing empty session's cwd without resetting its transcript.
             var created = await RequestAsync("sessions.create", parameters, connectionEpoch,
-                cancellationToken, timeoutMs: 120_000, onAdmitted: () => mutationAdmitted = true).ConfigureAwait(false);
+                cancellationToken, timeoutMs: 120_000, onAdmitted: () => mutationAdmitted = true,
+                beforeAdmitted: beforeMutation).ConfigureAwait(false);
             RequireSessionResult(created, sessionKey);
             if (environment.IsLocal)
                 return;
 
             var dispatched = await RequestAsync("sessions.dispatch",
                 new { key = sessionKey, agentId, deviceId = environment.Id["node:".Length..] },
-                connectionEpoch, cancellationToken, timeoutMs: 120_000, onAdmitted: () => mutationAdmitted = true).ConfigureAwait(false);
+                connectionEpoch, cancellationToken, timeoutMs: 120_000, onAdmitted: () => mutationAdmitted = true,
+                beforeAdmitted: beforeMutation).ConfigureAwait(false);
             RequireSessionResult(dispatched, sessionKey);
             if (!dispatched.TryGetProperty("placement", out var active) ||
                 OptionalString(active, "state") != "active")
@@ -188,15 +192,18 @@ public sealed class GatewayChatPlacementClient : IChatPlacementGateway
                     "The Gateway has not confirmed the selected environment is ready. No message was sent.");
             }
         }
-        catch (Exception ex) when (mutationAdmitted && ex is not OperationCanceledException)
+        catch (Exception ex) when (mutationAdmitted && ex is not (OperationCanceledException or ChatPlacementOutcomeUncertainException))
         {
             throw new ChatPlacementOutcomeUncertainException(ex);
         }
     }
 
     private async Task<JsonElement> RequestAsync(string method, object parameters, long epoch,
-        CancellationToken cancellationToken, int timeoutMs = 15_000, Action? onAdmitted = null)
+        CancellationToken cancellationToken, int timeoutMs = 15_000, Action? onAdmitted = null,
+        Func<CancellationToken, Task>? beforeAdmitted = null)
     {
+        if (beforeAdmitted is not null)
+            await beforeAdmitted(cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
         if (ConnectionEpoch != epoch)
             throw new InvalidOperationException("The Gateway connection changed. Refresh the location choices.");

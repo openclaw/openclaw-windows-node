@@ -333,6 +333,58 @@ public sealed class ChatPlacementTests
         Assert.DoesNotContain(calls, call => call.Item1 is "projects.add" or "sessions.create" or "sessions.dispatch");
     }
 
+    [Theory]
+    [InlineData("projects.add", false)]
+    [InlineData("sessions.create", false)]
+    [InlineData("sessions.dispatch", false)]
+    [InlineData("projects.add", true)]
+    [InlineData("sessions.create", true)]
+    [InlineData("sessions.dispatch", true)]
+    public async Task Preparation_RechecksAuthorityBeforeEachMutation(string pausedMethod, bool cancel)
+    {
+        var calls = new List<(string, JsonElement)>();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var cancellation = new CancellationTokenSource();
+        string[] mutations = ["projects.add", "sessions.create", "sessions.dispatch"];
+        var guards = 0;
+        Task BeforeMutation(CancellationToken token)
+        {
+            if (mutations[guards++] != pausedMethod)
+                return Task.CompletedTask;
+            entered.SetResult();
+            return ready.Task.WaitAsync(token);
+        }
+        var preparing = Client(calls).PrepareAsync(Key, "main",
+            Selection(remote: true, workspace: new("repository:test", "Repository", GitUrl: "https://example.com/repo.git")),
+            42, cancellation.Token, BeforeMutation);
+        try
+        {
+            await Task.WhenAny(entered.Task, preparing);
+            Assert.True(entered.Task.IsCompletedSuccessfully);
+            Assert.False(preparing.IsCompleted);
+            Assert.DoesNotContain(calls, call => call.Item1 == pausedMethod);
+            if (cancel)
+            {
+                cancellation.Cancel();
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => preparing);
+                Assert.DoesNotContain(calls, call => call.Item1 == pausedMethod);
+            }
+            else
+            {
+                ready.SetResult();
+                await preparing;
+                Assert.Equal(3, guards);
+                Assert.Equal(mutations, calls.Select(call => call.Item1).Where(mutations.Contains));
+            }
+        }
+        finally
+        {
+            cancellation.Cancel();
+            ready.TrySetResult();
+        }
+    }
+
     private static GatewayChatPlacementClient Client(List<(string, JsonElement)> calls,
         Func<string, JsonElement, JsonElement?>? response = null, Func<long?>? epoch = null,
         Func<string, Task>? wait = null) =>

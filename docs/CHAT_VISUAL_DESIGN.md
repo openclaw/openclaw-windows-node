@@ -192,6 +192,15 @@ cannot silently display Local/default or skip placement preflight after an inter
 Placement also requires history committed in the current connection generation;
 cached transcripts remain visible after reconnect but cannot authorize preparation.
 While history is unknown, explicit location intent and the draft are retained.
+When an admitted preparation publishes its own new session, that same-key
+materialization waits for fresh history rather than cancelling itself. The
+existing operation rechecks authority before each subsequent mutation and before
+sending. Nonempty history, changed session/connection, or disposal still stop it;
+waiting never replays an admitted mutation. Obsolete history-wait notices clear
+when current history arrives so location discovery can resume.
+If history never becomes current, the wait expires after 120 seconds
+(`OPENCLAW_CHAT_MATERIALIZATION_HISTORY_TIMEOUT_MS` overrides that bound),
+releases the send operation, and retains the draft and uncertainty warning.
 Timeouts and other non-cancellation failures after handing a mutation to the Gateway
 preserve the same uncertainty notice as interruption. This is conservative when the
 transport cannot distinguish a rejection from a lost response; it does not assert
@@ -199,6 +208,9 @@ rollback or duplicate allocation. Read-only discovery failures remain separate a
 are no longer displayed once the empty-chat pickers disappear. Native resources
 own recovery messages in every supported locale; raw exception details stay in
 diagnostics rather than being rendered as untranslated guidance.
+Folder selection uses the current successful directory result independently of
+an earlier preparation warning. A new browse invalidates the previous directory,
+so a failed request cannot leave a stale folder selectable.
 A completed `/new` request cannot override a newer session or page navigation;
 the successful session remains discoverable without pulling the user back into chat.
 

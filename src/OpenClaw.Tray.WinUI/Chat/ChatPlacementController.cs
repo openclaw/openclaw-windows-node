@@ -28,9 +28,12 @@ internal sealed record ChatPlacementState(
     bool SelectionIsKnown = false);
 
 /// <summary>Host-local first-turn location intent. Opening or choosing a row never mutates the Gateway.</summary>
-internal sealed class ChatPlacementController(IChatPlacementGateway gateway, IUiDispatcher dispatcher) : IDisposable
+internal sealed class ChatPlacementController(
+    IChatPlacementGateway gateway, IUiDispatcher dispatcher, TimeProvider? timeProvider = null) : IDisposable
 {
+    private const int DefaultMaterializationHistoryTimeoutMs = 120_000;
     private readonly object _gate = new();
+    private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
     private CancellationTokenSource _scopeCancellation = new();
     private ChatPlacementState _state = new();
     private string? _threadId;
@@ -43,6 +46,7 @@ internal sealed class ChatPlacementController(IChatPlacementGateway gateway, IUi
     private bool _targetEmpty;
     private bool _historyReady;
     private bool _targetNew;
+    private TaskCompletionSource? _materializationHistory;
     // Accepted Gateway mutations outlive navigation. Keep their intent and drain state with the session.
     private readonly Dictionary<(string ThreadId, string AgentId), LocationIntent> _intents = new();
     private LocationIntent? _intent;
@@ -82,17 +86,32 @@ internal sealed class ChatPlacementController(IChatPlacementGateway gateway, IUi
                 _intent = _intents.GetValueOrDefault((_threadId, _agentId));
                 _state = new(Selection: _intent?.Selection, Preparing: _intent?.Preparing == true,
                     Error: _intent?.Error, SelectionIsKnown: _intent?.Dirty == true);
+                _materializationHistory = null;
                 previous = _scopeCancellation;
                 _scopeCancellation = new();
             }
             _historyReady = inputs.PlacementHistoryReady;
+            var targetEmpty = inputs.PlacementTargetIsEmpty;
+            if (previous is null && _state.Preparing && _targetNew && !inputs.PlacementTargetIsNew &&
+                !_historyReady && targetEmpty && inputs.CanChangeSessionOptions)
+            {
+                // Publishing the session we are preparing is not a reconnect or loss of emptiness.
+                _materializationHistory = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            }
+            if (_historyReady)
+            {
+                _materializationHistory?.TrySetResult();
+                _materializationHistory = null;
+                if (_state.Error == ChatPlacementError.HistoryPending)
+                    _state = _state with { Error = _intent?.Error };
+            }
             if (_targetNew && !inputs.PlacementTargetIsNew && _intent is null)
                 _state = _state with { SelectionIsKnown = false };
             _targetNew = inputs.PlacementTargetIsNew;
             _canEdit = inputs.ShowPlacementPickers && inputs.CanChangeSessionOptions && _historyReady;
-            var targetEmpty = inputs.PlacementTargetIsEmpty;
             if (_targetEmpty && _canChangeSessionOptions &&
-                (!targetEmpty || !_historyReady || !inputs.CanChangeSessionOptions) && _state.Preparing && previous is null)
+                (!targetEmpty || !_historyReady && _materializationHistory is null || !inputs.CanChangeSessionOptions) &&
+                _state.Preparing && previous is null)
             {
                 previous = _scopeCancellation;
                 _scopeCancellation = new();
@@ -225,7 +244,7 @@ internal sealed class ChatPlacementController(IChatPlacementGateway gateway, IUi
             browseGeneration = ++_browseGeneration;
             epoch = currentEpoch;
             token = _scopeCancellation.Token;
-            _state = _state with { Browsing = true, BrowsingLoading = true, Error = _intent?.Error };
+            _state = _state with { Browsing = true, BrowsingLoading = true, Directory = null, Error = _intent?.Error };
         }
         Notify();
         try
@@ -307,7 +326,9 @@ internal sealed class ChatPlacementController(IChatPlacementGateway gateway, IUi
         Notify();
         try
         {
-            await gateway.PrepareAsync(threadId, agent, selection, epoch, operation.Token).ConfigureAwait(false);
+            await gateway.PrepareAsync(threadId, agent, selection, epoch, operation.Token,
+                token => WaitForCurrentHistoryAsync(generation, epoch, token)).ConfigureAwait(false);
+            await WaitForCurrentHistoryAsync(generation, epoch, operation.Token).ConfigureAwait(false);
             operation.Token.ThrowIfCancellationRequested();
             lock (_gate)
             {
@@ -354,10 +375,54 @@ internal sealed class ChatPlacementController(IChatPlacementGateway gateway, IUi
             {
                 intent.Preparing = false;
                 if (ReferenceEquals(_intent, intent))
+                {
+                    _materializationHistory = null;
                     _state = _state with { Preparing = false, Error = intent.Error };
+                }
             }
             Notify();
         }
+    }
+
+    private async Task WaitForCurrentHistoryAsync(int generation, long epoch, CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            Task pending;
+            lock (_gate)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (_disposed || generation != _generation || _epoch != epoch || gateway.ConnectionEpoch != epoch ||
+                    !_targetEmpty || !_canChangeSessionOptions)
+                    throw new OperationCanceledException(cancellationToken);
+                if (_historyReady)
+                    return;
+                if (_materializationHistory is null)
+                    throw new OperationCanceledException(cancellationToken);
+                pending = _materializationHistory.Task;
+            }
+            try
+            {
+                await pending.WaitAsync(MaterializationHistoryTimeout(), _timeProvider, cancellationToken).ConfigureAwait(false);
+            }
+            catch (TimeoutException ex)
+            {
+                throw new ChatPlacementOutcomeUncertainException(ex);
+            }
+        }
+    }
+
+    private static TimeSpan MaterializationHistoryTimeout()
+    {
+        const string variable = "OPENCLAW_CHAT_MATERIALIZATION_HISTORY_TIMEOUT_MS";
+        var configured = Environment.GetEnvironmentVariable(variable);
+        if (configured is not null)
+        {
+            if (int.TryParse(configured, out var milliseconds) && milliseconds > 0)
+                return TimeSpan.FromMilliseconds(milliseconds);
+            System.Diagnostics.Trace.WriteLine($"[chat] {variable} must be a positive integer; using the default history wait timeout.");
+        }
+        return TimeSpan.FromMilliseconds(DefaultMaterializationHistoryTimeoutMs);
     }
 
     private void InterruptIntent(LocationIntent intent)
@@ -378,6 +443,7 @@ internal sealed class ChatPlacementController(IChatPlacementGateway gateway, IUi
             _threadId = threadId;
             _epoch = null;
             _canEdit = _canChangeSessionOptions = _targetEmpty = _historyReady = _targetNew = false;
+            _materializationHistory = null;
             _intent = null;
             _state = new();
             previous = _scopeCancellation;

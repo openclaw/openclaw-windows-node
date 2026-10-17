@@ -1,5 +1,6 @@
 using OpenClaw.Chat;
 using OpenClaw.Shared;
+using OpenClaw.TestSupport;
 using OpenClaw.Tray.Tests.Presentation;
 using OpenClawTray.Chat;
 
@@ -404,6 +405,7 @@ public sealed class ChatPlacementControllerTests
         Assert.Equal(0, context.Port.SendMessageCallCount);
 
         context.Session.ApplyInputs(Inputs());
+        Assert.Null(context.Placement.State.Error);
         Assert.True(await context.Composer.SendAsync());
         Assert.Equal(FakeGateway.Project, context.Gateway.LastSelection?.Workspace);
         Assert.Equal(1, context.Gateway.PrepareCalls);
@@ -425,6 +427,178 @@ public sealed class ChatPlacementControllerTests
         Assert.Equal(ChatPlacementError.Interrupted, context.Placement.State.Error);
         Assert.True(context.Placement.RequiresPreparation);
         Assert.Equal(0, context.Port.SendMessageCallCount);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task MaterializationDuringPreparation_WaitsForFreshHistoryBeforeSending(bool remainsEmpty)
+    {
+        using var context = new Context();
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        context.Gateway.Prepare = _ => completion.Task;
+        context.Placement.SelectEnvironment("node:windows");
+        context.Vm.SetDraft("keep until confirmed");
+        var sending = context.Composer.SendAsync();
+        try
+        {
+            context.Session.ApplyInputs(Inputs() with
+            {
+                PlacementTargetIsNew = false, PlacementHistoryReady = false, ShowPlacementPickers = false
+            });
+            Assert.False(context.Gateway.PrepareToken.IsCancellationRequested);
+            completion.SetResult();
+            Assert.False(sending.IsCompleted);
+            Assert.Equal(0, context.Port.SendMessageCallCount);
+            Assert.Equal("keep until confirmed", context.Vm.Draft);
+
+            context.Session.ApplyInputs(Inputs() with
+            {
+                PlacementTargetIsNew = false, PlacementTargetIsEmpty = remainsEmpty,
+                ShowPlacementPickers = remainsEmpty
+            });
+            Assert.Equal(remainsEmpty, await sending);
+            Assert.Equal(remainsEmpty ? 1 : 0, context.Port.SendMessageCallCount);
+            Assert.Equal(1, context.Gateway.PrepareCalls);
+            Assert.Equal(remainsEmpty ? "" : "keep until confirmed", context.Vm.Draft);
+        }
+        finally
+        {
+            context.Session.Dispose();
+            completion.TrySetResult();
+        }
+    }
+
+    [Theory]
+    [InlineData("navigation")]
+    [InlineData("reconnect")]
+    [InlineData("dispose")]
+    [InlineData("options")]
+    public async Task MaterializationHistoryWait_CanStillBeCancelled(string change)
+    {
+        using var context = new Context();
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        context.Gateway.Prepare = _ => completion.Task;
+        context.Placement.SelectWorkspace(FakeGateway.Project);
+        context.Vm.SetDraft("keep");
+        var sending = context.Composer.SendAsync();
+        try
+        {
+            var pending = Inputs() with
+            {
+                PlacementTargetIsNew = false, PlacementHistoryReady = false, ShowPlacementPickers = false
+            };
+            context.Session.ApplyInputs(pending);
+            Assert.False(context.Gateway.PrepareToken.IsCancellationRequested);
+            completion.SetResult();
+            Assert.False(sending.IsCompleted);
+            switch (change)
+            {
+                case "navigation":
+                    context.Composer.BindSelectionHandoff(_ => { });
+                    context.Composer.SelectChannel("agent:main:other");
+                    break;
+                case "reconnect":
+                    context.Gateway.ConnectionEpoch = null;
+                    context.Session.ApplyInputs(pending with { ConnectionState = "disconnected" });
+                    break;
+                case "dispose":
+                    context.Session.Dispose();
+                    break;
+                case "options":
+                    context.Session.ApplyInputs(pending with { MessageOptionsDisabled = true });
+                    break;
+            }
+            Assert.False(await sending);
+            Assert.Equal(0, context.Port.SendMessageCallCount);
+            Assert.Equal("keep", context.Vm.Draft);
+        }
+        finally
+        {
+            context.Session.Dispose();
+            completion.TrySetResult();
+        }
+    }
+
+    [Fact]
+    public async Task MaterializationHistoryNeverArrives_ReleasesSendWithUncertaintyAtDeadline()
+    {
+        var clock = new ManualTimeProvider();
+        TimeSpan? scheduled = null;
+        clock.TimerScheduled += delay => scheduled = delay;
+        using var context = new Context(timeProvider: clock);
+        context.Placement.SelectWorkspace(FakeGateway.Project);
+        context.Gateway.Prepare = _ =>
+        {
+            context.Session.ApplyInputs(Inputs() with
+            {
+                PlacementTargetIsNew = false, PlacementHistoryReady = false, ShowPlacementPickers = false
+            });
+            return Task.CompletedTask;
+        };
+        context.Vm.SetDraft("keep after history failure");
+        var sending = context.Composer.SendAsync();
+        Assert.NotNull(scheduled);
+        Assert.False(sending.IsCompleted);
+        clock.Advance(scheduled.Value - TimeSpan.FromMilliseconds(1));
+        Assert.False(sending.IsCompleted);
+        clock.Advance(TimeSpan.FromMilliseconds(1));
+
+        Assert.False(await sending);
+        Assert.False(context.Vm.IsSending);
+        Assert.False(context.Placement.State.Preparing);
+        Assert.True(context.Placement.RequiresPreparation);
+        Assert.Equal(ChatPlacementError.Interrupted, context.Placement.State.Error);
+        Assert.Equal("keep after history failure", context.Vm.Draft);
+        Assert.Equal(0, context.Port.SendMessageCallCount);
+        Assert.Equal(1, context.Gateway.PrepareCalls);
+    }
+
+    [Fact]
+    public async Task FreshHistory_RetiresWaitNoticeAndLoadsTheReconnectedCatalog()
+    {
+        using var context = new Context();
+        context.Placement.SelectWorkspace(FakeGateway.Project);
+        context.Gateway.ConnectionEpoch++;
+        context.Session.ApplyInputs(Inputs() with { PlacementHistoryReady = false, ShowPlacementPickers = false });
+        context.Vm.SetDraft("keep");
+        Assert.False(await context.Composer.SendAsync());
+        Assert.Equal(ChatPlacementError.HistoryPending, context.Placement.State.Error);
+        Assert.Null(context.Placement.State.Catalog);
+
+        context.Session.ApplyInputs(Inputs());
+
+        Assert.Null(context.Placement.State.Error);
+        Assert.NotNull(context.Placement.State.Catalog);
+        Assert.Equal(0, context.Gateway.PrepareCalls);
+        Assert.Equal(0, context.Port.SendMessageCallCount);
+        Assert.Equal("keep", context.Vm.Draft);
+    }
+
+    [Fact]
+    public async Task FailedSecondBrowse_CannotReuseThePreviousDirectory()
+    {
+        using var context = new Context();
+        await context.Placement.BrowseAsync("/previous");
+        Assert.Equal("/previous", context.Placement.State.Directory?.Path);
+        var selection = context.Placement.State.Selection;
+        var completion = new TaskCompletionSource<ChatWorkspaceDirectory>(TaskCreationOptions.RunContinuationsAsynchronously);
+        context.Gateway.Browse = _ => completion.Task;
+        var browsing = context.Placement.BrowseAsync("/next");
+        try
+        {
+            Assert.Null(context.Placement.State.Directory);
+            completion.SetException(new InvalidOperationException("synthetic browse failure"));
+            await browsing;
+            Assert.Null(context.Placement.State.Directory);
+            context.Placement.SelectWorkspace(new("folder:previous", "Previous", "/previous"));
+            Assert.Equal(selection, context.Placement.State.Selection);
+            Assert.Equal(0, context.Gateway.PrepareCalls);
+        }
+        finally
+        {
+            completion.TrySetException(new InvalidOperationException("fixture cleanup"));
+        }
     }
 
     [Fact]
@@ -500,12 +674,12 @@ public sealed class ChatPlacementControllerTests
         internal ChatComposerController Composer { get; }
         internal ChatComposerSession Session { get; }
 
-        internal Context(bool targetIsNew = true)
+        internal Context(bool targetIsNew = true, TimeProvider? timeProvider = null)
         {
             var dispatcher = new RecordingUiDispatcher();
             var actions = new ChatComposerHostActions(null, null, null, null, null);
             Vm = new(dispatcher, false);
-            Placement = new(Gateway, dispatcher);
+            Placement = new(Gateway, dispatcher, timeProvider);
             Composer = new(Vm, Port, actions, Placement);
             Session = new(Vm, Composer, actions, Placement);
             Session.ApplyInputs(Inputs() with { PlacementTargetIsNew = targetIsNew });
@@ -541,15 +715,17 @@ public sealed class ChatPlacementControllerTests
             return Browse(path);
         }
 
-        public Task PrepareAsync(string sessionKey, string agentId, ChatPlacementSelection selection,
-            long connectionEpoch, CancellationToken cancellationToken)
+        public async Task PrepareAsync(string sessionKey, string agentId, ChatPlacementSelection selection,
+            long connectionEpoch, CancellationToken cancellationToken, Func<CancellationToken, Task>? beforeMutation = null)
         {
+            if (beforeMutation is not null)
+                await beforeMutation(cancellationToken);
             PrepareCalls++;
             LastKey = sessionKey;
             LastSelection = selection;
             LastEpoch = connectionEpoch;
             PrepareToken = cancellationToken;
-            return Prepare(cancellationToken);
+            await Prepare(cancellationToken);
         }
     }
 }
