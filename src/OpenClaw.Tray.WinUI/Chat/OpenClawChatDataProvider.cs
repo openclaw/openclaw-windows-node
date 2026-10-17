@@ -1406,6 +1406,13 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             assistantContent);
         if (preparation.PromotionSnapshot is not null)
             Publish(preparation.PromotionSnapshot);
+        if (preparation.IsBackgroundFinal)
+        {
+            message.SuppressNotification();
+            if (preparation.BackgroundFinalSnapshot is not null)
+                Publish(preparation.BackgroundFinalSnapshot);
+            return;
+        }
         // Duplicate-frame dedupe is not run admission: keep pre-veto notification behavior.
         if (preparation.Disposition != AssistantQueueFrameDisposition.Render)
             return;
@@ -1595,10 +1602,9 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                             runId,
                             runtimeGeneration,
                             ProjectionContext());
+                    Logger.Warn($"[ABORT] Deferred chat.abort failed: {ex.Message}");
                     if (rollbackSnapshot is not null)
                     {
-                        Logger.Warn(
-                            $"[ABORT] Deferred chat.abort failed, cleared suppression: {ex.Message}");
                         Publish(
                             rollbackSnapshot,
                             new ChatProviderNotification(

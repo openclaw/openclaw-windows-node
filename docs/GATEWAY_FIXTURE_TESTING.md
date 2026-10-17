@@ -46,6 +46,14 @@ fields, returns a server-assigned ID, and exposes it through subsequent
 remain rejected. The test verifies the refreshed selector while retaining the
 existing session and unsent draft. Normal interactive browse runs remain read-only.
 
+Chat cancellation tests explicitly opt into the `chat-send` scenario. It issues
+synthetic run IDs and accepts `chat.abort` only for a run belonging to the supplied
+fixture session. The server can hold send acknowledgements and abort replies,
+then release an abort successfully or with a protocol error. Run-correlated
+lifecycle, assistant-delta and final events exercise the real client and provider
+without contacting an AI provider. These controls do not enable writes in the
+normal browse scenario.
+
 The host is `tests\OpenClaw.GatewayFixtureHost`, a plain .NET console app, not a
 test container. The request-driven server and scenario live in
 `tests\OpenClaw.TestSupport\Gateway`. Repeated reads and different request
@@ -82,6 +90,17 @@ controls. They verify:
   persistence, and the Sessions-page Open in chat action.
 - A deliberately held history response arriving after a different session is
   selected, without replacing the visible transcript.
+- Cancelling A through the native Stop action, then streaming and completing B
+  despite A's late terminal and final events.
+- A deferred abort failing after its run has ended, restoring the legitimate
+  trailing final both during and after a newer streaming turn without ending
+  or corrupting that turn. Replayed starts and deltas from the old run remain
+  unable to resume over the new turn.
+
+The cancellation cases use process-scoped UI Automation, not global keyboard or
+pointer input. They assert visible text and the native Stop/Send action as well
+as supporting MCP state. Notifications and audio remain disabled in the fixture;
+these cases do not prove toast presentation or TTS playback.
 
 `app.chat.snapshot` is supporting evidence, not a rendering assertion. It
 returns only the last 30 entries and does not prove the mounted UI selection.
@@ -125,7 +144,7 @@ $releaseApp = '.\src\OpenClaw.Tray.WinUI\bin\Release\net10.0-windows10.0.22621.0
 ```
 
 An explicitly selected unpackaged publish executable is also supported. This
-does not prove installer/MSIX behavior, real Gateway pairing, streaming,
+does not prove installer/MSIX behavior, real Gateway pairing, live provider streaming,
 provider behavior, or MXC. Keep the existing full E2E proof for those changes.
 
 ## Isolation contract

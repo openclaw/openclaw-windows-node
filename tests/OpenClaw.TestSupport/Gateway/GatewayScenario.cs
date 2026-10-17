@@ -52,10 +52,11 @@ public sealed class GatewayScenario
     private readonly bool _allowChatSend;
     private readonly Dictionary<string, JsonObject?> _sessionChanges = new(StringComparer.Ordinal);
     private readonly List<object> _createdAgents = [];
+    private readonly Dictionary<string, string> _chatRuns = new(StringComparer.Ordinal);
     private int _chatSendCount;
 
     public string Name => _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation" : BrowseName;
-    public int Version => 1;
+    public int Version => _allowChatSend ? 2 : 1;
     public int ProtocolVersion => GatewayProtocolContract.CurrentVersion;
     public string ContractProvenance =>
         "OpenClaw.Shared GatewayProtocolContract/OpenClawGatewayClient and Protocol/gateway-protocol-snapshot.json";
@@ -254,6 +255,12 @@ public sealed class GatewayScenario
 
     internal bool ContainsSession(string key) => _sessions.Any(s => s.Key == key);
 
+    internal bool ContainsChatRun(string sessionKey, string runId)
+    {
+        lock (_chatRuns)
+            return _chatRuns.TryGetValue(runId, out var owner) && owner == sessionKey;
+    }
+
     internal object Respond(string method, JsonElement parameters)
     {
         if (_setup is not null && SetupMethods.Contains(method, StringComparer.Ordinal))
@@ -288,11 +295,22 @@ public sealed class GatewayScenario
             return MutateSession(method, parameters);
         if (_allowChatSend && method == "chat.send")
         {
-            return new
-            {
-                runId = $"fixture-chat-{Interlocked.Increment(ref _chatSendCount)}",
-                status = "started"
-            };
+            var sessionKey = RequiredString(parameters, "sessionKey");
+            if (!ContainsSession(sessionKey))
+                throw new FixtureRequestException("INVALID_PARAMS", "Unknown fixture session.");
+            var runId = $"fixture-chat-{Interlocked.Increment(ref _chatSendCount)}";
+            lock (_chatRuns)
+                _chatRuns.Add(runId, sessionKey);
+            return new { runId, status = "started" };
+        }
+        if (_allowChatSend && method == "chat.abort")
+        {
+            ValidateProperties(parameters, "sessionKey", "runId");
+            var sessionKey = RequiredString(parameters, "sessionKey");
+            var runId = RequiredString(parameters, "runId");
+            if (!ContainsChatRun(sessionKey, runId))
+                throw new FixtureRequestException("INVALID_PARAMS", "Chat run was not issued for this fixture session.");
+            return new { ok = true, runId };
         }
         if (IsWrite(method))
             throw new FixtureRequestException("FIXTURE_READ_ONLY", "Fixture Gateway is read-only. This operation is not executed.");

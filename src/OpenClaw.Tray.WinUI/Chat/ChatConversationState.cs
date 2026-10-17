@@ -1247,10 +1247,14 @@ internal sealed class ChatConversationState
         lock (_gate)
         {
             if (_disposed ||
-                CurrentRuntimeGenerationLocked(threadId) != expectedGeneration ||
-                !_lifecycle.TryGetActiveRun(threadId, out var activeRunId) ||
+                CurrentRuntimeGenerationLocked(threadId) != expectedGeneration)
+            {
+                return null;
+            }
+            if (!_lifecycle.TryGetActiveRun(threadId, out var activeRunId) ||
                 !string.Equals(activeRunId, runId, StringComparison.Ordinal))
             {
+                _lifecycle.ReleaseFailedAbort(runId);
                 return null;
             }
 
@@ -1353,6 +1357,11 @@ internal sealed class ChatConversationState
             _lifecycle.TryGetActiveRun(
                 threadId,
                 out var activeRunId);
+            if (role == "assistant" && !message.IsFinal &&
+                IsTerminalRunDuringNewerTurnLocked(threadId, message.RunId))
+            {
+                return new(false, true, false, null, null, CurrentRuntimeGenerationLocked(threadId));
+            }
             var resetGate = _reset.EvaluateChatMessage(
                     threadId,
                     role,
@@ -1659,6 +1668,10 @@ internal sealed class ChatConversationState
         var threadId = message.SessionKey!;
         lock (_gate)
         {
+            _lifecycle.TryGetActiveRun(threadId, out var activeRunId);
+            var backgroundFinal = message.IsFinal && !string.IsNullOrWhiteSpace(message.RunId) &&
+                (activeRunId is not null && !string.Equals(activeRunId, message.RunId, StringComparison.Ordinal) ||
+                 IsTerminalRunDuringNewerTurnLocked(threadId, message.RunId));
             // A frame carrying only structured/legacy media directives (no
             // plain text) has nothing for the identified-duplicate/self-echo
             // classifier to compare against, and it never carries a gateway
@@ -1678,6 +1691,7 @@ internal sealed class ChatConversationState
                     message.OpenClawSeq);
             ChatDataSnapshot? promotionSnapshot = null;
             if (disposition == AssistantQueueFrameDisposition.Render &&
+                !backgroundFinal &&
                 _queue.IsLocallyInitiated(threadId) &&
                 _queue.TryGetSingleSendingMessage(threadId, out var queued) &&
                 !_lifecycle.HasActiveRun(threadId) &&
@@ -1711,10 +1725,21 @@ internal sealed class ChatConversationState
                         : metadata.ContextTokens,
                 };
             }
-            _lifecycle.TryGetActiveRun(threadId, out var activeRunId);
-            return new(disposition, promotionSnapshot, metadata, activeRunId);
+            ChatDataSnapshot? backgroundSnapshot = null;
+            if (backgroundFinal && disposition == AssistantQueueFrameDisposition.Render)
+            {
+                ApplyEventLocked(threadId, new ChatBackgroundFinalEvent(assistantText), metadata);
+                backgroundSnapshot = BuildSnapshotLocked(context);
+            }
+            return new(disposition, promotionSnapshot, metadata, activeRunId, backgroundFinal, backgroundSnapshot);
         }
     }
+
+    private bool IsTerminalRunDuringNewerTurnLocked(string threadId, string? runId) =>
+        _lifecycle.IsTerminalRun(threadId, runId) &&
+        _timelines.TryGetValue(threadId, out var timeline) && timeline.TurnActive &&
+        (!_lifecycle.TryGetActiveRun(threadId, out var activeRunId) ||
+         !string.Equals(activeRunId, runId, StringComparison.Ordinal));
 
     internal string? CompleteAssistantFinal(string threadId)
     {
@@ -1951,7 +1976,8 @@ internal sealed class ChatConversationState
         // A retired run's terminal was already handled, and a replayed start for
         // an aborted run must not replace the current run. A retired run may only
         // close the permission it left pending; it cannot add requests or output.
-        if (_lifecycle.IsRetiredCancelledRun(evt.RunId) &&
+        if ((_lifecycle.IsRetiredCancelledRun(evt.RunId) ||
+             IsTerminalRunDuringNewerTurnLocked(threadId, evt.RunId)) &&
             !IsPendingTerminalApprovalLocked(evt, threadId, out _) ||
             ChatEventMapper.IsLifecycleStart(evt) && _lifecycle.IsRunAborted(evt.RunId))
         {

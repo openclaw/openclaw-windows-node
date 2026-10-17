@@ -43,6 +43,10 @@ internal sealed class ChatLifecycleState
     internal bool HasActiveRun(string threadId) =>
         _activeRunIds.ContainsKey(threadId);
 
+    internal bool IsTerminalRun(string threadId, string? runId) =>
+        runId is not null && _terminalRunIdsByThread.TryGetValue(threadId, out var runIds) &&
+        runIds.Contains(runId, StringComparer.Ordinal);
+
     internal bool TryGetActiveRun(string threadId, out string? runId) =>
         _activeRunIds.TryGetValue(threadId, out runId);
 
@@ -80,11 +84,16 @@ internal sealed class ChatLifecycleState
     internal void RollbackAbort(string threadId, string runId)
     {
         _abortedThreads.Remove(threadId);
+        ReleaseFailedAbort(runId);
+        RemoveActiveRun(threadId);
+    }
+
+    internal void ReleaseFailedAbort(string runId)
+    {
         _abortedRunIds.Remove(runId);
         // The terminal may have retired the run before the abort RPC failed.
         // The run was not cancelled, so its trailing output is admissible again.
         ReleaseRetirement(runId, RetireReason.Abort);
-        RemoveActiveRun(threadId);
     }
 
     internal void CompleteAbort(string threadId, string? runId)

@@ -512,7 +512,16 @@ arrival order) so late chat finals and agent output still cannot reach the
 timeline, and a replayed lifecycle start for an aborted run cannot replace the
 current run. A rolled-back (failed) abort is not retired, and if the run's
 terminal arrived before the abort failed, the rollback releases that abort
-retirement without clearing an independent reset fence. A retired run may
+retirement without clearing an independent reset fence. Deferred abort failure
+also releases the run's cancellation state when its active identity has already
+been removed or replaced, but never clears or ends a newer active turn. This
+cleanup is fenced by the original connection/reset generation and disposal.
+A final from a different run is rendered independently while a newer turn is
+active. It cannot reconcile into that turn's streaming entry, contribute a
+cumulative-text prefix, end the turn or emit its completion notification.
+Once a run's terminal has been observed, its replayed start and non-final output
+also cannot resume over a newer active turn.
+A retired run may
 still close the permission request it left pending (matched by approval ID);
 it cannot add new requests or output. Reset admission also checks
 the supplied run against ignored reset runs before using timestamp admission.
