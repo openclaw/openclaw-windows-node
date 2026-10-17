@@ -42,6 +42,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
     private bool _globalHotkeyEnabled;
     private bool _useLegacyWebChat;
     private bool _showNotifications;
+    private bool _showDesktopCompanion;
     private string _notificationSound = DefaultNotificationSound;
     private string _appTheme = DefaultAppTheme;
     private bool _showDiagnostics;
@@ -141,6 +142,12 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
             var normalized = string.IsNullOrEmpty(value) ? DefaultNotificationSound : value;
             if (SetField(ref _notificationSound, normalized) && !_loading) Persist(e => e.NotificationSound = normalized);
         }
+    }
+
+    public bool ShowDesktopCompanion
+    {
+        get => _showDesktopCompanion;
+        set { if (SetField(ref _showDesktopCompanion, value) && !_loading) Persist(e => e.ShowDesktopCompanion = value); }
     }
 
     public string AppTheme
@@ -331,6 +338,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
             SetField(ref _globalHotkeyEnabled, s.GlobalHotkeyEnabled, nameof(GlobalHotkeyEnabled));
             SetField(ref _useLegacyWebChat, s.UseLegacyWebChat, nameof(UseLegacyWebChat));
             SetField(ref _showNotifications, s.ShowNotifications, nameof(ShowNotifications));
+            SetField(ref _showDesktopCompanion, s.ShowDesktopCompanion, nameof(ShowDesktopCompanion));
             // Normalize combo values to a known tag so a legacy or odd stored value selects the
             // default item instead of rendering a blank combo (matching the old tag lookup).
             SetField(ref _notificationSound, NormalizeTag(s.NotificationSound, SoundTags, DefaultNotificationSound), nameof(NotificationSound));
