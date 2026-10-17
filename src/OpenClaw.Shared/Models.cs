@@ -1842,6 +1842,13 @@ public class ChatMessageInfo
     public long Ts { get; set; }
 
     /// <summary>
+    /// Gateway-reported cost in USD from <c>usage.cost.total</c> on the
+    /// assistant message, or <c>null</c> when absent or not a finite
+    /// non-negative number.
+    /// </summary>
+    public double? CostUsd { get; set; }
+
+    /// <summary>
     /// Optional cumulative input (prompt) token count for the turn this
     /// message belongs to, when the gateway includes a <c>usage</c> block on
     /// the chat event payload. <c>null</c> when not reported (deltas usually
