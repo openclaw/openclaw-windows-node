@@ -115,7 +115,7 @@ public sealed partial class ChatPage : Page
     }
     private readonly SemaphoreSlim _speakerMuteGate = new(1, 1);
     // Serializes credential resolution across every ChatPage (Hub and Workspace each own one):
-    // concurrent native-runtime Inspect calls deny each other (NativeGatewayRuntime.Inspect
+    // concurrent native-runtime Inspect calls deny each other (IsolatedGatewayRuntime.Inspect
     // uses _gate.Wait(0)).
     private static readonly SemaphoreSlim s_chatCredentialGate = new(1, 1);
     private int _voiceSettingsDialogOpen;

@@ -384,7 +384,10 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.Contains("[\"devices\", \"list\", \"--json\"]", host);
         Assert.Contains("[\"devices\", \"approve\", requestId, \"--json\"]", host);
         Assert.Contains("PairingCommandTimeout = TimeSpan.FromMinutes(2)", host);
-        Assert.Equal(2, host.Split("environment, PairingCommandTimeout,").Length - 1);
+        Assert.Equal(2, host.Split("\"--json\"], PairingCommandTimeout,").Length - 1);
+        // The isolated package owns its configuration; no host-side profile environment is forwarded.
+        Assert.DoesNotContain("IReadOnlyDictionary<string, string>", host);
+        Assert.DoesNotContain("OPENCLAW_", host);
         Assert.Contains("WizardPayloadHelpers.GetNativeTerminalError(payload)", wizard);
         Assert.Contains("ShowError(SetupLogger.Sanitize(nativeError))", wizard);
         Assert.DoesNotContain("--url", host);
@@ -405,18 +408,20 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.Contains("_nativeSession?.MarkWizardCompleted()", wizard);
         Assert.Contains("await native.CompleteAsync(native.LifetimeToken, _config!.Capabilities)", wizard);
         Assert.Contains("await native.RestartAsync(native.LifetimeToken)", wizard);
-        Assert.Contains("nativeLogPath: isolated ? null : _nativeSession?.ConsoleLogPath", wizard);
+        Assert.Contains("bool isolated = _nativeSession is not null;", wizard);
+        Assert.DoesNotContain("nativeLogPath", wizard);
         Assert.Contains("StartConsoleTailAsync(connection, generation)", wizard);
         Assert.Contains("WizardConsoleTail.CreateGatewayLogReader(", wizard);
         var focused = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "AiSetupPage.xaml.cs"));
-        Assert.Contains("NativeSession is { IsIsolated: false }", focused);
+        Assert.DoesNotContain("IsIsolated", focused);
+        Assert.DoesNotContain("nativeLogPath", focused);
         Assert.Contains("WizardConsoleTail.CreateGatewayLogReader(transport.RequestAsync)", focused);
         Assert.Contains("Onboarding_Wizard_GatewayConsoleGap", focused);
         Assert.Contains("Onboarding_Wizard_GatewayConsoleUnavailable", focused);
         Assert.DoesNotContain("onboard", host);
         Assert.DoesNotContain("wsl.exe", host);
         Assert.DoesNotContain("RunInWslAsync", host);
-        Assert.Contains("[\"setup\"]", host);
+        Assert.Contains("_packageClient.SetupAsync(package, cancellationToken)", host);
         Assert.Contains("[\"config\", \"validate\", \"--json\"]", host);
         Assert.Contains("[\"gateway\", \"health\", \"--json\"]", host);
         Assert.False(File.Exists(Path.Combine(root, "src", "OpenClaw.SetupEngine", "NativeGatewayTerminalCommand.cs")));
@@ -607,7 +612,7 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.Contains("\"Microsoft\", \"WindowsApps\", family", source);
         Assert.DoesNotContain("AddPackageAsync", source);
         Assert.DoesNotContain("Add-AppxPackage", source);
-        Assert.Contains("NativeGatewayDataPathMapper.Resolve(", source);
+        Assert.DoesNotContain("ResolveDataPath", source);
         Assert.DoesNotContain("LogFileLauncher.ResolveRealPath", source);
     }
 }

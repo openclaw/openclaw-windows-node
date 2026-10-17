@@ -29,18 +29,34 @@ public sealed class NativeGatewayPackageClientTests
             () => unsupported.DetectAsync(s_package, CancellationToken.None));
     }
 
-    [Fact]
-    public async Task KnownLegacyProofPackageDoesNotPretendToSupportIsolation()
+    [Theory]
+    [InlineData("0.0.0.0")]
+    [InlineData("0.0.0.1")]
+    [InlineData("0.0.0.2")]
+    [InlineData("2026.9.5.5")]
+    public async Task PackageWithoutIsolatedIntegrationIsUnsupportedForEveryVersion(string version)
     {
-        var client = new NativeGatewayPackageClient((_, _, _) =>
-            Task.FromResult(new NativeGatewayCommandResult(1, "unsupported --json")));
+        // The retired same-user proof releases (0.0.0.0 and 0.0.0.1) get no exception.
+        var package = s_package with { Version = version };
+        string[] outputs =
+        [
+            "",
+            """{"schemaVersion":1,"command":"status"}""",
+            """{"schemaVersion":1,"command":"status","session":{"state":"ready"}}""",
+        ];
+        foreach (string output in outputs)
+        {
+            var client = new NativeGatewayPackageClient((_, _, _) =>
+                Task.FromResult(new NativeGatewayCommandResult(0, output)));
+            var error = await Assert.ThrowsAsync<NativeGatewayContractException>(
+                () => client.DetectAsync(package, CancellationToken.None));
+            Assert.Contains("isolated-session contract", error.Message, StringComparison.Ordinal);
+        }
 
-        Assert.Equal(NativeGatewayContract.Legacy,
-            await client.DetectAsync(s_package with { Version = "0.0.0.1" }, CancellationToken.None));
+        var nonJson = new NativeGatewayPackageClient((_, _, _) =>
+            Task.FromResult(new NativeGatewayCommandResult(1, "unsupported --json")));
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => client.DetectAsync(s_package, CancellationToken.None));
-        await Assert.ThrowsAsync<InvalidOperationException>(
-            () => client.DetectAsync(s_package with { Version = "0.0.0.2" }, CancellationToken.None));
+            () => nonJson.DetectAsync(package, CancellationToken.None));
     }
 
     [Fact]

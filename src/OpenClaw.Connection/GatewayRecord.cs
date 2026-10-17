@@ -39,7 +39,10 @@ public sealed record GatewayRecord
     /// </summary>
     public string? NativePackageFamilyName { get; init; }
 
-    /// <summary>The package-owned isolation contract. Null identifies an existing same-user profile.</summary>
+    /// <summary>
+    /// The package-owned isolation contract. Null on a native profile identifies one created for
+    /// the retired same-user runtime; the native runtime refuses it and asks the user to re-add it.
+    /// </summary>
     public string? NativeRuntimeContract { get; init; }
 
     /// <summary>Per-gateway SSH tunnel configuration. Null if no tunnel needed.</summary>

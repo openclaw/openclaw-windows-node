@@ -2,7 +2,6 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Net;
 using System.Runtime.InteropServices;
-using OpenClaw.Shared;
 
 namespace OpenClaw.Connection.NativeGateway;
 
@@ -200,7 +199,8 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
     public async Task<GatewayEndpointProvenance> InspectAsync(
         GatewayRecord record, CancellationToken cancellationToken)
     {
-        Uri endpoint = RequireRecord(record);
+        if (!TryRequireIsolatedRecord(record, out Uri endpoint))
+            return Unestablished(endpoint);
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(_inspectionTimeout);
         bool entered = false;
@@ -257,7 +257,8 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
 
     public GatewayEndpointProvenance Inspect(GatewayRecord record)
     {
-        Uri endpoint = RequireRecord(record);
+        if (!TryRequireIsolatedRecord(record, out Uri endpoint))
+            return Unestablished(endpoint);
         if (!_gate.Wait(0))
             return new(GatewayEndpointProvenanceKind.UnknownListener, endpoint.Port,
                 Detail: "Gateway lifecycle is busy. Credentials were not sent.");
@@ -396,14 +397,33 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
         return package;
     }
 
+    private const string RecreateProfileGuidance =
+        "In Companion, open Connections, select this old profile and choose Remove, then choose Add Gateway > Install a local native Gateway. " +
+        "This explicitly creates a new isolated profile instead of sending the old profile's credentials to the package.";
+
+    /// <summary>
+    /// Fails closed for any profile without the isolated-session contract, including
+    /// null-contract profiles from the retired same-user runtime. The package is never
+    /// resolved for such a profile, so its saved credentials cannot reach a Gateway.
+    /// </summary>
     private static Uri RequireRecord(GatewayRecord record)
     {
-        Uri endpoint = NativeGatewayPaths.ValidateRecord(record);
-        if (record.NativeRuntimeContract != NativeGatewayPackageClient.IsolatedContract)
-            throw new NativeGatewayContractException(
-                "This Gateway profile does not use the isolated-session contract. Reconfigure it in Companion.");
-        return endpoint;
+        if (TryRequireIsolatedRecord(record, out Uri endpoint))
+            return endpoint;
+        throw new NativeGatewayContractException(record.NativeRuntimeContract is null
+            ? "This Companion profile was created for a same-user Gateway. " + RecreateProfileGuidance
+            : "This Companion profile has an unsupported Gateway runtime contract. " + RecreateProfileGuidance);
     }
+
+    private static bool TryRequireIsolatedRecord(GatewayRecord record, out Uri endpoint)
+    {
+        endpoint = NativeGatewayPaths.ValidateRecord(record);
+        return record.NativeRuntimeContract == NativeGatewayPackageClient.IsolatedContract;
+    }
+
+    private static GatewayEndpointProvenance Unestablished(Uri endpoint) =>
+        new(GatewayEndpointProvenanceKind.UnknownListener, endpoint.Port,
+            Detail: "Gateway ownership has not been established for this profile. Credentials were not sent.");
 
     private GatewayEndpointProvenance InspectSnapshot(int port, IsolatedGatewayStatus? status)
     {
@@ -463,84 +483,4 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
             new(GatewayEndpointProvenanceKind.UnknownListener, port, Detail: detail, FailureReason: reason);
     }
 
-}
-
-/// <summary>Retains the legacy host-owned runtime only for an explicitly detected legacy package.</summary>
-public sealed class NativeGatewayRuntimeRouter(
-    INativeGatewayRuntime legacy,
-    INativeGatewayRuntime isolated,
-    INativeGatewayPackageResolver resolver,
-    NativeGatewayPackageClient client) : INativeGatewayRuntime
-{
-    private INativeGatewayRuntime? _active;
-
-    public static NativeGatewayRuntimeRouter Create(
-        GatewayRegistry registry, INativeGatewayPackageResolver resolver, IOpenClawLogger logger) =>
-        new(new NativeGatewayRuntime(registry, resolver, logger),
-            new IsolatedGatewayRuntime(resolver), resolver, new NativeGatewayPackageClient());
-
-    public async Task EnsureRunningAsync(GatewayRecord record, CancellationToken cancellationToken)
-    {
-        if (record.NativeRuntimeContract == NativeGatewayPackageClient.IsolatedContract)
-        {
-            _active = isolated;
-            await isolated.EnsureRunningAsync(record, cancellationToken).ConfigureAwait(false);
-            return;
-        }
-        if (record.NativeRuntimeContract is not null)
-            throw new InvalidOperationException("This Gateway record has an unsupported runtime contract.");
-        NativeGatewayPackage package = await resolver.ResolveAsync(
-            record.NativePackageFamilyName!, cancellationToken).ConfigureAwait(false);
-        if (await client.DetectAsync(package, cancellationToken).ConfigureAwait(false) !=
-            NativeGatewayContract.Legacy)
-            throw new NativeGatewayContractException(
-                "This Companion profile was created for a same-user Gateway. " +
-                "In Companion, open Connections, select this old profile and choose Remove, then choose Add Gateway > Install a local native Gateway. " +
-                "This explicitly creates a new isolated profile instead of sending the old profile's credentials to the package.");
-        _active = legacy;
-        await legacy.EnsureRunningAsync(record, cancellationToken).ConfigureAwait(false);
-    }
-
-    public Task<GatewayEndpointProvenance> InspectAsync(
-        GatewayRecord record, CancellationToken cancellationToken) =>
-        record.NativeRuntimeContract == NativeGatewayPackageClient.IsolatedContract
-            ? isolated.InspectAsync(record, cancellationToken)
-            : record.NativeRuntimeContract is null && ReferenceEquals(_active, legacy)
-                ? legacy.InspectAsync(record, cancellationToken)
-                : Task.FromResult(Unestablished(record));
-
-    public GatewayEndpointProvenance Inspect(GatewayRecord record) =>
-        record.NativeRuntimeContract == NativeGatewayPackageClient.IsolatedContract
-            ? isolated.Inspect(record)
-            : record.NativeRuntimeContract is null && ReferenceEquals(_active, legacy)
-                ? legacy.Inspect(record)
-                : Unestablished(record);
-
-    public async Task RestartAsync(GatewayRecord record, CancellationToken cancellationToken)
-    {
-        if (record.NativeRuntimeContract == NativeGatewayPackageClient.IsolatedContract)
-        {
-            _active = isolated;
-            await isolated.RestartAsync(record, cancellationToken).ConfigureAwait(false);
-            return;
-        }
-        await EnsureRunningAsync(record, cancellationToken).ConfigureAwait(false);
-        await legacy.RestartAsync(record, cancellationToken).ConfigureAwait(false);
-    }
-
-    public Task StopAsync(CancellationToken cancellationToken) =>
-        Task.WhenAll(legacy.StopAsync(cancellationToken), isolated.StopAsync(cancellationToken));
-
-    public Task ReleaseAsync(CancellationToken cancellationToken) =>
-        Task.WhenAll(legacy.ReleaseAsync(cancellationToken), isolated.ReleaseAsync(cancellationToken));
-
-    public async ValueTask DisposeAsync()
-    {
-        try { await legacy.DisposeAsync().ConfigureAwait(false); }
-        finally { await isolated.DisposeAsync().ConfigureAwait(false); }
-    }
-
-    private static GatewayEndpointProvenance Unestablished(GatewayRecord record) =>
-        new(GatewayEndpointProvenanceKind.UnknownListener, NativeGatewayPaths.ValidateRecord(record).Port,
-            Detail: "Gateway ownership has not been established for this profile. Credentials were not sent.");
 }

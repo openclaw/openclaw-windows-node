@@ -10,11 +10,15 @@ public sealed record NativeGatewayPackage(
     public NativeGatewayContract Contract { get; init; }
 }
 
+/// <summary>
+/// Gateway integration contract. Setup drafts persist the numeric value, so
+/// IsolatedSessionV1 keeps its original value. A draft saved by the retired same-user
+/// runtime (missing, or the removed value 1) is not IsolatedSessionV1 and requires discard.
+/// </summary>
 public enum NativeGatewayContract
 {
-    Unknown,
-    Legacy,
-    IsolatedSessionV1
+    Unknown = 0,
+    IsolatedSessionV1 = 2
 }
 
 /// <summary>A safe-to-display failure of the qualified Gateway integration contract.</summary>
@@ -58,12 +62,6 @@ public interface INativeGatewayPackageResolver
         NativeGatewayPaths.ValidatePackage(package, expectedFamily);
         return package;
     }
-
-    /// <summary>
-    /// Maps Companion's logical data path to the physical path visible to another package
-    /// identity. Used only at the launch boundary; registry/state ownership remains logical.
-    /// </summary>
-    string ResolveDataPath(string path) => path;
 }
 
 /// <summary>

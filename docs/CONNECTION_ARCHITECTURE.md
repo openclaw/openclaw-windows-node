@@ -21,8 +21,9 @@ restart/apply fails, so it remains indeterminate rather than proof of no write.
 `NativeLocalAiGatewayTarget` accepts authenticated isolated native records without
 requiring early registry publication. Published connections must still be borrowed
 from `GatewayConnectionManager`; staged connections belong to
-`NativeGatewaySetupConnection`. Remote, WSL and legacy same-user native records
-cannot enter this RPC path. Cancellation before dispatch prevents mutation;
+`NativeGatewaySetupConnection`. Remote, WSL and native records without the isolated-session
+contract (including profiles saved for the retired same-user runtime) cannot
+enter this RPC path. Cancellation before dispatch prevents mutation;
 cancellation after dispatch drains the bounded request.
 
 The optional runtime authentication substrate keeps a stable current-user DPAPI

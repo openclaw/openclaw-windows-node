@@ -1309,11 +1309,10 @@ public sealed partial class WizardPage : Page
         ConsoleRecovery.Visibility = Visibility.Collapsed;
         ConsoleIssueText.Text = "";
         _consoleIssue = null;
-        bool isolated = _nativeSession?.IsIsolated == true;
+        bool isolated = _nativeSession is not null;
         var tail = new WizardConsoleTail(
             logger: NullLogger.Instance,
             distroNameOverride: _config.DistroName,
-            nativeLogPath: isolated ? null : _nativeSession?.ConsoleLogPath,
             gatewayLogTail: isolated
                 ? WizardConsoleTail.CreateGatewayLogReader(
                     (method, parameters, timeout) => SendWizardRequestAsync(connection, generation, method, parameters, timeout))

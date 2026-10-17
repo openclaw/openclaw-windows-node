@@ -33,36 +33,12 @@ public sealed class NativeGatewayPackageClient
     {
         NativeGatewayCommandResult result = await _invoke(
             package, ["status", "--json"], null, cancellationToken).ConfigureAwait(false);
+        // Every supported package exposes the isolated-session integration block.
         if (string.IsNullOrWhiteSpace(result.StandardOutput))
-        {
-            if (IsLegacyProofVersion(package.Version))
-                return NativeGatewayContract.Legacy;
             throw Unsupported();
-        }
-        JsonDocument document;
-        try
-        {
-            document = Parse(result.StandardOutput);
-        }
-        catch (InvalidOperationException) when (
-            IsLegacyProofVersion(package.Version))
-        {
-            return NativeGatewayContract.Legacy;
-        }
-        using (document)
-        {
-            JsonElement root = document.RootElement;
-            if (!root.TryGetProperty("integration", out _))
-            {
-                if (root.TryGetProperty("session", out _))
-                    throw Unsupported();
-                if (IsLegacyProofVersion(package.Version))
-                    return NativeGatewayContract.Legacy;
-                throw Unsupported();
-            }
-            RequireIntegration(root, "status");
-            return NativeGatewayContract.IsolatedSessionV1;
-        }
+        using JsonDocument document = Parse(result.StandardOutput);
+        RequireIntegration(document.RootElement, "status");
+        return NativeGatewayContract.IsolatedSessionV1;
     }
 
     public async Task<IsolatedGatewayConfiguration> PrepareAsync(
@@ -222,9 +198,6 @@ public sealed class NativeGatewayPackageClient
     private static NativeGatewayContractException Unsupported() =>
         new("The installed Gateway MSIX does not expose Companion's isolated-session contract. " +
             "Update the Gateway MSIX, then retry setup. Credentials were not sent.");
-
-    private static bool IsLegacyProofVersion(string version) =>
-        version is "0.0.0.0" or "0.0.0.1";
 
     private static void RequireSuccess(JsonElement root, int exitCode)
     {

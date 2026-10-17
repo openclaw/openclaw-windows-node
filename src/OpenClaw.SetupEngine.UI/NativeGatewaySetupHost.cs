@@ -3,6 +3,11 @@ using System.Diagnostics;
 
 namespace OpenClaw.SetupEngine.UI;
 
+/// <summary>
+/// Runs native setup commands only through the installed package's qualified aliases.
+/// The isolated package owns its Gateway configuration and state, so no host-side
+/// profile environment is passed to these commands.
+/// </summary>
 internal sealed class NativeGatewaySetupHost(
     Action<string>? progress = null,
     Action<NativeGatewaySetupStage>? stageProgress = null) : INativeGatewaySetupHost
@@ -24,7 +29,7 @@ internal sealed class NativeGatewaySetupHost(
         RunAsync(package.OpenClawAliasPath,
             ["config", "set", ConfigureGatewayStep.NodeCommandsAllowKey,
                 System.Text.Json.JsonSerializer.Serialize(commandIds), "--strict-json"],
-            new Dictionary<string, string>(), TimeSpan.FromMinutes(2),
+            TimeSpan.FromMinutes(2),
             "Applying Windows node capabilities inside the isolated Gateway...", cancellationToken);
 
     public void ReportProgress(NativeGatewaySetupStage stage)
@@ -38,35 +43,15 @@ internal sealed class NativeGatewaySetupHost(
         });
     }
 
-    public IDisposable OpenRecoveryTerminal(
-        NativeGatewayPackage package, IReadOnlyDictionary<string, string> environment)
+    public IDisposable OpenRecoveryTerminal(NativeGatewayPackage package)
     {
-        if (package.Contract == NativeGatewayContract.IsolatedSessionV1)
+        var terminal = new ProcessStartInfo(package.ClawCtlAliasPath)
         {
-            var terminal = new ProcessStartInfo(package.ClawCtlAliasPath)
-            {
-                UseShellExecute = true
-            };
-            terminal.ArgumentList.Add("pwsh");
-            return new RecoveryTerminal(Process.Start(terminal)
-                ?? throw new InvalidOperationException("The isolated Gateway terminal could not be opened."));
-        }
-        var start = new ProcessStartInfo
-        {
-            FileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),
-                "WindowsPowerShell", "v1.0", "powershell.exe"),
-            WorkingDirectory = environment["OPENCLAW_STATE_DIR"],
-            UseShellExecute = false,
+            UseShellExecute = true
         };
-        start.ArgumentList.Add("-NoLogo");
-        start.ArgumentList.Add("-NoProfile");
-        start.ArgumentList.Add("-NoExit");
-        foreach (var (key, value) in environment)
-            start.Environment[key] = value;
-        start.Environment["PATH"] = Path.GetDirectoryName(package.OpenClawAliasPath) +
-            Path.PathSeparator + start.Environment["PATH"];
-        return new RecoveryTerminal(Process.Start(start)
-            ?? throw new InvalidOperationException("The native profile terminal could not be opened."));
+        terminal.ArgumentList.Add("pwsh");
+        return new RecoveryTerminal(Process.Start(terminal)
+            ?? throw new InvalidOperationException("The isolated Gateway terminal could not be opened."));
     }
 
     private sealed class RecoveryTerminal(Process process) : IDisposable
@@ -82,32 +67,18 @@ internal sealed class NativeGatewaySetupHost(
         }
     }
 
-    public Task PreparePackageAsync(
-        NativeGatewayPackage package,
-        IReadOnlyDictionary<string, string> environment,
-        CancellationToken cancellationToken)
+    public Task PreparePackageAsync(NativeGatewayPackage package, CancellationToken cancellationToken)
     {
-        if (package.Contract == NativeGatewayContract.IsolatedSessionV1)
-        {
-            progress?.Invoke("Preparing the isolated Gateway session...");
-            return _packageClient.SetupAsync(package, cancellationToken);
-        }
-        return RunAsync(package.ClawCtlAliasPath, ["setup"], environment,
-            TimeSpan.FromMinutes(3), "Preparing the packaged Gateway runtime...", cancellationToken);
+        progress?.Invoke("Preparing the isolated Gateway session...");
+        return _packageClient.SetupAsync(package, cancellationToken);
     }
 
-    public Task ValidateConfigurationAsync(
-        NativeGatewayPackage package,
-        IReadOnlyDictionary<string, string> environment,
-        CancellationToken cancellationToken) =>
-        RunAsync(package.OpenClawAliasPath, ["config", "validate", "--json"], environment,
+    public Task ValidateConfigurationAsync(NativeGatewayPackage package, CancellationToken cancellationToken) =>
+        RunAsync(package.OpenClawAliasPath, ["config", "validate", "--json"],
             TimeSpan.FromMinutes(2), "Validating native Gateway configuration...", cancellationToken);
 
-    public Task VerifyHealthAsync(
-        NativeGatewayPackage package,
-        IReadOnlyDictionary<string, string> environment,
-        CancellationToken cancellationToken) =>
-        RunAsync(package.OpenClawAliasPath, ["gateway", "health", "--json"], environment,
+    public Task VerifyHealthAsync(NativeGatewayPackage package, CancellationToken cancellationToken) =>
+        RunAsync(package.OpenClawAliasPath, ["gateway", "health", "--json"],
             TimeSpan.FromMinutes(2), "Checking native Gateway health...", cancellationToken);
 
     public Task<IsolatedGatewayConfiguration> CheckIsolatedPairingConfigurationAsync(
@@ -115,38 +86,23 @@ internal sealed class NativeGatewaySetupHost(
         _packageClient.CheckAsync(package, cancellationToken);
 
     public Task<string> ListDevicePairingRequestsAsync(
-        NativeGatewayPackage package,
-        IReadOnlyDictionary<string, string> environment, CancellationToken cancellationToken) =>
-        package.Contract == NativeGatewayContract.IsolatedSessionV1
-            ? RunAsync(package.OpenClawAliasPath, ["devices", "list", "--json"],
-                new Dictionary<string, string>(), PairingCommandTimeout,
-                "Verifying this Companion's pairing request...", cancellationToken)
-            : RunAsync(package.OpenClawAliasPath, ["devices", "list", "--json"],
-                environment, PairingCommandTimeout, "Verifying this Companion's pairing request...", cancellationToken);
+        NativeGatewayPackage package, CancellationToken cancellationToken) =>
+        RunAsync(package.OpenClawAliasPath, ["devices", "list", "--json"], PairingCommandTimeout,
+            "Verifying this Companion's pairing request...", cancellationToken);
 
     public Task<string> ApproveDevicePairingAsync(
-        NativeGatewayPackage package, string requestId,
-        IReadOnlyDictionary<string, string> environment, CancellationToken cancellationToken) =>
-        package.Contract == NativeGatewayContract.IsolatedSessionV1
-            ? RunAsync(package.OpenClawAliasPath, ["devices", "approve", requestId, "--json"],
-                new Dictionary<string, string>(), PairingCommandTimeout,
-                "Pairing this Companion with its setup Gateway...", cancellationToken)
-            : RunAsync(package.OpenClawAliasPath, ["devices", "approve", requestId, "--json"],
-                environment, PairingCommandTimeout, "Pairing this Companion with its setup Gateway...", cancellationToken);
+        NativeGatewayPackage package, string requestId, CancellationToken cancellationToken) =>
+        RunAsync(package.OpenClawAliasPath, ["devices", "approve", requestId, "--json"], PairingCommandTimeout,
+            "Pairing this Companion with its setup Gateway...", cancellationToken);
 
     private async Task<string> RunAsync(
         string executable, string[] arguments,
-        IReadOnlyDictionary<string, string> environment,
         TimeSpan timeout, string message, CancellationToken cancellationToken)
     {
         progress?.Invoke(message);
         using var logger = new SetupLogger(filePath: null);
         var result = await new CommandRunner(logger).RunAsync(
-            executable, arguments, timeout, environment,
-            workingDirectory: environment.TryGetValue("OPENCLAW_STATE_DIR", out var directory)
-                ? directory
-                : null,
-            ct: cancellationToken);
+            executable, arguments, timeout, ct: cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         if (result.TimedOut || result.ExitCode != 0)
         {
@@ -154,8 +110,6 @@ internal sealed class NativeGatewaySetupHost(
             throw new InvalidOperationException(
                 $"{message} {(result.TimedOut ? "Timed out." : $"Exit code {result.ExitCode}.")} {detail}");
         }
-        if (arguments is ["setup"] && !string.IsNullOrWhiteSpace(result.Stdout))
-            progress?.Invoke(SetupLogger.Sanitize(result.Stdout).Trim());
         return result.Stdout;
     }
 }

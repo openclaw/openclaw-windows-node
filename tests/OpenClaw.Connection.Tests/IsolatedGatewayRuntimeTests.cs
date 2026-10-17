@@ -803,24 +803,153 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
         }
     }
 
-    [Fact]
-    public async Task RouterDeniesUnestablishedRecordsAndRoutesExplicitRestartAndBothStops()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("same-user")]
+    [InlineData("isolated-session-v2")]
+    public async Task NonIsolatedProfileFailsClosedWithoutResolvingThePackage(string? contract)
     {
-        var legacy = new RecordingRuntime();
-        var unused = new NativeGatewayPackageClient((_, _, _) =>
-            throw new InvalidOperationException("Isolated restart does not probe the legacy contract."));
-        await using var router = new NativeGatewayRuntimeRouter(legacy, _runtime, new Resolver(_package), unused);
-        var unestablished = _record with { NativeRuntimeContract = null };
-        Assert.Equal(GatewayEndpointProvenanceKind.UnknownListener, router.Inspect(unestablished).Kind);
-        Assert.Equal(GatewayEndpointProvenanceKind.UnknownListener,
-            (await router.InspectAsync(unestablished, default)).Kind);
-        _listenOnStart = true;
-        await router.RestartAsync(_record, default);
-        Assert.Contains("gateway-service stop --json", _calls);
-        Assert.Contains("gateway-service start --json", _calls);
-        await router.StopAsync(default);
-        Assert.Equal(1, legacy.Stops);
-        Assert.Equal(1, _calls.Count(call => call == "gateway-service stop --json"));
+        // Null identifies a profile created for the retired same-user Gateway runtime.
+        var resolver = new CountingResolver(_package);
+        await using var runtime = new IsolatedGatewayRuntime(resolver,
+            new NativeGatewayPackageClient((_, _, _) =>
+                throw new InvalidOperationException("A non-isolated profile must not reach the package.")),
+            () => new WindowsTcpListenerSnapshotResult(_listeners, true, true),
+            () => new Dictionary<int, ulong> { [ProcessId] = 77 }, _ => true);
+        var profile = _record with { NativeRuntimeContract = contract };
+
+        GatewayEndpointProvenance passive = runtime.Inspect(profile);
+        GatewayEndpointProvenance inspected = await runtime.InspectAsync(profile, default);
+        var ensure = await Assert.ThrowsAsync<NativeGatewayContractException>(
+            () => runtime.EnsureRunningAsync(profile, default));
+        var restart = await Assert.ThrowsAsync<NativeGatewayContractException>(
+            () => runtime.RestartAsync(profile, default));
+        EndpointCredentialAuthorization authorization =
+            await NativeGatewayEndpointSecurity.AuthorizeAsync(runtime, profile, default);
+        var authorizer = new InteractiveGatewayEndpointAuthorizer(runtime, (_, _) => true, NullLogger.Instance);
+
+        foreach (GatewayEndpointProvenance result in new[] { passive, inspected })
+        {
+            Assert.Equal(GatewayEndpointProvenanceKind.UnknownListener, result.Kind);
+            Assert.Contains("Credentials were not sent", result.Detail, StringComparison.Ordinal);
+        }
+        foreach (string message in new[] { ensure.Message, restart.Message, authorization.Detail! })
+        {
+            Assert.Contains("choose Remove, then choose Add Gateway > Install a local native Gateway", message,
+                StringComparison.Ordinal);
+            Assert.Equal(contract is null, message.Contains("same-user Gateway", StringComparison.Ordinal));
+        }
+        Assert.False(authorization.Allowed);
+        Assert.False(authorizer.IsCredentialAllowed(profile,
+            new GatewayCredential("fixture", false, CredentialResolver.SourceSharedGatewayToken)));
+        Assert.Equal(0, resolver.Calls);
+    }
+
+    [Fact]
+    public async Task HttpCredentialsRequireFreshPackageAttestedListenerWithoutWslFallback()
+    {
+        var authorizer = new InteractiveGatewayEndpointAuthorizer(_runtime,
+            (_, _) => throw new InvalidOperationException("Native HTTP must not use WSL authorization."),
+            NullLogger.Instance);
+        var credential = new GatewayCredential("fixture", false, CredentialResolver.SourceSharedGatewayToken);
+
+        Assert.False(authorizer.IsCredentialAllowed(_record, credential));
+        await _runtime.EnsureRunningAsync(_record, default);
+        Assert.True(authorizer.IsCredentialAllowed(_record, credential));
+        Assert.False(authorizer.IsCredentialAllowed(_record with { Id = "different-profile" }, credential));
+
+        _listeners = [new(IPAddress.Loopback, Port, 9999, "other", null)];
+        Assert.False(authorizer.IsCredentialAllowed(_record, credential));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void HttpCredentialsForNonNativeProfilesKeepTheirExistingAuthorization(bool allowed)
+    {
+        var called = false;
+        var credential = new GatewayCredential("fixture", false, CredentialResolver.SourceSharedGatewayToken);
+        var nonNative = _record with { NativePackageFamilyName = null, NativeRuntimeContract = null };
+        var authorizer = new InteractiveGatewayEndpointAuthorizer(_runtime, (record, candidate) =>
+        {
+            Assert.Same(nonNative, record);
+            Assert.Same(credential, candidate);
+            called = true;
+            return allowed;
+        }, NullLogger.Instance);
+
+        Assert.Equal(allowed, authorizer.IsCredentialAllowed(nonNative, credential));
+        Assert.True(called);
+        Assert.Empty(_calls);
+    }
+
+    [Fact]
+    public async Task HttpCredentialsDenyDisposedRuntime()
+    {
+        await _runtime.EnsureRunningAsync(_record, default);
+        await _runtime.DisposeAsync();
+        var authorizer = new InteractiveGatewayEndpointAuthorizer(_runtime, (_, _) => true, NullLogger.Instance);
+
+        Assert.False(authorizer.IsCredentialAllowed(_record,
+            new GatewayCredential("fixture", false, CredentialResolver.SourceDeviceToken)));
+    }
+
+    [Theory]
+    [InlineData("wss://127.0.0.1:19001")]
+    [InlineData("ws://example.com:19001")]
+    [InlineData("ws://user@127.0.0.1:19001")]
+    [InlineData("ws://127.0.0.1:19001?token=secret")]
+    [InlineData("ws://127.0.0.1:19001#fragment")]
+    [InlineData("ws://127.0.0.1:19001/other")]
+    [InlineData("file:///gateway")]
+    public async Task InvalidEndpointIsRejectedBeforeThePackageIsUsed(string url)
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() => _runtime.EnsureRunningAsync(_record with { Url = url }, default));
+        Assert.Empty(_calls);
+    }
+
+    [Fact]
+    public async Task TunnelAndDistroConflictsAreRejectedBeforeThePackageIsUsed()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() => _runtime.EnsureRunningAsync(
+            _record with { SshTunnel = new("user", "host", Port, Port) }, default));
+        await Assert.ThrowsAsync<ArgumentException>(() => _runtime.EnsureRunningAsync(
+            _record with { SetupManagedDistroName = "OpenClawGateway" }, default));
+        Assert.Empty(_calls);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("../escape")]
+    [InlineData("..\\escape")]
+    [InlineData("C:\\escape")]
+    [InlineData("id:stream")]
+    [InlineData("id.")]
+    [InlineData("id ")]
+    [InlineData("NUL")]
+    [InlineData("com1")]
+    public async Task UnsafeProfileIdsAreRejected(string id)
+    {
+        using var directory = new TempDirectory(Path.Combine(Path.GetTempPath(), "native-gateway-id-test-"));
+        Assert.Throws<ArgumentException>(() => NativeGatewayPaths.GetStateDirectory(new GatewayRegistry(directory.Path), id));
+        await Assert.ThrowsAsync<ArgumentException>(() => _runtime.EnsureRunningAsync(_record with { Id = id }, default));
+        Assert.Empty(_calls);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("Other.Gateway_123456789abcd")]
+    [InlineData("OpenClaw.Gateway_..\\escape")]
+    [InlineData("OpenClaw.Gateway_short")]
+    [InlineData("OpenClawFoundation.OpenClawGateway_..\\escape")]
+    [InlineData("OpenClawFoundation.OpenClawGateway_short")]
+    [InlineData("Other.OpenClawFoundation.OpenClawGateway_123456789abcd")]
+    public async Task InvalidPackageFamilyIsRejected(string? family)
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() => _runtime.EnsureRunningAsync(
+            _record with { NativePackageFamilyName = family }, default));
+        Assert.Empty(_calls);
     }
 
     [Fact]
@@ -902,14 +1031,19 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
 
     public ValueTask DisposeAsync() => _runtime.DisposeAsync();
 
-    private sealed class RecordingRuntime : INativeGatewayRuntime
+    private sealed class CountingResolver(NativeGatewayPackage package) : INativeGatewayPackageResolver
     {
-        public int Stops { get; private set; }
-        public Task StopAsync(CancellationToken cancellationToken) { Stops++; return Task.CompletedTask; }
-        public Task EnsureRunningAsync(GatewayRecord record, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public GatewayEndpointProvenance Inspect(GatewayRecord record) => throw new NotSupportedException();
-        public Task<GatewayEndpointProvenance> InspectAsync(GatewayRecord record, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        public int Calls { get; private set; }
+        public Task<NativeGatewayPackage> ResolveAsync(CancellationToken cancellationToken)
+        {
+            Calls++;
+            return Task.FromResult(package);
+        }
+        public Task<NativeGatewayPackage> ResolveAsync(string family, CancellationToken cancellationToken)
+        {
+            Calls++;
+            return Task.FromResult(package);
+        }
     }
 
     private static NativeGatewayPackage FixturePackage(string family = Family)
