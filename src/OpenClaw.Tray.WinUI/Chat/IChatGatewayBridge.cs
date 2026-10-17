@@ -90,6 +90,16 @@ public interface IChatGatewayBridge : IDisposable
         ChatMediaContentInfo media,
         CancellationToken cancellationToken = default) =>
         Task.FromResult(AssistantMediaResolutionResult.Unavailable);
+    /// <summary>
+    /// Downloads a structured file attachment through the default browser. The bridge
+    /// resolves the ticketed Gateway URL and launches it itself; callers only receive the
+    /// typed outcome, never the URL or ticket.
+    /// </summary>
+    Task<AssistantFileDownloadStatus> DownloadAssistantFileAsync(
+        string sessionKey,
+        ChatMediaContentInfo media,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(AssistantFileDownloadStatus.Unavailable);
     Task SendChatAbortAsync(string runId, string? sessionKey = null);
     Task ResolveExecApprovalAsync(string approvalId, string decision);
 
@@ -124,11 +134,15 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
     // fires during construction can't be stomped back by a stale seed.
     private volatile ConnectionStatus _currentStatus = ConnectionStatus.Disconnected;
     private ModelsListInfo? _currentModels;
+    private readonly Func<Uri, Task<bool>> _launchUri;
     private bool _disposed;
 
-    public GatewayClientChatBridge(OpenClawGatewayClient client)
+    public GatewayClientChatBridge(
+        OpenClawGatewayClient client,
+        Func<Uri, Task<bool>>? launchUri = null)
     {
         _client = client;
+        _launchUri = launchUri ?? LaunchWithDefaultBrowserAsync;
         _statusChangedHandler = (s, e) =>
         {
             _currentStatus = e;
@@ -258,6 +272,23 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
         ChatMediaContentInfo media,
         CancellationToken cancellationToken = default) =>
         _client.ResolveAssistantMediaAsync(sessionKey, media, cancellationToken);
+
+#if OPENCLAW_TRAY_TESTS
+    // The test host has no WinRT launcher; tests inject one through the constructor.
+    private static Task<bool> LaunchWithDefaultBrowserAsync(Uri uri) => Task.FromResult(false);
+#else
+    private static async Task<bool> LaunchWithDefaultBrowserAsync(Uri uri) =>
+        await global::Windows.System.Launcher.LaunchUriAsync(uri);
+#endif
+
+    public Task<AssistantFileDownloadStatus> DownloadAssistantFileAsync(
+        string sessionKey,
+        ChatMediaContentInfo media,
+        CancellationToken cancellationToken = default) =>
+        AssistantFileDownloadLauncher.DownloadAsync(
+            ct => _client.ResolveAssistantFileDownloadUriAsync(sessionKey, media, ct),
+            _launchUri,
+            cancellationToken);
 
     public Task SendChatAbortAsync(string runId, string? sessionKey = null) => _client.SendChatAbortAsync(runId, sessionKey);
 
