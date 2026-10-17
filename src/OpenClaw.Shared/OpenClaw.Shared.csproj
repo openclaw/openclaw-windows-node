@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
+    <PackageReference Include="Microsoft.Mxc.Sdk" Version="1.0.0" />
   </ItemGroup>
 
   <!-- Audio / Speech-to-Text (platform-agnostic components) -->
@@ -25,4 +26,3 @@
   </ItemGroup>
 
 </Project>
-

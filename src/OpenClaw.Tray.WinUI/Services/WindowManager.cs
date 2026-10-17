@@ -871,7 +871,13 @@ internal sealed class WindowManager : IWindowManager
                 publishNativeCompletion: _callbacks.PublishNativeCompletion,
                 applyNativeStartup: _callbacks.ApplyNativeStartup,
                 startupRegistrationAllowed: !AppIdentity.IsIsolated,
-                persistChoices: (config, startup, onlyStartup) => settingsWriter.Apply(config.CreatePatch(startup, onlyStartup)),
+                persistChoices: (config, startup, onlyStartup) =>
+                {
+                    settingsWriter.Apply(config.CreatePatch(startup, onlyStartup),
+                        onlyStartup ? null : config.SystemRunPreset,
+                        initializationOnly: !config.SystemRunPresetIsExplicit);
+                    if (!onlyStartup) config.SystemRunPresetIsExplicit = false;
+                },
                 nativeConnectionHost: _callbacks.GetGatewayDirectConnectService() is { } directConnect &&
                     _callbacks.GetGatewayRegistry() is { } registry
                     ? new SetupNativeConnectionHost(directConnect, registry, new AppLogger(), NotifyIncompleteNativeConnection)

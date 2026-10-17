@@ -3171,27 +3171,13 @@ Utilisez l'une de ces options :
   <data name="AppNotification_ChannelNeedsAttention_StatusMessageFormat" xml:space="preserve">
     <value>La passerelle signale {0} comme {1}.</value>
   </data>
-  <data name="AppNotification_SandboxDisabled_Title" xml:space="preserve">
-    <value>Le Sandbox du nœud est désactivé: les commandes s'exécutent sans confinement</value>
-  </data>
-  <data name="AppNotification_SandboxDisabled_Message" xml:space="preserve">
-    <value>Les commandes Windows lancées par l'agent s'exécuteront sans confinement jusqu'à ce que le Sandbox du nœud soit réactivé.</value>
-  </data>
-  <data name="AppNotification_SandboxUnavailable_Title" xml:space="preserve">
-    <value>Sandbox indisponible: repli sur l'hôte</value>
-  </data>
-  <data name="AppNotification_SandboxUnavailable_MessageFormat" xml:space="preserve">
-    <value>{0}
-
-Les commandes s'exécuteront sur l'hôte sans protection de sandbox tant que le sandboxing est indisponible.</value>
-  </data>
   <data name="AppNotification_SandboxUnavailableBlocked_Title" xml:space="preserve">
     <value>Sandbox indisponible: commandes bloquées</value>
   </data>
   <data name="AppNotification_SandboxUnavailableBlocked_MessageFormat" xml:space="preserve">
     <value>{0}
 
-Les commandes sont bloquées tant que le sandboxing est indisponible, car le blocage strict du repli est activé.</value>
+MXC n'a pas pu être vérifié. Les commandes sont bloquées. Réparez l'installation ou réessayez. Seul un Windows confirmé incompatible autorise l'exécution sans isolation.</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_DefaultReason" xml:space="preserve">
     <value>Les primitives de sandboxing MXC ne sont pas disponibles sur cette machine.</value>
@@ -4591,9 +4577,6 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
   <data name="SandboxPage_SecurityLevel.Text" xml:space="preserve">
     <value>Niveau de sécurité</value>
   </data>
-  <data name="SandboxPage_OneClickToSet.Text" xml:space="preserve">
-    <value>Un clic pour définir tous les contrôles ci-dessous. Les dossiers personnalisés restent tels que vous les avez définis.</value>
-  </data>
   <data name="SandboxPage_LockedDown.Text" xml:space="preserve">
     <value>🔒 Verrouillé</value>
   </data>
@@ -4616,16 +4599,16 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Les attributions de dossier personnalisé sont toujours actives</value>
   </data>
   <data name="SandboxPage_Files.Text" xml:space="preserve">
-    <value>📁 Fichiers</value>
+    <value>Accès aux fichiers</value>
   </data>
   <data name="SandboxPage_ByDefaultTheAgent.Text" xml:space="preserve">
-    <value>Par défaut, l'agent ne dispose que d'un dossier de travail temporaire qu'il peut lire et écrire. Accordez l'accès aux dossiers utilisateur ci-dessous. Les clés SSH, les profils de navigateur et les paramètres d'OpenClaw lui-même sont toujours bloqués.</value>
+    <value>La portée sélectionnée contrôle l'accès aux fichiers. Ces lignes ajoutent des autorisations ; Utiliser la portée conserve celles déjà accordées au dossier. Choisissez Dossiers sélectionnés pour limiter l'accès aux autorisations explicites. Les dossiers protégés restent bloqués.</value>
   </data>
   <data name="SandboxPage_Documents.Text" xml:space="preserve">
     <value>Mes documents</value>
   </data>
   <data name="SandboxPage_Blocked.Content" xml:space="preserve">
-    <value>Bloqué</value>
+    <value>Utiliser la portée</value>
   </data>
   <data name="SandboxPage_ReadOnly.Content" xml:space="preserve">
     <value>Lecture seule</value>
@@ -4637,7 +4620,7 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Téléchargements</value>
   </data>
   <data name="SandboxPage_Blocked2.Content" xml:space="preserve">
-    <value>Bloqué</value>
+    <value>Utiliser la portée</value>
   </data>
   <data name="SandboxPage_ReadOnly2.Content" xml:space="preserve">
     <value>Lecture seule</value>
@@ -4649,7 +4632,7 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Bureau</value>
   </data>
   <data name="SandboxPage_Blocked3.Content" xml:space="preserve">
-    <value>Bloqué</value>
+    <value>Utiliser la portée</value>
   </data>
   <data name="SandboxPage_ReadOnly3.Content" xml:space="preserve">
     <value>Lecture seule</value>
@@ -4658,16 +4641,16 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Lecture &amp; écriture</value>
   </data>
   <data name="SandboxPage_ToolDirectoriesOnYour.Text" xml:space="preserve">
-    <value>Les répertoires d'outils de votre PATH bénéficient également d'un accès en lecture seule dans le bac à sable, afin que les outils en ligne de commande comme git, node, python et dotnet soient utilisables. Les racines de lecteur ne sont jamais accordées.</value>
+    <value>Les dossiers d'exécution Windows et l'espace de travail privé restent accessibles. La présence dans PATH n'accorde aucun accès. Réappliquez un préréglage pour réinitialiser les choix des dossiers.</value>
   </data>
   <data name="SandboxPage_CustomFolders.Text" xml:space="preserve">
-    <value>Dossiers personnalisés</value>
+    <value>Dossiers supplémentaires</value>
   </data>
   <data name="SandboxPage_CustomGrantsAreAdded.Text" xml:space="preserve">
-    <value>Les autorisations personnalisées sont ajoutées en plus des règles ci-dessus. L'ajout d'un dossier dans Documents/Téléchargements/Bureau avec un accès plus large remplacera le paramètre au niveau de la ligne pour ce chemin.</value>
+    <value>Ces autorisations s'ajoutent à l'accès ci-dessus. Lecture seule ou Supprimer l'autorisation ne restreint pas l'accès déjà accordé par le préréglage ou un autre dossier. Les dossiers protégés restent bloqués.</value>
   </data>
   <data name="SandboxPage_Blocked4.Content" xml:space="preserve">
-    <value>Bloqué</value>
+    <value>Supprimer l'autorisation</value>
   </data>
   <data name="SandboxPage_ReadOnly4.Content" xml:space="preserve">
     <value>Lecture seule</value>
@@ -4676,7 +4659,7 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Lecture &amp; écriture</value>
   </data>
   <data name="SandboxPage_NoCustomFoldersAdded.Text" xml:space="preserve">
-    <value>Aucun dossier personnalisé ajouté.</value>
+    <value>Aucun dossier personnel partagé. Ajoutez un dossier pour commencer.</value>
   </data>
   <data name="SandboxPage_AddFolder.Content" xml:space="preserve">
     <value>Ajouter un dossier</value>
@@ -4710,42 +4693,6 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
   </data>
   <data name="SandboxPage_LocalNetworkDevicesAnd.Text" xml:space="preserve">
     <value>Les périphériques et partages réseau locaux ne sont pas encore inclus.</value>
-  </data>
-  <data name="SandboxPage_CommandCompatibility.Text" xml:space="preserve">
-    <value>🪟 Compatibilité des commandes</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUi.Header" xml:space="preserve">
-    <value>Autoriser les API d’interface Windows</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUi.OffContent" xml:space="preserve">
-    <value>Désactivé : bloque les appels système Win32k</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUi.OnContent" xml:space="preserve">
-    <value>Activé : PowerShell et les outils similaires peuvent démarrer</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUi.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Autoriser les API d’interface Windows pour les commandes en bac à sable</value>
-  </data>
-  <data name="SandboxPage_WindowsUiCompatibilityDescription.Text" xml:space="preserve">
-    <value>PowerShell (toutes les versions) et certains outils de console utilisent les API d’interface Windows au démarrage. Ce paramètre ne fournit pas d’inventaire pris en charge de tous les processus hôtes.</value>
-  </data>
-  <data name="SandboxPage_WindowsUiWarning.Title" xml:space="preserve">
-    <value>Limite Win32k désactivée</value>
-  </data>
-  <data name="SandboxPage_WindowsUiWarning.Message" xml:space="preserve">
-    <value>Les contrôles des fichiers, du réseau, du presse-papiers, du délai d’expiration et de l’approbation des commandes restent actifs. Les appels système Win32k sont autorisés ; la stratégie du presse-papiers et l’interdiction de l’injection d’entrée restent appliquées.</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUiDialogTitle" xml:space="preserve">
-    <value>Autoriser les API d’interface Windows ?</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUiDialogContent" xml:space="preserve">
-    <value>Cette option permet aux commandes en bac à sable d’utiliser les appels système de l’interface Windows. PowerShell (toutes les versions) et certains outils de console en ont besoin pour démarrer avec les versions actuelles de MXC. Ce paramètre n’accorde pas d’inventaire pris en charge de tous les processus hôtes : l’énumération CIM/WMI de l’hôte n’est pas prise en charge et a été observée en échec, tasklist peut échouer ou expirer et la sortie de Get-Process ne doit pas être considérée comme un inventaire complet ni comme une limite de confidentialité des métadonnées de processus.&#xA;&#xA;Les contrôles des fichiers, du réseau, du presse-papiers, du délai d’expiration et de l’approbation des commandes restent actifs, mais le blocage des appels système Win32k sera désactivé. La stratégie du presse-papiers et l’interdiction de l’injection d’entrée restent appliquées. Activez cette option uniquement si vous avez besoin d’une compatibilité de commande plus large.</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUiDialogPrimary" xml:space="preserve">
-    <value>Autoriser les API d’interface</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUiDialogCancel" xml:space="preserve">
-    <value>Annuler</value>
   </data>
   <data name="SandboxPage_Limits.Text" xml:space="preserve">
     <value>⏱ Limites</value>
@@ -6562,7 +6509,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Sandbox du nœud indisponible: commandes bloquées</value>
   </data>
   <data name="SandboxPage_StatusUnavailableBlockedSubtext" xml:space="preserve">
-    <value>Le confinement n'est pas disponible sur ce PC et le blocage strict du repli est activé ; les commandes lancées par l'agent sont donc bloquées.</value>
+    <value>MXC n'a pas pu être vérifié. Réparez l'installation ou réessayez. Les erreurs du SDK ou de stratégie ne déclenchent jamais d'exécution sans isolation.</value>
   </data>
   <data name="SandboxPage_StatusUnavailableOffTitle" xml:space="preserve">
     <value>Le Sandbox du nœud est désactivé: exécution sur l'hôte</value>
@@ -6597,11 +6544,6 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="SandboxPage_ProbeErrorTitle" xml:space="preserve">
     <value>Impossible de vérifier la disponibilité du sandbox</value>
   </data>
-  <data name="SandboxPage_ProbeErrorMessageFormat" xml:space="preserve">
-    <value>{0}
-
-{1} La vérification des capacités du sandbox ne s'est pas terminée. C'est généralement transitoire (vérification lente ou bloquée): réessayez, et si le problème persiste, vérifiez si un logiciel de sécurité bloque wxc-exec.</value>
-  </data>
   <data name="SandboxPage_Retry" xml:space="preserve">
     <value>Réessayer</value>
   </data>
@@ -6618,11 +6560,6 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   </data>
   <data name="SandboxPage_ComponentsMissingTitle" xml:space="preserve">
     <value>Des composants de sandboxing sont manquants</value>
-  </data>
-  <data name="SandboxPage_ComponentsMissingMessageFormat" xml:space="preserve">
-    <value>{0}
-
-Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, compilez l'application Tray pour copier wxc-exec.exe dans le dossier de sortie. Sinon, réinstallez le compagnon pour restaurer le sandboxing.</value>
   </data>
   <data name="SandboxPage_ShowInstallInstructions" xml:space="preserve">
     <value>Afficher les instructions d'installation</value>
@@ -6979,13 +6916,13 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
     <value>Action du bac à sable</value>
   </data>
   <data name="SandboxPage_PresetLockedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Préréglage verrouillé : aucun accès Internet, aucun presse-papiers, aucun dossier utilisateur standard</value>
+    <value>Préréglage strict : aucun fichier personnel ni Internet</value>
   </data>
   <data name="SandboxPage_PresetBalancedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Préréglage recommandé : accès Internet activé, lecture seule pour Documents, Téléchargements et Bureau</value>
+    <value>Préréglage équilibré : dossiers utilisateur en lecture seule, Internet activé</value>
   </data>
   <data name="SandboxPage_PresetPermissiveButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Préréglage non protégé : accès Internet activé, lecture et écriture pour Documents, Téléchargements et Bureau</value>
+    <value>Préréglage ouvert : lecture et écriture des dossiers utilisateur, Internet activé</value>
   </data>
   <data name="SandboxPage_DocsAccessCombo.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Niveau d’accès aux Documents</value>
@@ -7956,6 +7893,55 @@ Vos paramètres, votre passerelle, vos fichiers et vos modèles restent en place
   <data name="ChatPage_SetupCheckAgain.Content" xml:space="preserve">
     <value>Vérifier à nouveau</value>
   </data>
+  <data name="SandboxPage_PresetHelp.Text" xml:space="preserve"><value>Les préréglages remplacent les autorisations de fichiers et l'accès Internet. Le presse-papiers, les limites et les approbations restent indépendants.</value></data>
+  <data name="SandboxPage_CustomPreset.Text" xml:space="preserve"><value>Autorisations personnalisées</value></data>
+  <data name="SandboxPage_ApplyPreset" xml:space="preserve"><value>Appliquer le préréglage</value></data>
+  <data name="SandboxPage_PresetStrict.Text" xml:space="preserve"><value>Strict</value></data>
+  <data name="SandboxPage_PresetBalanced.Text" xml:space="preserve"><value>Équilibré</value></data>
+  <data name="SandboxPage_Title.Text" xml:space="preserve"><value>Node Sandbox</value></data>
+  <data name="SandboxPage_ResolvedFolders.Header" xml:space="preserve"><value>Dossiers inclus</value></data>
+  <data name="SandboxPage_FileAccessReadOnly" xml:space="preserve"><value>Votre profil utilisateur et vos dossiers personnels, y compris les dossiers redirigés, sont lisibles. Les autorisations supplémentaires ci-dessous peuvent aussi permettre des modifications. Les dossiers protégés restent bloqués.</value></data>
+  <data name="SandboxPage_FileAccessReadWrite" xml:space="preserve"><value>Les programmes peuvent lire et modifier les fichiers de votre profil utilisateur et de vos dossiers personnels, y compris les dossiers redirigés. Les dossiers protégés restent bloqués.</value></data>
+  <data name="SandboxPage_FileAccessSelected" xml:space="preserve"><value>L'accès aux fichiers personnels dépend uniquement des autorisations supplémentaires ci-dessous. Les dossiers d'exécution Windows et l'espace de travail privé restent accessibles. Les dossiers protégés restent bloqués.</value></data>
+  <data name="SandboxPage_SavedFolderFormat" xml:space="preserve"><value>{0} (autorisation enregistrée) : {1}</value></data>
+  <data name="SandboxPage_FolderUnavailable" xml:space="preserve"><value>Emplacement du dossier indisponible</value></data>
+  <data name="SandboxPage_FolderAccessFormat" xml:space="preserve"><value>Accès pour {0}</value></data>
+  <data name="SandboxPage_RemoveFolderFormat" xml:space="preserve"><value>Supprimer l'autorisation pour {0}</value></data>
+  <data name="SandboxPage_FolderList.Text" xml:space="preserve"><value>Dossiers</value></data>
+  <data name="SandboxPage_FolderListHelp.Text" xml:space="preserve"><value>Choisissez ce que l'agent peut faire dans chaque dossier. Aucun accès bloque ce dossier, mais les sous-dossiers explicitement listés conservent leur propre accès. Les dossiers protégés restent bloqués.</value></data>
+  <data name="SandboxPage_NoAccess.Content" xml:space="preserve"><value>Aucun accès</value></data>
+  <data name="SandboxPage_Profile.Text" xml:space="preserve"><value>Profil utilisateur</value></data>
+  <data name="SandboxPage_OneDrive.Text" xml:space="preserve"><value>OneDrive</value></data>
+  <data name="SandboxPage_FolderAccess.PlaceholderText" xml:space="preserve"><value>Choisir l'accès</value></data>
+  <data name="SandboxPage_ResetFolder" xml:space="preserve"><value>Réinitialiser</value></data>
+  <data name="SandboxPage_RemoveFolder" xml:space="preserve"><value>Supprimer</value></data>
+  <data name="SandboxPage_ResetFolderFormat" xml:space="preserve"><value>Rétablir l'accès du préréglage pour {0}</value></data>
+  <data name="SandboxPage_LegacyFolderReview" xml:space="preserve"><value>L'autorisation bloquée enregistrée doit être vérifiée. Elle ne refuse pas l'accès accordé par un préréglage ou un dossier parent.</value></data>
+  <data name="SandboxPage_RuntimeFolder" xml:space="preserve"><value>L'accès aux dossiers d'exécution Windows reste en lecture seule.</value></data>
+  <data name="SandboxPage_LegacyFolderAccess.Content" xml:space="preserve"><value>Ancien blocage (à vérifier)</value></data>
+  <data name="SandboxPage_PresetOpen.Text" xml:space="preserve"><value>Ouvert</value></data>
+  <data name="SandboxPage_PresetStrictText.Text" xml:space="preserve"><value>Gardez l'agent sous contrôle étroit.</value></data>
+  <data name="SandboxPage_PresetBalancedText.Text" xml:space="preserve"><value>Une aide au quotidien, avec moins de risques.</value></data>
+  <data name="SandboxPage_PresetOpenText.Text" xml:space="preserve"><value>Donnez à l'agent plus de liberté pour avancer.</value></data>
+  <data name="SandboxPage_PresetStrictDetails" xml:space="preserve"><value>Aucun fichier personnel ni Internet. Accès d'exécution et dossier temporaire privé uniquement.</value></data>
+  <data name="SandboxPage_PresetBalancedDetails" xml:space="preserve"><value>Lecture du profil et des dossiers personnels redirigés résolus. Aucune écriture personnelle. Internet activé. Dossiers protégés exclus.</value></data>
+  <data name="SandboxPage_PresetOpenDetails" xml:space="preserve"><value>Lecture et écriture du profil et des dossiers personnels redirigés résolus. Internet activé. Dossiers protégés exclus.</value></data>
+  <data name="SandboxPage_FileScope.Header" xml:space="preserve"><value>Portée de l'accès aux fichiers</value></data>
+  <data name="SandboxPage_SelectedFolders.Content" xml:space="preserve"><value>Dossiers sélectionnés</value></data>
+  <data name="SandboxPage_UserFilesReadOnly.Content" xml:space="preserve"><value>Dossiers utilisateur : lecture seule</value></data>
+  <data name="SandboxPage_UserFilesReadWrite.Content" xml:space="preserve"><value>Dossiers utilisateur : lecture et écriture</value></data>
+  <data name="SandboxPage_CheckingTitle" xml:space="preserve"><value>Vérification de la disponibilité de MXC</value></data>
+  <data name="SandboxPage_CheckingText" xml:space="preserve"><value>Vérification du confinement des commandes. Cette vérification ne modifie pas les autorisations.</value></data>
+  <data name="SandboxPage_ScopeResolutionBlockedTitle" xml:space="preserve"><value>Résolution des dossiers utilisateur incomplète</value></data>
+  <data name="SandboxPage_ScopeResolutionBlockedText" xml:space="preserve"><value>Un dossier personnel requis est introuvable ou inaccessible. Les commandes utilisant ces dossiers sont bloquées. Consultez la liste des dossiers, restaurez l'emplacement Windows du dossier, puis réessayez. Les dossiers protégés et les approbations de commandes restent obligatoires.</value></data>
+  <data name="SandboxPage_TimeoutFormat" xml:space="preserve"><value>Délai de commande : {0} s</value></data>
+  <data name="SandboxPage_LegacyBlockedTitle" xml:space="preserve"><value>Autorisations de dossiers héritées à vérifier</value></data>
+  <data name="SandboxPage_LegacyBlockedText" xml:space="preserve"><value>Les autorisations précédemment filtrées ou conflictuelles restent bloquées pour ne pas élargir l'accès silencieusement. Vérifiez les lignes bloquées et choisissez explicitement un accès pris en charge ou un autre dossier. Les racines protégées restent exclues.</value></data>
+  <data name="SandboxPage_IncludedUserFolders" xml:space="preserve"><value>Racines utilisateur résolues par Windows (descendants protégés exclus) :</value></data>
+  <data name="SandboxPage_CheckingUserFolders" xml:space="preserve"><value>Résolution des emplacements utilisateur...</value></data>
+  <data name="SandboxPage_OneDriveNotIncluded" xml:space="preserve"><value>Aucune racine OneDrive configurée disponible n'a été résolue. Aucun emplacement OneDrive supplémentaire n'est inclus.</value></data>
+  <data name="SandboxPage_WindowsCompatibilityTitle" xml:space="preserve"><value>Isolation Windows indisponible : commandes sans isolation</value></data>
+  <data name="SandboxPage_WindowsCompatibilityText" xml:space="preserve"><value>Cette version de Windows ne fournit pas l'isolation MXC requise. Les commandes approuvées s'exécutent directement sur cet ordinateur. Les restrictions de fichiers, de réseau, de presse-papiers et d'interface Windows ne sont pas appliquées. Les autorisations enregistrées sont conservées et les approbations de commandes restent actives. Mettez Windows à jour pour activer l'isolation. La version minimale de Windows requise par Companion reste applicable.</value></data>
   <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>Le profil préféré {0} ne convient pas à ce matériel. La configuration peut utiliser {1} avec {2:N0} jetons de contexte. Vérifiez ce profil dans la configuration avant de l’installer.</value></data>
   <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>Ce profil nécessite au moins {0} de mémoire vive système.</value></data>
   <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>Ce profil nécessite au moins {0} libres sur les volumes du cache des modèles et du moteur.</value></data>

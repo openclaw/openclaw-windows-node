@@ -1,6 +1,7 @@
 using OpenClawTray.Services;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Mxc;
+using Microsoft.Mxc.Sdk.V1;
 using OpenClaw.TestSupport;
 using OpenClawTray;
 using System.Text.Json;
@@ -55,13 +56,14 @@ public sealed class SettingsManagerIsolationTests
             .Set("OPENCLAW_STATE_DIR", stateDirectory);
         var grant = directory.Combine("custom-grant");
         Directory.CreateDirectory(grant);
+        var scratch = directory.Combine("scratch");
+        Directory.CreateDirectory(scratch);
+        var command = new CommandRequest { Argv = [Path.Combine(Environment.SystemDirectory, "whoami.exe")] };
 
         var settings = new SettingsManager
         {
-            SystemRunSandboxEnabled = true,
-            SystemRunBlockHostFallbackWhenMxcUnavailable = true,
+            SystemRunFilesystemScope = SystemRunFilesystemScope.SelectedFolders,
             SystemRunAllowOutbound = true,
-            SystemRunAllowWindowsUi = true,
             SandboxClipboard = SandboxClipboardMode.Both,
             SandboxDocumentsAccess = SandboxFolderAccess.ReadOnly,
             SandboxDownloadsAccess = SandboxFolderAccess.ReadWrite,
@@ -76,35 +78,37 @@ public sealed class SettingsManagerIsolationTests
         Assert.Equal(profile, settings.SettingsDirectory);
         Assert.True(File.Exists(SettingsManager.SettingsPath));
         var reloaded = new SettingsManager(profile);
-        Assert.True(reloaded.SystemRunSandboxEnabled);
-        Assert.True(reloaded.SystemRunBlockHostFallbackWhenMxcUnavailable);
+        Assert.Equal(SystemRunFilesystemScope.SelectedFolders, reloaded.SystemRunFilesystemScope);
         Assert.Equal(SandboxFolderAccess.ReadOnly, reloaded.SandboxDocumentsAccess);
         Assert.Equal(SandboxFolderAccess.ReadWrite, reloaded.SandboxDownloadsAccess);
         Assert.Equal(SandboxFolderAccess.ReadOnly, reloaded.SandboxDesktopAccess);
         Assert.Equal(16 * 1024 * 1024, reloaded.SandboxMaxOutputBytes);
 
-        var policy = MxcPolicyBuilder.ForSystemRun(reloaded.ToSettingsData(), profile);
-        Assert.True(policy.Network!.AllowOutbound);
-        Assert.True(policy.Ui!.AllowWindows);
+        var snapshot = reloaded.SnapshotSystemRunSettings();
+        var policy = MxcRequestBuilder.Build(command, snapshot, profile, scratch);
+        Assert.Equal(NetworkAction.Allow, policy.Network!.Egress!.Default);
+        Assert.False(policy.Ui!.Disable);
         Assert.Equal(ClipboardPolicy.All, policy.Ui.Clipboard);
-        Assert.Equal(95_000, policy.TimeoutMs);
+        Assert.Equal(95_000, snapshot.SandboxTimeoutMs);
+        Assert.Null(policy.TimeoutMs); // The runner owns the single command deadline.
         Assert.Contains(grant, policy.Filesystem!.ReadwritePaths!);
         Assert.Contains(profile, policy.Filesystem.DeniedPaths!);
 
         reloaded.SystemRunAllowOutbound = false;
-        reloaded.SystemRunAllowWindowsUi = false;
         reloaded.SandboxClipboard = SandboxClipboardMode.None;
-        reloaded.SandboxCustomFolders.Clear();
+        reloaded.SandboxCustomFolders = [];
         reloaded.SandboxTimeoutMs = 105_000;
         reloaded.SaveOrThrow();
         var restricted = new SettingsManager();
-        policy = MxcPolicyBuilder.ForSystemRun(restricted.ToSettingsData(), profile);
-        Assert.False(policy.Network!.AllowOutbound);
-        Assert.False(policy.Ui!.AllowWindows);
+        snapshot = restricted.SnapshotSystemRunSettings();
+        policy = MxcRequestBuilder.Build(command, snapshot, profile, scratch);
+        Assert.Equal(NetworkAction.Deny, policy.Network!.Egress!.Default);
+        Assert.False(policy.Ui!.Disable);
         Assert.Equal(ClipboardPolicy.None, policy.Ui.Clipboard);
         Assert.Empty(restricted.SandboxCustomFolders);
         Assert.DoesNotContain(grant, policy.Filesystem!.ReadwritePaths!);
-        Assert.Equal(105_000, policy.TimeoutMs);
+        Assert.Equal(105_000, snapshot.SandboxTimeoutMs);
+        Assert.Null(policy.TimeoutMs);
         Assert.Equal(otherSettings, File.ReadAllText(otherSettingsPath));
         Assert.False(File.Exists(Path.Combine(stateDirectory, "settings.json")));
         Assert.False(File.Exists(Path.Combine(profile, "exec-approvals.json")));
