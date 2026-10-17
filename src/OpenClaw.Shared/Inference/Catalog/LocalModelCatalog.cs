@@ -199,11 +199,17 @@ public static partial class LocalModelCatalog
     public const string Qwen35BModelId = "qwen3.6-35b-a3b-mtp-q4-k-m";
     public const string Qwen27BModelId = "qwen3.6-27b-mtp-q4-k-m";
     /// <summary>
-    /// Development-only low-memory recipe, offered only while
-    /// <see cref="DevelopmentLowMemoryModelsEnvironmentVariable"/> is "1"; otherwise it resolves only
+    /// Low-memory recipe, offered by default; hidden from fresh selection only while
+    /// <see cref="DevelopmentLowMemoryModelsEnvironmentVariable"/> is "0", where it resolves only
     /// through <see cref="FindInstalled"/> with the native F16 profile a pre-#1281 install could have recorded.
     /// </summary>
     public const string Qwen9BModelId = "qwen3.5-9b-mtp-q4-k-m";
+    /// <summary>
+    /// Low-memory recipe, offered by default; hidden from fresh selection only while
+    /// <see cref="DevelopmentLowMemoryModelsEnvironmentVariable"/> is "0".
+    /// bartowski's Q3_K_M quantization of DeepSeek-R1-Distill-Qwen-14B.
+    /// </summary>
+    public const string DeepSeek14BModelId = "deepseek-r1-14b-q3-k-m";
     /// <summary>RTX Spark 48GB-SKU recipe. Never offered on the generic dGPU path; see <c>RtxSparkInferenceSelector</c>.</summary>
     public const string Qwen35B_Q4KSModelId = "qwen3.6-35b-a3b-mtp-ud-q4-k-s";
     /// <summary>
@@ -218,6 +224,10 @@ public static partial class LocalModelCatalog
     public const int IntermediateContextTokens = 196_608;
     public const int ReducedContextTokens = 131_072;
     public const int MinimumContextTokens = 65_536;
+    /// <summary>Development-only low-memory tier for the dense DeepSeek-R1 14B distill; see <see cref="DeepSeek14BModelId"/>.</summary>
+    public const int DevelopmentLowMemoryContextTokens = 32_768;
+    /// <summary>Development-only low-memory tier for the dense DeepSeek-R1 14B distill; see <see cref="DeepSeek14BModelId"/>.</summary>
+    public const int DevelopmentMinimumContextTokens = 8_192;
     /// <summary>RTX Spark 48GB-SKU context tier (98,304 tokens); see <see cref="Qwen35B_Q4KSModelId"/>.</summary>
     public const int RtxSpark48GbContextTokens = 98_304;
 
@@ -245,6 +255,10 @@ public static partial class LocalModelCatalog
     private static readonly HuggingFaceRevisionSource s_qwen9BSource = new(
         "unsloth/Qwen3.5-9B-MTP-GGUF",
         "9716a636ee4bddc3fed678220b7a33dd2a4160ae");
+
+    private static readonly HuggingFaceRevisionSource s_deepSeek14BSource = new(
+        "bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF",
+        "9f5d77d401799416e0702290a691038b44012e0c");
 
     private static readonly HuggingFaceRevisionSource s_qwen38_27BDFlashDraftSource = new(
         "z-lab/Qwen3.8-27B-DFlash2-GGUF",
@@ -398,11 +412,11 @@ public static partial class LocalModelCatalog
             CreateNemotronBolt(),
         });
 
-    // Development-only low-memory recipes. Offered, recommended and launched with
-    // their full profile set only while DevelopmentLowMemoryModelsEnvironmentVariable
-    // is "1". Without the guard they are never offered and resolve only through
-    // FindInstalled, exposing only the native F16 profile an install made before
-    // #1281 could have recorded. Pins are reproduced exactly; nothing is remapped.
+    // Low-memory recipes, offered by default. Setting
+    // DevelopmentLowMemoryModelsEnvironmentVariable to "0" hides them from fresh
+    // selection; they then resolve only through FindInstalled, exposing only the
+    // native F16 profile an install made before #1281 could have recorded.
+    // Pins are reproduced exactly; nothing is remapped.
     private static readonly ReadOnlyCollection<LocalModelInfo> s_developmentModels = Array.AsReadOnly(
         new[]
         {
@@ -425,6 +439,38 @@ public static partial class LocalModelCatalog
                 IsExplicitAlternative: true,
                 SupportsVision: false,
                 RecommendationPriority: 100),
+            new LocalModelInfo(
+                DeepSeek14BModelId,
+                "DeepSeek-R1-Distill-Qwen-14B (Q3_K_M)",
+                "DeepSeek-R1",
+                "Q3_K_M",
+                ModelArtifact(
+                    DeepSeek14BModelId,
+                    s_deepSeek14BSource,
+                    "DeepSeek-R1-Distill-Qwen-14B-Q3_K_M.gguf",
+                    7_339_204_000,
+                    "faf2e6f4d4462619a9352419b751f140be67ca9a4cb343b6796e37adafd8a050"),
+                // Dense Qwen2 architecture distilled from DeepSeek-R1 (upstream
+                // deepseek-ai config.json: 48 full-attention layers, 8 KV heads,
+                // head dimension 128, native 131072 context). No MTP head, so no
+                // speculative decoding; llama-server keeps its deepseek
+                // reasoning-format handling.
+                new LocalModelRunRecipe(
+                    batchTokens: 2_048,
+                    microBatchTokens: 512,
+                    parallelRequests: 1,
+                    fullAttentionLayerCount: 48,
+                    keyValueHeadCount: 8,
+                    keyValueHeadDimension: 128,
+                    flashAttention: true,
+                    offloadAllLayers: true,
+                    speculativeDecoding: SpeculativeDecodingMode.None,
+                    speculativeDraftMaxTokens: 0,
+                    sampling: new ModelSamplingPreset(0.6, 20, 0.95, 0.0, 1.0, 0.0)),
+                IsDefault: false,
+                IsExplicitAlternative: true,
+                SupportsVision: false,
+                RecommendationPriority: 50),
         });
 
     // Retired from new installs and never offered, recommended, or selectable.
@@ -495,20 +541,27 @@ public static partial class LocalModelCatalog
     private static readonly IReadOnlyDictionary<string, ReadOnlyCollection<LocalInferenceRunProfile>>
         s_developmentProfilesByModel = s_developmentModels.ToDictionary(
             model => model.Id,
-            model => Array.AsReadOnly(CreateProfiles(model)),
+            model => Array.AsReadOnly(
+                model.Id == DeepSeek14BModelId
+                    ? CreateDeepSeek14BProfiles(model)
+                    : CreateProfiles(model)),
             StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Development-only opt-in. When this variable equals "1", the low-memory Qwen3.5 9B recipe is
-    /// offered, recommended when no production model fits, and launched with its full profile set.
-    /// Read on every call so the tray, setup UI, and setup engine each honor their own process environment.
+    /// Opt-out for the low-memory recipes. By default the Qwen3.5 9B and
+    /// DeepSeek-R1-Distill-Qwen-14B recipes are offered, recommended when no
+    /// production model fits, and launched with their full profile sets. When
+    /// this variable equals "0" they are never offered and resolve only through
+    /// installed receipts with the native F16 profile a pre-#1281 install could
+    /// have recorded. Read on every call so the tray, setup UI, and setup
+    /// engine each honor their own process environment.
     /// </summary>
     public const string DevelopmentLowMemoryModelsEnvironmentVariable = "OPENCLAW_LOCAL_AI_DEV_LOW_MEMORY_MODELS";
 
     public static bool DevelopmentLowMemoryModelsEnabled =>
-        string.Equals(
+        !string.Equals(
             Environment.GetEnvironmentVariable(DevelopmentLowMemoryModelsEnvironmentVariable),
-            "1",
+            "0",
             StringComparison.Ordinal);
 
     public static IReadOnlyList<LocalModelInfo> Models =>
@@ -664,6 +717,23 @@ public static partial class LocalModelCatalog
         Profile(model, NativeContextTokens, KvCachePrecision.F16),
     ];
 
+    // The dense DeepSeek-R1 14B distill carries 196,608 bytes/token of F16 KV
+    // (48 layers x 8 KV heads x 128 head dimension), roughly six times the 9B
+    // dev recipe, so the shared dev ladder (65,536 minimum) does not fit a
+    // 12 GiB dGPU. It gets its own low-context tiers instead: 32K/8K cover the
+    // 16 GiB and 12 GiB development cards. Guard-off, the shared
+    // CreateLegacyProfiles native-context F16 view keeps a pre-guard receipt
+    // valid.
+    private static LocalInferenceRunProfile[] CreateDeepSeek14BProfiles(LocalModelInfo model) =>
+    [
+        Profile(model, MinimumContextTokens, KvCachePrecision.F16),
+        Profile(model, MinimumContextTokens, KvCachePrecision.Q8_0),
+        Profile(model, DevelopmentLowMemoryContextTokens, KvCachePrecision.F16),
+        Profile(model, DevelopmentLowMemoryContextTokens, KvCachePrecision.Q8_0),
+        Profile(model, DevelopmentMinimumContextTokens, KvCachePrecision.F16),
+        Profile(model, DevelopmentMinimumContextTokens, KvCachePrecision.Q8_0),
+    ];
+
     // The RTX Spark 48GB-SKU recipe launches at a single fixed context/KV
     // tier (98,304 tokens, F16 KV) rather than the shared cross-product of
     // tiers other models expose.
@@ -684,6 +754,8 @@ public static partial class LocalModelCatalog
             ReducedContextTokens => ReducedContextWorkspaceReserveBytes,
             RtxSpark48GbContextTokens => ReducedContextWorkspaceReserveBytes,
             MinimumContextTokens => MinimumContextWorkspaceReserveBytes,
+            DevelopmentLowMemoryContextTokens => MinimumContextWorkspaceReserveBytes,
+            DevelopmentMinimumContextTokens => MinimumContextWorkspaceReserveBytes,
             _ => throw new ArgumentOutOfRangeException(nameof(contextTokens)),
         };
         return new LocalInferenceRunProfile(

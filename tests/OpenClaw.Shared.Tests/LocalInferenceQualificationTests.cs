@@ -1,5 +1,6 @@
 using OpenClaw.Shared.Inference;
 using OpenClaw.Shared.Inference.Catalog;
+using OpenClaw.TestSupport;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using RuntimeArchitecture = System.Runtime.InteropServices.Architecture;
@@ -614,21 +615,50 @@ public class LocalInferenceQualificationTests
     }
 
     [Fact]
-    public void Evaluate_UnsetModelSelectsLowMemoryProfileFor16GiBCapacity()
+    public void Evaluate_SixteenGiBWithDiskFactsStillPrefersBonsaiButOffersQwen9B()
     {
+        using var env = new EnvironmentScope(
+            LocalModelCatalog.DevelopmentLowMemoryModelsEnvironmentVariable, null);
+        HostHardwareInfo hardware = Hardware(
+            RuntimeArchitecture.X64, Gpu("NVIDIA arbitrary adapter", "GPU-16", 16, 16)) with
+            { LocalAiDiskSpace = new(20 * GiB, 20 * GiB, true) };
+
+        LocalInferenceEligibilityResult result = LocalInferenceEligibility.Evaluate(hardware);
+
+        // With disk facts available Bonsai's admission gates pass and it wins the
+        // priority-100 tie by download-size ordering, so the default pick is
+        // unchanged; the 9B is still offered and selectable by default.
+        Assert.Equal(LocalInferenceEligibilityStatus.Eligible, result.Status);
+        Assert.Equal(LocalModelCatalog.Bonsai2ModelId, result.Plan?.Model.Id);
+        Assert.Contains(LocalModelCatalog.Models, model => model.Id == LocalModelCatalog.Qwen9BModelId);
+
+        LocalInferenceEligibilityResult explicit9B = LocalInferenceEligibility.Evaluate(
+            hardware, LocalModelCatalog.Qwen9BModelId);
+        Assert.Equal(LocalInferenceEligibilityStatus.Eligible, explicit9B.Status);
+        Assert.Equal(LocalModelCatalog.Qwen9BModelId, explicit9B.Plan?.Model.Id);
+    }
+
+    [Fact]
+    public void Evaluate_OptOutHidesLowMemoryModelsAndSelectsBonsai()
+    {
+        using var env = new EnvironmentScope(
+            LocalModelCatalog.DevelopmentLowMemoryModelsEnvironmentVariable, "0");
+
         LocalInferenceEligibilityResult result = LocalInferenceEligibility.Evaluate(
             Hardware(RuntimeArchitecture.X64, Gpu("NVIDIA arbitrary adapter", "GPU-16", 16, 16)) with
             { LocalAiDiskSpace = new(20 * GiB, 20 * GiB, true) });
 
         Assert.Equal(LocalInferenceEligibilityStatus.Eligible, result.Status);
-        Assert.Equal(LocalInferenceEligibilityFailureCode.None, result.FailureCode);
         Assert.Equal(LocalModelCatalog.Bonsai2ModelId, result.Plan?.Model.Id);
-        Assert.DoesNotContain(LocalModelCatalog.Models, model => model.Id == "qwen3.5-9b-mtp-q4-k-m");
+        Assert.DoesNotContain(LocalModelCatalog.Models, model => model.Id == LocalModelCatalog.Qwen9BModelId);
     }
 
     [Fact]
-    public void Evaluate_Removed16GiBModelIdIsUnknown()
+    public void Evaluate_OptOutMakesLowMemoryModelIdUnknown()
     {
+        using var env = new EnvironmentScope(
+            LocalModelCatalog.DevelopmentLowMemoryModelsEnvironmentVariable, "0");
+
         LocalInferenceEligibilityResult result = LocalInferenceEligibility.Evaluate(
             Hardware(RuntimeArchitecture.X64, Gpu("NVIDIA arbitrary adapter", "GPU-32", 32, 32)),
             "qwen3.5-9b-mtp-q4-k-m");
