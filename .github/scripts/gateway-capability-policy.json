@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "families": [
+    {
+      "id": "question-answer",
+      "methods": ["question.list", "question.get", "question.resolve"],
+      "events": ["question.requested", "question.resolved"],
+      "scope": "operator.questions",
+      "obligations": [
+        "Production event routing, not agent stream=approval",
+        "Question, session and run ID correlation",
+        "Choices, multiselect and presentation modes",
+        "Answer construction and submission",
+        "Requested and granted operator.questions authorization",
+        "Expiry, cancellation and reconnect recovery",
+        "Real-client behavioral tests and interactive fixture parity"
+      ]
+    }
+  ],
+  "decisions": [
+    {
+      "surface": "method:question.request",
+      "status": "intentionally-unsupported",
+      "scope": "operator.questions",
+      "rationale": "Producer-side question creation is not a Windows operator requirement. Agents create questions; Windows must list, display and resolve them.",
+      "fallback": "The upstream producer creates the question. This exemption does not cover operator list/get/resolve or question lifecycle events."
+    },
+    {
+      "surface": "method:question.waitAnswer",
+      "status": "intentionally-unsupported",
+      "scope": "operator.questions",
+      "rationale": "Producer-side waiting is not a Windows operator requirement. The producer waits for the operator answer.",
+      "fallback": "The upstream producer waits for resolution. Windows still needs answer submission and reconnect recovery."
+    }
+  ]
+}
