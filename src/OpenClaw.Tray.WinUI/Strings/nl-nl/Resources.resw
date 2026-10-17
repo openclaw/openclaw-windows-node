@@ -7414,6 +7414,7 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   <data name="Onboarding_AiSetup_LocalInstalling" xml:space="preserve"><value>Lokale AI instellen</value></data>
   <data name="Onboarding_AiSetup_LocalChanged" xml:space="preserve"><value>De Gateway of de status van lokale AI is gewijzigd. Ga terug naar AI verbinden en controleer opnieuw voordat je installeert.</value></data>
   <data name="Onboarding_AiSetup_LocalStartFailed" xml:space="preserve"><value>Lokale AI kon niet starten. Het opruimen is voltooid. Herstel lokale AI of kies een andere provider.</value></data>
+  <data name="Onboarding_AiSetup_OpenLocalAiLogs" xml:space="preserve"><value>Logboeken van lokale AI openen</value></data>
   <data name="Onboarding_AiSetup_LocalState_Checking" xml:space="preserve"><value>Deze pc wordt gecontroleerd. Je kunt nog steeds een AI-provider kiezen.</value></data>
   <data name="Onboarding_AiSetup_LocalState_SetUp" xml:space="preserve"><value>Compatibele pc. Controleer de instellingen vóór installatie.</value></data>
   <data name="Onboarding_AiSetup_LocalState_StartAndUse" xml:space="preserve"><value>Geïnstalleerd, niet actief</value></data>

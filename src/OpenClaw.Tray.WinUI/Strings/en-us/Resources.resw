@@ -7477,6 +7477,7 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_AiSetup_LocalInstalling" xml:space="preserve"><value>Setting up Local AI</value></data>
   <data name="Onboarding_AiSetup_LocalChanged" xml:space="preserve"><value>The Gateway or Local AI readiness changed. Go back to Connect your AI and check again before installing.</value></data>
   <data name="Onboarding_AiSetup_LocalStartFailed" xml:space="preserve"><value>Local AI could not start. Cleanup is complete. Repair Local AI or choose another provider.</value></data>
+  <data name="Onboarding_AiSetup_OpenLocalAiLogs" xml:space="preserve"><value>Open Local AI logs</value></data>
   <data name="Onboarding_AiSetup_LocalState_Checking" xml:space="preserve"><value>Checking this PC. You can still choose an AI provider.</value></data>
   <data name="Onboarding_AiSetup_LocalState_SetUp" xml:space="preserve"><value>Compatible PC. Review setup before installing.</value></data>
   <data name="Onboarding_AiSetup_LocalState_StartAndUse" xml:space="preserve"><value>Installed, not running</value></data>

@@ -72,7 +72,7 @@ public sealed class LocalAiOnboardingOwnershipTests
         Assert.Contains("LocalAiSelectionRejectedException or LocalAiStartFailedException", recovery);
         Assert.Contains("_localObservation!.RefreshAsync", recovery);
         Assert.Contains("TitleText.Text = S(\"Title.Text\")", recovery);
-        Assert.Contains("S(\"LocalStartFailed\") + \" \" + ex.Message", recovery);
+        Assert.Contains("ShowLocalAiStartFailure(startFailed)", recovery);
         Assert.Contains("await DetectAsync(ct)", recovery);
         Assert.DoesNotContain("DetectAsync", continuation[recoveryEnd..]);
         var navigation = page[page.IndexOf("protected override void OnNavigatedTo", StringComparison.Ordinal)..
@@ -151,7 +151,7 @@ public sealed class LocalAiOnboardingOwnershipTests
         {
             var resources = System.Xml.Linq.XDocument.Parse(Read($@"src\OpenClaw.Tray.WinUI\Strings\{locale}\Resources.resw"));
             foreach (var key in new[] { "LocalState_ManagementBlocked", "LocalOwnershipMissing", "LocalOwnershipInvalid",
-                "LocalOwnershipUnavailable", "LocalOwnershipFiles" })
+                "LocalOwnershipUnavailable", "LocalOwnershipFiles", "OpenLocalAiLogs" })
             {
                 var value = Assert.Single(resources.Descendants("data"),
                     element => (string?)element.Attribute("name") == "Onboarding_AiSetup_" + key).Element("value")!.Value;

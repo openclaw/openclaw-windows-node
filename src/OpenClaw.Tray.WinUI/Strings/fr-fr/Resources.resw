@@ -7413,6 +7413,7 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   <data name="Onboarding_AiSetup_LocalInstalling" xml:space="preserve"><value>Configuration de l’IA locale</value></data>
   <data name="Onboarding_AiSetup_LocalChanged" xml:space="preserve"><value>Le Gateway ou la disponibilité de l’IA locale a changé. Revenez à la connexion de votre IA et vérifiez à nouveau avant l’installation.</value></data>
   <data name="Onboarding_AiSetup_LocalStartFailed" xml:space="preserve"><value>L’IA locale n’a pas pu démarrer. Le nettoyage est terminé. Réparez l’IA locale ou choisissez un autre fournisseur.</value></data>
+  <data name="Onboarding_AiSetup_OpenLocalAiLogs" xml:space="preserve"><value>Ouvrir les journaux de l’IA locale</value></data>
   <data name="Onboarding_AiSetup_LocalState_Checking" xml:space="preserve"><value>Vérification de ce PC. Vous pouvez toujours choisir un fournisseur d’IA.</value></data>
   <data name="Onboarding_AiSetup_LocalState_SetUp" xml:space="preserve"><value>PC compatible. Vérifiez la configuration avant l’installation.</value></data>
   <data name="Onboarding_AiSetup_LocalState_StartAndUse" xml:space="preserve"><value>Installé, à l’arrêt</value></data>

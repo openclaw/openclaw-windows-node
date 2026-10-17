@@ -1391,6 +1391,81 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
         }, localAiHost: host, reviewLocalAi: _ => Task.CompletedTask);
     }
 
+    private const string SyntheticLoadFailure =
+        "llama-server: llama_model_load: error loading model: synthetic tensor shape mismatch";
+
+    [Fact]
+    public async Task LocalAi_VerificationFailureShowsLlamaServerDiagnosticsAndLogsLink()
+    {
+        var log = WriteLlamaServerFailureLog();
+        try
+        {
+            var host = new PageLocalAiHost(LocalAiOnboardingState.Use);
+            await WithPageAsync(async (page, _, completed) =>
+            {
+                await InvokeLocalAiAsync(page);
+                await WaitAsync(() => Find<StackPanel>(page, "LocalAiFailurePanel").Visibility == Visibility.Visible);
+                var diagnostics = Find<TextBlock>(page, "LocalAiDiagnosticsText").Text;
+                Assert.Contains(SyntheticLoadFailure, diagnostics);
+                Assert.DoesNotContain("load_tensors", diagnostics);
+                Assert.Equal(Visibility.Visible, Find<HyperlinkButton>(page, "OpenLocalAiLogsButton").Visibility);
+                Assert.Contains("Synthetic verification failure.", Find<InfoBar>(page, "ErrorBar").Message);
+                Assert.Equal(0, completed());
+            }, localAiHost: host, configure: transport => transport.FailVerification = true);
+        }
+        finally { File.Delete(log); }
+    }
+
+    [Fact]
+    public async Task LocalAi_StartFailureShowsLlamaServerDiagnosticsAndLogsLink()
+    {
+        var log = WriteLlamaServerFailureLog();
+        try
+        {
+            var host = new PageLocalAiHost(LocalAiOnboardingState.StartAndUse)
+            { UseFailure = new LocalAiStartFailedException("Synthetic start failure.") };
+            await WithPageAsync(async (page, _, completed) =>
+            {
+                await InvokeLocalAiAsync(page);
+                await WaitAsync(() => Find<StackPanel>(page, "LocalAiFailurePanel").Visibility == Visibility.Visible);
+                Assert.Contains(SyntheticLoadFailure, Find<TextBlock>(page, "LocalAiDiagnosticsText").Text);
+                Assert.Equal(Visibility.Visible, Find<HyperlinkButton>(page, "OpenLocalAiLogsButton").Visibility);
+                Assert.Contains("Synthetic start failure.", Find<InfoBar>(page, "ErrorBar").Message);
+                Assert.Equal(0, completed());
+            }, localAiHost: host, reviewLocalAi: _ => Task.CompletedTask);
+        }
+        finally { File.Delete(log); }
+    }
+
+    [Fact]
+    public async Task ConfiguredModelVerificationFailure_DoesNotShowLocalAiDiagnostics()
+    {
+        var log = WriteLlamaServerFailureLog();
+        try
+        {
+            await WithPageAsync(async (page, _, completed) =>
+            {
+                Assert.True(Find<InfoBar>(page, "ErrorBar").IsOpen);
+                await ui.YieldToRenderAsync();
+                await ui.YieldToRenderAsync();
+                Assert.Equal(Visibility.Collapsed, Find<StackPanel>(page, "LocalAiFailurePanel").Visibility);
+                Assert.Equal(0, completed());
+            }, expectedModelRef: "openai/test-model", configure: transport => transport.FailVerification = true);
+        }
+        finally { File.Delete(log); }
+    }
+
+    private static string WriteLlamaServerFailureLog()
+    {
+        var data = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR")
+            ?? throw new InvalidOperationException("Set isolated tray data before onboarding UI tests.");
+        var paths = new OpenClaw.Connection.LocalAi.LocalAiPaths(data);
+        Directory.CreateDirectory(paths.LogsDirectory);
+        File.WriteAllText(paths.StandardErrorLogPath,
+            "load_tensors: loading model tensors\nllama_model_load: error loading model: synthetic tensor shape mismatch\n");
+        return paths.StandardErrorLogPath;
+    }
+
     [Fact]
     public async Task LocalAi_ReadinessTimeoutReportsCardStateWithoutInvoking()
     {

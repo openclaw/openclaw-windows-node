@@ -10,14 +10,14 @@ public class NemotronBoltCatalogTests
     public void Bolt_PinsIndependentlyVerifiedTargetAndDrafter()
     {
         var model = Assert.IsType<LocalModelInfo>(LocalModelCatalog.Find(LocalModelCatalog.NemotronBoltModelId));
-        AssertArtifact(model.Weights, "NVIDIA-Nemotron/Nemotron-3.5-Bolt-74B-A9B-IQ2-GGUF",
-            "06c7fae4665f61a83319ad98e2b00a2824a5f390", "super3.5-vl.gguf", 22_018_326_528,
+        AssertArtifact(model.Weights, "nvidia/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB-GGUF",
+            "e0fecb69cb3e5e4c5e8a056fa2aec98c78e91246", "NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB.gguf", 22_018_326_528,
             "91d63363e782c8a3d5f4be42816eba8e0d42dd2530bd07a7d0d2dc440599af75");
         var draft = Assert.IsType<PinnedArtifact>(model.Recipe.DraftWeights);
-        AssertArtifact(draft, "NVIDIA-Nemotron/Nemotron-3.5-Bolt-74B-A9B-IQ2-LiLiCorr-GGUF",
-            "77844a4db96a62c0a6e14247af855b8ae8e2f89b", "originalLi5_final_step353859_NVFP4.gguf", 998_242_176,
-            "9c4033517096cfca23ad9450044186204ad1ab35efa77e058870f6f61fc245e0");
-        Assert.Equal(23_016_568_704, LocalModelCatalog.TotalDownloadSizeBytes(model));
+        AssertArtifact(draft, "nvidia/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB-LiLiCorr-GGUF",
+            "182d2987939e12f458298b5d5f6ef98912f4ad6c", "NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB-LiLiCorr.gguf", 998_242_560,
+            "080e1ea41c9562a7804dbf30c6fbd4d17e216c6b8ff666f88e6edb1816010194");
+        Assert.Equal(23_016_569_088, LocalModelCatalog.TotalDownloadSizeBytes(model));
         Assert.Equal(draft, Assert.Single(LocalModelCatalog.AdditionalArtifacts(model)));
         Assert.False(model.IsDefault);
         Assert.True(model.IsExplicitAlternative);
