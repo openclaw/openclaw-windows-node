@@ -7935,6 +7935,8 @@ Suas configurações, gateway, arquivos e modelos permanecem onde estão.</value
   <data name="Onboarding_Native_Lifecycle.Text" xml:space="preserve"><value>Continue com o mesmo assistente Gateway usado para WSL, aqui no Companion. A configuração e a integridade são verificadas antes da conexão. Os Gateways WSL existentes e seu perfil OpenClaw padrão não são substituídos.</value></data>
   <data name="Onboarding_Native_Acquisition.Text" xml:space="preserve"><value>Se o Gateway não estiver instalado, a configuração o instalará pela Microsoft Store usando WinGet e verificará o pacote antes de continuar automaticamente.</value></data>
   <data name="Onboarding_Native_InstallingPackage" xml:space="preserve"><value>Instalando o Gateway pela Microsoft Store usando WinGet...</value></data>
+  <data name="Onboarding_Native_InstallingPackageWaiting" xml:space="preserve"><value>Ainda instalando o Gateway pela Microsoft Store. Isso pode levar vários minutos ({0} decorridos).</value></data>
+/data>
   <data name="Onboarding_Native_VerifyingPackage" xml:space="preserve"><value>WinGet concluído. Verificando o registro do Gateway e seus aliases de execução antes de continuar...</value></data>
   <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>O Companion preparará seu Gateway e ajudará você a conectar sua IA.</value></data>
   <data name="Onboarding_Native_Recovery.Header" xml:space="preserve"><value>Recuperação do Gateway</value></data>

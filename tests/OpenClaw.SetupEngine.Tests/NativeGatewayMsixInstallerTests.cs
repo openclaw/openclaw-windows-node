@@ -19,7 +19,7 @@ public sealed class NativeGatewayMsixInstallerTests
                     "--silent", "--accept-package-agreements", "--accept-source-agreements",
                     "--disable-interactivity",
                 ], arguments);
-            Assert.Equal(TimeSpan.FromMinutes(5), timeout);
+            Assert.Equal(NativeGatewayPackageAcquisition.DefaultTimeout, timeout);
             Assert.Equal(cts.Token, ct);
             return Task.FromResult(Result(exitCode));
         });
@@ -36,7 +36,7 @@ public sealed class NativeGatewayMsixInstallerTests
         var commands = new Commands((executable, arguments, timeout, _) =>
         {
             call++;
-            Assert.Equal(TimeSpan.FromMinutes(5), timeout);
+            Assert.Equal(NativeGatewayPackageAcquisition.DefaultTimeout, timeout);
             if (call is 1 or 3)
             {
                 Assert.EndsWith(Path.Combine("Microsoft", "WindowsApps", "winget.exe"), executable);

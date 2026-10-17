@@ -141,8 +141,9 @@ the original development identity for existing installations. Multiple matching
 registrations fail explicitly for new setup. Existing runtime profiles resolve only
 their saved family, allowing both packages to coexist without an implicit migration.
 `NativeGatewayPackageAcquisition` invokes acquisition once for a missing or existing Store
-package; an existing development package is reused without Store migration. Installation and verified package readiness share a five-minute
-deadline. Cancellation stops the WinGet request, but Windows deployment may
+package; an existing development package is reused without Store migration. Installation and verified package readiness share a 30-minute deadline
+(`NativeGatewayPackageAcquisition.DefaultTimeout`), overridable by
+`OPENCLAW_SETUP_PACKAGE_ACQUISITION_TIMEOUT`. Cancellation stops the WinGet request, but Windows deployment may
 continue. Repair errors and timeouts stay visible, with explicit retry rather
 than repeated installer launches; retries recheck registration before installing.
 Native setup shares the `SetupAccessDraft` capability profiles with WSL but
@@ -387,6 +388,13 @@ Environment-only knobs without a config-file equivalent:
   `Gateway.HealthTimeoutSeconds`.
   Default 30; a positive integer between 1 and 2147483 overrides it, and any
   other value is ignored with a warning and keeps the default.
+
+- `OPENCLAW_SETUP_PACKAGE_ACQUISITION_TIMEOUT`: bound, in seconds, for one native
+  Gateway Store install plus registration verification
+  (`NativeGatewayPackageAcquisition.EnsureAsync`, also the WinGet and WinGet-repair
+  command timeout). Default 1800 (30 minutes); a positive integer between 1 and 2147483
+  overrides it, and any other value is ignored with a warning and keeps the default.
+  An explicit `timeout` argument wins over this variable.
 
 ---
 

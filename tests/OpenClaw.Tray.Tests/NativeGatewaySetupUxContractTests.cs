@@ -105,6 +105,8 @@ public sealed class NativeGatewaySetupUxContractTests
             Assert.Contains("WinGet", resources["Onboarding_Native_Acquisition.Text"]);
             Assert.Contains("Microsoft Store", resources["Onboarding_Native_Acquisition.Text"]);
             Assert.Contains("WinGet", resources["Onboarding_Native_InstallingPackage"]);
+            Assert.Contains("Microsoft Store", resources["Onboarding_Native_InstallingPackageWaiting"]);
+            Assert.Contains("{0}", resources["Onboarding_Native_InstallingPackageWaiting"]);
             Assert.Contains("WinGet", resources["Onboarding_Native_VerifyingPackage"]);
             Assert.Contains("WinGet", resources["Onboarding_Native_Cancelled"]);
             Assert.False(resources.ContainsKey("Onboarding_Native_InstallerOpened"));
@@ -177,6 +179,7 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.DoesNotContain("Architecture.Arm64", source);
         Assert.DoesNotContain("StorageFile", source);
         Assert.Contains("Onboarding_Native_InstallingPackage", source);
+        Assert.Contains("Onboarding_Native_InstallingPackageWaiting", source);
         Assert.Contains("Onboarding_Native_VerifyingPackage", source);
         Assert.DoesNotContain("Onboarding_Native_InstallerOpened", source);
         Assert.Contains("NavigateToNativeAiSetup(session)", source);

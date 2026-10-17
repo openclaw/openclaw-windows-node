@@ -7946,6 +7946,8 @@ Your settings, gateway, files, and models stay where they are.</value>
   <data name="Onboarding_Native_Lifecycle.Text" xml:space="preserve"><value>Continue with the same Gateway setup wizard used for WSL, here in Companion. Companion validates configuration and health before connecting. Existing WSL gateways and your default OpenClaw profile are not replaced.</value></data>
   <data name="Onboarding_Native_Acquisition.Text" xml:space="preserve"><value>If the Gateway is not installed, setup installs it from Microsoft Store using WinGet, then verifies the package before continuing automatically.</value></data>
   <data name="Onboarding_Native_InstallingPackage" xml:space="preserve"><value>Installing the Gateway from Microsoft Store using WinGet...</value></data>
+  <data name="Onboarding_Native_InstallingPackageWaiting" xml:space="preserve"><value>Still installing the Gateway from Microsoft Store. This can take several minutes ({0} elapsed).</value></data>
+/data>
   <data name="Onboarding_Native_VerifyingPackage" xml:space="preserve"><value>WinGet completed. Verifying Gateway registration and execution aliases before continuing...</value></data>
   <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>Companion will prepare your Gateway, then help you connect your AI.</value></data>
   <data name="Onboarding_Native_Recovery.Header" xml:space="preserve"><value>Gateway recovery</value></data>

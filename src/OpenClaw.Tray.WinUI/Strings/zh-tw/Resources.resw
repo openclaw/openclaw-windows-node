@@ -7881,6 +7881,8 @@
   <data name="Onboarding_Native_Lifecycle.Text" xml:space="preserve"><value>在 Companion 中繼續使用與 WSL 相同的 Gateway 設定精靈。連線前將驗證設定和健康狀態。現有 WSL Gateway 和預設 OpenClaw 設定不會被取代。</value></data>
   <data name="Onboarding_Native_Acquisition.Text" xml:space="preserve"><value>如果尚未安裝 Gateway，設定程式將使用 WinGet 從 Microsoft Store 安裝，並在驗證套件後自動繼續。</value></data>
   <data name="Onboarding_Native_InstallingPackage" xml:space="preserve"><value>正在使用 WinGet 從 Microsoft Store 安裝 Gateway...</value></data>
+  <data name="Onboarding_Native_InstallingPackageWaiting" xml:space="preserve"><value>仍在從 Microsoft Store 安裝 Gateway。這可能需要幾分鐘（已用時 {0}）。</value></data>
+/data>
   <data name="Onboarding_Native_VerifyingPackage" xml:space="preserve"><value>WinGet 已完成。正在驗證 Gateway 註冊和執行別名，然後繼續...</value></data>
   <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>Companion 將準備您的 Gateway，然後協助您連接 AI。</value></data>
   <data name="Onboarding_Native_Recovery.Header" xml:space="preserve"><value>Gateway 復原</value></data>
