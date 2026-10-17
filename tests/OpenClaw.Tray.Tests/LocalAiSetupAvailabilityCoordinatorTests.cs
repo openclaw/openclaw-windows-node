@@ -5,6 +5,22 @@ namespace OpenClaw.Tray.Tests;
 public sealed class LocalAiSetupAvailabilityCoordinatorTests
 {
     [Fact]
+    public void DiskShortage_CanBeRecheckedAfterFreeingSpace()
+    {
+        var coordinator = new LocalAiSetupAvailabilityCoordinator();
+        var checking = coordinator.StartProbe();
+        Assert.True(coordinator.TryApplyUnsupported(checking.Generation,
+            "Free disk space is required.", out var shortage, isRecoverable: true));
+        Assert.True(shortage.IsUnsupported);
+        Assert.True(shortage.CanRecheck);
+        Assert.True(coordinator.TryStartRecheck(out var retry));
+        Assert.False(retry.CanRecheck);
+        Assert.True(coordinator.TryApplyAvailable(retry.Generation, out var available));
+        Assert.True(available.IsAvailable);
+        Assert.False(available.CanRecheck);
+    }
+
+    [Fact]
     public void ProbeFailure_BecomesUnknownAndRetryable()
     {
         var coordinator = new LocalAiSetupAvailabilityCoordinator();

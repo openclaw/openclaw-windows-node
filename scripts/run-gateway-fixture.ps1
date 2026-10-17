@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Launch the real app against a synthetic, read-only Gateway. Ctrl+C cleans up this run.
+Launch the real app against a synthetic Gateway. Ctrl+C cleans up this run.
 .DESCRIPTION
 Build the app first. AppPath is required so this command never selects an installed
 app or a stale build implicitly. The app must advertise fixture isolation support.
@@ -10,6 +10,10 @@ param(
     [Parameter(Mandatory)]
     [string]$AppPath,
     [string]$ArtifactsDirectory,
+    [ValidateSet('multi-session-browse', 'chat-interactive')]
+    [string]$Scenario = 'multi-session-browse',
+    [ValidateSet('streaming', 'chat-deltas', 'tools', 'tool-error', 'agent-activity', 'question-choice', 'question-text', 'question-multi', 'approval', 'approval-deny-only', 'slow', 'send-error', 'stream-error', 'disconnect')]
+    [string]$Interaction,
     [ValidateRange(0, 86400)]
     [int]$DurationSeconds = 0,
     [ValidateSet('Debug', 'Release')]
@@ -18,7 +22,11 @@ param(
 $ErrorActionPreference = 'Stop'
 $project = Join-Path $PSScriptRoot '..\tests\OpenClaw.GatewayFixtureHost\OpenClaw.GatewayFixtureHost.csproj'
 $resolvedApp = (Resolve-Path -LiteralPath $AppPath).Path
-$hostArgs = @('--app', $resolvedApp)
+$hostArgs = @('--app', $resolvedApp, '--scenario', $Scenario)
+if ($Interaction) {
+    if ($Scenario -ne 'chat-interactive') { throw '-Interaction requires -Scenario chat-interactive.' }
+    $hostArgs += @('--interaction', $Interaction)
+}
 if ($ArtifactsDirectory) {
     $hostArgs += @('--artifacts', [IO.Path]::GetFullPath($ArtifactsDirectory))
 }

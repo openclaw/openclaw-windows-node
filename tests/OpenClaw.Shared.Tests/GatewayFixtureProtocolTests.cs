@@ -10,9 +10,87 @@ using Xunit;
 namespace OpenClaw.Shared.Tests;
 
 [Collection("WebSocketClientBase")]
-public sealed class GatewayFixtureProtocolTests
+public sealed partial class GatewayFixtureProtocolTests
 {
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(20);
+
+    [Fact]
+    public async Task NativeSetup_ResponderGuardStillFaultsServerDisposal()
+    {
+        var failure = new InvalidOperationException("Unexpected fixture setup method.");
+        var entered = Signal<bool>();
+        var token = CreateToken();
+        var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup((_, _) =>
+        {
+            entered.TrySetResult(true);
+            throw failure;
+        }), token);
+        try
+        {
+            await using var connected = await ConnectedClient.OpenAsync(server, token);
+            var requestError = await Record.ExceptionAsync(() =>
+                connected.Client.SendWizardRequestAsync("openclaw.setup.detect", timeoutMs: 1000));
+            Assert.NotNull(requestError);
+            await entered.Task.WaitAsync(Deadline);
+        }
+        finally
+        {
+            var disposalError = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                server.DisposeAsync().AsTask().WaitAsync(Deadline));
+            Assert.Same(failure, disposalError);
+        }
+    }
+
+    [Fact]
+    public async Task CronEditing_StoresExactSchedulesAndKeepsOtherMutationsDisabled()
+    {
+        var token = CreateToken();
+        var scenario = GatewayScenario.CreateCronEditing();
+        await using var server = await FixtureGatewayServer.StartAsync(scenario, token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        var client = connected.Client;
+        var listed = await client.SendWizardRequestAsync("cron.list", new { includeDisabled = true });
+        Assert.Equal(4, listed.GetProperty("jobs").GetArrayLength());
+
+        foreach (var schedule in new object[]
+        {
+            new { kind = "cron", expr = "0 4 * * *", tz = "Pacific/Auckland" },
+            new { kind = "cron", expr = "0 4 * * *", tz = "UTC" },
+            new { kind = "cron", expr = "0 4 * * *" },
+            new { kind = "every", everyMs = 60_000 }
+        })
+        {
+            var response = await client.SendWizardRequestAsync("cron.update", new
+            {
+                id = "unlisted", patch = new { name = "Fixture cron unlisted", schedule }
+            });
+            var refreshed = await client.SendWizardRequestAsync("cron.list", new { includeDisabled = true });
+            var stored = refreshed.GetProperty("jobs").EnumerateArray().Single(job => job.GetProperty("id").GetString() == "unlisted");
+            Assert.Equal(JsonSerializer.Serialize(schedule), response.GetProperty("schedule").GetRawText());
+            Assert.Equal(response.GetProperty("schedule").GetRawText(), stored.GetProperty("schedule").GetRawText());
+        }
+        var added = await client.SendWizardRequestAsync("cron.add", new
+        {
+            name = "New fixture job", schedule = new { kind = "cron", expr = "0 5 * * *" }
+        });
+        Assert.Equal("created-4", added.GetProperty("id").GetString());
+        Assert.False(added.GetProperty("schedule").TryGetProperty("tz", out _));
+        Assert.Equal(5, scenario.GetCronJobs().Length);
+        var toggled = await client.SendWizardRequestAsync("cron.update", new
+        {
+            id = "listed", patch = new { enabled = false }
+        });
+        Assert.False(toggled.GetProperty("enabled").GetBoolean());
+        Assert.Equal("America/Chicago", toggled.GetProperty("schedule").GetProperty("tz").GetString());
+        var beforeInvalid = JsonSerializer.Serialize(scenario.GetCronJobs());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendWizardRequestAsync("cron.update",
+            new { id = "listed", patch = new { schedule = new { kind = "every", everyMs = "invalid" } } }));
+        Assert.Equal(beforeInvalid, JsonSerializer.Serialize(scenario.GetCronJobs()));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendWizardRequestAsync("cron.update",
+            new { id = "unknown", patch = new { name = "Unknown" } }));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendWizardRequestAsync("cron.run", new { id = "listed" }));
+        Assert.Empty(server.UnexpectedRequests);
+    }
 
     [Theory]
     [InlineData(false)]

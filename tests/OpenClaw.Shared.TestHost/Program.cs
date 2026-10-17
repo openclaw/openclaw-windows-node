@@ -123,11 +123,25 @@ static async Task<int> RunProcessFixtureAsync(string[] args)
         return 0;
     }
 
-    if (args is ["inherit-handles-identity", var identityChildHoldText, var identityPidFile]
+    if (args is ["inherit-handles-identity", var identityChildHoldText, var identityPidFile, .. var gateArgs]
+        && gateArgs.Length <= 1
         && int.TryParse(identityChildHoldText, out var identityChildHoldMs))
     {
-        using var child = StartSelf("--process-fixture", "hold", identityChildHoldMs.ToString());
+        using var child = StartSelf(
+            "--process-fixture",
+            gateArgs.Length == 0 ? "hold" : "hold-silent",
+            identityChildHoldMs.ToString());
         WriteProcessIdentity(identityPidFile, child);
+        if (gateArgs is [var releasePath])
+        {
+            var wait = Stopwatch.StartNew();
+            while (!File.Exists(releasePath))
+            {
+                if (wait.Elapsed > TimeSpan.FromSeconds(10))
+                    throw new TimeoutException("Process fixture launcher release gate was not opened.");
+                await Task.Delay(10);
+            }
+        }
         Console.Out.Write("parent-stdout");
         Console.Error.Write("parent-stderr");
         return 0;
