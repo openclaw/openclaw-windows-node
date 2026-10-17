@@ -11,7 +11,7 @@ public class NemotronBoltCatalogTests
     public void Bolt_ResolvesPrereleasePinsOnlyForTheirInstalledSource()
     {
         var model = Assert.IsType<LocalModelInfo>(LocalModelCatalog.FindInstalled(
-            "nemotron-3.5-bolt-74b-a9b-iq2-lilicorr", NemotronBoltPrereleaseFixture.Weights.DownloadUri.AbsoluteUri));
+            "nemotron-3.5-bolt-74b-a9b-24gb", NemotronBoltPrereleaseFixture.Weights.DownloadUri.AbsoluteUri));
 
         Assert.Equal(NemotronBoltPrereleaseFixture.Weights, model.Weights);
         Assert.Equal(NemotronBoltPrereleaseFixture.DraftWeights, model.Recipe.DraftWeights);

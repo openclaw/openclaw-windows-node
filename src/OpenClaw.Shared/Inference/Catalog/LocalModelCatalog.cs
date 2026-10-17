@@ -178,7 +178,7 @@ public sealed record LocalInferenceRunProfile
 public static partial class LocalModelCatalog
 {
     public const string Bonsai2ModelId = "bonsai-2-27b-ptq1-0";
-    public const string NemotronBoltModelId = "nemotron-3.5-bolt-74b-a9b-iq2-lilicorr";
+    public const string NemotronBoltModelId = "nemotron-3.5-bolt-74b-a9b-24gb";
     public const string Qwen38_27BModelId = "qwen3.8-27b-mtp-ud-q4-k-m";
     public const string Qwen35BModelId = "qwen3.6-35b-a3b-mtp-q4-k-m";
     public const string Qwen27BModelId = "qwen3.6-27b-mtp-q4-k-m";
