@@ -29,7 +29,7 @@ Press Ctrl+C to stop only this run and remove its synthetic profile.
 For an unattended, bounded exploration/capture run, add `-DurationSeconds 30`.
 The timer starts after readiness and uses the same cleanup path as Ctrl+C.
 
-The Gateway is read-only. Chat sends, session mutations and configuration
+The default browse Gateway is read-only. Chat sends, session mutations and configuration
 writes receive protocol errors, not simulated success. Local preferences such
 as chat tool visibility can be saved inside the disposable profile. This is
 not a fixture for the legacy WebView Gateway dashboard, installation,
@@ -213,7 +213,7 @@ by name. MCP bind collisions have a bounded retry limited to the owned child.
 Cleanup refuses reparse points and only removes the run's owned data.
 
 This remains a desktop application, not a general OS sandbox. Only the
-documented browse/preferences workflow is supported on a developer machine.
+documented browse/preferences and inert interactive-chat workflows are supported on a developer machine.
 Use a disposable Windows environment for setup, external integration or other
 host-changing workflows.
 
@@ -232,16 +232,144 @@ when an individual probe times out. Malformed or disconnected HTTP-upgrade peers
 are recorded as unexpected `<upgrade>` requests without retaining headers.
 They do not prevent other clients from connecting or make server cleanup throw;
 the unexpected-request assertions still surface them as smoke failures.
+Non-interactive scenario responder exceptions still propagate through server
+cleanup, preserving negative-test guards. Only interactive runtime faults are
+translated into `INTERNAL` responses and recorded as unexpected requests.
 
 Add new behavior at the server boundary. Do not introduce fixture providers,
 demo branches in pages, bypasses in the connection manager, or a second chat
-renderer. Keep synthetic wire examples aligned with the existing Gateway
-protocol snapshot, and exercise them through the real client.
+renderer. Keep synthetic wire examples aligned with upstream Gateway wire
+contracts, and exercise them through the real client. The separate nightly
+upstream monitor detects changes; fixture examples do not pin the Gateway version.
 
 Backend and independent app instances can run concurrently. UI tests are
 serialized on a shared desktop; focus-dependent GUI workers need separate
-Windows sessions or VMs. Future multi-Gateway switching and canned streaming
-can reuse the existing per-instance server/profile ownership.
+Windows sessions or VMs. Interactive streaming uses the same per-instance
+server/profile ownership described below.
+
+## Interactive chat without a real Gateway
+
+The opt-in `chat-interactive` scenario runs a memory-only chat runtime behind
+the same real WebSocket client and disposable app profile:
+
+```powershell
+.\scripts\run-gateway-fixture.ps1 -AppPath $app -Scenario chat-interactive
+.\scripts\run-gateway-fixture.ps1 -AppPath $app -Scenario chat-interactive -Interaction approval
+```
+
+Send normal text from Chat or create a new conversation. No provider account,
+real Gateway pairing, node execution, or model download is needed. Every response
+is synthetic; tool names, commands and patch summaries are display data only.
+The read-only browse scenario and its existing assertions remain unchanged.
+
+### Repeatable interactions
+
+Type an interaction name in the host console, then send a message in the app.
+It applies to the next admitted send across that fixture's sessions and then
+returns to `streaming`. A `send-error` attempt consumes its selection but not
+the message or idempotency key.
+
+| Interaction | Behavior |
+| --- | --- |
+| `streaming` | Lifecycle start, reasoning, paced assistant deltas, Markdown/code/table, final message and lifecycle end |
+| `chat-deltas` | The dedicated `chat` delta contract (`deltaText` and accumulated message), rather than `agent` assistant deltas |
+| `tools`, `tool-error` | Correlated tool start/result, success or failure, with tool-call/result transcript entries |
+| `agent-activity` | Job activity, command item/output and patch item/summary events. All operations are inert |
+| `question-choice`, `question-text`, `question-multi` | A pending question blocks that run until a valid answer, cancellation, expiry or Stop |
+| `approval`, `approval-deny-only` | Top-level exec approval events, validated one-shot decisions, then continuation without command execution |
+| `slow` | Repeated startup status frames before the answer |
+| `send-error`, `stream-error` | Retryable send rejection or a terminal mid-stream error with partial history |
+| `disconnect` | Disconnects authenticated sockets mid-run; server-owned work continues and history is available after reconnect |
+
+`pause`, `step`, and `resume` control scripted steps without blocking request
+processing. A step is one scripted action, which can produce multiple related
+frames. With concurrent runs, the next ready run consumes a step. Stop,
+question answers, expiry, and approval decisions remain responsive while paused.
+`disconnect` as a console command immediately drops the current connections;
+select the `disconnect` interaction with `-Interaction` to script it on a send.
+Restart the launcher for a completely fresh scenario/profile.
+
+`questions` lists synthetic question records. `resolve` submits JSON using the
+same fixture-side validation as the Gateway `question.resolve` RPC:
+
+```text
+resolve {"id":"fixture-question-1","answers":{"answers":{"fixture_choice":["Inspect"]}}}
+resolve {"id":"fixture-question-1","cancel":true}
+```
+
+Use the current ID printed by `questions`; IDs are not fixed across runs.
+Console controls require an interactive terminal. Redirected/bounded runs still
+support startup `-Interaction` and automated WebSocket clients.
+
+### Protocol coverage and boundaries
+
+`InteractiveGatewayRuntime` owns state, not `App`, the connection manager or
+the renderer. It advertises the methods/events and synthetic operator scopes
+needed for this scenario. Accepted sends are keyed by session and idempotency
+key; reuse with different input or after session reset/replacement is rejected. Events
+carry run/session correlation and increasing per-run sequence numbers.
+Different sessions can run concurrently; a second direct send to a busy session
+is rejected, allowing the production client's existing queue to own queuing.
+
+| Surface | Implemented fixture behavior |
+| --- | --- |
+| `chat.send`, `chat.abort` | Text-only sends, acknowledgement before playback, named or session-wide stop, terminal state and partial transcript |
+| `chat.history`, `chat.inject` | Updated bounded histories and inert assistant-message insertion when idle |
+| `sessions.create` | New canonical keys and IDs, optional in-memory transcript fork from `parentSessionKey`; `forkFrom: "last-completed"` excludes an unfinished turn, including its tool-call/result entries |
+| `sessions.list`, `sessions.preview` | Current catalog and transcript data, filtering, limits and previews |
+| `sessions.patch`, `sessions.reset`, `sessions.delete` | Label/pin/unread/archive/model/thinking changes, guarded read acknowledgement, reset/delete when idle |
+| `question.request`, `question.list`, `question.get`, `question.waitAnswer`, `question.resolve` | One to three scalar questions, single/multi choice, custom text, defaults, cancellation, expiry, resolution-ID retry, recovery and multi-client broadcasts |
+| `exec.approval.resolve` | Only fixture-issued pending approvals; deny-only requests cannot be allowed |
+| Existing browse reads | Models, agents, health, usage, configuration and discovery remain available |
+
+Forks without `forkFrom` copy the full parent history. The `last-completed`
+selector copies through the last persisted assistant reply that is not a
+tool-use checkpoint; it produces an empty history if no such reply exists.
+The copied history is independent of later parent updates or resets.
+
+The implementation follows the upstream `packages/gateway-protocol/src/schema/`
+`logs-chat.ts`, `questions.ts`, session schemas and current Windows event consumers.
+Protocol research used upstream main during implementation, including
+`6eacab6c2940a7dcb36574cf45daff1141f945ce`; this is evidence provenance,
+not a supported-Gateway version pin.
+
+This is **not yet an emulator for the entire Gateway protocol**. Attachments,
+secret/resource questions, provider inference, server-side queue/steer policies,
+session succession/compaction, configuration writes, installation, cron and real
+node operations are not simulated. Unsupported parameters/methods fail explicitly.
+Question `url`, resource previews and credential storage are deliberately not
+accepted; no fixture should open external resources or save credentials implicitly.
+Extend the same server boundary with a scenario and protocol/consumer tests when
+adding an interaction, rather than accepting arbitrary requests as success.
+
+Question protocol support is distinct from question **UI** support. This checkout's
+Windows Gateway client does not dispatch `question.requested`/`question.resolved`.
+The fixture emits the real protocol so it can exercise that UI once implemented;
+until then use the console or a WebSocket client to answer. Do not label raw
+question protocol tests as question-panel rendering proof.
+
+Runs are bounded to 256 sends and 100 sessions, transcripts to 1,000 entries,
+text input to 32,768 characters, and external questions to a five-minute timeout.
+The default interactive decision timeout is 60 seconds. State is disposable;
+no live-network fallback exists. Artifacts record request outcomes and event
+names/delivery counts, not chat text, question answers or credential values.
+Scripted work is cancelled and drained on shutdown; playback faults fail the host.
+
+### Focused validation
+
+```powershell
+$env:OPENCLAW_REPO_ROOT = (Get-Location).Path
+dotnet test .\tests\OpenClaw.Shared.Tests\OpenClaw.Shared.Tests.csproj --filter FullyQualifiedName~GatewayFixtureProtocolTests
+dotnet test .\tests\OpenClaw.Tray.Tests\OpenClaw.Tray.Tests.csproj --filter FullyQualifiedName~InteractiveGatewayChatTests
+```
+
+The first suite covers real-client chat plus raw WebSocket question/approval
+round trips, invalid inputs, idempotency, session isolation, expiry, recovery,
+stop and bounded shutdown. The second uses the production chat provider and
+bridge, with isolated persistence. The opt-in desktop fixture suite additionally
+contains `InteractiveChatShowsStreamedAnswerAndGatewayApproval`, which sends via
+local MCP, verifies the visible answer and approval buttons, clicks Allow, and
+captures the continuation when screenshots are enabled.
 
 The fixture suites supplement, not replace, the required build, Shared and
 Tray tests. Run those on every implementation change as documented in

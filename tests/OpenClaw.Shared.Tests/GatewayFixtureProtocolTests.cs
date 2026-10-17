@@ -10,9 +10,36 @@ using Xunit;
 namespace OpenClaw.Shared.Tests;
 
 [Collection("WebSocketClientBase")]
-public sealed class GatewayFixtureProtocolTests
+public sealed partial class GatewayFixtureProtocolTests
 {
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(20);
+
+    [Fact]
+    public async Task NativeSetup_ResponderGuardStillFaultsServerDisposal()
+    {
+        var failure = new InvalidOperationException("Unexpected fixture setup method.");
+        var entered = Signal<bool>();
+        var token = CreateToken();
+        var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup((_, _) =>
+        {
+            entered.TrySetResult(true);
+            throw failure;
+        }), token);
+        try
+        {
+            await using var connected = await ConnectedClient.OpenAsync(server, token);
+            var requestError = await Record.ExceptionAsync(() =>
+                connected.Client.SendWizardRequestAsync("openclaw.setup.detect", timeoutMs: 1000));
+            Assert.NotNull(requestError);
+            await entered.Task.WaitAsync(Deadline);
+        }
+        finally
+        {
+            var disposalError = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                server.DisposeAsync().AsTask().WaitAsync(Deadline));
+            Assert.Same(failure, disposalError);
+        }
+    }
 
     [Fact]
     public async Task CronEditing_StoresExactSchedulesAndKeepsOtherMutationsDisabled()

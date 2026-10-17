@@ -13,6 +13,7 @@ namespace OpenClaw.TestSupport.Gateway;
 public sealed partial class GatewayScenario
 {
     public const string BrowseName = "multi-session-browse";
+    public const string InteractiveName = "chat-interactive";
     public const string MainSessionKey = "agent:main:main";
     public const string LongSessionKey = "agent:main:fixture-long";
     public const string OtherSessionKey = "agent:research:fixture-other";
@@ -50,11 +51,12 @@ public sealed partial class GatewayScenario
     private readonly bool _allowAgentCreation;
     private readonly bool _allowSessionMutations;
     private readonly bool _allowChatSend;
+    public bool IsInteractive { get; }
     private readonly Dictionary<string, JsonObject?> _sessionChanges = new(StringComparer.Ordinal);
     private readonly List<object> _createdAgents = [];
     private int _chatSendCount;
 
-    public string Name => _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation" : BrowseName;
+    public string Name => IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation" : BrowseName;
     public int Version => 1;
     public int ProtocolVersion => GatewayProtocolContract.CurrentVersion;
     public string ContractProvenance =>
@@ -65,13 +67,15 @@ public sealed partial class GatewayScenario
 
     private GatewayScenario(Session[] sessions, IReadOnlyDictionary<string, JsonElement> reads,
         Func<string, JsonElement, object>? setup = null, bool advertiseSetup = true, bool allowAgentCreation = false,
-        bool allowSessionMutations = false, bool allowChatSend = false, JsonObject[]? cronJobs = null)
+        bool allowSessionMutations = false, bool allowChatSend = false, JsonObject[]? cronJobs = null,
+        bool interactive = false)
     {
         _sessions = sessions;
         _reads = reads;
         _setup = setup;
         _allowAgentCreation = allowAgentCreation;
         _allowSessionMutations = allowSessionMutations;
+        IsInteractive = interactive;
         _allowChatSend = allowChatSend;
         _cronJobs = cronJobs?.ToDictionary(job => job["id"]!.GetValue<string>(), StringComparer.Ordinal);
         SessionKeys = Array.AsReadOnly(sessions.Select(s => s.Key).ToArray());
@@ -91,8 +95,18 @@ public sealed partial class GatewayScenario
         Sha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source))).ToLowerInvariant();
     }
 
-    public static GatewayScenario LoadBuiltin(string name) =>
-        name == BrowseName ? CreateBrowse() : throw new ArgumentException("Unknown fixture scenario.", nameof(name));
+    public static GatewayScenario LoadBuiltin(string name) => name switch
+    {
+        BrowseName => CreateBrowse(),
+        InteractiveName => CreateInteractive(),
+        _ => throw new ArgumentException("Unknown fixture scenario.", nameof(name))
+    };
+
+    public static GatewayScenario CreateInteractive()
+    {
+        var browse = CreateBrowse();
+        return new(browse._sessions, browse._reads, interactive: true);
+    }
 
     /// <summary>Explicit synthetic setup replies only. The host never executes provider or package operations.</summary>
     public static GatewayScenario CreateNativeSetup(Func<string, JsonElement, object> responder, bool advertiseSetup = true)
@@ -245,13 +259,21 @@ public sealed partial class GatewayScenario
         type = GatewayProtocolContract.HelloOkType,
         protocol = ProtocolVersion,
         server = new { version = "fixture-1", connId = connectionId },
-        features = new { methods = ReadMethods, events = new[] { "connect.challenge", "sessions.changed", "agent" } },
+        features = new
+        {
+            methods = IsInteractive ? ReadMethods.Concat(InteractiveGatewayRuntime.Methods).Distinct().ToArray() : ReadMethods,
+            events = IsInteractive
+                ? new[] { "connect.challenge", "sessions.changed", "agent", "chat", "question.requested", "question.resolved", "exec.approval.requested", "exec.approval.resolved" }
+                : new[] { "connect.challenge", "sessions.changed", "agent" }
+        },
         snapshot = new
         {
             presence = Array.Empty<object>(), health = _reads["health"],
             sessionDefaults = new { defaultAgentId = "main", mainKey = "main", mainSessionKey = MainSessionKey, scope = "per-sender" }
         },
-        auth = new { role = "operator", scopes = _allowAgentCreation || _allowSessionMutations || _cronJobs is not null ? new[] { "operator.admin", "operator.read" } : new[] { _setup is null ? "operator.read" : "operator.admin" } },
+        auth = new { role = "operator", scopes = IsInteractive
+            ? new[] { "operator.read", "operator.write", "operator.sessions.read", "operator.sessions.write", "operator.questions", "operator.approvals" }
+            : _allowAgentCreation || _allowSessionMutations || _cronJobs is not null ? new[] { "operator.admin", "operator.read" } : new[] { _setup is null ? "operator.read" : "operator.admin" } },
         policy = new { maxPayload = 1_048_576, maxBufferedBytes = 1_048_576, tickIntervalMs = 30_000 }
     };
 

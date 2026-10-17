@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
@@ -248,11 +249,23 @@ internal static class SetupPairingCredentialPolicy
 /// </summary>
 internal static class WindowsGatewayReachability
 {
+    /// <summary>Environment variable overriding <see cref="DefaultTimeoutSeconds"/>; unset or
+    /// blank silently keeps the default, and other invalid values warn and fall back. The
+    /// unit is seconds. The name is deliberately short enough to stay below the shared
+    /// log sanitizer's 43-char base64url redaction so the warning keeps the variable name.</summary>
+    internal const string TimeoutEnvironmentVariable = "OPENCLAW_SETUP_REACHABILITY_TIMEOUT";
+
+    /// <summary>Default bound for each pre-pairing <c>/startupz</c> probe (whole exchange:
+    /// connect + TLS + response). Generous so a slow WSL port-forward proxy or a cold
+    /// remote endpoint (e.g. Tailscale Serve) is not misjudged as unreachable. The overall
+    /// wait for a gateway still reporting startup stays bounded by
+    /// <c>Gateway.HealthTimeoutSeconds</c>.</summary>
+    internal const int DefaultTimeoutSeconds = 30;
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
 
     public static async Task<StepResult> VerifyAsync(SetupContext ctx, string pairingRole, CancellationToken ct)
     {
-        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+        using var http = new HttpClient { Timeout = ResolveTimeout(ctx.Logger) };
         var probeUri = BuildStartupProbeUri(ctx.GatewayUrl!);
         var timeoutSeconds = ctx.Config.Gateway.HealthTimeoutSeconds;
         var deadline = DateTimeOffset.UtcNow.AddSeconds(timeoutSeconds);
@@ -304,6 +317,26 @@ internal static class WindowsGatewayReachability
             ctx.Logger.Debug($"Gateway still starting as seen from Windows (/startupz HTTP 503 {detail})");
             await Task.Delay(PollInterval, ct);
         }
+    }
+
+    internal static TimeSpan ResolveTimeout(SetupLogger? logger = null)
+    {
+        var raw = Environment.GetEnvironmentVariable(TimeoutEnvironmentVariable);
+        if (string.IsNullOrWhiteSpace(raw))
+            return TimeSpan.FromSeconds(DefaultTimeoutSeconds);
+
+        // HttpClient.Timeout throws for values above int.MaxValue milliseconds, which
+        // VerifyAsync would misreport as "gateway not reachable"; reject those here.
+        if (int.TryParse(raw.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var seconds) &&
+            seconds > 0 && seconds <= int.MaxValue / 1000)
+        {
+            return TimeSpan.FromSeconds(seconds);
+        }
+
+        logger?.Warn(
+            $"Ignoring {TimeoutEnvironmentVariable}='{raw}': expected a positive integer of at most " +
+            $"{int.MaxValue / 1000}s. Using the default {DefaultTimeoutSeconds}s gateway reachability timeout.");
+        return TimeSpan.FromSeconds(DefaultTimeoutSeconds);
     }
 
     internal static Uri BuildStartupProbeUri(string gatewayUrl)

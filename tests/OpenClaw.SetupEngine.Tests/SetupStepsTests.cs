@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using OpenClaw.Connection;
 using OpenClaw.TestSupport;
 using OpenClaw.Shared;
@@ -6315,6 +6316,93 @@ public class SetupStepsTests : IDisposable
 
         Assert.Equal(StepOutcome.Failed, result.Outcome);
         Assert.Contains("not reachable", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ─── WindowsGatewayReachability: timeout resolution and use ───
+
+    [Fact]
+    public void ReachabilityTimeout_DefaultsTo30Seconds()
+    {
+        var prev = Environment.GetEnvironmentVariable(WindowsGatewayReachability.TimeoutEnvironmentVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(WindowsGatewayReachability.TimeoutEnvironmentVariable, null);
+
+            Assert.Equal(TimeSpan.FromSeconds(30), WindowsGatewayReachability.ResolveTimeout());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(WindowsGatewayReachability.TimeoutEnvironmentVariable, prev);
+        }
+    }
+
+    [Fact]
+    public void ReachabilityTimeout_EnvironmentOverride_IsUsedAndWarnsOnlyOnInvalidValues()
+    {
+        var prev = Environment.GetEnvironmentVariable(WindowsGatewayReachability.TimeoutEnvironmentVariable);
+        try
+        {
+            // A positive integer overrides the default.
+            Environment.SetEnvironmentVariable(WindowsGatewayReachability.TimeoutEnvironmentVariable, " 7 ");
+            Assert.Equal(TimeSpan.FromSeconds(7), WindowsGatewayReachability.ResolveTimeout());
+
+            // A non-positive integer is ignored with a warning, falling back to the default.
+            Environment.SetEnvironmentVariable(WindowsGatewayReachability.TimeoutEnvironmentVariable, "0");
+            var logger = new SetupLogger(filePath: null, LogLevel.Trace);
+            var logs = new List<LogEntry>();
+            logger.LogEmitted += (_, e) => { lock (logs) { logs.Add(e); } };
+            Assert.Equal(TimeSpan.FromSeconds(30), WindowsGatewayReachability.ResolveTimeout(logger));
+
+            // A non-integer is ignored the same way.
+            Environment.SetEnvironmentVariable(WindowsGatewayReachability.TimeoutEnvironmentVariable, "not-a-number");
+            Assert.Equal(TimeSpan.FromSeconds(30), WindowsGatewayReachability.ResolveTimeout(logger));
+
+            // A value beyond HttpClient.Timeout's maximum (int.MaxValue ms) is rejected
+            // instead of throwing inside VerifyAsync and misreporting "not reachable".
+            Environment.SetEnvironmentVariable(WindowsGatewayReachability.TimeoutEnvironmentVariable, "2147484");
+            Assert.Equal(TimeSpan.FromSeconds(30), WindowsGatewayReachability.ResolveTimeout(logger));
+
+            Assert.Contains(logs, e =>
+                e.Level == LogLevel.Warn &&
+                e.Message.Contains(WindowsGatewayReachability.TimeoutEnvironmentVariable, StringComparison.Ordinal));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(WindowsGatewayReachability.TimeoutEnvironmentVariable, prev);
+        }
+    }
+
+    [Fact]
+    public async Task PairOperatorStep_ReachabilityTimeout_EnvOverrideBindsTheActualProbe()
+    {
+        // Black-hole server: accepts TCP and never answers, so the only way
+        // VerifyAsync returns within the budget is the HttpClient timeout itself.
+        var listener = new TcpListener(IPAddress.Loopback, 0) { ExclusiveAddressUse = true };
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+
+        var prev = Environment.GetEnvironmentVariable(WindowsGatewayReachability.TimeoutEnvironmentVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(WindowsGatewayReachability.TimeoutEnvironmentVariable, "1");
+            var ctx = CreateContext(new SetupConfig { GatewayPort = port });
+            ctx.SharedGatewayToken = "test-shared-token";
+
+            var stopwatch = Stopwatch.StartNew();
+            var result = await new PairOperatorStep().ExecuteAsync(ctx, CancellationToken.None);
+            stopwatch.Stop();
+
+            Assert.Equal(StepOutcome.Failed, result.Outcome);
+            Assert.Contains("not reachable", result.Message, StringComparison.OrdinalIgnoreCase);
+            // Fails within the 1s override, far below the 30s default, proving the
+            // env value binds the probe instead of the default.
+            Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(10), $"Elapsed {stopwatch.Elapsed}");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(WindowsGatewayReachability.TimeoutEnvironmentVariable, prev);
+            listener.Stop();
+        }
     }
 
     private const string StartupStartingJson =

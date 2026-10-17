@@ -15,6 +15,8 @@ public sealed record GatewayFixtureRequest(
     string? Decision = null,
     string? ApprovalId = null);
 
+public sealed record GatewayFixtureEvent(string Event, int DeliveredConnections);
+
 /// <summary>
 /// An independently owned, operator-only loopback Gateway. Responses are selected by
 /// method and parameters, not consumed from a tape. No request is forwarded anywhere.
@@ -28,6 +30,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private readonly object _sync = new();
     private readonly List<Task> _connections = [];
     private readonly List<GatewayFixtureRequest> _requests = [];
+    private readonly List<GatewayFixtureEvent> _events = [];
     private readonly List<int> _unexpectedIndices = [];
     private readonly HashSet<int> _subscriptions = [];
     private readonly HashSet<string> _issuedApprovalIds = new(StringComparer.Ordinal);
@@ -48,6 +51,11 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private sealed record ActiveConnection(WebSocket Socket, SemaphoreSlim SendLock, CancellationToken CancellationToken);
 
     public Uri Endpoint { get; }
+    public InteractiveGatewayRuntime? Interactive { get; }
+    public IReadOnlyList<GatewayFixtureEvent> Events
+    {
+        get { lock (_sync) return _events.ToArray(); }
+    }
 
     /// <summary>
     /// The only device token this fixture accepts. A connect carrying any other
@@ -87,11 +95,15 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         get { lock (_sync) return _unexpectedIndices.Select(i => _requests[i]).ToArray(); }
     }
 
-    private FixtureGatewayServer(GatewayScenario scenario, string token, CancellationToken cancellationToken)
+    private FixtureGatewayServer(GatewayScenario scenario, string token, CancellationToken cancellationToken,
+        TimeSpan? eventDelay, TimeSpan? interactionTimeout)
     {
         _scenario = scenario;
         _tokenHash = SHA256.HashData(Encoding.UTF8.GetBytes(token));
         _lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (scenario.IsInteractive)
+            Interactive = new InteractiveGatewayRuntime(scenario, BroadcastAsync, CloseConnectionsAsync,
+                _lifetime.Token, eventDelay ?? TimeSpan.FromMilliseconds(350), interactionTimeout ?? TimeSpan.FromSeconds(60));
         _listener = new TcpListener(IPAddress.Loopback, 0);
         _listener.Start();
         Endpoint = new Uri($"ws://127.0.0.1:{((IPEndPoint)_listener.LocalEndpoint).Port}/");
@@ -99,12 +111,37 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     }
 
     public static Task<FixtureGatewayServer> StartAsync(
-        GatewayScenario scenario, string token, CancellationToken cancellationToken = default)
+        GatewayScenario scenario, string token, CancellationToken cancellationToken = default,
+        TimeSpan? eventDelay = null, TimeSpan? interactionTimeout = null)
     {
         ArgumentNullException.ThrowIfNull(scenario);
         ArgumentException.ThrowIfNullOrWhiteSpace(token);
         cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult(new FixtureGatewayServer(scenario, token, cancellationToken));
+        return Task.FromResult(new FixtureGatewayServer(scenario, token, cancellationToken, eventDelay, interactionTimeout));
+    }
+
+    private async Task BroadcastAsync(string eventName, object payload)
+    {
+        ActiveConnection[] targets;
+        lock (_sync) targets = _authenticatedConnections.Values.ToArray();
+        var delivered = 0;
+        foreach (var target in targets)
+        {
+            try
+            {
+                using var send = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token, target.CancellationToken);
+                send.CancelAfter(TimeSpan.FromSeconds(5));
+                if (target.Socket.State != WebSocketState.Open) continue;
+                await SendAsync(target.Socket, target.SendLock, new { type = "event", @event = eventName, payload }, send.Token);
+                delivered++;
+            }
+            catch (OperationCanceledException) when (!_lifetime.IsCancellationRequested) { target.Socket.Abort(); }
+            catch (WebSocketException) { target.Socket.Abort(); }
+            catch (ObjectDisposedException) { }
+        }
+        // Zero recipients is expected during a scripted disconnect. Histories remain
+        // authoritative for reconnect; never retain message or question content here.
+        lock (_sync) _events.Add(new GatewayFixtureEvent(eventName, delivered));
     }
 
     public async Task CloseConnectionsAsync(CancellationToken cancellationToken = default)
@@ -113,13 +150,21 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         lock (_sync) connections = _authenticatedConnections.Values.ToArray();
         foreach (var connection in connections)
         {
-            await connection.SendLock.WaitAsync(cancellationToken);
             try
             {
-                if (connection.Socket.State == WebSocketState.Open)
-                    await connection.Socket.CloseOutputAsync((WebSocketCloseStatus)1012, "Fixture restart", cancellationToken);
+                using var close = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, connection.CancellationToken);
+                close.CancelAfter(TimeSpan.FromSeconds(5));
+                await connection.SendLock.WaitAsync(close.Token);
+                try
+                {
+                    if (connection.Socket.State == WebSocketState.Open)
+                        await connection.Socket.CloseOutputAsync((WebSocketCloseStatus)1012, "Fixture restart", close.Token);
+                }
+                finally { connection.SendLock.Release(); }
             }
-            finally { connection.SendLock.Release(); }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { connection.Socket.Abort(); }
+            catch (WebSocketException) { connection.Socket.Abort(); }
+            catch (ObjectDisposedException) { }
         }
     }
 
@@ -390,7 +435,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                     var key = ReadString(parameters, "sessionKey") ?? ReadString(parameters, "key");
                     var requestIndex = Record(
                         method!,
-                        _scenario.ContainsSession(key ?? "") ? key : key is null ? null : "<unknown>",
+                        (_scenario.ContainsSession(key ?? "") || Interactive?.ContainsSession(key ?? "") == true) ? key : key is null ? null : "<unknown>",
                         SafeApprovalDecision(method!, parameters),
                         SafeApprovalId(method!, parameters));
                     if (!authenticated || method == "connect")
@@ -474,7 +519,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             {
                 if (parameters.ValueKind != JsonValueKind.Object)
                     throw new FixtureRequestException("INVALID_PARAMS", "params must be an object.");
-                if (method == "exec.approval.resolve")
+                if (method == "exec.approval.resolve" && Interactive is null)
                 {
                     var approvalId = ReadString(parameters, "id");
                     lock (_sync)
@@ -485,8 +530,10 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                                 "Approval ID was not issued by the fixture.");
                     }
                 }
-                payload = _scenario.Respond(method, parameters);
-                if (method == "exec.approval.resolve")
+                payload = Interactive is not null && InteractiveGatewayRuntime.Methods.Contains(method, StringComparer.Ordinal)
+                    ? await Interactive.RespondAsync(method, parameters, cancellationToken)
+                    : _scenario.Respond(method, parameters);
+                if (method == "exec.approval.resolve" && Interactive is null)
                 {
                     var approvalId = ReadString(parameters, "id");
                     lock (_sync)
@@ -506,12 +553,27 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                 await SendErrorAsync(socket, sendLock, id, ex.Code, ex.Message, cancellationToken);
                 return;
             }
+            catch (InvalidOperationException) when (Interactive is not null
+                && InteractiveGatewayRuntime.Methods.Contains(method, StringComparer.Ordinal)
+                && !cancellationToken.IsCancellationRequested)
+            {
+                Complete(requestIndex, "error:INTERNAL", unexpected: true);
+                await SendErrorAsync(socket, sendLock, id, "INTERNAL", "Interactive fixture failed. Check fixture playback diagnostics.", cancellationToken);
+                return;
+            }
             if (method == "sessions.subscribe")
                 lock (_sync) _subscriptions.Add(connectionId);
             if (gate is not null)
                 await gate.WaitAsync(cancellationToken);
-            await SendAsync(socket, sendLock, new { type = "res", id, ok = true, payload }, cancellationToken);
-            Complete(requestIndex, "ok");
+            try
+            {
+                await SendAsync(socket, sendLock, new { type = "res", id, ok = true, payload }, cancellationToken);
+                Complete(requestIndex, "ok");
+            }
+            finally
+            {
+                if (Interactive is not null) await Interactive.AcknowledgeAsync(method, payload);
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -705,6 +767,10 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         Task[] connections;
         lock (_sync) connections = _connections.ToArray();
         try { await Task.WhenAll(connections); }
-        finally { _lifetime.Dispose(); }
+        finally
+        {
+            try { if (Interactive is not null) await Interactive.DisposeAsync(); }
+            finally { _lifetime.Dispose(); }
+        }
     }
 }

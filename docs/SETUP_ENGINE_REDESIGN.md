@@ -376,7 +376,17 @@ rerun setup with a supported new name.
 
 1. CLI flags (`--headless`, `--log-path`, `--rollback-on-failure`, `--no-rollback-on-failure`)
 2. Config file (explicit `--config` or bundled `default-config.json`)
-3. Environment variables (`OPENCLAW_SETUP_DISTRO_NAME`, etc.)
+3. Environment variables (`OPENCLAW_SETUP_DISTRO`, etc.)
+
+Environment-only knobs without a config-file equivalent:
+
+- `OPENCLAW_SETUP_REACHABILITY_TIMEOUT`: bound, in seconds, for each
+  pre-pairing `/startupz` probe (`WindowsGatewayReachability`, run by
+  `PairOperatorStep` and `PairNodeStep` before opening their pairing sockets).
+  The overall wait while the Gateway reports startup stays bounded by
+  `Gateway.HealthTimeoutSeconds`.
+  Default 30; a positive integer between 1 and 2147483 overrides it, and any
+  other value is ignored with a warning and keeps the default.
 
 ---
 
