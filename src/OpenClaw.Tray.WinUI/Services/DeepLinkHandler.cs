@@ -199,6 +199,10 @@ public static class DeepLinkHandler
                 var agentMessage = result.Parameters.GetValueOrDefault("message");
                 return string.IsNullOrEmpty(agentMessage) ? null : new ActivationRoute.SendMessage(agentMessage);
 
+            case "clawhub/install":
+                return new ActivationRoute.InstallClawHubPlugin(
+                    ClawHubInstallRequest.FromDeepLink(result));
+
             case "voice":
             case "voice-start":
                 return new ActivationRoute.OpenVoice();
