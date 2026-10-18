@@ -129,7 +129,8 @@ public partial class OpenClawGatewayClient
         ChatMediaContentInfo media,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(media.GatewaySource))
+        if (string.IsNullOrWhiteSpace(media.GatewaySource)
+            || !AssistantMediaDirectiveParser.IsSendableLegacySource(media.GatewaySource))
             return AssistantMediaResolutionResult.Unavailable;
 
         var metadataUri = BuildLegacyMediaUri(
