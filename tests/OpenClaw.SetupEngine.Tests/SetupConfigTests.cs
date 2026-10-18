@@ -804,6 +804,62 @@ public class SetupConfigTests : IDisposable
     }
 
     [Fact]
+    [SupportedOSPlatform("windows")]
+    public void TrayArtifactCleanup_UnreadableGatewayRegistry_LeavesOnboardingSettingsUnchanged()
+    {
+        var settingsPath = Path.Combine(_tempDir, "settings.json");
+        var gatewaysPath = Path.Combine(_tempDir, "gateways.json");
+        const string settings = """{"GatewayUrl": "ws://127.0.0.1:18789", "EnableNodeMode": true, "AutoStart": true}""";
+        File.WriteAllText(settingsPath, settings);
+        File.WriteAllText(gatewaysPath, """{"gateways":[{"id":"gw-1","url":"ws://127.0.0.1:18789"}],"activeId":"gw-1"}""");
+        var logPath = Path.Combine(_tempDir, "setup.jsonl");
+
+        using (var held = new FileStream(gatewaysPath, FileMode.Open, FileAccess.Read, FileShare.None))
+        using (var logger = new SetupLogger(logPath))
+        {
+            TrayArtifactCleanup.ApplyOnboardingReset(_tempDir, logger);
+        }
+
+        Assert.Equal(settings, File.ReadAllText(settingsPath));
+        Assert.Contains(
+            "Left onboarding settings unchanged because the gateway registry could not be read.",
+            File.ReadAllText(logPath));
+    }
+
+    [Fact]
+    [SupportedOSPlatform("windows")]
+    public void TrayArtifactCleanup_MissingGatewayRegistry_DisablesNodeSettings()
+    {
+        var settingsPath = Path.Combine(_tempDir, "settings.json");
+        File.WriteAllText(settingsPath, """{"GatewayUrl": "ws://127.0.0.1:18789", "EnableNodeMode": true, "AutoStart": true}""");
+
+        TrayArtifactCleanup.ApplyOnboardingReset(_tempDir, new SetupLogger(filePath: null));
+
+        var result = JsonDocument.Parse(File.ReadAllText(settingsPath));
+        Assert.False(result.RootElement.TryGetProperty("GatewayUrl", out _));
+        Assert.False(result.RootElement.GetProperty("EnableNodeMode").GetBoolean());
+        Assert.False(result.RootElement.GetProperty("AutoStart").GetBoolean());
+    }
+
+    [Fact]
+    [SupportedOSPlatform("windows")]
+    public void TrayArtifactCleanup_ReadableGatewayRecord_PreservesNodeSettings()
+    {
+        var settingsPath = Path.Combine(_tempDir, "settings.json");
+        File.WriteAllText(settingsPath, """{"GatewayUrl": "ws://127.0.0.1:18789", "EnableNodeMode": true, "AutoStart": true}""");
+        File.WriteAllText(
+            Path.Combine(_tempDir, "gateways.json"),
+            """{"gateways":[{"id":"gw-1","url":"ws://127.0.0.1:18789"}],"activeId":"gw-1"}""");
+
+        TrayArtifactCleanup.ApplyOnboardingReset(_tempDir, new SetupLogger(filePath: null));
+
+        var result = JsonDocument.Parse(File.ReadAllText(settingsPath));
+        Assert.False(result.RootElement.TryGetProperty("GatewayUrl", out _));
+        Assert.True(result.RootElement.GetProperty("EnableNodeMode").GetBoolean());
+        Assert.True(result.RootElement.GetProperty("AutoStart").GetBoolean());
+    }
+
+    [Fact]
     public void WslConfig_Defaults()
     {
         var wsl = new WslConfig();
