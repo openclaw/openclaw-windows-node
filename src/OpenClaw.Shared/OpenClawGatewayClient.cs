@@ -761,7 +761,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             // Content can include text and structured tool call/result blocks.
             string text = ExtractMessageText(m, role);
             var toolContent = ExtractToolContent(m, role, text);
-            var contentParts = ExtractOrderedMessageContent(m, role, toolContent);
+            var contentParts = AppendOpenClawHistoryMedia(
+                m,
+                ExtractOrderedMessageContent(m, role, toolContent));
             if (string.IsNullOrEmpty(text)
                 && toolContent.Count == 0
                 && contentParts.All(static part => part.Kind != ChatMessageContentPartKind.Media))
@@ -1059,7 +1061,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         out ChatMediaContentInfo media)
     {
         media = null!;
-        var mimeType = ReadFirstString(item, "mimeType", "mime_type")?.Trim().ToLowerInvariant();
+        var mimeType = ReadFirstString(item, "mimeType", "mime_type", "contentType")?.Trim().ToLowerInvariant();
         var hasMediaShape = normalizedType is "image" or "audio" or "video" or "file" or "attachment"
             || !string.IsNullOrWhiteSpace(mimeType)
             || ReadFirstString(item, "artifactId", "artifact_id") is not null
@@ -4269,6 +4271,46 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             ? parsedAfter
             : (long?)null;
         return (id, seq, kind, tokensBefore, tokensAfter);
+    }
+
+    // Gateway 2026.9 stores a user image beside the caption, on __openclaw.media,
+    // instead of inside the content array. Without these parts the history row
+    // has no attachment signature and the local caption cache cannot match.
+    private static IReadOnlyList<ChatMessageContentPartInfo> AppendOpenClawHistoryMedia(
+        JsonElement message,
+        IReadOnlyList<ChatMessageContentPartInfo> parts)
+    {
+        if (message.ValueKind != JsonValueKind.Object ||
+            !message.TryGetProperty("__openclaw", out var openClaw) ||
+            openClaw.ValueKind != JsonValueKind.Object ||
+            !openClaw.TryGetProperty("media", out var media) ||
+            media.ValueKind != JsonValueKind.Array)
+        {
+            return parts;
+        }
+
+        List<ChatMessageContentPartInfo>? list = null;
+        foreach (var item in media.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+                continue;
+
+            var rawType = ReadFirstString(item, "type", "kind") ?? string.Empty;
+            var normalizedType = rawType
+                .Replace("_", string.Empty, StringComparison.Ordinal)
+                .ToLowerInvariant();
+            if (!TryParseStructuredMedia(item, normalizedType, out var parsed))
+                continue;
+
+            list ??= new List<ChatMessageContentPartInfo>(parts);
+            list.Add(new ChatMessageContentPartInfo
+            {
+                Kind = ChatMessageContentPartKind.Media,
+                Media = parsed,
+            });
+        }
+
+        return list ?? parts;
     }
 
     private static long ExtractChatTimestampMs(JsonElement node)
