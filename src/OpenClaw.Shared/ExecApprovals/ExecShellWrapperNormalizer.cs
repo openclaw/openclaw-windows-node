@@ -15,10 +15,63 @@ internal static class ExecShellWrapperNormalizer
     private sealed record WrapperSpec(WrapperKind Kind, HashSet<string> Names);
 
     private static readonly HashSet<string> s_posixInlineFlags =
-        new(StringComparer.OrdinalIgnoreCase) { "-lc", "-c", "--command" };
+        new(StringComparer.Ordinal) { "-lc", "-c", "--command" };
 
     private static readonly HashSet<string> s_powerShellInlineFlags =
-        new(StringComparer.OrdinalIgnoreCase) { "-c", "-command", "--command" };
+        new(StringComparer.OrdinalIgnoreCase) { "-c", "-command", "--command", "/c", "/command" };
+
+    // Switches that take no argument. A prefix that also matches one of these
+    // is that switch: -i and -in are Interactive, not InputFormat.
+    private static readonly string[] s_powerShellSwitchNames =
+    [
+        "Interactive",
+        "Login",
+        "MTA",
+        "NoExit",
+        "NoLogo",
+        "NonInteractive",
+        "NoProfile",
+        "NoProfileLoadTime",
+        "SSHServerMode",
+        "STA",
+    ];
+
+    // Canonical pwsh parameters that take one following argument. A unique
+    // prefix binds the same way (-wo and -wor are -WorkingDirectory), unless
+    // that prefix also matches a switch above.
+    private static readonly string[] s_powerShellValueOptionNames =
+    [
+        "WorkingDirectory",
+        "ExecutionPolicy",
+        "InputFormat",
+        "OutputFormat",
+        "ConfigurationName",
+        "ConfigurationFile",
+        "CustomPipeName",
+        "EncodedCommand",
+        "SettingsFile",
+        "PSConsoleFile",
+        "WindowStyle",
+        "Version",
+    ];
+
+    // Forms that are not a unique prefix of one canonical name. -wd is the
+    // WorkingDirectory alias. -w is WindowStyle, which also prefixes
+    // WorkingDirectory. -ep and -if are the short ExecutionPolicy and
+    // InputFormat aliases. -config matches both ConfigurationName and
+    // ConfigurationFile.
+    private static readonly HashSet<string> s_powerShellValueAliases =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "-wd", "/wd",
+            "-w", "/w",
+            "-ep", "/ep",
+            "-e", "/e",
+            "-ec", "/ec",
+            "-if", "/if",
+            "-config", "/config",
+            "-of", "/of",
+        };
 
     private static readonly WrapperSpec[] s_specs =
     [
@@ -78,12 +131,23 @@ internal static class ExecShellWrapperNormalizer
 
     private static string? ExtractPosixPayload(IReadOnlyList<string> command)
     {
-        if (command.Count < 2) return null;
-        var flag = command[1].Trim();
-        if (!s_posixInlineFlags.Contains(flag)) return null;
-        if (command.Count < 3) return null;
-        var payload = command[2].Trim();
-        return payload.Length == 0 ? null : payload;
+        var fish = IsFishShell(command[0]);
+        for (var i = 1; i < command.Count; i++)
+        {
+            var flag = command[i].Trim();
+            if (flag.Length == 0) continue;
+            if (flag == "--") return null;
+            if (s_posixInlineFlags.Contains(flag) || IsPosixInlineCluster(flag) || (fish && IsFishInitCommand(flag)))
+            {
+                if (i + 1 >= command.Count) return null;
+                var payload = command[i + 1].Trim();
+                return payload.Length == 0 ? null : payload;
+            }
+
+            if (!flag.StartsWith('-'))
+                return null;
+        }
+        return null;
     }
 
     private static string? ExtractCmdPayload(IReadOnlyList<string> command)
@@ -101,18 +165,165 @@ internal static class ExecShellWrapperNormalizer
 
     private static string? ExtractPowerShellPayload(IReadOnlyList<string> command)
     {
+        var windowsPowerShell = IsWindowsPowerShellHost(command[0]);
         for (var i = 1; i < command.Count; i++)
         {
-            var t = command[i].Trim().ToLowerInvariant();
+            var t = command[i].Trim();
             if (t.Length == 0) continue;
-            if (t == "--") break;
-            if (s_powerShellInlineFlags.Contains(t))
+            if (t == "--") return null;
+            if (IsPowerShellValueOption(t, windowsPowerShell))
+            {
+                i++;
+                continue;
+            }
+
+            if (IsPowerShellFileSwitch(t))
+                return null;
+            if (TryReadPowerShellColonPayload(t, out var inline))
+                return inline.Length == 0 ? null : inline;
+            if (IsPowerShellInlineFlag(t))
             {
                 if (i + 1 >= command.Count) return null;
                 var payload = command[i + 1].Trim();
                 return payload.Length == 0 ? null : payload;
             }
+
+            if (!t.StartsWith('-') && !t.StartsWith('/'))
+            {
+                // Windows PowerShell defaults to -Command for positional text,
+                // including a lone script name. Explicit -File stays a script.
+                return windowsPowerShell ? t : null;
+            }
         }
         return null;
+    }
+
+    private static bool IsWindowsPowerShellHost(string executable) =>
+        ExecCommandToken.NormalizedBasename(executable).Equals("powershell", StringComparison.Ordinal);
+
+    private static bool IsFishShell(string token)
+        => ExecCommandToken.NormalizedBasename(token).Equals("fish", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsFishInitCommand(string flag)
+        => flag == "-C" || flag.Equals("--init-command", StringComparison.Ordinal);
+
+    private static bool IsPowerShellValueOption(string token, bool windowsPowerShell)
+    {
+        if (token.IndexOf(':') > 0)
+            return false;
+        if (s_powerShellValueAliases.Contains(token))
+            return true;
+        if (!TryGetPowerShellSwitchBody(token, out var body))
+            return false;
+        if (IsPowerShellValueAliasBody(body))
+            return true;
+
+        var switchMatches = CountPrefixMatches(body, s_powerShellSwitchNames);
+        var valueMatches = CountPrefixMatches(body, s_powerShellValueOptionNames);
+        if (switchMatches > 0 &&
+            !(windowsPowerShell && IsInteractivePrefix(body) && valueMatches == 1))
+        {
+            return false;
+        }
+
+        return valueMatches == 1;
+    }
+
+    private static bool IsInteractivePrefix(string body) =>
+        "interactive".StartsWith(body, StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsPowerShellValueAliasBody(string body)
+    {
+        foreach (var alias in s_powerShellValueAliases)
+        {
+            if (!TryGetPowerShellSwitchBody(alias, out var aliasBody))
+                continue;
+            if (aliasBody.Equals(body, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static int CountPrefixMatches(string body, string[] names)
+    {
+        var matches = 0;
+        foreach (var name in names)
+        {
+            if (name.StartsWith(body, StringComparison.OrdinalIgnoreCase))
+                matches++;
+        }
+
+        return matches;
+    }
+
+    private static bool IsPowerShellInlineFlag(string token)
+    {
+        if (s_powerShellInlineFlags.Contains(token))
+            return true;
+        if (!TryGetPowerShellSwitchBody(token, out var body))
+            return false;
+        if (body.Equals("c", StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (body.Length < 2)
+            return false;
+
+        return "command".StartsWith(body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool TryGetPowerShellSwitchBody(string token, out string body)
+    {
+        body = "";
+        if (token.StartsWith("--", StringComparison.Ordinal))
+        {
+            body = token[2..];
+            return body.Length > 0;
+        }
+
+        if (token.Length < 2 || (token[0] != '-' && token[0] != '/'))
+            return false;
+
+        body = token[1..];
+        return body.Length > 0;
+    }
+
+    private static bool IsPosixInlineCluster(string flag)
+    {
+        if (flag.Length < 3 || flag[0] != '-' || flag[1] == '-')
+            return false;
+        var sawCommand = false;
+        for (var i = 1; i < flag.Length; i++)
+        {
+            if (!char.IsLetter(flag[i]))
+                return false;
+            if (flag[i] == 'c')
+                sawCommand = true;
+        }
+
+        return sawCommand;
+    }
+
+    private static bool IsPowerShellFileSwitch(string token)
+    {
+        var name = token;
+        var colon = token.IndexOf(':');
+        if (colon > 0)
+            name = token[..colon];
+        if (!TryGetPowerShellSwitchBody(name, out var body))
+            return false;
+
+        return body.Length > 0 &&
+            "file".StartsWith(body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool TryReadPowerShellColonPayload(string token, out string payload)
+    {
+        payload = "";
+        var colon = token.IndexOf(':');
+        if (colon <= 0) return false;
+        var flag = token[..colon];
+        if (!s_powerShellInlineFlags.Contains(flag)) return false;
+        payload = token[(colon + 1)..].Trim();
+        return true;
     }
 }
