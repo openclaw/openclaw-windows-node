@@ -644,13 +644,17 @@ public partial class App
         var timeline = updated.Timelines.TryGetValue(resolvedThreadId, out var tl)
             ? tl
             : ChatTimelineState.Initial();
+        var queued = updated.QueuedMessagesByThread is { } queues &&
+                     queues.TryGetValue(resolvedThreadId, out var pending) &&
+                     pending.Count > 0;
 
         return new
         {
             sent = true,
             threadId = resolvedThreadId,
             entryCount = timeline.Entries.Count,
-            turnActive = timeline.TurnActive
+            turnActive = timeline.TurnActive,
+            queued
         };
     }
 

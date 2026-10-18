@@ -384,7 +384,7 @@ public class McpToolBridge
         ["app.chat.snapshot"] =
             "READ-ALL: Return the current native chat snapshot for local automation. Args: threadId/sessionKey (string, optional). Returns connection state, compose target, thread summaries, queued outgoing messages, and recent timeline entries including chat text.",
         ["app.chat.send"] =
-            "Send a message through the native chat provider. Args: message (string, required), threadId/sessionKey (string, optional; defaults to the current compose/default thread). Returns { sent, threadId, entryCount, turnActive, error? }.",
+            "Send a message through the native chat provider. Args: message (string, required), threadId/sessionKey (string, optional; defaults to the current compose/default thread). Returns { sent, threadId, entryCount, turnActive, queued, error? }. queued=true means the thread has messages waiting in the outgoing queue (behind an active turn, or while Local AI starts); their delivery appears in app.chat.queue.list and the timeline, not in this result.",
         ["app.chat.reset"] =
             "Reset a chat session through the gateway sessions.reset path. Args: threadId/sessionKey (string, optional; defaults to the current compose/default thread, so no-arg reset clears the active chat). Returns { reset, threadId, error? }.",
         ["app.chat.queue.list"] =

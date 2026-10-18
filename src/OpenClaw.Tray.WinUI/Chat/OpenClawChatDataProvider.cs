@@ -86,6 +86,14 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private readonly ChatHistoryLoader _historyLoader;
     private readonly Action<Action>? _post;
     private readonly Func<Func<Task>, Task> _deferredAbortScheduler;
+    private readonly Func<string?, string?, Task<Task?>>? _sendReadiness;
+    private readonly SemaphoreSlim _admissionGate = new(1, 1);
+    // Model selections this provider is patching (null = the default model), used for send
+    // readiness until sessions.list has had time to reflect them. A failed patch drops only its
+    // own entry; a successful one expires after PatchedModelLifetime.
+    private static readonly TimeSpan PatchedModelLifetime = TimeSpan.FromSeconds(30);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, PatchedModel> _patchedModels = new(StringComparer.Ordinal);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, Task> _readinessHolds = new(StringComparer.Ordinal);
     private readonly object _publishGate = new();
     private readonly Dictionary<int, int> _deliveryDepthByThread = [];
     private readonly ManualResetEventSlim _disposeCompleted = new();
@@ -136,8 +144,17 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     /// When <c>null</c>, callbacks fire on whatever thread the gateway raised
     /// the source event on (acceptable in unit tests).
     /// </param>
-    public OpenClawChatDataProvider(IChatGatewayBridge bridge, Action<Action>? post = null)
-        : this(bridge, post, ChatMetadataStore.DefaultToolMetaCacheFilePath)
+    /// <param name="sendReadiness">
+    /// Optional check before each <c>chat.send</c>, for example whether the Gateway can resolve the
+    /// default model yet. It yields <c>null</c> when the send can go now, otherwise a task that
+    /// completes when it can. While it holds, new messages are admitted to the send queue and the
+    /// queue drains once the hold completes, so queue cancel, failure and reconnect rules apply.
+    /// </param>
+    public OpenClawChatDataProvider(
+        IChatGatewayBridge bridge,
+        Action<Action>? post = null,
+        Func<string?, string?, Task<Task?>>? sendReadiness = null)
+        : this(bridge, post, ChatMetadataStore.DefaultToolMetaCacheFilePath, sendReadiness: sendReadiness)
     {
     }
 
@@ -150,13 +167,15 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         TimeSpan? lastChatStateSaveDelay = null,
         Func<TimeSpan, CancellationToken, Func<Task>, Task>? historyRetryScheduler = null,
         Action? historyFailureReservedForTesting = null,
-        Func<Func<Task>, Task>? deferredAbortScheduler = null)
+        Func<Func<Task>, Task>? deferredAbortScheduler = null,
+        Func<string?, string?, Task<Task?>>? sendReadiness = null)
     {
         _bridge = bridge ?? throw new ArgumentNullException(nameof(bridge));
         _welcomeLocale = LocalizationHelper.CurrentLanguage;
         _post = post;
         _deferredAbortScheduler =
             deferredAbortScheduler ?? (work => Task.Run(work));
+        _sendReadiness = sendReadiness;
         _metadataStore = new ChatMetadataStore(
             toolMetaCacheFilePath,
             attachmentMetaCacheFilePath);
@@ -309,17 +328,40 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 : $"{safeUserText}\n{chips}";
         }
 
-        var admission = _state.AdmitMessage(
-            threadId,
-            trimmed,
-            displayText,
-            nonce,
-            attachments,
-            DateTimeOffset.UtcNow,
-            ProjectionContext(),
-            timelineText: safeUserText,
-            attachmentPresentations: attachmentPresentations,
-            attachmentCorrelationSignature: attachmentCorrelationSignature);
+        // The readiness check awaits the Gateway, so admit sends one at a time to keep their order.
+        await _admissionGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        Task? readinessHold;
+        ChatQueuedAdmission admission;
+        try
+        {
+            var (model, modelProvider) = _patchedModels.TryGetValue(threadId, out var patched) && patched.IsCurrent
+                ? (patched.Model, null)
+                : _state.SelectedModelForThread(threadId);
+            readinessHold = _sendReadiness is null
+                ? null
+                : await _sendReadiness(model, modelProvider).ConfigureAwait(false) is { IsCompleted: false } hold ? hold : null;
+            cancellationToken.ThrowIfCancellationRequested();
+            if (readinessHold is not null)
+                _readinessHolds[threadId] = readinessHold;
+            else
+                _readinessHolds.TryRemove(threadId, out _);
+            admission = _state.AdmitMessage(
+                threadId,
+                trimmed,
+                displayText,
+                nonce,
+                attachments,
+                DateTimeOffset.UtcNow,
+                ProjectionContext(),
+                timelineText: safeUserText,
+                attachmentPresentations: attachmentPresentations,
+                attachmentCorrelationSignature: attachmentCorrelationSignature,
+                holdInQueue: readinessHold is not null);
+        }
+        finally
+        {
+            _admissionGate.Release();
+        }
         _telemetry.StartLocalTurn(
             admission.MessageId,
             threadId,
@@ -343,6 +385,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             : null;
         Publish(admission.Snapshot);
 
+        if (readinessHold is not null)
+            DrainQueuedSendsWhenReady(threadId, readinessHold);
         if (dispatch is not null)
             await DispatchQueuedSendAsync(
                 dispatch,
@@ -845,7 +889,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         // string; a blank value here is a no-op rather than a clear. Use
         // ClearModelAsync to revert a session to the gateway default.
         if (string.IsNullOrWhiteSpace(model)) return;
-        await TrackSessionOptionPatchAsync(threadId, () => _bridge.PatchSessionModelAsync(threadId, model));
+        await TrackModelPatchAsync(threadId, model, () => _bridge.PatchSessionModelAsync(threadId, model));
     }
 
     public async Task ClearModelAsync(string threadId, CancellationToken cancellationToken = default)
@@ -853,7 +897,66 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         cancellationToken.ThrowIfCancellationRequested();
         // Tri-state clear: removes the session's model override (explicit null)
         // so it tracks the gateway/agent default again.
-        await TrackSessionOptionPatchAsync(threadId, () => _bridge.ClearSessionModelAsync(threadId));
+        await TrackModelPatchAsync(threadId, null, () => _bridge.ClearSessionModelAsync(threadId));
+    }
+
+    private async Task TrackModelPatchAsync(string threadId, string? model, Func<Task> patchOperation)
+    {
+        var patched = new PatchedModel(model);
+        _patchedModels[threadId] = patched;
+        try
+        {
+            await TrackSessionOptionPatchAsync(threadId, patchOperation);
+            patched.Complete();
+        }
+        catch
+        {
+            _patchedModels.TryRemove(new KeyValuePair<string, PatchedModel>(threadId, patched));
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// A rejected sessions.patch does not say which session it was for, so every recorded model
+    /// switch is dropped and readiness falls back to sessions.list. Held sessions are re-checked,
+    /// so a hold that only came from a rejected switch is released.
+    /// </summary>
+    private void DropPatchedModels()
+    {
+        _patchedModels.Clear();
+        foreach (var (threadId, hold) in _readinessHolds)
+        {
+            if (!hold.IsCompleted)
+                _ = RecheckReadinessHoldAsync(threadId, hold);
+        }
+    }
+
+    private async Task RecheckReadinessHoldAsync(string threadId, Task hold)
+    {
+        try
+        {
+            var (model, modelProvider) = _state.SelectedModelForThread(threadId);
+            if (_sendReadiness is null ||
+                await _sendReadiness(model, modelProvider).ConfigureAwait(false) is { IsCompleted: false } ||
+                _state.IsDisposed ||
+                !_readinessHolds.TryRemove(new KeyValuePair<string, Task>(threadId, hold)))
+                return;
+            TryDispatchNextQueuedSend(threadId);
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[Queue] Readiness recheck failed for threadId='{threadId}': {ex.Message}");
+        }
+    }
+
+    private sealed class PatchedModel(string? model)
+    {
+        private long _completedAt;
+        public string? Model { get; } = model;
+        public void Complete() => Volatile.Write(ref _completedAt, System.Diagnostics.Stopwatch.GetTimestamp());
+        public bool IsCurrent => Volatile.Read(ref _completedAt) is var completed &&
+                                 (completed == 0 ||
+                                  System.Diagnostics.Stopwatch.GetElapsedTime(completed) < PatchedModelLifetime);
     }
 
     private async Task TrackSessionOptionPatchAsync(string threadId, Func<Task> patchOperation)
@@ -1217,6 +1320,11 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     {
         if (_state.IsDisposed)
             return;
+        if (result is { Ok: false, Method: "sessions.patch" })
+        {
+            DropPatchedModels();
+            return;
+        }
         if (result is not { Ok: true } || string.IsNullOrWhiteSpace(result.Key))
         {
             return;
@@ -1736,6 +1844,11 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
     private void TryDispatchNextQueuedSend(string threadId)
     {
+        if (_readinessHolds.TryGetValue(threadId, out var readinessHold) && !readinessHold.IsCompleted)
+        {
+            DrainQueuedSendsWhenReady(threadId, readinessHold);
+            return;
+        }
         var start = _state.TryStartNextQueuedSend(
             threadId,
             requireConnected: true,
@@ -1758,6 +1871,23 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         else if (start.DelayedRetry is { } delay)
             ScheduleQueuedSendDrain(threadId, delay);
     }
+
+    private void DrainQueuedSendsWhenReady(string threadId, Task readinessHold) =>
+        _ = readinessHold.ContinueWith(
+            _ =>
+            {
+                if (_state.IsDisposed)
+                    return;
+                try
+                {
+                    TryDispatchNextQueuedSend(threadId);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"[Queue] Queued send drain after readiness hold failed for threadId='{threadId}': {ex.Message}");
+                }
+            },
+            TaskScheduler.Default);
 
     private void ScheduleQueuedSendDrain(string threadId)
         => ScheduleQueuedSendDrain(threadId, ChatSendQueuePolicy.DrainDelay);

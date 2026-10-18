@@ -589,7 +589,7 @@ Send a message through the same native chat provider used by the Chat UI.
   "threadId": "string"       // optional; defaults to compose/default thread
 }
 ```
-Returns `{ sent, threadId, entryCount, turnActive, error? }`.
+Returns `{ sent, threadId, entryCount, turnActive, queued, error? }`. `queued: true` means the thread has messages waiting in the outgoing queue, behind an active turn or while companion Local AI starts. Their delivery shows up in `app.chat.queue.list` and the timeline, not in this result.
 
 ### app.chat.reset
 Reset the target chat session through the gateway `sessions.reset` path.

@@ -254,6 +254,7 @@ new attempt. This boundary does not change release signing or Windows policy.
 | Chat run, abort and terminal lifecycle state | `ChatLifecycleState` under the `ChatConversationState` lock | authoritative |
 | Chat approval identity correlation and dedupe state | `ChatApprovalState` under the `ChatConversationState` lock | authoritative |
 | Chat send admission/retry decision policy | `ChatSendQueuePolicy` with atomic commits coordinated by `ChatConversationState` | authoritative |
+| Holding chat sends while the Gateway cannot resolve its default model | `OpenClawChatCoordinator` checks the Gateway's configured `models.list` for the model tagged `default` before each send and, when it is missing (for example while companion Local AI restarts), re-checks every second for at most two minutes; `OpenClawChatDataProvider` admits held messages to the send queue and drains it when the hold completes, so queue cancel, failure, reconnect and ordering rules apply (`SendMessageAsync_WhileSendReadinessHolds_*`, `ComposerSend_WhileSendReadinessHolds_ClearsDraftAndStaysUsable`) | authoritative |
 | Chat history request/retry/rebuild mechanics | `ChatHistoryLoader` with token acceptance coordinated by `ChatConversationState` | authoritative |
 | Gateway agent event to chat event mapping | `ChatEventMapper` | authoritative |
 | Chat snapshot projection | `ChatSnapshotProjector` | authoritative |

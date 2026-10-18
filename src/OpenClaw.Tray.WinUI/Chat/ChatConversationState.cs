@@ -103,6 +103,14 @@ internal sealed class ChatConversationState
         }
     }
 
+    internal (string? Model, string? Provider) SelectedModelForThread(string threadId)
+    {
+        lock (_gate)
+            return _presentation.FindSession(threadId) is { } session
+                ? (session.Model, session.Provider)
+                : (null, null);
+    }
+
     internal OpenClawChatDataProvider.LastChatState? RememberSelectedThread(string threadId)
     {
         lock (_gate)
@@ -594,7 +602,8 @@ internal sealed class ChatConversationState
         ChatProjectionContext context,
         string? timelineText = null,
         IReadOnlyList<ChatAttachmentPresentation>? attachmentPresentations = null,
-        string attachmentCorrelationSignature = "")
+        string attachmentCorrelationSignature = "",
+        bool holdInQueue = false)
     {
         lock (_gate)
         {
@@ -617,7 +626,7 @@ internal sealed class ChatConversationState
                 AttachmentPresentations: attachmentPresentations,
                 AttachmentCorrelationSignature: attachmentCorrelationSignature);
 
-            var sendDirectly = CanSendDirectlyLocked(threadId);
+            var sendDirectly = !holdInQueue && CanSendDirectlyLocked(threadId);
             ChatQueuedSendDispatch? dispatch;
             if (sendDirectly)
             {
@@ -631,10 +640,12 @@ internal sealed class ChatConversationState
                     createdAt,
                     nonce));
                 _queue.AddRequest(request);
-                dispatch = TryStartNextQueuedSendLocked(
-                    threadId,
-                    requireConnected: false,
-                    out _);
+                dispatch = holdInQueue
+                    ? null
+                    : TryStartNextQueuedSendLocked(
+                        threadId,
+                        requireConnected: false,
+                        out _);
             }
 
             return new ChatQueuedAdmission(
