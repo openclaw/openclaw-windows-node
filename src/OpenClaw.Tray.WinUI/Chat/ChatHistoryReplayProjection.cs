@@ -34,6 +34,19 @@ internal static class ChatHistoryReplayProjection
     {
         foreach (var message in messages)
         {
+            var role = message.Role?.ToLowerInvariant() ?? string.Empty;
+            if (role == "user" &&
+                message.ContentParts.Any(static part => part.Kind == ChatMessageContentPartKind.Media))
+            {
+                yield return new ChatHistoryReplayPart(
+                    message,
+                    message.Text ?? string.Empty,
+                    Array.Empty<ChatToolContentInfo>(),
+                    Array.Empty<ChatMessageContentPartInfo>(),
+                    IsFirstPart: true);
+                continue;
+            }
+
             if (message.ContentParts.Count == 0)
             {
                 yield return new ChatHistoryReplayPart(
