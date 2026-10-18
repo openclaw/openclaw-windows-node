@@ -1,5 +1,5 @@
 {
-  "version": "0.7.0-alpha",
+  "version": "0.9.0-alpha",
   "containerId": "golden-custom",
   "lifecycle": {
     "destroyOnExit": true,
@@ -21,14 +21,17 @@
     "injection": false
   },
   "network": {
-    "defaultPolicy": "allow",
-    "enforcementMode": "capabilities"
+    "egress": {
+      "default": "allow"
+    },
+    "ingress": {
+      "default": "deny",
+      "hostLoopback": "deny"
+    }
   },
   "processContainer": {
     "leastPrivilege": false,
-    "capabilities": [
-      "internetClient"
-    ],
+    "capabilities": [],
     "ui": {
       "isolation": "container",
       "desktopSystemControl": false,

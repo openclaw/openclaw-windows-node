@@ -91,12 +91,13 @@ public class DirectAppContainerExecutorTests
     }
 
     [Theory]
-    [InlineData("0.7.0-alpha", false, 0, false, true)]
+    [InlineData("0.9.0-alpha", false, 0, false, true)]
     [InlineData("0.8.0-alpha", false, 0, false, false)]
-    [InlineData("0.7.0-alpha", true, 0, false, false)]
-    [InlineData("0.7.0-alpha", false, 1, false, false)]
-    [InlineData("0.7.0-alpha", false, 2, false, false)]
-    [InlineData("0.7.0-alpha", false, 0, true, false)]
+    [InlineData("0.7.0-alpha", false, 0, false, false)]
+    [InlineData("0.9.0-alpha", true, 0, false, false)]
+    [InlineData("0.9.0-alpha", false, 1, false, false)]
+    [InlineData("0.9.0-alpha", false, 2, false, false)]
+    [InlineData("0.9.0-alpha", false, 0, true, false)]
     public void IsSystemRunConfigBaseContainerCompatible_RequiresExactEmittedContract(
         string version,
         bool leastPrivilege,
@@ -110,6 +111,7 @@ public class DirectAppContainerExecutorTests
             ContainerId = "test",
             Containment = hasContainment ? "process" : null,
             Process = new MxcProcess { CommandLine = "cmd.exe /c echo hi" },
+            Network = new MxcNetwork { Egress = new() },
             ProcessContainer = new MxcProcessContainer
             {
                 LeastPrivilege = leastPrivilege,
@@ -129,6 +131,21 @@ public class DirectAppContainerExecutorTests
         Assert.Equal(
             expected,
             MxcIsolationTierPolicy.IsSystemRunConfigBaseContainerCompatible(config));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_CustomExecutor_NeverReceivesNewPolicy()
+    {
+        var availability = new MxcAvailability(
+            true, false, true, @"C:\custom\wxc-exec.exe", Array.Empty<string>(),
+            isolationTier: "base-container", needsDaclAugmentation: false,
+            usesCustomExecutor: true);
+        var executor = new DirectAppContainerExecutor(() => availability, NullLogger.Instance);
+
+        var error = await Assert.ThrowsAsync<SandboxUnavailableException>(
+            () => executor.ExecuteAsync(NewRequest()));
+
+        Assert.Contains("requires the bundled executor", error.Message);
     }
 
     [Fact]
