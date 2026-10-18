@@ -1,3 +1,5 @@
+using OpenClaw.Connection;
+using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 
 namespace OpenClaw.Tray.Tests;
@@ -26,6 +28,59 @@ public class GatewayChatHelperTests
         Assert.True(ok);
         Assert.StartsWith("https://gateway.example.com", url);
         Assert.Equal("/chat", new Uri(url).AbsolutePath);
+    }
+
+    [Fact]
+    public void TryBuildChatUrl_ReassignedGateway_PutsOnlyTheUrlDirectoryTokenInTheRequest()
+    {
+        var temp = Path.Combine(Path.GetTempPath(), "chat-url-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try
+        {
+            var registry = new GatewayRegistry(temp);
+            const string urlA = "ws://127.0.0.1:18789/routeA";
+            const string urlB = "ws://127.0.0.1:18789/routeB";
+            var record = new GatewayRecord { Id = "gw-1", Url = urlB };
+            registry.AddOrUpdate(record);
+            registry.SetActive(record.Id);
+
+            var root = registry.GetIdentityDirectory(record.Id);
+            Directory.CreateDirectory(root);
+            var stamped = new DeviceIdentity(root);
+            stamped.Initialize();
+            stamped.StoreDeviceTokenForRole("operator", "token-a", ["operator.read"]);
+            LegacyStartupDeviceToken.StampBoundUrl(root, urlA);
+
+            var realm = LegacyStartupDeviceToken.SelectIdentityDirectory(root, urlB);
+            var paired = new DeviceIdentity(realm);
+            paired.Initialize();
+            paired.StoreDeviceTokenForRole("operator", "token-b", ["operator.read"]);
+
+            var resolved = InteractiveGatewayCredentialResolver.TryResolve(
+                registry,
+                temp,
+                DeviceIdentityFileReader.Instance,
+                urlB,
+                "token-a",
+                null,
+                out var credential);
+
+            Assert.True(resolved);
+            Assert.NotNull(credential);
+            var built = GatewayChatUrlBuilder.TryBuildChatUrl(
+                credential!.GatewayUrl,
+                credential.Token,
+                out var url,
+                out _);
+
+            Assert.True(built);
+            Assert.Contains("/chat?token=token-b", url, StringComparison.Ordinal);
+            Assert.DoesNotContain("token-a", url, StringComparison.Ordinal);
+        }
+        finally
+        {
+            try { Directory.Delete(temp, recursive: true); } catch { }
+        }
     }
 
     #endregion
