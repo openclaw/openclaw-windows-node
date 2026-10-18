@@ -442,6 +442,40 @@ public class MxcAvailabilityTests
     }
 
     [Fact]
+    public void Probe_MissingExecutable_LogsArchitectureAndSkipsNativeProbe()
+    {
+        var logger = new CapturingLogger();
+        var probeCalled = false;
+
+        var availability = MxcAvailability.Probe(
+            logger,
+            _ =>
+            {
+                probeCalled = true;
+                throw new InvalidOperationException("native probe must not run without an executable");
+            },
+            windowsServerProvider: () => false,
+            windowsProvider: () => true,
+            wxcResolver: () => (false, null));
+
+        Assert.False(probeCalled);
+        Assert.False(availability.IsWxcExecResolvable);
+        Assert.False(availability.HasAnyBackend);
+        Assert.False(availability.ProbeErrored);
+        Assert.Null(availability.IsolationSessionCapability);
+        Assert.Contains("wxc-exec.exe not found", Assert.Single(availability.UnsupportedReasons));
+        var warning = Assert.Single(logger.Warnings);
+        Assert.Contains("[mxc] availability: supported=false probe=skipped reason=wxc_exec_not_found", warning);
+        Assert.Contains($"os_arch={System.Runtime.InteropServices.RuntimeInformation.OSArchitecture}", warning);
+        Assert.Contains($"process_arch={System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture}", warning);
+        var expectedArch = System.Runtime.InteropServices.RuntimeInformation.OSArchitecture ==
+            System.Runtime.InteropServices.Architecture.Arm64 ? "arm64" : "x64";
+        Assert.Contains($"expected=tools\\mxc\\{expectedArch}\\wxc-exec.exe", warning);
+        Assert.Contains("x64 package on ARM64 Windows", warning);
+        Assert.Empty(logger.Infos);
+    }
+
+    [Fact]
     public void Probe_WindowsServerSku_SkipsResolverAndNativeProbe()
     {
         var resolverCalled = false;

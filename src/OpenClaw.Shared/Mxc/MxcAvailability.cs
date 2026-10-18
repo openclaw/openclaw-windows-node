@@ -218,6 +218,12 @@ public sealed class MxcAvailability
         if (!wxcResolvable || string.IsNullOrEmpty(wxcPath))
         {
             reasons.Add($"wxc-exec.exe not found. Set {WxcExecOverrideEnvVar} or build the tray app to copy it into the output folder.");
+            log.Warn(
+                $"[mxc] availability: supported=false probe=skipped reason=wxc_exec_not_found " +
+                $"os_arch={RuntimeInformation.OSArchitecture} process_arch={RuntimeInformation.ProcessArchitecture} " +
+                $"expected=tools\\mxc\\{GetSdkArchString()}\\wxc-exec.exe. " +
+                "Check that the Companion package matches the Windows architecture; " +
+                "an x64 package on ARM64 Windows may not contain the required ARM64 probe.");
             return new MxcAvailability(false, false, false, null, reasons);
         }
 
