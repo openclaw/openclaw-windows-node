@@ -656,6 +656,192 @@ public sealed class GatewayDirectConnectServiceTests : IDisposable
     }
 
     [Fact]
+    public void SynchronizeSettings_TunnelFailureTwice_RestoresPriorSettings()
+    {
+        var active = AddPreviousGateway();
+        _settings.GatewayUrl = "wss://rejected.example";
+        _settings.SaveOrThrow();
+        var service = new GatewayDirectConnectService(
+            _manager,
+            _registry,
+            _settings,
+            () => throw new InvalidOperationException("tunnel down"),
+            NullLogger.Instance,
+            TimeSpan.FromMilliseconds(100));
+
+        var error = Assert.Throws<InvalidOperationException>(
+            () => service.SynchronizeSettingsWithCommittedGateway(active));
+
+        Assert.Contains("out of sync", error.Message, StringComparison.Ordinal);
+        Assert.Equal("wss://rejected.example", _settings.GatewayUrl);
+    }
+
+    [Fact]
+    public void SynchronizeSettings_SecondOperationRestoresItsOwnSnapshot()
+    {
+        var prior = AddPreviousGateway();
+        var calls = 0;
+        var service = new GatewayDirectConnectService(
+            _manager,
+            _registry,
+            _settings,
+            () =>
+            {
+                calls++;
+                if (calls > 1)
+                    throw new InvalidOperationException("tunnel down");
+            },
+            NullLogger.Instance,
+            TimeSpan.FromMilliseconds(100));
+        var committed = prior with { Url = "wss://committed.example" };
+        _registry.AddOrUpdate(committed);
+        _registry.SetActive(committed.Id);
+        _registry.Save();
+        service.SynchronizeSettingsWithCommittedGateway(committed);
+        Assert.Equal("wss://committed.example", _settings.GatewayUrl);
+
+        _settings.GatewayUrl = "wss://newer.example";
+        _settings.SaveOrThrow();
+        var second = committed with { Url = "wss://other.example" };
+        _registry.AddOrUpdate(second);
+        _registry.Save();
+        var error = Assert.Throws<InvalidOperationException>(
+            () => service.SynchronizeSettingsWithCommittedGateway(second));
+
+        Assert.Contains("out of sync", error.Message, StringComparison.Ordinal);
+        Assert.Equal("wss://newer.example", _settings.GatewayUrl);
+        Assert.NotEqual(prior.Url, _settings.GatewayUrl);
+    }
+
+    [Fact]
+    public void SynchronizeSettings_OverlappingAttempts_RestoreTheirOwnSnapshots()
+    {
+        var prior = AddPreviousGateway();
+        var priorUrl = _settings.GatewayUrl;
+        var calls = 0;
+        var service = new GatewayDirectConnectService(
+            _manager,
+            _registry,
+            _settings,
+            () =>
+            {
+                calls++;
+                if (calls > 1)
+                    throw new InvalidOperationException("tunnel down");
+            },
+            NullLogger.Instance,
+            TimeSpan.FromMilliseconds(100));
+        var first = service.CaptureSharedTokenSettingsAttempt();
+        var candidate = prior with { Url = "wss://rejected.example" };
+        _registry.AddOrUpdate(candidate);
+        _registry.Save();
+        service.SynchronizeSettingsWithCommittedGateway(candidate, first);
+        Assert.Equal("wss://rejected.example", _settings.GatewayUrl);
+
+        var second = service.CaptureSharedTokenSettingsAttempt();
+        _registry.AddOrUpdate(prior);
+        _registry.SetActive(prior.Id);
+        _registry.Save();
+        var error = Assert.Throws<InvalidOperationException>(
+            () => service.SynchronizeSettingsWithCommittedGateway(prior, first));
+
+        Assert.Contains("out of sync", error.Message, StringComparison.Ordinal);
+        Assert.Equal(priorUrl, _settings.GatewayUrl);
+        _ = second;
+    }
+
+    [Fact]
+    public void SynchronizeSettings_BeginAttempt_RollbackTunnelFailure_KeepsPreAttemptSnapshot()
+    {
+        var prior = AddPreviousGateway();
+        var priorUrl = _settings.GatewayUrl;
+        var calls = 0;
+        var service = new GatewayDirectConnectService(
+            _manager,
+            _registry,
+            _settings,
+            () =>
+            {
+                calls++;
+                if (calls > 1)
+                    throw new InvalidOperationException("tunnel down");
+            },
+            NullLogger.Instance,
+            TimeSpan.FromMilliseconds(100));
+        var candidate = prior with { Url = "wss://rejected.example" };
+        _registry.AddOrUpdate(candidate);
+        _registry.Save();
+        service.SynchronizeSettingsWithCommittedGateway(candidate);
+        Assert.Equal("wss://rejected.example", _settings.GatewayUrl);
+
+        _registry.AddOrUpdate(prior);
+        _registry.SetActive(prior.Id);
+        _registry.Save();
+        var error = Assert.Throws<InvalidOperationException>(
+            () => service.SynchronizeSettingsWithCommittedGateway(prior));
+
+        Assert.Contains("out of sync", error.Message, StringComparison.Ordinal);
+        Assert.Equal("wss://rejected.example", _settings.GatewayUrl);
+        Assert.NotEqual(priorUrl, _settings.GatewayUrl);
+    }
+
+    [Fact]
+    public void SynchronizeSettings_NoActiveGateway_RestoresSnapshot()
+    {
+        var active = AddPreviousGateway();
+        var before = _settings.GatewayUrl;
+        var service = CreateService();
+        service.SynchronizeSettingsWithCommittedGateway(active);
+        Assert.Equal(active.Url, _settings.GatewayUrl);
+
+        _registry.SetActive(null);
+        _registry.Save();
+        service.SynchronizeSettingsWithCommittedGateway(active);
+
+        Assert.Equal(before, _settings.GatewayUrl);
+        Assert.Null(_registry.ActiveGatewayId);
+    }
+
+    [Fact]
+    public void SynchronizeSettings_FirstCommitSurvivesSecondRollbackFailure()
+    {
+        var prior = AddPreviousGateway();
+        var calls = 0;
+        var service = new GatewayDirectConnectService(
+            _manager,
+            _registry,
+            _settings,
+            () =>
+            {
+                calls++;
+                if (calls > 1)
+                    throw new InvalidOperationException("tunnel down");
+            },
+            NullLogger.Instance,
+            TimeSpan.FromMilliseconds(100));
+        var firstAttempt = service.CaptureSharedTokenSettingsAttempt();
+        var committed = prior with { Url = "wss://committed.example" };
+        _registry.AddOrUpdate(committed);
+        _registry.SetActive(committed.Id);
+        _registry.Save();
+        service.SynchronizeSettingsWithCommittedGateway(committed, firstAttempt);
+        Assert.Equal("wss://committed.example", _settings.GatewayUrl);
+        Assert.True(firstAttempt.CandidateSynchronized);
+
+        var secondAttempt = service.CaptureSharedTokenSettingsAttempt();
+        var rejected = committed with { Url = "wss://rejected.example" };
+        _registry.AddOrUpdate(rejected);
+        _registry.SetActive(rejected.Id);
+        _registry.Save();
+        var error = Assert.Throws<InvalidOperationException>(
+            () => service.SynchronizeSettingsWithCommittedGateway(rejected, secondAttempt));
+
+        Assert.Contains("out of sync", error.Message, StringComparison.Ordinal);
+        Assert.Equal("wss://committed.example", _settings.GatewayUrl);
+        Assert.NotEqual(prior.Url, _settings.GatewayUrl);
+    }
+
+    [Fact]
     public async Task NativeCheck_DoesNotChangeSavedStateOrLiveConnection()
     {
         var previous = AddPreviousGateway();
