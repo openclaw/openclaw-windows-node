@@ -54,7 +54,7 @@ public static class GatewayTerminalLaunchCommandBuilder
         }
 
         var distroName = accessPlan.DistroName!;
-        var script = $"{WslGatewayControlCommandBuilder.OpenClawWslPathPrefix} && openclaw doctor || true && exec bash";
+        var script = BuildDoctorShellScript();
 
         if (!string.IsNullOrWhiteSpace(windowsTerminalPath))
         {
@@ -86,6 +86,19 @@ public static class GatewayTerminalLaunchCommandBuilder
                 script
             ]),
             false);
+    }
+
+    // wsl.exe expands $PATH in an argument before bash parses it. A quote in
+    // the Windows PATH then breaks this script. The backslash leaves the
+    // dollar for bash, which expands the Linux PATH inside the quotes. Stdin
+    // gateway scripts keep OpenClawWslPathPrefix unchanged.
+    internal static string BuildDoctorShellScript()
+    {
+        var prefix = WslGatewayControlCommandBuilder.OpenClawWslPathPrefix.Replace(
+            "$PATH",
+            @"\$PATH",
+            StringComparison.Ordinal);
+        return $"{prefix} && openclaw doctor || true && exec bash";
     }
 
     private static GatewayTerminalLaunchCommand BuildWslCommand(GatewayHostAccessPlan accessPlan, string? windowsTerminalPath)
