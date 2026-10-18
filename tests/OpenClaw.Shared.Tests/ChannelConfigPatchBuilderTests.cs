@@ -169,6 +169,31 @@ public class ChannelConfigPatchBuilderTests
     }
 
     [Fact]
+    public void BuildPatch_AllowsNativeGatewayMaskInAnotherChannel()
+    {
+        var existing = Json("""
+            {
+              "channels": {
+                "slack":    { "signingSecret": "__OPENCLAW_REDACTED__", "enabled": true },
+                "telegram": { "botToken": "old", "enabled": false }
+              }
+            }
+            """);
+
+        var result = ChannelConfigPatchBuilder.BuildPatch(
+            existing, "telegram",
+            Updates(("channels.telegram.botToken", "new-token")));
+
+        Assert.Null(result.BlockedReason);
+        Assert.NotNull(result.Patch);
+        var channels = result.Patch!.Value.GetProperty("channels");
+        Assert.Equal(
+            "__OPENCLAW_REDACTED__",
+            channels.GetProperty("slack").GetProperty("signingSecret").GetString());
+        Assert.Equal("new-token", channels.GetProperty("telegram").GetProperty("botToken").GetString());
+    }
+
+    [Fact]
     public void BuildPatch_DoesNotBlockOnSentinelInsideTargetChannel()
     {
         // The sentinel is in the channel we're about to overwrite — that's
