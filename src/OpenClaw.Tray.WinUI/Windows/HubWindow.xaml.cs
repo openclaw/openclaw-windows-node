@@ -34,6 +34,9 @@ public sealed partial class HubWindow : WindowEx
 
     internal AppState? AppModel { get; set; }
     private string _currentAgentId = "main";
+
+    /// <summary>Key for the saved window geometry (see <see cref="WindowGeometryStore"/>).</summary>
+    private const string GeometryName = "hub-window";
     public string CurrentAgentId => _currentAgentId;
     private TaskCompletionSource<bool> _contentReady = CreateCompletedContentReady();
     private AppNotificationService? _appNotificationService;
@@ -122,8 +125,9 @@ public sealed partial class HubWindow : WindowEx
                 AppModel.PropertyChanged -= OnAppModelChanged;
         };
 
-        this.SetWindowSize(1000, 650);
-        this.CenterOnScreen();
+        // Was a fixed 1000x650 centred on every launch, which discarded any resize the
+        // user made. Restore the last geometry instead, or fit the work area on first run.
+        WindowGeometryStore.Attach(this, GeometryName);
         ApplyWindowStatusIcon(ConnectionStatusAccent.Neutral);
 
         RootGrid.SizeChanged += OnRootGridSizeChanged;

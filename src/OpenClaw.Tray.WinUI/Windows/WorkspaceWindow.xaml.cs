@@ -44,6 +44,11 @@ public sealed partial class WorkspaceWindow : WindowEx
     private IOperatorGatewayClient? _refreshingClient;
     private string? _agentId;
 
+    // The window used to open at a fixed 1280x860, which overflows smaller displays and
+    // ignored every resize the user made. WindowGeometryStore restores the last size and
+    // position when still valid, or fits the work area otherwise.
+    private const string GeometryName = "workspace-window";
+
     public bool IsClosed { get; private set; }
     internal bool IsChatVisible => !IsClosed && ChatVisibilityPolicy.IsWorkspaceChatVisible(
         IsClosed,
@@ -83,7 +88,7 @@ public sealed partial class WorkspaceWindow : WindowEx
             () => OpenCompanion(CompanionPageId.Connection),
             () => ((IAppCommands)CurrentApp).Reconnect());
         Title = Text("Title");
-        this.SetWindowSize(1280, 860);
+        WindowGeometryStore.Attach(this, GeometryName);
         ExtendsContentIntoTitleBar = true;
         WorkspaceTitleBar.IconSource = new BitmapIconSource
         {
