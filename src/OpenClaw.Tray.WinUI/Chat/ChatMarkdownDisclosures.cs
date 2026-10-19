@@ -140,9 +140,39 @@ internal static class ChatMarkdownDisclosures
                         openers.Push((indent, true));
                 }
             }
+            else if (!content.IsEmpty)
+            {
+                TrackIgnoredWrappers(text, position, end, eligible, openers);
+            }
+            if (indent <= 3 && !content.IsEmpty && content[0] != '<')
+                TrackIgnoredWrappers(text, position, end, eligible, openers);
             position = end;
         }
         return tokens;
+    }
+
+    // Wrappers after a list or quote marker are never disclosure tokens, but their pairs must
+    // still be tracked so a list-local closer cannot close an enclosing disclosure.
+    private static void TrackIgnoredWrappers(
+        string text, int start, int end,
+        (HashSet<int> Open, HashSet<int> Close) eligible,
+        Stack<(int Indent, bool Ignored)> openers)
+    {
+        for (var i = text.IndexOf('<', start, end - start); i >= 0 && i < end;
+            i = text.IndexOf('<', i + 1, end - i - 1))
+        {
+            if (!eligible.Close.Contains(i) || eligible.Open.Contains(i))
+                continue;
+            var tail = text.AsSpan(i, end - i);
+            if (tail.StartsWith("</details>", StringComparison.OrdinalIgnoreCase))
+            {
+                if (openers.Count > 0 && openers.Peek().Ignored)
+                    openers.Pop();
+            }
+            else if (tail.StartsWith("<details", StringComparison.OrdinalIgnoreCase) &&
+                tail.Length > 8 && (tail[8] == '>' || char.IsWhiteSpace(tail[8])))
+                openers.Push((0, true));
+        }
     }
 
     private static (HashSet<int> Open, HashSet<int> Close) WrapperPositions(string text)
