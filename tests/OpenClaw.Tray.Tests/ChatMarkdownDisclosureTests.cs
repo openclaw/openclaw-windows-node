@@ -90,6 +90,40 @@ public sealed class ChatMarkdownDisclosureTests
         Assert.EndsWith("Final evidence", body);
     }
 
+    [Theory]
+    [InlineData("<details><summary>S</summary>\n> quoted\n</details>", "> quoted")]
+    [InlineData("<details><summary>S</summary>\n\n> quoted\n</details>", "> quoted")]
+    [InlineData("  <details><summary>S</summary>\n\n  - item\n  </details>", "- item")]
+    [InlineData("  <details><summary>S</summary>\n\n  - item\n\n  </details>", "- item")]
+    [InlineData("<details><summary>S</summary>\n\n- item\n</details>", "- item")]
+    public void ClosingWrapperAfterQuoteOrListBody_ClosesTheOuterDisclosure(string input, string expectedBody)
+    {
+        var disclosure = Assert.IsType<ChatMarkdownDisclosure>(
+            Assert.Single(ChatMarkdownDisclosures.Parse(input)));
+        Assert.Equal("S", disclosure.Summary);
+        Assert.Equal(expectedBody, Assert.IsType<ChatMarkdownText>(Assert.Single(disclosure.Body)).Text.Trim());
+    }
+
+    [Fact]
+    public void IndentedWrapperInsideListItem_DoesNotCloseOrOpenTheOuterDisclosure()
+    {
+        var input = "<details><summary>Outer</summary>\n\n- item\n  <details><summary>In list</summary>\n  </details>\n\nTail\n</details>";
+        var outer = Assert.IsType<ChatMarkdownDisclosure>(Assert.Single(ChatMarkdownDisclosures.Parse(input)));
+        Assert.Equal("Outer", outer.Summary);
+        var body = Assert.IsType<ChatMarkdownText>(Assert.Single(outer.Body)).Text;
+        Assert.Contains("<details><summary>In list</summary>", body);
+        Assert.EndsWith("Tail", body);
+    }
+
+    [Theory]
+    [InlineData("- item\n  <details><summary>In list</summary>\n  Body\n  </details>")]
+    [InlineData("> quoted\n<details><summary>After quote text</summary>\nBody\n</details>")]
+    public void WrappersThatOnlyAppearInsideListOrQuoteText_RemainLiteral(string text)
+    {
+        Assert.Equal(text, Assert.IsType<ChatMarkdownText>(
+            Assert.Single(ChatMarkdownDisclosures.Parse(text))).Text);
+    }
+
     [Fact]
     public void DisclosureDepth_IsBoundedWithoutDiscardingDeepContent()
     {
