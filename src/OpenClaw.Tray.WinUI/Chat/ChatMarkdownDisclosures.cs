@@ -83,10 +83,11 @@ internal static class ChatMarkdownDisclosures
     {
         var tokens = new List<Token>();
         var eligible = WrapperPositions(text);
-        // Unclosed openers. md4c reports an indented closer that follows list or quote text
-        // as a lazy continuation, so such a closer is accepted only when it lines up with
-        // the opener it would close. Openers that md4c places inside list or quote content are
-        // tracked as Ignored so their own closers pair with them and stay literal.
+        // Unclosed openers in document order. md4c reports an indented closer that follows
+        // list or quote text as a lazy continuation, so a closer outside a top-level paragraph
+        // is accepted only when it lines up with the opener it would close. Openers that md4c
+        // places inside list or quote content are tracked as Ignored: their own closers pair
+        // with them and stay literal instead of closing an enclosing disclosure.
         var openers = new Stack<(int Indent, bool Ignored)>();
         var position = 0;
         while (position < text.Length)
@@ -97,82 +98,102 @@ internal static class ChatMarkdownDisclosures
             var indent = 0;
             while (indent < line.Length && line[indent] == ' ')
                 indent++;
-            var content = line[indent..];
-            var tag = position + indent;
-            if (indent <= 3 && !content.IsEmpty)
+            var tagOffset = SkipContainerMarkers(line, out var hasMarkers);
+            var tag = position + tagOffset;
+            var content = line[tagOffset..];
+            // Only a line that begins with a wrapper (after any list or quote markers) can
+            // open or close one; mentions inside prose are never tracked.
+            var topLevelShape = !hasMarkers && indent <= 3;
+
+            if (content.Equals("</details>", StringComparison.OrdinalIgnoreCase) &&
+                eligible.Close.Contains(tag))
             {
-                if (content.Equals("</details>", StringComparison.OrdinalIgnoreCase) &&
-                    eligible.Close.Contains(tag))
+                if (topLevelShape && eligible.Open.Contains(tag))
                 {
-                    if (eligible.Open.Contains(tag))
-                    {
-                        // A top-level closer ends any list-local openers still pending.
-                        while (openers.Count > 0 && openers.Peek().Ignored)
-                            openers.Pop();
-                        tokens.Add(new Token(position, end, null, false));
-                        openers.TryPop(out _);
-                    }
-                    else if (openers.Count > 0 && openers.Peek().Ignored)
+                    // A closer that md4c reads as a top-level paragraph ends any
+                    // list-local openers still pending.
+                    while (openers.Count > 0 && openers.Peek().Ignored)
                         openers.Pop();
-                    else if (indent == 0 || (openers.Count > 0 && openers.Peek().Indent == indent))
-                    {
-                        tokens.Add(new Token(position, end, null, false));
-                        openers.TryPop(out _);
-                    }
+                    tokens.Add(new Token(position, end, null, false));
+                    openers.TryPop(out _);
                 }
-                else if (eligible.Open.Contains(tag) &&
-                    TryOpening(text, tag, out var summary, out var expanded, out var bodyStart))
+                else if (openers.Count > 0 && openers.Peek().Ignored)
+                    openers.Pop();
+                else if (topLevelShape && (indent == 0 || (openers.Count > 0 && openers.Peek().Indent == indent)))
                 {
-                    tokens.Add(new Token(position, bodyStart, summary, expanded));
-                    openers.Push((indent, false));
-                    end = bodyStart;
-                }
-                else if (content.StartsWith("<details", StringComparison.OrdinalIgnoreCase) &&
-                    content.Length > 8 && (content[8] == '>' || char.IsWhiteSpace(content[8])) &&
-                    content.IndexOf('>') >= 0)
-                {
-                    if (eligible.Open.Contains(tag))
-                    {
-                        tokens.Add(new Token(position, end, string.Empty, false));
-                        openers.Push((indent, false));
-                    }
-                    else if (eligible.Close.Contains(tag))
-                        openers.Push((indent, true));
+                    tokens.Add(new Token(position, end, null, false));
+                    openers.TryPop(out _);
                 }
             }
-            else if (!content.IsEmpty)
+            else if (IsOpeningTagStart(content) && eligible.Close.Contains(tag))
             {
-                TrackIgnoredWrappers(text, position, end, eligible, openers);
+                if (topLevelShape && eligible.Open.Contains(tag))
+                {
+                    if (TryOpening(text, tag, eligible.Close, out var summary, out var expanded, out var bodyStart))
+                    {
+                        tokens.Add(new Token(position, bodyStart, summary, expanded));
+                        end = bodyStart;
+                    }
+                    else
+                        tokens.Add(new Token(position, end, string.Empty, false));
+                    openers.Push((indent, false));
+                }
+                else if (!HasInlineClosers(text, tag, position + line.Length, eligible.Close))
+                    openers.Push((indent, true));
             }
-            if (indent <= 3 && !content.IsEmpty && content[0] != '<')
-                TrackIgnoredWrappers(text, position, end, eligible, openers);
             position = end;
         }
         return tokens;
     }
 
-    // Wrappers after a list or quote marker are never disclosure tokens, but their pairs must
-    // still be tracked so a list-local closer cannot close an enclosing disclosure.
-    private static void TrackIgnoredWrappers(
-        string text, int start, int end,
-        (HashSet<int> Open, HashSet<int> Close) eligible,
-        Stack<(int Indent, bool Ignored)> openers)
+    private static bool IsOpeningTagStart(ReadOnlySpan<char> content) =>
+        content.StartsWith("<details", StringComparison.OrdinalIgnoreCase) &&
+        content.Length > 8 && (content[8] == '>' || char.IsWhiteSpace(content[8])) &&
+        content.IndexOf('>') >= 0;
+
+    // A list-local opener whose closer is on the same line is balanced and needs no tracking.
+    private static bool HasInlineClosers(string text, int from, int lineEnd, HashSet<int> closable)
     {
-        for (var i = text.IndexOf('<', start, end - start); i >= 0 && i < end;
-            i = text.IndexOf('<', i + 1, end - i - 1))
+        for (var i = text.IndexOf("</details>", from, lineEnd - from, StringComparison.OrdinalIgnoreCase);
+            i >= 0; i = text.IndexOf("</details>", i + 1, lineEnd - i - 1, StringComparison.OrdinalIgnoreCase))
         {
-            if (!eligible.Close.Contains(i) || eligible.Open.Contains(i))
-                continue;
-            var tail = text.AsSpan(i, end - i);
-            if (tail.StartsWith("</details>", StringComparison.OrdinalIgnoreCase))
-            {
-                if (openers.Count > 0 && openers.Peek().Ignored)
-                    openers.Pop();
-            }
-            else if (tail.StartsWith("<details", StringComparison.OrdinalIgnoreCase) &&
-                tail.Length > 8 && (tail[8] == '>' || char.IsWhiteSpace(tail[8])))
-                openers.Push((0, true));
+            if (closable.Contains(i))
+                return true;
         }
+        return false;
+    }
+
+    // Returns the offset of the first character after any spaces, quote markers, and list
+    // markers that precede the line's content.
+    private static int SkipContainerMarkers(ReadOnlySpan<char> line, out bool hasMarkers)
+    {
+        hasMarkers = false;
+        var offset = 0;
+        while (true)
+        {
+            while (offset < line.Length && line[offset] == ' ')
+                offset++;
+            var marker = MarkerLength(line[offset..]);
+            if (marker == 0)
+                return offset;
+            hasMarkers = true;
+            offset += marker;
+        }
+    }
+
+    private static int MarkerLength(ReadOnlySpan<char> text)
+    {
+        if (text.IsEmpty)
+            return 0;
+        if (text[0] == '>')
+            return 1;
+        if (text[0] is '-' or '+' or '*')
+            return text.Length > 1 && text[1] == ' ' ? 1 : 0;
+        var digits = 0;
+        while (digits < text.Length && digits < 9 && char.IsAsciiDigit(text[digits]))
+            digits++;
+        return digits > 0 && digits + 1 < text.Length &&
+            text[digits] is '.' or ')' && text[digits + 1] == ' ' ? digits + 1 : 0;
     }
 
     private static (HashSet<int> Open, HashSet<int> Close) WrapperPositions(string text)
@@ -216,7 +237,7 @@ internal static class ChatMarkdownDisclosures
     }
 
     private static bool TryOpening(
-        string text, int start, out string summary, out bool expanded, out int bodyStart)
+        string text, int start, HashSet<int> closable, out string summary, out bool expanded, out int bodyStart)
     {
         summary = string.Empty;
         expanded = false;
@@ -236,7 +257,9 @@ internal static class ChatMarkdownDisclosures
         // Summary may follow the opener on the same line or the next nonblank line.
         while (after < text.Length && char.IsWhiteSpace(text[after]))
             after++;
-        if (!text.AsSpan(after).StartsWith("<summary>", StringComparison.OrdinalIgnoreCase))
+        // The summary must be prose, not an indented or fenced code block.
+        if (!closable.Contains(after) ||
+            !text.AsSpan(after).StartsWith("<summary>", StringComparison.OrdinalIgnoreCase))
             return false;
         var summaryStart = after + "<summary>".Length;
         var close = text.IndexOf("</summary>", summaryStart, StringComparison.OrdinalIgnoreCase);
