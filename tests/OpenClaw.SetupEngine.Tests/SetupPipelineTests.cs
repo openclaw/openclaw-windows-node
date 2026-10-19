@@ -949,6 +949,105 @@ public class SetupPipelineTests
     }
 
     [Fact]
+    public async Task ResetLocalAiAsync_RequiresConfirmDestructive()
+    {
+        var context = CreateContext(new SetupConfig { ConfirmDestructive = false });
+        var pipeline = new SetupPipeline([new MockStep("local-ai", (_, _) => Task.FromResult(StepResult.Ok()))]);
+
+        PipelineResult result = await pipeline.ResetLocalAiAsync(context);
+
+        Assert.Equal(PipelineOutcome.Failed, result.Outcome);
+        Assert.Contains("confirm-destructive", result.Message);
+    }
+
+    [Fact]
+    public async Task ResetLocalAiAsync_RunsOnlyResetStepsInReverse()
+    {
+        var order = new List<string>();
+        var context = CreateContext(new SetupConfig { ConfirmDestructive = true });
+        var pipeline = new SetupPipeline(
+        [
+            new MockStep("persist-local-ai-manifest", (_, _) => Task.FromResult(StepResult.Ok()),
+                (_, _) => { order.Add("persist"); return Task.CompletedTask; }),
+            new MockStep("configure-local-ai-gateway", (_, _) => Task.FromResult(StepResult.Ok()),
+                (_, _) => { order.Add("gateway"); return Task.CompletedTask; }),
+        ]);
+
+        PipelineResult result = await pipeline.ResetLocalAiAsync(context);
+
+        Assert.Equal(PipelineOutcome.Success, result.Outcome);
+        Assert.Equal(["gateway", "persist"], order);
+    }
+
+    [Fact]
+    public async Task ResetLocalAiAsync_KeepsReceiptWhenGatewayWithdrawalFails()
+    {
+        bool receiptDeleted = false;
+        var context = CreateContext(new SetupConfig { ConfirmDestructive = true });
+        var pipeline = new SetupPipeline(
+        [
+            new MockStep("persist-local-ai-manifest", (_, _) => Task.FromResult(StepResult.Ok()),
+                (_, _) => { receiptDeleted = true; return Task.CompletedTask; }),
+            new MockStep("configure-local-ai-gateway", (_, _) => Task.FromResult(StepResult.Ok()),
+                (_, _) => throw new InvalidDataException("Local AI gateway settings changed after setup.")),
+        ]);
+
+        PipelineResult result = await pipeline.ResetLocalAiAsync(context);
+
+        Assert.Equal(PipelineOutcome.Failed, result.Outcome);
+        Assert.Equal("configure-local-ai-gateway", result.FailedStepId);
+        Assert.Contains("changed after setup", result.Message);
+        Assert.False(receiptDeleted);
+    }
+
+    [Fact]
+    public async Task UninstallAsync_ContinuesPastRollbackFailures()
+    {
+        bool laterStepRan = false;
+        var context = CreateContext(new SetupConfig { ConfirmDestructive = true });
+        var pipeline = new SetupPipeline(
+        [
+            new MockStep("first", (_, _) => Task.FromResult(StepResult.Ok()),
+                (_, _) => { laterStepRan = true; return Task.CompletedTask; }),
+            new MockStep("second", (_, _) => Task.FromResult(StepResult.Ok()),
+                (_, _) => throw new IOException("locked")),
+        ]);
+
+        PipelineResult result = await pipeline.UninstallAsync(context);
+
+        Assert.Equal(PipelineOutcome.Failed, result.Outcome);
+        Assert.True(laterStepRan);
+    }
+
+    [Fact]
+    public void BuildLocalAiResetSteps_UsesOnlyLocalAiRollbackOwners()
+    {
+        var steps = SetupStepFactory.BuildLocalAiResetSteps();
+
+        Assert.Collection(
+            steps,
+            step => Assert.IsType<PersistLocalAiManifestStep>(step),
+            step => Assert.IsType<ConfigureLocalAiGatewayStep>(step));
+    }
+
+    [Fact]
+    public async Task RunAsync_PropagatesTypedFailureCode()
+    {
+        var context = CreateContext();
+        var pipeline = new SetupPipeline(
+        [
+            new MockStep("reconcile-local-ai-installation", (_, _) => Task.FromResult(
+                StepResult.Terminal(
+                    "Use Reset Local AI.",
+                    failureCode: PipelineFailureCode.LocalAiReceiptUnusable))),
+        ]);
+
+        PipelineResult result = await pipeline.RunAsync(context);
+
+        Assert.Equal(PipelineFailureCode.LocalAiReceiptUnusable, result.FailureCode);
+    }
+
+    [Fact]
     public async Task UninstallAsync_RejectsUnsafeDistroBeforeRollbacks()
     {
         var rollbackCalled = false;

@@ -347,8 +347,9 @@ public sealed class ReconcileLocalAiInstallationStep : SetupStep
         {
             return StepResult.Terminal(
                 $"The existing Local AI installation could not be reused safely: {ex.Message} " +
-                "Run uninstall to remove it before retrying setup.",
-                ex);
+                "Use Reset Local AI to remove it before retrying setup.",
+                ex,
+                failureCode: PipelineFailureCode.LocalAiReceiptUnusable);
         }
     }
 

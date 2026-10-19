@@ -31,6 +31,7 @@ public static class Program
         "--dry-run",
         "--wizard-only",
         "--uninstall",
+        "--reset-local-ai",
         "--confirm-destructive",
         "--preserve-logs",
         "--tailscale",
@@ -70,6 +71,7 @@ public static class Program
         var dryRun = parsedArguments.HasFlag("--dry-run");
         var wizardOnly = parsedArguments.HasFlag("--wizard-only");
         var uninstall = parsedArguments.HasFlag("--uninstall");
+        var resetLocalAi = parsedArguments.HasFlag("--reset-local-ai");
         var confirmDestructive = parsedArguments.HasFlag("--confirm-destructive");
         var jsonOutput = parsedArguments.GetValue("--json-output");
         var preserveLogs = parsedArguments.HasFlag("--preserve-logs");
@@ -85,6 +87,18 @@ public static class Program
         var tailscaleHostname = parsedArguments.GetValue("--tailscale-hostname");
         var autoStartName = parsedArguments.GetValue("--autostart-name") ?? "OpenClawTray";
         var startupTaskName = parsedArguments.GetValue("--startup-task-name") ?? WindowsStartupTaskRegistration.TaskName;
+
+        if (uninstall && resetLocalAi)
+        {
+            Console.Error.WriteLine("ERROR: --uninstall and --reset-local-ai cannot be used together.");
+            return 2;
+        }
+        if (resetLocalAi && !confirmDestructive && !dryRun)
+        {
+            Console.Error.WriteLine("ERROR: --reset-local-ai requires --confirm-destructive (or use --dry-run to preview).");
+            return 2;
+        }
+
 
         // Load config
         SetupConfig config;
@@ -178,7 +192,7 @@ public static class Program
             config.Gateway.ValidationPackagePath = normalizedPackagePath;
         }
 
-        if (!uninstall && !wizardOnly)
+        if (!uninstall && !resetLocalAi && !wizardOnly)
         {
             try
             {
@@ -201,7 +215,7 @@ public static class Program
         }
 
         // Default log path if not specified
-        var logLabel = uninstall ? "uninstall" : "setup";
+        var logLabel = uninstall ? "uninstall" : resetLocalAi ? "reset-local-ai" : "setup";
         config.LogPath ??= Path.Combine(
             dataDir ?? SetupContext.ResolveDataDir(),
             "Logs", "Setup", $"{logLabel}-engine-{DateTime.UtcNow:yyyyMMdd-HHmmss}.jsonl");
@@ -209,7 +223,7 @@ public static class Program
         Console.WriteLine($"Log file: {config.LogPath}");
         Console.WriteLine($"Distro: {config.DistroName}");
         Console.WriteLine($"Gateway: {config.EffectiveGatewayUrl}");
-        if (!uninstall && !wizardOnly)
+        if (!uninstall && !resetLocalAi && !wizardOnly)
         {
             var gatewayRelease = string.IsNullOrWhiteSpace(config.Gateway.Version)
                 ? "npm latest"
@@ -217,15 +231,15 @@ public static class Program
             Console.WriteLine(
                 $"Gateway release: {gatewayRelease} (protocol v{GatewayInstallPolicy.ProtocolGeneration})");
         }
-        Console.WriteLine($"Mode: {(uninstall ? "UNINSTALL" : "SETUP")}");
-        if (uninstall)
+        Console.WriteLine($"Mode: {(uninstall ? "UNINSTALL" : resetLocalAi ? "RESET LOCAL AI" : "SETUP")}");
+        if (uninstall || resetLocalAi)
         {
             Console.WriteLine($"Dry run: {config.DryRun}");
             Console.WriteLine($"Confirm destructive: {config.ConfirmDestructive}");
         }
         Console.WriteLine();
 
-        if (!uninstall &&
+        if (!uninstall && !resetLocalAi &&
             !wizardOnly &&
             !DistroInstallPathPolicy.TryGetNewInstallPath(
                 localDataDir ?? SetupContext.ResolveLocalDataDir(),
@@ -238,16 +252,16 @@ public static class Program
             return 2;
         }
 
-        if (dryRun && !uninstall)
+        if (dryRun && !uninstall && !resetLocalAi)
         {
             Console.WriteLine("DRY RUN: config validated, exiting.");
             return 0;
         }
 
-        // Uninstall safety gate
-        if (uninstall && !confirmDestructive && !dryRun)
+        if ((uninstall || resetLocalAi) && !confirmDestructive && !dryRun)
         {
-            Console.Error.WriteLine("ERROR: --uninstall requires --confirm-destructive (or use --dry-run to preview).");
+            string flag = uninstall ? "--uninstall" : "--reset-local-ai";
+            Console.Error.WriteLine($"ERROR: {flag} requires --confirm-destructive (or use --dry-run to preview).");
             return 2;
         }
 
@@ -285,11 +299,14 @@ public static class Program
             localDataDir,
             new ConsoleExternalAuthorizationPresenter());
 
-        // Build step pipeline
         List<SetupStep> steps;
         if (uninstall)
         {
             steps = SetupStepFactory.BuildDefaultSteps();
+        }
+        else if (resetLocalAi)
+        {
+            steps = SetupStepFactory.BuildLocalAiResetSteps();
         }
         else if (wizardOnly)
         {
@@ -316,9 +333,8 @@ public static class Program
             Console.WriteLine($"  {icon} {e.DisplayName}{elapsed}");
         };
 
-        // Run!
         logger.Info(
-            $"{(uninstall ? "Uninstall" : "Setup")} engine starting",
+            $"{(uninstall ? "Uninstall" : resetLocalAi ? "Reset Local AI" : "Setup")} engine starting",
             new { version = AppVersionInfo.Version, args = string.Join(' ', args) });
 
         PipelineResult result;
@@ -333,13 +349,17 @@ public static class Program
                 TrayArtifactCleanup.Run(ctx, preserveLogs, autoStartName, startupTaskName);
             }
         }
+        else if (resetLocalAi)
+        {
+            result = await pipeline.ResetLocalAiAsync(ctx);
+        }
         else
         {
             result = await pipeline.RunAsync(ctx);
         }
 
         Console.WriteLine();
-        var label = uninstall ? "UNINSTALL" : "SETUP";
+        var label = uninstall ? "UNINSTALL" : resetLocalAi ? "RESET LOCAL AI" : "SETUP";
         Console.WriteLine(result.Outcome switch
         {
             PipelineOutcome.Success => $"═══ {label} COMPLETE ═══",
@@ -377,6 +397,7 @@ public static class Program
             exitCode = result.ExitCode,
             failedStepId = result.FailedStepId,
             message = result.Message,
+            failureCode = result.FailureCode?.ToString(),
             requiresRestart = result.RequiresRestart,
             compatibilityFailure = result.CompatibilityFailure?.ToString(),
             installedGatewayVersion = config.Gateway.InstalledVersion,

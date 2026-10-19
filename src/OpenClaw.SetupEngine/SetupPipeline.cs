@@ -30,6 +30,7 @@ public sealed record PipelineResult(
     GatewayCompatibilityFailureKind? CompatibilityFailure = null,
     LocalAiFailureDetail? Detail = null)
 {
+    public PipelineFailureCode? FailureCode { get; init; }
     public bool RequiresRestart { get; init; }
 
     public int ExitCode => Outcome switch
@@ -118,6 +119,13 @@ public static class SetupStepFactory
         new VerifyLocalAiWslStep(),
         new ConfigureLocalAiGatewayStep(),
         new RestartGatewayStep(),
+    ];
+
+    /// <summary>Uses the Local AI rollback owners without affecting Gateway or tray state.</summary>
+    public static List<SetupStep> BuildLocalAiResetSteps() =>
+    [
+        new PersistLocalAiManifestStep(),
+        new ConfigureLocalAiGatewayStep(),
     ];
 
     public static List<SetupStep> BuildDefaultSteps()
@@ -329,6 +337,7 @@ public sealed class SetupPipeline
                 (result.Error as GatewayCompatibilityException)?.Kind,
                 result.Detail)
             {
+                FailureCode = result.FailureCode,
                 RequiresRestart = result.RequiresRestart,
             };
         }
@@ -409,12 +418,28 @@ public sealed class SetupPipeline
     /// Unlike RollbackCompletedSteps, this runs ALL steps regardless of install state.
     /// Continues past individual failures to ensure maximum cleanup.
     /// </summary>
-    public async Task<PipelineResult> UninstallAsync(SetupContext ctx)
+    public Task<PipelineResult> UninstallAsync(SetupContext ctx) =>
+        RunDestructiveRollbackAsync(ctx, s_uninstall);
+
+    /// <summary>
+    /// Runs only Local AI rollback owners in reverse order. Unlike uninstall it stops at
+    /// the first failure: deleting the receipt after a failed Gateway withdrawal would
+    /// orphan a route that only that receipt can prove app-owned.
+    /// </summary>
+    public Task<PipelineResult> ResetLocalAiAsync(SetupContext ctx) =>
+        RunDestructiveRollbackAsync(ctx, s_resetLocalAi);
+
+    private sealed record DestructiveOperation(string JournalId, string DisplayName, bool StopOnFailure);
+
+    private static readonly DestructiveOperation s_uninstall = new("uninstall", "Uninstall", StopOnFailure: false);
+    private static readonly DestructiveOperation s_resetLocalAi = new("reset_local_ai", "Reset Local AI", StopOnFailure: true);
+
+    private async Task<PipelineResult> RunDestructiveRollbackAsync(SetupContext ctx, DestructiveOperation operation)
     {
         _completedSteps.Clear();
         var ct = ctx.CancellationToken;
-
-        if (!DistroInstallPathPolicy.TryGetManagedInstallPath(
+        if (operation == s_uninstall &&
+            !DistroInstallPathPolicy.TryGetManagedInstallPath(
                 ctx.LocalDataDir,
                 ctx.DistroName,
                 out _,
@@ -427,32 +452,32 @@ public sealed class SetupPipeline
                 Message: pathError);
         }
 
+
         if (!ctx.Config.ConfirmDestructive && !ctx.Config.DryRun)
         {
-            ctx.Logger.Error("Uninstall requires --confirm-destructive flag");
-            return new PipelineResult(PipelineOutcome.Failed, Message: "Safety gate: --confirm-destructive required for live uninstall");
+            ctx.Logger.Error($"{operation.DisplayName} requires --confirm-destructive flag");
+            return new PipelineResult(PipelineOutcome.Failed, Message: $"Safety gate: --confirm-destructive required for live {operation.DisplayName.ToLowerInvariant()}");
         }
 
         ctx.IsUninstalling = true;
 
-        ctx.Journal.RecordPipelineEvent("uninstall_started", $"steps={_steps.Count}, dry_run={ctx.Config.DryRun}");
-        ctx.Logger.Info($"Uninstall starting — {_steps.Count} steps in reverse order (dry_run={ctx.Config.DryRun})");
+        ctx.Journal.RecordPipelineEvent($"{operation.JournalId}_started", $"steps={_steps.Count}, dry_run={ctx.Config.DryRun}");
+        ctx.Logger.Info($"{operation.DisplayName} starting - {_steps.Count} steps in reverse order (dry_run={ctx.Config.DryRun})");
 
         var pipelineSw = Stopwatch.StartNew();
         var failures = new List<(string StepId, string Message)>();
 
-        // Run rollbacks in reverse order
         for (int i = _steps.Count - 1; i >= 0; i--)
         {
             if (ct.IsCancellationRequested)
             {
-                ctx.Journal.RecordPipelineEvent("uninstall_cancelled");
+                ctx.Journal.RecordPipelineEvent($"{operation.JournalId}_cancelled");
                 return new PipelineResult(PipelineOutcome.Cancelled);
             }
 
             var step = _steps[i];
-            ctx.Logger.Info($"Uninstalling: {step.DisplayName}");
-            StepProgress?.Invoke(this, new(step.Id, $"Uninstall: {step.DisplayName}", null, null));
+            ctx.Logger.Info($"{operation.DisplayName}: {step.DisplayName}");
+            StepProgress?.Invoke(this, new(step.Id, $"{operation.DisplayName}: {step.DisplayName}", null, null));
 
             var sw = Stopwatch.StartNew();
             try
@@ -468,11 +493,11 @@ public sealed class SetupPipeline
                     ctx.Journal.RecordRollback(step.Id, success: true);
                 }
                 sw.Stop();
-                StepProgress?.Invoke(this, new(step.Id, $"Uninstall: {step.DisplayName}", StepOutcome.Success, sw.Elapsed));
+                StepProgress?.Invoke(this, new(step.Id, $"{operation.DisplayName}: {step.DisplayName}", StepOutcome.Success, sw.Elapsed));
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
-                ctx.Journal.RecordPipelineEvent("uninstall_cancelled", $"during rollback of {step.Id}");
+                ctx.Journal.RecordPipelineEvent($"{operation.JournalId}_cancelled", $"during rollback of {step.Id}");
                 return new PipelineResult(PipelineOutcome.Cancelled);
             }
             catch (Exception ex)
@@ -481,8 +506,12 @@ public sealed class SetupPipeline
                 ctx.Logger.Error($"Rollback failed for {step.Id}: {ex.Message}");
                 ctx.Journal.RecordRollback(step.Id, success: false);
                 failures.Add((step.Id, ex.Message));
-                StepProgress?.Invoke(this, new(step.Id, $"Uninstall: {step.DisplayName}", StepOutcome.Failed, sw.Elapsed));
-                // Continue past failures — best-effort cleanup
+                StepProgress?.Invoke(this, new(step.Id, $"{operation.DisplayName}: {step.DisplayName}", StepOutcome.Failed, sw.Elapsed));
+                if (operation.StopOnFailure)
+                {
+                    ctx.Journal.RecordPipelineEvent($"{operation.JournalId}_stopped", $"rollback of {step.Id} failed");
+                    return new PipelineResult(PipelineOutcome.Failed, FailedStepId: step.Id, Message: ex.Message);
+                }
             }
         }
 
@@ -491,13 +520,13 @@ public sealed class SetupPipeline
         if (failures.Count > 0)
         {
             var failMsg = $"{failures.Count} rollback(s) failed: {string.Join(", ", failures.Select(f => f.StepId))}";
-            ctx.Journal.RecordPipelineEvent("uninstall_completed_with_errors", failMsg);
-            ctx.Logger.Warn($"Uninstall completed with errors in {pipelineSw.Elapsed.TotalSeconds:F1}s — {failMsg}");
+            ctx.Journal.RecordPipelineEvent($"{operation.JournalId}_completed_with_errors", failMsg);
+            ctx.Logger.Warn($"{operation.DisplayName} completed with errors in {pipelineSw.Elapsed.TotalSeconds:F1}s - {failMsg}");
             return new PipelineResult(PipelineOutcome.Failed, Message: failMsg);
         }
 
-        ctx.Journal.RecordPipelineEvent("uninstall_completed", $"elapsed={pipelineSw.Elapsed.TotalSeconds:F1}s");
-        ctx.Logger.Info($"Uninstall completed successfully in {pipelineSw.Elapsed.TotalSeconds:F1}s");
+        ctx.Journal.RecordPipelineEvent($"{operation.JournalId}_completed", $"elapsed={pipelineSw.Elapsed.TotalSeconds:F1}s");
+        ctx.Logger.Info($"{operation.DisplayName} completed successfully in {pipelineSw.Elapsed.TotalSeconds:F1}s");
         return new PipelineResult(PipelineOutcome.Success);
     }
 
