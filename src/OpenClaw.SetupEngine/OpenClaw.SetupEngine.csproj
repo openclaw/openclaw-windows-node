@@ -9,6 +9,12 @@
 
   <ItemGroup>
     <EmbeddedResource Include="GatewayPackageCleanup.ps1" />
+    <EmbeddedResource Include="GatewayPackageCleanup.Task.ps1" />
+    <ProjectReference Include="..\OpenClaw.GatewayCleanupHost\OpenClaw.GatewayCleanupHost.csproj"
+                      ReferenceOutputAssembly="false" OutputItemType="EmbeddedResource"
+                      LogicalName="OpenClaw.SetupEngine.GatewayCleanupHost.exe"
+                      SkipGetTargetFrameworkProperties="true"
+                      GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishAot;PublishTrimmed" />
     <InternalsVisibleTo Include="OpenClaw.SetupEngine.Tests" />
     <InternalsVisibleTo Include="OpenClaw.SetupEngine.UI" />
     <ProjectReference Include="..\OpenClaw.Connection\OpenClaw.Connection.csproj" />
