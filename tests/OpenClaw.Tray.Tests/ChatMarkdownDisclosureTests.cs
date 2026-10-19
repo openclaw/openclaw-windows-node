@@ -146,6 +146,35 @@ public sealed class ChatMarkdownDisclosureTests
     }
 
     [Fact]
+    public void IndentedOuterDisclosure_IgnoresSameLinePairInListContent()
+    {
+        var input = "  <details><summary>Outer</summary>\n\n- item\n  <details><summary>Literal</summary>text</details>\n  </details>";
+        var outer = Assert.IsType<ChatMarkdownDisclosure>(Assert.Single(ChatMarkdownDisclosures.Parse(input)));
+        Assert.Equal("Outer", outer.Summary);
+        Assert.Contains("<details><summary>Literal</summary>text</details>",
+            Assert.IsType<ChatMarkdownText>(Assert.Single(outer.Body)).Text);
+    }
+
+    [Fact]
+    public void IndentedCodeBlockSummary_IsNotAHeader()
+    {
+        var input = "<details>\n\n    <summary>Literal code</summary>\n\nBody\n\n</details>";
+        Assert.Equal(input, Assert.IsType<ChatMarkdownText>(
+            Assert.Single(ChatMarkdownDisclosures.Parse(input))).Text);
+    }
+
+    [Fact]
+    public void ProseMentioningDetailsTag_DoesNotSwallowTheRealClosingWrapper()
+    {
+        var input = "<details><summary>S</summary>\n\nUse a <details> tag for folds, and </details> to end it.\n\nBody\n\n</details>";
+        var disclosure = Assert.IsType<ChatMarkdownDisclosure>(Assert.Single(ChatMarkdownDisclosures.Parse(input)));
+        Assert.Contains("Use a <details> tag", Assert.IsType<ChatMarkdownText>(Assert.Single(disclosure.Body)).Text);
+        var unbalanced = "<details><summary>S</summary>\n\nUse a <details> tag.\n\n</details>";
+        var second = Assert.IsType<ChatMarkdownDisclosure>(Assert.Single(ChatMarkdownDisclosures.Parse(unbalanced)));
+        Assert.Contains("Use a <details> tag.", Assert.IsType<ChatMarkdownText>(Assert.Single(second.Body)).Text);
+    }
+
+    [Fact]
     public void TopLevelClosingWrapper_EndsOuterDisclosureAfterDanglingListLocalOpener()
     {
         var input = "<details><summary>Outer</summary>\n\n- item\n  <details><summary>Dangling</summary>\n\nTail\n</details>";
