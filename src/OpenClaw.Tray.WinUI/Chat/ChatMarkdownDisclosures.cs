@@ -83,10 +83,11 @@ internal static class ChatMarkdownDisclosures
     {
         var tokens = new List<Token>();
         var eligible = WrapperPositions(text);
-        // Indentation of each unclosed top-level opener. md4c reports an indented closer that
-        // follows list or quote text as a lazy continuation, so an indented closer is accepted
-        // only when it lines up with the opener it would close.
-        var openIndents = new Stack<int>();
+        // Unclosed openers. md4c reports an indented closer that follows list or quote text
+        // as a lazy continuation, so such a closer is accepted only when it lines up with
+        // the opener it would close. Openers that md4c places inside list or quote content are
+        // tracked as Ignored so their own closers pair with them and stay literal.
+        var openers = new Stack<(int Indent, bool Ignored)>();
         var position = 0;
         while (position < text.Length)
         {
@@ -97,30 +98,46 @@ internal static class ChatMarkdownDisclosures
             while (indent < line.Length && line[indent] == ' ')
                 indent++;
             var content = line[indent..];
+            var tag = position + indent;
             if (indent <= 3 && !content.IsEmpty)
             {
                 if (content.Equals("</details>", StringComparison.OrdinalIgnoreCase) &&
-                    eligible.Close.Contains(position + indent) &&
-                    (indent == 0 || eligible.Open.Contains(position + indent) ||
-                        (openIndents.Count > 0 && openIndents.Peek() == indent)))
+                    eligible.Close.Contains(tag))
                 {
-                    tokens.Add(new Token(position, end, null, false));
-                    openIndents.TryPop(out _);
+                    if (eligible.Open.Contains(tag))
+                    {
+                        // A top-level closer ends any list-local openers still pending.
+                        while (openers.Count > 0 && openers.Peek().Ignored)
+                            openers.Pop();
+                        tokens.Add(new Token(position, end, null, false));
+                        openers.TryPop(out _);
+                    }
+                    else if (openers.Count > 0 && openers.Peek().Ignored)
+                        openers.Pop();
+                    else if (indent == 0 || (openers.Count > 0 && openers.Peek().Indent == indent))
+                    {
+                        tokens.Add(new Token(position, end, null, false));
+                        openers.TryPop(out _);
+                    }
                 }
-                else if (eligible.Open.Contains(position + indent) &&
-                    TryOpening(text, position + indent, out var summary, out var expanded, out var bodyStart))
+                else if (eligible.Open.Contains(tag) &&
+                    TryOpening(text, tag, out var summary, out var expanded, out var bodyStart))
                 {
                     tokens.Add(new Token(position, bodyStart, summary, expanded));
-                    openIndents.Push(indent);
+                    openers.Push((indent, false));
                     end = bodyStart;
                 }
-                else if (eligible.Open.Contains(position + indent) &&
-                    content.StartsWith("<details", StringComparison.OrdinalIgnoreCase) &&
+                else if (content.StartsWith("<details", StringComparison.OrdinalIgnoreCase) &&
                     content.Length > 8 && (content[8] == '>' || char.IsWhiteSpace(content[8])) &&
                     content.IndexOf('>') >= 0)
                 {
-                    tokens.Add(new Token(position, end, string.Empty, false));
-                    openIndents.Push(indent);
+                    if (eligible.Open.Contains(tag))
+                    {
+                        tokens.Add(new Token(position, end, string.Empty, false));
+                        openers.Push((indent, false));
+                    }
+                    else if (eligible.Close.Contains(tag))
+                        openers.Push((indent, true));
                 }
             }
             position = end;
