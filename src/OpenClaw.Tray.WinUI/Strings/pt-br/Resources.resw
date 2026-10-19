@@ -8196,4 +8196,10 @@ Suas configurações, gateway, arquivos e modelos permanecem onde estão.</value
   <data name="Chat_Placement_Error_NoLongerEmpty" xml:space="preserve">
     <value>Esta sessão não está mais vazia, então a seleção de local pendente foi cancelada. Verifique a sessão e envie novamente para continuar no local atual.</value>
   </data>
+  <data name="LocalAiPage_ResetButton.Content" xml:space="preserve"><value>Redefinir IA local</value></data>
+  <data name="LocalAiPage_ResetDialogTitle" xml:space="preserve"><value>Redefinir IA local?</value></data>
+  <data name="LocalAiPage_ResetDialogContent" xml:space="preserve"><value>Isso remove a instalação gerenciada de IA local e restaura o modelo Gateway anterior. Os caches de download são mantidos.</value></data>
+  <data name="LocalAiPage_ResetDialogPrimary" xml:space="preserve"><value>Redefinir IA local</value></data>
+  <data name="LocalAiPage_ResetDialogCancel" xml:space="preserve"><value>Cancelar</value></data>
+  <data name="LocalAiReset_Unavailable" xml:space="preserve"><value>A redefinição da IA local não está disponível aqui. Abra Configurações e depois IA local para redefini-la.</value></data>
 </root>

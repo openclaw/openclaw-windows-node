@@ -203,6 +203,9 @@ dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
 [src/OpenClaw.Tray.WinUI/Pages/SessionsPage.xaml.cs]
 dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
 
+[src/OpenClaw.Tray.WinUI/Pages/LocalAiPage.xaml.cs]
+dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
+
 [src/OpenClaw.Tray.WinUI/Windows/ChatWindow.xaml.cs]
 dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
 

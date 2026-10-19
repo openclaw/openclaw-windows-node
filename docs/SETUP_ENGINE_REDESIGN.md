@@ -468,6 +468,12 @@ configuration and before registry publication. Cancellation drains mutations and
 withdraws the selected Local AI route before releasing the native session.
 A damaged or foreign ownership receipt is never adopted implicitly.
 
+### Reset Local AI
+
+`BuildLocalAiResetSteps` runs only the existing Local AI rollback owners: it withdraws the receipt-proven WSL Gateway provider, restores the recorded primary model, and deletes `<LocalDataDir>\LocalAI`. It keeps `<LocalDataDir>\LocalAICache` and the Hugging Face hub cache. Missing receipts and absent WSL distros are already removed and succeed. Provider changes that cannot be proven app-owned remain visible failures.
+
+Run `--reset-local-ai --confirm-destructive` for a live reset, or add `--dry-run` to preview it. The flag is mutually exclusive with `--uninstall`, uses the setup run lock, and never runs tray artifact cleanup or non-Local-AI rollback steps. Reconciliation failures caused by unusable Local AI receipts return `failureCode: "LocalAiReceiptUnusable"` in `--json-output` so callers can offer Reset Local AI without parsing text.
+
 ### Local AI GPU admission
 
 Local AI uses the CUDA driver's `cuMemGetInfo` total and free memory directly
@@ -716,7 +722,7 @@ OpenClaw.SetupEngine.Program.Main(["--no-rollback-on-failure"])
 OpenClaw.SetupEngine.Program.Main(["--log-path", "./trace.log"])
 ```
 
-Common flags include `--config`, `--headless`, `--dry-run`, `--rollback-on-failure`, `--no-rollback-on-failure`, `--log-path`, `--gateway-port`, and uninstall safety flags such as `--uninstall` plus `--confirm-destructive`.
+Common flags include `--config`, `--headless`, `--dry-run`, `--rollback-on-failure`, `--no-rollback-on-failure`, `--log-path`, `--gateway-port`, and destructive safety flags such as `--uninstall` or `--reset-local-ai` plus `--confirm-destructive`.
 Normal setup uses npm `latest`. `Gateway.Version` may select an upstream npm
 channel tag or an exact OpenClaw package version. `Gateway.FallbackVersion` may
 name an exact stable release to offer after a typed compatibility failure.
@@ -777,6 +783,9 @@ dotnet build src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj -r win-x64
 
 # Run headless uninstall through the tray executable
 & "src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe" --uninstall --dry-run
+
+# Reset only the managed Local AI installation
+& "src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe" --reset-local-ai --confirm-destructive --json-output .\reset-local-ai-result.json
 
 ```
 

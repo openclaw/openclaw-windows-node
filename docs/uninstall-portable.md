@@ -33,8 +33,10 @@ Run from the portable folder:
 
 # Dry-run - records what would happen without any destruction:
 .\OpenClaw.Tray.WinUI.exe --uninstall --dry-run
-```
 
+# Reset only the managed Local AI install, preserving WSL, tray data, LocalAICache, and Hugging Face cache files:
+.\OpenClaw.Tray.WinUI.exe --reset-local-ai --confirm-destructive --json-output .\reset-local-ai-result.json
+```
 **Exit codes:**
 
 | Code | Meaning |

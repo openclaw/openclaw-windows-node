@@ -494,6 +494,11 @@ public sealed class ConsoleExternalAuthorizationPresenter : IExternalAuthorizati
 
 public enum StepOutcome { Success, Skipped, Failed, FailedTerminal }
 
+public enum PipelineFailureCode
+{
+    LocalAiReceiptUnusable,
+}
+
 /// <summary>
 /// Root-cause evidence for a Local AI failure. The step message reports what OpenClaw observed
 /// (an HTTP status, a timeout); these are llama-server's own words about why, plus the directory
@@ -507,6 +512,7 @@ public sealed record StepResult(
     Exception? Error = null,
     LocalAiFailureDetail? Detail = null)
 {
+    public PipelineFailureCode? FailureCode { get; init; }
     public bool RequiresRestart { get; init; }
     internal bool GatewayRestartServingOwnerUnavailable { get; init; }
     internal bool GatewayRestartIntentContention { get; init; }
@@ -515,8 +521,12 @@ public sealed record StepResult(
     public static StepResult Skip(string reason) => new(StepOutcome.Skipped, reason);
     public static StepResult Fail(string message, Exception? ex = null, LocalAiFailureDetail? detail = null) =>
         new(StepOutcome.Failed, message, ex, detail);
-    public static StepResult Terminal(string message, Exception? ex = null, LocalAiFailureDetail? detail = null) =>
-        new(StepOutcome.FailedTerminal, message, ex, detail);
+    public static StepResult Terminal(
+        string message,
+        Exception? ex = null,
+        LocalAiFailureDetail? detail = null,
+        PipelineFailureCode? failureCode = null) =>
+        new(StepOutcome.FailedTerminal, message, ex, detail) { FailureCode = failureCode };
     public static StepResult RestartRequired(string message) =>
         new(StepOutcome.FailedTerminal, message) { RequiresRestart = true };
 

@@ -122,6 +122,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AppShutdownPlan.cs" Link="Services\AppShutdownPlan.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AppShutdownCoordinator.cs" Link="Services\AppShutdownCoordinator.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\LocalAiGatewayDistroResolver.cs" Link="Services\LocalAiGatewayDistroResolver.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\LocalAiResetService.cs" Link="Services\LocalAiResetService.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\LocalAiGatewayProviderCoordinator.cs" Link="Services\LocalAiGatewayProviderCoordinator.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\LocalAiGatewayConfigurationTransport.cs" Link="Services\LocalAiGatewayConfigurationTransport.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\LocalAiGatewayRpcConfigurationTransport.cs" Link="Services\LocalAiGatewayRpcConfigurationTransport.cs" />

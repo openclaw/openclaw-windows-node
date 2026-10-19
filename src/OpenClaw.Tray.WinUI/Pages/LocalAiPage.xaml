@@ -118,6 +118,9 @@
                     <Button x:Name="ReleaseOwnershipButton" x:Uid="LocalAiPage_ReleaseOwnershipButton"
                             Content="Release Gateway ownership" Visibility="Collapsed"
                             Click="OnReleaseOwnership" AutomationProperties.AutomationId="LocalAiReleaseOwnership"/>
+                    <Button x:Name="ResetLocalAiButton" x:Uid="LocalAiPage_ResetButton"
+                            Content="Reset Local AI" Visibility="Collapsed"
+                            Click="OnResetLocalAi" AutomationProperties.AutomationId="LocalAiReset"/>
                 </StackPanel>
                 </Border>
             </ContentControl>

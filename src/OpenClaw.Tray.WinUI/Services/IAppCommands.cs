@@ -19,6 +19,7 @@ internal interface IAppCommands
     void ShowOnboarding();
     void ShowLocalAiSetup();
     void ShowLocalAiModelSetup() => ShowOnboarding();
+    Task<LocalAiResetResult> ResetLocalAiAsync(CancellationToken cancellationToken = default);
     void OpenLocalAiLogs() { }
     void ShowGatewayWizard();
     void ShowConnectionStatus();

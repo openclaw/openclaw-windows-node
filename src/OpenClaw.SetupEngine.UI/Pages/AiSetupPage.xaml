@@ -101,6 +101,10 @@
                         <TextBlock x:Name="LocalAiActionText" Style="{StaticResource BodyTextBlockStyle}"
                                    MaxWidth="112" TextWrapping="Wrap" />
                     </tk:SettingsCard>
+                    <Button x:Name="ResetLocalAiButton" x:Uid="LocalAiPage_ResetButton"
+                            Content="Reset Local AI" Visibility="Collapsed"
+                            AutomationProperties.AutomationId="OnboardingLocalAiReset"
+                            Click="ResetLocalAi_Click"/>
                 </StackPanel>
                 <StackPanel x:Name="ChoicePanel" Spacing="12">
                     <InfoBar x:Name="UtilityNotice" IsOpen="True" IsClosable="False" Severity="Informational" Visibility="Collapsed" />

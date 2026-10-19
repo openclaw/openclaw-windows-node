@@ -260,6 +260,13 @@ public interface ISetupLocalAiHost
     Task<SetupLocalAiUseResult> UseAsync(LocalAiOnboardingSnapshot selected, CancellationToken ct);
     Task<SetupLocalAiUseResult> UseAsync(LocalAiOnboardingSnapshot selected, CancellationToken ct,
         IProgress<LocalAiSetupStage>? progress) => UseAsync(selected, ct);
+    /// <summary>
+    /// Explicit, user-confirmed removal of an unusable managed Local AI install. Hosts
+    /// without a reset owner report it unavailable. Returns null on success, else the
+    /// user-visible failure. Never called from observation.
+    /// </summary>
+    Task<string?> ResetLocalAiAsync(CancellationToken ct) =>
+        Task.FromResult<string?>("Local AI reset is not available here.");
 }
 
 /// <summary>Independent, generation-fenced page observation. No install or runtime mutation port is used here.</summary>

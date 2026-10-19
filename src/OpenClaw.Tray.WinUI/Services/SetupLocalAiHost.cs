@@ -22,7 +22,8 @@ internal sealed class SetupLocalAiHost(
     Func<LocalAiGatewayProviderCoordinator> getProvider,
     Func<GatewayRecord?, GatewayRecord?, Task>? reconcileConnection = null,
     Action? reportSettlementFailure = null,
-    LocalAiGatewayLifecycle? nativeLifecycle = null) : ISetupLocalAiHost, INativeSetupLocalAiHost
+    LocalAiGatewayLifecycle? nativeLifecycle = null,
+    Func<CancellationToken, Task<string?>>? resetLocalAi = null) : ISetupLocalAiHost, INativeSetupLocalAiHost
 {
     private GatewayRegistrySnapshot? _setupRegistryBaseline;
     private GatewayRecord? _nativeRecord;
@@ -66,6 +67,10 @@ internal sealed class SetupLocalAiHost(
         nativeLifecycle?.Release(transport);
         if (ReferenceEquals(_nativeTransport, transport)) _nativeTransport = null;
     }
+
+    public Task<string?> ResetLocalAiAsync(CancellationToken ct) => resetLocalAi is null
+        ? Task.FromResult<string?>("Local AI reset is not available here.")
+        : resetLocalAi(ct);
 
     public GatewayRegistrySnapshot BeginGatewaySetup() => _setupRegistryBaseline =
         (getRegistry() ?? throw new InvalidOperationException("The Gateway registry is unavailable.")).CapturePersistedSnapshot();

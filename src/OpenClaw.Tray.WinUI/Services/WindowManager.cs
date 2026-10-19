@@ -38,7 +38,8 @@ internal sealed record WindowManagerCallbacks(
     Func<SetupNativeCompletion, CancellationToken, Task>? PublishNativeCompletion = null,
     Func<bool, CancellationToken, Task>? ApplyNativeStartup = null,
     Func<ISettingsStore?>? GetSettingsStore = null,
-    Func<LocalAiGatewayLifecycle?>? GetLocalAiGatewayLifecycle = null);
+    Func<LocalAiGatewayLifecycle?>? GetLocalAiGatewayLifecycle = null,
+    Func<CancellationToken, Task<LocalAiResetResult>>? ResetLocalAi = null);
 
 internal sealed class WindowManager : IWindowManager
 {
@@ -717,7 +718,15 @@ internal sealed class WindowManager : IWindowManager
         () => new LocalAiGatewayProviderCoordinator(new WslExeCommandRunner(new AppLogger()),
             new LocalAiGatewayDistroResolver(_callbacks.GetGatewayRegistry()), new AppLogger()),
           ReconcileSetupConnectionAsync, NotifySetupRegistryRecovery,
-          _callbacks.GetLocalAiGatewayLifecycle?.Invoke());
+          _callbacks.GetLocalAiGatewayLifecycle?.Invoke(),
+          _callbacks.ResetLocalAi is { } reset ? ct => ResetLocalAiForSetupAsync(reset, ct) : null);
+
+    private static async Task<string?> ResetLocalAiForSetupAsync(
+        Func<CancellationToken, Task<LocalAiResetResult>> reset, CancellationToken ct)
+    {
+        LocalAiResetResult result = await reset(ct);
+        return result.Succeeded ? null : result.Message ?? "Local AI reset failed.";
+    }
 
     private async Task ReconcileSetupConnectionAsync(GatewayRecord? before, GatewayRecord? after)
     {

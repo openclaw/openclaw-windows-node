@@ -8142,4 +8142,10 @@
   <data name="Chat_Placement_Error_NoLongerEmpty" xml:space="preserve">
     <value>此会话已不再为空，因此已取消待定的位置选择。请检查会话并重新发送，以在当前位置继续。</value>
   </data>
+  <data name="LocalAiPage_ResetButton.Content" xml:space="preserve"><value>重置本地 AI</value></data>
+  <data name="LocalAiPage_ResetDialogTitle" xml:space="preserve"><value>要重置本地 AI 吗？</value></data>
+  <data name="LocalAiPage_ResetDialogContent" xml:space="preserve"><value>这将删除受管理的本地 AI 安装并恢复之前的 Gateway 模型。下载缓存会保留。</value></data>
+  <data name="LocalAiPage_ResetDialogPrimary" xml:space="preserve"><value>重置本地 AI</value></data>
+  <data name="LocalAiPage_ResetDialogCancel" xml:space="preserve"><value>取消</value></data>
+  <data name="LocalAiReset_Unavailable" xml:space="preserve"><value>此处无法重置本地 AI。请打开“设置”，然后打开“本地 AI”进行重置。</value></data>
 </root>
