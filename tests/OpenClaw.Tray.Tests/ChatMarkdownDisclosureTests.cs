@@ -174,6 +174,33 @@ public sealed class ChatMarkdownDisclosureTests
         Assert.Contains("Use a <details> tag.", Assert.IsType<ChatMarkdownText>(Assert.Single(second.Body)).Text);
     }
 
+    [Theory]
+    [InlineData("-\t<details><summary>In list</summary>\n  </details>")]
+    [InlineData("1.\t<details><summary>In list</summary>\n  </details>")]
+    [InlineData(">\t<details><summary>Quoted</summary>\n  </details>")]
+    public void IndentedOuterDisclosure_IgnoresWrapperPairAfterTabSeparatedMarker(string pair)
+    {
+        var input = $"  <details><summary>Outer</summary>\n\n{pair}\n\nTail\n  </details>";
+        var outer = Assert.IsType<ChatMarkdownDisclosure>(Assert.Single(ChatMarkdownDisclosures.Parse(input)));
+        Assert.Equal("Outer", outer.Summary);
+        Assert.EndsWith("Tail", Assert.IsType<ChatMarkdownText>(Assert.Single(outer.Body)).Text);
+    }
+
+    [Fact]
+    public void LiteralOneLineWrapperPair_DoesNotBlockALaterValidDisclosure()
+    {
+        var input = "<details><summary>Literal</summary>text</details>\n\n<details><summary>Real</summary>\n\nBody\n\n</details>";
+        Assert.Collection(ChatMarkdownDisclosures.Parse(input),
+            part => Assert.Equal("<details><summary>Literal</summary>text</details>",
+                Assert.IsType<ChatMarkdownText>(part).Text),
+            part =>
+            {
+                var real = Assert.IsType<ChatMarkdownDisclosure>(part);
+                Assert.Equal("Real", real.Summary);
+                Assert.Equal("Body", Assert.IsType<ChatMarkdownText>(Assert.Single(real.Body)).Text);
+            });
+    }
+
     [Fact]
     public void TopLevelClosingWrapper_EndsOuterDisclosureAfterDanglingListLocalOpener()
     {
