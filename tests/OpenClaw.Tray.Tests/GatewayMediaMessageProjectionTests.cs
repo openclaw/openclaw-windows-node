@@ -276,6 +276,47 @@ public class GatewayMediaMessageProjectionTests
     }
 
     [Fact]
+    public void StructuredMediaEcho_SingleMediaCandidateIsConsumed()
+    {
+        var local = GatewayMediaMessageProjection.CreateLocalPresentations(
+            [
+                new ChatAttachment
+                {
+                    Type = "image",
+                    MimeType = "image/png",
+                    FileName = "same.png",
+                },
+            ],
+            () => "local-preview");
+        var structured = GatewayMediaMessageProjection.Project(
+            "same caption",
+            [
+                new ChatMessageContentPartInfo
+                {
+                    Kind = ChatMessageContentPartKind.Media,
+                    Media = new ChatMediaContentInfo
+                    {
+                        Kind = ChatMediaContentKind.Image,
+                        Source = ChatMediaContentSource.Structured,
+                        MimeType = "image/png",
+                        FileName = "gateway.png",
+                    },
+                },
+            ]);
+        var candidates = new[]
+        {
+            new ChatPendingEchoCandidate(
+                "media",
+                "same caption",
+                GatewayMediaMessageProjection.BuildAttachmentCorrelationSignature(local)),
+        };
+
+        Assert.Equal(
+            "media",
+            ChatAttachmentEchoCorrelation.SelectMatchingMessageId(candidates, structured));
+    }
+
+    [Fact]
     public void MediaEcho_RequiresMatchingAttachmentCorrelationSignature()
     {
         var incoming = GatewayMediaMessageProjection.Project(

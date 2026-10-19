@@ -592,7 +592,7 @@ internal sealed class ChatHistoryLoader : IDisposable
             var role = message.Role?.ToLowerInvariant() ?? string.Empty;
             var rawText = replayPart.Text;
             var userProjection = role == "user"
-                ? GatewayMediaMessageProjection.Project(rawText)
+                ? GatewayMediaMessageProjection.Project(rawText, message.ContentParts)
                 : null;
             var entryMetadata = new ChatEntryMetadata(
                 message.Ts > 0
