@@ -83,6 +83,10 @@ internal static class ChatMarkdownDisclosures
     {
         var tokens = new List<Token>();
         var eligible = WrapperPositions(text);
+        // Indentation of each unclosed top-level opener. md4c reports an indented closer that
+        // follows list or quote text as a lazy continuation, so an indented closer is accepted
+        // only when it lines up with the opener it would close.
+        var openIndents = new Stack<int>();
         var position = 0;
         while (position < text.Length)
         {
@@ -97,14 +101,17 @@ internal static class ChatMarkdownDisclosures
             {
                 if (content.Equals("</details>", StringComparison.OrdinalIgnoreCase) &&
                     eligible.Close.Contains(position + indent) &&
-                    (indent == 0 || eligible.Open.Contains(position + indent)))
+                    (indent == 0 || eligible.Open.Contains(position + indent) ||
+                        (openIndents.Count > 0 && openIndents.Peek() == indent)))
                 {
                     tokens.Add(new Token(position, end, null, false));
+                    openIndents.TryPop(out _);
                 }
                 else if (eligible.Open.Contains(position + indent) &&
                     TryOpening(text, position + indent, out var summary, out var expanded, out var bodyStart))
                 {
                     tokens.Add(new Token(position, bodyStart, summary, expanded));
+                    openIndents.Push(indent);
                     end = bodyStart;
                 }
                 else if (eligible.Open.Contains(position + indent) &&
@@ -113,6 +120,7 @@ internal static class ChatMarkdownDisclosures
                     content.IndexOf('>') >= 0)
                 {
                     tokens.Add(new Token(position, end, string.Empty, false));
+                    openIndents.Push(indent);
                 }
             }
             position = end;
@@ -136,14 +144,18 @@ internal static class ChatMarkdownDisclosures
             (type, content) =>
             {
                 if (type != MarkdownTextType.Normal || spans != 0 ||
-                    blocks.Contains(MarkdownBlockType.Code) || blocks.Contains(MarkdownBlockType.Quote) ||
+                    blocks.Contains(MarkdownBlockType.Code) ||
                     !text.AsSpan().Overlaps(content, out var offset))
                     return 0;
+                // A line starting with "</details>" can only be quote text as a lazy
+                // continuation (a quoted closer begins with ">"), so quotes may hold closers
+                // but never openers.
+                var quoted = blocks.Contains(MarkdownBlockType.Quote);
                 for (var i = 0; i < content.Length; i++)
                     if (content[i] == '<')
                     {
                         closings.Add(offset + i);
-                        if (blocks.Count == 2 && blocks.Peek() == MarkdownBlockType.P)
+                        if (!quoted && blocks.Count == 2 && blocks.Peek() == MarkdownBlockType.P)
                             openings.Add(offset + i);
                     }
                 return 0;
