@@ -2,6 +2,7 @@ using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using OpenClaw.Connection.LocalAi;
@@ -1010,6 +1011,7 @@ public sealed partial class SetupWindow : Window
         string? errorMessage = null,
         GatewayCompatibilityFailureKind? compatibilityFailure = null,
         LocalAiFailureDetail? detail = null,
+        PipelineFailureCode? failureCode = null,
         bool restartRequired = false)
     {
         var canRetryFallback =
@@ -1029,10 +1031,42 @@ public sealed partial class SetupWindow : Window
                 GatewayFallbackVersion: canRetryFallback
                     ? _config.Gateway.FallbackVersion
                     : null,
-                Detail: detail)
+                Detail: detail,
+                FailureCode: failureCode)
             {
                 RequiresRestart = restartRequired,
             });
+    }
+    /// <summary>
+    /// Confirms and runs the tray-owned Local AI reset. Callers are CompletePage (after
+    /// ProgressPage settlement released the setup lock) and AiSetupPage (observation is
+    /// only re-read afterwards).
+    /// </summary>
+    internal async Task<LocalAiResetPrompt> ConfirmAndResetLocalAiAsync(XamlRoot xamlRoot)
+    {
+        if (_localAiHost is null)
+            return new(Confirmed: false, SetupLocalization.GetString("LocalAiReset_Unavailable"));
+        var dialog = new ContentDialog
+        {
+            Title = SetupLocalization.GetString("LocalAiPage_ResetDialogTitle"),
+            Content = SetupLocalization.GetString("LocalAiPage_ResetDialogContent"),
+            PrimaryButtonText = SetupLocalization.GetString("LocalAiPage_ResetDialogPrimary"),
+            CloseButtonText = SetupLocalization.GetString("LocalAiPage_ResetDialogCancel"),
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = xamlRoot,
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            return new(Confirmed: false, Error: null);
+        return new(Confirmed: true, await _localAiHost.ResetLocalAiAsync(_lifetimeCts.Token));
+    }
+
+    /// <summary>Reruns the same setup configuration after a reset removed the unusable receipt.</summary>
+    internal void RetryAfterLocalAiReset() => NavigateToProgress();
+
+    /// <summary>Confirmed=false with no error means the user cancelled. Error null after confirmation means removed.</summary>
+    internal readonly record struct LocalAiResetPrompt(bool Confirmed, string? Error)
+    {
+        public bool Removed => Confirmed && Error is null;
     }
 
     public bool TryRetryWithGatewayFallback(out string? error)
@@ -1271,7 +1305,8 @@ public sealed record CompletePageArgs(
     SetupReviewSummary? ReviewSummary = null,
     bool CanRetryGatewayFallback = false,
     string? GatewayFallbackVersion = null,
-    LocalAiFailureDetail? Detail = null)
+    LocalAiFailureDetail? Detail = null,
+    PipelineFailureCode? FailureCode = null)
 {
     public bool RequiresRestart { get; init; }
     public string? NativeGatewayUrl { get; init; }

@@ -751,6 +751,31 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         finally { _localActionBusy = false; Render(); }
     }
 
+    private void ResetLocalAi_Click(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(ResetLocalAiAsync, onError: ReportFailure);
+
+    private async Task ResetLocalAiAsync()
+    {
+        if (_closed || _localActionBusy || _localObservation is null || SetupWindow.Active is not { } window)
+            return;
+        _localActionBusy = true;
+        Render();
+        try
+        {
+            var prompt = await window.ConfirmAndResetLocalAiAsync(XamlRoot);
+            if (_closed) return;
+            if (!string.IsNullOrWhiteSpace(prompt.Error))
+            {
+                ErrorBar.Message = prompt.Error;
+                ErrorBar.IsOpen = true;
+            }
+            // Observation stays read-only; it only re-reads the state the reset produced.
+            if (prompt.Confirmed)
+                await _localObservation.RefreshAsync();
+        }
+        finally { _localActionBusy = false; Render(); }
+    }
+
     private void ManualConnect_Click(object sender, RoutedEventArgs e)
     {
         if (ApiProviderPicker.SelectedItem is ChoiceRow row && CanConnectManual())
@@ -1343,6 +1368,10 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             (snapshot.CanReview && _args?.ReviewLocalAi is not null || snapshot.CanUse || snapshot.CanRefresh);
         LocalAiCard.IsEnabled = !_busy && !_managerClientReplaced && !_localActionBusy &&
             !providerPending && state != LocalAiOnboardingState.Checking;
+        bool canResetLocalAi = state == LocalAiOnboardingState.ManagementBlocked &&
+            snapshot.ReasonKey == "LocalOwnershipInvalid";
+        ResetLocalAiButton.Visibility = Visible(canResetLocalAi);
+        ResetLocalAiButton.IsEnabled = canResetLocalAi && !_localActionBusy && !providerPending;
         AutomationProperties.SetHelpText(LocalAiCard, detail + " " + LocalAiActionText.Text + " " +
             S("LocalExplanation"));
     }
