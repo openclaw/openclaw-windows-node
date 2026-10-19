@@ -115,6 +115,25 @@ public sealed class ChatMarkdownDisclosureTests
         Assert.EndsWith("Tail", body);
     }
 
+    [Fact]
+    public void IndentedOuterDisclosure_IgnoresListLocalWrapperPair()
+    {
+        var input = "  <details><summary>Outer</summary>\n\n- item\n  <details><summary>In list</summary>\n  </details>\n\nTail\n  </details>";
+        var outer = Assert.IsType<ChatMarkdownDisclosure>(Assert.Single(ChatMarkdownDisclosures.Parse(input)));
+        Assert.Equal("Outer", outer.Summary);
+        var body = Assert.IsType<ChatMarkdownText>(Assert.Single(outer.Body)).Text;
+        Assert.Contains("<details><summary>In list</summary>", body);
+        Assert.EndsWith("Tail", body);
+    }
+
+    [Fact]
+    public void TopLevelClosingWrapper_EndsOuterDisclosureAfterDanglingListLocalOpener()
+    {
+        var input = "<details><summary>Outer</summary>\n\n- item\n  <details><summary>Dangling</summary>\n\nTail\n</details>";
+        var outer = Assert.IsType<ChatMarkdownDisclosure>(Assert.Single(ChatMarkdownDisclosures.Parse(input)));
+        Assert.EndsWith("Tail", Assert.IsType<ChatMarkdownText>(Assert.Single(outer.Body)).Text);
+    }
+
     [Theory]
     [InlineData("- item\n  <details><summary>In list</summary>\n  Body\n  </details>")]
     [InlineData("> quoted\n<details><summary>After quote text</summary>\nBody\n</details>")]
