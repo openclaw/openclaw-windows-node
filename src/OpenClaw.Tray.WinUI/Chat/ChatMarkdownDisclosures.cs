@@ -96,8 +96,9 @@ internal static class ChatMarkdownDisclosures
             var end = newline < 0 ? text.Length : newline + 1;
             var line = text.AsSpan(position, end - position).TrimEnd();
             var indent = 0;
-            while (indent < line.Length && line[indent] == ' ')
-                indent++;
+            // A tab advances to the next multiple of four columns, as in CommonMark.
+            for (var i = 0; i < line.Length && line[i] is ' ' or '\t'; i++)
+                indent = line[i] == '\t' ? indent + 4 - indent % 4 : indent + 1;
             var tagOffset = SkipContainerMarkers(line, out var hasMarkers);
             var tag = position + tagOffset;
             var content = line[tagOffset..];
@@ -133,10 +134,16 @@ internal static class ChatMarkdownDisclosures
                     {
                         tokens.Add(new Token(position, bodyStart, summary, expanded));
                         end = bodyStart;
+                        openers.Push((indent, false));
                     }
-                    else
+                    else if (!HasInlineClosers(text, tag, position + line.Length, eligible.Close))
+                    {
+                        // An unsupported multiline wrapper stays opaque so its closer pairs
+                        // with it; a one-line unsupported pair is already balanced and
+                        // must not leave a pending opener.
                         tokens.Add(new Token(position, end, string.Empty, false));
-                    openers.Push((indent, false));
+                        openers.Push((indent, false));
+                    }
                 }
                 else if (!HasInlineClosers(text, tag, position + line.Length, eligible.Close))
                     openers.Push((indent, true));
@@ -171,7 +178,7 @@ internal static class ChatMarkdownDisclosures
         var offset = 0;
         while (true)
         {
-            while (offset < line.Length && line[offset] == ' ')
+            while (offset < line.Length && line[offset] is ' ' or '\t')
                 offset++;
             var marker = MarkerLength(line[offset..]);
             if (marker == 0)
@@ -181,6 +188,8 @@ internal static class ChatMarkdownDisclosures
         }
     }
 
+    private static bool IsMarkerSeparator(char value) => value is ' ' or '\t';
+
     private static int MarkerLength(ReadOnlySpan<char> text)
     {
         if (text.IsEmpty)
@@ -188,12 +197,12 @@ internal static class ChatMarkdownDisclosures
         if (text[0] == '>')
             return 1;
         if (text[0] is '-' or '+' or '*')
-            return text.Length > 1 && text[1] == ' ' ? 1 : 0;
+            return text.Length > 1 && IsMarkerSeparator(text[1]) ? 1 : 0;
         var digits = 0;
         while (digits < text.Length && digits < 9 && char.IsAsciiDigit(text[digits]))
             digits++;
         return digits > 0 && digits + 1 < text.Length &&
-            text[digits] is '.' or ')' && text[digits + 1] == ' ' ? digits + 1 : 0;
+            text[digits] is '.' or ')' && IsMarkerSeparator(text[digits + 1]) ? digits + 1 : 0;
     }
 
     private static (HashSet<int> Open, HashSet<int> Close) WrapperPositions(string text)
