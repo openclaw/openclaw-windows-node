@@ -89,6 +89,12 @@ calculation from OpenClaw's published Control UI at commit
 The vector is rendered with native WinUI shapes. OpenClaw identifies the shared
 stroke-icon shell as Lucide; both notices are retained here.
 
+## Chat working claw
+
+`Chat/ReactorRunProgress.cs` renders native claw geometry adapted from
+[OpenClaw icons-tools.ts](https://github.com/openclaw/openclaw/blob/1fe2aa03fe4fb4f53ac11290562f9b60acc45e91/ui/src/components/icons-tools.ts).
+The OpenClaw MIT and shared stroke-icon notices below apply to this adaptation.
+
 ### OpenClaw (MIT)
 
 Copyright (c) 2026 OpenClaw Foundation

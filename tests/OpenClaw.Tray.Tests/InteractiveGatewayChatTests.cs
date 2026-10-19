@@ -62,13 +62,23 @@ public sealed class InteractiveGatewayChatTests
     [InlineData("tool-error")]
     [InlineData("approval")]
     [InlineData("queued")]
+    [InlineData("chat-deltas")]
+    [InlineData("question-choice")]
+    [InlineData("question-text")]
+    [InlineData("question-multi")]
+    [InlineData("question-cancel")]
     public async Task FixtureDrivesRealProviderThroughRunAndHistory(string scenario)
     {
         using var temp = new TempDirectory();
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateInteractive(), token,
             eventDelay: TimeSpan.FromMilliseconds(30));
-        server.Interactive!.Playback.Select(scenario == "queued" ? "slow" : scenario);
+        server.Interactive!.Playback.Select(scenario switch
+        {
+            "queued" => "slow",
+            "question-cancel" => "question-choice",
+            _ => scenario,
+        });
         using var client = new OpenClawGatewayClient(server.Endpoint.AbsoluteUri, token, NullLogger.Instance,
             identityPath: temp.Combine("identity"), ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false);
         var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -90,6 +100,28 @@ public sealed class InteractiveGatewayChatTests
             await WaitAsync(() => Latest(snapshots, key)?.PendingPermission is not null);
             var permission = Latest(snapshots, key)!.PendingPermission!;
             await provider.RespondToPermissionAsync(key, permission.RequestId, "allow-once");
+        }
+        if (scenario.StartsWith("question-", StringComparison.Ordinal))
+        {
+            var questions = Assert.IsType<ChatQuestionCoordinator>(provider.Questions);
+            await WaitAsync(() => questions.Snapshot().Prompts.Any(p => p.Request.Status == "pending"));
+            var prompt = Assert.Single(questions.Snapshot().Prompts);
+            Assert.True(ChatQuestionCoordinator.Matches(prompt.Request, key, "main"));
+            var answers = scenario == "question-cancel" ? null : new Dictionary<string, string[]>
+            {
+                ["fixture_choice"] = scenario switch
+                {
+                    "question-text" => ["Native question proof"],
+                    "question-multi" => ["Inspect", "Summarize"],
+                    _ => ["Inspect"],
+                },
+            };
+            await questions.SubmitAsync(key, "main", prompt.Request.Id, answers);
+            await WaitAsync(() => questions.Snapshot().Prompts.Single().Request.Status
+                == (answers is null ? "cancelled" : "answered"));
+            Assert.Null(questions.Snapshot().Error);
+            Assert.Null(questions.Snapshot().Prompts.Single().Error);
+            Assert.Contains(server.Requests, request => request.Method == "question.resolve");
         }
         var turns = scenario == "queued" ? 2 : 1;
         await WaitAsync(() => Latest(snapshots, key)?.Entries.Count(e =>

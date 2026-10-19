@@ -61,11 +61,16 @@ aliases. Global Send and Quick Send metaphors are unchanged.
 | `ChatUserTextBrush` | Primary text; system highlight text in HC |
 | `ChatRichTextStyle` | Native rich-text Foreground binding to `ChatTextBrush` |
 | `ChatCodeTextStyle` | Native code Foreground binding to `ChatSecondaryTextBrush` |
+| `ChatSecondaryTextStyle` | Native progress/result TextBlock binding to `ChatSecondaryTextBrush` |
+| `ChatQuestionCardStyle` | Native question Border bindings to `ChatCardBrush` and `ChatStrokeBrush` |
 | `ChatCopySuccessBrush` | `SystemFillColorSuccess`; system window text in HC |
 | `ChatPickerAccentBrush` | Light/dark system accent variants; system window text in HC |
 
 HC maps surfaces, strokes and text to system window/button/highlight colors.
 An HC resource simulation is not evidence that Windows HC mode was enabled.
+Progress text and question cards use native style setters rather than copying a
+Reactor-resolved brush. This preserves element-local Light/Dark/HC theme lookup
+and avoids light-theme colors on a dark question surface.
 
 Window layering follows WinUI Gallery: the Hub title bar and expanded navigation
 pane reveal Mica, while `NavigationViewContentBackground` supplies one content

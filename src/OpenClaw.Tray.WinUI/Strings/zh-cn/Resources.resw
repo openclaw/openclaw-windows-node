@@ -8142,4 +8142,34 @@
   <data name="Chat_Placement_Error_NoLongerEmpty" xml:space="preserve">
     <value>此会话已不再为空，因此已取消待定的位置选择。请检查会话并重新发送，以在当前位置继续。</value>
   </data>
+  <data name="Chat_Questions_Refresh" xml:space="preserve"><value>刷新问题</value></data>
+  <data name="Chat_Questions_Answered" xml:space="preserve"><value>问题已回答</value></data>
+  <data name="Chat_Questions_Cancelled" xml:space="preserve"><value>问题已取消</value></data>
+  <data name="Chat_Questions_Expired" xml:space="preserve"><value>问题已过期</value></data>
+  <data name="Chat_Questions_Waiting" xml:space="preserve"><value>等待您的回答</value></data>
+  <data name="Chat_Questions_WebRequired" xml:space="preserve"><value>请打开网页版聊天回答此问题。此问题需要资源选择或机密存储控件。</value></data>
+  <data name="Chat_Questions_Answer" xml:space="preserve"><value>您的回答</value></data>
+  <data name="Chat_Questions_OpenLink" xml:space="preserve"><value>打开问题链接</value></data>
+  <data name="Chat_Questions_LinkFailed" xml:space="preserve"><value>无法打开问题链接。</value></data>
+  <data name="Chat_Questions_SendFailed" xml:space="preserve"><value>无法发送回答。请刷新后重试。</value></data>
+  <data name="Chat_Questions_Reconnect" xml:space="preserve"><value>请重新连接并刷新问题后再回答。</value></data>
+  <data name="Chat_Questions_Submitting" xml:space="preserve"><value>正在提交...</value></data>
+  <data name="Chat_Questions_Submit" xml:space="preserve"><value>提交回答</value></data>
+  <data name="Chat_Questions_Cancel" xml:space="preserve"><value>取消问题</value></data>
+  <data name="Chat_Questions_RefreshFailed" xml:space="preserve"><value>无法刷新问题。请重试或打开网页版聊天。</value></data>
+  <data name="Chat_Questions_Unavailable" xml:space="preserve"><value>此问题已过期或连接已断开。请刷新后再回答。</value></data>
+  <data name="Chat_Questions_Unconfirmed" xml:space="preserve"><value>回答尚未确认。请刷新以检查状态后再重试。</value></data>
+  <data name="Chat_Questions_Invalid" xml:space="preserve"><value>无法读取智能体的问题。请刷新或打开网页版聊天作答。</value></data>
+  <data name="Chat_Run_Finished" xml:space="preserve"><value>已完成</value></data>
+  <data name="Chat_Run_Approval" xml:space="preserve"><value>等待批准</value></data>
+  <data name="Chat_Run_Answer" xml:space="preserve"><value>等待您的回答</value></data>
+  <data name="Chat_Run_Compacting" xml:space="preserve"><value>正在压缩上下文</value></data>
+  <data name="Chat_Run_CompactionRetry" xml:space="preserve"><value>压缩上下文后正在重试</value></data>
+  <data name="Chat_Run_Retry" xml:space="preserve"><value>正在重试模型请求</value></data>
+  <data name="Chat_Run_Thinking" xml:space="preserve"><value>正在思考</value></data>
+  <data name="Chat_Run_Responding" xml:space="preserve"><value>正在回答</value></data>
+  <data name="Chat_Run_Working" xml:space="preserve"><value>正在处理</value></data>
+  <data name="Chat_Run_Tool" xml:space="preserve"><value>正在运行 {0}</value></data>
+  <data name="Chat_Questions_NoLongerAvailable" xml:space="preserve"><value>问题已不可用</value></data>
+  <data name="Chat_Run_OutputTokens" xml:space="preserve"><value>{0:N0} 个输出令牌</value></data>
 </root>

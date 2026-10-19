@@ -8143,4 +8143,34 @@ Uw instellingen, gateway, bestanden en modellen blijven op hun plaats.</value>
   <data name="Chat_Placement_Error_NoLongerEmpty" xml:space="preserve">
     <value>Deze sessie is niet meer leeg, dus de wachtende locatiekeuze is geannuleerd. Controleer de sessie en verzend opnieuw om op de huidige locatie door te gaan.</value>
   </data>
+  <data name="Chat_Questions_Refresh" xml:space="preserve"><value>Vragen vernieuwen</value></data>
+  <data name="Chat_Questions_Answered" xml:space="preserve"><value>Vraag beantwoord</value></data>
+  <data name="Chat_Questions_Cancelled" xml:space="preserve"><value>Vraag geannuleerd</value></data>
+  <data name="Chat_Questions_Expired" xml:space="preserve"><value>Vraag verlopen</value></data>
+  <data name="Chat_Questions_Waiting" xml:space="preserve"><value>Wachten op uw antwoord</value></data>
+  <data name="Chat_Questions_WebRequired" xml:space="preserve"><value>Open de webchat om deze vraag te beantwoorden. Hiervoor zijn resourceselectie of besturingselementen voor geheimenopslag nodig.</value></data>
+  <data name="Chat_Questions_Answer" xml:space="preserve"><value>Uw antwoord</value></data>
+  <data name="Chat_Questions_OpenLink" xml:space="preserve"><value>Vraaglink openen</value></data>
+  <data name="Chat_Questions_LinkFailed" xml:space="preserve"><value>De vraaglink kon niet worden geopend.</value></data>
+  <data name="Chat_Questions_SendFailed" xml:space="preserve"><value>Het antwoord kon niet worden verzonden. Vernieuw en probeer opnieuw.</value></data>
+  <data name="Chat_Questions_Reconnect" xml:space="preserve"><value>Maak opnieuw verbinding en vernieuw de vragen voordat u antwoordt.</value></data>
+  <data name="Chat_Questions_Submitting" xml:space="preserve"><value>Verzenden...</value></data>
+  <data name="Chat_Questions_Submit" xml:space="preserve"><value>Antwoord verzenden</value></data>
+  <data name="Chat_Questions_Cancel" xml:space="preserve"><value>Vraag annuleren</value></data>
+  <data name="Chat_Questions_RefreshFailed" xml:space="preserve"><value>Vragen konden niet worden vernieuwd. Probeer opnieuw of open de webchat.</value></data>
+  <data name="Chat_Questions_Unavailable" xml:space="preserve"><value>Deze vraag is verlopen of de verbinding is verbroken. Vernieuw voordat u antwoordt.</value></data>
+  <data name="Chat_Questions_Unconfirmed" xml:space="preserve"><value>Het antwoord is niet bevestigd. Vernieuw om de status te controleren voordat u opnieuw probeert.</value></data>
+  <data name="Chat_Questions_Invalid" xml:space="preserve"><value>Een vraag van de agent kon niet worden gelezen. Vernieuw of open de webchat om te antwoorden.</value></data>
+  <data name="Chat_Run_Finished" xml:space="preserve"><value>Voltooid</value></data>
+  <data name="Chat_Run_Approval" xml:space="preserve"><value>Wachten op goedkeuring</value></data>
+  <data name="Chat_Run_Answer" xml:space="preserve"><value>Wachten op uw antwoord</value></data>
+  <data name="Chat_Run_Compacting" xml:space="preserve"><value>Context comprimeren</value></data>
+  <data name="Chat_Run_CompactionRetry" xml:space="preserve"><value>Opnieuw proberen na contextcompressie</value></data>
+  <data name="Chat_Run_Retry" xml:space="preserve"><value>Modelaanvraag opnieuw proberen</value></data>
+  <data name="Chat_Run_Thinking" xml:space="preserve"><value>Nadenken</value></data>
+  <data name="Chat_Run_Responding" xml:space="preserve"><value>Antwoorden</value></data>
+  <data name="Chat_Run_Working" xml:space="preserve"><value>Bezig</value></data>
+  <data name="Chat_Run_Tool" xml:space="preserve"><value>{0} uitvoeren</value></data>
+  <data name="Chat_Questions_NoLongerAvailable" xml:space="preserve"><value>Vraag niet meer beschikbaar</value></data>
+  <data name="Chat_Run_OutputTokens" xml:space="preserve"><value>{0:N0} uitvoertokens</value></data>
 </root>

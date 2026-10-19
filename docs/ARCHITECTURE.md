@@ -256,6 +256,10 @@ new attempt. This boundary does not change release signing or Windows policy.
 | Chat send admission/retry decision policy | `ChatSendQueuePolicy` with atomic commits coordinated by `ChatConversationState` | authoritative |
 | Chat history request/retry/rebuild mechanics | `ChatHistoryLoader` with token acceptance coordinated by `ChatConversationState` | authoritative |
 | Gateway agent event to chat event mapping | `ChatEventMapper` | authoritative |
+| Gateway append-only chat reconstruction | `GatewayChatStreamProjection`, called once by `OpenClawGatewayClient.ChatStreaming`; connection/session/agent/run baselines never belong to a renderer | authoritative |
+| Transient interactive agent questions and confirmed answer/cancel recovery | `GatewayQuestions` + `OpenClawGatewayClient.Questions` own protocol and structured not-found classification; `ChatQuestionCoordinator` owns one bridge's generation-fenced, coalesced recovery, bounded read retries and per-question unavailable retirement, separate from transcript persistence | authoritative |
+| Native question controls and answer drafts | `ReactorQuestionPanel` + `ChatQuestionDraft`; the root only subscribes/selects/composes and never sends answers as chat messages | authoritative |
+| Live run timing, output usage and persistent working indicator | `ChatTimelineReducer` stores observed turn boundaries and latest-run sequence-fenced usage; `ChatHistoryState` preserves it across reloads, including before the first entry; `ChatRunProgressProjection` projects state; `ReactorRunProgress` owns disposable UI timer and reduced-motion claw. Session totals never supply the live counter | authoritative |
 | Chat snapshot projection | `ChatSnapshotProjector` | authoritative |
 | Tool and attachment metadata cache lifecycle | `ChatMetadataStore` | authoritative |
 | Aborted IDs and last-chat-state persistence | `ChatStatePersistence` | authoritative |

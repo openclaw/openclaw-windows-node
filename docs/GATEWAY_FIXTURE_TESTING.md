@@ -415,11 +415,15 @@ accepted; no fixture should open external resources or save credentials implicit
 Extend the same server boundary with a scenario and protocol/consumer tests when
 adding an interaction, rather than accepting arbitrary requests as success.
 
-Question protocol support is distinct from question **UI** support. This checkout's
-Windows Gateway client does not dispatch `question.requested`/`question.resolved`.
-The fixture emits the real protocol so it can exercise that UI once implemented;
-until then use the console or a WebSocket client to answer. Do not label raw
-question protocol tests as question-panel rendering proof.
+The native Reactor chat consumes `question.requested`/`question.resolved` and
+shows supported questions above the composer. Start with
+`-Scenario chat-interactive -Interaction question-choice`, then send a message
+in the app to show the choice panel. Select **Inspect** or **Summarize** and use
+**Submit answer**, or choose **Cancel question**. The run continues after the
+fixture acknowledges the separate `question.resolve` RPC. Use `question-text`
+or `question-multi` in the host console before the next send to try other inputs.
+Protocol/provider tests do not by themselves prove question-panel rendering;
+verify the visible native controls separately.
 
 Runs are bounded to 256 sends and 100 sessions, transcripts to 1,000 entries,
 text input to 32,768 characters, and external questions to a five-minute timeout.
