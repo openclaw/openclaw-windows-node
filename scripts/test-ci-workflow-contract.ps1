@@ -681,8 +681,8 @@ foreach ($token in @(
 }
 
 $trayUiStep = Get-StepBlock -Text $uiJob -Name "Run Tray UI Tests"
-Assert-Contains -Text $trayUiStep -Expected '-Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=ProductionResources&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled"' `
-    -Message "Tray UI tests must exclude cases owned by the accessibility, native-onboarding, Gateway fixture and animation-preference lanes."
+Assert-Contains -Text $trayUiStep -Expected '-Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=ProductionResources&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled&Category!=NativeMarkdownProof"' `
+    -Message "Tray UI tests must exclude cases owned by the accessibility, native-onboarding, Gateway fixture, production-resource, animation-preference and native-Markdown proof lanes."
 Assert-NotContains -Text $trayUiStep -Unexpected '-AnimationPreference ' `
     -Message 'The ordinary UI suite must retain its original Windows animation preference.'
 $enabledAnimationStep = Get-StepBlock -Text $uiJob -Name 'Run animation-enabled reveal proof'
@@ -707,6 +707,13 @@ foreach ($token in @(
 }
 Assert-Contains -Text $workflow -Expected './scripts/test-native-animation-preference.ps1' `
     -Message 'Native animation prerequisite failures and restoration must be tested.'
+$markdownProofStep = Get-StepBlock -Text $uiJob -Name "Run native Markdown disclosure proofs"
+Assert-Contains -Text $markdownProofStep -Expected "foreach (`$theme in @('Light', 'Dark', 'HighContrast'))" `
+    -Message "Native Markdown disclosure proofs must run every theme in its own process."
+Assert-Contains -Text $markdownProofStep -Expected '-Filter "Category=NativeMarkdownProof&DisplayName~$theme"' `
+    -Message "Native Markdown disclosure proofs must select one theme per run-proof-tests.ps1 invocation."
+Assert-Contains -Text $markdownProofStep -Expected "AssistantMarkdown_UntrustedContentRemainsInertInsideDisclosure" `
+    -Message "Native Markdown disclosure proofs must keep the isolated inert-content case."
 Assert-Contains -Text $trayUiStep -Expected "timeout-minutes: 15" `
     -Message "Tray UI tests must have an outer timeout rather than consuming the six-hour job limit."
 Assert-Contains -Text $trayUiStep -Expected "-HangTimeoutSeconds 300" `
