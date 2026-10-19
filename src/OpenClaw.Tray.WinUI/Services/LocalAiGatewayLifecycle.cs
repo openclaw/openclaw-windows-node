@@ -251,16 +251,22 @@ internal sealed class LocalAiGatewayLifecycle(
 
     public Task WaitForRuntimeAsync(GatewayAiSetupCompletion expected, ILocalAiRuntime runtime, CancellationToken ct)
     {
-        // A matching receipt does not turn ordinary detected-model use into managed use.
-        if (!expected.RequiresManagedLocalAi) return Task.CompletedTask;
-        var binding = _store.Load();
-        if (binding is null || binding.GatewayId != expected.GatewayId || binding.ModelRef != expected.ModelRef)
+        LocalAiNativeBinding? binding;
+        try { binding = _store.Load(); }
+        catch (Exception ex) when (!expected.RequiresManagedLocalAi &&
+            ex is InvalidDataException or JsonException or ArgumentException or IOException or UnauthorizedAccessException)
+        { return Task.CompletedTask; }
+        // Detected use may await the confirmed owner's recovery without authorizing it.
+        if (binding is null || binding.GatewayId != expected.GatewayId || binding.ModelRef != expected.ModelRef ||
+            (!expected.RequiresManagedLocalAi && (binding.Pending || !binding.AutomaticRecoveryEnabled ||
+                binding.EndpointBinding != expected.EndpointBinding || binding.IdentityBinding != expected.IdentityBinding)))
             return Task.CompletedTask;
-        return WaitForRecoveryAsync(expected.ModelRef, runtime, () => Volatile.Read(ref _resumeTask), ct);
+        return WaitForRecoveryAsync(expected.ModelRef, runtime, () => Volatile.Read(ref _resumeTask), ct,
+            requiresManagedLocalAi: expected.RequiresManagedLocalAi);
     }
 
     internal static async Task WaitForRecoveryAsync(string expectedModelRef, ILocalAiRuntime runtime,
-        Func<Task?> getRecoveryTask, CancellationToken ct)
+        Func<Task?> getRecoveryTask, CancellationToken ct, bool requiresManagedLocalAi = true)
     {
         // Only join recovery already admitted by the connection owner. Handoff
         // cannot replay a pending write or start a different Gateway's runtime.
@@ -272,10 +278,13 @@ internal sealed class LocalAiGatewayLifecycle(
                 await recovery.WaitAsync(ct).ConfigureAwait(false);
                 continue;
             }
-            if (runtime.Snapshot.State == LocalAiRuntimeState.Healthy) break;
+            if (runtime.Snapshot.State == LocalAiRuntimeState.Healthy ||
+                (!requiresManagedLocalAi && getRecoveryTask() is { IsCompleted: true })) break;
             await Task.Delay(100, ct).ConfigureAwait(false);
         }
         ct.ThrowIfCancellationRequested();
+        // Ordinary selection still verifies its model through the Gateway.
+        if (!requiresManagedLocalAi) return;
         if (runtime.Snapshot is not { State: LocalAiRuntimeState.Healthy, Ownership: LocalAiOwnership.CompanionManaged } ready ||
             "llamacpp/" + ready.ModelId != expectedModelRef)
             throw new InvalidOperationException("The selected Local AI runtime is not ready after Gateway reconnection.");

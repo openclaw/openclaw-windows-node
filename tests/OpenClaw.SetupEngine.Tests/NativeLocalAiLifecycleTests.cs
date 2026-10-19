@@ -399,17 +399,25 @@ public sealed class NativeLocalAiLifecycleTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task HandoffWaitsForOwnedRuntimeWithoutStartingOrReplayingIt(bool cancel)
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    public async Task HandoffWaitsForOwnedRuntimeWithoutStartingOrReplayingIt(bool cancel, bool managedUse)
     {
         using var fixture = new Fixture();
         await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        if (!managedUse)
+        {
+            Assert.True((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+            await fixture.Lifecycle.SetAutomaticRecoveryEnabledAsync(true);
+        }
         var writes = fixture.Rpc.Writes;
         var runtime = new LocalAiOnboardingTests.FakeRuntime(
             LocalAiOnboardingTests.RuntimeSnapshot(fixture.Install, LocalAiRuntimeState.Stopped));
         var completion = new GatewayAiSetupCompletion(SetupCompletionIntent.CustodianOnboarding,
-            Record.Id, GatewayDashboardBinding.Capture(Record), fixture.Model, "main", 1, RequiresManagedLocalAi: true);
+            Record.Id, GatewayDashboardBinding.Capture(Record), fixture.Model, "main", 1,
+            IdentityBinding: fixture.Rpc.Route.IdentityBinding, RequiresManagedLocalAi: managedUse);
         using var cancellation = new CancellationTokenSource();
         var waiting = fixture.Lifecycle.WaitForRuntimeAsync(completion, runtime, cancellation.Token);
         Assert.False(waiting.IsCompleted);
@@ -427,31 +435,130 @@ public sealed class NativeLocalAiLifecycleTests
         Assert.Equal(writes, fixture.Rpc.Writes);
     }
 
-    [Fact]
-    public async Task HandoffCannotTreatAnotherLoadedModelAsTheOwnedRuntime()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task HandoffKeepsManagedRuntimeChecksSeparateFromOrdinaryGatewayVerification(bool managedUse)
     {
         using var fixture = new Fixture();
         await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        if (!managedUse)
+        {
+            Assert.True((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+            await fixture.Lifecycle.SetAutomaticRecoveryEnabledAsync(true);
+        }
+        var writes = fixture.Rpc.Writes;
         var runtime = new LocalAiOnboardingTests.FakeRuntime(
             LocalAiOnboardingTests.RuntimeSnapshot(fixture.Install, LocalAiRuntimeState.Healthy) with { ModelId = "different" });
         var completion = new GatewayAiSetupCompletion(SetupCompletionIntent.CustodianOnboarding,
-            Record.Id, GatewayDashboardBinding.Capture(Record), fixture.Model, "main", 1, RequiresManagedLocalAi: true);
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            fixture.Lifecycle.WaitForRuntimeAsync(completion, runtime, default));
+            Record.Id, GatewayDashboardBinding.Capture(Record), fixture.Model, "main", 1,
+            IdentityBinding: fixture.Rpc.Route.IdentityBinding, RequiresManagedLocalAi: managedUse);
+        if (managedUse)
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                fixture.Lifecycle.WaitForRuntimeAsync(completion, runtime, default));
+        else
+        {
+            await fixture.Lifecycle.WaitForRuntimeAsync(completion, runtime, default);
+            var client = new GatewayAiSetupClient(fixture.Rpc, fixture.Model);
+            Assert.Equal(fixture.Model, (await SetupNativeCompletionVerifier.VerifyModelAsync(client, fixture.Model, default)).ModelRef);
+            fixture.Rpc.VerificationSucceeds = false;
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                SetupNativeCompletionVerifier.VerifyModelAsync(client, fixture.Model, default));
+        }
         Assert.Equal(0, runtime.Calls);
-        Assert.Equal(0, fixture.Rpc.Writes);
+        Assert.Equal(writes, fixture.Rpc.Writes);
     }
 
     [Theory]
-    [InlineData(LocalAiRuntimeState.Stopped, LocalAiOwnership.CompanionManaged)]
-    [InlineData(LocalAiRuntimeState.Healthy, LocalAiOwnership.None)]
-    public async Task DetectedSelectionWithPendingBindingDoesNotWaitForManagedRuntime(
-        LocalAiRuntimeState state, LocalAiOwnership ownership)
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FinishedUnhealthyRecoveryLeavesOnlyOrdinarySelectionToGatewayVerification(bool managedUse)
     {
         using var fixture = new Fixture();
         await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
         Assert.True((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
-        fixture.Store.Save(fixture.Store.Load()! with { Pending = true });
+        var writes = fixture.Rpc.Writes;
+        var runtime = new LocalAiOnboardingTests.FakeRuntime(
+            LocalAiOnboardingTests.RuntimeSnapshot(fixture.Install, LocalAiRuntimeState.Failed));
+        var recovery = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var cancellation = new CancellationTokenSource();
+        var waiting = LocalAiGatewayLifecycle.WaitForRecoveryAsync(fixture.Model, runtime,
+            () => recovery.Task, cancellation.Token, requiresManagedLocalAi: managedUse);
+        Assert.False(waiting.IsCompleted);
+        recovery.SetResult();
+        if (managedUse)
+        {
+            await Task.Delay(150);
+            Assert.False(waiting.IsCompleted);
+            cancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => waiting);
+        }
+        else
+        {
+            await waiting.WaitAsync(TimeSpan.FromSeconds(5));
+            var client = new GatewayAiSetupClient(fixture.Rpc, fixture.Model);
+            Assert.Equal(fixture.Model, (await SetupNativeCompletionVerifier.VerifyModelAsync(client, fixture.Model, default)).ModelRef);
+            fixture.Rpc.VerificationSucceeds = false;
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                SetupNativeCompletionVerifier.VerifyModelAsync(client, fixture.Model, default));
+        }
+        Assert.Equal(0, runtime.Calls);
+        Assert.Equal(writes, fixture.Rpc.Writes);
+    }
+
+    [Theory]
+    [InlineData("{", false)]
+    [InlineData("", false)]
+    [InlineData("{}", true)]
+    public async Task DetectedSelectionWithInvalidBindingStillVerifiesWithoutManagedRecovery(string contents, bool unreadable)
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        Assert.True((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+        var client = new GatewayAiSetupClient(fixture.Rpc, fixture.Model, SetupCompletionIntent.CustodianOnboarding);
+        var proof = await SetupNativeCompletionVerifier.VerifyModelAsync(client, fixture.Model, default);
+        Assert.False(proof.RequiresManagedLocalAi);
+        var runtime = new LocalAiOnboardingTests.FakeRuntime(
+            LocalAiOnboardingTests.RuntimeSnapshot(fixture.Install, LocalAiRuntimeState.Stopped));
+        var writes = fixture.Rpc.Writes;
+        File.WriteAllText(fixture.BindingPath, contents);
+        using (unreadable ? new FileStream(fixture.BindingPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None) : null)
+        {
+            await fixture.Lifecycle.WaitForRuntimeAsync(proof, runtime, default);
+            var verified = await SetupNativeCompletionVerifier.VerifyModelAsync(client, fixture.Model, default);
+            SetupNativeVerification.RequireSame(proof, new(verified, fixture.Rpc.Route.SessionKey!));
+            fixture.Rpc.VerificationSucceeds = false;
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                SetupNativeCompletionVerifier.VerifyModelAsync(client, fixture.Model, default));
+            await Assert.ThrowsAnyAsync<Exception>(() => fixture.Lifecycle.WaitForRuntimeAsync(
+                proof with { RequiresManagedLocalAi = true }, runtime, default));
+        }
+        Assert.Equal(contents, File.ReadAllText(fixture.BindingPath));
+        Assert.Equal(writes, fixture.Rpc.Writes);
+        Assert.Equal(0, runtime.Calls);
+    }
+
+    [Theory]
+    [InlineData(LocalAiRuntimeState.Stopped, LocalAiOwnership.CompanionManaged, "pending")]
+    [InlineData(LocalAiRuntimeState.Healthy, LocalAiOwnership.None, "pending")]
+    [InlineData(LocalAiRuntimeState.Stopped, LocalAiOwnership.CompanionManaged, "stopped")]
+    [InlineData(LocalAiRuntimeState.Healthy, LocalAiOwnership.None, "stopped")]
+    [InlineData(LocalAiRuntimeState.Stopped, LocalAiOwnership.CompanionManaged, "endpoint")]
+    [InlineData(LocalAiRuntimeState.Stopped, LocalAiOwnership.CompanionManaged, "identity")]
+    public async Task DetectedSelectionWithUnconfirmedBindingDoesNotWaitForManagedRuntime(
+        LocalAiRuntimeState state, LocalAiOwnership ownership, string bindingState)
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        Assert.True((await fixture.Lifecycle.PublishAsync(fixture.Install)).Success);
+        var owner = fixture.Store.Load()! with { AutomaticRecoveryEnabled = true };
+        fixture.Store.Save(bindingState switch
+        {
+            "pending" => owner with { Pending = true },
+            "stopped" => owner with { AutomaticRecoveryEnabled = false },
+            "endpoint" => owner with { EndpointBinding = "another" },
+            _ => owner with { IdentityBinding = new string('B', 64) },
+        });
         var binding = fixture.Store.Load();
         var writes = fixture.Rpc.Writes;
         fixture.Rpc.OfferDetectedModel = true;
@@ -464,7 +571,7 @@ public sealed class NativeLocalAiLifecycleTests
         Assert.False(proof.RequiresManagedLocalAi);
         var runtime = new LocalAiOnboardingTests.FakeRuntime(
             LocalAiOnboardingTests.RuntimeSnapshot(fixture.Install, state) with { Ownership = ownership });
-        await fixture.Lifecycle.ResumeAsync(runtime);
+        if (bindingState is "pending" or "stopped") await fixture.Lifecycle.ResumeAsync(runtime);
         Assert.Equal(0, runtime.Calls);
         using var cancellation = new CancellationTokenSource();
         var waiting = fixture.Lifecycle.WaitForRuntimeAsync(proof, runtime, cancellation.Token);
@@ -472,7 +579,7 @@ public sealed class NativeLocalAiLifecycleTests
         cancellation.Cancel();
         try { await waiting; }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
-        Assert.True(completed, "Ordinary verified model selection must not join pending managed recovery.");
+        Assert.True(completed, "Ordinary verified model selection must not join unconfirmed or stopped managed recovery.");
         var reverified = await SetupNativeCompletionVerifier.VerifyModelAsync(
             new GatewayAiSetupClient(fixture.Rpc, proof.ModelRef, proof.Intent), proof.ModelRef, default);
         SetupNativeVerification.RequireSame(proof, new(reverified, fixture.Rpc.Route.SessionKey!));
