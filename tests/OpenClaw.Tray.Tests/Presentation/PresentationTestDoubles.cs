@@ -79,6 +79,11 @@ internal sealed class FakeAppCommands : IAppCommands, IDisposable
     public void CheckForUpdates() { }
     public void ShowOnboarding() => ShowOnboardingCount++;
     public void ShowLocalAiSetup() => ShowLocalAiSetupCount++;
+    public Task<LocalAiResetResult> ResetLocalAiAsync(CancellationToken cancellationToken = default)
+    {
+        ResetLocalAiCount++;
+        return Task.FromResult(ResetLocalAiResult);
+    }
     public void ShowGatewayWizard() => ShowGatewayWizardCount++;
     public void OpenLocalAiLogs() => OpenLocalAiLogsCount++;
     public void ShowConnectionStatus() { }
@@ -101,6 +106,8 @@ internal sealed class FakeAppCommands : IAppCommands, IDisposable
     public bool? AutoStartApplied { get; private set; }
     public int AutoStartApplyCount { get; private set; }
     public int ShowGatewayWizardCount { get; private set; }
+    public int ResetLocalAiCount { get; private set; }
+    public LocalAiResetResult ResetLocalAiResult { get; set; } = new(LocalAiResetOutcome.Success);
 
     /// <summary>Result returned by <see cref="ApplyAutoStart"/> so tests can simulate OS-write failure.</summary>
     public bool AutoStartResult { get; set; } = true;
@@ -148,6 +155,8 @@ internal sealed class SelfWritingAppCommands : IAppCommands
     public void CheckForUpdates() { }
     public void ShowOnboarding() { }
     public void ShowLocalAiSetup() { }
+    public Task<LocalAiResetResult> ResetLocalAiAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(new LocalAiResetResult(LocalAiResetOutcome.Success));
     public void ShowGatewayWizard() { }
     public void ShowConnectionStatus() { }
     public void NotifySettingsSaved() { }

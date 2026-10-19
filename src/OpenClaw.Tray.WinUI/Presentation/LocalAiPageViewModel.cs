@@ -12,6 +12,12 @@ internal enum LocalAiEnginePresentationState { Running, Starting, Stopped, Error
 internal enum LocalAiModelPresentationState { Unknown, NotInstalled, Verified, Loaded }
 internal enum LocalAiGatewayPresentationState { Connected, Connecting, NeedsAttention, Disconnected, Error }
 
+internal enum LocalAiResetOutcome { Success, Failed, Cancelled }
+internal sealed record LocalAiResetResult(LocalAiResetOutcome Outcome, string? Message = null)
+{
+    public bool Succeeded => Outcome == LocalAiResetOutcome.Success;
+}
+
 /// <summary>WinUI-free presentation and action owner for the Local AI Hub page.</summary>
 internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INotifyPropertyChanged
 {
@@ -158,6 +164,10 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
     public bool HasInstalledModel => ModelState is
         LocalAiModelPresentationState.Verified or LocalAiModelPresentationState.Loaded;
     public bool CanChangeModel => IsSetupAvailable && !IsBusy && HasInstalledModel;
+    // An unqualified or unreadable receipt surfaces only as Failed with no verified model
+    // evidence, so HasManagedInstall cannot gate this. Conflict is excluded: a foreign
+    // listener is not fixed by deleting the managed install.
+    public bool CanResetLocalAi => !IsBusy && _runtimeSnapshot.State == LocalAiRuntimeState.Failed;
     public bool CanRepairConnection => !IsBusy && GatewayState is not
         (LocalAiGatewayPresentationState.Connected or LocalAiGatewayPresentationState.Connecting);
     public bool CanOpenChat => !IsBusy &&
@@ -210,6 +220,34 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
     public bool ChangeModel() => RunCommand(CanChangeModel, _appCommands.ShowLocalAiModelSetup);
     public bool RepairConnection() => RunCommand(CanRepairConnection, _appCommands.Reconnect);
     public bool OpenChat() => RunCommand(CanOpenChat, () => _appCommands.Navigate("chat"));
+
+    public async Task<bool> ResetLocalAiAsync()
+    {
+        ThrowIfDisposed();
+        if (!CanResetLocalAi)
+            return false;
+
+        _isBusy = true;
+        _actionError = null;
+        OnPropertyChanged(null);
+        try
+        {
+            LocalAiResetResult result = await _appCommands.ResetLocalAiAsync().ConfigureAwait(false);
+            if (!result.Succeeded)
+                _actionError = result.Message;
+            return result.Succeeded;
+        }
+        catch (Exception ex)
+        {
+            _actionError = ex.Message;
+            return false;
+        }
+        finally
+        {
+            _isBusy = false;
+            OnPropertyChanged(null);
+        }
+    }
     public bool RecheckAvailability()
     {
         ThrowIfDisposed();
