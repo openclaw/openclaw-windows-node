@@ -98,6 +98,18 @@ call cannot prevent failure reporting and owned-process cleanup.
 Inspect the captured PNGs when claiming visual proof. UI Automation alone does
 not detect every overlap, clipping or theme defect.
 
+`HistoricalFractionalVoiceConversationRendersWithoutLoadingPlaceholder` uses
+the opt-in `GatewayScenario.CreateFractionalVoiceHistory()` scenario. It adds
+30 synthetic historical messages, including 18 fractional-millisecond Talk
+rows with realtime voice provenance, block-array user text and no usage fields.
+The real Gateway client protocol test checks every message's content, ID,
+sequence and truncated timestamp. The native UI test checks all 30 projected
+texts, visible final voice content, no loading placeholder, and switching to an
+integer-timestamp typed control and back. Screenshots and the synthetic MCP
+snapshot are retained with the run artifacts. This proves stored-history
+compatibility, not microphone capture, live voice streaming or real Gateway
+pairing, and does not use the reporter's private sessions.
+
 ## Known runtime regression
 
 The strict cached-session tail assertion has exposed an intermittent failure:

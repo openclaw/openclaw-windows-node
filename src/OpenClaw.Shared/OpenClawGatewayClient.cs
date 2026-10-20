@@ -847,7 +847,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             if (!value.TryGetDouble(out var raw)
                 || !double.IsFinite(raw)
                 || raw < long.MinValue
-                || raw > long.MaxValue)
+                // long.MaxValue rounds up to 2^63 as a double, so this bound is exclusive.
+                || raw >= 9223372036854775808d)
             {
                 continue;
             }

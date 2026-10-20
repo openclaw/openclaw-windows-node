@@ -2607,6 +2607,44 @@ public class OpenClawGatewayClientTests
         Assert.Equal(7, message.OpenClawSeq);
     }
 
+    [Theory]
+    [InlineData("1791257718360", 1791257718360L)]
+    [InlineData("1791257718360.176", 1791257718360L)]
+    [InlineData("-1.75", -1L)]
+    [InlineData("9223372036854775807", long.MaxValue)]
+    [InlineData("-9223372036854775808", long.MinValue)]
+    [InlineData("9223372036854775808", 42L)]
+    [InlineData("1e400", 42L)]
+    [InlineData("-1e400", 42L)]
+    [InlineData("-9223372036854777856", 42L)]
+    [InlineData("\"invalid\"", 42L)]
+    [InlineData("null", 42L)]
+    public void ParseChatHistoryPayload_TimestampPreservesIntegersAndFallsBackWhenInvalid(
+        string timestamp, long expected)
+    {
+        var helper = new GatewayClientTestHelper();
+        var history = helper.ParseChatHistoryPayload($$"""
+        {"messages":[{"role":"user","content":"Preserved","timestamp":{{timestamp}},"ts":42}]}
+        """);
+
+        var message = Assert.Single(history.Messages);
+        Assert.Equal(expected, message.Ts);
+        Assert.Equal("Preserved", message.Text);
+    }
+
+    [Fact]
+    public void ParseChatHistoryPayload_InvalidTimestampsPreserveMessageWithZeroTimestamp()
+    {
+        var helper = new GatewayClientTestHelper();
+        var history = helper.ParseChatHistoryPayload("""
+        {"messages":[{"role":"user","content":"Preserved","timestamp":1e400,"ts":-1e400}]}
+        """);
+
+        var message = Assert.Single(history.Messages);
+        Assert.Equal(0, message.Ts);
+        Assert.Equal("Preserved", message.Text);
+    }
+
     [Fact]
     public void ParseChatHistoryPayload_RealtimeVoiceFractionalTimestamp_PreservesMessage()
     {
