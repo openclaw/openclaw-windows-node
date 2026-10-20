@@ -27,6 +27,8 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
     {
         await WithPageAsync(async (page, transport, completed) =>
         {
+            await ui.YieldToRenderAsync();
+            await MountedControlCapture.OptionalAsync(ui.TestWindow, "current-model-action-enabled");
             var handle = WinRT.Interop.WindowNative.GetWindowHandle(ui.TestWindow);
             await Task.Run(() =>
             {
@@ -61,6 +63,9 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                 card.IsEnabled = false;
             else
                 card.IsClickEnabled = false;
+            await ui.YieldToRenderAsync();
+            await MountedControlCapture.OptionalAsync(ui.TestWindow,
+                disabled ? "current-model-action-disabled" : "current-model-action-unavailable");
             var handle = WinRT.Interop.WindowNative.GetWindowHandle(ui.TestWindow);
             await Task.Run(() =>
             {
