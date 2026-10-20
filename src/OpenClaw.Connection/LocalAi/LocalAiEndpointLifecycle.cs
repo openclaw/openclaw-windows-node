@@ -45,18 +45,23 @@ public interface ILocalAiEndpointLifecycle
         => Task.CompletedTask;
 
     /// <summary>
-    /// Moves durable route ownership to a new model after the old route was withdrawn. Durable
-    /// owners journal the previous model so <see cref="SettleModelRebindAsync"/> can recover
-    /// from an interrupted manifest commit.
+    /// Moves durable route ownership to a new model after the old route was withdrawn and runs
+    /// <paramref name="commitManifest"/> inside the owner's receipt transaction. Durable owners
+    /// journal the previous model first and hold their receipt lease until the journal is
+    /// cleared, so a journal is only visible after an interrupted commit. A throwing commit
+    /// restores the previous model and rethrows.
     /// </summary>
-    Task RebindModelAsync(LocalAiResolvedInstall previous, LocalAiResolvedInstall next, CancellationToken cancellationToken)
-        => Task.CompletedTask;
+    Task CommitModelRebindAsync(LocalAiResolvedInstall previous, LocalAiResolvedInstall next,
+        Func<Task> commitManifest, CancellationToken cancellationToken)
+        => commitManifest();
 
     /// <summary>
-    /// Resolves a journaled rebind against the committed installation: keeps the new model
-    /// when the manifest names it, or restores the previous one when the manifest does.
+    /// Settles a journal left by an interrupted <see cref="CommitModelRebindAsync"/> against the
+    /// manifest returned by <paramref name="loadCommitted"/>, which durable owners invoke under
+    /// their receipt lease. No-op when nothing is journaled.
     /// </summary>
-    Task SettleModelRebindAsync(LocalAiResolvedInstall committed, CancellationToken cancellationToken)
+    Task SettleModelRebindAsync(Func<CancellationToken, Task<LocalAiResolvedInstall?>> loadCommitted,
+        CancellationToken cancellationToken)
         => Task.CompletedTask;
 
     /// <summary>

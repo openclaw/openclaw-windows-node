@@ -38,9 +38,12 @@ restarted. Earlier weights stay in the shared Hugging Face cache, so switching
 back only verifies them.
 
 With a native Gateway, the ownership receipt (`gateway-binding.json`) records
-the previous model before the installation receipt is saved. Every load of the
-installation receipt settles that record to whichever model the receipt names,
-so an interrupted switch recovers one consistent installation.
+the previous model, the installation receipt is saved, and the record is
+cleared, all under one ownership-receipt lock. A record left on disk means the
+switch was interrupted; the runtime's next load of the installation receipt
+settles it, under that lock, to whichever model the receipt names. Setup's
+ownership check never settles it: it reports the ownership as unavailable
+until the runtime does.
 
 The Default model page changes Local AI's fallback only on the Gateway Local AI
 is bound to. On any other Gateway it writes that Gateway's default and leaves

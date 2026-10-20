@@ -66,14 +66,16 @@ internal sealed class LocalAiGatewayLifecycle(
         try
         {
             var target = NativeLocalAiGatewayTarget.Capture(record, transport.Route);
-            if (binding is { RebindFrom: not null } && install is not null)
-            {
-                await SettleModelRebindAsync(install, ct).ConfigureAwait(false);
-                binding = _store.Load();
-            }
             if (binding is not null)
             {
                 RequireBinding(binding, target);
+                // A journaled rebind belongs to the runtime's model-switch transaction. Only the
+                // runtime's manifest load settles it; discovery stays read-only.
+                if (binding.RebindFrom is not null)
+                {
+                    logger.Warn("Local AI ownership discovery found an unsettled model switch. Check again after it finishes.");
+                    return NativeLocalAiOwnershipState.Unavailable;
+                }
                 if (install is not null && binding.ModelRef != LocalAiGatewayProviderDefinition.BuildPrimaryModel(install))
                     return NativeLocalAiOwnershipState.DifferentOwner;
             }
@@ -186,10 +188,17 @@ internal sealed class LocalAiGatewayLifecycle(
         await ForgetWithdrawnAsync(binding.GatewayId, ct).ConfigureAwait(false);
     }
 
-    public async Task RebindModelAsync(LocalAiResolvedInstall previous, LocalAiResolvedInstall next, CancellationToken ct)
+    public async Task CommitModelRebindAsync(LocalAiResolvedInstall previous, LocalAiResolvedInstall next,
+        Func<Task> commitManifest, CancellationToken ct)
     {
+        // The lease spans journal, manifest commit and settlement: no other lease holder can see
+        // the journal while the commit is in flight.
         await using var lease = await _store.AcquireAsync(ct).ConfigureAwait(false);
-        if (_store.Load() is not { } binding) return;
+        if (_store.Load() is not { } binding)
+        {
+            await commitManifest().ConfigureAwait(false);
+            return;
+        }
         if (binding.ModelRef != LocalAiGatewayProviderDefinition.BuildPrimaryModel(previous) ||
             binding.Pending || binding.AutomaticRecoveryEnabled || binding.RebindFrom is not null)
             throw new InvalidOperationException("The native Local AI ownership receipt is not safe to change.");
@@ -200,23 +209,46 @@ internal sealed class LocalAiGatewayLifecycle(
             config["agents"]?["defaults"]?["model"]?["primary"]?.GetValue<string>() != binding.PreviousPrimary)
             throw new InvalidOperationException("The original Gateway has not confirmed withdrawal. Its ownership receipt was retained.");
         var model = LocalAiGatewayProviderDefinition.BuildPrimaryModel(next);
-        // The manifest commit follows this write; journal the previous model so an
-        // interrupted commit settles back to one coherent installation.
-        _store.Save(binding with
+        var rebound = binding with
         {
             ModelRef = model,
             ConfigHash = current.Hash,
             AddedAllowlistEntry = config["agents"]?["defaults"]?["models"] is JsonObject entries && !entries.ContainsKey(model),
-            RebindFrom = new(binding.ModelRef, binding.AddedAllowlistEntry),
-        });
+        };
+        // Write-ahead: a crash inside commitManifest leaves this journal for SettleModelRebindAsync.
+        _store.Save(rebound with { RebindFrom = new(binding.ModelRef, binding.AddedAllowlistEntry) });
+        try
+        {
+            await commitManifest().ConfigureAwait(false);
+        }
+        catch
+        {
+            // The manifest save is an atomic replace, so a throw means the previous manifest stands.
+            SaveSettledBestEffort(binding with { ConfigHash = current.Hash });
+            throw;
+        }
+        SaveSettledBestEffort(rebound);
     }
 
-    public async Task SettleModelRebindAsync(LocalAiResolvedInstall committed, CancellationToken ct)
+    private void SaveSettledBestEffort(LocalAiNativeBinding settled)
+    {
+        try { _store.Save(settled); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The journal stays on disk; the runtime's next manifest load settles it.
+            logger.Warn($"Local AI Gateway binding settlement was deferred ({ex.GetType().Name}).");
+        }
+    }
+
+    public async Task SettleModelRebindAsync(Func<CancellationToken, Task<LocalAiResolvedInstall?>> loadCommitted,
+        CancellationToken ct)
     {
         // Every manifest load calls this; skip the cross-process lease when nothing is journaled.
         if (_store.Load() is not { RebindFrom: not null }) return;
         await using var lease = await _store.AcquireAsync(ct).ConfigureAwait(false);
         if (_store.Load() is not { RebindFrom: { } from } binding) return;
+        // Read under the lease so the outcome follows the durable manifest, not a caller's snapshot.
+        if (await loadCommitted(ct).ConfigureAwait(false) is not { } committed) return;
         var model = LocalAiGatewayProviderDefinition.BuildPrimaryModel(committed);
         if (model == binding.ModelRef)
         {

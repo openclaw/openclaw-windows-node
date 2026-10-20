@@ -127,11 +127,10 @@ public sealed partial class LocalAiPortLifecycleTests
     }
 
     [Fact]
-    public async Task ReplaceInstall_ManifestSaveFailureSettlesBindingBackToPreviousModel()
+    public async Task ReplaceInstall_ManifestSaveFailureRunsInsideTheRebindTransaction()
     {
         using var temp = new TempDirectory("local-ai-replace-");
         LocalAiPaths paths = await PrepareInstallAsync(temp);
-        string previousAlias = (await new LocalAiManifestStore(paths).LoadAsync())!.Manifest.ModelAlias;
         var events = new SynchronizedEventLog();
         var platform = new FakePlatform();
         // The rebind lands, then the manifest commit fails, as when the process is interrupted.
@@ -146,7 +145,7 @@ public sealed partial class LocalAiPortLifecycleTests
 
             Assert.Equal(before, await File.ReadAllBytesAsync(paths.ManifestPath));
             Assert.Equal(
-                [$"rebind:{replacement.ModelAlias}", $"settle:{previousAlias}"],
+                [$"rebind:{replacement.ModelAlias}", "failed"],
                 lifecycle.Rebinds.SkipWhile(e => !e.StartsWith("rebind:", StringComparison.Ordinal)));
         }
         finally

@@ -241,21 +241,21 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                 RequestedPort = previous.Manifest.RequestedPort,
                 GatewayFallbackModel = previous.Manifest.GatewayFallbackModel,
             });
-            // The binding journals the previous model before the manifest commit. Settle it
-            // to whichever manifest is on disk; a crash before settling is resolved by the
+            // The lifecycle journals the previous model, then runs this commit inside its receipt lease,
+            // so binding and manifest change as one transaction. An interrupted commit is settled by the
             // next manifest load (TryLoadInstallAsync).
-            await _options.EndpointLifecycle.RebindModelAsync(previous, next, cancellationToken).ConfigureAwait(false);
-            try
+            await _options.EndpointLifecycle.CommitModelRebindAsync(previous, next, async () =>
             {
-                await _manifestStore.SaveAsync(next.Manifest, CancellationToken.None).ConfigureAwait(false);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                await SettleRebindBestEffortAsync(previous).ConfigureAwait(false);
-                throw new LocalAiModelSwitchException(
-                    $"The new Local AI model could not be saved, so the previous model was kept: {Sanitize(ex.Message)}");
-            }
-            await SettleRebindBestEffortAsync(next).ConfigureAwait(false);
+                try
+                {
+                    await _manifestStore.SaveAsync(next.Manifest, CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    throw new LocalAiModelSwitchException(
+                        $"The new Local AI model could not be saved, so the previous model was kept: {Sanitize(ex.Message)}");
+                }
+            }, cancellationToken).ConfigureAwait(false);
             _install = next;
             DisposeVerifiedModelHandle();
             return Publish(
@@ -1196,7 +1196,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         {
             try
             {
-                await _options.EndpointLifecycle.SettleModelRebindAsync(_install, cancellationToken).ConfigureAwait(false);
+                await _options.EndpointLifecycle.SettleModelRebindAsync(_manifestStore.LoadAsync, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException)
             {
@@ -1210,19 +1210,6 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         if (!preserveUnavailableSnapshot)
             Publish(LocalAiRuntimeState.NotInstalled, LocalAiOwnership.None, "Local AI is not installed.");
         return false;
-    }
-
-    private async Task SettleRebindBestEffortAsync(LocalAiResolvedInstall committed)
-    {
-        try
-        {
-            await _options.EndpointLifecycle.SettleModelRebindAsync(committed, CancellationToken.None).ConfigureAwait(false);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException)
-        {
-            // The journal stays on disk and the next manifest load settles it.
-            _logger.Warn($"Local AI Gateway binding settlement was deferred: {Sanitize(ex.Message)}");
-        }
     }
 
     private async Task ValidateInstalledFilesAsync(

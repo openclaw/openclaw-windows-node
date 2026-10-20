@@ -15,10 +15,11 @@ public sealed record LocalAiNativeBinding(
     LocalAiNativeModelRebind? RebindFrom = null);
 
 /// <summary>
-/// Write-ahead record of a model rebind. The binding already names the new model while
-/// the installation manifest may still name the old one; the next manifest load settles
-/// the binding to whichever model the manifest committed. Rebinding writes nothing to the
-/// Gateway, so the binding's config hash stays valid for either outcome.
+/// Write-ahead record of a model rebind. <c>CommitModelRebindAsync</c> writes and clears it
+/// inside one receipt-lease hold, so a journal on disk means the process stopped mid-commit;
+/// the runtime's next manifest load settles it to whichever model the manifest names.
+/// Rebinding writes nothing to the Gateway, so the binding's config hash stays valid for
+/// either outcome.
 /// </summary>
 public sealed record LocalAiNativeModelRebind(string ModelRef, bool AddedAllowlistEntry);
 

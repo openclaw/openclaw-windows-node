@@ -3933,20 +3933,20 @@ public sealed partial class LocalAiPortLifecycleTests
         }
 
         public Action? OnRebind { get; set; }
-        public Task RebindModelAsync(LocalAiResolvedInstall previous, LocalAiResolvedInstall next, CancellationToken cancellationToken)
+        public async Task CommitModelRebindAsync(LocalAiResolvedInstall previous, LocalAiResolvedInstall next,
+            Func<Task> commitManifest, CancellationToken cancellationToken)
         {
             Rebinds.Add($"rebind:{next.Manifest.ModelAlias}");
             OnRebind?.Invoke();
-            return Task.CompletedTask;
+            try { await commitManifest(); Rebinds.Add("committed"); }
+            catch { Rebinds.Add("failed"); throw; }
         }
 
         /// <summary>Rebind and settle calls, kept apart from <c>events</c> because every manifest load settles.</summary>
         public List<string> Rebinds { get; } = [];
-        public Task SettleModelRebindAsync(LocalAiResolvedInstall committed, CancellationToken cancellationToken)
-        {
-            Rebinds.Add($"settle:{committed.Manifest.ModelAlias}");
-            return Task.CompletedTask;
-        }
+        public async Task SettleModelRebindAsync(Func<CancellationToken, Task<LocalAiResolvedInstall?>> loadCommitted,
+            CancellationToken cancellationToken)
+            => Rebinds.Add($"settle:{(await loadCommitted(cancellationToken))?.Manifest.ModelAlias}");
 
         public Exception? FallbackException { get; set; }
         public Task SetFallbackModelAsync(string? model, CancellationToken cancellationToken)
