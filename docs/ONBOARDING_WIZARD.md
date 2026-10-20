@@ -1221,6 +1221,9 @@ The browser-only profile route is not implemented through native credentials.
 
 The connection editor shows the Gateway-stage progress indicator above a
 separate row of wrapping Back, Cancel, Check and Next actions.
+Connection results stay outside the scrollable form, above the navigation
+actions, so a failed check and its retry guidance remain visible without
+scrolling on shorter windows.
 Both the Welcome existing-Gateway choice and Advanced existing/remote routes
 use this editor. Its labels, accessible names and status messages use
 `Onboarding_NativeConnection_*` resources in every supported locale.
