@@ -369,6 +369,68 @@ public class ExecApprovalV2RoutingTests
         Assert.Null(runner.LastRequest);
     }
 
+    [Fact]
+    public async Task PermissionRevokedBeforeDispatch_DoesNotRequestApproval()
+    {
+        var enabled = true;
+        var handler = new TrackingHandler();
+        var runner = new FakeRunner();
+        var capability = new SystemCapability(NullLogger.Instance, () => enabled);
+        capability.SetV2Handler(handler);
+        capability.SetCommandRunner(runner);
+
+        enabled = false;
+        var response = await capability.ExecuteAsync(RunRequest());
+
+        Assert.False(response.Ok);
+        Assert.Contains("disabled", response.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.False(handler.WasCalled);
+        Assert.Null(runner.LastRequest);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PermissionRevokedWhileAuthorizingOrRevalidating_DoesNotInvokeRunner(bool pauseRevalidation)
+    {
+        var enabled = true;
+        var handler = new PausingApprovalHandler(pauseRevalidation);
+        var runner = new FakeRunner();
+        var capability = new SystemCapability(NullLogger.Instance, () => enabled);
+        capability.SetV2Handler(handler);
+        capability.SetCommandRunner(runner);
+
+        var pending = capability.ExecuteAsync(RunRequest());
+        Assert.True(handler.Entered.Task.IsCompleted);
+        enabled = false;
+        handler.Continue.SetResult();
+        var response = await pending;
+
+        Assert.False(response.Ok);
+        Assert.Contains("system-run-disabled", response.Error);
+        Assert.Null(runner.LastRequest);
+    }
+
+    [Fact]
+    public async Task DeferredRunnerRevalidation_ObservesCurrentRunPermission()
+    {
+        var enabled = true;
+        var runner = new FakeRunner();
+        var capability = new SystemCapability(NullLogger.Instance, () => enabled);
+        capability.SetV2Handler(new FixedResultHandler(ExecApprovalV2Result.Allow(ApprovedEcho())));
+        capability.SetCommandRunner(runner);
+        Assert.True((await capability.ExecuteAsync(RunRequest())).Ok);
+        var revalidate = Assert.IsType<Func<CancellationToken, ValueTask<ExecApprovalRevalidationResult>>>(
+            runner.LastRequest!.RevalidateApproval);
+        Assert.True((await revalidate(CancellationToken.None)).IsCurrent);
+
+        enabled = false;
+        var result = await revalidate(CancellationToken.None);
+
+        Assert.False(result.IsCurrent);
+        Assert.Equal("system-run-disabled", result.Reason);
+    }
+
     // -------------------------------------------------------------------------
     // Mandatory containment: unavailable SDK is a protocol error, never a host route.
     // -------------------------------------------------------------------------
@@ -508,6 +570,34 @@ public class ExecApprovalV2RoutingTests
         {
             RevalidationToken = cancellationToken;
             return ValueTask.FromResult(_revalidation);
+        }
+    }
+
+    private sealed class PausingApprovalHandler(bool pauseRevalidation) : IExecApprovalV2Handler
+    {
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Continue { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<ExecApprovalV2Result> HandleAsync(
+            NodeInvokeRequest request, string correlationId, CancellationToken cancellationToken = default)
+        {
+            if (!pauseRevalidation)
+                await PauseAsync(cancellationToken);
+            return ExecApprovalV2Result.Allow(ApprovedEcho());
+        }
+
+        public async ValueTask<ExecApprovalRevalidationResult> RevalidateAsync(
+            ExecApprovedExecution execution, string correlationId, CancellationToken cancellationToken = default)
+        {
+            if (pauseRevalidation)
+                await PauseAsync(cancellationToken);
+            return ExecApprovalRevalidationResult.Current;
+        }
+
+        private Task PauseAsync(CancellationToken cancellationToken)
+        {
+            Entered.SetResult();
+            return Continue.Task.WaitAsync(cancellationToken);
         }
     }
 

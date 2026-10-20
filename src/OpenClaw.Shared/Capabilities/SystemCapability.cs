@@ -37,10 +37,10 @@ public class SystemCapability : NodeCapabilityBase
         "system.execApprovals.set"
     };
 
-    private readonly bool _includeRunCommands;
+    private readonly Func<bool> _includeRunCommands;
 
     public override IReadOnlyList<string> Commands =>
-        _includeRunCommands ? _commandsWithRun : _commandsWithoutRun;
+        _includeRunCommands() ? _commandsWithRun : _commandsWithoutRun;
 
     // Event to let UI handle the actual notification display
     public event EventHandler<SystemNotifyArgs>? NotifyRequested;
@@ -61,9 +61,18 @@ public class SystemCapability : NodeCapabilityBase
     /// unaffected. Wired from the tray "Run system tools" permission toggle
     /// via <c>NodeCapabilityGating.ShouldRegisterSystemRun</c>.
     /// </param>
-    public SystemCapability(IOpenClawLogger logger, bool includeRunCommands = true) : base(logger)
+    public SystemCapability(IOpenClawLogger logger, bool includeRunCommands = true)
+        : this(logger, () => includeRunCommands)
     {
-        _includeRunCommands = includeRunCommands;
+    }
+
+    /// <summary>
+    /// Read the current permission during discovery, dispatch and prelaunch
+    /// revalidation, including while a transport still holds this capability.
+    /// </summary>
+    public SystemCapability(IOpenClawLogger logger, Func<bool> includeRunCommands) : base(logger)
+    {
+        _includeRunCommands = includeRunCommands ?? throw new ArgumentNullException(nameof(includeRunCommands));
     }
 
     /// <summary>
@@ -96,7 +105,7 @@ public class SystemCapability : NodeCapabilityBase
         // "Run system tools" kill switch — applied before approval dispatch
         // so stale gateway allowlists and cached MCP clients still see the
         // capability as disabled when the user turned it off.
-        if (!_includeRunCommands &&
+        if (!_includeRunCommands() &&
             (request.Command == "system.run" || request.Command == "system.run.prepare"))
         {
             Logger.Info($"[system.run] rejected: 'Run system tools' is disabled (command={request.Command})");
@@ -270,7 +279,7 @@ public class SystemCapability : NodeCapabilityBase
             ExecApprovalRevalidationResult revalidation;
             try
             {
-                revalidation = await v2Handler.RevalidateAsync(
+                revalidation = await RevalidateRunApprovalAsync(v2Handler,
                     approvedExecution,
                     correlationId, cancellationToken);
             }
@@ -312,6 +321,22 @@ public class SystemCapability : NodeCapabilityBase
         var response = Error(message);
         response.Diagnostic = new NodeToolDiagnostic(errorCategory, executionMode);
         return response;
+    }
+
+    private async ValueTask<ExecApprovalRevalidationResult> RevalidateRunApprovalAsync(
+        IExecApprovalV2Handler handler,
+        ExecApprovedExecution execution,
+        string correlationId,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_includeRunCommands())
+            return ExecApprovalRevalidationResult.NotCurrent("system-run-disabled");
+
+        var result = await handler.RevalidateAsync(execution, correlationId, cancellationToken);
+        return _includeRunCommands()
+            ? result
+            : ExecApprovalRevalidationResult.NotCurrent("system-run-disabled");
     }
 
     private static System.Diagnostics.ActivityContext? GetTelemetryParentContext(
@@ -382,7 +407,8 @@ public class SystemCapability : NodeCapabilityBase
             commandRequest.TelemetryParentContext =
                 runSpan?.Context ?? request.Telemetry?.Context ?? default;
             commandRequest.ExpectedMxcPolicy = expectedPolicy;
-            commandRequest.RevalidateApproval = token => approvalHandler.RevalidateAsync(execution, correlationId, token);
+            commandRequest.RevalidateApproval = token =>
+                RevalidateRunApprovalAsync(approvalHandler, execution, correlationId, token);
             var result = await _commandRunner.RunAsync(commandRequest, cancellationToken);
             Logger.Info($"[system.run] corr={correlationId} path=v2 executed exit={result.ExitCode} timedOut={result.TimedOut}");
 

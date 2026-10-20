@@ -984,7 +984,10 @@ public sealed class MxcCommandRunnerTests : IDisposable
 
     private static Process ReadOwnedFixture(string path)
     {
-        var identity = File.ReadAllText(path).Trim().Split('|');
+        // The immutable identity is published by rename, whose delete handle can still be closing.
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+        using var reader = new StreamReader(stream);
+        var identity = reader.ReadToEnd().Trim().Split('|');
         var child = Process.GetProcessById(int.Parse(identity[0]));
         _ = child.SafeHandle;
         Assert.Equal(long.Parse(identity[1]), child.StartTime.ToUniversalTime().Ticks);

@@ -71,6 +71,15 @@ The capability list lives on `NodeService`, *not* on `WindowsNodeClient`. That s
 
 The bridge takes a `Func<IReadOnlyList<INodeCapability>>` rather than a snapshot. Every `tools/list` re-reads the live list. This is what guarantees zero-cost capability addition - register a new capability after server start and it appears on the next `tools/list`.
 
+The System tools permission is also read live by the retained system capability.
+Turning it Off removes `system.run` and `system.run.prepare` from local discovery
+and rejects new calls without waiting for Gateway reconnect to rebuild registration.
+Re-enabling takes effect only after settings persistence succeeds, so a failed
+save cannot temporarily grant execution permission.
+Approved requests recheck this permission after authorization and at the runner's
+prelaunch revalidation boundary. This does not terminate an already-running command;
+cancellation remains a separate operation.
+
 Cancellation is cooperative and uses the same `CancellationToken` capability
 contract as the gateway transport. Screen and camera operations propagate the
 token through recording consent/countdown, camera admission, capture waits, and

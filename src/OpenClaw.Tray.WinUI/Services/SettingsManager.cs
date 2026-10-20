@@ -41,6 +41,7 @@ public class SettingsManager
 
     private readonly object _saveLock = new();
     private SettingsData _data = CreateDefaultData();
+    private volatile bool _persistedSystemRunEnabled;
 
     // Connection
     public string GatewayUrl { get => _data.GatewayUrl ?? AppIdentity.SetupGatewayUrl; set => _data = _data with { GatewayUrl = value }; }
@@ -125,6 +126,9 @@ public class SettingsManager
     /// entirely. Default <c>true</c> (backward compatible).
     /// </summary>
     public bool NodeSystemRunEnabled { get => _data.NodeSystemRunEnabled; set => _data = _data with { NodeSystemRunEnabled = value }; }
+    // Revocations apply immediately; provisional grants cannot authorize a spawn before persistence.
+    internal bool IsSystemRunPermissionGranted =>
+        _persistedSystemRunEnabled && System.Threading.Volatile.Read(ref _data).NodeSystemRunEnabled;
     public bool NodeSttEnabled { get => _data.NodeSttEnabled; set => _data = _data with { NodeSttEnabled = value }; }
     /// <summary>STT language: "auto" for Whisper auto-detect, or a BCP-47 tag like "en-US".</summary>
     public string SttLanguage { get => string.IsNullOrWhiteSpace(_data.SttLanguage) ? "auto" : _data.SttLanguage; set => _data = _data with { SttLanguage = value }; }
@@ -232,6 +236,7 @@ public class SettingsManager
         _persistedJson = null;
         LegacyToken = null;
         LegacyBootstrapToken = null;
+        _persistedSystemRunEnabled = false;
         _data = CreateDefaultData();
 
         try
@@ -247,6 +252,7 @@ public class SettingsManager
                     _data = NormalizeLoadedData(loaded, json);
                 }
             }
+            _persistedSystemRunEnabled = _data.NodeSystemRunEnabled;
             loadSucceeded = true;
         }
         catch (Exception ex)
@@ -617,6 +623,7 @@ public class SettingsManager
                 File.WriteAllText(temp, json);
                 File.Move(temp, _settingsFilePath, overwrite: true);
                 _persistedJson = json;
+                _persistedSystemRunEnabled = data.NodeSystemRunEnabled;
             }
             finally
             {

@@ -318,7 +318,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         // stay registered regardless.
         _systemCapability = new SystemCapability(
             _logger,
-            includeRunCommands: NodeCapabilityGating.ShouldRegisterSystemRun(_settings));
+            includeRunCommands: () => NodeCapabilityGating.ShouldRegisterSystemRun(_settings));
         _systemCapability.NotifyRequested += OnSystemNotify;
         _systemCapability.SetCommandRunner(BuildSystemRunRunner());
         // One coordinator per service lifetime (it serializes approvals with a
