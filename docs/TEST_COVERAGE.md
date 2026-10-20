@@ -97,7 +97,7 @@ dotnet test .\tests\OpenClaw.SetupEngine.Tests\OpenClaw.SetupEngine.Tests.csproj
 The visibility contract is no on-screen visible window or taskbar entry, not
 absence of an HWND. WinEvent observations and periodic window sampling cover
 startup through worker exit; native UI Automation checks the shell taskbar,
-including visible Zebar bars when present. The visible-console positive control
+including visible custom-shell surfaces when present. The visible-console positive control
 must be detected by both window observers and actual taskbar enumeration.
 Unavailable shell/provider access fails the selected proof instead of treating
 a window-style heuristic as taskbar evidence. Sampling gaps remain a limit of

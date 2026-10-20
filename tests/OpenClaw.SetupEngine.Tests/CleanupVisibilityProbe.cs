@@ -347,14 +347,7 @@ public sealed class CleanupVisibilityProbe : IDisposable
                 cache.AddProperty(property);
             EnumWindows((hwnd, state) => {
                 var name = ClassName(hwnd);
-                bool customBar = false;
-                if (name == "Tauri Window" && IsWindowVisible(hwnd))
-                {
-                    uint pid;
-                    GetWindowThreadProcessId(hwnd, out pid);
-                    using (var process = Process.GetProcessById((int)pid))
-                        customBar = process.ProcessName.Equals("zebar", StringComparison.OrdinalIgnoreCase);
-                }
+                bool customBar = name == "Tauri Window" && IsWindowVisible(hwnd);
                 if (name == "Shell_TrayWnd" || name == "Shell_SecondaryTrayWnd" || customBar)
                     taskbars.Add(automation.ElementFromHandle(hwnd));
                 return true;
