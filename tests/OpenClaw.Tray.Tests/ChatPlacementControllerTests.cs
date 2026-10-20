@@ -11,7 +11,7 @@ public sealed class ChatPlacementControllerTests
     private const string Key = "agent:main:exact:new-key";
     private static ChatComposerInputs Inputs(string key = Key) => new(
         "connected", false, new ChatThread { Id = key, Title = "New chat", AgentId = "main" },
-        [], [], null, false, [], null, false)
+        [], null, false, [], null, false)
     {
         ShowPlacementPickers = true,
         PlacementTargetIsEmpty = true,
