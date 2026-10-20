@@ -77,6 +77,7 @@ APP_NAME_MATCH = "openclaw"  # case-insensitive substring of names matched every
 GATEWAY_PACKAGE_PREFIX = "openclawfoundation.openclawgateway"  # lowercase MSIX Name / family prefix
 NATIVE_SESSION = Path("LocalState", "OpenClawGatewayMSIX", "session.json")
 MODEL_SUFFIX = ".gguf"
+AUMIDS = ("OpenClaw.Companion", "OpenClaw.Companion.Dev")  # installer.iss MyAppAumid
 AUMID_PARENTS = (
     r"Software\Classes\AppUserModelId",
     r"Software\Microsoft\Windows\CurrentVersion\Notifications\Settings",
@@ -100,6 +101,7 @@ temp = Path(os.environ.get("TEMP", localappdata / "Temp"))
 programdata = Path(os.environ.get("ProgramData", r"C:\ProgramData"))
 START_MENU = r"Microsoft\Windows\Start Menu\Programs"
 PRESERVED_MODEL_DIRECTORY = userprofile / "OpenClawPreservedModels"
+CLEAN_REPORT_DIRECTORY = temp / "OpenClawCleanReports"
 
 # Direct children of these roots are matched by name; roots are not recursed.
 SCAN_ROOTS = (
@@ -110,10 +112,12 @@ SCAN_ROOTS = (
 )
 # Known folders whose *.lnk children are matched by name (resolved at runtime: may be redirected).
 SHORTCUT_FOLDERS = ("Desktop", "CommonDesktopDirectory", "Startup", "CommonStartup")
-# OpenClaw-owned paths whose names don't contain "openclaw".
-EXTRA_PATHS = (userprofile / ".openclaw", temp / "oc-uia")
 # Never deleted, even if a scan root starts matching them.
-EXCLUDED_PATHS = (userprofile / "openclaw", PRESERVED_MODEL_DIRECTORY)  # gateway source checkout and model store
+EXCLUDED_PATHS = (
+    userprofile / "openclaw",  # gateway source checkout
+    PRESERVED_MODEL_DIRECTORY,
+    CLEAN_REPORT_DIRECTORY,  # evidence retained by clean-uninstall.ps1
+)
 
 
 def report(label: str, found: bool, detail: str = "", kind: str = "", **data) -> SimpleNamespace:
@@ -123,6 +127,10 @@ def report(label: str, found: bool, detail: str = "", kind: str = "", **data) ->
 
 def matches(name: str) -> bool:
     return APP_NAME_MATCH in name.lower()
+
+
+class InventoryError(RuntimeError):
+    """A required inventory provider could not establish the machine state."""
 
 
 def run_ps(script: str) -> list[str]:
@@ -290,7 +298,11 @@ def uninstall_win32(app: SimpleNamespace) -> bool:
     elif re.fullmatch(r"unins\d{3}\.exe", exe.name, re.IGNORECASE):
         cmd = f"{cmd} {INNO_SILENT_ARGS}"  # silent Inno uninstall also removes its WSL gateway (installer.iss)
     print(f"  running uninstaller for {app.name}: {cmd}")
-    subprocess.run(cmd, shell=True)
+    try:
+        subprocess.run(cmd, shell=True, timeout=UNINSTALL_WAIT_SECONDS)
+    except subprocess.TimeoutExpired:
+        print(f"  uninstaller timed out after {UNINSTALL_WAIT_SECONDS}s")
+        return False
     # Inno's unins000.exe hands off to a temp copy, so the launched process can exit early.
     deadline = time.monotonic() + UNINSTALL_WAIT_SECONDS
     while win32_app_registered(app) and time.monotonic() < deadline:
@@ -336,7 +348,7 @@ def find_processes() -> list[SimpleNamespace]:
 def find_scheduled_tasks() -> list[str]:
     """Full task names (TaskPath + TaskName) of scheduled tasks matching APP_NAME_MATCH."""
     return run_ps(
-        "Get-ScheduledTask -ErrorAction SilentlyContinue | "
+        "Get-ScheduledTask -ErrorAction Stop | "
         f"Where-Object {{ ($_.TaskPath + $_.TaskName) -like '*{APP_NAME_MATCH}*' }} | "
         "ForEach-Object { $_.TaskPath + $_.TaskName }"
     )
@@ -382,8 +394,10 @@ def find_paths() -> list[Path]:
     def scan(root: Path, shortcuts_only: bool) -> None:
         try:
             entries = list(os.scandir(root))
-        except OSError:
+        except FileNotFoundError:
             return
+        except OSError as exc:
+            raise InventoryError(f"could not scan {root}: {exc}") from exc
         for entry in entries:
             if matches(entry.name) and (not shortcuts_only or entry.name.lower().endswith(".lnk")):
                 found[os.path.normcase(entry.path)] = Path(entry.path)
@@ -720,4 +734,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except (InventoryError, OSError, subprocess.SubprocessError) as exc:
+        print(f"ERROR: could not establish complete cleanup inventory: {exc}", file=sys.stderr)
+        sys.exit(1)
