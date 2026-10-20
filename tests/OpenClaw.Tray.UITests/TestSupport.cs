@@ -40,6 +40,14 @@ public static class TestSupport
             $"IsEnabled={card.IsEnabled}, IsClickEnabled={card.IsClickEnabled}.");
         Assert.NotNull(page.XamlRoot);
         Assert.Same(page.XamlRoot, card.XamlRoot);
+        if (card is OpenClaw.SetupEngine.UI.Controls.SetupActionCard)
+        {
+            var peer = Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.FromElement(card)
+                ?? Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.CreatePeerForElement(card);
+            Assert.IsAssignableFrom<Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider>(
+                peer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
+            return;
+        }
         // The toolkit advertises Invoke but its managed and native providers reject it.
         // Keep actual keyboard/pointer coverage in NativeOnboardingProof, never synthesize OS input here.
         var root = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT")

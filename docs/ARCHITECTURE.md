@@ -174,6 +174,7 @@ new attempt. This boundary does not change release signing or Windows policy.
 | Local AI model cache acquisition, explicit legacy migration, and active-path receipt selection | `HuggingFaceModelInstaller` + `LocalAiManifestStore` + `LocalAiInstallReconciler` | authoritative |
 | Exact Gateway wizard terminal-restart compatibility and bounded retry policy | `GatewayWizardRestartRecoveryPolicy` | authoritative |
 | Interactive onboarding routes and installation-step selection | `OnboardingFlowPolicy` | authoritative |
+| Accessible provider/model and completion-card invocation | `SetupActionCard` supplies the native Invoke provider; `AiSetupPage` and `AiReadyPage` retain their guarded selection and completion actions | authoritative |
 | Setup-lifetime capability/profile/explicit Custom intent/consent draft and ordered installation requirements | `SetupAccessDraft` + `SetupCapabilityProfiles`, owned by `SetupWindow` | authoritative |
 | Setup provider artwork resolution and bounded page-owned download lifetime | `GatewayAiSetupPresentation` + `ProviderArtworkSession` + `ProviderArtworkLoader`, rendered by `ProviderArtwork` | authoritative |
 | Native setup editor mounting and committed-result routing | `SetupWindow` through `ISetupNativeConnectionHost` + `SetupNativeConnectionPage` | authoritative |

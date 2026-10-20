@@ -15,10 +15,10 @@
             <Setter Property="BorderThickness" Value="0,0,0,1" />
         </Style>
         <DataTemplate x:Key="ChoiceTemplate">
-            <tk:SettingsCard x:Name="ChoiceActionCard" IsClickEnabled="True" Click="ChoiceAction_Click" Tag="{Binding}"
+            <controls:SetupActionCard x:Name="ChoiceActionCard" IsClickEnabled="True" InvokeRequested="ChoiceAction_Click" Tag="{Binding}"
                              Style="{StaticResource CompactChoice}"
                              AutomationProperties.Name="{Binding Label}">
-                <tk:SettingsCard.Header>
+                <controls:SetupActionCard.Header>
                     <Grid ColumnDefinitions="Auto,*">
                         <Viewbox Width="32" Height="32" Margin="0,0,12,0" VerticalAlignment="Center">
                             <controls:ProviderArtwork Descriptor="{Binding Artwork}" Session="{Binding ArtworkSession}" />
@@ -30,10 +30,10 @@
                                        Visibility="{Binding DetailVisibility}" />
                         </StackPanel>
                     </Grid>
-                </tk:SettingsCard.Header>
+                </controls:SetupActionCard.Header>
                 <TextBlock Text="{Binding ActionLabel}" Style="{StaticResource BodyTextBlockStyle}"
                            MaxWidth="112" TextWrapping="Wrap" />
-            </tk:SettingsCard>
+            </controls:SetupActionCard>
         </DataTemplate>
         <DataTemplate x:Key="ProviderPickerTemplate">
             <TextBlock Text="{Binding Label}" Style="{StaticResource BodyTextBlockStyle}" TextWrapping="Wrap" />

@@ -90,7 +90,18 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
                     var stops = normalRuntime.Stops;
                     var target = Assert.Single(choices.Children.Cast<SettingsCard>(),
                         choice => (string)choice.Tag == destination.ToString());
-                    TestSupport.InvokeSettingsCardAction(ready, target, "Choose_Click");
+                    var handle = WinRT.Interop.WindowNative.GetWindowHandle(readyWindow);
+                    var automationId = target.Name;
+                    await Task.Run(() =>
+                    {
+                        var nativeWindow = System.Windows.Automation.AutomationElement.FromHandle(handle);
+                        var nativeChoice = nativeWindow.FindFirst(System.Windows.Automation.TreeScope.Descendants,
+                            new System.Windows.Automation.PropertyCondition(
+                                System.Windows.Automation.AutomationElement.AutomationIdProperty, automationId));
+                        Assert.NotNull(nativeChoice);
+                        Assert.IsType<System.Windows.Automation.InvokePattern>(nativeChoice.GetCurrentPattern(
+                            System.Windows.Automation.InvokePattern.Pattern)).Invoke();
+                    });
                     await WaitAsync(() => navigated.Count == 1, "native destination navigation");
                     Assert.Equal(destination, Assert.Single(navigated).Target.Destination);
                     Assert.Single(completed);

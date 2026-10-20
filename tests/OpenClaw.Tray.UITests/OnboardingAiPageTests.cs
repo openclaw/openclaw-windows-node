@@ -22,6 +22,68 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
 {
     private bool _nativeProof;
 
+    [Fact]
+    public async Task CurrentModel_NativeUiaInvokeStartsTheSelectedActivation()
+    {
+        await WithPageAsync(async (page, transport, completed) =>
+        {
+            var handle = WinRT.Interop.WindowNative.GetWindowHandle(ui.TestWindow);
+            await Task.Run(() =>
+            {
+                var window = System.Windows.Automation.AutomationElement.FromHandle(handle);
+                var card = window.FindFirst(System.Windows.Automation.TreeScope.Descendants,
+                    new System.Windows.Automation.PropertyCondition(
+                        System.Windows.Automation.AutomationElement.AutomationIdProperty, "ChoiceActionCard"));
+                Assert.NotNull(card);
+                Assert.Equal(System.Windows.Automation.ControlType.Button, card.Current.ControlType);
+                var invoke = Assert.IsType<System.Windows.Automation.InvokePattern>(
+                    card.GetCurrentPattern(System.Windows.Automation.InvokePattern.Pattern));
+                invoke.Invoke();
+            });
+            await WaitAsync(() => completed() == 1);
+            Assert.Equal(1, transport.MethodCalls.Count(method => method == "openclaw.setup.activate.start"));
+            Assert.Equal("existing-model", transport.LastActivation.GetProperty("kind").GetString());
+            Assert.Equal(1, transport.MethodCalls.Count(method => method == "openclaw.setup.verify"));
+            Assert.Equal(1, completed());
+        });
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task CurrentModel_NativeUiaRespectsActionAvailability(bool disabled)
+    {
+        await WithPageAsync(async (page, transport, completed) =>
+        {
+            var choices = Find<ItemsControl>(page, "CandidateChoices");
+            var card = Assert.Single(TestSupport.FindDescendants<SetupActionCard>(choices));
+            if (disabled)
+                card.IsEnabled = false;
+            else
+                card.IsClickEnabled = false;
+            var handle = WinRT.Interop.WindowNative.GetWindowHandle(ui.TestWindow);
+            await Task.Run(() =>
+            {
+                var window = System.Windows.Automation.AutomationElement.FromHandle(handle);
+                var target = window.FindFirst(System.Windows.Automation.TreeScope.Descendants,
+                    new System.Windows.Automation.PropertyCondition(
+                        System.Windows.Automation.AutomationElement.AutomationIdProperty, "ChoiceActionCard"));
+                Assert.NotNull(target);
+                if (disabled)
+                {
+                    var invoke = Assert.IsType<System.Windows.Automation.InvokePattern>(
+                        target.GetCurrentPattern(System.Windows.Automation.InvokePattern.Pattern));
+                    var error = Assert.Throws<System.Runtime.InteropServices.COMException>(invoke.Invoke);
+                    Assert.Equal(unchecked((int)0x802B001E), error.HResult); // WinUI E_ELEMENTNOTENABLED
+                }
+                else
+                    Assert.False(target.TryGetCurrentPattern(System.Windows.Automation.InvokePattern.Pattern, out _));
+            });
+            Assert.Equal(["openclaw.setup.detect"], transport.MethodCalls);
+            Assert.Equal(0, completed());
+        });
+    }
+
     [Theory]
     [InlineData(ElementTheme.Light)]
     [InlineData(ElementTheme.Dark)]
@@ -512,7 +574,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
     }
 
     [Fact]
-    public async Task RepeatedChoiceCards_BindTheirTemplateNameAndRejectAnotherTemplatesHandler()
+    public async Task RepeatedChoiceCards_InvokeTheirOwnBoundCandidate()
     {
         await WithPageAsync(async (page, transport, completed) =>
         {
@@ -533,20 +595,12 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             Assert.NotSame(recommended, anotherRecommended);
             Assert.Null(page.FindName("RecommendedInstallCard"));
             foreach (var card in cards)
-            {
                 Assert.Equal("ChoiceActionCard", card.Name);
-                Assert.ThrowsAny<Xunit.Sdk.XunitException>(() =>
-                    TestSupport.InvokeSettingsCardAction(page, card, "RecommendedInstall_Click"));
-            }
-            cards[0].Name = "";
-            try
-            {
-                Assert.ThrowsAny<Xunit.Sdk.XunitException>(() =>
-                    TestSupport.InvokeSettingsCardAction(page, cards[0], "ChoiceAction_Click"));
-                Assert.Throws<InvalidOperationException>(() => { _ = InvokeCardAsync(cards[0]); });
-            }
-            finally { cards[0].Name = "ChoiceActionCard"; }
-            Assert.Equal(["openclaw.setup.detect"], transport.MethodCalls);
+            await InvokeCardAsync(cards[1]);
+            await WaitAsync(() => transport.MethodCalls.Contains("openclaw.setup.activate.start"));
+            Assert.Equal("saved-auth:other", transport.LastActivation.GetProperty("kind").GetString());
+            Assert.Equal("openai/another-model", transport.LastActivation.GetProperty("modelRef").GetString());
+            Assert.Equal(1, transport.MethodCalls.Count(method => method == "openclaw.setup.activate.start"));
             Assert.Equal(0, completed());
         }, configure: transport => transport.IncludeAdditionalCandidate = true);
     }
