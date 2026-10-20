@@ -677,15 +677,60 @@ begin
   Log('User continued uninstall after local gateway cleanup failed; generated state will be preserved.');
 end;
 
+procedure DeleteGeneratedChild(const ChildName: String; const IsDirectory: Boolean);
+var
+  ChildPath: String;
+begin
+  ChildPath := AddBackslash(ExpandConstant('{app}')) + ChildName;
+  if not MigrationPathIsOrdinary(ChildPath) then
+  begin
+    Log('Ownership uncertain: generated child path is redirected or unreadable; leaving it in place: ' + ChildName);
+    Exit;
+  end;
+  if IsDirectory and DirExists(ChildPath) then
+  begin
+    if not DelTree(ChildPath, True, True, True) then
+      Log('Generated directory could not be deleted: ' + ChildName);
+  end
+  else if (not IsDirectory) and FileExists(ChildPath) then
+  begin
+    if not DeleteFile(ChildPath) then
+      Log('Generated file could not be deleted: ' + ChildName);
+  end
+  else if DirExists(ChildPath) or FileExists(ChildPath) then
+    Log('Ownership uncertain: generated child has the wrong file type; leaving it in place: ' + ChildName);
+end;
+
 procedure DeleteGeneratedAppState;
+var
+  AppDir: String;
+  GeneratedRoot: String;
 begin
   if not LocalGatewayCleanupSucceeded then
     Exit;
 
-  if DelTree(ExpandConstant('{app}'), True, True, True) then
-    Log('Deleted generated app state from {app}.')
-  else
-    Log('Generated app state in {app} could not be fully deleted; continuing uninstall.');
+  AppDir := RemoveBackslashUnlessRoot(ExpandConstant('{app}'));
+  GeneratedRoot := RemoveBackslashUnlessRoot(ExpandConstant('{localappdata}\{#MyInstallDir}'));
+  if CompareText(AppDir, GeneratedRoot) <> 0 then
+  begin
+    Log('Ownership uncertain: {app} is not the generated-data root; leaving generated children in place.');
+    Exit;
+  end;
+
+  DeleteGeneratedChild('Logs', True);
+  DeleteGeneratedChild('wsl-keepalive', True);
+  DeleteGeneratedChild('WebView2', True);
+  DeleteGeneratedChild('canvas', True);
+  DeleteGeneratedChild('native-cli', True);
+  DeleteGeneratedChild('setup-state.json', False);
+  DeleteGeneratedChild('run.marker', False);
+  DeleteGeneratedChild('exec-approvals.json', False);
+  DeleteGeneratedChild('exec-policy.json', False);
+  DeleteGeneratedChild('openclaw-tray.log', False);
+  DeleteGeneratedChild('uninstall-gateway-result.json', False);
+  DeleteGeneratedChild('uninstall-gateway-error.log', False);
+  DeleteGeneratedChild('uninstall-gateway-wsl.log', False);
+  Log('Finished generated app state cleanup; uncertain or unavailable children were preserved.');
 end;
 
 procedure RemoveAppAutoStart;
