@@ -172,6 +172,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             ? metadataProvider.GetEntryMetadata(effectiveThread.Id)
             : null;
         var entries = (IReadOnlyList<ChatTimelineItem>)timeline.Entries;
+        var contextUsage = ChatUsageFormatter.ResolveContext(entries, entryMetadata, effectiveThread);
         var queuedMessages = effectiveThread is not null
             && snapshot.QueuedMessagesByThread?.TryGetValue(effectiveThread.Id, out var queued) == true
                 ? queued
@@ -387,11 +388,20 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             })
             .AutomationId("ChatComposerArea")
             .WithKey("chat-composer-area");
+        Element statsElement = effectiveThread is null
+            ? Empty()
+            : Component<ReactorChatThroughputStrip, ReactorChatThroughputStripProps>(new(
+                props.Provider as OpenClawChatDataProvider,
+                effectiveThread.Id,
+                contextUsage,
+                timeline.TurnActive,
+                props.IsCompact));
         return Grid(
             [GridSize.Star()],
-            [showWelcome ? GridSize.Auto : GridSize.Star(), showWelcome ? GridSize.Star() : GridSize.Auto],
+            [showWelcome ? GridSize.Auto : GridSize.Star(), showWelcome ? GridSize.Star() : GridSize.Auto, GridSize.Auto],
             showWelcome ? Empty().Grid(row: 0) : timelineElement.Grid(row: 0),
-            composerArea.Grid(row: 1))
+            composerArea.Grid(row: 1),
+            statsElement.Grid(row: 2))
             .Background(Theme.Ref("ChatCanvasBrush"))
             .HAlign(HorizontalAlignment.Stretch)
             .VAlign(VerticalAlignment.Stretch)
