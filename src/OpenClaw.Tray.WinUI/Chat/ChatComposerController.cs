@@ -28,6 +28,7 @@ internal sealed partial class ChatComposerController : IDisposable
     private readonly ChatComposerViewModel _vm;
     private readonly IChatComposerRuntimePort _port;
     private readonly ChatComposerHostActions _hostActions;
+    private readonly ChatPlacementController? _placement;
     private readonly object _operationGate = new();
 
     /// <summary>Canceled and disposed exactly once, in <see cref="Dispose"/>. Never
@@ -55,6 +56,7 @@ internal sealed partial class ChatComposerController : IDisposable
     private int _voiceStopOperation;
     private int _sendOperation;
     private int _generation;
+    private long _selectionRevision;
 
     /// <summary>Controller-owned single-flight send gate, independent of the
     /// rendered/projected <see cref="ChatComposerViewModel.IsSending"/> value.
@@ -99,11 +101,13 @@ internal sealed partial class ChatComposerController : IDisposable
     public ChatComposerController(
         ChatComposerViewModel viewModel,
         IChatComposerRuntimePort port,
-        ChatComposerHostActions hostActions)
+        ChatComposerHostActions hostActions,
+        ChatPlacementController? placement = null)
     {
         _vm = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
         _port = port ?? throw new ArgumentNullException(nameof(port));
         _hostActions = hostActions ?? throw new ArgumentNullException(nameof(hostActions));
+        _placement = placement;
         _lifetimeToken = _lifetimeCts.Token;
     }
     /// <summary>Binds the root's session-selection handoff exactly once. Safe to call
@@ -120,6 +124,8 @@ internal sealed partial class ChatComposerController : IDisposable
     /// <summary>Exposed for disposal characterization tests.</summary>
     internal bool IsDisposed => _disposed;
 
+    internal void InvalidatePendingSessionNavigation() => _selectionRevision++;
+
     /// <summary>Returns false until the root is ready, or after disposal, so an
     /// external host can retain its initial-selection handoff instead.</summary>
     internal bool TrySelectSession(string threadId)
@@ -128,6 +134,8 @@ internal sealed partial class ChatComposerController : IDisposable
             return false;
 
         var previousThreadId = _vm.Inputs?.CurrentThread.Id;
+        InvalidatePendingSessionNavigation();
+        _placement?.NavigateTo(threadId);
         _selectedSessionHandoff(threadId);
         if (_disposed)
             return false;
@@ -263,14 +271,23 @@ internal sealed partial class ChatComposerController : IDisposable
             if (!StillLive())
                 return false;
 
+            var selectionRevision = _selectionRevision;
             var result = await _port.ExecuteLifecycleCommandAsync(threadId, command).ConfigureAwait(true);
             if (!StillLive())
                 return false;
-            if (result.Succeeded && result.NewSessionKey is { } sessionKey)
+            if (result.Succeeded && result.NewSessionKey is { } sessionKey &&
+                selectionRevision == _selectionRevision)
                 TrySelectSession(sessionKey);
             return result.Succeeded;
         }
 
+        if (_placement is not null)
+        {
+            var requiresPreparation = _placement.RequiresPreparation;
+            if (!await _placement.PrepareAsync(threadId, _lifetimeToken).ConfigureAwait(true)
+                || !StillLive() || (requiresPreparation && !_placement.IsCurrent(threadId)))
+                return false;
+        }
         var accepted = await _port.SendMessageAsync(threadId, message, attachments, _lifetimeToken).ConfigureAwait(true);
         return StillLive() && accepted;
     }

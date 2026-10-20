@@ -21,6 +21,7 @@ public sealed class GatewayClientFactoryTests
                 NullLogger.Instance);
 
             Assert.Equal("operator", GetConnectRole(lifecycle.DataClient));
+            Assert.False(lifecycle.DataClient.SupportsExecApprovals);
         }
 
         finally
@@ -100,10 +101,35 @@ public sealed class GatewayClientFactoryTests
                 ignoreStoredDeviceToken: true,
                 persistHandshakeDeviceTokens: false);
 
+            Assert.False(client.SupportsExecApprovals);
             Assert.False(TryStoreHandshakeDeviceToken(client, "operator", "candidate-device-token"));
             Assert.Equal(
                 "stored-device-token",
                 DeviceIdentity.TryReadStoredDeviceTokenForRole(tempDir, "operator"));
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Create_ApprovalCapabilityRequiresExplicitOptIn(bool supportsExecApprovals)
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "openclaw-gateway-factory-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var factory = new GatewayClientFactory { SupportsExecApprovals = supportsExecApprovals };
+            using var lifecycle = factory.Create(
+                "ws://127.0.0.1:18789",
+                new GatewayCredential("shared-token", IsBootstrapToken: false, Source: "test"),
+                tempDir,
+                NullLogger.Instance);
+
+            Assert.Equal(supportsExecApprovals, lifecycle.DataClient.SupportsExecApprovals);
         }
         finally
         {

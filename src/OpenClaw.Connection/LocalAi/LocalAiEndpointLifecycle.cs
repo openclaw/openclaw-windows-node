@@ -20,11 +20,19 @@ public enum LocalAiQuiesceReason
 public interface ILocalAiEndpointLifecycle
 {
     bool HasReleasableOwnership => false;
+    /// <summary>Presentation hint only. Start must still revalidate the selected Gateway.</summary>
+    bool RequiresNativeSelection => false;
+    event EventHandler? SelectionChanged { add { } remove { } }
     bool AutomaticRecoveryEnabled => true;
     Task ReleaseOwnershipAsync(CancellationToken cancellationToken)
         => throw new InvalidOperationException("There is no native Local AI ownership to release.");
     Task PrepareStartAsync(LocalAiResolvedInstall install, CancellationToken cancellationToken)
         => Task.CompletedTask;
+    Task PrepareUnownedStopAsync(CancellationToken cancellationToken)
+        => Task.CompletedTask;
+    /// <summary>Confirm withdrawal through the original owner without inferring provider ownership from damaged artifacts.</summary>
+    Task ConfirmWithdrawnWithoutInstallAsync(CancellationToken cancellationToken)
+        => throw new InvalidOperationException("Restore the Local AI installation receipt before resolving its Gateway route.");
     Task<LocalAiEndpointLifecycleResult> CompleteStartAsync(LocalAiResolvedInstall install, CancellationToken cancellationToken)
         => Task.FromResult(LocalAiEndpointLifecycleResult.Ok());
 

@@ -60,8 +60,8 @@ public sealed partial class GatewayFixtureUiTests
             await WaitUiAsync(run, () => FindById(run, "NotificationsPageMarker") is not null, "Notifications before acceptance");
             await CaptureIfRequestedAsync(run, "composer-pending-notifications.png");
             run.Gateway.ReleaseSessionMutations();
-            var loaded = await run.Gateway.WaitForCompletedRequestAsync("chat.history", ComposerCreatedKey);
-            Assert.Equal("ok", loaded.Outcome);
+            var created = await run.Gateway.WaitForCompletedRequestAsync("sessions.create", GatewayScenario.MainSessionKey);
+            Assert.Equal("ok", created.Outcome);
             await WaitUiAsync(run, () => FindById(run, $"WorkspaceSession:{ComposerCreatedKey}") is not null,
                 "created conversation present in sidebar");
             Assert.NotNull(FindById(run, "NotificationsPageMarker"));
@@ -69,14 +69,21 @@ public sealed partial class GatewayFixtureUiTests
             await CaptureIfRequestedAsync(run, "composer-completed-notifications.png");
 
             Invoke(FindById(run, "WorkspaceNavHome")!);
-            await WaitComposerSelectionAsync(run, ComposerCreatedKey);
-            // Home selects its own navigation item without discarding the retained chat.
+            await WaitComposerSelectionAsync(run, GatewayScenario.MainSessionKey);
+            await WaitUiAsync(run, () => IsVisibleInTimeline(run, GatewayScenario.MainSentinel),
+                "Home retains the original conversation after a fenced completion");
+            // A late lifecycle result cannot override navigation committed while it was pending.
             await WaitUiAsync(run, () => FindById(run, "WorkspaceNavHome") is { } home
                 && ((SelectionItemPattern)home.GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected,
-                "Home selected while retaining the completed new conversation");
+                "Home selected while retaining the original conversation");
             Assert.False(SessionSelected(run, ComposerCreatedTitle));
             Assert.Null(FindById(run, "NotificationsPageMarker"));
-            await CaptureIfRequestedAsync(run, "composer-home-retained-new.png");
+            await CaptureIfRequestedAsync(run, "composer-home-retained-original.png");
+            Invoke(FindById(run, $"WorkspaceSession:{ComposerCreatedKey}")!);
+            await WaitComposerSelectionAsync(run, ComposerCreatedKey);
+            await WaitUiAsync(run, () => SessionSelected(run, ComposerCreatedTitle),
+                "created conversation remains explicitly selectable");
+            await CaptureIfRequestedAsync(run, "composer-created-after-navigation.png");
             Assert.Single(run.Gateway.Requests, request => request.Method == "sessions.create");
             Assert.DoesNotContain(run.Gateway.Requests, request => request.Method == "chat.send");
         }, allowSessionMutations: true);
@@ -110,6 +117,6 @@ public sealed partial class GatewayFixtureUiTests
             return rendered.RootElement.GetProperty("selectedThreadId").GetString() == key
                 && RenderConsumedHistory(run, key)
                 && (key != ComposerCreatedKey
-                    || FindText(run, "Welcome to OpenClaw") is { Current.IsOffscreen: false });
+                    || FindById(run, "ChatWelcomeHint") is { Current.IsOffscreen: false });
         }, $"mounted composer and history selected {key}");
 }

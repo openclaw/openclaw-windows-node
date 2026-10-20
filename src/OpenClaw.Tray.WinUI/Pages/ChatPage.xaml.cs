@@ -144,6 +144,7 @@ public sealed partial class ChatPage : Page
     {
         _pageActive = false;
         _surfaceGeneration++;
+        InvalidatePendingSessionNavigation();
         ReconcileNativeSetupObserver();
         _pendingVoice.Cancel();
         _reactorHost?.CancelVoiceRecording();
@@ -268,6 +269,8 @@ public sealed partial class ChatPage : Page
         if (!string.IsNullOrEmpty(sessionKey))
             _sessionRemoved = false;
     }
+
+    internal void InvalidatePendingSessionNavigation() => _reactorHost?.InvalidatePendingSessionNavigation();
 
     internal void ClearRemovedSession(string key)
     {
@@ -523,7 +526,8 @@ public sealed partial class ChatPage : Page
                 initialThreadId: threadIdToMount,
                 onReadAloud: readAloud,
                 onStopSpeaking: () => app?.StopChatSpeaking(),
-                onOpenCheckpoints: OpenSessionCheckpoints);
+                onOpenCheckpoints: OpenSessionCheckpoints,
+                initialThreadIsExplicitSelection: !string.IsNullOrEmpty(pendingSessionKey));
             _reactorHost = mountedHost;
         }
         catch (InvalidOperationException)
@@ -782,7 +786,7 @@ public sealed partial class ChatPage : Page
             // Capture on the UI thread (continuation resumes here); resolve off it.
             var registry = CurrentApp.Registry;
             var authorizer = CurrentApp.InteractiveEndpointAuthorizer;
-            var gatewayUrl = settings.GetEffectiveGatewayUrl();
+            var gatewayUrl = settings.GetLegacyCredentialGatewayUrlOrNull();
             var legacyToken = settings.LegacyToken;
             var legacyBootstrapToken = settings.LegacyBootstrapToken;
             credential = await Task.Run(() => ResolveChatCredential(

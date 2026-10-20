@@ -129,13 +129,45 @@ jobs:
           # Checkout already selected the full default branch. Ignore a manual dispatch's source ref.
           disableNormalization: true
 
+      - name: Resolve latest Gateway release
+        if: steps.pacific_schedule.outputs.run == 'true' && steps.previous_release.outputs.changed == 'true'
+        id: gateway_release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          gateway_tag="$(gh api repos/openclaw/openclaw/releases/latest --jq '.tag_name')"
+          if [[ ! "$gateway_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[1-9][0-9]*)?$ ]]; then
+            echo "::error::Gateway latest release '$gateway_tag' is not a canonical stable tag."
+            exit 1
+          fi
+
+          echo "tag=$gateway_tag" >> "$GITHUB_OUTPUT"
+          echo "Latest Gateway release is $gateway_tag."
+
+      - name: Select Windows alpha release line
+        if: steps.pacific_schedule.outputs.run == 'true' && steps.previous_release.outputs.changed == 'true'
+        id: alpha_version
+        shell: pwsh
+        env:
+          GITVERSION_SEMVER: ${{ steps.gitversion.outputs.semVer }}
+          GATEWAY_TAG: ${{ steps.gateway_release.outputs.tag }}
+        run: |
+          $semVer = ./scripts/Resolve-DailyAlphaVersion.ps1 `
+            -GitVersionSemVer $env:GITVERSION_SEMVER `
+            -GatewayTag $env:GATEWAY_TAG
+          "semVer=$semVer" >> $env:GITHUB_OUTPUT
+          Write-Host "Selected Windows alpha $semVer."
+
       - name: Create or reuse alpha tag
         if: steps.pacific_schedule.outputs.run == 'true' && steps.previous_release.outputs.changed == 'true'
         id: alpha_tag
         shell: bash
         env:
           CURRENT_SHA: ${{ steps.previous_release.outputs.current_sha }}
-          SEMVER: ${{ steps.gitversion.outputs.semVer }}
+          SEMVER: ${{ steps.alpha_version.outputs.semVer }}
         run: |
           set -euo pipefail
 

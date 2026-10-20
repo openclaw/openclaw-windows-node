@@ -56,8 +56,9 @@ public sealed class PreflightLocalAiHardwareStep : SetupStep
                 StringComparison.OrdinalIgnoreCase)
                 ? LocalInferenceEligibility.EvaluateInstalled(hardware, selectedModelId)
                 : LocalInferenceEligibility.Evaluate(hardware, selectedModelId);
-        if (string.Equals(selectedModelId, LocalModelCatalog.NemotronBoltModelId, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(selectedModelId, ctx.Config.LocalAi.InstalledReceiptModelId, StringComparison.OrdinalIgnoreCase))
+        // Headless --config setup cannot carry the UI-only receipt hint. The
+        // stored receipt owns an installed Bolt recipe and its exact context.
+        if (string.Equals(selectedModelId, LocalModelCatalog.NemotronBoltModelId, StringComparison.OrdinalIgnoreCase))
         {
             try
             {

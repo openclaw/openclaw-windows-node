@@ -820,12 +820,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         // can never delay or preempt tray initialization. It only needs the
         // dispatcher + settings (created above) and failures are non-fatal.
         InitializeServiceProvider();
-        if (!_localAiGatewayLifecycle.IsNativeMode)
+        if (_localAiGatewayLifecycle.CanStartWslAutomatically)
             StartLocalAiRouterInBackground();
 
         // Initialize connection manager before setup flow.
         var credentialResolver = new CredentialResolver(DeviceIdentityFileReader.Instance);
-        var clientFactory = new GatewayClientFactory();
+        var clientFactory = new GatewayClientFactory { SupportsExecApprovals = true };
         var diagnostics = new ConnectionDiagnostics();
         var nodeConnector = new NodeConnector(appLogger, diagnostics);
         // Bridge: whenever NodeConnector creates a fresh WindowsNodeClient (initial
@@ -1814,7 +1814,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         if (_settings == null || _connectionManager == null || _gatewayRegistry == null) return;
         // SSH tunnel lifecycle is now handled by the connection manager.
 
-        var gatewayUrl = _settings.GetEffectiveGatewayUrl();
+        var gatewayUrl = _settings.GetLegacyCredentialGatewayUrlOrNull();
 
         // Check registry first — it's the source of truth after initial setup
         var activeRecord = _gatewayRegistry.GetActive();
@@ -2089,7 +2089,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
         // Backfill for legacy installs that still have the identity file at the
         // root settings path while the active registry record points at that URL.
-        var effectiveUrl = _settings?.GetEffectiveGatewayUrl();
+        var effectiveUrl = _settings?.GetLegacyCredentialGatewayUrlOrNull();
         if (!string.IsNullOrWhiteSpace(effectiveUrl) &&
             string.Equals(record.Url, effectiveUrl, StringComparison.OrdinalIgnoreCase))
         {
@@ -2110,7 +2110,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         if (credential != null)
             return credential;
 
-        var effectiveUrl = _settings?.GetEffectiveGatewayUrl();
+        var effectiveUrl = _settings?.GetLegacyCredentialGatewayUrlOrNull();
         if (string.IsNullOrWhiteSpace(effectiveUrl) ||
             !string.Equals(record.Url, effectiveUrl, StringComparison.OrdinalIgnoreCase))
         {
@@ -2166,7 +2166,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         }
     }
 
-    private void TryMigrateLegacyGatewaySettings(string gatewayUrl, IOpenClawLogger logger)
+    private void TryMigrateLegacyGatewaySettings(string? gatewayUrl, IOpenClawLogger logger)
     {
         if (_settings == null || _gatewayRegistry == null || string.IsNullOrWhiteSpace(gatewayUrl))
         {
@@ -2380,8 +2380,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                                     cancellationToken)
                                 .ConfigureAwait(false);
                     }
-                    if (_managedLocalPortProvenance is null ||
-                        GatewayRecordEditing.ResolveManagedDistroName(record) is null)
+                    if (GatewayRecordEditing.ResolveManagedDistroName(record) is null)
+                    {
+                        return FixtureLoopbackListenerOwner.IsOwnedByCurrentProcessParent(uri.Port);
+                    }
+
+                    if (_managedLocalPortProvenance is null)
                     {
                         return false;
                     }
@@ -3944,7 +3948,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             _gatewayRegistry,
             SettingsManager.SettingsDirectoryPath,
             DeviceIdentityFileReader.Instance,
-            _settings.GetEffectiveGatewayUrl(),
+            _settings.GetLegacyCredentialGatewayUrlOrNull(),
             _settings.LegacyToken,
             _settings.LegacyBootstrapToken,
             (record, candidate) =>

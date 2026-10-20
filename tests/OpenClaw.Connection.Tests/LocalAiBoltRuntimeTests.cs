@@ -52,11 +52,14 @@ public sealed partial class LocalAiPortLifecycleTests
         Assert.Equal(262144, (await new LocalAiManifestStore(paths).LoadAsync())!.Manifest.ContextLength);
     }
 
-    [Fact]
-    public async Task BoltStartupAndRestart_Retain128KWhenMoreMemoryIsAvailable()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task BoltStartupAndRestart_Retain128KWhenMoreMemoryIsAvailable(bool prerelease)
     {
         using var temp = new TempDirectory("bolt-runtime-retention-");
-        var paths = await PrepareBoltInstallAsync(temp, 131072);
+        var paths = await PrepareBoltInstallAsync(temp, 131072, prerelease);
+        var original = (await new LocalAiManifestStore(paths).LoadAsync())!.Manifest;
         var events = new SynchronizedEventLog();
         var platform = new FakePlatform();
         var hardware = new BoltHardwareProbe(48L << 30);
@@ -68,13 +71,41 @@ public sealed partial class LocalAiPortLifecycleTests
         Assert.Contains("ctx-size = 131072", (await File.ReadAllTextAsync(paths.RouterPresetPath)).Split(Environment.NewLine));
         Assert.Equal(LocalAiRuntimeState.Healthy, (await runtime.RestartAsync()).State);
         Assert.Equal(2, hardware.Calls);
-        Assert.Equal(131072, (await new LocalAiManifestStore(paths).LoadAsync())!.Manifest.ContextLength);
+        var current = (await new LocalAiManifestStore(paths).LoadAsync())!.Manifest;
+        Assert.Equal(131072, current.ContextLength);
+        Assert.Equal(original.ModelId, current.ModelId);
+        Assert.Equal(original.ModelAsset, current.ModelAsset);
+        Assert.Equal(Assert.Single(original.AdditionalModelAssetsOrEmpty), Assert.Single(current.AdditionalModelAssetsOrEmpty));
     }
 
-    private static async Task<LocalAiPaths> PrepareBoltInstallAsync(TempDirectory temp, int context)
+    [Fact]
+    public async Task PrereleaseBolt_RejectsPublicDraftReceipt()
+    {
+        using var temp = new TempDirectory("bolt-mixed-receipt-");
+        var paths = await PrepareBoltInstallAsync(temp, 131072, prerelease: true);
+        var install = (await new LocalAiManifestStore(paths).LoadAsync())!;
+        var draft = LocalModelCatalog.Find(LocalModelCatalog.NemotronBoltModelId)!.Recipe.DraftWeights!;
+        var mixed = install with
+        {
+            Manifest = install.Manifest with
+            {
+                AdditionalModelAssets = [new LocalAiAssetReceipt
+                {
+                    FileName = Path.GetFileName(draft.RelativePath), SourceUrl = draft.DownloadUri.AbsoluteUri,
+                    SizeBytes = draft.SizeBytes, Sha256 = draft.Sha256.Value,
+                }],
+            },
+        };
+
+        Assert.Throws<InvalidDataException>(() => LlamaServerRouterConfiguration.ResolveInstalledPlan(mixed));
+    }
+
+    private static async Task<LocalAiPaths> PrepareBoltInstallAsync(TempDirectory temp, int context, bool prerelease = false)
     {
         var paths = new LocalAiPaths(temp.Path);
         var model = LocalModelCatalog.Find(LocalModelCatalog.NemotronBoltModelId)!;
+        var weights = prerelease ? NemotronBoltPrereleaseFixture.Weights : model.Weights;
+        var draft = prerelease ? NemotronBoltPrereleaseFixture.DraftWeights : model.Recipe.DraftWeights!;
         var runtime = LlamaRuntimeCatalog.Find(RuntimeArchitecture.Arm64, model.RuntimeFamily)!;
         var profile = LocalModelCatalog.GetProfiles(model).Single(p => p.ContextTokens == context);
         string cache = temp.Combine("hf");
@@ -92,17 +123,17 @@ public sealed partial class LocalAiPortLifecycleTests
             FileName = Path.GetFileName(artifact.RelativePath), SourceUrl = artifact.DownloadUri.AbsoluteUri,
             SizeBytes = artifact.SizeBytes, Sha256 = artifact.Sha256.Value,
         };
-        var source = (HuggingFaceRevisionSource)model.Weights.Source;
+        var source = (HuggingFaceRevisionSource)weights.Source;
         var manifest = ValidManifest() with
         {
             SchemaVersion = LocalAiInstallManifest.AdditionalAssetsSchemaVersion,
             EngineVersion = runtime.ReleaseTag, RuntimeId = runtime.Id, ModelCatalogId = model.Id,
             ModelAlias = model.Id, ModelId = source.RepositoryId + "@" + source.RevisionSha,
             RuntimeAssets = runtime.Artifacts.Select(Receipt).ToImmutableArray(),
-            ModelAsset = Receipt(model.Weights), ModelPath = Path.Combine("models", model.Weights.RelativePath),
-            ModelCacheRoot = cache, CachedModelPath = Snapshot(model.Weights),
-            AdditionalModelAssets = [Receipt(model.Recipe.DraftWeights!)],
-            AdditionalModelPaths = [Snapshot(model.Recipe.DraftWeights!)],
+            ModelAsset = Receipt(weights), ModelPath = Path.Combine("models", weights.RelativePath),
+            ModelCacheRoot = cache, CachedModelPath = Snapshot(weights),
+            AdditionalModelAssets = [Receipt(draft)],
+            AdditionalModelPaths = [Snapshot(draft)],
             ContextLength = context, KeyCachePrecision = profile.KeyCachePrecision,
             ValueCachePrecision = profile.ValueCachePrecision, DraftKeyCachePrecision = profile.DraftKeyCachePrecision,
             DraftValueCachePrecision = profile.DraftValueCachePrecision,

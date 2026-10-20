@@ -24,11 +24,13 @@ public sealed class ChatComposerSession : IDisposable
     internal ChatComposerSession(
         ChatComposerViewModel viewModel,
         ChatComposerController controller,
-        ChatComposerHostActions hostActions)
+        ChatComposerHostActions hostActions,
+        ChatPlacementController? placement = null)
     {
         ViewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
         Controller = controller ?? throw new ArgumentNullException(nameof(controller));
         HostActions = hostActions ?? throw new ArgumentNullException(nameof(hostActions));
+        Placement = placement;
     }
 
     internal ChatComposerViewModel ViewModel { get; }
@@ -36,14 +38,18 @@ public sealed class ChatComposerSession : IDisposable
     internal ChatComposerController Controller { get; }
 
     internal ChatComposerHostActions HostActions { get; }
+    internal ChatPlacementController? Placement { get; }
 
     /// <summary>Applies the latest committed immutable projection with a
     /// session-monotonic revision that survives composer view remounts.</summary>
-    internal void ApplyInputs(ChatComposerInputs inputs) =>
+    internal void ApplyInputs(ChatComposerInputs inputs)
+    {
         ViewModel.ApplyInputs(inputs with
         {
             Revision = Interlocked.Increment(ref _inputRevision),
         });
+        Placement?.ApplyInputs(inputs);
+    }
 
     /// <summary>Disposes the controller then the view model exactly once. Safe to
     /// call multiple times; repeated calls are a no-op.</summary>
@@ -53,6 +59,7 @@ public sealed class ChatComposerSession : IDisposable
             return;
 
         Controller.Dispose();
+        Placement?.Dispose();
         ViewModel.Dispose();
     }
 }

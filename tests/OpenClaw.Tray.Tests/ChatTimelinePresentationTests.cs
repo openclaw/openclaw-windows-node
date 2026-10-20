@@ -23,14 +23,13 @@ public sealed class ChatTimelinePresentationTests
     public void WelcomeSuggestions_UseBorderlessGraySubtleChrome()
     {
         var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
-            "src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatTimeline.cs"));
-        var empty = source[source.IndexOf("private static Element BuildEmpty", StringComparison.Ordinal)..
-            source.IndexOf("private static Element BuildLoadEarlier", StringComparison.Ordinal)];
-        Assert.Contains(".BorderThickness(0)", empty);
-        Assert.Contains("ChatVisuals.ToolbarButtonResources(resources)", empty);
-        Assert.Contains("Theme.Ref(\"ControlAltFillColorSecondaryBrush\")", empty);
-        Assert.Contains("OnSuggestionPicked?.Invoke(suggestion)", empty);
-        Assert.Contains(".IsEnabled(!row.Props.SuggestionsDisabled)", empty);
+            "src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatWelcome.cs"));
+        Assert.Contains(".BorderThickness(0)", source);
+        Assert.Contains("ChatVisuals.ToolbarButtonResources(resources)", source);
+        Assert.Contains("Theme.Ref(\"ControlAltFillColorSecondaryBrush\")", source);
+        Assert.Contains("onSuggestionPicked?.Invoke(suggestion.Prompt)", source);
+        Assert.Contains("!disabled && onSuggestionPicked is not null", source);
+        Assert.Contains(".IsEnabled(enabled)", source);
     }
 
     [Fact]
