@@ -520,6 +520,7 @@ public sealed partial class GatewayFixtureProtocolTests
             }
             catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
             catch (WebSocketException) when (_lifetime.IsCancellationRequested || _expectServerShutdown) { }
+            catch (ObjectDisposedException) when (_lifetime.IsCancellationRequested) { }
             finally
             {
                 _events.Writer.TryComplete();
