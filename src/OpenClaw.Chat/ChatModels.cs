@@ -114,6 +114,8 @@ public record ChatThread
     public required string Title { get; init; }
     public string? AgentId { get; init; }
     public bool IsBackground { get; init; }
+    public bool IsArchived { get; init; }
+    public bool IsChannelSession { get; init; }
     public bool IsVisibleInSessionPicker(string? activeThreadId) =>
         !IsBackground || string.Equals(Id, activeThreadId, StringComparison.Ordinal);
     public ChatThreadStatus Status { get; init; }
@@ -278,6 +280,27 @@ public record ChatPermissionRequestEvent(string RequestId, string PermissionKind
 public record ChatModelChangedEvent(string Model) : ChatEvent;
 public record ChatRawEvent(string EventType, string? Text = null) : ChatEvent;
 
+public enum ChatWelcomeContentStatus
+{
+    Loading,
+    Available,
+    Unsupported,
+    Failed
+}
+
+public sealed record ChatWelcomeContent(
+    ChatWelcomeContentStatus Status,
+    ChatWelcomeCatalog? Catalog = null)
+{
+    public static ChatWelcomeContent Loading { get; } = new(ChatWelcomeContentStatus.Loading);
+    public static ChatWelcomeContent Unsupported { get; } = new(ChatWelcomeContentStatus.Unsupported);
+    public static ChatWelcomeContent Failed { get; } = new(ChatWelcomeContentStatus.Failed);
+}
+
+/// <remarks>
+/// <see cref="CurrentHistoryThreads"/> contains session keys whose history is authoritative for the current connection.
+/// Null means freshness is unknown, even when a cached timeline has HistoryLoaded.
+/// </remarks>
 public record ChatDataSnapshot(
     ChatThread[] Threads,
     IReadOnlyDictionary<string, ChatTimelineState> Timelines,
@@ -290,7 +313,9 @@ public record ChatDataSnapshot(
     bool CommandsSupported = true,
     IReadOnlyDictionary<string, long>? TimelineGenerations = null,
     IReadOnlyDictionary<string, long>? HistoryRevisions = null,
-    IReadOnlyDictionary<string, IReadOnlyList<ChatQueuedMessage>>? QueuedMessagesByThread = null);
+    IReadOnlyDictionary<string, IReadOnlyList<ChatQueuedMessage>>? QueuedMessagesByThread = null,
+    ChatWelcomeContent? WelcomeContent = null,
+    IReadOnlySet<string>? CurrentHistoryThreads = null);
 
 /// <summary>
 /// Describes where the UI may send the next chat message. Distinct from
@@ -341,6 +366,7 @@ public sealed class ChatProviderNotificationEventArgs(ChatProviderNotification n
 public interface IChatDataProvider : IAsyncDisposable
 {
     string DisplayName { get; }
+    IChatPlacementGateway? PlacementGateway => null;
 
     event EventHandler<ChatDataChangedEventArgs>? Changed;
     event EventHandler<ChatProviderNotificationEventArgs>? NotificationRequested;

@@ -45,11 +45,6 @@ public sealed class ExecApprovalDialog : WindowEx
     private DispatcherTimer? _armTimer;
     private ExecApprovalPromptOutcome _outcome = ExecApprovalPromptOutcome.Deny;
 
-    // Anti-clickthrough gate: the allow buttons arm only once BOTH the arm delay has
-    // elapsed AND the user has seen the whole command (scrolled to the end, or it fit).
-    private ScrollViewer? _bodyScroll;
-    private bool _delayElapsed;
-    private bool _commandFullySeen;
     private readonly bool _allowAlwaysAvailable;
 
     public bool IsClosed { get; private set; }
@@ -137,8 +132,7 @@ public sealed class ExecApprovalDialog : WindowEx
         if (view.HasConfusableWarning)
             body.Children.Add(BuildConfusableWarning());
 
-        // Command card: monospaced, selectable. A single body scroll region (below) owns
-        // all scrolling so there is one place to reach "you have seen the whole command".
+        // Command card: monospaced, selectable.
         var commandText = new TextBlock
         {
             Text = view.CommandText,
@@ -159,17 +153,14 @@ public sealed class ExecApprovalDialog : WindowEx
         AddContextRow(body, "ExecApproval_CwdLabel", view.CwdText);
         AddContextRow(body, "ExecApproval_ExecutableLabel", view.ExecutablePathText);
 
-        _bodyScroll = new ScrollViewer
+        var bodyScroll = new ScrollViewer
         {
             Content = body,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
         };
-        _bodyScroll.ViewChanged += (_, _) => UpdateCommandSeen();
-        _bodyScroll.SizeChanged += (_, _) => UpdateCommandSeen();
-        _bodyScroll.Loaded += (_, _) => UpdateCommandSeen();
-        Grid.SetRow(_bodyScroll, 1);
-        root.Children.Add(_bodyScroll);
+        Grid.SetRow(bodyScroll, 1);
+        root.Children.Add(bodyScroll);
 
         // Buttons: [Deny] ............ [Allow Always] [Allow Once (accent)]
         var buttonGrid = new Grid { ColumnSpacing = 8 };
@@ -261,64 +252,29 @@ public sealed class ExecApprovalDialog : WindowEx
         Close();
     }
 
-    // Anti-clickthrough: allow buttons start disabled and arm only when the delay has
-    // elapsed AND the whole command has been seen. Deny is always active.
+    // Anti-clickthrough: allow buttons arm after a short delay, independently of
+    // command length or scroll position. Deny is always active.
     private void ArmAllowGuard()
     {
         _allowOnceButton.IsEnabled = false;
         _allowAlwaysButton.IsEnabled = false;
-        MaybeArmAllow();
+        var hint = LocalizationHelper.GetString("ExecApproval_ArmHint");
+        ToolTipService.SetToolTip(_allowOnceButton, hint);
+        if (_allowAlwaysAvailable)
+            ToolTipService.SetToolTip(_allowAlwaysButton, hint);
+
         _armTimer = new DispatcherTimer { Interval = AllowArmDelay };
         _armTimer.Tick += (_, _) =>
         {
             _armTimer?.Stop();
-            _delayElapsed = true;
-            MaybeArmAllow();
+            if (IsClosed) return;
+
+            _allowOnceButton.IsEnabled = true;
+            _allowAlwaysButton.IsEnabled = _allowAlwaysAvailable;
+            ToolTipService.SetToolTip(_allowOnceButton, null);
+            ToolTipService.SetToolTip(_allowAlwaysButton, null);
         };
         _armTimer.Start();
-    }
-
-    // A command that fits needs no scrolling; a long one must be scrolled to its end
-    // before it counts as seen. Once seen it stays seen (scrolling back up is fine).
-    private void UpdateCommandSeen()
-    {
-        if (_commandFullySeen || _bodyScroll is null) return;
-        // Ignore pre-layout passes: until the ScrollViewer has actually measured its content
-        // (non-zero viewport AND extent), a zero ScrollableHeight means "not laid out yet", not
-        // "everything fits". Latching on that would arm the allow buttons for a long command the
-        // user never scrolled to the end of. A later ViewChanged/SizeChanged/Loaded re-evaluates.
-        if (_bodyScroll.ViewportHeight <= 0 || _bodyScroll.ExtentHeight <= 0)
-            return;
-        var scrollable = _bodyScroll.ScrollableHeight;
-        var atEnd = scrollable <= 0.5
-            || _bodyScroll.VerticalOffset >= scrollable - 2.0;
-        if (atEnd)
-        {
-            _commandFullySeen = true;
-            MaybeArmAllow();
-        }
-    }
-
-    private void MaybeArmAllow()
-    {
-        if (IsClosed) return;
-        if (_delayElapsed && _commandFullySeen)
-        {
-            _allowOnceButton.IsEnabled = true;
-            ToolTipService.SetToolTip(_allowOnceButton, null);
-            if (_allowAlwaysAvailable)
-            {
-                _allowAlwaysButton.IsEnabled = true;
-                ToolTipService.SetToolTip(_allowAlwaysButton, null);
-            }
-            return;
-        }
-
-        var hintKey = _commandFullySeen ? "ExecApproval_ArmHint" : "ExecApproval_ScrollHint";
-        var hint = LocalizationHelper.GetString(hintKey);
-        ToolTipService.SetToolTip(_allowOnceButton, hint);
-        if (_allowAlwaysAvailable)
-            ToolTipService.SetToolTip(_allowAlwaysButton, hint);
     }
 
     private static Border BuildConfusableWarning()

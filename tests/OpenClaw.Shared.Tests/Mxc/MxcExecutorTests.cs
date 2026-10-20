@@ -4,10 +4,12 @@ using System.Runtime.InteropServices;
 using OpenClaw.Shared.Mxc;
 using OpenClaw.TestSupport;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace OpenClaw.Shared.Tests.Mxc;
 
-public class MxcExecutorTests
+[Collection(BoundedProcessWaitCollection.Name)]
+public class MxcExecutorTests(ITestOutputHelper output)
 {
     [Fact]
     public async Task RunAsync_CapturesOutput_WhenLauncherExitsNormally()
@@ -370,24 +372,41 @@ public class MxcExecutorTests
         }
     }
 
-    [Fact]
-    public async Task RunAsync_OutputDrainIsBoundedAndPreservesFinalFragments_WhenDescendantRetainsHandles()
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1_250)]
+    public async Task RunAsync_OutputDrainIsBoundedAndPreservesFinalFragments_WhenDescendantRetainsHandles(
+        int preExitDelayMs)
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             return;
 
         using var temp = new TempDirectory("mxc-drain-test-");
         var descendantPidPath = temp.Combine("descendant.pid");
+        var launcherReleasePath = temp.Combine("release-launcher");
+        var launcherExited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stopwatch = new Stopwatch();
+        Process? launcher = null;
         var testHostPath = FindTestHost();
         var executor = new MxcExecutor(
             testHostPath,
             stdoutCapBytes: null,
             stderrCapBytes: null,
-            processFactory: _ => CreateFixtureProcess(
-                testHostPath,
-                "inherit-handles-identity",
-                "30000",
-                descendantPidPath),
+            processFactory: _ =>
+            {
+                launcher = CreateFixtureProcess(
+                    testHostPath,
+                    "inherit-handles-identity",
+                    "30000",
+                    descendantPidPath,
+                    launcherReleasePath);
+                launcher.Exited += (_, _) =>
+                {
+                    stopwatch.Start();
+                    launcherExited.TrySetResult();
+                };
+                return launcher;
+            },
             processTreeKiller: process => process.Kill(entireProcessTree: true),
             cleanupTimeout: TimeSpan.FromMilliseconds(100));
         var run = executor.RunAsync(new MxcConfig
@@ -396,18 +415,33 @@ public class MxcExecutorTests
             Process = new MxcProcess { CommandLine = "ignored-by-test-process" },
         });
         ChildProcessIdentity? descendant = null;
+        ChildProcessIdentity? launcherIdentity = null;
         try
         {
+            Assert.NotNull(launcher);
+            launcherIdentity = new ChildProcessIdentity(
+                launcher.Id, launcher.StartTime.ToUniversalTime().Ticks);
             descendant = await ReadChildIdentityAsync(descendantPidPath, TimeSpan.FromSeconds(5));
-            var stopwatch = Stopwatch.StartNew();
+            output.WriteLine(
+                $"Launcher identity: {launcherIdentity.Value}. Descendant identity: {descendant.Value}.");
+            await Task.Delay(preExitDelayMs);
+            Assert.False(launcherExited.Task.IsCompleted);
+            Assert.False(run.IsCompleted);
+            File.WriteAllText(launcherReleasePath, "release");
+
+            // Publishing the descendant identity precedes launcher exit and is not a drain boundary.
+            await launcherExited.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.True(stopwatch.IsRunning);
             var result = await run.WaitAsync(TimeSpan.FromSeconds(2));
             stopwatch.Stop();
+            output.WriteLine(
+                $"Pre-exit gate: {preExitDelayMs} ms. Post-exit output drain: {stopwatch.ElapsedMilliseconds} ms.");
 
             Assert.True(result.Success, result.Error);
             Assert.False(result.TimedOut);
             Assert.Equal(0, result.ExitCode);
-            Assert.Contains("parent-stdout", result.Output);
-            Assert.Contains("parent-stderr", result.Error);
+            Assert.Equal("parent-stdout", result.Output);
+            Assert.Equal("parent-stderr", result.Error);
             Assert.True(
                 stopwatch.Elapsed < TimeSpan.FromSeconds(1),
                 $"Post-exit output drain took {stopwatch.ElapsedMilliseconds} ms.");
@@ -415,6 +449,7 @@ public class MxcExecutorTests
         finally
         {
             KillProcessTree(descendant);
+            KillProcessTree(launcherIdentity);
             try { await run.WaitAsync(TimeSpan.FromSeconds(5)); }
             catch { }
         }

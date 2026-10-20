@@ -384,6 +384,12 @@
   <data name="Update_Title_Failed" xml:space="preserve">
     <value>Couldn't check for updates</value>
   </data>
+  <data name="Update_Message_Unavailable" xml:space="preserve">
+    <value>Automatic updates are unavailable because an updater component could not be loaded. You can keep using OpenClaw and download updates from the official releases page.</value>
+  </data>
+  <data name="Update_ManualDownload" xml:space="preserve">
+    <value>Open official releases</value>
+  </data>
   <data name="Update_Message_Failed" xml:space="preserve">
     <value>Something went wrong while checking for updates.
 
@@ -796,9 +802,6 @@ Use one of these options:
   </data>
   <data name="ExecApproval_ArmHint" xml:space="preserve">
     <value>Allow becomes available in a moment</value>
-  </data>
-  <data name="ExecApproval_ScrollHint" xml:space="preserve">
-    <value>Scroll to the end of the command before allowing</value>
   </data>
   <data name="ExecApproval_ConfusableWarning" xml:space="preserve">
     <value>This command mixes character sets and may not read the way it looks. Check it carefully.</value>
@@ -2642,6 +2645,27 @@ Use one of these options:
   <data name="VoiceSettingsPage_TtsMiniMax.Content" xml:space="preserve">
     <value>MiniMax (cloud, requires API key)</value>
   </data>
+  <data name="VoiceSettingsPage_TtsKokoro.Content" xml:space="preserve">
+    <value>Kokoro (local neural voices)</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroVoiceCombo.Header" xml:space="preserve">
+    <value>Voice</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadButtonText.Text" xml:space="preserve">
+    <value>Download Voice Pack</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDeleteButton.Content" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPreview.Text" xml:space="preserve">
+    <value>Preview</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPreviewButtonContent" xml:space="preserve">
+    <value>Preview</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroInfoText.Text" xml:space="preserve">
+    <value>Voice packs download from GitHub releases (about 380 MB for English and Chinese, about 310 MB for Spanish). They run fully on this PC; no audio leaves your device.</value>
+  </data>
   <data name="VoiceSettingsPage_PiperVoiceCombo.Header" xml:space="preserve">
     <value>Voice</value>
   </data>
@@ -2700,7 +2724,7 @@ Use one of these options:
     <value>China</value>
   </data>
   <data name="VoiceSettingsPage_PrivacyNote.Text" xml:space="preserve">
-    <value>Piper, Windows, and speech recognition run on this device. Cloud TTS providers send response text to their services for synthesis; microphone audio is not sent to them.</value>
+    <value>Kokoro, Piper, Windows, and speech recognition run on this device. Cloud TTS providers send response text to their services for synthesis; microphone audio is not sent to them.</value>
   </data>
   <data name="VoiceSettingsPage_StatusModelReady" xml:space="preserve">
     <value>✅ Model ready</value>
@@ -2752,6 +2776,54 @@ Use one of these options:
   </data>
   <data name="VoiceSettingsPage_StatusError" xml:space="preserve">
     <value>Operation failed (see Debug log)</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonDownloaded" xml:space="preserve">
+    <value>Downloaded</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPackReady" xml:space="preserve">
+    <value>Voice pack ready on this PC ({0} MB).</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPackNotDownloaded" xml:space="preserve">
+    <value>Voice pack not downloaded yet. Click Download to fetch it (about {0} MB).</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonDownloading" xml:space="preserve">
+    <value>Downloading…</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroConnecting" xml:space="preserve">
+    <value>Connecting to GitHub releases…</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroProgressBytes" xml:space="preserve">
+    <value>Downloading… {0} / {1} MB</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadCanceled" xml:space="preserve">
+    <value>Download canceled.</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailed" xml:space="preserve">
+    <value>Download failed (see Debug log).</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailedDiskFull" xml:space="preserve">
+    <value>Not enough disk space. Free up at least {0} MB and try again.</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailedNetwork" xml:space="preserve">
+    <value>Download failed. Check your internet connection and try again.</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailedIntegrity" xml:space="preserve">
+    <value>The downloaded voice pack failed verification and was removed. Try again later.</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonRetry" xml:space="preserve">
+    <value>Retry Download</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDeleted" xml:space="preserve">
+    <value>Voice pack deleted.</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDeleteFailed" xml:space="preserve">
+    <value>Delete failed (see Debug log).</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPreviewFailed" xml:space="preserve">
+    <value>Preview failed (see Debug log).</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonDownloadPack" xml:space="preserve">
+    <value>Download Voice Pack</value>
   </data>
   <data name="VoiceSettingsPage_PiperButtonDownloaded" xml:space="preserve">
     <value>Downloaded</value>
@@ -2947,6 +3019,88 @@ Use one of these options:
   </data>
   <data name="Chat_ZeroState_WelcomeSubtitle" xml:space="preserve">
     <value>How can I help you today?</value>
+  </data>
+  <data name="Chat_ZeroState_RecentChats" xml:space="preserve"><value>Recent chats</value></data>
+  <data name="Chat_Placement_Environment" xml:space="preserve">
+    <value>Environment</value>
+  </data>
+  <data name="Chat_Placement_Workspace" xml:space="preserve">
+    <value>Workspace</value>
+  </data>
+  <data name="Chat_Placement_Devices" xml:space="preserve">
+    <value>Your devices</value>
+  </data>
+  <data name="Chat_Placement_Projects" xml:space="preserve">
+    <value>Projects</value>
+  </data>
+  <data name="Chat_Placement_Folders" xml:space="preserve">
+    <value>Gateway folders</value>
+  </data>
+  <data name="Chat_Placement_SearchDevices" xml:space="preserve">
+    <value>Search environments</value>
+  </data>
+  <data name="Chat_Placement_SearchProjects" xml:space="preserve">
+    <value>Search projects or paste a Git URL</value>
+  </data>
+  <data name="Chat_Placement_Path" xml:space="preserve">
+    <value>Enter a folder path</value>
+  </data>
+  <data name="Chat_Placement_DefaultWorkspace" xml:space="preserve">
+    <value>Default workspace</value>
+  </data>
+  <data name="Chat_Placement_Browse" xml:space="preserve">
+    <value>Browse folders</value>
+  </data>
+  <data name="Chat_Placement_Up" xml:space="preserve">
+    <value>Up</value>
+  </data>
+  <data name="Chat_Placement_UseFolder" xml:space="preserve">
+    <value>Use this folder</value>
+  </data>
+  <data name="Chat_Placement_Back" xml:space="preserve">
+    <value>Back to projects</value>
+  </data>
+  <data name="Chat_Placement_Clone" xml:space="preserve">
+    <value>Clone repository on send</value>
+  </data>
+  <data name="Chat_Placement_Retry" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="Chat_Placement_Loading" xml:space="preserve">
+    <value>Loading locations...</value>
+  </data>
+  <data name="Chat_Placement_Preparing" xml:space="preserve">
+    <value>Preparing chat location...</value>
+  </data>
+  <data name="Chat_Placement_NoMatches" xml:space="preserve">
+    <value>No matching locations</value>
+  </data>
+  <data name="Chat_Placement_Offline" xml:space="preserve">
+    <value>Offline</value>
+  </data>
+  <data name="Chat_Placement_HostingDisabled" xml:space="preserve">
+    <value>Session hosting is not enabled</value>
+  </data>
+  <data name="Chat_Placement_CapacityUnknown" xml:space="preserve">
+    <value>Session capacity is not advertised</value>
+  </data>
+  <data name="Chat_Placement_NoCapacity" xml:space="preserve">
+    <value>No available session slots</value>
+  </data>
+  <data name="Chat_Placement_CommandUnavailable" xml:space="preserve">
+    <value>Required command is not approved</value>
+  </data>
+  <data name="Chat_Placement_UpdateRequired" xml:space="preserve">
+    <value>Host update required</value>
+  </data>
+  <data name="Chat_Placement_RuntimeUnsupported" xml:space="preserve">
+    <value>This agent runtime does not support device sessions</value>
+  </data>
+  <data name="Chat_Placement_Gateway" xml:space="preserve">
+    <value>Gateway host</value>
+  </data>
+  <data name="Chat_Placement_Remote" xml:space="preserve">
+    <value>Remote session host</value>
   </data>
   <data name="Chat_Status_Done" xml:space="preserve">
     <value>Done</value>
@@ -3380,6 +3534,9 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
   </data>
   <data name="Chat_Error_SendFailedFormat" xml:space="preserve">
     <value>Send failed: {0}</value>
+  </data>
+  <data name="Chat_Error_ConnectionDroppedBeforeGatewayAcceptedMessage" xml:space="preserve">
+    <value>The connection dropped before the gateway accepted this message.</value>
   </data>
   <data name="Chat_Notification_AbortFailed" xml:space="preserve">
     <value>Abort failed</value>
@@ -4991,10 +5148,10 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>Open onboarding</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Title" xml:space="preserve">
-    <value>MSIX installation detected</value>
+    <value>Gateway cleanup</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Message" xml:space="preserve">
-    <value>Removing OpenClaw from Windows Settings → Apps will NOT clean up the Local Gateway (WSL distro, disk image). Use Remove Local Gateway below FIRST, then uninstall OpenClaw.</value>
+    <value>Uninstalling OpenClaw in Windows Settings automatically removes managed Gateways. Use Remove Local Gateway below to remove a Gateway while keeping the app.</value>
   </data>
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>Removes the WSL distro (OpenClawGateway), its disk image, autostart entry, and clears gateway credentials. Your MCP token is preserved. Onboarding will reset.</value>
@@ -7114,6 +7271,8 @@ Make sure the gateway is running.</value>
   <data name="Chat_AssistantMedia_Close" xml:space="preserve">
     <value>Close</value>
   </data>
+  <data name="Chat_AssistantMedia_Download" xml:space="preserve"><value>Download</value></data>
+  <data name="Chat_AssistantMedia_DownloadFailed" xml:space="preserve"><value>Couldn't start the download</value></data>
   <data name="HubWindow_NavigationViewItem_LocalAi.Content" xml:space="preserve"><value>Local AI</value></data>
   <data name="LocalAiPage_Title.Text" xml:space="preserve"><value>Local AI</value></data>
   <data name="LocalAiPage_Intro.Text" xml:space="preserve"><value>Run the verified native llama-server privately on this computer. Models load only when requested.</value></data>
@@ -7121,13 +7280,14 @@ Make sure the gateway is running.</value>
   <data name="LocalAiPage_UnavailableDetailsButton.Content" xml:space="preserve"><value>See why</value></data>
   <data name="LocalAiPage_UnavailableDetailsTip.Title" xml:space="preserve"><value>Why Local AI is unavailable</value></data>
   <data name="LocalAiPage_RecheckAvailabilityButton.Content" xml:space="preserve"><value>Recheck</value></data>
-  <data name="LocalAiPage_UnavailableRequirementsMessage" xml:space="preserve"><value>This device does not meet one or more Local AI requirements.</value></data>
+  <data name="LocalAiPage_UnavailableRequirementsMessage" xml:space="preserve"><value>No supported managed Local AI profile fits this device. See why for the limiting requirement.</value></data>
   <data name="LocalAiPage_UnavailableProbeMessage" xml:space="preserve"><value>OpenClaw could not verify Local AI requirements right now. Recheck after confirming the NVIDIA driver is available.</value></data>
   <data name="LocalAiPage_EngineHeading.Text" xml:space="preserve"><value>llama-server</value></data>
   <data name="LocalAiPage_VersionLabel.Text" xml:space="preserve"><value>Version</value></data>
   <data name="LocalAiPage_EndpointLabel.Text" xml:space="preserve"><value>Endpoint</value></data>
   <data name="LocalAiPage_ProcessLabel.Text" xml:space="preserve"><value>Process</value></data>
   <data name="LocalAiPage_StartButton.Content" xml:space="preserve"><value>Start router</value></data>
+  <data name="LocalAiPage_NativeSelectionRequired" xml:space="preserve"><value>Before starting or restarting Local AI, choose Use Local AI in setup for the selected native Gateway, or select the owning WSL Gateway in Connection.</value></data>
   <data name="LocalAiPage_StopButton.Content" xml:space="preserve"><value>Stop</value></data>
   <data name="LocalAiPage_RestartButton.Content" xml:space="preserve"><value>Restart</value></data>
   <data name="LocalAiPage_OpenLogsButton.Content" xml:space="preserve"><value>Open logs</value></data>
@@ -7174,7 +7334,7 @@ Make sure the gateway is running.</value>
   <data name="LocalAi_Reason_RuntimeUnavailable" xml:space="preserve"><value>This Local AI release does not include a native llama-server runtime for the detected Windows architecture.</value></data>
   <data name="LocalAi_Reason_NoNvidiaGpu" xml:space="preserve"><value>No NVIDIA GPU was reported by the NVIDIA driver. Install or repair the NVIDIA driver, then try setup again.</value></data>
   <data name="LocalAi_Reason_UnknownModel" xml:space="preserve"><value>The selected model is not available in this Local AI release.</value></data>
-  <data name="LocalAi_Reason_HardwareFactsIncomplete" xml:space="preserve"><value>OpenClaw could not read a stable NVIDIA GPU identifier, memory, driver, or CUDA capability.</value></data>
+  <data name="LocalAi_Reason_HardwareFactsIncomplete" xml:space="preserve"><value>OpenClaw could not read all required GPU, system memory, or disk facts. Recheck to try again.</value></data>
   <data name="LocalAi_Reason_InsufficientGpuMemory" xml:space="preserve"><value>{0} requires {1} of GPU memory for model weights, KV cache, and runtime workspace. OpenClaw detected {2}.</value></data>
   <data name="LocalAi_Reason_DriverTooOld" xml:space="preserve"><value>NVIDIA driver {0} was detected. Local AI requires version {1} or newer.</value></data>
   <data name="LocalAi_Reason_CudaCapabilityTooLow" xml:space="preserve"><value>The NVIDIA driver does not provide CUDA 13 support. A separate CUDA Toolkit is not required.</value></data>
@@ -7464,6 +7624,7 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_AiSetup_LocalStartAndUse" xml:space="preserve"><value>Start and use</value></data>
   <data name="Onboarding_AiSetup_LocalUse" xml:space="preserve"><value>Use this model</value></data>
   <data name="Onboarding_AiSetup_LocalRepair" xml:space="preserve"><value>Repair Local AI</value></data>
+  <data name="Onboarding_AiSetup_LocalRepairRequiresStop" xml:space="preserve"><value>Open Local AI settings, reconnect the original Gateway, and stop Local AI successfully before repairing its files. If route recovery is pending, recover it first. Keep the ownership receipt and downloaded models.</value></data>
   <data name="Onboarding_AiSetup_LocalReconcile" xml:space="preserve"><value>Recover and use Local AI</value></data>
   <data name="Onboarding_AiSetup_LocalState_Reconcile" xml:space="preserve"><value>The owned Gateway route needs recovery.</value></data>
   <data name="LocalAiPage_ReleaseOwnershipButton.Content" xml:space="preserve"><value>Release Gateway ownership</value></data>
@@ -7799,7 +7960,6 @@ Your settings, gateway, files, and models stay where they are.</value>
   <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>Start and verify the Gateway</value></data>
   <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>Retry setup</value></data>
   <data name="Onboarding_Native_Preview" xml:space="preserve"><value>Preview only. No package will be installed or Gateway started.</value></data>
-  <data name="Onboarding_Native_Review.Text" xml:space="preserve"><value>By selecting Set up gateway, you authorize WinGet to install the missing Gateway package from Microsoft Store and accept the package and Store source agreements. If WinGet is not ready, setup may repair App Installer before retrying. Companion then verifies the package, prepares a dedicated profile, and opens Gateway setup. Provider sign-in stays interactive. This path does not install WSL, Local AI, or Tailscale.</value></data>
   <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>These Windows capabilities become usable after Node Mode connects and pairs with the Gateway. Windows permissions and command approvals still apply.</value></data>
   <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>Native Gateway configured</value></data>
   <data name="Onboarding_Native_CapabilitySummary" xml:space="preserve"><value>{0}. You can change these choices in Companion Settings.</value></data>
@@ -8013,5 +8173,38 @@ Your settings, gateway, files, and models stay where they are.</value>
   </data>
   <data name="ChatPage_SetupCheckAgain.Content" xml:space="preserve">
     <value>Check again</value>
+  </data>
+  <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>The preferred {0} profile does not fit this hardware. Setup can use {1} with {2:N0} context tokens. Review this profile in setup before installing.</value></data>
+  <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>This profile requires at least {0} of system RAM.</value></data>
+  <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>This profile requires at least {0} free on both the model cache and runtime volumes.</value></data>
+  <data name="Chat_Welcome_Loading" xml:space="preserve"><value>Loading welcome content from your Gateway...</value></data>
+  <data name="Chat_Welcome_Unsupported" xml:space="preserve"><value>This Gateway does not provide shared welcome content. You can still start a chat below.</value></data>
+  <data name="Chat_Welcome_Failed" xml:space="preserve"><value>Welcome content could not be loaded. Reconnect to retry, or start a chat below.</value></data>
+  <data name="Chat_Placement_Unknown" xml:space="preserve">
+    <value>Not verified</value>
+  </data>
+  <data name="Chat_Placement_Error_DiscoveryFailed" xml:space="preserve">
+    <value>Chat locations could not be loaded. Retry in the location picker.</value>
+  </data>
+  <data name="Chat_Placement_Error_BrowseFailed" xml:space="preserve">
+    <value>Gateway folders could not be loaded. Try browsing again.</value>
+  </data>
+  <data name="Chat_Placement_Error_PreparationFailed" xml:space="preserve">
+    <value>The chat location could not be prepared. Review it in the Gateway before trying again.</value>
+  </data>
+  <data name="Chat_Placement_Error_PreparationPending" xml:space="preserve">
+    <value>Location preparation is still finishing. Wait before sending again.</value>
+  </data>
+  <data name="Chat_Placement_Error_NotReady" xml:space="preserve">
+    <value>The selected chat location is not ready. Refresh the choices before sending.</value>
+  </data>
+  <data name="Chat_Placement_Error_HistoryPending" xml:space="preserve">
+    <value>Waiting for current chat history before preparing its location. Try sending again when loading finishes.</value>
+  </data>
+  <data name="Chat_Placement_Error_Interrupted" xml:space="preserve">
+    <value>Location preparation was interrupted and may have changed this session's location. Review it in the Gateway before you send again.</value>
+  </data>
+  <data name="Chat_Placement_Error_NoLongerEmpty" xml:space="preserve">
+    <value>This session is no longer empty, so the pending location selection was cancelled. Review the session and send again to continue in its current location.</value>
   </data>
 </root>

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
@@ -356,6 +356,12 @@
   </data>
   <data name="Update_Title_Failed" xml:space="preserve">
     <value>Kan niet op updates controleren</value>
+  </data>
+  <data name="Update_Message_Unavailable" xml:space="preserve">
+    <value>Automatic updates are unavailable because an updater component could not be loaded. You can keep using OpenClaw and download updates from the official releases page.</value>
+  </data>
+  <data name="Update_ManualDownload" xml:space="preserve">
+    <value>Open official releases</value>
   </data>
   <data name="Update_Message_Failed" xml:space="preserve">
     <value>Er is iets misgegaan tijdens het controleren op updates.
@@ -756,9 +762,6 @@ Gebruik een van deze opties:
   </data>
   <data name="ExecApproval_ArmHint" xml:space="preserve">
     <value>Toestaan is zo dadelijk beschikbaar</value>
-  </data>
-  <data name="ExecApproval_ScrollHint" xml:space="preserve">
-    <value>Scroll naar het einde van de opdracht voordat u toestaat</value>
   </data>
   <data name="ExecApproval_ConfusableWarning" xml:space="preserve">
     <value>Deze opdracht mengt tekensets en is mogelijk niet wat het lijkt. Controleer hem zorgvuldig.</value>
@@ -2596,6 +2599,75 @@ Gebruik een van deze opties:
   <data name="VoiceSettingsPage_TtsMiniMax.Content" xml:space="preserve">
     <value>MiniMax (cloud, API-sleutel vereist)</value>
   </data>
+  <data name="VoiceSettingsPage_TtsKokoro.Content" xml:space="preserve">
+    <value>Kokoro (lokale neurale stemmen)</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroVoiceCombo.Header" xml:space="preserve">
+    <value>Stem</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadButtonText.Text" xml:space="preserve">
+    <value>Stempakket downloaden</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonDownloadPack" xml:space="preserve">
+    <value>Stempakket downloaden</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonDownloaded" xml:space="preserve">
+    <value>Gedownload</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonDownloading" xml:space="preserve">
+    <value>Downloaden…</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonRetry" xml:space="preserve">
+    <value>Download opnieuw proberen</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDeleteButton.Content" xml:space="preserve">
+    <value>Verwijderen</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPreview.Text" xml:space="preserve">
+    <value>Voorbeeld</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPreviewButtonContent" xml:space="preserve">
+    <value>Voorbeeld</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroInfoText.Text" xml:space="preserve">
+    <value>Stempakketten worden gedownload van GitHub-releases (ongeveer 380 MB voor Engels en Chinees, ongeveer 310 MB voor Spaans). Ze draaien volledig op deze pc; er verlaat geen audio uw apparaat.</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPackReady" xml:space="preserve">
+    <value>Stempakket gereed op deze pc ({0} MB).</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPackNotDownloaded" xml:space="preserve">
+    <value>Stempakket nog niet gedownload. Klik op Downloaden om het op te halen (ongeveer {0} MB).</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroConnecting" xml:space="preserve">
+    <value>Verbinding maken met GitHub-releases…</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroProgressBytes" xml:space="preserve">
+    <value>Downloaden… {0} / {1} MB</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadCanceled" xml:space="preserve">
+    <value>Download geannuleerd.</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailed" xml:space="preserve">
+    <value>Download mislukt (zie Debug-log).</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailedDiskFull" xml:space="preserve">
+    <value>Onvoldoende schijfruimte. Maak minstens {0} MB vrij en probeer het opnieuw.</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailedNetwork" xml:space="preserve">
+    <value>Download mislukt. Controleer uw internetverbinding en probeer het opnieuw.</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailedIntegrity" xml:space="preserve">
+    <value>Het gedownloade stempakket is niet geverifieerd en is verwijderd. Probeer het later opnieuw.</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDeleted" xml:space="preserve">
+    <value>Stempakket verwijderd.</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDeleteFailed" xml:space="preserve">
+    <value>Verwijderen mislukt (zie Debug-log).</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPreviewFailed" xml:space="preserve">
+    <value>Voorbeeld mislukt (zie Debug-log).</value>
+  </data>
   <data name="VoiceSettingsPage_PiperVoiceCombo.Header" xml:space="preserve">
     <value>Stem</value>
   </data>
@@ -2654,7 +2726,7 @@ Gebruik een van deze opties:
     <value>Vasteland van China</value>
   </data>
   <data name="VoiceSettingsPage_PrivacyNote.Text" xml:space="preserve">
-    <value>Piper, Windows en spraakherkenning worden op dit apparaat uitgevoerd. Cloud-TTS-providers sturen antwoordtekst naar hun services voor synthese; microfoonaudio wordt niet naar hen verzonden.</value>
+    <value>Kokoro, Piper, Windows en spraakherkenning worden op dit apparaat uitgevoerd. Cloud-TTS-providers sturen antwoordtekst naar hun services voor synthese; microfoonaudio wordt niet naar hen verzonden.</value>
   </data>
   <data name="VoiceSettingsPage_StatusModelReady" xml:space="preserve">
     <value>✅ Model gereed</value>
@@ -2895,6 +2967,88 @@ Gebruik een van deze opties:
   </data>
   <data name="DebugPage_ChatOverride_ForceNative_Tray.Content" xml:space="preserve">
     <value>Companion-chatinterface forceren</value>
+  </data>
+  <data name="Chat_ZeroState_RecentChats" xml:space="preserve"><value>Recente chats</value></data>
+  <data name="Chat_Placement_Environment" xml:space="preserve">
+    <value>Omgeving</value>
+  </data>
+  <data name="Chat_Placement_Workspace" xml:space="preserve">
+    <value>Werkruimte</value>
+  </data>
+  <data name="Chat_Placement_Devices" xml:space="preserve">
+    <value>Je apparaten</value>
+  </data>
+  <data name="Chat_Placement_Projects" xml:space="preserve">
+    <value>Projecten</value>
+  </data>
+  <data name="Chat_Placement_Folders" xml:space="preserve">
+    <value>Gateway-mappen</value>
+  </data>
+  <data name="Chat_Placement_SearchDevices" xml:space="preserve">
+    <value>Omgevingen zoeken</value>
+  </data>
+  <data name="Chat_Placement_SearchProjects" xml:space="preserve">
+    <value>Projecten zoeken of een Git-URL plakken</value>
+  </data>
+  <data name="Chat_Placement_Path" xml:space="preserve">
+    <value>Voer een mappad in</value>
+  </data>
+  <data name="Chat_Placement_DefaultWorkspace" xml:space="preserve">
+    <value>Standaardwerkruimte</value>
+  </data>
+  <data name="Chat_Placement_Browse" xml:space="preserve">
+    <value>Mappen doorbladeren</value>
+  </data>
+  <data name="Chat_Placement_Up" xml:space="preserve">
+    <value>Bovenliggende map</value>
+  </data>
+  <data name="Chat_Placement_UseFolder" xml:space="preserve">
+    <value>Deze map gebruiken</value>
+  </data>
+  <data name="Chat_Placement_Back" xml:space="preserve">
+    <value>Terug naar projecten</value>
+  </data>
+  <data name="Chat_Placement_Clone" xml:space="preserve">
+    <value>Repository klonen bij verzenden</value>
+  </data>
+  <data name="Chat_Placement_Retry" xml:space="preserve">
+    <value>Opnieuw proberen</value>
+  </data>
+  <data name="Chat_Placement_Loading" xml:space="preserve">
+    <value>Locaties laden...</value>
+  </data>
+  <data name="Chat_Placement_Preparing" xml:space="preserve">
+    <value>Chatlocatie voorbereiden...</value>
+  </data>
+  <data name="Chat_Placement_NoMatches" xml:space="preserve">
+    <value>Geen overeenkomende locaties</value>
+  </data>
+  <data name="Chat_Placement_Offline" xml:space="preserve">
+    <value>Niet verbonden</value>
+  </data>
+  <data name="Chat_Placement_HostingDisabled" xml:space="preserve">
+    <value>Sessiehosting is niet ingeschakeld</value>
+  </data>
+  <data name="Chat_Placement_CapacityUnknown" xml:space="preserve">
+    <value>Sessiecapaciteit wordt niet gemeld</value>
+  </data>
+  <data name="Chat_Placement_NoCapacity" xml:space="preserve">
+    <value>Geen beschikbare sessieplaatsen</value>
+  </data>
+  <data name="Chat_Placement_CommandUnavailable" xml:space="preserve">
+    <value>De vereiste opdracht is niet goedgekeurd</value>
+  </data>
+  <data name="Chat_Placement_UpdateRequired" xml:space="preserve">
+    <value>Hostupdate vereist</value>
+  </data>
+  <data name="Chat_Placement_RuntimeUnsupported" xml:space="preserve">
+    <value>Deze agentruntime ondersteunt geen apparaatsessies</value>
+  </data>
+  <data name="Chat_Placement_Gateway" xml:space="preserve">
+    <value>Gateway-host</value>
+  </data>
+  <data name="Chat_Placement_Remote" xml:space="preserve">
+    <value>Externe sessiehost</value>
   </data>
   <data name="Chat_ZeroState_WelcomeTitle" xml:space="preserve">
     <value>Welkom bij OpenClaw</value>
@@ -3334,6 +3488,9 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
   </data>
   <data name="Chat_Error_SendFailedFormat" xml:space="preserve">
     <value>Verzenden mislukt: {0}</value>
+  </data>
+  <data name="Chat_Error_ConnectionDroppedBeforeGatewayAcceptedMessage" xml:space="preserve">
+    <value>De verbinding werd verbroken voordat de gateway dit bericht accepteerde.</value>
   </data>
   <data name="Chat_Notification_AbortFailed" xml:space="preserve">
     <value>Afbreken mislukt</value>
@@ -4987,10 +5144,10 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Onboarding openen</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Title" xml:space="preserve">
-    <value>MSIX-installatie gedetecteerd</value>
+    <value>Gateway opruimen</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Message" xml:space="preserve">
-    <value>OpenClaw verwijderen via Windows Instellingen → Apps zal de lokale gateway NIET opruimen (WSL-distributie, schijfafbeelding). Gebruik EERST Lokale gateway verwijderen hieronder, en verwijder daarna OpenClaw.</value>
+    <value>Als u OpenClaw via Windows-instellingen verwijdert, worden beheerde gateways automatisch verwijderd. Gebruik hieronder Lokale gateway verwijderen om een gateway te verwijderen en de app te behouden.</value>
   </data>
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>Verwijdert de WSL-distributie (OpenClawGateway), de schijfafbeelding, het item voor automatisch starten en wist de gateway-referenties. Uw MCP-token blijft behouden. Onboarding wordt gereset.</value>
@@ -7051,6 +7208,8 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   <data name="Chat_AssistantMedia_MediaAttachment" xml:space="preserve"><value>Mediabijlage</value></data>
   <data name="Chat_AssistantMedia_OpenImage" xml:space="preserve"><value>Afbeelding {0} openen</value></data>
   <data name="Chat_AssistantMedia_Close" xml:space="preserve"><value>Sluiten</value></data>
+  <data name="Chat_AssistantMedia_Download" xml:space="preserve"><value>Downloaden</value></data>
+  <data name="Chat_AssistantMedia_DownloadFailed" xml:space="preserve"><value>Kan de download niet starten</value></data>
   <data name="HubWindow_NavigationViewItem_LocalAi.Content" xml:space="preserve"><value>Lokale AI</value></data>
   <data name="LocalAiPage_Title.Text" xml:space="preserve"><value>Lokale AI</value></data>
   <data name="LocalAiPage_Intro.Text" xml:space="preserve"><value>Voer de geverifieerde native llama-server privé uit op deze computer. Modellen worden alleen op aanvraag geladen.</value></data>
@@ -7065,6 +7224,7 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   <data name="LocalAiPage_EndpointLabel.Text" xml:space="preserve"><value>Eindpunt</value></data>
   <data name="LocalAiPage_ProcessLabel.Text" xml:space="preserve"><value>Proces</value></data>
   <data name="LocalAiPage_StartButton.Content" xml:space="preserve"><value>Router starten</value></data>
+  <data name="LocalAiPage_NativeSelectionRequired" xml:space="preserve"><value>Kies vóór het starten of herstarten van Local AI voor Local AI gebruiken in de installatie van de geselecteerde native Gateway, of selecteer de eigenaar-WSL-Gateway bij Verbinding.</value></data>
   <data name="LocalAiPage_StopButton.Content" xml:space="preserve"><value>Stoppen</value></data>
   <data name="LocalAiPage_RestartButton.Content" xml:space="preserve"><value>Opnieuw starten</value></data>
   <data name="LocalAiPage_OpenLogsButton.Content" xml:space="preserve"><value>Logboeken openen</value></data>
@@ -7736,7 +7896,6 @@ Uw instellingen, gateway, bestanden en modellen blijven op hun plaats.</value>
   <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>De Gateway starten en controleren</value></data>
   <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>Instelling opnieuw proberen</value></data>
   <data name="Onboarding_Native_Preview" xml:space="preserve"><value>Alleen een voorbeeld. Er wordt geen pakket geïnstalleerd of Gateway gestart.</value></data>
-  <data name="Onboarding_Native_Review.Text" xml:space="preserve"><value>Door Gateway instellen te selecteren, machtigt u WinGet om het ontbrekende Gateway-pakket vanuit Microsoft Store te installeren en accepteert u de pakket- en Store-bronovereenkomsten. Als WinGet nog niet gereed is, kan de installatie App Installer herstellen voordat opnieuw wordt geprobeerd. Companion controleert vervolgens het pakket, bereidt een apart profiel voor en opent de Gateway-instelling. Aanmelding bij de provider blijft interactief. Deze methode installeert geen WSL, lokale AI of Tailscale.</value></data>
   <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>Deze Windows-functies zijn bruikbaar nadat de nodemodus verbinding heeft gemaakt en met de Gateway is gekoppeld. Windows-machtigingen en opdrachtgoedkeuringen blijven van toepassing.</value></data>
   <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>Native Gateway geconfigureerd</value></data>
   <data name="Onboarding_Native_CapabilitySummary" xml:space="preserve"><value>{0}. U kunt deze keuzes wijzigen in de instellingen van Companion.</value></data>
@@ -7935,6 +8094,7 @@ Uw instellingen, gateway, bestanden en modellen blijven op hun plaats.</value>
   <data name="AgentCreation_Description" xml:space="preserve"><value>Maak een agent en werkruimte op de verbonden gateway. Dit maakt geen gesprek en wijzigt uw huidige chat niet.</value></data>
   <data name="AgentCreation_PermissionRequired" xml:space="preserve"><value>Maak verbinding met een gateway met operator.admin-machtiging om een agent te maken.</value></data>
   <data name="AgentCreation_Failed" xml:space="preserve"><value>Het maken van de agent kon niet worden bevestigd. Sluit dit dialoogvenster en vernieuw de agents voordat u het opnieuw probeert.</value></data>
+  <data name="Onboarding_AiSetup_LocalRepairRequiresStop" xml:space="preserve"><value>Open de instellingen van Local AI, verbind opnieuw met de oorspronkelijke Gateway en stop Local AI voordat je de bestanden herstelt. Herstel eerst de routering als dat nog nodig is. Bewaar het eigendomsbewijs en de gedownloade modellen.</value></data>
   <data name="Onboarding_AiSetup_LocalState_ManagementBlocked" xml:space="preserve"><value>Beheer door Companion is niet beschikbaar.</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipMissing" xml:space="preserve"><value>Dit profiel heeft geen eigendomsbewijs voor de bestaande lokale AI-provider. Als Companion deze bij een eerdere installatiepoging heeft gemaakt, open dan het oorspronkelijke Companion-profiel en kies Lokale AI herstellen en gebruiken. Er is niets gewijzigd. Een gedetecteerd model gebruiken herstelt het beheer door Companion niet.</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipInvalid" xml:space="preserve"><value>Het opgeslagen eigendom van lokale AI, het model of de gatewayconfiguratie komt niet meer overeen. Controleer in het oorspronkelijke Companion-profiel de oorspronkelijke gateway en de modelinstellingen, inclusief gewijzigde vermeldingen in de lijst met toegestane modellen. Bewaar het eigendomsbewijs; kopieer geen referenties en vervang de provider niet.</value></data>
@@ -7951,5 +8111,38 @@ Uw instellingen, gateway, bestanden en modellen blijven op hun plaats.</value>
   </data>
   <data name="ChatPage_SetupCheckAgain.Content" xml:space="preserve">
     <value>Opnieuw controleren</value>
+  </data>
+  <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>Het voorkeursprofiel {0} past niet bij deze hardware. De installatie kan {1} gebruiken met {2:N0} contexttokens. Controleer dit profiel in de installatie voordat u het installeert.</value></data>
+  <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>Dit profiel vereist minimaal {0} systeemgeheugen.</value></data>
+  <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>Dit profiel vereist minimaal {0} vrije ruimte op zowel het modelcachevolume als het runtimevolume.</value></data>
+  <data name="Chat_Welcome_Loading" xml:space="preserve"><value>Welkomstinhoud wordt geladen vanaf je Gateway...</value></data>
+  <data name="Chat_Welcome_Unsupported" xml:space="preserve"><value>Deze Gateway biedt geen gedeelde welkomstinhoud. Je kunt hieronder wel een chat starten.</value></data>
+  <data name="Chat_Welcome_Failed" xml:space="preserve"><value>De welkomstinhoud kon niet worden geladen. Maak opnieuw verbinding om het nogmaals te proberen of start hieronder een chat.</value></data>
+  <data name="Chat_Placement_Unknown" xml:space="preserve">
+    <value>Niet geverifieerd</value>
+  </data>
+  <data name="Chat_Placement_Error_DiscoveryFailed" xml:space="preserve">
+    <value>Chatlocaties konden niet worden geladen. Probeer het opnieuw in de locatiekiezer.</value>
+  </data>
+  <data name="Chat_Placement_Error_BrowseFailed" xml:space="preserve">
+    <value>Gateway-mappen konden niet worden geladen. Probeer opnieuw te bladeren.</value>
+  </data>
+  <data name="Chat_Placement_Error_PreparationFailed" xml:space="preserve">
+    <value>De chatlocatie kon niet worden voorbereid. Controleer deze in de Gateway voordat u het opnieuw probeert.</value>
+  </data>
+  <data name="Chat_Placement_Error_PreparationPending" xml:space="preserve">
+    <value>De locatie wordt nog voorbereid. Wacht voordat u opnieuw verzendt.</value>
+  </data>
+  <data name="Chat_Placement_Error_NotReady" xml:space="preserve">
+    <value>De geselecteerde chatlocatie is niet gereed. Vernieuw de keuzes voordat u verzendt.</value>
+  </data>
+  <data name="Chat_Placement_Error_HistoryPending" xml:space="preserve">
+    <value>Wachten op de actuele chatgeschiedenis voordat de locatie wordt voorbereid. Verzend opnieuw zodra het laden is voltooid.</value>
+  </data>
+  <data name="Chat_Placement_Error_Interrupted" xml:space="preserve">
+    <value>De voorbereiding is onderbroken en heeft mogelijk de locatie van deze sessie gewijzigd. Controleer deze in de Gateway voordat u opnieuw verzendt.</value>
+  </data>
+  <data name="Chat_Placement_Error_NoLongerEmpty" xml:space="preserve">
+    <value>Deze sessie is niet meer leeg, dus de wachtende locatiekeuze is geannuleerd. Controleer de sessie en verzend opnieuw om op de huidige locatie door te gaan.</value>
   </data>
 </root>

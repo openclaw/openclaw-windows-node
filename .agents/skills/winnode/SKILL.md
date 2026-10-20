@@ -17,7 +17,7 @@ description: Invoke and troubleshoot OpenClaw Windows-node commands through the 
 
 `winnode.exe` invokes OpenClaw Windows-node commands on the local tray over a
 loopback MCP HTTP endpoint (default `http://127.0.0.1:8765/`). Enable
-**Local MCP Server** in the tray's Settings → Advanced before calling.
+**Local MCP Server** in Settings > Permissions > Integrations before calling.
 
 This document is the agent-facing reference: every supported command, its
 argument shape, and the A2UI v0.8 JSONL grammar. It is shipped alongside
@@ -27,7 +27,7 @@ argument shape, and the A2UI v0.8 JSONL grammar. It is shipped alongside
 
 ## Invocation shape
 
-```
+```text
 winnode --command <name> [--params '<json-object>'] [--invoke-timeout <ms>] [--identity release|dev]
 winnode --list-tools [--mcp-url <url>|--mcp-port <port>] [--identity release|dev]
 ```
@@ -327,24 +327,24 @@ where `readiness` ∈ `"ready" | "initializing" | "model-downloading" | "model-n
 
 ## Text-to-speech (tts.*)
 
-Four providers - Piper (local neural via Sherpa-ONNX, default), Windows
-built-in speech, ElevenLabs (cloud), and MiniMax (cloud). Provider +
-per-provider voice are configured in tray Settings.
+Five providers - Kokoro (local neural via kokoro.cpp, default), Piper (local
+neural via Sherpa-ONNX), Windows built-in speech, ElevenLabs (cloud), and
+MiniMax (cloud). Provider + per-provider voice are configured in tray Settings.
 
 ### tts.speak
 Speak text aloud on the Windows node.
 ```
 {
   "text": "string",           // required
-  "provider": "piper|windows|elevenlabs|minimax",  // optional; omit to use TtsProvider setting
+  "provider": "kokoro|piper|windows|elevenlabs|minimax",  // optional; omit to use TtsProvider setting
   "voiceId": "string",        // optional, overrides the per-provider configured voice
   "model": "string",          // optional, cloud providers only
   "interrupt": false          // default false; true cuts off any in-progress playback
 }
 ```
 When `provider` is omitted and the configured provider isn't usable (no
-cloud API key, Piper voice not downloaded), the node falls back to Windows
-TTS so playback still happens. Explicit `provider` requests stay strict and
+cloud API key, Kokoro voice pack or Piper voice not downloaded), the node
+falls back to Windows TTS so playback still happens. Explicit `provider` requests stay strict and
 do not silently reroute. Returns `{ spoken, provider, requestedProvider, fellBack, contentType, durationMs }`
 where `provider` is the provider that actually spoke.
 

@@ -98,7 +98,8 @@ public static class ReactorChatHostExtensions
         Action? onStopSpeaking = null,
         Action<string>? onOpenCheckpoints = null,
         bool isCompact = false,
-        bool showSessionPicker = true)
+        bool showSessionPicker = true,
+        bool initialThreadIsExplicitSelection = true)
     {
         ArgumentNullException.ThrowIfNull(window);
         ArgumentNullException.ThrowIfNull(target);
@@ -124,7 +125,8 @@ public static class ReactorChatHostExtensions
             onStopSpeaking,
             onOpenCheckpoints,
             isCompact,
-            ShowSessionPicker: showSessionPicker);
+            ShowSessionPicker: showSessionPicker,
+            InitialThreadIsExplicitSelection: initialThreadIsExplicitSelection);
         var host = new ReactorHostControl();
         host.Mount(_ => Component<OpenClawReactorChatRoot, OpenClawReactorChatRootProps>(props));
         target.Child = host;
@@ -148,6 +150,8 @@ public sealed class MountedReactorChat(
     private int _disposed;
 
     internal bool TrySelectSession(string sessionKey) => session.Controller.TrySelectChannel(sessionKey);
+
+    internal void InvalidatePendingSessionNavigation() => session.Controller.InvalidatePendingSessionNavigation();
 
     internal void CancelVoiceRecording() => session.Controller.CancelVoiceRecording();
 

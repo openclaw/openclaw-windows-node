@@ -74,13 +74,18 @@ public sealed record GpuInfo(
 /// <param name="AvailablePhysicalMemoryBytes">Currently free system RAM, or null when the query failed.</param>
 /// <param name="Gpus">All detected adapters, in the order the source reported them.</param>
 /// <param name="VulkanAvailable">True when a Vulkan loader is present on the machine.</param>
+/// <param name="LocalAiDiskSpace">Free space and volume placement for the runtime and model cache, or null when unknown.</param>
 public sealed record HostHardwareInfo(
     Architecture CpuArchitecture,
     long? TotalPhysicalMemoryBytes,
     long? AvailablePhysicalMemoryBytes,
     IReadOnlyList<GpuInfo> Gpus,
-    bool VulkanAvailable)
+    bool VulkanAvailable,
+    LocalAiDiskSpaceInfo? LocalAiDiskSpace = null)
 {
+    /// <summary>Current Windows commit budget, or null when the memory query failed.</summary>
+    public long? AvailableCommitMemoryBytes { get; init; }
+
     /// <summary>
     /// The "we learned nothing" result. Qualified selectors must treat it as
     /// unsupported rather than selecting a fallback backend.

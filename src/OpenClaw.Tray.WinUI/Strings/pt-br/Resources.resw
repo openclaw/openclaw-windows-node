@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
     <xsd:element name="root" msdata:IsDataSet="true">
@@ -383,6 +383,12 @@
   </data>
   <data name="Update_Title_Failed" xml:space="preserve">
     <value>Não foi possível verificar se há atualizações</value>
+  </data>
+  <data name="Update_Message_Unavailable" xml:space="preserve">
+    <value>Automatic updates are unavailable because an updater component could not be loaded. You can keep using OpenClaw and download updates from the official releases page.</value>
+  </data>
+  <data name="Update_ManualDownload" xml:space="preserve">
+    <value>Open official releases</value>
   </data>
   <data name="Update_Message_Failed" xml:space="preserve">
     <value>Algo deu errado ao verificar se há atualizações.
@@ -796,9 +802,6 @@ Use uma destas opções:
   </data>
   <data name="ExecApproval_ArmHint" xml:space="preserve">
     <value>A opção Permitir ficará disponível em instantes</value>
-  </data>
-  <data name="ExecApproval_ScrollHint" xml:space="preserve">
-    <value>Role até o final do comando antes de permitir sua execução</value>
   </data>
   <data name="ExecApproval_ConfusableWarning" xml:space="preserve">
     <value>Este comando mistura conjuntos de caracteres e pode não ser exibido como parece. Verifique-o cuidadosamente.</value>
@@ -2638,6 +2641,75 @@ Use uma destas opções:
   <data name="VoiceSettingsPage_TtsElevenLabs.Content" xml:space="preserve">
     <value>ElevenLabs (nuvem, requer chave de API)</value>
   </data>
+  <data name="VoiceSettingsPage_TtsKokoro.Content" xml:space="preserve">
+    <value>Kokoro (vozes neurais locais)</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroVoiceCombo.Header" xml:space="preserve">
+    <value>Voz</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadButtonText.Text" xml:space="preserve">
+    <value>Baixar Pacote de Voz</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonDownloadPack" xml:space="preserve">
+    <value>Baixar Pacote de Voz</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonDownloaded" xml:space="preserve">
+    <value>Baixado</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonDownloading" xml:space="preserve">
+    <value>Baixando…</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonRetry" xml:space="preserve">
+    <value>Tentar download novamente</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDeleteButton.Content" xml:space="preserve">
+    <value>Excluir</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPreview.Text" xml:space="preserve">
+    <value>Pré-visualizar</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPreviewButtonContent" xml:space="preserve">
+    <value>Pré-visualizar</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroInfoText.Text" xml:space="preserve">
+    <value>Os pacotes de voz são baixados dos releases do GitHub (cerca de 380 MB para inglês e chinês, cerca de 310 MB para espanhol). Eles são executados totalmente neste PC; nenhum áudio sai do seu dispositivo.</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPackReady" xml:space="preserve">
+    <value>Pacote de voz pronto neste PC ({0} MB).</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPackNotDownloaded" xml:space="preserve">
+    <value>Pacote de voz ainda não baixado. Clique em Baixar para obtê-lo (cerca de {0} MB).</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroConnecting" xml:space="preserve">
+    <value>Conectando aos releases do GitHub…</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroProgressBytes" xml:space="preserve">
+    <value>Baixando… {0} / {1} MB</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadCanceled" xml:space="preserve">
+    <value>Download cancelado.</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailed" xml:space="preserve">
+    <value>Falha no download (veja o log de depuração).</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailedDiskFull" xml:space="preserve">
+    <value>Espaço em disco insuficiente. Libere pelo menos {0} MB e tente novamente.</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailedNetwork" xml:space="preserve">
+    <value>Falha no download. Verifique sua conexão com a internet e tente novamente.</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailedIntegrity" xml:space="preserve">
+    <value>O pacote de voz baixado não passou na verificação e foi removido. Tente novamente mais tarde.</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDeleted" xml:space="preserve">
+    <value>Pacote de voz excluído.</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDeleteFailed" xml:space="preserve">
+    <value>Falha ao excluir (veja o log de depuração).</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPreviewFailed" xml:space="preserve">
+    <value>Falha na pré-visualização (veja o log de depuração).</value>
+  </data>
   <data name="VoiceSettingsPage_PiperVoiceCombo.Header" xml:space="preserve">
     <value>Voz</value>
   </data>
@@ -2672,7 +2744,7 @@ Use uma destas opções:
     <value>Modelo (opcional)</value>
   </data>
   <data name="VoiceSettingsPage_PrivacyNote.Text" xml:space="preserve">
-    <value>Piper, Windows e o reconhecimento de fala são executados neste dispositivo. Provedores de TTS em nuvem enviam o texto das respostas aos seus serviços para síntese; o áudio do microfone não é enviado a eles.</value>
+    <value>Kokoro, Piper, Windows e o reconhecimento de fala são executados neste dispositivo. Provedores de TTS em nuvem enviam o texto das respostas aos seus serviços para síntese; o áudio do microfone não é enviado a eles.</value>
   </data>
   <data name="VoiceSettingsPage_StatusModelReady" xml:space="preserve">
     <value>✅ Modelo pronto</value>
@@ -2913,6 +2985,88 @@ Use uma destas opções:
   </data>
   <data name="DebugPage_ChatOverride_ForceNative_Tray.Content" xml:space="preserve">
     <value>Forçar UI de Chat do Companion</value>
+  </data>
+  <data name="Chat_ZeroState_RecentChats" xml:space="preserve"><value>Conversas recentes</value></data>
+  <data name="Chat_Placement_Environment" xml:space="preserve">
+    <value>Ambiente</value>
+  </data>
+  <data name="Chat_Placement_Workspace" xml:space="preserve">
+    <value>Espaço de trabalho</value>
+  </data>
+  <data name="Chat_Placement_Devices" xml:space="preserve">
+    <value>Seus dispositivos</value>
+  </data>
+  <data name="Chat_Placement_Projects" xml:space="preserve">
+    <value>Projetos</value>
+  </data>
+  <data name="Chat_Placement_Folders" xml:space="preserve">
+    <value>Pastas do Gateway</value>
+  </data>
+  <data name="Chat_Placement_SearchDevices" xml:space="preserve">
+    <value>Pesquisar ambientes</value>
+  </data>
+  <data name="Chat_Placement_SearchProjects" xml:space="preserve">
+    <value>Pesquisar projetos ou colar uma URL Git</value>
+  </data>
+  <data name="Chat_Placement_Path" xml:space="preserve">
+    <value>Insira um caminho de pasta</value>
+  </data>
+  <data name="Chat_Placement_DefaultWorkspace" xml:space="preserve">
+    <value>Espaço de trabalho padrão</value>
+  </data>
+  <data name="Chat_Placement_Browse" xml:space="preserve">
+    <value>Procurar pastas</value>
+  </data>
+  <data name="Chat_Placement_Up" xml:space="preserve">
+    <value>Pasta superior</value>
+  </data>
+  <data name="Chat_Placement_UseFolder" xml:space="preserve">
+    <value>Usar esta pasta</value>
+  </data>
+  <data name="Chat_Placement_Back" xml:space="preserve">
+    <value>Voltar aos projetos</value>
+  </data>
+  <data name="Chat_Placement_Clone" xml:space="preserve">
+    <value>Clonar repositório ao enviar</value>
+  </data>
+  <data name="Chat_Placement_Retry" xml:space="preserve">
+    <value>Tentar novamente</value>
+  </data>
+  <data name="Chat_Placement_Loading" xml:space="preserve">
+    <value>Carregando locais...</value>
+  </data>
+  <data name="Chat_Placement_Preparing" xml:space="preserve">
+    <value>Preparando o local da conversa...</value>
+  </data>
+  <data name="Chat_Placement_NoMatches" xml:space="preserve">
+    <value>Nenhum local correspondente</value>
+  </data>
+  <data name="Chat_Placement_Offline" xml:space="preserve">
+    <value>Desconectado</value>
+  </data>
+  <data name="Chat_Placement_HostingDisabled" xml:space="preserve">
+    <value>A hospedagem de sessões não está habilitada</value>
+  </data>
+  <data name="Chat_Placement_CapacityUnknown" xml:space="preserve">
+    <value>A capacidade de sessões não foi informada</value>
+  </data>
+  <data name="Chat_Placement_NoCapacity" xml:space="preserve">
+    <value>Nenhuma vaga de sessão disponível</value>
+  </data>
+  <data name="Chat_Placement_CommandUnavailable" xml:space="preserve">
+    <value>O comando necessário não foi aprovado</value>
+  </data>
+  <data name="Chat_Placement_UpdateRequired" xml:space="preserve">
+    <value>É necessário atualizar o host</value>
+  </data>
+  <data name="Chat_Placement_RuntimeUnsupported" xml:space="preserve">
+    <value>Este runtime de agente não oferece suporte a sessões em dispositivos</value>
+  </data>
+  <data name="Chat_Placement_Gateway" xml:space="preserve">
+    <value>Host do Gateway</value>
+  </data>
+  <data name="Chat_Placement_Remote" xml:space="preserve">
+    <value>Host de sessão remoto</value>
   </data>
   <data name="Chat_ZeroState_WelcomeTitle" xml:space="preserve">
     <value>Bem-vindo ao OpenClaw</value>
@@ -3352,6 +3506,9 @@ Os comandos são bloqueados enquanto o sandboxing está indisponível porque o b
   </data>
   <data name="Chat_Error_SendFailedFormat" xml:space="preserve">
     <value>Falha ao enviar: {0}</value>
+  </data>
+  <data name="Chat_Error_ConnectionDroppedBeforeGatewayAcceptedMessage" xml:space="preserve">
+    <value>A conexão caiu antes que o Gateway aceitasse esta mensagem.</value>
   </data>
   <data name="Chat_Notification_AbortFailed" xml:space="preserve">
     <value>Falha ao abortar</value>
@@ -4965,10 +5122,10 @@ Os controles de arquivo, rede, área de transferência, tempo limite e aprovaç�
     <value>Abrir configuração inicial</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Title" xml:space="preserve">
-    <value>Instalação MSIX detectada</value>
+    <value>Limpeza do Gateway</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Message" xml:space="preserve">
-    <value>Remover o OpenClaw pelas Configurações do Windows → Aplicativos NÃO removerá o Gateway local (distro WSL, imagem de disco). Use Remover Gateway local abaixo PRIMEIRO e só depois desinstale o OpenClaw.</value>
+    <value>Desinstalar o OpenClaw nas Configurações do Windows remove automaticamente os Gateways gerenciados. Use Remover Gateway Local abaixo para remover um Gateway e manter o aplicativo.</value>
   </data>
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>Remove a distro WSL (OpenClawGateway), sua imagem de disco, a entrada de inicialização automática, e apaga as credenciais do Gateway. Seu token MCP é preservado. A integração será reiniciada.</value>
@@ -7094,6 +7251,8 @@ O binário wxc-exec não pôde ser localizado. {1} Se esta for uma build de dese
   <data name="Chat_AssistantMedia_Close" xml:space="preserve">
     <value>Fechar</value>
   </data>
+  <data name="Chat_AssistantMedia_Download" xml:space="preserve"><value>Baixar</value></data>
+  <data name="Chat_AssistantMedia_DownloadFailed" xml:space="preserve"><value>Não foi possível iniciar o download</value></data>
   <data name="HubWindow_NavigationViewItem_LocalAi.Content" xml:space="preserve"><value>IA local</value></data>
   <data name="LocalAiPage_Title.Text" xml:space="preserve"><value>IA local</value></data>
   <data name="LocalAiPage_Intro.Text" xml:space="preserve"><value>Execute o llama-server nativo verificado de forma privada neste computador. Os modelos são carregados apenas quando solicitados.</value></data>
@@ -7102,6 +7261,7 @@ O binário wxc-exec não pôde ser localizado. {1} Se esta for uma build de dese
   <data name="LocalAiPage_EndpointLabel.Text" xml:space="preserve"><value>Ponto de extremidade</value></data>
   <data name="LocalAiPage_ProcessLabel.Text" xml:space="preserve"><value>Processo</value></data>
   <data name="LocalAiPage_StartButton.Content" xml:space="preserve"><value>Iniciar roteador</value></data>
+  <data name="LocalAiPage_NativeSelectionRequired" xml:space="preserve"><value>Antes de iniciar ou reiniciar o Local AI, escolha Usar Local AI na configuração do Gateway nativo selecionado ou selecione o Gateway WSL responsável em Conexão.</value></data>
   <data name="LocalAiPage_StopButton.Content" xml:space="preserve"><value>Parar</value></data>
   <data name="LocalAiPage_RestartButton.Content" xml:space="preserve"><value>Reiniciar</value></data>
   <data name="LocalAiPage_OpenLogsButton.Content" xml:space="preserve"><value>Abrir logs</value></data>
@@ -7789,7 +7949,6 @@ Suas configurações, gateway, arquivos e modelos permanecem onde estão.</value
   <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>Iniciar e verificar o Gateway</value></data>
   <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>Tentar configurar novamente</value></data>
   <data name="Onboarding_Native_Preview" xml:space="preserve"><value>Somente visualização. Nenhum pacote será instalado e nenhum Gateway será iniciado.</value></data>
-  <data name="Onboarding_Native_Review.Text" xml:space="preserve"><value>Ao selecionar Configurar Gateway, você autoriza o WinGet a instalar o pacote Gateway ausente pela Microsoft Store e aceita os contratos do pacote e da fonte Store. Se o WinGet não estiver pronto, a configuração poderá reparar o Instalador de Aplicativo antes de tentar novamente. O Companion verifica o pacote, prepara um perfil dedicado e abre a configuração do Gateway. A entrada no provedor permanece interativa. Este caminho não instala WSL, IA local nem Tailscale.</value></data>
   <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>Esses recursos do Windows ficam disponíveis após o Modo Nó se conectar e emparelhar com o Gateway. As permissões do Windows e as aprovações de comandos continuam sendo aplicáveis.</value></data>
   <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>Gateway nativo configurado</value></data>
   <data name="Onboarding_Native_CapabilitySummary" xml:space="preserve"><value>{0}. Você pode alterar essas escolhas nas configurações do Companion.</value></data>
@@ -7988,6 +8147,7 @@ Suas configurações, gateway, arquivos e modelos permanecem onde estão.</value
   <data name="AgentCreation_Description" xml:space="preserve"><value>Crie um agente e seu espaço de trabalho no gateway conectado. Isso não cria uma conversa nem altera seu chat atual.</value></data>
   <data name="AgentCreation_PermissionRequired" xml:space="preserve"><value>Conecte-se a um gateway com a permissão operator.admin para criar um agente.</value></data>
   <data name="AgentCreation_Failed" xml:space="preserve"><value>Não foi possível confirmar a criação do agente. Feche esta caixa de diálogo e atualize os agentes antes de tentar novamente.</value></data>
+  <data name="Onboarding_AiSetup_LocalRepairRequiresStop" xml:space="preserve"><value>Abra as configurações do Local AI, reconecte o Gateway original e pare o Local AI com sucesso antes de reparar seus arquivos. Se houver recuperação de rota pendente, conclua-a primeiro. Preserve o registro de propriedade e os modelos baixados.</value></data>
   <data name="Onboarding_AiSetup_LocalState_ManagementBlocked" xml:space="preserve"><value>O gerenciamento pelo Companion está indisponível.</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipMissing" xml:space="preserve"><value>Este perfil não possui um comprovante de propriedade do provedor de IA local existente. Se o Companion o criou em uma tentativa anterior, reabra o perfil original do Companion e escolha Recuperar e usar IA local. Nada foi alterado. Usar um modelo detectado não restaura o gerenciamento pelo Companion.</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipInvalid" xml:space="preserve"><value>A propriedade salva da IA local, o modelo ou a configuração do gateway não corresponde mais. No perfil original do Companion, revise o gateway original e suas configurações de modelo, incluindo entradas alteradas na lista de modelos permitidos. Mantenha o comprovante de propriedade; não copie credenciais nem substitua o provedor.</value></data>
@@ -8004,5 +8164,38 @@ Suas configurações, gateway, arquivos e modelos permanecem onde estão.</value
   </data>
   <data name="ChatPage_SetupCheckAgain.Content" xml:space="preserve">
     <value>Verificar novamente</value>
+  </data>
+  <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>O perfil preferido {0} não cabe neste hardware. A configuração pode usar {1} com {2:N0} tokens de contexto. Revise este perfil na configuração antes de instalar.</value></data>
+  <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>Este perfil requer pelo menos {0} de RAM do sistema.</value></data>
+  <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>Este perfil requer pelo menos {0} livres nos volumes do cache de modelos e do mecanismo.</value></data>
+  <data name="Chat_Welcome_Loading" xml:space="preserve"><value>Carregando conteúdo de boas-vindas do seu Gateway...</value></data>
+  <data name="Chat_Welcome_Unsupported" xml:space="preserve"><value>Este Gateway não fornece conteúdo de boas-vindas compartilhado. Você ainda pode iniciar uma conversa abaixo.</value></data>
+  <data name="Chat_Welcome_Failed" xml:space="preserve"><value>Não foi possível carregar o conteúdo de boas-vindas. Reconecte para tentar novamente ou inicie uma conversa abaixo.</value></data>
+  <data name="Chat_Placement_Unknown" xml:space="preserve">
+    <value>Não verificado</value>
+  </data>
+  <data name="Chat_Placement_Error_DiscoveryFailed" xml:space="preserve">
+    <value>Não foi possível carregar os locais de conversa. Tente novamente no seletor de local.</value>
+  </data>
+  <data name="Chat_Placement_Error_BrowseFailed" xml:space="preserve">
+    <value>Não foi possível carregar as pastas do Gateway. Tente navegar novamente.</value>
+  </data>
+  <data name="Chat_Placement_Error_PreparationFailed" xml:space="preserve">
+    <value>Não foi possível preparar o local da conversa. Verifique-o no Gateway antes de tentar novamente.</value>
+  </data>
+  <data name="Chat_Placement_Error_PreparationPending" xml:space="preserve">
+    <value>A preparação do local ainda está em andamento. Aguarde antes de enviar novamente.</value>
+  </data>
+  <data name="Chat_Placement_Error_NotReady" xml:space="preserve">
+    <value>O local de conversa selecionado não está pronto. Atualize as opções antes de enviar.</value>
+  </data>
+  <data name="Chat_Placement_Error_HistoryPending" xml:space="preserve">
+    <value>Aguardando o histórico atual da conversa antes de preparar o local. Tente enviar novamente quando o carregamento terminar.</value>
+  </data>
+  <data name="Chat_Placement_Error_Interrupted" xml:space="preserve">
+    <value>A preparação foi interrompida e pode ter alterado o local desta sessão. Verifique-o no Gateway antes de enviar novamente.</value>
+  </data>
+  <data name="Chat_Placement_Error_NoLongerEmpty" xml:space="preserve">
+    <value>Esta sessão não está mais vazia, então a seleção de local pendente foi cancelada. Verifique a sessão e envie novamente para continuar no local atual.</value>
   </data>
 </root>

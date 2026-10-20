@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
@@ -355,6 +355,12 @@
   </data>
   <data name="Update_Title_Failed" xml:space="preserve">
     <value>无法检查更新</value>
+  </data>
+  <data name="Update_Message_Unavailable" xml:space="preserve">
+    <value>Automatic updates are unavailable because an updater component could not be loaded. You can keep using OpenClaw and download updates from the official releases page.</value>
+  </data>
+  <data name="Update_ManualDownload" xml:space="preserve">
+    <value>Open official releases</value>
   </data>
   <data name="Update_Message_Failed" xml:space="preserve">
     <value>检查更新时出错。
@@ -755,9 +761,6 @@
   </data>
   <data name="ExecApproval_ArmHint" xml:space="preserve">
     <value>允许按钮稍后可用</value>
-  </data>
-  <data name="ExecApproval_ScrollHint" xml:space="preserve">
-    <value>请滚动到命令末尾后再允许</value>
   </data>
   <data name="ExecApproval_ConfusableWarning" xml:space="preserve">
     <value>此命令混用了不同的字符集，可能与其外观不符。请仔细核对。</value>
@@ -2595,6 +2598,75 @@
   <data name="VoiceSettingsPage_TtsMiniMax.Content" xml:space="preserve">
     <value>MiniMax（云端，需要 API 密钥）</value>
   </data>
+  <data name="VoiceSettingsPage_TtsKokoro.Content" xml:space="preserve">
+    <value>Kokoro（本地神经语音）</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroVoiceCombo.Header" xml:space="preserve">
+    <value>语音</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadButtonText.Text" xml:space="preserve">
+    <value>下载语音包</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonDownloadPack" xml:space="preserve">
+    <value>下载语音包</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonDownloaded" xml:space="preserve">
+    <value>已下载</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonDownloading" xml:space="preserve">
+    <value>正在下载…</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonRetry" xml:space="preserve">
+    <value>重试下载</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDeleteButton.Content" xml:space="preserve">
+    <value>删除</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPreview.Text" xml:space="preserve">
+    <value>预览</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPreviewButtonContent" xml:space="preserve">
+    <value>预览</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroInfoText.Text" xml:space="preserve">
+    <value>语音包从 GitHub 发布版下载（英语和中文约 380 MB，西班牙语约 310 MB）。它们完全在本机运行；无音频离开您的设备。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPackReady" xml:space="preserve">
+    <value>语音包已在此 PC 上就绪（{0} MB）。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPackNotDownloaded" xml:space="preserve">
+    <value>语音包尚未下载。点击下载以获取它（约 {0} MB）。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroConnecting" xml:space="preserve">
+    <value>正在连接到 GitHub 发布版…</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroProgressBytes" xml:space="preserve">
+    <value>正在下载… {0} / {1} MB</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadCanceled" xml:space="preserve">
+    <value>下载已取消。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailed" xml:space="preserve">
+    <value>下载失败（参见 Debug 日志）。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailedDiskFull" xml:space="preserve">
+    <value>磁盘空间不足。请至少释放 {0} MB 后重试。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailedNetwork" xml:space="preserve">
+    <value>下载失败。请检查网络连接后重试。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailedIntegrity" xml:space="preserve">
+    <value>下载的语音包未通过验证，已被删除。请稍后重试。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDeleted" xml:space="preserve">
+    <value>语音包已删除。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDeleteFailed" xml:space="preserve">
+    <value>删除失败（参见 Debug 日志）。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPreviewFailed" xml:space="preserve">
+    <value>预览失败（参见 Debug 日志）。</value>
+  </data>
   <data name="VoiceSettingsPage_PiperVoiceCombo.Header" xml:space="preserve">
     <value>语音</value>
   </data>
@@ -2653,7 +2725,7 @@
     <value>中国</value>
   </data>
   <data name="VoiceSettingsPage_PrivacyNote.Text" xml:space="preserve">
-    <value>Piper、Windows 和语音识别在此设备上运行。云端 TTS 提供商会将回复文本发送到其服务进行合成；麦克风音频不会发送给这些服务。</value>
+    <value>Kokoro、Piper、Windows 和语音识别在此设备上运行。云端 TTS 提供商会将回复文本发送到其服务进行合成；麦克风音频不会发送给这些服务。</value>
   </data>
   <data name="VoiceSettingsPage_StatusModelReady" xml:space="preserve">
     <value>✅ 模型就绪</value>
@@ -2894,6 +2966,88 @@
   </data>
   <data name="DebugPage_ChatOverride_ForceNative_Tray.Content" xml:space="preserve">
     <value>强制使用伴侣聊天 UI</value>
+  </data>
+  <data name="Chat_ZeroState_RecentChats" xml:space="preserve"><value>最近的聊天</value></data>
+  <data name="Chat_Placement_Environment" xml:space="preserve">
+    <value>环境</value>
+  </data>
+  <data name="Chat_Placement_Workspace" xml:space="preserve">
+    <value>工作区</value>
+  </data>
+  <data name="Chat_Placement_Devices" xml:space="preserve">
+    <value>你的设备</value>
+  </data>
+  <data name="Chat_Placement_Projects" xml:space="preserve">
+    <value>项目</value>
+  </data>
+  <data name="Chat_Placement_Folders" xml:space="preserve">
+    <value>网关文件夹</value>
+  </data>
+  <data name="Chat_Placement_SearchDevices" xml:space="preserve">
+    <value>搜索环境</value>
+  </data>
+  <data name="Chat_Placement_SearchProjects" xml:space="preserve">
+    <value>搜索项目或粘贴 Git URL</value>
+  </data>
+  <data name="Chat_Placement_Path" xml:space="preserve">
+    <value>输入文件夹路径</value>
+  </data>
+  <data name="Chat_Placement_DefaultWorkspace" xml:space="preserve">
+    <value>默认工作区</value>
+  </data>
+  <data name="Chat_Placement_Browse" xml:space="preserve">
+    <value>浏览文件夹</value>
+  </data>
+  <data name="Chat_Placement_Up" xml:space="preserve">
+    <value>上一级</value>
+  </data>
+  <data name="Chat_Placement_UseFolder" xml:space="preserve">
+    <value>使用此文件夹</value>
+  </data>
+  <data name="Chat_Placement_Back" xml:space="preserve">
+    <value>返回项目</value>
+  </data>
+  <data name="Chat_Placement_Clone" xml:space="preserve">
+    <value>发送时克隆仓库</value>
+  </data>
+  <data name="Chat_Placement_Retry" xml:space="preserve">
+    <value>重试</value>
+  </data>
+  <data name="Chat_Placement_Loading" xml:space="preserve">
+    <value>正在加载位置...</value>
+  </data>
+  <data name="Chat_Placement_Preparing" xml:space="preserve">
+    <value>正在准备聊天位置...</value>
+  </data>
+  <data name="Chat_Placement_NoMatches" xml:space="preserve">
+    <value>没有匹配的位置</value>
+  </data>
+  <data name="Chat_Placement_Offline" xml:space="preserve">
+    <value>离线</value>
+  </data>
+  <data name="Chat_Placement_HostingDisabled" xml:space="preserve">
+    <value>未启用会话托管</value>
+  </data>
+  <data name="Chat_Placement_CapacityUnknown" xml:space="preserve">
+    <value>未提供会话容量信息</value>
+  </data>
+  <data name="Chat_Placement_NoCapacity" xml:space="preserve">
+    <value>没有可用的会话名额</value>
+  </data>
+  <data name="Chat_Placement_CommandUnavailable" xml:space="preserve">
+    <value>所需命令尚未获批</value>
+  </data>
+  <data name="Chat_Placement_UpdateRequired" xml:space="preserve">
+    <value>需要更新主机</value>
+  </data>
+  <data name="Chat_Placement_RuntimeUnsupported" xml:space="preserve">
+    <value>此智能体运行时不支持设备会话</value>
+  </data>
+  <data name="Chat_Placement_Gateway" xml:space="preserve">
+    <value>网关主机</value>
+  </data>
+  <data name="Chat_Placement_Remote" xml:space="preserve">
+    <value>远程会话主机</value>
   </data>
   <data name="Chat_ZeroState_WelcomeTitle" xml:space="preserve">
     <value>欢迎使用 OpenClaw</value>
@@ -3333,6 +3487,9 @@
   </data>
   <data name="Chat_Error_SendFailedFormat" xml:space="preserve">
     <value>发送失败：{0}</value>
+  </data>
+  <data name="Chat_Error_ConnectionDroppedBeforeGatewayAcceptedMessage" xml:space="preserve">
+    <value>网关接受此消息前连接已中断。</value>
   </data>
   <data name="Chat_Notification_AbortFailed" xml:space="preserve">
     <value>中止失败</value>
@@ -4986,10 +5143,10 @@
     <value>打开引导</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Title" xml:space="preserve">
-    <value>检测到 MSIX 安装</value>
+    <value>网关清理</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Message" xml:space="preserve">
-    <value>通过 Windows 设置 → 应用删除 OpenClaw 不会清理本地网关(WSL 发行版、磁盘映像)。请先使用下面的“删除本地网关”,然后再卸载 OpenClaw。</value>
+    <value>在 Windows 设置中卸载 OpenClaw 会自动移除托管网关。使用下方的“移除本地网关”可移除网关并保留应用。</value>
   </data>
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>删除 WSL 发行版 (OpenClawGateway)、其磁盘映像、自动启动项,并清除网关凭据。您的 MCP 令牌将被保留。引导将重置。</value>
@@ -7050,6 +7207,8 @@
   <data name="Chat_AssistantMedia_MediaAttachment" xml:space="preserve"><value>媒体附件</value></data>
   <data name="Chat_AssistantMedia_OpenImage" xml:space="preserve"><value>打开图像 {0}</value></data>
   <data name="Chat_AssistantMedia_Close" xml:space="preserve"><value>关闭</value></data>
+  <data name="Chat_AssistantMedia_Download" xml:space="preserve"><value>下载</value></data>
+  <data name="Chat_AssistantMedia_DownloadFailed" xml:space="preserve"><value>无法开始下载</value></data>
   <data name="HubWindow_NavigationViewItem_LocalAi.Content" xml:space="preserve"><value>本地 AI</value></data>
   <data name="LocalAiPage_Title.Text" xml:space="preserve"><value>本地 AI</value></data>
   <data name="LocalAiPage_Intro.Text" xml:space="preserve"><value>在此计算机上私密运行经过验证的原生 llama-server。模型仅在收到请求时加载。</value></data>
@@ -7064,6 +7223,7 @@
   <data name="LocalAiPage_EndpointLabel.Text" xml:space="preserve"><value>终结点</value></data>
   <data name="LocalAiPage_ProcessLabel.Text" xml:space="preserve"><value>进程</value></data>
   <data name="LocalAiPage_StartButton.Content" xml:space="preserve"><value>启动路由器</value></data>
+  <data name="LocalAiPage_NativeSelectionRequired" xml:space="preserve"><value>启动或重启 Local AI 之前，请在所选本机网关的设置流程中选择“使用本地 AI”，或在“连接”中选择拥有此安装的 WSL 网关。</value></data>
   <data name="LocalAiPage_StopButton.Content" xml:space="preserve"><value>停止</value></data>
   <data name="LocalAiPage_RestartButton.Content" xml:space="preserve"><value>重新启动</value></data>
   <data name="LocalAiPage_OpenLogsButton.Content" xml:space="preserve"><value>打开日志</value></data>
@@ -7735,7 +7895,6 @@
   <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>启动并验证 Gateway</value></data>
   <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>重试设置</value></data>
   <data name="Onboarding_Native_Preview" xml:space="preserve"><value>仅供预览。不会安装任何包或启动 Gateway。</value></data>
-  <data name="Onboarding_Native_Review.Text" xml:space="preserve"><value>选择“设置 Gateway”即表示您授权 WinGet 从 Microsoft Store 安装缺失的 Gateway 包，并接受包协议和商店源协议。如果 WinGet 尚未就绪，设置可能会先修复应用安装程序再重试。Companion 随后将验证包、准备专用配置文件并打开 Gateway 设置。提供商登录仍需您交互操作。此方式不会安装 WSL、本地 AI 或 Tailscale。</value></data>
   <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>节点模式连接 Gateway 并完成配对后，即可使用这些 Windows 功能。Windows 权限和命令审批仍然适用。</value></data>
   <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>原生 Gateway 已配置</value></data>
   <data name="Onboarding_Native_CapabilitySummary" xml:space="preserve"><value>{0}。您可以在 Companion 设置中更改这些选项。</value></data>
@@ -7934,6 +8093,7 @@
   <data name="AgentCreation_Description" xml:space="preserve"><value>在已连接的网关上创建智能体及其工作区。此操作不会创建会话或更改当前聊天。</value></data>
   <data name="AgentCreation_PermissionRequired" xml:space="preserve"><value>请连接具有 operator.admin 权限的网关以创建智能体。</value></data>
   <data name="AgentCreation_Failed" xml:space="preserve"><value>无法确认智能体是否创建成功。请关闭此对话框并刷新智能体列表，然后再试。</value></data>
+  <data name="Onboarding_AiSetup_LocalRepairRequiresStop" xml:space="preserve"><value>打开 Local AI 设置，重新连接原来的网关，并成功停止 Local AI 后再修复文件。如果路由仍需恢复，请先完成恢复。请保留所有权记录和已下载的模型。</value></data>
   <data name="Onboarding_AiSetup_LocalState_ManagementBlocked" xml:space="preserve"><value>Companion 管理不可用。</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipMissing" xml:space="preserve"><value>此配置文件没有现有本地 AI 提供程序的所有权凭据。如果 Companion 在之前的设置尝试中创建了它，请重新打开原始 Companion 配置文件并选择“恢复并使用本地 AI”。未进行任何更改。使用检测到的模型不会恢复 Companion 管理。</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipInvalid" xml:space="preserve"><value>已保存的本地 AI 所有权、模型或网关配置不再匹配。请在原始 Companion 配置文件中检查原始网关及其模型设置，包括已修改的模型允许列表条目。保留所有权凭据，不要复制身份验证凭据或替换提供程序。</value></data>
@@ -7950,5 +8110,38 @@
   </data>
   <data name="ChatPage_SetupCheckAgain.Content" xml:space="preserve">
     <value>再次检查</value>
+  </data>
+  <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>首选的 {0} 配置不适合此硬件。设置可使用 {1}，上下文为 {2:N0} 个令牌。安装前请在设置中查看此配置。</value></data>
+  <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>此配置至少需要 {0} 系统内存。</value></data>
+  <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>此配置要求模型缓存和运行时所在的卷都至少有 {0} 可用空间。</value></data>
+  <data name="Chat_Welcome_Loading" xml:space="preserve"><value>正在从 Gateway 加载欢迎内容...</value></data>
+  <data name="Chat_Welcome_Unsupported" xml:space="preserve"><value>此 Gateway 不提供共享欢迎内容。你仍可在下方开始聊天。</value></data>
+  <data name="Chat_Welcome_Failed" xml:space="preserve"><value>无法加载欢迎内容。请重新连接以重试，或在下方开始聊天。</value></data>
+  <data name="Chat_Placement_Unknown" xml:space="preserve">
+    <value>未验证</value>
+  </data>
+  <data name="Chat_Placement_Error_DiscoveryFailed" xml:space="preserve">
+    <value>无法加载聊天位置。请在位置选择器中重试。</value>
+  </data>
+  <data name="Chat_Placement_Error_BrowseFailed" xml:space="preserve">
+    <value>无法加载 Gateway 文件夹。请重新浏览。</value>
+  </data>
+  <data name="Chat_Placement_Error_PreparationFailed" xml:space="preserve">
+    <value>无法准备聊天位置。请先在 Gateway 中检查该位置，然后重试。</value>
+  </data>
+  <data name="Chat_Placement_Error_PreparationPending" xml:space="preserve">
+    <value>位置准备仍在进行中。请等待后再发送。</value>
+  </data>
+  <data name="Chat_Placement_Error_NotReady" xml:space="preserve">
+    <value>所选聊天位置尚未就绪。请先刷新选项，然后发送。</value>
+  </data>
+  <data name="Chat_Placement_Error_HistoryPending" xml:space="preserve">
+    <value>正在等待当前聊天记录，然后才能准备位置。请在加载完成后重新发送。</value>
+  </data>
+  <data name="Chat_Placement_Error_Interrupted" xml:space="preserve">
+    <value>位置准备已中断，可能已更改此会话的位置。请先在 Gateway 中检查，然后再发送。</value>
+  </data>
+  <data name="Chat_Placement_Error_NoLongerEmpty" xml:space="preserve">
+    <value>此会话已不再为空，因此已取消待定的位置选择。请检查会话并重新发送，以在当前位置继续。</value>
   </data>
 </root>

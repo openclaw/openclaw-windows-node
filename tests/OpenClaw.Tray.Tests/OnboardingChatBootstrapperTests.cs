@@ -339,6 +339,7 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
         var client = new FakeOperatorGatewayClient
         {
             Result = new ChatSendResult { RunId = "run-main-empty" },
+            FinalRunIdRaisedDuringSend = "run-main-empty",
             AgentFilesListResponses =
             [
                 CreateAgentFilesListForAgent("sidecar", "SOUL.md"),
@@ -358,9 +359,6 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
         });
 
         var task = OnboardingChatBootstrapper.BootstrapAsync(client, settings, TimeSpan.FromSeconds(5), registry: registry);
-        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
-        await Task.Delay(50);
-        client.RaiseFinalAssistant("run-main-empty");
         var result = await task;
 
         Assert.True(result);

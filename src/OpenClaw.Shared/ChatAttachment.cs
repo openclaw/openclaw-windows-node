@@ -122,7 +122,7 @@ public sealed class ChatAttachment
         return FormatBytes(SizeBytes);
     }
 
-    private static string FormatBytes(long bytes)
+    public static string FormatBytes(long bytes)
     {
         return bytes switch
         {

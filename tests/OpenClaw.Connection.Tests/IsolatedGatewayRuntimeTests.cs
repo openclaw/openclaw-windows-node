@@ -621,6 +621,23 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task ReleasedServiceKeepsRunningForItsNextOwner()
+    {
+        _state = "not-started";
+        _listeners = [];
+        _listenOnStart = true;
+
+        await _runtime.EnsureRunningAsync(_record, CancellationToken.None);
+        await _runtime.ReleaseAsync(CancellationToken.None);
+        await _runtime.StopAsync(CancellationToken.None);
+        await _runtime.DisposeAsync();
+
+        Assert.Contains("gateway-service start --json", _calls);
+        Assert.DoesNotContain("gateway-service stop --json", _calls);
+        Assert.Equal("running", _state);
+    }
+
+    [Fact]
     public async Task ExistingPackageServiceIsNotStoppedWhenCompanionDetaches()
     {
         await _runtime.EnsureRunningAsync(_record, CancellationToken.None);

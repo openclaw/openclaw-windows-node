@@ -30,6 +30,12 @@ credential outside the artifact manifest. The child receives it through
 `LLAMA_API_KEY`, never arguments or the router preset. HTTP clients send Bearer
 headers only after loopback validation; RPC publication carries the provider key
 inside the authenticated request. WSL callers retain their existing behavior.
+Credential publication stages and flushes a protected sibling file before a
+non-overwriting rename. Readers share read and delete access, but not write
+access: Windows can expose the published name before the rename handle closes.
+The ciphertext length (1-4096 bytes) and bounded read use the same open handle;
+invalid ciphertext or a decrypted key other than 32 bytes fails closed without
+rotating the credential.
 `LocalAiGatewayLifecycle` composes this path with the existing WSL lifecycle.
 `LocalAI/gateway-binding.json` records the exact Gateway endpoint and device
 identity, selected model, previous primary, owned allowlist entry and acknowledged
@@ -81,6 +87,48 @@ alone is insufficient authority to delete a potentially externally edited route.
 
 Native automatic startup waits for the manager-owned connection and an existing
 confirmed selection. Observation and artifact acquisition never switch models.
+Legacy Windows artifact receipts alone do not authorize background WSL startup.
+`LocalAiGatewayLifecycle` admits automatic WSL startup only with one pinned,
+explicit setup-managed WSL owner and no native binding, active native Gateway or
+staged native selection. Explicit startup revalidates ownership before runtime
+mutation. Without a native binding, an active native Gateway or staged native
+selection also blocks explicit Start and Restart, even when a pinned WSL owner
+exists. Local AI settings disable these actions and direct the user to choose
+Use Local AI for the native Gateway or select the owning WSL Gateway in Connection.
+Stop remains available for a running or unresolved route.
+An unbound runtime with no attempted route write does not report pending
+route reconciliation; a durable native binding or an actual uncertain write still
+does. Native setup can review damaged legacy artifacts without a WSL Gateway.
+Repair blocked by owned runtime or pending routing directs users to reconnect the
+original Gateway and stop/recover Local AI, never delete its receipt or models.
+An unresolved stopped native runtime keeps Stop available even before artifact
+observation completes. Read-only observation can load its initial installation
+status without clearing the ownership flag. Stop without an authorized owner is
+rejected before marking any routing uncertain.
+
+If the installation receipt is missing or invalid, Stop cannot infer a provider
+definition from model files or a listening process. It can settle the retained
+binding only after a fresh read through the original authenticated identity proves
+that the provider is absent, the saved fallback is restored, and any Companion-added
+allowlist entry is absent. This performs no Gateway write and retains the binding
+until explicit release. If those checks fail, restore the installation receipt or
+withdraw the route using the original Gateway's configuration tools, then retry
+Stop. Offline, mismatched and still-published routes remain blocked; artifact Repair
+is not a way to bypass their ownership.
+Successful receiptless Stop preserves its stopped intent across page refresh until
+explicit Start or Release, or observation loads a repaired installation receipt.
+Loading that receipt resumes read-only status checks, not automatic startup.
+Canceled or rejected Release retains the ownership and stopped intent; successful
+Release lets observation report the missing installation.
+Setup cancellation releases its selected ownership through the same guarded
+withdrawal checks. Once that binding is gone, read-only refresh also resumes
+normal installation observation without restarting the router.
+This receiptless confirmation also blocks if an originally Companion-added allowlist
+entry now contains user customizations. Restore the original installation receipt
+from an external backup and use the normal Stop path, which can preserve the edited
+entry; do not delete user metadata to force receiptless settlement. Companion does
+not keep a restorable backup or reconstruct this receipt. Without one, this case
+remains blocked rather than adopting or deleting the customized entry.
 Explicit Use publishes the authenticated endpoint, and the existing setup verifier
 performs real inference with the exact primary, without fallback. A changed
 revision is not silently adopted: explicit reconciliation requires the same
@@ -193,6 +241,9 @@ A floating-style subtle reopen button reserves a dedicated 56 DIP row at
 the content's top-left below the titlebar, never covering hosted hit targets.
 The pane toggle retains a 40 DIP target and 16 DIP glyph in both states; focus
 moves to the surviving toggle. Pane changes do not remount chat or reset drafts.
+Both Workspace toggle states and the Settings toggle use the native
+`SubtleButtonStyle` with zero padding for icon-only content. The style's default
+text-button padding must not squeeze the glyph inside the fixed 40 DIP target.
 The companion uses a native TitleBar titled OpenClaw Settings with shared claw
 artwork. Search, Back, and Forward live beside the toggle in its stable sidebar
 toolbar. The native pane reserves 56 DIP above its items, including in compact mode.
@@ -354,6 +405,18 @@ orchestration. Three narrower owners sit behind it:
 `NodeConnector`, `SshTunnelService/Manager`, `SetupCodeDecoder`, and connection
 interfaces/DTOs/enums remain separate. This project has zero WinUI dependencies
 and is independently testable.
+
+`ChatNavigationReadiness` settles operator readiness, its real deadline, and
+caller cancellation through one atomic completion source. A connected event
+that completes first cannot become a timeout just because notification or UI
+resumption is delayed, and retains precedence over later cancellation. A timeout
+result rechecks caller cancellation when its continuation resumes, so canceled
+navigation propagates cancellation instead of consuming a stale timeout.
+Downstream continuations remain asynchronous because
+connection state events may be emitted while the manager holds its transition
+semaphore. The ready/null fast path and post-subscription snapshot check retain
+their existing precedence; every pending wait disposes its deadline and both
+cancellation registrations and detaches its state handler.
 
 Native Check/Next keeps device-token precedence. Only a typed
 `AUTH_DEVICE_TOKEN_MISMATCH` may trigger one recovery in the disposable
@@ -754,6 +817,13 @@ When **another** device or node requests pairing, the gateway broadcasts `device
 `PairingApprovalCoordinator` (tray) reconciles those snapshots through the pure `PairingApprovalQueue` (OpenClaw.Connection) into add/resolve deltas, de-duplicating, suppressing already-decided requests, and filtering out the local node's own pending request (handled by the auto-approve path above). For genuinely new requests - when `ShowPairingApprovalDialog` is enabled and the operator holds pairing scope - it raises `ApprovalRequested`, and the app presents a focused **`PairingApprovalDialog`** plus an awareness toast (with a "Review" action). The dialog shows the requester's identity and the **operator scopes being granted** (mapped to friendly text by `PairingScopeDescriptions`), with Approve / Reject / Decide-later. Approve is briefly disabled on each new request to prevent click-through. Approve/Reject call the `IOperatorGatewayClient.{Device,Node}Pair{Approve,Reject}Async` RPCs; the queue advances and the dialog closes when empty. The existing Connections-page "Pending approvals" banner remains as the passive fallback when the dialog is disabled. Pure queue/scope logic is unit-tested in `OpenClaw.Connection.Tests`.
 
 ## SSH tunnel integration
+
+The Connection page and Connection Status validate remote and local forward
+ports with `SshForwardPorts` before entering the direct-connect transaction.
+Both fields require an integer from 1 through 65535. Blank or invalid input
+shows the existing field-specific error without substituting default ports or
+changing the active connection. SSH command-line range validation remains a
+separate downstream guard.
 
 `SshTunnelService` manages an SSH local port-forward process and implements `ISshTunnelManager` directly for the connection manager.
 

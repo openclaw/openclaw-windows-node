@@ -473,6 +473,7 @@ public sealed class WorkspaceNavigationTests
             Assert.Equal("{StaticResource SubtleButtonStyle}", (string?)toggle.Attribute("Style"));
             Assert.Equal("40", (string?)toggle.Attribute("Width"));
             Assert.Equal("40", (string?)toggle.Attribute("Height"));
+            Assert.Equal("0", (string?)toggle.Attribute("Padding"));
             var icon = Assert.Single(toggle.Descendants(), element => element.Name.LocalName == "FontIcon");
             Assert.Equal("16", (string?)icon.Attribute("FontSize"));
         }
@@ -528,6 +529,34 @@ public sealed class WorkspaceNavigationTests
         Assert.Contains("_pendingVoice.Request(nativeSurface: !_webViewMode)", chat);
         Assert.Contains("_pendingVoice.Cancel()", chat);
         Assert.DoesNotContain("RetryTriggerVoice", chat);
+    }
+
+    [Fact]
+    public void ComposerSelection_SynchronizesWorkspaceDestinationAndHistory()
+    {
+        var chat = File.ReadAllText(Source("Pages", "ChatPage.xaml.cs"));
+        var selected = chat[chat.IndexOf("internal void OnComposerSessionSelected", StringComparison.Ordinal)..
+            chat.IndexOf("private void OnWorkspaceOpenConnection", StringComparison.Ordinal)];
+        Assert.Contains("_mountedThreadId = sessionKey;", selected);
+        Assert.Contains("workspace.Destination.SessionKey != sessionKey", selected);
+        Assert.Contains("_pageActive", selected);
+        Assert.Contains("workspace.Destination.Page == WorkspacePageId.Home", selected);
+        Assert.Contains("workspace.SelectSession(sessionKey)", selected);
+    }
+
+    [Fact]
+    public void NavigationInvalidatesDelayedComposerSelectionBeforeDeferredRendering()
+    {
+        var workspace = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
+        var render = workspace[workspace.IndexOf("private void RenderDestination()", StringComparison.Ordinal)..
+            workspace.IndexOf("private void QueueChatApply()", StringComparison.Ordinal)];
+        Assert.True(render.IndexOf("_chat.InvalidatePendingSessionNavigation()", StringComparison.Ordinal) <
+            render.IndexOf("_chat.QueueSession", StringComparison.Ordinal));
+        var chat = File.ReadAllText(Source("Pages", "ChatPage.xaml.cs"));
+        var unload = chat[chat.IndexOf("private void OnUnloaded", StringComparison.Ordinal)..
+            chat.IndexOf("public void Initialize()", StringComparison.Ordinal)];
+        Assert.Contains("InvalidatePendingSessionNavigation();", unload);
+        Assert.Contains("_reactorHost?.InvalidatePendingSessionNavigation()", chat);
     }
 
     [Fact]

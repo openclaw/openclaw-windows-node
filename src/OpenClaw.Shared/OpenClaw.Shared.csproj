@@ -11,6 +11,7 @@
     <InternalsVisibleTo Include="OpenClaw.SetupEngine" />
     <InternalsVisibleTo Include="OpenClaw.Shared.Tests" />
     <InternalsVisibleTo Include="OpenClaw.Tray.WinUI" />
+    <InternalsVisibleTo Include="OpenClaw.Tray.Tests" />
   </ItemGroup>
 
   <ItemGroup>
@@ -21,7 +22,7 @@
   <ItemGroup>
     <PackageReference Include="Whisper.net" Version="1.9.0" />
     <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />
-    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.30.0" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.31.0" />
   </ItemGroup>
 
 </Project>

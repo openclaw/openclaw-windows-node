@@ -24,7 +24,19 @@ A comprehensive guide for building, running, and contributing to the OpenClaw Wi
 - **WebView2 Runtime** - Usually pre-installed on Windows 10+ ([Manual download](https://developer.microsoft.com/microsoft-edge/webview2/))
 - **Visual Studio 2022** (optional) - For easier development and debugging with WinUI 3 designer support
 
-Run `.\scripts\setup-dev.ps1` from the repository root to install or verify local prerequisites with winget. Agents can use `.\scripts\setup-dev.ps1 -RunValidation` to prepare the worktree and run the required closeout validation.
+Start with `.\scripts\setup-dev.ps1 -CheckOnly` from the repository root.
+Installation through `.\scripts\setup-dev.ps1` uses winget and may add Git
+trust; run it only with permission to make those machine changes.
+`-RunValidation` also runs the required closeout after setup.
+
+For read-only developer, desktop-proof, and optional shared-review diagnostics:
+
+```powershell
+.\scripts\setup-dev.ps1 -AgentReadiness
+```
+
+This reports prerequisites, not a successful build or authorized runtime.
+See [agent readiness](docs/AGENT_WORKFLOWS.md#check-host-and-tool-readiness).
 
 ### For Testing
 
@@ -517,6 +529,58 @@ Release identity is the default for every configuration. Use `-DevBuild` on `bui
 
 #### Onboarding and setup workflow helpers
 
+Native Gateway development follows npm `latest`, not the Store MSIX payload.
+The existing MSIX isolation/runtime is retained by packaging the npm archive with
+`openclaw/openclaw-windows-packaging` under a separate development identity:
+
+```powershell
+.\run-app-local.ps1 -Isolated
+.\run-app-local.ps1 -Isolated -GatewayChannel Packaged
+.\run-app-local.ps1 -Isolated -GatewayChannel Packaged -PackagingRelease v2026.9.9-msix.0
+```
+
+`-GatewayChannel Packaged` tests the latest published packaging release from the same Companion source,
+without a long-lived release fork. The launcher selects `npm-latest` or
+`packaged` and automatically isolates each channel's app data. `-NoBuild`
+skips only the Companion build; Gateway tags are still resolved to exact versions.
+An explicit `OPENCLAW_NATIVE_GATEWAY_DEV_PATCH` reuses a prepared patch without
+rebuilding. `-UseStoreGateway` opts back into the installed Store runtime.
+Existing profiles are retained, not migrated into the new channel-specific data
+directories; use `-DataDir` only when deliberately reusing an existing profile.
+
+For Gateway-only preparation, use `.\scripts\Build-NativeGatewayFromSource.ps1`
+with the same `-GatewayChannel` and `-PackagingRelease` parameters. Packaged reuses
+the verified released MSIX application payload and builds its development launcher
+from the release's packaging commit, rather than repacking npm at the same version.
+Use an exact `-PackagingRelease` for a reproducible baseline. Latest published on
+GitHub does not necessarily mean deployed to Store. For an exact npm reproduction,
+pass `-OpenClawNpmVersion <exact-version> -PackagingRef <commit> -Patch <name>`.
+Explicit `-OpenClawRef main`, local source and prebuilt-package inputs remain
+supported. See the [native Gateway skill](.agents/skills/native-gateway-from-source/SKILL.md)
+for prerequisites, provenance, verification and removal.
+
+This changes development tooling, not installed Companion's Store acquisition or
+normal WSL setup. WSL already defaults to npm `latest`; set `Gateway.Version`
+explicitly for a WSL version-specific install.
+
+##### Gateway development and CI matrix
+
+`build.ps1` builds Companion. Native Gateway preparation is performed by
+`run-app-local.ps1` or `scripts\Build-NativeGatewayFromSource.ps1`; the native
+channel flag is `-GatewayChannel Packaged`, not `-Packaged`.
+
+| Context | Gateway | Default / Latest | Packaged | Coverage or limitation |
+|---|---|---|---|---|
+| Local development | Native | Download npm Latest and build/register a side-by-side development package. | Reuse the verified released MSIX application payload and build/register a side-by-side development package. | Native runtime proof is separate from build/registration checks. |
+| Local development | WSL | Use the existing installer policy, normally npm Latest. | Not a WSL channel. An explicit `Gateway.Version` can select another npm version. | Native channel flags do not change WSL setup. |
+| CI | WSL | Run each selected setup/connect, revocation and network recovery job once against a shared exact npm Latest snapshot. | No duplicated Packaged lane or MSIX baseline dependency. | Real WSL Gateway-to-Windows-node coverage; not native session proof. |
+| CI | Native | No live Gateway runtime lane. | No live Gateway runtime lane. | Unit/helper and upstream packaging checks exist, but live isolated-session startup, pairing and recovery are not covered. |
+
+Native runtime CI requires a capability-qualified Windows client runner.
+Standard Windows Server runners are rejected by the current support gate; a
+Windows client build alone is not sufficient without a successful session
+capability probe and real startup proof.
+
 The first-run Windows gateway onboarding wizard lives in `OpenClaw.SetupEngine.UI` and is hosted by `OpenClaw.Tray.WinUI`; see [docs/ONBOARDING_WIZARD.md](docs/ONBOARDING_WIZARD.md) for the page flow. The setup pipeline itself is documented in [docs/SETUP_ENGINE_REDESIGN.md](docs/SETUP_ENGINE_REDESIGN.md), including the Windows node context step that injects agent instructions into the WSL workspace.
 
 Useful local scripts:
@@ -765,6 +829,13 @@ Sensitive data (authentication tokens) are never logged.
 
 ## Documentation and Diagrams
 
+For documentation or instruction work, start with
+[docs/AGENTS.md](docs/AGENTS.md) and the
+[technical-documentation skill](.agents/skills/technical-documentation/SKILL.md).
+Choose the reader's task, show one recommended workflow, and verify its claims
+against source. Keep exact contracts and safety facts when rewriting; link
+exhaustive reference material rather than repeating it in every guide.
+
 Maintained architecture, data-flow, and sequence diagrams use a paired source
 and rendered artifact:
 
@@ -839,23 +910,26 @@ dotnet test --filter "FullyQualifiedName~AgentActivityTests"
 - `OpenClaw.Shared.Tests` covers models, gateway client behavior, capabilities, URL helpers, notification categorization, shell quoting, MCP, device identity, and WinNode client contracts.
 - `OpenClaw.Tray.Tests` covers settings isolation, deep link parsing, onboarding state, setup code decoding, gateway health/chat helpers, security validation, wizard step parsing, gateway discovery, localization, and tray UI helpers.
 - Additional projects cover connection management, setup engine behavior, `winnode`, FunctionalUI, native UI/A2UI, integration, and gateway-mediated E2E flows.
-- See [docs/TEST_COVERAGE.md](docs/TEST_COVERAGE.md) for current method counts, runtime totals, and which lanes require network, WSL, real-process, or desktop prerequisites.
+- See [docs/TEST_COVERAGE.md](docs/TEST_COVERAGE.md) for suite ownership,
+  historical counts, and which lanes require network, WSL, real-process, or
+  desktop prerequisites.
+- Treat its dated counts as historical measurements, not current validation.
+  Use [regression authoring](docs/TEST_COVERAGE.md#writing-a-regression-test)
+  and [test-audit](.agents/skills/test-audit/SKILL.md) when adding or reviewing tests.
 
 See [tests/OpenClaw.Shared.Tests/README.md](tests/OpenClaw.Shared.Tests/README.md) for detailed test documentation.
 
 ### Manual Testing Without Live Gateway
 
-You can test the UI and basic functionality without a running gateway:
+Use the [Gateway fixture guide](docs/GATEWAY_FIXTURE_TESTING.md) to run the
+current built app against deterministic responses in an isolated profile.
+It covers populated navigation and chat without a real Gateway or provider.
+Follow its explicit executable selection and owned-process cleanup.
 
-**Tray App:**
-1. Launch the app: `dotnet run --project src/OpenClaw.Tray.WinUI`
-2. Right-click tray icon → **Settings**
-3. Enter a dummy gateway URL (e.g., `ws://localhost:18789`)
-4. The app will show "Disconnected" status but you can:
-   - Test the tray menu structure
-   - Open the Settings page and configure preferences
-   - Test auto-start functionality
-   - View logs
+For MCP-only diagnosis, use the
+[local MCP guide](.agents/skills/windows-app-mcp/SKILL.md). Do not change real
+settings or auto-start state merely to make a disconnected demo. Fixture and
+MCP results do not prove real pairing, installer behavior, or MXC.
 
 ### Manual Test Scenarios
 
@@ -950,24 +1024,15 @@ The repository uses GitHub Actions for continuous integration and release automa
 
 ### Build Matrix
 
-The CI builds multiple configurations:
+CI uses explicit change-impact outputs rather than one always-running test
+job. Core, Tray, UI/accessibility, setup/recovery E2E, and release-build lanes
+are selected conservatively; main/tag events include the broader architecture
+matrix. The always-running CI Gate checks required and skipped job results.
 
-**Test Job:**
-- Runs on `windows-latest`
-- Builds the Shared library, Tray app, and eight test projects: Shared, Tray,
-  Connection, WinNode CLI, Tray Integration, FunctionalUI, SetupEngine, and
-  Tray UI
-- Runs unit, integration, native UI, and accessibility tests across those
-  projects; see [docs/TEST_COVERAGE.md](docs/TEST_COVERAGE.md)
-- Verifies the WinUI DevBuild identity marker after native UI and accessibility
-  tests
-- Uses GitVersion for semantic versioning
-
-**Build Job (Tray):**
-- Matrix: `win-x64`, `win-arm64`
-- Builds WinUI Tray app for both architectures
-- Publishes self-contained executables
-- Signs with Azure Trusted Signing (on tag releases only)
+Use the [lane inventory](docs/TEST_COVERAGE.md#ci-impact-fast-paths) and
+[workflow source](.github/workflows/ci.yml) for exact projects, prerequisites,
+architecture conditions, and artifact names. A local validation plan does not
+dispatch these jobs. Release/signing policy lives in [RELEASING.md](docs/RELEASING.md).
 
 ### Artifacts
 
@@ -1001,78 +1066,50 @@ When a tag is pushed (e.g., `git tag v1.2.3 && git push origin v1.2.3`):
 
 **Check Latest Build:**
 ```bash
-gh run list --repo shanselman/openclaw-windows-hub --limit 5
+gh run list --repo openclaw/openclaw-windows-node --limit 5
 ```
 
 **View Specific Run:**
 ```bash
-gh run view <run-id> --repo shanselman/openclaw-windows-hub
+gh run view <run-id> --repo openclaw/openclaw-windows-node
 ```
 
 **Download Artifacts:**
 ```bash
-gh run download <run-id> --repo shanselman/openclaw-windows-hub
+gh run download <run-id> --repo openclaw/openclaw-windows-node
 ```
 
 ### What CI Checks
 
-✅ **Build Success:**
-- All projects compile without errors
-- Both x64 and ARM64 builds succeed
-- Dependencies restore correctly
+Required selected jobs must succeed. The workflow includes documentation,
+skill, classifier, proof-contract, build, unit, integration, UI/accessibility,
+and E2E checks, with conditions described in the linked inventory.
+Ordinary environment-gated tests may report supported skips; those skips are
+not complete custom-host proof. Release jobs own their signing checks.
 
-✅ **Unit Tests:**
-- All tests pass
-- No test failures or skips
-
-✅ **Code Signing:**
-- Executables signed (on releases)
-- Signature verification passes
-
-❌ **Not Currently Checked:**
-- Linting/code style (no linter configured)
-- Integration tests (no integration test suite)
-- Code coverage metrics (no coverage reporting)
+Consult the actual run and its fresh reports before claiming any lane passed.
+Historical counts and estimates in docs do not establish current CI status.
 
 ## Contributing
 
 ### Development Workflow
 
-1. **Fork and Clone:**
-   ```bash
-   git clone https://github.com/YOUR_USERNAME/openclaw-windows-hub.git
-   cd openclaw-windows-hub
-   ```
-
-2. **Create Feature Branch:**
-   ```bash
-   git checkout -b feature/my-new-feature
-   ```
-
-3. **Make Changes:**
-   - Follow existing code style and patterns
-   - Add tests for new functionality
-   - Update documentation as needed
-
-4. **Test Locally:**
-   ```bash
-   dotnet build
-   dotnet test
-   dotnet run --project src/OpenClaw.Tray.WinUI
-   ```
-
-5. **Commit and Push:**
-   ```bash
-   git add .
-   git commit -m "Add my new feature"
-   git push origin feature/my-new-feature
-   ```
-
-6. **Open Pull Request:**
-   - Go to GitHub and open a PR from your branch
-   - Describe your changes
-   - Wait for CI to pass
-   - Address review feedback
+1. Use a task-owned checkout of `openclaw/openclaw-windows-node`. Inspect its
+   branch, HEAD, and local changes; preserve unrelated work. In an app-managed
+   worktree, use its existing branch rather than switching another checkout.
+2. Identify the reported behavior and its owner using
+   [AGENTS.md](AGENTS.md#working-agreement) and the
+   [architecture ledger](docs/ARCHITECTURE.md). Read only the relevant guides,
+   including cross-directory callers when the contract requires them.
+3. Add a faithful regression, make the scoped change, and update the directly
+   related documentation. A read-only investigation does not authorize edits.
+4. Run focused validation and the
+   [required local closeout](AGENTS.md#required-validation-after-every-change).
+   Use the [validation plan](docs/TEST_COVERAGE.md#explain-the-validation-plan)
+   to distinguish local checks, hosted CI, and custom proof.
+5. When publication is authorized, use the existing PR template, report exact
+   evidence and blockers, and address review findings. Permission to implement
+   is not permission to commit, push, create a PR, or mutate GitHub metadata.
 
 ### Code Style
 
@@ -1086,58 +1123,31 @@ gh run download <run-id> --repo shanselman/openclaw-windows-hub
 
 **Example: Adding a New Gateway Event Type**
 
-1. **Add Model** (`OpenClaw.Shared/Models.cs`):
-   ```csharp
-   public class MyNewEventData
-   {
-       public string Property { get; set; } = "";
-   }
-   ```
-
-2. **Add Event** (`OpenClaw.Shared/OpenClawGatewayClient.cs`):
-   ```csharp
-   public event EventHandler<MyNewEventData>? MyNewEvent;
-   ```
-
-3. **Parse Event** (`OpenClawGatewayClient.cs`, in `ListenForMessagesAsync`):
-   ```csharp
-   if (eventType == "my_new_event")
-   {
-       var data = JsonSerializer.Deserialize<MyNewEventData>(json);
-       MyNewEvent?.Invoke(this, data);
-   }
-   ```
-
-4. **Handle in Tray App** (`OpenClaw.Tray.WinUI/App.xaml.cs`):
-   ```csharp
-   _gatewayClient.MyNewEvent += OnMyNewEvent;
-   
-   private void OnMyNewEvent(object? sender, MyNewEventData e)
-   {
-       _dispatcherQueue?.TryEnqueue(() =>
-       {
-           // Update UI
-       });
-   }
-   ```
-
-5. **Add Tests** (`tests/OpenClaw.Shared.Tests/`):
-   ```csharp
-   [Fact]
-   public void MyNewEventData_DisplaysCorrectly()
-   {
-       var data = new MyNewEventData { Property = "test" };
-       Assert.Equal("test", data.Property);
-   }
-   ```
+1. Verify the upstream event contract at an exact revision. Find the existing
+   protocol/parser owner and relevant consumers; do not invent a payload from
+   the event's name.
+2. Read the affected [ledger rows](docs/ARCHITECTURE.md). Add parsing and
+   independent payload tests at the protocol owner, preserving existing
+   unknown/invalid input behavior.
+3. For operator events, extend the existing `GatewayService` subscription and
+   model-update path as appropriate. Preserve unsubscription and generation
+   fencing so an old client cannot update the new connection's state.
+4. Update the owning state/projection and have the page observe it. App remains
+   the composition root; do not put new parsing, subscriptions, or mutable
+   domain ownership there by default.
+5. Test the observable change and a credible failure, such as a stale event
+   after client replacement. A model round-trip or self-comparison is not a
+   rendering test. Use [test authoring](docs/TEST_COVERAGE.md#writing-a-regression-test)
+   and applicable live proof for the actual boundary.
 
 ### Troubleshooting
 
 **Common Issues:**
 
 1. **Build Error: "Windows SDK not found"**
-   - Install Windows 10 SDK 19041 or later
-   - Or build Shared library only: `dotnet build src/OpenClaw.Shared`
+   - Run `.\scripts\setup-dev.ps1 -CheckOnly` and follow its Windows SDK
+     prerequisite diagnostics. Installation needs machine-change authorization.
+   - A Shared-only build is useful for a focused check, not full WinUI validation.
 
 2. **WebView2 Error 0x8007000B on ARM64**
    - The tray app must be built for ARM64
@@ -1149,10 +1159,15 @@ gh run download <run-id> --repo shanselman/openclaw-windows-hub
    - Check logs: `%LOCALAPPDATA%\OpenClawTray\openclaw-tray.log`
 
 4. **Gateway Connection Fails**
-   - Verify gateway is running: `curl http://localhost:18789/health`
-   - Check gateway URL in settings
-   - Verify authentication token is correct
-   - Check firewall settings
+   - Identify the failing boundary: local MCP, operator connection, node
+     pairing, or Gateway invocation. Keep the selected profile and endpoint
+     fixed while reproducing.
+   - Use [local MCP diagnosis](.agents/skills/windows-app-mcp/SKILL.md#diagnose-the-boundary-before-changing-code)
+     or [connection architecture](docs/CONNECTION_ARCHITECTURE.md) as appropriate.
+     Listener health does not prove authentication or pairing.
+   - Inspect redacted status/errors before proposing a repair. Do not reset
+     credentials, change firewall rules, or restart an unowned Gateway as a
+     diagnostic shortcut.
 
 5. **Piper voice preview fails with "Piper TTS native library could not be loaded"**
    - The build copied a Visual C++ runtime that is too old for `onnxruntime`
@@ -1168,9 +1183,9 @@ gh run download <run-id> --repo shanselman/openclaw-windows-hub
 
 ### Getting Help
 
-- **Issues**: [GitHub Issues](https://github.com/shanselman/openclaw-windows-hub/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/shanselman/openclaw-windows-hub/discussions)
-- **Documentation**: [OpenClaw Docs](https://docs.molt.bot)
+- **Issues**: [GitHub Issues](https://github.com/openclaw/openclaw-windows-node/issues)
+- **Repository guidance**: [Task routes](AGENTS.md#working-agreement)
+- **Upstream documentation**: [OpenClaw docs source](https://github.com/openclaw/openclaw/tree/main/docs)
 
 ## Developing & Testing the Onboarding Wizard
 

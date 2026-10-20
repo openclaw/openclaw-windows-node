@@ -119,6 +119,7 @@
     <PackageReference Include="Updatum" Version="1.3.4" />
     <PackageReference Include="NAudio.Wasapi" Version="2.3.0" />
     <PackageReference Include="org.k2fsa.sherpa.onnx" Version="1.13.0" />
+    <PackageReference Include="Larroy.Kokoro" Version="0.1.0" />
     <PackageReference Include="Zeroconf" Version="3.6.11" />
     <PackageReference Include="ZXing.Net" Version="0.16.10" />
   </ItemGroup>
@@ -428,6 +429,27 @@
 
   <Target Name="CopySetupDefaultConfigToOutput" AfterTargets="Build">
     <Copy SourceFiles="$(OpenClawSetupDefaultConfig)" DestinationFiles="$(TargetDir)default-config.json" SkipUnchangedFiles="true" Condition="Exists('$(OpenClawSetupDefaultConfig)')" />
+  </Target>
+
+  <!--
+    PRI expansion adds library-qualified SetupEngine.UI assets to the consumer
+    copy list using transient files under the referenced project's bin folder.
+    On a clean build, some of those generated files can disappear before the
+    consumer Copy task opens them. Replace only those qualified setup entries
+    with the stable repository sources while preserving their runtime paths.
+  -->
+  <Target Name="UseSourceSetupAssetsForPriConsumerCopy"
+          AfterTargets="AddPriPayloadFilesToCopyToOutputDirectoryItems">
+    <ItemGroup>
+      <_AllChildProjectItemsWithTargetPath
+          Remove="@(_AllChildProjectItemsWithTargetPath)"
+          Condition="$([System.String]::Copy('%(_AllChildProjectItemsWithTargetPath.TargetPath)').StartsWith('OpenClaw.SetupEngine.UI\Assets\Setup\'))" />
+      <_SetupPriAssetSource Include="Assets\Setup\**\*" />
+      <_AllChildProjectItemsWithTargetPath Include="@(_SetupPriAssetSource)">
+        <TargetPath>OpenClaw.SetupEngine.UI\Assets\Setup\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </_AllChildProjectItemsWithTargetPath>
+    </ItemGroup>
   </Target>
 
   <!--

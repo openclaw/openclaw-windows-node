@@ -93,33 +93,21 @@ public sealed class NativeGatewaySetupUxContractTests
     }
 
     [Fact]
-    public void NativeReview_ExplainsWinGetConsentAndMatchesLocalizedResources()
+    public void NativeAcquisition_ExplainsWinGetAndMicrosoftStoreInLocalizedResources()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
-        var document = XDocument.Load(Path.Combine(root,
-            "src", "OpenClaw.SetupEngine.UI", "Pages", "CapabilitiesPage.xaml"));
-        XNamespace names = "http://schemas.microsoft.com/winfx/2006/xaml";
-        var review = document.Descendants().Single(
-            element => (string?)element.Attribute(names + "Uid") == "Onboarding_Native_Review");
         var strings = Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Strings");
         foreach (var path in Directory.GetFiles(strings, "Resources.resw", SearchOption.AllDirectories))
         {
             var resources = XDocument.Load(path).Descendants("data")
                 .ToDictionary(element => (string)element.Attribute("name")!,
                     element => element.Element("value")?.Value);
-            Assert.Contains("WinGet", resources["Onboarding_Native_Review.Text"]);
-            Assert.Contains("Microsoft Store", resources["Onboarding_Native_Review.Text"]);
             Assert.Contains("WinGet", resources["Onboarding_Native_Acquisition.Text"]);
+            Assert.Contains("Microsoft Store", resources["Onboarding_Native_Acquisition.Text"]);
             Assert.Contains("WinGet", resources["Onboarding_Native_InstallingPackage"]);
             Assert.Contains("WinGet", resources["Onboarding_Native_VerifyingPackage"]);
             Assert.Contains("WinGet", resources["Onboarding_Native_Cancelled"]);
             Assert.False(resources.ContainsKey("Onboarding_Native_InstallerOpened"));
-            if (Path.GetFileName(Path.GetDirectoryName(path)) == "en-us")
-            {
-                Assert.Equal(resources["Onboarding_Native_Review.Text"], (string?)review.Attribute("Text"));
-                Assert.Contains("accept the package and Store source agreements", resources["Onboarding_Native_Review.Text"]);
-                Assert.DoesNotContain("stay interactive", resources["Onboarding_Native_Review.Text"]);
-            }
         }
     }
 
@@ -183,7 +171,7 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.Contains("SetupInstallationStatus.Complete", source);
         Assert.Contains("SetupInstallationStatus.Failed", source);
         Assert.Contains("NativeGatewaySetupService", source);
-        Assert.Contains("_installer.InstallAsync(new CommandRunner(logger), cancellationToken)", source);
+        Assert.Contains("_installer.InstallAsync(commands, cancellationToken)", source);
         Assert.DoesNotContain("LaunchUriAsync", source);
         Assert.DoesNotContain("LaunchFileAsync", source);
         Assert.DoesNotContain("Architecture.Arm64", source);

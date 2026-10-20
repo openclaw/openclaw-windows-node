@@ -12,6 +12,8 @@ namespace OpenClaw.Shared.Tests;
 
 public class OpenClawGatewayClientTests
 {
+    private static readonly TimeSpan CloseHandshakeTimeout = TimeSpan.FromSeconds(3);
+
     // Test helper to access private methods through reflection
     private class GatewayClientTestHelper
     {
@@ -1529,11 +1531,15 @@ public class OpenClawGatewayClientTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task AuthenticatedSigningIdentity_ComesFromConnectNotOptionalHelloEcho(bool spoofEcho)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task AuthenticatedSigningIdentity_ComesFromConnectNotOptionalHelloEcho(
+        bool spoofEcho,
+        bool useManagedWebSocket)
     {
-        using var server = new LoopbackWebSocketServer();
+        using var server = new LoopbackWebSocketServer(useManagedWebSocket);
         await server.StartAsync();
         var identityPath = CreateTempIdentityPath();
         using var client = new OpenClawGatewayClient(server.WebSocketUrl, "synthetic",
@@ -1574,7 +1580,9 @@ public class OpenClawGatewayClientTests
         File.Copy(Path.Combine(replacementPath, "device-key-ed25519.json"),
             Path.Combine(identityPath, "device-key-ed25519.json"), true);
         Assert.Equal(signedId, client.AuthenticatedSigningDeviceId);
-        await client.DisconnectAsync();
+        var disconnect = client.DisconnectAsync();
+        await server.CloseSocketAsync(0).WaitAsync(CloseHandshakeTimeout);
+        await disconnect.WaitAsync(CloseHandshakeTimeout);
         Assert.Null(client.AuthenticatedSigningDeviceId);
     }
 
@@ -2464,6 +2472,85 @@ public class OpenClawGatewayClientTests
                 Assert.Equal(ChatMessageContentPartKind.Text, part.Kind);
                 Assert.Equal("Finished.", part.Text);
             });
+    }
+
+    [Fact]
+    public void ParseChatHistoryPayload_GatewayAttachmentBlock_ReadsNestedDocumentFields()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        // Shape the Gateway projects from openclawDisplayContent for a managed zip.
+        var history = helper.ParseChatHistoryPayload("""
+        {
+          "messages": [
+            {
+              "role": "assistant",
+              "content": [
+                { "type": "text", "text": "Zip's ready." },
+                {
+                  "type": "attachment",
+                  "attachment": {
+                    "artifactId": "artifact_managed_media_dbedbff5-b83b-4da5-abaf-c479f4f40bb0",
+                    "url": "/api/chat/media/outgoing/agent%3Amain%3Amain/dbedbff5-b83b-4da5-abaf-c479f4f40bb0/full",
+                    "kind": "document",
+                    "label": "agent-images-2026-10-02.zip",
+                    "mimeType": "application/zip",
+                    "sizeBytes": 64690236
+                  }
+                }
+              ],
+              "timestamp": 1
+            }
+          ]
+        }
+        """);
+
+        var message = Assert.Single(history.Messages);
+        Assert.Equal("Zip's ready.", message.Text);
+        var media = Assert.Single(
+            message.ContentParts,
+            part => part.Kind == ChatMessageContentPartKind.Media).Media;
+        Assert.NotNull(media);
+        Assert.Equal(ChatMediaContentKind.File, media.Kind);
+        Assert.Equal(ChatMediaContentSource.Structured, media.Source);
+        Assert.Equal("attachment", media.Type);
+        Assert.Equal("application/zip", media.MimeType);
+        Assert.Equal("agent-images-2026-10-02.zip", media.FileName);
+        Assert.Equal("artifact_managed_media_dbedbff5-b83b-4da5-abaf-c479f4f40bb0", media.ArtifactId);
+        Assert.Equal(64690236, media.SizeBytes);
+    }
+
+    [Fact]
+    public void ParseChatHistoryPayload_GatewayAttachmentWithoutArtifactId_DerivesManagedMediaId()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var history = helper.ParseChatHistoryPayload("""
+        {
+          "messages": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "attachment",
+                  "attachment": {
+                    "url": "/api/chat/media/outgoing/agent%3Amain%3Amain/dbedbff5-b83b-4da5-abaf-c479f4f40bb0/full",
+                    "kind": "document",
+                    "label": "report.pdf",
+                    "mimeType": "application/pdf"
+                  }
+                }
+              ],
+              "timestamp": 1
+            }
+          ]
+        }
+        """);
+
+        var media = Assert.Single(Assert.Single(history.Messages).ContentParts).Media;
+        Assert.NotNull(media);
+        Assert.Equal(ChatMediaContentKind.File, media.Kind);
+        Assert.Equal("artifact_managed_media_dbedbff5-b83b-4da5-abaf-c479f4f40bb0", media.ArtifactId);
     }
 
     [Fact]
@@ -3779,6 +3866,32 @@ public class OpenClawGatewayClientTests
         var session = Assert.Single(helper.GetSessionList());
         Assert.Equal("off", session.ThinkingLevel);
         Assert.Equal("working", session.CurrentActivity);
+    }
+
+    [Fact]
+    public void SessionUsageSnapshotUpdated_ExcludesTrackedActivityRepublishes()
+    {
+        var helper = new GatewayClientTestHelper();
+        using var client = helper.Client;
+        var sessionUpdates = 0;
+        var usageSnapshots = 0;
+        client.SessionsUpdated += (_, _) => sessionUpdates++;
+        client.SessionUsageSnapshotUpdated += (_, usage) =>
+        {
+            usageSnapshots++;
+            Assert.Equal(1714600005000, usage.Timestamp);
+        };
+
+        helper.ParseSessionsPayload(
+            """{"ts":1714600005000,"sessions":[{"key":"agent:main:main","totalTokens":1000}]}""");
+        var update = typeof(OpenClawGatewayClient).GetMethod(
+            "UpdateTrackedSession",
+            System.Reflection.BindingFlags.NonPublic |
+            System.Reflection.BindingFlags.Instance)!;
+        update.Invoke(client, ["agent:main:main", true, "working"]);
+
+        Assert.Equal(2, sessionUpdates);
+        Assert.Equal(1, usageSnapshots);
     }
 
     [Fact]

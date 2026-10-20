@@ -204,14 +204,12 @@ dotnet build .\src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj -r win-x64 -p:
 
 ### Run
 
-`run-app-local.ps1` allows `main` by default. Pass `-AllowNonMain` when previewing a feature branch or linked worktree.
-
 ```powershell
 .\run-app-local.ps1
 .\run-app-local.ps1 -NoBuild
-.\run-app-local.ps1 -AllowNonMain -Isolated
-.\run-app-local.ps1 -AllowNonMain -Dev -Isolated
-.\run-app-local.ps1 -AllowNonMain -Configuration Release -Isolated -UpdateChannel alpha
+.\run-app-local.ps1 -Isolated
+.\run-app-local.ps1 -Dev -Isolated
+.\run-app-local.ps1 -Configuration Release -Isolated -UpdateChannel alpha
 ```
 
 ### Test
@@ -226,6 +224,12 @@ dotnet test .\tests\OpenClaw.Tray.Tests\OpenClaw.Tray.Tests.csproj
 
 These commands restore and build the test projects when needed. Use `--no-restore` only after each test project has built successfully in the current worktree.
 
+For code changes, also run the full build above and the
+[applicable validation paths](docs/TEST_COVERAGE.md#formal-validation-paths).
+Use the [read-only validation plan](docs/TEST_COVERAGE.md#explain-the-validation-plan)
+to understand hosted CI lanes, required local checks, and custom proof.
+An exit code without a fresh report and actual execution is not test evidence.
+
 ### Documentation
 
 | Topic | Document |
@@ -239,7 +243,19 @@ These commands restore and build the test projects when needed. Use `--no-restor
 | Local MCP mode | [docs/MCP_MODE.md](docs/MCP_MODE.md) |
 | Managed WSL gateway | [docs/WSL_GATEWAY_ADMIN.md](docs/WSL_GATEWAY_ADMIN.md) |
 | Development | [DEVELOPMENT.md](DEVELOPMENT.md) |
+| Coding-agent task routes | [AGENTS.md](AGENTS.md#working-agreement) |
+| Writing or restructuring documentation | [docs/AGENTS.md](docs/AGENTS.md) |
+| Tests, fixtures, and validation selection | [docs/TEST_COVERAGE.md](docs/TEST_COVERAGE.md) |
+| Custom proof and evidence boundaries | [docs/PROOF_POOLS.md](docs/PROOF_POOLS.md) |
+| Agent readiness and workflow checks | [docs/AGENT_WORKFLOWS.md](docs/AGENT_WORKFLOWS.md) |
 
 ## License
 
 [MIT](LICENSE)
+
+## Managed Local AI profiles
+
+Local AI selects a compatible runtime/model profile for detected hardware and
+explains when it chooses a smaller profile. Windows x64 NVIDIA GPUs with 8 GiB
+VRAM can use the experimental Bonsai 2 27B profile. See
+[profile requirements and verified sources](docs/LOCAL_AI_PROFILES.md).

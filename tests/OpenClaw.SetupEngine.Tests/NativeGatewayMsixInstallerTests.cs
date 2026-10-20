@@ -2,8 +2,10 @@ namespace OpenClaw.SetupEngine.Tests;
 
 public sealed class NativeGatewayMsixInstallerTests
 {
-    [Fact]
-    public async Task Install_UsesCurrentUserWinGetAndFixedStoreProductExactlyOnce()
+    [Theory]
+    [InlineData(0)]
+    [InlineData(unchecked((int)0x8A15002B))]
+    public async Task Install_UsesCurrentUserWinGetAndAllowsUpgradeExactlyOnce(int exitCode)
     {
         using var cts = new CancellationTokenSource();
         var commands = new Commands((executable, arguments, timeout, ct) =>
@@ -15,14 +17,15 @@ public sealed class NativeGatewayMsixInstallerTests
                 [
                     "install", "--id", "9NV70LV3D6XC", "--source", "msstore",
                     "--silent", "--accept-package-agreements", "--accept-source-agreements",
-                    "--disable-interactivity", "--no-upgrade",
+                    "--disable-interactivity",
                 ], arguments);
             Assert.Equal(TimeSpan.FromMinutes(5), timeout);
             Assert.Equal(cts.Token, ct);
-            return Task.FromResult(Result());
+            return Task.FromResult(Result(exitCode));
         });
 
-        await new NativeGatewayMsixInstaller().InstallAsync(commands, cts.Token);
+        var installer = new NativeGatewayMsixInstaller();
+        await installer.InstallAsync(commands, cts.Token);
         Assert.Equal(1, commands.Calls);
     }
 
