@@ -892,6 +892,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
             var footer = Bounds(Find<Grid>(editor, "NavigationFooter"), editor);
             Assert.True(bounds.Height > 0 && bounds.Top >= 0 && bounds.Bottom <= footer.Top + 0.1,
                 $"Failure must be visible above the actions without scrolling. Failure: {bounds}; footer: {footer}.");
+            await MountedControlCapture.OptionalAsync(window, $"native-editor-failure-{route}");
             for (var ancestor = VisualTreeHelper.GetParent(failure); ancestor is not null;
                 ancestor = VisualTreeHelper.GetParent(ancestor))
             {
