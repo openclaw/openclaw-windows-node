@@ -764,24 +764,17 @@ jobs:
         -ArtifactsDirectory .\TestResults\GatewayFixture
         -Screenshots
 
-    # Native Expander templates cannot safely outlive theme resource replacement
-    # in the shared WinUI testhost. Every disclosure case gets its own process.
+    # Native Expander templates cannot safely outlive theme resource replacement in the
+    # shared WinUI testhost, so the disclosure proofs (Light + inert content) run in their
+    # own process. Dark and HighContrast are screenshot-only (OPENCLAW_VISUAL_TEST=1).
     - name: Run native Markdown disclosure proofs
       timeout-minutes: 10
       shell: pwsh
       run: |
-        foreach ($theme in @('Light', 'Dark', 'HighContrast')) {
-          ./scripts/run-proof-tests.ps1 `
-            -Project 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' `
-            -Filter "Category=NativeMarkdownProof&DisplayName~$theme" `
-            -ResultName "markdown-$($theme.ToLowerInvariant())" `
-            -RuntimeIdentifier win-x64 `
-            -ResultsDirectory TestResults\Markdown
-        }
         ./scripts/run-proof-tests.ps1 `
           -Project 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' `
-          -Filter 'FullyQualifiedName~ReactorMarkdownDisclosureProofTests.AssistantMarkdown_UntrustedContentRemainsInertInsideDisclosure' `
-          -ResultName markdown-inert-content `
+          -Filter 'Category=NativeMarkdownProof' `
+          -ResultName markdown-disclosure `
           -RuntimeIdentifier win-x64 `
           -ResultsDirectory TestResults\Markdown
 

@@ -569,12 +569,10 @@ $trayUiStep = Get-StepBlock -Text $uiJob -Name "Run Tray UI Tests"
 Assert-Contains -Text $trayUiStep -Expected '-Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=NativeMarkdownProof"' `
     -Message "Tray UI tests must exclude cases owned by the accessibility, native-onboarding, strict Gateway fixture and native-Markdown proof lanes."
 $markdownProofStep = Get-StepBlock -Text $uiJob -Name "Run native Markdown disclosure proofs"
-Assert-Contains -Text $markdownProofStep -Expected "foreach (`$theme in @('Light', 'Dark', 'HighContrast'))" `
-    -Message "Native Markdown disclosure proofs must run every theme in its own process."
-Assert-Contains -Text $markdownProofStep -Expected '-Filter "Category=NativeMarkdownProof&DisplayName~$theme"' `
-    -Message "Native Markdown disclosure proofs must select one theme per run-proof-tests.ps1 invocation."
-Assert-Contains -Text $markdownProofStep -Expected "AssistantMarkdown_UntrustedContentRemainsInertInsideDisclosure" `
-    -Message "Native Markdown disclosure proofs must keep the isolated inert-content case."
+Assert-Contains -Text $markdownProofStep -Expected "-Filter 'Category=NativeMarkdownProof'" `
+    -Message "Native Markdown disclosure proofs must run as one isolated run-proof-tests.ps1 invocation."
+Assert-NotContains -Text $markdownProofStep -Unexpected "foreach" `
+    -Message "Native Markdown disclosure proofs must not fan out per theme; Dark and HighContrast are screenshot-only."
 Assert-Contains -Text $trayUiStep -Expected "timeout-minutes: 15" `
     -Message "Tray UI tests must have an outer timeout rather than consuming the six-hour job limit."
 Assert-Contains -Text $trayUiStep -Expected "-HangTimeoutSeconds 300" `

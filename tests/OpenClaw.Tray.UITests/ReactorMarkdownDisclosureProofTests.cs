@@ -27,10 +27,21 @@ public sealed class ReactorMarkdownDisclosureProofTests(UIThreadFixture ui)
         "<details open><summary>Nested evidence</summary>\n\nNested body.\n\n</details>\n\n" +
         "</details>\n\nAfter disclosure.";
 
+    // Dark and HighContrast have no assertion that differs from Light: the disclosure is a stock
+    // Expander and sets no theme-dependent value. They exist only to produce review screenshots,
+    // so they run when OPENCLAW_VISUAL_TEST=1 and are not CI gates.
+    public static IEnumerable<object[]> Themes()
+    {
+        yield return ["Light"];
+        if (Environment.GetEnvironmentVariable("OPENCLAW_VISUAL_TEST") == "1")
+        {
+            yield return ["Dark"];
+            yield return ["HighContrast"];
+        }
+    }
+
     [Theory]
-    [InlineData("Light")]
-    [InlineData("Dark")]
-    [InlineData("HighContrast")]
+    [MemberData(nameof(Themes))]
     public async Task Disclosure_ExpandsAccessiblyAndKeepsMarkdownStateOnRerenderAndResize(string theme)
     {
         await ui.ResetContainerAsync();
