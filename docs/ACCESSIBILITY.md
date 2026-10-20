@@ -44,6 +44,12 @@ tray icon reports `NotImplementedException`, Companion logs the unavailable tray
 and continues opening the requested Hub. Other startup failures still propagate.
 Do not increase the fixture's 60-second Hub deadline to hide a failed app launch.
 
+The explicit no-Gateway accessibility fixture supplies sessions and an agent
+roster before Workspace creation. Only the enabled isolated fixture treats
+that initial snapshot as current. Normal launches still wait for a fresh
+Gateway roster. Synthetic selection tests do not prove live connectivity or
+pairing.
+
 ## Relationship to other validation
 
 Accessibility scans do not replace the required agent closeout validation in `AGENTS.md`. They are an additional focused lane for WinUI accessibility work and a formal CI gate documented in `docs\TEST_COVERAGE.md`.

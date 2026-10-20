@@ -9,8 +9,47 @@ internal sealed record WorkspaceAgent(string Id, string Name, string? LatestSess
 internal sealed record WorkspaceSession(string Key, string Title, string? AgentId,
     bool IsPinned = false, bool IsUnread = false, bool IsArchived = false, bool IsWorking = false);
 
+internal sealed class WorkspaceAgentSelection
+{
+    private string? _gatewayId;
+    private bool _awaitingGatewayRoster = true;
+    public string? AgentId { get; private set; }
+    public bool HasCurrentRoster { get; private set; }
+    public bool IsReady { get; private set; }
+
+    public void Select(string? agentId)
+    {
+        AgentId = agentId;
+        IsReady = false;
+    }
+
+    public void Refresh(string? gatewayId, JsonElement? data, IReadOnlyList<WorkspaceAgent> agents,
+        bool rosterUpdated = false)
+    {
+        if (_gatewayId is not null && gatewayId is not null && _gatewayId != gatewayId)
+        {
+            AgentId = null;
+            _awaitingGatewayRoster = true;
+        }
+        if (gatewayId is not null)
+            _gatewayId = gatewayId;
+        if (rosterUpdated && WorkspaceProjection.HasAgentRoster(data))
+            _awaitingGatewayRoster = false;
+
+        // A target switch can precede delivery of the old cached roster's clear events.
+        var currentRoster = _awaitingGatewayRoster ? null : data;
+        AgentId = WorkspaceProjection.SelectedAgentId(currentRoster, agents, AgentId);
+        HasCurrentRoster = !_awaitingGatewayRoster && WorkspaceProjection.HasAgentRoster(currentRoster);
+        IsReady = HasCurrentRoster && WorkspaceProjection.IsAgentSelectionReady(currentRoster, agents, AgentId);
+    }
+}
+
 internal static class WorkspaceProjection
 {
+    internal static bool HasAgentRoster(JsonElement? data) =>
+        data is { ValueKind: JsonValueKind.Object } root &&
+        root.TryGetProperty("agents", out var agents) && agents.ValueKind == JsonValueKind.Array;
+
     public static IReadOnlyList<WorkspaceAgent> Agents(JsonElement? data, IReadOnlyList<SessionInfo> sessions)
     {
         if (data is not { ValueKind: JsonValueKind.Object } root ||
@@ -43,6 +82,8 @@ internal static class WorkspaceProjection
 
     public static string? SelectedAgentId(JsonElement? data, IReadOnlyList<WorkspaceAgent> agents, string? selectedId)
     {
+        if (!HasAgentRoster(data))
+            return selectedId;
         if (agents.Any(agent => agent.Id == selectedId))
             return selectedId;
         if (data is not { ValueKind: JsonValueKind.Object } root)
@@ -58,6 +99,9 @@ internal static class WorkspaceProjection
         data is { ValueKind: JsonValueKind.Object } root &&
         root.TryGetProperty("selectionRequired", out var required) && required.ValueKind == JsonValueKind.True &&
         SelectedAgentId(data, agents, selectedId) is null;
+
+    public static bool IsAgentSelectionReady(JsonElement? data, IReadOnlyList<WorkspaceAgent> agents, string? selectedId) =>
+        HasAgentRoster(data) && !RequiresAgentSelection(data, agents, selectedId);
 
     public static IReadOnlyList<WorkspaceSession> Sessions(IEnumerable<SessionInfo> source, string? agentId, WorkspaceSessionOrder order)
     {
