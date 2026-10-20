@@ -112,6 +112,8 @@ SCAN_ROOTS = (
 )
 # Known folders whose *.lnk children are matched by name (resolved at runtime: may be redirected).
 SHORTCUT_FOLDERS = ("Desktop", "CommonDesktopDirectory", "Startup", "CommonStartup")
+# OpenClaw-owned paths whose names don't contain "openclaw".
+EXTRA_PATHS = (userprofile / ".openclaw", temp / "oc-uia")
 # Never deleted, even if a scan root starts matching them.
 EXCLUDED_PATHS = (
     userprofile / "openclaw",  # gateway source checkout
@@ -217,8 +219,18 @@ def find_orphan_native_sessions(installed: list[SimpleNamespace]) -> list[Path]:
 
 
 def clawctl_path(pkg: SimpleNamespace) -> Path:
-    """The package-qualified execution alias, never an arbitrary clawctl on PATH."""
-    return localappdata / "Microsoft" / "WindowsApps" / pkg.family / "clawctl.exe"
+    """The package-qualified execution alias, never an arbitrary clawctl on PATH.
+
+    Store packages alias "clawctl.exe"; development patch packages
+    (OpenClawGateway-<patch>) alias "clawctl-<patch>.exe".
+    """
+    base = localappdata / "Microsoft" / "WindowsApps" / pkg.family
+    patch = pkg.name[len(GATEWAY_PACKAGE_PREFIX) + 1:] if pkg.name.lower().startswith(GATEWAY_PACKAGE_PREFIX) else None
+    if patch:
+        patched = base / f"clawctl-{patch}.exe"
+        if os.path.lexists(patched):  # execution aliases are reparse points; lexists avoids following them
+            return patched
+    return base / "clawctl.exe"
 
 
 def native_session_sid(pkg: SimpleNamespace) -> str | None:
