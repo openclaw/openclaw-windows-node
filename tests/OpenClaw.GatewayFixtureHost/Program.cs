@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using OpenClaw.TestSupport.Gateway;
@@ -8,9 +10,11 @@ internal static class Program
 {
     private static async Task<int> Main(string[] args)
     {
+        if (args.Length >= 3 && args[0] == "--control-listen")
+            return await ListenForControlAsync(int.Parse(args[1]), args[2]);
         if (args.Length == 0 || args.Contains("--help"))
         {
-            Console.WriteLine("Usage: dotnet OpenClaw.GatewayFixtureHost.dll --app <built-app.exe> [--scenario multi-session-browse|chat-interactive|context-usage-snapshots] [--interaction <name>] [--artifacts <directory>] [--duration-seconds <1..86400>]");
+            Console.WriteLine("Usage: dotnet OpenClaw.GatewayFixtureHost.dll --app <built-app.exe> [--scenario multi-session-browse|chat-interactive|context-usage-snapshots] [--interaction <name>] [--artifacts <directory>] [--duration-seconds <1..86400>] [--browser-proxy] [--browser-proxy-foreign]");
             Console.WriteLine("Starts a synthetic Gateway and an isolated real app. Ctrl+C stops only this run.");
             return args.Length == 0 ? 2 : 0;
         }
@@ -19,18 +23,31 @@ internal static class Program
         int? durationSeconds = null;
         var scenarioName = GatewayScenario.BrowseName;
         string? interaction = null;
-        for (var index = 0; index < args.Length; index += 2)
+        var enableNodeBrowserProxy = false;
+        var foreignBrowserControl = false;
+        for (var index = 0; index < args.Length; index++)
         {
+            if (args[index] == "--browser-proxy")
+            {
+                enableNodeBrowserProxy = true;
+                continue;
+            }
+            if (args[index] == "--browser-proxy-foreign")
+            {
+                enableNodeBrowserProxy = true;
+                foreignBrowserControl = true;
+                continue;
+            }
             if (index + 1 >= args.Length || args[index] is not ("--app" or "--artifacts" or "--duration-seconds" or "--scenario" or "--interaction"))
             {
                 Console.Error.WriteLine($"Unknown or incomplete option: {args[index]}");
                 return 2;
             }
-            if (args[index] == "--app") appPath = args[index + 1];
-            else if (args[index] == "--artifacts") artifacts = args[index + 1];
-            else if (args[index] == "--scenario") scenarioName = args[index + 1];
-            else if (args[index] == "--interaction") interaction = args[index + 1];
-            else if (int.TryParse(args[index + 1], out var duration) && duration is >= 1 and <= 86400)
+            if (args[index] == "--app") appPath = args[++index];
+            else if (args[index] == "--artifacts") artifacts = args[++index];
+            else if (args[index] == "--scenario") scenarioName = args[++index];
+            else if (args[index] == "--interaction") interaction = args[++index];
+            else if (int.TryParse(args[++index], out var duration) && duration is >= 1 and <= 86400)
                 durationSeconds = duration;
             else
             {
@@ -57,11 +74,19 @@ internal static class Program
             var scenario = usage is null ? GatewayScenario.LoadBuiltin(scenarioName) : GatewayScenario.CreateContextUsage(usage);
             if (interaction is not null && (!scenario.IsInteractive || !FixturePlayback.Scenarios.Contains(interaction)))
                 throw new ArgumentException("--interaction requires chat-interactive and a supported interaction name.");
-            await using var run = await GatewayFixtureRun.StartAsync(appPath, artifacts, stop.Token, scenario: scenario);
+            await using var run = await GatewayFixtureRun.StartAsync(
+                appPath, artifacts, stop.Token,
+                enableNodeBrowserProxy: enableNodeBrowserProxy,
+                foreignBrowserControl: foreignBrowserControl,
+                scenario: scenario);
             if (interaction is not null) run.Gateway.Interactive!.Playback.Select(interaction);
             await run.InvokeAsync("app.navigate", new { page = "chat" });
             Console.WriteLine($"Fixture ready. App PID: {run.AppProcessId}");
             Console.WriteLine($"Gateway: {run.Gateway.Endpoint}");
+            if (run.BrowserControlPort is { } controlPort)
+                Console.WriteLine($"Browser control: http://127.0.0.1:{controlPort}/ owner={(run.ForeignControlCountFile is null ? "parent" : "child")}");
+            if (run.ForeignControlCountFile is { } countFile)
+                Console.WriteLine($"Foreign control count: {countFile}");
             Console.WriteLine($"MCP: http://127.0.0.1:{run.McpPort}/");
             Console.WriteLine($"Profile: {run.Profile.DataDirectory}");
             Console.WriteLine($"Artifacts: {run.ArtifactsDirectory}");
@@ -204,5 +229,44 @@ internal static class Program
             }
         }
         catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
+    }
+
+    private static async Task<int> ListenForControlAsync(int port, string countFile)
+    {
+        var requests = 0;
+        var listener = new TcpListener(IPAddress.Loopback, port);
+        try
+        {
+            listener.Start();
+        }
+        catch (SocketException)
+        {
+            return 1;
+        }
+
+        File.WriteAllText(countFile, "requests=0\n");
+        using var stop = new CancellationTokenSource();
+        Console.CancelKeyPress += (_, eventArgs) =>
+        {
+            eventArgs.Cancel = true;
+            stop.Cancel();
+        };
+        try
+        {
+            while (!stop.IsCancellationRequested)
+            {
+                using var client = await listener.AcceptTcpClientAsync(stop.Token);
+                requests++;
+                File.WriteAllText(countFile, $"requests={requests}\n");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            listener.Stop();
+        }
+        return 0;
     }
 }

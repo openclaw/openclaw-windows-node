@@ -68,6 +68,13 @@ tests. It rejects failed, skipped, missing-report and zero-test runs. It needs
 a Windows desktop and the same WinUI prerequisites as the existing UI suite.
 There is no skip-as-success fallback when the desktop is unavailable.
 
+`GatewayFixtureStartupTests` exercise parent and foreign browser-control startup
+without launching the app. Cancellation and readiness failures must reap the
+owned child, remove its readiness file, and release both listener ports.
+The Shared browser-proxy regression runs the production client and a default-handler
+control in separate test-host processes with explicit proxy settings. It does not
+change the test runner's environment or cached default proxy.
+
 The tests use local MCP for discovery, startup state and page navigation, and
 UI Automation for the actual agent selector, Workspace session sidebar, scrolling and settings
 controls. They verify:

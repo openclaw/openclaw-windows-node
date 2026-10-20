@@ -263,31 +263,45 @@ public sealed partial class GatewayScenario
             allowSessionMutations: allowSessionMutations, allowChatSend: allowChatSend);
     }
 
-    internal object CreateHello(string connectionId) => new
+    internal object CreateHello(string connectionId, string role = "operator")
     {
-        type = GatewayProtocolContract.HelloOkType,
-        protocol = ProtocolVersion,
-        server = new { version = "fixture-1", connId = connectionId },
-        features = new
+        if (role is not ("operator" or "node"))
+            throw new ArgumentOutOfRangeException(nameof(role));
+        var hello = new
         {
-            methods = IsInteractive ? ReadMethods.Concat(InteractiveGatewayRuntime.Methods).Distinct().ToArray()
-                : _contextUsage is not null ? ReadMethods.Concat(["chat.send"]).ToArray() : ReadMethods,
-            events = IsInteractive
-                ? new[] { "connect.challenge", "sessions.changed", "agent", "chat", "question.requested", "question.resolved", "exec.approval.requested", "exec.approval.resolved" }
-                : _contextUsage is not null ? new[] { "connect.challenge", "sessions.changed", "agent", "chat" }
-                : new[] { "connect.challenge", "sessions.changed", "agent" }
-        },
-        snapshot = new
-        {
-            presence = Array.Empty<object>(), health = _reads["health"],
-            sessionDefaults = new { defaultAgentId = "main", mainKey = "main", mainSessionKey = MainSessionKey, scope = "per-sender" }
-        },
-        auth = new { role = "operator", scopes = IsInteractive
-            ? new[] { "operator.read", "operator.write", "operator.sessions.read", "operator.sessions.write", "operator.questions", "operator.approvals" }
-            : _contextUsage is not null ? new[] { "operator.read", "operator.write" }
-            : _allowAgentCreation || _allowSessionMutations || _cronJobs is not null ? new[] { "operator.admin", "operator.read" } : new[] { _setup is null ? "operator.read" : "operator.admin" } },
-        policy = new { maxPayload = 1_048_576, maxBufferedBytes = 1_048_576, tickIntervalMs = 30_000 }
-    };
+            type = GatewayProtocolContract.HelloOkType,
+            protocol = ProtocolVersion,
+            server = new { version = "fixture-1", connId = connectionId },
+            features = new
+            {
+                methods = IsInteractive ? ReadMethods.Concat(InteractiveGatewayRuntime.Methods).Distinct().ToArray()
+                    : _contextUsage is not null ? ReadMethods.Concat(["chat.send"]).ToArray() : ReadMethods,
+                events = IsInteractive
+                    ? new[] { "connect.challenge", "sessions.changed", "agent", "chat", "question.requested", "question.resolved", "exec.approval.requested", "exec.approval.resolved" }
+                    : _contextUsage is not null ? new[] { "connect.challenge", "sessions.changed", "agent", "chat" }
+                    : new[] { "connect.challenge", "sessions.changed", "agent" }
+            },
+            snapshot = new
+            {
+                presence = Array.Empty<object>(), health = _reads["health"],
+                sessionDefaults = new { defaultAgentId = "main", mainKey = "main", mainSessionKey = MainSessionKey, scope = "per-sender" }
+            },
+            auth = new
+            {
+                role,
+                scopes = role == "node"
+                    ? Array.Empty<string>()
+                    : IsInteractive
+                        ? new[] { "operator.read", "operator.write", "operator.sessions.read", "operator.sessions.write", "operator.questions", "operator.approvals" }
+                        : _contextUsage is not null ? new[] { "operator.read", "operator.write" }
+                        : _allowAgentCreation || _allowSessionMutations || _cronJobs is not null
+                            ? new[] { "operator.admin", "operator.read" }
+                            : new[] { _setup is null ? "operator.read" : "operator.admin" }
+            },
+            policy = new { maxPayload = 1_048_576, maxBufferedBytes = 1_048_576, tickIntervalMs = 30_000 }
+        };
+        return hello;
+    }
 
     internal bool ContainsSession(string key) => _sessions.Any(s => s.Key == key);
 

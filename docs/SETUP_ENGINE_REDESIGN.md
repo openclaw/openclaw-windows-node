@@ -304,6 +304,14 @@ absent or unregister succeeds. To replace such a legacy distro, uninstall it
 first, using `--uninstall --confirm-destructive` and the same distro name, then
 rerun setup with a supported new name.
 
+Automatic rollback of the WSL-create step has cleanup authority only after that
+execution starts creating the distro. If creation refuses pre-existing state,
+rollback preserves the distro, install directory, ownership marker, and empty
+parent directory. A reused step starts with no authority from an earlier attempt.
+Once creation starts, the existing live-registration ownership and
+unregister-failure preservation gates still apply. Explicit uninstall remains a
+separate, destructive-consent path.
+
 ```json
 {
   "DistroName": "OpenClawGateway",
@@ -650,6 +658,19 @@ Structured JSONL logger. Records sanitized entries for:
 - Errors with stack traces
 
 Log path defaults to `%APPDATA%\OpenClawTray\Logs\Setup\setup-engine-<yyyyMMdd-HHmmss>.jsonl` for setup and `uninstall-engine-<yyyyMMdd-HHmmss>.jsonl` for uninstall.
+
+### Uninstall onboarding reset
+
+The Inno uninstaller invokes `scripts\Uninstall-LocalGateway.ps1` directly,
+not the C# uninstall engine. Both onboarding reset paths remove `GatewayUrl`
+and legacy `Token` / `BootstrapToken` properties from `settings.json`, even
+when node mode and autostart settings are preserved for remaining gateways.
+Other preferences and external gateway records are preserved. The focused
+`UninstallOnboardingSettingsTests` execute only the production PowerShell
+reset and its JSON/logging helpers under Windows PowerShell 5.1 with temporary
+files; they do not prove the full signed-installer uninstall path.
+On a later launch, a URL-less legacy root identity is not migrated or used
+against the default loopback URL. The profile must be reconnected explicitly.
 
 ---
 
