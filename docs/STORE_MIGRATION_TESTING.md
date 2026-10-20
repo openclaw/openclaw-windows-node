@@ -1,107 +1,179 @@
-# Testing the Inno -> Store migration flow
+# Testing current-policy Inno to Store migration
 
-How to exercise the Inno to Store migration flow end to end on a developer
-machine, using genuine signed binaries.
+Use this guide to test a genuine signed Inno source moving to an eligible
+production-identity Store target on a **disposable Windows machine**. It covers
+artifact selection, helper preflight, the visible handoff, and recovery. It is
+not evidence that a particular build has completed migration.
 
-This is the Inno-side counterpart to
-[`scripts/Export-MigrationTestMsix.ps1`](../scripts/Export-MigrationTestMsix.ps1),
-which solves the same problem from the Store side. Both exist because neither
-shipping artifact can be used for migration testing as published.
+The recommended path is to use an already-eligible source, not relabel an alpha.
+[`Enable-StoreMigrationTest.ps1`](../scripts/Enable-StoreMigrationTest.ps1)
+checks local prerequisites and provides guarded reset, quarantine, and label
+recovery operations. It neither changes signed binaries nor relaxes product
+migration policy.
 
-## Why a workaround is needed right now
+## 1. Select compatible artifacts and prepare the machine
 
-The migration payload shipped in #1519, which is on `main`. Every release that
-contains it is a `2026.9.5-alpha.*` prerelease. The Store app refuses to migrate
-from a prerelease-labelled Inno registration, so installing the alpha and
-launching the Store app produces the startup block, not the consent screen.
+Take a VM checkpoint or use a machine you can re-image. The migration uses
+per-user production registration and real application data, and its normal
+handoff uninstalls the Inno source. Do not run this procedure on a shared
+developer host or assume that environment overrides isolate an installer.
+Use the same Windows user for source installation, helper operations and Store
+launch. Have a separate backup of any test state you cannot afford to lose.
 
-Until a stable `2026.9.5` ships (or the prerelease-source fix lands), the only
-faithful test is to relabel the registration. The binaries stay genuine and
-signed; only two registry strings change.
+Select both artifacts before making changes:
 
-## Prerequisites
+| Artifact | Required evidence |
+| --- | --- |
+| Inno source | Genuine signed release-identity payload at the default per-user `%LOCALAPPDATA%\OpenClawTray` location. Its complete `DisplayVersion`, matching `DisplayName`, `FileVersion`, and `ProductVersion` must satisfy the current version policy below. The migration payload must be present. |
+| Store target | Same architecture as the source, production package identity, migration enabled, and a compiled minimum source version no greater than the source. Record the target's exact version, build revision and migration policy metadata; a package version alone does not prove that migration is enabled. |
 
-- The Store build installed (Microsoft Store, or a sideloaded MSIX).
-- `OpenClawCompanion-Setup-x64.exe` from any `v2026.9.5-alpha.*` release, or a
-  local build from [`scripts/build-inno-local.ps1`](../scripts/build-inno-local.ps1).
-- A clone of this repository, for
-  [`scripts/Enable-StoreMigrationTest.ps1`](../scripts/Enable-StoreMigrationTest.ps1).
-- A machine you can re-image, or accept that the Inno app gets uninstalled.
-  Settings, gateway, and device identities are preserved; this was verified.
+Use a Microsoft Store release meeting those conditions. For an unpublished
+target, the [migration test MSIX exporter](../scripts/Export-MigrationTestMsix.ps1)
+produces a test-signed production-identity package from an eligible unsigned
+submission package. Follow its generated `INSTALL.txt` in the disposable VM.
+This package is **not side-by-side with the Store release**. The Dev identity
+does not exercise production migration, and an unsigned submission package is
+not directly installable. Exporter fixture tests are not installation proof.
 
-Run everything as the user who installed the Inno app. The registration, the
-device identities, and the captured state are all per-user.
+Current version compatibility is owned by
+[`MigrationVersionPolicy`](../src/OpenClaw.Connection/Migration/MigrationVersionPolicy.cs):
 
-You do not need to onboard the Inno app. Migration captures state from
-`%APPDATA%\OpenClawTray`, which persists across installs. If you already have a
-gateway and device identities, that is a richer test than a fresh onboard.
+| Source label | Compatible executable metadata |
+| --- | --- |
+| Three-part numeric, for example `2026.9.5` | Numerically equal `FileVersion`, normalizing an absent fourth part to zero. If `ProductVersion` is present, its numeric release must also match. |
+| Four-part numeric, for example `2026.9.5.7` | Matching numeric file and product release versions, including the fourth component. |
+| Numeric stable correction, for example `2026.9.5-2` | Base `FileVersion` `2026.9.5.0` and exact product release `2026.9.5-2`. Corrections are positive integers without leading zeros. |
+| Alpha or other prerelease product metadata | Not eligible. A numeric `FileVersion` does not make an alpha binary a stable release. |
 
-## Steps
+Product versions may carry valid `+build.metadata`; the release portion still
+must match. Registry labels do not accept that metadata suffix. Never remove a
+correction suffix or change signed binary metadata to force admission.
 
-### 1. Close the Store app, then install the alpha Inno build
+Record artifact provenance and hashes in your test evidence. If compatible
+signed artifacts are unavailable, report that prerequisite as blocked rather
+than substituting an alpha relabel.
 
-Inno's "close all instances" check matches on process name, so the **Store**
-app's tray counts as an instance of the app being installed. With `/VERYSILENT`
-that becomes a silent abort with exit code 1 and no installation.
+## 2. Close the relevant apps and install the source
+
+Use **Exit** on the relevant Inno and Store tray apps, not just the window's
+close button. Wait for any migration or gateway uninstall operation to finish.
+The helper does not enumerate processes, terminate them, or manage gateways.
+
+Install the selected Inno source interactively so prompts and failures remain
+visible. For an x64 source downloaded to the current directory:
 
 ```powershell
-Get-Process | Where-Object ProcessName -like '*OpenClaw*' |
-  ForEach-Object { Stop-Process -Id $_.Id -Force }
-
+$installLog = Join-Path (Get-Location) 'migration-install.log'
 Start-Process -Wait -FilePath .\OpenClawCompanion-Setup-x64.exe `
-  -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/NOICONS',"/LOG=$env:TEMP\oc-install.log"
+  -ArgumentList "/LOG=`"$installLog`""
 ```
 
-Approve the one UAC prompt for the bundled Visual C++ redistributable. The
-install cannot be fully unattended because of it.
+Use the corresponding ARM64 artifact for an ARM64 test. Close the source tray
+again if installation launched it. [`installer.iss`](../installer.iss) uses
+`AppMutex` coordinated with the app's build-identity mutex. Do not diagnose
+every installer exit code 1 as a process-name collision. Inspect the installer
+log and the resulting installation instead of treating silent output as success.
+Prerequisite prompts depend on the machine; unattended installation is not
+assumed here.
 
-### 2. Run the relabel script
+You can test with fresh state or deliberately prepared gateway/identity data.
+Onboarding is not itself a helper prerequisite. Existing state under
+`%APPDATA%\OpenClawTray` affects inventory and recovery, so a reinstall is not
+equivalent to a fresh VM checkpoint.
+
+## 3. Run preflight without changing a valid source label
+
+From the repository, first preview:
+
+```powershell
+.\scripts\Enable-StoreMigrationTest.ps1 -WhatIf
+```
+
+If `prepare.lock` does not yet exist, the preview reports that it will not create
+it and cannot perform the authoritative scan. After reviewing that result,
+run normally:
 
 ```powershell
 .\scripts\Enable-StoreMigrationTest.ps1
 ```
 
-It stops the tray app, verifies the installation can actually migrate, then
-relabels the registration as stable `2026.9.5`. If it refuses because the
-gateways folder contains stray files, re-run with `-MoveBlockingFiles`.
+For a compatible source, expect **No relabel necessary**, not a fabricated
+stable label. The default keeps the complete installed version, including a
+stable correction. The helper checks registration labels, publisher, canonical
+source and uninstall paths, required ordinary payload files, exact release
+identity, both executable versions, and gateway-root entry types.
 
-Use `-Revert` to undo the relabel if you abandon the test before clicking
-Migrate.
+This is a scoped preflight, not full admission. The Store independently checks
+registration views, executable structure/architecture, minimum source version,
+pending records, and complete data inventory. File presence is not signature or
+uninstaller-provenance validation. A successful helper run does not establish
+that captured JSON, credentials or gateway ownership are valid.
 
-#### What the relabel does, and why it is faithful
+Before its authoritative scan or mutations, the helper obtains
+`store-migration\prepare.lock` with `FileAccess.ReadWrite` and `FileShare.None`
+and keeps it open until completion. The app's
+[`MigrationOperationLock`](../src/OpenClaw.Connection/Migration/MigrationOperationLock.cs)
+and [gateway uninstaller](../scripts/Uninstall-LocalGateway.ps1) use the same
+operation lock. A reader in another process or Windows session blocks the
+helper even if no tray is visible. Close the relevant apps yourself and wait;
+do not delete the lock or stop unrelated processes. A leftover, unheld
+`prepare.lock` is normal and is never reset state.
 
-Only `DisplayVersion` and `DisplayName` change, and they must change together:
-the detector validates `DisplayName` against `DisplayVersion`, so editing one
-alone fails with "does not identify the production publisher and application."
-`Publisher`, `InstallLocation`, and `UninstallString` keep the values the real
-installer wrote, and no binary is modified.
+### If the gateway-root check refuses
 
-`GitVersion.yml` uses `assembly-versioning-scheme: MajorMinorPatch`, so an alpha
-binary is already stamped `FileVersion 2026.9.5.0`. A genuine stable `2026.9.5`
-would be identical in every field the detector inspects.
+Current [`MigrationInventory`](../src/OpenClaw.Connection/Migration/MigrationInventory.cs)
+accepts ordinary `gateways\native-setup-draft.json` and exact atomic-write
+siblings named `.native-setup-draft.json.<32 lowercase hex digits>.tmp`. The
+helper leaves these in place. It does not validate the draft's JSON or contents
+and does not imply that setup is safe to resume.
 
-### 3. Launch the Store app and walk the flow
+Unknown ordinary files are blockers by default. Inspect them before opting
+into quarantine:
 
-Expected sequence, confirmed in `%LOCALAPPDATA%\OpenClawTray\openclaw-tray.log`:
+```powershell
+.\scripts\Enable-StoreMigrationTest.ps1 -MoveBlockingFiles -WhatIf
+.\scripts\Enable-StoreMigrationTest.ps1 -MoveBlockingFiles -Confirm
+```
 
-| Screen | Log line |
+Approved files move, without overwrite, to a unique
+`%APPDATA%\OpenClawTray\gateways-blocking-<id>` directory. Allowed native setup
+files do not move. Junctions/reparse points, including redirected ancestors,
+are refused rather than quarantined. A directory using an allowed draft-file
+name is also refused. If confirmation is declined, neither quarantine nor
+relabel proceeds.
+
+## 4. Exercise and capture the Store handoff
+
+Launch the selected Store target. With eligible source metadata and no pending
+recovery state, expect the migration consent surface. Capture its visible state
+with the exact source/target versions before choosing **Migrate**.
+
+After Migrate, preparation and completion can persist migration records. Do not
+treat `-Revert` or reset as a rollback of that handoff. If completion exists,
+follow the Store app's instructions to remove the previous Inno application,
+then return and choose Retry. Remove the **source Inno entry**, not the Store
+target. If source-process exclusion fails, verify that the relevant source app
+has exited in every test session before retrying; other inspection failures
+can require investigation rather than process termination.
+
+Corroborate the visible flow with current-run diagnostic markers:
+
+| Stage | Expected diagnostic marker |
 | --- | --- |
-| "Move to the Store version" consent | `startup admission: ConsentRequired (receipt: False)` |
-| After Migrate | `Store migration preparation completed` |
-| | `Store migration completion recorded` |
-| "Remove the previous app" | `startup admission: FinalizationRequired (receipt: True)` |
-| After manual uninstall + Retry | `Store migration finalized` |
+| Eligible source, no completed handoff | `Store migration startup admission: ConsentRequired` |
+| Preparation succeeds | `Store migration preparation completed` |
+| Completion receipt persisted | `Store migration completion recorded` |
+| Completed receipt, source still installed, on re-evaluation | `Store migration startup admission: AwaitingInnoRemoval` |
+| Completed receipt, source removed, on re-evaluation | `Store migration startup admission: FinalizationRequired` |
+| Successful finalization | `Store migration finalized` |
 
-Uninstall the entry named **OpenClaw Companion version 2026.9.5** when prompted,
-then press Retry.
+Use the current test's app diagnostics, normally
+`%LOCALAPPDATA%\OpenClawTray\openclaw-tray.log`. A marker alone is not proof of
+preservation or a rendered state. Record failures and sanitize evidence; do not
+publish credentials, private settings or complete arbitrary logs.
 
-**Point of no return: clicking Migrate.** Before it, `-Revert` backs you out
-cleanly. After it, a receipt is written and the Inno app can no longer start
-normally, so you must finish the flow.
-
-## Verifying preservation
-
-Before uninstalling, confirm the uninstaller will take the preservation path:
+Before source uninstall, the installed read-only preservation checker can
+corroborate the handoff. For the x64 example:
 
 ```powershell
 & powershell.exe -NoProfile -ExecutionPolicy Bypass `
@@ -112,10 +184,14 @@ $LASTEXITCODE
 
 | Exit | Meaning |
 | --- | --- |
-| 10 | Completed migration validated. Preserve generated state and gateway. |
-| 11 | Store app registered but receipt missing. Preserve anyway. |
+| 10 | Validated completed migration: preserve generated state and gateway. |
+| 11 | Store package registered, receipt absent: preserve state; this is not proof of completed migration. |
+| 2 | State cannot be established: cleanup must not start. |
+| 0 | No receipt and no Store registration: cleanup may be authorized. Not the expected preservation result for this handoff. |
 
-After uninstalling, confirm nothing was lost:
+After uninstall and Retry, compare your prepared test inventory with the actual
+remaining settings, gateway registry, device identity metadata and owned test
+gateway. For example, inspect names and timestamps without dumping secrets:
 
 ```powershell
 wsl.exe --list --quiet
@@ -123,87 +199,117 @@ Get-ChildItem "$env:APPDATA\OpenClawTray\gateways" -Directory | Select-Object Na
 Get-Item "$env:APPDATA\OpenClawTray\gateways.json" | Select-Object LastWriteTime
 ```
 
-WSL distros, gateway directories, and `gateways.json` must be unchanged.
+These are supplemental observations, not a guarantee that data was preserved.
+Include actual installer/uninstaller results and visible Store startup in the
+proof report. No live migration or preservation proof was performed by the
+helper's fixture suite.
 
-## Known rough edges
+## Recovery and repeating a test
 
-- **"Migration source has an unexpected file type."** Capture requires every
-  entry under `%APPDATA%\OpenClawTray\gateways` to be a directory, but native
-  gateway setup writes `native-setup-draft.json` into that same folder. Any
-  user who ran native setup hits this, and the message names neither the folder
-  nor the file. The script checks for it; `-MoveBlockingFiles` clears it.
-- **Installing the exe aborts with exit code 1.** The Store app's tray was
-  running. Close all OpenClaw processes first.
-- **"Could not exclude source processes across sessions."** Means the previous
-  app is running. Close it and press Retry. The message does not say this.
-- **Silent uninstall can no-op invisibly.** `/VERYSILENT` prints nothing and
-  leaves every file if a tray process is alive. Always pass `/LOG=` and verify
-  the registry key and install directory are actually gone.
-- **The About page still shows the alpha version.** That string comes from the
-  compiled `AssemblyInformationalVersionAttribute`, which the migration detector
-  never reads. Cosmetic only.
+Prefer restoring the disposable checkpoint for a new independent run.
+Successful finalization clears consent, intent and completion records, with the
+completion receipt removed last. Failed finalization can retain records for
+retry; do not infer a clean slate from a fresh install or app uninstall.
 
-## Cleanup
-
-Uninstalling the Inno app removes the registry key, so the relabel cleans itself
-up. No manual revert is needed after a completed migration.
-
-If you abandoned the test before clicking Migrate, run
-`.\scripts\Enable-StoreMigrationTest.ps1 -Revert` to restore the real alpha
-label.
-
-If `-MoveBlockingFiles` moved anything, it is in
-`%APPDATA%\OpenClawTray\gateways-blocking-<timestamp>\`. Nothing was deleted.
-
-## Repeating the test
-
-The flow is repeatable with no manual state reset. `StoreMigrationStartupCoordinator`
-has no "already migrated" latch; admission is a pure function of detector output
-and record status. Finalization consumes the receipt, so a freshly installed and
-relabelled Inno registration returns `ConsentRequired` again.
-
-To run it a second time, reinstall the alpha exe and re-run the script. The
-leftover `store-migration\prepare.lock` is a cross-session lock file, not state,
-and does not need clearing.
-
-That holds for a run you finished. A run interrupted between consent and
-finalization leaves a `consent.dpapi` or `intent.dpapi` behind, and the next
-attempt resumes from it instead of starting at the consent screen. Clear it
-with:
+For an intentionally abandoned, interrupted test, close the relevant apps and
+preview the standalone reset. It works even after the source registration is
+gone:
 
 ```powershell
-.\scripts\Enable-StoreMigrationTest.ps1 -ResetMigrationState
+.\scripts\Enable-StoreMigrationTest.ps1 -ResetMigrationState -WhatIf
+.\scripts\Enable-StoreMigrationTest.ps1 -ResetMigrationState -Confirm
 ```
 
-That closes the tray, since both lock files are held open while it runs, then
-deletes the records in `%APPDATA%\OpenClawTray\store-migration\`. It leaves the
-folder itself and anything it does not recognise alone, and it works whether or
-not an Inno installation is still present.
+Reset removes `consent.lock`, `consent.dpapi`, `intent.dpapi` and record-write
+`.<32 hex digits>.tmp` files. It retains `prepare.lock`, unknown entries and
+`completed.dpapi`. Missing-state and receipt-only default resets do nothing.
+Reparse points at the state directory, its ancestors, lock or entries are
+refused. The authoritative record scan and deletions happen under the exclusive
+operation lock. If a deletion fails, the error stops further deletion; prior
+confirmed deletions are not rolled back. Resolve the reported file or operation
+conflict before retrying.
 
-It also leaves `completed.dpapi` alone. That file is the receipt a finished
-migration writes, and `Test-InnoMigration.ps1` reads it to decide whether a WSL
-gateway belongs to a migrated Store install. With a valid receipt the gateway
-uninstaller preserves the distro. With the receipt gone and the Store app
-unregistered, it is free to run `wsl --unregister` and take the generated state
-with it. If you genuinely need a cold start, ask for it:
+> [!WARNING]
+> The next command deletes the completion receipt. Without that receipt **and**
+> without Store registration, a later gateway uninstall can unregister the WSL
+> distro and delete generated state. Use only for an explicitly disposable cold
+> start, never as ordinary recovery of a completed handoff.
 
 ```powershell
-.\scripts\Enable-StoreMigrationTest.ps1 -ResetMigrationState -IncludeCompletionReceipt
+.\scripts\Enable-StoreMigrationTest.ps1 -ResetMigrationState -IncludeCompletionReceipt -WhatIf
+# Only after reviewing the disposable cold-start plan:
+.\scripts\Enable-StoreMigrationTest.ps1 -ResetMigrationState -IncludeCompletionReceipt -Confirm
 ```
 
-Do not leave that machine in a half-uninstalled state afterwards.
+The named opt-in uses normal `ShouldProcess`/`WhatIf`/`Confirm`; it is rejected
+without `-ResetMigrationState`. Reset cannot be combined with relabel, revert,
+or quarantine options. Removing a Store package is not a reset of the real
+roaming `store-migration` directory.
 
-The reset refuses to run if the `store-migration` folder, or anything above it,
-is a junction or other reparse point. Following a link there would delete the
-receipt out of whatever the link targets, which is the one deletion with real
-consequences. `scripts\test-store-migration-test-script.ps1` holds that guard
-in place:
+### Equivalent-label testing and saved-label recovery
+
+Relabeling is optional and usually unnecessary. `-TargetVersion` refers to the
+source's registry label, not a Store version. It permits only source/target
+labels compatible with the unchanged executable, for example equivalent
+three/four-part labels for a stable numeric binary:
+
+```powershell
+.\scripts\Enable-StoreMigrationTest.ps1 -TargetVersion '2026.9.5.0' -WhatIf
+```
+
+When applied, the helper saves original `DisplayVersion` and `DisplayName` under
+the same uninstall key before updating either label. It will not overwrite
+existing backups. To undo a label-only experiment before completed migration:
+
+```powershell
+.\scripts\Enable-StoreMigrationTest.ps1 -Revert -WhatIf
+.\scripts\Enable-StoreMigrationTest.ps1 -Revert -Confirm
+```
+
+Revert takes exclusive ownership and refuses if a completion receipt exists,
+saved labels are incomplete, or current labels/binary metadata drifted. It can
+restore a historical alpha label only when the saved label matches the
+unchanged binary's product release and the current label is the original
+numeric core. That is cleanup, not alpha migration support. Registry writes
+are not transactional: on a write failure, inspect both current labels and
+saved values. Partial or unexpected labels require manual reconciliation with
+the original signed artifact; do not force a guessed overwrite.
+
+Source uninstall normally removes its registration and the helper's backup
+values, so a successfully removed source needs no label revert.
+
+### Recovering historically quarantined native drafts
+
+Older helper versions moved `native-setup-draft.json` with other non-directory
+entries into `gateways-blocking-<timestamp>`. Current inventory accepts the
+draft and its exact atomic siblings, so this is no longer a reason to move
+them. Keep historical quarantine folders until you have reviewed their contents
+against any newer draft. With relevant apps closed, restore only known
+test-owned files, without overwriting newer setup state; otherwise retain the
+quarantine for investigation.
+
+The former claims that all payload builds were alpha, that a numeric file
+version made an alpha relabel faithful, and that the About version was cosmetic
+for admission are retired. The current detector checks **both** file and product
+versions. Old observations without a recorded source/target revision are not
+current-policy proof.
+
+## Automated coverage and its limits
 
 ```powershell
 .\scripts\test-store-migration-test-script.ps1
 ```
 
-Nothing else clears these records. They sit in real roaming AppData rather than
-the package-virtualized location, so `Remove-AppxPackage` walks past them, and
-`TrayArtifactCleanup` never names the folder, so `--uninstall` leaves it too.
+This fixture suite exercises the actual helper with in-memory registration and
+executable metadata, real test-owned files/junctions and real lock contention.
+Its process adapters forbid enumeration, launch and termination. Files and all
+data-root environment overrides are isolated and cleaned up, even when a
+guard fails. It covers current-policy admission, native draft preservation,
+quarantine, receipt opt-in, lock preservation, relabel/revert drift, previews
+and failure paths.
 
+CI runs it beside the migration MSIX regression on Windows PowerShell 7.
+These fixtures do **not** establish Authenticode trust, installer/UAC behavior,
+real Store admission, gateway preservation or rendered UI. Those require the
+disposable artifact procedure above and the broader
+[migration validation lanes](TEST_COVERAGE.md#formal-validation-paths).

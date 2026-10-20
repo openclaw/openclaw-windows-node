@@ -199,6 +199,10 @@ jobs:
       shell: pwsh
       run: ./scripts/test-migration-test-msix.ps1
 
+    - name: Validate Store migration helper fixtures
+      shell: pwsh
+      run: .\scripts\test-store-migration-test-script.ps1
+
     # installer.iss is only compiled for real in the tag-only release job, so a
     # Pascal Script error would otherwise be found at release time. The runner image
     # does not ship Inno Setup; the release job installs it the same way.

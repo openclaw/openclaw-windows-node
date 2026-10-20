@@ -1,66 +1,44 @@
+#requires -Version 5.1
 <#
 .SYNOPSIS
-    Relabels a prerelease OpenClaw Companion (Inno) installation as a stable
-    release so the Store app will offer the migration flow.
-
+    Preflights an eligible signed Inno source for current-policy Store migration tests.
 .DESCRIPTION
-    The Store app refuses to migrate from an Inno registration whose
-    DisplayVersion is a prerelease such as 2026.9.5-alpha.64. Every build that
-    carries the migration payload today is a prerelease, so testing the flow
-    requires relabelling the registration.
+    Checks source labels, payload, release identity, executable FileVersion and
+    ProductVersion, and gateway-root entry types. This is not the Store detector
+    or a signature, architecture, target-version, or full data-inventory check.
+    Alpha binaries cannot be made eligible by changing registry labels.
 
-    Only two registry strings change. The installed binaries are untouched and
-    remain genuine and signed. This is faithful because GitVersion stamps the
-    prerelease binary with the stable core version already (alpha.64 ships
-    FileVersion 2026.9.5.0), so every field the migration detector inspects
-    matches a real stable build.
-
-    The original values are saved under the same key and restored by -Revert.
-
+    Close the relevant Inno and Store apps yourself before using this helper.
+    It never enumerates or stops processes. Mutations require exclusive ownership
+    of store-migration\prepare.lock, shared with migration and gateway uninstall.
+    Binaries and allowed native setup draft files are never modified.
 .PARAMETER TargetVersion
-    Stable version to present. Defaults to the core of the installed
-    prerelease version, which is what a real stable build would carry.
-
+    Optional equivalent source registration label, not the Store package version.
+    Defaults to the complete installed DisplayVersion, including any correction.
+    Both current and requested labels must match the executable metadata.
 .PARAMETER Revert
-    Restore the original DisplayVersion and DisplayName.
-
+    Restore saved original labels if they still identify this binary. Also supports
+    undoing historical alpha relabels, without claiming that alpha can migrate.
+    Refuses after a completion receipt or unexpected label drift.
 .PARAMETER MoveBlockingFiles
-    Move stray files out of the gateways folder so preparation can run. They
-    are moved, not deleted, into a timestamped folder alongside it.
-
+    Quarantine unknown ordinary gateway-root files. Allowed native setup draft
+    files stay in place. Reparse points and unexpected directories are refused.
 .PARAMETER ResetMigrationState
-    Delete the store-migration records so the next launch re-evaluates from
-    scratch. A finished migration consumes its own records, so this is only
-    needed after a run that was interrupted part way through and left a
-    stale consent or intent behind.
-
-    The completion receipt is left alone. See -IncludeCompletionReceipt.
-
+    Remove interrupted consent/intent records and record-write temporary files.
+    Preserves prepare.lock, unknown files, and the completion receipt by default.
+    Works without an installed Inno source. Cannot be combined with label options.
 .PARAMETER IncludeCompletionReceipt
-    Also delete completed.dpapi, the receipt that proves a migration finished.
-    Leave this off unless you need a true cold start, because the gateway
-    uninstaller reads the receipt to decide whether to preserve your WSL
-    gateway. Without it, and with the Store app unregistered, uninstalling
-    will unregister the distro and delete the generated state it holds.
-
+    Explicitly include completed.dpapi in a reset. Without this receipt and without
+    Store registration, later gateway uninstall can unregister the WSL distro and
+    delete its generated state. Only use for an intentionally disposable cold start.
 .EXAMPLE
-    .\scripts\Enable-StoreMigrationTest.ps1
-    Relabels 2026.9.5-alpha.64 as 2026.9.5.
-
+    .\scripts\Enable-StoreMigrationTest.ps1 -WhatIf
+.EXAMPLE
+    .\scripts\Enable-StoreMigrationTest.ps1 -ResetMigrationState -WhatIf
 .EXAMPLE
     .\scripts\Enable-StoreMigrationTest.ps1 -Revert
-    Puts the original prerelease label back.
-
-.EXAMPLE
-    .\scripts\Enable-StoreMigrationTest.ps1 -ResetMigrationState
-    Clears a half-finished migration so the next test starts clean.
-
 .NOTES
-    Uninstalling the Inno app removes the key, so a completed migration needs
-    no revert. Use -Revert only if you abandon the test before uninstalling.
-
-    Full procedure: docs/STORE_MIGRATION_TESTING.md
-    Store-side counterpart: scripts/Export-MigrationTestMsix.ps1
+    See docs/STORE_MIGRATION_TESTING.md for eligible artifacts, proof and recovery.
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
@@ -77,38 +55,12 @@ $ErrorActionPreference = 'Stop'
 $AppId = '{M0LTB0T-TRAY-4PP1-D3N7}_is1'
 $BackupVersionValue = 'OpenClawMigrationTestOriginalDisplayVersion'
 $BackupNameValue = 'OpenClawMigrationTestOriginalDisplayName'
-
-# Everything the migration writes, from MigrationRecordCodec and
-# InnoMigrationConsentStore. All of it lives in one folder under roaming
-# AppData, not in the package-virtualized location, so uninstalling either app
-# leaves it behind.
 $MigrationStateDirectory = Join-Path $env:APPDATA 'OpenClawTray\store-migration'
-$MigrationStateFiles = @(
-    'consent.lock',
-    'prepare.lock',
-    'intent.dpapi',
-    'consent.dpapi'
-)
-
-# Deliberately not in the list above. Test-InnoMigration.ps1 reads this file to
-# decide whether a gateway belongs to a migrated Store install: a valid receipt
-# exits 10 and Uninstall-LocalGateway.ps1 preserves the distro, while an absent
-# receipt with the Store package unregistered exits 0 and authorizes
-# wsl --unregister. Deleting it as a matter of routine would hand a later
-# uninstall permission to destroy a gateway it should have kept.
 $CompletionReceiptFile = 'completed.dpapi'
-
-# Files the migration detector requires in the install directory. Several of
-# these also live in scripts/ in this repository; the installer copies them into
-# the install directory as migration payload, so these are install-dir names,
-# not repository paths.
+$MigrationStateFiles = @('consent.lock', 'intent.dpapi', 'consent.dpapi')
 $RequiredPayload = @(
-    'OpenClaw.Tray.WinUI.exe',
-    'unins000.exe',
-    'app-identity.txt',
-    'Test-InnoMigration.ps1',
-    'MigrationRecordCodec.cs',
-    'Uninstall-LocalGateway.ps1'
+    'OpenClaw.Tray.WinUI.exe', 'unins000.exe', 'app-identity.txt',
+    'Test-InnoMigration.ps1', 'MigrationRecordCodec.cs', 'Uninstall-LocalGateway.ps1'
 )
 
 function Get-RegistrationKeyPath {
@@ -116,305 +68,303 @@ function Get-RegistrationKeyPath {
         "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$AppId",
         "HKCU:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\$AppId"
     )
-    $found = @($candidates | Where-Object { Test-Path $_ })
-
+    $found = @($candidates | Where-Object { Test-Path -LiteralPath $_ })
     if ($found.Count -eq 0) {
-        throw "No OpenClaw Companion (Inno) installation found, so there is nothing to relabel or revert. Install the alpha release first to start a test."
+        throw 'No per-user OpenClaw Companion (Inno) registration found. Install an eligible signed source first, or use a standalone reset.'
     }
     if ($found.Count -gt 1) {
-        throw "Registrations exist in both registry views. The migration detector rejects this. Uninstall and reinstall once."
+        throw 'Multiple per-user registration paths exist. Resolve the ambiguous installation before testing.'
     }
     return $found[0]
 }
 
-function Get-StableCore {
-    param([string] $Version)
-
-    if ($Version -notmatch '^v?(\d+)\.(\d+)\.(\d+)') {
-        throw "DisplayVersion '$Version' does not start with a major.minor.patch core."
-    }
-    return "$($Matches[1]).$($Matches[2]).$($Matches[3])"
+# Keep this normalization in step with MigrationVersionPolicy. Product metadata
+# is significant: a numeric FileVersion alone does not establish a stable release.
+function ConvertTo-NumericVersion {
+    param([string] $Value)
+    if ($Value -cnotmatch '\A[0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)?\z') { return $null }
+    $parsed = $null
+    if (-not [version]::TryParse($Value, [ref]$parsed)) { return $null }
+    return [version]::new($parsed.Major, $parsed.Minor, $parsed.Build, [Math]::Max(0, $parsed.Revision))
 }
 
-function Get-StaleMigrationRecords {
-    # Known record and lock names, plus the .<guid>.tmp that MigrationRecordStorage
-    # leaves behind when a record write is interrupted before the final move.
-    $names = @($MigrationStateFiles)
-    if ($IncludeCompletionReceipt) {
-        $names += $CompletionReceiptFile
+function Get-ProductRelease {
+    param([string] $Value)
+    if ($Value -cmatch '\A([^+]+)(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?\z') {
+        return $Matches[1]
     }
-    return @(Get-ChildItem -LiteralPath $MigrationStateDirectory -Force -File -ErrorAction Stop |
-        Where-Object { $names -contains $_.Name -or $_.Name -match '^\.[0-9a-fA-F]{32}\.tmp$' })
+    return $null
+}
+
+function Test-ExecutableVersionCompatible {
+    param([string] $Release, [string] $FileVersion, [string] $ProductVersion)
+    $file = ConvertTo-NumericVersion $FileVersion
+    if ($null -eq $file) { return $false }
+    $numeric = ConvertTo-NumericVersion $Release
+    if ($null -ne $numeric) {
+        if ($numeric -ne $file) { return $false }
+        if ([string]::IsNullOrEmpty($ProductVersion)) { return $true }
+        $product = ConvertTo-NumericVersion (Get-ProductRelease $ProductVersion)
+        return $null -ne $product -and $numeric -eq $product
+    }
+    if ($Release -cnotmatch '\A([0-9]+\.[0-9]+\.[0-9]+)-([1-9][0-9]*)\z') { return $false }
+    $base = ConvertTo-NumericVersion $Matches[1]
+    $correction = 0
+    if (-not [int]::TryParse($Matches[2], [ref]$correction)) { return $false }
+    return $null -ne $base -and $base -eq $file -and (Get-ProductRelease $ProductVersion) -ceq $Release
 }
 
 function Assert-NoReparsePointAncestors {
-    # Mirrors the guard in Uninstall-LocalGateway.ps1, which walks every ancestor
-    # of the lock path and refuses to proceed through a reparse point. Without
-    # it, a junction anywhere above store-migration would let a reset delete
-    # matching names out of whatever directory the link targets. Deleting the
-    # completion receipt from a redirected path is the dangerous case: a later
-    # gateway uninstall reads its absence as permission to unregister the distro.
     param([string] $Path)
-
     $current = [IO.Path]::GetFullPath($Path)
     while (-not [string]::IsNullOrEmpty($current)) {
         try {
             if (([IO.File]::GetAttributes($current) -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
-                throw "Refusing to reset migration state: '$current' is a reparse point. Records must live on a real path under AppData."
+                throw "Refusing migration helper operation: '$current' is a reparse point."
             }
         }
-        catch [IO.FileNotFoundException] {
-        }
-        catch [IO.DirectoryNotFoundException] {
-        }
+        catch [IO.FileNotFoundException] {}
+        catch [IO.DirectoryNotFoundException] {}
         $current = [IO.Path]::GetDirectoryName($current)
     }
 }
 
-function Stop-TrayProcesses {
-    $procs = @(Get-Process -ErrorAction SilentlyContinue |
-        Where-Object { $_.ProcessName -like '*OpenClaw*' })
-
-    if ($procs.Count -eq 0) {
-        Write-Host '  no OpenClaw processes running'
-        return @()
+function Open-MigrationOperationLock {
+    $lockPath = Join-Path $MigrationStateDirectory 'prepare.lock'
+    Assert-NoReparsePointAncestors $lockPath
+    $exists = Test-Path -LiteralPath $lockPath
+    if ($exists -and -not (Test-Path -LiteralPath $lockPath -PathType Leaf)) {
+        throw "Migration lock '$lockPath' is not an ordinary file."
     }
-
-    $stopping = @()
-    $skipped = @()
-    foreach ($p in $procs) {
-        if ($PSCmdlet.ShouldProcess("PID $($p.Id) ($($p.ProcessName))", 'Stop process')) {
-            Stop-Process -Id $p.Id -Force -Confirm:$false -ErrorAction SilentlyContinue
-            Write-Host "  stopped $($p.ProcessName) (PID $($p.Id))"
-            $stopping += $p
+    if (-not $exists) {
+        if (-not $PSCmdlet.ShouldProcess($lockPath, 'Create migration operation lock')) {
+            Write-Host 'No lock created. No authoritative scan or changes performed.'
+            return $null
         }
-        else {
-            # Never attempted, so its handles are certainly still open. Counting
-            # it as exited would let -WhatIf and a declined -Confirm report a
-            # confirmation that was never made.
-            $skipped += $p
-        }
+        New-Item -ItemType Directory -Path $MigrationStateDirectory -Force -Confirm:$false | Out-Null
     }
+    Assert-NoReparsePointAncestors $lockPath
+    try {
+        return [IO.FileStream]::new(
+            $lockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+    }
+    catch [IO.IOException] {
+        throw "Cannot acquire exclusive migration lock '$lockPath'. Close the relevant Inno and Store apps yourself and wait for migration or gateway uninstall to finish. No records or labels were changed. $($_.Exception.Message)"
+    }
+}
 
-    # Stop-Process returns before the kernel has finished tearing the process
-    # down, so its file handles can still be open. Wait for confirmed exit
-    # before anything tries to delete what the app held open.
-    $deadline = (Get-Date).AddSeconds(10)
-    $unconfirmed = @()
-    foreach ($p in $stopping) {
-        $remaining = [int][Math]::Max(0, ((New-TimeSpan -End $deadline).TotalMilliseconds))
-        try {
-            $p.WaitForExit($remaining) | Out-Null
-            if (-not $p.HasExited) { $unconfirmed += $p }
+function Get-StaleMigrationRecords {
+    $names = @($MigrationStateFiles)
+    if ($IncludeCompletionReceipt) { $names += $CompletionReceiptFile }
+    foreach ($item in Get-ChildItem -LiteralPath $MigrationStateDirectory -Force) {
+        Assert-NoReparsePointAncestors $item.FullName
+        $isRecord = $names -contains $item.Name -or $item.Name -cmatch '\A\.[0-9a-fA-F]{32}\.tmp\z'
+        if ($item.PSIsContainer -and ($isRecord -or $item.Name -in @('prepare.lock', $CompletionReceiptFile))) {
+            throw "Migration record '$($item.FullName)' is not an ordinary file."
         }
-        catch {
-            # Access denied or an already-reaped handle. Treat as unconfirmed.
-            $unconfirmed += $p
-        }
+        if ($isRecord) { $item }
     }
+}
 
-    foreach ($s in $unconfirmed) {
-        Write-Host "  WARNING: PID $($s.Id) ($($s.ProcessName)) did not exit" -ForegroundColor Yellow
+function Assert-NoCompletionReceipt {
+    $receipt = Join-Path $MigrationStateDirectory $CompletionReceiptFile
+    Assert-NoReparsePointAncestors $receipt
+    if (Test-Path -LiteralPath $receipt) {
+        throw "Completion receipt '$receipt' exists. Finish migration and finalization instead of changing labels."
     }
-    foreach ($s in $skipped) {
-        Write-Host "  WARNING: PID $($s.Id) ($($s.ProcessName)) was not stopped, so its files stay locked" -ForegroundColor Yellow
+}
+
+function Get-BlockingGatewayFiles {
+    $directory = Join-Path $env:APPDATA 'OpenClawTray\gateways'
+    Assert-NoReparsePointAncestors $directory
+    if (-not (Test-Path -LiteralPath $directory)) { return }
+    if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
+        throw "Gateway root '$directory' is not a directory."
     }
-    return @($unconfirmed + $skipped)
+    foreach ($item in Get-ChildItem -LiteralPath $directory -Force) {
+        Assert-NoReparsePointAncestors $item.FullName
+        # MigrationInventory uses ordinal names and lowercase hex for atomic siblings.
+        $allowedDraft = $item.Name -ceq 'native-setup-draft.json' -or
+            $item.Name -cmatch '\A\.native-setup-draft\.json\.[0-9a-f]{32}\.tmp\z'
+        if ($allowedDraft -and $item.PSIsContainer) {
+            throw "Native setup file '$($item.FullName)' is unexpectedly a directory."
+        }
+        if (-not $item.PSIsContainer -and -not $allowedDraft) { $item }
+    }
+}
+
+function Assert-SourcePayload {
+    param($Properties)
+    $directory = [string]$Properties.InstallLocation
+    $canonical = Join-Path $env:LOCALAPPDATA 'OpenClawTray'
+    if ($directory -ine $canonical -and $directory -ine "$canonical\") {
+        throw "InstallLocation '$directory' is not the canonical per-user location '$canonical'."
+    }
+    if ($Properties.Publisher -cne 'OpenClaw Foundation' -or
+        $Properties.DisplayName -cne "OpenClaw Companion version $($Properties.DisplayVersion)") {
+        throw 'The current registration publisher or DisplayName does not match the source label.'
+    }
+    if ($Properties.UninstallString -ine ('"' + (Join-Path $canonical 'unins000.exe') + '"')) {
+        throw 'The uninstall command is not the quoted canonical unins000.exe path.'
+    }
+    foreach ($name in $RequiredPayload) {
+        $path = Join-Path $directory $name
+        Assert-NoReparsePointAncestors $path
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            throw "Required migration payload '$path' is missing or is not an ordinary file. Use an eligible signed source."
+        }
+    }
+    $identity = Get-Content -LiteralPath (Join-Path $directory 'app-identity.txt') -Raw
+    if ($identity -cnotin @('release', "release`n", "release`r`n")) {
+        throw 'Installed application identity is not release.'
+    }
+    return (Get-Item -LiteralPath (Join-Path $directory 'OpenClaw.Tray.WinUI.exe')).VersionInfo
 }
 
 if ($IncludeCompletionReceipt -and -not $ResetMigrationState) {
     throw '-IncludeCompletionReceipt only applies to -ResetMigrationState.'
 }
+if ($ResetMigrationState -and ($Revert -or $MoveBlockingFiles -or $PSBoundParameters.ContainsKey('TargetVersion'))) {
+    throw '-ResetMigrationState cannot be combined with label or quarantine options.'
+}
+if ($Revert -and ($MoveBlockingFiles -or $PSBoundParameters.ContainsKey('TargetVersion'))) {
+    throw '-Revert cannot be combined with target or quarantine options.'
+}
 
-# ------------------------------------------------ reset migration state ----
-# Runs before the installation lookup because a reset is still useful once the
-# source app is gone, which is the state a completed migration leaves behind.
 if ($ResetMigrationState) {
-    if ($IncludeCompletionReceipt) {
-        Write-Host "Including $CompletionReceiptFile. Uninstalling the gateway after this can unregister the WSL distro." -ForegroundColor Yellow
+    Assert-NoReparsePointAncestors (Join-Path $MigrationStateDirectory 'prepare.lock')
+    if (-not (Test-Path -LiteralPath $MigrationStateDirectory)) {
+        Write-Host 'No migration state. Nothing to reset.'
+        return
     }
-
     if (-not (Test-Path -LiteralPath $MigrationStateDirectory -PathType Container)) {
-        Write-Host "No migration state at $MigrationStateDirectory. Nothing to reset." -ForegroundColor Yellow
-        return
+        throw "Migration state '$MigrationStateDirectory' is not a directory."
     }
-
-    Assert-NoReparsePointAncestors -Path $MigrationStateDirectory
-
-    # Scanned before the tray is stopped so a no-op reset does not shut the app
-    # down for nothing. This result decides that and nothing else; the list
-    # actually acted on is taken again once the app has exited.
+    # Read-only no-op detection avoids creating even a lock for receipt-only state.
+    # Never use this preliminary list for deletion; rescan under exclusive ownership.
     if (@(Get-StaleMigrationRecords).Count -eq 0) {
-        Write-Host 'Migration state is already clear.' -ForegroundColor Green
+        Write-Host 'No resettable records. Completion receipt, operation lock and unknown entries are preserved.'
         return
     }
-
-    # Both lock files are held open for as long as the tray runs.
-    Write-Host 'Closing the tray app...' -ForegroundColor Cyan
-    $survivors = @(Stop-TrayProcesses)
-    if ($survivors.Count -gt 0 -and -not $WhatIfPreference) {
-        throw "Could not confirm $($survivors.Count) OpenClaw process(es) exited. Close them and re-run."
-    }
-
-    $stale = @(Get-StaleMigrationRecords)
-    if ($stale.Count -eq 0) {
-        Write-Host 'Migration state is already clear.' -ForegroundColor Green
-        return
-    }
-
-    $removed = 0
-    foreach ($item in $stale) {
-        if ($PSCmdlet.ShouldProcess($item.FullName, 'Delete migration record')) {
-            Remove-Item -LiteralPath $item.FullName -Force -Confirm:$false
-            Write-Host "  removed $($item.Name)"
-            $removed++
+    $operationLock = Open-MigrationOperationLock
+    if ($null -eq $operationLock) { return }
+    try {
+        $records = @(Get-StaleMigrationRecords)
+        if ($IncludeCompletionReceipt) {
+            Write-Warning 'Including completed.dpapi. Without it and Store registration, later gateway uninstall can unregister the WSL distro and delete generated state.'
         }
+        $removed = 0
+        foreach ($item in $records) {
+            Assert-NoReparsePointAncestors $item.FullName
+            if ($PSCmdlet.ShouldProcess($item.FullName, 'Delete migration record')) {
+                Remove-Item -LiteralPath $item.FullName -Force -Confirm:$false
+                $removed++
+            }
+        }
+        $remaining = @(Get-StaleMigrationRecords).Count
+        Write-Host "Reset removed $removed record(s); $remaining resettable record(s) remain. prepare.lock and unknown entries were preserved."
     }
-
-    if ($removed -eq 0) {
-        return
-    }
-
-    $leftover = @(Get-StaleMigrationRecords)
-    if ($leftover.Count -gt 0) {
-        $names = ($leftover | ForEach-Object { $_.Name }) -join ', '
-        throw "Migration state is not clear: $names remain. Close OpenClaw and re-run."
-    }
-
-    Write-Host ''
-    Write-Host 'Migration state cleared.' -ForegroundColor Green
+    finally { $operationLock.Dispose() }
     return
 }
 
 $keyPath = Get-RegistrationKeyPath
-$props = Get-ItemProperty -Path $keyPath
+$props = Get-ItemProperty -LiteralPath $keyPath
+$binary = Assert-SourcePayload $props
+$currentVersion = [string]$props.DisplayVersion
+$originalVersion = $props.PSObject.Properties[$BackupVersionValue]
+$originalName = $props.PSObject.Properties[$BackupNameValue]
 
-# ---------------------------------------------------------------- revert ----
 if ($Revert) {
-    $originalVersion = $props.PSObject.Properties[$BackupVersionValue]
-    $originalName = $props.PSObject.Properties[$BackupNameValue]
+    if (-not $originalVersion -or -not $originalName -or
+        $originalName.Value -cne "OpenClaw Companion version $($originalVersion.Value)") {
+        throw 'No complete, coherent saved original label found. Inspect the saved values before recovery.'
+    }
+    $currentMatches = Test-ExecutableVersionCompatible $currentVersion $binary.FileVersion $binary.ProductVersion
+    $originalMatches = Test-ExecutableVersionCompatible $originalVersion.Value $binary.FileVersion $binary.ProductVersion
+    # Historical helper backups lack an applied-label marker. Only restore a
+    # prerelease when its exact ProductVersion and original numeric core agree.
+    $legacyMatches = $false
+    if ($originalVersion.Value -cmatch '\A([0-9]+\.[0-9]+\.[0-9]+)-[A-Za-z][0-9A-Za-z.-]*\z') {
+        $legacyCore = $Matches[1]
+        $legacyMatches = (Get-ProductRelease $binary.ProductVersion) -ceq $originalVersion.Value -and
+            $currentVersion -ceq $legacyCore -and
+            (ConvertTo-NumericVersion $legacyCore) -eq (ConvertTo-NumericVersion $binary.FileVersion) -and
+            $null -ne (ConvertTo-NumericVersion $legacyCore)
+    }
+    if (-not (($currentMatches -and $originalMatches) -or $legacyMatches)) {
+        throw 'Saved/current label or binary metadata drifted. Refusing to overwrite an unexpected installation.'
+    }
+}
+else {
+    if (-not $PSBoundParameters.ContainsKey('TargetVersion')) { $TargetVersion = $currentVersion }
+    foreach ($label in @($currentVersion, $TargetVersion)) {
+        if (-not (Test-ExecutableVersionCompatible $label $binary.FileVersion $binary.ProductVersion)) {
+            throw "Label '$label' is incompatible with FileVersion '$($binary.FileVersion)' and ProductVersion '$($binary.ProductVersion)'. Current policy rejects alpha ProductVersion; use an eligible signed source, not an alpha relabel."
+        }
+    }
+    if ($originalVersion -or $originalName) {
+        throw 'Saved labels already exist. Use -Revert to restore them before another relabel.'
+    }
+}
 
-    if (-not $originalVersion -or -not $originalName) {
-        throw "No saved original label found under $keyPath. This installation was not relabelled by this script."
+Write-Host 'Local preflight passed: source labels, payload, release identity and executable versions.'
+Write-Host 'This does not prove Store admission, signatures/provenance, PE architecture, target minimum version or full data validity.'
+# No filesystem or registry mutation occurs before the metadata checks above.
+$operationLock = Open-MigrationOperationLock
+if ($null -eq $operationLock) { return }
+try {
+    Assert-NoCompletionReceipt
+    # Re-read under ownership so a preflight snapshot cannot overwrite label drift.
+    $lockedProps = Get-ItemProperty -LiteralPath $keyPath
+    foreach ($name in @('InstallLocation', 'Publisher', 'UninstallString', 'DisplayVersion', 'DisplayName', $BackupVersionValue, $BackupNameValue)) {
+        $before = $props.PSObject.Properties[$name]
+        $after = $lockedProps.PSObject.Properties[$name]
+        if (($null -eq $before) -ne ($null -eq $after) -or
+            ($null -ne $before -and [string]$before.Value -cne [string]$after.Value)) {
+            throw "Registration '$name' changed during preflight. No labels were changed."
+        }
+    }
+    if ($Revert) {
+        if ($PSCmdlet.ShouldProcess($keyPath, 'Restore saved original label')) {
+            Set-ItemProperty -LiteralPath $keyPath -Name DisplayVersion -Value $originalVersion.Value -Type String -Confirm:$false
+            Set-ItemProperty -LiteralPath $keyPath -Name DisplayName -Value $originalName.Value -Type String -Confirm:$false
+            Remove-ItemProperty -LiteralPath $keyPath -Name $BackupVersionValue -Confirm:$false
+            Remove-ItemProperty -LiteralPath $keyPath -Name $BackupNameValue -Confirm:$false
+            Write-Host "Restored saved label '$($originalVersion.Value)'. This does not establish migration eligibility."
+        }
+        return
     }
 
-    if ($PSCmdlet.ShouldProcess($keyPath, 'Restore original label')) {
-        Set-ItemProperty $keyPath -Name DisplayVersion -Value $originalVersion.Value -Type String -Confirm:$false
-        Set-ItemProperty $keyPath -Name DisplayName    -Value $originalName.Value    -Type String -Confirm:$false
-        Remove-ItemProperty $keyPath -Name $BackupVersionValue -Confirm:$false
-        Remove-ItemProperty $keyPath -Name $BackupNameValue -Confirm:$false
-        Write-Host "Restored DisplayName and DisplayVersion to '$($originalVersion.Value)'." -ForegroundColor Green
-    }
-    return
-}
-
-# ---------------------------------------------------------- preflight -------
-$installDir = $props.InstallLocation
-if ([string]::IsNullOrWhiteSpace($installDir) -or -not (Test-Path $installDir)) {
-    throw "InstallLocation '$installDir' does not exist."
-}
-
-$currentVersion = $props.DisplayVersion
-if ($props.PSObject.Properties[$BackupVersionValue]) {
-    throw "This installation is already relabelled (currently '$currentVersion'). Run with -Revert first."
-}
-
-if (-not $TargetVersion) {
-    $TargetVersion = Get-StableCore -Version $currentVersion
-}
-
-if ($currentVersion -eq $TargetVersion) {
-    Write-Host "DisplayVersion is already '$TargetVersion'. Nothing to do." -ForegroundColor Yellow
-    return
-}
-
-Write-Host "Checking the installation can actually migrate..." -ForegroundColor Cyan
-
-# The detector requires the payload. Without it the Store app says "update the
-# exe" no matter what the label says, which looks identical to the block this
-# script exists to bypass.
-$missing = @($RequiredPayload | Where-Object { -not (Test-Path (Join-Path $installDir $_)) })
-if ($missing.Count -gt 0) {
-    throw "This build predates the migration payload. Missing: $($missing -join ', '). Use a 2026.9.5-alpha or later release."
-}
-
-$identity = (Get-Content (Join-Path $installDir 'app-identity.txt') -Raw).Trim()
-if ($identity -ne 'release') {
-    throw "Installed identity is '$identity', not 'release'. The detector only migrates release builds, not dev builds."
-}
-
-# The detector cross-checks the registry label against the binary. If these
-# disagree it reports the installation as unsupported.
-$exe = Join-Path $installDir 'OpenClaw.Tray.WinUI.exe'
-$peVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo($exe).FileVersion
-$expectedPe = "$TargetVersion.0"
-if ($peVersion -ne $expectedPe) {
-    throw "Binary is stamped FileVersion $peVersion but '$TargetVersion' requires $expectedPe. Pick a -TargetVersion matching the binary."
-}
-
-Write-Host "  payload present, identity release, binary $peVersion" -ForegroundColor Green
-
-# Migration capture requires every entry under gateways\ to be a directory, but
-# native gateway setup writes native-setup-draft.json into that same folder. A
-# stray file there fails preparation with "Migration source has an unexpected
-# file type", which names neither the folder nor the file.
-$gatewaysDir = Join-Path $env:APPDATA 'OpenClawTray\gateways'
-if (Test-Path $gatewaysDir) {
-    $blocking = @(Get-ChildItem $gatewaysDir -Force | Where-Object {
-        -not $_.PSIsContainer -or $_.Attributes.HasFlag([IO.FileAttributes]::ReparsePoint)
-    })
-
+    $blocking = @(Get-BlockingGatewayFiles)
     if ($blocking.Count -gt 0) {
         $names = ($blocking | ForEach-Object { $_.Name }) -join ', '
         if (-not $MoveBlockingFiles) {
-            throw @"
-Migration will fail: $gatewaysDir contains non-directory entries ($names).
-Capture requires that folder to hold only gateway identity directories.
-Re-run with -MoveBlockingFiles to move them aside, or move them yourself.
-Only do this when native gateway setup is not mid-flight; a moved draft
-abandons an unfinished setup.
-"@
+            throw "Unknown gateway-root files: $names. Inspect them; -MoveBlockingFiles can quarantine ordinary files only. Allowed native setup files are preserved."
         }
-
-        $quarantine = Join-Path $env:APPDATA "OpenClawTray\gateways-blocking-$(Get-Date -Format yyyyMMdd-HHmmss)"
-        if ($PSCmdlet.ShouldProcess($names, "Move out of gateways folder")) {
-            New-Item -ItemType Directory -Path $quarantine -Force -Confirm:$false | Out-Null
-            foreach ($item in $blocking) { Move-Item $item.FullName (Join-Path $quarantine $item.Name) -Force -Confirm:$false }
-            Write-Host "  moved $names to $quarantine" -ForegroundColor Yellow
+        $quarantine = Join-Path $env:APPDATA ("OpenClawTray\gateways-blocking-" + [guid]::NewGuid().ToString('N'))
+        Assert-NoReparsePointAncestors $quarantine
+        if (-not $PSCmdlet.ShouldProcess($names, "Quarantine unknown files in $quarantine")) {
+            Write-Host 'No files moved and no labels changed.'
+            return
         }
+        New-Item -ItemType Directory -Path $quarantine -Confirm:$false | Out-Null
+        foreach ($item in $blocking) {
+            Assert-NoReparsePointAncestors $item.FullName
+            Move-Item -LiteralPath $item.FullName -Destination (Join-Path $quarantine $item.Name) -Confirm:$false
+        }
+        Write-Host "Quarantined unknown files in '$quarantine'. Review before restoring; never overwrite newer state."
     }
-    else {
-        Write-Host '  gateways folder clean' -ForegroundColor Green
+    if ($currentVersion -ceq $TargetVersion) {
+        Write-Host "No relabel necessary for '$currentVersion'. Gateway-root entry check passed; the Store app still owns admission."
+        return
+    }
+    if ($PSCmdlet.ShouldProcess($keyPath, "Relabel $currentVersion -> $TargetVersion")) {
+        New-ItemProperty -LiteralPath $keyPath -Name $BackupVersionValue -Value $currentVersion -PropertyType String -Confirm:$false | Out-Null
+        New-ItemProperty -LiteralPath $keyPath -Name $BackupNameValue -Value $props.DisplayName -PropertyType String -Confirm:$false | Out-Null
+        Set-ItemProperty -LiteralPath $keyPath -Name DisplayVersion -Value $TargetVersion -Type String -Confirm:$false
+        Set-ItemProperty -LiteralPath $keyPath -Name DisplayName -Value "OpenClaw Companion version $TargetVersion" -Type String -Confirm:$false
+        Write-Host "Relabelled $currentVersion -> $TargetVersion. Saved originals can be restored with -Revert before migration completes."
     }
 }
-
-# ------------------------------------------------------------- relabel ------
-Write-Host 'Closing the tray app (migration fails while it runs)...' -ForegroundColor Cyan
-Stop-TrayProcesses | Out-Null
-
-$newName = "OpenClaw Companion version $TargetVersion"
-
-if ($PSCmdlet.ShouldProcess($keyPath, "Relabel $currentVersion -> $TargetVersion")) {
-    # Saved before the overwrite so -Revert can restore the real label.
-    New-ItemProperty $keyPath -Name $BackupVersionValue -Value $currentVersion   -PropertyType String -Force -Confirm:$false | Out-Null
-    New-ItemProperty $keyPath -Name $BackupNameValue    -Value $props.DisplayName -PropertyType String -Force -Confirm:$false | Out-Null
-
-    # DisplayName is validated against DisplayVersion, so both must change.
-    Set-ItemProperty $keyPath -Name DisplayVersion -Value $TargetVersion -Type String -Confirm:$false
-    Set-ItemProperty $keyPath -Name DisplayName    -Value $newName      -Type String -Confirm:$false
-
-    Write-Host ''
-    Write-Host "Relabelled $currentVersion -> $TargetVersion" -ForegroundColor Green
-    Write-Host ''
-    Write-Host 'Next steps:'
-    Write-Host '  1. Launch the Store version of OpenClaw.'
-    Write-Host '  2. Choose Migrate on the "Move to the Store version" screen.'
-    Write-Host "  3. When prompted, uninstall only `"$newName`"."
-    Write-Host '  4. Return to the Store app and choose Retry to finish.'
-    Write-Host ''
-    Write-Host 'If you see "could not exclude source processes across sessions",'
-    Write-Host 'the tray app restarted. Close it and choose Retry.'
-    Write-Host ''
-    Write-Host 'Finish the flow or stop at the consent screen. Stopping after' -ForegroundColor Yellow
-    Write-Host 'Migrate leaves the old app unable to start.' -ForegroundColor Yellow
-}
+finally { $operationLock.Dispose() }
