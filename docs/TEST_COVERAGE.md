@@ -302,9 +302,9 @@ the current released package.
 
 The current packaging contract owns an agent-session Gateway through
 `clawctl setup` and `clawctl gateway-service start/status/restart/stop`.
-Configuration belongs inside that session's profile. Companion's existing
-host-child native runtime and same-user listener ancestry checks are a different
-contract and cannot be relabeled as proof of the isolated package. The integration
+Configuration belongs inside that session's profile. The retired host-child
+native runtime and its same-user listener ancestry checks were a different
+contract and are not proof of the isolated package. The integration
 must demonstrate authenticated Companion connectivity and ownership/lifecycle
 behavior against the real session endpoint before claiming native E2E coverage.
 Missing package provenance, installation consent/isolation, capable runner, or

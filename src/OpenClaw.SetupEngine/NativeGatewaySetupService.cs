@@ -1,11 +1,8 @@
 using System.Net;
 using System.Net.Sockets;
-using System.Security.Cryptography;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using OpenClaw.Connection;
 using OpenClaw.Connection.NativeGateway;
-using OpenClaw.Shared;
 
 namespace OpenClaw.SetupEngine;
 
@@ -29,38 +26,27 @@ public interface INativeGatewaySetupHost
         NativeGatewayPackage package, CancellationToken cancellationToken);
 
     Task<string> ListDevicePairingRequestsAsync(
-        NativeGatewayPackage package,
-        IReadOnlyDictionary<string, string> environment, CancellationToken cancellationToken);
+        NativeGatewayPackage package, CancellationToken cancellationToken);
 
     Task<string> ApproveDevicePairingAsync(
-        NativeGatewayPackage package, string requestId,
-        IReadOnlyDictionary<string, string> environment, CancellationToken cancellationToken);
+        NativeGatewayPackage package, string requestId, CancellationToken cancellationToken);
 
-    IDisposable OpenRecoveryTerminal(
-        NativeGatewayPackage package,
-        IReadOnlyDictionary<string, string> environment);
+    IDisposable OpenRecoveryTerminal(NativeGatewayPackage package);
 
-    Task PreparePackageAsync(
-        NativeGatewayPackage package,
-        IReadOnlyDictionary<string, string> environment,
-        CancellationToken cancellationToken);
+    Task PreparePackageAsync(NativeGatewayPackage package, CancellationToken cancellationToken);
 
-    Task ValidateConfigurationAsync(
-        NativeGatewayPackage package,
-        IReadOnlyDictionary<string, string> environment,
-        CancellationToken cancellationToken);
+    Task ValidateConfigurationAsync(NativeGatewayPackage package, CancellationToken cancellationToken);
 
-    Task VerifyHealthAsync(
-        NativeGatewayPackage package,
-        IReadOnlyDictionary<string, string> environment,
-        CancellationToken cancellationToken);
+    Task VerifyHealthAsync(NativeGatewayPackage package, CancellationToken cancellationToken);
 }
 
 public sealed record NativeGatewaySetupDraft(string GatewayId, int Port, string PackageFamilyName)
 {
-    // Durable intent makes a port-only config/descriptor update recoverable across a crash.
-    public int? PreviousPort { get; init; }
-    public NativeGatewayContract Contract { get; init; } = NativeGatewayContract.Legacy;
+    /// <summary>
+    /// The contract this draft was created for. A draft saved by the retired same-user
+    /// runtime deserializes to a value other than IsolatedSessionV1 and must be discarded.
+    /// </summary>
+    public NativeGatewayContract Contract { get; init; }
 }
 
 /// <summary>
@@ -97,9 +83,7 @@ public sealed class NativeGatewaySetupService(
                     throw new NativeGatewayDraftRecoveryRequiredException(
                         "The saved native setup draft belongs to a different Gateway runtime. " +
                         "Discard the unpublished draft to create a new isolated Gateway profile.");
-                return contract == NativeGatewayContract.IsolatedSessionV1
-                    ? saved
-                    : ResumeDraft(saved, draftPath);
+                return saved;
             }
         }
         var port = SelectAvailablePort();
@@ -135,50 +119,11 @@ public sealed class NativeGatewaySetupService(
         File.Delete(draftPath);
     }
 
-    private NativeGatewaySetupDraft ResumeDraft(NativeGatewaySetupDraft draft, string draftPath)
-    {
-        if (draft.PreviousPort is not null)
-            draft = FinishPortChange(draft, draftPath);
-        if (IsPortAvailable(draft.Port))
-            return draft;
-
-        var configPath = NativeGatewayPaths.GetConfigPath(registry, draft.GatewayId);
-        if (File.Exists(configPath))
-            _ = ReadConfiguredRecord(draft, File.ReadAllText(configPath));
-        var pending = draft with { Port = SelectAvailablePort(), PreviousPort = draft.Port };
-        AtomicFile.WriteAllText(draftPath, JsonSerializer.Serialize(pending));
-        System.Diagnostics.Trace.TraceInformation("Native setup is replacing an unavailable draft port.");
-        return FinishPortChange(pending, draftPath);
-    }
-
-    /// <summary>Signals that an unpublished same-user draft requires explicit replacement after a package upgrade.</summary>
+    /// <summary>
+    /// Signals that an unpublished draft no longer matches the installed package or its
+    /// runtime contract, and needs explicit discard before setup can continue.
+    /// </summary>
     public sealed class NativeGatewayDraftRecoveryRequiredException(string message) : InvalidOperationException(message);
-
-    private NativeGatewaySetupDraft FinishPortChange(NativeGatewaySetupDraft draft, string draftPath)
-    {
-        var previousPort = draft.PreviousPort
-            ?? throw new InvalidOperationException("The native setup port change has no previous port.");
-        ArgumentOutOfRangeException.ThrowIfLessThan(previousPort, 1);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(previousPort, 65535);
-        var configPath = NativeGatewayPaths.GetConfigPath(registry, draft.GatewayId);
-        if (File.Exists(configPath))
-        {
-            var json = File.ReadAllText(configPath);
-            using var document = JsonDocument.Parse(json);
-            if (!document.RootElement.TryGetProperty("gateway", out var gateway) ||
-                gateway.ValueKind != JsonValueKind.Object ||
-                !gateway.TryGetProperty("port", out var port) || !port.TryGetInt32(out var currentPort) ||
-                (currentPort != previousPort && currentPort != draft.Port))
-                throw new InvalidOperationException("Native Gateway configuration changed during port recovery. Restore the draft configuration before retrying.");
-            _ = ReadConfiguredRecord(draft with { Port = currentPort }, json);
-            var config = JsonNode.Parse(json)!.AsObject();
-            config["gateway"]!["port"] = draft.Port;
-            AtomicFile.WriteAllText(configPath, config.ToJsonString());
-        }
-        var completed = draft with { PreviousPort = null };
-        AtomicFile.WriteAllText(draftPath, JsonSerializer.Serialize(completed));
-        return completed;
-    }
 
     private static int SelectAvailablePort() => SelectAvailablePort(PreferredPort);
 
@@ -228,81 +173,38 @@ public sealed class NativeGatewaySetupService(
         NativeGatewaySetupDraft draft,
         CancellationToken cancellationToken)
     {
-        if (draft.PreviousPort is not null)
-            throw new InvalidOperationException("Resume the native setup draft to finish port recovery before preparing the Gateway.");
         ArgumentOutOfRangeException.ThrowIfLessThan(draft.Port, 1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(draft.Port, 65535);
         var package = await packageResolver.ResolveAsync(cancellationToken);
         if (!string.Equals(package.PackageFamilyName, draft.PackageFamilyName, StringComparison.Ordinal))
             throw new InvalidOperationException("The installed Gateway package changed. Return to setup and check it again.");
         var contract = await host.DetectContractAsync(package, cancellationToken);
-        if (contract != draft.Contract)
+        if (contract != NativeGatewayContract.IsolatedSessionV1 || contract != draft.Contract)
             throw new InvalidOperationException(
                 "The installed Gateway runtime changed during setup. Retry after checking the package.");
         package = package with { Contract = contract };
 
-        if (contract == NativeGatewayContract.IsolatedSessionV1)
-        {
-            await host.PreparePackageAsync(package, new Dictionary<string, string>(), cancellationToken);
-            cancellationToken.ThrowIfCancellationRequested();
-            IsolatedGatewayConfiguration configured = await host.PrepareIsolatedConfigurationAsync(
-                package, draft.Port, cancellationToken);
-            cancellationToken.ThrowIfCancellationRequested();
-            var selected = draft with { Port = configured.Port };
-            if (selected.Port != draft.Port)
-                AtomicFile.WriteAllText(GetDraftPath(registry), JsonSerializer.Serialize(selected));
-            var isolatedRecord = new GatewayRecord
-            {
-                Id = selected.GatewayId,
-                Url = $"ws://127.0.0.1:{selected.Port}",
-                FriendlyName = "Native Gateway",
-                IsLocal = true,
-                RequiresV2Signature = true,
-                SharedGatewayToken = configured.Token,
-                NativePackageFamilyName = package.PackageFamilyName,
-                NativeRuntimeContract = NativeGatewayPackageClient.IsolatedContract
-            };
-            var isolatedSession = new NativeGatewaySetupSession(
-                registry, selected, isolatedRecord, package,
-                new Dictionary<string, string>(), host, runtimeFactory());
-            try
-            {
-                await isolatedSession.PrepareAsync(cancellationToken);
-                return isolatedSession;
-            }
-            catch
-            {
-                await isolatedSession.DisposeAsync();
-                throw;
-            }
-        }
-
-        var stateDirectory = NativeGatewayPaths.GetStateDirectory(registry, draft.GatewayId);
-        var configPath = NativeGatewayPaths.GetConfigPath(registry, draft.GatewayId);
-        var environment = BuildEnvironment(registry, draft.GatewayId, packageResolver);
-        Directory.CreateDirectory(stateDirectory);
-        if (!File.Exists(configPath))
-        {
-            var workspace = packageResolver.ResolveDataPath(Path.Combine(stateDirectory, "workspace"));
-            var baseline = new
-            {
-                gateway = new
-                {
-                    mode = "local",
-                    port = draft.Port,
-                    bind = "loopback",
-                    auth = new { mode = "token", token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)) },
-                },
-                agents = new { defaults = new { workspace } },
-            };
-            AtomicFile.WriteAllText(configPath, JsonSerializer.Serialize(baseline));
-        }
-
-        await host.PreparePackageAsync(package, environment, cancellationToken);
+        await host.PreparePackageAsync(package, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
-        var record = ReadConfiguredRecord(draft, await File.ReadAllTextAsync(configPath, cancellationToken));
+        IsolatedGatewayConfiguration configured = await host.PrepareIsolatedConfigurationAsync(
+            package, draft.Port, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        var selected = draft with { Port = configured.Port };
+        if (selected.Port != draft.Port)
+            AtomicFile.WriteAllText(GetDraftPath(registry), JsonSerializer.Serialize(selected));
+        var record = new GatewayRecord
+        {
+            Id = selected.GatewayId,
+            Url = $"ws://127.0.0.1:{selected.Port}",
+            FriendlyName = "Native Gateway",
+            IsLocal = true,
+            RequiresV2Signature = true,
+            SharedGatewayToken = configured.Token,
+            NativePackageFamilyName = package.PackageFamilyName,
+            NativeRuntimeContract = NativeGatewayPackageClient.IsolatedContract
+        };
         var session = new NativeGatewaySetupSession(
-            registry, draft, record, package, environment, host, runtimeFactory());
+            registry, selected, record, package, host, runtimeFactory());
         try
         {
             await session.PrepareAsync(cancellationToken);
@@ -314,50 +216,4 @@ public sealed class NativeGatewaySetupService(
             throw;
         }
     }
-
-    internal static IReadOnlyDictionary<string, string> BuildEnvironment(
-        GatewayRegistry registry,
-        string gatewayId,
-        INativeGatewayPackageResolver resolver) =>
-        NativeGatewayPaths.GetEnvironment(registry, gatewayId, resolver.ResolveDataPath);
-
-    internal static GatewayRecord ReadConfiguredRecord(NativeGatewaySetupDraft draft, string json)
-    {
-        using var document = JsonDocument.Parse(json);
-        var root = document.RootElement;
-        if (!root.TryGetProperty("gateway", out var gateway) ||
-            gateway.ValueKind != JsonValueKind.Object ||
-            !HasString(gateway, "mode", "local") ||
-            !HasString(gateway, "bind", "loopback") ||
-            !gateway.TryGetProperty("port", out var port) ||
-            !port.TryGetInt32(out var configuredPort) ||
-            configuredPort != draft.Port ||
-            !gateway.TryGetProperty("auth", out var auth) ||
-            auth.ValueKind != JsonValueKind.Object ||
-            !HasString(auth, "mode", "token") ||
-            !auth.TryGetProperty("token", out var token) ||
-            token.ValueKind != JsonValueKind.String ||
-            string.IsNullOrWhiteSpace(token.GetString()))
-        {
-            throw new InvalidOperationException(
-                "Native setup requires the selected local port, loopback binding, and token authentication. " +
-                "Run Gateway setup again using those settings.");
-        }
-
-        return new GatewayRecord
-        {
-            Id = draft.GatewayId,
-            Url = $"ws://127.0.0.1:{draft.Port}",
-            FriendlyName = "Native Gateway",
-            IsLocal = true,
-            RequiresV2Signature = true,
-            SharedGatewayToken = token.GetString(),
-            NativePackageFamilyName = draft.PackageFamilyName,
-        };
-    }
-
-    private static bool HasString(JsonElement element, string name, string value) =>
-        element.TryGetProperty(name, out var property) &&
-        property.ValueKind == JsonValueKind.String &&
-        string.Equals(property.GetString(), value, StringComparison.Ordinal);
 }

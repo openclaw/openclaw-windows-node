@@ -1,4 +1,3 @@
-using System.Text.Json.Nodes;
 using OpenClaw.Connection;
 using OpenClaw.Connection.NativeGateway;
 using OpenClaw.Shared;
@@ -6,8 +5,8 @@ using OpenClaw.Shared;
 namespace OpenClaw.SetupEngine;
 
 /// <summary>
-/// Owns a staged native profile and runtime while the shared WinUI wizard owns RPC
-/// and rendering. Successful wizard completion or a validated optional-setup handoff
+/// Owns a staged isolated native profile and runtime while the shared WinUI wizard owns
+/// RPC and rendering. Successful wizard completion or a validated optional-setup handoff
 /// permits final config/health verification before publication.
 /// </summary>
 public sealed class NativeGatewaySetupSession(
@@ -15,7 +14,6 @@ public sealed class NativeGatewaySetupSession(
     NativeGatewaySetupDraft draft,
     GatewayRecord record,
     NativeGatewayPackage package,
-    IReadOnlyDictionary<string, string> environment,
     INativeGatewaySetupHost host,
     INativeGatewayRuntime runtime) : IAsyncDisposable
 {
@@ -28,12 +26,9 @@ public sealed class NativeGatewaySetupSession(
     private bool _published;
     private string? _identityBinding;
     private IDisposable? _terminal;
-    public GatewayRecord Record { get; private set; } = record;
-    public bool IsIsolated => draft.Contract == NativeGatewayContract.IsolatedSessionV1;
+    public GatewayRecord Record { get; } = record;
     public bool IsPublished => _published;
     public string IdentityDirectory => registry.GetIdentityDirectory(draft.GatewayId);
-    public string ConsoleLogPath => Path.Combine(
-        NativeGatewayPaths.GetStateDirectory(registry, draft.GatewayId), "wizard-console.log");
     public CancellationToken LifetimeToken => _lifetime.Token;
     public static string GetPairingGuidance(string? requestId)
     {
@@ -43,35 +38,23 @@ public sealed class NativeGatewaySetupSession(
         return $"This Companion needs pairing approval. Open the Gateway terminal below, which uses this setup profile. {instruction} Then choose Retry.";
     }
 
-    private string ConfigPath => NativeGatewayPaths.GetConfigPath(registry, draft.GatewayId);
-    private string ReloadBackupPath => ConfigPath + ".setup-reload.json";
-
     public void OpenRecoveryTerminal()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         _terminal?.Dispose();
-        _terminal = host.OpenRecoveryTerminal(package, environment);
+        _terminal = host.OpenRecoveryTerminal(package);
     }
 
     public Task PrepareWizardAsync(CancellationToken cancellationToken) => PrepareConnectionAsync(cancellationToken);
 
-    public async Task PrepareConnectionAsync(CancellationToken cancellationToken)
-    {
-        // A failed final health check restored reload already. Suspend again before
-        // starting a new wizard, not when retrying finalization itself.
-        if (!_published && !IsIsolated && !File.Exists(ReloadBackupPath))
-            await RestartAsync(cancellationToken);
-        await AuthorizeAsync(cancellationToken);
-    }
+    public Task PrepareConnectionAsync(CancellationToken cancellationToken) => AuthorizeAsync(cancellationToken);
 
     internal async Task PrepareAsync(CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            if (!IsIsolated)
-                SuspendReload();
-            await host.ValidateConfigurationAsync(package, environment, cancellationToken);
+            await host.ValidateConfigurationAsync(package, cancellationToken);
             await AuthorizeCoreAsync(cancellationToken);
         }
         finally { _gate.Release(); }
@@ -99,31 +82,17 @@ public sealed class NativeGatewaySetupSession(
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             await AuthorizeCoreAsync(linked.Token);
-            await RequireIsolatedPairingConfigurationAsync(linked.Token);
-            RequirePairingConfiguration();
+            await RequirePairingConfigurationAsync(linked.Token);
             var identity = new DeviceIdentity(IdentityDirectory);
             identity.Initialize();
-            var approvalEnvironment = IsIsolated
-                ? new Dictionary<string, string>()
-                : new Dictionary<string, string>(environment)
-                {
-                    // Legacy CLI bootstrap needs the dedicated profile and explicit target.
-                    ["OPENCLAW_GATEWAY_URL"] = "",
-                    ["OPENCLAW_GATEWAY_PORT"] = draft.Port.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    ["OPENCLAW_GATEWAY_TOKEN"] = Record.SharedGatewayToken ??
-                        throw new InvalidOperationException("The setup Gateway credential is unavailable for pairing."),
-                };
             var normalizedId = requestId!.Trim();
-            var listing = await host.ListDevicePairingRequestsAsync(
-                package, approvalEnvironment, linked.Token);
+            var listing = await host.ListDevicePairingRequestsAsync(package, linked.Token);
             ApprovalRequestHelper.RequireMatchingDeviceRequest(
                 listing, normalizedId, identity.DeviceId, identity.PublicKeyBase64Url);
             // Recheck after the CLI read and before issuing the exact approval.
             await AuthorizeCoreAsync(linked.Token);
-            await RequireIsolatedPairingConfigurationAsync(linked.Token);
-            RequirePairingConfiguration();
-            var result = await host.ApproveDevicePairingAsync(
-                package, normalizedId, approvalEnvironment, linked.Token);
+            await RequirePairingConfigurationAsync(linked.Token);
+            var result = await host.ApproveDevicePairingAsync(package, normalizedId, linked.Token);
             linked.Token.ThrowIfCancellationRequested();
             var approved = ApprovalRequestHelper.TryReadApprovedRequestId(result);
             if (!approved.Success || approved.RequestId != normalizedId)
@@ -151,27 +120,15 @@ public sealed class NativeGatewaySetupSession(
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             await AuthorizeCoreAsync(linked.Token);
-            await RequireIsolatedPairingConfigurationAsync(linked.Token);
-            RequirePairingConfiguration();
+            await RequirePairingConfigurationAsync(linked.Token);
             return DeviceIdentity.TryClearDeviceTokenForRoleIfMatches(
                 IdentityDirectory, "operator", rejectedToken);
         }
         finally { _gate.Release(); }
     }
 
-    private void RequirePairingConfiguration()
+    private async Task RequirePairingConfigurationAsync(CancellationToken cancellationToken)
     {
-        if (IsIsolated)
-            return;
-        var configured = NativeGatewaySetupService.ReadConfiguredRecord(draft, File.ReadAllText(ConfigPath));
-        if (configured.SharedGatewayToken != Record.SharedGatewayToken)
-            throw new InvalidOperationException("The setup Gateway credential changed. Restart setup before pairing.");
-    }
-
-    private async Task RequireIsolatedPairingConfigurationAsync(CancellationToken cancellationToken)
-    {
-        if (!IsIsolated)
-            return;
         IsolatedGatewayConfiguration configuration =
             await host.CheckIsolatedPairingConfigurationAsync(package, cancellationToken);
         if (configuration.Port != new Uri(Record.Url).Port ||
@@ -185,7 +142,7 @@ public sealed class NativeGatewaySetupSession(
     private async Task AuthorizeCoreAsync(CancellationToken cancellationToken)
     {
         RequireCurrentProfile();
-        await RequireIsolatedPairingConfigurationAsync(cancellationToken);
+        await RequirePairingConfigurationAsync(cancellationToken);
         // Never let loopback or an existing device token bypass package workload inspection.
         host.ReportProgress(NativeGatewaySetupStage.StartingGateway);
         await runtime.EnsureRunningAsync(Record, cancellationToken);
@@ -200,14 +157,7 @@ public sealed class NativeGatewaySetupSession(
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         _lifetime.Token.ThrowIfCancellationRequested();
-        if (!IsIsolated)
-        {
-            var configured = NativeGatewaySetupService.ReadConfiguredRecord(draft, File.ReadAllText(ConfigPath));
-            if (GatewayDashboardBinding.Capture(configured) != GatewayDashboardBinding.Capture(Record) ||
-                configured.SharedGatewayToken != Record.SharedGatewayToken)
-                throw new SetupNativeOwnershipException();
-        }
-        else if (Record.Id != draft.GatewayId || Record.NativePackageFamilyName != draft.PackageFamilyName ||
+        if (Record.Id != draft.GatewayId || Record.NativePackageFamilyName != draft.PackageFamilyName ||
             Record.NativeRuntimeContract != NativeGatewayPackageClient.IsolatedContract ||
             NativeGatewayPaths.ValidateRecord(Record).Port != draft.Port)
             throw new SetupNativeOwnershipException();
@@ -269,17 +219,9 @@ public sealed class NativeGatewaySetupSession(
             BeginWizard();
             _terminal?.Dispose();
             _terminal = null;
-            if (!IsIsolated)
-                await runtime.StopAsync(linked.Token);
             // Upstream may have changed configuration before an error. Validate before restart.
-            if (!IsIsolated)
-            {
-                Record = NativeGatewaySetupService.ReadConfiguredRecord(draft, File.ReadAllText(ConfigPath));
-                SuspendReload();
-            }
-            await host.ValidateConfigurationAsync(package, environment, linked.Token);
-            if (IsIsolated)
-                await runtime.RestartAsync(Record, linked.Token);
+            await host.ValidateConfigurationAsync(package, linked.Token);
+            await runtime.RestartAsync(Record, linked.Token);
             await AuthorizeCoreAsync(linked.Token);
         }
         finally { _gate.Release(); }
@@ -321,35 +263,25 @@ public sealed class NativeGatewaySetupSession(
             if (_published)
                 return Record;
 
-            // Focused setup has drained its operator. Keep isolated stop ownership
-            // through RestartAsync; StopAsync would discard that lifecycle attribution.
-            if (!IsIsolated || proof is null)
+            // Focused setup has drained its operator. Keep stop ownership through
+            // RestartAsync; StopAsync would discard that lifecycle attribution.
+            if (proof is null)
                 await runtime.StopAsync(linked.Token);
             linked.Token.ThrowIfCancellationRequested();
-            if (IsIsolated)
-            {
-                if (capabilities is not null)
-                    await host.ApplyIsolatedCapabilitiesAsync(
-                        package, capabilities.GetEnabledCommandIds().ToArray(), linked.Token);
-                IsolatedGatewayConfiguration configured =
-                    await host.CheckIsolatedPairingConfigurationAsync(package, linked.Token);
-                if (configured.Port != draft.Port || configured.Token != Record.SharedGatewayToken)
-                    throw new InvalidOperationException(
-                        "The isolated Gateway credential or port changed during setup. " +
-                        "Restart setup before publishing this Companion connection.");
-            }
-            else
-            {
-                RestoreReload();
-                if (capabilities is not null)
-                    ApplyCapabilities(capabilities);
-                Record = NativeGatewaySetupService.ReadConfiguredRecord(draft, File.ReadAllText(ConfigPath));
-            }
-            await host.ValidateConfigurationAsync(package, environment, linked.Token);
-            if (IsIsolated && proof is not null)
+            if (capabilities is not null)
+                await host.ApplyIsolatedCapabilitiesAsync(
+                    package, capabilities.GetEnabledCommandIds().ToArray(), linked.Token);
+            IsolatedGatewayConfiguration configured =
+                await host.CheckIsolatedPairingConfigurationAsync(package, linked.Token);
+            if (configured.Port != draft.Port || configured.Token != Record.SharedGatewayToken)
+                throw new InvalidOperationException(
+                    "The isolated Gateway credential or port changed during setup. " +
+                    "Restart setup before publishing this Companion connection.");
+            await host.ValidateConfigurationAsync(package, linked.Token);
+            if (proof is not null)
                 await runtime.RestartAsync(Record, linked.Token);
             await AuthorizeCoreAsync(linked.Token);
-            await host.VerifyHealthAsync(package, environment, linked.Token);
+            await host.VerifyHealthAsync(package, linked.Token);
             if (proof is not null)
             {
                 RequireCompletion(proof);
@@ -360,9 +292,9 @@ public sealed class NativeGatewaySetupSession(
                 if (afterVerification is not null)
                     await afterVerification(connection, linked.Token);
             }
-            // A verified isolated Gateway stays up through publication so the restarted
+            // A verified Gateway stays up through publication so the restarted
             // Companion adopts it instead of waiting through another cold start.
-            bool handOff = IsIsolated && proof is not null;
+            bool handOff = proof is not null;
             if (!handOff)
                 await runtime.StopAsync(linked.Token);
             linked.Token.ThrowIfCancellationRequested();
@@ -388,80 +320,6 @@ public sealed class NativeGatewaySetupSession(
         }
     }
 
-    private void ApplyCapabilities(CapabilitiesConfig capabilities)
-    {
-        var config = ReadConfigurationObject();
-        // The native package uses the modern node-command policy schema.
-        var keys = ConfigureGatewayStep.NodeCommandsAllowKey.Split('.');
-        var section = config;
-        foreach (var key in keys[..^1])
-        {
-            if (!section.TryGetPropertyValue(key, out var child))
-                section[key] = child = new JsonObject();
-            section = child as JsonObject
-                ?? throw new InvalidDataException(
-                    $"Native Gateway configuration section '{key}' must be a JSON object.");
-        }
-        section[keys[^1]] = new JsonArray(
-            capabilities.GetEnabledCommandIds().Select(command => (JsonNode?)JsonValue.Create(command)).ToArray());
-        AtomicFile.WriteAllText(ConfigPath, config.ToJsonString());
-    }
-
-    private JsonObject ReadConfigurationObject()
-    {
-        try
-        {
-            return JsonNode.Parse(File.ReadAllText(ConfigPath)) as JsonObject
-                ?? throw new InvalidDataException("Native Gateway configuration must be a JSON object.");
-        }
-        catch (System.Text.Json.JsonException ex)
-        {
-            throw new InvalidDataException("Native Gateway configuration contains invalid JSON.", ex);
-        }
-    }
-
-    private void SuspendReload()
-    {
-        var config = ReadConfigurationObject();
-        var gateway = config["gateway"] as JsonObject
-            ?? throw new InvalidDataException("Native Gateway configuration section 'gateway' must be a JSON object.");
-        var reload = gateway["reload"] as JsonObject;
-        // A durable, credential-free backup also survives a Companion crash.
-        if (!File.Exists(ReloadBackupPath))
-            AtomicFile.WriteAllText(ReloadBackupPath, new JsonObject
-            {
-                ["present"] = reload?.ContainsKey("mode") == true,
-                ["mode"] = reload?["mode"]?.DeepClone(),
-            }.ToJsonString());
-        if (reload is null)
-            gateway["reload"] = reload = new JsonObject();
-        reload["mode"] = "off";
-        var logging = config["logging"] as JsonObject;
-        if (logging is null)
-            config["logging"] = logging = new JsonObject();
-        logging["file"] = Path.Combine(environment["OPENCLAW_STATE_DIR"], "wizard-console.log");
-        AtomicFile.WriteAllText(ConfigPath, config.ToJsonString());
-    }
-
-    private void RestoreReload()
-    {
-        if (!File.Exists(ReloadBackupPath))
-            return;
-        var backup = JsonNode.Parse(File.ReadAllText(ReloadBackupPath))!;
-        var config = ReadConfigurationObject();
-        var gateway = config["gateway"] as JsonObject
-            ?? throw new InvalidDataException("Native Gateway configuration section 'gateway' must be a JSON object.");
-        var reload = gateway["reload"] as JsonObject;
-        if (reload is null)
-            gateway["reload"] = reload = new JsonObject();
-        if (backup["present"]!.GetValue<bool>())
-            reload["mode"] = backup["mode"]?.DeepClone();
-        else
-            reload.Remove("mode");
-        AtomicFile.WriteAllText(ConfigPath, config.ToJsonString());
-        File.Delete(ReloadBackupPath);
-    }
-
     public async ValueTask DisposeAsync()
     {
         await _lifetime.CancelAsync();
@@ -474,8 +332,6 @@ public sealed class NativeGatewaySetupSession(
             _terminal?.Dispose();
             _terminal = null;
             await runtime.DisposeAsync();
-            if (!IsIsolated)
-                RestoreReload();
         }
         finally { _gate.Release(); }
     }

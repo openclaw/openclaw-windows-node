@@ -150,18 +150,6 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         if (_args.InstallAndUse is not null)
             TitleText.Text = S("LocalInstalling");
         _providerDialog.NativeRecoveryRequested += NativeRecoveryRequested;
-        if (_args.NativeSession is { IsIsolated: false } native)
-        {
-            var tail = new WizardConsoleTail(logger: NullLogger.Instance, nativeLogPath: native.ConsoleLogPath);
-            _nativeConsole = tail;
-            tail.Start(message => DispatcherQueue.TryEnqueue(() =>
-            {
-                if (_closed || !ReferenceEquals(_nativeConsole, tail)) return;
-                _nativeOutput.Enqueue(message);
-                while (_nativeOutput.Count > 40) _nativeOutput.Dequeue();
-                UpdateNativeRecovery();
-            }));
-        }
         if (_args.LocalAiHost is { } host && _args.ExpectedConfiguredModelRef is null)
         {
             _localUse = new(host);
@@ -273,11 +261,8 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             }
             _nativeConnection = connection;
             transport = connection;
-            if (native.IsIsolated)
-            {
-                localAiRecord = native.Record;
-                authorizeLocalAi = native.AuthorizeAsync;
-            }
+            localAiRecord = native.Record;
+            authorizeLocalAi = native.AuthorizeAsync;
         }
         else
         {
@@ -371,7 +356,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             else if (!observationStarted)
                 AsyncEventHandlerGuard.Run(_localObservation.RefreshAsync, onError: ReportFailure);
         }
-        if (_args.NativeSession is { IsIsolated: true } isolated)
+        if (_args.NativeSession is { } isolated)
         {
             SetActivity("LocalProgress_Console");
             await StartIsolatedConsoleAsync(transport, isolated.LifetimeToken);
@@ -1263,7 +1248,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             localAi.ReleaseNative(localTransport);
             _nativeLocalAiTransport = null;
         }
-        if (_args?.NativeSession?.IsIsolated == true)
+        if (_args?.NativeSession is not null)
         {
             _nativeConsole?.Dispose();
             _nativeConsole = null;

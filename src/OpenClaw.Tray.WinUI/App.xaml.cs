@@ -897,8 +897,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         var managedLocalPortProvenance = _managedLocalPortProvenance =
             new ManagedLocalGatewayPortProvenanceService(appLogger);
         var nativeGatewayResolver = new OpenClaw.SetupEngine.UI.NativeGatewayPackageResolver();
-        var nativeGatewayRuntime = OpenClaw.Connection.NativeGateway.NativeGatewayRuntimeRouter.Create(
-            _gatewayRegistry, nativeGatewayResolver, appLogger);
+        var nativeGatewayRuntime = new OpenClaw.Connection.NativeGateway.IsolatedGatewayRuntime(nativeGatewayResolver);
         InteractiveEndpointAuthorizer = new InteractiveGatewayEndpointAuthorizer(
             nativeGatewayRuntime, managedLocalPortProvenance.IsStrongCredentialAllowed, appLogger);
         _connectionManager = new GatewayConnectionManager(

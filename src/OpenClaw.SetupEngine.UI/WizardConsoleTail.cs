@@ -87,17 +87,14 @@ internal sealed class WizardConsoleTail : IDisposable
     private readonly IOpenClawLogger _logger;
     private readonly object _stateLock = new();
     private Process? _process;
-    private readonly string? _nativeLogPath;
     private readonly Func<long?, CancellationToken, Task<JsonElement>>? _gatewayLogTail;
     private CancellationTokenSource? _nativeTailCancellation;
 
     public WizardConsoleTail(IOpenClawLogger? logger = null, string? distroNameOverride = null,
-        string? nativeLogPath = null,
         Func<long?, CancellationToken, Task<JsonElement>>? gatewayLogTail = null)
     {
         _logger = logger ?? NullLogger.Instance;
         _distroName = distroNameOverride ?? DefaultDistroName;
-        _nativeLogPath = nativeLogPath;
         _gatewayLogTail = gatewayLogTail;
     }
 
@@ -127,13 +124,6 @@ internal sealed class WizardConsoleTail : IDisposable
         if (_gatewayLogTail is not null)
             throw new InvalidOperationException("The isolated Gateway requires StartGatewayAsync.");
         Stop();
-        if (_nativeLogPath is not null)
-        {
-            _nativeTailCancellation = new CancellationTokenSource();
-            _ = TailNativeLogAsync(_nativeLogPath, onMessage, _nativeTailCancellation.Token);
-            return;
-        }
-
         Process? process = null;
         try
         {
@@ -386,39 +376,6 @@ internal sealed class WizardConsoleTail : IDisposable
     }
 
     public void Dispose() => Stop();
-
-    private async Task TailNativeLogAsync(string path, Action<string> onMessage, CancellationToken cancellationToken)
-    {
-        long position = File.Exists(path) ? new FileInfo(path).Length : 0;
-        try
-        {
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                try
-                {
-                    using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
-                        FileShare.ReadWrite | FileShare.Delete, 4096, useAsync: true);
-                    if (stream.Length < position)
-                        position = 0;
-                    stream.Position = position;
-                    using var reader = new StreamReader(stream);
-                    while (await reader.ReadLineAsync(cancellationToken) is { } line)
-                    {
-                        if (TryExtractConsoleMessage(line) is { } message)
-                            onMessage(message);
-                    }
-                    position = stream.Position;
-                }
-                catch (IOException) { /* The gateway can rotate or create its log between polls. */ }
-                await Task.Delay(500, cancellationToken);
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
-        catch (Exception ex)
-        {
-            _logger.Warn($"Native wizard console tail stopped: {ex.GetType().Name}");
-        }
-    }
 
     /// <summary>
     /// Extracts the human-readable <c>message</c> field from a single openclaw

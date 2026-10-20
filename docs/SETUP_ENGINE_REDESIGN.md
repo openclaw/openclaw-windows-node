@@ -117,7 +117,7 @@ validation remains required.
 The separate **native Gateway MSIX** Welcome path does not use
 `SetupStepFactory.BuildDefaultSteps()`. `NativeGatewaySetupService` owns its
 package-contract and profile preparation. `NativeGatewaySetupSession` owns
-staged-record runtime authorization, legacy-only reload suspension/restoration, retry/cancel,
+staged-record runtime authorization, retry/cancel,
 authenticated health/config gates, and final registry publication.
 Both installations use the shared focused `AiSetupPage` and verified
 three-destination `AiReadyPage`. `WizardPage` remains an explicit compatibility
@@ -154,18 +154,18 @@ after the owned runtime restart, then persists reviewed Companion settings
 without overwriting unrelated settings or startup preferences.
 Completion does not claim node pairing.
 `NativeGatewaySetupHost` runs captured `clawctl setup`, config validation, and
-health commands, plus an explicitly requested profile-scoped recovery terminal.
+health commands, plus an explicitly requested `clawctl pwsh` recovery terminal
+in the agent session.
 It never launches `openclaw onboard` or WSL.
-`NativeGatewayRuntimeRouter` selects the package-owned `IsolatedGatewayRuntime`
-or the recognized legacy `NativeGatewayRuntime`. Isolated configuration, credentials
+`IsolatedGatewayRuntime` owns the package-managed runtime and fails closed for
+any record without the isolated-session contract. Configuration, credentials
 and workspace stay under the agent account; Companion does not read a host-side
 config or forward host profile overrides. Shared AI and classic fallback console
-output use authenticated `logs.tail` for isolated sessions, with per-request
-authorization and explicit gap/failure recovery. Legacy console output retains
-its profile log. This path is UI-only. Companion never downloads an MSIX itself
-or bypasses Microsoft Store installation.
+output use authenticated `logs.tail`, with per-request authorization and
+explicit gap/failure recovery. This path is UI-only. Companion never downloads
+an MSIX itself or bypasses Microsoft Store installation.
 Existing headless setup arguments continue to select the WSL pipeline.
-See [Native Gateway MSIX](ONBOARDING_WIZARD.md#native-gateway-msix-isolated-or-legacy)
+See [Native Gateway MSIX](ONBOARDING_WIZARD.md#native-gateway-msix)
 for consent, lifecycle, retry, and acquisition boundaries.
 
 See [Gateway setup responsibilities](GATEWAY_SETUP_RESPONSIBILITIES.md) for the

@@ -26,20 +26,14 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
     private const string Family = "OpenClaw.Gateway_123456789abcd";
 
     [Theory]
-    [InlineData(SetupNativeDestination.Chat, ElementTheme.Light, false)]
-    [InlineData(SetupNativeDestination.Channels, ElementTheme.Light, false)]
-    [InlineData(SetupNativeDestination.Skills, ElementTheme.Light, false)]
-    [InlineData(SetupNativeDestination.Chat, ElementTheme.Dark, false)]
-    [InlineData(SetupNativeDestination.Channels, ElementTheme.Dark, false)]
-    [InlineData(SetupNativeDestination.Skills, ElementTheme.Dark, false)]
-    [InlineData(SetupNativeDestination.Chat, ElementTheme.Light, true)]
-    [InlineData(SetupNativeDestination.Channels, ElementTheme.Light, true)]
-    [InlineData(SetupNativeDestination.Skills, ElementTheme.Light, true)]
-    [InlineData(SetupNativeDestination.Chat, ElementTheme.Dark, true)]
-    [InlineData(SetupNativeDestination.Channels, ElementTheme.Dark, true)]
-    [InlineData(SetupNativeDestination.Skills, ElementTheme.Dark, true)]
+    [InlineData(SetupNativeDestination.Chat, ElementTheme.Light)]
+    [InlineData(SetupNativeDestination.Channels, ElementTheme.Light)]
+    [InlineData(SetupNativeDestination.Skills, ElementTheme.Light)]
+    [InlineData(SetupNativeDestination.Chat, ElementTheme.Dark)]
+    [InlineData(SetupNativeDestination.Channels, ElementTheme.Dark)]
+    [InlineData(SetupNativeDestination.Skills, ElementTheme.Dark)]
     public async Task NativeInstall_UsesSharedAiVerificationAndAllThreeDestinations(
-        SetupNativeDestination destination, ElementTheme theme, bool isolated)
+        SetupNativeDestination destination, ElementTheme theme)
     {
         await WithNativeAsync(async (window, frame, registry, runtime, server, completed) =>
         {
@@ -93,16 +87,13 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
             Assert.Equal(destination, Assert.Single(completed).Target.Destination);
             Assert.False(runtime.Running);
             Assert.Equal("native-ui", registry.ActiveGatewayId);
-            if (isolated)
-            {
-                Assert.Equal(NativeGatewayPackageClient.IsolatedContract, registry.GetActive()!.NativeRuntimeContract);
-                Assert.DoesNotContain(server.Requests, request => request.Method == "system.run");
-                Assert.Contains(server.Requests, request => request.Method == "logs.tail");
-                Assert.False(File.Exists(NativeGatewayPaths.GetConfigPath(registry, "native-ui")));
-            }
+            Assert.Equal(NativeGatewayPackageClient.IsolatedContract, registry.GetActive()!.NativeRuntimeContract);
+            Assert.DoesNotContain(server.Requests, request => request.Method == "system.run");
+            Assert.Contains(server.Requests, request => request.Method == "logs.tail");
+            Assert.False(Directory.Exists(NativeGatewayPaths.GetStateDirectory(registry, "native-ui")));
             Assert.True(server.Requests.Count(request => request.Method == "openclaw.setup.verify") >= 3);
             Assert.DoesNotContain(server.Requests, request => request.Method == "wizard.start");
-        }, theme: theme, isolated: isolated);
+        }, theme: theme);
     }
 
     [Fact]
@@ -119,11 +110,11 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
     }
 
     [Theory]
-    [InlineData(false, false, false)]
-    [InlineData(false, true, false)]
-    [InlineData(true, true, true)]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
     public async Task NativeStartupUsesVisibleChoiceAndRetainsItAcrossRegistrationRetry(
-        bool selectedStartup, bool failOnce, bool isolated)
+        bool selectedStartup, bool failOnce)
     {
         var applications = new List<bool>();
         await WithNativeAsync(async (window, frame, registry, _, _, completed) =>
@@ -153,7 +144,7 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
                 BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window));
             using var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(data, "settings.json")));
             Assert.Equal(selectedStartup, saved.RootElement.GetProperty("AutoStart").GetBoolean());
-        }, isolated: isolated, startupRegistrationAllowed: true,
+        }, startupRegistrationAllowed: true,
             applyStartup: (enabled, _) =>
             {
                 applications.Add(enabled);
@@ -200,10 +191,10 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
             if (!unavailable) Assert.Contains("current provider guidance", Find<TextBlock>(page, "NativeOutput").Text);
             Assert.Contains(server.Requests, request => request.Method == "logs.tail");
             Assert.DoesNotContain(server.Requests, request => request.Method == "wizard.start");
-            Assert.False(File.Exists(NativeGatewayPaths.GetConfigPath(registry, "native-ui")));
+            Assert.False(Directory.Exists(NativeGatewayPaths.GetStateDirectory(registry, "native-ui")));
             Assert.Empty(registry.GetAll());
             Assert.Empty(completed);
-        }, isolated: true, logReply: parameters =>
+        }, logReply: parameters =>
         {
             if (!parameters.TryGetProperty("cursor", out _))
                 return new { file = "agent.log", cursor = 100, size = 100, lines = new[] { oldLine } };
@@ -265,7 +256,6 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
             Assert.False(runtime.Running);
             Assert.Empty(completed);
             Assert.Empty(registry.GetAll());
-            Assert.True(File.Exists(NativeGatewayPaths.GetConfigPath(registry, "native-ui")));
             var identity = new DeviceIdentity(registry.GetIdentityDirectory("native-ui"));
             identity.LoadExisting();
             Assert.Equal("fixture-node-token", identity.NodeDeviceToken);
@@ -341,7 +331,7 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
     private async Task WithNativeAsync(
         Func<SetupWindow, Frame, GatewayRegistry, Runtime, FixtureGatewayServer, List<SetupNativeCompletion>, Task> assertion,
         ElementTheme theme = ElementTheme.Light, bool supported = true, bool holdProvider = false, bool failDetectionOnce = false,
-        Func<string, JsonElement, object>? wizardReply = null, bool isolated = false,
+        Func<string, JsonElement, object>? wizardReply = null,
         Func<JsonElement, object>? logReply = null, bool startupRegistrationAllowed = false,
         Func<bool, CancellationToken, Task>? applyStartup = null,
         Func<SetupWindow, Frame, Task>? beforeAi = null)
@@ -381,24 +371,14 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
         using var temp = new TempDirectory("native-shared-ui-");
         var data = temp.Combine("data");
         var registry = new GatewayRegistry(data);
-        var configPath = NativeGatewayPaths.GetConfigPath(registry, "native-ui");
-        if (!isolated)
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(configPath)!);
-            File.WriteAllText(configPath, JsonSerializer.Serialize(new
-            {
-                gateway = new { mode = "local", bind = "loopback", port = server.Endpoint.Port,
-                    auth = new { mode = "token", token = Token } },
-            }));
-        }
         var identity = new DeviceIdentity(registry.GetIdentityDirectory("native-ui"));
         identity.Initialize();
         identity.StoreDeviceTokenForRole("node", "fixture-node-token");
         var runtime = new Runtime(server);
-        var service = new NativeGatewaySetupService(registry, new Resolver(), new Host(isolated, server.Endpoint.Port), () => runtime);
+        var service = new NativeGatewaySetupService(registry, new Resolver(), new Host(server.Endpoint.Port), () => runtime);
         await using var native = await service.PrepareAsync(new("native-ui", server.Endpoint.Port, Family)
         {
-            Contract = isolated ? NativeGatewayContract.IsolatedSessionV1 : NativeGatewayContract.Legacy,
+            Contract = NativeGatewayContract.IsolatedSessionV1,
         }, default);
         var setupConfig = temp.Combine("setup.json");
         File.WriteAllText(setupConfig, JsonSerializer.Serialize(new SetupConfig()));
@@ -469,10 +449,8 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
         step = new { id = "native-question", type = "note", title = "Native fallback question", message = "Synthetic local fixture." },
     };
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task NativeFallback_RejectsNextAndCancelAfterOwnershipChanges(bool isolated)
+    [Fact]
+    public async Task NativeFallback_RejectsNextAndCancelAfterOwnershipChanges()
     {
         await WithNativeAsync(async (_, frame, registry, runtime, server, completed) =>
         {
@@ -485,7 +463,7 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
             Assert.Equal(0, runtime.Disposals);
             Assert.Empty(registry.GetAll());
             Assert.Empty(completed);
-        }, supported: false, isolated: isolated, wizardReply: (method, _) => method == "wizard.cancel"
+        }, supported: false, wizardReply: (method, _) => method == "wizard.cancel"
             ? new { status = "cancelled" } : FallbackQuestion());
     }
 
@@ -710,25 +688,24 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
     private sealed class Resolver : INativeGatewayPackageResolver
     {
         public Task<NativeGatewayPackage> ResolveAsync(CancellationToken ct) =>
-            Task.FromResult(new NativeGatewayPackage(Family, "0.0.0.1", @"C:\fixture\openclaw.exe", @"C:\fixture\clawctl.exe"));
-        public string ResolveDataPath(string path) => path;
+            Task.FromResult(new NativeGatewayPackage(Family, "2026.9.5.5", @"C:\fixture\openclaw.exe", @"C:\fixture\clawctl.exe"));
     }
 
-    private sealed class Host(bool isolated, int port) : INativeGatewaySetupHost
+    private sealed class Host(int port) : INativeGatewaySetupHost
     {
         public Task<NativeGatewayContract> DetectContractAsync(NativeGatewayPackage p, CancellationToken ct) =>
-            Task.FromResult(isolated ? NativeGatewayContract.IsolatedSessionV1 : NativeGatewayContract.Legacy);
+            Task.FromResult(NativeGatewayContract.IsolatedSessionV1);
         public Task<IsolatedGatewayConfiguration> PrepareIsolatedConfigurationAsync(
             NativeGatewayPackage p, int preferred, CancellationToken ct) => Task.FromResult(new IsolatedGatewayConfiguration(port, Token));
         public Task<IsolatedGatewayConfiguration> CheckIsolatedPairingConfigurationAsync(
             NativeGatewayPackage p, CancellationToken ct) => Task.FromResult(new IsolatedGatewayConfiguration(port, Token));
         public Task ApplyIsolatedCapabilitiesAsync(NativeGatewayPackage p, IReadOnlyList<string> commands, CancellationToken ct) => Task.CompletedTask;
-        public Task PreparePackageAsync(NativeGatewayPackage p, IReadOnlyDictionary<string, string> env, CancellationToken ct) => Task.CompletedTask;
-        public Task ValidateConfigurationAsync(NativeGatewayPackage p, IReadOnlyDictionary<string, string> env, CancellationToken ct) => Task.CompletedTask;
-        public Task VerifyHealthAsync(NativeGatewayPackage p, IReadOnlyDictionary<string, string> env, CancellationToken ct) => Task.CompletedTask;
-        public Task<string> ListDevicePairingRequestsAsync(NativeGatewayPackage p, IReadOnlyDictionary<string, string> env, CancellationToken ct) => throw new InvalidOperationException("No package CLI in fixture.");
-        public Task<string> ApproveDevicePairingAsync(NativeGatewayPackage p, string id, IReadOnlyDictionary<string, string> env, CancellationToken ct) => throw new InvalidOperationException("No package CLI in fixture.");
-        public IDisposable OpenRecoveryTerminal(NativeGatewayPackage p, IReadOnlyDictionary<string, string> env) => throw new InvalidOperationException("No terminal in fixture.");
+        public Task PreparePackageAsync(NativeGatewayPackage p, CancellationToken ct) => Task.CompletedTask;
+        public Task ValidateConfigurationAsync(NativeGatewayPackage p, CancellationToken ct) => Task.CompletedTask;
+        public Task VerifyHealthAsync(NativeGatewayPackage p, CancellationToken ct) => Task.CompletedTask;
+        public Task<string> ListDevicePairingRequestsAsync(NativeGatewayPackage p, CancellationToken ct) => throw new InvalidOperationException("No package CLI in fixture.");
+        public Task<string> ApproveDevicePairingAsync(NativeGatewayPackage p, string id, CancellationToken ct) => throw new InvalidOperationException("No package CLI in fixture.");
+        public IDisposable OpenRecoveryTerminal(NativeGatewayPackage p) => throw new InvalidOperationException("No terminal in fixture.");
     }
 
     private sealed class Runtime(FixtureGatewayServer server) : INativeGatewayRuntime

@@ -2,7 +2,7 @@ using System.Text.RegularExpressions;
 
 namespace OpenClaw.Connection.NativeGateway;
 
-/// <summary>One durable state/config location for native setup and runtime. Stop never removes it.</summary>
+/// <summary>Validates native Gateway profile identity and its per-profile state location.</summary>
 public static class NativeGatewayPaths
 {
     public static string GetStateDirectory(GatewayRegistry registry, string gatewayId)
@@ -10,37 +10,6 @@ public static class NativeGatewayPaths
         ArgumentNullException.ThrowIfNull(registry);
         ValidateGatewayId(gatewayId);
         return Path.Combine(registry.GetIdentityDirectory(gatewayId), "native-gateway");
-    }
-
-    public static string GetConfigPath(GatewayRegistry registry, string gatewayId) =>
-        Path.Combine(GetStateDirectory(registry, gatewayId), "openclaw.json");
-
-    public static IReadOnlyDictionary<string, string> GetEnvironment(GatewayRegistry registry, string gatewayId) =>
-        GetEnvironment(registry, gatewayId, static path => path);
-
-    /// <summary>
-    /// Builds a launch-only environment using physical cross-package paths. The canonical
-    /// registry/state paths returned by GetStateDirectory and GetConfigPath are not changed.
-    /// </summary>
-    public static IReadOnlyDictionary<string, string> GetEnvironment(
-        GatewayRegistry registry, string gatewayId, Func<string, string> resolveDataPath)
-    {
-        ArgumentNullException.ThrowIfNull(resolveDataPath);
-        var stateDirectory = resolveDataPath(GetStateDirectory(registry, gatewayId));
-        var configPath = resolveDataPath(GetConfigPath(registry, gatewayId));
-        if (string.IsNullOrWhiteSpace(stateDirectory) || string.IsNullOrWhiteSpace(configPath) ||
-            !Path.IsPathFullyQualified(stateDirectory) || !Path.IsPathFullyQualified(configPath))
-        {
-            throw new InvalidOperationException("Native gateway launch data paths must be absolute.");
-        }
-        return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["OPENCLAW_STATE_DIR"] = stateDirectory,
-            ["OPENCLAW_CONFIG_PATH"] = configPath,
-            ["OPENCLAW_SUPERVISOR_MODE"] = "external",
-            ["OPENCLAW_SERVICE_REPAIR_POLICY"] = "external",
-            ["OPENCLAW_NO_AUTO_UPDATE"] = "1",
-        };
     }
 
     internal static void ValidateGatewayId(string gatewayId)

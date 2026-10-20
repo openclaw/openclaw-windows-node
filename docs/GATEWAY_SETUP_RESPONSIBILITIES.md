@@ -13,7 +13,11 @@ alias for device listing and exact-request approval after checking the
 agent-owned config. Listener process-sequence evidence is required for
 Companion credential handoff, but not for baseline Gateway health/status. See
 [current native architecture](ARCHITECTURE.md#native-gateway-msix-lifecycle-and-shared-wizard-handoffs)
-and [onboarding](ONBOARDING_WIZARD.md#native-gateway-msix-isolated-or-legacy).
+and [onboarding](ONBOARDING_WIZARD.md#native-gateway-msix).
+Companion has since removed the same-user runtime described here
+(`NativeGatewayRuntime`, `WindowsNativeGatewayProcessHost` and
+`WindowsPackagedProcessAncestry`) along with support for the `0.0.0.0` and
+`0.0.0.1` proof packages; those names below refer to removed code.
 Packaging findings below refer to
 [`openclaw-windows-packaging` at `3a0491c`](https://github.com/openclaw/openclaw-windows-packaging/tree/3a0491cf8790a3336d118486b66aeaa04dba7ba7).
 The supplied `0.0.0.0` ARM64 proof package is older and must not be assumed to
@@ -387,7 +391,7 @@ Local source references:
 - `src\OpenClaw.SetupEngine\RunGatewayWizardStep.cs`: Gateway onboarding delegation.
 - [Connection architecture](CONNECTION_ARCHITECTURE.md): ongoing managed-local
   WSL supervision and repair.
-- [Native setup documentation](ONBOARDING_WIZARD.md#native-gateway-msix-isolated-or-legacy):
+- [Native setup documentation](ONBOARDING_WIZARD.md#native-gateway-msix):
   the branch's non-isolated native implementation.
 
 ## Decided ownership and persistence for MXC sessions
