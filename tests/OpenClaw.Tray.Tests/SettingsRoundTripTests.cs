@@ -60,8 +60,10 @@ public class SettingsRoundTripTests
         Assert.DoesNotContain("SystemRunAllowWindowsUi", File.ReadAllText(path), StringComparison.OrdinalIgnoreCase);
     }
 
-    [Fact]
-    public void NoAccessAndLegacyBlockedRemainDistinctAcrossSettingsManagerReload()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("wss://gateway.example.test")]
+    public void NoAccessAndLegacyBlockedRemainDistinctAcrossSettingsManagerReload(string? persistedGatewayUrl)
     {
         using var temp = new OpenClaw.TestSupport.TempDirectory();
         var settings = new SettingsManager(temp.Path)
@@ -75,14 +77,26 @@ public class SettingsRoundTripTests
                 new() { Path = Path.Combine(temp.Path, "legacy"), Access = SandboxFolderAccess.Blocked },
             ],
         };
+        if (persistedGatewayUrl is not null)
+            settings.GatewayUrl = persistedGatewayUrl;
+        var before = settings.SnapshotSystemRunSettings();
+        Assert.Equal(persistedGatewayUrl ?? OpenClawTray.AppIdentity.SetupGatewayUrl, before.GatewayUrl);
         settings.SaveOrThrow();
+        using var saved = JsonDocument.Parse(File.ReadAllText(temp.Combine("settings.json")));
+        Assert.Equal(persistedGatewayUrl is not null,
+            saved.RootElement.TryGetProperty("GatewayUrl", out var savedGatewayUrl));
+        if (persistedGatewayUrl is not null)
+            Assert.Equal(persistedGatewayUrl, savedGatewayUrl.GetString());
         var reloaded = new SettingsManager(temp.Path);
+        Assert.Equal(persistedGatewayUrl is not null, reloaded.HasPersistedGatewayUrl);
+        Assert.Equal(persistedGatewayUrl, reloaded.PersistedGatewayUrl);
         Assert.Equal(SandboxFolderAccess.NoAccess, reloaded.SandboxDocumentsAccess);
         Assert.Equal(SandboxFolderAccess.NoAccess, reloaded.SandboxDownloadsAccess);
         Assert.Equal(SandboxFolderAccess.Blocked, reloaded.SandboxDesktopAccess);
         Assert.Equal(SandboxFolderAccess.NoAccess, reloaded.SandboxCustomFolders[0].Access);
         Assert.Equal(SandboxFolderAccess.Blocked, reloaded.SandboxCustomFolders[1].Access);
-        Assert.Equal(settings.SnapshotSystemRunSettings().ToJson(), reloaded.SnapshotSystemRunSettings().ToJson());
+        Assert.Equal((before with { GatewayUrl = persistedGatewayUrl }).ToJson(),
+            reloaded.SnapshotSystemRunSettings().ToJson());
     }
 
     [Fact]
