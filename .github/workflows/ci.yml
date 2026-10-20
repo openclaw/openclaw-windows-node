@@ -544,6 +544,11 @@ jobs:
 
     - *promotion-version-tag
 
+    - name: Setup Node.js 24 for MXC SDK
+      uses: actions/setup-node@v6
+      with:
+        node-version: 24
+
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
       with:
@@ -574,6 +579,9 @@ jobs:
         dotnet build tests/OpenClaw.Tray.Tests -c Debug -r win-x64 --no-restore
         dotnet build tests/OpenClaw.SetupEngine.Tests -c Debug -r win-x64 --no-restore
         dotnet build tests/OpenClaw.Tray.IntegrationTests -c Debug -r win-x64 --no-restore
+
+    - name: Verify MXC SDK policy fixtures
+      run: node tools/mxc/dump-sdk-config.cjs --check
 
     - name: Run Tray Tests
       run: >
@@ -638,6 +646,11 @@ jobs:
         persist-credentials: false
 
     - *promotion-version-tag
+
+    - name: Setup Node.js 24 for MXC SDK
+      uses: actions/setup-node@v6
+      with:
+        node-version: 24
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
@@ -805,6 +818,11 @@ jobs:
         New-Item -ItemType Directory -Path TestResults/E2E -Force | Out-Null
         $env:GATEWAY_RELEASE_JSON | Set-Content TestResults/E2E/gateway-release.json
 
+    - name: Setup Node.js 24 for MXC SDK
+      uses: actions/setup-node@v6
+      with:
+        node-version: 24
+
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
       with:
@@ -879,6 +897,11 @@ jobs:
         }
         New-Item -ItemType Directory -Path TestResults/E2E -Force | Out-Null
         $env:GATEWAY_RELEASE_JSON | Set-Content TestResults/E2E/gateway-release.json
+
+    - name: Setup Node.js 24 for MXC SDK
+      uses: actions/setup-node@v6
+      with:
+        node-version: 24
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
@@ -955,6 +978,11 @@ jobs:
         New-Item -ItemType Directory -Path TestResults/E2E -Force | Out-Null
         $env:GATEWAY_RELEASE_JSON | Set-Content TestResults/E2E/gateway-release.json
 
+    - name: Setup Node.js 24 for MXC SDK
+      uses: actions/setup-node@v6
+      with:
+        node-version: 24
+
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
       with:
@@ -1012,6 +1040,11 @@ jobs:
         persist-credentials: false
 
     - *promotion-version-tag
+
+    - name: Setup Node.js 24 for MXC SDK
+      uses: actions/setup-node@v6
+      with:
+        node-version: 24
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
@@ -1072,6 +1105,11 @@ jobs:
         persist-credentials: false
 
     - *promotion-version-tag
+
+    - name: Setup Node.js 24 for MXC SDK
+      uses: actions/setup-node@v6
+      with:
+        node-version: 24
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
@@ -1142,6 +1180,11 @@ jobs:
         persist-credentials: false
 
     - *promotion-version-tag
+
+    - name: Setup Node.js 24 for MXC SDK
+      uses: actions/setup-node@v6
+      with:
+        node-version: 24
 
     - name: Setup .NET from global.json
       uses: actions/setup-dotnet@v6

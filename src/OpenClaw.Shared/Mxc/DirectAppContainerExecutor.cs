@@ -266,7 +266,7 @@ public sealed class DirectAppContainerExecutor : ISandboxExecutor
             $"readonlyCount={config.Filesystem?.ReadonlyPaths?.Length ?? 0}; " +
             $"readwriteCount={config.Filesystem?.ReadwritePaths?.Length ?? 0}; " +
             $"deniedCount={config.Filesystem?.DeniedPaths?.Length ?? 0}; " +
-            $"network={{defaultPolicy={config.Network?.DefaultPolicy ?? "<null>"},enforcementMode={config.Network?.EnforcementMode ?? "<null>"}}}; " +
+            $"network={{egress={config.Network?.Egress.Default ?? "<null>"},ingress={config.Network?.Ingress.Default ?? "<null>"},hostLoopback={config.Network?.Ingress.HostLoopback ?? "<null>"}}}; " +
             $"ui={{disable={config.Ui?.Disable},clipboard={config.Ui?.Clipboard ?? "<null>"},injection={config.Ui?.Injection}}}; " +
             $"maxOutputBytes={request.MaxOutputBytes?.ToString() ?? "<default>"}";
     }

@@ -1,5 +1,5 @@
 {
-  "version": "0.7.0-alpha",
+  "version": "0.9.0-alpha",
   "containerId": "golden-locked-down",
   "lifecycle": {
     "destroyOnExit": true,
@@ -18,8 +18,13 @@
     "injection": false
   },
   "network": {
-    "defaultPolicy": "block",
-    "enforcementMode": "capabilities"
+    "egress": {
+      "default": "deny"
+    },
+    "ingress": {
+      "default": "deny",
+      "hostLoopback": "deny"
+    }
   },
   "processContainer": {
     "leastPrivilege": false,

@@ -374,7 +374,7 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner, IDirectA
     {
         const string message =
             "Sandboxed system.run does not currently support custom environment variables " +
-            "with the Windows MXC 0.7 processcontainer backend. Remove env from the request " +
+            "with the Windows companion sandbox. Remove env from the request " +
             "or explicitly disable sandboxing if uncontained host execution is acceptable.";
         _logger.Warn("[mxc] system.run denied: custom env is unsupported by MXC processcontainer");
         return new CommandResult
