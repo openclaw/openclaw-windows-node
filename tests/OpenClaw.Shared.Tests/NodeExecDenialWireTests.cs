@@ -2,11 +2,12 @@ using System.Text.Json;
 using OpenClaw.Shared.Capabilities;
 using OpenClaw.Shared.ExecApprovals;
 using OpenClaw.TestSupport;
+using Xunit.Abstractions;
 
 namespace OpenClaw.Shared.Tests;
 
 [Trait("Category", "Integration")]
-public sealed class NodeExecDenialWireTests
+public sealed class NodeExecDenialWireTests(ITestOutputHelper output)
 {
     private static readonly TimeSpan InvocationTimeout = TimeSpan.FromSeconds(10);
 
@@ -219,7 +220,7 @@ public sealed class NodeExecDenialWireTests
                 defaults = new { security, ask = "always", askFallback = "full" }
             }));
 
-    private static async Task<JsonElement> InvokeOverSocketAsync(
+    private async Task<JsonElement> InvokeOverSocketAsync(
         bool gatewayEvent,
         IExecApprovalV2Handler handler,
         RecordingRunner runner,
@@ -285,11 +286,13 @@ public sealed class NodeExecDenialWireTests
         {
             Assert.Equal("node.invoke.result",
                 result.RootElement.GetProperty("method").GetString());
+            output.WriteLine($"Actual Gateway event reply: {result.RootElement.GetProperty("params").GetRawText()}");
             return result.RootElement.GetProperty("params").Clone();
         }
 
         Assert.Equal("res", result.RootElement.GetProperty("type").GetString());
         Assert.Equal("wire-exec", result.RootElement.GetProperty("id").GetString());
+        output.WriteLine($"Actual legacy reply: {result.RootElement.GetRawText()}");
         return result.RootElement.Clone();
     }
 
