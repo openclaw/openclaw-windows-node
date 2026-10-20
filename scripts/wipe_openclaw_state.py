@@ -58,9 +58,11 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
+import shutil
 import stat
 import subprocess
 import sys
@@ -75,7 +77,6 @@ APP_NAME_MATCH = "openclaw"  # case-insensitive substring of names matched every
 GATEWAY_PACKAGE_PREFIX = "openclawfoundation.openclawgateway"  # lowercase MSIX Name / family prefix
 NATIVE_SESSION = Path("LocalState", "OpenClawGatewayMSIX", "session.json")
 MODEL_SUFFIX = ".gguf"
-AUMIDS = ("OpenClaw.Companion", "OpenClaw.Companion.Dev")  # installer.iss MyAppAumid
 AUMID_PARENTS = (
     r"Software\Classes\AppUserModelId",
     r"Software\Microsoft\Windows\CurrentVersion\Notifications\Settings",
@@ -98,6 +99,7 @@ userprofile = Path(os.environ["USERPROFILE"])
 temp = Path(os.environ.get("TEMP", localappdata / "Temp"))
 programdata = Path(os.environ.get("ProgramData", r"C:\ProgramData"))
 START_MENU = r"Microsoft\Windows\Start Menu\Programs"
+PRESERVED_MODEL_DIRECTORY = userprofile / "OpenClawPreservedModels"
 
 # Direct children of these roots are matched by name; roots are not recursed.
 SCAN_ROOTS = (
@@ -111,7 +113,7 @@ SHORTCUT_FOLDERS = ("Desktop", "CommonDesktopDirectory", "Startup", "CommonStart
 # OpenClaw-owned paths whose names don't contain "openclaw".
 EXTRA_PATHS = (userprofile / ".openclaw", temp / "oc-uia")
 # Never deleted, even if a scan root starts matching them.
-EXCLUDED_PATHS = (userprofile / "openclaw",)  # gateway source checkout
+EXCLUDED_PATHS = (userprofile / "openclaw", PRESERVED_MODEL_DIRECTORY)  # gateway source checkout and model store
 
 
 def report(label: str, found: bool, detail: str = "", kind: str = "", **data) -> SimpleNamespace:
@@ -404,6 +406,46 @@ def models_in(path: Path) -> list[Path]:
         return [p for p in path.rglob(f"*{MODEL_SUFFIX}") if p.is_file() and not p.is_symlink()]
     return []
 
+def model_digest(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def preserved_model_path(model: Path) -> Path:
+    """Stable collision-free destination outside package and installation trees."""
+    source_id = hashlib.sha256(os.path.normcase(str(model)).encode("utf-8")).hexdigest()
+    return PRESERVED_MODEL_DIRECTORY / source_id / model.name
+
+
+def preserve_models(models: list[Path]) -> list[Path]:
+    """Copy and digest-verify models before an uninstaller can delete their source."""
+    preserved = []
+    for model in models:
+        destination = preserved_model_path(model)
+        source_digest = model_digest(model)
+        if destination.is_file() and model_digest(destination) == source_digest:
+            preserved.append(destination)
+            continue
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        temporary = destination.with_name(f"{destination.name}.partial")
+        try:
+            with model.open("rb") as source, temporary.open("wb") as target:
+                shutil.copyfileobj(source, target, length=1024 * 1024)
+                target.flush()
+                os.fsync(target.fileno())
+            if model_digest(temporary) != source_digest:
+                raise OSError(f"copied model digest does not match source: {model}")
+            os.replace(temporary, destination)
+        finally:
+            if temporary.exists():
+                temporary.unlink()
+        preserved.append(destination)
+    return preserved
+
+
 
 def remove_path(path: Path, kept: list[Path]) -> None:
     """Delete path, keeping *.gguf model files and the directories that hold them."""
@@ -594,6 +636,14 @@ def main() -> int:
         return abort(wsl_error)
     if orphans:
         return abort(f"orphan native session {orphans[0]}: reinstall that Gateway package and re-run")
+    models_to_preserve = [model for path in paths for model in models_in(path)]
+    try:
+        preserved_models = preserve_models(models_to_preserve)
+    except OSError as exc:
+        return abort(f"could not preserve model files: {exc}")
+    for model in preserved_models:
+        print(f"  preserved model {model}")
+
     for pkg in gateways:
         failure = teardown_native_gateway(pkg)
         if failure:
