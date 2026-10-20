@@ -155,6 +155,7 @@ public sealed class CleanupVisibilityProbe : IDisposable
     [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
     [DllImport("user32.dll")] private static extern bool EnumWindows(WindowCallback callback, IntPtr state);
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr window);
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongW")] private static extern int GetWindowLong(IntPtr window, int index);
     [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr window, uint flags);
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr window, out Rect rect);
     [DllImport("user32.dll")] private static extern IntPtr MonitorFromRect(ref Rect rect, uint flags);
@@ -347,7 +348,10 @@ public sealed class CleanupVisibilityProbe : IDisposable
                 cache.AddProperty(property);
             EnumWindows((hwnd, state) => {
                 var name = ClassName(hwnd);
-                bool customBar = name == "Tauri Window" && IsWindowVisible(hwnd);
+                Rect bounds;
+                bool customBar = name == "Tauri Window" && IsWindowVisible(hwnd) &&
+                    (GetWindowLong(hwnd, -20) & 0x80) != 0 && // WS_EX_TOOLWINDOW, not an ordinary app window.
+                    GetWindowRect(hwnd, out bounds) && bounds.right - bounds.left > 1 && bounds.bottom - bounds.top > 1;
                 if (name == "Shell_TrayWnd" || name == "Shell_SecondaryTrayWnd" || customBar)
                     taskbars.Add(automation.ElementFromHandle(hwnd));
                 return true;
