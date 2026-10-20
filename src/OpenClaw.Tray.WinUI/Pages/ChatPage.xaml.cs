@@ -152,6 +152,7 @@ public sealed partial class ChatPage : Page
     {
         _pageActive = false;
         _surfaceGeneration++;
+        InvalidatePendingSessionNavigation();
         ReconcileNativeSetupObserver();
         _pendingVoice.Cancel();
         _reactorHost?.CancelVoiceRecording();
@@ -303,6 +304,8 @@ public sealed partial class ChatPage : Page
             _sessionRemoved = false;
     }
 
+    internal void InvalidatePendingSessionNavigation() => _reactorHost?.InvalidatePendingSessionNavigation();
+
     internal void ClearRemovedSession(string key)
     {
         _sessionRemoved = true;
@@ -338,6 +341,9 @@ public sealed partial class ChatPage : Page
             sessionKey != request.Completion.Target.SessionKey)
             InvalidateNativeSetupForNavigation();
         _mountedThreadId = sessionKey;
+        if (_pageActive && _ownerWindow is WorkspaceWindow workspace &&
+            workspace.Destination.Page == WorkspacePageId.Home && workspace.Destination.SessionKey != sessionKey)
+            workspace.SelectSession(sessionKey);
     }
 
     private void OnWorkspaceOpenConnection(object sender, RoutedEventArgs e) =>
@@ -566,7 +572,8 @@ public sealed partial class ChatPage : Page
                 onReadAloud: readAloud,
                 onStopSpeaking: () => app?.StopChatSpeaking(),
                 onOpenCheckpoints: OpenSessionCheckpoints,
-                showSessionPicker: _ownerWindow is not WorkspaceWindow);
+                showSessionPicker: _ownerWindow is not WorkspaceWindow,
+                initialThreadIsExplicitSelection: !string.IsNullOrEmpty(pendingSessionKey));
             _reactorHost = mountedHost;
         }
         catch (InvalidOperationException)

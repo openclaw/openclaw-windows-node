@@ -304,7 +304,8 @@ internal sealed class LocalAiInstallReconciler
     /// <summary>Read-only inspection for onboarding; unlike reconciliation, never migrates or saves receipts.</summary>
     public async Task<bool> InspectAsync(LocalAiResolvedInstall install, CancellationToken ct)
     {
-        var model = LocalModelCatalog.FindInstalled(install.Manifest.ModelCatalogId);
+        var model = LocalModelCatalog.FindInstalled(
+            install.Manifest.ModelCatalogId, install.Manifest.ModelAsset.SourceUrl);
         var installedRuntime = LlamaRuntimeCatalog.FindInstalled(install.Manifest.RuntimeId);
         if (model is null || installedRuntime is null)
             return false;

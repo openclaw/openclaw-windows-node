@@ -25,6 +25,15 @@ public static class SpeechSetupReadiness
         if (string.Equals(provider, TtsCapability.WindowsProvider, StringComparison.Ordinal))
             return false;
 
+        if (string.Equals(provider, TtsCapability.KokoroProvider, StringComparison.Ordinal))
+        {
+            if (string.IsNullOrWhiteSpace(settings.TtsKokoroVoiceId))
+                return true;
+
+            var models = new KokoroModelManager(SettingsManager.SettingsDirectoryPath, new AppLogger());
+            return !models.IsVoiceReady(settings.TtsKokoroVoiceId);
+        }
+
         if (string.Equals(provider, TtsCapability.PiperProvider, StringComparison.Ordinal))
         {
             if (string.IsNullOrWhiteSpace(settings.TtsPiperVoiceId))

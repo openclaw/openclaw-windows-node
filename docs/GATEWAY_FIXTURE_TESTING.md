@@ -126,6 +126,79 @@ and resetting for a new job. Artifacts include owned-window editor captures
 and the exact synthetic schedules read back after accepted saves. This proves
 the app/fixture wire path, not production Gateway persistence or scheduling.
 
+## Targeted context-usage proof
+
+`ContextFooterReconcilesLiveReplayHistoryAndAuthoritativeUsage` opts into
+`context-usage-snapshots`. It uses the existing isolated app/server ownership,
+native composer, real client/provider/history loader, and mounted transcript.
+Only two exact synthetic `chat.send` prompts are accepted in order; arbitrary
+prompts, additional sends, attachments and other mutations remain rejected.
+The normal browse scenario remains read-only.
+
+The test holds the selected session's initial history while sending a
+1,000-token request followed by a 1,500-token request. The second final is followed by an identical identityless,
+undated replay, then the held matching history at T-1 reports 1,000 tokens and
+20%. The history includes the complete transcript prefix, and the test checks
+that the final reply remains the last assistant entry. Its visible footer must
+remain `1.5K/5.0K (30%)`. It then exercises:
+
+| Listing timestamp | Wire usage | Required mounted footer |
+| --- | --- | --- |
+| T+10 | input 12, output 480, missing total, `totalTokensFresh=false` | `1.5K/5.0K (30%)` |
+| T+5 | valid total 800 | `800/5.0K (16%)` |
+| T+12 | valid total 600 | `600/5.0K (12%)` |
+| T+11, response held until after T+12 renders | valid total 1,200 | `600/5.0K (12%)` |
+
+A following `sessions.changed` request, with its reply held, acts as a wire
+barrier: all client subscribers for the preceding listing have finished before
+the native assertion, and another reply cannot repair a rewind before capture.
+No extra production debug command, provider replacement or timing sleep is used.
+Each asserted state always retains an owned-HWND PNG and adjacent JSON with
+footer UIA bounds, text and image SHA256, even without the screenshots flag.
+`context-usage-proof.json` records the scenario and supporting final snapshot.
+
+Run from the worktree on an interactive Windows desktop (use `win-x64` on x64):
+
+```powershell
+$env:OPENCLAW_REPO_ROOT = (Get-Location).Path
+$env:OPENCLAW_RUN_GATEWAY_FIXTURE_UI = '1'
+$env:OPENCLAW_GATEWAY_FIXTURE_APP = (Resolve-Path '.\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-arm64\OpenClaw.Tray.WinUI.exe').Path
+$env:OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS = Join-Path $env:OPENCLAW_REPO_ROOT 'TestResults\context-usage-artifacts'
+# Keep this invocation's disposable profiles inside the worktree.
+$env:TEMP = $env:TMP = Join-Path $env:OPENCLAW_REPO_ROOT 'TestResults\fixture-runtime'
+New-Item -ItemType Directory -Force $env:TEMP | Out-Null
+.\scripts\run-proof-tests.ps1 -Project 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' -Filter 'FullyQualifiedName~ContextFooterReconcilesLiveReplayHistoryAndAuthoritativeUsage' -ResultName 'context-usage-native' -RuntimeIdentifier win-arm64
+```
+
+For a separate bounded computer-use capture, start an interactive host console:
+
+```powershell
+.\scripts\run-gateway-fixture.ps1 -AppPath $env:OPENCLAW_GATEWAY_FIXTURE_APP -Scenario context-usage-snapshots -ArtifactsDirectory $env:OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS -DurationSeconds 120
+```
+
+Select **Fixture Main**, then **Fixture: context usage Initial**. Send
+`Fixture usage: first request`, then `Fixture usage: repeat request` using the
+native composer. Enter `missing-total`, `lower800`, `lower600`, and
+`delayed1200` in the **host console**, capturing the footer after each changed
+sidebar label appears. These controls only select synthetic listing replies
+and notify the real client. Unknown console controls do nothing. `stop`, Ctrl+C
+or the duration limit cleans up only this app/profile/server. The host prints
+its exact PID and artifact path. The interactive host does not hold initial
+history or transport-delay a listing; use the automated case for those ordered
+proof assertions, and inspect its seven images before claiming complete proof.
+
+The separate accessibility pool remains required, for example:
+
+```powershell
+.\scripts\run-proof-tests.ps1 -Project 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' -Filter 'Category=Accessibility' -ResultName 'context-usage-accessibility' -RuntimeIdentifier win-arm64
+```
+
+That existing gate launches its own isolated app and Axe.Windows scans. It needs
+an unlocked desktop, Windows App SDK prerequisites, and the current app executable,
+PRI and compiled page resources beside the native UI test assembly. It does not
+use this Gateway scenario or prove usage reconciliation. Run it serially with
+the fixture UI test and computer-use, not concurrently on the same desktop.
+
 ## Known runtime regression
 
 The strict cached-session tail assertion has exposed an intermittent failure:

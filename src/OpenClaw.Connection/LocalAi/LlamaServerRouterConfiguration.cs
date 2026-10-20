@@ -34,7 +34,7 @@ public static class LlamaServerRouterConfiguration
         LocalAiInstallManifest manifest = install.Manifest;
         LlamaRuntimeVariant runtime = LlamaRuntimeCatalog.FindInstalled(manifest.RuntimeId)
             ?? throw new InvalidDataException("The managed llama-server runtime is no longer qualified.");
-        LocalModelInfo model = LocalModelCatalog.FindInstalled(manifest.ModelCatalogId)
+        LocalModelInfo model = LocalModelCatalog.FindInstalled(manifest.ModelCatalogId, manifest.ModelAsset.SourceUrl)
             ?? throw new InvalidDataException("The managed local AI model is no longer qualified.");
         return new LocalInferencePlan(runtime, model, ResolveQualifiedReceipt(manifest, runtime, model),
             LocalInferenceModelSelectionOrigin.Explicit, manifest.SelectedGpuId);

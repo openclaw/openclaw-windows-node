@@ -10,6 +10,71 @@ namespace OpenClaw.Tray.Tests.Presentation;
 
 public sealed class LocalAiPageViewModelTests
 {
+    [Theory]
+    [InlineData(LocalAiRuntimeState.Stopped)]
+    [InlineData(LocalAiRuntimeState.Healthy)]
+    public async Task NativeSelectionBlocksStartAndRestartButPreservesRecoveryActions(LocalAiRuntimeState state)
+    {
+        var snapshot = CreateInstalledSnapshot(state) with
+        {
+            Ownership = state == LocalAiRuntimeState.Healthy
+                ? LocalAiOwnership.CompanionManaged : LocalAiOwnership.None,
+            GatewayRouteRequiresResolution = false,
+        };
+        var runtime = new FakeLocalAiRuntime(snapshot);
+        using var gatewaySource = new PermissionsPageRuntimeSource(new FakePermissionsPageRuntimeHost());
+        using var viewModel = new LocalAiPageViewModel(runtime, gatewaySource, new FakeAppCommands(),
+            new RecordingUiDispatcher(), new FixedHardwareProbe(HostHardwareInfo.Unknown));
+        await ActivateAndWaitForAvailabilityAsync(viewModel);
+        int changes = 0;
+        viewModel.PropertyChanged += (_, _) => changes++;
+
+        runtime.SetNativeSelectionRequired(true);
+
+        Assert.Equal(1, changes);
+        Assert.True(viewModel.RequiresNativeSelection);
+        Assert.False(viewModel.CanStart);
+        Assert.False(viewModel.CanRestart);
+        Assert.Equal(state == LocalAiRuntimeState.Healthy, viewModel.CanStop);
+        Assert.True(viewModel.CanOpenLogs);
+        Assert.False(await viewModel.StartAsync());
+        Assert.False(await viewModel.RestartAsync());
+        Assert.Equal(0, runtime.StartCount);
+        Assert.Equal(0, runtime.RestartCount);
+
+        runtime.SetNativeSelectionRequired(false);
+
+        Assert.Equal(2, changes);
+        Assert.False(viewModel.RequiresNativeSelection);
+        Assert.Equal(state == LocalAiRuntimeState.Stopped, viewModel.CanStart);
+        Assert.Equal(state == LocalAiRuntimeState.Healthy, viewModel.CanRestart);
+        viewModel.Deactivate();
+        runtime.SetNativeSelectionRequired(true);
+        Assert.Equal(2, changes);
+    }
+
+    [Fact]
+    public async Task UnresolvedStoppedNativeOwnerKeepsExplicitStopAvailableBeforeReceiptHydration()
+    {
+        var initial = LocalAiRuntimeSnapshot.Initial(new Uri("http://127.0.0.1:18803/v1"), DateTimeOffset.UtcNow);
+        var runtime = new FakeLocalAiRuntime(initial)
+        {
+            HasReleasableOwnership = true,
+            StopResult = initial with { GatewayRouteRequiresResolution = false },
+        };
+        using var gatewaySource = new PermissionsPageRuntimeSource(new FakePermissionsPageRuntimeHost());
+        using var viewModel = new LocalAiPageViewModel(runtime, gatewaySource, new FakeAppCommands(),
+            new RecordingUiDispatcher(), new FixedHardwareProbe(HostHardwareInfo.Unknown));
+        Assert.False(viewModel.CanStart);
+        Assert.True(viewModel.CanStop);
+        Assert.False(viewModel.CanReleaseOwnership);
+        Assert.True(await viewModel.StopAsync());
+        Assert.True(viewModel.CanReleaseOwnership);
+        Assert.True(await viewModel.ReleaseOwnershipAsync());
+        Assert.Equal(1, runtime.StopCount);
+        Assert.Equal(1, runtime.ReleaseCount);
+    }
+
     [Fact]
     public async Task ExplicitReleaseIsDistinctFromStopAndRequiresStoppedCleanRuntime()
     {
@@ -1181,6 +1246,13 @@ public sealed class LocalAiPageViewModelTests
 
     private sealed class FakeLocalAiRuntime(LocalAiRuntimeSnapshot snapshot) : ILocalAiRuntime
     {
+        public bool RequiresNativeSelection { get; private set; }
+        public event EventHandler? SelectionChanged;
+        public void SetNativeSelectionRequired(bool required)
+        {
+            RequiresNativeSelection = required;
+            SelectionChanged?.Invoke(this, EventArgs.Empty);
+        }
         public bool HasReleasableOwnership { get; set; }
         public int ReleaseCount { get; private set; }
         public Task<LocalAiRuntimeSnapshot> ReleaseOwnershipAsync(CancellationToken cancellationToken = default)

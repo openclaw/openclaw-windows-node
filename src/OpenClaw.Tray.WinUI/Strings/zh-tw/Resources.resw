@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
@@ -2598,6 +2598,75 @@
   <data name="VoiceSettingsPage_TtsMiniMax.Content" xml:space="preserve">
     <value>MiniMax（雲端，需要 API 金鑰）</value>
   </data>
+  <data name="VoiceSettingsPage_TtsKokoro.Content" xml:space="preserve">
+    <value>Kokoro（本機神經語音）</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroVoiceCombo.Header" xml:space="preserve">
+    <value>語音</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadButtonText.Text" xml:space="preserve">
+    <value>下載語音套件</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonDownloadPack" xml:space="preserve">
+    <value>下載語音套件</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonDownloaded" xml:space="preserve">
+    <value>已下載</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonDownloading" xml:space="preserve">
+    <value>正在下載…</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonRetry" xml:space="preserve">
+    <value>重試下載</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDeleteButton.Content" xml:space="preserve">
+    <value>刪除</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPreview.Text" xml:space="preserve">
+    <value>預覽</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPreviewButtonContent" xml:space="preserve">
+    <value>預覽</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroInfoText.Text" xml:space="preserve">
+    <value>語音套件從 GitHub 發行版下載（英文和中文約 380 MB，西班牙文約 310 MB）。它們完全在本機執行；無音訊離開您的裝置。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPackReady" xml:space="preserve">
+    <value>語音套件已在此 PC 上就緒（{0} MB）。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPackNotDownloaded" xml:space="preserve">
+    <value>語音套件尚未下載。按下載以取得它（約 {0} MB）。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroConnecting" xml:space="preserve">
+    <value>正在連接到 GitHub 發行版…</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroProgressBytes" xml:space="preserve">
+    <value>正在下載… {0} / {1} MB</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadCanceled" xml:space="preserve">
+    <value>下載已取消。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailed" xml:space="preserve">
+    <value>下載失敗（參見 Debug 日誌）。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailedDiskFull" xml:space="preserve">
+    <value>磁碟空間不足。請至少釋放 {0} MB 後再試一次。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailedNetwork" xml:space="preserve">
+    <value>下載失敗。請檢查網路連線後再試一次。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailedIntegrity" xml:space="preserve">
+    <value>下載的語音套件未通過驗證，已被刪除。請稍後再試。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDeleted" xml:space="preserve">
+    <value>語音套件已刪除。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDeleteFailed" xml:space="preserve">
+    <value>刪除失敗（參見 Debug 日誌）。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPreviewFailed" xml:space="preserve">
+    <value>預覽失敗（參見 Debug 日誌）。</value>
+  </data>
   <data name="VoiceSettingsPage_PiperVoiceCombo.Header" xml:space="preserve">
     <value>語音</value>
   </data>
@@ -2656,7 +2725,7 @@
     <value>中國</value>
   </data>
   <data name="VoiceSettingsPage_PrivacyNote.Text" xml:space="preserve">
-    <value>Piper、Windows 和語音辨識在此裝置上執行。雲端 TTS 提供者會將回覆文字傳送到其服務進行合成；麥克風音訊不會傳送給這些服務。</value>
+    <value>Kokoro、Piper、Windows 和語音辨識在此裝置上執行。雲端 TTS 提供者會將回覆文字傳送到其服務進行合成；麥克風音訊不會傳送給這些服務。</value>
   </data>
   <data name="VoiceSettingsPage_StatusModelReady" xml:space="preserve">
     <value>✅ 模型就緒</value>
@@ -2897,6 +2966,88 @@
   </data>
   <data name="DebugPage_ChatOverride_ForceNative_Tray.Content" xml:space="preserve">
     <value>強制使用伴侶聊天 UI</value>
+  </data>
+  <data name="Chat_ZeroState_RecentChats" xml:space="preserve"><value>最近的聊天</value></data>
+  <data name="Chat_Placement_Environment" xml:space="preserve">
+    <value>環境</value>
+  </data>
+  <data name="Chat_Placement_Workspace" xml:space="preserve">
+    <value>工作區</value>
+  </data>
+  <data name="Chat_Placement_Devices" xml:space="preserve">
+    <value>你的裝置</value>
+  </data>
+  <data name="Chat_Placement_Projects" xml:space="preserve">
+    <value>專案</value>
+  </data>
+  <data name="Chat_Placement_Folders" xml:space="preserve">
+    <value>閘道資料夾</value>
+  </data>
+  <data name="Chat_Placement_SearchDevices" xml:space="preserve">
+    <value>搜尋環境</value>
+  </data>
+  <data name="Chat_Placement_SearchProjects" xml:space="preserve">
+    <value>搜尋專案或貼上 Git URL</value>
+  </data>
+  <data name="Chat_Placement_Path" xml:space="preserve">
+    <value>輸入資料夾路徑</value>
+  </data>
+  <data name="Chat_Placement_DefaultWorkspace" xml:space="preserve">
+    <value>預設工作區</value>
+  </data>
+  <data name="Chat_Placement_Browse" xml:space="preserve">
+    <value>瀏覽資料夾</value>
+  </data>
+  <data name="Chat_Placement_Up" xml:space="preserve">
+    <value>上一層</value>
+  </data>
+  <data name="Chat_Placement_UseFolder" xml:space="preserve">
+    <value>使用此資料夾</value>
+  </data>
+  <data name="Chat_Placement_Back" xml:space="preserve">
+    <value>返回專案</value>
+  </data>
+  <data name="Chat_Placement_Clone" xml:space="preserve">
+    <value>傳送時複製存放庫</value>
+  </data>
+  <data name="Chat_Placement_Retry" xml:space="preserve">
+    <value>重試</value>
+  </data>
+  <data name="Chat_Placement_Loading" xml:space="preserve">
+    <value>正在載入位置...</value>
+  </data>
+  <data name="Chat_Placement_Preparing" xml:space="preserve">
+    <value>正在準備聊天位置...</value>
+  </data>
+  <data name="Chat_Placement_NoMatches" xml:space="preserve">
+    <value>沒有相符的位置</value>
+  </data>
+  <data name="Chat_Placement_Offline" xml:space="preserve">
+    <value>離線</value>
+  </data>
+  <data name="Chat_Placement_HostingDisabled" xml:space="preserve">
+    <value>未啟用工作階段託管</value>
+  </data>
+  <data name="Chat_Placement_CapacityUnknown" xml:space="preserve">
+    <value>未提供工作階段容量資訊</value>
+  </data>
+  <data name="Chat_Placement_NoCapacity" xml:space="preserve">
+    <value>沒有可用的工作階段名額</value>
+  </data>
+  <data name="Chat_Placement_CommandUnavailable" xml:space="preserve">
+    <value>所需命令尚未獲准</value>
+  </data>
+  <data name="Chat_Placement_UpdateRequired" xml:space="preserve">
+    <value>需要更新主機</value>
+  </data>
+  <data name="Chat_Placement_RuntimeUnsupported" xml:space="preserve">
+    <value>此代理程式執行階段不支援裝置工作階段</value>
+  </data>
+  <data name="Chat_Placement_Gateway" xml:space="preserve">
+    <value>閘道主機</value>
+  </data>
+  <data name="Chat_Placement_Remote" xml:space="preserve">
+    <value>遠端工作階段主機</value>
   </data>
   <data name="Chat_ZeroState_WelcomeTitle" xml:space="preserve">
     <value>歡迎使用 OpenClaw</value>
@@ -6993,6 +7144,8 @@
   <data name="Chat_AssistantMedia_MediaAttachment" xml:space="preserve"><value>媒體附件</value></data>
   <data name="Chat_AssistantMedia_OpenImage" xml:space="preserve"><value>開啟圖片 {0}</value></data>
   <data name="Chat_AssistantMedia_Close" xml:space="preserve"><value>關閉</value></data>
+  <data name="Chat_AssistantMedia_Download" xml:space="preserve"><value>下載</value></data>
+  <data name="Chat_AssistantMedia_DownloadFailed" xml:space="preserve"><value>無法開始下載</value></data>
   <data name="HubWindow_NavigationViewItem_LocalAi.Content" xml:space="preserve"><value>本機 AI</value></data>
   <data name="LocalAiPage_Title.Text" xml:space="preserve"><value>本機 AI</value></data>
   <data name="LocalAiPage_Intro.Text" xml:space="preserve"><value>在這部電腦上私密執行經過驗證的原生 llama-server。模型只會在收到要求時載入。</value></data>
@@ -7007,6 +7160,7 @@
   <data name="LocalAiPage_EndpointLabel.Text" xml:space="preserve"><value>端點</value></data>
   <data name="LocalAiPage_ProcessLabel.Text" xml:space="preserve"><value>處理程序</value></data>
   <data name="LocalAiPage_StartButton.Content" xml:space="preserve"><value>啟動路由器</value></data>
+  <data name="LocalAiPage_NativeSelectionRequired" xml:space="preserve"><value>啟動或重新啟動 Local AI 前，請在所選原生閘道的設定流程中選擇「使用本機 AI」，或在「連線」中選取擁有此安裝的 WSL 閘道。</value></data>
   <data name="LocalAiPage_StopButton.Content" xml:space="preserve"><value>停止</value></data>
   <data name="LocalAiPage_RestartButton.Content" xml:space="preserve"><value>重新啟動</value></data>
   <data name="LocalAiPage_OpenLogsButton.Content" xml:space="preserve"><value>開啟記錄</value></data>
@@ -7656,7 +7810,17 @@
   <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>安裝本機 WSL Gateway</value></data>
   <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>正在檢查原生 Gateway 支援情況...</value></data>
   <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>此裝置支援原生 Gateway。</value></data>
-  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>目前不支援原生 Gateway。請透過 Windows Update 安裝 Windows Insider 組建 {0} 或更新的受支援組建，然後重新開啟此頁面。功能可用性可能因裝置而異。</value></data>
+  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>若要使用原生 Gateway，請將裝置更新至支援此功能的 Windows 版本。
+
+原生 Gateway 支援即將在所有裝置上推出。在全面推出之前，請加入 Windows 測試人員計畫，選取 Beta 或 Experimental 通道，並在加入時透過「進階選項」選取 Windows 11 版本 26H1。若要返回 Windows 11 版本 25H2/26H2，必須全新安裝系統。
+
+加入後，請返回「設定 &gt; Windows Update」並檢查更新。更新可能需要幾分鐘才會顯示。功能可用性可能因裝置而異。更新後，請重新開啟此頁面以再次檢查支援情況。</value></data>
+  <data name="Onboarding_Native_SupportUnavailableLead" xml:space="preserve"><value>若要使用原生 Gateway，請將裝置更新至支援此功能的 Windows 版本。</value></data>
+  <data name="Onboarding_Native_SupportUnavailableComingSoon" xml:space="preserve"><value>即將在所有裝置上推出。</value></data>
+  <data name="Onboarding_Native_SupportUnavailableInsiderProgram" xml:space="preserve"><value>Windows 測試人員計畫</value></data>
+  <data name="Onboarding_Native_SupportUnavailableChannels" xml:space="preserve"><value>Beta 或 Experimental</value></data>
+  <data name="Onboarding_Native_SupportUnavailableWindowsVersion" xml:space="preserve"><value>Windows 11 版本 26H1</value></data>
+  <data name="Onboarding_Native_SupportUnavailableWindowsUpdate" xml:space="preserve"><value>設定 &gt; Windows Update</value></data>
   <data name="Onboarding_Native_SupportCheckFailed" xml:space="preserve"><value>無法驗證原生 Gateway 支援情況。請重新開啟此頁面以重試。如果檢查持續失敗，請更新或修復 Companion。</value></data>
   <data name="Onboarding_Native_UnsupportedPlatform" xml:space="preserve"><value>原生 Gateway 設定需要受支援的 Windows 用戶端系統。不支援 Windows Server。</value></data>
   <data name="Onboarding_Native_WindowsUpdate.Content" xml:space="preserve"><value>開啟 Windows Update</value></data>
@@ -7876,6 +8040,7 @@
   <data name="AgentCreation_Description" xml:space="preserve"><value>在已連線的閘道上建立代理程式及其工作區。此操作不會建立對話或變更目前的聊天。</value></data>
   <data name="AgentCreation_PermissionRequired" xml:space="preserve"><value>請連線至具有 operator.admin 權限的閘道以建立代理程式。</value></data>
   <data name="AgentCreation_Failed" xml:space="preserve"><value>無法確認代理程式是否已建立。請關閉此對話方塊並重新整理代理程式清單，然後再試。</value></data>
+  <data name="Onboarding_AiSetup_LocalRepairRequiresStop" xml:space="preserve"><value>開啟 Local AI 設定，重新連線至原本的閘道，並成功停止 Local AI 後再修復檔案。如果路由仍需復原，請先完成復原。請保留擁有權記錄和已下載的模型。</value></data>
   <data name="Onboarding_AiSetup_LocalState_ManagementBlocked" xml:space="preserve"><value>Companion 管理無法使用。</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipMissing" xml:space="preserve"><value>此設定檔沒有現有本機 AI 提供者的擁有權憑據。如果 Companion 在先前的設定嘗試中建立了它，請重新開啟原始 Companion 設定檔並選擇「復原並使用本機 AI」。未進行任何變更。使用偵測到的模型不會還原 Companion 管理。</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipInvalid" xml:space="preserve"><value>已儲存的本機 AI 擁有權、模型或閘道設定不再相符。請在原始 Companion 設定檔中檢查原始閘道及其模型設定，包括已修改的模型允許清單項目。保留擁有權憑據，不要複製驗證認證或取代提供者。</value></data>
@@ -7945,4 +8110,34 @@
   <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>首選的 {0} 設定不適合此硬體。設定可使用 {1}，上下文為 {2:N0} 個權杖。安裝前請在設定中查看此設定。</value></data>
   <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>此設定至少需要 {0} 系統記憶體。</value></data>
   <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>此設定要求模型快取和執行階段所在的磁碟區都至少有 {0} 可用空間。</value></data>
+  <data name="Chat_Welcome_Loading" xml:space="preserve"><value>正在從 Gateway 載入歡迎內容...</value></data>
+  <data name="Chat_Welcome_Unsupported" xml:space="preserve"><value>此 Gateway 不提供共用歡迎內容。你仍可在下方開始聊天。</value></data>
+  <data name="Chat_Welcome_Failed" xml:space="preserve"><value>無法載入歡迎內容。請重新連線以重試，或在下方開始聊天。</value></data>
+  <data name="Chat_Placement_Unknown" xml:space="preserve">
+    <value>未驗證</value>
+  </data>
+  <data name="Chat_Placement_Error_DiscoveryFailed" xml:space="preserve">
+    <value>無法載入聊天位置。請在位置選擇器中重試。</value>
+  </data>
+  <data name="Chat_Placement_Error_BrowseFailed" xml:space="preserve">
+    <value>無法載入 Gateway 資料夾。請重新瀏覽。</value>
+  </data>
+  <data name="Chat_Placement_Error_PreparationFailed" xml:space="preserve">
+    <value>無法準備聊天位置。請先在 Gateway 中檢查該位置，然後重試。</value>
+  </data>
+  <data name="Chat_Placement_Error_PreparationPending" xml:space="preserve">
+    <value>位置準備仍在進行中。請稍候再傳送。</value>
+  </data>
+  <data name="Chat_Placement_Error_NotReady" xml:space="preserve">
+    <value>所選聊天位置尚未就緒。請先重新整理選項，然後傳送。</value>
+  </data>
+  <data name="Chat_Placement_Error_HistoryPending" xml:space="preserve">
+    <value>正在等候目前的聊天記錄，之後才能準備位置。請在載入完成後重新傳送。</value>
+  </data>
+  <data name="Chat_Placement_Error_Interrupted" xml:space="preserve">
+    <value>位置準備已中斷，可能已變更此工作階段的位置。請先在 Gateway 中檢查，然後再傳送。</value>
+  </data>
+  <data name="Chat_Placement_Error_NoLongerEmpty" xml:space="preserve">
+    <value>此工作階段已不再為空，因此已取消待定的位置選擇。請檢查工作階段並重新傳送，以在目前位置繼續。</value>
+  </data>
 </root>

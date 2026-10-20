@@ -92,6 +92,94 @@ public sealed partial class GatewayFixtureProtocolTests
         Assert.Empty(server.UnexpectedRequests);
     }
 
+    [Fact]
+    public async Task ContextUsageScenario_RealClientReceivesStrictPromptsReplayHistoryAndIndependentListingSnapshots()
+    {
+        var usage = new ContextUsageFixture();
+        var scenario = GatewayScenario.CreateContextUsage(usage);
+        Assert.Equal(ContextUsageFixture.Name, scenario.Name);
+        Assert.NotEqual(GatewayScenario.CreateBrowse().Sha256, scenario.Sha256);
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(scenario, token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        var client = connected.Client;
+        var frames = new System.Collections.Concurrent.ConcurrentQueue<ChatMessageInfo>();
+        var delivered = Signal<bool>();
+        client.ChatMessageReceived += (_, message) =>
+        {
+            frames.Enqueue(message);
+            if (frames.Count == 5) delivered.TrySetResult(true);
+        };
+        using var deadline = new CancellationTokenSource(Deadline);
+        server.HoldHistory(ContextUsageFixture.SessionKey);
+        var history = client.RequestChatHistoryAsync(ContextUsageFixture.SessionKey);
+        await server.WaitForRequestAsync("chat.history", ContextUsageFixture.SessionKey, cancellationToken: deadline.Token);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendChatMessageForRunAsync("not a fixture prompt", ContextUsageFixture.SessionKey));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendChatMessageForRunAsync(ContextUsageFixture.FirstPrompt, GatewayScenario.MainSessionKey));
+        await client.SendChatMessageForRunAsync(ContextUsageFixture.FirstPrompt, ContextUsageFixture.SessionKey);
+        await client.SendChatMessageForRunAsync(ContextUsageFixture.SecondPrompt, ContextUsageFixture.SessionKey);
+        await delivered.Task.WaitAsync(deadline.Token);
+        var assistants = frames.Where(frame => frame.Role == "assistant").ToArray();
+        Assert.Equal(3, assistants.Length);
+        Assert.Equal(1_000, assistants[0].ResponseTokens);
+        Assert.All(assistants.Skip(1), frame => Assert.Equal(1_500, frame.ResponseTokens));
+        Assert.Equal(ContextUsageFixture.FirstReply, assistants[0].Text);
+        Assert.Equal(ContextUsageFixture.FinalReply, assistants[1].Text);
+        Assert.Equal(ContextUsageFixture.MeasurementTimestamp, assistants[1].Ts);
+        Assert.Equal(assistants[1].Text, assistants[2].Text);
+        Assert.Equal(0, assistants[2].Ts);
+        Assert.Null(assistants[2].OpenClawId);
+        Assert.Null(assistants[2].OpenClawSeq);
+        Assert.False(history.IsCompleted);
+        server.ReleaseHistory(ContextUsageFixture.SessionKey);
+        var historyMessages = (await history.WaitAsync(deadline.Token)).Messages;
+        Assert.Equal(4, historyMessages.Count());
+        Assert.Equal(ContextUsageFixture.FirstReply, historyMessages[1].Text);
+        var older = historyMessages.Last();
+        Assert.Equal(ContextUsageFixture.FinalReply, older.Text);
+        Assert.Equal(ContextUsageFixture.MeasurementTimestamp - 1, older.Ts);
+        Assert.Equal(1_000, older.ResponseTokens);
+        Assert.Equal(20, older.ContextPercent);
+
+        usage.SelectListing(ContextUsageListing.MissingTotal);
+        var missing = await client.SendWizardRequestAsync("sessions.list");
+        var missingRow = UsageRow(missing);
+        Assert.Equal(12, missingRow.GetProperty("inputTokens").GetInt32());
+        Assert.Equal(480, missingRow.GetProperty("outputTokens").GetInt32());
+        Assert.False(missingRow.TryGetProperty("totalTokens", out _));
+        Assert.False(missingRow.GetProperty("totalTokensFresh").GetBoolean());
+        usage.SelectListing(ContextUsageListing.Lower800);
+        var lower = await client.SendWizardRequestAsync("sessions.list");
+        Assert.True(lower.GetProperty("ts").GetInt64() < missing.GetProperty("ts").GetInt64());
+        Assert.Equal(800, UsageRow(lower).GetProperty("totalTokens").GetInt32());
+        usage.SelectListing(ContextUsageListing.Delayed1200);
+        var captured = server.HoldNextSessionList();
+        var delayed = client.SendWizardRequestAsync("sessions.list");
+        await captured.WaitAsync(deadline.Token);
+        usage.SelectListing(ContextUsageListing.Lower600);
+        var newest = await client.SendWizardRequestAsync("sessions.list");
+        Assert.Equal(600, UsageRow(newest).GetProperty("totalTokens").GetInt32());
+        Assert.False(delayed.IsCompleted);
+        server.ReleaseSessionList();
+        var stale = await delayed.WaitAsync(deadline.Token);
+        Assert.Equal(1_200, UsageRow(stale).GetProperty("totalTokens").GetInt32());
+        Assert.True(stale.GetProperty("ts").GetInt64() < newest.GetProperty("ts").GetInt64());
+        var refreshed = Signal<bool>();
+        client.SessionsUpdated += (_, sessions) =>
+        {
+            if (sessions.Any(session => session.Key == ContextUsageFixture.SessionKey && session.TotalTokens == 600))
+                refreshed.TrySetResult(true);
+        };
+        await server.NotifySessionsChangedAsync(deadline.Token);
+        await refreshed.Task.WaitAsync(deadline.Token);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendChatMessageForRunAsync(ContextUsageFixture.SecondPrompt, ContextUsageFixture.SessionKey));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendWizardRequestAsync("sessions.reset", new { key = ContextUsageFixture.SessionKey }));
+        Assert.Empty(server.UnexpectedRequests);
+
+        static JsonElement UsageRow(JsonElement listing) => listing.GetProperty("sessions").EnumerateArray()
+            .Single(row => row.GetProperty("key").GetString() == ContextUsageFixture.SessionKey);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -143,6 +231,21 @@ public sealed partial class GatewayFixtureProtocolTests
         Assert.Throws<ArgumentException>(() => GatewayScenario.LoadBuiltin("not-a-scenario"));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RealClient_AdvertisesExecApprovalsOnlyWhenExplicitlyEnabled(bool supportsExecApprovals)
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token, supportsExecApprovals);
+
+        Assert.Equal(
+            supportsExecApprovals,
+            Assert.Single(server.Requests, request => request.Method == "connect").AdvertisesExecApprovals);
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
     [Fact]
     public async Task RealClient_ChallengeHandshakeResolvesCanonicalMainAndPopulatesAllSessions()
     {
@@ -154,6 +257,7 @@ public sealed partial class GatewayFixtureProtocolTests
         Assert.Equal(IPAddress.Loopback.ToString(), server.Endpoint.Host);
         Assert.NotEqual(0, server.Endpoint.Port);
         Assert.True(client.HasHandshakeSnapshot);
+        Assert.False(Assert.Single(server.Requests, request => request.Method == "connect").AdvertisesExecApprovals);
         Assert.Equal(GatewayScenario.MainSessionKey, client.MainSessionKey);
         Assert.Equal(["operator.read"], client.GrantedOperatorScopes);
         await server.HandshakeCompleted.WaitAsync(Deadline);
@@ -651,13 +755,17 @@ public sealed partial class GatewayFixtureProtocolTests
     {
         public OpenClawGatewayClient Client { get; } = client;
 
-        public static async Task<ConnectedClient> OpenAsync(FixtureGatewayServer server, string token)
+        public static async Task<ConnectedClient> OpenAsync(
+            FixtureGatewayServer server, string token, bool supportsExecApprovals = false)
         {
             var startupOccurrence = server.Requests.Count(r => r.Method == "agents.list") + 1;
             var identity = CreateIdentity();
             var client = new OpenClawGatewayClient(
                 server.Endpoint.AbsoluteUri, token, NullLogger.Instance, identityPath: identity.Path,
-                ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false);
+                ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false)
+            {
+                SupportsExecApprovals = supportsExecApprovals,
+            };
             var owner = new ConnectedClient(client, identity);
             var handshake = Signal<bool>();
             var sessions = Signal<bool>();

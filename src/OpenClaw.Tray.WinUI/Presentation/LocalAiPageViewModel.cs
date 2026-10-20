@@ -134,16 +134,19 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
         _availabilityCancellation is null && !IsBusy;
     public LocalInferenceUnavailableReason? LocalAiUnavailableReason => _localAiUnavailableReason;
     public LocalInferenceProfileRecommendation? ProfileRecommendation { get; private set; }
-    public bool CanStart => !IsBusy && HasManagedInstall &&
+    public bool RequiresNativeSelection => _runtime.RequiresNativeSelection;
+    public bool CanStart => !IsBusy && !RequiresNativeSelection && HasManagedInstall &&
         (_runtimeSnapshot.State == LocalAiRuntimeState.Stopped ||
             (_runtimeSnapshot.State == LocalAiRuntimeState.Failed &&
                 _runtimeSnapshot.Ownership != LocalAiOwnership.CompanionManaged));
     public bool CanStop => !IsBusy &&
-        (_runtimeSnapshot.State is LocalAiRuntimeState.Conflict or LocalAiRuntimeState.Failed ||
+        (_runtimeSnapshot.GatewayRouteRequiresResolution ||
+            _runtimeSnapshot.State is LocalAiRuntimeState.Conflict or LocalAiRuntimeState.Failed ||
             (HasManagedInstall &&
                 _runtimeSnapshot.Ownership == LocalAiOwnership.CompanionManaged &&
                 _runtimeSnapshot.State is LocalAiRuntimeState.Starting or LocalAiRuntimeState.Healthy));
-    public bool CanRestart => !IsBusy && _runtimeSnapshot.Ownership == LocalAiOwnership.CompanionManaged &&
+    public bool CanRestart => !IsBusy && !RequiresNativeSelection &&
+        _runtimeSnapshot.Ownership == LocalAiOwnership.CompanionManaged &&
         _runtimeSnapshot.State == LocalAiRuntimeState.Healthy;
     public bool ShowReleaseOwnership => _runtime.HasReleasableOwnership;
     public bool CanReleaseOwnership => !IsBusy && ShowReleaseOwnership &&
@@ -174,6 +177,7 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
         if (!_subscribed)
         {
             _runtime.StateChanged += OnRuntimeStateChanged;
+            _runtime.SelectionChanged += OnSelectionChanged;
             _gatewaySource.Changed += OnGatewayChanged;
             _subscribed = true;
         }
@@ -190,6 +194,7 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
         if (_subscribed)
         {
             _runtime.StateChanged -= OnRuntimeStateChanged;
+            _runtime.SelectionChanged -= OnSelectionChanged;
             _gatewaySource.Changed -= OnGatewayChanged;
             _subscribed = false;
         }
@@ -530,6 +535,8 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
 
     private void OnRuntimeStateChanged(object? sender, LocalAiRuntimeSnapshotChangedEventArgs e) =>
         ApplyOnUiThread(() => ApplyRuntimeSnapshot(e.Snapshot));
+    private void OnSelectionChanged(object? sender, EventArgs e) =>
+        ApplyOnUiThread(() => OnPropertyChanged(null));
     private void OnGatewayChanged(object? sender, PermissionsRuntimeSourceChangedEventArgs e) =>
         ApplyOnUiThread(() => ApplyGatewaySnapshot(e.Snapshot.ConnectionSnapshot));
 

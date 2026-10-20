@@ -87,6 +87,48 @@ alone is insufficient authority to delete a potentially externally edited route.
 
 Native automatic startup waits for the manager-owned connection and an existing
 confirmed selection. Observation and artifact acquisition never switch models.
+Legacy Windows artifact receipts alone do not authorize background WSL startup.
+`LocalAiGatewayLifecycle` admits automatic WSL startup only with one pinned,
+explicit setup-managed WSL owner and no native binding, active native Gateway or
+staged native selection. Explicit startup revalidates ownership before runtime
+mutation. Without a native binding, an active native Gateway or staged native
+selection also blocks explicit Start and Restart, even when a pinned WSL owner
+exists. Local AI settings disable these actions and direct the user to choose
+Use Local AI for the native Gateway or select the owning WSL Gateway in Connection.
+Stop remains available for a running or unresolved route.
+An unbound runtime with no attempted route write does not report pending
+route reconciliation; a durable native binding or an actual uncertain write still
+does. Native setup can review damaged legacy artifacts without a WSL Gateway.
+Repair blocked by owned runtime or pending routing directs users to reconnect the
+original Gateway and stop/recover Local AI, never delete its receipt or models.
+An unresolved stopped native runtime keeps Stop available even before artifact
+observation completes. Read-only observation can load its initial installation
+status without clearing the ownership flag. Stop without an authorized owner is
+rejected before marking any routing uncertain.
+
+If the installation receipt is missing or invalid, Stop cannot infer a provider
+definition from model files or a listening process. It can settle the retained
+binding only after a fresh read through the original authenticated identity proves
+that the provider is absent, the saved fallback is restored, and any Companion-added
+allowlist entry is absent. This performs no Gateway write and retains the binding
+until explicit release. If those checks fail, restore the installation receipt or
+withdraw the route using the original Gateway's configuration tools, then retry
+Stop. Offline, mismatched and still-published routes remain blocked; artifact Repair
+is not a way to bypass their ownership.
+Successful receiptless Stop preserves its stopped intent across page refresh until
+explicit Start or Release, or observation loads a repaired installation receipt.
+Loading that receipt resumes read-only status checks, not automatic startup.
+Canceled or rejected Release retains the ownership and stopped intent; successful
+Release lets observation report the missing installation.
+Setup cancellation releases its selected ownership through the same guarded
+withdrawal checks. Once that binding is gone, read-only refresh also resumes
+normal installation observation without restarting the router.
+This receiptless confirmation also blocks if an originally Companion-added allowlist
+entry now contains user customizations. Restore the original installation receipt
+from an external backup and use the normal Stop path, which can preserve the edited
+entry; do not delete user metadata to force receiptless settlement. Companion does
+not keep a restorable backup or reconstruct this receipt. Without one, this case
+remains blocked rather than adopting or deleting the customized entry.
 Explicit Use publishes the authenticated endpoint, and the existing setup verifier
 performs real inference with the exact primary, without fallback. A changed
 revision is not silently adopted: explicit reconciliation requires the same
@@ -761,6 +803,15 @@ The bootstrap token is cleared only after operator and node role tokens are both
 **Approval boundaries**: `GatewayConnectionManager` leaves node-pair command-trust requests and reapproval pending for explicit operator approval. It may automatically approve and reconnect only an explicitly typed device-pair request used for a device role upgrade.
 
 In-chat exec approval cards sanitize the gateway's command and message before rendering. If either cannot be reviewed in full because it is truncated, suppressed, or conceals command syntax, the card offers only Deny; the chat provider also rejects Allow RPCs that are not permitted by the matching pending card.
+
+The tray composition root opts its `GatewayClientFactory` into `SupportsExecApprovals`
+because it attaches the chat approval handler to each managed operator client.
+The shared client defaults to no approval capability, so standalone CLI, validation,
+pairing and setup-only connections do not keep otherwise unroutable approvals pending.
+Only an opted-in operator-role handshake advertises `exec-approvals`; node-role
+bootstrap handshakes do not. This changes routing, not credentials or granted scopes:
+when a genuine tray approval handler is available, the Gateway can wait for its
+user decision instead of immediately expiring the request as having no approval route.
 
 ## Inbound pairing approval (operator)
 

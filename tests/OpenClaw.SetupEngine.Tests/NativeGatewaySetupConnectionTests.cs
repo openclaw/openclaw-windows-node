@@ -444,12 +444,25 @@ public sealed class NativeGatewaySetupConnectionTests
         {
             StopConnections = () => server.CloseConnectionsAsync(),
         };
+        var handshakeEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var releaseHandshake = new ManualResetEventSlim();
         await using var manager = new GatewayConnectionManager(
             new CredentialResolver(DeviceIdentityFileReader.Instance), new GatewayClientFactory(),
-            fixture.Registry, NullLogger.Instance, nativeGatewayRuntime: normalRuntime);
-        await manager.ConnectAsync(proof.GatewayId);
+            fixture.Registry, new PausedHandshakeLogger(handshakeEntered, releaseHandshake), nativeGatewayRuntime: normalRuntime);
+        var connecting = manager.ConnectAsync(proof.GatewayId);
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-        var verified = await SetupNativeCompletionVerifier.VerifyAsync(fixture.Temp.Path, proof, deadline.Token, manager);
+        Task<SetupVerifiedNativeRoute> verifying;
+        try
+        {
+            await handshakeEntered.Task.WaitAsync(deadline.Token);
+            Assert.True(manager.OperatorClient is { IsConnectedToGateway: true, HasHandshakeSnapshot: true });
+            Assert.Equal(RoleConnectionState.Connecting, manager.CurrentSnapshot.OperatorState);
+            verifying = SetupNativeCompletionVerifier.VerifyAsync(fixture.Temp.Path, proof, deadline.Token, manager);
+            Assert.False(verifying.IsCompleted);
+        }
+        finally { releaseHandshake.Set(); }
+        await connecting;
+        var verified = await verifying;
         SetupNativeVerification.RequireSame(proof, verified);
         var borrowed = manager.OperatorClient;
         var connections = server.ConnectionCount;
@@ -464,6 +477,20 @@ public sealed class NativeGatewaySetupConnectionTests
         fixture.Registry.Save();
         await Assert.ThrowsAsync<SetupNativeOwnershipException>(() =>
             SetupNativeCompletionVerifier.VerifyAsync(fixture.Temp.Path, proof, deadline.Token, manager));
+    }
+
+    private sealed class PausedHandshakeLogger(TaskCompletionSource entered, ManualResetEventSlim release) : IOpenClawLogger
+    {
+        public void Info(string message)
+        {
+            if (message != "Handshake complete (hello-ok)") return;
+            entered.TrySetResult();
+            if (!release.Wait(TimeSpan.FromSeconds(15)))
+                throw new TimeoutException("The test did not release the authenticated handshake.");
+        }
+        public void Debug(string message) { }
+        public void Warn(string message) { }
+        public void Error(string message, Exception? ex = null) { }
     }
 
     [Theory]

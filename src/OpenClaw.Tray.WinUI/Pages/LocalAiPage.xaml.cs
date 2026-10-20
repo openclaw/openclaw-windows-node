@@ -92,6 +92,8 @@ public sealed partial class LocalAiPage : Page
 
         ActionErrorText.Text = _viewModel.ActionError ?? string.Empty;
         ActionErrorText.Visibility = string.IsNullOrWhiteSpace(ActionErrorText.Text) ? Visibility.Collapsed : Visibility.Visible;
+        NativeSelectionGuidanceText.Text = LocalizationHelper.GetString("LocalAiPage_NativeSelectionRequired");
+        NativeSelectionGuidanceText.Visibility = _viewModel.RequiresNativeSelection ? Visibility.Visible : Visibility.Collapsed;
         EngineBusyIndicator.IsActive = _viewModel.IsBusy;
         EngineBusyIndicator.Visibility = _viewModel.IsBusy ? Visibility.Visible : Visibility.Collapsed;
         LocalAiUnavailableInfoBar.Visibility =

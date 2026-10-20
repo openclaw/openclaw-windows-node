@@ -22,7 +22,9 @@ internal sealed class ChatComposerFactory(IUiDispatcher dispatcher) : IChatCompo
 
         var port = new ChatComposerRuntimePort(provider);
         var viewModel = new ChatComposerViewModel(_dispatcher, initialSpeakerMuted);
-        var controller = new ChatComposerController(viewModel, port, hostActions);
-        return new ChatComposerSession(viewModel, controller, hostActions);
+        var placement = provider.PlacementGateway is { } gateway
+            ? new ChatPlacementController(gateway, _dispatcher) : null;
+        var controller = new ChatComposerController(viewModel, port, hostActions, placement);
+        return new ChatComposerSession(viewModel, controller, hostActions, placement);
     }
 }

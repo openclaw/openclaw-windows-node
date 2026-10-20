@@ -370,6 +370,44 @@ public sealed class ChatComposerControllerTests
         }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DelayedNew_RespectsLaterNavigationAndPreservesNewerDraft(bool selectAnotherSession)
+    {
+        var notifications = new List<string>();
+        var actions = new ChatComposerHostActions(null, null, null, null, null,
+            SessionSelected: notifications.Add);
+        var (vm, controller, port, _) = MakeController(actions);
+        using (controller)
+        using (vm)
+        {
+            var selected = "session-1";
+            controller.BindSelectionHandoff(key => selected = key);
+            vm.SetDraft("/new");
+            port.ExecuteLifecycleGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            var send = controller.SendAsync();
+            Assert.False(send.IsCompleted);
+
+            if (selectAnotherSession)
+                controller.SelectChannel("session-user-selected");
+            else
+                controller.InvalidatePendingSessionNavigation();
+            vm.SetDraft("Newer draft");
+            port.ExecuteLifecycleGate.SetResult(new(ChatLifecycleCommandKind.New, true, "late-session"));
+
+            Assert.True(await send);
+            Assert.Equal(selectAnotherSession ? "session-user-selected" : "session-1", selected);
+            Assert.Equal(selectAnotherSession ? new[] { "session-user-selected" } : [], notifications);
+            Assert.Equal("Newer draft", vm.Draft);
+            Assert.False(vm.IsSending);
+            Assert.Equal(0, port.SendMessageCallCount);
+
+            Assert.True(controller.TrySelectChannel("session-after-return"));
+            Assert.Equal("session-after-return", selected);
+        }
+    }
+
     [Fact]
     public async Task DisposedNewNavigationDoesNotNotifyHostSelection()
     {
@@ -1101,16 +1139,21 @@ public sealed class ChatComposerControllerTests
         using var registration = port.LastStopToken!.Value.Register(() =>
         {
             callbackInvoked = true;
-            callbackWork = Task.Run(() =>
+            // Probe lock ownership without waiting for a shared thread-pool worker.
+            callbackWork = Task.Factory.StartNew(() =>
             {
                 controller.TestOnlyProbeOperationGate();
                 callbackObservedDisposed = controller.IsDisposed;
                 controller.StartVoiceRecording();
-            });
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
             callbackWorkCompleted = callbackWork.Wait(TimeSpan.FromSeconds(2));
         });
 
-        var disposeTask = Task.Run(controller.Dispose);
+        var disposeTask = Task.Factory.StartNew(
+            controller.Dispose,
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
         var exception = await Record.ExceptionAsync(
             async () => await disposeTask.WaitAsync(TimeSpan.FromSeconds(5)));
         if (callbackWork is not null)

@@ -6,6 +6,15 @@ namespace OpenClaw.Tray.Tests;
 public sealed class AppRefactorContractTests
 {
     [Fact]
+    public void AutomaticLocalAiStartupRequiresPositiveWslOwnershipAdmission()
+    {
+        var source = ReadAppSources();
+        // Retire when startup can be mounted without activating real app services.
+        Assert.Contains("if (_localAiGatewayLifecycle.CanStartWslAutomatically)", source);
+        Assert.DoesNotContain("if (!_localAiGatewayLifecycle.IsNativeMode)", source);
+    }
+
+    [Fact]
     public void Startup_InvalidCleanupDataIsReportedBeforeSettingsLoad()
     {
         var source = ReadAppSources();
@@ -45,7 +54,7 @@ public sealed class AppRefactorContractTests
         var source = ReadAppSources();
 
         Assert.Contains("new CredentialResolver", source);
-        Assert.Contains("new GatewayClientFactory", source);
+        Assert.Contains("new GatewayClientFactory { SupportsExecApprovals = true }", source);
         Assert.Contains("new NodeConnector", source);
         Assert.Contains("_connectionManager = new GatewayConnectionManager", source);
         Assert.Contains("nodeConnector.ClientCreated +=", source);

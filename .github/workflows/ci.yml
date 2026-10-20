@@ -494,6 +494,7 @@ jobs:
         dotnet build tests/OpenClaw.WinNode.Cli.Tests -c Debug --no-restore
 
     - name: Run Shared Tests
+      timeout-minutes: 15
       env:
         OPENCLAW_RUN_INTEGRATION: 1
       run: >
@@ -501,6 +502,7 @@ jobs:
         -Project tests/OpenClaw.Shared.Tests
         -ResultsDirectory TestResults\Shared
         -TrxFileName OpenClaw.Shared.Tests.trx
+        -HangTimeoutSeconds 300
 
     - name: Run Connection Tests
       run: >

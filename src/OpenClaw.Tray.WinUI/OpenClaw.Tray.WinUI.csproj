@@ -119,6 +119,7 @@
     <PackageReference Include="Updatum" Version="1.3.4" />
     <PackageReference Include="NAudio.Wasapi" Version="2.3.0" />
     <PackageReference Include="org.k2fsa.sherpa.onnx" Version="1.13.0" />
+    <PackageReference Include="Larroy.Kokoro" Version="0.1.0" />
     <PackageReference Include="Zeroconf" Version="3.6.11" />
     <PackageReference Include="ZXing.Net" Version="0.16.10" />
   </ItemGroup>
