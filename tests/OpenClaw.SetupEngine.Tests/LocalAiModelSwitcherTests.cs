@@ -132,6 +132,24 @@ public sealed class LocalAiModelSwitcherTests
             fixture.Runtime.Calls);
     }
 
+    [Theory]
+    [InlineData("b10655-cuda13-x64")]
+    [InlineData("b11026-cuda13-x64")]
+    public async Task RetiredRuntimeReceipt_UpgradesToCurrentPinInsteadOfReusingIt(string retiredRuntimeId)
+    {
+        var runtimeAcquirer = new RecordingRuntimeAcquirer();
+        using var fixture = await Fixture.CreateAsync(installedRuntimeId: retiredRuntimeId, runtimeAcquirer: runtimeAcquirer);
+        LocalAiModelSwitchTarget target = await fixture.Switcher.PrepareCustomAsync(Hardware(48 * GiB), "owner/small", default);
+
+        await fixture.Switcher.SwitchAsync(target, false, null, default);
+
+        Assert.Equal([LlamaRuntimeCatalog.X64RuntimeId], runtimeAcquirer.Installs);
+        LocalAiInstallManifest committed = fixture.Runtime.Replacements.Single();
+        Assert.Equal(LlamaRuntimeCatalog.X64RuntimeId, committed.RuntimeId);
+        Assert.Equal(LlamaRuntimeCatalog.ReleaseTag, committed.EngineVersion);
+        Assert.NotEqual(fixture.Original.ExecutablePath, committed.ExecutablePath);
+    }
+
     private static HostHardwareInfo Hardware(long vram) =>
         new(System.Runtime.InteropServices.Architecture.X64, 64 * GiB, 48 * GiB,
             [new GpuInfo(GpuVendor.Nvidia, "NVIDIA Test", vram, vram, DriverVersion: "620.0", CudaMajorVersion: 13, StableId: "GPU-test")],
@@ -156,26 +174,33 @@ public sealed class LocalAiModelSwitcherTests
         public FakeAcquirer Acquirer { get; }
         public LocalAiModelSwitcher Switcher { get; }
 
-        public static async Task<Fixture> CreateAsync(bool running = false)
+        public static async Task<Fixture> CreateAsync(
+            bool running = false,
+            string? installedRuntimeId = null,
+            ILlamaRuntimeAcquirer? runtimeAcquirer = null)
         {
             var temp = new TempDirectory("local-ai-switch-");
             var paths = new LocalAiPaths(temp.Path);
             LlamaRuntimeVariant runtimeVariant = LlamaRuntimeCatalog.Find(System.Runtime.InteropServices.Architecture.X64)!;
+            LlamaRuntimeVariant installedRuntime = installedRuntimeId is null
+                ? runtimeVariant
+                : LlamaRuntimeCatalog.FindInstalled(installedRuntimeId)!;
             LocalModelInfo model = LocalModelCatalog.Find(LocalModelCatalog.Bonsai2ModelId)!;
             LocalInferencePlan plan = new(runtimeVariant, model, LocalModelCatalog.GetProfiles(model)[0], LocalInferenceModelSelectionOrigin.Explicit);
             Assert.True(LocalAiPathPolicy.TryResolve(temp.Path, LlamaRuntimeInstaller.Component(runtimeVariant), out LocalAiSetupPaths setup, out string error), error);
             var source = (HuggingFaceRevisionSource)model.Weights.Source;
             Assert.True(LocalAiPathPolicy.TryGetModelPaths(setup, source.RepositoryId, source.RevisionSha, model.Weights.RelativePath,
                 out string modelPath, out _, out error), error);
+            Assert.True(LocalAiPathPolicy.TryResolve(temp.Path, LlamaRuntimeInstaller.Component(installedRuntime), out LocalAiSetupPaths runtimeSetup, out error), error);
             var original = new LocalAiInstallManifest
             {
-                EngineVersion = runtimeVariant.ReleaseTag,
+                EngineVersion = installedRuntime.ReleaseTag,
                 Architecture = "x64",
-                RuntimeId = runtimeVariant.Id,
+                RuntimeId = installedRuntime.Id,
                 ModelCatalogId = model.Id,
                 SelectedGpuId = "GPU-test",
-                ExecutablePath = Path.GetRelativePath(paths.RootDirectory, Path.Combine(setup.InstallDirectory, LlamaRuntimeCatalog.ServerExecutableName)),
-                RuntimeAssets = runtimeVariant.Artifacts.Select(a => new LocalAiAssetReceipt
+                ExecutablePath = Path.GetRelativePath(paths.RootDirectory, Path.Combine(runtimeSetup.InstallDirectory, LlamaRuntimeCatalog.ServerExecutableName)),
+                RuntimeAssets = installedRuntime.Artifacts.Select(a => new LocalAiAssetReceipt
                 {
                     FileName = Path.GetFileName(a.RelativePath), SourceUrl = a.DownloadUri.AbsoluteUri,
                     SizeBytes = a.SizeBytes, Sha256 = a.Sha256.Value,
@@ -193,7 +218,7 @@ public sealed class LocalAiModelSwitcherTests
             await new LocalAiManifestStore(paths).SaveAsync(original);
             var runtime = new FakeRuntime(running);
             var acquirer = new FakeAcquirer(temp.Path);
-            var switcher = new LocalAiModelSwitcher(runtime, temp.Path, acquirer, new UnusedRuntimeAcquirer(),
+            var switcher = new LocalAiModelSwitcher(runtime, temp.Path, acquirer, runtimeAcquirer ?? new UnusedRuntimeAcquirer(),
                 (reference, _) => Task.FromResult(Recipe(reference == "owner/big" ? 30 * GiB : 2 * GiB)));
             return new Fixture(temp, paths, original, runtime, acquirer, switcher);
         }
@@ -234,7 +259,30 @@ public sealed class LocalAiModelSwitcherTests
     {
         public Task<LlamaRuntimeInstallResult> InstallAsync(string dir, LlamaRuntimeVariant runtime,
             IProgress<LocalAiArtifactInstallProgress>? progress, CancellationToken ct) =>
-            throw new InvalidOperationException("Same-family switches reuse the installed runtime.");
+            throw new InvalidOperationException("Switches on the current runtime pin reuse the installed runtime.");
+        public void RemoveInstalledRuntime(string dir, LlamaRuntimeInstallResult install) { }
+    }
+
+    private sealed class RecordingRuntimeAcquirer : ILlamaRuntimeAcquirer
+    {
+        public List<string> Installs { get; } = [];
+
+        public Task<LlamaRuntimeInstallResult> InstallAsync(string dir, LlamaRuntimeVariant runtime,
+            IProgress<LocalAiArtifactInstallProgress>? progress, CancellationToken ct)
+        {
+            Installs.Add(runtime.Id);
+            Assert.True(LocalAiPathPolicy.TryResolve(dir, LlamaRuntimeInstaller.Component(runtime), out LocalAiSetupPaths setup, out string error), error);
+            return Task.FromResult(new LlamaRuntimeInstallResult(
+                setup.InstallDirectory,
+                Path.Combine(setup.InstallDirectory, LlamaRuntimeCatalog.ServerExecutableName),
+                LlamaRuntimeInstallDisposition.Installed,
+                true,
+                runtime.Artifacts
+                    .Select(a => new LocalAiVerifiedArchive(Path.GetFileName(a.RelativePath), a.SizeBytes, a.Sha256.Value))
+                    .ToList(),
+                null));
+        }
+
         public void RemoveInstalledRuntime(string dir, LlamaRuntimeInstallResult install) { }
     }
 

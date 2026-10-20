@@ -118,20 +118,16 @@ public sealed class LocalAiModelSwitcher : ILocalAiModelSwitcher
             throw new LocalAiModelSwitchException("This model is already in use.");
 
         LocalInferencePlan plan = target.Plan;
-        LlamaRuntimeVariant? installedRuntime = LlamaRuntimeCatalog.FindInstalled(current.Manifest.RuntimeId);
-        bool reuseRuntime = string.Equals(installedRuntime?.Family, plan.Model.RuntimeFamily, StringComparison.Ordinal);
-        if (reuseRuntime)
-        {
-            // Keep the verified runtime; catalog runtime upgrades remain setup's job.
-            plan = plan with { Runtime = installedRuntime! };
-        }
-        else if (!LocalAiPathPolicy.TryResolve(
-                     _localDataDirectory,
-                     LlamaRuntimeInstaller.Component(plan.Runtime),
-                     out LocalAiSetupPaths setupPaths,
-                     out _) ||
-                 string.Equals(setupPaths.InstallDirectory, Path.GetDirectoryName(current.ExecutablePath),
-                     StringComparison.OrdinalIgnoreCase))
+        // Reuse only the runtime this plan qualified. A retired pin of the same family can
+        // predate the new recipe's minimum llama.cpp build, so it is upgraded side by side.
+        bool reuseRuntime = string.Equals(current.Manifest.RuntimeId, plan.Runtime.Id, StringComparison.Ordinal);
+        if (!reuseRuntime && (!LocalAiPathPolicy.TryResolve(
+                _localDataDirectory,
+                LlamaRuntimeInstaller.Component(plan.Runtime),
+                out LocalAiSetupPaths setupPaths,
+                out _) ||
+            string.Equals(setupPaths.InstallDirectory, Path.GetDirectoryName(current.ExecutablePath),
+                StringComparison.OrdinalIgnoreCase)))
         {
             throw new LocalAiModelSwitchException(
                 "This model needs a different llama-server runtime that cannot be installed beside the current one.");
