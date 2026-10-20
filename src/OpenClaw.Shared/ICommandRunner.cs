@@ -34,6 +34,11 @@ public class CommandRequest
     
     /// <summary>Timeout in milliseconds (0 = no timeout)</summary>
     public int TimeoutMs { get; set; }
+
+    /// <summary>
+    /// Combined stdout and stderr cap in UTF-8 bytes. Null means the runner default.
+    /// </summary>
+    public int? MaxOutputBytes { get; set; }
     
     /// <summary>Additional environment variables</summary>
     public Dictionary<string, string>? Env { get; set; }
