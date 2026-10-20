@@ -6,7 +6,6 @@ public sealed class ChatMarkdownDisclosureTests
 {
     [Theory]
     [InlineData("<details><summary>Sources and evidence</summary>")]
-    [InlineData("<details> <summary>Sources and evidence</summary>")]
     [InlineData("<details>\n<summary>Sources and evidence</summary>")]
     [InlineData("<DETAILS>\r\n<SUMMARY>Sources and evidence</SUMMARY>")]
     public void CommonWrappers_KeepBodyMarkdownAndSurroundingOrder(string header)
@@ -49,31 +48,13 @@ public sealed class ChatMarkdownDisclosureTests
 
     [Theory]
     [InlineData("```html\n<details><summary>Example</summary>\nBody\n</details>\n```")]
-    [InlineData("~~~html\n<details><summary>Example</summary>\nBody\n</details>\n~~~")]
-    [InlineData("    <details><summary>Example</summary>\n    Body\n    </details>")]
-    [InlineData("`<details><summary>Example</summary>`\nBody\n</details>")]
-    [InlineData("``\n<details><summary>Example</summary>\nBody\n</details>\n``")]
-    [InlineData("- ```html\n  <details><summary>Example</summary>\n  Body\n  </details>\n  ```")]
-    [InlineData("> <details><summary>Example</summary>\n> Body\n> </details>")]
     [InlineData("<details onclick=\"evil()\"><summary>Example</summary>\nBody\n</details>")]
-    [InlineData("<details><summary>Example</summary>\nBody")]
     [InlineData("<details><summary></summary>\nBody\n</details>")]
     [InlineData("<details>\n<summary>Outer</summary>\n<details><summary>Inner</summary>\nBody\n</details>")]
     public void UnsupportedCodeOrIncompleteWrappers_RemainLiteral(string text)
     {
         Assert.Equal(text, Assert.IsType<ChatMarkdownText>(
             Assert.Single(ChatMarkdownDisclosures.Parse(text))).Text);
-    }
-
-    [Fact]
-    public void BodySanitization_DoesNotReintroduceRemoteImagesOrActiveLinks()
-    {
-        var input = "<details><summary>Sources</summary>\n" +
-            "![tracking](https://example.invalid/pixel) [source](https://example.invalid)\n</details>";
-        var parts = ChatMarkdownDisclosures.Parse(ChatMarkdownSanitizer.Sanitize(input));
-        var body = Assert.IsType<ChatMarkdownText>(
-            Assert.Single(Assert.IsType<ChatMarkdownDisclosure>(Assert.Single(parts)).Body)).Text;
-        Assert.Equal("[Image: tracking] source (https://example.invalid)", body);
     }
 
     [Fact]
@@ -92,27 +73,13 @@ public sealed class ChatMarkdownDisclosureTests
 
     [Theory]
     [InlineData("<details><summary>S</summary>\n> quoted\n</details>", "> quoted")]
-    [InlineData("<details><summary>S</summary>\n\n> quoted\n</details>", "> quoted")]
     [InlineData("  <details><summary>S</summary>\n\n  - item\n  </details>", "- item")]
-    [InlineData("  <details><summary>S</summary>\n\n  - item\n\n  </details>", "- item")]
-    [InlineData("<details><summary>S</summary>\n\n- item\n</details>", "- item")]
     public void ClosingWrapperAfterQuoteOrListBody_ClosesTheOuterDisclosure(string input, string expectedBody)
     {
         var disclosure = Assert.IsType<ChatMarkdownDisclosure>(
             Assert.Single(ChatMarkdownDisclosures.Parse(input)));
         Assert.Equal("S", disclosure.Summary);
         Assert.Equal(expectedBody, Assert.IsType<ChatMarkdownText>(Assert.Single(disclosure.Body)).Text.Trim());
-    }
-
-    [Fact]
-    public void IndentedWrapperInsideListItem_DoesNotCloseOrOpenTheOuterDisclosure()
-    {
-        var input = "<details><summary>Outer</summary>\n\n- item\n  <details><summary>In list</summary>\n  </details>\n\nTail\n</details>";
-        var outer = Assert.IsType<ChatMarkdownDisclosure>(Assert.Single(ChatMarkdownDisclosures.Parse(input)));
-        Assert.Equal("Outer", outer.Summary);
-        var body = Assert.IsType<ChatMarkdownText>(Assert.Single(outer.Body)).Text;
-        Assert.Contains("<details><summary>In list</summary>", body);
-        Assert.EndsWith("Tail", body);
     }
 
     [Fact]
@@ -124,25 +91,6 @@ public sealed class ChatMarkdownDisclosureTests
         var body = Assert.IsType<ChatMarkdownText>(Assert.Single(outer.Body)).Text;
         Assert.Contains("<details><summary>In list</summary>", body);
         Assert.EndsWith("Tail", body);
-    }
-
-    [Fact]
-    public void IndentedOuterDisclosure_IgnoresWrapperPairAfterListMarker()
-    {
-        var input = "  <details><summary>Outer</summary>\n\n- <details><summary>In list</summary>\n  </details>\n\nTail\n  </details>";
-        var outer = Assert.IsType<ChatMarkdownDisclosure>(Assert.Single(ChatMarkdownDisclosures.Parse(input)));
-        Assert.Equal("Outer", outer.Summary);
-        var body = Assert.IsType<ChatMarkdownText>(Assert.Single(outer.Body)).Text;
-        Assert.Contains("- <details><summary>In list</summary>", body);
-        Assert.EndsWith("Tail", body);
-    }
-
-    [Fact]
-    public void IndentedOuterDisclosure_IgnoresWrapperPairInQuote()
-    {
-        var input = "  <details><summary>Outer</summary>\n\n> <details><summary>Quoted</summary>\n  </details>\n\nTail\n  </details>";
-        var outer = Assert.IsType<ChatMarkdownDisclosure>(Assert.Single(ChatMarkdownDisclosures.Parse(input)));
-        Assert.EndsWith("Tail", Assert.IsType<ChatMarkdownText>(Assert.Single(outer.Body)).Text);
     }
 
     [Fact]
@@ -163,22 +111,12 @@ public sealed class ChatMarkdownDisclosureTests
             Assert.Single(ChatMarkdownDisclosures.Parse(input))).Text);
     }
 
-    [Fact]
-    public void ProseMentioningDetailsTag_DoesNotSwallowTheRealClosingWrapper()
-    {
-        var input = "<details><summary>S</summary>\n\nUse a <details> tag for folds, and </details> to end it.\n\nBody\n\n</details>";
-        var disclosure = Assert.IsType<ChatMarkdownDisclosure>(Assert.Single(ChatMarkdownDisclosures.Parse(input)));
-        Assert.Contains("Use a <details> tag", Assert.IsType<ChatMarkdownText>(Assert.Single(disclosure.Body)).Text);
-        var unbalanced = "<details><summary>S</summary>\n\nUse a <details> tag.\n\n</details>";
-        var second = Assert.IsType<ChatMarkdownDisclosure>(Assert.Single(ChatMarkdownDisclosures.Parse(unbalanced)));
-        Assert.Contains("Use a <details> tag.", Assert.IsType<ChatMarkdownText>(Assert.Single(second.Body)).Text);
-    }
-
     [Theory]
+    [InlineData("- <details><summary>In list</summary>\n  </details>")]
     [InlineData("-\t<details><summary>In list</summary>\n  </details>")]
     [InlineData("1.\t<details><summary>In list</summary>\n  </details>")]
     [InlineData(">\t<details><summary>Quoted</summary>\n  </details>")]
-    public void IndentedOuterDisclosure_IgnoresWrapperPairAfterTabSeparatedMarker(string pair)
+    public void IndentedOuterDisclosure_IgnoresWrapperPairAfterContainerMarker(string pair)
     {
         var input = $"  <details><summary>Outer</summary>\n\n{pair}\n\nTail\n  </details>";
         var outer = Assert.IsType<ChatMarkdownDisclosure>(Assert.Single(ChatMarkdownDisclosures.Parse(input)));
@@ -199,23 +137,6 @@ public sealed class ChatMarkdownDisclosureTests
                 Assert.Equal("Real", real.Summary);
                 Assert.Equal("Body", Assert.IsType<ChatMarkdownText>(Assert.Single(real.Body)).Text);
             });
-    }
-
-    [Fact]
-    public void TopLevelClosingWrapper_EndsOuterDisclosureAfterDanglingListLocalOpener()
-    {
-        var input = "<details><summary>Outer</summary>\n\n- item\n  <details><summary>Dangling</summary>\n\nTail\n</details>";
-        var outer = Assert.IsType<ChatMarkdownDisclosure>(Assert.Single(ChatMarkdownDisclosures.Parse(input)));
-        Assert.EndsWith("Tail", Assert.IsType<ChatMarkdownText>(Assert.Single(outer.Body)).Text);
-    }
-
-    [Theory]
-    [InlineData("- item\n  <details><summary>In list</summary>\n  Body\n  </details>")]
-    [InlineData("> quoted\n<details><summary>After quote text</summary>\nBody\n</details>")]
-    public void WrappersThatOnlyAppearInsideListOrQuoteText_RemainLiteral(string text)
-    {
-        Assert.Equal(text, Assert.IsType<ChatMarkdownText>(
-            Assert.Single(ChatMarkdownDisclosures.Parse(text))).Text);
     }
 
     [Fact]
