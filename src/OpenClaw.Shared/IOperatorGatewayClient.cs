@@ -124,7 +124,11 @@ public interface IOperatorGatewayClient
     Task<bool> SetConfigAsync(string path, object value);
     Task<bool> PatchConfigAsync(JsonElement fullConfig, string? baseHash);
     /// <summary>Response-aware variant of <see cref="PatchConfigAsync"/>: awaits the gateway's reply and returns the real error on failure.</summary>
-    Task<ConfigPatchResult> PatchConfigDetailedAsync(JsonElement fullConfig, string? baseHash, int timeoutMs = 15000);
+    Task<ConfigPatchResult> PatchConfigDetailedAsync(
+        JsonElement fullConfig,
+        string? baseHash,
+        int timeoutMs = 15000,
+        IReadOnlyList<string>? replacePaths = null);
     Task RequestAgentsListAsync();
     Task RequestAgentFilesListAsync(string agentId = "main");
     Task RequestAgentFileGetAsync(string agentId, string name);
