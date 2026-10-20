@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][string]$NativeExecutable,
+    [Parameter(Mandatory)][string]$NativeRuntimeLibrary,
     [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F]{64}$')][string]$ExpectedNativeSha256,
     [Parameter(Mandatory)][string]$OutputDirectory,
     [ValidateSet('Debug','Release')][string]$Configuration = 'Debug',
@@ -13,7 +13,7 @@ $callerSession = [Diagnostics.Process]::GetCurrentProcess().SessionId
 if ($callerSession -eq 0) { throw 'Run this regression in an interactive user session, not session 0.' }
 $repository = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $launcher = Join-Path $repository 'scripts\Invoke-PrivateDesktop.ps1'
-$native = [IO.Path]::GetFullPath($NativeExecutable)
+$native = [IO.Path]::GetFullPath($NativeRuntimeLibrary)
 $output = [IO.Path]::GetFullPath($OutputDirectory)
 if ((Get-FileHash -LiteralPath $native -Algorithm SHA256).Hash -ne $ExpectedNativeSha256) {
     throw 'Native executable does not match the supplied proof input digest.'
@@ -22,7 +22,7 @@ if ((Test-Path -LiteralPath $output) -and @(Get-ChildItem -LiteralPath $output -
     throw 'Choose an empty output directory; existing proof artifacts will not be overwritten.'
 }
 New-Item -ItemType Directory -Path "$output\regression" -Force | Out-Null
-dotnet build "$PSScriptRoot\OpenClaw.DesktopHarness.csproj" -c $Configuration -m:1 --nologo --verbosity quiet *> "$output\managed-probe-build.log"
+dotnet build "$PSScriptRoot\OpenClaw.DesktopHarness.csproj" -c $Configuration -m:1 --disable-build-servers -p:UseSharedCompilation=false --nologo --verbosity quiet *> "$output\managed-probe-build.log"
 if ($LASTEXITCODE -ne 0) { throw "Managed probe build failed. See $output\managed-probe-build.log" }
 $probe = "$PSScriptRoot\bin\$Configuration\net10.0-windows\OpenClaw.DesktopHarness.exe"
 
@@ -71,13 +71,17 @@ foreach ($case in @(
     $launch = Get-Content -LiteralPath $launchPath -Raw | ConvertFrom-Json
     $desktop = $launch.desktop.Split('\')[-1]
     if ($result.caller.desktop -cne $desktop) { throw 'The actual child desktop does not match the generated owned desktop.' }
-    $config = Get-Content -LiteralPath "$directory\actual-config.json" -Raw | ConvertFrom-Json
-    if ($result.ContainmentTag -ne 'mxc' -or $result.nativeSha256 -ne $ExpectedNativeSha256 -or
-        $config.ui.disable -or $config.ui.clipboard -ne 'none' -or $config.ui.injection -or
-        $config.network.defaultPolicy -ne 'block') {
+    $config = Get-Content -LiteralPath "$directory\actual-policy.json" -Raw | ConvertFrom-Json
+    if ($result.ExecutionMode -ne 'Sandbox' -or $result.nativeSha256 -ne $ExpectedNativeSha256 -or
+        !$config.processContainer -or $config.learningMode -or $config.desktopIsolation -ne 'Container' -or
+        $config.uiDisabled -or $config.clipboard -ne 'None' -or $config.inputInjection -or
+        $config.egress -ne 'Deny' -or $config.ingress -ne 'Deny') {
         throw "Policy/containment drift in $($case.name)"
     }
     if ($case.payload -eq 'native-probe') {
+        if ($result.nativeProbeSha256 -ne (Get-FileHash -LiteralPath $NativeProbeExecutable -Algorithm SHA256).Hash) {
+            throw 'The executed native probe differs from the supplied controlled binary.'
+        }
         $lines = @($result.Stdout -split "`r?`n" | Where-Object Length -GT 0)
         $before = $lines[0] | ConvertFrom-Json
         $after = $lines[1] | ConvertFrom-Json
@@ -85,25 +89,16 @@ foreach ($case in @(
             $before.win32kMitigationFlags -ne 0 -or $before.sessionId -ne $callerSession) {
             throw "Unexpected actual child identity in $($case.name)"
         }
-        if ($case.negative) {
-            if ($after.loaded -or $after.loadError -ne 1114 -or
-                $before.currentDesktopDaclAccess.writeObjects) {
-                throw 'Old NULL-attributes negative control did not reproduce the USER32/access failure'
-            }
+        if (!$after.loaded -or $after.loadError -ne 0 -or $result.ExitCode -ne 0 -or $result.TimedOut) {
+            throw 'Published SDK container desktop did not preserve actual AppContainer USER32 access'
         }
-        elseif (!$after.loaded -or $after.loadError -ne 0 -or
-            !$before.currentDesktopDaclAccess.writeObjects -or !$launch.aclAndLabelBytesEqual) {
-            throw 'Fixed desktop did not preserve actual AppContainer USER32 access'
-        }
-    }
-    elseif ($case.negative) {
-        if ($result.ExitCode -eq 0 -or $result.Stdout -like '*OPENCLAW_NATIVE_STARTUP_PROBE*') {
-            throw 'Old NULL-attributes PowerShell negative control unexpectedly succeeded'
+        if (!$case.negative -and !$launch.aclAndLabelBytesEqual) {
+            throw 'Fixed caller desktop security differs from Default'
         }
     }
     elseif ($result.ExitCode -ne 0 -or $result.TimedOut -or
         $result.Stdout.Trim() -ne 'OPENCLAW_NATIVE_STARTUP_PROBE' -or
-        !$launch.aclAndLabelBytesEqual) {
+        (!$case.negative -and !$launch.aclAndLabelBytesEqual)) {
         throw 'Fixed private desktop did not execute the controlled PowerShell in MXC'
     }
     $handle = [ProofDesktop]::OpenDesktopW($desktop, 0, $false, 1)

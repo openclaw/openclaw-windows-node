@@ -5,49 +5,102 @@ using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Mxc;
+using Microsoft.Mxc.Sdk.V1;
+
+if (args is ["ownership-wait", var readyName, var releaseName, var ownershipReceipt])
+{
+    using var ready = EventWaitHandle.OpenExisting(readyName);
+    using var release = EventWaitHandle.OpenExisting(releaseName);
+    using var child = Process.GetCurrentProcess();
+    File.WriteAllText(ownershipReceipt, JsonSerializer.Serialize(new
+    {
+        processId = child.Id,
+        processStartUtc = child.StartTime.ToUniversalTime().ToString("O"),
+        executable = Environment.ProcessPath
+    }));
+    ready.Set();
+    release.WaitOne();
+    return;
+}
 
 if (args.Length < 3)
-    throw new ArgumentException("Output directory, exact native executable and payload kind are required.");
+    throw new ArgumentException("Output directory, exact SDK native library and payload kind are required.");
 var output = Path.GetFullPath(args[0]);
 var native = Path.GetFullPath(args[1]);
 Directory.CreateDirectory(output);
-Environment.SetEnvironmentVariable("OPENCLAW_WXC_EXEC", native);
-Environment.SetEnvironmentVariable(DirectAppContainerExecutor.LogFullConfigEnvVar, "1");
 var options = new JsonSerializerOptions { WriteIndented = true };
+options.Converters.Add(new JsonStringEnumConverter());
 var context = DesktopContext.Capture();
 File.WriteAllText(Path.Combine(output, "parent-context.json"), JsonSerializer.Serialize(context, options));
+var toolsDirectory = Path.Combine(output, "owned-tools");
+var nativeProbe = Path.Combine(toolsDirectory, "token-probe.exe");
+if (args[2] == "native-probe" && args.Length == 4)
+{
+    Directory.CreateDirectory(toolsDirectory);
+    File.Copy(Path.GetFullPath(args[3]), nativeProbe);
+}
 string[] argv = args[2] switch
 {
     "powershell" => [Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"),
         "-NoProfile", "-Command", "Write-Output 'OPENCLAW_NATIVE_STARTUP_PROBE'"],
     "where" => [Path.Combine(Environment.SystemDirectory, "where.exe"), "cmd.exe"],
     "builtin" => [Path.Combine(Environment.SystemDirectory, "cmd.exe"), "/d", "/s", "/c", "exit 0"],
-    "native-probe" when args.Length == 4 => [Path.GetFullPath(args[3]),
+    "native-probe" when args.Length == 4 => [nativeProbe,
         "--current-sddl", JsonSerializer.SerializeToElement(context.currentDesktopSecurity).GetProperty("sddl").GetString()!,
         "--default-sddl", JsonSerializer.SerializeToElement(context.defaultDesktopSecurity).GetProperty("sddl").GetString()!],
     _ => throw new ArgumentException("Unknown payload.")
 };
 var logger = new ProbeLogger(output);
 var availability = MxcAvailability.Probe(null);
+var nativeModule = Process.GetCurrentProcess().Modules.Cast<ProcessModule>()
+    .SingleOrDefault(module => string.Equals(module.FileName, native, StringComparison.OrdinalIgnoreCase))
+    ?? throw new InvalidOperationException("The supplied native library is not loaded by the published SDK.");
 if (!availability.CanRunSystemRunSandbox)
     throw new InvalidOperationException("The unchanged emitted BaseContainer policy is not admitted.");
 var settings = new SettingsData
 {
-    SystemRunSandboxEnabled = true,
-    SystemRunAllowWindowsUi = true,
-    SystemRunAllowOutbound = false
+    SystemRunAllowOutbound = false,
+    SandboxCustomFolders = args[2] == "native-probe"
+        ? [new SandboxCustomFolder { Path = toolsDirectory, Access = SandboxFolderAccess.ReadOnly }]
+        : []
 };
 var settingsDirectory = Path.Combine(output, "owned-settings");
 Directory.CreateDirectory(settingsDirectory);
-var policy = MxcPolicyBuilder.ForSystemRun(settings, settingsDirectory);
-var parameters = JsonSerializer.SerializeToElement(new { argv });
 const int diagnosticTimeoutMs = 8000;
-var request = new SandboxExecutionRequest(
-    "system.run", parameters, policy, diagnosticTimeoutMs, null, null, 65536);
-var executor = new DirectAppContainerExecutor(() => availability, logger);
-var result = await executor.ExecuteAsync(request);
+var request = new CommandRequest { Argv = argv, TimeoutMs = diagnosticTimeoutMs };
+var executor = new MxcCommandRunner(() => settings, () => settingsDirectory,
+    () => availability, logger, spawn: async policy =>
+    {
+        File.WriteAllText(Path.Combine(output, "actual-config.json"), JsonSerializer.Serialize(policy, options));
+        var container = policy.Containment as Containment.ProcessContainer
+            ?? throw new InvalidOperationException("The production runner did not select ProcessContainer.");
+        var desktopPolicy = container.Ui
+            ?? throw new InvalidOperationException("The production runner omitted container desktop policy.");
+        var ui = policy.Ui
+            ?? throw new InvalidOperationException("The production runner omitted UI policy.");
+        var egress = policy.Network?.Egress
+            ?? throw new InvalidOperationException("The production runner omitted egress policy.");
+        var ingress = policy.Network?.Ingress
+            ?? throw new InvalidOperationException("The production runner omitted ingress policy.");
+        File.WriteAllText(Path.Combine(output, "actual-policy.json"), JsonSerializer.Serialize(new
+        {
+            processContainer = policy.Containment is Containment.ProcessContainer,
+            learningMode = container.LearningMode,
+            desktopIsolation = desktopPolicy.Isolation.ToString(),
+            uiDisabled = ui.Disable,
+            clipboard = ui.Clipboard.ToString(),
+            inputInjection = ui.AllowInputInjection,
+            egress = egress.Default.ToString(),
+            ingress = ingress.Default.ToString()
+        }, options));
+        return await MxcContainer.SpawnAsync(policy,
+            new SpawnOptions { Telemetry = new TelemetryConfig { Enabled = false } },
+            CancellationToken.None);
+    }, scratchRoot: Path.Combine(output, "owned-scratch"));
+var result = await executor.RunAsync(request);
 File.WriteAllText(Path.Combine(output, "result.json"), JsonSerializer.Serialize(new
 {
     capturedUtc = DateTimeOffset.UtcNow,
@@ -58,18 +111,24 @@ File.WriteAllText(Path.Combine(output, "result.json"), JsonSerializer.Serialize(
         localAppDataDirectory = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR"),
         mcpPort = Environment.GetEnvironmentVariable("OPENCLAW_MCP_PORT")
     },
-    nativeExecutable = availability.WxcExecPath,
+    nativeRuntimeLibrary = nativeModule.ModuleName,
+    nativeRuntimeVersion = FileVersionInfo.GetVersionInfo(native).FileVersion,
+    sdkAssemblyVersion = typeof(MxcContainer).Assembly.GetName().Version?.ToString(),
+    sdkSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(typeof(MxcContainer).Assembly.Location))),
     nativeSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(native))),
-    sharedSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(typeof(MxcExecutor).Assembly.Location))),
+    sharedSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(typeof(MxcCommandRunner).Assembly.Location))),
     payload = args[2],
+    nativeProbeSha256 = args[2] == "native-probe"
+        ? Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(nativeProbe))) : null,
     argv,
     diagnosticTimeoutMs,
-    uiAllowed = settings.SystemRunAllowWindowsUi,
     outboundAllowed = settings.SystemRunAllowOutbound,
     result.ExitCode,
     result.TimedOut,
     result.DurationMs,
-    result.ContainmentTag,
+    result.ExecutionMode,
+    result.ErrorCategory,
+    result.SandboxDenialReason,
     result.Stdout,
     result.Stderr
 }, options));
@@ -85,13 +144,6 @@ sealed class ProbeLogger(string output) : IOpenClawLogger
     private void Write(string message)
     {
         File.AppendAllText(Path.Combine(output, "executor-caller.log"), message + "\n");
-        const string marker = "configJson=";
-        if (message.StartsWith("[mxc] wxc-exec config (full,", StringComparison.Ordinal))
-        {
-            var start = message.IndexOf(marker, StringComparison.Ordinal);
-            if (start >= 0)
-                File.WriteAllText(Path.Combine(output, "actual-config.json"), message[(start + marker.Length)..]);
-        }
     }
 }
 

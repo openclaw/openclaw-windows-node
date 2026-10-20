@@ -7,7 +7,7 @@ param(
     [switch]$ConsoleProcess,
     [switch]$WaitForExit,
     [switch]$NullSecurityNegativeControl,
-    [int]$ProcessTimeoutSeconds = 360,
+    [ValidateRange(1,2147483)][int]$ProcessTimeoutSeconds = 360,
     [ValidatePattern('^[A-Za-z0-9_-]{1,64}$')][string]$NamePrefix = 'OpenClawProof',
     [Parameter(Mandatory)][string]$ResultPath
 )
@@ -22,6 +22,10 @@ using System.Text;
 
 public static class ProofDesktop
 {
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool TerminateProcess(IntPtr process, uint exitCode);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern uint WaitForSingleObject(IntPtr handle, uint milliseconds);
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     public struct StartupInfo
     {
@@ -236,6 +240,23 @@ try {
     if ([ProofDesktop]::Describe([ProofDesktop]::ReadDaclAndLabel($reference)) -cne $referenceSecurity) {
         throw 'The Default reference changed during the proof; no restoration attempted.'
     }
+}
+catch {
+    $launchError = $_
+    # The CreateProcess handle identifies only our child, even if its PID is reused.
+    if ($info.process -ne [IntPtr]::Zero) {
+        if ([ProofDesktop]::WaitForSingleObject($info.process, 0) -eq 258) {
+            if (![ProofDesktop]::TerminateProcess($info.process, 1)) {
+                throw [ComponentModel.Win32Exception]::new([Runtime.InteropServices.Marshal]::GetLastWin32Error())
+            }
+        }
+        if ([ProofDesktop]::WaitForSingleObject($info.process, [uint32]($ProcessTimeoutSeconds * 1000)) -ne 0) {
+            throw 'Could not reap the exact-owned process after launch failure.'
+        }
+        $launchError.Exception.Data['OwnedProcessId'] = $info.processId
+        $launchError.Exception.Data['OwnedProcessReaped'] = $true
+    }
+    throw $launchError
 }
 finally {
     foreach ($name in $environmentNames) {

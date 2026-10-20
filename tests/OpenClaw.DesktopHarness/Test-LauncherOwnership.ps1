@@ -4,7 +4,8 @@ param(
     [Parameter(Mandatory)][string]$ProbeExecutable,
     [Parameter(Mandatory)][string]$NativeExecutable,
     [Parameter(Mandatory)][string]$NativeProbeExecutable,
-    [Parameter(Mandatory)][string]$OutputDirectory
+    [Parameter(Mandatory)][string]$OutputDirectory,
+    [ValidateRange(1,2147483647)][int]$ChildSignalTimeoutMs = 30000
 )
 $ErrorActionPreference='Stop'
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
@@ -66,6 +67,70 @@ try {
     $failedDesktop=Get-Content -LiteralPath "$failedPath.security.json" -Raw | ConvertFrom-Json
     Assert-DesktopAbsent $failedDesktop.desktop
 
+    $eventId=[Guid]::NewGuid().ToString('N')
+    $ready=[Threading.EventWaitHandle]::new($false,'ManualReset',"Local\OwnedReady$eventId")
+    $release=[Threading.EventWaitHandle]::new($false,'ManualReset',"Local\OwnedRelease$eventId")
+    $unreaped=$null
+    try {
+        $childReceipt="$OutputDirectory\waiting-child.json"
+        $arguments='ownership-wait "Local\OwnedReady{0}" "Local\OwnedRelease{0}" "{1}"' -f $eventId,$childReceipt
+        $blockedReceipt="$OutputDirectory\blocked-receipt"
+        New-Item -ItemType Directory -Path $blockedReceipt | Out-Null
+        $postCreateFailure=$null
+        try {
+            & $Launcher -Executable $ProbeExecutable -ArgumentLine $arguments `
+                -DataDirectory "$OutputDirectory\post-create-profile" -McpPort 0 -ConsoleProcess `
+                -ResultPath $blockedReceipt
+        } catch { $postCreateFailure=$_ }
+        if ($postCreateFailure -and !$postCreateFailure.Exception.Data['OwnedProcessReaped']) {
+            if (!$ready.WaitOne($ChildSignalTimeoutMs)) {
+                throw 'Post-create failure did not reach the controlled waiting child.'
+            }
+            $childState=Get-Content -LiteralPath $childReceipt -Raw | ConvertFrom-Json
+            $unreaped=Get-Process -Id $childState.processId
+            if ($unreaped.Path -cne $ProbeExecutable -or
+                $unreaped.StartTime.ToUniversalTime().Ticks -ne ([datetime]$childState.processStartUtc).ToUniversalTime().Ticks -or
+                $unreaped.HasExited) {
+                throw 'Could not verify the identity of the unreaped controlled child.'
+            }
+            throw 'Receipt failure left the actual event-controlled child running.'
+        }
+        if (!$postCreateFailure -or
+            !$postCreateFailure.Exception.Data['OwnedProcessReaped'] -or
+            !$postCreateFailure.Exception.Data['OwnedProcessId']) {
+            throw 'Receipt failure did not reap a successfully created owned child.'
+        }
+        $failedDesktop=Get-Content -LiteralPath "$blockedReceipt.security.json" -Raw | ConvertFrom-Json
+        Assert-DesktopAbsent $failedDesktop.desktop
+        Assert-Sentinels
+        $ready.Reset() | Out-Null
+        $successPath="$OutputDirectory\nonblocking-result.json"
+        & $Launcher -Executable $ProbeExecutable -ArgumentLine $arguments `
+            -DataDirectory "$OutputDirectory\nonblocking-profile" -McpPort 0 -ConsoleProcess `
+            -ResultPath $successPath
+        $success=Get-Content -LiteralPath $successPath -Raw | ConvertFrom-Json
+        $owned=Get-Process -Id $success.processId
+        try {
+            if (!$ready.WaitOne($ChildSignalTimeoutMs) -or $owned.HasExited) {
+                throw 'Successful nonblocking launch did not preserve the waiting child.'
+            }
+            Assert-Sentinels
+        } finally {
+            $release.Set() | Out-Null
+            if ($null -ne $unreaped) {
+                if (!$unreaped.WaitForExit($ChildSignalTimeoutMs)) { throw 'The baseline child did not exit after release.' }
+                $unreaped.Dispose()
+            }
+            if (!$owned.WaitForExit($ChildSignalTimeoutMs)) { throw 'The controlled child did not exit after release.' }
+            $owned.Dispose()
+        }
+        Assert-DesktopAbsent ($success.desktop.Split('\')[-1])
+    } finally {
+        $release.Set() | Out-Null
+        $ready.Dispose()
+        $release.Dispose()
+    }
+
     $contenderName="NativeContender$([Guid]::NewGuid().ToString('N'))"
     $reference=[ProofDesktop]::OpenDesktopW('Default',0,$false,0x20001)
     if ($reference -eq [IntPtr]::Zero) { throw 'Could not open the read-only security reference.' }
@@ -114,6 +179,8 @@ try {
         childInheritedIntendedOverrides=$true
         actualChildAvoidedLiveContender=$true
         contenderSecurityUnchanged=$true
+        postCreateReceiptFailureReaped=$true
+        successfulNonblockingChildRetained=$true
         ownedDesktopsRemoved=$true
     } | ConvertTo-Json | Set-Content -LiteralPath "$OutputDirectory\ownership-regression.json" -Encoding utf8
 }

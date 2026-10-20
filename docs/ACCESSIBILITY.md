@@ -30,7 +30,10 @@ modifying Default or switching the shared input desktop. NULL-security desktop
 creation can otherwise deny low-integrity sandboxed children the access needed
 to initialize USER32. The
 [real MXC desktop regression](../tests/OpenClaw.DesktopHarness/README.md)
-retains both the old failing path and corrected USER32/PowerShell execution.
+checks USER32/PowerShell execution through the current published SDK owner on
+both caller-desktop variants. The original 0.8 bridge failure proof is historical;
+the current SDK selects its own container desktop. See the regression guide for
+current policy assertions and runtime qualification requirements.
 
 ## Relationship to other validation
 
