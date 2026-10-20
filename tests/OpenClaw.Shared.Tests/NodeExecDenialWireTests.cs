@@ -117,7 +117,7 @@ public sealed class NodeExecDenialWireTests(ITestOutputHelper output)
             RevalidationFailed = !policyDenied
         };
         var runner = new OpenClaw.Shared.Mxc.MxcCommandRunner(
-            () => settings, () => temp.Path,
+            () => settings, () => Path.Combine(temp.Path, "settings"),
             availabilityProvider: () => unsupportedWindows
                 ? new(false, false, false, [], isWindowsUnsupported: true)
                 : new(true, false, true, [], isolationTier: "base-container", supportsProtectedPathDenies: true),
