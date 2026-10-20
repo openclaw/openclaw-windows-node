@@ -22,7 +22,7 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
     private readonly TimeSpan _promptTimeout;
 
     // Bounded lifetime for an approval dialog: if the owner does not respond within this window
-    // the prompt is cancelled and resolves to Deny, so a request never hangs forever (the
+    // the prompt is cancelled and fails closed, so a request never hangs forever (the
     // requester has its own independent timeout). Mirrors the spirit of the macOS approval
     // timeout, shortened for the node's synchronous invoke path.
     private static readonly TimeSpan DefaultPromptTimeout = TimeSpan.FromMinutes(5);
@@ -180,7 +180,7 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
                 try
                 {
                     // Bound the dialog's lifetime: on timeout the token cancels, the prompt
-                    // handler tears the window down and resolves Deny, so an unanswered prompt
+                    // handler tears the window down and fails closed, so an unanswered prompt
                     // never hangs the request forever.
                     promptResult = await _prompt.PromptAsync(
                         BuildPromptRequest(context, identity, correlationId),
@@ -201,10 +201,15 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
                 catch
                 {
                     // Presenter failure → fail-closed, no fallback delegation
-                    return LogAndReturn(ExecApprovalV2Result.UserDenied("prompt-failed"),
+                    return LogAndReturn(ExecApprovalV2Result.InternalError("prompt-failed"),
                         correlationId, promptAttempted: true, fallbackUsed: false,
                         canonical: context.DisplayCommand);
                 }
+
+                if (promptResult == ExecApprovalPromptOutcome.Failed)
+                    return LogAndReturn(ExecApprovalV2Result.InternalError("prompt-failed"),
+                        correlationId, promptAttempted: true, fallbackUsed: false,
+                        canonical: context.DisplayCommand);
 
                 // Allow (plain) from a prompt handler is an invariant violation —
                 // only AllowOnce and AllowAlways are semantically valid from UI.
@@ -322,7 +327,7 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
         // it fully requires revalidating the snapshot at the execution boundary.
         if (!policyCurrency.IsStillCurrent(_store.ResolveReadOnly(identity.AgentId)))
             return LogAndReturn(
-                ExecApprovalV2Result.ValidationFailed("policy-changed-before-execution"),
+                ExecApprovalV2Result.PolicyDenied("policy-changed-before-execution"),
                 correlationId, promptAttempted, fallbackUsed, canonical: context.DisplayCommand);
 
         // Step 9: side effects — only reached when the payload is valid.
@@ -378,7 +383,7 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
             return ValueTask.FromResult(
                 execution.PolicyCurrency.IsStillCurrent(fresh)
                     ? ExecApprovalRevalidationResult.Current
-                    : ExecApprovalRevalidationResult.NotCurrent(
+                    : ExecApprovalRevalidationResult.PolicyDenied(
                         "policy-changed-before-execution"));
         }
         catch (Exception ex)

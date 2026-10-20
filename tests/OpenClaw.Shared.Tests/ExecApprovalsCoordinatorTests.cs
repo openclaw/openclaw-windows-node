@@ -342,6 +342,7 @@ public class ExecApprovalsCoordinatorTests : IDisposable
             prompt: handler).HandleAsync(DefaultReq(), "cur1");
         Assert.Equal(ExecApprovalV2Code.ValidationFailed, result.Code);
         Assert.Equal("policy-changed-before-execution", result.Reason);
+        Assert.True(result.IsDefiniteDenial);
     }
 
     [Fact]
@@ -368,6 +369,7 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         var revalidation = await coordinator.RevalidateAsync(approval.Execution!, "cur3");
 
         Assert.False(revalidation.IsCurrent);
+        Assert.True(revalidation.IsPolicyDenial);
         Assert.Equal("policy-changed-before-execution", revalidation.Reason);
     }
 
@@ -382,6 +384,29 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         var revalidation = await coordinator.RevalidateAsync(approval.Execution!, "cur4");
 
         Assert.True(revalidation.IsCurrent);
+        Assert.False(revalidation.IsPolicyDenial);
+    }
+
+    [Fact]
+    public async Task PreApproved_RevalidationStoreFailure_IsNotAConfirmedPolicyDenial()
+    {
+        WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"off"}}""");
+        using var store = new ExecApprovalsStore(_dir, NullLogger.Instance);
+        var coordinator = new ExecApprovalsCoordinator(
+            store,
+            AlwaysCannotPresentEvaluator.Instance,
+            ExecApprovalV2NullPromptHandler.Instance,
+            NullLogger.Instance);
+        var approval = await coordinator.HandleAsync(DefaultReq(), "revalidation-failure");
+        Assert.True(approval.IsAllow);
+
+        store.Dispose();
+        var revalidation = await coordinator.RevalidateAsync(
+            approval.Execution!, "revalidation-failure");
+
+        Assert.False(revalidation.IsCurrent);
+        Assert.False(revalidation.IsPolicyDenial);
+        Assert.Equal("policy-revalidation-failed", revalidation.Reason);
     }
 
     [Fact]
@@ -538,10 +563,10 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         Assert.Equal("prompt-returned-allow", result.Reason);
     }
 
-    // ── 10. Prompt throws → UserDenied, no fallback ───────────────────────────
+    // Presenter failure is not a user refusal and must never use fallback.
 
     [Fact]
-    public async Task PromptThrows_ReturnsUserDenied_FallbackNotUsed()
+    public async Task PromptThrows_ReturnsInternalError_FallbackNotUsed()
     {
         WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"always"}}""");
         var log = new CapturingLogger();
@@ -549,10 +574,11 @@ public class ExecApprovalsCoordinatorTests : IDisposable
             canPresent: AlwaysCanPresentEvaluator.Instance,
             prompt: new ThrowingPromptHandler(),
             logger: log).HandleAsync(DefaultReq(), "c10");
-        Assert.Equal(ExecApprovalV2Code.UserDenied, result.Code);
+        Assert.Equal(ExecApprovalV2Code.InternalError, result.Code);
         Assert.Equal("prompt-failed", result.Reason);
+        Assert.False(result.IsDefiniteDenial);
         // Must not delegate to fallback after presenter failure
-        Assert.Contains("fallbackUsed=False", log.LastWarn!, StringComparison.Ordinal);
+        Assert.Contains("fallbackUsed=False", log.LastError!, StringComparison.Ordinal);
     }
 
     // ── 11. Input invalid → ValidationFailed ─────────────────────────────────
@@ -676,11 +702,13 @@ public class ExecApprovalsCoordinatorTests : IDisposable
             prompt: new ThrowingPromptHandler());
 
         var first = await coordinator.HandleAsync(DefaultReq(), "lock-1");
-        Assert.Equal(ExecApprovalV2Code.UserDenied, first.Code);
+        Assert.Equal(ExecApprovalV2Code.InternalError, first.Code);
+        Assert.False(first.IsDefiniteDenial);
 
         // Second call must complete — if lock was not released this would deadlock
         var second = await coordinator.HandleAsync(DefaultReq(), "lock-2");
-        Assert.Equal(ExecApprovalV2Code.UserDenied, second.Code);
+        Assert.Equal(ExecApprovalV2Code.InternalError, second.Code);
+        Assert.False(second.IsDefiniteDenial);
     }
 
     // ── 21a. Concurrency with actual lock contention ───────────────────────────

@@ -384,6 +384,27 @@ Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `ap
   .\scripts\validate-mxc-e2e.ps1
   ```
 
+### `system.run` failure outcomes
+
+- An explicit pre-execution security, ask, allowlist, or user denial, including a
+  revoked approval, carries `error.code = "SYSTEM_RUN_DENIED"` in both Gateway
+  `node.invoke.result` and legacy invocation responses. The message is retained.
+  This lets the Gateway distinguish a definite denial from an unknown outcome.
+  Handler exceptions, failed or unavailable policy revalidation, timeouts, and
+  failures after command dispatch do not acquire this code.
+  Presenter exceptions, failed dispatcher enqueue, dialog errors and cancelled
+  prompts fail closed as `InternalError (prompt-failed)` without using
+  `askFallback` or claiming a user refusal. Confirmed policy tightening while a
+  prompt is open retains the `ValidationFailed` result code, with typed
+  definite-denial provenance so the Gateway receives `SYSTEM_RUN_DENIED`.
+- With sandbox Windows UI APIs disabled, a non-timeout process exit
+  `0xC0000142` (`STATUS_DLL_INIT_FAILED`) includes a diagnostic explaining that the
+  command or a DLL dependency may require Windows UI APIs (USER32). The original
+  exit code, output, native error detail, and containment remain unchanged.
+  This is contextual troubleshooting guidance, not proof that every DLL
+  initialization failure has the same cause. The runner does not enable UI,
+  retry the command, or fall back to host execution.
+
 ### Full Gateway `system.run` MXC runtime proof
 - The focused E2E below provisions a fresh WSL Gateway, starts an isolated tray instance with fixed contained Windows UI API compatibility, sets local exec approval policy, invokes the real Gateway `node.invoke` path, and checks SDK admission/execution and protected writes. Native `MxcCommandRunnerIntegrationTests.NativeSdk_DefaultPolicyStartsPowerShellWithoutOptIn` additionally verifies PowerShell startup and output with default settings, without enabling an opt-in. **Provisioning is a runtime mutation and requires authorization.** If it is forbidden, record this gate as blocked rather than launching it or using `-AllowSkip` as validation.
 - Run it when validating the Gateway/Windows node runtime path, not just direct MCP or shared library behavior.

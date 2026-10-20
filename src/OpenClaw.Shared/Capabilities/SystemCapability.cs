@@ -14,6 +14,8 @@ namespace OpenClaw.Shared.Capabilities;
 /// </summary>
 public class SystemCapability : NodeCapabilityBase
 {
+    private const string SystemRunDeniedErrorCode = "SYSTEM_RUN_DENIED";
+
     public override string Category => "system";
 
     private const int DefaultRunTimeoutMs = 30_000;
@@ -263,7 +265,7 @@ public class SystemCapability : NodeCapabilityBase
                 approvalErrorType = ex.GetType();
             }
         var approvalCategory = approvalErrorType == null
-            ? MapV2ErrorCategory(v2Result.Code)
+            ? MapV2ErrorCategory(v2Result)
             : NodeToolErrorCategory.InternalFailure;
         Logger.Info($"[system.run] corr={correlationId} decision={v2Result.Code} reason={v2Result.Reason}");
         NodeToolInvocation.CompleteChild(
@@ -301,13 +303,16 @@ public class SystemCapability : NodeCapabilityBase
                     $"reason={revalidation.Reason}");
                 return ErrorWithDiagnostic(
                     $"exec-approvals-v2: ValidationFailed ({revalidation.Reason})",
-                    NodeToolErrorCategory.ExecPolicyDenied);
+                    NodeToolErrorCategory.ExecPolicyDenied,
+                    errorCode: revalidation.IsPolicyDenial ? SystemRunDeniedErrorCode : null);
             }
 
             return await RunApprovedAsync(approvedExecution, correlationId, request, v2Handler, expectedPolicy, cancellationToken);
         }
 
         var response = Error($"exec-approvals-v2: {v2Result.Code} ({v2Result.Reason})");
+        if (v2Result.IsDefiniteDenial)
+            response.ErrorCode = SystemRunDeniedErrorCode;
         if (approvalCategory != NodeToolErrorCategory.None)
             response.Diagnostic = new NodeToolDiagnostic(approvalCategory);
         return response;
@@ -316,9 +321,11 @@ public class SystemCapability : NodeCapabilityBase
     private NodeInvokeResponse ErrorWithDiagnostic(
         string message,
         NodeToolErrorCategory errorCategory,
-        NodeToolExecutionMode? executionMode = null)
+        NodeToolExecutionMode? executionMode = null,
+        string? errorCode = null)
     {
         var response = Error(message);
+        response.ErrorCode = errorCode;
         response.Diagnostic = new NodeToolDiagnostic(errorCategory, executionMode);
         return response;
     }
@@ -356,13 +363,9 @@ public class SystemCapability : NodeCapabilityBase
             : NodeToolErrorCategory.CommandFailed;
     }
 
-    private static NodeToolErrorCategory MapV2ErrorCategory(ExecApprovalV2Code code) =>
-        code switch
+    private static NodeToolErrorCategory MapV2ErrorCategory(ExecApprovalV2Result result) =>
+        result.IsDefiniteDenial ? NodeToolErrorCategory.ExecPolicyDenied : result.Code switch
         {
-            ExecApprovalV2Code.SecurityDeny
-                or ExecApprovalV2Code.AskDeny
-                or ExecApprovalV2Code.AllowlistMiss
-                or ExecApprovalV2Code.UserDenied => NodeToolErrorCategory.ExecPolicyDenied,
             ExecApprovalV2Code.ValidationFailed => NodeToolErrorCategory.InvalidRequest,
             ExecApprovalV2Code.ResolutionFailed => NodeToolErrorCategory.CommandUnavailable,
             ExecApprovalV2Code.Unavailable => NodeToolErrorCategory.CapabilityUnavailable,

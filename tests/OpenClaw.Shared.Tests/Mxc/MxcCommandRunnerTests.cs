@@ -64,6 +64,46 @@ public sealed class MxcCommandRunnerTests : IDisposable
         Assert.False(Directory.Exists(_root));
     }
 
+    [Theory]
+    [InlineData(unchecked((int)0xC0000142), "native detail", true)]
+    [InlineData(unchecked((int)0xC0000142), "", true)]
+    [InlineData(42, "native detail", false)]
+    public async Task DllInitializationFailure_PreservesResultWithoutGuessingCause(
+        int exitCode, string stderr, bool hasHint)
+    {
+        ContainerRequest? captured = null;
+        var calls = 0;
+        var process = new FakeProcess(exitCode, "original output", stderr);
+        var runner = Runner(request =>
+        {
+            captured = request;
+            calls++;
+            return Task.FromResult<IMxcProcess>(process);
+        });
+        var result = await runner.RunAsync(Command);
+
+        Assert.Equal(exitCode, result.ExitCode);
+        Assert.Equal("original output", result.Stdout);
+        Assert.False(result.TimedOut);
+        if (hasHint)
+        {
+            Assert.StartsWith(stderr, result.Stderr);
+            Assert.Contains("0xC0000142", result.Stderr);
+            Assert.Contains("Windows UI APIs (USER32)", result.Stderr);
+            Assert.Contains("Containment was not relaxed.", result.Stderr);
+            Assert.DoesNotContain("sandbox UI is disabled", result.Stderr);
+        }
+        else
+        {
+            Assert.Equal(stderr, result.Stderr);
+        }
+        Assert.Equal(NodeToolExecutionMode.Sandbox, result.ExecutionMode);
+        Assert.Equal(NodeToolErrorCategory.CommandFailed, result.ErrorCategory);
+        Assert.NotNull(captured);
+        Assert.False(captured.Ui!.Disable);
+        Assert.Equal(1, calls);
+    }
+
     [Fact]
     public void DefaultScratchRoot_PreservesExplicitLocalAppDataRoot()
     {

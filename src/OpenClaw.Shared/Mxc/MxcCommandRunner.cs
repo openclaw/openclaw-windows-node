@@ -10,6 +10,7 @@ namespace OpenClaw.Shared.Mxc;
 /// </summary>
 public sealed class MxcCommandRunner : ICommandRunner
 {
+    private const int StatusDllInitFailed = unchecked((int)0xC0000142);
     private static readonly SemaphoreSlim OwnedOperations = new(8, 8);
     private readonly Func<SettingsData> _settings;
     private readonly Func<string> _settingsDirectory;
@@ -97,7 +98,7 @@ public sealed class MxcCommandRunner : ICommandRunner
         {
             var result = await owned.WaitAsync(deadline.Token).ConfigureAwait(false);
             result.DurationMs = stopwatch.ElapsedMilliseconds;
-            return result;
+            return WithInitializationContext(result);
         }
         catch (OperationCanceledException) when (deadline.IsCancellationRequested)
         {
@@ -109,8 +110,24 @@ public sealed class MxcCommandRunner : ICommandRunner
             _ = ObserveCleanupAsync(owned);
             ct.ThrowIfCancellationRequested();
             result.DurationMs = stopwatch.ElapsedMilliseconds;
-            return result;
+            return WithInitializationContext(result);
         }
+    }
+
+    private static CommandResult WithInitializationContext(CommandResult result)
+    {
+        if (result.ExitCode != StatusDllInitFailed || result.TimedOut ||
+            result.ExecutionMode != NodeToolExecutionMode.Sandbox)
+            return result;
+
+        const string hint =
+            "Command initialization failed (0xC0000142). This can involve Windows UI APIs (USER32) " +
+            "or another DLL dependency. Check Windows runtime and desktop compatibility. " +
+            "Containment was not relaxed.";
+        result.Stderr = string.IsNullOrWhiteSpace(result.Stderr)
+            ? hint
+            : result.Stderr + Environment.NewLine + hint;
+        return result;
     }
 
     private async Task<CommandResult> ExecuteOwnedAsync(

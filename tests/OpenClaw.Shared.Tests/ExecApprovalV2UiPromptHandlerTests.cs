@@ -37,7 +37,7 @@ public class ExecApprovalV2UiPromptHandlerTests
             logger ?? new CapturingLogger());
 
     [Fact]
-    public async Task CancellationBeforeEnqueue_Denies_WithoutInvokingEnqueue()
+    public async Task CancellationBeforeEnqueue_Fails_WithoutInvokingEnqueue()
     {
         using var cts = new CancellationTokenSource();
         cts.Cancel();
@@ -48,12 +48,12 @@ public class ExecApprovalV2UiPromptHandlerTests
 
         var result = await handler.PromptAsync(Request(), cts.Token);
 
-        Assert.Equal(ExecApprovalPromptOutcome.Deny, result);
+        Assert.Equal(ExecApprovalPromptOutcome.Failed, result);
         Assert.False(enqueueInvoked);
     }
 
     [Fact]
-    public async Task CancellationWhileDialogPending_DeniesPromptly_NotBlockedOnDialog()
+    public async Task CancellationWhileDialogPending_FailsPromptly_NotBlockedOnDialog()
     {
         using var cts = new CancellationTokenSource();
         var neverCompleting = new TaskCompletionSource<ExecApprovalPromptOutcome>();
@@ -64,7 +64,7 @@ public class ExecApprovalV2UiPromptHandlerTests
 
         var completed = await Task.WhenAny(promptTask, Task.Delay(TimeSpan.FromSeconds(5)));
         Assert.Same(promptTask, completed);
-        Assert.Equal(ExecApprovalPromptOutcome.Deny, await promptTask);
+        Assert.Equal(ExecApprovalPromptOutcome.Failed, await promptTask);
     }
 
     [Fact]
@@ -80,7 +80,7 @@ public class ExecApprovalV2UiPromptHandlerTests
     }
 
     [Fact]
-    public async Task EnqueueFailure_Denies_WithoutThrowing()
+    public async Task EnqueueFailure_Fails_WithoutThrowing()
     {
         var handler = Handler(
             (_, _) => Task.FromResult(ExecApprovalPromptOutcome.AllowOnce),
@@ -88,7 +88,7 @@ public class ExecApprovalV2UiPromptHandlerTests
 
         var result = await handler.PromptAsync(Request());
 
-        Assert.Equal(ExecApprovalPromptOutcome.Deny, result);
+        Assert.Equal(ExecApprovalPromptOutcome.Failed, result);
     }
 
     [Fact]
@@ -304,17 +304,17 @@ public class ExecApprovalV2UiPromptHandlerTests
     }
 
     [Fact]
-    public async Task DialogThrowingSynchronously_Denies_WithoutThrowing()
+    public async Task DialogThrowingSynchronously_Fails_WithoutThrowing()
     {
         var handler = Handler((_, _) => throw new InvalidOperationException("boom"));
 
         var result = await handler.PromptAsync(Request());
 
-        Assert.Equal(ExecApprovalPromptOutcome.Deny, result);
+        Assert.Equal(ExecApprovalPromptOutcome.Failed, result);
     }
 
     [Fact]
-    public async Task DialogReturningFaultedTask_Denies_WithoutThrowing()
+    public async Task DialogReturningFaultedTask_Fails_WithoutThrowing()
     {
         var handler = Handler(async (_, _) =>
         {
@@ -324,13 +324,14 @@ public class ExecApprovalV2UiPromptHandlerTests
 
         var result = await handler.PromptAsync(Request());
 
-        Assert.Equal(ExecApprovalPromptOutcome.Deny, result);
+        Assert.Equal(ExecApprovalPromptOutcome.Failed, result);
     }
 
     [Theory]
     [InlineData(ExecApprovalPromptOutcome.Deny)]
     [InlineData(ExecApprovalPromptOutcome.AllowOnce)]
     [InlineData(ExecApprovalPromptOutcome.AllowAlways)]
+    [InlineData(ExecApprovalPromptOutcome.Failed)]
     public async Task DialogOutcomes_PropagateUnchanged(ExecApprovalPromptOutcome outcome)
     {
         var handler = Handler((_, _) => Task.FromResult(outcome));
@@ -341,14 +342,14 @@ public class ExecApprovalV2UiPromptHandlerTests
     }
 
     [Fact]
-    public async Task PlainAllowFromDialog_IsClampedToDeny_AndLogged()
+    public async Task PlainAllowFromDialog_Fails_AndLogged()
     {
         var logger = new CapturingLogger();
         var handler = Handler((_, _) => Task.FromResult(ExecApprovalPromptOutcome.Allow), logger: logger);
 
         var result = await handler.PromptAsync(Request());
 
-        Assert.Equal(ExecApprovalPromptOutcome.Deny, result);
+        Assert.Equal(ExecApprovalPromptOutcome.Failed, result);
         Assert.Contains(logger.Errors, m => m.Contains("Allow"));
     }
 
@@ -516,16 +517,16 @@ public class ExecApprovalV2UiPromptHandlerTests
 
         var promptTask = handler.PromptAsync(Request(), cts.Token);
         cts.Cancel();
-        Assert.Equal(ExecApprovalPromptOutcome.Deny, await promptTask);
+        Assert.Equal(ExecApprovalPromptOutcome.Failed, await promptTask);
 
         // The dispatcher runs the queued work only after the cancellation already
-        // denied the request: the dialog must never be shown.
+        // failed the request: the dialog must never be shown.
         pending!.Invoke();
         Assert.False(dialogInvoked);
     }
 
     [Fact]
-    public async Task CancellationDuringEnqueue_DeniesWithoutInvokingDialog()
+    public async Task CancellationDuringEnqueue_FailsWithoutInvokingDialog()
     {
         using var cts = new CancellationTokenSource();
         var dialogInvoked = false;
@@ -540,7 +541,7 @@ public class ExecApprovalV2UiPromptHandlerTests
 
         var result = await handler.PromptAsync(Request(), cts.Token);
 
-        Assert.Equal(ExecApprovalPromptOutcome.Deny, result);
+        Assert.Equal(ExecApprovalPromptOutcome.Failed, result);
         Assert.False(dialogInvoked);
     }
 
