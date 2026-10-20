@@ -10,6 +10,10 @@ The launcher creates a **new** owned desktop with the current Default desktop's
 DACL and mandatory label. It refuses an existing name and never modifies Default
 or switches the shared input desktop. Windows can add an auto-inherited SACL
 control marker; DACL and label ACL contents must remain byte-identical.
+Only `-NamePrefix` is caller-selectable; the actual name always gets an
+unpredictable per-invocation suffix. Exact desktop names are not accepted.
+Caller isolation environment values, including unset values, are restored after
+both successful and failed launches.
 
 Run from the repository root with an exact native executable and its independently
 verified input digest. Use an empty output directory:
@@ -39,6 +43,10 @@ The native probe has no static USER32 dependency, so it records the real child
 token, session and Win32k flags before attempting the load. It performs read-only
 AccessCheck against captured descriptors; it does not change ACLs or tokens.
 All owned desktops must be absent after their exact child exits.
+Additional real-launch cases retain a live Default-equivalent contender, verify
+that the child's observed desktop is a distinct generated name, reject the old
+exact-name parameter, and check caller environment restoration on successful and
+failed launches. The child also reports its actual inherited isolation overrides.
 
 `desktop-fidelity-regression.json`, per-case actual config/results and security
 records are retained under the supplied output directory. The

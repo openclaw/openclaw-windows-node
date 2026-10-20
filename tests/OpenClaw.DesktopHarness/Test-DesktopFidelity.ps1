@@ -59,7 +59,7 @@ foreach ($case in @(
         ArgumentLine=$arguments
         DataDirectory="$directory-controller"
         McpPort=0
-        DesktopName=$desktop
+        NamePrefix=$desktop
         ConsoleProcess=$true
         WaitForExit=$true
         ProcessTimeoutSeconds=45
@@ -69,6 +69,8 @@ foreach ($case in @(
     & $launcher @parameters
     $result = Get-Content -LiteralPath "$directory\result.json" -Raw | ConvertFrom-Json
     $launch = Get-Content -LiteralPath $launchPath -Raw | ConvertFrom-Json
+    $desktop = $launch.desktop.Split('\')[-1]
+    if ($result.caller.desktop -cne $desktop) { throw 'The actual child desktop does not match the generated owned desktop.' }
     $config = Get-Content -LiteralPath "$directory\actual-config.json" -Raw | ConvertFrom-Json
     if ($result.ContainmentTag -ne 'mxc' -or $result.nativeSha256 -ne $ExpectedNativeSha256 -or
         $config.ui.disable -or $config.ui.clipboard -ne 'none' -or $config.ui.injection -or
@@ -119,6 +121,9 @@ foreach ($case in @(
         aclAndLabelBytesEqual=$launch.aclAndLabelBytesEqual
     }
 }
+& "$PSScriptRoot\Test-LauncherOwnership.ps1" -Launcher $launcher -ProbeExecutable $probe `
+    -NativeExecutable $native -NativeProbeExecutable $NativeProbeExecutable `
+    -OutputDirectory "$output\ownership"
 $sourceHead = @(git -C $repository rev-parse HEAD)
 if ($LASTEXITCODE -ne 0) { throw 'Could not record the tested source head.' }
 [ordered]@{
@@ -130,5 +135,6 @@ if ($LASTEXITCODE -ne 0) { throw 'Could not record the tested source head.' }
     cases=$cases
     productOrSdkPolicyChanged=$false
     existingDesktopsModified=$false
+    ownershipAndEnvironmentRegressionsPassed=$true
 } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath "$output\desktop-fidelity-regression.json" -Encoding utf8
 $cases | ForEach-Object { [pscustomobject]$_ } | Select-Object name,passed,exitCode,desktopRemoved

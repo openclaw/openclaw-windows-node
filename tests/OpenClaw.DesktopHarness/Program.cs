@@ -52,6 +52,12 @@ File.WriteAllText(Path.Combine(output, "result.json"), JsonSerializer.Serialize(
 {
     capturedUtc = DateTimeOffset.UtcNow,
     caller = context,
+    inheritedIsolation = new
+    {
+        dataDirectory = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR"),
+        localAppDataDirectory = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR"),
+        mcpPort = Environment.GetEnvironmentVariable("OPENCLAW_MCP_PORT")
+    },
     nativeExecutable = availability.WxcExecPath,
     nativeSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(native))),
     sharedSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(typeof(MxcExecutor).Assembly.Location))),

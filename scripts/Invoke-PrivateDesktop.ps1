@@ -1,3 +1,4 @@
+[CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$Executable,
     [string]$ArgumentLine = '',
@@ -7,7 +8,7 @@ param(
     [switch]$WaitForExit,
     [switch]$NullSecurityNegativeControl,
     [int]$ProcessTimeoutSeconds = 360,
-    [string]$DesktopName = 'HubProof14aff522',
+    [ValidatePattern('^[A-Za-z0-9_-]{1,64}$')][string]$NamePrefix = 'OpenClawProof',
     [Parameter(Mandatory)][string]$ResultPath
 )
 
@@ -127,22 +128,42 @@ public static class ProofDesktop
 }
 '@
 
-$existing = [ProofDesktop]::OpenDesktopW($DesktopName, 0, $false, 1)
-if ($existing -ne [IntPtr]::Zero) {
-    [void][ProofDesktop]::CloseDesktop($existing)
-    throw 'The requested proof desktop already exists; refusing to reuse it.'
+$DesktopName = "$NamePrefix-$([Guid]::NewGuid().ToString('N'))"
+$ownershipKey = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData(
+    [Text.Encoding]::UTF8.GetBytes($DesktopName.ToUpperInvariant())))
+$ownership = [Threading.Mutex]::new($false, "Local\OpenClawDesktop-$ownershipKey")
+$ownsName = $false
+$environmentNames = @('OPENCLAW_TRAY_DATA_DIR','OPENCLAW_TRAY_LOCALAPPDATA_DIR','OPENCLAW_MCP_PORT')
+$environmentBefore = [Environment]::GetEnvironmentVariables('Process')
+$originalEnvironment = @{}
+foreach ($name in $environmentNames) {
+    $originalEnvironment[$name] = @{
+        exists = $environmentBefore.Contains($name)
+        value = $environmentBefore[$name]
+    }
 }
-if ([Runtime.InteropServices.Marshal]::GetLastWin32Error() -ne 2) {
-    throw [ComponentModel.Win32Exception]::new([Runtime.InteropServices.Marshal]::GetLastWin32Error())
-}
-$reference = [ProofDesktop]::OpenDesktopW('Default', 0, $false, 0x20001)
-if ($reference -eq [IntPtr]::Zero) {
-    throw [ComponentModel.Win32Exception]::new([Runtime.InteropServices.Marshal]::GetLastWin32Error())
-}
-
+$reference = [IntPtr]::Zero
 $desktop = [IntPtr]::Zero
 $info = [ProofDesktop+ProcessInfo]::new()
 try {
+    try { $ownsName = $ownership.WaitOne(0) }
+    catch [Threading.AbandonedMutexException] {
+        $ownsName = $true
+        throw 'Proof-launch ownership was abandoned; refusing to continue.'
+    }
+    if (!$ownsName) { throw 'Could not acquire exclusive proof-launch ownership.' }
+    $existing = [ProofDesktop]::OpenDesktopW($DesktopName, 0, $false, 1)
+    if ($existing -ne [IntPtr]::Zero) {
+        [void][ProofDesktop]::CloseDesktop($existing)
+        throw 'The generated proof desktop already exists; refusing to reuse it.'
+    }
+    if ([Runtime.InteropServices.Marshal]::GetLastWin32Error() -ne 2) {
+        throw [ComponentModel.Win32Exception]::new([Runtime.InteropServices.Marshal]::GetLastWin32Error())
+    }
+    $reference = [ProofDesktop]::OpenDesktopW('Default', 0, $false, 0x20001)
+    if ($reference -eq [IntPtr]::Zero) {
+        throw [ComponentModel.Win32Exception]::new([Runtime.InteropServices.Marshal]::GetLastWin32Error())
+    }
     $referenceBytes = [ProofDesktop]::ReadDaclAndLabel($reference)
     $referenceSecurity = [ProofDesktop]::Describe($referenceBytes)
     if ($NullSecurityNegativeControl) {
@@ -217,8 +238,15 @@ try {
     }
 }
 finally {
+    foreach ($name in $environmentNames) {
+        $original = $originalEnvironment[$name]
+        $value = if ($original.exists) { [string]$original.value } else { [NullString]::Value }
+        [Environment]::SetEnvironmentVariable($name, $value, 'Process')
+    }
     if ($info.thread -ne [IntPtr]::Zero) { [void][ProofDesktop]::CloseHandle($info.thread) }
     if ($info.process -ne [IntPtr]::Zero) { [void][ProofDesktop]::CloseHandle($info.process) }
     if ($desktop -ne [IntPtr]::Zero) { [void][ProofDesktop]::CloseDesktop($desktop) }
-    [void][ProofDesktop]::CloseDesktop($reference)
+    if ($reference -ne [IntPtr]::Zero) { [void][ProofDesktop]::CloseDesktop($reference) }
+    if ($ownsName) { $ownership.ReleaseMutex() }
+    $ownership.Dispose()
 }
