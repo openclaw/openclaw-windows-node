@@ -47,7 +47,15 @@ internal sealed class TrayController : ITrayController
         InitializeTrayMenuWindow();
 
         var iconPath = StatusBadgeIconFactory.GetBadgedIconPath(ConnectionStatusAccent.Neutral);
-        _trayIcon = new TrayIcon(1, iconPath, BuildTrayTooltip());
+        try
+        {
+            _trayIcon = new TrayIcon(1, iconPath, BuildTrayTooltip());
+        }
+        catch (NotImplementedException error)
+        {
+            _callbacks.LogCrash("Tray icon is unavailable on this desktop", error);
+            return;
+        }
         _trayIconCoordinator = new TrayIconCoordinator(
             _trayIcon,
             _callbacks.HasThreadAccess,

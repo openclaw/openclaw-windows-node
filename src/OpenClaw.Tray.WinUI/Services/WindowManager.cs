@@ -124,7 +124,7 @@ internal sealed class WindowManager : IWindowManager
             Content = new Grid(),
         };
         _callbacks.ApplyTheme(_keepAliveWindow);
-        _keepAliveWindow.AppWindow.IsShownInSwitchers = false;
+        // This anchor is never activated. Hidden windows do not need shell switcher registration.
         _keepAliveWindow.AppWindow.MoveAndResize(
             new global::Windows.Graphics.RectInt32(-32000, -32000, 1, 1));
     }

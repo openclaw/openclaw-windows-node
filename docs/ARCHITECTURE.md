@@ -240,11 +240,11 @@ new attempt. This boundary does not change release signing or Windows policy.
 | Compact notification list reconciliation and dismissal | `NotificationFlyoutContent` | authoritative |
 | Gateway/operator/node status flyout controls | `GatewayStatusContent` | authoritative |
 | Tray-menu semantic composition and connection-toggle state | `TrayMenuPresenter` + `ConnectionTogglePresenter` | authoritative |
-| App-owned non-tray window creation, reuse, focus, theme, and lifetime | `IWindowManager` + `WindowManager`; Workspace is the only application chat host | authoritative |
+| App-owned non-tray window creation, reuse, focus, theme, and lifetime | `IWindowManager` + `WindowManager`; Workspace is the only application chat host, and the never-activated runtime anchor stays hidden without shell switcher registration | authoritative |
 | Standalone compact chat hosting and prewarming | Removed; chat entry points use Workspace, with no hidden replacement window during background startup | closed |
 | Composer session picker and compact-host layout mode | Removed, including the picker-only `IsVisibleInChatPicker` helper; non-picker session filters remain. Workspace owns session selection, while actual-width observation retains responsive model/reasoning controls and transcript geometry | closed |
 | Composer host settings-navigation callback and single-attachment ingress wrappers | Removed after the single-host audit. Voice readiness dialogs retain direct, actionable settings navigation; attachment ingress uses the controller's plural API. `MountedReactorChat` retains callback clearing and exactly-once disposal for late voice/mute events | closed |
-| Tray icon, popup coordination, live status, and callback lifetime | `ITrayController` + `TrayController` | authoritative |
+| Tray icon, popup coordination, live status, and callback lifetime | `ITrayController` + `TrayController`; unsupported-desktop tray construction is logged without preventing requested Hub startup | authoritative |
 | Deep-link/protocol/toast/forwarded activation normalization, current-user IPC, and semantic activation plans | `ActivationRouter` | authoritative |
 | Packaged activation-kind preservation | `App.GetLaunchActivation` adapts Windows AppLifecycle metadata into `LaunchActivationInput`; `ActivationRouter` shares candidate selection for initial/secondary launches and reserves implicit foreground navigation for interactive Launch | authoritative |
 | Post-save settings change effect ordering, detached snapshot comparison, and concurrent save serialization | `SettingsChangeCoordinator` | authoritative |
