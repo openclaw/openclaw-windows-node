@@ -7,6 +7,7 @@ using Xunit.Abstractions;
 namespace OpenClaw.Shared.Tests;
 
 [Trait("Category", "Integration")]
+[Collection("MxcOwnership")]
 public sealed class NodeExecDenialWireTests(ITestOutputHelper output)
 {
     private static readonly TimeSpan InvocationTimeout = TimeSpan.FromSeconds(10);
@@ -93,6 +94,49 @@ public sealed class NodeExecDenialWireTests(ITestOutputHelper output)
         Assert.Contains("policy-revalidation-failed", error.GetProperty("message").GetString());
         Assert.False(error.TryGetProperty("code", out _));
         Assert.Equal(0, runner.CallCount);
+    }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, false, true)]
+    [InlineData(false, true, false)]
+    [InlineData(false, true, true)]
+    [InlineData(true, false, false)]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, false)]
+    [InlineData(true, true, true)]
+    public async Task SdkPrelaunchRevalidation_PreservesOnlyConfirmedDenialOnWire(
+        bool gatewayEvent, bool unsupportedWindows, bool policyDenied)
+    {
+        using var temp = new TempDirectory();
+        var settings = new SettingsData();
+        var handler = new ApprovalHandler
+        {
+            SuccessfulRevalidations = 1,
+            RevalidationCurrent = false,
+            RevalidationFailed = !policyDenied
+        };
+        var runner = new OpenClaw.Shared.Mxc.MxcCommandRunner(
+            () => settings, () => temp.Path,
+            availabilityProvider: () => unsupportedWindows
+                ? new(false, false, false, [], isWindowsUnsupported: true)
+                : new(true, false, true, [], isolationTier: "base-container", supportsProtectedPathDenies: true),
+            spawn: _ => throw new InvalidOperationException("must not spawn"),
+            probe: _ => Mxc.MxcAvailabilityTests.BaseProbe(),
+            scratchRoot: Path.Combine(temp.Path, "runs"));
+
+        var response = await InvokeOverSocketAsync(
+            gatewayEvent, handler, runner, SystemCommand());
+
+        Assert.False(response.GetProperty("ok").GetBoolean());
+        var error = response.GetProperty("error");
+        Assert.Contains(policyDenied ? "approval changed" : "could not be revalidated",
+            error.GetProperty("message").GetString());
+        Assert.Equal(policyDenied, error.TryGetProperty("code", out var code));
+        if (policyDenied)
+            Assert.Equal("SYSTEM_RUN_DENIED", code.GetString());
+        Assert.Equal(2, handler.RevalidationCallCount);
+        Assert.Empty(Directory.GetDirectories(Path.Combine(temp.Path, "runs")));
     }
 
     [Theory]
@@ -223,7 +267,7 @@ public sealed class NodeExecDenialWireTests(ITestOutputHelper output)
     private async Task<JsonElement> InvokeOverSocketAsync(
         bool gatewayEvent,
         IExecApprovalV2Handler handler,
-        RecordingRunner runner,
+        ICommandRunner runner,
         string[]? command = null)
     {
         using var temp = new TempDirectory();
@@ -310,6 +354,8 @@ public sealed class NodeExecDenialWireTests(ITestOutputHelper output)
         public ExecApprovalV2Code Decision { get; init; } = ExecApprovalV2Code.Allow;
         public bool RevalidationCurrent { get; init; } = true;
         public bool RevalidationFailed { get; init; }
+        public int SuccessfulRevalidations { get; init; }
+        public int RevalidationCallCount { get; private set; }
         public bool Throw { get; init; }
         public int CallCount { get; private set; }
 
@@ -326,7 +372,7 @@ public sealed class NodeExecDenialWireTests(ITestOutputHelper output)
                 ExecApprovalV2Code.AskDeny => ExecApprovalV2Result.AskDeny("ask-denied"),
                 ExecApprovalV2Code.AllowlistMiss => ExecApprovalV2Result.AllowlistMiss("not-listed"),
                 ExecApprovalV2Code.Allow => ExecApprovalV2Result.Allow(
-                    new ExecApprovedExecution(["where.exe", "cmd.exe"], null, 1000, null)),
+                    new ExecApprovedExecution(SystemCommand(), null, 1000, null)),
                 _ => throw new InvalidOperationException("Unsupported fixture decision.")
             });
         }
@@ -334,12 +380,17 @@ public sealed class NodeExecDenialWireTests(ITestOutputHelper output)
         public ValueTask<ExecApprovalRevalidationResult> RevalidateAsync(
             ExecApprovedExecution execution,
             string correlationId,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(RevalidationFailed
+            CancellationToken cancellationToken = default)
+        {
+            RevalidationCallCount++;
+            return ValueTask.FromResult(RevalidationCallCount <= SuccessfulRevalidations
+                ? ExecApprovalRevalidationResult.Current
+                : RevalidationFailed
                 ? ExecApprovalRevalidationResult.NotCurrent("policy-revalidation-failed")
                 : RevalidationCurrent
                     ? ExecApprovalRevalidationResult.Current
                     : ExecApprovalRevalidationResult.PolicyDenied("policy-changed"));
+        }
     }
 
     private sealed class RecordingRunner : ICommandRunner

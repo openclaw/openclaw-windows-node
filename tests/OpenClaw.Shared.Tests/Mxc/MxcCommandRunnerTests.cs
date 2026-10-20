@@ -157,16 +157,31 @@ public sealed class MxcCommandRunnerTests : IDisposable
         Assert.Empty(Directory.GetDirectories(_root));
     }
 
-    [Fact]
-    public async Task UnsupportedWindows_RevalidatesApprovalBeforeHostSpawn()
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task PrelaunchRevalidation_BlocksWithoutConfusingFailureAndPolicyDenial(
+        bool unsupportedWindows, bool policyDenied)
     {
+        var calls = 0;
         var command = Command;
         command.RevalidateApproval = _ => ValueTask.FromResult(
-            OpenClaw.Shared.ExecApprovals.ExecApprovalRevalidationResult.NotCurrent("revoked"));
-        var result = await Runner(_ => throw new Exception("must not spawn"),
-            availability: new(false, false, false, [], isWindowsUnsupported: true)).RunAsync(command);
-        Assert.Equal(NodeToolErrorCategory.ExecPolicyDenied, result.ErrorCategory);
-        Assert.Equal(NodeToolExecutionMode.Host, result.ExecutionMode);
+            policyDenied
+                ? OpenClaw.Shared.ExecApprovals.ExecApprovalRevalidationResult.PolicyDenied("revoked")
+                : OpenClaw.Shared.ExecApprovals.ExecApprovalRevalidationResult.NotCurrent("revalidation-failed"));
+        var result = await Runner(_ =>
+        {
+            calls++;
+            throw new Exception("must not spawn");
+        }, availability: unsupportedWindows
+            ? new(false, false, false, [], isWindowsUnsupported: true) : null).RunAsync(command);
+        Assert.Equal(policyDenied ? NodeToolErrorCategory.ExecPolicyDenied : NodeToolErrorCategory.InternalFailure,
+            result.ErrorCategory);
+        Assert.Equal(unsupportedWindows ? NodeToolExecutionMode.Host : NodeToolExecutionMode.Sandbox,
+            result.ExecutionMode);
+        Assert.Equal(0, calls);
     }
 
     [Fact]
@@ -760,7 +775,7 @@ public sealed class MxcCommandRunnerTests : IDisposable
             return MxcAvailabilityTests.BaseProbe();
         });
         var result = await runner.RunAsync(Command);
-        Assert.Equal(NodeToolErrorCategory.SandboxDenied, result.ErrorCategory);
+        Assert.Equal(NodeToolErrorCategory.ExecPolicyDenied, result.ErrorCategory);
         Assert.Contains("changed before launch", result.Stderr);
     }
 
@@ -769,7 +784,7 @@ public sealed class MxcCommandRunnerTests : IDisposable
     {
         var command = Command;
         command.RevalidateApproval = _ => ValueTask.FromResult(
-            OpenClaw.Shared.ExecApprovals.ExecApprovalRevalidationResult.NotCurrent("revoked"));
+            OpenClaw.Shared.ExecApprovals.ExecApprovalRevalidationResult.PolicyDenied("revoked"));
         var result = await Runner(_ => throw new Exception("must not spawn")).RunAsync(command);
         Assert.Equal(NodeToolErrorCategory.ExecPolicyDenied, result.ErrorCategory);
         var telemetry = NodeToolInvocation.GetSandboxTelemetry(result.ExecutionMode, result.ErrorCategory);
@@ -787,6 +802,7 @@ public sealed class MxcCommandRunnerTests : IDisposable
         command.ExpectedMxcPolicy = runner.CapturePolicy();
         _settings.SandboxClipboard = SandboxClipboardMode.Both;
         var result = await runner.RunAsync(command);
+        Assert.Equal(NodeToolErrorCategory.ExecPolicyDenied, result.ErrorCategory);
         Assert.Contains("awaiting approval", result.Stderr);
     }
 

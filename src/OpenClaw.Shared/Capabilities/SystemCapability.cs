@@ -303,7 +303,8 @@ public class SystemCapability : NodeCapabilityBase
                     $"reason={revalidation.Reason}");
                 return ErrorWithDiagnostic(
                     $"exec-approvals-v2: ValidationFailed ({revalidation.Reason})",
-                    NodeToolErrorCategory.ExecPolicyDenied,
+                    revalidation.IsPolicyDenial
+                        ? NodeToolErrorCategory.ExecPolicyDenied : NodeToolErrorCategory.InternalFailure,
                     errorCode: revalidation.IsPolicyDenial ? SystemRunDeniedErrorCode : null);
             }
 
@@ -338,12 +339,12 @@ public class SystemCapability : NodeCapabilityBase
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (!_includeRunCommands())
-            return ExecApprovalRevalidationResult.NotCurrent("system-run-disabled");
+            return ExecApprovalRevalidationResult.PolicyDenied("system-run-disabled");
 
         var result = await handler.RevalidateAsync(execution, correlationId, cancellationToken);
         return _includeRunCommands()
             ? result
-            : ExecApprovalRevalidationResult.NotCurrent("system-run-disabled");
+            : ExecApprovalRevalidationResult.PolicyDenied("system-run-disabled");
     }
 
     private static System.Diagnostics.ActivityContext? GetTelemetryParentContext(
@@ -429,8 +430,10 @@ public class SystemCapability : NodeCapabilityBase
                 sandboxDenialReason: result.SandboxDenialReason);
 
             if (errorCategory is NodeToolErrorCategory.NodeBusy or NodeToolErrorCategory.SandboxDenied or NodeToolErrorCategory.SandboxUnavailable or
-                NodeToolErrorCategory.SandboxFailure or NodeToolErrorCategory.ExecPolicyDenied or NodeToolErrorCategory.CommandUnavailable)
-                return ErrorWithDiagnostic(result.Stderr, errorCategory, executionMode);
+                NodeToolErrorCategory.SandboxFailure or NodeToolErrorCategory.ExecPolicyDenied or NodeToolErrorCategory.CommandUnavailable or
+                NodeToolErrorCategory.InternalFailure)
+                return ErrorWithDiagnostic(result.Stderr, errorCategory, executionMode,
+                    errorCode: errorCategory == NodeToolErrorCategory.ExecPolicyDenied ? SystemRunDeniedErrorCode : null);
             var response = Success(new
             {
                 stdout = result.Stdout,

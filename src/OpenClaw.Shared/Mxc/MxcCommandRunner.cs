@@ -70,7 +70,8 @@ public sealed class MxcCommandRunner : ICommandRunner
         var settings = MxcRequestBuilder.Snapshot(_settings());
         var fingerprint = MxcRequestBuilder.Fingerprint(settings);
         if (request.ExpectedMxcPolicy is not null && request.ExpectedMxcPolicy != fingerprint)
-            return Block("Permissions changed while the command was awaiting approval. Retry for a fresh approval.");
+            return Block("Permissions changed while the command was awaiting approval. Retry for a fresh approval.",
+                NodeToolErrorCategory.ExecPolicyDenied);
         if (!OwnedOperations.Wait(0))
             return Block("Command execution is busy: eight commands running or finishing cleanup. Wait for capacity, then retry.",
                 NodeToolErrorCategory.NodeBusy, mode: null);
@@ -147,10 +148,12 @@ public sealed class MxcCommandRunner : ICommandRunner
                 mode = NodeToolExecutionMode.Host;
                 Directory.CreateDirectory(scratch);
                 stop.ThrowIfCancellationRequested();
-                if (command.RevalidateApproval is { } hostRevalidate &&
-                    !(await hostRevalidate(stop).ConfigureAwait(false)).IsCurrent)
-                    return Block("Command approval changed before launch. Retry for a fresh approval.",
-                        NodeToolErrorCategory.ExecPolicyDenied, mode);
+                if (command.RevalidateApproval is { } hostRevalidate)
+                {
+                    var authorization = await hostRevalidate(stop).ConfigureAwait(false);
+                    if (!authorization.IsCurrent)
+                        return BlockApprovalRevalidation(authorization, mode);
+                }
                 if (CapturePolicy() != fingerprint)
                     return Block("Permissions changed before launch. Retry for a fresh approval.",
                         NodeToolErrorCategory.ExecPolicyDenied, mode);
@@ -176,12 +179,12 @@ public sealed class MxcCommandRunner : ICommandRunner
             {
                 var authorization = await revalidate(stop).ConfigureAwait(false);
                 if (!authorization.IsCurrent)
-                    return Block("Command approval changed before launch. Retry for a fresh approval.",
-                        NodeToolErrorCategory.ExecPolicyDenied);
+                    return BlockApprovalRevalidation(authorization, mode);
             }
             stop.ThrowIfCancellationRequested();
             if (CapturePolicy() != fingerprint)
-                return Block("Permissions changed before launch. Retry for a fresh approval.");
+                return Block("Permissions changed before launch. Retry for a fresh approval.",
+                    NodeToolErrorCategory.ExecPolicyDenied);
 
             _logger.Info($"[mxc] operation=spawn requested=base-container applied=unknown ro={request.Filesystem!.ReadonlyPaths.Count} rw={request.Filesystem.ReadwritePaths.Count} denies={request.Filesystem.DeniedPaths.Count}");
             // Never pass caller cancellation to SpawnAsync: the SDK's cancelled wait hides its late result.
@@ -302,6 +305,14 @@ public sealed class MxcCommandRunner : ICommandRunner
 
     private static int EffectiveTimeout(int request, int setting) =>
         request > 0 && setting > 0 ? Math.Min(request, setting) : request > 0 ? request : setting > 0 ? setting : 30_000;
+
+    private CommandResult BlockApprovalRevalidation(
+        ExecApprovals.ExecApprovalRevalidationResult authorization, NodeToolExecutionMode mode) =>
+        authorization.IsPolicyDenial
+            ? Block("Command approval changed before launch. Retry for a fresh approval.",
+                NodeToolErrorCategory.ExecPolicyDenied, mode)
+            : Block("Command approval could not be revalidated before launch. Retry for a fresh approval.",
+                NodeToolErrorCategory.InternalFailure, mode);
 
     private CommandResult Block(string reason, NodeToolErrorCategory category = NodeToolErrorCategory.SandboxDenied,
         NodeToolExecutionMode? mode = NodeToolExecutionMode.Sandbox)
