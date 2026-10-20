@@ -128,25 +128,20 @@ Unavailable shell/provider access fails the selected proof instead of treating
 a window-style heuristic as taskbar evidence. Sampling gaps remain a limit of
 the measurement, not proof that an arbitrarily short transient is impossible.
 
-Native Markdown disclosure proofs use a fresh WinUI test process for each
-theme and the inert-content case. Attached native `Expander` templates can
-crash the shared testhost when a later fixture replaces application theme
-resources. The ordinary UI lane excludes `Category=NativeMarkdownProof`;
-CI runs all four cases separately through the existing proof runner instead.
-These are mandatory rendering proofs, not optional or skipped tests:
+Native Markdown disclosure proofs run in their own WinUI test process. Attached
+native `Expander` templates can crash the shared testhost when a later fixture
+replaces application theme resources, so the ordinary UI lane excludes
+`Category=NativeMarkdownProof` and CI runs the Light accessibility/state proof
+and the inert-content proof together through the existing proof runner. The
+disclosure is a stock `Expander` with no theme-dependent value, so Dark and
+HighContrast are screenshot-only captures, not separate gates. These are
+mandatory rendering proofs, not optional or skipped tests:
 
 ```powershell
-foreach ($theme in @('Light', 'Dark', 'HighContrast')) {
-    .\scripts\run-proof-tests.ps1 `
-        -Project 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' `
-        -Filter "Category=NativeMarkdownProof&DisplayName~$theme" `
-        -ResultName "markdown-$($theme.ToLowerInvariant())" `
-        -RuntimeIdentifier win-x64
-}
 .\scripts\run-proof-tests.ps1 `
     -Project 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' `
-    -Filter 'FullyQualifiedName~ReactorMarkdownDisclosureProofTests.AssistantMarkdown_UntrustedContentRemainsInertInsideDisclosure' `
-    -ResultName markdown-inert-content `
+    -Filter 'Category=NativeMarkdownProof' `
+    -ResultName markdown-disclosure `
     -RuntimeIdentifier win-x64
 ```
 
@@ -155,8 +150,9 @@ nested and initially open disclosures, inert untrusted content, and expansion
 state across rerendering and resizing. They wait for native animation state and
 assert nonzero rendered text geometry instead of using sleeps. Set
 `OPENCLAW_VISUAL_TEST=1` and `OPENCLAW_VISUAL_TEST_DIR` to a dedicated artifact
-directory for collapsed and expanded captures. HighContrast is a resource
-simulation, not a claim that Windows High Contrast was enabled.
+directory for collapsed and expanded captures; that also adds the Dark and
+HighContrast cases. HighContrast is a resource simulation, not a claim that
+Windows High Contrast was enabled.
 
 The chat composer's real keyboard regression is opt-in because it uses Windows
 `SendInput` on a visible, focused proof window. Run it only on an isolated
