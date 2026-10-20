@@ -16,6 +16,23 @@ project or host resources; `projects.add` is rejected as a write.
 
 ## Build and explore
 
+### Assistant continuity capture
+
+The opt-in UI case
+`SelectedAssistantAndConversationSurviveTransientRosterLossButNotAuthoritativeRemoval`
+selects an assistant and conversation through normal UI Automation. It closes
+only fixture-owned connections, holds the next connection's `agents.list`
+responses, and then releases the unchanged roster. A second reconnect returns
+an authoritative roster without that assistant and requires a fresh selection.
+`FixtureGatewayServer.SetAgentsRoster`, `HoldAgentsList`, and `ReleaseAgentsList`
+control only this synthetic producer; authentication and the production client
+are unchanged. The case always saves four owned-HWND PrintWindow PNGs and
+adjacent UIA assertion metadata in the fixture artifact directory.
+
+Use the opt-in UI runner described below with this exact method-name filter.
+These captures show actual Workspace controls with synthetic Gateway data, not
+installed-app or live-provider behavior.
+
 Build the current app first, then pass its executable explicitly. An installed
 app is never discovered or selected implicitly.
 
