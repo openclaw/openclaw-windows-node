@@ -279,6 +279,13 @@ Pending attachments use a bounded horizontal rail with 56-pixel chips, 32-pixel
 removal targets and room for focus visuals instead of growing the composer for
 every file. Video-specific previews are not invented by the native file rail.
 
+On history reload, message-wide structured user attachments appear on the first
+nonempty text part only, not again on later text parts from that same message.
+A textual media envelope retains precedence and prevents a later structured
+fallback from repeating its chips. Matching cached captions preserve internal
+line breaks and restore local filenames; already-flattened legacy captions
+fall back to Gateway filenames. Reloaded descriptors do not restore image bytes.
+
 The model flyout searches and groups only the existing catalog. Provider,
 context and availability descriptions use `ChatModelLabels`. Provider headings
 use the published web display names (for example, `github-copilot` becomes

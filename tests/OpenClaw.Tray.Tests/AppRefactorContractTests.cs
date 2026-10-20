@@ -54,7 +54,7 @@ public sealed class AppRefactorContractTests
         var source = ReadAppSources();
 
         Assert.Contains("new CredentialResolver", source);
-        Assert.Contains("new GatewayClientFactory", source);
+        Assert.Contains("new GatewayClientFactory { SupportsExecApprovals = true }", source);
         Assert.Contains("new NodeConnector", source);
         Assert.Contains("_connectionManager = new GatewayConnectionManager", source);
         Assert.Contains("nodeConnector.ClientCreated +=", source);

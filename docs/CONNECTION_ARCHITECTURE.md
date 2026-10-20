@@ -804,6 +804,15 @@ The bootstrap token is cleared only after operator and node role tokens are both
 
 In-chat exec approval cards sanitize the gateway's command and message before rendering. If either cannot be reviewed in full because it is truncated, suppressed, or conceals command syntax, the card offers only Deny; the chat provider also rejects Allow RPCs that are not permitted by the matching pending card.
 
+The tray composition root opts its `GatewayClientFactory` into `SupportsExecApprovals`
+because it attaches the chat approval handler to each managed operator client.
+The shared client defaults to no approval capability, so standalone CLI, validation,
+pairing and setup-only connections do not keep otherwise unroutable approvals pending.
+Only an opted-in operator-role handshake advertises `exec-approvals`; node-role
+bootstrap handshakes do not. This changes routing, not credentials or granted scopes:
+when a genuine tray approval handler is available, the Gateway can wait for its
+user decision instead of immediately expiring the request as having no approval route.
+
 ## Inbound pairing approval (operator)
 
 The approval popup retains its original compact lock header, spacing, scrollable

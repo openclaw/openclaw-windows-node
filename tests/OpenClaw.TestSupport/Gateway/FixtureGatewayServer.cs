@@ -13,7 +13,8 @@ public sealed record GatewayFixtureRequest(
     string? SessionKey,
     string Outcome,
     string? Decision = null,
-    string? ApprovalId = null);
+    string? ApprovalId = null,
+    bool AdvertisesExecApprovals = false);
 
 public sealed record GatewayFixtureEvent(string Event, int DeliveredConnections);
 
@@ -472,7 +473,13 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                         method!,
                         (_scenario.ContainsSession(key ?? "") || Interactive?.ContainsSession(key ?? "") == true) ? key : key is null ? null : "<unknown>",
                         SafeApprovalDecision(method!, parameters),
-                        SafeApprovalId(method!, parameters));
+                        SafeApprovalId(method!, parameters),
+                        method == "connect" &&
+                        parameters.ValueKind == JsonValueKind.Object &&
+                        parameters.TryGetProperty("caps", out var caps) &&
+                        caps.ValueKind == JsonValueKind.Array &&
+                        caps.EnumerateArray().Any(cap =>
+                            cap.ValueKind == JsonValueKind.String && cap.GetString() == "exec-approvals"));
                     if (!authenticated || method == "connect")
                     {
                         try
@@ -673,12 +680,13 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         string method,
         string? key,
         string? decision = null,
-        string? approvalId = null)
+        string? approvalId = null,
+        bool advertisesExecApprovals = false)
     {
         lock (_sync)
         {
             var index = _requests.Count;
-            _requests.Add(new GatewayFixtureRequest(method, key, "pending", decision, approvalId));
+            _requests.Add(new GatewayFixtureRequest(method, key, "pending", decision, approvalId, advertisesExecApprovals));
             SignalRequestChanged();
             return index;
         }

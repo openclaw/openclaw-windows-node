@@ -258,7 +258,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     Task IChatDataProvider.SendMessageAsync(string threadId, string message, CancellationToken cancellationToken)
         => SendMessageAsync(threadId, message, cancellationToken, attachments: null);
 
-    public async Task SendMessageAsync(string threadId, string message, CancellationToken cancellationToken = default, IReadOnlyList<ChatAttachment>? attachments = null)
+    public Task SendMessageAsync(string threadId, string message, CancellationToken cancellationToken = default, IReadOnlyList<ChatAttachment>? attachments = null)
+        => SendMessageReportingAcceptanceAsync(threadId, message, cancellationToken, attachments);
+
+    internal async Task<bool> SendMessageReportingAcceptanceAsync(string threadId, string message, CancellationToken cancellationToken = default, IReadOnlyList<ChatAttachment>? attachments = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -345,11 +348,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         Publish(admission.Snapshot);
 
         if (dispatch is not null)
-            await DispatchQueuedSendAsync(
+            return await DispatchQueuedSendAsync(
                 dispatch,
                 queueCompletion,
                 rethrow: true,
                 cancellationToken);
+        return true;
     }
 
     internal Task<bool> EnqueueCompactCommandAsync(
@@ -461,7 +465,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         return Task.FromResult(canceled);
     }
 
-    private async Task DispatchQueuedSendAsync(
+    private async Task<bool> DispatchQueuedSendAsync(
         ChatQueuedSendDispatch dispatch,
         ChatTelemetryTracker.QueuePhaseCompletion? queueCompletion,
         bool rethrow,
@@ -474,7 +478,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 dispatch,
                 lifecycleCommand,
                 cancellationToken).ConfigureAwait(false);
-            return;
+            return true;
         }
 
         _telemetry.CompleteQueueDispatch(queueCompletion);
@@ -495,7 +499,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     Publish(preparation.Snapshot);
                     TryDispatchNextQueuedSend(threadId);
                 }
-                return;
+                return false;
             }
             sendOperation = _telemetry.StartSendAttempt(request.Id);
             var sendResult = await _bridge.SendChatMessageForRunAsync(
@@ -590,6 +594,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     request.Attachments!,
                     DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
             }
+
+            return commit.IsCurrent;
         }
         catch (Exception ex)
         {
@@ -615,7 +621,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     Publish(failure.Snapshot);
                     TryDispatchNextQueuedSend(threadId);
                 }
-                return;
+
+                // The task completes so a reset does not surface as an error.
+                // false tells the composer this send was not accepted.
+                return false;
             }
 
             var rejectedCompletion = _telemetry.PrepareFinishByMessageId(
@@ -639,6 +648,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             TryDispatchNextQueuedSend(threadId);
             if (rethrow)
                 throw;
+            return false;
         }
     }
 

@@ -8,6 +8,9 @@ namespace OpenClaw.Connection;
 /// </summary>
 public sealed class GatewayClientFactory : IGatewayClientFactory
 {
+    /// <summary>Enabled by the tray composition root that attaches an approval handler to each client.</summary>
+    public bool SupportsExecApprovals { get; init; }
+
     public IGatewayClientLifecycle Create(
         string gatewayUrl,
         GatewayCredential credential,
@@ -22,7 +25,10 @@ public sealed class GatewayClientFactory : IGatewayClientFactory
             bootstrapPairAsNode: false,
             identityPath: identityPath,
             ignoreStoredDeviceToken: credential.IsBootstrapToken,
-            assistantMediaAuthToken: credential.InteractiveHttpToken);
+            assistantMediaAuthToken: credential.InteractiveHttpToken)
+        {
+            SupportsExecApprovals = SupportsExecApprovals,
+        };
 
         return new GatewayClientLifecycleAdapter(client);
     }
