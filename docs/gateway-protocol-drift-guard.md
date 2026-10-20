@@ -24,6 +24,11 @@ The typed client implements the richer protocol surface -
 `OpenClawGatewayClient.Protocol.cs` and the DTO/payload builders in
 `GatewayProtocolModels.cs`. This guard pins that whole surface.
 
+Active and archived `sessions.list` requests set `includeDerivedTitles: true`
+so unlabeled conversations can use the Gateway's generated titles. Direct-peer
+`displayName` values remain subject to the existing privacy rule; when no title
+is available, the client keeps its localized classification fallback.
+
 It is intentionally **deterministic and repo-contained**: it requires neither a
 clone of the upstream `openclaw/openclaw` repo nor any network access, so it runs
 in the normal `OpenClaw.Shared.Tests` suite. It **complements** the behavioural

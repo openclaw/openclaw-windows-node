@@ -13,7 +13,8 @@ public sealed record GatewayFixtureRequest(
     string? SessionKey,
     string Outcome,
     string? Decision = null,
-    string? ApprovalId = null);
+    string? ApprovalId = null,
+    bool AdvertisesExecApprovals = false);
 
 public sealed record GatewayFixtureEvent(string Event, int DeliveredConnections);
 
@@ -40,6 +41,9 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private TaskCompletionSource? _chatSendGate;
     private TaskCompletionSource<bool>? _chatAbortGate;
     private int _chatEventSequence;
+    private TaskCompletionSource? _nextSessionListGate;
+    private TaskCompletionSource? _heldSessionList;
+    private TaskCompletionSource? _sessionListCaptured;
     private readonly TaskCompletionSource _handshake = NewSignal();
     private readonly TaskCompletionSource _accepted = NewSignal();
     private TaskCompletionSource _requestChanged = NewSignal();
@@ -261,8 +265,8 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         ValidateChatRun(sessionKey, runId);
-        if (stream is not ("lifecycle" or "assistant"))
-            throw new ArgumentException("Expected a lifecycle or assistant stream.", nameof(stream));
+        if (stream is not ("lifecycle" or "assistant" or "tool"))
+            throw new ArgumentException("Expected a lifecycle, assistant or tool stream.", nameof(stream));
         ArgumentNullException.ThrowIfNull(data);
         return PublishEventAsync(new
         {
@@ -292,6 +296,49 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     {
         if (!_scenario.ContainsChatRun(sessionKey, runId))
             throw new ArgumentException("Chat run was not issued for this fixture session.", nameof(runId));
+    }
+
+    public Task PublishChatContentAsync(string sessionKey, string runId, IReadOnlyList<object> content,
+        bool isFinal, CancellationToken cancellationToken = default)
+    {
+        ValidateChatRun(sessionKey, runId);
+        ArgumentNullException.ThrowIfNull(content);
+        if (content.Count == 0)
+            throw new ArgumentException("Chat content must contain at least one block.", nameof(content));
+        return PublishEventAsync(new
+        {
+            type = "event", @event = "chat",
+            payload = new
+            {
+                sessionKey, runId, state = isFinal ? "final" : "delta",
+                message = new { role = "assistant", content }
+            }
+        }, cancellationToken);
+    }
+
+    /// <summary>Hold one listing snapshot while subsequent requests remain independent.</summary>
+    public Task HoldNextSessionList()
+    {
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposal is not null, this);
+            if (_heldSessionList is not null)
+                throw new InvalidOperationException("A session listing is already held.");
+            _nextSessionListGate = _heldSessionList = NewSignal();
+            _sessionListCaptured = NewSignal();
+            return _sessionListCaptured.Task;
+        }
+    }
+
+    public void ReleaseSessionList()
+    {
+        lock (_sync)
+        {
+            var held = _heldSessionList ?? throw new InvalidOperationException("No session listing is held.");
+            _heldSessionList = _nextSessionListGate = null;
+            _sessionListCaptured = null;
+            held.TrySetResult();
+        }
     }
 
     /// <summary>Releases the gate immediately. Await response/UI readiness separately after releasing.</summary>
@@ -386,6 +433,9 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         };
         await PublishEventAsync(targets, message, cancellationToken);
     }
+
+    public Task NotifySessionsChangedAsync(CancellationToken cancellationToken = default) =>
+        PublishEventAsync(new { type = "event", @event = "sessions.changed", payload = new { } }, cancellationToken);
 
     private ActiveConnection[] GetAuthenticatedConnections()
     {
@@ -511,7 +561,13 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                         method!,
                         (_scenario.ContainsSession(key ?? "") || Interactive?.ContainsSession(key ?? "") == true) ? key : key is null ? null : "<unknown>",
                         SafeApprovalDecision(method!, parameters),
-                        SafeApprovalId(method!, parameters));
+                        SafeApprovalId(method!, parameters),
+                        method == "connect" &&
+                        parameters.ValueKind == JsonValueKind.Object &&
+                        parameters.TryGetProperty("caps", out var caps) &&
+                        caps.ValueKind == JsonValueKind.Array &&
+                        caps.EnumerateArray().Any(cap =>
+                            cap.ValueKind == JsonValueKind.String && cap.GetString() == "exec-approvals"));
                     if (!authenticated || method == "connect")
                     {
                         try
@@ -548,9 +604,11 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                             ? _sessionMutationGate?.Task
                             : method == "chat.send"
                                 ? _chatSendGate?.Task
+                            : method == "sessions.list" ? _nextSessionListGate?.Task
                             : method == "chat.history" && key is not null && _historyGates.TryGetValue(key, out var held)
                                 ? held.Task : null;
                         abortOutcome = method == "chat.abort" ? _chatAbortGate?.Task : null;
+                        if (method == "sessions.list") _nextSessionListGate = null;
                     }
                     pending.RemoveAll(task => task.IsCompletedSuccessfully);
                     pending.Add(RespondAsync(socket, sendLock, id!, method!, parameters, requestIndex, connectionId,
@@ -642,6 +700,8 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             }
             if (method == "sessions.subscribe")
                 lock (_sync) _subscriptions.Add(connectionId);
+            if (method == "sessions.list" && gate is not null)
+                lock (_sync) _sessionListCaptured?.TrySetResult();
             if (gate is not null)
                 await gate.WaitAsync(cancellationToken);
             if (abortOutcome is not null && await abortOutcome.WaitAsync(cancellationToken))
@@ -651,9 +711,13 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                 Complete(requestIndex, "error:FIXTURE_ABORT_FAILED");
                 return;
             }
+            var reply = payload as FixtureReply;
             try
             {
-                await SendAsync(socket, sendLock, new { type = "res", id, ok = true, payload }, cancellationToken);
+                await SendAsync(socket, sendLock, new { type = "res", id, ok = true, payload = reply?.Payload ?? payload }, cancellationToken);
+                if (reply is not null)
+                    foreach (var frame in reply.Events)
+                        await SendAsync(socket, sendLock, frame, cancellationToken);
                 Complete(requestIndex, "ok");
             }
             finally
@@ -714,12 +778,13 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         string method,
         string? key,
         string? decision = null,
-        string? approvalId = null)
+        string? approvalId = null,
+        bool advertisesExecApprovals = false)
     {
         lock (_sync)
         {
             var index = _requests.Count;
-            _requests.Add(new GatewayFixtureRequest(method, key, "pending", decision, approvalId));
+            _requests.Add(new GatewayFixtureRequest(method, key, "pending", decision, approvalId, advertisesExecApprovals));
             SignalRequestChanged();
             return index;
         }

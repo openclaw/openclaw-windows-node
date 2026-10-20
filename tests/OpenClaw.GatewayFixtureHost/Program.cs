@@ -10,7 +10,7 @@ internal static class Program
     {
         if (args.Length == 0 || args.Contains("--help"))
         {
-            Console.WriteLine("Usage: dotnet OpenClaw.GatewayFixtureHost.dll --app <built-app.exe> [--scenario multi-session-browse|chat-interactive] [--interaction <name>] [--artifacts <directory>] [--duration-seconds <1..86400>]");
+            Console.WriteLine("Usage: dotnet OpenClaw.GatewayFixtureHost.dll --app <built-app.exe> [--scenario multi-session-browse|chat-interactive|context-usage-snapshots] [--interaction <name>] [--artifacts <directory>] [--duration-seconds <1..86400>]");
             Console.WriteLine("Starts a synthetic Gateway and an isolated real app. Ctrl+C stops only this run.");
             return args.Length == 0 ? 2 : 0;
         }
@@ -43,12 +43,18 @@ internal static class Program
             Console.Error.WriteLine("--app is required. The installed app is never selected implicitly.");
             return 2;
         }
+        if (scenarioName is not (GatewayScenario.BrowseName or GatewayScenario.InteractiveName or ContextUsageFixture.Name))
+        {
+            Console.Error.WriteLine("Unknown fixture scenario.");
+            return 2;
+        }
         using var stop = new CancellationTokenSource();
         ConsoleCancelEventHandler cancel = (_, e) => { e.Cancel = true; stop.Cancel(); };
         Console.CancelKeyPress += cancel;
         try
         {
-            var scenario = GatewayScenario.LoadBuiltin(scenarioName);
+            var usage = scenarioName == ContextUsageFixture.Name ? new ContextUsageFixture() : null;
+            var scenario = usage is null ? GatewayScenario.LoadBuiltin(scenarioName) : GatewayScenario.CreateContextUsage(usage);
             if (interaction is not null && (!scenario.IsInteractive || !FixturePlayback.Scenarios.Contains(interaction)))
                 throw new ArgumentException("--interaction requires chat-interactive and a supported interaction name.");
             await using var run = await GatewayFixtureRun.StartAsync(appPath, artifacts, stop.Token, scenario: scenario);
@@ -61,8 +67,17 @@ internal static class Program
             Console.WriteLine($"Artifacts: {run.ArtifactsDirectory}");
             Console.WriteLine(scenario.IsInteractive
                 ? "Synthetic interactive Gateway. No provider or host command executes. Type help for fixture controls."
-                : "Synthetic read-only Gateway. Use Chat, Sessions, Settings and Configuration. Ctrl+C stops this run.");
+                : usage is null
+                    ? "Synthetic read-only Gateway. Use Chat, Sessions, Settings and Configuration. Ctrl+C stops this run."
+                : $"Synthetic usage scenario. Select '{ContextUsageFixture.Title(ContextUsageListing.Initial)}' under Fixture Main.");
             var input = new StringBuilder();
+            Task? controls = null;
+            if (usage is not null)
+            {
+                Console.WriteLine($"Send exactly '{ContextUsageFixture.FirstPrompt}', then '{ContextUsageFixture.SecondPrompt}' in the app.");
+                Console.WriteLine("After those replies, enter host console commands: missing-total, lower800, lower600, delayed1200. 'stop' ends this run.");
+                controls = Task.Run(() => ReadUsageControlsAsync(run, usage, stop));
+            }
             if (durationSeconds is { } seconds)
                 stop.CancelAfter(TimeSpan.FromSeconds(seconds));
             try
@@ -70,6 +85,7 @@ internal static class Program
                 while (run.IsRunning)
                 {
                     run.Gateway.Interactive?.ThrowIfFaulted();
+                    if (controls?.IsFaulted == true) await controls;
                     // Nonblocking console reads keep duration/Ctrl+C cleanup bounded.
                     if (scenario.IsInteractive && !Console.IsInputRedirected)
                         while (Console.KeyAvailable)
@@ -158,5 +174,35 @@ internal static class Program
         {
             Console.Error.WriteLine($"Fixture control rejected: {ex.Message}");
         }
+    }
+
+    private static async Task ReadUsageControlsAsync(GatewayFixtureRun run, ContextUsageFixture usage,
+        CancellationTokenSource stop)
+    {
+        try
+        {
+            while (!stop.IsCancellationRequested &&
+                await Console.In.ReadLineAsync(stop.Token) is { } command)
+            {
+                if (command == "stop") { stop.Cancel(); return; }
+                ContextUsageListing? listing = command switch
+                {
+                    "missing-total" => ContextUsageListing.MissingTotal,
+                    "lower800" => ContextUsageListing.Lower800,
+                    "lower600" => ContextUsageListing.Lower600,
+                    "delayed1200" => ContextUsageListing.Delayed1200,
+                    _ => null
+                };
+                if (listing is null)
+                {
+                    Console.WriteLine("Unknown fixture control. No state changed.");
+                    continue;
+                }
+                usage.SelectListing(listing.Value);
+                await run.Gateway.NotifySessionsChangedAsync(stop.Token);
+                Console.WriteLine($"Requested {ContextUsageFixture.Title(listing.Value)}.");
+            }
+        }
+        catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
     }
 }

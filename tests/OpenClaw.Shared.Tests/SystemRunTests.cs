@@ -86,6 +86,7 @@ public class LocalCommandRunnerTests
 /// Integration tests for LocalCommandRunner — actually executes processes.
 /// Gated by OPENCLAW_RUN_INTEGRATION=1.
 /// </summary>
+[Collection(BoundedProcessWaitCollection.Name)]
 public class LocalCommandRunnerIntegrationTests
 {
     [IntegrationFact]

@@ -1976,6 +1976,25 @@ public sealed class ChatMediaContentInfo
     public ChatMediaPlaybackMode? Playback { get; set; }
 
     internal string? GatewaySource { get; set; }
+
+    /// <summary>Compares media identity and content without exposing private legacy transport references.</summary>
+    public bool HasSameContent(ChatMediaContentInfo other) =>
+        Kind == other.Kind &&
+        Source == other.Source &&
+        Type == other.Type &&
+        MimeType == other.MimeType &&
+        FileName == other.FileName &&
+        ArtifactId == other.ArtifactId &&
+        AgentId == other.AgentId &&
+        Url == other.Url &&
+        OpenUrl == other.OpenUrl &&
+        Alt == other.Alt &&
+        Width == other.Width &&
+        Height == other.Height &&
+        SizeBytes == other.SizeBytes &&
+        DurationSeconds == other.DurationSeconds &&
+        Playback == other.Playback &&
+        GatewaySource == other.GatewaySource;
 }
 
 /// <summary>

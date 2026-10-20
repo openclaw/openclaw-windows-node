@@ -10,10 +10,15 @@ bound to an HTTPS source and a pinned SHA-256 hash.
 | --- | --- | --- |
 | Whisper GGML models | `WhisperModelManager.AvailableModels` | `<tray-data>\models\` |
 | Piper voice archives | `PiperVoiceManager.AvailableVoices` | `<tray-data>\models\piper\` |
+| Kokoro voice packs (model `.onnx` + `voices-*.bin`) | `KokoroModelManager.AvailablePacks` | `<tray-data>\models\kokoro\<pack-id>\` |
 | Silero VAD ONNX model | `SileroVadModelManifest` | Audio pipeline model directory |
 
 The source catalogs contain the download URL, pinned hash, and approximate size
 used by the UI. Do not duplicate those values in this document.
+
+Kokoro's G2P dictionaries are not runtime downloads: they ship inside the
+`Larroy.Kokoro` NuGet package and land in `<app>\kokoro-dict\`, because they
+are tied to the native kokoro.cpp version.
 
 ## Runtime enforcement
 
@@ -27,6 +32,13 @@ The download managers fail closed:
 
 Concurrent requests for the same model or voice share one single-flight
 download, preventing multiple writers from racing over the same temporary file.
+
+In Voice settings, an active Kokoro download owns its picker, status and progress
+until its wait ends. Completing a different voice's preview cannot reset those
+controls, and duplicate Download clicks do not replace the active waiter.
+Cancellation still ends only that caller's wait, not the shared transfer.
+Terminal recovery restores Retry and hides progress even when a storage-backed
+status refresh fails, while retaining a sanitized error message.
 
 `AssetHashPinningTests` guards the catalog shape by requiring a lowercase
 64-character SHA-256 and an HTTPS URL for every shipped entry.

@@ -135,6 +135,28 @@
                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                    Margin="12,8,12,4" AutomationProperties.HeadingLevel="Level2" />
     </DataTemplate>
+    <ControlTemplate x:Key="ChatWelcomeAvatarTemplate" TargetType="Control">
+        <ContentPresenter x:Name="AvatarRoot"/>
+    </ControlTemplate>
+    <DataTemplate x:Key="ChatPlacementItemTemplate">
+        <Grid ColumnSpacing="12" MinHeight="44" Padding="0,4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <FontIcon Glyph="{Binding Glyph}" FontSize="16"
+                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                      Foreground="{ThemeResource ChatSecondaryTextBrush}"
+                      AutomationProperties.AccessibilityView="Raw"/>
+            <StackPanel Grid.Column="1" Spacing="4">
+                <TextBlock Text="{Binding Title}" Style="{ThemeResource BodyTextBlockStyle}"
+                           TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="{Binding Description}" Style="{ThemeResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource ChatSecondaryTextBrush}"
+                           TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+        </Grid>
+    </DataTemplate>
     <Style x:Key="ChatPickerAccentTextStyle" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{ThemeResource ChatPickerAccentBrush}" />
     </Style>

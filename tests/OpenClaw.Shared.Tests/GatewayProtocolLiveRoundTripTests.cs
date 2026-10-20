@@ -47,6 +47,113 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         try { Directory.Delete(_identityDir, recursive: true); } catch { /* best effort */ }
     }
 
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("research", false)]
+    [InlineData(null, true)]
+    public async Task SessionLists_RequestDerivedTitlesForUnlabeledDirectConversations(string? agentId, bool archived)
+    {
+        const string key = "agent:research:direct:example-peer";
+        const string title = "Investigating media server memory usage";
+        using var server = new LoopbackGatewayServer();
+        var request = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
+        server.OnMethod("sessions.list", parameters =>
+        {
+            var isObject = parameters.ValueKind == JsonValueKind.Object;
+            var requestedArchive = isObject && parameters.TryGetProperty("archived", out var archive) && archive.ValueKind == JsonValueKind.True;
+            var requestedAgent = isObject && parameters.TryGetProperty("agentId", out var agent) ? agent.GetString() : null;
+            if (requestedArchive == archived && requestedAgent == agentId)
+                request.TrySetResult(isObject ? parameters.Clone() : JsonSerializer.SerializeToElement(new { }));
+            var includeTitles = isObject && parameters.TryGetProperty("includeDerivedTitles", out var include) && include.ValueKind == JsonValueKind.True;
+            return new
+            {
+                sessions = new[]
+                {
+                    new
+                    {
+                        key, classification = "direct", agentId = "research", displayName = "+15555550123",
+                        derivedTitle = includeTitles ? title : null, archived = requestedArchive,
+                    }
+                }
+            };
+        });
+        using var client = new OpenClawGatewayClient(server.WebSocketUrl, "test-token", identityPath: _identityDir);
+        await ConnectAndWaitAsync(client, server);
+        SessionInfo session;
+        if (archived)
+        {
+            session = Assert.Single((await client.ListArchivedSessionsAsync()).Sessions);
+        }
+        else
+        {
+            var updated = new TaskCompletionSource<SessionInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
+            client.SessionsUpdated += (_, sessions) =>
+            {
+                if (sessions.SingleOrDefault(row => row.Key == key) is { } row)
+                    updated.TrySetResult(row);
+            };
+            await client.RequestSessionsAsync(agentId);
+            session = await updated.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+
+        var sent = await request.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        _output.WriteLine(sent.GetRawText());
+        Assert.True(sent.TryGetProperty("includeDerivedTitles", out var enrichment) && enrichment.ValueKind == JsonValueKind.True,
+            "Session lists must request generated conversation titles from the Gateway.");
+        Assert.Equal(key, session.Key);
+        Assert.Equal(archived, session.Archived);
+        Assert.Equal(title, SessionDisplayResolver.Resolve(session).Title);
+        await client.DisconnectAsync();
+    }
+
+    [Fact]
+    public async Task WelcomeCatalog_UsesAdvertisedAuthenticatedRpcAndRequestedLocale()
+    {
+        using var server = new LoopbackGatewayServer();
+        server.OnMethod("connect", _ => new
+        {
+            type = "hello-ok", protocol = GatewayProtocolContract.CurrentVersion,
+            features = new { methods = new[] { "controlUi.welcome.get" } }
+        });
+        server.OnMethod("controlUi.welcome.get", parameters =>
+        {
+            Assert.Equal("fr-FR", parameters.GetProperty("locale").GetString());
+            return new
+            {
+                version = 1, requestedLocale = "fr-FR", resolvedLocale = "fr",
+                hint = "Live Gateway hint", recentChatsLabel = "Live recents",
+                suggestions = new[] { new { id = "new-key", displayText = "Visible", sendText = "Exact prompt" } }
+            };
+        });
+        using var client = new OpenClawGatewayClient(server.WebSocketUrl, "test-token", identityPath: _identityDir);
+        await ConnectAndWaitAsync(client, server, configureHandshake: false);
+        var catalog = await client.GetChatWelcomeCatalogAsync("fr-FR");
+        Assert.NotNull(catalog);
+        Assert.Equal("fr", catalog.Locale);
+        Assert.Equal("Exact prompt", Assert.Single(catalog.Suggestions).Prompt);
+        _output.WriteLine(server.FrameFor("controlUi.welcome.get"));
+        await client.DisconnectAsync();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task WelcomeCatalog_UnavailableDoesNotReturnBundledContent(bool advertised)
+    {
+        using var server = new LoopbackGatewayServer();
+        server.OnMethod("connect", _ => new
+        {
+            type = "hello-ok", protocol = GatewayProtocolContract.CurrentVersion,
+            features = new { methods = advertised ? new[] { "controlUi.welcome.get" } : Array.Empty<string>() }
+        });
+        server.OnMethod("controlUi.welcome.get", _ => LoopbackResponse.Fail("unknown method: controlUi.welcome.get"));
+        using var client = new OpenClawGatewayClient(server.WebSocketUrl, "test-token", identityPath: _identityDir);
+        await ConnectAndWaitAsync(client, server, configureHandshake: false);
+        Assert.Null(await client.GetChatWelcomeCatalogAsync("en-US"));
+        Assert.Equal(advertised, server.HasFrame("controlUi.welcome.get"));
+        await client.DisconnectAsync();
+    }
+
     [Fact]
     public async Task ApplicationRpc_BeforeHelloOk_DoesNotReachWire()
     {
@@ -560,7 +667,8 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
             Assert.Contains("sessions.reset", reset2);
         }
 
-    private static async Task ConnectAndWaitAsync(OpenClawGatewayClient client, LoopbackGatewayServer server)
+    private static async Task ConnectAndWaitAsync(OpenClawGatewayClient client, LoopbackGatewayServer server,
+        bool configureHandshake = true)
     {
         // #1418: the readiness gate (IsConnectedToGateway) now requires the
         // hello-ok handshake, so the loopback gateway performs the real
@@ -568,7 +676,8 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         // post-handshake auto-request burst (health/sessions/usage/nodes/
         // agents); FrameFor/WaitFrameAsync filter by method, so those extra
         // frames never collide with a test's own method assertions.
-        server.EnableHandshake();
+        if (configureHandshake)
+            server.EnableHandshake();
         var connected = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         void OnStatus(object? _, ConnectionStatus s)
         {

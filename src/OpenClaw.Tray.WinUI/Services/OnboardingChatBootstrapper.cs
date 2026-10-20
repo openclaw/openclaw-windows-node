@@ -114,6 +114,15 @@ public static class OnboardingChatBootstrapper
             var result = await client.SendChatMessageForRunAsync(Message).ConfigureAwait(true);
             if (settings.HasInjectedFirstRunBootstrap)
                 return true;
+            if (result.IsTerminalFailure)
+            {
+                Logger.Warn($"[OnboardingChatBootstrapper] chat.send was not accepted (status={result.Status ?? "<none>"})");
+                return false;
+            }
+
+            // The gateway accepted this user message. Save the flag before
+            // waiting so a cancelled or timed-out completion cannot send it again.
+            MarkBootstrapped(settings);
 
             var completed = await runCompletion.WaitForCompletionAsync(
                 result.RunId,
@@ -188,9 +197,7 @@ public static class OnboardingChatBootstrapper
 
         foreach (var fileEl in filesEl.EnumerateArray())
         {
-            var exists = !fileEl.TryGetProperty("exists", out var existsEl) ||
-                         existsEl.ValueKind != JsonValueKind.False;
-            if (!exists)
+            if (!FileEntryExists(fileEl))
                 continue;
 
             if (!fileEl.TryGetProperty("name", out var nameEl))
@@ -205,6 +212,23 @@ public static class OnboardingChatBootstrapper
         }
 
         return false;
+    }
+
+    // Gateway 2026.9 lists absent templates with missing:true and omits exists.
+    // Older payloads use exists:false. A name with neither field still counts as
+    // present, so a partial list cannot send the ritual over a real workspace.
+    private static bool FileEntryExists(JsonElement fileEl)
+    {
+        if (fileEl.TryGetProperty("missing", out var missingEl) &&
+            missingEl.ValueKind == JsonValueKind.True)
+        {
+            return false;
+        }
+
+        if (!fileEl.TryGetProperty("exists", out var existsEl))
+            return true;
+
+        return existsEl.ValueKind != JsonValueKind.False;
     }
 
     private sealed class AgentFilesListObserver : IDisposable

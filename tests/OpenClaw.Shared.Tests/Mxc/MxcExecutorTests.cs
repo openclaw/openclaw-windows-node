@@ -8,6 +8,7 @@ using Xunit.Abstractions;
 
 namespace OpenClaw.Shared.Tests.Mxc;
 
+[Collection(BoundedProcessWaitCollection.Name)]
 public class MxcExecutorTests(ITestOutputHelper output)
 {
     [Fact]

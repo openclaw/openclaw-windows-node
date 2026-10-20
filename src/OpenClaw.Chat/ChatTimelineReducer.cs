@@ -10,6 +10,21 @@ public static class ChatTimelineReducer
     private const int MaxTerminalToolCorrelations = 768;
     private const int MaxRetainedToolTurns = 2;
 
+    public static bool CanApplyRetainedToolOutcome(ChatTimelineState state, ChatEvent? evt)
+    {
+        var (runId, toolCallId) = evt switch
+        {
+            ChatToolOutputEvent output => (output.RunId, output.ToolCallId),
+            ChatToolErrorEvent error => (error.RunId, error.ToolCallId),
+            _ => (null, null),
+        };
+        if (string.IsNullOrWhiteSpace(runId) || string.IsNullOrWhiteSpace(toolCallId))
+            return false;
+        var key = CurrentCorrelationKey(state, runId, toolCallId);
+        return state.TerminalToolCorrelations?.ContainsKey(key) == true &&
+            FindToolEntryIndex(state, key, allowTerminalLegacy: false) >= 0;
+    }
+
     public static ChatTimelineState RebuildActiveToolTracking(ChatTimelineState state)
     {
         var activeToolCallId = default(string);

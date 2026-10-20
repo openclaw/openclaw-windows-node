@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Windows.Automation;
 using OpenClaw.GatewayFixtureHost;
 using OpenClaw.TestSupport.Gateway;
 
@@ -135,6 +136,70 @@ public sealed partial class GatewayFixtureUiTests
                 Assert.Contains("Fixture legitimate trailing answer restored.", (await CorrelationTimelineAsync(run)).GetRawText(),
                     StringComparison.Ordinal);
             await CaptureIfRequestedAsync(run, "failed-abort-restored-final.png");
+        }, scenario: GatewayScenario.CreateBrowse(allowChatSend: true));
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    public async Task BackgroundMediaRetransmitAndRetainedToolOutcomePreserveNewerNativeTurn()
+    {
+        await WithAppAsync(async run =>
+        {
+            await OpenCorrelationChatAsync(run);
+            await SendCorrelationPromptAsync(run, "Fixture old question.");
+            await PublishLifecycleAsync(run, "fixture-chat-1", "start");
+            await run.Gateway.PublishChatRunEventAsync(GatewayScenario.MainSessionKey, "fixture-chat-1",
+                "tool", new { phase = "start", name = "system.run", toolCallId = "shared-tool" });
+            await PublishLifecycleAsync(run, "fixture-chat-1", "end");
+            await WaitPrimaryActionAsync(run, "Send");
+            await SendCorrelationPromptAsync(run, "Fixture newer question.");
+            await PublishLifecycleAsync(run, "fixture-chat-2", "start");
+            await run.Gateway.PublishChatRunEventAsync(GatewayScenario.MainSessionKey, "fixture-chat-2",
+                "tool", new { phase = "start", name = "system.run", toolCallId = "shared-tool" });
+            await run.Gateway.PublishChatContentAsync(GatewayScenario.MainSessionKey, "fixture-chat-2",
+                [new { type = "text", text = "Fixture newer stream" },
+                 new { type = "audio", artifactId = "fixture-b", fileName = "fixture-b.wav" }], isFinal: false);
+            await WaitUiAsync(run, () => IsVisibleInTimeline(run, "Fixture newer stream")
+                && IsVisibleInTimeline(run, "fixture-b.wav"), "newer stream with its own media");
+            var before = await CorrelationTimelineAsync(run);
+            var tools = before.GetProperty("entries").EnumerateArray()
+                .Where(entry => entry.GetProperty("ToolCallId").GetString() == "shared-tool").ToArray();
+            Assert.Equal(2, tools.Length);
+            Assert.Equal("Interrupted", tools[0].GetProperty("toolResult").GetString());
+            Assert.Equal("InProgress", tools[1].GetProperty("toolResult").GetString());
+            var oldToolId = tools[0].GetProperty("Id").GetString();
+            var newToolId = tools[1].GetProperty("Id").GetString();
+
+            await run.Gateway.PublishChatRunEventAsync(GatewayScenario.MainSessionKey, "fixture-chat-1",
+                "tool", new { phase = "result", toolCallId = "shared-tool", result = "Fixture old result." });
+            for (var repeat = 0; repeat < 2; repeat++)
+            {
+                await run.Gateway.PublishChatContentAsync(GatewayScenario.MainSessionKey, "fixture-chat-1",
+                    [new { type = "text", text = "Fixture restored final." },
+                     new { type = "audio", artifactId = "fixture-a", fileName = "fixture-a.wav" }], isFinal: true);
+            }
+            await run.Gateway.PublishChatRunEventAsync(GatewayScenario.MainSessionKey, "fixture-chat-2",
+                "assistant", new { delta = " continues." });
+            await WaitUiAsync(run, () => IsVisibleInTimeline(run, "Fixture newer stream continues.")
+                && IsVisibleInTimeline(run, "Fixture restored final.")
+                && IsVisibleInTimeline(run, "fixture-a.wav")
+                && IsVisibleInTimeline(run, "fixture-b.wav"), "distinct background and streaming media");
+            await AssertStreamingAsync(run, "Fixture newer stream continues.");
+            var after = await CorrelationTimelineAsync(run);
+            var entries = after.GetProperty("entries").EnumerateArray().ToArray();
+            Assert.Single(entries, entry => entry.GetProperty("Text").GetString() == "Fixture restored final.");
+            Assert.Equal("Success", entries.Single(entry => entry.GetProperty("Id").GetString() == oldToolId)
+                .GetProperty("toolResult").GetString());
+            Assert.Equal("InProgress", entries.Single(entry => entry.GetProperty("Id").GetString() == newToolId)
+                .GetProperty("toolResult").GetString());
+            var textNodes = FindTimeline(run)!.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text))
+                .Cast<AutomationElement>().ToArray();
+            Assert.Single(textNodes, element => element.Current.Name == "fixture-a.wav");
+            Assert.Single(textNodes, element => element.Current.Name == "fixture-b.wav");
+            await CaptureIfRequestedAsync(run, "background-media-tool-newer-streaming.png");
+            await CompleteCorrelationRunAsync(run, "fixture-chat-2", "Fixture newer answer complete.");
+            await CaptureIfRequestedAsync(run, "background-media-tool-newer-complete.png");
         }, scenario: GatewayScenario.CreateBrowse(allowChatSend: true));
     }
 

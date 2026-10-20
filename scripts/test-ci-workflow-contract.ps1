@@ -460,6 +460,11 @@ foreach ($lane in $testLanes.GetEnumerator()) {
 }
 
 $coreJob = Get-JobBlock "core-tests"
+$sharedTestStep = Get-StepBlock -Text $coreJob -Name "Run Shared Tests"
+Assert-Contains -Text $sharedTestStep -Expected "timeout-minutes: 15" `
+    -Message "Shared tests must have a bounded CI step."
+Assert-Contains -Text $sharedTestStep -Expected "-HangTimeoutSeconds 300" `
+    -Message "Shared tests must collect the interrupted test sequence on a five-minute hang."
 $coreCacheStep = Get-StepBlock -Text $coreJob -Name "Cache NuGet packages"
 foreach ($token in @(
         "Configure core NuGet cache",

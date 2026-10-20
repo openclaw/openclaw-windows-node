@@ -55,15 +55,23 @@ per-run artifacts. Existing MCP-only integration defaults remain unchanged.
 
 ### OpenClaw.Shared.Tests
 
-- **MXC output-drain timing** - Measures from launcher exit, not descendant identity publication. A gated 1,250 ms pre-exit case preserves the one-second drain assertion, 100 ms cleanup budget, exact final output, and owned-process cleanup.
+- **Process output-drain timing** - MXC executor and local command-runner integration tests use the existing nonparallel `BoundedProcessWaitCollection` so unrelated thread-pool-heavy tests do not consume their wall-clock budgets. The local runner still exercises 32 concurrent commands with exact stdout/stderr assertions. MXC timing measures from launcher exit, not descendant identity publication; its gated 1,250 ms pre-exit case retains the one-second drain assertion, 100 ms cleanup budget, exact final output, and owned-process cleanup.
 - **Model and display formatting** - activity glyphs, app version display, session labels, gateway usage/node display, channel status, and rich text helpers.
-- **Gateway and WebSocket behavior** - gateway client parsing, session keys, WebSocket base handling, URL normalization, local gateway classification, and token sanitization.
+- **Gateway and WebSocket behavior** - gateway client parsing, session keys, WebSocket base handling, URL normalization, local gateway classification, and token sanitization. The signing-identity regression covers native and managed loopback WebSockets, with the fixture completing the close handshake and bounding disconnect waits.
 - **Capabilities and MCP** - app/canvas/screen/camera/system capabilities, MCP auth token reset, MCP HTTP server, MCP tool bridge, MXC availability, MXC policy building, and command runners.
 - **Exec approval** - legacy policy coverage plus V2 evaluator, input validation, normalization, prompt adapter, routing, coordinator, store, environment sanitizing, and shell-wrapper parsing.
 - **A2UI and web bridge** - A2UI capability security, asset hash pinning, web bridge message handling, and channel payload/status tests.
 - **Security and localization-adjacent helpers** - HTTP URL validation/risk evaluation, device identity, identity migration, notification categorization, speech language normalization, and non-fatal action handling.
 
+The CI Shared-test step uses the existing five-minute hang watchdog and a
+15-minute outer step limit. A hang fails the run and preserves the interrupted
+test sequence without collecting a memory dump; it is not retried or skipped.
+
 ### OpenClaw.Tray.Tests
+
+The composer lifetime-disposal lock regression uses dedicated workers so its
+two-second reentrancy assertion measures controller lock ownership rather than
+shared thread-pool scheduling latency.
 
 - **Tray UI and state** - app state, menu display/position/sizing, tray tooltip formatting, activity streams, async list loading, diagnostics contracts, markup regressions, and chat timeline/markdown handling.
 - **Connection and pairing** - connection manager node connector tests, connection page approval/channel metrics/row state, operator and Windows tray node pairing approval, and gateway action transport.
