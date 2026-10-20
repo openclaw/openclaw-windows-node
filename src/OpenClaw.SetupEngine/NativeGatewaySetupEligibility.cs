@@ -18,7 +18,7 @@ public static class NativeGatewaySetupEligibility
             return NativeGatewayEligibility.CheckFailed;
         if (availability.ProbeSuppressedBySkuGate)
             return NativeGatewayEligibility.UnsupportedPlatform;
-        if (!availability.IsWxcExecResolvable)
+        if (!availability.IsSdkReady)
             return NativeGatewayEligibility.CheckFailed;
         return availability.IsolationSessionCapability switch
         {

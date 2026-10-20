@@ -11,7 +11,7 @@ public sealed class ChatPlacementControllerTests
     private const string Key = "agent:main:exact:new-key";
     private static ChatComposerInputs Inputs(string key = Key) => new(
         "connected", false, new ChatThread { Id = key, Title = "New chat", AgentId = "main" },
-        [], [], null, false, [], null, false)
+        [], null, false, [], null, false)
     {
         ShowPlacementPickers = true,
         PlacementTargetIsEmpty = true,
@@ -183,7 +183,7 @@ public sealed class ChatPlacementControllerTests
         {
             case "navigation":
                 context.Composer.BindSelectionHandoff(_ => { });
-                context.Composer.SelectChannel("agent:main:other");
+                Assert.True(context.Composer.TrySelectSession("agent:main:other"));
                 Assert.True(context.Gateway.PrepareToken.IsCancellationRequested);
                 break;
             case "reconnect":
@@ -216,13 +216,13 @@ public sealed class ChatPlacementControllerTests
         context.Vm.SetDraft("keep this draft");
         var sending = context.Composer.SendAsync();
         context.Composer.BindSelectionHandoff(key => context.Session.ApplyInputs(Inputs(key)));
-        context.Composer.SelectChannel("agent:main:other");
+        Assert.True(context.Composer.TrySelectSession("agent:main:other"));
         Assert.True(context.Gateway.PrepareToken.IsCancellationRequested);
         Assert.Null(context.Placement.State.Error);
 
         if (returnBeforeCompletion)
         {
-            context.Composer.SelectChannel(Key);
+            Assert.True(context.Composer.TrySelectSession(Key));
             Assert.True(context.Placement.State.Preparing);
             Assert.False(context.Placement.CanEdit);
             Assert.False(await context.Composer.SendCoreAsync(Key, "New chat", "another send", []));
@@ -231,7 +231,7 @@ public sealed class ChatPlacementControllerTests
         completion.SetResult();
         Assert.False(await sending);
         if (!returnBeforeCompletion)
-            context.Composer.SelectChannel(Key);
+            Assert.True(context.Composer.TrySelectSession(Key));
 
         Assert.False(context.Placement.State.Preparing);
         Assert.True(context.Placement.RequiresPreparation);
@@ -256,9 +256,9 @@ public sealed class ChatPlacementControllerTests
         context.Placement.SelectWorkspace(FakeGateway.Project);
         Assert.True(await context.Placement.PrepareAsync(Key, default));
         context.Composer.BindSelectionHandoff(key => context.Session.ApplyInputs(Inputs(key)));
-        context.Composer.SelectChannel("agent:main:other");
+        Assert.True(context.Composer.TrySelectSession("agent:main:other"));
         Assert.Equal("default", context.Placement.State.Selection?.Workspace.Id);
-        context.Composer.SelectChannel(Key);
+        Assert.True(context.Composer.TrySelectSession(Key));
         Assert.Equal(FakeGateway.Project, context.Placement.State.Selection?.Workspace);
         Assert.False(context.Placement.RequiresPreparation);
         context.Vm.SetDraft("next");
@@ -496,7 +496,7 @@ public sealed class ChatPlacementControllerTests
             {
                 case "navigation":
                     context.Composer.BindSelectionHandoff(_ => { });
-                    context.Composer.SelectChannel("agent:main:other");
+                    Assert.True(context.Composer.TrySelectSession("agent:main:other"));
                     break;
                 case "reconnect":
                     context.Gateway.ConnectionEpoch = null;

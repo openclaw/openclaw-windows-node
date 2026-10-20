@@ -55,7 +55,6 @@ internal sealed partial class ChatComposerController : IDisposable
     private int _voiceOperation;
     private int _voiceStopOperation;
     private int _sendOperation;
-    private int _catalogOperation;
     private int _generation;
     private long _selectionRevision;
 
@@ -125,26 +124,22 @@ internal sealed partial class ChatComposerController : IDisposable
     /// <summary>Exposed for disposal characterization tests.</summary>
     internal bool IsDisposed => _disposed;
 
-    /// <summary>Handles a session-picker selection. Reuses the same handoff delegate
-    /// the lifecycle "/new" flow uses to select a freshly created session. No-ops
-    /// after disposal.</summary>
-    public void SelectChannel(string threadId) => TrySelectChannel(threadId);
-
     internal void InvalidatePendingSessionNavigation() => _selectionRevision++;
 
     /// <summary>Returns false until the root is ready, or after disposal, so an
     /// external host can retain its initial-selection handoff instead.</summary>
-    internal bool TrySelectChannel(string threadId)
+    internal bool TrySelectSession(string threadId)
     {
         if (_disposed || _selectedSessionHandoff is null)
             return false;
 
+        var previousThreadId = _vm.Inputs?.CurrentThread.Id;
         InvalidatePendingSessionNavigation();
         _placement?.NavigateTo(threadId);
         _selectedSessionHandoff(threadId);
         if (_disposed)
             return false;
-        _hostActions.SessionSelected?.Invoke(threadId);
+        _hostActions.SessionSelected?.Invoke(threadId, previousThreadId);
         return true;
     }
 
@@ -282,7 +277,7 @@ internal sealed partial class ChatComposerController : IDisposable
                 return false;
             if (result.Succeeded && result.NewSessionKey is { } sessionKey &&
                 selectionRevision == _selectionRevision)
-                TrySelectChannel(sessionKey);
+                TrySelectSession(sessionKey);
             return result.Succeeded;
         }
 
@@ -368,8 +363,8 @@ internal sealed partial class ChatComposerController : IDisposable
         return true;
     }
 
-    /// <summary>Requests a command-catalog refresh. Assigns a monotonic operation ID
-    /// and threads the shared lifetime token so the outstanding request is actually
+    /// <summary>Requests a command-catalog refresh using the shared lifetime token
+    /// so the outstanding request is actually
     /// canceled on dispose. Refreshed results flow back only through the root's
     /// provider-subscribed snapshot/<c>ApplyInputs</c> path (already monotonic-guarded),
     /// so this call itself owns no VM mutation to fence beyond disposal/cancellation.</summary>
@@ -378,16 +373,7 @@ internal sealed partial class ChatComposerController : IDisposable
         if (_disposed)
             return;
 
-        ++_catalogOperation;
         FireAndForget(_ => _port.EnsureCommandCatalogAsync(_lifetimeToken));
-    }
-
-    public void AddAttachment(ChatAttachment attachment)
-    {
-        if (_disposed)
-            return;
-
-        _vm.AddAttachments(new[] { attachment });
     }
 
     /// <summary>Ingests attachments that originate outside the declarative tree (the

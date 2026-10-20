@@ -2220,12 +2220,6 @@
   <data name="WorkspacePage_TextBlock_34.Text" xml:space="preserve">
     <value>刷新</value>
   </data>
-  <data name="ChatWindow_TextBlock_29.Text" xml:space="preserve">
-    <value>聊天</value>
-  </data>
-  <data name="ChatWindow_TextBlock_60.Text" xml:space="preserve">
-    <value>连接到网关以开始聊天</value>
-  </data>
   <data name="TitleText.Text" xml:space="preserve">
     <value>OpenClaw Windows Companion</value>
   </data>
@@ -2439,9 +2433,6 @@
   <data name="FallbackInfoBar.Title" xml:space="preserve">
     <value>工作区文件</value>
   </data>
-  <data name="ChatWindow_winexWindowEx_2.Title" xml:space="preserve">
-    <value>OpenClaw Chat</value>
-  </data>
   <data name="SearchBox.PlaceholderText" xml:space="preserve">
     <value>键入命令...</value>
   </data>
@@ -2468,12 +2459,6 @@
   </data>
   <data name="UsagePage_TextBlock_10.Text" xml:space="preserve">
     <value>使用量和成本</value>
-  </data>
-  <data name="ChatWindowOpenInBrowserToolTip.Content" xml:space="preserve">
-    <value>在浏览器中打开</value>
-  </data>
-  <data name="ChatWindowCloseToolTip.Content" xml:space="preserve">
-    <value>关闭</value>
   </data>
   <data name="ChatPageOpenInBrowserToolTip.Content" xml:space="preserve">
     <value>在浏览器中打开</value>
@@ -2943,30 +2928,6 @@
   <data name="DebugPage_TextBlock_OverridesCaption.Text" xml:space="preserve">
     <value>按聊天容器覆盖全局的“使用标准网关聊天界面”设置。应用重启后重置。</value>
   </data>
-  <data name="DebugPage_TextBlock_HubChatLabel.Text" xml:space="preserve">
-    <value>中心聊天选项卡 UI：</value>
-  </data>
-  <data name="DebugPage_TextBlock_TrayChatLabel.Text" xml:space="preserve">
-    <value>托盘聊天弹窗 UI：</value>
-  </data>
-  <data name="DebugPage_ChatOverride_NoOverride_Hub.Content" xml:space="preserve">
-    <value>不覆盖</value>
-  </data>
-  <data name="DebugPage_ChatOverride_ForceLegacy_Hub.Content" xml:space="preserve">
-    <value>强制使用网关聊天 UI</value>
-  </data>
-  <data name="DebugPage_ChatOverride_ForceNative_Hub.Content" xml:space="preserve">
-    <value>强制使用伴侣聊天 UI</value>
-  </data>
-  <data name="DebugPage_ChatOverride_NoOverride_Tray.Content" xml:space="preserve">
-    <value>不覆盖</value>
-  </data>
-  <data name="DebugPage_ChatOverride_ForceLegacy_Tray.Content" xml:space="preserve">
-    <value>强制使用网关聊天 UI</value>
-  </data>
-  <data name="DebugPage_ChatOverride_ForceNative_Tray.Content" xml:space="preserve">
-    <value>强制使用伴侣聊天 UI</value>
-  </data>
   <data name="Chat_ZeroState_RecentChats" xml:space="preserve"><value>最近的聊天</value></data>
   <data name="Chat_Placement_Environment" xml:space="preserve">
     <value>环境</value>
@@ -3141,9 +3102,6 @@
   </data>
   <data name="Chat_Composer_Reasoning_Maximum" xml:space="preserve">
     <value>最大</value>
-  </data>
-  <data name="Chat_Composer_Accessibility_Session" xml:space="preserve">
-    <value>会话</value>
   </data>
   <data name="Chat_Composer_Accessibility_CurrentSession" xml:space="preserve">
     <value>当前会话</value>
@@ -3322,27 +3280,13 @@
   <data name="AppNotification_ChannelNeedsAttention_StatusMessageFormat" xml:space="preserve">
     <value>网关报告 {0} 为 {1}。</value>
   </data>
-  <data name="AppNotification_SandboxDisabled_Title" xml:space="preserve">
-    <value>节点沙盒已关闭: 命令将不受限制地运行</value>
-  </data>
-  <data name="AppNotification_SandboxDisabled_Message" xml:space="preserve">
-    <value>在重新启用节点沙盒之前，代理启动的 Windows 命令将在没有沙盒隔离的情况下运行。</value>
-  </data>
-  <data name="AppNotification_SandboxUnavailable_Title" xml:space="preserve">
-    <value>沙盒不可用: 回退到主机</value>
-  </data>
-  <data name="AppNotification_SandboxUnavailable_MessageFormat" xml:space="preserve">
-    <value>{0}
-
-在沙盒不可用期间，命令将在主机上运行，且没有沙盒保护。</value>
-  </data>
   <data name="AppNotification_SandboxUnavailableBlocked_Title" xml:space="preserve">
     <value>沙盒不可用: 命令已阻止</value>
   </data>
   <data name="AppNotification_SandboxUnavailableBlocked_MessageFormat" xml:space="preserve">
     <value>{0}
 
-由于已启用严格回退阻止，沙盒不可用期间命令会被阻止。</value>
+无法验证 MXC。命令将被阻止。请修复安装或重试。仅已确认不支持隔离的 Windows 允许未隔离执行。</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_DefaultReason" xml:space="preserve">
     <value>此计算机上没有可用的 MXC 沙盒基元。</value>
@@ -4179,13 +4123,10 @@
     <value>Chat surface overrides</value>
   </data>
   <data name="DiagnosticsPage_Expander_ChatOverrides.Description" xml:space="preserve">
-    <value>Per-surface override of the chat UI. Resets when OpenClaw restarts.</value>
+    <value>Override the Workspace chat UI. Resets when OpenClaw restarts.</value>
   </data>
-  <data name="DiagnosticsPage_Card_HubChat.Header" xml:space="preserve">
-    <value>Hub chat tab</value>
-  </data>
-  <data name="DiagnosticsPage_Card_TrayChat.Header" xml:space="preserve">
-    <value>Tray chat popup</value>
+  <data name="DiagnosticsPage_Card_WorkspaceChat.Header" xml:space="preserve">
+    <value>Workspace chat</value>
   </data>
   <data name="DiagnosticsPage_DetailBack.Text" xml:space="preserve">
     <value>Back to Diagnostics</value>
@@ -4637,15 +4578,6 @@
   <data name="DebugPage_ForceCompanionChatUI.Content" xml:space="preserve">
     <value>强制使用伴侣聊天界面</value>
   </data>
-  <data name="DebugPage_NoOverride2.Content" xml:space="preserve">
-    <value>无覆盖</value>
-  </data>
-  <data name="DebugPage_ForceGatewayChatUI2.Content" xml:space="preserve">
-    <value>强制使用网关聊天界面</value>
-  </data>
-  <data name="DebugPage_ForceCompanionChatUI2.Content" xml:space="preserve">
-    <value>强制使用伴侣聊天界面</value>
-  </data>
   <data name="DebugPage_Refresh.Text" xml:space="preserve">
     <value>刷新</value>
   </data>
@@ -4742,9 +4674,6 @@
   <data name="SandboxPage_SecurityLevel.Text" xml:space="preserve">
     <value>安全级别</value>
   </data>
-  <data name="SandboxPage_OneClickToSet.Text" xml:space="preserve">
-    <value>一键设置下面的每个控件。自定义文件夹保持您的设置。</value>
-  </data>
   <data name="SandboxPage_LockedDown.Text" xml:space="preserve">
     <value>🔒 锁定</value>
   </data>
@@ -4767,16 +4696,16 @@
     <value>自定义文件夹授权仍然有效</value>
   </data>
   <data name="SandboxPage_Files.Text" xml:space="preserve">
-    <value>📁 文件</value>
+    <value>文件访问</value>
   </data>
   <data name="SandboxPage_ByDefaultTheAgent.Text" xml:space="preserve">
-    <value>默认情况下,代理只有一个可读写的临时工作区文件夹。在下方授予对用户文件夹的访问权限。SSH 密钥、浏览器配置文件和 OpenClaw 自身的设置始终被阻止。</value>
+    <value>所选范围决定文件访问权限。这些选项添加文件夹授权；使用范围保留文件夹已有的范围权限。选择“所选文件夹”可将访问限制为明确授权的文件夹。受保护的文件夹始终被阻止。</value>
   </data>
   <data name="SandboxPage_Documents.Text" xml:space="preserve">
     <value>文档</value>
   </data>
   <data name="SandboxPage_Blocked.Content" xml:space="preserve">
-    <value>已阻止</value>
+    <value>使用范围</value>
   </data>
   <data name="SandboxPage_ReadOnly.Content" xml:space="preserve">
     <value>只读</value>
@@ -4788,7 +4717,7 @@
     <value>下载</value>
   </data>
   <data name="SandboxPage_Blocked2.Content" xml:space="preserve">
-    <value>已阻止</value>
+    <value>使用范围</value>
   </data>
   <data name="SandboxPage_ReadOnly2.Content" xml:space="preserve">
     <value>只读</value>
@@ -4800,7 +4729,7 @@
     <value>桌面</value>
   </data>
   <data name="SandboxPage_Blocked3.Content" xml:space="preserve">
-    <value>已阻止</value>
+    <value>使用范围</value>
   </data>
   <data name="SandboxPage_ReadOnly3.Content" xml:space="preserve">
     <value>只读</value>
@@ -4809,16 +4738,16 @@
     <value>读取与写入</value>
   </data>
   <data name="SandboxPage_ToolDirectoriesOnYour.Text" xml:space="preserve">
-    <value>PATH 上的工具目录在沙盒内也以只读方式授予,因此 git、node、python 和 dotnet 等命令行工具可用。从不授予驱动器根目录。</value>
+    <value>Windows 运行时文件夹和私有工作区仍可用。出现在 PATH 中不会授予访问权限。重新应用预设可重置文件夹选项。</value>
   </data>
   <data name="SandboxPage_CustomFolders.Text" xml:space="preserve">
-    <value>自定义文件夹</value>
+    <value>附加文件夹</value>
   </data>
   <data name="SandboxPage_CustomGrantsAreAdded.Text" xml:space="preserve">
-    <value>自定义授权将在上述规则之上添加。在“文档/下载/桌面”内添加具有更宽访问权限的文件夹,将覆盖该路径的行级设置。</value>
+    <value>这些权限补充上述文件访问权限。只读或删除授权不会限制预设或其他文件夹已允许的访问。受保护的文件夹仍被阻止。</value>
   </data>
   <data name="SandboxPage_Blocked4.Content" xml:space="preserve">
-    <value>已阻止</value>
+    <value>移除授权</value>
   </data>
   <data name="SandboxPage_ReadOnly4.Content" xml:space="preserve">
     <value>只读</value>
@@ -4827,7 +4756,7 @@
     <value>读取与写入</value>
   </data>
   <data name="SandboxPage_NoCustomFoldersAdded.Text" xml:space="preserve">
-    <value>尚未添加自定义文件夹。</value>
+    <value>未共享个人文件夹。添加文件夹即可开始。</value>
   </data>
   <data name="SandboxPage_AddFolder.Content" xml:space="preserve">
     <value>添加文件夹</value>
@@ -4861,42 +4790,6 @@
   </data>
   <data name="SandboxPage_LocalNetworkDevicesAnd.Text" xml:space="preserve">
     <value>本地网络设备和共享尚未包含在内。</value>
-  </data>
-  <data name="SandboxPage_CommandCompatibility.Text" xml:space="preserve">
-    <value>🪟 命令兼容性</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUi.Header" xml:space="preserve">
-    <value>允许 Windows UI API</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUi.OffContent" xml:space="preserve">
-    <value>关闭：阻止 Win32k 系统调用</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUi.OnContent" xml:space="preserve">
-    <value>开启：PowerShell 和类似工具可以启动</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUi.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>允许沙盒命令使用 Windows UI API</value>
-  </data>
-  <data name="SandboxPage_WindowsUiCompatibilityDescription.Text" xml:space="preserve">
-    <value>PowerShell（所有版本）和某些控制台工具在启动时会使用 Windows UI API。此设置不提供受支持的完整主机进程清单。</value>
-  </data>
-  <data name="SandboxPage_WindowsUiWarning.Title" xml:space="preserve">
-    <value>Win32k 边界已禁用</value>
-  </data>
-  <data name="SandboxPage_WindowsUiWarning.Message" xml:space="preserve">
-    <value>文件、网络、剪贴板、超时和命令审批控制仍然有效。允许使用 Win32k 系统调用；剪贴板策略和输入注入禁令仍然有效。</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUiDialogTitle" xml:space="preserve">
-    <value>允许 Windows UI API？</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUiDialogContent" xml:space="preserve">
-    <value>这将允许沙盒命令使用 Windows UI 系统调用。当前 MXC 版本中的 PowerShell（所有版本）和某些控制台工具需要此权限才能启动。此设置不会授予受支持的完整主机进程清单：CIM/WMI 主机枚举不受支持，并已观察到失败；tasklist 可能失败或超时；Get-Process 的输出不应被视为完整清单或进程元数据的保密边界。&#xA;&#xA;文件、网络、剪贴板、超时和命令审批控制仍然有效，但 Win32k 系统调用阻止将被禁用。剪贴板策略和输入注入禁令仍然有效。仅在需要更广泛的命令兼容性时启用。</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUiDialogPrimary" xml:space="preserve">
-    <value>允许 UI API</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUiDialogCancel" xml:space="preserve">
-    <value>取消</value>
   </data>
   <data name="SandboxPage_Limits.Text" xml:space="preserve">
     <value>⏱ 限制</value>
@@ -5201,12 +5094,6 @@
   </data>
   <data name="WorkspacePage_LoadingWorkspaceFiles.Text" xml:space="preserve">
     <value>正在加载工作区文件…</value>
-  </data>
-  <data name="ChatWindow_WebChatUnavailable.Text" xml:space="preserve">
-    <value>网页聊天不可用</value>
-  </data>
-  <data name="ChatWindow_Retry.Content" xml:space="preserve">
-    <value>重试</value>
   </data>
   <data name="ConnectionStatusWindow_ConnectionStatus.Text" xml:space="preserve">
     <value>连接状态</value>
@@ -6400,12 +6287,6 @@
   <data name="Command_GoToWorkspace_Title" xml:space="preserve">
     <value>Go to Workspace ({0})</value>
   </data>
-  <data name="Command_OpenChatWindow_Subtitle" xml:space="preserve">
-    <value>Open standalone chat</value>
-  </data>
-  <data name="Command_OpenChatWindow_Title" xml:space="preserve">
-    <value>Open Chat Window</value>
-  </data>
   <data name="Command_OpenDashboard_Subtitle" xml:space="preserve">
     <value>Open web dashboard</value>
   </data>
@@ -6713,7 +6594,7 @@
     <value>节点沙盒不可用: 命令已阻止</value>
   </data>
   <data name="SandboxPage_StatusUnavailableBlockedSubtext" xml:space="preserve">
-    <value>此电脑上无法使用隔离，并且已启用严格回退阻止，因此代理启动的命令会被阻止。</value>
+    <value>无法验证 MXC。请修复安装或重试。SDK 或策略错误绝不会触发未隔离执行。</value>
   </data>
   <data name="SandboxPage_StatusUnavailableOffTitle" xml:space="preserve">
     <value>节点沙盒已关闭: 主机执行</value>
@@ -6748,11 +6629,6 @@
   <data name="SandboxPage_ProbeErrorTitle" xml:space="preserve">
     <value>无法验证沙盒可用性</value>
   </data>
-  <data name="SandboxPage_ProbeErrorMessageFormat" xml:space="preserve">
-    <value>{0}
-
-{1} 沙盒功能检查未完成。这通常是暂时性的（检查缓慢或被阻止）… 请重试；如果问题仍然存在，请检查安全软件是否阻止了 wxc-exec。</value>
-  </data>
   <data name="SandboxPage_Retry" xml:space="preserve">
     <value>重试</value>
   </data>
@@ -6769,11 +6645,6 @@
   </data>
   <data name="SandboxPage_ComponentsMissingTitle" xml:space="preserve">
     <value>缺少沙盒组件</value>
-  </data>
-  <data name="SandboxPage_ComponentsMissingMessageFormat" xml:space="preserve">
-    <value>{0}
-
-找不到 wxc-exec 二进制文件。{1} 如果这是开发者版本，请生成托盘应用，以便将 wxc-exec.exe 复制到输出文件夹。否则请重新安装伴侣应用以恢复沙盒。</value>
   </data>
   <data name="SandboxPage_ShowInstallInstructions" xml:space="preserve">
     <value>显示安装说明</value>
@@ -6816,15 +6687,6 @@
   </data>
   <data name="CronPage_NextWakeFormat" xml:space="preserve">
     <value>· 下次唤醒：{0}</value>
-  </data>
-  <data name="ChatWindow_UnableToLoadChatCredentials" xml:space="preserve">
-    <value>无法加载聊天。网关 URL 或令牌不可用。</value>
-  </data>
-  <data name="ChatWindow_UnableToLoadChatRetryFormat" xml:space="preserve">
-    <value>无法加载聊天。请重试。({0})</value>
-  </data>
-  <data name="ChatWindow_WebViewFailedFormat" xml:space="preserve">
-    <value>WebView2 失败：{0}</value>
   </data>
   <data name="CanvasWindow_WebViewInitFailedFormat" xml:space="preserve">
     <value>无法初始化 WebView2：{0}</value>
@@ -7130,13 +6992,13 @@
     <value>沙盒操作</value>
   </data>
   <data name="SandboxPage_PresetLockedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>锁定预设：无互联网、无剪贴板、无标准用户文件夹</value>
+    <value>严格预设：无个人文件或互联网访问</value>
   </data>
   <data name="SandboxPage_PresetBalancedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>推荐预设：启用互联网，文档、下载和桌面为只读</value>
+    <value>平衡预设：用户文件夹只读，互联网开启</value>
   </data>
   <data name="SandboxPage_PresetPermissiveButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>不受保护预设：启用互联网，可读写文档、下载和桌面</value>
+    <value>开放预设：用户文件夹可读写，互联网开启</value>
   </data>
   <data name="SandboxPage_DocsAccessCombo.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>文档访问级别</value>
@@ -8121,6 +7983,55 @@
   <data name="ChatPage_SetupCheckAgain.Content" xml:space="preserve">
     <value>再次检查</value>
   </data>
+  <data name="SandboxPage_PresetHelp.Text" xml:space="preserve"><value>预设会替换文件授权和互联网访问。剪贴板、限制和命令审批保持独立。</value></data>
+  <data name="SandboxPage_CustomPreset.Text" xml:space="preserve"><value>自定义权限</value></data>
+  <data name="SandboxPage_ApplyPreset" xml:space="preserve"><value>应用预设</value></data>
+  <data name="SandboxPage_PresetStrict.Text" xml:space="preserve"><value>严格</value></data>
+  <data name="SandboxPage_PresetBalanced.Text" xml:space="preserve"><value>平衡</value></data>
+  <data name="SandboxPage_Title.Text" xml:space="preserve"><value>Node Sandbox</value></data>
+  <data name="SandboxPage_ResolvedFolders.Header" xml:space="preserve"><value>包含的文件夹</value></data>
+  <data name="SandboxPage_FileAccessReadOnly" xml:space="preserve"><value>可以读取您的用户配置文件目录和个人文件夹，包括重定向文件夹。下方的附加权限也可能允许更改。受保护的文件夹仍被阻止。</value></data>
+  <data name="SandboxPage_FileAccessReadWrite" xml:space="preserve"><value>程序可以读取和更改您的用户配置文件目录和个人文件夹中的文件，包括重定向文件夹。受保护的文件夹仍被阻止。</value></data>
+  <data name="SandboxPage_FileAccessSelected" xml:space="preserve"><value>个人文件访问仅来自下方的附加权限。Windows 运行时文件夹和私有工作区仍可用。受保护的文件夹仍被阻止。</value></data>
+  <data name="SandboxPage_SavedFolderFormat" xml:space="preserve"><value>{0}（已保存权限）：{1}</value></data>
+  <data name="SandboxPage_FolderUnavailable" xml:space="preserve"><value>文件夹位置不可用</value></data>
+  <data name="SandboxPage_FolderAccessFormat" xml:space="preserve"><value>{0} 的访问权限</value></data>
+  <data name="SandboxPage_RemoveFolderFormat" xml:space="preserve"><value>移除 {0} 的权限</value></data>
+  <data name="SandboxPage_FolderList.Text" xml:space="preserve"><value>文件夹</value></data>
+  <data name="SandboxPage_FolderListHelp.Text" xml:space="preserve"><value>选择智能体在每个文件夹中可以执行的操作。“禁止访问”会阻止该文件夹，但明确列出的子文件夹保留各自的访问权限。受保护的文件夹仍被阻止。</value></data>
+  <data name="SandboxPage_NoAccess.Content" xml:space="preserve"><value>禁止访问</value></data>
+  <data name="SandboxPage_Profile.Text" xml:space="preserve"><value>用户配置文件目录</value></data>
+  <data name="SandboxPage_OneDrive.Text" xml:space="preserve"><value>OneDrive</value></data>
+  <data name="SandboxPage_FolderAccess.PlaceholderText" xml:space="preserve"><value>选择访问权限</value></data>
+  <data name="SandboxPage_ResetFolder" xml:space="preserve"><value>重置</value></data>
+  <data name="SandboxPage_RemoveFolder" xml:space="preserve"><value>移除</value></data>
+  <data name="SandboxPage_ResetFolderFormat" xml:space="preserve"><value>将 {0} 重置为预设访问权限</value></data>
+  <data name="SandboxPage_LegacyFolderReview" xml:space="preserve"><value>已保存的阻止权限需要检查。它不会拒绝预设或父文件夹允许的访问。</value></data>
+  <data name="SandboxPage_RuntimeFolder" xml:space="preserve"><value>Windows 运行时访问固定为只读。</value></data>
+  <data name="SandboxPage_LegacyFolderAccess.Content" xml:space="preserve"><value>旧版阻止（需检查）</value></data>
+  <data name="SandboxPage_PresetOpen.Text" xml:space="preserve"><value>开放</value></data>
+  <data name="SandboxPage_PresetStrictText.Text" xml:space="preserve"><value>严格限制智能体的行动范围。</value></data>
+  <data name="SandboxPage_PresetBalancedText.Text" xml:space="preserve"><value>协助处理日常任务，降低风险。</value></data>
+  <data name="SandboxPage_PresetOpenText.Text" xml:space="preserve"><value>给予智能体更多自由来完成任务。</value></data>
+  <data name="SandboxPage_PresetStrictDetails" xml:space="preserve"><value>不访问个人文件或互联网。仅允许运行时访问和私有工作目录。</value></data>
+  <data name="SandboxPage_PresetBalancedDetails" xml:space="preserve"><value>读取用户配置目录和已解析的重定向个人文件夹。不写入个人文件。互联网开启。排除受保护文件夹。</value></data>
+  <data name="SandboxPage_PresetOpenDetails" xml:space="preserve"><value>读写用户配置目录和已解析的重定向个人文件夹。互联网开启。排除受保护文件夹。</value></data>
+  <data name="SandboxPage_FileScope.Header" xml:space="preserve"><value>文件访问范围</value></data>
+  <data name="SandboxPage_SelectedFolders.Content" xml:space="preserve"><value>选定文件夹</value></data>
+  <data name="SandboxPage_UserFilesReadOnly.Content" xml:space="preserve"><value>用户文件夹：只读</value></data>
+  <data name="SandboxPage_UserFilesReadWrite.Content" xml:space="preserve"><value>用户文件夹：读写</value></data>
+  <data name="SandboxPage_CheckingTitle" xml:space="preserve"><value>正在检查 MXC 可用性</value></data>
+  <data name="SandboxPage_CheckingText" xml:space="preserve"><value>正在验证命令隔离支持。此检查不会更改权限。</value></data>
+  <data name="SandboxPage_ScopeResolutionBlockedTitle" xml:space="preserve"><value>用户文件夹解析不完整</value></data>
+  <data name="SandboxPage_ScopeResolutionBlockedText" xml:space="preserve"><value>找不到或无法访问所需的个人文件夹。使用这些文件夹的命令已被阻止。请查看文件夹列表，恢复文件夹的 Windows 位置，然后重试。受保护文件夹和命令审批始终适用。</value></data>
+  <data name="SandboxPage_TimeoutFormat" xml:space="preserve"><value>命令超时：{0} 秒</value></data>
+  <data name="SandboxPage_LegacyBlockedTitle" xml:space="preserve"><value>需要检查旧文件夹授权</value></data>
+  <data name="SandboxPage_LegacyBlockedText" xml:space="preserve"><value>此前已过滤或冲突的授权保持阻止状态，避免在不知情的情况下扩大访问。请检查“阻止”行，明确选择受支持的访问或其他文件夹。受保护根目录始终排除。</value></data>
+  <data name="SandboxPage_IncludedUserFolders" xml:space="preserve"><value>Windows 解析的用户文件夹根目录（排除受保护后代）：</value></data>
+  <data name="SandboxPage_CheckingUserFolders" xml:space="preserve"><value>正在解析用户文件夹位置...</value></data>
+  <data name="SandboxPage_OneDriveNotIncluded" xml:space="preserve"><value>未解析到已配置且可用的 OneDrive 根目录。不包括额外的 OneDrive 位置。</value></data>
+  <data name="SandboxPage_WindowsCompatibilityTitle" xml:space="preserve"><value>Windows 隔离不可用：命令将在未隔离环境中运行</value></data>
+  <data name="SandboxPage_WindowsCompatibilityText" xml:space="preserve"><value>此 Windows 版本无法提供所需的 MXC 隔离。已批准的命令将直接在此计算机上运行。沙盒文件、网络、剪贴板和 Windows 界面限制不会生效。已保存的权限会保留，命令审批仍然有效。请更新 Windows 以启用隔离。Companion 自身的最低 Windows 版本要求仍然适用。</value></data>
   <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>首选的 {0} 配置不适合此硬件。设置可使用 {1}，上下文为 {2:N0} 个令牌。安装前请在设置中查看此配置。</value></data>
   <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>此配置至少需要 {0} 系统内存。</value></data>
   <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>此配置要求模型缓存和运行时所在的卷都至少有 {0} 可用空间。</value></data>

@@ -56,7 +56,6 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatAttachmentEchoCorrelation.cs" Link="Chat\ChatAttachmentEchoCorrelation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\GatewayMediaMessageProjection.cs" Link="Chat\GatewayMediaMessageProjection.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatUsageFormatter.cs" Link="Chat\ChatUsageFormatter.cs" />
-    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChannelGroup.cs" Link="Chat\ChannelGroup.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatMarkdownSanitizer.cs" Link="Chat\ChatMarkdownSanitizer.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatTelemetryTracker.cs" Link="Chat\ChatTelemetryTracker.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatLifecycleCommandDispatcher.cs" Link="Chat\ChatLifecycleCommandDispatcher.cs" />
@@ -99,6 +98,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\MxcCompanionPackagePaths.cs" Link="Services\MxcCompanionPackagePaths.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DeepLinkHandler.cs" Link="Services\DeepLinkHandler.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DeepLinkSecurityPolicy.cs" Link="Services\DeepLinkSecurityPolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ActivationRoute.cs" Link="Services\ActivationRoute.cs" />

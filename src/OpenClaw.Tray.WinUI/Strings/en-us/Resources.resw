@@ -622,7 +622,7 @@
   <data name="A2UI_MultipleChoiceSelect" xml:space="preserve">
     <value>Select...</value>
   </data>
-  <!-- ==================== WebChatWindow.xaml ==================== -->
+  <!-- ==================== Workspace web-chat fallback ==================== -->
   <data name="WebChatErrorTitle.Text" xml:space="preserve">
     <value>Web Chat Unavailable</value>
   </data>
@@ -2267,12 +2267,6 @@ Use one of these options:
   <data name="WorkspacePage_TextBlock_34.Text" xml:space="preserve">
     <value>Refresh</value>
   </data>
-  <data name="ChatWindow_TextBlock_29.Text" xml:space="preserve">
-    <value>Chat</value>
-  </data>
-  <data name="ChatWindow_TextBlock_60.Text" xml:space="preserve">
-    <value>Connect to gateway to start chatting</value>
-  </data>
   <data name="TitleText.Text" xml:space="preserve">
     <value>OpenClaw Windows Companion</value>
   </data>
@@ -2486,9 +2480,6 @@ Use one of these options:
   <data name="FallbackInfoBar.Title" xml:space="preserve">
     <value>Workspace files</value>
   </data>
-  <data name="ChatWindow_winexWindowEx_2.Title" xml:space="preserve">
-    <value>OpenClaw Chat</value>
-  </data>
   <data name="SearchBox.PlaceholderText" xml:space="preserve">
     <value>Type a command...</value>
   </data>
@@ -2515,12 +2506,6 @@ Use one of these options:
   </data>
   <data name="UsagePage_TextBlock_10.Text" xml:space="preserve">
     <value>Usage &amp; Cost</value>
-  </data>
-  <data name="ChatWindowOpenInBrowserToolTip.Content" xml:space="preserve">
-    <value>Open in Companion app</value>
-  </data>
-  <data name="ChatWindowCloseToolTip.Content" xml:space="preserve">
-    <value>Close</value>
   </data>
   <data name="ChatPageOpenInBrowserToolTip.Content" xml:space="preserve">
     <value>Open in Browser</value>
@@ -2990,30 +2975,6 @@ Use one of these options:
   <data name="DebugPage_TextBlock_OverridesCaption.Text" xml:space="preserve">
     <value>Override the global 'Use standard Gateway Chat interface' setting per chat container. Resets when the app restarts.</value>
   </data>
-  <data name="DebugPage_TextBlock_HubChatLabel.Text" xml:space="preserve">
-    <value>Hub Chat tab UI:</value>
-  </data>
-  <data name="DebugPage_TextBlock_TrayChatLabel.Text" xml:space="preserve">
-    <value>Tray Chat popup UI:</value>
-  </data>
-  <data name="DebugPage_ChatOverride_NoOverride_Hub.Content" xml:space="preserve">
-    <value>No override</value>
-  </data>
-  <data name="DebugPage_ChatOverride_ForceLegacy_Hub.Content" xml:space="preserve">
-    <value>Force Gateway Chat UI</value>
-  </data>
-  <data name="DebugPage_ChatOverride_ForceNative_Hub.Content" xml:space="preserve">
-    <value>Force Companion Chat UI</value>
-  </data>
-  <data name="DebugPage_ChatOverride_NoOverride_Tray.Content" xml:space="preserve">
-    <value>No override</value>
-  </data>
-  <data name="DebugPage_ChatOverride_ForceLegacy_Tray.Content" xml:space="preserve">
-    <value>Force Gateway Chat UI</value>
-  </data>
-  <data name="DebugPage_ChatOverride_ForceNative_Tray.Content" xml:space="preserve">
-    <value>Force Companion Chat UI</value>
-  </data>
   <data name="Chat_ZeroState_WelcomeTitle" xml:space="preserve">
     <value>Welcome to OpenClaw</value>
   </data>
@@ -3188,9 +3149,6 @@ Use one of these options:
   </data>
   <data name="Chat_Composer_Reasoning_Maximum" xml:space="preserve">
     <value>Maximum</value>
-  </data>
-  <data name="Chat_Composer_Accessibility_Session" xml:space="preserve">
-    <value>Session</value>
   </data>
   <data name="Chat_Composer_Accessibility_CurrentSession" xml:space="preserve">
     <value>Current session</value>
@@ -3393,27 +3351,13 @@ Use one of these options:
   <data name="AppNotification_ChannelNeedsAttention_StatusMessageFormat" xml:space="preserve">
     <value>The gateway reports {0} as {1}.</value>
   </data>
-  <data name="AppNotification_SandboxDisabled_Title" xml:space="preserve">
-    <value>Node Sandbox is off: commands run uncontained</value>
-  </data>
-  <data name="AppNotification_SandboxDisabled_Message" xml:space="preserve">
-    <value>Agent-started Windows commands will run without sandbox containment until Node Sandbox is turned back on.</value>
-  </data>
-  <data name="AppNotification_SandboxUnavailable_Title" xml:space="preserve">
-    <value>Sandbox unavailable: host fallback</value>
-  </data>
-  <data name="AppNotification_SandboxUnavailable_MessageFormat" xml:space="preserve">
-    <value>{0}
-
-Commands will run on the host without sandbox protection while sandboxing is unavailable.</value>
-  </data>
   <data name="AppNotification_SandboxUnavailableBlocked_Title" xml:space="preserve">
     <value>Sandbox unavailable: commands blocked</value>
   </data>
   <data name="AppNotification_SandboxUnavailableBlocked_MessageFormat" xml:space="preserve">
     <value>{0}
 
-Commands are blocked while sandboxing is unavailable because strict fallback blocking is enabled.</value>
+MXC could not be verified. Commands are blocked. Repair the installation or retry. Only positively unsupported Windows permits uncontained compatibility execution.</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_DefaultReason" xml:space="preserve">
     <value>MXC sandboxing primitives are not available on this machine.</value>
@@ -4226,13 +4170,10 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>Chat surface overrides</value>
   </data>
   <data name="DiagnosticsPage_Expander_ChatOverrides.Description" xml:space="preserve">
-    <value>Per-surface override of the chat UI. Resets when OpenClaw restarts.</value>
+    <value>Override the Workspace chat UI. Resets when OpenClaw restarts.</value>
   </data>
-  <data name="DiagnosticsPage_Card_HubChat.Header" xml:space="preserve">
-    <value>Hub chat tab</value>
-  </data>
-  <data name="DiagnosticsPage_Card_TrayChat.Header" xml:space="preserve">
-    <value>Tray chat popup</value>
+  <data name="DiagnosticsPage_Card_WorkspaceChat.Header" xml:space="preserve">
+    <value>Workspace chat</value>
   </data>
 <data name="DiagnosticsPage_DetailBack.Text" xml:space="preserve">
     <value>Back to Diagnostics</value>
@@ -4684,15 +4625,6 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
   <data name="DebugPage_ForceCompanionChatUI.Content" xml:space="preserve">
     <value>Force Companion Chat UI</value>
   </data>
-  <data name="DebugPage_NoOverride2.Content" xml:space="preserve">
-    <value>No override</value>
-  </data>
-  <data name="DebugPage_ForceGatewayChatUI2.Content" xml:space="preserve">
-    <value>Force Gateway Chat UI</value>
-  </data>
-  <data name="DebugPage_ForceCompanionChatUI2.Content" xml:space="preserve">
-    <value>Force Companion Chat UI</value>
-  </data>
   <data name="DebugPage_Refresh.Text" xml:space="preserve">
     <value>Refresh</value>
   </data>
@@ -4789,9 +4721,6 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
   <data name="SandboxPage_SecurityLevel.Text" xml:space="preserve">
     <value>Security level</value>
   </data>
-  <data name="SandboxPage_OneClickToSet.Text" xml:space="preserve">
-    <value>One click to set every control below. Custom folders stay as you set them.</value>
-  </data>
   <data name="SandboxPage_LockedDown.Text" xml:space="preserve">
     <value>🔒 Locked Down</value>
   </data>
@@ -4814,16 +4743,16 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>Custom folder grants still active</value>
   </data>
   <data name="SandboxPage_Files.Text" xml:space="preserve">
-    <value>📁 Files</value>
+    <value>File access</value>
   </data>
   <data name="SandboxPage_ByDefaultTheAgent.Text" xml:space="preserve">
-    <value>By default the agent only has a temporary workspace folder it can read and write. Grant access to user folders below. SSH keys, browser profiles, and OpenClaw's own settings are always blocked.</value>
+    <value>The selected scope controls file access. These rows add folder grants; Use scope keeps that folder's existing scope permissions. Choose Selected folders to limit access to explicit grants. Protected folders remain blocked.</value>
   </data>
   <data name="SandboxPage_Documents.Text" xml:space="preserve">
     <value>Documents</value>
   </data>
   <data name="SandboxPage_Blocked.Content" xml:space="preserve">
-    <value>Blocked</value>
+    <value>Use scope</value>
   </data>
   <data name="SandboxPage_ReadOnly.Content" xml:space="preserve">
     <value>Read only</value>
@@ -4835,7 +4764,7 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>Downloads</value>
   </data>
   <data name="SandboxPage_Blocked2.Content" xml:space="preserve">
-    <value>Blocked</value>
+    <value>Use scope</value>
   </data>
   <data name="SandboxPage_ReadOnly2.Content" xml:space="preserve">
     <value>Read only</value>
@@ -4847,7 +4776,7 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>Desktop</value>
   </data>
   <data name="SandboxPage_Blocked3.Content" xml:space="preserve">
-    <value>Blocked</value>
+    <value>Use scope</value>
   </data>
   <data name="SandboxPage_ReadOnly3.Content" xml:space="preserve">
     <value>Read only</value>
@@ -4856,16 +4785,16 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>Read &amp; write</value>
   </data>
   <data name="SandboxPage_ToolDirectoriesOnYour.Text" xml:space="preserve">
-    <value>Tool directories on your PATH are also granted read-only inside the sandbox, so command-line tools like git, node, python, and dotnet are usable. Drive roots are never granted.</value>
+    <value>Windows runtime folders and private scratch space remain available. Being on PATH does not grant access. Reapply a preset to reset folder choices.</value>
   </data>
   <data name="SandboxPage_CustomFolders.Text" xml:space="preserve">
-    <value>Custom folders</value>
+    <value>Additional folders</value>
   </data>
   <data name="SandboxPage_CustomGrantsAreAdded.Text" xml:space="preserve">
-    <value>Custom grants are added on top of the rules above. Adding a folder inside Documents/Downloads/Desktop with broader access will override the row-level setting for that path.</value>
+    <value>These permissions add to the file access above. Read only or Remove grant does not restrict access already allowed by the preset or another folder. Protected folders stay blocked.</value>
   </data>
   <data name="SandboxPage_Blocked4.Content" xml:space="preserve">
-    <value>Blocked</value>
+    <value>Remove grant</value>
   </data>
   <data name="SandboxPage_ReadOnly4.Content" xml:space="preserve">
     <value>Read only</value>
@@ -4874,7 +4803,7 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>Read &amp; write</value>
   </data>
   <data name="SandboxPage_NoCustomFoldersAdded.Text" xml:space="preserve">
-    <value>No custom folders added.</value>
+    <value>No personal folders shared. Add a folder to get started.</value>
   </data>
   <data name="SandboxPage_AddFolder.Content" xml:space="preserve">
     <value>Add folder</value>
@@ -4908,42 +4837,6 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
   </data>
   <data name="SandboxPage_LocalNetworkDevicesAnd.Text" xml:space="preserve">
     <value>Local network devices and shares are not included yet.</value>
-  </data>
-  <data name="SandboxPage_CommandCompatibility.Text" xml:space="preserve">
-    <value>🪟 Command compatibility</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUi.Header" xml:space="preserve">
-    <value>Allow Windows UI APIs</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUi.OffContent" xml:space="preserve">
-    <value>Off: blocks Win32k system calls</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUi.OnContent" xml:space="preserve">
-    <value>On: PowerShell and similar tools can start</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUi.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Allow Windows UI APIs for sandboxed commands</value>
-  </data>
-  <data name="SandboxPage_WindowsUiCompatibilityDescription.Text" xml:space="preserve">
-    <value>PowerShell (all versions) and some console tools use Windows UI APIs during startup. This setting does not provide a supported host-wide process inventory.</value>
-  </data>
-  <data name="SandboxPage_WindowsUiWarning.Title" xml:space="preserve">
-    <value>Win32k boundary disabled</value>
-  </data>
-  <data name="SandboxPage_WindowsUiWarning.Message" xml:space="preserve">
-    <value>File, network, clipboard, timeout, and command approval controls still apply. Win32k system calls are allowed; clipboard policy and the input-injection denial remain in force.</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUiDialogTitle" xml:space="preserve">
-    <value>Allow Windows UI APIs?</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUiDialogContent" xml:space="preserve">
-    <value>This lets sandboxed commands use Windows UI system calls. PowerShell (all versions) and some console tools need this to start on current MXC versions. This setting does not grant a supported host-wide process inventory: CIM/WMI host enumeration is not supported and has been observed to fail, tasklist may fail or time out, and Get-Process output should not be treated as complete inventory or a process-metadata secrecy boundary.&#xA;&#xA;File, network, clipboard, timeout, and command approval controls still apply, but Win32k syscall blocking will be disabled. Clipboard policy and the input-injection denial remain in force. Only enable this if you need broader command compatibility.</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUiDialogPrimary" xml:space="preserve">
-    <value>Allow UI APIs</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUiDialogCancel" xml:space="preserve">
-    <value>Cancel</value>
   </data>
   <data name="SandboxPage_Limits.Text" xml:space="preserve">
     <value>⏱ Limits</value>
@@ -5206,12 +5099,6 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
   </data>
   <data name="WorkspacePage_LoadingWorkspaceFiles.Text" xml:space="preserve">
     <value>Loading workspace files…</value>
-  </data>
-  <data name="ChatWindow_WebChatUnavailable.Text" xml:space="preserve">
-    <value>Web Chat Unavailable</value>
-  </data>
-  <data name="ChatWindow_Retry.Content" xml:space="preserve">
-    <value>Retry</value>
   </data>
   <data name="ConnectionStatusWindow_ConnectionStatus.Text" xml:space="preserve">
     <value>Connection Status</value>
@@ -6404,12 +6291,6 @@ Make sure the gateway is running.</value>
   <data name="Command_GoToWorkspace_Title" xml:space="preserve">
     <value>Go to Workspace ({0})</value>
   </data>
-  <data name="Command_OpenChatWindow_Subtitle" xml:space="preserve">
-    <value>Open standalone chat</value>
-  </data>
-  <data name="Command_OpenChatWindow_Title" xml:space="preserve">
-    <value>Open Chat Window</value>
-  </data>
   <data name="Command_OpenDashboard_Subtitle" xml:space="preserve">
     <value>Open web dashboard</value>
   </data>
@@ -6717,7 +6598,7 @@ Make sure the gateway is running.</value>
     <value>Node Sandbox unavailable: commands blocked</value>
   </data>
   <data name="SandboxPage_StatusUnavailableBlockedSubtext" xml:space="preserve">
-    <value>Containment isn't available on this PC, and strict fallback blocking is on, so agent-started commands are blocked.</value>
+    <value>MXC could not be verified. Repair the installation or retry. SDK and policy failures never trigger uncontained execution.</value>
   </data>
   <data name="SandboxPage_StatusUnavailableOffTitle" xml:space="preserve">
     <value>Node Sandbox is off: host execution</value>
@@ -6752,9 +6633,6 @@ Make sure the gateway is running.</value>
   <data name="SandboxPage_ProbeErrorTitle" xml:space="preserve">
     <value>Couldn't verify sandbox availability</value>
   </data>
-  <data name="SandboxPage_ProbeErrorMessageFormat" xml:space="preserve">
-    <value>{0}&#x0A;&#x0A;{1} The sandbox capability check didn't complete. This is usually transient (a slow or blocked check): retry, and if it persists check whether security software is blocking wxc-exec.</value>
-  </data>
   <data name="SandboxPage_Retry" xml:space="preserve">
     <value>Retry</value>
   </data>
@@ -6769,9 +6647,6 @@ Make sure the gateway is running.</value>
   </data>
   <data name="SandboxPage_ComponentsMissingTitle" xml:space="preserve">
     <value>Sandboxing components are missing</value>
-  </data>
-  <data name="SandboxPage_ComponentsMissingMessageFormat" xml:space="preserve">
-    <value>{0}&#x0A;&#x0A;The wxc-exec binary couldn't be located. {1} If this is a developer build, build the tray app so wxc-exec.exe is copied into the output folder. Otherwise reinstall the companion app to restore sandboxing.</value>
   </data>
   <data name="SandboxPage_ShowInstallInstructions" xml:space="preserve">
     <value>Show install instructions</value>
@@ -6814,15 +6689,6 @@ Make sure the gateway is running.</value>
   </data>
   <data name="CronPage_NextWakeFormat" xml:space="preserve">
     <value>· Next wake: {0}</value>
-  </data>
-  <data name="ChatWindow_UnableToLoadChatCredentials" xml:space="preserve">
-    <value>Unable to load chat. The gateway URL or token is not available.</value>
-  </data>
-  <data name="ChatWindow_UnableToLoadChatRetryFormat" xml:space="preserve">
-    <value>Unable to load chat. Please try again. ({0})</value>
-  </data>
-  <data name="ChatWindow_WebViewFailedFormat" xml:space="preserve">
-    <value>WebView2 failed: {0}</value>
   </data>
   <data name="CanvasWindow_WebViewInitFailedFormat" xml:space="preserve">
     <value>Failed to initialize WebView2: {0}</value>
@@ -7170,13 +7036,13 @@ Make sure the gateway is running.</value>
     <value>Sandbox action</value>
   </data>
   <data name="SandboxPage_PresetLockedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Locked Down preset: No internet, no clipboard, no standard user folders</value>
+    <value>Strict preset: no personal files or internet</value>
   </data>
   <data name="SandboxPage_PresetBalancedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Recommended preset: Internet on, read-only on Documents, Downloads, Desktop</value>
+    <value>Balanced preset: user folders read-only, internet on</value>
   </data>
   <data name="SandboxPage_PresetPermissiveButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Unprotected preset: Internet on, read and write on Documents, Downloads, Desktop</value>
+    <value>Open preset: user folders read and write, internet on</value>
   </data>
   <data name="SandboxPage_DocsAccessCombo.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Documents access level</value>
@@ -8184,6 +8050,55 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="ChatPage_SetupCheckAgain.Content" xml:space="preserve">
     <value>Check again</value>
   </data>
+  <data name="SandboxPage_PresetHelp.Text" xml:space="preserve"><value>Presets replace file grants and internet access. Clipboard, limits and command approvals stay independent.</value></data>
+  <data name="SandboxPage_CustomPreset.Text" xml:space="preserve"><value>Custom permissions</value></data>
+  <data name="SandboxPage_ApplyPreset" xml:space="preserve"><value>Apply preset</value></data>
+  <data name="SandboxPage_PresetStrict.Text" xml:space="preserve"><value>Strict</value></data>
+  <data name="SandboxPage_PresetBalanced.Text" xml:space="preserve"><value>Balanced</value></data>
+  <data name="SandboxPage_Title.Text" xml:space="preserve"><value>Node Sandbox</value></data>
+  <data name="SandboxPage_ResolvedFolders.Header" xml:space="preserve"><value>Included folders</value></data>
+  <data name="SandboxPage_FileAccessReadOnly" xml:space="preserve"><value>Your user profile and personal folders, including redirected folders, are readable. Additional permissions below can also allow changes. Protected folders stay blocked.</value></data>
+  <data name="SandboxPage_FileAccessReadWrite" xml:space="preserve"><value>Programs can read and change files in your user profile and personal folders, including redirected folders. Protected folders stay blocked.</value></data>
+  <data name="SandboxPage_FileAccessSelected" xml:space="preserve"><value>Personal file access comes only from additional permissions below. Windows runtime folders and private scratch space remain available. Protected folders stay blocked.</value></data>
+  <data name="SandboxPage_SavedFolderFormat" xml:space="preserve"><value>{0} (saved permission): {1}</value></data>
+  <data name="SandboxPage_FolderUnavailable" xml:space="preserve"><value>Folder location unavailable</value></data>
+  <data name="SandboxPage_FolderAccessFormat" xml:space="preserve"><value>Access for {0}</value></data>
+  <data name="SandboxPage_RemoveFolderFormat" xml:space="preserve"><value>Remove permission for {0}</value></data>
+  <data name="SandboxPage_FolderList.Text" xml:space="preserve"><value>Folders</value></data>
+  <data name="SandboxPage_FolderListHelp.Text" xml:space="preserve"><value>Choose what the agent can do in each folder. No access blocks that folder, but explicitly listed subfolders keep their own access. Protected folders stay blocked.</value></data>
+  <data name="SandboxPage_NoAccess.Content" xml:space="preserve"><value>No access</value></data>
+  <data name="SandboxPage_Profile.Text" xml:space="preserve"><value>User profile</value></data>
+  <data name="SandboxPage_OneDrive.Text" xml:space="preserve"><value>OneDrive</value></data>
+  <data name="SandboxPage_FolderAccess.PlaceholderText" xml:space="preserve"><value>Choose access</value></data>
+  <data name="SandboxPage_ResetFolder" xml:space="preserve"><value>Reset</value></data>
+  <data name="SandboxPage_RemoveFolder" xml:space="preserve"><value>Remove</value></data>
+  <data name="SandboxPage_ResetFolderFormat" xml:space="preserve"><value>Reset {0} to preset access</value></data>
+  <data name="SandboxPage_LegacyFolderReview" xml:space="preserve"><value>Saved blocked permission needs review. It does not deny access from a preset or parent folder.</value></data>
+  <data name="SandboxPage_RuntimeFolder" xml:space="preserve"><value>Windows runtime access is fixed at read only.</value></data>
+  <data name="SandboxPage_LegacyFolderAccess.Content" xml:space="preserve"><value>Legacy blocked (review)</value></data>
+  <data name="SandboxPage_PresetOpen.Text" xml:space="preserve"><value>Open</value></data>
+  <data name="SandboxPage_PresetStrictText.Text" xml:space="preserve"><value>Keep the agent on a short leash.</value></data>
+  <data name="SandboxPage_PresetBalancedText.Text" xml:space="preserve"><value>Help with everyday tasks, with fewer risks.</value></data>
+  <data name="SandboxPage_PresetOpenText.Text" xml:space="preserve"><value>Give the agent more freedom to get things done.</value></data>
+  <data name="SandboxPage_PresetStrictDetails" xml:space="preserve"><value>No personal files or internet. Runtime access and private scratch only.</value></data>
+  <data name="SandboxPage_PresetBalancedDetails" xml:space="preserve"><value>Read your profile and resolved redirected personal folders. No personal writes. Internet on. Protected folders excluded.</value></data>
+  <data name="SandboxPage_PresetOpenDetails" xml:space="preserve"><value>Read and write your profile and resolved redirected personal folders. Internet on. Protected folders excluded.</value></data>
+  <data name="SandboxPage_FileScope.Header" xml:space="preserve"><value>File access scope</value></data>
+  <data name="SandboxPage_SelectedFolders.Content" xml:space="preserve"><value>Selected folders</value></data>
+  <data name="SandboxPage_UserFilesReadOnly.Content" xml:space="preserve"><value>User folders: read only</value></data>
+  <data name="SandboxPage_UserFilesReadWrite.Content" xml:space="preserve"><value>User folders: read and write</value></data>
+  <data name="SandboxPage_CheckingTitle" xml:space="preserve"><value>Checking MXC availability</value></data>
+  <data name="SandboxPage_CheckingText" xml:space="preserve"><value>Verifying contained command support. Permissions are not changed by this check.</value></data>
+  <data name="SandboxPage_ScopeResolutionBlockedTitle" xml:space="preserve"><value>User folder resolution incomplete</value></data>
+  <data name="SandboxPage_ScopeResolutionBlockedText" xml:space="preserve"><value>A required personal folder could not be found or accessed. Commands using these folders are blocked. Review the folder list, restore the folder's Windows location, then retry. Protected folders and command approvals always apply.</value></data>
+  <data name="SandboxPage_TimeoutFormat" xml:space="preserve"><value>Command timeout: {0} sec</value></data>
+  <data name="SandboxPage_LegacyBlockedTitle" xml:space="preserve"><value>Legacy folder grants need review</value></data>
+  <data name="SandboxPage_LegacyBlockedText" xml:space="preserve"><value>Previously filtered or conflicting grants remain Blocked to avoid silently widening access. Review the Blocked rows and explicitly choose supported access or a different folder. Protected roots always remain excluded.</value></data>
+  <data name="SandboxPage_IncludedUserFolders" xml:space="preserve"><value>OS-resolved user-folder roots (protected descendants excluded):</value></data>
+  <data name="SandboxPage_CheckingUserFolders" xml:space="preserve"><value>Resolving user-folder locations...</value></data>
+  <data name="SandboxPage_OneDriveNotIncluded" xml:space="preserve"><value>No available configured OneDrive root was resolved. No additional OneDrive location is included.</value></data>
+  <data name="SandboxPage_WindowsCompatibilityTitle" xml:space="preserve"><value>Windows containment unavailable: commands run uncontained</value></data>
+  <data name="SandboxPage_WindowsCompatibilityText" xml:space="preserve"><value>This Windows version cannot provide the required MXC containment. Approved commands run directly on this computer. Sandbox file, network, clipboard and Windows UI restrictions are not enforced. Saved permissions are preserved and command approvals remain active. Update Windows to enable containment. Companion's own minimum Windows version still applies.</value></data>
   <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>The preferred {0} profile does not fit this hardware. Setup can use {1} with {2:N0} context tokens. Review this profile in setup before installing.</value></data>
   <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>This profile requires at least {0} of system RAM.</value></data>
   <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>This profile requires at least {0} free on both the model cache and runtime volumes.</value></data>

@@ -62,6 +62,7 @@ public sealed class SettingsChangedEventArgs : EventArgs
 /// </summary>
 public interface ISettingsEditor
 {
+    void ApplySystemRunPreset(OpenClaw.Shared.SystemRunAccessPreset preset);
     bool AutoStart { set; }
     bool GlobalHotkeyEnabled { set; }
     bool UseLegacyWebChat { set; }
@@ -107,6 +108,8 @@ public interface ISettingsEditor
 /// </summary>
 public sealed record SettingsSnapshot
 {
+    public OpenClaw.Shared.SystemRunFilesystemScope? SystemRunFilesystemScope { get; init; }
+    public string SystemRunPolicyFingerprint { get; init; } = "";
     public long Version { get; init; }
     public bool AutoStart { get; init; }
     public bool GlobalHotkeyEnabled { get; init; }

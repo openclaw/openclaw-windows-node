@@ -48,14 +48,14 @@ The [Gateway fixture harness](GATEWAY_FIXTURE_TESTING.md) adds a middle tier:
 the real desktop app and production Gateway/chat stack consume deterministic
 synthetic Gateway responses, with no AI or real WSL Gateway. Protocol tests
 run in Shared; profile/preflight and concurrent-app tests live in Tray
-Integration; native picker/240-message/late-history proofs live in Tray UI.
+Integration; native sidebar/240-message/late-history proofs live in Tray UI.
 Use `.\scripts\test-gateway-fixture.ps1 -AppPath '<built-app.exe>'` for the
 opt-in real-app lane. It rejects skipped or zero-test runs and preserves
 per-run artifacts. Existing MCP-only integration defaults remain unchanged.
 
 ### OpenClaw.Shared.Tests
 
-- **Process output-drain timing** - MXC executor and local command-runner integration tests use the existing nonparallel `BoundedProcessWaitCollection` so unrelated thread-pool-heavy tests do not consume their wall-clock budgets. The local runner still exercises 32 concurrent commands with exact stdout/stderr assertions. MXC timing measures from launcher exit, not descendant identity publication; its gated 1,250 ms pre-exit case retains the one-second drain assertion, 100 ms cleanup budget, exact final output, and owned-process cleanup.
+- **Command output-drain timing** - The unsupported-Windows runner fixture gates launcher release, then requires completion within three seconds of root exit while a descendant retains stdout, stderr, or both. Ten repetitions per case check short output and PID/start-time-bound child cleanup. The nonparallel `MxcOwnership` collection isolates these wall-clock budgets from unrelated tests. Native SDK finalization has separate managed ownership tests and opt-in runtime proof.
 - **Model and display formatting** - activity glyphs, app version display, session labels, gateway usage/node display, channel status, and rich text helpers.
 - **Gateway and WebSocket behavior** - gateway client parsing, session keys, WebSocket base handling, URL normalization, local gateway classification, and token sanitization. The signing-identity regression covers native and managed loopback WebSockets, with the fixture completing the close handshake and bounding disconnect waits.
 - **Capabilities and MCP** - app/canvas/screen/camera/system capabilities, MCP auth token reset, MCP HTTP server, MCP tool bridge, MXC availability, MXC policy building, and command runners.

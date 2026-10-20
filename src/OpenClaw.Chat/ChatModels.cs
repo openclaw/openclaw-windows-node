@@ -116,8 +116,6 @@ public record ChatThread
     public bool IsBackground { get; init; }
     public bool IsArchived { get; init; }
     public bool IsChannelSession { get; init; }
-    public bool IsVisibleInSessionPicker(string? activeThreadId) =>
-        !IsBackground || string.Equals(Id, activeThreadId, StringComparison.Ordinal);
     public ChatThreadStatus Status { get; init; }
     public ChatActivity Activity { get; init; }
     public string? Cwd { get; init; }

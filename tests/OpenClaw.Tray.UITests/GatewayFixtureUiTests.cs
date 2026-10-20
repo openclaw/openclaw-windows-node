@@ -24,6 +24,37 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
 {
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
+    public async Task HistoricalFractionalVoiceConversationRendersWithoutLoadingPlaceholder()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            await SelectSessionAsync(run, GatewayScenario.VoiceTitle, GatewayScenario.VoiceSessionKey);
+            await WaitUiAsync(run, () => RenderConsumedHistory(run, GatewayScenario.VoiceSessionKey)
+                && IsVisibleInTimeline(run, GatewayScenario.VoiceFinalSentinel), "visible historical fractional voice reply");
+            Assert.Null(FindText(run, "Loading messages..."));
+            var snapshot = await run.InvokeAsync("app.chat.snapshot", new { threadId = GatewayScenario.VoiceSessionKey });
+            var timeline = snapshot.GetProperty("selectedTimeline");
+            Assert.True(timeline.GetProperty("historyLoaded").GetBoolean());
+            var entries = timeline.GetProperty("entries").EnumerateArray().ToArray();
+            Assert.Equal(30, entries.Length);
+            for (var index = 0; index < entries.Length; index++)
+            {
+                var expectedText = index == 29 ? GatewayScenario.VoiceFinalSentinel : $"Fixture voice history message {index + 1:D2}.";
+                Assert.Equal(expectedText, entries[index].GetProperty("Text").GetString());
+            }
+            await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, "fractional-voice-snapshot.json"), snapshot.GetRawText());
+            await CaptureIfRequestedAsync(run, "fractional-voice-history-loaded.png");
+            await SelectSessionAsync(run, GatewayScenario.MainTitle, GatewayScenario.MainSessionKey);
+            await WaitUiAsync(run, () => IsVisibleInTimeline(run, GatewayScenario.MainSentinel), "integer typed control");
+            await SelectSessionAsync(run, GatewayScenario.VoiceTitle, GatewayScenario.VoiceSessionKey);
+            await WaitUiAsync(run, () => IsVisibleInTimeline(run, GatewayScenario.VoiceFinalSentinel), "restored historical voice reply");
+            Assert.Null(FindText(run, "Loading messages..."));
+        }, scenario: GatewayScenario.CreateFractionalVoiceHistory());
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
     public async Task ArchivedConversationIsRestoredFromSettingsNotSidebar()
     {
         await WithAppAsync(async run =>

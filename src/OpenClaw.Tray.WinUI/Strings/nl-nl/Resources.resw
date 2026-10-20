@@ -2221,12 +2221,6 @@ Gebruik een van deze opties:
   <data name="WorkspacePage_TextBlock_34.Text" xml:space="preserve">
     <value>Vernieuwen</value>
   </data>
-  <data name="ChatWindow_TextBlock_29.Text" xml:space="preserve">
-    <value>Chatgesprek</value>
-  </data>
-  <data name="ChatWindow_TextBlock_60.Text" xml:space="preserve">
-    <value>Maak verbinding met de gateway om te chatten</value>
-  </data>
   <data name="TitleText.Text" xml:space="preserve">
     <value>OpenClaw Windows Companion</value>
   </data>
@@ -2440,9 +2434,6 @@ Gebruik een van deze opties:
   <data name="FallbackInfoBar.Title" xml:space="preserve">
     <value>Werkruimtebestanden</value>
   </data>
-  <data name="ChatWindow_winexWindowEx_2.Title" xml:space="preserve">
-    <value>OpenClaw Chat</value>
-  </data>
   <data name="SearchBox.PlaceholderText" xml:space="preserve">
     <value>Typ een opdracht...</value>
   </data>
@@ -2469,12 +2460,6 @@ Gebruik een van deze opties:
   </data>
   <data name="UsagePage_TextBlock_10.Text" xml:space="preserve">
     <value>Gebruik en kosten</value>
-  </data>
-  <data name="ChatWindowOpenInBrowserToolTip.Content" xml:space="preserve">
-    <value>Openen in browser</value>
-  </data>
-  <data name="ChatWindowCloseToolTip.Content" xml:space="preserve">
-    <value>Sluiten</value>
   </data>
   <data name="ChatPageOpenInBrowserToolTip.Content" xml:space="preserve">
     <value>Openen in browser</value>
@@ -2944,30 +2929,6 @@ Gebruik een van deze opties:
   <data name="DebugPage_TextBlock_OverridesCaption.Text" xml:space="preserve">
     <value>Overschrijf de globale instelling 'Standaard Gateway-chatinterface gebruiken' per chatcontainer. Wordt opnieuw ingesteld wanneer de app opnieuw wordt opgestart.</value>
   </data>
-  <data name="DebugPage_TextBlock_HubChatLabel.Text" xml:space="preserve">
-    <value>Chat-tabblad van de hub:</value>
-  </data>
-  <data name="DebugPage_TextBlock_TrayChatLabel.Text" xml:space="preserve">
-    <value>Chat-pop-up van het systeemvak:</value>
-  </data>
-  <data name="DebugPage_ChatOverride_NoOverride_Hub.Content" xml:space="preserve">
-    <value>Geen overschrijving</value>
-  </data>
-  <data name="DebugPage_ChatOverride_ForceLegacy_Hub.Content" xml:space="preserve">
-    <value>Gateway-chatinterface forceren</value>
-  </data>
-  <data name="DebugPage_ChatOverride_ForceNative_Hub.Content" xml:space="preserve">
-    <value>Companion-chatinterface forceren</value>
-  </data>
-  <data name="DebugPage_ChatOverride_NoOverride_Tray.Content" xml:space="preserve">
-    <value>Geen overschrijving</value>
-  </data>
-  <data name="DebugPage_ChatOverride_ForceLegacy_Tray.Content" xml:space="preserve">
-    <value>Gateway-chatinterface forceren</value>
-  </data>
-  <data name="DebugPage_ChatOverride_ForceNative_Tray.Content" xml:space="preserve">
-    <value>Companion-chatinterface forceren</value>
-  </data>
   <data name="Chat_ZeroState_RecentChats" xml:space="preserve"><value>Recente chats</value></data>
   <data name="Chat_Placement_Environment" xml:space="preserve">
     <value>Omgeving</value>
@@ -3142,9 +3103,6 @@ Gebruik een van deze opties:
   </data>
   <data name="Chat_Composer_Reasoning_Maximum" xml:space="preserve">
     <value>Maximaal</value>
-  </data>
-  <data name="Chat_Composer_Accessibility_Session" xml:space="preserve">
-    <value>Sessie</value>
   </data>
   <data name="Chat_Composer_Accessibility_CurrentSession" xml:space="preserve">
     <value>Huidige sessie</value>
@@ -3323,27 +3281,13 @@ Gebruik een van deze opties:
   <data name="AppNotification_ChannelNeedsAttention_StatusMessageFormat" xml:space="preserve">
     <value>De gateway meldt {0} als {1}.</value>
   </data>
-  <data name="AppNotification_SandboxDisabled_Title" xml:space="preserve">
-    <value>Node-sandbox is uitgeschakeld: opdrachten worden onbeperkt uitgevoerd</value>
-  </data>
-  <data name="AppNotification_SandboxDisabled_Message" xml:space="preserve">
-    <value>Door agents gestarte Windows-opdrachten worden zonder sandboxbeperking uitgevoerd totdat Node-sandbox weer is ingeschakeld.</value>
-  </data>
-  <data name="AppNotification_SandboxUnavailable_Title" xml:space="preserve">
-    <value>Sandbox niet beschikbaar: host-fallback</value>
-  </data>
-  <data name="AppNotification_SandboxUnavailable_MessageFormat" xml:space="preserve">
-    <value>{0}
-
-Opdrachten worden op de host uitgevoerd zonder sandboxbescherming zolang sandboxing niet beschikbaar is.</value>
-  </data>
   <data name="AppNotification_SandboxUnavailableBlocked_Title" xml:space="preserve">
     <value>Sandbox niet beschikbaar: opdrachten geblokkeerd</value>
   </data>
   <data name="AppNotification_SandboxUnavailableBlocked_MessageFormat" xml:space="preserve">
     <value>{0}
 
-Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strikte fallbackblokkering is ingeschakeld.</value>
+MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de installatie of probeer opnieuw. Alleen bevestigd niet-ondersteund Windows staat uitvoering zonder isolatie toe.</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_DefaultReason" xml:space="preserve">
     <value>MXC-sandboxprimitieven zijn niet beschikbaar op deze machine.</value>
@@ -4180,13 +4124,10 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Chat surface overrides</value>
   </data>
   <data name="DiagnosticsPage_Expander_ChatOverrides.Description" xml:space="preserve">
-    <value>Per-surface override of the chat UI. Resets when OpenClaw restarts.</value>
+    <value>Override the Workspace chat UI. Resets when OpenClaw restarts.</value>
   </data>
-  <data name="DiagnosticsPage_Card_HubChat.Header" xml:space="preserve">
-    <value>Hub chat tab</value>
-  </data>
-  <data name="DiagnosticsPage_Card_TrayChat.Header" xml:space="preserve">
-    <value>Tray chat popup</value>
+  <data name="DiagnosticsPage_Card_WorkspaceChat.Header" xml:space="preserve">
+    <value>Workspace chat</value>
   </data>
   <data name="DiagnosticsPage_DetailBack.Text" xml:space="preserve">
     <value>Back to Diagnostics</value>
@@ -4638,15 +4579,6 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
   <data name="DebugPage_ForceCompanionChatUI.Content" xml:space="preserve">
     <value>Forceer chat-UI van companion</value>
   </data>
-  <data name="DebugPage_NoOverride2.Content" xml:space="preserve">
-    <value>Geen overschrijving</value>
-  </data>
-  <data name="DebugPage_ForceGatewayChatUI2.Content" xml:space="preserve">
-    <value>Forceer chat-UI van gateway</value>
-  </data>
-  <data name="DebugPage_ForceCompanionChatUI2.Content" xml:space="preserve">
-    <value>Forceer chat-UI van companion</value>
-  </data>
   <data name="DebugPage_Refresh.Text" xml:space="preserve">
     <value>Vernieuwen</value>
   </data>
@@ -4743,9 +4675,6 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
   <data name="SandboxPage_SecurityLevel.Text" xml:space="preserve">
     <value>Beveiligingsniveau</value>
   </data>
-  <data name="SandboxPage_OneClickToSet.Text" xml:space="preserve">
-    <value>Eén klik om alle besturingselementen hieronder in te stellen. Aangepaste mappen blijven zoals u ze hebt ingesteld.</value>
-  </data>
   <data name="SandboxPage_LockedDown.Text" xml:space="preserve">
     <value>🔒 Vergrendeld</value>
   </data>
@@ -4768,16 +4697,16 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Aangepaste mapmachtigingen nog steeds actief</value>
   </data>
   <data name="SandboxPage_Files.Text" xml:space="preserve">
-    <value>📁 Bestanden</value>
+    <value>Bestandstoegang</value>
   </data>
   <data name="SandboxPage_ByDefaultTheAgent.Text" xml:space="preserve">
-    <value>Standaard heeft de agent alleen een tijdelijke werkmap die hij kan lezen en schrijven. Geef hieronder toegang tot gebruikersmappen. SSH-sleutels, browserprofielen en OpenClaw's eigen instellingen worden altijd geblokkeerd.</value>
+    <value>Het geselecteerde bereik bepaalt de bestandstoegang. Deze regels voegen mapmachtigingen toe; Bereik gebruiken behoudt de bestaande toegang. Kies Geselecteerde mappen om toegang tot expliciete machtigingen te beperken. Beschermde mappen blijven geblokkeerd.</value>
   </data>
   <data name="SandboxPage_Documents.Text" xml:space="preserve">
     <value>Documenten</value>
   </data>
   <data name="SandboxPage_Blocked.Content" xml:space="preserve">
-    <value>Geblokkeerd</value>
+    <value>Bereik gebruiken</value>
   </data>
   <data name="SandboxPage_ReadOnly.Content" xml:space="preserve">
     <value>Alleen-lezen</value>
@@ -4789,7 +4718,7 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Downloadmap</value>
   </data>
   <data name="SandboxPage_Blocked2.Content" xml:space="preserve">
-    <value>Geblokkeerd</value>
+    <value>Bereik gebruiken</value>
   </data>
   <data name="SandboxPage_ReadOnly2.Content" xml:space="preserve">
     <value>Alleen-lezen</value>
@@ -4801,7 +4730,7 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Bureaublad</value>
   </data>
   <data name="SandboxPage_Blocked3.Content" xml:space="preserve">
-    <value>Geblokkeerd</value>
+    <value>Bereik gebruiken</value>
   </data>
   <data name="SandboxPage_ReadOnly3.Content" xml:space="preserve">
     <value>Alleen-lezen</value>
@@ -4810,16 +4739,16 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Lezen &amp; schrijven</value>
   </data>
   <data name="SandboxPage_ToolDirectoriesOnYour.Text" xml:space="preserve">
-    <value>Mapdirectory's op uw PATH krijgen ook alleen-lezen toegang binnen de sandbox, zodat opdrachtregelhulpprogramma's zoals git, node, python en dotnet bruikbaar zijn. Stationswortels worden nooit toegekend.</value>
+    <value>Windows-runtimemappen en privéwerkruimte blijven beschikbaar. Vermelding in PATH verleent geen toegang. Pas een voorinstelling opnieuw toe om mapkeuzes te herstellen.</value>
   </data>
   <data name="SandboxPage_CustomFolders.Text" xml:space="preserve">
-    <value>Aangepaste mappen</value>
+    <value>Extra mappen</value>
   </data>
   <data name="SandboxPage_CustomGrantsAreAdded.Text" xml:space="preserve">
-    <value>Aangepaste machtigingen worden toegevoegd bovenop de regels hierboven. Een map binnen Documenten/Downloads/Bureaublad toevoegen met bredere toegang overschrijft de rij-instelling voor dat pad.</value>
+    <value>Deze machtigingen vullen de bovenstaande bestandstoegang aan. Alleen-lezen of Machtiging verwijderen beperkt geen toegang die de voorinstelling of een andere map al toestaat. Beschermde mappen blijven geblokkeerd.</value>
   </data>
   <data name="SandboxPage_Blocked4.Content" xml:space="preserve">
-    <value>Geblokkeerd</value>
+    <value>Machtiging verwijderen</value>
   </data>
   <data name="SandboxPage_ReadOnly4.Content" xml:space="preserve">
     <value>Alleen-lezen</value>
@@ -4828,7 +4757,7 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Lezen &amp; schrijven</value>
   </data>
   <data name="SandboxPage_NoCustomFoldersAdded.Text" xml:space="preserve">
-    <value>Geen aangepaste mappen toegevoegd.</value>
+    <value>Geen persoonlijke mappen gedeeld. Voeg een map toe om te beginnen.</value>
   </data>
   <data name="SandboxPage_AddFolder.Content" xml:space="preserve">
     <value>Map toevoegen</value>
@@ -4862,42 +4791,6 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
   </data>
   <data name="SandboxPage_LocalNetworkDevicesAnd.Text" xml:space="preserve">
     <value>Lokale netwerkapparaten en gedeelde mappen zijn nog niet inbegrepen.</value>
-  </data>
-  <data name="SandboxPage_CommandCompatibility.Text" xml:space="preserve">
-    <value>🪟 Opdrachtcompatibiliteit</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUi.Header" xml:space="preserve">
-    <value>Windows UI-API's toestaan</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUi.OffContent" xml:space="preserve">
-    <value>Uit: blokkeert Win32k-systeemaanroepen</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUi.OnContent" xml:space="preserve">
-    <value>Aan: PowerShell en vergelijkbare hulpprogramma's kunnen starten</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUi.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Windows UI-API's toestaan voor opdrachten in de sandbox</value>
-  </data>
-  <data name="SandboxPage_WindowsUiCompatibilityDescription.Text" xml:space="preserve">
-    <value>PowerShell (alle versies) en sommige consolehulpprogramma's gebruiken Windows UI-API's tijdens het opstarten. Deze instelling biedt geen ondersteunde inventaris van alle hostprocessen.</value>
-  </data>
-  <data name="SandboxPage_WindowsUiWarning.Title" xml:space="preserve">
-    <value>Win32k-grens uitgeschakeld</value>
-  </data>
-  <data name="SandboxPage_WindowsUiWarning.Message" xml:space="preserve">
-    <value>Bestands-, netwerk-, klembord-, time-out- en opdrachtgoedkeuringsregels blijven gelden. Win32k-systeemaanroepen zijn toegestaan; het klembordbeleid en het verbod op invoerinjectie blijven van kracht.</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUiDialogTitle" xml:space="preserve">
-    <value>Windows UI-API's toestaan?</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUiDialogContent" xml:space="preserve">
-    <value>Hiermee kunnen opdrachten in de sandbox Windows UI-systeemaanroepen gebruiken. PowerShell (alle versies) en sommige consolehulpprogramma's hebben dit nodig om met huidige MXC-versies te starten. Deze instelling verleent geen ondersteunde inventaris van alle hostprocessen: CIM/WMI-enumeratie van de host wordt niet ondersteund en is waargenomen als mislukt, tasklist kan mislukken of een time-out krijgen en de uitvoer van Get-Process mag niet worden beschouwd als een volledige inventaris of als een geheimhoudingsgrens voor procesmetadata.&#xA;&#xA;Bestands-, netwerk-, klembord-, time-out- en opdrachtgoedkeuringsregels blijven gelden, maar de blokkering van Win32k-systeemaanroepen wordt uitgeschakeld. Het klembordbeleid en het verbod op invoerinjectie blijven van kracht. Schakel dit alleen in als u bredere opdrachtcompatibiliteit nodig hebt.</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUiDialogPrimary" xml:space="preserve">
-    <value>UI-API's toestaan</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUiDialogCancel" xml:space="preserve">
-    <value>Annuleren</value>
   </data>
   <data name="SandboxPage_Limits.Text" xml:space="preserve">
     <value>⏱ Limieten</value>
@@ -5202,12 +5095,6 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
   </data>
   <data name="WorkspacePage_LoadingWorkspaceFiles.Text" xml:space="preserve">
     <value>Werkruimtebestanden worden geladen…</value>
-  </data>
-  <data name="ChatWindow_WebChatUnavailable.Text" xml:space="preserve">
-    <value>Web-chat niet beschikbaar</value>
-  </data>
-  <data name="ChatWindow_Retry.Content" xml:space="preserve">
-    <value>Opnieuw proberen</value>
   </data>
   <data name="ConnectionStatusWindow_ConnectionStatus.Text" xml:space="preserve">
     <value>Verbindingsstatus</value>
@@ -6401,12 +6288,6 @@ Controleer of de gateway actief is.</value>
   <data name="Command_GoToWorkspace_Title" xml:space="preserve">
     <value>Go to Workspace ({0})</value>
   </data>
-  <data name="Command_OpenChatWindow_Subtitle" xml:space="preserve">
-    <value>Open standalone chat</value>
-  </data>
-  <data name="Command_OpenChatWindow_Title" xml:space="preserve">
-    <value>Open Chat Window</value>
-  </data>
   <data name="Command_OpenDashboard_Subtitle" xml:space="preserve">
     <value>Open web dashboard</value>
   </data>
@@ -6714,7 +6595,7 @@ Controleer of de gateway actief is.</value>
     <value>Node-sandbox niet beschikbaar: opdrachten geblokkeerd</value>
   </data>
   <data name="SandboxPage_StatusUnavailableBlockedSubtext" xml:space="preserve">
-    <value>Containment is niet beschikbaar op deze pc en strikte fallbackblokkering staat aan, dus opdrachten die de agent start, worden geblokkeerd.</value>
+    <value>MXC kon niet worden geverifieerd. Herstel de installatie of probeer opnieuw. SDK- en beleidsfouten leiden nooit tot uitvoering zonder isolatie.</value>
   </data>
   <data name="SandboxPage_StatusUnavailableOffTitle" xml:space="preserve">
     <value>Node-sandbox is uitgeschakeld: hostuitvoering</value>
@@ -6749,11 +6630,6 @@ Controleer of de gateway actief is.</value>
   <data name="SandboxPage_ProbeErrorTitle" xml:space="preserve">
     <value>Kan de beschikbaarheid van de sandbox niet verifiëren</value>
   </data>
-  <data name="SandboxPage_ProbeErrorMessageFormat" xml:space="preserve">
-    <value>{0}
-
-{1} De sandboxcapaciteitscontrole is niet voltooid. Dit is meestal tijdelijk (een trage of geblokkeerde controle): probeer het opnieuw en controleer, als het probleem blijft bestaan, of beveiligingssoftware wxc-exec blokkeert.</value>
-  </data>
   <data name="SandboxPage_Retry" xml:space="preserve">
     <value>Opnieuw proberen</value>
   </data>
@@ -6770,11 +6646,6 @@ Controleer of de gateway actief is.</value>
   </data>
   <data name="SandboxPage_ComponentsMissingTitle" xml:space="preserve">
     <value>Sandboxing-onderdelen ontbreken</value>
-  </data>
-  <data name="SandboxPage_ComponentsMissingMessageFormat" xml:space="preserve">
-    <value>{0}
-
-Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuild is, bouw dan de tray-app zodat wxc-exec.exe naar de uitvoermap wordt gekopieerd. Installeer anders de companion-app opnieuw om sandboxing te herstellen.</value>
   </data>
   <data name="SandboxPage_ShowInstallInstructions" xml:space="preserve">
     <value>Installatie-instructies weergeven</value>
@@ -6817,15 +6688,6 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   </data>
   <data name="CronPage_NextWakeFormat" xml:space="preserve">
     <value>· Volgende wake: {0}</value>
-  </data>
-  <data name="ChatWindow_UnableToLoadChatCredentials" xml:space="preserve">
-    <value>Kan chat niet laden. De gateway-URL of het token is niet beschikbaar.</value>
-  </data>
-  <data name="ChatWindow_UnableToLoadChatRetryFormat" xml:space="preserve">
-    <value>Kan chat niet laden. Probeer het opnieuw. ({0})</value>
-  </data>
-  <data name="ChatWindow_WebViewFailedFormat" xml:space="preserve">
-    <value>WebView2 is mislukt: {0}</value>
   </data>
   <data name="CanvasWindow_WebViewInitFailedFormat" xml:space="preserve">
     <value>Kan WebView2 niet initialiseren: {0}</value>
@@ -7131,13 +6993,13 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
     <value>Sandboxactie</value>
   </data>
   <data name="SandboxPage_PresetLockedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Vergrendelde voorinstelling: Geen internet, geen klembord, geen standaardgebruikersmappen</value>
+    <value>Strikte voorinstelling: geen persoonlijke bestanden of internet</value>
   </data>
   <data name="SandboxPage_PresetBalancedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Aanbevolen voorinstelling: Internet aan, alleen-lezen voor Documenten, Downloads en Bureaublad</value>
+    <value>Evenwichtige voorinstelling: gebruikersmappen alleen-lezen, internet aan</value>
   </data>
   <data name="SandboxPage_PresetPermissiveButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Onbeveiligde voorinstelling: Internet aan, lezen en schrijven voor Documenten, Downloads en Bureaublad</value>
+    <value>Open voorinstelling: gebruikersmappen lezen en schrijven, internet aan</value>
   </data>
   <data name="SandboxPage_DocsAccessCombo.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Toegangsniveau voor Documenten</value>
@@ -8122,6 +7984,55 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="ChatPage_SetupCheckAgain.Content" xml:space="preserve">
     <value>Opnieuw controleren</value>
   </data>
+  <data name="SandboxPage_PresetHelp.Text" xml:space="preserve"><value>Voorinstellingen vervangen mapmachtigingen en internettoegang. Klembord, limieten en opdrachtgoedkeuring blijven onafhankelijk.</value></data>
+  <data name="SandboxPage_CustomPreset.Text" xml:space="preserve"><value>Aangepaste machtigingen</value></data>
+  <data name="SandboxPage_ApplyPreset" xml:space="preserve"><value>Voorinstelling toepassen</value></data>
+  <data name="SandboxPage_PresetStrict.Text" xml:space="preserve"><value>Strikt</value></data>
+  <data name="SandboxPage_PresetBalanced.Text" xml:space="preserve"><value>Evenwichtig</value></data>
+  <data name="SandboxPage_Title.Text" xml:space="preserve"><value>Node Sandbox</value></data>
+  <data name="SandboxPage_ResolvedFolders.Header" xml:space="preserve"><value>Inbegrepen mappen</value></data>
+  <data name="SandboxPage_FileAccessReadOnly" xml:space="preserve"><value>Uw gebruikersprofiel en persoonlijke mappen, inclusief omgeleide mappen, zijn leesbaar. Extra machtigingen hieronder kunnen ook wijzigingen toestaan. Beschermde mappen blijven geblokkeerd.</value></data>
+  <data name="SandboxPage_FileAccessReadWrite" xml:space="preserve"><value>Programma's kunnen bestanden in uw gebruikersprofiel en persoonlijke mappen lezen en wijzigen, inclusief omgeleide mappen. Beschermde mappen blijven geblokkeerd.</value></data>
+  <data name="SandboxPage_FileAccessSelected" xml:space="preserve"><value>Toegang tot persoonlijke bestanden komt alleen van de extra machtigingen hieronder. Windows-runtimemappen en privéwerkruimte blijven beschikbaar. Beschermde mappen blijven geblokkeerd.</value></data>
+  <data name="SandboxPage_SavedFolderFormat" xml:space="preserve"><value>{0} (opgeslagen machtiging): {1}</value></data>
+  <data name="SandboxPage_FolderUnavailable" xml:space="preserve"><value>Maplocatie niet beschikbaar</value></data>
+  <data name="SandboxPage_FolderAccessFormat" xml:space="preserve"><value>Toegang voor {0}</value></data>
+  <data name="SandboxPage_RemoveFolderFormat" xml:space="preserve"><value>Machtiging voor {0} verwijderen</value></data>
+  <data name="SandboxPage_FolderList.Text" xml:space="preserve"><value>Mappen</value></data>
+  <data name="SandboxPage_FolderListHelp.Text" xml:space="preserve"><value>Kies wat de agent in elke map mag doen. Geen toegang blokkeert die map, maar expliciet vermelde submappen behouden hun eigen toegang. Beschermde mappen blijven geblokkeerd.</value></data>
+  <data name="SandboxPage_NoAccess.Content" xml:space="preserve"><value>Geen toegang</value></data>
+  <data name="SandboxPage_Profile.Text" xml:space="preserve"><value>Gebruikersprofiel</value></data>
+  <data name="SandboxPage_OneDrive.Text" xml:space="preserve"><value>OneDrive</value></data>
+  <data name="SandboxPage_FolderAccess.PlaceholderText" xml:space="preserve"><value>Toegang kiezen</value></data>
+  <data name="SandboxPage_ResetFolder" xml:space="preserve"><value>Herstellen</value></data>
+  <data name="SandboxPage_RemoveFolder" xml:space="preserve"><value>Verwijderen</value></data>
+  <data name="SandboxPage_ResetFolderFormat" xml:space="preserve"><value>Vooringestelde toegang voor {0} herstellen</value></data>
+  <data name="SandboxPage_LegacyFolderReview" xml:space="preserve"><value>De opgeslagen geblokkeerde machtiging moet worden gecontroleerd. Deze weigert geen toegang vanuit een voorinstelling of bovenliggende map.</value></data>
+  <data name="SandboxPage_RuntimeFolder" xml:space="preserve"><value>Windows-runtimetoegang staat vast op alleen-lezen.</value></data>
+  <data name="SandboxPage_LegacyFolderAccess.Content" xml:space="preserve"><value>Oude blokkering (controleren)</value></data>
+  <data name="SandboxPage_PresetOpen.Text" xml:space="preserve"><value>Open</value></data>
+  <data name="SandboxPage_PresetStrictText.Text" xml:space="preserve"><value>Houd de agent kort aan de lijn.</value></data>
+  <data name="SandboxPage_PresetBalancedText.Text" xml:space="preserve"><value>Hulp bij dagelijkse taken, met minder risico's.</value></data>
+  <data name="SandboxPage_PresetOpenText.Text" xml:space="preserve"><value>Geef de agent meer vrijheid om dingen gedaan te krijgen.</value></data>
+  <data name="SandboxPage_PresetStrictDetails" xml:space="preserve"><value>Geen persoonlijke bestanden of internet. Alleen runtime-toegang en een privéwerkmap.</value></data>
+  <data name="SandboxPage_PresetBalancedDetails" xml:space="preserve"><value>Lees uw profiel en opgeloste omgeleide persoonlijke mappen. Niet persoonlijk schrijven. Internet aan. Beschermde mappen uitgesloten.</value></data>
+  <data name="SandboxPage_PresetOpenDetails" xml:space="preserve"><value>Lees en schrijf uw profiel en opgeloste omgeleide persoonlijke mappen. Internet aan. Beschermde mappen uitgesloten.</value></data>
+  <data name="SandboxPage_FileScope.Header" xml:space="preserve"><value>Bereik voor bestandstoegang</value></data>
+  <data name="SandboxPage_SelectedFolders.Content" xml:space="preserve"><value>Geselecteerde mappen</value></data>
+  <data name="SandboxPage_UserFilesReadOnly.Content" xml:space="preserve"><value>Gebruikersmappen: alleen lezen</value></data>
+  <data name="SandboxPage_UserFilesReadWrite.Content" xml:space="preserve"><value>Gebruikersmappen: lezen en schrijven</value></data>
+  <data name="SandboxPage_CheckingTitle" xml:space="preserve"><value>MXC-beschikbaarheid controleren</value></data>
+  <data name="SandboxPage_CheckingText" xml:space="preserve"><value>Ondersteuning voor ingesloten opdrachten controleren. Machtigingen worden niet gewijzigd.</value></data>
+  <data name="SandboxPage_ScopeResolutionBlockedTitle" xml:space="preserve"><value>Gebruikersmappen niet volledig opgelost</value></data>
+  <data name="SandboxPage_ScopeResolutionBlockedText" xml:space="preserve"><value>Een vereiste persoonlijke map is niet gevonden of niet toegankelijk. Opdrachten die deze mappen gebruiken zijn geblokkeerd. Bekijk de mappenlijst, herstel de Windows-locatie van de map en probeer opnieuw. Beschermde mappen en opdrachtgoedkeuringen blijven gelden.</value></data>
+  <data name="SandboxPage_TimeoutFormat" xml:space="preserve"><value>Opdrachttime-out: {0} sec</value></data>
+  <data name="SandboxPage_LegacyBlockedTitle" xml:space="preserve"><value>Oude mapmachtigingen moeten worden gecontroleerd</value></data>
+  <data name="SandboxPage_LegacyBlockedText" xml:space="preserve"><value>Eerder gefilterde of conflicterende machtigingen blijven geblokkeerd om toegang niet stilzwijgend uit te breiden. Controleer de geblokkeerde rijen en kies expliciet ondersteunde toegang of een andere map. Beschermde mappen blijven uitgesloten.</value></data>
+  <data name="SandboxPage_IncludedUserFolders" xml:space="preserve"><value>Door Windows opgeloste gebruikersmappen (beschermde inhoud uitgesloten):</value></data>
+  <data name="SandboxPage_CheckingUserFolders" xml:space="preserve"><value>Gebruikersmaplocaties oplossen...</value></data>
+  <data name="SandboxPage_OneDriveNotIncluded" xml:space="preserve"><value>Geen beschikbare geconfigureerde OneDrive-hoofdmap opgelost. Er is geen extra OneDrive-locatie opgenomen.</value></data>
+  <data name="SandboxPage_WindowsCompatibilityTitle" xml:space="preserve"><value>Windows-isolatie niet beschikbaar: opdrachten zonder isolatie</value></data>
+  <data name="SandboxPage_WindowsCompatibilityText" xml:space="preserve"><value>Deze Windows-versie biedt niet de vereiste MXC-isolatie. Goedgekeurde opdrachten worden rechtstreeks op deze computer uitgevoerd. Sandboxbeperkingen voor bestanden, netwerk, klembord en Windows-interface worden niet afgedwongen. Opgeslagen machtigingen blijven behouden en opdrachtgoedkeuringen blijven actief. Werk Windows bij om isolatie in te schakelen. De minimale Windows-versie voor Companion blijft van toepassing.</value></data>
   <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>Het voorkeursprofiel {0} past niet bij deze hardware. De installatie kan {1} gebruiken met {2:N0} contexttokens. Controleer dit profiel in de installatie voordat u het installeert.</value></data>
   <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>Dit profiel vereist minimaal {0} systeemgeheugen.</value></data>
   <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>Dit profiel vereist minimaal {0} vrije ruimte op zowel het modelcachevolume als het runtimevolume.</value></data>

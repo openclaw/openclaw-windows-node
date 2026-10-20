@@ -2,7 +2,6 @@ using OpenClaw.Chat;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClawTray.Presentation;
-using OpenClawTray.Services;
 
 namespace OpenClawTray.Chat;
 
@@ -34,8 +33,9 @@ internal static class ChatWelcomePresentation
         IEnumerable<ChatThread> threads,
         string? currentThreadId,
         string? agentId) =>
-        SessionVisibilityFilter.VisibleChatPickerThreads(threads)
-            .Where(thread => !string.Equals(thread.Id, currentThreadId, StringComparison.Ordinal)
+        threads.Where(thread => (thread.Activity != ChatActivity.Idle
+                    || thread.InputTokens > 0 || thread.OutputTokens > 0 || thread.TotalTokens > 0)
+                && !string.Equals(thread.Id, currentThreadId, StringComparison.Ordinal)
                 && !string.IsNullOrWhiteSpace(thread.Id)
                 && !string.IsNullOrWhiteSpace(thread.Title)
                 && !thread.IsBackground

@@ -26,9 +26,8 @@ public static class ReactorChatHostExtensions
                 System.Diagnostics.Debug.WriteLine("Dropped chat UI update because DispatcherQueue rejected the work item.");
         };
 
-    /// <summary>Builds the reset-confirmation dialog closure (centralized here so
-    /// <see cref="Pages.ChatPage"/> and <see cref="Windows.ChatWindow"/> do not each
-    /// duplicate it) and creates one <see cref="ChatComposerSession"/> from the
+    /// <summary>Builds the reset-confirmation dialog closure and creates one
+    /// <see cref="ChatComposerSession"/> from the
     /// resolved <paramref name="composerFactory"/>. Callers pass the returned session
     /// into <see cref="MountReactorChat"/>. <see cref="IChatComposerFactory"/> and
     /// <see cref="ChatComposerHostActions"/> stay internal — this helper, not a
@@ -40,11 +39,10 @@ public static class ReactorChatHostExtensions
         IChatDataProvider provider,
         Func<CancellationToken, Action?, Task<string?>>? onVoiceRequest,
         Action? onAttachClick,
-        Action? onSettingsClick,
         Action<bool>? onSpeakerMuteChanged,
         bool initialMuted,
         Action? onSessionNavigationStarting = null,
-        Action<string>? onSessionSelected = null)
+        Action<string, string?>? onSessionSelected = null)
     {
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(composerFactory);
@@ -81,7 +79,6 @@ public static class ReactorChatHostExtensions
             ConfirmResetAsync,
             onAttachClick,
             onVoiceRequest,
-            onSettingsClick,
             onSpeakerMuteChanged,
             onSessionNavigationStarting,
             onSessionSelected);
@@ -97,8 +94,6 @@ public static class ReactorChatHostExtensions
         Func<string, Task>? onReadAloud = null,
         Action? onStopSpeaking = null,
         Action<string>? onOpenCheckpoints = null,
-        bool isCompact = false,
-        bool showSessionPicker = true,
         bool initialThreadIsExplicitSelection = true)
     {
         ArgumentNullException.ThrowIfNull(window);
@@ -124,8 +119,6 @@ public static class ReactorChatHostExtensions
             onReadAloud,
             onStopSpeaking,
             onOpenCheckpoints,
-            isCompact,
-            ShowSessionPicker: showSessionPicker,
             InitialThreadIsExplicitSelection: initialThreadIsExplicitSelection);
         var host = new ReactorHostControl();
         host.Mount(_ => Component<OpenClawReactorChatRoot, OpenClawReactorChatRootProps>(props));
@@ -136,7 +129,7 @@ public static class ReactorChatHostExtensions
 }
 
 /// <summary>
-/// Imperative host handle used by the page and compact window for attachment
+/// Imperative host handle used by the Workspace chat page for attachment
 /// and voice input that originates outside the declarative chat tree. Owns the one
 /// <see cref="ChatComposerSession"/> created for this mount and disposes it exactly
 /// once, alongside the Reactor host.
@@ -149,13 +142,11 @@ public sealed class MountedReactorChat(
 {
     private int _disposed;
 
-    internal bool TrySelectSession(string sessionKey) => session.Controller.TrySelectChannel(sessionKey);
+    internal bool TrySelectSession(string sessionKey) => session.Controller.TrySelectSession(sessionKey);
 
     internal void InvalidatePendingSessionNavigation() => session.Controller.InvalidatePendingSessionNavigation();
 
     internal void CancelVoiceRecording() => session.Controller.CancelVoiceRecording();
-
-    public void AttachFile(ChatAttachment attachment) => AttachFiles(new[] { attachment });
 
     public void AttachFiles(IReadOnlyList<ChatAttachment> attachments) =>
         callbacks.AttachFiles?.Invoke(attachments);

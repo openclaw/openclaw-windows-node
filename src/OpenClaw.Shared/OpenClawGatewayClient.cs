@@ -759,11 +759,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             // Spec doc lists `ts`, but gateway 2026.4.23 actually returns
             // `timestamp` on chat.history rows (verified via WS RX trace).
             // Accept both for forward/back compat.
-            long ts = 0;
-            if (m.TryGetProperty("timestamp", out var tsProp1) && tsProp1.ValueKind == JsonValueKind.Number)
-                ts = tsProp1.GetInt64();
-            else if (m.TryGetProperty("ts", out var tsProp2) && tsProp2.ValueKind == JsonValueKind.Number)
-                ts = tsProp2.GetInt64();
+            var ts = ExtractChatHistoryTimestampMs(m);
 
             var openClawMetadata = ExtractOpenClawMetadata(m);
 
@@ -849,6 +845,34 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
 
         return string.Empty;
+    }
+
+    private static long ExtractChatHistoryTimestampMs(JsonElement node)
+    {
+        if (node.ValueKind != JsonValueKind.Object)
+            return 0;
+
+        foreach (var key in new[] { "timestamp", "ts" })
+        {
+            if (!node.TryGetProperty(key, out var value) || value.ValueKind != JsonValueKind.Number)
+                continue;
+
+            if (value.TryGetInt64(out var wholeMs))
+                return wholeMs;
+
+            if (!value.TryGetDouble(out var raw)
+                || !double.IsFinite(raw)
+                || raw < long.MinValue
+                // long.MaxValue rounds up to 2^63 as a double, so this bound is exclusive.
+                || raw >= 9223372036854775808d)
+            {
+                continue;
+            }
+
+            return (long)raw;
+        }
+
+        return 0;
     }
 
     private static IReadOnlyList<ChatToolContentInfo> ExtractToolContent(

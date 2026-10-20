@@ -244,6 +244,10 @@ jobs:
         if ($LASTEXITCODE -ne 0) { throw 'GitVersion restore failed.' }
         ./scripts/test-alpha-promotion-versioning.ps1
 
+    - name: Validate release branch GitVersion behavior
+      shell: pwsh
+      run: ./scripts/test-release-branch-versioning.ps1
+
   proof-pool-contracts:
     name: Proof-pool contracts
     runs-on: windows-latest

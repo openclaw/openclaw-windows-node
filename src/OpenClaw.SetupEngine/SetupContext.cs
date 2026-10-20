@@ -260,6 +260,8 @@ public sealed class CapabilitiesConfig
 
 public sealed class TraySettingsConfig
 {
+    public OpenClaw.Shared.SystemRunAccessPreset? SystemRunPreset { get; set; }
+    public bool SystemRunPresetIsExplicit { get; set; }
     public bool EnableNodeMode { get; set; } = true;
     public bool? EnableMcpServer { get; set; }
     public bool? NodeOllamaInferenceEnabled { get; set; }
@@ -337,9 +339,25 @@ public sealed class TraySettingsConfig
             foreach (var kvp in existing)
                 settings[kvp.Key] = kvp.Value;
         }
+        foreach (var key in settings.Keys.Where(key =>
+            key.Equals("SystemRunSandboxEnabled", StringComparison.OrdinalIgnoreCase) ||
+            key.Equals("SystemRunBlockHostFallbackWhenMxcUnavailable", StringComparison.OrdinalIgnoreCase)).ToArray())
+            settings.Remove(key);
 
         foreach (var kvp in setupOwnedSettings)
             settings[kvp.Key] = kvp.Value;
+
+        if (SystemRunPreset is { } preset && (SystemRunPresetIsExplicit || existing is null || existing.Count == 0 ||
+            existing.TryGetValue("SystemRunFilesystemScope", out var scope) && scope.ValueKind == JsonValueKind.Null))
+        {
+            var permissions = OpenClaw.Shared.SystemRunPermissionPresets.Apply(new OpenClaw.Shared.SettingsData(), preset);
+            settings["SystemRunFilesystemScope"] = permissions.SystemRunFilesystemScope!;
+            settings["SystemRunAllowOutbound"] = permissions.SystemRunAllowOutbound;
+            settings["SandboxDocumentsAccess"] = null!;
+            settings["SandboxDownloadsAccess"] = null!;
+            settings["SandboxDesktopAccess"] = null!;
+            settings["SandboxCustomFolders"] = Array.Empty<OpenClaw.Shared.SandboxCustomFolder>();
+        }
 
         const string autoRepairKey = "EnableManagedLocalGatewayAutoRepair";
         if (defaultManagedAutoRepair && !settings.ContainsKey(autoRepairKey))
@@ -348,6 +366,7 @@ public sealed class TraySettingsConfig
         Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
         var json = JsonSerializer.Serialize(settings, SetupConfig.JsonWriteOptions);
         AtomicFile.WriteAllText(settingsPath, json);
+        SystemRunPresetIsExplicit = false;
     }
 
     public static void UpdateAutoStartInSettingsFile(string settingsPath, bool autoStart)

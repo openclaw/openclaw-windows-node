@@ -54,6 +54,17 @@ lifecycle, assistant-delta, tool-outcome and structured-content chat events exer
 without contacting an AI provider. These controls do not enable writes in the
 normal browse scenario.
 
+The opt-in `session-mutations` scenario accepts in-memory `sessions.patch`,
+`sessions.delete`, and parallel `sessions.create` requests. Creation uses a known
+parent, returns a distinct server-assigned key/session ID, and exposes the empty
+conversation through session-list and history reads without replacing its parent.
+The response gate can hold creation while the UI navigates elsewhere. Composer
+`/new` tests use this path to check initial Home -> new conversation -> Back/Forward
+and delayed completion on Notifications. A newer page navigation fences the
+pending selection: returning Home retains the original conversation, while the
+created session remains available for explicit sidebar selection. No provider, transcript file, or real
+Gateway is involved; other mutations and unsupported creation parameters still fail.
+
 The host is `tests\OpenClaw.GatewayFixtureHost`, a plain .NET console app, not a
 test container. The request-driven server and scenario live in
 `tests\OpenClaw.TestSupport\Gateway`. Repeated reads and different request
@@ -75,6 +86,13 @@ The script runs profile/preflight and polling tests, real-process MCP tests, and
 tests. It rejects failed, skipped, missing-report and zero-test runs. It needs
 a Windows desktop and the same WinUI prerequisites as the existing UI suite.
 There is no skip-as-success fallback when the desktop is unavailable.
+
+`GatewayFixtureStartupTests` exercise parent and foreign browser-control startup
+without launching the app. Cancellation and readiness failures must reap the
+owned child, remove its readiness file, and release both listener ports.
+The Shared browser-proxy regression runs the production client and a default-handler
+control in separate test-host processes with explicit proxy settings. It does not
+change the test runner's environment or cached default proxy.
 
 The tests use local MCP for discovery, startup state and page navigation, and
 UI Automation for the actual agent selector, Workspace session sidebar, scrolling and settings
@@ -120,6 +138,18 @@ call cannot prevent failure reporting and owned-process cleanup.
 
 Inspect the captured PNGs when claiming visual proof. UI Automation alone does
 not detect every overlap, clipping or theme defect.
+
+`HistoricalFractionalVoiceConversationRendersWithoutLoadingPlaceholder` uses
+the opt-in `GatewayScenario.CreateFractionalVoiceHistory()` scenario. It adds
+30 synthetic historical messages, including 18 fractional-millisecond Talk
+rows with realtime voice provenance, block-array user text and no usage fields.
+The real Gateway client protocol test checks every message's content, ID,
+sequence and truncated timestamp. The native UI test checks all 30 projected
+texts, visible final voice content, no loading placeholder, and switching to an
+integer-timestamp typed control and back. Screenshots and the synthetic MCP
+snapshot are retained with the run artifacts. This proves stored-history
+compatibility, not microphone capture, live voice streaming or real Gateway
+pairing, and does not use the reporter's private sessions.
 
 ## Cron editor proof
 

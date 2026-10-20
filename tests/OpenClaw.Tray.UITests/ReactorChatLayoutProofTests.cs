@@ -220,7 +220,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         await WithChatAsync(800, async (surface, _, session, provider) =>
         {
             if (!initialSelection)
-                await ui.RunOnUIAsync(() => session.Controller.SelectChannel(key));
+                await ui.RunOnUIAsync(() => { Assert.True(session.Controller.TrySelectSession(key)); });
             var beforePublication = await provider.LoadAsync();
             for (var i = 0; i < 3; i++)
             {
@@ -380,12 +380,12 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 sending = session.Controller.SendAsync();
                 Assert.Equal(1, gateway.Preparations);
                 Assert.False(sending.IsCompleted);
-                session.Controller.SelectChannel("other");
+                Assert.True(session.Controller.TrySelectSession("other"));
             });
             await SettleAsync();
             gateway.PrepareCompletion.SetResult();
             Assert.False(await sending!);
-            await ui.RunOnUIAsync(() => session.Controller.SelectChannel("proof"));
+            await ui.RunOnUIAsync(() => { Assert.True(session.Controller.TrySelectSession("proof")); });
             await Task.Delay(1000);
             await SettleAsync();
             await ui.RunOnUIAsync(() =>
@@ -768,7 +768,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
     }
 
     [Fact]
-    public async Task SessionPicker_FixtureObservationSurvivesCompactLayoutChanges()
+    public async Task ComposerInput_FixtureObservationSurvivesNarrowLayoutChanges()
     {
         using var directory = new OpenClaw.TestSupport.TempDirectory();
         using var environment = new OpenClaw.TestSupport.EnvironmentScope()
@@ -786,9 +786,13 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 await SettleAsync();
                 await ui.RunOnUIAsync(() =>
                 {
-                    var picker = FindControl<Button>(surface, "ChatComposerSessionPicker");
-                    Assert.Equal(expected, AutomationProperties.GetItemStatus(picker));
-                    Assert.Contains("Session", AutomationProperties.GetName(picker), StringComparison.Ordinal);
+                    var input = FindControl<TextBox>(surface, "ChatComposerInput");
+                    var observation = AutomationProperties.GetItemStatus(input);
+                    Assert.Equal(expected, observation);
+                    using var json = System.Text.Json.JsonDocument.Parse(observation);
+                    Assert.Equal("proof", json.RootElement.GetProperty("selectedThreadId").GetString());
+                    Assert.Collection(json.RootElement.GetProperty("loadedThreadIds").EnumerateArray(),
+                        item => Assert.Equal("proof", item.GetString()));
                 });
             }
         });
@@ -817,7 +821,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Assert.NotNull(FindControl<StackPanel>(host, "ChatQueuedMessage_empty-queue"));
                 Assert.Contains(FindDescendants<TextBlock>(host), text => text.Text == visibleText);
                 Assert.DoesNotContain(RealizedTimelineText(host), text => text.Text == "Another session's message");
-                session.Controller.SelectChannel("other");
+                Assert.True(session.Controller.TrySelectSession("other"));
             });
             await SettleAsync();
             await ui.RunOnUIAsync(() =>
@@ -1843,45 +1847,6 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         }, kind == "Model" ? "provider-names" : "parity");
     }
 
-    [Theory]
-    [InlineData(320)]
-    [InlineData(800)]
-    public async Task SessionMenu_PreservesPresentationAndSelectionAfterRerender(int width)
-    {
-        const string id = "ChatComposerSessionPicker";
-        await WithChatAsync(width, async (surface, _, session, _) =>
-        {
-            await ui.RunOnUIAsync(() => session.ViewModel.SetDraft(Draft + " updated"));
-            await SettleAsync();
-            await ui.RunOnUIAsync(() =>
-            {
-                var button = FindControl<Button>(surface, id);
-                Assert.True(button.IsLoaded && button.IsEnabled);
-                var menu = Assert.IsType<MenuFlyout>(button.Flyout);
-                Assert.Equal(Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.TopEdgeAlignedRight,
-                    menu.Placement);
-                Assert.Equal(2, menu.Items.Count);
-                menu.ShowAt(button);
-            });
-            await SettleAsync();
-            await ui.RunOnUIAsync(() =>
-            {
-                var presenter = Assert.Single(VisualTreeHelper.GetOpenPopupsForXamlRoot(surface.XamlRoot)
-                    .Select(popup => popup.Child).OfType<MenuFlyoutPresenter>());
-                Assert.Equal(new Thickness(4), presenter.Padding);
-                Assert.Equal(new CornerRadius(12), presenter.CornerRadius);
-                Assert.InRange(presenter.ActualWidth, 1, width - 20);
-                var menu = Assert.IsType<MenuFlyout>(FindControl<Button>(surface, id).Flyout);
-                Invoke(menu.Items[1]);
-            });
-            await SettleAsync();
-            await ui.RunOnUIAsync(() =>
-            {
-                Assert.Equal("other", session.ViewModel.Inputs?.CurrentThread.Id);
-            });
-        }, "menus");
-    }
-
     [Fact]
     public async Task CodeBlock_PreservesLiteralContentAndCopiesExactText()
     {
@@ -2501,8 +2466,8 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Application.Current.UnhandledException += reportException;
                 session = new ChatComposerFactory(new WinUIDispatcher(ui.Dispatcher)).Create(
                     provider,
-                    new ChatComposerHostActions(null, () => { }, (_, _) => Task.FromResult<string?>(null), () => { }, _ => { },
-                        SessionSelected: onSessionSelected),
+                    new ChatComposerHostActions(null, () => { }, (_, _) => Task.FromResult<string?>(null), _ => { },
+                        SessionSelected: (key, _) => onSessionSelected?.Invoke(key)),
                     initialSpeakerMuted: false);
                 session.ViewModel.SetDraft(Draft);
                 if (scenario == "queue")
@@ -2521,7 +2486,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                     session.ViewModel.SetDraft(string.Join("\n", Enumerable.Repeat(Draft, 8)));
                 host = new ReactorHostControl(logger: renderErrors) { RequestedTheme = themeScope.ElementTheme };
                 host.Mount(_ => Component<OpenClawReactorChatRoot, OpenClawReactorChatRootProps>(
-                    new(provider, session, InitialThreadId: initialThreadId, IsCompact: width < 640, TryCopyText: tryCopy,
+                    new(provider, session, InitialThreadId: initialThreadId, TryCopyText: tryCopy,
                         InitialThreadIsExplicitSelection: initialThreadIsExplicitSelection)));
                 surface = (Border)Microsoft.UI.Xaml.Markup.XamlReader.Load(
                     "<Border xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" " +
@@ -2689,8 +2654,9 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         var controls = FindDescendants<Button>(surface)
             .Where(button => AutomationProperties.GetAutomationId(button).StartsWith("ChatComposer", StringComparison.Ordinal))
             .ToArray();
-        Assert.Equal(6, controls.Length);
+        Assert.Equal(5, controls.Length);
         Assert.DoesNotContain(controls, button => AutomationProperties.GetAutomationId(button) == "ChatComposerMore");
+        Assert.DoesNotContain(controls, button => AutomationProperties.GetAutomationId(button) == "ChatComposerSessionPicker");
         foreach (var control in controls)
         {
             var bounds = Bounds(control, surface);
@@ -2710,8 +2676,6 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Assert.False(gauge.IsHitTestVisible);
                 Assert.Equal(AccessibilityView.Raw, AutomationProperties.GetAccessibilityView(gauge));
             }
-            else if (id == "ChatComposerSessionPicker" && surface.ActualWidth < ChatVisuals.CompactSessionBreakpoint)
-                Assert.Equal(FluentIconCatalog.Sessions, Assert.Single(FindDescendants<TextBlock>(control)).Text);
             else if (id.EndsWith("Picker", StringComparison.Ordinal))
             {
                 var text = FindDescendants<TextBlock>(control).ToArray();
@@ -2927,7 +2891,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                     new ChatTimelineItem("assistant", ChatTimelineItemKind.Assistant,
                         AssistantMessage + "\n\n" + string.Join(" ", Enumerable.Repeat("A readable long paragraph.", 80)))) };
             return Task.FromResult(_snapshot = new ChatDataSnapshot(
-                [thread, new ChatThread { Id = "other", Title = "Another session", TotalTokens = scenario == "menus" ? 1 : 0 }],
+                [thread, new ChatThread { Id = "other", Title = "Another session" }],
                 new Dictionary<string, ChatTimelineState> { [thread.Id] = timeline },
                 thread.Id,
                 scenario == "disconnected" ? "Disconnected" : "Connected",

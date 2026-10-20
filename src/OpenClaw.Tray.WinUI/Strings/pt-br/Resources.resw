@@ -622,7 +622,7 @@
   <data name="A2UI_MultipleChoiceSelect" xml:space="preserve">
     <value>Selecionar...</value>
   </data>
-  <!-- ==================== WebChatWindow.xaml ==================== -->
+  <!-- ==================== Workspace web-chat fallback ==================== -->
   <data name="WebChatErrorTitle.Text" xml:space="preserve">
     <value>Web Chat indisponível</value>
   </data>
@@ -2266,12 +2266,6 @@ Use uma destas opções:
   <data name="WorkspacePage_TextBlock_34.Text" xml:space="preserve">
     <value>Atualizar</value>
   </data>
-  <data name="ChatWindow_TextBlock_29.Text" xml:space="preserve">
-    <value>Bate-papo</value>
-  </data>
-  <data name="ChatWindow_TextBlock_60.Text" xml:space="preserve">
-    <value>Conecte-se ao Gateway para começar a conversar</value>
-  </data>
   <data name="TitleText.Text" xml:space="preserve">
     <value>OpenClaw Windows Companion</value>
   </data>
@@ -2485,9 +2479,6 @@ Use uma destas opções:
   <data name="FallbackInfoBar.Title" xml:space="preserve">
     <value>Arquivos do workspace</value>
   </data>
-  <data name="ChatWindow_winexWindowEx_2.Title" xml:space="preserve">
-    <value>OpenClaw Chat</value>
-  </data>
   <data name="SearchBox.PlaceholderText" xml:space="preserve">
     <value>Digite um comando...</value>
   </data>
@@ -2514,12 +2505,6 @@ Use uma destas opções:
   </data>
   <data name="UsagePage_TextBlock_10.Text" xml:space="preserve">
     <value>Uso e Custo</value>
-  </data>
-  <data name="ChatWindowOpenInBrowserToolTip.Content" xml:space="preserve">
-    <value>Abrir no aplicativo complementar</value>
-  </data>
-  <data name="ChatWindowCloseToolTip.Content" xml:space="preserve">
-    <value>Fechar</value>
   </data>
   <data name="ChatPageOpenInBrowserToolTip.Content" xml:space="preserve">
     <value>Abrir no navegador</value>
@@ -2962,30 +2947,6 @@ Use uma destas opções:
   <data name="DebugPage_TextBlock_OverridesCaption.Text" xml:space="preserve">
     <value>Substitui a configuração global &quot;Usar interface padrão de chat do Gateway&quot; por contêiner de chat. Reinicia quando o aplicativo é reiniciado.</value>
   </data>
-  <data name="DebugPage_TextBlock_HubChatLabel.Text" xml:space="preserve">
-    <value>UI da aba de chat do Hub:</value>
-  </data>
-  <data name="DebugPage_TextBlock_TrayChatLabel.Text" xml:space="preserve">
-    <value>UI do popup de chat da bandeja:</value>
-  </data>
-  <data name="DebugPage_ChatOverride_NoOverride_Hub.Content" xml:space="preserve">
-    <value>Sem substituição</value>
-  </data>
-  <data name="DebugPage_ChatOverride_ForceLegacy_Hub.Content" xml:space="preserve">
-    <value>Forçar UI de Chat do Gateway</value>
-  </data>
-  <data name="DebugPage_ChatOverride_ForceNative_Hub.Content" xml:space="preserve">
-    <value>Forçar UI de Chat do Companion</value>
-  </data>
-  <data name="DebugPage_ChatOverride_NoOverride_Tray.Content" xml:space="preserve">
-    <value>Sem substituição</value>
-  </data>
-  <data name="DebugPage_ChatOverride_ForceLegacy_Tray.Content" xml:space="preserve">
-    <value>Forçar UI de Chat do Gateway</value>
-  </data>
-  <data name="DebugPage_ChatOverride_ForceNative_Tray.Content" xml:space="preserve">
-    <value>Forçar UI de Chat do Companion</value>
-  </data>
   <data name="Chat_ZeroState_RecentChats" xml:space="preserve"><value>Conversas recentes</value></data>
   <data name="Chat_Placement_Environment" xml:space="preserve">
     <value>Ambiente</value>
@@ -3160,9 +3121,6 @@ Use uma destas opções:
   </data>
   <data name="Chat_Composer_Reasoning_Maximum" xml:space="preserve">
     <value>Máximo</value>
-  </data>
-  <data name="Chat_Composer_Accessibility_Session" xml:space="preserve">
-    <value>Sessão</value>
   </data>
   <data name="Chat_Composer_Accessibility_CurrentSession" xml:space="preserve">
     <value>Sessão atual</value>
@@ -3365,27 +3323,13 @@ Use uma destas opções:
   <data name="AppNotification_ChannelNeedsAttention_StatusMessageFormat" xml:space="preserve">
     <value>O Gateway reporta {0} como {1}.</value>
   </data>
-  <data name="AppNotification_SandboxDisabled_Title" xml:space="preserve">
-    <value>O Sandbox do Node está desativado: comandos são executados sem contenção</value>
-  </data>
-  <data name="AppNotification_SandboxDisabled_Message" xml:space="preserve">
-    <value>Comandos do Windows iniciados pelo agente serão executados sem contenção de sandbox até que o Sandbox do Node seja reativado.</value>
-  </data>
-  <data name="AppNotification_SandboxUnavailable_Title" xml:space="preserve">
-    <value>Sandbox indisponível: contingência no host</value>
-  </data>
-  <data name="AppNotification_SandboxUnavailable_MessageFormat" xml:space="preserve">
-    <value>{0}
-
-Os comandos serão executados no host sem proteção de sandbox enquanto o sandboxing estiver indisponível.</value>
-  </data>
   <data name="AppNotification_SandboxUnavailableBlocked_Title" xml:space="preserve">
     <value>Sandbox indisponível: comandos bloqueados</value>
   </data>
   <data name="AppNotification_SandboxUnavailableBlocked_MessageFormat" xml:space="preserve">
     <value>{0}
 
-Os comandos são bloqueados enquanto o sandboxing está indisponível porque o bloqueio de contingência estrita está ativado.</value>
+Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instalação ou tente novamente. Apenas um Windows confirmado como incompatível permite execução sem isolamento.</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_DefaultReason" xml:space="preserve">
     <value>Os mecanismos de sandboxing do MXC não estão disponíveis nesta máquina.</value>
@@ -4198,13 +4142,10 @@ Os comandos são bloqueados enquanto o sandboxing está indisponível porque o b
     <value>Chat surface overrides</value>
   </data>
   <data name="DiagnosticsPage_Expander_ChatOverrides.Description" xml:space="preserve">
-    <value>Per-surface override of the chat UI. Resets when OpenClaw restarts.</value>
+    <value>Override the Workspace chat UI. Resets when OpenClaw restarts.</value>
   </data>
-  <data name="DiagnosticsPage_Card_HubChat.Header" xml:space="preserve">
-    <value>Hub chat tab</value>
-  </data>
-  <data name="DiagnosticsPage_Card_TrayChat.Header" xml:space="preserve">
-    <value>Tray chat popup</value>
+  <data name="DiagnosticsPage_Card_WorkspaceChat.Header" xml:space="preserve">
+    <value>Workspace chat</value>
   </data>
 <data name="DiagnosticsPage_DetailBack.Text" xml:space="preserve">
     <value>Back to Diagnostics</value>
@@ -4656,15 +4597,6 @@ Os comandos são bloqueados enquanto o sandboxing está indisponível porque o b
   <data name="DebugPage_ForceCompanionChatUI.Content" xml:space="preserve">
     <value>Forçar UI de Chat do Companion</value>
   </data>
-  <data name="DebugPage_NoOverride2.Content" xml:space="preserve">
-    <value>Sem substituição</value>
-  </data>
-  <data name="DebugPage_ForceGatewayChatUI2.Content" xml:space="preserve">
-    <value>Forçar UI de Chat do Gateway</value>
-  </data>
-  <data name="DebugPage_ForceCompanionChatUI2.Content" xml:space="preserve">
-    <value>Forçar UI de Chat do Companion</value>
-  </data>
   <data name="DebugPage_Refresh.Text" xml:space="preserve">
     <value>Atualizar</value>
   </data>
@@ -4761,9 +4693,6 @@ Os comandos são bloqueados enquanto o sandboxing está indisponível porque o b
   <data name="SandboxPage_SecurityLevel.Text" xml:space="preserve">
     <value>Nível de segurança</value>
   </data>
-  <data name="SandboxPage_OneClickToSet.Text" xml:space="preserve">
-    <value>Um clique para definir todos os controles abaixo. As pastas personalizadas permanecem como você as configurou.</value>
-  </data>
   <data name="SandboxPage_LockedDown.Text" xml:space="preserve">
     <value>🔒 Restrito</value>
   </data>
@@ -4786,16 +4715,16 @@ Os comandos são bloqueados enquanto o sandboxing está indisponível porque o b
     <value>Concessões de pastas personalizadas ainda ativas</value>
   </data>
   <data name="SandboxPage_Files.Text" xml:space="preserve">
-    <value>📁 Arquivos</value>
+    <value>Acesso a arquivos</value>
   </data>
   <data name="SandboxPage_ByDefaultTheAgent.Text" xml:space="preserve">
-    <value>Por padrão, o agente só tem uma pasta de espaço de trabalho temporária na qual pode ler e escrever. Conceda acesso a pastas do usuário abaixo. Chaves SSH, perfis de navegador e as próprias configurações do OpenClaw são sempre bloqueados.</value>
+    <value>O escopo selecionado controla o acesso aos arquivos. Estas linhas adicionam permissões; Usar escopo mantém as permissões existentes da pasta. Escolha Pastas selecionadas para limitar o acesso às permissões explícitas. Pastas protegidas continuam bloqueadas.</value>
   </data>
   <data name="SandboxPage_Documents.Text" xml:space="preserve">
     <value>Documentos</value>
   </data>
   <data name="SandboxPage_Blocked.Content" xml:space="preserve">
-    <value>Bloqueado</value>
+    <value>Usar escopo</value>
   </data>
   <data name="SandboxPage_ReadOnly.Content" xml:space="preserve">
     <value>Somente leitura</value>
@@ -4807,7 +4736,7 @@ Os comandos são bloqueados enquanto o sandboxing está indisponível porque o b
     <value>Pasta de Downloads</value>
   </data>
   <data name="SandboxPage_Blocked2.Content" xml:space="preserve">
-    <value>Bloqueado</value>
+    <value>Usar escopo</value>
   </data>
   <data name="SandboxPage_ReadOnly2.Content" xml:space="preserve">
     <value>Somente leitura</value>
@@ -4819,7 +4748,7 @@ Os comandos são bloqueados enquanto o sandboxing está indisponível porque o b
     <value>Área de Trabalho</value>
   </data>
   <data name="SandboxPage_Blocked3.Content" xml:space="preserve">
-    <value>Bloqueado</value>
+    <value>Usar escopo</value>
   </data>
   <data name="SandboxPage_ReadOnly3.Content" xml:space="preserve">
     <value>Somente leitura</value>
@@ -4828,16 +4757,16 @@ Os comandos são bloqueados enquanto o sandboxing está indisponível porque o b
     <value>Leitura e escrita</value>
   </data>
   <data name="SandboxPage_ToolDirectoriesOnYour.Text" xml:space="preserve">
-    <value>Os diretórios de ferramentas no seu PATH também recebem acesso somente leitura dentro do sandbox, para que ferramentas de linha de comando como git, node, python e dotnet possam ser usadas. As raízes de unidades nunca são concedidas.</value>
+    <value>As pastas de execução do Windows e o espaço de trabalho privado continuam disponíveis. Estar no PATH não concede acesso. Reaplique uma predefinição para redefinir as escolhas de pastas.</value>
   </data>
   <data name="SandboxPage_CustomFolders.Text" xml:space="preserve">
-    <value>Pastas personalizadas</value>
+    <value>Pastas adicionais</value>
   </data>
   <data name="SandboxPage_CustomGrantsAreAdded.Text" xml:space="preserve">
-    <value>As concessões personalizadas são adicionadas às regras acima. Adicionar uma pasta dentro de Documentos/Downloads/Área de Trabalho com acesso mais amplo substituirá a configuração de nível de linha para esse caminho.</value>
+    <value>Estas permissões complementam o acesso acima. Somente leitura ou Remover permissão não restringe o acesso já permitido pela predefinição ou por outra pasta. Pastas protegidas continuam bloqueadas.</value>
   </data>
   <data name="SandboxPage_Blocked4.Content" xml:space="preserve">
-    <value>Bloqueado</value>
+    <value>Remover permissão</value>
   </data>
   <data name="SandboxPage_ReadOnly4.Content" xml:space="preserve">
     <value>Somente leitura</value>
@@ -4846,7 +4775,7 @@ Os comandos são bloqueados enquanto o sandboxing está indisponível porque o b
     <value>Leitura e escrita</value>
   </data>
   <data name="SandboxPage_NoCustomFoldersAdded.Text" xml:space="preserve">
-    <value>Nenhuma pasta personalizada adicionada.</value>
+    <value>Nenhuma pasta pessoal compartilhada. Adicione uma pasta para começar.</value>
   </data>
   <data name="SandboxPage_AddFolder.Content" xml:space="preserve">
     <value>Adicionar pasta</value>
@@ -4880,44 +4809,6 @@ Os comandos são bloqueados enquanto o sandboxing está indisponível porque o b
   </data>
   <data name="SandboxPage_LocalNetworkDevicesAnd.Text" xml:space="preserve">
     <value>Dispositivos e compartilhamentos de rede local ainda não estão incluídos.</value>
-  </data>
-  <data name="SandboxPage_CommandCompatibility.Text" xml:space="preserve">
-    <value>🪟 Compatibilidade de comandos</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUi.Header" xml:space="preserve">
-    <value>Permitir APIs de UI do Windows</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUi.OffContent" xml:space="preserve">
-    <value>Desligado: bloqueia chamadas de sistema Win32k</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUi.OnContent" xml:space="preserve">
-    <value>Ligado: PowerShell e ferramentas semelhantes podem ser iniciadas</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUi.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Permitir APIs de UI do Windows para comandos em sandbox</value>
-  </data>
-  <data name="SandboxPage_WindowsUiCompatibilityDescription.Text" xml:space="preserve">
-    <value>O PowerShell (todas as versões) e algumas ferramentas de console usam APIs de UI do Windows durante a inicialização. Esta configuração não fornece um inventário de processos com suporte em todo o host.</value>
-  </data>
-  <data name="SandboxPage_WindowsUiWarning.Title" xml:space="preserve">
-    <value>Barreira Win32k desativada</value>
-  </data>
-  <data name="SandboxPage_WindowsUiWarning.Message" xml:space="preserve">
-    <value>Os controles de arquivo, rede, área de transferência, tempo limite e aprovação de comandos continuam se aplicando. As chamadas de sistema Win32k são permitidas; a política de área de transferência e a negação de injeção de entrada permanecem em vigor.</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUiDialogTitle" xml:space="preserve">
-    <value>Permitir APIs de UI do Windows?</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUiDialogContent" xml:space="preserve">
-    <value>Isso permite que comandos em sandbox usem chamadas de sistema de UI do Windows. O PowerShell (todas as versões) e algumas ferramentas de console precisam disso para iniciar nas versões atuais do MXC. Esta configuração não concede um inventário de processos com suporte em todo o host: a enumeração de host via CIM/WMI não é compatível e foi observado que falha, o tasklist pode falhar ou expirar, e a saída do Get-Process não deve ser tratada como um inventário completo ou uma barreira de sigilo de metadados de processo.
-
-Os controles de arquivo, rede, área de transferência, tempo limite e aprovação de comandos continuam se aplicando, mas o bloqueio de chamadas de sistema Win32k será desativado. A política de área de transferência e a negação de injeção de entrada permanecem em vigor. Ative isso apenas se precisar de compatibilidade de comandos mais ampla.</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUiDialogPrimary" xml:space="preserve">
-    <value>Permitir APIs de UI</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUiDialogCancel" xml:space="preserve">
-    <value>Cancelar</value>
   </data>
   <data name="SandboxPage_Limits.Text" xml:space="preserve">
     <value>⏱ Limites</value>
@@ -5180,12 +5071,6 @@ Os controles de arquivo, rede, área de transferência, tempo limite e aprovaç�
   </data>
   <data name="WorkspacePage_LoadingWorkspaceFiles.Text" xml:space="preserve">
     <value>Carregando arquivos do espaço de trabalho…</value>
-  </data>
-  <data name="ChatWindow_WebChatUnavailable.Text" xml:space="preserve">
-    <value>Web Chat indisponível</value>
-  </data>
-  <data name="ChatWindow_Retry.Content" xml:space="preserve">
-    <value>Tentar novamente</value>
   </data>
   <data name="ConnectionStatusWindow_ConnectionStatus.Text" xml:space="preserve">
     <value>Status da conexão</value>
@@ -6378,12 +6263,6 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="Command_GoToWorkspace_Title" xml:space="preserve">
     <value>Go to Workspace ({0})</value>
   </data>
-  <data name="Command_OpenChatWindow_Subtitle" xml:space="preserve">
-    <value>Open standalone chat</value>
-  </data>
-  <data name="Command_OpenChatWindow_Title" xml:space="preserve">
-    <value>Open Chat Window</value>
-  </data>
   <data name="Command_OpenDashboard_Subtitle" xml:space="preserve">
     <value>Open web dashboard</value>
   </data>
@@ -6691,7 +6570,7 @@ Certifique-se de que o Gateway está em execução.</value>
     <value>Sandbox do Node indisponível: comandos bloqueados</value>
   </data>
   <data name="SandboxPage_StatusUnavailableBlockedSubtext" xml:space="preserve">
-    <value>A contenção não está disponível neste PC, e o bloqueio de contingência estrita está ativado, então comandos iniciados pelo agente são bloqueados.</value>
+    <value>Não foi possível verificar o MXC. Repare a instalação ou tente novamente. Falhas do SDK ou da política nunca acionam execução sem isolamento.</value>
   </data>
   <data name="SandboxPage_StatusUnavailableOffTitle" xml:space="preserve">
     <value>O Sandbox do Node está desativado: execução no host</value>
@@ -6726,11 +6605,6 @@ Certifique-se de que o Gateway está em execução.</value>
   <data name="SandboxPage_ProbeErrorTitle" xml:space="preserve">
     <value>Não foi possível verificar a disponibilidade do sandbox</value>
   </data>
-  <data name="SandboxPage_ProbeErrorMessageFormat" xml:space="preserve">
-    <value>{0}
-
-{1} A verificação de capacidade do sandbox não foi concluída. Isso geralmente é transitório (uma verificação lenta ou bloqueada): tente novamente e, se persistir, verifique se algum software de segurança está bloqueando o wxc-exec.</value>
-  </data>
   <data name="SandboxPage_Retry" xml:space="preserve">
     <value>Tentar novamente</value>
   </data>
@@ -6747,11 +6621,6 @@ Certifique-se de que o Gateway está em execução.</value>
   </data>
   <data name="SandboxPage_ComponentsMissingTitle" xml:space="preserve">
     <value>Faltam componentes do sandbox</value>
-  </data>
-  <data name="SandboxPage_ComponentsMissingMessageFormat" xml:space="preserve">
-    <value>{0}
-
-O binário wxc-exec não pôde ser localizado. {1} Se esta for uma build de desenvolvedor, compile o aplicativo de bandeja para que o wxc-exec.exe seja copiado para a pasta de saída. Caso contrário, reinstale o aplicativo complementar para restaurar o sandboxing.</value>
   </data>
   <data name="SandboxPage_ShowInstallInstructions" xml:space="preserve">
     <value>Mostrar instruções de instalação</value>
@@ -6794,15 +6663,6 @@ O binário wxc-exec não pôde ser localizado. {1} Se esta for uma build de dese
   </data>
   <data name="CronPage_NextWakeFormat" xml:space="preserve">
     <value>· Próxima execução: {0}</value>
-  </data>
-  <data name="ChatWindow_UnableToLoadChatCredentials" xml:space="preserve">
-    <value>Não foi possível carregar o chat. A URL ou o token do Gateway não está disponível.</value>
-  </data>
-  <data name="ChatWindow_UnableToLoadChatRetryFormat" xml:space="preserve">
-    <value>Não foi possível carregar o chat. Tente novamente. ({0})</value>
-  </data>
-  <data name="ChatWindow_WebViewFailedFormat" xml:space="preserve">
-    <value>Falha no WebView2: {0}</value>
   </data>
   <data name="CanvasWindow_WebViewInitFailedFormat" xml:space="preserve">
     <value>Falha ao inicializar o WebView2: {0}</value>
@@ -7150,13 +7010,13 @@ O binário wxc-exec não pôde ser localizado. {1} Se esta for uma build de dese
     <value>Ação do sandbox</value>
   </data>
   <data name="SandboxPage_PresetLockedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Predefinição Bloqueado: sem internet, sem área de transferência, sem pastas padrão do usuário</value>
+    <value>Predefinição Estrita: sem arquivos pessoais ou internet</value>
   </data>
   <data name="SandboxPage_PresetBalancedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Predefinição Recomendada: internet ativada, somente leitura em Documentos, Downloads e Área de Trabalho</value>
+    <value>Predefinição Equilibrada: pastas do usuário somente leitura, internet ativada</value>
   </data>
   <data name="SandboxPage_PresetPermissiveButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Predefinição Desprotegido: internet ativada, leitura e escrita em Documentos, Downloads e Área de Trabalho</value>
+    <value>Predefinição Aberta: leitura e escrita nas pastas do usuário, internet ativada</value>
   </data>
   <data name="SandboxPage_DocsAccessCombo.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Nível de acesso a Documentos</value>
@@ -8175,6 +8035,55 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="ChatPage_SetupCheckAgain.Content" xml:space="preserve">
     <value>Verificar novamente</value>
   </data>
+  <data name="SandboxPage_PresetHelp.Text" xml:space="preserve"><value>Predefinições substituem permissões de arquivos e acesso à internet. Área de transferência, limites e aprovações continuam independentes.</value></data>
+  <data name="SandboxPage_CustomPreset.Text" xml:space="preserve"><value>Permissões personalizadas</value></data>
+  <data name="SandboxPage_ApplyPreset" xml:space="preserve"><value>Aplicar predefinição</value></data>
+  <data name="SandboxPage_PresetStrict.Text" xml:space="preserve"><value>Estrito</value></data>
+  <data name="SandboxPage_PresetBalanced.Text" xml:space="preserve"><value>Equilibrado</value></data>
+  <data name="SandboxPage_Title.Text" xml:space="preserve"><value>Node Sandbox</value></data>
+  <data name="SandboxPage_ResolvedFolders.Header" xml:space="preserve"><value>Pastas incluídas</value></data>
+  <data name="SandboxPage_FileAccessReadOnly" xml:space="preserve"><value>Seu perfil de usuário e suas pastas pessoais, incluindo pastas redirecionadas, podem ser lidos. As permissões adicionais abaixo também podem permitir alterações. Pastas protegidas continuam bloqueadas.</value></data>
+  <data name="SandboxPage_FileAccessReadWrite" xml:space="preserve"><value>Os programas podem ler e alterar arquivos no seu perfil de usuário e nas suas pastas pessoais, incluindo pastas redirecionadas. Pastas protegidas continuam bloqueadas.</value></data>
+  <data name="SandboxPage_FileAccessSelected" xml:space="preserve"><value>O acesso a arquivos pessoais vem apenas das permissões adicionais abaixo. As pastas de execução do Windows e o espaço de trabalho privado continuam disponíveis. Pastas protegidas continuam bloqueadas.</value></data>
+  <data name="SandboxPage_SavedFolderFormat" xml:space="preserve"><value>{0} (permissão salva): {1}</value></data>
+  <data name="SandboxPage_FolderUnavailable" xml:space="preserve"><value>Localização da pasta indisponível</value></data>
+  <data name="SandboxPage_FolderAccessFormat" xml:space="preserve"><value>Acesso para {0}</value></data>
+  <data name="SandboxPage_RemoveFolderFormat" xml:space="preserve"><value>Remover permissão para {0}</value></data>
+  <data name="SandboxPage_FolderList.Text" xml:space="preserve"><value>Pastas</value></data>
+  <data name="SandboxPage_FolderListHelp.Text" xml:space="preserve"><value>Escolha o que o agente pode fazer em cada pasta. Sem acesso bloqueia essa pasta, mas subpastas explicitamente listadas mantêm seu próprio acesso. Pastas protegidas continuam bloqueadas.</value></data>
+  <data name="SandboxPage_NoAccess.Content" xml:space="preserve"><value>Sem acesso</value></data>
+  <data name="SandboxPage_Profile.Text" xml:space="preserve"><value>Perfil de usuário</value></data>
+  <data name="SandboxPage_OneDrive.Text" xml:space="preserve"><value>OneDrive</value></data>
+  <data name="SandboxPage_FolderAccess.PlaceholderText" xml:space="preserve"><value>Escolher acesso</value></data>
+  <data name="SandboxPage_ResetFolder" xml:space="preserve"><value>Redefinir</value></data>
+  <data name="SandboxPage_RemoveFolder" xml:space="preserve"><value>Remover</value></data>
+  <data name="SandboxPage_ResetFolderFormat" xml:space="preserve"><value>Restaurar o acesso predefinido de {0}</value></data>
+  <data name="SandboxPage_LegacyFolderReview" xml:space="preserve"><value>A permissão bloqueada salva precisa de revisão. Ela não nega o acesso de uma predefinição ou pasta pai.</value></data>
+  <data name="SandboxPage_RuntimeFolder" xml:space="preserve"><value>O acesso às pastas de execução do Windows é fixo como somente leitura.</value></data>
+  <data name="SandboxPage_LegacyFolderAccess.Content" xml:space="preserve"><value>Bloqueio antigo (revisar)</value></data>
+  <data name="SandboxPage_PresetOpen.Text" xml:space="preserve"><value>Aberto</value></data>
+  <data name="SandboxPage_PresetStrictText.Text" xml:space="preserve"><value>Mantenha o agente sob controle rigoroso.</value></data>
+  <data name="SandboxPage_PresetBalancedText.Text" xml:space="preserve"><value>Ajuda nas tarefas do dia a dia, com menos riscos.</value></data>
+  <data name="SandboxPage_PresetOpenText.Text" xml:space="preserve"><value>Dê ao agente mais liberdade para realizar tarefas.</value></data>
+  <data name="SandboxPage_PresetStrictDetails" xml:space="preserve"><value>Sem arquivos pessoais ou internet. Apenas acesso de execução e pasta de trabalho privada.</value></data>
+  <data name="SandboxPage_PresetBalancedDetails" xml:space="preserve"><value>Leia seu perfil e pastas pessoais redirecionadas resolvidas. Sem escrita pessoal. Internet ativada. Pastas protegidas excluídas.</value></data>
+  <data name="SandboxPage_PresetOpenDetails" xml:space="preserve"><value>Leia e escreva seu perfil e pastas pessoais redirecionadas resolvidas. Internet ativada. Pastas protegidas excluídas.</value></data>
+  <data name="SandboxPage_FileScope.Header" xml:space="preserve"><value>Escopo de acesso a arquivos</value></data>
+  <data name="SandboxPage_SelectedFolders.Content" xml:space="preserve"><value>Pastas selecionadas</value></data>
+  <data name="SandboxPage_UserFilesReadOnly.Content" xml:space="preserve"><value>Pastas do usuário: somente leitura</value></data>
+  <data name="SandboxPage_UserFilesReadWrite.Content" xml:space="preserve"><value>Pastas do usuário: leitura e escrita</value></data>
+  <data name="SandboxPage_CheckingTitle" xml:space="preserve"><value>Verificando disponibilidade do MXC</value></data>
+  <data name="SandboxPage_CheckingText" xml:space="preserve"><value>Verificando suporte à contenção de comandos. As permissões não são alteradas.</value></data>
+  <data name="SandboxPage_ScopeResolutionBlockedTitle" xml:space="preserve"><value>Resolução de pastas do usuário incompleta</value></data>
+  <data name="SandboxPage_ScopeResolutionBlockedText" xml:space="preserve"><value>Uma pasta pessoal necessária não foi encontrada ou está inacessível. Comandos que usam essas pastas são bloqueados. Consulte a lista de pastas, restaure a localização da pasta no Windows e tente novamente. Pastas protegidas e aprovações de comandos sempre se aplicam.</value></data>
+  <data name="SandboxPage_TimeoutFormat" xml:space="preserve"><value>Tempo limite de comando: {0} s</value></data>
+  <data name="SandboxPage_LegacyBlockedTitle" xml:space="preserve"><value>Permissões antigas de pastas precisam de revisão</value></data>
+  <data name="SandboxPage_LegacyBlockedText" xml:space="preserve"><value>Permissões filtradas ou conflitantes continuam bloqueadas para não ampliar o acesso silenciosamente. Revise as linhas bloqueadas e escolha explicitamente acesso compatível ou outra pasta. As raízes protegidas permanecem excluídas.</value></data>
+  <data name="SandboxPage_IncludedUserFolders" xml:space="preserve"><value>Raízes do usuário resolvidas pelo Windows (descendentes protegidos excluídos):</value></data>
+  <data name="SandboxPage_CheckingUserFolders" xml:space="preserve"><value>Resolvendo localizações de pastas do usuário...</value></data>
+  <data name="SandboxPage_OneDriveNotIncluded" xml:space="preserve"><value>Nenhuma raiz OneDrive configurada disponível foi resolvida. Nenhuma localização OneDrive adicional foi incluída.</value></data>
+  <data name="SandboxPage_WindowsCompatibilityTitle" xml:space="preserve"><value>Isolamento do Windows indisponível: comandos sem isolamento</value></data>
+  <data name="SandboxPage_WindowsCompatibilityText" xml:space="preserve"><value>Esta versão do Windows não oferece o isolamento MXC necessário. Os comandos aprovados são executados diretamente neste computador. As restrições de arquivos, rede, área de transferência e interface do Windows não são aplicadas. As permissões salvas são preservadas e as aprovações de comandos continuam ativas. Atualize o Windows para habilitar o isolamento. A versão mínima do Windows exigida pelo Companion continua válida.</value></data>
   <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>O perfil preferido {0} não cabe neste hardware. A configuração pode usar {1} com {2:N0} tokens de contexto. Revise este perfil na configuração antes de instalar.</value></data>
   <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>Este perfil requer pelo menos {0} de RAM do sistema.</value></data>
   <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>Este perfil requer pelo menos {0} livres nos volumes do cache de modelos e do mecanismo.</value></data>
