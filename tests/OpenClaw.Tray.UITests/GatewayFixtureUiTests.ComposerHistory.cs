@@ -70,7 +70,11 @@ public sealed partial class GatewayFixtureUiTests
 
             Invoke(FindById(run, "WorkspaceNavHome")!);
             await WaitComposerSelectionAsync(run, ComposerCreatedKey);
-            await WaitUiAsync(run, () => SessionSelected(run, ComposerCreatedTitle), "Home retained completed new conversation");
+            // Home selects its own navigation item without discarding the retained chat.
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceNavHome") is { } home
+                && ((SelectionItemPattern)home.GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected,
+                "Home selected while retaining the completed new conversation");
+            Assert.False(SessionSelected(run, ComposerCreatedTitle));
             Assert.Null(FindById(run, "NotificationsPageMarker"));
             await CaptureIfRequestedAsync(run, "composer-home-retained-new.png");
             Assert.Single(run.Gateway.Requests, request => request.Method == "sessions.create");
