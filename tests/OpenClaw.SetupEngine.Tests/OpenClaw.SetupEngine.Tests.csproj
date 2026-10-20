@@ -1,6 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <Compile Include="..\OpenClaw.Tray.IntegrationTests\IntegrationFactAttribute.cs" Link="IntegrationFactAttribute.cs" />
+    <Compile Remove="CleanupVisibilityProbe.cs" />
+    <None Include="CleanupVisibilityProbe.cs" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="RunCleanupVisibilityProbe.ps1" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="..\..\src\OpenClaw.SetupEngine\OpenClaw.SetupEngine.csproj" />
     <ProjectReference Include="..\OpenClaw.TestSupport\OpenClaw.TestSupport.csproj" />
     <ProjectReference Include="..\OpenClaw.Shared.TestHost\OpenClaw.Shared.TestHost.csproj"
