@@ -448,19 +448,30 @@ public sealed partial class GatewayFixtureProtocolTests
         await using var server = await StartInteractiveAsync(token);
         var entered = Signal<bool>();
         var failReceive = Signal<bool>();
-        var failure = new ObjectDisposedException("synthetic-receive-boundary");
         var receives = 0;
         async ValueTask<ValueWebSocketReceiveResult> ReceiveAsync(
             ClientWebSocket socket, Memory<byte> buffer, CancellationToken cancellation)
         {
             // Challenge and authentication use the real socket. Hold the next receive
-            // at the external boundary so disposal cannot race the injected failure.
+            // at the external boundary before exercising the real disposed-socket API.
             if (++receives <= 2)
                 return await socket.ReceiveAsync(buffer, cancellation);
             using var registration = cancellation.Register(() => failReceive.TrySetResult(true));
             entered.TrySetResult(true);
             await failReceive.Task;
-            throw failure;
+            socket.Dispose();
+            try
+            {
+                return await socket.ReceiveAsync(buffer, cancellation);
+            }
+            catch (ObjectDisposedException error)
+            {
+                Console.WriteLine(
+                    $"Fixture socket receive: {error.GetType().FullName}; " +
+                    $"ownedCancellationRequested={cancellation.IsCancellationRequested}; " +
+                    $"object={error.ObjectName}.");
+                throw;
+            }
         }
 
         var peer = await FixturePeer.ConnectAsync(server, token, ReceiveAsync);
@@ -469,14 +480,14 @@ public sealed partial class GatewayFixtureProtocolTests
         {
             await peer.DisposeAsync().AsTask().WaitAsync(Deadline);
             Assert.True(peer.Closed.IsCompletedSuccessfully);
-            Console.WriteLine("Fixture receive proof: owned cancellation injected ObjectDisposedException; reader and disposal completed successfully.");
+            Console.WriteLine("Fixture receive proof: owned cancellation handled the real disposed-socket error; reader and disposal completed successfully.");
         }
         else
         {
             failReceive.TrySetResult(true);
-            Assert.Same(failure, await Assert.ThrowsAsync<ObjectDisposedException>(() => peer.Closed.WaitAsync(Deadline)));
+            var failure = await Assert.ThrowsAsync<ObjectDisposedException>(() => peer.Closed.WaitAsync(Deadline));
             Assert.Same(failure, await Assert.ThrowsAsync<ObjectDisposedException>(() => peer.DisposeAsync().AsTask()));
-            Console.WriteLine("Fixture receive proof: before cancellation injected ObjectDisposedException propagated unchanged through reader and disposal.");
+            Console.WriteLine("Fixture receive proof: before owned cancellation the real disposed-socket error propagated unchanged through reader and disposal.");
         }
 
         await using var replacement = await FixturePeer.ConnectAsync(server, token);
