@@ -35,6 +35,7 @@ public sealed class WorkspaceWindowProofTests
         Assert.Equal("New agent", entry.Current.Name);
         Assert.True(entry.Current.IsEnabled);
         dropdown.Collapse();
+        await WaitUntilAsync(() => FindOrNull(workspace, "WorkspaceSessionsAdd") is not null);
         Assert.False(Find(workspace, "WorkspaceSessionsAdd").Current.IsEnabled);
     }
 
