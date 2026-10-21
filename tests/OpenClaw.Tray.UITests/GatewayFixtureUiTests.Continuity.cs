@@ -90,8 +90,12 @@ public sealed partial class GatewayFixtureUiTests
         ((SelectionPattern)selector.GetCurrentPattern(SelectionPattern.Pattern)).Current.GetSelection()
             .Any(item => item.Current.AutomationId == $"WorkspaceAgent:{id}");
 
-    private static void CaptureContinuity(GatewayFixtureRun run, string name) =>
+    private static void CaptureContinuity(GatewayFixtureRun run, string name)
+    {
+        if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") != "1")
+            return;
         OwnedWindowCapture.Save(run, AppWindows(run).OrderByDescending(window =>
             window.Current.BoundingRectangle.Width * window.Current.BoundingRectangle.Height).First(), name,
             FindById(run, "WorkspaceAssistantSelector")!, FindById(run, "WorkspaceSessionsAdd")!);
+    }
 }
