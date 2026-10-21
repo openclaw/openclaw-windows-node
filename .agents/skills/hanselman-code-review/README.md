@@ -1,10 +1,9 @@
 # Hanselman Code Review Skill
 
-Repository-owned copy of the
-[Hanselman adversarial review skill](https://github.com/shanselman/hanselman-code-review-skill).
-It runs independent app-native reviews with **GPT-6 Astra** (`gpt-6-astra`)
-and **Claude Opus 5.5** (`claude-opus-5.5`), both at high reasoning effort.
-Astra uses the supported `long_context` tier without assuming a numeric size.
+Repository-owned adversarial review skill for OpenClaw Windows Node. It runs
+independent app-native reviews with **GPT-6 Astra** (`gpt-6-astra`) and
+**Claude Opus 5.5** (`claude-opus-5.5`), both at high reasoning effort. Astra
+uses the supported `long_context` tier without assuming a numeric size.
 
 ## Usage
 
