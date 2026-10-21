@@ -53,10 +53,11 @@ function Invoke-Gate([hashtable]$Arguments) {
 function Assert-GateFails {
     param(
         [Parameter(Mandatory)][hashtable]$Overrides,
-        [Parameter(Mandatory)][string]$Scenario
+        [Parameter(Mandatory)][string]$Scenario,
+        [hashtable]$BaseArguments = (New-GateArguments)
     )
 
-    $arguments = New-GateArguments
+    $arguments = $BaseArguments.Clone()
     foreach ($entry in $Overrides.GetEnumerator()) {
         $arguments[$entry.Key] = $entry.Value
     }
@@ -84,6 +85,48 @@ $docsArguments.CoreResult = "skipped"
 $docsOnly = Invoke-Gate $docsArguments
 if ($docsOnly -ne "docs_only") {
     throw "Expected the docs-only gate to pass."
+}
+
+$fastArguments = $docsArguments.Clone()
+$fastArguments.Classification = "fast_only"
+if ((Invoke-Gate $fastArguments) -ne "fast_only") {
+    throw "Expected fast-only tooling with successful mandatory checks and skipped product lanes to pass."
+}
+foreach ($classification in @("docs_only", "fast_only")) {
+    $arguments = $fastArguments.Clone()
+    $arguments.Classification = $classification
+    foreach ($prefix in @("Classification", "FastValidation", "ProofPoolContracts")) {
+        foreach ($result in @("failure", "cancelled", "skipped", "", "unknown")) {
+            Assert-GateFails -BaseArguments $arguments -Overrides @{ "${prefix}Result" = $result } `
+                -Scenario "$classification mandatory $prefix returned '$result'"
+        }
+    }
+    foreach ($prefix in @("Core", "Tray", "Ui", "SetupE2e", "RevocationE2e", "NetworkE2e", "X64Release", "Arm64Release")) {
+        foreach ($value in @("true", "", "invalid")) {
+            Assert-GateFails -BaseArguments $arguments -Overrides @{ "${prefix}Required" = $value } `
+                -Scenario "$classification invalid $prefix selection '$value'"
+        }
+    }
+    foreach ($value in @("true", "", "invalid")) {
+        Assert-GateFails -BaseArguments $arguments -Overrides @{ FullRequired = $value } `
+            -Scenario "$classification invalid full selection '$value'"
+    }
+    foreach ($prefix in @("Core", "Tray", "Ui", "SetupE2e", "RevocationE2e", "NetworkE2e",
+            "X64Release", "Arm64Release", "Metadata", "Msix", "MsixBundle")) {
+        foreach ($result in @("success", "failure", "cancelled", "", "unknown")) {
+            Assert-GateFails -BaseArguments $arguments -Overrides @{ "${prefix}Result" = $result } `
+                -Scenario "$classification unselected $prefix returned '$result'"
+        }
+    }
+}
+Assert-GateFails -BaseArguments $fastArguments -Overrides @{ Classification = "targeted" } `
+    -Scenario "Targeted classification with no selected product lanes"
+Assert-GateFails -Overrides @{ FullRequired = "true" } -Scenario "Targeted classification set full"
+foreach ($prefix in @("Core", "Tray", "Ui", "SetupE2e", "RevocationE2e", "NetworkE2e", "X64Release", "Arm64Release")) {
+    foreach ($result in @("failure", "cancelled", "skipped", "", "unknown")) {
+        Assert-GateFails -Overrides @{ "${prefix}Required" = "true"; "${prefix}Result" = $result } `
+            -Scenario "Targeted selected $prefix returned '$result'"
+    }
 }
 
 $uiArguments = New-GateArguments

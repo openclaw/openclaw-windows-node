@@ -24,7 +24,6 @@ public sealed class ChatComposerSessionTests
                 Status = ChatThreadStatus.Running,
                 Activity = ChatActivity.Idle,
             },
-            System.Array.Empty<ChatThread>(),
             System.Array.Empty<string>(),
             null,
             false,
@@ -38,7 +37,7 @@ public sealed class ChatComposerSessionTests
         var dispatcher = new RecordingUiDispatcher();
         var factory = new ChatComposerFactory(dispatcher);
         var provider = new FakeChatDataProviderForComposerTests();
-        var hostActions = new ChatComposerHostActions(null, null, null, null, null);
+        var hostActions = new ChatComposerHostActions(null, null, null, null);
         var session = factory.Create(provider, hostActions, initialSpeakerMuted: false);
 
         session.Dispose();
@@ -53,7 +52,7 @@ public sealed class ChatComposerSessionTests
         var dispatcher = new RecordingUiDispatcher();
         var factory = new ChatComposerFactory(dispatcher);
         var provider = new FakeChatDataProviderForComposerTests();
-        var hostActions = new ChatComposerHostActions(null, null, null, null, null);
+        var hostActions = new ChatComposerHostActions(null, null, null, null);
 
         var first = factory.Create(provider, hostActions, initialSpeakerMuted: false);
         var second = factory.Create(provider, hostActions, initialSpeakerMuted: false);
@@ -70,7 +69,7 @@ public sealed class ChatComposerSessionTests
         var dispatcher = new RecordingUiDispatcher();
         var factory = new ChatComposerFactory(dispatcher);
         var provider = new FakeChatDataProviderForComposerTests();
-        var hostActions = new ChatComposerHostActions(null, () => { }, null, null, null);
+        var hostActions = new ChatComposerHostActions(null, () => { }, null, null);
 
         var session = factory.Create(provider, hostActions, initialSpeakerMuted: false);
 
@@ -85,7 +84,7 @@ public sealed class ChatComposerSessionTests
         var factory = new ChatComposerFactory(dispatcher);
         var session = factory.Create(
             new FakeChatDataProviderForComposerTests(),
-            new ChatComposerHostActions(null, null, null, null, null),
+            new ChatComposerHostActions(null, null, null, null),
             initialSpeakerMuted: false);
 
         session.ApplyInputs(MakeInputs("first"));

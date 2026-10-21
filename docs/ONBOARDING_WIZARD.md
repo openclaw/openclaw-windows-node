@@ -169,10 +169,12 @@ It does not suppress that exception or repair the upstream full-wizard finalizer
 See the [implementation results and limitations](GATEWAY_SETUP_RESPONSIBILITIES.md#package-aware-implementation-results)
 for launch, shutdown, verification details and the pre-assignment crash window.
 
-**Install a local native gateway** is the first Welcome choice and retains its
-**Recommended** badge even while disabled, with WinUI disabled brushes for the
-title, description, badge and icon instead of active accent colors. Only a successful native capability
-check enables it. The separate isolation warning and acknowledgment checkbox
+**Install a local native gateway** remains visible with **Recommended** while support
+is checked. WSL and **Connect to an existing gateway** appear before the disabled
+native choice until the capability check succeeds. A successful check enables native
+and moves it to the first position. Unsupported or failed checks leave native disabled
+in the last position with the support card and Windows Update recovery directly below
+the choice list. The separate isolation warning and acknowledgment checkbox
 remain removed; the general security notice and provider/onboarding consent
 remain explicit. With an isolated-session Gateway package, the package provisions
 and runs the agent account; the known legacy proof package retains its original
@@ -180,8 +182,9 @@ same-user runtime. The UI capability gate alone never proves isolation.
 Native and WSL use the **same focused `AiSetupPage` and three-choice `AiReadyPage`**,
 not separate normal provider/model wizards. The classic `WizardPage` is an explicit
 compatibility option only when the required setup methods are unavailable.
-WSL is always shown as the second Welcome choice after native,
-followed by **Connect to an existing gateway**.
+WSL is always visible. It is first when native is unavailable and second after a
+supported native choice, with **Connect to an existing gateway** between WSL and a
+disabled native choice.
 
 Companion checks current-user registration for the Store package
 `OpenClawFoundation.OpenClawGateway` and publisher
@@ -191,15 +194,15 @@ from `PATH`. Native setup uses the same Windows capabilities and permission
 selection as WSL, with native package installation consent on that same page.
 Selecting **Set up gateway** starts native progress without WSL, Local AI or
 Tailscale provisioning and without an additional review page.
-A missing package is installed automatically using
-`winget install --id 9NV70LV3D6XC --source msstore --silent --accept-package-agreements --accept-source-agreements --disable-interactivity --no-upgrade`;
+A Store package is installed or refreshed automatically using
+`winget install --id 9NV70LV3D6XC --source msstore --silent --accept-package-agreements --accept-source-agreements --disable-interactivity`;
 unhealthy registration or unavailable aliases show an explicit repair error.
 The fixed product is [OpenClaw Gateway in Microsoft Store](https://apps.microsoft.com/detail/9NV70LV3D6XC).
 No MSIX version or download URL is pinned; Store selects the current compatible
-release. Existing healthy installations are not silently upgraded during setup.
+release. Native setup checks for available Store updates before reusing a healthy Store package. Existing development profiles keep their package identity.
 To explicitly refresh one, run
 `winget install --id 9NV70LV3D6XC --source msstore --accept-package-agreements --accept-source-agreements`
-without `--no-upgrade`. WinGet may report that no newer package is available.
+WinGet reporting that no newer package is available is a successful no-op.
 
 An unfinished draft saved against a different package family (for example, the
 older development Gateway) offers **Discard and set up again**, just like a
@@ -238,8 +241,8 @@ runs one current-user `Repair-WinGetPackageManager -Force -Latest` bootstrap and
 The repair installs Microsoft's WinGet client module; it never bypasses certificate validation.
 Other failures show explicit repair guidance and **Retry setup**. The normal
 path has no separate install, availability-check or wizard-launch buttons.
-An already installed healthy package skips installation. Retry checks registration
-again before invoking WinGet. Companion does not download Gateway packages directly,
+An already installed healthy development/patch package skips installation. Store packages are checked for updates.
+Retry checks registration again before invoking WinGet. Companion does not download Gateway packages directly,
 change certificate trust, or uninstall packages on cancellation.
 
 Progress reuses the WSL spinner/checkmark rows. Normal completion uses the same
@@ -365,10 +368,11 @@ and verifies endpoint ownership. See [Welcome](#welcome) for the current UI.
   number or the presence of `IsolationProxy.exe`.
 - **Recommendation order:** Recommend the MXC native Gateway when the OS
   supports sessions and the Gateway session integration is available. If the
-  OS is unsupported, first recommend updating Windows to a supported version,
-  with a capability recheck after updating. Present WSL as the secondary
-  fallback, not the initial recommendation. Do not automatically change the
-  Windows update channel or enable preview features.
+  OS is unsupported, present WSL first as the immediately available recommendation.
+  Keep native Gateway visible as a disabled recommended option after the existing-
+  Gateway choice, with Windows Update guidance and a capability recheck after
+  updating. Do not automatically change the Windows update channel or enable
+  preview features.
 - **Actionable failures:** Distinguish an unsupported OS from a failed probe,
   disabled/unavailable session features, and a missing Gateway package/runtime.
   A probe error offers retry and diagnostics rather than asserting that an OS
@@ -633,7 +637,7 @@ The setup flow walks users through:
 
 1. **Welcome and trust** - Three feature rows and an inline device-trust notice
 2. **Gateway** - Capability-gated native Gateway recommendation (with WSL fallback), existing, remote, local MCP only, or deferred setup
-3. **PC capabilities** - Strict, Balanced (Recommended), Open, and inline Fine-tune; Node mode, local MCP and Ollama sharing stay independent. No Windows-access advisory panel or probe runs here.
+3. **PC capabilities** - Strict, Balanced (Recommended), Open, and inline Fine-tune; Node mode, local MCP and Ollama sharing stay independent. No Gateway-installation disclosure, Windows-access advisory panel, or probe runs here.
 4. **Gateway setup** - Managed WSL reviews installation and replacement consent; native Gateway checks its package and prepares a dedicated profile without WSL or Local AI installation.
 5. **AI setup** - Native Gateway, WSL and existing/remote gateways use focused AI setup and live model verification, followed by the same three destination choices. Native uses its setup-owned runtime until finalization; WSL workspace integration remains WSL-only.
 6. **Completion** - Both verified focused AI flows open Chat, Channels or Skills. Only the explicit classic compatibility fallback retains its setup-complete and connection handoff.
@@ -801,9 +805,20 @@ outside the disabled native option so the Windows Update action stays usable.
 The support card is hidden when native capability is available.
 
 When capability is unavailable, **Open Windows Update** opens
-`ms-settings:windowsupdate`. Guidance names Insider build **26340.9212**, the
-baseline documented by the pinned MXC SDK, or a newer supported build. Reopening
-the page reruns the check; the Welcome page has no **Check again** button.
+`ms-settings:windowsupdate`. Guidance tells users to update to a Windows version
+that supports the native Gateway. It says support is coming soon to all devices
+and, until broad availability, directs users to join the Windows Insider
+Program, select the Beta or Experimental channel, and choose Windows 11, version
+26H1 under **Advanced options** during enrollment. The guidance warns that
+returning to Windows 11, version 25H2/26H2 requires a clean reinstall, as described
+in [Microsoft's Windows core version guidance](https://learn.microsoft.com/en-us/windows-insider/flighting#understanding-windows-core-versions).
+After enrolling, users return to **Settings > Windows Update**, check for
+updates, and may need to wait a few minutes for the update to appear. The copy
+notes that feature availability can vary by device and tells users to reopen
+the page after updating to check support again. The Welcome page has no
+**Check again** button. `NativeGatewayEligibilityTextTests` exercises the production
+rich-text renderer, complete automation name, and repeated rich/plain transitions
+on real WinUI `TextBlock` controls; the gallery also uses that renderer.
 Feature rollout varies; a negative native API result is not proof
 that the build alone is the cause. Probe failures or missing/invalid metadata
 offer retry/Companion repair rather than misleading update advice. Windows Server
@@ -1146,9 +1161,9 @@ does not replay a mutation. Insufficient operator scopes remain an explicit
 error, not a reason to fall back or use node credentials.
 
 After verification, the native chooser finalizes Windows-node workspace guidance
-and the reviewed startup preference before restart. Native Chat and the flyout
-retain their independent Dashboard action. Windows capability consent remains
-in native Permissions, not in the web dashboard.
+and the reviewed startup preference before restart. Dashboard management remains
+in Connection settings and the tray menu, not above Workspace chat. Windows
+capability consent remains in native Permissions, not in the web dashboard.
 
 ### Classic OpenClaw onboard (compatibility)
 
@@ -1206,6 +1221,11 @@ The browser-only profile route is not implemented through native credentials.
 
 The connection editor shows the Gateway-stage progress indicator above a
 separate row of wrapping Back, Cancel, Check and Next actions.
+Both the Welcome existing-Gateway choice and Advanced existing/remote routes
+use this editor. Its labels, accessible names and status messages use
+`Onboarding_NativeConnection_*` resources in every supported locale.
+Connection checking and cancellation copy is separate from the native
+installer's package-check and WinGet cancellation messages.
 
 Check connection authenticates with an isolated identity copy and optional
 temporary owned SSH listener, without saving a gateway or changing the active

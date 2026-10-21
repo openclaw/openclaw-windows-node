@@ -75,9 +75,20 @@ reachability from the final ownership stage exceeding its deadline, even if
 the ownership probe returned success before the final deadline check.
 The result remains terminal and does not authorize another restart.
 
-HTTP 200/401/403 still means only endpoint reachability. Neither this HTTP
-probe nor listener provenance establishes an authenticated ready Gateway.
-Authentication and pairing retain their existing owners and gates.
+The HTTP gate polls `GET /startupz` inside WSL. HTTP 200 JSON means the
+Gateway finished startup (dispatch ready and startup sidecars settled), which
+is the same condition the Gateway uses to admit operator WebSocket connects.
+HTTP 503 JSON means it is still starting or draining; its `pendingReason` is
+logged and reported on timeout. Gateways before 2026.8.1 do not serve
+`/startupz`, so a non-probe reply falls back to the root-path check, where
+HTTP 200/401/403 means only endpoint reachability. Before operator and node
+pairing, `WindowsGatewayReachability` repeats `GET /startupz` from Windows on
+the URL Companion pairs through, waiting up to `HealthTimeoutSeconds` while it
+returns 503 JSON. Transport failures fail immediately, and a non-probe answer
+(an older Gateway or remote ingress) counts as reachable. Neither probe nor
+listener provenance establishes an authenticated Gateway session; the
+ownership check still runs before any credential handoff. Authentication and
+pairing retain their existing owners and gates.
 
 **Why the order is unchanged:** at upstream commit
 [`eb377ac59e6c9fd6c7705028034812becf00271b`](https://github.com/openclaw/openclaw/tree/eb377ac59e6c9fd6c7705028034812becf00271b),
@@ -117,7 +128,7 @@ the owned `NativeGatewaySetupConnection` authorization and upstream
 checks Windows package registration and package-qualified aliases.
 `NativeGatewayMsixInstaller` installs the fixed Store product using the current-user
 App Installer alias and `CommandRunner`:
-`winget install --id 9NV70LV3D6XC --source msstore --silent --accept-package-agreements --accept-source-agreements --disable-interactivity --no-upgrade`.
+`winget install --id 9NV70LV3D6XC --source msstore --silent --accept-package-agreements --accept-source-agreements --disable-interactivity`.
 The shared capabilities page shows the native installation and agreement
 disclosure before its **Set up gateway** action; other routes retain **Next**.
 This preserves consent without adding a separate native review step.
@@ -129,8 +140,8 @@ diagnostics and retry guidance instead of opening a manual Store page.
 the original development identity for existing installations. Multiple matching
 registrations fail explicitly for new setup. Existing runtime profiles resolve only
 their saved family, allowing both packages to coexist without an implicit migration.
-`NativeGatewayPackageAcquisition` invokes installation once only for missing
-registration. Installation and verified package readiness share a five-minute
+`NativeGatewayPackageAcquisition` invokes acquisition once for a missing or existing Store
+package; an existing development package is reused without Store migration. Installation and verified package readiness share a five-minute
 deadline. Cancellation stops the WinGet request, but Windows deployment may
 continue. Repair errors and timeouts stay visible, with explicit retry rather
 than repeated installer launches; retries recheck registration before installing.
@@ -168,9 +179,17 @@ substitute.
 The [Welcome recommendation policy](ONBOARDING_WIZARD.md#welcome) now checks
 `wxc-exec --probe` session capability before recommending the existing native
 Gateway. `NativeGatewaySetupEligibility` owns admission and selection policy.
-Unavailable capability offers Windows Update with the pinned SDK's Insider
-baseline (26340.9212); failed probes offer retry/repair instead. WSL is always
-visible as the second option after native, with existing-gateway connection third.
+Unavailable capability offers Windows Update guidance. It says native Gateway
+support is coming soon to all devices and, until broad availability, directs
+users to join the Windows Insider Program, select the Beta or Experimental
+channel, and choose Windows 11, version 26H1 under **Advanced options** during
+enrollment. It warns that returning to Windows 11, version 25H2/26H2 requires
+a clean reinstall. After enrolling, users return to
+**Settings > Windows Update** and check for updates. The copy notes that feature
+availability can vary by device and tells users to reopen the page after
+updating to check support again. The live probe remains
+authoritative; failed probes offer retry/repair instead. WSL is always visible
+as the second option after native, with existing-gateway connection third.
 Explicit WSL and existing-gateway choices survive late native probe results. Welcome has no
 manual recheck button; reopening the page checks again. The separate isolation warning/checkbox is removed by the
 2026-09-18 product decision; general security consent remains. This is not
@@ -285,6 +304,14 @@ absent or unregister succeeds. To replace such a legacy distro, uninstall it
 first, using `--uninstall --confirm-destructive` and the same distro name, then
 rerun setup with a supported new name.
 
+Automatic rollback of the WSL-create step has cleanup authority only after that
+execution starts creating the distro. If creation refuses pre-existing state,
+rollback preserves the distro, install directory, ownership marker, and empty
+parent directory. A reused step starts with no authority from an earlier attempt.
+Once creation starts, the existing live-registration ownership and
+unregister-failure preservation gates still apply. Explicit uninstall remains a
+separate, destructive-consent path.
+
 ```json
 {
   "DistroName": "OpenClawGateway",
@@ -365,7 +392,17 @@ rerun setup with a supported new name.
 
 1. CLI flags (`--headless`, `--log-path`, `--rollback-on-failure`, `--no-rollback-on-failure`)
 2. Config file (explicit `--config` or bundled `default-config.json`)
-3. Environment variables (`OPENCLAW_SETUP_DISTRO_NAME`, etc.)
+3. Environment variables (`OPENCLAW_SETUP_DISTRO`, etc.)
+
+Environment-only knobs without a config-file equivalent:
+
+- `OPENCLAW_SETUP_REACHABILITY_TIMEOUT`: bound, in seconds, for each
+  pre-pairing `/startupz` probe (`WindowsGatewayReachability`, run by
+  `PairOperatorStep` and `PairNodeStep` before opening their pairing sockets).
+  The overall wait while the Gateway reports startup stays bounded by
+  `Gateway.HealthTimeoutSeconds`.
+  Default 30; a positive integer between 1 and 2147483 overrides it, and any
+  other value is ignored with a warning and keeps the default.
 
 ---
 
@@ -395,7 +432,7 @@ Executed sequentially. Each step is a small class (30–120 lines) in its own fi
 | 13 | `AuthorizeTailscaleStep` | Authorize the configured Tailscale identity and trust mode |
 | 14 | `ConfigureGatewayStep` | Write gateway config (bind, port, auth) |
 | 15 | `InstallGatewayServiceStep` | `openclaw gateway install --force` |
-| 16 | `StartGatewayStep` | Start service, poll health endpoint (90s timeout) |
+| 16 | `StartGatewayStep` | Start service, poll `/startupz` until started (90s timeout) |
 | 17 | `FinalizeTailscaleServeStep` | Apply the final Tailscale Serve endpoint after gateway startup |
 | 18 | `MintBootstrapTokenStep` | Generate bootstrap token via CLI |
 | 19 | `PairOperatorStep` | WebSocket operator connection + device approval |
@@ -621,6 +658,19 @@ Structured JSONL logger. Records sanitized entries for:
 - Errors with stack traces
 
 Log path defaults to `%APPDATA%\OpenClawTray\Logs\Setup\setup-engine-<yyyyMMdd-HHmmss>.jsonl` for setup and `uninstall-engine-<yyyyMMdd-HHmmss>.jsonl` for uninstall.
+
+### Uninstall onboarding reset
+
+The Inno uninstaller invokes `scripts\Uninstall-LocalGateway.ps1` directly,
+not the C# uninstall engine. Both onboarding reset paths remove `GatewayUrl`
+and legacy `Token` / `BootstrapToken` properties from `settings.json`, even
+when node mode and autostart settings are preserved for remaining gateways.
+Other preferences and external gateway records are preserved. The focused
+`UninstallOnboardingSettingsTests` execute only the production PowerShell
+reset and its JSON/logging helpers under Windows PowerShell 5.1 with temporary
+files; they do not prove the full signed-installer uninstall path.
+On a later launch, a URL-less legacy root identity is not migrated or used
+against the default loopback URL. The profile must be reconnected explicitly.
 
 ---
 

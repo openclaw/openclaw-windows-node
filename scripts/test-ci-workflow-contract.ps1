@@ -33,7 +33,7 @@ function Assert-Contains {
         [Parameter(Mandatory)][string]$Message
     )
 
-    if (-not $Text.Contains($Expected, [StringComparison]::Ordinal)) {
+    if ($Text.IndexOf($Expected, [StringComparison]::Ordinal) -lt 0) {
         throw $Message
     }
 }
@@ -45,7 +45,7 @@ function Assert-NotContains {
         [Parameter(Mandatory)][string]$Message
     )
 
-    if ($Text.Contains($Unexpected, [StringComparison]::Ordinal)) {
+    if ($Text.IndexOf($Unexpected, [StringComparison]::Ordinal) -ge 0) {
         throw $Message
     }
 }
@@ -317,6 +317,22 @@ Assert-Contains `
     -Message "CI cancellation must apply only to pull_request runs."
 
 $classificationJob = Get-JobBlock "change-classification"
+$classificationGuard = [regex]::Match(
+    $classificationJob,
+    '(?ms)^        if \(\$impact\.classification -notin @\([^\r\n]+\)\) \{\r?\n.*?^        \}')
+if (-not $classificationGuard.Success) {
+    throw "Classification output must retain its fail-closed admission guard."
+}
+$guard = [scriptblock]::Create($classificationGuard.Value)
+foreach ($classification in @("docs_only", "fast_only", "targeted", "full", "", "unknown")) {
+    $impact = [pscustomobject]@{ classification = $classification }
+    $accepted = $true
+    try { & $guard } catch { $accepted = $false }
+    $expected = $classification -in @("docs_only", "fast_only", "targeted", "full")
+    if ($accepted -ne $expected) {
+        throw "Workflow classification guard expected '$classification' accepted=$expected."
+    }
+}
 foreach ($token in @(
         "fetch-depth: 0",
         "./scripts/Get-CiChangeClassification.ps1",
@@ -338,12 +354,22 @@ foreach ($token in @(
 }
 
 $fastValidationJob = Get-JobBlock "fast-validation"
+$triageStep = Get-StepBlock -Text $fastValidationJob -Name "Test repository triage automation and dashboard"
+Assert-Contains -Text $triageStep `
+    -Expected "run: node --test .github/scripts/repository-triage.test.cjs .github/extensions/openclaw-triage-dashboard/triage-state.test.mjs" `
+    -Message "The exact fast-only tooling suite must run in fast-validation."
+foreach ($token in @("if:", "continue-on-error:")) {
+    Assert-NotContains -Text $triageStep -Unexpected $token `
+        -Message "Fast-only tooling tests must not be conditional or tolerate failures."
+}
 foreach ($token in @(
         "Ensure .squad stays untracked",
         "node --test .github/scripts/repository-triage.test.cjs",
         "./scripts/validate-docs.ps1",
         "./scripts/validate-agent-skills.ps1",
         "./scripts/test-agent-skills-validator.ps1",
+        "./scripts/test-proof-evidence.ps1",
+        "./scripts/test-agent-readiness.ps1",
         "./scripts/test-ci-change-classifier.ps1",
         "./scripts/test-ci-gate-results.ps1",
         "./scripts/test-ci-workflow-contract.ps1",
@@ -358,6 +384,12 @@ foreach ($token in @(
 }
 
 $proofJob = Get-JobBlock "proof-pool-contracts"
+foreach ($job in @($fastValidationJob, $proofJob)) {
+    $jobHeader = ($job -split '(?m)^    steps:\s*$', 2)[0]
+    if ($jobHeader -match '(?m)^    (?:if|needs|continue-on-error):') {
+        throw "Fast validation and proof-pool contracts must remain unconditional required jobs."
+    }
+}
 foreach ($token in @(
         "./scripts/Get-CiProofPoolRegressionDecision.ps1",
         "steps.proof_pool_regression.outcome != 'success' || steps.proof_pool_regression.outputs.run != 'false'",
@@ -428,6 +460,11 @@ foreach ($lane in $testLanes.GetEnumerator()) {
 }
 
 $coreJob = Get-JobBlock "core-tests"
+$sharedTestStep = Get-StepBlock -Text $coreJob -Name "Run Shared Tests"
+Assert-Contains -Text $sharedTestStep -Expected "timeout-minutes: 15" `
+    -Message "Shared tests must have a bounded CI step."
+Assert-Contains -Text $sharedTestStep -Expected "-HangTimeoutSeconds 300" `
+    -Message "Shared tests must collect the interrupted test sequence on a five-minute hang."
 $coreCacheStep = Get-StepBlock -Text $coreJob -Name "Cache NuGet packages"
 foreach ($token in @(
         "Configure core NuGet cache",
@@ -506,6 +543,19 @@ foreach ($token in @(
     Assert-Contains -Text $trayJob -Expected $token -Message "Tray lane is missing '$token'."
 }
 
+$devSettingsStep = Get-StepBlock -Text $trayJob -Name "Run Dev containment settings tests"
+foreach ($token in @(
+        "dotnet test tests/OpenClaw.Tray.Tests",
+        "-p:DevBuild=true",
+        "FullyQualifiedName~SettingsManagerIsolationTests",
+        "FullyQualifiedName~AppRefactorContractTests.SandboxPage_",
+        "OpenClaw.Tray.DevSettings.Tests.trx"
+    )) {
+    Assert-Contains -Text $devSettingsStep -Expected $token -Message "Dev settings coverage is missing '$token'."
+}
+Assert-NotContains -Text $devSettingsStep -Unexpected "--no-build" `
+    -Message "Dev settings tests must recompile the linked AppIdentity source with DEV_BUILD."
+
 $uiJob = Get-JobBlock "ui-tests"
 foreach ($token in @(
         "Install WindowsAppRuntime",
@@ -541,7 +591,10 @@ foreach ($requiredRunnerToken in @(
         '"trx;LogFileName=$TrxFileName"',
         'dotnet-coverage collect',
         '--output-format cobertura',
-        '& dotnet @testArguments'
+        '& dotnet @testArguments',
+        'New-TestInvocation',
+        'Read-TestResultContract',
+        '-AllowSkipped'
     )) {
     Assert-Contains `
         -Text $runner `
@@ -553,16 +606,19 @@ $e2eLanes = [ordered]@{
     "setup-e2e" = @{
         Output = "setup_e2e"
         Name = "setup-connect"
+        Step = "Run setup and connect E2E tests"
         Filter = "OpenClaw.E2ETests.Setup.SetupAndConnectTests"
     }
     "revocation-e2e" = @{
         Output = "revocation_e2e"
         Name = "revocation-recovery"
+        Step = "Run revocation recovery E2E tests"
         Filter = "OpenClaw.E2ETests.Setup.RevocationAndRecoveryTests"
     }
     "network-e2e" = @{
         Output = "network_e2e"
         Name = "network-recovery"
+        Step = "Run network recovery E2E tests"
         Filter = "OpenClaw.E2ETests.Setup.NetworkRecoveryTests"
     }
 }
@@ -572,6 +628,10 @@ foreach ($lane in $e2eLanes.GetEnumerator()) {
             "fetch-depth: 0",
             "needs.change-classification.outputs.$($lane.Value.Output) == 'true'",
             "OPENCLAW_RUN_E2E: 1",
+            'OPENCLAW_E2E_GATEWAY_VERSION: ${{ needs.change-classification.outputs.gateway_version }}',
+            'GATEWAY_RELEASE_JSON: ${{ needs.change-classification.outputs.gateway_release }}',
+            "name: e2e-test-results-$($lane.Value.Name)",
+            'TestResults/E2E/gateway-release.json',
             "./scripts/Invoke-CiE2e.ps1",
             "-Name $($lane.Value.Name)",
             $lane.Value.Filter,
@@ -582,6 +642,53 @@ foreach ($lane in $e2eLanes.GetEnumerator()) {
             -Expected $token `
             -Message "E2E lane '$($lane.Key)' is missing '$token'."
     }
+    $jobHeader = ($job -split '(?m)^    steps:\s*$', 2)[0]
+    Assert-Contains -Text $jobHeader -Expected 'timeout-minutes: 25' `
+        -Message "E2E lane '$($lane.Key)' must leave a stalled job bounded to 25 minutes."
+    $testStep = Get-StepBlock -Text $job -Name $lane.Value.Step
+    Assert-Contains -Text $testStep -Expected 'timeout-minutes: 20' `
+        -Message "E2E lane '$($lane.Key)' must stop stalled tests before the job deadline."
+    $uploadStep = Get-StepBlock -Text $job -Name 'Upload E2E Test Results & Logs'
+    Assert-Contains -Text $uploadStep -Expected 'if: always()' `
+        -Message "E2E lane '$($lane.Key)' must upload diagnostics after a test timeout."
+    Assert-NotContains -Text $jobHeader -Unexpected 'continue-on-error:' `
+        -Message "WSL Latest must be required in '$($lane.Key)'."
+    Assert-NotContains -Text $jobHeader -Unexpected 'strategy:' `
+        -Message "WSL lane '$($lane.Key)' must run once, without a packaged Gateway matrix."
+    Assert-NotContains -Text $job -Unexpected 'Resolve-CiGateway.ps1' `
+        -Message 'E2E shards must consume the workflow snapshot, never re-resolve moving selectors.'
+}
+$classification = Get-JobBlock 'change-classification'
+foreach ($output in @('gateway_version: ${{ steps.gateway.outputs.version }}', 'gateway_release: ${{ steps.gateway.outputs.release }}')) {
+    Assert-Contains -Text $classification -Expected $output `
+        -Message 'CI must forward the exact WSL Latest version and provenance to every E2E job.'
+}
+$snapshot = Get-StepBlock -Text $classification -Name 'Snapshot latest WSL Gateway baseline'
+Assert-Contains -Text $snapshot -Expected './scripts/Resolve-CiGateway.ps1' `
+    -Message 'CI must resolve the WSL Latest baseline once.'
+Assert-NotContains -Text $snapshot -Unexpected 'continue-on-error:' `
+    -Message 'An unresolved baseline must fail CI rather than fall back.'
+Assert-NotContains -Text $workflow -Unexpected 'packaging_release' `
+    -Message 'WSL CI must not select a native packaging release.'
+Assert-NotContains -Text $workflow -Unexpected 'gateway_matrix' `
+    -Message 'WSL CI must not restore the native Packaged/Latest matrix.'
+$gatewayResolver = Get-Content -LiteralPath (Join-Path $repoRootPath 'scripts\Resolve-CiGateway.ps1') -Raw
+foreach ($token in @(
+        'Resolve-GatewayNpmRelease -Selector latest',
+        '"version=$($release.version)"',
+        '"release=$($release | ConvertTo-Json -Compress)"',
+        "'gateway-release.json'"
+    )) {
+    Assert-Contains -Text $gatewayResolver -Expected $token `
+        -Message "WSL baseline resolution is missing '$token'."
+}
+foreach ($token in @('GatewayPackagedRelease', 'PackagingRelease', 'Save-PackagedGatewayArchive', 'gateway-matrix.json')) {
+    Assert-NotContains -Text $gatewayResolver -Unexpected $token `
+        -Message 'WSL Latest resolution must not depend on native MSIX releases or downloads.'
+}
+foreach ($lane in @('setup_e2e', 'revocation_e2e', 'network_e2e')) {
+    Assert-Contains -Text $snapshot -Expected "steps.classify.outputs.$lane == 'true'" `
+        -Message 'Baseline resolution must run only when an E2E lane needs it.'
 }
 foreach ($proofName in @(
         "RealGateway_SystemRun_ExecutesThroughWindowsNodeMxcSandbox",
@@ -692,7 +799,7 @@ foreach ($token in @(
         '-MsixBaseVersion $info.packageBaseVersion',
         '-VersionInfoPath "$env:RUNNER_TEMP\openclaw-msix-version.json"',
         'Assert-MsixVersionInfo',
-        '-SourceCommit $env:GITHUB_SHA -SourceVersion $env:MSIX_SOURCE_VERSION',
+        '-SourceCommit $env:OPENCLAW_RELEASE_SOURCE_SHA -SourceVersion $env:MSIX_SOURCE_VERSION',
         'refusing to build with a fallback version',
         '-CertificateThumbprint $thumbprint',
         'name: openclaw-msix-store-unsigned-${{ matrix.architecture }}',
@@ -724,7 +831,7 @@ foreach ($token in @(
     'name: openclaw-msix-store-unsigned-bundle',
     'path: artifacts/msix/bundle/OpenClaw.msixbundle',
     'Assert-MsixVersionInfo',
-    '-SourceCommit $env:GITHUB_SHA -SourceVersion $env:MSIX_SOURCE_VERSION',
+    '-SourceCommit $env:OPENCLAW_RELEASE_SOURCE_SHA -SourceVersion $env:MSIX_SOURCE_VERSION',
     'refusing to bundle with a fallback version'
 )) {
     Assert-Contains -Text $buildMsixBundleJob -Expected $token -Message "MSIX bundle lane is missing '$token'."
@@ -743,7 +850,7 @@ foreach ($token in @(
     'contents: write', 'persist-credentials: false',
     'versionInfo: ${{ steps.reserve.outputs.versionInfo }}',
     'sourceVersion: ${{ steps.reserve.outputs.sourceVersion }}',
-    '-SourceRef $env:GITHUB_REF -Repository $env:GITHUB_REPOSITORY -Reserve'
+    '-SourceRef $env:OPENCLAW_RELEASE_REF -Repository $env:GITHUB_REPOSITORY -Reserve'
 )) {
     Assert-Contains -Text $reserveMsixJob -Expected $token -Message "Official MSIX allocation is missing '$token'."
 }
@@ -772,11 +879,16 @@ function Convert-MsixGuard {
         Replace('needs.metadata.result', '$metadataResult').
         Replace('github.repository', '$repository').
         Replace('github.event_name', '$eventName').
-        Replace('==', '-eq').Replace('&&', '-and').Replace('||', '-or').Replace('!(', '-not (')
-    [scriptblock]::Create('param($repository,$ref,$eventName,$metadataResult,$cancelled)' + "`n($condition)")
+        Replace('inputs.promotion_alpha', '$promotionAlpha').
+        Replace('!=', '-ne').Replace('==', '-eq').Replace('&&', '-and').Replace('||', '-or').Replace('!(', '-not (')
+    [scriptblock]::Create('param($repository,$ref,$eventName,$metadataResult,$cancelled,$promotionAlpha = '''')' + "`n($condition)")
 }
 $reserveGuard = Convert-MsixGuard $reserveMsixJob
 $previewGuard = Convert-MsixGuard $previewStep
+if (-not (& $reserveGuard 'openclaw/openclaw-windows-node' 'refs/heads/main' 'workflow_dispatch' 'success' $false 'v2026.9.5-alpha.93') -or
+    (& $previewGuard 'openclaw/openclaw-windows-node' 'refs/heads/main' 'workflow_dispatch' 'success' $false 'v2026.9.5-alpha.93')) {
+    throw 'Validated main-based promotion must reserve an official version, not use a preview.'
+}
 foreach ($repository in @('openclaw/openclaw-windows-node', 'contributor/openclaw-windows-node')) {
     foreach ($ref in @('refs/tags/v2026.9.4', 'refs/tags/v2026.9.4-1', 'refs/tags/v2026.9.4-alpha.1', 'refs/heads/main', 'refs/pull/1/merge', 'refs/tags/msix-package/2026.9.4/401')) {
         foreach ($eventName in @('push', 'workflow_dispatch', 'pull_request', 'pull_request_target')) {
@@ -800,6 +912,14 @@ foreach ($token in @(
         "if: `${{ always() }}",
         "needs: [change-classification, fast-validation, proof-pool-contracts, metadata, core-tests, tray-tests, ui-tests, setup-e2e, revocation-e2e, network-e2e, build-x64, build-arm64, build-msix, build-msix-bundle]",
         "./scripts/Assert-CiGateResults.ps1",
+        "CLASSIFICATION_RESULT: `${{ needs.change-classification.result }}",
+        "CLASSIFICATION: `${{ needs.change-classification.outputs.classification }}",
+        "FAST_VALIDATION_RESULT: `${{ needs.fast-validation.result }}",
+        "PROOF_POOL_CONTRACTS_RESULT: `${{ needs.proof-pool-contracts.result }}",
+        "-ClassificationResult `$env:CLASSIFICATION_RESULT",
+        "-Classification `$env:CLASSIFICATION",
+        "-FastValidationResult `$env:FAST_VALIDATION_RESULT",
+        "-ProofPoolContractsResult `$env:PROOF_POOL_CONTRACTS_RESULT",
         "-FullRequired `$env:FULL_REQUIRED",
         "-CoreRequired `$env:CORE_REQUIRED",
         "-TrayRequired `$env:TRAY_REQUIRED",
@@ -864,7 +984,7 @@ Assert-Contains -Text $msixArm64Download -Expected 'name: openclaw-msix-dev-arm6
 foreach ($step in @($msixX64Download, $msixArm64Download)) {
     Assert-NotContains -Text $step -Unexpected 'openclaw-msix-store-unsigned-' -Message 'Unsigned Store packages must stay workflow-only.'
 }
-Assert-Contains -Text $msixStage -Expected '-ExpectedSourceCommit $env:GITHUB_SHA' -Message "Release staging must bind artifacts to the tag's source."
+Assert-Contains -Text $msixStage -Expected '-ExpectedSourceCommit $env:OPENCLAW_RELEASE_SOURCE_SHA' -Message "Release staging must bind artifacts to the tag's source."
 Assert-Contains -Text $msixStage -Expected '-Version $env:RELEASE_VERSION' -Message "Release staging must validate the release version."
 Assert-Contains -Text $msixStage -Expected '-ExpectedRevision $env:DEV_MSIX_REVISION' -Message 'Release staging must bind the Dev package revision.'
 Assert-Contains -Text $msixStage -Expected '-ExpectedWorkflowRunId $env:GITHUB_RUN_ID' -Message 'Release staging must bind artifacts to the publishing run.'
@@ -900,10 +1020,19 @@ $triggerPaths = @(
     "scripts/test-ci-gate-results.ps1",
     "scripts/validate-agent-skills.ps1",
     "scripts/test-agent-skills-validator.ps1",
-    "scripts/test-ci-workflow-contract.ps1"
+    "scripts/test-ci-workflow-contract.ps1",
+    "scripts/run-proof-tests.ps1",
+    "scripts/Invoke-CiTest.ps1",
+    "scripts/TestResultContract.ps1",
+    "scripts/ProofEvidence.ps1",
+    "scripts/validate-proof-evidence.ps1",
+    "scripts/test-proof-evidence.ps1",
+    "scripts/MarkdownValidation.ps1",
+    "scripts/setup-dev.ps1",
+    "scripts/test-agent-readiness.ps1"
 )
 
-$tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
+$tempRoot = Join-Path (Join-Path $repoRootPath "TestResults") (
     "openclaw-ci-contract-" + [guid]::NewGuid().ToString("N"))
 try {
     New-Item -ItemType Directory -Path $tempRoot | Out-Null
@@ -922,11 +1051,36 @@ try {
     $unrelatedPath = Join-Path $tempRoot "docs\unrelated.md"
     New-Item -ItemType Directory -Path (Split-Path -Parent $unrelatedPath) -Force | Out-Null
     Set-Content -LiteralPath $unrelatedPath -Value "baseline"
+    $toolingPaths = @(
+        ".github/scripts/repository-triage.cjs",
+        ".github/scripts/repository-triage.test.cjs"
+    )
+    foreach ($toolingPath in $toolingPaths) {
+        $fullPath = Join-Path $tempRoot $toolingPath
+        New-Item -ItemType Directory -Path (Split-Path -Parent $fullPath) -Force | Out-Null
+        Set-Content -LiteralPath $fullPath -Value "tooling baseline"
+    }
 
     & git -C $tempRoot add .
     & git -C $tempRoot commit --quiet -m "baseline"
     if ($LASTEXITCODE -ne 0) {
         throw "Could not commit temporary baseline."
+    }
+
+    foreach ($toolingPath in $toolingPaths) {
+        $baseSha = (& git -C $tempRoot rev-parse HEAD).Trim()
+        Add-Content -LiteralPath (Join-Path $tempRoot $toolingPath) -Value "tooling change"
+        & git -C $tempRoot add .
+        & git -C $tempRoot commit --quiet -m "tooling-only change"
+        if ($LASTEXITCODE -ne 0) { throw "Could not commit tooling-only fixture." }
+        $headSha = (& git -C $tempRoot rev-parse HEAD).Trim()
+        $impact = (& (Join-Path $repoRootPath "scripts\Get-CiChangeClassification.ps1") `
+            -EventName pull_request -BaseSha $baseSha -HeadSha $headSha -RepoRoot $tempRoot) | ConvertFrom-Json
+        $decision = & $selectorPath -EventName pull_request `
+            -BaseSha $baseSha -HeadSha $headSha -RepoRoot $tempRoot
+        if ($impact.classification -ne "fast_only" -or $decision -ne "false") {
+            throw "Tooling-only diff must be fast_only without changing proof-boundary selection."
+        }
     }
 
     foreach ($triggerPath in $triggerPaths) {
@@ -944,6 +1098,21 @@ try {
             -RepoRoot $tempRoot
         if ($decision -ne "true") {
             throw "Proof-pool trigger '$triggerPath' produced decision '$decision'."
+        }
+        # Keep the same base so the next diff includes the boundary and tooling.
+        foreach ($toolingPath in $toolingPaths) {
+            Add-Content -LiteralPath (Join-Path $tempRoot $toolingPath) -Value "mixed tooling change"
+        }
+        & git -C $tempRoot add .
+        & git -C $tempRoot commit --quiet -m "mix tooling with $triggerPath"
+        if ($LASTEXITCODE -ne 0) { throw "Could not commit mixed boundary fixture." }
+        $headSha = (& git -C $tempRoot rev-parse HEAD).Trim()
+        $mixedDecision = & $selectorPath -EventName pull_request `
+            -BaseSha $baseSha -HeadSha $headSha -RepoRoot $tempRoot
+        $mixedImpact = (& (Join-Path $repoRootPath "scripts\Get-CiChangeClassification.ps1") `
+            -EventName pull_request -BaseSha $baseSha -HeadSha $headSha -RepoRoot $tempRoot) | ConvertFrom-Json
+        if ($mixedDecision -ne "true" -or $mixedImpact.classification -ne "full") {
+            throw "Tooling mixed with proof boundary '$triggerPath' must run full validation and proof regressions."
         }
     }
 
@@ -975,6 +1144,123 @@ try {
         -RepoRoot $tempRoot
     if ($pushDecision -ne "true") {
         throw "Push and tag workflow runs must run the proof-pool regression."
+    }
+
+    $e2eHarness = Join-Path $tempRoot 'e2e-runner-harness.ps1'
+    Set-Content -LiteralPath $e2eHarness -Value @'
+param([string]$Runner, [string]$Root, [int]$Timeout, [int]$TestExit, [string]$Name, [switch]$Override)
+$ErrorActionPreference = 'Stop'
+Set-Location $Root
+function global:dotnet {
+    Set-Content -LiteralPath 'dotnet-called.txt' -Value 'called'
+    $values = @($args)
+    foreach ($flag in @('--blame-hang', '--blame-hang-timeout', '--blame-hang-dump-type')) {
+        if ($flag -notin $values) { throw "Missing E2E hang protection: $flag" }
+    }
+    foreach ($pair in @(
+        @('--blame-hang-timeout', "${Timeout}s"),
+        @('--blame-hang-dump-type', 'none'),
+        @('--filter', 'Sentinel.Filter'))) {
+        $index = [Array]::IndexOf($values, $pair[0])
+        if ($index -lt 0 -or $values[$index + 1] -cne $pair[1]) {
+            throw "Unexpected E2E argument: $($pair[0])"
+        }
+    }
+    if ($TestExit -eq 0) {
+        $directory = $values[[Array]::IndexOf($values, '--results-directory') + 1]
+        New-Item -ItemType Directory -Path $directory -Force | Out-Null
+        $logger = @($values | Where-Object { $_ -like 'trx;LogFileName=*' })[0]
+        $report = Join-Path $directory $logger.Substring('trx;LogFileName='.Length)
+        Set-Content -LiteralPath $report -Value '<TestRun><ResultSummary><Counters executed="1" /></ResultSummary><Results><UnitTestResult testName="Sentinel" outcome="Passed" /></Results></TestRun>'
+    }
+    $global:LASTEXITCODE = $TestExit
+}
+$parameters = @{ Name = $Name; Filter = 'Sentinel.Filter' }
+if ($Override) { $parameters.HangTimeoutSeconds = $Timeout }
+& $Runner @parameters
+exit $LASTEXITCODE
+'@
+    $shell = (Get-Process -Id $PID).Path
+    $e2eRunnerCases = @(
+        @{ Id = 'default'; Timeout = 600; TestExit = 0; ExpectedExit = 0 },
+        @{ Id = 'override'; Timeout = 2; TestExit = 0; ExpectedExit = 0; Override = $true },
+        @{ Id = 'invalid'; Timeout = 0; TestExit = 0; ExpectedExit = 1; Override = $true },
+        @{ Id = 'failed'; Timeout = 600; TestExit = 9; ExpectedExit = 9 },
+        @{ Id = 'missing-proof'; Timeout = 600; TestExit = 0; ExpectedExit = 1; Name = 'setup-connect' }
+    )
+    foreach ($case in $e2eRunnerCases) {
+        $caseRoot = Join-Path $tempRoot "e2e-runner/$($case.Id)"
+        New-Item -ItemType Directory -Path $caseRoot -Force | Out-Null
+        $caseArguments = @('-Runner', $e2eRunnerPath, '-Root', $caseRoot, '-Timeout', $case.Timeout,
+            '-TestExit', $case.TestExit, '-Name', $(if ($case.ContainsKey('Name')) { $case.Name } else { 'network-recovery' }))
+        if ($case.ContainsKey('Override')) { $caseArguments += '-Override' }
+        $previousPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = 'Continue'
+            $output = & $shell -NoProfile -File $e2eHarness @caseArguments 2>&1
+            $exit = $LASTEXITCODE
+        } finally { $ErrorActionPreference = $previousPreference }
+        if ($exit -ne $case.ExpectedExit) {
+            throw "E2E runner case '$($case.Id)' expected exit $($case.ExpectedExit), got ${exit}: $output"
+        }
+        if ($case.Id -eq 'invalid' -and (Test-Path (Join-Path $caseRoot 'dotnet-called.txt'))) {
+            throw 'An invalid hang timeout must be rejected before starting tests.'
+        }
+        if ($case.Id -eq 'missing-proof' -and ($output -join "`n") -notmatch 'did not report the MXC proof') {
+            throw "E2E hang protection must preserve required proof assertions: $output"
+        }
+    }
+    Write-Host "E2E runner hang-guard contracts passed: $($e2eRunnerCases.Count) cases."
+    # Expected child failures must not become the GitHub Actions step exit code.
+    $global:LASTEXITCODE = 0
+
+    $baselineCases = @(
+        @{ Name = 'valid'; Version = '2026.9.9'; Json = '{"version":"2026.9.9"}'; Succeeds = $true },
+        @{ Name = 'missing-version'; Version = ''; Json = '{"version":"2026.9.9"}'; Succeeds = $false },
+        @{ Name = 'missing-metadata'; Version = '2026.9.9'; Json = ''; Succeeds = $false },
+        @{ Name = 'malformed-metadata'; Version = '2026.9.9'; Json = '{invalid'; Succeeds = $false },
+        @{ Name = 'mismatched-version'; Version = '2026.9.9'; Json = '{"version":"2026.9.8"}'; Succeeds = $false }
+    )
+    $previousGatewayVersion = $env:OPENCLAW_E2E_GATEWAY_VERSION
+    $previousGatewayRelease = $env:GATEWAY_RELEASE_JSON
+    try {
+        foreach ($lane in $e2eLanes.Keys) {
+            $step = Get-StepBlock -Text (Get-JobBlock $lane) -Name 'Record exact Gateway baseline'
+            $body = ($step -split '(?m)^      run: \|\r?$', 2)[1] -replace '(?m)^        ', ''
+            $recordBaseline = [scriptblock]::Create($body)
+            foreach ($case in $baselineCases) {
+                $caseRoot = Join-Path $tempRoot "baselines\$lane\$($case.Name)"
+                New-Item -ItemType Directory -Path $caseRoot -Force | Out-Null
+                $env:OPENCLAW_E2E_GATEWAY_VERSION = $case.Version
+                $env:GATEWAY_RELEASE_JSON = $case.Json
+                $succeeded = $false
+                Push-Location $caseRoot
+                try {
+                    & $recordBaseline
+                    $succeeded = $true
+                }
+                catch {
+                    if ($case.Succeeds) { throw }
+                }
+                finally {
+                    Pop-Location
+                }
+                $artifact = Join-Path $caseRoot 'TestResults\E2E\gateway-release.json'
+                if ($succeeded -ne $case.Succeeds -or (Test-Path -LiteralPath $artifact) -ne $case.Succeeds) {
+                    throw "WSL baseline case '$($case.Name)' in '$lane' must fail closed before publishing invalid metadata."
+                }
+                if ($case.Succeeds) {
+                    $recorded = Get-Content -LiteralPath $artifact -Raw | ConvertFrom-Json
+                    if ($recorded.version -cne $case.Version) {
+                        throw "WSL baseline artifact in '$lane' did not retain the exact version."
+                    }
+                }
+            }
+        }
+    }
+    finally {
+        $env:OPENCLAW_E2E_GATEWAY_VERSION = $previousGatewayVersion
+        $env:GATEWAY_RELEASE_JSON = $previousGatewayRelease
     }
 } finally {
     if (Test-Path -LiteralPath $tempRoot) {

@@ -21,6 +21,7 @@ public sealed class NativeGatewaySetupSession(
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly CancellationTokenSource _lifetime = new();
+    private int _operatorTokenRecoveryUsed;
     private bool _wizardCompleted;
     private bool _optionalSetupDeferred;
     private bool _disposed;
@@ -127,6 +128,33 @@ public sealed class NativeGatewaySetupSession(
             var approved = ApprovalRequestHelper.TryReadApprovedRequestId(result);
             if (!approved.Success || approved.RequestId != normalizedId)
                 throw new InvalidOperationException("The Gateway did not confirm this Companion's pairing approval.");
+        }
+        finally { _gate.Release(); }
+    }
+
+    /// <summary>
+    /// Retires an operator device token the verified Gateway has just rejected so the
+    /// next attempt can fall back to the shared setup credential and re-pair. Allowed
+    /// once per staged session. Gateway ownership and the setup credential are
+    /// re-verified first, so a token is never discarded because an unverified listener
+    /// refused it.
+    /// </summary>
+    /// <returns><c>true</c> if the rejected token was retired.</returns>
+    internal async Task<bool> RecoverRejectedOperatorTokenAsync(
+        string rejectedToken, CancellationToken cancellationToken)
+    {
+        if (Interlocked.CompareExchange(ref _operatorTokenRecoveryUsed, 1, 0) != 0)
+            return false;
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
+        await _gate.WaitAsync(linked.Token);
+        try
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            await AuthorizeCoreAsync(linked.Token);
+            await RequireIsolatedPairingConfigurationAsync(linked.Token);
+            RequirePairingConfiguration();
+            return DeviceIdentity.TryClearDeviceTokenForRoleIfMatches(
+                IdentityDirectory, "operator", rejectedToken);
         }
         finally { _gate.Release(); }
     }
@@ -332,7 +360,11 @@ public sealed class NativeGatewaySetupSession(
                 if (afterVerification is not null)
                     await afterVerification(connection, linked.Token);
             }
-            await runtime.StopAsync(linked.Token);
+            // A verified isolated Gateway stays up through publication so the restarted
+            // Companion adopts it instead of waiting through another cold start.
+            bool handOff = IsIsolated && proof is not null;
+            if (!handOff)
+                await runtime.StopAsync(linked.Token);
             linked.Token.ThrowIfCancellationRequested();
             registry.Load();
             var beforePublication = registry.GetSnapshot();
@@ -342,6 +374,8 @@ public sealed class NativeGatewaySetupSession(
             registry.SetActive(Record.Id);
             registry.Save(beforePublication);
             _published = true;
+            if (handOff)
+                await runtime.ReleaseAsync(CancellationToken.None);
             // Keep the credential-free draft descriptor. CreateDraftAsync recognizes
             // the published ID and replaces it instead of taking over an active gateway.
             return Record;

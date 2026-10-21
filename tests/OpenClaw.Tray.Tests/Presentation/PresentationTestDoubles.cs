@@ -65,7 +65,6 @@ internal sealed class FakeAppCommands : IAppCommands, IDisposable
     public IReadOnlyList<string> OperationLog => _operationLog;
     public bool Disposed { get; private set; }
     public int ReconnectCount { get; private set; }
-    public int ShowChatCount { get; private set; }
     public int ShowOnboardingCount { get; private set; }
     public int ShowLocalAiSetupCount { get; private set; }
     public int OpenLocalAiLogsCount { get; private set; }
@@ -77,7 +76,6 @@ internal sealed class FakeAppCommands : IAppCommands, IDisposable
     public void Reconnect() => ReconnectCount++;
     public void Disconnect() { }
     public void ShowVoiceOverlay() { }
-    public void ShowChat() => ShowChatCount++;
     public void CheckForUpdates() { }
     public void ShowOnboarding() => ShowOnboardingCount++;
     public void ShowLocalAiSetup() => ShowLocalAiSetupCount++;
@@ -147,7 +145,6 @@ internal sealed class SelfWritingAppCommands : IAppCommands
     public void Reconnect() { }
     public void Disconnect() { }
     public void ShowVoiceOverlay() { }
-    public void ShowChat() { }
     public void CheckForUpdates() { }
     public void ShowOnboarding() { }
     public void ShowLocalAiSetup() { }

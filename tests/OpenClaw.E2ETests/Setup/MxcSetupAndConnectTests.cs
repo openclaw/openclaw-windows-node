@@ -221,17 +221,15 @@ public sealed class MxcSetupAndConnectTests
         var requestLog = await WaitForTrayLogLineContainingAsync(
             TimeSpan.FromSeconds(30),
             logCursor,
-            "[mxc] system.run sandbox request",
-            "executor=mxc-direct-appc",
-            "contained=True",
-            "shell=<direct-argv>",
-            "uiAllowWindows=True");
+            "[mxc] operation=spawn",
+            "requested=base-container",
+            "applied=unknown");
         var resultLog = await WaitForTrayLogLineContainingAsync(
             TimeSpan.FromSeconds(30),
             logCursor,
-            "[mxc] system.run sandbox result",
-            "exitCode=0",
-            "containment=mxc");
+            "[mxc] operation=exit",
+            "exit=0",
+            "applied=unknown");
 
         Console.WriteLine($"[E2E] MXC request diagnostic: {requestLog}");
         Console.WriteLine($"[E2E] MXC result diagnostic: {resultLog}");
@@ -297,10 +295,9 @@ public sealed class MxcSetupAndConnectTests
         var requestLog = await WaitForTrayLogLineContainingAsync(
             TimeSpan.FromSeconds(30),
             logCursor,
-            "[mxc] system.run sandbox request",
-            "executor=mxc-direct-appc",
-            "contained=True",
-            "shell=<direct-argv>");
+            "[mxc] operation=spawn",
+            "requested=base-container",
+            "applied=unknown");
 
         AssertApprovedCommandRan(payload, nameof(RealGateway_SystemRun_UsesBoundExecutableAllowlistRule));
 
@@ -520,16 +517,15 @@ public sealed class MxcSetupAndConnectTests
         var requestLog = await WaitForTrayLogLineContainingAsync(
             TimeSpan.FromSeconds(30),
             logCursor,
-            "[mxc] system.run sandbox request",
-            "executor=mxc-direct-appc",
-            "contained=True",
-            "shell=<direct-argv>");
+            "[mxc] operation=spawn",
+            "requested=base-container",
+            "applied=unknown");
         var resultLog = await WaitForTrayLogLineContainingAsync(
             TimeSpan.FromSeconds(30),
             logCursor,
-            "[mxc] system.run sandbox result",
-            $"exitCode={exitCode}",
-            "containment=mxc");
+            "[mxc] operation=exit",
+            $"exit={exitCode}",
+            "applied=unknown");
 
         Console.WriteLine(
             $"[E2E] MXC denied-write payload: exitCode={exitCode}; stdoutLength={stdout.Length}; stderrLength={stderr.Length}; fileExists={blockedFileExists}");

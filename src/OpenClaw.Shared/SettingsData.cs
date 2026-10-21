@@ -94,8 +94,8 @@ public record class SettingsData
     public string SttModelName { get; set; } = "base";
     /// <summary>Seconds of silence before auto-submit in voice chat mode.</summary>
     public float SttSilenceTimeout { get; set; } = 2.5f;
-    /// <summary>Enable TTS playback of responses during voice sessions.</summary>
-    public bool VoiceTtsEnabled { get; set; } = true;
+    /// <summary>Opt in to automatic read-aloud of chat responses. Manual Read aloud is independent.</summary>
+    public bool VoiceTtsEnabled { get; set; } = false;
     /// <summary>Show tool-call and usage chips inline in the chat timeline.</summary>
     public bool ShowChatToolCalls { get; set; } = true;
     /// <summary>Play audio feedback chimes on listen start/stop.</summary>
@@ -111,7 +111,7 @@ public record class SettingsData
     /// provider (which is unaffected by this setting).
     /// </summary>
     public bool NodeOllamaInferenceEnabled { get; set; } = false;
-    public string TtsProvider { get; set; } = OpenClaw.Shared.Capabilities.TtsCapability.PiperProvider;
+    public string TtsProvider { get; set; } = OpenClaw.Shared.Capabilities.TtsCapability.KokoroProvider;
     /// <summary>Persisted: whether the Hub's NavigationView pane is expanded
     /// (true) or collapsed/compact (false). Default true.</summary>
     public bool HubNavPaneOpen { get; set; } = true;
@@ -134,6 +134,13 @@ public record class SettingsData
     public string? TtsMiniMaxRegion { get; set; } = "global_en";
     /// <summary>Piper voice identifier, e.g. "en_US-amy-low". Voice file is downloaded on first use.</summary>
     public string TtsPiperVoiceId { get; set; } = "en_US-amy-low";
+    /// <summary>Kokoro voice name, e.g. "af_maple". Its voice pack downloads automatically while Kokoro TTS is in use.</summary>
+    public string TtsKokoroVoiceId { get; set; } = OpenClaw.Shared.Audio.KokoroModelManager.DefaultVoiceId;
+    /// <summary>
+    /// Whether the tray downloads the selected Kokoro voice pack in the background. Deleting
+    /// the pack in Voice Settings clears it so the pack is not fetched again; Download sets it.
+    /// </summary>
+    public bool TtsKokoroAutoDownload { get; set; } = true;
     /// <summary>Run the local MCP HTTP server. Independent of EnableNodeMode.</summary>
     public bool EnableMcpServer { get; set; } = false;
     /// <summary>
@@ -161,8 +168,8 @@ public record class SettingsData
     public bool NotifyChatResponses { get; set; } = true;
     public bool PreferStructuredCategories { get; set; } = true;
     /// <summary>
-    /// When true, the Hub Chat tab and tray Chat popup host the legacy
-    /// WebView2-based gateway chat UI instead of the native chat surface.
+    /// When true, Workspace chat hosts the legacy WebView2-based gateway
+    /// chat UI instead of the native chat surface.
     /// Default false (native chat). Surfaced as a toggle in SettingsPage's
     /// "User interface" section.
     /// </summary>
@@ -189,35 +196,17 @@ public record class SettingsData
 
     // ── MXC sandbox ─────────────────────────────────────────────────────
     /// <summary>
-    /// Master switch for system.run containment. When <c>true</c> (default),
-    /// system.run uses MXC containment when available and uses the compatibility
-    /// host fallback when MXC is unavailable unless strict blocking is enabled. Unsupported
-    /// sandbox request features are rejected while sandboxing remains enabled.
-    /// When <c>false</c>, system.run always runs on the host as it did before
-    /// MXC support was added.
+    /// Personal-file scope. Missing legacy values retain only existing selected grants.
+    /// Broad scopes are explicit intent, not permission to bypass containment.
     /// </summary>
-    public bool SystemRunSandboxEnabled { get; set; } = true;
-
-    /// <summary>
-    /// When sandboxing is enabled but MXC is unavailable, block system.run
-    /// instead of using the compatibility host fallback. Default <c>false</c>
-    /// preserves the pre-MXC host fallback unless the operator opts into strict
-    /// fail-closed behavior.
-    /// </summary>
-    public bool SystemRunBlockHostFallbackWhenMxcUnavailable { get; set; } = false;
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public SystemRunFilesystemScope? SystemRunFilesystemScope { get; set; }
 
     /// <summary>
     /// When sandboxed, allow system.run commands to reach the public internet.
     /// Default false — most shell commands are local-only.
     /// </summary>
     public bool SystemRunAllowOutbound { get; set; } = false;
-
-    /// <summary>
-    /// When sandboxed, allow system.run commands to use Windows UI system calls.
-    /// This is required by PowerShell and some console utilities on current MXC
-    /// processcontainer backends. Default false preserves Win32k syscall blocking.
-    /// </summary>
-    public bool SystemRunAllowWindowsUi { get; set; } = false;
 
     /// <summary>
     /// Clipboard access policy inside the sandbox. Default <c>None</c> — the
@@ -228,7 +217,7 @@ public record class SettingsData
     /// <summary>
     /// Per-folder access grants. Each well-known user folder can be
     /// individually opened to the sandbox in read-only or read-write mode.
-    /// Default for all: <c>null</c> (blocked).
+    /// Default for all: <c>null</c> (no additional grant beyond the selected scope).
     /// </summary>
     public SandboxFolderAccess? SandboxDocumentsAccess { get; set; }
     public SandboxFolderAccess? SandboxDownloadsAccess { get; set; }

@@ -27,6 +27,10 @@ public class LocalizationValidationTests
 
     private static readonly HashSet<string> InvariantOrDeferredResourceKeys = new(StringComparer.Ordinal)
     {
+        // Updater dependency recovery is seeded in English across every locale.
+        // Translate the explanation and manual-release action together after review.
+        "Update_Message_Unavailable",
+        "Update_ManualDownload",
         // Canonical setup product/transport names, not untranslated prose.
         "Onboarding_V2_NodeMode.Header",
         "Onboarding_V2_NodeModeToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
@@ -40,7 +44,6 @@ public class LocalizationValidationTests
         "Onboarding_V2_DetailTailscale",
         "CanvasWindow_TextBlock_31.Text",
         "CanvasWindow_winexWindowEx_2.Title",
-        "ChatWindow_winexWindowEx_2.Title",
         "HubWindow_winexWindowEx_2.Title",
         "TitleText.Text",
         "TokenPromptBox.Header",
@@ -51,7 +54,7 @@ public class LocalizationValidationTests
         "WindowTitle_TrayMenu",
         "WindowTitle_Update",
         // VoiceOverlayWindow window-title key — matches the convention
-        // for ChatWindow / HubWindow / CanvasWindow / TrayMenuWindow.
+        // for HubWindow / CanvasWindow / TrayMenuWindow.
         "VoiceOverlayWindow_winexWindowEx_2.Title",
         // Brand name — identical across all locales.
         "ConnectionPage_TopologyTailscale",
@@ -235,6 +238,9 @@ public class LocalizationValidationTests
         "SandboxPage_1MiB.Content",
         "SandboxPage_64MiB.Content",
         "SandboxPage_SystemRun.Text",
+        // Canonical product surface name, unchanged across locales.
+        "SandboxPage_Title.Text",
+        "SandboxPage_OneDrive.Text",
         // SessionsPage runtime accessibility strings — seeded English-only across
         // all 5 locales using the deferred-translation pattern. These are
         // tooltip / AutomationProperties.Name overrides on the OpenChat button.
@@ -298,8 +304,6 @@ public class LocalizationValidationTests
         "Command_GoToSettings_Subtitle",
         "Command_GoToDiagnostics_Title",
         "Command_GoToDiagnostics_Subtitle",
-        "Command_OpenChatWindow_Title",
-        "Command_OpenChatWindow_Subtitle",
         "Command_OpenDashboard_Title",
         "Command_OpenDashboard_Subtitle",
         "Command_ToggleNodeMode_Title",
@@ -377,10 +381,6 @@ public class LocalizationValidationTests
         "SandboxPage_PresetLockedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
         "SandboxPage_PresetBalancedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
         "SandboxPage_PresetPermissiveButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
-        "SandboxPage_AllowWindowsUi.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
-        "SandboxPage_DocsAccessCombo.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
-        "SandboxPage_DownloadsAccessCombo.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
-        "SandboxPage_DesktopAccessCombo.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
         "SettingsPage_NotificationSoundComboBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
         "VoiceSettingsPage_LanguageCombo.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
         "HubWindow_MainNavigation.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
@@ -920,6 +920,67 @@ public class LocalizationValidationTests
     }
 
     [Fact]
+    public void NativeConnectionEditor_AllRuntimeReferencesResolveInEveryLocale()
+    {
+        var (prefix, suffixes) = ReadNativeConnectionReferences();
+        var failures = new List<string>();
+        foreach (var localeDir in Directory.GetDirectories(GetStringsDirectory()))
+        {
+            var locale = Path.GetFileName(localeDir);
+            var resources = LoadResw(Path.Combine(localeDir, "Resources.resw"));
+            foreach (var suffix in suffixes)
+            {
+                var key = prefix + suffix;
+                if (!resources.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value))
+                {
+                    failures.Add($"{locale}: missing {key}");
+                    continue;
+                }
+                Assert.DoesNotContain("Onboarding_", value);
+                Assert.DoesNotContain("\u2014", value);
+            }
+        }
+        Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
+        Assert.Equal("Onboarding_NativeConnection_", prefix);
+    }
+
+    [Theory]
+    [InlineData("en-us", "Checking the gateway connection...", "Connection attempt cancelled.")]
+    [InlineData("fr-fr", "Vérification de la connexion au Gateway...", "Tentative de connexion annulée.")]
+    [InlineData("nl-nl", "De verbinding met de Gateway controleren...", "Verbindingspoging geannuleerd.")]
+    [InlineData("pt-br", "Verificando a conexão com o Gateway...", "Tentativa de conexão cancelada.")]
+    [InlineData("zh-cn", "正在检查 Gateway 连接...", "连接尝试已取消。")]
+    [InlineData("zh-tw", "正在檢查 Gateway 連線...", "連線嘗試已取消。")]
+    public void NativeConnectionEditor_StatusCopyDoesNotDescribePackageInstallation(
+        string locale, string checking, string cancelled)
+    {
+        var (prefix, suffixes) = ReadNativeConnectionReferences();
+        Assert.Contains("Checking", suffixes);
+        Assert.Contains("Cancelled", suffixes);
+        var resources = LoadResw(Path.Combine(GetStringsDirectory(), locale, "Resources.resw"));
+        Assert.Equal(checking, resources[prefix + "Checking"]);
+        Assert.Equal(cancelled, resources[prefix + "Cancelled"]);
+        Assert.NotEqual(checking, resources["Onboarding_Native_Checking"]);
+        Assert.Contains("WinGet", resources["Onboarding_Native_Cancelled"]);
+    }
+
+    private static (string Prefix, string[] Suffixes) ReadNativeConnectionReferences()
+    {
+        var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.SetupEngine.UI", "Pages", "SetupNativeConnectionPage.xaml.cs"));
+        // Follow the page's actual helper and call sites so a renamed prefix or new label
+        // cannot escape validation through a separate list of expected resource keys.
+        var helper = Regex.Match(source,
+            """private static string S\(string key\) => SetupLocalization.GetString\("(?<prefix>[^"]+)" \+ key\);""");
+        Assert.True(helper.Success, "Update this source contract if the page's localization helper changes.");
+        var calls = Regex.Matches(source, """\bS\("(?<suffix>[^"]+)"\)""");
+        Assert.NotEmpty(calls);
+        Assert.Equal(Regex.Matches(source, @"\bS\(").Count - 1, calls.Count);
+        return (helper.Groups["prefix"].Value,
+            calls.Select(match => match.Groups["suffix"].Value).Distinct(StringComparer.Ordinal).ToArray());
+    }
+
+    [Fact]
     public void NoLocale_HasDuplicateKeys()
     {
         var stringsDir = GetStringsDirectory();
@@ -1049,8 +1110,8 @@ public class LocalizationValidationTests
                 string[] naturalLoanwordLocales = key switch
                 {
                     "Onboarding_V2_LocalAiModel.Header" => ["nl-nl"],
-                    "Onboarding_V2_ProfileReadOnlyTitle.Text" => ["fr-fr"],
-                    "Onboarding_V2_ProfileFullTitle.Text" => ["nl-nl"],
+                    "Onboarding_V2_ProfileReadOnlyTitle.Text" or "SandboxPage_PresetStrict.Text" => ["fr-fr"],
+                    "Onboarding_V2_ProfileFullTitle.Text" or "SandboxPage_PresetOpen.Text" => ["nl-nl"],
                     "Onboarding_V2_Microphone" or "Onboarding_V2_Notifications" => ["fr-fr"],
                     "Onboarding_V2_Tokens" => ["nl-nl", "pt-br"],
                     _ => [],

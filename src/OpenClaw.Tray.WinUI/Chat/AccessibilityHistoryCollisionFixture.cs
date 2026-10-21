@@ -238,6 +238,11 @@ internal static class AccessibilityHistoryCollisionFixture
             add { }
             remove { }
         }
+        public event EventHandler<SessionUsageSnapshot>? SessionUsageSnapshotUpdated
+        {
+            add { }
+            remove { }
+        }
 
         public event EventHandler<SessionCommandResult>?
             SessionCommandCompleted
@@ -259,6 +264,12 @@ internal static class AccessibilityHistoryCollisionFixture
         }
 
         public event EventHandler<ModelsListInfo>? ModelsListUpdated
+        {
+            add { }
+            remove { }
+        }
+
+        public event EventHandler? ModelCatalogInvalidated
         {
             add { }
             remove { }

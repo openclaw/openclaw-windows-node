@@ -12,7 +12,6 @@ public sealed class AppSurfaceOwnershipContractTests
         Assert.Contains("private IWindowManager? _windowManager;", app);
         Assert.Contains("_windowManager?.InitializeRuntimeAnchor()", app);
         Assert.Contains("_windowManager?.ShowHub(navigateTo, activate)", app);
-        Assert.Contains("_windowManager?.ShowChat(new ChatWindowRequest(url, token))", app);
         Assert.Contains("new CanvasWindowRequest(", app);
         Assert.Contains("() => _windowManager?.DialogXamlRoot", app);
         Assert.DoesNotContain("() => _windowManager.DialogXamlRoot", app);
@@ -53,15 +52,15 @@ public sealed class AppSurfaceOwnershipContractTests
 
         Assert.Contains("private Window? _keepAliveWindow;", manager);
         Assert.Contains("private HubWindow? _hubWindow;", manager);
-        Assert.Contains("private ChatWindow? _chatWindow;", manager);
+        Assert.Contains("private WorkspaceWindow? _workspaceWindow;", manager);
         Assert.Contains("private ConnectionStatusWindow? _connectionStatusWindow;", manager);
         Assert.Contains("private SetupWindow? _setupWindow;", manager);
         Assert.Contains("new HubWindow()", manager);
-        Assert.Contains("new ChatWindow(", manager);
+        Assert.Contains("new WorkspaceWindow(", manager);
         Assert.Contains("new ConnectionStatusWindow(", manager);
         Assert.Contains("new SetupWindow(", manager);
         Assert.Contains("Show(activateWindow: false)", manager);
-        Assert.Contains("DispatcherQueuePriority.Low", manager);
+        Assert.Contains("SetForegroundWindow(WinRT.Interop.WindowNative.GetWindowHandle(_workspaceWindow))", manager);
         Assert.Contains("WaitForInitialContentReadyAsync()", manager);
         Assert.Contains("await existingSetupWindow.CleanupCompleted", manager);
         Assert.Contains("ResetNavigationScope()", manager);

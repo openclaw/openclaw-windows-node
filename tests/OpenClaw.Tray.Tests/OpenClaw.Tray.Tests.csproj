@@ -14,6 +14,10 @@
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(DevBuild)' == 'true'">
+    <DefineConstants>$(DefineConstants);DEV_BUILD</DefineConstants>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="OpenTelemetry" Version="1.16.0" />
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.16.0" />
@@ -28,6 +32,9 @@
     <Compile Include="..\..\src\OpenClaw.Chat\ChatThinkingProfile.cs" Link="Chat\ChatThinkingProfile.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatEffortInputPolicy.cs" Link="Chat\ChatEffortInputPolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Chat\ChatTimelineReducer.cs" Link="Chat\ChatTimelineReducer.cs" />
+    <Compile Include="..\..\src\OpenClaw.SetupEngine.UI\NativeGatewayEmphasisRanges.cs" Link="NativeGatewayEmphasisRanges.cs" />
+    <Compile Include="..\..\src\OpenClaw.SetupEngine.UI\LogFileLauncher.cs" Link="Setup\LogFileLauncher.cs" />
+    <Compile Include="..\..\src\OpenClaw.SetupEngine.UI\NativeGatewayDataPathMapper.cs" Link="Setup\NativeGatewayDataPathMapper.cs" />
     <Using Include="System.Text.Json.Nodes" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
     <PackageReference Include="System.Drawing.Common" Version="10.0.7" />
@@ -37,6 +44,7 @@
 
   <ItemGroup>
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\IChatGatewayBridge.cs" Link="Chat\IChatGatewayBridge.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\AssistantFileDownloadLauncher.cs" Link="Chat\AssistantFileDownloadLauncher.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatSurfaceResolver.cs" Link="Chat\ChatSurfaceResolver.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\GatewayFixtureRenderObservation.cs" Link="Chat\GatewayFixtureRenderObservation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\PendingVoiceActivation.cs" Link="Chat\PendingVoiceActivation.cs" />
@@ -48,7 +56,6 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatAttachmentEchoCorrelation.cs" Link="Chat\ChatAttachmentEchoCorrelation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\GatewayMediaMessageProjection.cs" Link="Chat\GatewayMediaMessageProjection.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatUsageFormatter.cs" Link="Chat\ChatUsageFormatter.cs" />
-    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChannelGroup.cs" Link="Chat\ChannelGroup.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatMarkdownSanitizer.cs" Link="Chat\ChatMarkdownSanitizer.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatTelemetryTracker.cs" Link="Chat\ChatTelemetryTracker.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatLifecycleCommandDispatcher.cs" Link="Chat\ChatLifecycleCommandDispatcher.cs" />
@@ -75,6 +82,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatRuntimeTransitions.cs" Link="Chat\ChatRuntimeTransitions.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatSendQueue.cs" Link="Chat\ChatSendQueue.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatSnapshotProjector.cs" Link="Chat\ChatSnapshotProjector.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatWelcomePresentation.cs" Link="Chat\ChatWelcomePresentation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatStatePersistence.cs" Link="Chat\ChatStatePersistence.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\OpenClawChatDataProvider.cs" Link="Chat\OpenClawChatDataProvider.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatComposerInputs.cs" Link="Chat\ChatComposerInputs.cs" />
@@ -83,12 +91,14 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatComposerHostActions.cs" Link="Chat\ChatComposerHostActions.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatComposerViewModel.cs" Link="Chat\ChatComposerViewModel.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatComposerController.cs" Link="Chat\ChatComposerController.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatPlacementController.cs" Link="Chat\ChatPlacementController.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatComposerSession.cs" Link="Chat\ChatComposerSession.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\IChatComposerFactory.cs" Link="Chat\IChatComposerFactory.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatComposerFactory.cs" Link="Chat\ChatComposerFactory.cs" />
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\MxcCompanionPackagePaths.cs" Link="Services\MxcCompanionPackagePaths.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DeepLinkHandler.cs" Link="Services\DeepLinkHandler.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DeepLinkSecurityPolicy.cs" Link="Services\DeepLinkSecurityPolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ActivationRoute.cs" Link="Services\ActivationRoute.cs" />
@@ -107,6 +117,7 @@
     <Compile Include="..\..\src\OpenClaw.SetupEngine\SetupNativeCompletionTiming.cs" Link="SetupNativeCompletionTiming.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SetupNativeHandoffLauncher.cs" Link="Services\SetupNativeHandoffLauncher.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\SetupNativeNavigationRequest.cs" Link="Presentation\SetupNativeNavigationRequest.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\SetupNativeChatPresentation.cs" Link="Presentation\SetupNativeChatPresentation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\SetupNativeSkills.cs" Link="Presentation\SetupNativeSkills.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SettingsChangeEffects.cs" Link="Services\SettingsChangeEffects.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SettingsChangeCoordinator.cs" Link="Services\SettingsChangeCoordinator.cs" />
@@ -144,6 +155,7 @@
     <!-- GatewayHostAccess, GatewayTerminalLauncher, WslGatewayController and WslCommandRunner
          now live in OpenClaw.Connection (referenced above), so they no longer need linking. -->
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\WslKeepAlivePolicy.cs" Link="Services\WslKeepAlivePolicy.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\HotkeyRegistrationState.cs" Link="Services\HotkeyRegistrationState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ManagedLocalGatewayRepairCoordinator.cs" Link="Services\ManagedLocalGatewayRepairCoordinator.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ManagedLocalGatewayAutoRepairMonitor.cs" Link="Services\ManagedLocalGatewayAutoRepairMonitor.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ManagedLocalGatewayRepairAdapters.cs" Link="Services\ManagedLocalGatewayRepairAdapters.cs" />
@@ -163,6 +175,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SensitiveCaptureExecutor.cs" Link="Services\SensitiveCaptureExecutor.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ConsentPromptTimeoutGate.cs" Link="Services\ConsentPromptTimeoutGate.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\BrowserProxyTunnelState.cs" Link="Services\BrowserProxyTunnelState.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SshForwardPorts.cs" Link="Services\SshForwardPorts.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\CommandCenterTopologyTunnelResolver.cs" Link="Services\CommandCenterTopologyTunnelResolver.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\CommandCenterTunnelInfoBuilder.cs" Link="Services\CommandCenterTunnelInfoBuilder.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\PortDiagnosticsService.cs" Link="Services\PortDiagnosticsService.cs" />
@@ -178,6 +191,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\McpRuntimeStatePolicy.cs" Link="Services\McpRuntimeStatePolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\UsageCostApplicationPolicy.cs" Link="Services\UsageCostApplicationPolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\UpdateCheckPipeline.cs" Link="Services\UpdateCheckPipeline.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\UpdateBackendLoader.cs" Link="Services\UpdateBackendLoader.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SpeechSetupReadiness.cs" Link="Services\SpeechSetupReadiness.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\CanvasGatewayUrlRewriter.cs" Link="Helpers\CanvasGatewayUrlRewriter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\DiagnosticsGate.cs" Link="Helpers\DiagnosticsGate.cs" />
@@ -196,6 +210,10 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\NodeSummaryText.cs" Link="Services\NodeSummaryText.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\TextToSpeech\ElevenLabsTextToSpeechClient.cs" Link="Services\TextToSpeech\ElevenLabsTextToSpeechClient.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\TextToSpeech\MiniMaxTextToSpeechClient.cs" Link="Services\TextToSpeech\MiniMaxTextToSpeechClient.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\TextToSpeech\VoicePreviewText.cs" Link="Services\TextToSpeech\VoicePreviewText.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\TextToSpeech\VoicePackDownloadFailure.cs" Link="Services\TextToSpeech\VoicePackDownloadFailure.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\TextToSpeech\KokoroPrefetchPolicy.cs" Link="Services\TextToSpeech\KokoroPrefetchPolicy.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\TextToSpeech\KokoroVoicePackPrefetcher.cs" Link="Services\TextToSpeech\KokoroVoicePackPrefetcher.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\GatewayDiscoveryService.cs" Link="Services\GatewayDiscoveryService.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\A2UI\Actions\AgentMessageFormatter.cs" Link="A2UI\Actions\AgentMessageFormatter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\A2UI\Actions\GatewayActionTransport.cs" Link="A2UI\Actions\GatewayActionTransport.cs" />
@@ -205,6 +223,8 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\GatewayChatUrlBuilder.cs" Link="Imported\GatewayChatUrlBuilder.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Pages\ConnectionPageChannelMetrics.cs" Link="Imported\ConnectionPageChannelMetrics.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Pages\ConnectionPagePlan.cs" Link="Imported\ConnectionPagePlan.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Pages\CronScheduleTimezone.cs" Link="Pages\CronScheduleTimezone.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Pages\CronRunningLatch.cs" Link="Pages\CronRunningLatch.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Pages\ConnectionPageRowState.cs" Link="Imported\ConnectionPageRowState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Pages\ChatPagePanelStates.cs" Link="Imported\ChatPagePanelStates.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Pages\ExecPolicyRuleList.cs" Link="Pages\ExecPolicyRuleList.cs" />
@@ -248,7 +268,12 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceNavigation.cs" Link="Presentation\WorkspaceNavigation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\ChatVisibilityPolicy.cs" Link="Presentation\ChatVisibilityPolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceProjection.cs" Link="Presentation\WorkspaceProjection.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceSessionOrder.cs" Link="Presentation\WorkspaceSessionOrder.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceItemsSync.cs" Link="Presentation\WorkspaceItemsSync.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\WorkspaceSessionMenu.cs" Link="Presentation\WorkspaceSessionMenu.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\WorkspaceIdentitySource.cs" Link="Services\WorkspaceIdentitySource.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\WorkspaceSessionOperation.cs" Link="Services\WorkspaceSessionOperation.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ArchivedSessionsSource.cs" Link="Services\ArchivedSessionsSource.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppNotificationInfoBarPresenter.cs" Link="Presentation\AppNotificationInfoBarPresenter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppServiceContext.cs" Link="Presentation\AppServiceContext.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppServiceRegistration.cs" Link="Presentation\AppServiceRegistration.cs" />

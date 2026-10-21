@@ -20,6 +20,13 @@ If the validation host is macOS, read [PARALLELS.md](PARALLELS.md) for the optio
 
 ## Required validation
 
+Select the changed contract before running checks. Use the
+[read-only validation plan](../../../docs/TEST_COVERAGE.md#explain-the-validation-plan)
+to distinguish hosted lanes, mandatory local code-change closeout, and custom
+proof candidates. A candidate is neither scheduled nor executed proof.
+Ordinary prose-only changes need documentation/skill checks, not native runtime
+tests. Shipped `winnode` command-reference changes retain CLI/core checks.
+
 ```powershell
 $env:OPENCLAW_REPO_ROOT = (Get-Location).Path
 .\build.ps1
@@ -28,6 +35,9 @@ dotnet test .\tests\OpenClaw.Tray.Tests\OpenClaw.Tray.Tests.csproj --no-restore
 ```
 
 Fresh worktrees may need a first run without `--no-restore`, or a project build first, so tests do not no-op before `bin\` exists.
+Check actual report/execution counts, not only the exit code. Custom proof must
+not contain skipped selected cases. Ordinary CI skips remain a separate policy,
+not proof that the skipped behavior works.
 
 For `winnode`, command descriptions, or new/renamed node commands, also run:
 
@@ -39,11 +49,19 @@ dotnet test .\tests\OpenClaw.WinNode.Cli.Tests\OpenClaw.WinNode.Cli.Tests.csproj
 
 | Surface | Proof to collect |
 |---|---|
-| UI / WinUI | Launch `.\run-app-local.ps1 -Isolated`, exercise the changed path with computer-use or developer-provided screenshots/output, and include visible evidence or blocker. If the developer captures manually, provide exact steps and confirm screenshot/artifact links resolve after updating the PR body. |
+| UI / WinUI | On an authorized isolated desktop, launch `.\run-app-local.ps1 -Isolated -AllowNonMain`, exercise the changed path with computer-use or developer-provided screenshots/output, and include visible evidence or blocker. If the developer captures manually, provide exact steps and confirm screenshot/artifact links resolve after updating the PR body. |
 | Local MCP | Enable **Local MCP Server**, run `winnode --list-tools`, then invoke the changed command with `winnode --command <name> --params '<json-object>'`. |
 | Raw MCP HTTP | For protocol/server-shape changes, paste JSON-RPC `tools/list` and `tools/call` responses from `http://127.0.0.1:8765/`. |
 | Gateway path | When relevant and available, prove `openclaw nodes invoke --command <name> --params '<json-object>'`; otherwise state the gateway blocker. |
 | Rubber-duck | Ask a rubber-duck reviewer to inspect the final implementation/proof plan; verify any finding before changing code. |
+
+## When local MCP proof is refused
+
+Connection refused on `http://127.0.0.1:8765/` means the tray MCP server is not running. Do not reinstall `winnode`. Write PascalCase `settings.json` with `EnableMcpServer` true and `EnableNodeMode` false, launch the tray with `OPENCLAW_TRAY_DATA_DIR` and `OPENCLAW_SKIP_UPDATE_CHECK=1`, and pass that same data directory to `winnode`. `StartupSetupState.RequiresSetup` stays false when MCP is already enabled, so the first-run wizard does not block. An isolated data directory uses its own mutex. Wait until `mcp-token.txt` exists and the port accepts a connection.
+
+`browser.proxy` stays off `tools/list` until the app has a gateway client, a non-empty shared gateway token, and a verified browser endpoint. `Unknown tool: browser.proxy` is that rule. A refused port is not successful discovery. The review can accept a concrete gateway-availability blocker. It does not accept the refused port as the `browser.proxy` call.
+
+When the review asks for the production HTTP client, drive that client against a real socket. `HttpClient.Timeout` does not cancel a body read that starts after `HttpCompletionOption.ResponseHeadersRead`.
 
 For isolated tray runs, copy the data directory printed by `run-app-local.ps1 -Isolated` and set it before MCP proof commands:
 
@@ -80,3 +98,9 @@ Before publishing or updating a PR, collect:
 3. PR body proof must stay in sync with current behavior: remove stale screenshots/claims after design changes and verify embedded image/artifact links resolve.
 4. Rubber-duck notes for non-trivial UI/MCP-sensitive work, or why skipped.
 5. `Not verified / blocked` notes for focused proof or unavailable dependencies.
+
+For inventory-bound filtered tests, use
+[local execution evidence validation](../../../docs/PROOF_POOLS.md#validate-local-execution-evidence).
+The summary checks source/report/artifact correspondence; it does not replace
+native freeze/binary verification, visible UI inspection, or live Gateway proof,
+and it never marks a whole pool complete.

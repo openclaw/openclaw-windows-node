@@ -1,5 +1,7 @@
 using OpenClaw.Connection;
 using OpenClaw.Shared;
+using System.Collections.Concurrent;
+using System.Reflection;
 using Xunit;
 
 namespace OpenClaw.Connection.Tests;
@@ -59,6 +61,7 @@ public class OperatorScopeHelperTests
 
 public class ChatNavigationReadinessTests
 {
+    private static readonly TimeSpan HangGuard = TimeSpan.FromSeconds(10);
     // ─── IsOperatorHandshakeReady ───
 
     [Fact]
@@ -108,6 +111,9 @@ public class ChatNavigationReadinessTests
         var mgr = new StubConnectionManager(RoleConnectionState.Connecting);
         var result = await ChatNavigationReadiness.WaitForOperatorHandshakeAsync(mgr, TimeSpan.FromMilliseconds(50));
         Assert.False(result);
+        Assert.Equal(0, mgr.SubscriberCount);
+        mgr.SimulateConnected();
+        Assert.False(result);
     }
 
     [Fact]
@@ -115,11 +121,13 @@ public class ChatNavigationReadinessTests
     {
         var mgr = new StubConnectionManager(RoleConnectionState.Connecting);
 
-        var waitTask = ChatNavigationReadiness.WaitForOperatorHandshakeAsync(mgr, TimeSpan.FromMilliseconds(500));
+        var waitTask = ChatNavigationReadiness.WaitForOperatorHandshakeAsync(mgr, Timeout.InfiniteTimeSpan);
+        Assert.Equal(1, mgr.SubscriberCount);
         mgr.SimulateConnected();
 
-        var result = await waitTask;
+        var result = await waitTask.WaitAsync(HangGuard);
         Assert.True(result);
+        Assert.Equal(0, mgr.SubscriberCount);
     }
 
     [Fact]
@@ -127,13 +135,200 @@ public class ChatNavigationReadinessTests
     {
         var mgr = new StubConnectionManager(RoleConnectionState.Connecting);
         using var cts = new CancellationTokenSource();
-        cts.CancelAfter(30);
+        var waitTask = ChatNavigationReadiness.WaitForOperatorHandshakeAsync(mgr, Timeout.InfiniteTimeSpan, cts.Token);
+        cts.Cancel();
+        var error = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => waitTask.WaitAsync(HangGuard));
+        Assert.Equal(cts.Token, error.CancellationToken);
+        Assert.Equal(0, mgr.SubscriberCount);
+    }
 
-        await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            ChatNavigationReadiness.WaitForOperatorHandshakeAsync(mgr, TimeSpan.FromSeconds(10), cts.Token));
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task WaitForOperatorHandshakeAsync_CancellationAfterQueuedCompletion_PreservesOutcomePrecedence(
+        bool connectedBeforeCancellation)
+    {
+        var mgr = new StubConnectionManager(RoleConnectionState.Connecting);
+        using var cts = new CancellationTokenSource();
+        var context = new QueuedSynchronizationContext();
+        var previousContext = SynchronizationContext.Current;
+        Task<bool> waitTask;
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(context);
+            waitTask = ChatNavigationReadiness.WaitForOperatorHandshakeAsync(
+                mgr,
+                connectedBeforeCancellation ? Timeout.InfiniteTimeSpan : TimeSpan.FromSeconds(1),
+                cts.Token);
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previousContext);
+        }
+
+        try
+        {
+            if (connectedBeforeCancellation)
+                mgr.SimulateConnected();
+
+            await context.Posted.WaitAsync(HangGuard);
+            Assert.False(waitTask.IsCompleted);
+            Assert.Equal(1, mgr.SubscriberCount);
+            cts.Cancel();
+            context.Drain();
+
+            if (connectedBeforeCancellation)
+            {
+                Assert.True(await waitTask.WaitAsync(HangGuard));
+            }
+            else
+            {
+                var error = await Assert.ThrowsAnyAsync<OperationCanceledException>(
+                    () => waitTask.WaitAsync(HangGuard));
+                Assert.Equal(cts.Token, error.CancellationToken);
+            }
+            Assert.Equal(0, mgr.SubscriberCount);
+        }
+        finally
+        {
+            cts.Cancel();
+            context.Drain();
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task WaitForOperatorHandshakeAsync_PreservesReadyFirstPrecedence(bool nullManager)
+    {
+        var mgr = nullManager ? null : new StubConnectionManager(RoleConnectionState.Connected);
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        Assert.True(await ChatNavigationReadiness.WaitForOperatorHandshakeAsync(
+            mgr, TimeSpan.FromMilliseconds(-2), cts.Token));
+        if (mgr != null) Assert.Equal(0, mgr.SubscriberCount);
+    }
+
+    [Theory]
+    [InlineData(-2)]
+    [InlineData(4294967295)]
+    public async Task WaitForOperatorHandshakeAsync_RejectsInvalidTimeout_AndDetachesHandler(long milliseconds)
+    {
+        var mgr = new StubConnectionManager(RoleConnectionState.Connecting);
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            ChatNavigationReadiness.WaitForOperatorHandshakeAsync(
+                mgr, TimeSpan.FromMilliseconds(milliseconds), cts.Token));
+        Assert.Equal(0, mgr.SubscriberCount);
+    }
+
+    [Fact]
+    public async Task WaitForOperatorHandshakeAsync_PreCancelledTokenBeatsZeroTimeout()
+    {
+        var mgr = new StubConnectionManager(RoleConnectionState.Connecting);
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var error = await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            ChatNavigationReadiness.WaitForOperatorHandshakeAsync(mgr, TimeSpan.Zero, cts.Token));
+        Assert.Equal(cts.Token, error.CancellationToken);
+        Assert.Equal(0, mgr.SubscriberCount);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(0.5)]
+    public async Task WaitForOperatorHandshakeAsync_ZeroMillisecondDeadlineCompletesSynchronously(double milliseconds)
+    {
+        var mgr = new StubConnectionManager(RoleConnectionState.Connecting);
+        var waitTask = ChatNavigationReadiness.WaitForOperatorHandshakeAsync(
+            mgr, TimeSpan.FromMilliseconds(milliseconds));
+
+        Assert.True(waitTask.IsCompleted);
+        Assert.False(await waitTask);
+        Assert.Equal(0, mgr.SubscriberCount);
+    }
+
+    [Fact]
+    public async Task WaitForOperatorHandshakeAsync_RechecksSnapshotAfterSubscription()
+    {
+        var mgr = new StubConnectionManager(RoleConnectionState.Connecting) { ConnectOnSubscription = true };
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        Assert.True(await ChatNavigationReadiness.WaitForOperatorHandshakeAsync(
+            mgr, TimeSpan.FromMilliseconds(-2), cts.Token));
+        Assert.Equal(0, mgr.SubscriberCount);
+    }
+
+    [Fact]
+    public async Task WaitForOperatorHandshakeAsync_TimelySuccessWins_WhenNotificationIsHeldPastDeadline()
+    {
+        var mgr = new StubConnectionManager(RoleConnectionState.Connecting);
+        using var cts = new CancellationTokenSource();
+        using var gate = new HandshakeCompletionNotificationGate(HangGuard);
+        var deadline = TimeSpan.FromSeconds(1);
+        gate.BeginDelayCapture();
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        var waitTask = ChatNavigationReadiness.WaitForOperatorHandshakeAsync(mgr, deadline, cts.Token);
+        gate.EndDelayCapture();
+        var completion = mgr.FindCapturedCompletion();
+        using var deadlineObservation = gate.ObserveDeadline(completion.Task);
+        gate.Arm(completion.Task);
+        Exception? eventFailure = null;
+        var eventThread = new Thread(() =>
+        {
+            try { mgr.SimulateConnected(); }
+            catch (Exception error) { eventFailure = error; }
+        }) { IsBackground = true };
+        eventThread.Start();
+        try
+        {
+            Assert.True(gate.Entered.Wait(HangGuard), "The completion-notification gate was not reached.");
+            Assert.True(System.Diagnostics.Stopwatch.GetElapsedTime(started, gate.SuccessPublishedAt) < deadline,
+                "Success must be published before the real deadline, not injected after it.");
+            Assert.True(completion.Task.IsCompletedSuccessfully);
+            Assert.True(await completion.Task);
+            Assert.False(waitTask.IsCompleted);
+            Assert.True(gate.DeadlineElapsed.Wait(HangGuard), "The helper's actual deadline did not fire.");
+            cts.Cancel();
+        }
+        finally
+        {
+            gate.Release.Set();
+            Assert.True(eventThread.Join(HangGuard), "The event thread did not exit.");
+        }
+
+        Assert.Null(eventFailure);
+        Assert.Null(gate.Fault);
+        Assert.True(await waitTask.WaitAsync(HangGuard));
+        Assert.Equal(0, mgr.SubscriberCount);
     }
 
     // ─── Stub ───
+
+    private sealed class QueuedSynchronizationContext : SynchronizationContext
+    {
+        private readonly ConcurrentQueue<(SendOrPostCallback Callback, object? State)> _callbacks = new();
+        private readonly TaskCompletionSource _posted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task Posted => _posted.Task;
+
+        public override void Post(SendOrPostCallback callback, object? state)
+        {
+            _callbacks.Enqueue((callback, state));
+            _posted.TrySetResult();
+        }
+
+        public void Drain()
+        {
+            while (_callbacks.TryDequeue(out var callback))
+                callback.Callback(callback.State);
+        }
+    }
 
     private sealed class StubConnectionManager : IGatewayConnectionManager
     {
@@ -147,7 +342,18 @@ public class ChatNavigationReadinessTests
         public IOperatorGatewayClient? OperatorClient => null;
         public ConnectionDiagnostics Diagnostics { get; } = new();
 
-        public event EventHandler<GatewayConnectionSnapshot>? StateChanged;
+        private EventHandler<GatewayConnectionSnapshot>? _stateChanged;
+        public int SubscriberCount => _stateChanged?.GetInvocationList().Length ?? 0;
+        public bool ConnectOnSubscription { get; init; }
+        public event EventHandler<GatewayConnectionSnapshot>? StateChanged
+        {
+            add
+            {
+                _stateChanged += value;
+                if (ConnectOnSubscription) CurrentSnapshot = BuildSnapshot(RoleConnectionState.Connected);
+            }
+            remove => _stateChanged -= value;
+        }
 #pragma warning disable CS0067
         public event EventHandler<ConnectionDiagnosticEvent>? DiagnosticEvent;
         public event EventHandler<OperatorClientChangedEventArgs>? OperatorClientChanged;
@@ -156,7 +362,15 @@ public class ChatNavigationReadinessTests
         public void SimulateConnected()
         {
             CurrentSnapshot = BuildSnapshot(RoleConnectionState.Connected);
-            StateChanged?.Invoke(this, CurrentSnapshot);
+            _stateChanged?.Invoke(this, CurrentSnapshot);
+        }
+
+        public TaskCompletionSource<bool> FindCapturedCompletion()
+        {
+            var target = _stateChanged!.Target!;
+            return target.GetType().GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                .Select(field => field.GetValue(target))
+                .OfType<TaskCompletionSource<bool>>().Single();
         }
 
         private static GatewayConnectionSnapshot BuildSnapshot(RoleConnectionState op) => new()

@@ -53,27 +53,6 @@
                       ScrollViewer.VerticalScrollMode="Disabled"
                       ScrollViewer.VerticalScrollBarVisibility="Disabled"
                       SelectionChanged="GatewayChoice_SelectionChanged">
-                <ListViewItem x:Name="NativeChoice"
-                              AutomationProperties.AutomationId="WelcomeNativeGatewayChoice"
-                              AutomationProperties.Name="Install a local native gateway"
-                              HorizontalContentAlignment="Stretch" IsEnabled="False" Padding="16,12">
-                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
-                        <Border x:Name="NativeIconBackground" Width="44" Height="44" CornerRadius="6"
-                                Background="{ThemeResource SubtleFillColorSecondaryBrush}" VerticalAlignment="Center">
-                            <FontIcon x:Name="NativeIcon" Glyph="&#xE770;" FontSize="20" IsTextScaleFactorEnabled="False" />
-                        </Border>
-                        <StackPanel Grid.Column="1" Spacing="3">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <TextBlock x:Uid="Onboarding_Native_Title" Text="Install a local native gateway"
-                                           Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                <controls:RecommendedBadge x:Name="NativeRecommendedBadge" />
-                            </StackPanel>
-                            <TextBlock x:Uid="Onboarding_Native_Description"
-                                       Text="Install and set up an OpenClaw gateway on this device"
-                                       TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" />
-                        </StackPanel>
-                    </Grid>
-                </ListViewItem>
                 <ListViewItem x:Name="InstallChoice" x:Uid="Onboarding_Copy_GatewayLocalChoice"
                               AutomationProperties.AutomationId="WelcomeInstallLocalGatewayChoice"
                               AutomationProperties.Name="Install a local Gateway (WSL), recommended"
@@ -127,6 +106,27 @@
                                        Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        Text="Connect without installing a Gateway or Local AI on this PC." />
+                        </StackPanel>
+                    </Grid>
+                </ListViewItem>
+                <ListViewItem x:Name="NativeChoice"
+                              AutomationProperties.AutomationId="WelcomeNativeGatewayChoice"
+                              AutomationProperties.Name="Install a local native gateway, recommended"
+                              HorizontalContentAlignment="Stretch" IsEnabled="False" Padding="16,12">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
+                        <Border x:Name="NativeIconBackground" Width="44" Height="44" CornerRadius="6"
+                                Background="{ThemeResource SubtleFillColorSecondaryBrush}" VerticalAlignment="Center">
+                            <FontIcon x:Name="NativeIcon" Glyph="&#xE770;" FontSize="20" IsTextScaleFactorEnabled="False" />
+                        </Border>
+                        <StackPanel Grid.Column="1" Spacing="3">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock x:Uid="Onboarding_Native_Title" Text="Install a local native gateway"
+                                           Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                <controls:RecommendedBadge x:Name="NativeRecommendedBadge" />
+                            </StackPanel>
+                            <TextBlock x:Uid="Onboarding_Native_Description"
+                                       Text="Install and set up an OpenClaw gateway on this device"
+                                       TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" />
                         </StackPanel>
                     </Grid>
                 </ListViewItem>

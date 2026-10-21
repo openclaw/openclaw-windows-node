@@ -87,7 +87,7 @@ public sealed partial class WelcomePage : Page
             return;
         var generation = ++_probeGeneration;
         _nativeEligibility = null;
-        NativeChoice.IsEnabled = false;
+        ApplyNativeChoicePresentation(null);
         VisualStateManager.GoToState(this, "WslRecommendedState", false);
         WslRecommendedBadge.Visibility = Visibility.Visible;
         NativeSupportCard.Visibility = Visibility.Visible;
@@ -95,7 +95,9 @@ public sealed partial class WelcomePage : Page
         WindowsUpdateButton.Visibility = Visibility.Collapsed;
         NativeCheckProgress.IsActive = true;
         NativeCheckProgress.Visibility = Visibility.Visible;
-        NativeSupportStatus.Text = SetupLocalization.GetString("Onboarding_Native_CheckingSupport");
+        NativeGatewayEligibilityText.ApplyPlain(
+            NativeSupportStatus,
+            SetupLocalization.GetString("Onboarding_Native_CheckingSupport"));
         ApplySelection();
 
         NativeGatewayEligibility eligibility;
@@ -114,14 +116,17 @@ public sealed partial class WelcomePage : Page
 
         _nativeEligibility = eligibility;
         var available = eligibility == NativeGatewayEligibility.Available;
-        NativeChoice.IsEnabled = available;
+        ApplyNativeChoicePresentation(eligibility);
         WslRecommendedBadge.Visibility = available ? Visibility.Collapsed : Visibility.Visible;
         NativeSupportCard.Visibility = available ? Visibility.Collapsed : Visibility.Visible;
         VisualStateManager.GoToState(this, available ? "NativeRecommendedState" : "WslRecommendedState", false);
         NativeSupportStatusPanel.Visibility = available ? Visibility.Collapsed : Visibility.Visible;
         WindowsUpdateButton.Visibility = eligibility == NativeGatewayEligibility.CapabilityUnavailable
             ? Visibility.Visible : Visibility.Collapsed;
-        NativeSupportStatus.Text = available ? "" : NativeGatewayEligibilityText.Get(eligibility);
+        if (available)
+            NativeGatewayEligibilityText.ApplyPlain(NativeSupportStatus, "");
+        else
+            NativeGatewayEligibilityText.Apply(NativeSupportStatus, eligibility);
         NativeCheckProgress.IsActive = false;
         NativeCheckProgress.Visibility = Visibility.Collapsed;
         SetChoice(NativeGatewaySetupEligibility.ResolveSelection(_selectedChoice, eligibility));
@@ -130,6 +135,34 @@ public sealed partial class WelcomePage : Page
             var peer = FrameworkElementAutomationPeer.FromElement(NativeSupportStatus)
                 ?? FrameworkElementAutomationPeer.CreatePeerForElement(NativeSupportStatus);
             peer.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+        }
+    }
+
+    private void ApplyNativeChoicePresentation(NativeGatewayEligibility? eligibility)
+    {
+        bool available = eligibility == NativeGatewayEligibility.Available;
+        NativeChoice.IsEnabled = available;
+        PlaceNativeChoice(available ? 0 : GatewayChoiceSelector.Items.Count - 1);
+    }
+
+    private void PlaceNativeChoice(int targetIndex)
+    {
+        int currentIndex = GatewayChoiceSelector.Items.IndexOf(NativeChoice);
+        if (currentIndex == targetIndex)
+            return;
+
+        object? selectedItem = GatewayChoiceSelector.SelectedItem;
+        bool wasSuppressingSelectionWrite = _suppressSelectionWrite;
+        _suppressSelectionWrite = true;
+        try
+        {
+            GatewayChoiceSelector.Items.RemoveAt(currentIndex);
+            GatewayChoiceSelector.Items.Insert(targetIndex, NativeChoice);
+            GatewayChoiceSelector.SelectedItem = selectedItem;
+        }
+        finally
+        {
+            _suppressSelectionWrite = wasSuppressingSelectionWrite;
         }
     }
 
@@ -157,7 +190,9 @@ public sealed partial class WelcomePage : Page
         {
             NativeSupportCard.Visibility = Visibility.Visible;
             NativeSupportStatusPanel.Visibility = Visibility.Visible;
-            NativeSupportStatus.Text = SetupLocalization.GetString("Onboarding_Native_UpdateLaunchFailed");
+            NativeGatewayEligibilityText.ApplyPlain(
+                NativeSupportStatus,
+                SetupLocalization.GetString("Onboarding_Native_UpdateLaunchFailed"));
         }
     }
 

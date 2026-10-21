@@ -98,10 +98,16 @@ public sealed class SetupAccessDraft
         config.Settings.EnableMcpServer ??= false;
         config.Settings.NodeOllamaInferenceEnabled ??= false;
         config.Capabilities.Device = true;
-        if (config.UsesBundledDefaultConfig && Profile == SetupCapabilityProfile.Full)
+        if (config.UsesBundledDefaultConfig && Profile == SetupCapabilityProfile.Full &&
+            config.Settings.SystemRunPreset is null)
+        {
             ApplyProfile(SetupCapabilityProfile.Standard);
+            config.Settings.SystemRunPresetIsExplicit = false;
+        }
         else
             config.Settings.ApplyCapabilities(config.Capabilities);
+        if (config.Settings.SystemRunPreset is null && Profile != SetupCapabilityProfile.Custom)
+            config.Settings.SystemRunPreset = PermissionPreset(Profile);
         IsCustomizingCapabilities = Profile == SetupCapabilityProfile.Custom;
     }
 
@@ -159,6 +165,14 @@ public sealed class SetupAccessDraft
         Config.Settings.ApplyCapabilities(Config.Capabilities);
     }
 
+    private static OpenClaw.Shared.SystemRunAccessPreset PermissionPreset(SetupCapabilityProfile profile) => profile switch
+    {
+        SetupCapabilityProfile.ReadOnly => OpenClaw.Shared.SystemRunAccessPreset.Strict,
+        SetupCapabilityProfile.Standard => OpenClaw.Shared.SystemRunAccessPreset.Balanced,
+        SetupCapabilityProfile.Full => OpenClaw.Shared.SystemRunAccessPreset.Open,
+        _ => throw new ArgumentOutOfRangeException(nameof(profile)),
+    };
+
     public void ApplyProfile(SetupCapabilityProfile profile)
     {
         if (!Enum.IsDefined(profile))
@@ -170,6 +184,8 @@ public sealed class SetupAccessDraft
             SetupCapabilityProfiles.Set(Config.Capabilities, capability, SetupCapabilityProfiles.Contains(profile, capability));
         Config.Capabilities.Device = true;
         Config.Settings.ApplyCapabilities(Config.Capabilities);
+        Config.Settings.SystemRunPreset = PermissionPreset(profile);
+        Config.Settings.SystemRunPresetIsExplicit = true;
     }
 
     public void SetNodeMode(bool enabled) => Config.Settings.EnableNodeMode = enabled;

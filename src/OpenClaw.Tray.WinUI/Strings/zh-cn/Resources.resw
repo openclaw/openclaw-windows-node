@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
@@ -355,6 +355,12 @@
   </data>
   <data name="Update_Title_Failed" xml:space="preserve">
     <value>无法检查更新</value>
+  </data>
+  <data name="Update_Message_Unavailable" xml:space="preserve">
+    <value>Automatic updates are unavailable because an updater component could not be loaded. You can keep using OpenClaw and download updates from the official releases page.</value>
+  </data>
+  <data name="Update_ManualDownload" xml:space="preserve">
+    <value>Open official releases</value>
   </data>
   <data name="Update_Message_Failed" xml:space="preserve">
     <value>检查更新时出错。
@@ -755,9 +761,6 @@
   </data>
   <data name="ExecApproval_ArmHint" xml:space="preserve">
     <value>允许按钮稍后可用</value>
-  </data>
-  <data name="ExecApproval_ScrollHint" xml:space="preserve">
-    <value>请滚动到命令末尾后再允许</value>
   </data>
   <data name="ExecApproval_ConfusableWarning" xml:space="preserve">
     <value>此命令混用了不同的字符集，可能与其外观不符。请仔细核对。</value>
@@ -2217,12 +2220,6 @@
   <data name="WorkspacePage_TextBlock_34.Text" xml:space="preserve">
     <value>刷新</value>
   </data>
-  <data name="ChatWindow_TextBlock_29.Text" xml:space="preserve">
-    <value>聊天</value>
-  </data>
-  <data name="ChatWindow_TextBlock_60.Text" xml:space="preserve">
-    <value>连接到网关以开始聊天</value>
-  </data>
   <data name="TitleText.Text" xml:space="preserve">
     <value>OpenClaw Windows Companion</value>
   </data>
@@ -2436,9 +2433,6 @@
   <data name="FallbackInfoBar.Title" xml:space="preserve">
     <value>工作区文件</value>
   </data>
-  <data name="ChatWindow_winexWindowEx_2.Title" xml:space="preserve">
-    <value>OpenClaw Chat</value>
-  </data>
   <data name="SearchBox.PlaceholderText" xml:space="preserve">
     <value>键入命令...</value>
   </data>
@@ -2465,12 +2459,6 @@
   </data>
   <data name="UsagePage_TextBlock_10.Text" xml:space="preserve">
     <value>使用量和成本</value>
-  </data>
-  <data name="ChatWindowOpenInBrowserToolTip.Content" xml:space="preserve">
-    <value>在浏览器中打开</value>
-  </data>
-  <data name="ChatWindowCloseToolTip.Content" xml:space="preserve">
-    <value>关闭</value>
   </data>
   <data name="ChatPageOpenInBrowserToolTip.Content" xml:space="preserve">
     <value>在浏览器中打开</value>
@@ -2595,6 +2583,75 @@
   <data name="VoiceSettingsPage_TtsMiniMax.Content" xml:space="preserve">
     <value>MiniMax（云端，需要 API 密钥）</value>
   </data>
+  <data name="VoiceSettingsPage_TtsKokoro.Content" xml:space="preserve">
+    <value>Kokoro（本地神经语音）</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroVoiceCombo.Header" xml:space="preserve">
+    <value>语音</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadButtonText.Text" xml:space="preserve">
+    <value>下载语音包</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonDownloadPack" xml:space="preserve">
+    <value>下载语音包</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonDownloaded" xml:space="preserve">
+    <value>已下载</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonDownloading" xml:space="preserve">
+    <value>正在下载…</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroButtonRetry" xml:space="preserve">
+    <value>重试下载</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDeleteButton.Content" xml:space="preserve">
+    <value>删除</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPreview.Text" xml:space="preserve">
+    <value>预览</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPreviewButtonContent" xml:space="preserve">
+    <value>预览</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroInfoText.Text" xml:space="preserve">
+    <value>语音包从 GitHub 发布版下载（英语和中文约 380 MB，西班牙语约 310 MB）。它们完全在本机运行；无音频离开您的设备。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPackReady" xml:space="preserve">
+    <value>语音包已在此 PC 上就绪（{0} MB）。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPackNotDownloaded" xml:space="preserve">
+    <value>语音包尚未下载。点击下载以获取它（约 {0} MB）。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroConnecting" xml:space="preserve">
+    <value>正在连接到 GitHub 发布版…</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroProgressBytes" xml:space="preserve">
+    <value>正在下载… {0} / {1} MB</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadCanceled" xml:space="preserve">
+    <value>下载已取消。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailed" xml:space="preserve">
+    <value>下载失败（参见 Debug 日志）。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailedDiskFull" xml:space="preserve">
+    <value>磁盘空间不足。请至少释放 {0} MB 后重试。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailedNetwork" xml:space="preserve">
+    <value>下载失败。请检查网络连接后重试。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDownloadFailedIntegrity" xml:space="preserve">
+    <value>下载的语音包未通过验证，已被删除。请稍后重试。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDeleted" xml:space="preserve">
+    <value>语音包已删除。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroDeleteFailed" xml:space="preserve">
+    <value>删除失败（参见 Debug 日志）。</value>
+  </data>
+  <data name="VoiceSettingsPage_KokoroPreviewFailed" xml:space="preserve">
+    <value>预览失败（参见 Debug 日志）。</value>
+  </data>
   <data name="VoiceSettingsPage_PiperVoiceCombo.Header" xml:space="preserve">
     <value>语音</value>
   </data>
@@ -2653,7 +2710,7 @@
     <value>中国</value>
   </data>
   <data name="VoiceSettingsPage_PrivacyNote.Text" xml:space="preserve">
-    <value>Piper、Windows 和语音识别在此设备上运行。云端 TTS 提供商会将回复文本发送到其服务进行合成；麦克风音频不会发送给这些服务。</value>
+    <value>Kokoro、Piper、Windows 和语音识别在此设备上运行。云端 TTS 提供商会将回复文本发送到其服务进行合成；麦克风音频不会发送给这些服务。</value>
   </data>
   <data name="VoiceSettingsPage_StatusModelReady" xml:space="preserve">
     <value>✅ 模型就绪</value>
@@ -2871,29 +2928,87 @@
   <data name="DebugPage_TextBlock_OverridesCaption.Text" xml:space="preserve">
     <value>按聊天容器覆盖全局的“使用标准网关聊天界面”设置。应用重启后重置。</value>
   </data>
-  <data name="DebugPage_TextBlock_HubChatLabel.Text" xml:space="preserve">
-    <value>中心聊天选项卡 UI：</value>
+  <data name="Chat_ZeroState_RecentChats" xml:space="preserve"><value>最近的聊天</value></data>
+  <data name="Chat_Placement_Environment" xml:space="preserve">
+    <value>环境</value>
   </data>
-  <data name="DebugPage_TextBlock_TrayChatLabel.Text" xml:space="preserve">
-    <value>托盘聊天弹窗 UI：</value>
+  <data name="Chat_Placement_Workspace" xml:space="preserve">
+    <value>工作区</value>
   </data>
-  <data name="DebugPage_ChatOverride_NoOverride_Hub.Content" xml:space="preserve">
-    <value>不覆盖</value>
+  <data name="Chat_Placement_Devices" xml:space="preserve">
+    <value>你的设备</value>
   </data>
-  <data name="DebugPage_ChatOverride_ForceLegacy_Hub.Content" xml:space="preserve">
-    <value>强制使用网关聊天 UI</value>
+  <data name="Chat_Placement_Projects" xml:space="preserve">
+    <value>项目</value>
   </data>
-  <data name="DebugPage_ChatOverride_ForceNative_Hub.Content" xml:space="preserve">
-    <value>强制使用伴侣聊天 UI</value>
+  <data name="Chat_Placement_Folders" xml:space="preserve">
+    <value>网关文件夹</value>
   </data>
-  <data name="DebugPage_ChatOverride_NoOverride_Tray.Content" xml:space="preserve">
-    <value>不覆盖</value>
+  <data name="Chat_Placement_SearchDevices" xml:space="preserve">
+    <value>搜索环境</value>
   </data>
-  <data name="DebugPage_ChatOverride_ForceLegacy_Tray.Content" xml:space="preserve">
-    <value>强制使用网关聊天 UI</value>
+  <data name="Chat_Placement_SearchProjects" xml:space="preserve">
+    <value>搜索项目或粘贴 Git URL</value>
   </data>
-  <data name="DebugPage_ChatOverride_ForceNative_Tray.Content" xml:space="preserve">
-    <value>强制使用伴侣聊天 UI</value>
+  <data name="Chat_Placement_Path" xml:space="preserve">
+    <value>输入文件夹路径</value>
+  </data>
+  <data name="Chat_Placement_DefaultWorkspace" xml:space="preserve">
+    <value>默认工作区</value>
+  </data>
+  <data name="Chat_Placement_Browse" xml:space="preserve">
+    <value>浏览文件夹</value>
+  </data>
+  <data name="Chat_Placement_Up" xml:space="preserve">
+    <value>上一级</value>
+  </data>
+  <data name="Chat_Placement_UseFolder" xml:space="preserve">
+    <value>使用此文件夹</value>
+  </data>
+  <data name="Chat_Placement_Back" xml:space="preserve">
+    <value>返回项目</value>
+  </data>
+  <data name="Chat_Placement_Clone" xml:space="preserve">
+    <value>发送时克隆仓库</value>
+  </data>
+  <data name="Chat_Placement_Retry" xml:space="preserve">
+    <value>重试</value>
+  </data>
+  <data name="Chat_Placement_Loading" xml:space="preserve">
+    <value>正在加载位置...</value>
+  </data>
+  <data name="Chat_Placement_Preparing" xml:space="preserve">
+    <value>正在准备聊天位置...</value>
+  </data>
+  <data name="Chat_Placement_NoMatches" xml:space="preserve">
+    <value>没有匹配的位置</value>
+  </data>
+  <data name="Chat_Placement_Offline" xml:space="preserve">
+    <value>离线</value>
+  </data>
+  <data name="Chat_Placement_HostingDisabled" xml:space="preserve">
+    <value>未启用会话托管</value>
+  </data>
+  <data name="Chat_Placement_CapacityUnknown" xml:space="preserve">
+    <value>未提供会话容量信息</value>
+  </data>
+  <data name="Chat_Placement_NoCapacity" xml:space="preserve">
+    <value>没有可用的会话名额</value>
+  </data>
+  <data name="Chat_Placement_CommandUnavailable" xml:space="preserve">
+    <value>所需命令尚未获批</value>
+  </data>
+  <data name="Chat_Placement_UpdateRequired" xml:space="preserve">
+    <value>需要更新主机</value>
+  </data>
+  <data name="Chat_Placement_RuntimeUnsupported" xml:space="preserve">
+    <value>此智能体运行时不支持设备会话</value>
+  </data>
+  <data name="Chat_Placement_Gateway" xml:space="preserve">
+    <value>网关主机</value>
+  </data>
+  <data name="Chat_Placement_Remote" xml:space="preserve">
+    <value>远程会话主机</value>
   </data>
   <data name="Chat_ZeroState_WelcomeTitle" xml:space="preserve">
     <value>欢迎使用 OpenClaw</value>
@@ -2988,14 +3103,17 @@
   <data name="Chat_Composer_Reasoning_Maximum" xml:space="preserve">
     <value>最大</value>
   </data>
-  <data name="Chat_Composer_Accessibility_Session" xml:space="preserve">
-    <value>会话</value>
-  </data>
   <data name="Chat_Composer_Accessibility_CurrentSession" xml:space="preserve">
     <value>当前会话</value>
   </data>
   <data name="Chat_Composer_Accessibility_Model" xml:space="preserve">
     <value>模型</value>
+  </data>
+  <data name="Chat_Composer_Model_Loading" xml:space="preserve">
+    <value>正在加载模型…</value>
+  </data>
+  <data name="Chat_Composer_Model_Unavailable" xml:space="preserve">
+    <value>模型不可用</value>
   </data>
   <data name="Chat_Composer_Accessibility_Reasoning" xml:space="preserve">
     <value>推理</value>
@@ -3050,6 +3168,9 @@
   </data>
   <data name="Chat_Composer_QueuedMessageFailed" xml:space="preserve">
     <value>失败</value>
+  </data>
+  <data name="Chat_Timeline_Pending" xml:space="preserve">
+    <value>待发送</value>
   </data>
   <data name="Chat_Composer_QueuedMessageCancel" xml:space="preserve">
     <value>取消已排队消息</value>
@@ -3165,27 +3286,13 @@
   <data name="AppNotification_ChannelNeedsAttention_StatusMessageFormat" xml:space="preserve">
     <value>网关报告 {0} 为 {1}。</value>
   </data>
-  <data name="AppNotification_SandboxDisabled_Title" xml:space="preserve">
-    <value>节点沙盒已关闭: 命令将不受限制地运行</value>
-  </data>
-  <data name="AppNotification_SandboxDisabled_Message" xml:space="preserve">
-    <value>在重新启用节点沙盒之前，代理启动的 Windows 命令将在没有沙盒隔离的情况下运行。</value>
-  </data>
-  <data name="AppNotification_SandboxUnavailable_Title" xml:space="preserve">
-    <value>沙盒不可用: 回退到主机</value>
-  </data>
-  <data name="AppNotification_SandboxUnavailable_MessageFormat" xml:space="preserve">
-    <value>{0}
-
-在沙盒不可用期间，命令将在主机上运行，且没有沙盒保护。</value>
-  </data>
   <data name="AppNotification_SandboxUnavailableBlocked_Title" xml:space="preserve">
     <value>沙盒不可用: 命令已阻止</value>
   </data>
   <data name="AppNotification_SandboxUnavailableBlocked_MessageFormat" xml:space="preserve">
     <value>{0}
 
-由于已启用严格回退阻止，沙盒不可用期间命令会被阻止。</value>
+无法验证 MXC。命令将被阻止。请修复安装或重试。仅已确认不支持隔离的 Windows 允许未隔离执行。</value>
   </data>
   <data name="AppNotification_SandboxUnavailable_DefaultReason" xml:space="preserve">
     <value>此计算机上没有可用的 MXC 沙盒基元。</value>
@@ -3330,6 +3437,9 @@
   </data>
   <data name="Chat_Error_SendFailedFormat" xml:space="preserve">
     <value>发送失败：{0}</value>
+  </data>
+  <data name="Chat_Error_ConnectionDroppedBeforeGatewayAcceptedMessage" xml:space="preserve">
+    <value>网关接受此消息前连接已中断。</value>
   </data>
   <data name="Chat_Notification_AbortFailed" xml:space="preserve">
     <value>中止失败</value>
@@ -4019,13 +4129,10 @@
     <value>Chat surface overrides</value>
   </data>
   <data name="DiagnosticsPage_Expander_ChatOverrides.Description" xml:space="preserve">
-    <value>Per-surface override of the chat UI. Resets when OpenClaw restarts.</value>
+    <value>Override the Workspace chat UI. Resets when OpenClaw restarts.</value>
   </data>
-  <data name="DiagnosticsPage_Card_HubChat.Header" xml:space="preserve">
-    <value>Hub chat tab</value>
-  </data>
-  <data name="DiagnosticsPage_Card_TrayChat.Header" xml:space="preserve">
-    <value>Tray chat popup</value>
+  <data name="DiagnosticsPage_Card_WorkspaceChat.Header" xml:space="preserve">
+    <value>Workspace chat</value>
   </data>
   <data name="DiagnosticsPage_DetailBack.Text" xml:space="preserve">
     <value>Back to Diagnostics</value>
@@ -4477,15 +4584,6 @@
   <data name="DebugPage_ForceCompanionChatUI.Content" xml:space="preserve">
     <value>强制使用伴侣聊天界面</value>
   </data>
-  <data name="DebugPage_NoOverride2.Content" xml:space="preserve">
-    <value>无覆盖</value>
-  </data>
-  <data name="DebugPage_ForceGatewayChatUI2.Content" xml:space="preserve">
-    <value>强制使用网关聊天界面</value>
-  </data>
-  <data name="DebugPage_ForceCompanionChatUI2.Content" xml:space="preserve">
-    <value>强制使用伴侣聊天界面</value>
-  </data>
   <data name="DebugPage_Refresh.Text" xml:space="preserve">
     <value>刷新</value>
   </data>
@@ -4582,9 +4680,6 @@
   <data name="SandboxPage_SecurityLevel.Text" xml:space="preserve">
     <value>安全级别</value>
   </data>
-  <data name="SandboxPage_OneClickToSet.Text" xml:space="preserve">
-    <value>一键设置下面的每个控件。自定义文件夹保持您的设置。</value>
-  </data>
   <data name="SandboxPage_LockedDown.Text" xml:space="preserve">
     <value>🔒 锁定</value>
   </data>
@@ -4607,16 +4702,16 @@
     <value>自定义文件夹授权仍然有效</value>
   </data>
   <data name="SandboxPage_Files.Text" xml:space="preserve">
-    <value>📁 文件</value>
+    <value>文件访问</value>
   </data>
   <data name="SandboxPage_ByDefaultTheAgent.Text" xml:space="preserve">
-    <value>默认情况下,代理只有一个可读写的临时工作区文件夹。在下方授予对用户文件夹的访问权限。SSH 密钥、浏览器配置文件和 OpenClaw 自身的设置始终被阻止。</value>
+    <value>所选范围决定文件访问权限。这些选项添加文件夹授权；使用范围保留文件夹已有的范围权限。选择“所选文件夹”可将访问限制为明确授权的文件夹。受保护的文件夹始终被阻止。</value>
   </data>
   <data name="SandboxPage_Documents.Text" xml:space="preserve">
     <value>文档</value>
   </data>
   <data name="SandboxPage_Blocked.Content" xml:space="preserve">
-    <value>已阻止</value>
+    <value>使用范围</value>
   </data>
   <data name="SandboxPage_ReadOnly.Content" xml:space="preserve">
     <value>只读</value>
@@ -4628,7 +4723,7 @@
     <value>下载</value>
   </data>
   <data name="SandboxPage_Blocked2.Content" xml:space="preserve">
-    <value>已阻止</value>
+    <value>使用范围</value>
   </data>
   <data name="SandboxPage_ReadOnly2.Content" xml:space="preserve">
     <value>只读</value>
@@ -4640,7 +4735,7 @@
     <value>桌面</value>
   </data>
   <data name="SandboxPage_Blocked3.Content" xml:space="preserve">
-    <value>已阻止</value>
+    <value>使用范围</value>
   </data>
   <data name="SandboxPage_ReadOnly3.Content" xml:space="preserve">
     <value>只读</value>
@@ -4649,16 +4744,16 @@
     <value>读取与写入</value>
   </data>
   <data name="SandboxPage_ToolDirectoriesOnYour.Text" xml:space="preserve">
-    <value>PATH 上的工具目录在沙盒内也以只读方式授予,因此 git、node、python 和 dotnet 等命令行工具可用。从不授予驱动器根目录。</value>
+    <value>Windows 运行时文件夹和私有工作区仍可用。出现在 PATH 中不会授予访问权限。重新应用预设可重置文件夹选项。</value>
   </data>
   <data name="SandboxPage_CustomFolders.Text" xml:space="preserve">
-    <value>自定义文件夹</value>
+    <value>附加文件夹</value>
   </data>
   <data name="SandboxPage_CustomGrantsAreAdded.Text" xml:space="preserve">
-    <value>自定义授权将在上述规则之上添加。在“文档/下载/桌面”内添加具有更宽访问权限的文件夹,将覆盖该路径的行级设置。</value>
+    <value>这些权限补充上述文件访问权限。只读或删除授权不会限制预设或其他文件夹已允许的访问。受保护的文件夹仍被阻止。</value>
   </data>
   <data name="SandboxPage_Blocked4.Content" xml:space="preserve">
-    <value>已阻止</value>
+    <value>移除授权</value>
   </data>
   <data name="SandboxPage_ReadOnly4.Content" xml:space="preserve">
     <value>只读</value>
@@ -4667,7 +4762,7 @@
     <value>读取与写入</value>
   </data>
   <data name="SandboxPage_NoCustomFoldersAdded.Text" xml:space="preserve">
-    <value>尚未添加自定义文件夹。</value>
+    <value>未共享个人文件夹。添加文件夹即可开始。</value>
   </data>
   <data name="SandboxPage_AddFolder.Content" xml:space="preserve">
     <value>添加文件夹</value>
@@ -4701,42 +4796,6 @@
   </data>
   <data name="SandboxPage_LocalNetworkDevicesAnd.Text" xml:space="preserve">
     <value>本地网络设备和共享尚未包含在内。</value>
-  </data>
-  <data name="SandboxPage_CommandCompatibility.Text" xml:space="preserve">
-    <value>🪟 命令兼容性</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUi.Header" xml:space="preserve">
-    <value>允许 Windows UI API</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUi.OffContent" xml:space="preserve">
-    <value>关闭：阻止 Win32k 系统调用</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUi.OnContent" xml:space="preserve">
-    <value>开启：PowerShell 和类似工具可以启动</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUi.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>允许沙盒命令使用 Windows UI API</value>
-  </data>
-  <data name="SandboxPage_WindowsUiCompatibilityDescription.Text" xml:space="preserve">
-    <value>PowerShell（所有版本）和某些控制台工具在启动时会使用 Windows UI API。此设置不提供受支持的完整主机进程清单。</value>
-  </data>
-  <data name="SandboxPage_WindowsUiWarning.Title" xml:space="preserve">
-    <value>Win32k 边界已禁用</value>
-  </data>
-  <data name="SandboxPage_WindowsUiWarning.Message" xml:space="preserve">
-    <value>文件、网络、剪贴板、超时和命令审批控制仍然有效。允许使用 Win32k 系统调用；剪贴板策略和输入注入禁令仍然有效。</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUiDialogTitle" xml:space="preserve">
-    <value>允许 Windows UI API？</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUiDialogContent" xml:space="preserve">
-    <value>这将允许沙盒命令使用 Windows UI 系统调用。当前 MXC 版本中的 PowerShell（所有版本）和某些控制台工具需要此权限才能启动。此设置不会授予受支持的完整主机进程清单：CIM/WMI 主机枚举不受支持，并已观察到失败；tasklist 可能失败或超时；Get-Process 的输出不应被视为完整清单或进程元数据的保密边界。&#xA;&#xA;文件、网络、剪贴板、超时和命令审批控制仍然有效，但 Win32k 系统调用阻止将被禁用。剪贴板策略和输入注入禁令仍然有效。仅在需要更广泛的命令兼容性时启用。</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUiDialogPrimary" xml:space="preserve">
-    <value>允许 UI API</value>
-  </data>
-  <data name="SandboxPage_AllowWindowsUiDialogCancel" xml:space="preserve">
-    <value>取消</value>
   </data>
   <data name="SandboxPage_Limits.Text" xml:space="preserve">
     <value>⏱ 限制</value>
@@ -4983,10 +5042,10 @@
     <value>打开引导</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Title" xml:space="preserve">
-    <value>检测到 MSIX 安装</value>
+    <value>网关清理</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Message" xml:space="preserve">
-    <value>通过 Windows 设置 → 应用删除 OpenClaw 不会清理本地网关(WSL 发行版、磁盘映像)。请先使用下面的“删除本地网关”,然后再卸载 OpenClaw。</value>
+    <value>在 Windows 设置中卸载 OpenClaw 会自动移除托管网关。使用下方的“移除本地网关”可移除网关并保留应用。</value>
   </data>
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>删除 WSL 发行版 (OpenClawGateway)、其磁盘映像、自动启动项,并清除网关凭据。您的 MCP 令牌将被保留。引导将重置。</value>
@@ -5041,12 +5100,6 @@
   </data>
   <data name="WorkspacePage_LoadingWorkspaceFiles.Text" xml:space="preserve">
     <value>正在加载工作区文件…</value>
-  </data>
-  <data name="ChatWindow_WebChatUnavailable.Text" xml:space="preserve">
-    <value>网页聊天不可用</value>
-  </data>
-  <data name="ChatWindow_Retry.Content" xml:space="preserve">
-    <value>重试</value>
   </data>
   <data name="ConnectionStatusWindow_ConnectionStatus.Text" xml:space="preserve">
     <value>连接状态</value>
@@ -6240,12 +6293,6 @@
   <data name="Command_GoToWorkspace_Title" xml:space="preserve">
     <value>Go to Workspace ({0})</value>
   </data>
-  <data name="Command_OpenChatWindow_Subtitle" xml:space="preserve">
-    <value>Open standalone chat</value>
-  </data>
-  <data name="Command_OpenChatWindow_Title" xml:space="preserve">
-    <value>Open Chat Window</value>
-  </data>
   <data name="Command_OpenDashboard_Subtitle" xml:space="preserve">
     <value>Open web dashboard</value>
   </data>
@@ -6553,7 +6600,7 @@
     <value>节点沙盒不可用: 命令已阻止</value>
   </data>
   <data name="SandboxPage_StatusUnavailableBlockedSubtext" xml:space="preserve">
-    <value>此电脑上无法使用隔离，并且已启用严格回退阻止，因此代理启动的命令会被阻止。</value>
+    <value>无法验证 MXC。请修复安装或重试。SDK 或策略错误绝不会触发未隔离执行。</value>
   </data>
   <data name="SandboxPage_StatusUnavailableOffTitle" xml:space="preserve">
     <value>节点沙盒已关闭: 主机执行</value>
@@ -6588,11 +6635,6 @@
   <data name="SandboxPage_ProbeErrorTitle" xml:space="preserve">
     <value>无法验证沙盒可用性</value>
   </data>
-  <data name="SandboxPage_ProbeErrorMessageFormat" xml:space="preserve">
-    <value>{0}
-
-{1} 沙盒功能检查未完成。这通常是暂时性的（检查缓慢或被阻止）… 请重试；如果问题仍然存在，请检查安全软件是否阻止了 wxc-exec。</value>
-  </data>
   <data name="SandboxPage_Retry" xml:space="preserve">
     <value>重试</value>
   </data>
@@ -6609,11 +6651,6 @@
   </data>
   <data name="SandboxPage_ComponentsMissingTitle" xml:space="preserve">
     <value>缺少沙盒组件</value>
-  </data>
-  <data name="SandboxPage_ComponentsMissingMessageFormat" xml:space="preserve">
-    <value>{0}
-
-找不到 wxc-exec 二进制文件。{1} 如果这是开发者版本，请生成托盘应用，以便将 wxc-exec.exe 复制到输出文件夹。否则请重新安装伴侣应用以恢复沙盒。</value>
   </data>
   <data name="SandboxPage_ShowInstallInstructions" xml:space="preserve">
     <value>显示安装说明</value>
@@ -6656,15 +6693,6 @@
   </data>
   <data name="CronPage_NextWakeFormat" xml:space="preserve">
     <value>· 下次唤醒：{0}</value>
-  </data>
-  <data name="ChatWindow_UnableToLoadChatCredentials" xml:space="preserve">
-    <value>无法加载聊天。网关 URL 或令牌不可用。</value>
-  </data>
-  <data name="ChatWindow_UnableToLoadChatRetryFormat" xml:space="preserve">
-    <value>无法加载聊天。请重试。({0})</value>
-  </data>
-  <data name="ChatWindow_WebViewFailedFormat" xml:space="preserve">
-    <value>WebView2 失败：{0}</value>
   </data>
   <data name="CanvasWindow_WebViewInitFailedFormat" xml:space="preserve">
     <value>无法初始化 WebView2：{0}</value>
@@ -6970,13 +6998,13 @@
     <value>沙盒操作</value>
   </data>
   <data name="SandboxPage_PresetLockedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>锁定预设：无互联网、无剪贴板、无标准用户文件夹</value>
+    <value>严格预设：无个人文件或互联网访问</value>
   </data>
   <data name="SandboxPage_PresetBalancedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>推荐预设：启用互联网，文档、下载和桌面为只读</value>
+    <value>平衡预设：用户文件夹只读，互联网开启</value>
   </data>
   <data name="SandboxPage_PresetPermissiveButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>不受保护预设：启用互联网，可读写文档、下载和桌面</value>
+    <value>开放预设：用户文件夹可读写，互联网开启</value>
   </data>
   <data name="SandboxPage_DocsAccessCombo.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>文档访问级别</value>
@@ -7047,6 +7075,8 @@
   <data name="Chat_AssistantMedia_MediaAttachment" xml:space="preserve"><value>媒体附件</value></data>
   <data name="Chat_AssistantMedia_OpenImage" xml:space="preserve"><value>打开图像 {0}</value></data>
   <data name="Chat_AssistantMedia_Close" xml:space="preserve"><value>关闭</value></data>
+  <data name="Chat_AssistantMedia_Download" xml:space="preserve"><value>下载</value></data>
+  <data name="Chat_AssistantMedia_DownloadFailed" xml:space="preserve"><value>无法开始下载</value></data>
   <data name="HubWindow_NavigationViewItem_LocalAi.Content" xml:space="preserve"><value>本地 AI</value></data>
   <data name="LocalAiPage_Title.Text" xml:space="preserve"><value>本地 AI</value></data>
   <data name="LocalAiPage_Intro.Text" xml:space="preserve"><value>在此计算机上私密运行经过验证的原生 llama-server。模型仅在收到请求时加载。</value></data>
@@ -7061,6 +7091,7 @@
   <data name="LocalAiPage_EndpointLabel.Text" xml:space="preserve"><value>终结点</value></data>
   <data name="LocalAiPage_ProcessLabel.Text" xml:space="preserve"><value>进程</value></data>
   <data name="LocalAiPage_StartButton.Content" xml:space="preserve"><value>启动路由器</value></data>
+  <data name="LocalAiPage_NativeSelectionRequired" xml:space="preserve"><value>启动或重启 Local AI 之前，请在所选本机网关的设置流程中选择“使用本地 AI”，或在“连接”中选择拥有此安装的 WSL 网关。</value></data>
   <data name="LocalAiPage_StopButton.Content" xml:space="preserve"><value>停止</value></data>
   <data name="LocalAiPage_RestartButton.Content" xml:space="preserve"><value>重新启动</value></data>
   <data name="LocalAiPage_OpenLogsButton.Content" xml:space="preserve"><value>打开日志</value></data>
@@ -7148,7 +7179,7 @@
   <data name="ChatDashboardButton.Content" xml:space="preserve"><value>Dashboard</value></data>
   <data name="ChatDashboardHint.Text" xml:space="preserve"><value>频道、集成和网关设置</value></data>
   <data name="Onboarding_Flow_WelcomeDescription.Text" xml:space="preserve"><value>OpenClaw 是帮助你在电脑上完成任务的 AI 助手。</value></data>
-  <data name="Onboarding_AiSetup_Title.Text" xml:space="preserve"><value>连接你的 AI</value></data>
+  <data name="Onboarding_AiSetup_Title.Text" xml:space="preserve"><value>设置你的 AI</value></data>
   <data name="Onboarding_AiSetup_CatalogOptIn" xml:space="preserve"><value>发现现有提供商对话（可选）</value></data>
   <data name="Onboarding_AiSetup_Starting" xml:space="preserve"><value>正在启动提供商设置…</value></data>
   <data name="Onboarding_AiSetup_WorkingProvider" xml:space="preserve"><value>正在等待提供商…</value></data>
@@ -7194,7 +7225,7 @@
   <data name="Onboarding_AiSetup_LocalProgress_Verifying" xml:space="preserve"><value>正在通过 Gateway 测试所选模型的实际响应...</value></data>
   <data name="Onboarding_AiSetup_LocalProgress_Detecting" xml:space="preserve"><value>正在发现已配置的模型和 AI 提供商...</value></data>
   <data name="Onboarding_AiSetup_LocalProgress_Console" xml:space="preserve"><value>正在打开隔离 Gateway 的诊断控制台...</value></data>
-  <data name="Onboarding_AiSetup_Choose" xml:space="preserve"><value>选择模型或连接 AI 提供商。</value></data>
+  <data name="Onboarding_AiSetup_Choose" xml:space="preserve"><value>连接 AI 提供商或模型。</value></data>
   <data name="Onboarding_AiSetup_Running" xml:space="preserve"><value>按照提供商的步骤完成设置。</value></data>
   <data name="Onboarding_AiSetup_Verifying" xml:space="preserve"><value>模型已保存。正在验证当前 Gateway 连接。</value></data>
   <data name="Onboarding_AiSetup_Verified" xml:space="preserve"><value>AI 已就绪。正在打开 Chat...</value></data>
@@ -7215,24 +7246,26 @@
   <data name="Onboarding_AiSetup_InvalidInput" xml:space="preserve"><value>提供商未接受此答案。请检查当前步骤并重试。</value></data>
   <data name="Onboarding_NativeConnection_Title" xml:space="preserve"><value>连接到 Gateway</value></data>
   <data name="Onboarding_NativeConnection_Description" xml:space="preserve"><value>检查连接而不保存。下一步会再次检查并保存此 Gateway，然后查看此电脑的访问权限。</value></data>
-  <data name="Onboarding_Native_Address" xml:space="preserve"><value>Gateway 地址</value></data>
-  <data name="Onboarding_Native_Code" xml:space="preserve"><value>设置代码</value></data>
-  <data name="Onboarding_Native_Token" xml:space="preserve"><value>共享 Token（代替设置代码）</value></data>
-  <data name="Onboarding_Native_Ssh" xml:space="preserve"><value>SSH 隧道</value></data>
-  <data name="Onboarding_Native_SshDescription" xml:space="preserve"><value>可选。使用现有的 OpenSSH 密钥和配置。保留已保存连接或设置代码中的 Gateway 地址。远程 Gateway 端口将从 SSH 主机转发。</value></data>
-  <data name="Onboarding_Native_SshEnabled" xml:space="preserve"><value>使用 SSH 隧道</value></data>
-  <data name="Onboarding_Native_SshHost" xml:space="preserve"><value>SSH 主机</value></data>
-  <data name="Onboarding_Native_SshUser" xml:space="preserve"><value>SSH 用户</value></data>
-  <data name="Onboarding_Native_SshPort" xml:space="preserve"><value>SSH 端口</value></data>
-  <data name="Onboarding_Native_RemotePort" xml:space="preserve"><value>远程 Gateway 端口</value></data>
-  <data name="Onboarding_Native_LocalPort" xml:space="preserve"><value>本地隧道端口</value></data>
+  <data name="Onboarding_NativeConnection_Address" xml:space="preserve"><value>Gateway 地址</value></data>
+  <data name="Onboarding_NativeConnection_Code" xml:space="preserve"><value>设置代码</value></data>
+  <data name="Onboarding_NativeConnection_Token" xml:space="preserve"><value>共享 Token（代替设置代码）</value></data>
+  <data name="Onboarding_NativeConnection_Ssh" xml:space="preserve"><value>SSH 隧道</value></data>
+  <data name="Onboarding_NativeConnection_SshDescription" xml:space="preserve"><value>可选。使用现有的 OpenSSH 密钥和配置。保留已保存连接或设置代码中的 Gateway 地址。远程 Gateway 端口将从 SSH 主机转发。</value></data>
+  <data name="Onboarding_NativeConnection_SshEnabled" xml:space="preserve"><value>使用 SSH 隧道</value></data>
+  <data name="Onboarding_NativeConnection_SshHost" xml:space="preserve"><value>SSH 主机</value></data>
+  <data name="Onboarding_NativeConnection_SshUser" xml:space="preserve"><value>SSH 用户</value></data>
+  <data name="Onboarding_NativeConnection_SshPort" xml:space="preserve"><value>SSH 端口</value></data>
+  <data name="Onboarding_NativeConnection_RemotePort" xml:space="preserve"><value>远程 Gateway 端口</value></data>
+  <data name="Onboarding_NativeConnection_LocalPort" xml:space="preserve"><value>本地隧道端口</value></data>
   <data name="Onboarding_NativeConnection_Back" xml:space="preserve"><value>返回</value></data>
-  <data name="Onboarding_Native_Check" xml:space="preserve"><value>检查连接</value></data>
-  <data name="Onboarding_Native_Next" xml:space="preserve"><value>下一步</value></data>
+  <data name="Onboarding_NativeConnection_Check" xml:space="preserve"><value>检查连接</value></data>
+  <data name="Onboarding_NativeConnection_Next" xml:space="preserve"><value>下一步</value></data>
   <data name="Onboarding_NativeConnection_Cancel" xml:space="preserve"><value>取消</value></data>
   <data name="Onboarding_Native_Checking" xml:space="preserve"><value>正在检查已安装的 Gateway 包及其执行别名...</value></data>
-  <data name="Onboarding_Native_Checked" xml:space="preserve"><value>连接已检查，未保存任何内容。下一步将再次检查并保存此 Gateway。</value></data>
-  <data name="Onboarding_Native_Failed" xml:space="preserve"><value>无法确认连接结果。请先在 Companion Settings 中查看当前 Gateway，然后继续。</value></data>
+  <data name="Onboarding_NativeConnection_Checking" xml:space="preserve"><value>正在检查 Gateway 连接...</value></data>
+  <data name="Onboarding_NativeConnection_Cancelled" xml:space="preserve"><value>连接尝试已取消。</value></data>
+  <data name="Onboarding_NativeConnection_Checked" xml:space="preserve"><value>连接已检查，未保存任何内容。下一步将再次检查并保存此 Gateway。</value></data>
+  <data name="Onboarding_NativeConnection_Failed" xml:space="preserve"><value>无法确认连接结果。请先在 Companion Settings 中查看当前 Gateway，然后继续。</value></data>
   <data name="Onboarding_V2_AlternativesTitle.Text" xml:space="preserve"><value>选择其他设置路径</value></data>
   <data name="Onboarding_V2_ExistingRoute.Header" xml:space="preserve"><value>现有 Gateway</value></data>
   <data name="Onboarding_V2_ExistingRoute.Description" xml:space="preserve"><value>使用已保存或现有连接。不安装 WSL。</value></data>
@@ -7384,14 +7417,19 @@
   <data name="Onboarding_V3_ProfileCustomTitle.Text" xml:space="preserve"><value>自定义</value></data>
   <data name="Onboarding_V3_ProfileCustomDescription.Text" xml:space="preserve"><value>保留当前选择，并在下方进行调整。</value></data>
   <data name="Onboarding_AiSetup_OnThisPc" xml:space="preserve"><value>在此电脑上</value></data>
-  <data name="Onboarding_AiSetup_LocalTitle" xml:space="preserve"><value>此电脑上的本地 AI</value></data>
+  <data name="Onboarding_AiSetup_LocalTitle" xml:space="preserve"><value>本地 AI</value></data>
+  <data name="Onboarding_AiSetup_LocalGroupDescription" xml:space="preserve"><value>在这台电脑上设置模型，或连接到 LM Studio 或 Ollama。</value></data>
+  <data name="Onboarding_AiSetup_LocalSetUpDescription" xml:space="preserve"><value>在这台电脑上运行，无需支付服务商按量使用费。我们会帮助你设置适合硬件的模型。</value></data>
+  <data name="Onboarding_AiSetup_CloudDetail" xml:space="preserve"><value>使用在线服务提供的 AI。</value></data>
+  <data name="Onboarding_AiSetup_LmStudioDetail" xml:space="preserve"><value>连接你已在 LM Studio 中使用的模型。</value></data>
+  <data name="Onboarding_AiSetup_OllamaDetail" xml:space="preserve"><value>连接这台电脑或其他主机上的 Ollama，使用本地或云端模型。</value></data>
   <data name="Onboarding_AiSetup_LocalExplanation" xml:space="preserve"><value>托管的 Windows llama-server 使用此电脑的 GPU。这与 NVIDIA 的云端 API 不同。</value></data>
   <data name="Onboarding_AiSetup_GatewayModels" xml:space="preserve"><value>Gateway 上可用的模型</value></data>
-  <data name="Onboarding_AiSetup_ConnectProvider" xml:space="preserve"><value>连接 AI 提供商</value></data>
+  <data name="Onboarding_AiSetup_ConnectProvider" xml:space="preserve"><value>云端 AI</value></data>
   <data name="Onboarding_AiSetup_OtherLocal" xml:space="preserve"><value>设置本地模型</value></data>
   <data name="Onboarding_AiSetup_OtherLocalDetail" xml:space="preserve"><value>通过 Gateway 设置并使用模型。继续前请查看下载或权限请求。</value></data>
   <data name="Onboarding_AiSetup_UtilityNotice" xml:space="preserve"><value>Gateway 还提供设置或辅助任务模型。此页面仅连接主助手，因此不显示仅供辅助任务使用的选项。</value></data>
-  <data name="Onboarding_AiSetup_LocalSetUp" xml:space="preserve"><value>设置本地 AI</value></data>
+  <data name="Onboarding_AiSetup_LocalSetUp" xml:space="preserve"><value>设置</value></data>
   <data name="Onboarding_AiSetup_LocalStartAndUse" xml:space="preserve"><value>启动并使用</value></data>
   <data name="Onboarding_AiSetup_LocalUse" xml:space="preserve"><value>使用此模型</value></data>
   <data name="Onboarding_AiSetup_LocalRepair" xml:space="preserve"><value>修复本地 AI</value></data>
@@ -7708,7 +7746,17 @@
   <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>安装本地 WSL Gateway</value></data>
   <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>正在检查原生 Gateway 支持情况...</value></data>
   <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>此设备支持原生 Gateway。</value></data>
-  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>目前不支持原生 Gateway。请通过 Windows 更新安装 Windows Insider 内部版本 {0} 或更新的受支持版本，然后重新打开此页面。功能可用性可能因设备而异。</value></data>
+  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>若要使用原生 Gateway，请将设备更新到支持该功能的 Windows 版本。
+
+原生 Gateway 支持即将在所有设备上推出。在全面推出之前，请加入 Windows 预览体验计划，选择 Beta 或 Experimental 渠道，并在加入时通过“高级选项”选择 Windows 11 版本 26H1。若要返回 Windows 11 版本 25H2/26H2，必须全新安装系统。
+
+加入后，请返回“设置 &gt; Windows 更新”并检查更新。更新可能需要几分钟才会显示。功能可用性可能因设备而异。更新后，请重新打开此页面以再次检查支持情况。</value></data>
+  <data name="Onboarding_Native_SupportUnavailableLead" xml:space="preserve"><value>若要使用原生 Gateway，请将设备更新到支持该功能的 Windows 版本。</value></data>
+  <data name="Onboarding_Native_SupportUnavailableComingSoon" xml:space="preserve"><value>即将在所有设备上推出。</value></data>
+  <data name="Onboarding_Native_SupportUnavailableInsiderProgram" xml:space="preserve"><value>Windows 预览体验计划</value></data>
+  <data name="Onboarding_Native_SupportUnavailableChannels" xml:space="preserve"><value>Beta 或 Experimental</value></data>
+  <data name="Onboarding_Native_SupportUnavailableWindowsVersion" xml:space="preserve"><value>Windows 11 版本 26H1</value></data>
+  <data name="Onboarding_Native_SupportUnavailableWindowsUpdate" xml:space="preserve"><value>设置 &gt; Windows 更新</value></data>
   <data name="Onboarding_Native_SupportCheckFailed" xml:space="preserve"><value>无法验证原生 Gateway 支持情况。请重新打开此页面以重试。如果检查持续失败，请更新或修复 Companion。</value></data>
   <data name="Onboarding_Native_UnsupportedPlatform" xml:space="preserve"><value>原生 Gateway 设置需要受支持的 Windows 客户端系统。不支持 Windows Server。</value></data>
   <data name="Onboarding_Native_WindowsUpdate.Content" xml:space="preserve"><value>打开 Windows 更新</value></data>
@@ -7730,7 +7778,6 @@
   <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>启动并验证 Gateway</value></data>
   <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>重试设置</value></data>
   <data name="Onboarding_Native_Preview" xml:space="preserve"><value>仅供预览。不会安装任何包或启动 Gateway。</value></data>
-  <data name="Onboarding_Native_Review.Text" xml:space="preserve"><value>选择“设置 Gateway”即表示您授权 WinGet 从 Microsoft Store 安装缺失的 Gateway 包，并接受包协议和商店源协议。如果 WinGet 尚未就绪，设置可能会先修复应用安装程序再重试。Companion 随后将验证包、准备专用配置文件并打开 Gateway 设置。提供商登录仍需您交互操作。此方式不会安装 WSL、本地 AI 或 Tailscale。</value></data>
   <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>节点模式连接 Gateway 并完成配对后，即可使用这些 Windows 功能。Windows 权限和命令审批仍然适用。</value></data>
   <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>原生 Gateway 已配置</value></data>
   <data name="Onboarding_Native_CapabilitySummary" xml:space="preserve"><value>{0}。您可以在 Companion 设置中更改这些选项。</value></data>
@@ -7820,6 +7867,44 @@
   <data name="WorkspaceShell_SessionUnsupported" xml:space="preserve"><value>This gateway does not support creating sessions. Update the gateway to use this action.</value></data>
   <data name="WorkspaceShell_TrayUnavailable" xml:space="preserve"><value>The Windows tray menu is not available.</value></data>
   <data name="WorkspaceShell_LinkFailed" xml:space="preserve"><value>Windows could not open the link.</value></data>
+  <data name="WorkspaceShell_SessionMenu_LastActiveFormat" xml:space="preserve"><value>Last active {0}</value></data>
+  <data name="WorkspaceShell_SessionMenu_Pin" xml:space="preserve"><value>Pin session</value></data>
+  <data name="WorkspaceShell_SessionMenu_Unpin" xml:space="preserve"><value>Unpin session</value></data>
+  <data name="WorkspaceShell_SessionMenu_Rename" xml:space="preserve"><value>Rename…</value></data>
+  <data name="WorkspaceShell_SessionMenu_MarkUnread" xml:space="preserve"><value>Mark as unread</value></data>
+  <data name="WorkspaceShell_SessionMenu_MarkRead" xml:space="preserve"><value>Mark as read</value></data>
+  <data name="WorkspaceShell_SessionMenu_Archive" xml:space="preserve"><value>Archive session</value></data>
+  <data name="WorkspaceShell_SessionMenu_Unarchive" xml:space="preserve"><value>Unarchive session</value></data>
+  <data name="WorkspaceShell_SessionMenu_Fork" xml:space="preserve"><value>Fork conversation</value></data>
+  <data name="WorkspaceShell_SessionMenu_Copy" xml:space="preserve"><value>Copy</value></data>
+  <data name="WorkspaceShell_SessionMenu_CopyKey" xml:space="preserve"><value>Copy session key</value></data>
+  <data name="WorkspaceShell_SessionMenu_CopyId" xml:space="preserve"><value>Copy session ID</value></data>
+  <data name="WorkspaceShell_SessionMenu_CopyMarkdown" xml:space="preserve"><value>Copy as Markdown</value></data>
+  <data name="WorkspaceShell_SessionMenu_Reset" xml:space="preserve"><value>Reset session…</value></data>
+  <data name="WorkspaceShell_SessionMenu_Compact" xml:space="preserve"><value>Compact session…</value></data>
+  <data name="WorkspaceShell_SessionMenu_Export" xml:space="preserve"><value>Export transcript…</value></data>
+  <data name="WorkspaceShell_SessionMenu_Delete" xml:space="preserve"><value>Delete…</value></data>
+  <data name="WorkspaceShell_SessionRename_Title" xml:space="preserve"><value>Rename session</value></data>
+  <data name="WorkspaceShell_SessionRename_Body" xml:space="preserve"><value>Leave blank to use the default title.</value></data>
+  <data name="WorkspaceShell_SessionRename_Save" xml:space="preserve"><value>Save</value></data>
+  <data name="WorkspaceShell_SessionPinned" xml:space="preserve"><value>Pinned</value></data>
+  <data name="WorkspaceShell_SessionUnread" xml:space="preserve"><value>Unread</value></data>
+  <data name="WorkspaceShell_SessionWorking" xml:space="preserve"><value>Working</value></data>
+  <data name="SessionsPage_Archived" xml:space="preserve"><value>已归档</value></data>
+  <data name="SessionsPage_ArchivedEmpty" xml:space="preserve"><value>没有已归档的会话。</value></data>
+  <data name="SessionsPage_ArchivedUnavailable" xml:space="preserve"><value>无法获取此网关的已归档会话。</value></data>
+  <data name="SessionsPage_Unarchive" xml:space="preserve"><value>取消归档会话</value></data>
+  <data name="WorkspaceShell_SessionActionFailed" xml:space="preserve"><value>The gateway didn't accept the request. Try again.</value></data>
+  <data name="WorkspaceShell_SessionConnectionChanged" xml:space="preserve"><value>The Gateway connection changed. Refresh sessions to check the outcome before trying again.</value></data>
+  <data name="WorkspaceShell_SessionActionTimedOut" xml:space="preserve"><value>The Gateway did not respond in time. The outcome is unknown. Refresh the session before trying again.</value></data>
+  <data name="WorkspaceShell_SelectConversation.Text" xml:space="preserve"><value>Select a conversation or create a new one to start chatting.</value></data>
+  <data name="WorkspaceShell_ForkFailed" xml:space="preserve"><value>The gateway could not fork this conversation.</value></data>
+  <data name="WorkspaceShell_ForkUnsupported" xml:space="preserve"><value>This gateway does not support forking conversations. Update the gateway to use this action.</value></data>
+  <data name="WorkspaceShell_CopyFailed" xml:space="preserve"><value>Windows could not copy to the clipboard.</value></data>
+  <data name="WorkspaceShell_CopyEmpty" xml:space="preserve"><value>This session has no messages to copy.</value></data>
+  <data name="WorkspaceShell_HistoryUnsupported" xml:space="preserve"><value>This gateway does not support reading transcripts. Update the gateway to use this action.</value></data>
+  <data name="WorkspaceShell_ExportEmpty" xml:space="preserve"><value>This session has no transcript yet.</value></data>
+  <data name="WorkspaceShell_ExportDone" xml:space="preserve"><value>Saved {0} messages to {1}.</value></data>
   <data name="WorkspaceShell_AgentsEmpty" xml:space="preserve"><value>Connect and refresh to load agents. Manage agent configuration in the companion.</value></data>
   <data name="WorkspaceShell_SelectAgentFirst" xml:space="preserve"><value>Select an agent from the Agents page to view its details.</value></data>
   <data name="WorkspaceShell_AgentSummary" xml:space="preserve"><value>{0} · {1} conversations</value></data>
@@ -7891,9 +7976,104 @@
   <data name="AgentCreation_Description" xml:space="preserve"><value>在已连接的网关上创建智能体及其工作区。此操作不会创建会话或更改当前聊天。</value></data>
   <data name="AgentCreation_PermissionRequired" xml:space="preserve"><value>请连接具有 operator.admin 权限的网关以创建智能体。</value></data>
   <data name="AgentCreation_Failed" xml:space="preserve"><value>无法确认智能体是否创建成功。请关闭此对话框并刷新智能体列表，然后再试。</value></data>
+  <data name="Onboarding_AiSetup_LocalRepairRequiresStop" xml:space="preserve"><value>打开 Local AI 设置，重新连接原来的网关，并成功停止 Local AI 后再修复文件。如果路由仍需恢复，请先完成恢复。请保留所有权记录和已下载的模型。</value></data>
   <data name="Onboarding_AiSetup_LocalState_ManagementBlocked" xml:space="preserve"><value>Companion 管理不可用。</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipMissing" xml:space="preserve"><value>此配置文件没有现有本地 AI 提供程序的所有权凭据。如果 Companion 在之前的设置尝试中创建了它，请重新打开原始 Companion 配置文件并选择“恢复并使用本地 AI”。未进行任何更改。使用检测到的模型不会恢复 Companion 管理。</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipInvalid" xml:space="preserve"><value>已保存的本地 AI 所有权、模型或网关配置不再匹配。请在原始 Companion 配置文件中检查原始网关及其模型设置，包括已修改的模型允许列表条目。保留所有权凭据，不要复制身份验证凭据或替换提供程序。</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipUnavailable" xml:space="preserve"><value>无法检查原始网关的所有权或配置。请重新连接原始网关并再次检查。未进行任何更改。</value></data>
   <data name="Onboarding_AiSetup_LocalOwnershipFiles" xml:space="preserve"><value>受管理的本地 AI 安装需要修复文件。请先在本地 AI 设置中停止运行时并解决原始网关路由问题，再修复文件。保留所有权凭据。</value></data>
+  <data name="ChatPage_SetupUnavailable" xml:space="preserve">
+    <value>设置期间验证的 Gateway 未连接。请检查“连接”，或在其可用时再次检查。</value>
+  </data>
+  <data name="ChatPage_SetupAuthorityUnconfirmed" xml:space="preserve">
+    <value>无法确认设置期间验证的 Gateway 和代理。请打开“连接”进行检查。</value>
+  </data>
+  <data name="ChatPage_SetupRenderingFailed" xml:space="preserve">
+    <value>无法显示聊天。请再次检查。如果问题仍然存在，请打开“诊断”。</value>
+  </data>
+  <data name="ChatPage_SetupCheckAgain.Content" xml:space="preserve">
+    <value>再次检查</value>
+  </data>
+  <data name="SandboxPage_PresetHelp.Text" xml:space="preserve"><value>预设会替换文件授权和互联网访问。剪贴板、限制和命令审批保持独立。</value></data>
+  <data name="SandboxPage_CustomPreset.Text" xml:space="preserve"><value>自定义权限</value></data>
+  <data name="SandboxPage_ApplyPreset" xml:space="preserve"><value>应用预设</value></data>
+  <data name="SandboxPage_PresetStrict.Text" xml:space="preserve"><value>严格</value></data>
+  <data name="SandboxPage_PresetBalanced.Text" xml:space="preserve"><value>平衡</value></data>
+  <data name="SandboxPage_Title.Text" xml:space="preserve"><value>Node Sandbox</value></data>
+  <data name="SandboxPage_ResolvedFolders.Header" xml:space="preserve"><value>包含的文件夹</value></data>
+  <data name="SandboxPage_FileAccessReadOnly" xml:space="preserve"><value>可以读取您的用户配置文件目录和个人文件夹，包括重定向文件夹。下方的附加权限也可能允许更改。受保护的文件夹仍被阻止。</value></data>
+  <data name="SandboxPage_FileAccessReadWrite" xml:space="preserve"><value>程序可以读取和更改您的用户配置文件目录和个人文件夹中的文件，包括重定向文件夹。受保护的文件夹仍被阻止。</value></data>
+  <data name="SandboxPage_FileAccessSelected" xml:space="preserve"><value>个人文件访问仅来自下方的附加权限。Windows 运行时文件夹和私有工作区仍可用。受保护的文件夹仍被阻止。</value></data>
+  <data name="SandboxPage_SavedFolderFormat" xml:space="preserve"><value>{0}（已保存权限）：{1}</value></data>
+  <data name="SandboxPage_FolderUnavailable" xml:space="preserve"><value>文件夹位置不可用</value></data>
+  <data name="SandboxPage_FolderAccessFormat" xml:space="preserve"><value>{0} 的访问权限</value></data>
+  <data name="SandboxPage_RemoveFolderFormat" xml:space="preserve"><value>移除 {0} 的权限</value></data>
+  <data name="SandboxPage_FolderList.Text" xml:space="preserve"><value>文件夹</value></data>
+  <data name="SandboxPage_FolderListHelp.Text" xml:space="preserve"><value>选择智能体在每个文件夹中可以执行的操作。“禁止访问”会阻止该文件夹，但明确列出的子文件夹保留各自的访问权限。受保护的文件夹仍被阻止。</value></data>
+  <data name="SandboxPage_NoAccess.Content" xml:space="preserve"><value>禁止访问</value></data>
+  <data name="SandboxPage_Profile.Text" xml:space="preserve"><value>用户配置文件目录</value></data>
+  <data name="SandboxPage_OneDrive.Text" xml:space="preserve"><value>OneDrive</value></data>
+  <data name="SandboxPage_FolderAccess.PlaceholderText" xml:space="preserve"><value>选择访问权限</value></data>
+  <data name="SandboxPage_ResetFolder" xml:space="preserve"><value>重置</value></data>
+  <data name="SandboxPage_RemoveFolder" xml:space="preserve"><value>移除</value></data>
+  <data name="SandboxPage_ResetFolderFormat" xml:space="preserve"><value>将 {0} 重置为预设访问权限</value></data>
+  <data name="SandboxPage_LegacyFolderReview" xml:space="preserve"><value>已保存的阻止权限需要检查。它不会拒绝预设或父文件夹允许的访问。</value></data>
+  <data name="SandboxPage_RuntimeFolder" xml:space="preserve"><value>Windows 运行时访问固定为只读。</value></data>
+  <data name="SandboxPage_LegacyFolderAccess.Content" xml:space="preserve"><value>旧版阻止（需检查）</value></data>
+  <data name="SandboxPage_PresetOpen.Text" xml:space="preserve"><value>开放</value></data>
+  <data name="SandboxPage_PresetStrictText.Text" xml:space="preserve"><value>严格限制智能体的行动范围。</value></data>
+  <data name="SandboxPage_PresetBalancedText.Text" xml:space="preserve"><value>协助处理日常任务，降低风险。</value></data>
+  <data name="SandboxPage_PresetOpenText.Text" xml:space="preserve"><value>给予智能体更多自由来完成任务。</value></data>
+  <data name="SandboxPage_PresetStrictDetails" xml:space="preserve"><value>不访问个人文件或互联网。仅允许运行时访问和私有工作目录。</value></data>
+  <data name="SandboxPage_PresetBalancedDetails" xml:space="preserve"><value>读取用户配置目录和已解析的重定向个人文件夹。不写入个人文件。互联网开启。排除受保护文件夹。</value></data>
+  <data name="SandboxPage_PresetOpenDetails" xml:space="preserve"><value>读写用户配置目录和已解析的重定向个人文件夹。互联网开启。排除受保护文件夹。</value></data>
+  <data name="SandboxPage_FileScope.Header" xml:space="preserve"><value>文件访问范围</value></data>
+  <data name="SandboxPage_SelectedFolders.Content" xml:space="preserve"><value>选定文件夹</value></data>
+  <data name="SandboxPage_UserFilesReadOnly.Content" xml:space="preserve"><value>用户文件夹：只读</value></data>
+  <data name="SandboxPage_UserFilesReadWrite.Content" xml:space="preserve"><value>用户文件夹：读写</value></data>
+  <data name="SandboxPage_CheckingTitle" xml:space="preserve"><value>正在检查 MXC 可用性</value></data>
+  <data name="SandboxPage_CheckingText" xml:space="preserve"><value>正在验证命令隔离支持。此检查不会更改权限。</value></data>
+  <data name="SandboxPage_ScopeResolutionBlockedTitle" xml:space="preserve"><value>用户文件夹解析不完整</value></data>
+  <data name="SandboxPage_ScopeResolutionBlockedText" xml:space="preserve"><value>找不到或无法访问所需的个人文件夹。使用这些文件夹的命令已被阻止。请查看文件夹列表，恢复文件夹的 Windows 位置，然后重试。受保护文件夹和命令审批始终适用。</value></data>
+  <data name="SandboxPage_TimeoutFormat" xml:space="preserve"><value>命令超时：{0} 秒</value></data>
+  <data name="SandboxPage_LegacyBlockedTitle" xml:space="preserve"><value>需要检查旧文件夹授权</value></data>
+  <data name="SandboxPage_LegacyBlockedText" xml:space="preserve"><value>此前已过滤或冲突的授权保持阻止状态，避免在不知情的情况下扩大访问。请检查“阻止”行，明确选择受支持的访问或其他文件夹。受保护根目录始终排除。</value></data>
+  <data name="SandboxPage_IncludedUserFolders" xml:space="preserve"><value>Windows 解析的用户文件夹根目录（排除受保护后代）：</value></data>
+  <data name="SandboxPage_CheckingUserFolders" xml:space="preserve"><value>正在解析用户文件夹位置...</value></data>
+  <data name="SandboxPage_OneDriveNotIncluded" xml:space="preserve"><value>未解析到已配置且可用的 OneDrive 根目录。不包括额外的 OneDrive 位置。</value></data>
+  <data name="SandboxPage_WindowsCompatibilityTitle" xml:space="preserve"><value>Windows 隔离不可用：命令将在未隔离环境中运行</value></data>
+  <data name="SandboxPage_WindowsCompatibilityText" xml:space="preserve"><value>此 Windows 版本无法提供所需的 MXC 隔离。已批准的命令将直接在此计算机上运行。沙盒文件、网络、剪贴板和 Windows 界面限制不会生效。已保存的权限会保留，命令审批仍然有效。请更新 Windows 以启用隔离。Companion 自身的最低 Windows 版本要求仍然适用。</value></data>
+  <data name="LocalAi_ProfileFallback" xml:space="preserve"><value>首选的 {0} 配置不适合此硬件。设置可使用 {1}，上下文为 {2:N0} 个令牌。安装前请在设置中查看此配置。</value></data>
+  <data name="LocalAi_Reason_InsufficientSystemMemory" xml:space="preserve"><value>此配置至少需要 {0} 系统内存。</value></data>
+  <data name="LocalAi_Reason_InsufficientDiskSpace" xml:space="preserve"><value>此配置要求模型缓存和运行时所在的卷都至少有 {0} 可用空间。</value></data>
+  <data name="Chat_Welcome_Loading" xml:space="preserve"><value>正在从 Gateway 加载欢迎内容...</value></data>
+  <data name="Chat_Welcome_Unsupported" xml:space="preserve"><value>此 Gateway 不提供共享欢迎内容。你仍可在下方开始聊天。</value></data>
+  <data name="Chat_Welcome_Failed" xml:space="preserve"><value>无法加载欢迎内容。请重新连接以重试，或在下方开始聊天。</value></data>
+  <data name="Chat_Placement_Unknown" xml:space="preserve">
+    <value>未验证</value>
+  </data>
+  <data name="Chat_Placement_Error_DiscoveryFailed" xml:space="preserve">
+    <value>无法加载聊天位置。请在位置选择器中重试。</value>
+  </data>
+  <data name="Chat_Placement_Error_BrowseFailed" xml:space="preserve">
+    <value>无法加载 Gateway 文件夹。请重新浏览。</value>
+  </data>
+  <data name="Chat_Placement_Error_PreparationFailed" xml:space="preserve">
+    <value>无法准备聊天位置。请先在 Gateway 中检查该位置，然后重试。</value>
+  </data>
+  <data name="Chat_Placement_Error_PreparationPending" xml:space="preserve">
+    <value>位置准备仍在进行中。请等待后再发送。</value>
+  </data>
+  <data name="Chat_Placement_Error_NotReady" xml:space="preserve">
+    <value>所选聊天位置尚未就绪。请先刷新选项，然后发送。</value>
+  </data>
+  <data name="Chat_Placement_Error_HistoryPending" xml:space="preserve">
+    <value>正在等待当前聊天记录，然后才能准备位置。请在加载完成后重新发送。</value>
+  </data>
+  <data name="Chat_Placement_Error_Interrupted" xml:space="preserve">
+    <value>位置准备已中断，可能已更改此会话的位置。请先在 Gateway 中检查，然后再发送。</value>
+  </data>
+  <data name="Chat_Placement_Error_NoLongerEmpty" xml:space="preserve">
+    <value>此会话已不再为空，因此已取消待定的位置选择。请检查会话并重新发送，以在当前位置继续。</value>
+  </data>
 </root>
