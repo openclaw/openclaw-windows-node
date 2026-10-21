@@ -190,6 +190,9 @@ public record ChatTimelineState(
     long NextToolCorrelationSequence = 1,
     long ToolLegacyTurn = 1)
 {
+    /// <summary>Error retained outside the transcript while recovered welcome choices are shown.</summary>
+    public string? WelcomeSendError { get; init; }
+
     public static ChatTimelineState Initial() => new(
         System.Collections.Immutable.ImmutableList<ChatTimelineItem>.Empty,
         false, 1, null, null, null, null,

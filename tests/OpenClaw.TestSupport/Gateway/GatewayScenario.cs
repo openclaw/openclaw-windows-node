@@ -56,14 +56,15 @@ public sealed partial class GatewayScenario
     private readonly bool _allowChatSend;
     public bool IsInteractive { get; }
     private readonly ContextUsageFixture? _contextUsage;
+    private readonly string? _scenarioName;
     private readonly Dictionary<string, JsonObject?> _sessionChanges = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Session> _createdSessions = new(StringComparer.Ordinal);
     private readonly List<object> _createdAgents = [];
     private readonly Dictionary<string, string> _chatRuns = new(StringComparer.Ordinal);
     private int _chatSendCount;
 
-    public string Name => _contextUsage is not null ? ContextUsageFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
-        : ContainsSession(VoiceSessionKey) ? "fractional-voice-history" : BrowseName;
+    public string Name => _scenarioName ?? (_contextUsage is not null ? ContextUsageFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? "cron-editing" : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
+        : ContainsSession(VoiceSessionKey) ? "fractional-voice-history" : BrowseName);
     public int Version => _allowChatSend ? 2 : 1;
     public int ProtocolVersion => GatewayProtocolContract.CurrentVersion;
     public string ContractProvenance =>
@@ -75,7 +76,7 @@ public sealed partial class GatewayScenario
     private GatewayScenario(Session[] sessions, IReadOnlyDictionary<string, JsonElement> reads,
         Func<string, JsonElement, object>? setup = null, bool advertiseSetup = true, bool allowAgentCreation = false,
         bool allowSessionMutations = false, bool allowChatSend = false, JsonObject[]? cronJobs = null,
-        bool interactive = false, ContextUsageFixture? contextUsage = null)
+        bool interactive = false, ContextUsageFixture? contextUsage = null, string? scenarioName = null)
     {
         _sessions = sessions;
         _reads = reads;
@@ -86,6 +87,7 @@ public sealed partial class GatewayScenario
         _allowChatSend = allowChatSend;
         _cronJobs = cronJobs?.ToDictionary(job => job["id"]!.GetValue<string>(), StringComparer.Ordinal);
         _contextUsage = contextUsage;
+        _scenarioName = scenarioName;
         SessionKeys = Array.AsReadOnly(sessions.Select(s => s.Key).ToArray());
         ReadMethods = Array.AsReadOnly(new[]
         {
@@ -108,6 +110,7 @@ public sealed partial class GatewayScenario
     {
         BrowseName => CreateBrowse(),
         InteractiveName => CreateInteractive(),
+        WelcomeRecoveryName => CreateWelcomeRecovery(),
         _ => throw new ArgumentException("Unknown fixture scenario.", nameof(name))
     };
 
@@ -578,7 +581,18 @@ public sealed partial class GatewayScenario
 
     private JsonElement Read(string method, JsonElement p)
     {
-        ValidateProperties(p, method == "health" ? ["deep", "probe"] : []);
+        ValidateProperties(p, method switch
+        {
+            "health" => ["deep", "probe"],
+            "controlUi.welcome.get" => ["locale"],
+            _ => [],
+        });
+        if (method == "controlUi.welcome.get")
+        {
+            var catalog = JsonNode.Parse(_reads[method].GetRawText())!.AsObject();
+            catalog["requestedLocale"] = RequiredString(p, "locale");
+            return JsonSerializer.SerializeToElement(catalog);
+        }
         if (method == "health")
         {
             OptionalBoolean(p, "deep");

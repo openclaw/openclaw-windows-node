@@ -373,6 +373,28 @@ serialized on a shared desktop; focus-dependent GUI workers need separate
 Windows sessions or VMs. Interactive streaming uses the same per-instance
 server/profile ownership described below.
 
+## Welcome-send recovery proof
+
+The `welcome-send-recovery` scenario advertises a synthetic
+`controlUi.welcome.get` catalog and gives **Fixture Research** one empty
+conversation, **Fixture: welcome recovery**. Its other sessions belong to
+Fixture Main, so recent conversations do not hide the target's welcome chips.
+It reuses the in-memory interactive runtime; no real provider or host command runs.
+
+```powershell
+.\scripts\run-gateway-fixture.ps1 -AppPath $app -Scenario welcome-send-recovery `
+  -Interaction send-error -ArtifactsDirectory '<session-artifacts>' -DurationSeconds 900
+```
+
+Select Fixture Research and its welcome-recovery conversation. Invoke
+**Try the first suggestion**. The fixture rejects it before saving a message;
+verify the error remains visible and both suggestions are usable again.
+Invoke **Try a different suggestion**. The default synthetic response succeeds;
+verify the error clears and the new prompt/reply remain visible.
+Record current source and binary identity with focused app-window captures.
+This proves the isolated app/fixture path, not real Gateway/provider behavior.
+The duration limit or Ctrl+C cleans up only the owned app, server and profile.
+
 ## Interactive chat without a real Gateway
 
 The opt-in `chat-interactive` scenario runs a memory-only chat runtime behind

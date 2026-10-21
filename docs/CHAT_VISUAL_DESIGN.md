@@ -99,6 +99,10 @@ enabled. Existing saved read-aloud preferences are preserved.
 Welcome quick-start suggestions use borderless native buttons with a quiet gray
 `ControlAltFillColorSecondaryBrush` backplate and the shared subtle toolbar
 hover/pressed resources. Disabled and keyboard-focus states remain native.
+When a rejected welcome send restores those choices, its error remains visible
+in a native error InfoBar above the conversation. The per-thread snapshot retains
+that error until conversation activity resumes. Recovery must preserve an active
+gateway run and clear entry metadata whenever it resets the empty timeline's IDs.
 Gateway dashboard management lives in a Connection settings card rather than
 occupying a row above the chat surface. Settings' Chat rail action opens Workspace
 without changing the selected Settings page or discarding the chat draft.

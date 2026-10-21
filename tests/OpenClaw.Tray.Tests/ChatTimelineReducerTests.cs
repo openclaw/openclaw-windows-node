@@ -32,6 +32,27 @@ public class ChatTimelineReducerTests
     }
 
     [Fact]
+    public void WelcomeSendError_ClearsWhenConversationActivityResumes()
+    {
+        var state = ChatTimelineState.Initial() with { WelcomeSendError = "Send failed" };
+        ChatEvent[] events =
+        [
+            new ChatThinkingEvent(""),
+            new ChatUserMessageEvent("Another client"),
+            new ChatMessageEvent("A reply"),
+            new ChatToolStartEvent("tool", "tool"),
+            new ChatErrorEvent("A new error"),
+        ];
+
+        foreach (var evt in events)
+            Assert.Null(ChatTimelineReducer.Apply(state, evt).WelcomeSendError);
+
+        Assert.Null(ChatTimelineReducer.AddLocalUser(state, "Retry", "nonce").WelcomeSendError);
+        Assert.Null(ChatTimelineReducer.BeginLocalUserTurn(state).WelcomeSendError);
+        Assert.Equal("Send failed", ChatTimelineReducer.Apply(state, new ChatTurnEndEvent()).WelcomeSendError);
+    }
+
+    [Fact]
     public void ChatPermissionDecision_ExistingNumericValuesRemainStable()
     {
         Assert.Equal(0, (int)ChatPermissionDecision.Pending);

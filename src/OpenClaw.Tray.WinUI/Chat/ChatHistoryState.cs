@@ -199,7 +199,14 @@ internal sealed class ChatHistoryState
             plan.Metadata,
             StringComparer.Ordinal);
         if (prior.Entries.Count == 0)
+        {
+            if (prior.WelcomeSendError is { } error && !prior.TurnActive
+                && rebuilt.Entries.Count == 0 && !rebuilt.TurnActive)
+            {
+                rebuilt = rebuilt with { WelcomeSendError = error };
+            }
             return (rebuilt, rebuiltMetadata);
+        }
 
         static string ContentKey(ChatTimelineItemKind kind, string text) =>
             $"{kind}|{text}";

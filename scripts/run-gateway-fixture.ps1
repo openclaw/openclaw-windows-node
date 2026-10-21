@@ -10,7 +10,7 @@ param(
     [Parameter(Mandatory)]
     [string]$AppPath,
     [string]$ArtifactsDirectory,
-    [ValidateSet('multi-session-browse', 'chat-interactive', 'context-usage-snapshots')]
+    [ValidateSet('multi-session-browse', 'chat-interactive', 'welcome-send-recovery', 'context-usage-snapshots')]
     [string]$Scenario = 'multi-session-browse',
     [ValidateSet('streaming', 'chat-deltas', 'tools', 'tool-error', 'agent-activity', 'question-choice', 'question-text', 'question-multi', 'approval', 'approval-deny-only', 'slow', 'send-error', 'stream-error', 'disconnect')]
     [string]$Interaction,
@@ -24,7 +24,9 @@ $project = Join-Path $PSScriptRoot '..\tests\OpenClaw.GatewayFixtureHost\OpenCla
 $resolvedApp = (Resolve-Path -LiteralPath $AppPath).Path
 $hostArgs = @('--app', $resolvedApp, '--scenario', $Scenario)
 if ($Interaction) {
-    if ($Scenario -ne 'chat-interactive') { throw '-Interaction requires -Scenario chat-interactive.' }
+    if ($Scenario -notin @('chat-interactive', 'welcome-send-recovery')) {
+        throw '-Interaction requires -Scenario chat-interactive or welcome-send-recovery.'
+    }
     $hostArgs += @('--interaction', $Interaction)
 }
 if ($ArtifactsDirectory) {

@@ -2372,6 +2372,159 @@ public class OpenClawChatDataProviderTests
         Assert.Contains(notifications, n => n.Kind == ChatProviderNotificationKind.Error);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task WelcomeRecovery_RepeatedRejectionRetainsErrorUntilNextSend(bool paddedGatewayPrompt)
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        var failure = new InvalidOperationException("model unavailable");
+        bridge.SendBehavior = (_, _, _) => throw failure;
+
+        await using (provider)
+        {
+            await provider.LoadAsync();
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            using var composer = new ChatComposerFactory(new Presentation.RecordingUiDispatcher()).Create(
+                provider, new(null, null, null, null, null), initialSpeakerMuted: false);
+
+            foreach (var suggestion in new[] { "Say hi", "What can you do?" })
+            {
+                var prompt = paddedGatewayPrompt ? $" \r\n{suggestion}\r\n " : suggestion;
+                var result = await composer.Controller.SendCoreAsync("main", "Main session", prompt, []);
+                Assert.True(result.FailedWhileHostLive);
+                Assert.NotNull(result.FailedMessageId);
+                Assert.Equal(failure.Data[OpenClawChatDataProvider.FailedSendMessageIdDataKey], result.FailedMessageId);
+                var status = Assert.Single(snapshots[^1].Timelines["main"].Entries,
+                    entry => entry.Kind == ChatTimelineItemKind.Status && entry.Tone == ChatTone.Error);
+
+                provider.RestoreFailedWelcomeSend("main", prompt, result.FailedMessageId);
+
+                var recovered = snapshots[^1].Timelines["main"];
+                Assert.Empty(recovered.Entries);
+                Assert.Equal(status.Text, recovered.WelcomeSendError);
+                Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
+            }
+
+            bridge.SendBehavior = (_, _, _) => Task.CompletedTask;
+            var accepted = await composer.Controller.SendCoreAsync("main", "Main session", "Try again", []);
+            Assert.True(accepted.AcceptedByLiveHost);
+            Assert.Null(snapshots[^1].Timelines["main"].WelcomeSendError);
+            Assert.Single(snapshots[^1].Timelines["main"].Entries,
+                entry => entry.Kind == ChatTimelineItemKind.User && entry.Text == "Try again");
+        }
+    }
+
+    [Fact]
+    public async Task WelcomeRecovery_EmptyHistoryRefreshKeepsErrorUntilReset()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        bridge.SendBehavior = (_, _, _) => throw new InvalidOperationException("model unavailable");
+
+        await using (provider)
+        {
+            await provider.LoadAsync();
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            using var composer = new ChatComposerFactory(new Presentation.RecordingUiDispatcher()).Create(
+                provider, new(null, null, null, null, null), initialSpeakerMuted: false);
+            var result = await composer.Controller.SendCoreAsync("main", "Main session", "Say hi", []);
+            Assert.True(result.FailedWhileHostLive);
+            provider.RestoreFailedWelcomeSend("main", "Say hi", result.FailedMessageId);
+            var error = snapshots[^1].Timelines["main"].WelcomeSendError;
+            Assert.NotNull(error);
+
+            await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+            Assert.Empty(snapshots[^1].Timelines["main"].Entries);
+            Assert.Equal(error, snapshots[^1].Timelines["main"].WelcomeSendError);
+
+            bridge.RaiseStatus(ConnectionStatus.Disconnected);
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+            Assert.Equal(error, snapshots[^1].Timelines["main"].WelcomeSendError);
+
+            var reset = await provider.ExecuteLifecycleCommandAsync("main", ChatLifecycleCommandKind.Reset);
+            Assert.True(reset.Succeeded);
+            await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+            Assert.Null(snapshots[^1].Timelines["main"].WelcomeSendError);
+        }
+    }
+
+    [Fact]
+    public async Task WelcomeRecovery_LifecycleStartBeforeFailedAcknowledgement_PreservesRunningPrompt()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        var failure = new TimeoutException("Acknowledgement timed out");
+        bridge.SendBehavior = (_, _, _) =>
+        {
+            bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "welcome-run"));
+            throw failure;
+        };
+
+        await using (provider)
+        {
+            await provider.LoadAsync();
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            using var composer = new ChatComposerFactory(new Presentation.RecordingUiDispatcher()).Create(
+                provider, new(null, null, null, null, null), initialSpeakerMuted: false);
+
+            var result = await composer.Controller.SendCoreAsync(
+                "main", "Main session", "What can you do?", []);
+
+            Assert.True(result.FailedWhileHostLive);
+            Assert.NotNull(result.FailedMessageId);
+            Assert.Equal(failure.Data[OpenClawChatDataProvider.FailedSendMessageIdDataKey], result.FailedMessageId);
+            Assert.False(snapshots[^1].Timelines["main"].TurnActive);
+
+            provider.RestoreFailedWelcomeSend("main", "What can you do?", result.FailedMessageId);
+
+            Assert.Contains(snapshots[^1].Timelines["main"].Entries,
+                entry => entry.Kind == ChatTimelineItemKind.User && entry.Text == "What can you do?");
+            bridge.RaiseChat(new ChatMessageInfo
+            {
+                SessionKey = "main", Role = "assistant", Text = "The run continued", State = "final",
+            });
+            Assert.Collection(snapshots[^1].Timelines["main"].Entries,
+                entry => Assert.Equal(ChatTimelineItemKind.User, entry.Kind),
+                entry => Assert.Equal(ChatTimelineItemKind.Status, entry.Kind),
+                entry => Assert.Equal("The run continued", entry.Text));
+        }
+    }
+
+    [Fact]
+    public async Task WelcomeRecovery_NextGatewayEntryUsesItsOwnMetadata()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        bridge.SendBehavior = (_, _, _) => throw new InvalidOperationException("model unavailable");
+
+        await using (provider)
+        {
+            await provider.LoadAsync();
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            using var composer = new ChatComposerFactory(new Presentation.RecordingUiDispatcher()).Create(
+                provider, new(null, null, null, null, null), initialSpeakerMuted: false);
+            var result = await composer.Controller.SendCoreAsync("main", "Main session", "Say hi", []);
+            Assert.True(result.FailedWhileHostLive);
+            Assert.NotNull(result.FailedMessageId);
+
+            provider.RestoreFailedWelcomeSend("main", "Say hi", result.FailedMessageId);
+
+            Assert.Empty(snapshots[^1].Timelines["main"].Entries);
+            Assert.Empty(provider.GetEntryMetadata("main"));
+            var timestamp = DateTimeOffset.UtcNow.AddMinutes(1).ToUnixTimeMilliseconds();
+            bridge.RaiseChat(new ChatMessageInfo
+            {
+                SessionKey = "main", Role = "user", Text = "A different client",
+                State = "final", Ts = timestamp, OpenClawId = "remote-user",
+            });
+            var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+            var metadata = provider.GetEntryMetadata("main")[entry.Id];
+            Assert.Equal("remote-user", metadata.GatewayMessageId);
+            Assert.Equal(timestamp, metadata.Timestamp?.ToUnixTimeMilliseconds());
+            Assert.False(metadata.IsLocalQueuedSend);
+            Assert.Null(metadata.LocalQueuedMessageId);
+        }
+    }
+
     [Fact]
     public async Task SendMessageAsync_TerminalAckStatus_AppendsErrorAndKeepsFailedQueuedMessage()
     {

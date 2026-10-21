@@ -61,7 +61,7 @@ public static class ChatTimelineReducer
 
     public static ChatTimelineState Apply(ChatTimelineState state, ChatEvent evt)
     {
-        return evt switch
+        var next = evt switch
         {
             ChatUserMessageEvent e => ApplyUserMessage(state, e),
             ChatThinkingEvent => state with { TurnActive = true },
@@ -87,6 +87,9 @@ public static class ChatTimelineReducer
             ChatRawEvent e => e.Text is { Length: > 0 } t ? PushEntry(state, ChatTimelineItemKind.Raw, t) : state,
             _ => state
         };
+        return next.WelcomeSendError is not null && (next.TurnActive || next.Entries.Count > 0)
+            ? next with { WelcomeSendError = null }
+            : next;
     }
 
     public static ChatTimelineState AddLocalUser(ChatTimelineState state, string text, string nonce)
@@ -164,7 +167,8 @@ public static class ChatTimelineReducer
         {
             Entries = entries,
             ActiveAssistantId = null,
-            ActiveReasoningId = null
+            ActiveReasoningId = null,
+            WelcomeSendError = null
         };
     }
 

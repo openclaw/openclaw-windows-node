@@ -100,6 +100,38 @@ public sealed partial class GatewayFixtureProtocolTests
     }
 
     [Fact]
+    public async Task WelcomeRecovery_CatalogAndEmptySessionSupportRejectedThenAcceptedSuggestion()
+    {
+        var token = CreateToken();
+        var scenario = GatewayScenario.CreateWelcomeRecovery();
+        Assert.Equal(GatewayScenario.WelcomeRecoveryName, scenario.Name);
+        Assert.Contains("controlUi.welcome.get", scenario.ReadMethods);
+        await using var server = await FixtureGatewayServer.StartAsync(scenario, token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        var client = connected.Client;
+        var catalog = await client.GetChatWelcomeCatalogAsync("en-US");
+        Assert.NotNull(catalog);
+        Assert.Equal(["fixture-first", "fixture-second"], catalog.Suggestions.Select(suggestion => suggestion.Id));
+        var key = GatewayScenario.WelcomeRecoverySessionKey;
+        Assert.Empty((await client.RequestChatHistoryAsync(key)).Messages);
+        await using var peer = await FixturePeer.ConnectAsync(server, token);
+        var sessions = await peer.RequestAsync("sessions.list", new { agentId = "research" });
+        Assert.Equal(key, Assert.Single(sessions.GetProperty("sessions").EnumerateArray()).GetProperty("key").GetString());
+
+        server.Interactive!.Playback.Select("send-error");
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            client.SendChatMessageForRunAsync(catalog.Suggestions[0].Prompt, key, idempotencyKey: "welcome-first"));
+        Assert.Empty((await client.RequestChatHistoryAsync(key)).Messages);
+
+        await client.SendChatMessageForRunAsync(catalog.Suggestions[1].Prompt, key, idempotencyKey: "welcome-second");
+        await WaitIdleAsync(client, key);
+        var history = await client.RequestChatHistoryAsync(key);
+        Assert.Equal(2, history.Messages.Count);
+        Assert.Equal("Fixture welcome: second suggestion", history.Messages[0].Text);
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
+    [Fact]
     public async Task Interactive_SendRejectionDoesNotPersistInputOrConsumeIdempotency()
     {
         var token = CreateToken();

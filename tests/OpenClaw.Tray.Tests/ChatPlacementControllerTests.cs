@@ -104,14 +104,16 @@ public sealed class ChatPlacementControllerTests
         Assert.True(context.Gateway.PrepareToken.IsCancellationRequested);
         for (var i = 0; i < 2; i++)
         {
-            Assert.False(await context.Composer.SendCoreAsync(Key, "Existing chat", "keep", []));
+            var result = await context.Composer.SendCoreAsync(Key, "Existing chat", "keep", []);
+            Assert.False(result.AcceptedByLiveHost);
+            Assert.False(result.FailedWhileHostLive);
             Assert.True(context.Placement.RequiresPreparation);
             Assert.Equal(0, context.Port.SendMessageCallCount);
         }
         completion.SetResult();
         Assert.False(await preparing);
         Assert.Equal(ChatPlacementError.Interrupted, context.Placement.State.Error);
-        Assert.True(await context.Composer.SendCoreAsync(Key, "Existing chat", "continue", []));
+        Assert.True((await context.Composer.SendCoreAsync(Key, "Existing chat", "continue", [])).AcceptedByLiveHost);
         Assert.Equal(1, context.Gateway.PrepareCalls);
     }
 
@@ -160,7 +162,9 @@ public sealed class ChatPlacementControllerTests
         using var context = new Context();
         context.Placement.SelectWorkspace(FakeGateway.Project);
         context.Gateway.Prepare = _ => Task.FromException(new InvalidOperationException("no permission"));
-        Assert.False(await context.Composer.SendCoreAsync(Key, "New chat", "Say hi", []));
+        var result = await context.Composer.SendCoreAsync(Key, "New chat", "Say hi", []);
+        Assert.False(result.AcceptedByLiveHost);
+        Assert.False(result.FailedWhileHostLive);
         Assert.Equal(1, context.Gateway.PrepareCalls);
         Assert.Equal(0, context.Port.SendMessageCallCount);
     }
@@ -225,7 +229,9 @@ public sealed class ChatPlacementControllerTests
             Assert.True(context.Composer.TrySelectSession(Key));
             Assert.True(context.Placement.State.Preparing);
             Assert.False(context.Placement.CanEdit);
-            Assert.False(await context.Composer.SendCoreAsync(Key, "New chat", "another send", []));
+            var result = await context.Composer.SendCoreAsync(Key, "New chat", "another send", []);
+            Assert.False(result.AcceptedByLiveHost);
+            Assert.False(result.FailedWhileHostLive);
             Assert.Equal(1, context.Gateway.PrepareCalls);
         }
         completion.SetResult();

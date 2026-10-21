@@ -76,6 +76,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
         var (toolCallsCollapseVersion, setToolCallsCollapseVersion) =
             UseState(s_toolCallsCollapseVersion, threadSafe: true);
         var (firstSendInFlight, setFirstSendInFlight) = UseState(false, threadSafe: true);
+        var sentWelcomeThread = UseRef<string?>(null);
 
         UseEffect((Func<Action>)(() =>
         {
@@ -94,10 +95,14 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             EventHandler<ChatDataChangedEventArgs> onChanged = (_, args) =>
             {
                 setSnapshot(args.Snapshot);
-                if (args.Snapshot.ComposeTarget.SessionKey is { } composeKey
-                    && args.Snapshot.Timelines.TryGetValue(composeKey, out var timeline)
-                    && timeline.Entries.Any(entry => entry.Kind == ChatTimelineItemKind.User))
+                if (sentWelcomeThread.Current is { } sentId
+                    && args.Snapshot.Timelines.TryGetValue(sentId, out var sentTimeline)
+                    && WelcomeChipLatch.ClearsBecauseSentThreadHasUserRow(
+                        sentId,
+                        sentId,
+                        sentTimeline.Entries.Any(entry => entry.Kind == ChatTimelineItemKind.User)))
                 {
+                    sentWelcomeThread.Current = null;
                     setFirstSendInFlight(false);
                 }
 
@@ -299,25 +304,38 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
         {
             onSuggestionPicked = suggestion =>
             {
-                if (firstSendInFlight)
+                if (WelcomeChipLatch.BlocksAnotherChip(firstSendInFlight))
                     return;
 
+                var threadId = suggestionThread.Id;
+                var title = suggestionThread.Title;
+                sentWelcomeThread.Current = threadId;
                 setFirstSendInFlight(true);
                 setScrollToBottomToken(scrollToBottomToken + 1);
-                async Task SendSuggestionAsync()
+                ObserveFireAndForget(SendWelcomeSuggestionAsync(threadId, title, suggestion));
+            };
+
+            async Task SendWelcomeSuggestionAsync(string threadId, string title, string suggestion)
+            {
+                try
                 {
-                    try
+                    var result = await props.ComposerSession.Controller.SendCoreAsync(
+                        threadId,
+                        title,
+                        suggestion,
+                        Array.Empty<ChatAttachment>());
+                    if (result.FailedWhileHostLive && props.Provider is OpenClawChatDataProvider native)
+                        native.RestoreFailedWelcomeSend(threadId, suggestion, result.FailedMessageId);
+                }
+                finally
+                {
+                    if (WelcomeChipLatch.ClearsBecauseSendReturned(sentWelcomeThread.Current == threadId))
                     {
-                        await props.ComposerSession.Controller.SendCoreAsync(
-                            suggestionThread.Id, suggestionThread.Title, suggestion, Array.Empty<ChatAttachment>());
-                    }
-                    finally
-                    {
+                        sentWelcomeThread.Current = null;
                         setFirstSendInFlight(false);
                     }
                 }
-                ObserveFireAndForget(SendSuggestionAsync());
-            };
+            }
         }
 
         var timelineElement = Component<ReactorChatTimeline, ReactorChatTimelineProps>(new(
@@ -384,9 +402,22 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             .WithKey("chat-composer-area");
         return Grid(
             [GridSize.Star()],
-            [showWelcome ? GridSize.Auto : GridSize.Star(), showWelcome ? GridSize.Star() : GridSize.Auto],
-            showWelcome ? Empty().Grid(row: 0) : timelineElement.Grid(row: 0),
-            composerArea.Grid(row: 1))
+            [GridSize.Auto, showWelcome ? GridSize.Auto : GridSize.Star(), showWelcome ? GridSize.Star() : GridSize.Auto],
+            InfoBar()
+                .Set(bar =>
+                {
+                    bar.IsOpen = !string.IsNullOrEmpty(timeline.WelcomeSendError);
+                    bar.Visibility = bar.IsOpen ? Visibility.Visible : Visibility.Collapsed;
+                    bar.IsClosable = false;
+                    bar.Severity = InfoBarSeverity.Error;
+                    bar.Title = LocalizationHelper.GetString("Chat_Notification_SendFailed");
+                    bar.Message = timeline.WelcomeSendError ?? string.Empty;
+                })
+                .AutomationId("ChatWelcomeSendError")
+                .Margin(12, 8, 12, 0)
+                .Grid(row: 0),
+            showWelcome ? Empty().Grid(row: 1) : timelineElement.Grid(row: 1),
+            composerArea.Grid(row: 2))
             .Background(Theme.Ref("ChatCanvasBrush"))
             .HAlign(HorizontalAlignment.Stretch)
             .VAlign(VerticalAlignment.Stretch)
