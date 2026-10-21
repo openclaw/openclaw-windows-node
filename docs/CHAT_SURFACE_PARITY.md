@@ -6,9 +6,39 @@ feature of that unreleased web UI exists in every installed Gateway.
 
 The Companion's native chat is Reactor over WinUI, not an embedded copy of the
 web application. Existing WinUI resources remain the design authority for this
-change. Questions are pinned above the composer instead of opening a modal
-popup: they stay discoverable during scrolling and do not steal focus from an
-in-progress draft.
+change. Questions use a pinned native dock instead of a modal popup.
+The October visual follow-up makes an expanded dock replace the writing surface
+while retaining the mounted composer and its unsent draft.
+
+## October 2026 visual follow-up
+
+The supplied macOS screenshot is compared against
+[Control UI source `db2d951`](https://github.com/openclaw/openclaw/tree/db2d951fd047a9e6a03b73d41c8e5757506dedf9/ui/src).
+This is a second, explicitly pinned visual reference, not a replacement for the
+protocol audit below.
+
+| Check | Reference | Native change or remaining difference |
+| --- | --- | --- |
+| [x] | Filled 18-pixel claw and double snip | Literal upstream SVG paths, pivot, 2.4-second keyframes and cubic-bezier interpolation |
+| [x] | Surprise motions and reduced motion | All twelve variants, 5% seeded selection, 4.8-second delay and reduced-motion stance |
+| [x] | Compact working row | 200-millisecond entrance, elapsed time and known output tokens; phase retained for accessibility; completed turns dismiss the row |
+| [x] | Bottom question card | Upstream spacing with native WinUI backplates and Windows accents, numbered options, descriptions, inline Other, collapse and Skip/Submit |
+| [x] | Multi-question flow | Counter, single-choice advance, Back/Next, multiple selections, request switching and retained drafts |
+| [x] | Keyboard flow | Digits outside editors, Ctrl+Enter, newline in text, native arrow selection and focus |
+| [x] | Composer preservation | Expanded question hides, rather than remounts, the same writing surface |
+| [ ] | Complete screenshot pixel identity | Windows font metrics, shell, sender avatar/identity tint and background artwork remain different |
+
+The screenshot's teal user bubble is sender-identity styling, not the universal
+upstream user color. Companion does not invent that identity or copy a screenshot's
+personal avatar. Existing transcript sender colors and avatar behavior are not
+claimed as part of this completed visual port.
+
+Pure `ChatWorkingClawMotionTests` check independent source keyframes, interpolation,
+surprise selection and reduced/settled poses. Mounted `ReactorQuestionProofTests`
+exercise actual native controls, keyboard input, per-question drafts and animation
+unload. The production fixture round-trip additionally checks that question
+expansion/collapse/acknowledgement preserves the same composer and draft. These
+layers are not real-provider proof or an exhaustive web workspace port.
 
 ## Why the app appeared frozen
 
@@ -39,7 +69,7 @@ implemented or revalidated exhaustively by this patch.
 | [x] | Recover a missing append baseline | No recognition | Visible notice and generation-bound socket abort through the existing bounded reconnect/history path; no fabricated partial response |
 | [x] | Reasoning content and reasoning completion | Existing | Preserved reasoning rows and lifecycle |
 | [x] | Persistent working claw after assistant preamble | Generic indicator disappeared | `ReactorRunProgress` stays present for the active turn, with native animated claw geometry |
-| [x] | Elapsed run time and terminal duration | No run clock | Locally observed start/end timestamps, frozen terminal recap, no invented historical duration |
+| [x] | Elapsed run time and terminal timing metadata | No run clock | Locally observed start/end timestamps remain in state; the row dismisses at completion unless input is pending; no invented historical duration |
 | [x] | Respect reduced motion; avoid per-second screen-reader announcements | No elapsed animation | Native OS animation preference checked at mount; timer live region is off; unmount stops timer/storyboard |
 | [x] | Distinguish working, thinking, responding, running tool, waiting for input/approval | Mostly generic thinking | `ChatRunProgressProjection` prioritizes pending questions and approvals |
 | [x] | Tool start, result, error, correlated parallel tools | Existing | Preserved `NativeToolProjector`, reducer and native tool cards |
@@ -167,6 +197,7 @@ For mounted proof on native ARM64:
 ```powershell
 $env:OPENCLAW_VISUAL_TEST = '1'
 $env:OPENCLAW_VISUAL_TEST_DIR = '<isolated-proof-directory>'
+$env:OPENCLAW_RUN_KEYBOARD_PROOF = '1' # Only on an authorized, isolated interactive desktop.
 .\scripts\run-proof-tests.ps1 -Project 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' -Filter 'FullyQualifiedName~ReactorQuestionProofTests|FullyQualifiedName~ActiveRun_AfterAssistantPreamble' -ResultName 'reactor-chat-parity' -RuntimeIdentifier win-arm64
 ```
 

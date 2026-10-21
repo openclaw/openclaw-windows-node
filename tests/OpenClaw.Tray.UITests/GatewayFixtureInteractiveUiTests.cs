@@ -12,7 +12,19 @@ public sealed partial class GatewayFixtureUiTests
         {
             await run.InvokeAsync("app.navigate", new { page = "chat" });
             await SelectSessionAsync(run, GatewayScenario.EmptyTitle, GatewayScenario.EmptySessionKey);
+            await WaitUiAsync(run, () =>
+            {
+                var input = FindById(run, "ChatComposerInput");
+                if (input is null || string.IsNullOrEmpty(input.Current.ItemStatus)
+                    || FindById(run, "ChatWelcomeAgent") is null)
+                    return false;
+                using var render = System.Text.Json.JsonDocument.Parse(input.Current.ItemStatus);
+                return render.RootElement.GetProperty("selectedThreadId").GetString() == GatewayScenario.EmptySessionKey
+                    && RenderConsumedHistory(run, GatewayScenario.EmptySessionKey);
+            }, "mounted empty-session composer after navigation and history delivery");
             var composerId = FindById(run, "ChatComposerInput")!.GetRuntimeId();
+            ((System.Windows.Automation.ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(
+                System.Windows.Automation.ValuePattern.Pattern)).SetValue("Keep this unsent draft.");
             run.Gateway.Interactive!.Playback.Select("question-choice");
             await run.InvokeAsync("app.chat.send", new
             {
@@ -26,22 +38,34 @@ public sealed partial class GatewayFixtureUiTests
                 "visible waiting-for-answer progress");
             var option = FindById(run, "ChatQuestionOption_fixture_choice_0")!;
             Assert.False(option.Current.IsOffscreen);
+            Assert.True(FindById(run, "ChatComposerInput") is null or { Current.IsOffscreen: true });
+            Invoke(FindButton(run, "Collapse question")!);
+            await WaitUiAsync(run, () => FindById(run, "ChatComposerInput") is { Current.IsOffscreen: false },
+                "retained composer revealed by collapsing the question");
             Assert.Equal(composerId, FindById(run, "ChatComposerInput")!.GetRuntimeId());
-            var panel = FindById(run, "ChatQuestionPanel")!.Current.BoundingRectangle;
-            Assert.True(panel.Bottom <= FindById(run, "ChatComposerInput")!.Current.BoundingRectangle.Top);
+            Assert.Equal("Keep this unsent draft.", ((System.Windows.Automation.ValuePattern)FindById(run, "ChatComposerInput")!
+                .GetCurrentPattern(System.Windows.Automation.ValuePattern.Pattern)).Current.Value);
+            Invoke(FindButton(run, "Expand question")!);
+            await WaitUiAsync(run, () => FindById(run, "ChatQuestionOption_fixture_choice_0") is { Current.IsOffscreen: false },
+                "expanded native question");
+            option = FindById(run, "ChatQuestionOption_fixture_choice_0")!;
             Invoke(option);
             await WaitUiAsync(run, () => FindButton(run, "Submit answer")?.Current.IsEnabled == true,
                 "enabled native answer submission");
             await CaptureIfRequestedAsync(run, "interactive-native-question.png");
             Invoke(FindButton(run, "Submit answer")!);
             await run.Gateway.WaitForCompletedRequestAsync("question.resolve");
-            await WaitUiAsync(run, () => FindText(run, "Question answered") is { Current.IsOffscreen: false },
-                "acknowledged native answer");
             await WaitUiAsync(run, () => IsVisibleInTimeline(run, "Your answer was accepted."),
                 "continued answer after native submission");
-            await WaitUiAsync(run, () => FindById(run, "ChatRunProgress")?.Current.Name
-                .StartsWith("Finished", StringComparison.Ordinal) == true, "finished native run recap");
+            await WaitUiAsync(run, () => FindById(run, "ChatRunProgress") is null,
+                "completed native run indicator dismissed");
+            await WaitUiAsync(run, () => FindById(run, "ChatQuestionPanel") is null
+                && FindById(run, "ChatComposerInput") is { Current.IsOffscreen: false },
+                "answered question dismissed and retained composer revealed");
+            Assert.Null(FindText(run, "Question answered"));
             Assert.Equal(composerId, FindById(run, "ChatComposerInput")!.GetRuntimeId());
+            Assert.Equal("Keep this unsent draft.", ((System.Windows.Automation.ValuePattern)FindById(run, "ChatComposerInput")!
+                .GetCurrentPattern(System.Windows.Automation.ValuePattern.Pattern)).Current.Value);
             await CaptureIfRequestedAsync(run, "interactive-native-question-answered.png");
         }, scenario: GatewayScenario.CreateInteractive());
     }

@@ -19,9 +19,11 @@ public sealed class ChatStreamingParityTests
         state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent(), Start.AddSeconds(5));
         state = ChatTimelineReducer.Apply(state, new ChatToolReplayResetEvent());
         state = ChatTimelineReducer.Apply(state, new ChatRunUsageEvent("r", 150, 7));
-        Assert.Equal(115, ChatRunProgressProjection.Project(state)!.OutputTokens);
+        Assert.Equal(115, state.RunUsage!.OutputTokens);
+        Assert.Null(ChatRunProgressProjection.Project(state));
         state = ChatTimelineReducer.Apply(state, new ChatRunUsageEvent("r", 125, 10));
-        Assert.Equal(125, ChatRunProgressProjection.Project(state)!.OutputTokens);
+        Assert.Equal(125, state.RunUsage!.OutputTokens);
+        Assert.Null(ChatRunProgressProjection.Project(state));
         Assert.Equal(Start, state.TurnStartedAt);
         Assert.Equal(Start.AddSeconds(5), state.TurnEndedAt);
         Assert.False(state.TurnActive);
@@ -89,9 +91,48 @@ public sealed class ChatStreamingParityTests
         Assert.Equal("Running search", progress.Label);
         Assert.Equal("1m 5s", ChatRunProgressProjection.Elapsed(progress.StartedAt, Start.AddSeconds(65)));
         state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent(), Start.AddSeconds(70));
-        progress = ChatRunProgressProjection.Project(state)!;
+        Assert.Null(ChatRunProgressProjection.Project(state));
+        Assert.False(state.TurnActive);
+        Assert.Equal(Start.AddSeconds(70), state.TurnEndedAt);
+    }
+
+    [Theory]
+    [InlineData("lifecycle", """{"phase":"end"}""")]
+    [InlineData("lifecycle", """{"phase":"error","message":"Run failed"}""")]
+    [InlineData("job", """{"state":"done"}""")]
+    public void TerminalEvents_DismissProgressWithoutDiscardingRunMetadata(string stream, string data)
+    {
+        var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(), new ChatThinkingEvent("", "r"), Start);
+        state = ChatTimelineReducer.Apply(state, new ChatRunUsageEvent("r", 120, 1));
+        Assert.NotNull(ChatRunProgressProjection.Project(state));
+        var terminal = ChatEventMapper.Map(Event(stream, data, 2)).Event;
+        Assert.NotNull(terminal);
+        state = ChatTimelineReducer.Apply(state, terminal, Start.AddSeconds(2));
+        Assert.Null(ChatRunProgressProjection.Project(state));
+        Assert.False(state.TurnActive);
+        Assert.Equal(Start, state.TurnStartedAt);
+        Assert.Equal(Start.AddSeconds(2), state.TurnEndedAt);
+        Assert.Equal(120, state.RunUsage!.OutputTokens);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PendingInput_KeepsProgressVisibleAfterTurnEndUntilResolved(bool awaitingQuestion)
+    {
+        var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(), new ChatThinkingEvent("", "r"), Start);
+        if (!awaitingQuestion)
+            state = ChatTimelineReducer.Apply(state,
+                new ChatPermissionRequestEvent("approval", "exec", "shell", "Allow the command?"));
+        state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent(), Start.AddSeconds(2));
+        var progress = ChatRunProgressProjection.Project(state, awaitingQuestion);
+        Assert.NotNull(progress);
+        Assert.True(progress.Waiting);
         Assert.False(progress.Active);
-        Assert.Equal(Start.AddSeconds(70), progress.EndedAt);
+        Assert.Equal(awaitingQuestion ? "Waiting for your answer" : "Waiting for approval", progress.Label);
+        Assert.Equal(Start, progress.StartedAt);
+        Assert.Equal(Start.AddSeconds(2), progress.EndedAt);
+        Assert.Null(ChatRunProgressProjection.Project(state with { PendingPermission = null }));
     }
 
     [Fact]

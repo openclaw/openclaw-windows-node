@@ -226,6 +226,14 @@ public sealed partial class GatewayScenario
                 }
             }),
             ["node.list"] = JsonSerializer.SerializeToElement(new { ts = Epoch.ToUnixTimeMilliseconds(), nodes = Array.Empty<object>() }),
+            ["projects.list"] = JsonSerializer.SerializeToElement(new { projects = Array.Empty<object>() }),
+            ["environments.list"] = JsonSerializer.SerializeToElement(new
+            {
+                environments = new[]
+                {
+                    new { id = "gateway:fixture", type = "local", label = "Fixture Gateway", status = "available" }
+                }
+            }),
             ["node.pair.list"] = JsonSerializer.SerializeToElement(new { pending = Array.Empty<object>(), paired = Array.Empty<object>() }),
             ["device.pair.list"] = JsonSerializer.SerializeToElement(new { pending = Array.Empty<object>(), paired = Array.Empty<object>() }),
             ["usage.status"] = JsonSerializer.SerializeToElement(new
@@ -509,7 +517,8 @@ public sealed partial class GatewayScenario
         or "sessions.compaction.branch" or "node.invoke" or "exec.approval.resolve" or "node.rename"
         or "node.pair.approve" or "node.pair.reject" or "node.pair.remove" or "device.pair.approve"
         or "device.pair.reject" or "device.token.rotate" or "device.token.revoke" or "update.run"
-        or "cron.add" or "cron.update" or "cron.remove" or "cron.run" or "skills.install" or "skills.update";
+        or "cron.add" or "cron.update" or "cron.remove" or "cron.run" or "skills.install" or "skills.update"
+        or "projects.add";
 
     internal static void ValidateProperties(JsonElement p, params string[] names)
     {

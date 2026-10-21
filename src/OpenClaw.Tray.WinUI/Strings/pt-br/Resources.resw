@@ -8226,4 +8226,14 @@ Suas configurações, gateway, arquivos e modelos permanecem onde estão.</value
   <data name="Chat_Run_Tool" xml:space="preserve"><value>Executando {0}</value></data>
   <data name="Chat_Questions_NoLongerAvailable" xml:space="preserve"><value>Pergunta não está mais disponível</value></data>
   <data name="Chat_Run_OutputTokens" xml:space="preserve"><value>{0:N0} tokens de saída</value></data>
+  <data name="Chat_Questions_OtherPlaceholder" xml:space="preserve"><value>Digite sua própria resposta aqui</value></data>
+  <data name="Chat_Questions_KeyboardHint" xml:space="preserve"><value>Enter adiciona uma linha / Ctrl+Enter para continuar</value></data>
+  <data name="Chat_Questions_Expand" xml:space="preserve"><value>Expandir pergunta</value></data>
+  <data name="Chat_Questions_Collapse" xml:space="preserve"><value>Recolher pergunta</value></data>
+  <data name="Chat_Questions_PreviousRequest" xml:space="preserve"><value>Solicitação anterior</value></data>
+  <data name="Chat_Questions_NextRequest" xml:space="preserve"><value>Próxima solicitação</value></data>
+  <data name="Chat_Questions_Back" xml:space="preserve"><value>Voltar</value></data>
+  <data name="Chat_Questions_Skip" xml:space="preserve"><value>Pular</value></data>
+  <data name="Chat_Questions_SubmitShort" xml:space="preserve"><value>Enviar</value></data>
+  <data name="Chat_Questions_Next" xml:space="preserve"><value>Próxima</value></data>
 </root>

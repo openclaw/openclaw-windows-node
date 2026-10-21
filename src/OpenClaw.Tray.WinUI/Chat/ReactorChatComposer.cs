@@ -690,8 +690,9 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                     scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Disabled;
                     scroll.HorizontalContentAlignment = HorizontalAlignment.Left;
                 }));
-        composerChildren.Add(input);
-        composerChildren.Add(toolbar);
+        // Status and attachment rows can be inserted before this stable editor/toolbar tail.
+        composerChildren.Add(input.WithKey("chat-composer-input"));
+        composerChildren.Add(toolbar.WithKey("chat-composer-toolbar"));
 
         var writingSurface = Border(
             VStack(8, composerChildren.ToArray())

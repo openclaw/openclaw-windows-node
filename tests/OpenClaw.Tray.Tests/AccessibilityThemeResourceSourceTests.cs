@@ -3,7 +3,7 @@ namespace OpenClaw.Tray.Tests;
 public sealed class AccessibilityThemeResourceSourceTests
 {
     [Fact]
-    public void ChatShell_UsesOneGalleryContentLayerAndPreservesHighContrast()
+    public void ChatShell_RevealsNativeBackplateAndPreservesHighContrast()
     {
         // Retirement: replace when both production window shells can be mounted in native tests.
         var hub = System.Xml.Linq.XElement.Parse(ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml"));
@@ -33,12 +33,59 @@ public sealed class AccessibilityThemeResourceSourceTests
             var highContrast = (string?)theme.Attribute(x + "Key") == "HighContrast";
             Assert.Equal(highContrast ? "{ThemeResource SystemColorWindowColor}" : "Transparent",
                 (string?)canvas.Attribute("Color"));
-            if (!highContrast)
+            foreach (var (key, nativeColor) in new Dictionary<string, string>
             {
-                var composer = theme.Elements().Single(element => (string?)element.Attribute(x + "Key") == "ChatComposerBrush");
-                Assert.Equal("{ThemeResource CardBackgroundFillColorDefault}", (string?)composer.Attribute("Color"));
+                ["ChatComposerBrush"] = "CardBackgroundFillColorDefault",
+                ["ChatCardBrush"] = "CardBackgroundFillColorDefault",
+                ["ChatStrokeBrush"] = "ControlStrokeColorDefault",
+                ["ChatQuestionCardStrokeBrush"] = "ControlStrokeColorDefault",
+                ["ChatTextBrush"] = "TextFillColorPrimary",
+                ["ChatStrongTextBrush"] = "TextFillColorPrimary",
+                ["ChatSecondaryTextBrush"] = "TextFillColorSecondary",
+                ["ChatQuestionOptionBrush"] = "ControlFillColorDefault",
+                ["ChatQuestionOptionHoverBrush"] = "ControlFillColorSecondary"
+            })
+            {
+                var brush = theme.Elements().Single(element => (string?)element.Attribute(x + "Key") == key);
+                var systemColor = key is "ChatComposerBrush" or "ChatCardBrush" or
+                    "ChatQuestionOptionBrush" or "ChatQuestionOptionHoverBrush"
+                    ? "SystemColorWindowColor" : "SystemColorWindowTextColor";
+                Assert.Equal($"{{ThemeResource {(highContrast ? systemColor : nativeColor)}}}",
+                    (string?)brush.Attribute("Color"));
             }
         }
+    }
+
+    [Theory]
+    [InlineData("Default", "SystemAccentColorLight2", "0.12")]
+    [InlineData("Light", "SystemAccentColorDark1", "0.08")]
+    [InlineData("HighContrast", "SystemColorWindowTextColor", null)]
+    public void ChatInteractions_UseNativeAccentAndContrastResources(string themeName, string accent, string? selectedOpacity)
+    {
+        var resources = System.Xml.Linq.XElement.Parse(ReadSource("src", "OpenClaw.Tray.WinUI", "Themes", "ChatResources.xaml"));
+        System.Xml.Linq.XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var theme = resources.Descendants().Single(element =>
+            element.Name.LocalName == "ResourceDictionary" && (string?)element.Attribute(x + "Key") == themeName);
+        var highContrast = themeName == "HighContrast";
+        foreach (var (key, color) in new Dictionary<string, string>
+        {
+            ["ChatClawBrush"] = accent,
+            ["ChatQuestionSelectedBrush"] = highContrast ? "SystemColorWindowColor" : accent,
+            ["ChatQuestionSelectedStrokeBrush"] = highContrast ? "SystemColorHighlightColor" : accent
+        })
+        {
+            var brush = theme.Elements().Single(element => (string?)element.Attribute(x + "Key") == key);
+            Assert.Equal($"{{ThemeResource {color}}}", (string?)brush.Attribute("Color"));
+            if (key == "ChatQuestionSelectedBrush")
+                Assert.Equal(selectedOpacity, (string?)brush.Attribute("Opacity"));
+        }
+        var submit = resources.Elements().Single(element => (string?)element.Attribute(x + "Key") == "ChatQuestionSubmitStyle");
+        Assert.Contains(submit.Elements(), setter =>
+            (string?)setter.Attribute("Property") == "Background" &&
+            (string?)setter.Attribute("Value") == "{ThemeResource AccentFillColorDefaultBrush}");
+        Assert.Contains(submit.Elements(), setter =>
+            (string?)setter.Attribute("Property") == "Foreground" &&
+            (string?)setter.Attribute("Value") == "{ThemeResource TextOnAccentFillColorPrimaryBrush}");
     }
 
     [Fact]

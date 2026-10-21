@@ -89,11 +89,23 @@ calculation from OpenClaw's published Control UI at commit
 The vector is rendered with native WinUI shapes. OpenClaw identifies the shared
 stroke-icon shell as Lucide; both notices are retained here.
 
-## Chat working claw
+## Chat working claw and question presentation
 
-`Chat/ReactorRunProgress.cs` renders native claw geometry adapted from
-[OpenClaw icons-tools.ts](https://github.com/openclaw/openclaw/blob/1fe2aa03fe4fb4f53ac11290562f9b60acc45e91/ui/src/components/icons-tools.ts).
-The OpenClaw MIT and shared stroke-icon notices below apply to this adaptation.
+`Chat/ChatWorkingClawMotion.cs`, `Chat/NativeWorkingClaw.cs` and
+`Chat/ReactorRunProgress.cs` port the filled claw geometry, timing and keyframes
+from OpenClaw commit `db2d951fd047a9e6a03b73d41c8e5757506dedf9`:
+
+- [SVG paths](https://github.com/openclaw/openclaw/blob/db2d951fd047a9e6a03b73d41c8e5757506dedf9/ui/src/components/icon-data-tools.ts)
+- [Base keyframes](https://github.com/openclaw/openclaw/blob/db2d951fd047a9e6a03b73d41c8e5757506dedf9/ui/src/styles/components.css)
+- [Working indicator and surprise keyframes](https://github.com/openclaw/openclaw/blob/db2d951fd047a9e6a03b73d41c8e5757506dedf9/ui/src/styles/chat/working-indicator.css)
+- [Seeded surprise selection](https://github.com/openclaw/openclaw/blob/db2d951fd047a9e6a03b73d41c8e5757506dedf9/ui/src/pages/chat/components/chat-working-indicator-surprise.ts)
+
+`Chat/ReactorQuestionPanel.cs` and `Themes/ChatResources.xaml` adapt the
+[question card presentation](https://github.com/openclaw/openclaw/blob/db2d951fd047a9e6a03b73d41c8e5757506dedf9/ui/src/styles/chat/question-card.css),
+[answer controls](https://github.com/openclaw/openclaw/blob/db2d951fd047a9e6a03b73d41c8e5757506dedf9/ui/src/pages/chat/components/chat-question-answer-controls.tsx)
+and [palette](https://github.com/openclaw/openclaw/blob/db2d951fd047a9e6a03b73d41c8e5757506dedf9/ui/src/styles/base.css)
+to native WinUI controls. No web script is executed at runtime. The OpenClaw MIT
+notice below applies to these adaptations.
 
 ### OpenClaw (MIT)
 

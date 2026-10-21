@@ -8172,4 +8172,14 @@
   <data name="Chat_Run_Tool" xml:space="preserve"><value>正在运行 {0}</value></data>
   <data name="Chat_Questions_NoLongerAvailable" xml:space="preserve"><value>问题已不可用</value></data>
   <data name="Chat_Run_OutputTokens" xml:space="preserve"><value>{0:N0} 个输出令牌</value></data>
+  <data name="Chat_Questions_OtherPlaceholder" xml:space="preserve"><value>在此输入您自己的答案</value></data>
+  <data name="Chat_Questions_KeyboardHint" xml:space="preserve"><value>Enter 换行 / Ctrl+Enter 继续</value></data>
+  <data name="Chat_Questions_Expand" xml:space="preserve"><value>展开问题</value></data>
+  <data name="Chat_Questions_Collapse" xml:space="preserve"><value>折叠问题</value></data>
+  <data name="Chat_Questions_PreviousRequest" xml:space="preserve"><value>上一个请求</value></data>
+  <data name="Chat_Questions_NextRequest" xml:space="preserve"><value>下一个请求</value></data>
+  <data name="Chat_Questions_Back" xml:space="preserve"><value>返回</value></data>
+  <data name="Chat_Questions_Skip" xml:space="preserve"><value>跳过</value></data>
+  <data name="Chat_Questions_SubmitShort" xml:space="preserve"><value>提交</value></data>
+  <data name="Chat_Questions_Next" xml:space="preserve"><value>下一步</value></data>
 </root>

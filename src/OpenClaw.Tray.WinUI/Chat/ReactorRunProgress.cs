@@ -17,6 +17,7 @@ internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
     public override Element Render()
     {
         var progress = Props.Progress;
+        var entrance = UseRef<Storyboard?>(null);
         var (now, setNow) = UseState(DateTimeOffset.UtcNow);
         UseEffect((Func<Action>)(() =>
         {
@@ -33,43 +34,66 @@ internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
             progress.EndedAt ?? (progress.Active ? now : progress.StartedAt ?? now));
         var label = LocalizedLabel(progress.Label);
         var text = elapsed.Length > 0 ? $"{label} ({elapsed})" : label;
+        var visibleText = elapsed;
         if (progress.OutputTokens is { } tokens)
+        {
             text += ", " + string.Format(ReactorQuestionPanel.L("Chat_Run_OutputTokens", "{0:N0} output tokens"), tokens);
-        var animation = UseRef<Storyboard?>(null);
+            visibleText += (visibleText.Length > 0 ? " \u00b7 " : "")
+                + string.Format(ReactorQuestionPanel.L("Chat_Run_OutputTokens", "{0:N0} output tokens"), tokens);
+        }
+        if (visibleText.Length == 0)
+            visibleText = label;
         return Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
             Grid([GridSize.Star()], [GridSize.Star()],
-                ClawPath(false),
-                ClawPath(true)
-                .Set(path =>
-                {
-                    if (path.RenderTransform is not RotateTransform)
-                        path.RenderTransform = new RotateTransform { CenterX = 8.2, CenterY = 15.2 };
-                })
-                .OnMount(path =>
-                {
-                    if (!progress.Active || progress.Waiting || !new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled)
-                        return;
-                    var storyboard = new Storyboard { RepeatBehavior = RepeatBehavior.Forever, AutoReverse = true };
-                    var motion = new DoubleAnimation
-                    {
-                        From = -10, To = 10, Duration = new Duration(TimeSpan.FromMilliseconds(600)),
-                        EnableDependentAnimation = true,
-                    };
-                    Storyboard.SetTarget(motion, path.RenderTransform);
-                    Storyboard.SetTargetProperty(motion, "Angle");
-                    storyboard.Children.Add(motion);
-                    animation.Current = storyboard;
-                    storyboard.Begin();
-                })
-                .OnUnmount(_ => { animation.Current?.Stop(); animation.Current = null; })
-                .WithKey($"{progress.Active}:{progress.Waiting}"))
-                .Size(24, 24).Grid(column: 0).VAlign(VerticalAlignment.Top)
+                NativeWorkingClawElement.NativeWorkingClaw()
+                    .Set(claw => claw.Update(progress.Active, progress.Waiting, progress.StartedAt?.ToString("O") ?? "idle"))
+                    .Size(18, 18))
+                .Size(18, 18).Grid(column: 0).VAlign(VerticalAlignment.Center)
                 .AccessibilityView(AccessibilityView.Raw).AutomationId("ChatRunProgressClaw"),
-            TextBlock(text).FontSize(12).Set(ChatVisuals.StyleSecondaryText)
+            TextBlock(visibleText).FontSize(12).Set(ChatVisuals.StyleSecondaryText)
                 .Grid(column: 1).Margin(8, 0, 0, 0)
+                .VAlign(VerticalAlignment.Center).AutomationName(text)
                 .TextWrapping(TextWrapping.Wrap).AutomationId("ChatRunProgressText"))
-            .Margin(0, 12).AutomationId("ChatRunProgress").AutomationName(text)
+            .MinHeight(28).Margin(0, 4, 0, 2).AutomationId("ChatRunProgress").AutomationName(text)
+            .OnMount(row =>
+            {
+                if (progress.Active && new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled)
+                    entrance.Current = AnimateEntrance(row);
+            })
+            .OnUnmount(_ => entrance.Current?.Stop())
             .LiveRegion(AutomationLiveSetting.Off);
+    }
+
+    private static Storyboard AnimateEntrance(FrameworkElement row)
+    {
+        var transform = new CompositeTransform();
+        row.RenderTransform = transform;
+        row.RenderTransformOrigin = new Point(.5, .5);
+        var storyboard = new Storyboard();
+        void Add(DependencyObject target, string property, double initial, double peak, double final)
+        {
+            var animation = new DoubleAnimationUsingKeyFrames { EnableDependentAnimation = true };
+            animation.KeyFrames.Add(new DiscreteDoubleKeyFrame { KeyTime = TimeSpan.Zero, Value = initial });
+            animation.KeyFrames.Add(new SplineDoubleKeyFrame
+            {
+                KeyTime = TimeSpan.FromMilliseconds(144), Value = peak,
+                KeySpline = new KeySpline { ControlPoint1 = new Point(.22, 1), ControlPoint2 = new Point(.36, 1) },
+            });
+            animation.KeyFrames.Add(new SplineDoubleKeyFrame
+            {
+                KeyTime = TimeSpan.FromMilliseconds(200), Value = final,
+                KeySpline = new KeySpline { ControlPoint1 = new Point(.22, 1), ControlPoint2 = new Point(.36, 1) },
+            });
+            Storyboard.SetTarget(animation, target);
+            Storyboard.SetTargetProperty(animation, property);
+            storyboard.Children.Add(animation);
+        }
+        Add(row, "Opacity", 0, 1, 1);
+        Add(transform, "TranslateY", 4, -1, 0);
+        Add(transform, "ScaleX", .96, 1.01, 1);
+        Add(transform, "ScaleY", .96, 1.01, 1);
+        storyboard.Begin();
+        return storyboard;
     }
 
     private static string LocalizedLabel(string label)
@@ -93,42 +117,4 @@ internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
             ? string.Format(ReactorQuestionPanel.L("Chat_Run_Tool", "Running {0}"), label[8..]) : label;
     }
 
-    // Native geometry adapted from OpenClaw's MIT-licensed claw. See THIRD_PARTY_NOTICES.md.
-    private static PathElement ClawPath(bool jaw) =>
-        Path2D().StrokeThickness(1.6).StrokeLineJoin(PenLineJoin.Round)
-            .Set(path =>
-            {
-                path.Data ??= CreateClaw(jaw);
-                path.Style = (Style)Application.Current.Resources["ChatEffortStrokeStyle"];
-                path.ClearValue(Microsoft.UI.Xaml.Shapes.Shape.StrokeProperty);
-            });
-
-    private static Geometry CreateClaw(bool jaw)
-    {
-        var geometry = new PathGeometry();
-        var figure = new PathFigure { StartPoint = jaw ? new(5.6, 12.2) : new(10.2, 20), IsClosed = true };
-        if (jaw)
-        {
-            figure.Segments.Add(new BezierSegment { Point1 = new(5.2, 5.6), Point2 = new(10.4, 1.4), Point3 = new(15.6, 2) });
-            figure.Segments.Add(new BezierSegment { Point1 = new(19.4, 2.6), Point2 = new(21.8, 5.2), Point3 = new(22.6, 8.2) });
-            figure.Segments.Add(new BezierSegment { Point1 = new(20.9, 7.7), Point2 = new(19.2, 7.6), Point3 = new(17.6, 7.9) });
-            figure.Segments.Add(new LineSegment { Point = new(16.9, 6.3) });
-            figure.Segments.Add(new LineSegment { Point = new(15.2, 8.5) });
-            figure.Segments.Add(new BezierSegment { Point1 = new(13.6, 9.4), Point2 = new(12.2, 10.9), Point3 = new(11.6, 12.4) });
-            figure.Segments.Add(new LineSegment { Point = new(6.8, 13) });
-        }
-        else
-        {
-            var hub = new PathFigure { StartPoint = new(8.2, 10), IsClosed = true };
-            hub.Segments.Add(new ArcSegment { Point = new(8.2, 20.4), Size = new(5.2, 5.2), IsLargeArc = true });
-            hub.Segments.Add(new ArcSegment { Point = new(8.2, 10), Size = new(5.2, 5.2), IsLargeArc = true });
-            geometry.Figures.Add(hub);
-            figure.Segments.Add(new BezierSegment { Point1 = new(14.5, 20.8), Point2 = new(19, 18.6), Point3 = new(22.3, 13.2) });
-            figure.Segments.Add(new BezierSegment { Point1 = new(21, 12.9), Point2 = new(19.7, 12.7), Point3 = new(18.4, 12.8) });
-            foreach (var point in new Point[] { new(17.5, 14.6), new(16, 12.9), new(14.3, 14.5), new(13.5, 13), new(11.5, 14.2) })
-                figure.Segments.Add(new LineSegment { Point = point });
-        }
-        geometry.Figures.Add(figure);
-        return geometry;
-    }
 }

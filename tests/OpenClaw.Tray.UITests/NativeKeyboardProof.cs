@@ -26,15 +26,24 @@ internal static class NativeKeyboardProof
                 return;
             await Task.Delay(100);
         }
-        throw new InvalidOperationException("Windows did not allow the keyboard proof window to become foreground.");
+        var foreground = GetForegroundWindow();
+        GetWindowThreadProcessId(foreground, out var process);
+        throw new InvalidOperationException(
+            $"Windows did not allow proof window 0x{window:X} (PID {Environment.ProcessId}) to become foreground. " +
+            $"Foreground is 0x{foreground:X}, PID {process}.");
     }
 
-    public static void Press(nint window, VirtualKey key, bool shift = false)
+    public static void Press(nint window, VirtualKey key, bool shift = false, bool control = false)
     {
         if (Environment.GetEnvironmentVariable("OPENCLAW_RUN_KEYBOARD_PROOF") != "1")
             throw new InvalidOperationException("Native keyboard proof was not explicitly enabled.");
-        if (window == 0 || GetForegroundWindow() != window)
-            throw new InvalidOperationException("The proof window must be foreground before injecting keys.");
+        var foreground = GetForegroundWindow();
+        if (window == 0 || foreground != window)
+        {
+            GetWindowThreadProcessId(foreground, out var process);
+            throw new InvalidOperationException(
+                $"The proof window 0x{window:X} must be foreground before injecting keys. Foreground is 0x{foreground:X}, PID {process}.");
+        }
         foreach (var modifier in new[] { VirtualKey.Shift, VirtualKey.Control, VirtualKey.Menu,
                      VirtualKey.LeftWindows, VirtualKey.RightWindows })
         {
@@ -44,17 +53,23 @@ internal static class NativeKeyboardProof
         if ((GetKeyState((int)VirtualKey.CapitalLock) & 1) != 0)
             throw new InvalidOperationException("Turn off Caps Lock before running keyboard proof.");
 
-        Input[] keys = shift
-            ? [Keyboard(VirtualKey.Shift), Keyboard(key), Keyboard(key, up: true), Keyboard(VirtualKey.Shift, up: true)]
-            : [Keyboard(key), Keyboard(key, up: true)];
+        List<Input> sequence = [];
+        if (control) sequence.Add(Keyboard(VirtualKey.Control));
+        if (shift) sequence.Add(Keyboard(VirtualKey.Shift));
+        sequence.Add(Keyboard(key));
+        sequence.Add(Keyboard(key, up: true));
+        if (shift) sequence.Add(Keyboard(VirtualKey.Shift, up: true));
+        if (control) sequence.Add(Keyboard(VirtualKey.Control, up: true));
+        var keys = sequence.ToArray();
         var inserted = SendInput((uint)keys.Length, keys, Marshal.SizeOf<Input>());
         if (inserted != keys.Length)
         {
             var error = Marshal.GetLastWin32Error();
             // A partial injection must not leave the test's modifiers held down.
-            Input[] release = shift
-                ? [Keyboard(key, up: true), Keyboard(VirtualKey.Shift, up: true)]
-                : [Keyboard(key, up: true)];
+            List<Input> releases = [Keyboard(key, up: true)];
+            if (shift) releases.Add(Keyboard(VirtualKey.Shift, up: true));
+            if (control) releases.Add(Keyboard(VirtualKey.Control, up: true));
+            var release = releases.ToArray();
             var released = SendInput((uint)release.Length, release, Marshal.SizeOf<Input>());
             throw new Win32Exception(error,
                 $"Keyboard proof injected {inserted}/{keys.Length} events; cleanup injected {released}/{release.Length} releases.");
@@ -108,6 +123,9 @@ internal static class NativeKeyboardProof
 
     [DllImport("user32.dll")]
     private static extern nint GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(nint window, out uint process);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

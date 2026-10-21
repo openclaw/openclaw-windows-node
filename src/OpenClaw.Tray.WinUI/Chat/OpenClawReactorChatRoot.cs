@@ -63,6 +63,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
         var props = Props;
         var (snapshot, setSnapshot) = UseState<ChatDataSnapshot?>(null, threadSafe: true);
         var (viewportWidth, setViewportWidth) = UseState(props.IsCompact ? 480d : 800d);
+        var (viewportHeight, setViewportHeight) = UseState(620d);
+        var (collapsedQuestionId, setCollapsedQuestionId) = UseState<string?>(null);
         var questionsOwner = (props.Provider as OpenClawChatDataProvider)?.Questions;
         var (questionSnapshot, setQuestionSnapshot) = UseState(questionsOwner?.Snapshot(), threadSafe: true);
         UseEffect((Func<Action>)(() =>
@@ -366,10 +368,15 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 props.ShowSessionPicker));
         }
 
+        var pendingQuestion = effectiveThread is null ? null : questionSnapshot?.Prompts.FirstOrDefault(prompt =>
+            prompt.Request.Status == "pending"
+            && ChatQuestionCoordinator.Matches(prompt.Request, effectiveThread.Id, effectiveThread.AgentId));
+        var questionCollapsed = pendingQuestion is not null && collapsedQuestionId == pendingQuestion.Request.Id;
         var questions = props.Provider is OpenClawChatDataProvider { Questions: { } questionCoordinator }
             && effectiveThread is not null
                 ? Component<ReactorQuestionPanel, ReactorQuestionPanelProps>(
-                    new(questionCoordinator, effectiveThread.Id, effectiveThread.AgentId))
+                    new(questionCoordinator, effectiveThread.Id, effectiveThread.AgentId, viewportWidth, viewportHeight,
+                        collapsed => setCollapsedQuestionId(collapsed ? pendingQuestion?.Request.Id : null), questionCollapsed))
                 : Empty();
         var showWelcome = mode == ReactorChatTimelineMode.Empty;
         // Keep the composer at the same tree position across the first send. Moving
@@ -394,18 +401,24 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 scroll.HorizontalContentAlignment = HorizontalAlignment.Stretch;
                 scroll.VerticalContentAlignment = showWelcome ? VerticalAlignment.Center : VerticalAlignment.Top;
             })
+            .IsVisible(pendingQuestion is null || questionCollapsed)
             .AutomationId("ChatComposerArea")
             .WithKey("chat-composer-area");
         return Grid(
             [GridSize.Star()],
             [showWelcome ? GridSize.Auto : GridSize.Star(), GridSize.Auto, showWelcome ? GridSize.Star() : GridSize.Auto],
             showWelcome ? Empty().Grid(row: 0) : timelineElement.Grid(row: 0),
-            questions.Grid(row: 1),
+            Border(questions).WithKey("chat-question-area").Grid(row: 1),
             composerArea.Grid(row: 2))
             .Background(Theme.Ref("ChatCanvasBrush"))
+            .Set(grid =>
+            {
+                grid.Style = (Style)Application.Current.Resources["ChatCanvasStyle"];
+                grid.ClearValue(Microsoft.UI.Xaml.Controls.Panel.BackgroundProperty);
+            })
             .HAlign(HorizontalAlignment.Stretch)
             .VAlign(VerticalAlignment.Stretch)
-            .OnMount(control => ChatVisuals.Observe(control, setViewportWidth))
+            .OnMount(control => ChatVisuals.Observe(control, setViewportWidth, setViewportHeight))
             .OnUnmount(ChatVisuals.StopObserving);
     }
 

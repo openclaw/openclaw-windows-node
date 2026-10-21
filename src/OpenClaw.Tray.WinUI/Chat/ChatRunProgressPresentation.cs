@@ -10,14 +10,13 @@ internal static class ChatRunProgressProjection
 {
     internal static ChatRunProgressPresentation? Project(ChatTimelineState timeline, bool awaitingQuestion = false)
     {
-        if (!timeline.TurnActive && timeline.TurnStartedAt is null && !awaitingQuestion)
-            return null;
         var waiting = awaitingQuestion || timeline.PendingPermission is not null
             || timeline.ProgressText == "Waiting for approval";
+        if (!timeline.TurnActive && !waiting)
+            return null;
         var activeTool = timeline.Entries.LastOrDefault(entry =>
             entry.Kind == ChatTimelineItemKind.ToolCall && entry.ToolResult == ChatToolCallStatus.InProgress);
         var label = awaitingQuestion ? "Waiting for your answer"
-            : !timeline.TurnActive ? "Finished"
             : waiting ? "Waiting for approval"
             : timeline.ProgressText is { Length: > 0 } progress ? progress
             : activeTool is not null ? $"Running {activeTool.ToolName ?? "tool"}"
