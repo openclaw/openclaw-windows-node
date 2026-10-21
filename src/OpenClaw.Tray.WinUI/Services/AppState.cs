@@ -116,6 +116,9 @@ internal sealed class AppState : INotifyPropertyChanged
     private JsonElement? _agentsList;
     public JsonElement? AgentsList { get => _agentsList; set => SetField(ref _agentsList, value); }
 
+    private bool _agentsListUnsupported;
+    public bool AgentsListUnsupported { get => _agentsListUnsupported; set => SetField(ref _agentsListUnsupported, value); }
+
     private JsonElement? _config;
     public JsonElement? Config { get => _config; set => SetField(ref _config, value); }
 
@@ -273,6 +276,7 @@ internal sealed class AppState : INotifyPropertyChanged
         ModelsList = null;
         Presence = null;
         AgentsList = null;
+        AgentsListUnsupported = false;
         Config = null;
         ConfigSchema = null;
         SkillsData = null;

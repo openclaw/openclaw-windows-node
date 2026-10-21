@@ -15,6 +15,7 @@ internal sealed class WorkspaceAgentSelection
     private bool _awaitingGatewayRoster = true;
     public string? AgentId { get; private set; }
     public bool HasCurrentRoster { get; private set; }
+    public bool HasSessionAccess { get; private set; }
     public bool IsReady { get; private set; }
 
     public void Select(string? agentId)
@@ -24,7 +25,7 @@ internal sealed class WorkspaceAgentSelection
     }
 
     public void Refresh(string? gatewayId, JsonElement? data, IReadOnlyList<WorkspaceAgent> agents,
-        bool rosterUpdated = false)
+        bool rosterUpdated = false, bool rosterUnsupported = false)
     {
         if (_gatewayId is not null && gatewayId is not null && _gatewayId != gatewayId)
         {
@@ -33,14 +34,18 @@ internal sealed class WorkspaceAgentSelection
         }
         if (gatewayId is not null)
             _gatewayId = gatewayId;
-        if (rosterUpdated && WorkspaceProjection.HasAgentRoster(data))
+        if (rosterUpdated && (WorkspaceProjection.HasAgentRoster(data) || rosterUnsupported))
             _awaitingGatewayRoster = false;
 
         // A target switch can precede delivery of the old cached roster's clear events.
         var currentRoster = _awaitingGatewayRoster ? null : data;
-        AgentId = WorkspaceProjection.SelectedAgentId(currentRoster, agents, AgentId);
-        HasCurrentRoster = !_awaitingGatewayRoster && WorkspaceProjection.HasAgentRoster(currentRoster);
-        IsReady = HasCurrentRoster && WorkspaceProjection.IsAgentSelectionReady(currentRoster, agents, AgentId);
+        var legacySessionAccess = !_awaitingGatewayRoster && rosterUnsupported;
+        AgentId = legacySessionAccess ? null : WorkspaceProjection.SelectedAgentId(currentRoster, agents, AgentId);
+        HasCurrentRoster = !_awaitingGatewayRoster && !legacySessionAccess &&
+            WorkspaceProjection.HasAgentRoster(currentRoster);
+        HasSessionAccess = HasCurrentRoster || legacySessionAccess;
+        IsReady = legacySessionAccess ||
+            HasCurrentRoster && WorkspaceProjection.IsAgentSelectionReady(currentRoster, agents, AgentId);
     }
 }
 
