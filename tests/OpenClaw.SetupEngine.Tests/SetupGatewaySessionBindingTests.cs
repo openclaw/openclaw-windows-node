@@ -313,6 +313,22 @@ public sealed class SetupGatewaySessionBindingTests
     }
 
     [Fact]
+    public void ProxyBearerRotationInvalidatesSetupSessionAuthority()
+    {
+        var original = Original with
+        {
+            ProtectedProxyBearerToken = "protected-a",
+            ProxyBearerOrigin = "wss://gateway.example",
+        };
+        var binding = new SetupGatewaySessionBinding(original);
+
+        Assert.Throws<InvalidOperationException>(() => binding.RequireCurrent(
+            original with { ProtectedProxyBearerToken = "protected-b" }));
+        Assert.Throws<InvalidOperationException>(() => binding.RequireCurrent(
+            original with { ProxyBearerOrigin = "wss://other.example" }));
+    }
+
+    [Fact]
     public void MissingActiveGateway_FailsAdmissionAndRouteProjection()
     {
         var binding = new SetupGatewaySessionBinding(Original);

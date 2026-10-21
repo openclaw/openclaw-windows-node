@@ -893,6 +893,23 @@ public class GatewayConnectionManagerTests : IDisposable
     }
 
     [Fact]
+    public void ProxyBearerMutationInvalidatesCredentialHandoffAuthority()
+    {
+        var original = new GatewayRecord
+        {
+            Id = "gateway", Url = "wss://gateway.example/ws",
+            ProtectedProxyBearerToken = "protected-a", ProxyBearerOrigin = "wss://gateway.example",
+        };
+
+        Assert.False(GatewayConnectionManager.IsSameCredentialHandoffRecord(
+            original with { ProtectedProxyBearerToken = null }, original));
+        Assert.False(GatewayConnectionManager.IsSameCredentialHandoffRecord(
+            original with { ProtectedProxyBearerToken = "protected-b" }, original));
+        Assert.False(GatewayConnectionManager.IsSameCredentialHandoffRecord(
+            original with { ProxyBearerOrigin = "wss://other.example" }, original));
+    }
+
+    [Fact]
     public async Task NativeGateway_ActiveRemovalUsesDisconnectBeforeRegistryMutation()
     {
         SetupNativeGateway();

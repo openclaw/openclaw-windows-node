@@ -103,9 +103,12 @@ public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvent
             credential.IsBootstrapToken ? "" : credential.Token,
             identityPath,
             nodeLogger,
-            bootstrapToken: credential.IsBootstrapToken ? credential.Token : null);
+            bootstrapToken: credential.IsBootstrapToken ? credential.Token : null,
+            proxyBearerOnly: credential.Source == CredentialResolver.SourceProxyBearerOnly);
         client.HandshakeAuthorizationAsync = HandshakeAuthorizationAsync;
         client.ReconnectAuthorizationAsync = ReconnectAuthorizationAsync;
+        client.ProxyBearerToken = credential.ProxyBearerToken;
+        client.ProxyBearerOrigin = credential.ProxyBearerOrigin;
 
         // Share v2 signature flag from operator — avoid wasting a roundtrip on v3
         if (useV2Signature)

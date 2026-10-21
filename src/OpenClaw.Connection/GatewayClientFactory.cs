@@ -28,10 +28,13 @@ public sealed class GatewayClientFactory : IGatewayClientFactory
             bootstrapPairAsNode: false,
             identityPath: identityPath,
             ignoreStoredDeviceToken: credential.IsBootstrapToken,
-            assistantMediaAuthToken: credential.InteractiveHttpToken)
+            assistantMediaAuthToken: credential.InteractiveHttpToken,
+            proxyBearerOnly: credential.Source == CredentialResolver.SourceProxyBearerOnly)
         {
             SupportsExecApprovals = SupportsExecApprovals,
             ClientIdentity = ClientIdentity,
+            ProxyBearerToken = credential.ProxyBearerToken,
+            ProxyBearerOrigin = credential.ProxyBearerOrigin,
         };
 
         return new GatewayClientLifecycleAdapter(client);

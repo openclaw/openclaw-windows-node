@@ -27,6 +27,7 @@ public class TestWebSocketClient : WebSocketClientBase
     public int OnDisconnectedCallCount { get; private set; }
     public int OnErrorCallCount { get; private set; }
     public Exception? LastError { get; private set; }
+    public Exception? LastConnectionException { get; private set; }
     public int OnDisposingCallCount { get; private set; }
     public ConcurrentQueue<(long Generation, GatewayHandshakePhase Phase)> TransportObservations { get; } = new();
     public bool AutoReconnectEnabled { get; set; } = true;
@@ -88,6 +89,7 @@ public class TestWebSocketClient : WebSocketClientBase
         DeniedReconnectCount++;
     protected override void OnReconnectAuthorizationDeferred(ReconnectAuthorizationResult authorization) =>
         DeferredReconnectCount++;
+    protected override void OnConnectionException(Exception ex) => LastConnectionException = ex;
 
     protected override void OnDisposing()
     {
@@ -188,6 +190,24 @@ public class WebSocketClientBaseTests(ITestOutputHelper output)
         while (await transport.ReadAsync(buffer, deadline.Token) != 0)
         {
         }
+    }
+
+    [Theory]
+    [InlineData("ws://127.0.0.1:18789", "ws://127.0.0.1:18789")]
+    [InlineData("wss://gateway.example/ws", "wss://other.example")]
+    public async Task ProxyBearer_RejectsNonTlsOrWrongOriginBeforeConnecting(
+        string url, string origin)
+    {
+        using var client = new TestWebSocketClient(url, "gateway-token", _logger)
+        {
+            ProxyBearerToken = "proxy-token",
+            ProxyBearerOrigin = origin,
+            AutoReconnectEnabled = false,
+        };
+
+        await client.ConnectAsync();
+
+        Assert.IsType<InvalidOperationException>(client.LastConnectionException);
     }
 
     [Fact]

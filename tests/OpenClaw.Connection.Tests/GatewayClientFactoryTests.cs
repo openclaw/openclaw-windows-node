@@ -7,6 +7,29 @@ namespace OpenClaw.Connection.Tests;
 public sealed class GatewayClientFactoryTests
 {
     [Fact]
+    public void Create_ProxyAuthenticatedConnection_DoesNotPutProxyTokenInGatewayAuth()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "openclaw-proxy-factory-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            using var lifecycle = new GatewayClientFactory().Create(
+                "wss://gateway.example/ws",
+                new GatewayCredential(string.Empty, false, CredentialResolver.SourceProxyBearerOnly)
+                {
+                    ProxyBearerToken = "proxy-only-token",
+                    ProxyBearerOrigin = "wss://gateway.example",
+                },
+                tempDir,
+                NullLogger.Instance);
+
+            Assert.Empty(GetAuthPayload(lifecycle.DataClient));
+            Assert.Equal("proxy-only-token", lifecycle.DataClient.ProxyBearerToken);
+        }
+        finally { Directory.Delete(tempDir, recursive: true); }
+    }
+
+    [Fact]
     public void Create_BootstrapCredential_PairsAsOperator()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), "openclaw-gateway-factory-" + Guid.NewGuid().ToString("N"));

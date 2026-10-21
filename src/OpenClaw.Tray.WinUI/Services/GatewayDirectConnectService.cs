@@ -18,7 +18,9 @@ internal sealed record GatewayDirectConnectRequest(
     string? EditingGatewayId = null,
     bool PreserveExistingSharedTokenWhenMissing = false,
     string? BootstrapToken = null,
-    bool NativeSetup = false);
+    bool NativeSetup = false,
+    string? ProxyBearerToken = null,
+    bool ClearProxyBearerToken = false);
 
 internal sealed record GatewayDirectConnectResult(
     GatewayDirectConnectOutcome Outcome,
@@ -368,8 +370,19 @@ internal sealed class GatewayDirectConnectService
         GatewayDirectConnectRequest request,
         GatewayRecord? existing,
         string recordId,
-        bool preserveExistingSharedToken) =>
-        new GatewayRecord
+        bool preserveExistingSharedToken)
+    {
+        var newProxyOrigin = string.IsNullOrWhiteSpace(request.ProxyBearerToken)
+            ? null
+            : GatewayProxyBearerCredential.RequireOrigin(request.GatewayUrl);
+        if (newProxyOrigin is not null && request.SshTunnel is not null)
+            throw new InvalidDataException("A proxy Bearer token cannot be combined with an SSH tunnel.");
+        var preserveProxy = !request.ClearProxyBearerToken && newProxyOrigin is null &&
+            request.SshTunnel is null &&
+            existing is not null && existing.Id == recordId &&
+            GatewayProxyBearerCredential.MatchesOrigin(request.GatewayUrl, existing.ProxyBearerOrigin);
+
+        return new GatewayRecord
         {
             Id = recordId,
             Url = request.GatewayUrl,
@@ -385,9 +398,14 @@ internal sealed class GatewayDirectConnectService
                 ((request.NativeSetup || string.IsNullOrWhiteSpace(request.SharedToken)) && preserveExistingSharedToken
                     ? existing?.BootstrapToken
                     : null),
+            ProtectedProxyBearerToken = newProxyOrigin is not null
+                ? GatewayProxyBearerCredential.Protect(request.ProxyBearerToken!, newProxyOrigin)
+                : preserveProxy ? existing?.ProtectedProxyBearerToken : null,
+            ProxyBearerOrigin = newProxyOrigin ?? (preserveProxy ? existing?.ProxyBearerOrigin : null),
             SshTunnel = request.SshTunnel,
             LastConnected = existing?.LastConnected,
         }.PreserveAdvancedFields(existing);
+    }
 
     /// <summary>
     /// True only when an edit keeps the same shared token inside the same credential realm.

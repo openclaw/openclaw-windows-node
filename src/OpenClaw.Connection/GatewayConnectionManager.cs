@@ -602,6 +602,9 @@ public sealed class GatewayConnectionManager :
                 var clientCredential = credential with
                 {
                     InteractiveHttpToken = interactiveHttpToken,
+                    ProxyBearerToken = record.SshTunnel is null
+                        ? GatewayProxyBearerCredential.Reveal(record) : null,
+                    ProxyBearerOrigin = record.SshTunnel is null ? record.ProxyBearerOrigin : null,
                 };
                 lifecycle = _clientFactory.Create(
                     connectUrl,
@@ -2652,7 +2655,7 @@ public sealed class GatewayConnectionManager :
         }
     }
 
-    private static bool IsSameCredentialHandoffRecord(
+    internal static bool IsSameCredentialHandoffRecord(
         GatewayRecord current,
         GatewayRecord expected) =>
         string.Equals(current.Id, expected.Id, StringComparison.Ordinal) &&
@@ -2664,6 +2667,14 @@ public sealed class GatewayConnectionManager :
         string.Equals(
             current.BootstrapToken,
             expected.BootstrapToken,
+            StringComparison.Ordinal) &&
+        string.Equals(
+            current.ProtectedProxyBearerToken,
+            expected.ProtectedProxyBearerToken,
+            StringComparison.Ordinal) &&
+        string.Equals(
+            current.ProxyBearerOrigin,
+            expected.ProxyBearerOrigin,
             StringComparison.Ordinal) &&
         current.IsLocal == expected.IsLocal &&
         string.Equals(

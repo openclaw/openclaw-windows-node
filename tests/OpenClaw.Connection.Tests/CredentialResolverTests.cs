@@ -108,6 +108,26 @@ public class CredentialResolverTests
     }
 
     [Fact]
+    public void ResolveProxyOnly_RequiresAnOriginBoundProtectedCredentialAndNoCorruptDeviceIdentity()
+    {
+        var record = new GatewayRecord
+        {
+            Id = "proxy-gateway", Url = "wss://gateway.example/ws",
+            ProtectedProxyBearerToken = "protected", ProxyBearerOrigin = "wss://gateway.example",
+        };
+
+        var operatorResult = _resolver.ResolveOperatorDetailed(record, "/id");
+        var nodeResult = _resolver.ResolveNodeDetailed(record, "/id");
+        Assert.Equal(CredentialResolver.SourceProxyBearerOnly, operatorResult.Credential?.Source);
+        Assert.Equal(CredentialResolver.SourceProxyBearerOnly, nodeResult.Credential?.Source);
+        Assert.Equal(string.Empty, operatorResult.Credential?.Token);
+
+        _mockReader.OperatorReadResult = DeviceTokenReadResult.Corrupt("bad identity");
+        Assert.Null(_resolver.ResolveOperatorDetailed(record, "/id").Credential);
+        Assert.Null(_resolver.ResolveNodeDetailed(record with { Url = "wss://other.example/ws" }, "/id").Credential);
+    }
+
+    [Fact]
     public void ResolveOperatorDetailed_ReturnsMissing_WhenNoCredentials()
     {
         var record = new GatewayRecord { Id = "gw-1", Url = "wss://test" };

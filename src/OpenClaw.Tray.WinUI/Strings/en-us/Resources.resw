@@ -10324,4 +10324,16 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Panel_LauncherSubagents" xml:space="preserve"><value>Follow delegated work from this conversation.</value></data>
   <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>Widgets and tabs this session published.</value></data>
   <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>No panels are available for this conversation yet.</value></data>
+  <data name="ConnectionPage_ProxyBearerToken.Header" xml:space="preserve">
+    <value>Proxy Bearer token (optional)</value>
+  </data>
+  <data name="ConnectionPage_ProxyBearerToken.PlaceholderText" xml:space="preserve">
+    <value>Paste a separate proxy token</value>
+  </data>
+  <data name="ConnectionPage_ClearProxyBearerToken.Content" xml:space="preserve">
+    <value>Remove saved proxy token</value>
+  </data>
+  <data name="ConnectionPage_ProxyLoginRedirect" xml:space="preserve">
+    <value>Gateway redirects to proxy sign-in. Configure a proxy Bearer token.</value>
+  </data>
 </root>

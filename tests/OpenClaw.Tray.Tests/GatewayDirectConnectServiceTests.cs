@@ -527,6 +527,31 @@ public sealed class GatewayDirectConnectServiceTests : IDisposable
     }
 
     [Fact]
+    public void BuildCandidate_ProxyCredentialIsPreservedOnlyForTheSameRecordAndOrigin()
+    {
+        var existing = new GatewayRecord
+        {
+            Id = "gateway-1", Url = "wss://gateway.example/ws",
+            ProtectedProxyBearerToken = "encrypted", ProxyBearerOrigin = "wss://gateway.example",
+        };
+        var request = new GatewayDirectConnectRequest(existing.Url, null, null, null, existing.Id);
+
+        Assert.Equal("encrypted", GatewayDirectConnectService.BuildCandidate(
+            request, existing, existing.Id, preserveExistingSharedToken: false).ProtectedProxyBearerToken);
+        Assert.Null(GatewayDirectConnectService.BuildCandidate(
+            request with { GatewayUrl = "wss://other.example/ws" }, existing, existing.Id,
+            preserveExistingSharedToken: false).ProtectedProxyBearerToken);
+        Assert.Null(GatewayDirectConnectService.BuildCandidate(
+            request with { ClearProxyBearerToken = true }, existing, existing.Id,
+            preserveExistingSharedToken: false).ProtectedProxyBearerToken);
+        Assert.Null(GatewayDirectConnectService.BuildCandidate(
+            request with { SshTunnel = new SshTunnelConfig("user", "host.example", 18789, 45678) }, existing, existing.Id,
+            preserveExistingSharedToken: false).ProtectedProxyBearerToken);
+        Assert.Null(GatewayDirectConnectService.BuildCandidate(
+            request, existing, "gateway-2", preserveExistingSharedToken: false).ProtectedProxyBearerToken);
+    }
+
+    [Fact]
     public async Task Connect_UnchangedSharedToken_KeepsDeviceTokensAndBootstrap()
     {
         var previous = AddPreviousGateway();
