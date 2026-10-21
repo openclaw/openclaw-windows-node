@@ -13,6 +13,34 @@ public sealed class WorkspaceWindowProofTests
     [Theory]
     [InlineData("Light")]
     [InlineData("Dark")]
+    public async Task OfflineAssistantMenuKeepsConnectionEntryWithoutEnablingSessionCreation(string theme)
+    {
+        using var app = new AccessibilityAppFixture(
+            initializeAxe: false, theme: theme, syntheticData: false);
+        await app.NavigateAsync("chat", "ChatPage", "WorkspaceOwner");
+        var workspace = AutomationElement.FromHandle(app.HubWindowHandle);
+        var pid = workspace.Current.ProcessId;
+        Assert.False(Find(workspace, "WorkspaceSessionsAdd").Current.IsEnabled);
+        var selector = Find(workspace, "WorkspaceAssistantSelector");
+        Assert.True(selector.Current.IsEnabled);
+        var dropdown = (ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern);
+        dropdown.Expand();
+        await WaitUntilAsync(() => ProcessWindows(pid).Cast<AutomationElement>().Any(window =>
+            window.FindFirst(TreeScope.Descendants, new PropertyCondition(
+                AutomationElement.AutomationIdProperty, "WorkspaceNewAgent")) is not null));
+        var entry = ProcessWindows(pid).Cast<AutomationElement>()
+            .Select(window => window.FindFirst(TreeScope.Descendants, new PropertyCondition(
+                AutomationElement.AutomationIdProperty, "WorkspaceNewAgent")))
+            .First(item => item is not null)!;
+        Assert.Equal("New agent", entry.Current.Name);
+        Assert.True(entry.Current.IsEnabled);
+        dropdown.Collapse();
+        Assert.False(Find(workspace, "WorkspaceSessionsAdd").Current.IsEnabled);
+    }
+
+    [Theory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
     public async Task SidebarActionBackplates_AlignWithNavigationItems(string theme)
     {
         using var app = new AccessibilityAppFixture(initializeAxe: false, theme: theme,
