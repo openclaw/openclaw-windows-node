@@ -44,6 +44,35 @@ function Assert-DesktopAbsent([string]$Name) {
     }
 }
 
+function Get-RecordedOwnedProcess($Record) {
+    $candidate=Get-Process -Id $Record.processId -ErrorAction SilentlyContinue
+    if ($null -eq $candidate) { return $null }
+    try {
+        [void]$candidate.SafeHandle
+        if ($candidate.StartTime.ToFileTimeUtc() -ne $Record.processStartFileTime) {
+            $candidate.Dispose()
+            return $null
+        }
+        if (!$candidate.HasExited -and $candidate.Path -cne $NativeProbeExecutable) {
+            throw 'The recorded timeout fixture process has an unexpected image.'
+        }
+        return $candidate
+    } catch {
+        $candidate.Dispose()
+        throw
+    }
+}
+
+function Assert-RecordedProcessExited($Record) {
+    $owned=Get-RecordedOwnedProcess $Record
+    if ($null -eq $owned) { return }
+    try {
+        if (!$owned.WaitForExit($ChildSignalTimeoutMs)) {
+            throw 'An exact recorded timeout root or descendant remains alive after tree teardown.'
+        }
+    } finally { $owned.Dispose() }
+}
+
 try {
     # Only the task-owned controller uses this mode; every child must receive the quiet flags.
     [void][ProofCallerErrorMode]::SetErrorMode($callerErrorMode)
@@ -171,6 +200,77 @@ try {
     if (!$initializationExit.nativeHandleSignaled -or $initializationExit.nativeExitStatus -cne '0xC0000142') {
         throw 'The initialization-failure proof has no explicit native exit-status receipt.'
     }
+    $treeId=[Guid]::NewGuid().ToString('N')
+    $treeReady=[Threading.EventWaitHandle]::new($false,'ManualReset',"Local\TimeoutRoot$treeId")
+    $descendantReady=[Threading.EventWaitHandle]::new($false,'ManualReset',"Local\TimeoutChild$treeId")
+    $treeRelease=[Threading.EventWaitHandle]::new($false,'ManualReset',"Local\TimeoutRelease$treeId")
+    $treeResult="$OutputDirectory\timeout-tree.json"
+    $rootReceipt="$OutputDirectory\timeout-root.json"
+    $descendantReceipt="$OutputDirectory\timeout-descendant.json"
+    $treeError=$null
+    try {
+        $treeArguments='ownership-tree "Local\TimeoutRoot{0}" "Local\TimeoutChild{0}" "Local\TimeoutRelease{0}" "{1}" "{2}"' -f $treeId,$rootReceipt,$descendantReceipt
+        $treeFailure=$null
+        try {
+            & $Launcher -Executable $NativeProbeExecutable -ArgumentLine $treeArguments `
+                -DataDirectory "$OutputDirectory\timeout-profile" -McpPort 0 -ConsoleProcess -WaitForExit `
+                -ProcessTimeoutSeconds ([int][Math]::Ceiling($ChildSignalTimeoutMs / 1000.0)) `
+                -ResultPath $treeResult
+        } catch { $treeFailure=$_ }
+        Assert-Sentinels
+        if (!$treeFailure -or $treeFailure.Exception.Message -ne 'The exact-owned desktop process exceeded its bound.') {
+            throw [InvalidOperationException]::new('The controlled tree did not reach timeout with successful verified-root teardown.', $treeFailure.Exception)
+        }
+        if (!$treeReady.WaitOne(0) -or !$descendantReady.WaitOne(0)) {
+            throw 'The timeout fixture did not establish both controlled waiting processes.'
+        }
+        $rootRecord=Get-Content -LiteralPath $rootReceipt -Raw | ConvertFrom-Json
+        $descendantRecord=Get-Content -LiteralPath $descendantReceipt -Raw | ConvertFrom-Json
+        $rootLaunch=Get-Content -LiteralPath "$treeResult.launch.json" -Raw | ConvertFrom-Json
+        if ($rootRecord.processId -ne $rootLaunch.processId -or
+            $rootRecord.processStartFileTime -ne ([datetime]$rootLaunch.processStartUtc).ToFileTimeUtc()) {
+            throw 'The timeout fixture root does not match the native launch identity.'
+        }
+        Assert-RecordedProcessExited $rootRecord
+        Assert-RecordedProcessExited $descendantRecord
+    } catch { $treeError=$_ }
+    finally {
+        $cleanupErrors=[Collections.Generic.List[Exception]]::new()
+        $treeRelease.Set() | Out-Null
+        foreach ($receiptPath in @($rootReceipt,$descendantReceipt)) {
+            $owned=$null
+            try {
+                if (Test-Path -LiteralPath $receiptPath) {
+                    $record=Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
+                    $owned=Get-RecordedOwnedProcess $record
+                    if ($null -ne $owned) {
+                        if (!$owned.WaitForExit($ChildSignalTimeoutMs)) {
+                            $owned.Kill()
+                            if (!$owned.WaitForExit($ChildSignalTimeoutMs)) {
+                                throw 'An exact-owned timeout fixture process could not be reaped during test cleanup.'
+                            }
+                            $cleanupErrors.Add([InvalidOperationException]::new('An exact-owned timeout fixture process required forced test cleanup after release.'))
+                        }
+                    }
+                }
+            } catch { $cleanupErrors.Add($_.Exception) }
+            finally { if ($null -ne $owned) { $owned.Dispose() } }
+        }
+        $treeReady.Dispose()
+        $descendantReady.Dispose()
+        $treeRelease.Dispose()
+        try {
+            if (Test-Path -LiteralPath "$treeResult.security.json") {
+                $treeDesktop=Get-Content -LiteralPath "$treeResult.security.json" -Raw | ConvertFrom-Json
+                Assert-DesktopAbsent $treeDesktop.desktop
+            }
+        } catch { $cleanupErrors.Add($_.Exception) }
+        if ($cleanupErrors.Count -gt 0) {
+            if ($null -ne $treeError) { $cleanupErrors.Add($treeError.Exception) }
+            throw [AggregateException]::new('Timeout fixture cleanup failed.', $cleanupErrors)
+        }
+    }
+    if ($null -ne $treeError) { throw $treeError }
     [ordered]@{
         completedUtc=[DateTimeOffset]::UtcNow.ToString('O')
         childInheritedQuietErrorMode=$true
@@ -181,6 +281,7 @@ try {
         postCreateReceiptFailureReaped=$true
         successfulNonblockingChildRetained=$true
         environmentRestored=$true
+        timeoutRootAndDescendantExited=$true
         visibleNoModalObservation='Not recorded. Requires coordinated Home observation.'
     } | ConvertTo-Json | Set-Content -LiteralPath "$OutputDirectory\quiet-startup-regression.json" -Encoding utf8
     if ($QuietStartupOnly) { return }

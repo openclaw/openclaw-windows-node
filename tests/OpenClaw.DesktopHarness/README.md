@@ -21,6 +21,11 @@ flags; `CREATE_DEFAULT_ERROR_MODE` is not used. The exact previous caller mode i
 restored immediately in finally, including CreateProcess failure. This covers
 DLL initialization failures before managed Main without changing registry or WER
 policy. A nonblocking launch still returns without waiting for child readiness.
+Only a bounded-wait timeout retains the previous process-tree teardown contract:
+the launcher pins the root's managed handle, compares its native creation FILETIME
+with the retained CreateProcess handle's identity, calls `Kill(true)`, and waits
+on the original native root handle. Identity, termination or wait failures are
+explicit cleanup errors. Other failure paths retain exact-root-only cleanup.
 
 Native-handle launch receipts (`.launch.json`) retain parent/child identities,
 start times, requested desktop, flags and error modes before writing the ordinary
@@ -96,6 +101,11 @@ failure, postlaunch failure and native DLL initialization failure must all resto
 the caller's mode and isolation environment. The DLL failure must exit within the
 existing child-signal budget with explicit `0xC0000142` and owned-desktop absence.
 No readiness-timeout result qualifies as proof of that failure.
+The native-only lane also holds an actual root and descendant on named events
+until the existing child-signal bound expires. It verifies both recorded
+PID/creation-time instances have exited, the owned desktop is absent and caller
+environment/error mode is restored. Test cleanup releases and waits verified
+survivors and reports any forced cleanup; it does not silently turn a leak green.
 The task-owned test controller uses a known mode with both quiet bits cleared so
 the inheritance check detects a missing setter even if ambient PowerShell was
 already quiet. No child is launched with that nonquiet mode, and the ambient

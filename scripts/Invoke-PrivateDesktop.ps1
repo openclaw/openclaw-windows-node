@@ -296,7 +296,30 @@ try {
     } | ConvertTo-Json | Set-Content -LiteralPath $ResultPath -Encoding utf8
     if ($WaitForExit) {
         $wait=[ProofDesktop]::WaitForSingleObject($info.process,[uint32]($ProcessTimeoutSeconds * 1000))
-        if ($wait -eq 258) { throw 'The exact-owned desktop process exceeded its bound.' }
+        if ($wait -eq 258) {
+            $timeoutRoot=$null
+            try {
+                $timeoutRoot=[Diagnostics.Process]::GetProcessById([int]$info.processId)
+                $timeoutRootHandle=$timeoutRoot.SafeHandle
+                [long]$timeoutCreated=0; [long]$timeoutExited=0; [long]$timeoutKernel=0; [long]$timeoutUser=0
+                if (![ProofDesktop]::GetProcessTimes($timeoutRootHandle.DangerousGetHandle(),
+                    [ref]$timeoutCreated,[ref]$timeoutExited,[ref]$timeoutKernel,[ref]$timeoutUser)) {
+                    throw [ComponentModel.Win32Exception]::new([Runtime.InteropServices.Marshal]::GetLastWin32Error())
+                }
+                if ($timeoutCreated -ne $created) {
+                    throw 'The timeout root PID no longer identifies the exact-owned native process.'
+                }
+                $timeoutRoot.Kill($true)
+                if ([ProofDesktop]::WaitForSingleObject($info.process,[uint32]($ProcessTimeoutSeconds * 1000)) -ne 0) {
+                    throw 'The timeout root native handle did not signal after tree termination.'
+                }
+            } catch {
+                throw [InvalidOperationException]::new('The exact-owned process timed out and verified-root tree cleanup failed.', $_.Exception)
+            } finally {
+                if ($null -ne $timeoutRoot) { $timeoutRoot.Dispose() }
+            }
+            throw 'The exact-owned desktop process exceeded its bound.'
+        }
         if ($wait -ne 0) { throw 'The exact-owned desktop process wait failed.' }
         [uint32]$nativeExitCode=0
         if (![ProofDesktop]::GetExitCodeProcess($info.process,[ref]$nativeExitCode)) {

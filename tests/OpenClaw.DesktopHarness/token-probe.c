@@ -148,8 +148,40 @@ static int ownership_wait(wchar_t **argv)
     return wait == WAIT_OBJECT_0 ? 0 : (int)GetLastError();
 }
 
+static int ownership_tree(wchar_t **argv)
+{
+    HANDLE childReady = OpenEventW(SYNCHRONIZE, FALSE, argv[3]);
+    if (!childReady) return (int)GetLastError();
+    wchar_t executable[32768], command[32768];
+    if (!GetModuleFileNameW(NULL, executable, 32768)) return (int)GetLastError();
+    if (swprintf_s(command, 32768, L"\"%ls\" ownership-wait \"%ls\" \"%ls\" \"%ls\"",
+        executable, argv[3], argv[4], argv[6]) < 0) return ERROR_INVALID_PARAMETER;
+    STARTUPINFOW inherited = {0}, startup = {0};
+    PROCESS_INFORMATION child = {0};
+    GetStartupInfoW(&inherited);
+    startup.cb = sizeof(startup);
+    startup.lpDesktop = inherited.lpDesktop;
+    if (!CreateProcessW(executable, command, NULL, NULL, FALSE, CREATE_NO_WINDOW,
+        NULL, NULL, &startup, &child)) {
+        DWORD error = GetLastError();
+        CloseHandle(childReady);
+        return (int)error;
+    }
+    DWORD ready = WaitForSingleObject(childReady, INFINITE);
+    wchar_t *rootArguments[] = {argv[0], L"ownership-wait", argv[2], argv[4], argv[5]};
+    int result = ready == WAIT_OBJECT_0 ? ownership_wait(rootArguments) : (int)GetLastError();
+    if (result) TerminateProcess(child.hProcess, (UINT)result);
+    WaitForSingleObject(child.hProcess, INFINITE);
+    CloseHandle(child.hThread);
+    CloseHandle(child.hProcess);
+    CloseHandle(childReady);
+    return result;
+}
+
 int wmain(int argc, wchar_t **argv)
 {
+    if (argc == 7 && wcscmp(argv[1], L"ownership-tree") == 0)
+        return ownership_tree(argv);
     if (argc == 5 && wcscmp(argv[1], L"ownership-wait") == 0)
         return ownership_wait(argv);
     if (argc == 3 && wcscmp(argv[1], L"--error-mode") == 0) {
