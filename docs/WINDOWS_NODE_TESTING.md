@@ -395,6 +395,12 @@ Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `ap
   applies at the SDK prelaunch boundary: confirmed approval or permission
   revocation is a policy denial, while unavailable revalidation is an internal
   failure. Both prevent launch.
+  A malformed, unreadable, unsupported or untrusted approval store is unavailable
+  policy, not proof that the owner revoked approval. Initial authorization,
+  post-prompt checks and execution-boundary revalidation retain that distinction
+  from the same policy read, fail closed and do not emit `SYSTEM_RUN_DENIED`.
+  With no legacy store pending migration, a missing current store still uses
+  the normal fresh-policy defaults.
   Presenter exceptions, failed dispatcher enqueue, dialog errors and cancelled
   prompts fail closed as `InternalError (prompt-failed)` without using
   `askFallback` or claiming a user refusal. An expired unanswered prompt likewise

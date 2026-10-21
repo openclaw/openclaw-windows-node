@@ -71,7 +71,11 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
         var identity = norm.Identity!;
 
         // Step 3: buildContext
-        var resolved = _store.ResolveReadOnly(identity.AgentId);
+        var resolution = _store.ResolveReadOnlyWithFailure(identity.AgentId);
+        if (resolution.Failure is not null)
+            return LogAndReturn(ExecApprovalV2Result.InternalError("approval-store-unavailable"),
+                correlationId, promptAttempted: false, fallbackUsed: false);
+        var resolved = resolution.Resolved;
 
         // Snapshot the authorizing policy so a human-approved command can be re-checked
         // against the live policy before execution (mirrors macOS
@@ -329,7 +333,12 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
         // writes an allowlist entry. Residual: actual process launch happens after HandleAsync
         // returns (SystemCapability), so a change in that final window is not caught here; closing
         // it fully requires revalidating the snapshot at the execution boundary.
-        if (!policyCurrency.IsStillCurrent(_store.ResolveReadOnly(identity.AgentId)))
+        var currentResolution = _store.ResolveReadOnlyWithFailure(identity.AgentId);
+        if (currentResolution.Failure is not null)
+            return LogAndReturn(
+                ExecApprovalV2Result.InternalError("approval-store-unavailable"),
+                correlationId, promptAttempted, fallbackUsed, canonical: context.DisplayCommand);
+        if (!policyCurrency.IsStillCurrent(currentResolution.Resolved))
             return LogAndReturn(
                 ExecApprovalV2Result.PolicyDenied("policy-changed-before-execution"),
                 correlationId, promptAttempted, fallbackUsed, canonical: context.DisplayCommand);
@@ -383,9 +392,16 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
 
         try
         {
-            var fresh = _store.ResolveReadOnly(execution.PolicyAgentId);
+            var fresh = _store.ResolveReadOnlyWithFailure(execution.PolicyAgentId);
+            if (fresh.Failure is not null)
+            {
+                _logger.Warn(
+                    $"[EXEC-APPROVALS] [{correlationId}] execution-boundary policy store unavailable ({fresh.Failure.Kind})");
+                return ValueTask.FromResult(
+                    ExecApprovalRevalidationResult.NotCurrent("approval-store-unavailable"));
+            }
             return ValueTask.FromResult(
-                execution.PolicyCurrency.IsStillCurrent(fresh)
+                execution.PolicyCurrency.IsStillCurrent(fresh.Resolved)
                     ? ExecApprovalRevalidationResult.Current
                     : ExecApprovalRevalidationResult.PolicyDenied(
                         "policy-changed-before-execution"));

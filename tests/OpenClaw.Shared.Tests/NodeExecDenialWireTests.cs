@@ -154,7 +154,8 @@ public sealed class NodeExecDenialWireTests(ITestOutputHelper output)
     {
         using var temp = new TempDirectory();
         WritePromptPolicy(temp.Path, "full");
-        using var store = new ExecApprovalsStore(temp.Path, NullLogger.Instance);
+        using var store = new ExecApprovalsStore(
+            temp.Path, NullLogger.Instance, stateDirOverride: temp.Path);
         IExecApprovalV2PromptHandler prompt = failure == "presenter"
             ? new CallbackPromptHandler((_, _) =>
                 throw new InvalidOperationException("fixture-presenter-failure"))
@@ -194,7 +195,8 @@ public sealed class NodeExecDenialWireTests(ITestOutputHelper output)
     {
         using var temp = new TempDirectory();
         WritePromptPolicy(temp.Path, "full");
-        using var store = new ExecApprovalsStore(temp.Path, NullLogger.Instance);
+        using var store = new ExecApprovalsStore(
+            temp.Path, NullLogger.Instance, stateDirOverride: temp.Path);
         var prompt = new ExecApprovalV2UiPromptHandler(
             action => { action(); return true; },
             (_, _) => Task.FromResult(ExecApprovalPromptOutcome.Deny),
@@ -223,7 +225,8 @@ public sealed class NodeExecDenialWireTests(ITestOutputHelper output)
     {
         using var temp = new TempDirectory();
         WritePromptPolicy(temp.Path, "full");
-        using var store = new ExecApprovalsStore(temp.Path, NullLogger.Instance);
+        using var store = new ExecApprovalsStore(
+            temp.Path, NullLogger.Instance, stateDirOverride: temp.Path);
         var clock = new ManualTimeProvider();
         var timeout = TimeSpan.FromMinutes(1);
         var prompt = new CallbackPromptHandler((_, token) =>
@@ -257,7 +260,8 @@ public sealed class NodeExecDenialWireTests(ITestOutputHelper output)
     {
         using var temp = new TempDirectory();
         WritePromptPolicy(temp.Path, "full");
-        using var store = new ExecApprovalsStore(temp.Path, NullLogger.Instance);
+        using var store = new ExecApprovalsStore(
+            temp.Path, NullLogger.Instance, stateDirOverride: temp.Path);
         using var deadline = new CancellationTokenSource(InvocationTimeout);
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var decision = new TaskCompletionSource<ExecApprovalPromptOutcome>(
@@ -288,6 +292,48 @@ public sealed class NodeExecDenialWireTests(ITestOutputHelper output)
             error.GetProperty("message").GetString());
         Assert.Equal("SYSTEM_RUN_DENIED", error.GetProperty("code").GetString());
         Assert.Empty(store.ResolveReadOnly("main").Allowlist);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RealCoordinator_StoreMalformedDuringPrompt_IsNotDefiniteDenial(bool gatewayEvent)
+    {
+        using var temp = new TempDirectory();
+        WritePromptPolicy(temp.Path, "full");
+        using var store = new ExecApprovalsStore(
+            temp.Path, NullLogger.Instance, stateDirOverride: temp.Path);
+        using var deadline = new CancellationTokenSource(InvocationTimeout);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var decision = new TaskCompletionSource<ExecApprovalPromptOutcome>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var prompt = new ExecApprovalV2UiPromptHandler(
+            action => { action(); return true; },
+            (_, cancellationToken) =>
+            {
+                entered.TrySetResult();
+                return decision.Task.WaitAsync(cancellationToken);
+            },
+            NullLogger.Instance);
+        var coordinator = new ExecApprovalsCoordinator(
+            store, AlwaysCanPresentEvaluator.Instance, prompt, NullLogger.Instance);
+        var runner = new RecordingRunner();
+
+        var invocation = InvokeOverSocketAsync(
+            gatewayEvent, coordinator, runner, SystemCommand());
+        await entered.Task.WaitAsync(deadline.Token);
+        var policyPath = Path.Combine(temp.Path, "exec-approvals.json");
+        File.WriteAllText(policyPath, "{");
+        decision.SetResult(ExecApprovalPromptOutcome.AllowAlways);
+        var response = await invocation;
+
+        Assert.Equal(0, runner.CallCount);
+        Assert.False(response.GetProperty("ok").GetBoolean());
+        var error = response.GetProperty("error");
+        Assert.Contains("InternalError", error.GetProperty("message").GetString());
+        Assert.Contains("approval-store-unavailable", error.GetProperty("message").GetString());
+        Assert.False(error.TryGetProperty("code", out _));
+        Assert.Equal("{", File.ReadAllText(policyPath));
     }
 
     private static string[] SystemCommand() =>

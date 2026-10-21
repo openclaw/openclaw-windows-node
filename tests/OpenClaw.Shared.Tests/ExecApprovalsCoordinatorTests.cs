@@ -79,6 +79,28 @@ public class ExecApprovalsCoordinatorTests : IDisposable
     private void WriteStoreFile(string json)
         => File.WriteAllText(Path.Combine(_dir, "exec-approvals.json"), json);
 
+    private IDisposable? MakeStoreUnavailable(ExecApprovalsSnapshotFailureKind failure)
+    {
+        var path = Path.Combine(_dir, "exec-approvals.json");
+        switch (failure)
+        {
+            case ExecApprovalsSnapshotFailureKind.MalformedJson:
+                WriteStoreFile("{");
+                return null;
+            case ExecApprovalsSnapshotFailureKind.UnsupportedVersion:
+                WriteStoreFile("""{"version":2}""");
+                return null;
+            case ExecApprovalsSnapshotFailureKind.UntrustedPath:
+                File.Delete(path);
+                Directory.CreateDirectory(path);
+                return null;
+            case ExecApprovalsSnapshotFailureKind.ReadFailed:
+                return new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            default:
+                throw new ArgumentOutOfRangeException(nameof(failure), failure, null);
+        }
+    }
+
     // Coordinator requests cannot carry a custom env (the validator returns
     // custom-env-not-supported), so a bare payload name resolves against the process
     // PATH. Pick the first candidate this host can actually pin: where a toolchain such
@@ -108,7 +130,7 @@ public class ExecApprovalsCoordinatorTests : IDisposable
     {
         var log = logger ?? NullLogger.Instance;
         return new(
-            new ExecApprovalsStore(_dir, log),
+            new ExecApprovalsStore(_dir, log, stateDirOverride: _dir),
             canPresent ?? AlwaysCannotPresentEvaluator.Instance,
             prompt ?? ExecApprovalV2NullPromptHandler.Instance,
             log,
@@ -190,7 +212,7 @@ public class ExecApprovalsCoordinatorTests : IDisposable
     }
 
     [Fact]
-    public async Task InvalidV2_WithLegacyV1_RemainsHardDenyAndPreservesBothFiles()
+    public async Task InvalidV2_WithLegacyV1_FailsClosedWithoutClaimingPolicyDenial()
     {
         const string legacy =
             """{"defaultAction":"allow","rules":[{"pattern":"where *","action":"allow"}]}""";
@@ -200,7 +222,10 @@ public class ExecApprovalsCoordinatorTests : IDisposable
 
         var result = await MakeCoordinator().HandleAsync(DefaultReq(), "v1-invalid-v2");
 
-        Assert.Equal(ExecApprovalV2Code.SecurityDeny, result.Code);
+        Assert.Equal(ExecApprovalV2Code.InternalError, result.Code);
+        Assert.Equal("approval-store-unavailable", result.Reason);
+        Assert.False(result.IsDefiniteDenial);
+        Assert.Null(result.Execution);
         Assert.Equal(legacy, File.ReadAllText(LegacyPolicyPath));
         Assert.Equal(invalidV2, File.ReadAllText(Path.Combine(_dir, "exec-approvals.json")));
     }
@@ -410,6 +435,88 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         Assert.False(revalidation.IsCurrent);
         Assert.False(revalidation.IsPolicyDenial);
         Assert.Equal("policy-revalidation-failed", revalidation.Reason);
+    }
+
+    [Theory]
+    [Trait("Category", "Integration")]
+    [InlineData(ExecApprovalsSnapshotFailureKind.MalformedJson)]
+    [InlineData(ExecApprovalsSnapshotFailureKind.UnsupportedVersion)]
+    [InlineData(ExecApprovalsSnapshotFailureKind.UntrustedPath)]
+    [InlineData(ExecApprovalsSnapshotFailureKind.ReadFailed)]
+    public async Task StoreUnavailableOnInitialRead_FailsClosedWithoutDefiniteDenial(
+        ExecApprovalsSnapshotFailureKind failure)
+    {
+        WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"always"}}""");
+        using var unavailable = MakeStoreUnavailable(failure);
+        using var store = new ExecApprovalsStore(_dir, NullLogger.Instance, stateDirOverride: _dir);
+        var prompt = new CapturingPromptHandler(ExecApprovalPromptOutcome.AllowOnce);
+        var coordinator = new ExecApprovalsCoordinator(
+            store, AlwaysCanPresentEvaluator.Instance, prompt, NullLogger.Instance);
+        var result = await coordinator.HandleAsync(DefaultReq(), "initial-store-unavailable");
+
+        Assert.Equal(ExecApprovalV2Code.InternalError, result.Code);
+        Assert.Equal("approval-store-unavailable", result.Reason);
+        Assert.False(result.IsDefiniteDenial);
+        Assert.Null(result.Execution);
+        Assert.Null(prompt.Captured);
+    }
+
+    [Theory]
+    [Trait("Category", "Integration")]
+    [InlineData(ExecApprovalsSnapshotFailureKind.MalformedJson)]
+    [InlineData(ExecApprovalsSnapshotFailureKind.UnsupportedVersion)]
+    [InlineData(ExecApprovalsSnapshotFailureKind.UntrustedPath)]
+    [InlineData(ExecApprovalsSnapshotFailureKind.ReadFailed)]
+    public async Task Prompt_StoreBecomesUnavailable_DoesNotClaimPolicyRevocation(
+        ExecApprovalsSnapshotFailureKind failure)
+    {
+        WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"always"}}""");
+        using var store = new ExecApprovalsStore(_dir, NullLogger.Instance, stateDirOverride: _dir);
+        IDisposable? unavailable = null;
+        var prompt = new StoreMutatingPromptHandler(
+            () => unavailable = MakeStoreUnavailable(failure),
+            ExecApprovalPromptOutcome.AllowAlways);
+        try
+        {
+            var coordinator = new ExecApprovalsCoordinator(
+                store, AlwaysCanPresentEvaluator.Instance, prompt, NullLogger.Instance);
+            var result = await coordinator.HandleAsync(DefaultReq(), "prompt-store-unavailable");
+
+            Assert.Equal(ExecApprovalV2Code.InternalError, result.Code);
+            Assert.Equal("approval-store-unavailable", result.Reason);
+            Assert.False(result.IsDefiniteDenial);
+            Assert.Null(result.Execution);
+        }
+        finally
+        {
+            unavailable?.Dispose();
+        }
+    }
+
+    [Theory]
+    [Trait("Category", "Integration")]
+    [InlineData(ExecApprovalsSnapshotFailureKind.MalformedJson)]
+    [InlineData(ExecApprovalsSnapshotFailureKind.UnsupportedVersion)]
+    [InlineData(ExecApprovalsSnapshotFailureKind.UntrustedPath)]
+    [InlineData(ExecApprovalsSnapshotFailureKind.ReadFailed)]
+    public async Task PreApproved_StoreBecomesUnavailable_FailsWithoutPolicyDenial(
+        ExecApprovalsSnapshotFailureKind failure)
+    {
+        WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"off"}}""");
+        using var store = new ExecApprovalsStore(_dir, NullLogger.Instance, stateDirOverride: _dir);
+        var coordinator = new ExecApprovalsCoordinator(
+            store, AlwaysCannotPresentEvaluator.Instance,
+            ExecApprovalV2NullPromptHandler.Instance, NullLogger.Instance);
+        var approval = await coordinator.HandleAsync(DefaultReq(), "launch-store-unavailable");
+        Assert.True(approval.IsAllow);
+
+        using var unavailable = MakeStoreUnavailable(failure);
+        var revalidation = await coordinator.RevalidateAsync(
+            approval.Execution!, "launch-store-unavailable");
+
+        Assert.False(revalidation.IsCurrent);
+        Assert.False(revalidation.IsPolicyDenial);
+        Assert.Equal("approval-store-unavailable", revalidation.Reason);
     }
 
     [Fact]
