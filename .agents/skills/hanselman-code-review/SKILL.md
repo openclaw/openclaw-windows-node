@@ -42,6 +42,11 @@ Determine what code to review:
 - For a PR, use `gh pr view` and `gh pr diff`, pinning the exact head and base.
 - For a branch, diff against the base branch.
 
+Capture the exact reviewed head and base before building the reviewer prompt.
+After both reviews finish, re-read the live head. If it changed, mark the
+review stale and rerun both reviewers on the new revision rather than copying
+the old verdict forward.
+
 For a repeat review, compare the current head with the previously reviewed
 head. Review changed code, affected callers/tests, and unresolved or disputed
 findings rather than automatically repeating the full review. If the code is
@@ -91,6 +96,12 @@ Use the background interval for independent work. Wait for each completion
 notification, then read its result with `read_agent`; do not poll. Reconcile
 both completed reviews before publishing a consensus.
 
+A completed Hanselman review requires valid output from both requested models
+on the same revision. If either reviewer fails, is unavailable, or returns an
+incomplete assessment, report the review as incomplete. Preserve any completed
+output as advisory evidence, but do not build a consensus table or substitute a
+different model without the user's approval.
+
 ### Step 4: Cross-Reference and Build the Consensus Table
 
 Create a SQL table to track findings:
@@ -124,6 +135,10 @@ For each finding:
    - Below 70%: hard problem, intentional behavior, or architecture change.
 
 ### Step 5: Present the Results
+
+State the exact reviewed head and base, actual model IDs, context tiers, and
+reasoning effort before the finding tables. Do not describe an incomplete or
+stale run as clean.
 
 **Both Models Agree: HIGH consensus**
 
@@ -199,7 +214,11 @@ generation.
 
 - Never skip cross-referencing. The value is in the comparison, not individual
   reviews.
+- Both requested reviewers must complete on the same exact revision. One valid
+  review plus one failure is not a dual-model verdict.
 - Log disputed findings and the reasoning for accepting or rejecting them.
+- Model output is advisory input. Verify every accepted finding against the
+  actual code, tests, and dependency behavior before acting.
 - Do not fix LOW consensus issues without user authorization.
 - A clean source review does not satisfy a missing Windows proof pool,
   current-head UI proof, or required CI check.
