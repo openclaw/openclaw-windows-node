@@ -84,6 +84,41 @@ public sealed class WorkspaceNavigationTests
     }
 
     [Fact]
+    public void ExplicitlyUnsupportedRoster_PreservesLegacySessionsAndDefaultCreation()
+    {
+        using var previousRoster = JsonDocument.Parse(
+            """{"defaultId":"main","agents":[{"id":"main"},{"id":"research"}]}""");
+        var sessions = new[]
+        {
+            new SessionInfo { Key = "agent:main:main", AgentId = "main" },
+            new SessionInfo { Key = "agent:research:existing", AgentId = "research" },
+        };
+        var selection = new WorkspaceAgentSelection();
+        selection.Select("research");
+        selection.Refresh("legacy", null, []);
+        Assert.False(selection.HasSessionAccess);
+        Assert.False(selection.IsReady);
+
+        var agents = WorkspaceProjection.Agents(previousRoster.RootElement, sessions);
+        selection.Refresh("legacy", previousRoster.RootElement, agents, rosterUpdated: true);
+        Assert.True(selection.HasCurrentRoster);
+        selection.Refresh("legacy", previousRoster.RootElement, agents,
+            rosterUpdated: true, rosterUnsupported: true);
+
+        Assert.False(selection.HasCurrentRoster);
+        Assert.True(selection.HasSessionAccess);
+        Assert.True(selection.IsReady);
+        Assert.Null(selection.AgentId);
+        Assert.Equal(new[] { "agent:main:main", "agent:research:existing" },
+            WorkspaceProjection.Sessions(sessions, selection.AgentId, new WorkspaceSessionOrder())
+                .Select(session => session.Key).OrderBy(key => key, StringComparer.Ordinal));
+
+        selection.Refresh("different-gateway", null, [], rosterUnsupported: true);
+        Assert.False(selection.HasSessionAccess);
+        Assert.False(selection.IsReady);
+    }
+
+    [Fact]
     public void GatewaySwitch_DoesNotAdmitThePreviousGatewayRosterOrSelection()
     {
         using var previous = JsonDocument.Parse("""{"defaultId":"main","agents":[{"id":"main"},{"id":"coordinator"}]}""");

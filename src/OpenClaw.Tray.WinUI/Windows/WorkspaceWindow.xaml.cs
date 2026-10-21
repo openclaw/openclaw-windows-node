@@ -128,8 +128,9 @@ public sealed partial class WorkspaceWindow : WindowEx
         Root.Loaded += OnLoaded;
         // The no-gateway accessibility fixture publishes its explicit roster before this window exists.
         RefreshSidebar(rosterUpdated:
-            Environment.GetEnvironmentVariable("OPENCLAW_ACCESSIBILITY_TEST_SESSIONS") == "1"
-            && Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR") is { Length: > 0 });
+            _state.AgentsListUnsupported ||
+            (Environment.GetEnvironmentVariable("OPENCLAW_ACCESSIBILITY_TEST_SESSIONS") == "1"
+            && Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR") is { Length: > 0 }));
     }
 
     internal static string Text(string key) => LocalizationHelper.GetString($"WorkspaceShell_{key}");
@@ -624,7 +625,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         _updating = true;
         var rosterAgents = WorkspaceProjection.Agents(_state.AgentsList, _state.Sessions);
         _agentSelection.Refresh(CurrentApp.ConnectionManager?.CurrentSnapshot.GatewayId,
-            _state.AgentsList, rosterAgents, rosterUpdated);
+            _state.AgentsList, rosterAgents, rosterUpdated, _state.AgentsListUnsupported);
         IReadOnlyList<WorkspaceAgent> agents = _agentSelection.HasCurrentRoster ? rosterAgents : [];
         var previousItems = AssistantSelector.Items.OfType<ComboBoxItem>()
             .Where(item => item.Tag is WorkspaceAgent)
@@ -650,11 +651,10 @@ public sealed partial class WorkspaceWindow : WindowEx
         WorkspaceItemsSync.Arrange(AssistantSelector.Items, 0, desiredItems.Cast<object>().ToList());
         while (AssistantSelector.Items.Count > desiredItems.Count)
             AssistantSelector.Items.RemoveAt(AssistantSelector.Items.Count - 1);
-        AssistantSelector.IsEnabled = _agentSelection.HasCurrentRoster &&
-            _state.Status == ConnectionStatus.Connected;
+        AssistantSelector.IsEnabled = _agentSelection.HasCurrentRoster;
         RestoreAssistantSelection();
         AssistantSelector.PlaceholderText = Text(agents.Count == 0 ? "NoAgents" : "SelectAssistant");
-        IReadOnlyList<WorkspaceSession> sessions = _agentSelection.HasCurrentRoster
+        IReadOnlyList<WorkspaceSession> sessions = _agentSelection.HasSessionAccess
             ? WorkspaceProjection.Sessions(_state.Sessions, SelectedAgentId, _sessionOrder) : [];
         SyncSessionItems(_sessionItems, sessions, "WorkspaceSession", NavView.MenuItems.IndexOf(SessionsEmpty) + 1);
         SessionsEmpty.Content = Text("NoSessions");
@@ -917,8 +917,10 @@ public sealed partial class WorkspaceWindow : WindowEx
     {
         if (e.PropertyName is nameof(AppState.Status) or nameof(AppState.Presence) or nameof(AppState.SelfProfileRevision))
             RefreshOwnerIdentity(e.PropertyName == nameof(AppState.SelfProfileRevision));
-        if (e.PropertyName is nameof(AppState.AgentsList) or nameof(AppState.Sessions) or nameof(AppState.Status))
-            RefreshSidebar(rosterUpdated: e.PropertyName == nameof(AppState.AgentsList));
+        if (e.PropertyName is nameof(AppState.AgentsList) or nameof(AppState.AgentsListUnsupported)
+            or nameof(AppState.Sessions) or nameof(AppState.Status))
+            RefreshSidebar(rosterUpdated: e.PropertyName == nameof(AppState.AgentsList) ||
+                e.PropertyName == nameof(AppState.AgentsListUnsupported) && _state.AgentsListUnsupported);
         if (e.PropertyName == nameof(AppState.Status) && _state.Status == ConnectionStatus.Connected)
             _ = RefreshAsync();
         if (e.PropertyName == nameof(AppState.Status))

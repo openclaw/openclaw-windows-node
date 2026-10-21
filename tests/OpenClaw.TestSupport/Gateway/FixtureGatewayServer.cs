@@ -42,6 +42,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private TaskCompletionSource? _sessionMutationGate;
     private TaskCompletionSource? _agentsListGate;
     private JsonElement? _agentsRoster;
+    private bool _agentsListUnsupported;
     private TaskCompletionSource? _chatSendGate;
     private TaskCompletionSource<bool>? _chatAbortGate;
     private int _chatEventSequence;
@@ -359,6 +360,12 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             throw new ArgumentException("An agents roster object is required.", nameof(roster));
         lock (_sync)
             _agentsRoster = roster.Clone();
+    }
+
+    public void RejectAgentsListAsUnsupported()
+    {
+        lock (_sync)
+            _agentsListUnsupported = true;
     }
 
     public void HoldAgentsList()
@@ -770,8 +777,14 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                     }
                 }
                 JsonElement? agentsRoster;
+                bool agentsListUnsupported;
                 lock (_sync)
+                {
                     agentsRoster = method == "agents.list" ? _agentsRoster : null;
+                    agentsListUnsupported = method == "agents.list" && _agentsListUnsupported;
+                }
+                if (agentsListUnsupported)
+                    throw new FixtureRequestException("INVALID_REQUEST", "unknown method: agents.list");
                 payload = agentsRoster is { } roster ? roster
                     : Interactive is not null && InteractiveGatewayRuntime.Methods.Contains(method, StringComparer.Ordinal)
                     ? await Interactive.RespondAsync(method, parameters, cancellationToken)

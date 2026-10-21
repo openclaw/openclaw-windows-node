@@ -1,12 +1,47 @@
 using System.Text.Json;
 using System.Threading.Channels;
 using OpenClaw.TestSupport;
+using OpenClaw.TestSupport.Gateway;
 
 namespace OpenClaw.Shared.Tests;
 
 [Trait("Category", "Integration")]
 public sealed class SessionRosterWireTests
 {
+    [Fact]
+    public async Task ExplicitUnsupportedAgentListing_IsObservableWithoutDiscardingSessions()
+    {
+        using var temp = new TempDirectory();
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await using var server = await FixtureGatewayServer.StartAsync(
+            GatewayScenario.CreateBrowse(), "fixture-shared-token", deadline.Token);
+        server.RejectAgentsListAsUnsupported();
+        using var client = new OpenClawGatewayClient(
+            server.Endpoint.ToString(), "fixture-shared-token", identityPath: temp.Path,
+            logger: NullLogger.Instance);
+        var unsupported = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.AgentsListUnsupportedChanged += (_, value) =>
+        {
+            if (value) unsupported.TrySetResult();
+        };
+        var sessions = Channel.CreateUnbounded<SessionInfo[]>();
+        client.SessionsUpdated += (_, value) => sessions.Writer.TryWrite(value);
+        await client.ConnectAsync().WaitAsync(deadline.Token);
+        await server.HandshakeCompleted.WaitAsync(deadline.Token);
+        await client.RequestAgentsListAsync();
+        await unsupported.Task.WaitAsync(deadline.Token);
+        Assert.True(client.IsAgentsListUnsupported);
+
+        await client.RequestSessionsAsync();
+        Assert.Contains(await sessions.Reader.ReadAsync(deadline.Token),
+            session => session.Key == GatewayScenario.OtherSessionKey);
+        var requests = server.Requests.Count(request => request.Method == "agents.list");
+        await client.RequestAgentsListAsync();
+        await client.SendWizardRequestAsync("health", new { }, 5000).WaitAsync(deadline.Token);
+        Assert.Equal(requests, server.Requests.Count(request => request.Method == "agents.list"));
+        Assert.Contains(client.GetSessionList(), session => session.Key == GatewayScenario.MainSessionKey);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
