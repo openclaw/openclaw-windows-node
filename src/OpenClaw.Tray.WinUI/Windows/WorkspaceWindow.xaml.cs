@@ -651,7 +651,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         WorkspaceItemsSync.Arrange(AssistantSelector.Items, 0, desiredItems.Cast<object>().ToList());
         while (AssistantSelector.Items.Count > desiredItems.Count)
             AssistantSelector.Items.RemoveAt(AssistantSelector.Items.Count - 1);
-        AssistantSelector.IsEnabled = _agentSelection.HasCurrentRoster;
+        AssistantSelector.IsEnabled = _agentSelection.CanOpenAssistantMenu(_state.Status);
         RestoreAssistantSelection();
         AssistantSelector.PlaceholderText = Text(agents.Count == 0 ? "NoAgents" : "SelectAssistant");
         IReadOnlyList<WorkspaceSession> sessions = _agentSelection.HasSessionAccess

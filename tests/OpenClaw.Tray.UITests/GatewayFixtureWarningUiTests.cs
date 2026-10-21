@@ -212,13 +212,15 @@ public sealed partial class GatewayFixtureUiTests
         if (warning is null)
         {
             Assert.Null(FindById(run, "ChatNativeSetupError"));
-            OwnedWindowCapture.Save(run, window, name, FindById(run, "ChatComposerInput")!);
+            if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") == "1")
+                OwnedWindowCapture.Save(run, window, name, FindById(run, "ChatComposerInput")!);
             Assert.Null(FindById(run, "ChatNativeSetupError"));
         }
         else
         {
-            OwnedWindowCapture.Save(run, window, name, FindText(run, warning)!,
-                FindById(run, "ChatNativeSetupCheckAgain")!);
+            if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") == "1")
+                OwnedWindowCapture.Save(run, window, name, FindText(run, warning)!,
+                    FindById(run, "ChatNativeSetupCheckAgain")!);
             Assert.NotNull(FindText(run, warning));
         }
     }

@@ -118,6 +118,24 @@ public sealed class WorkspaceNavigationTests
         Assert.False(selection.IsReady);
     }
 
+    [Theory]
+    [InlineData(ConnectionStatus.Disconnected, true)]
+    [InlineData(ConnectionStatus.Error, true)]
+    [InlineData(ConnectionStatus.Connecting, false)]
+    [InlineData(ConnectionStatus.Connected, false)]
+    public void AssistantMenuRetainsOfflineConnectionGuidanceWithoutAuthorizingSessionCreation(
+        ConnectionStatus status, bool menuAvailable)
+    {
+        var selection = new WorkspaceAgentSelection();
+        selection.Refresh("gateway", null, []);
+
+        Assert.Equal(menuAvailable, selection.CanOpenAssistantMenu(status));
+        Assert.False(selection.HasCurrentRoster);
+        Assert.False(selection.HasSessionAccess);
+        Assert.False(selection.IsReady);
+        Assert.Null(selection.AgentId);
+    }
+
     [Fact]
     public void GatewaySwitch_DoesNotAdmitThePreviousGatewayRosterOrSelection()
     {

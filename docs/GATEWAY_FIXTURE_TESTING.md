@@ -26,8 +26,11 @@ responses, and then releases the unchanged roster. A second reconnect returns
 an authoritative roster without that assistant and requires a fresh selection.
 `FixtureGatewayServer.SetAgentsRoster`, `HoldAgentsList`, and `ReleaseAgentsList`
 control only this synthetic producer; authentication and the production client
-are unchanged. The case always saves four owned-HWND PrintWindow PNGs and
-adjacent UIA assertion metadata in the fixture artifact directory.
+are unchanged. With `-Screenshots`, the case saves four owned-HWND PrintWindow
+PNGs and adjacent UIA assertion metadata in the fixture artifact directory.
+Without requested screenshots, the same UIA selection and protocol assertions
+still run, but no pixel proof is claimed. Requested capture remains strict:
+blank or unavailable native pixels fail instead of producing a fallback image.
 
 Use the opt-in UI runner described below with this exact method-name filter.
 These captures show actual Workspace controls with synthetic Gateway data, not
@@ -40,6 +43,10 @@ Workspace must show the legacy sessions and enable new-conversation creation
 with the Gateway's default target. The assistant selector remains unavailable,
 because no authoritative agent roster was delivered. A pending or failed listing
 is not treated as an explicitly unsupported method.
+
+The disconnected assistant menu still exposes its existing connection guidance.
+This does not authorize session creation or treat a pending connected roster as
+available.
 
 `VerifiedSetupBindingClearsBeforeNewConversationResponse` starts with a real
 production handoff receipt and a synthetic model-verification response. It

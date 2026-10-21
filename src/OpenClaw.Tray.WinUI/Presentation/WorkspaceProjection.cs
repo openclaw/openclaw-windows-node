@@ -18,6 +18,9 @@ internal sealed class WorkspaceAgentSelection
     public bool HasSessionAccess { get; private set; }
     public bool IsReady { get; private set; }
 
+    public bool CanOpenAssistantMenu(ConnectionStatus status) =>
+        HasCurrentRoster || status is ConnectionStatus.Disconnected or ConnectionStatus.Error;
+
     public void Select(string? agentId)
     {
         AgentId = agentId;
