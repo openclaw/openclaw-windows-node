@@ -12,6 +12,16 @@ public sealed class GatewayProxyBearerCredentialTests
         Assert.Throws<InvalidDataException>(() => GatewayProxyBearerCredential.RequireOrigin("wss://user:pass@gateway.example/ws"));
     }
 
+    [Theory]
+    [InlineData("=abc")]
+    [InlineData("abc=def")]
+    [InlineData("abc!def")]
+    public void ProtectRejectsInvalidRfc6750Tokens(string token)
+    {
+        Assert.Throws<InvalidDataException>(() =>
+            GatewayProxyBearerCredential.Protect(token, "wss://gateway.example"));
+    }
+
     [Fact]
     public void ProtectedCredentialCannotBeReboundToAnotherOrigin()
     {

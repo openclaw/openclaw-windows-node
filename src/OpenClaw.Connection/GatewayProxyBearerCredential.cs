@@ -87,8 +87,19 @@ public static class GatewayProxyBearerCredential
 
     private static void ValidateToken(string token)
     {
-        if (string.IsNullOrEmpty(token) || token.Length > 8192 ||
-            !token.All(c => c is >= 'A' and <= 'Z' or >= 'a' and <= 'z' or >= '0' and <= '9' or '-' or '.' or '_' or '~' or '+' or '/' or '='))
+        if (string.IsNullOrEmpty(token) || token.Length > 8192 || token[0] == '=')
             throw new InvalidDataException("The proxy Bearer token is not a valid RFC 6750 token.");
+
+        var padding = false;
+        foreach (var c in token)
+        {
+            if (c == '=')
+            {
+                padding = true;
+                continue;
+            }
+            if (padding || c is not (>= 'A' and <= 'Z' or >= 'a' and <= 'z' or >= '0' and <= '9' or '-' or '.' or '_' or '~' or '+' or '/'))
+                throw new InvalidDataException("The proxy Bearer token is not a valid RFC 6750 token.");
+        }
     }
 }
