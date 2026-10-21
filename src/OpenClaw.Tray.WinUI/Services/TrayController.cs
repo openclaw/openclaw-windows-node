@@ -53,7 +53,7 @@ internal sealed class TrayController : ITrayController
         }
         catch (NotImplementedException error)
         {
-            _callbacks.LogCrash("Tray icon is unavailable on this desktop", error);
+            Logger.Warn($"Tray icon is unavailable on this desktop: {error.Message}");
             return;
         }
         _trayIconCoordinator = new TrayIconCoordinator(
