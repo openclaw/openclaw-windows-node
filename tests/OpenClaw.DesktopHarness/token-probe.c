@@ -3,6 +3,24 @@
 #include <sddl.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <wchar.h>
+
+#if defined(OPENCLAW_FAIL_ATTACH_DLL)
+__declspec(dllexport) void require_failure_fixture(void) {}
+BOOL WINAPI DllMain(HINSTANCE module, DWORD reason, LPVOID reserved)
+{
+    (void)module;
+    (void)reserved;
+    return reason != DLL_PROCESS_ATTACH;
+}
+#elif defined(OPENCLAW_FAIL_ATTACH_EXE)
+__declspec(dllimport) void require_failure_fixture(void);
+int main(void)
+{
+    require_failure_fixture();
+    return 0;
+}
+#else
 
 static void json_wide(const wchar_t *value)
 {
@@ -61,11 +79,11 @@ static void token_sid(HANDLE token, TOKEN_INFORMATION_CLASS kind, const char *na
     free(buffer);
 }
 
-static void desktop_access(HANDLE token, const char *sddl, const char *name)
+static void desktop_access(HANDLE token, const wchar_t *sddl, const char *name)
 {
     PSECURITY_DESCRIPTOR descriptor = NULL;
     HANDLE impersonation = NULL;
-    if (!ConvertStringSecurityDescriptorToSecurityDescriptorA(sddl, 1, &descriptor, NULL)) {
+    if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl, 1, &descriptor, NULL)) {
         printf(",\"%sDescriptorError\":%lu", name, GetLastError());
         return;
     }
@@ -95,8 +113,52 @@ static void desktop_access(HANDLE token, const char *sddl, const char *name)
     LocalFree(descriptor);
 }
 
-int main(int argc, char **argv)
+static int ownership_wait(wchar_t **argv)
 {
+    HANDLE ready = OpenEventW(EVENT_MODIFY_STATE, FALSE, argv[2]);
+    if (!ready) return (int)GetLastError();
+    HANDLE release = OpenEventW(SYNCHRONIZE, FALSE, argv[3]);
+    if (!release) {
+        DWORD error = GetLastError();
+        CloseHandle(ready);
+        return (int)error;
+    }
+    FILE *receipt = NULL;
+    if (_wfreopen_s(&receipt, argv[4], L"w", stdout)) {
+        CloseHandle(ready);
+        CloseHandle(release);
+        return ERROR_WRITE_FAULT;
+    }
+    FILETIME created, exited, kernel, user;
+    if (!GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user))
+        return (int)GetLastError();
+    wchar_t executable[32768];
+    if (!GetModuleFileNameW(NULL, executable, 32768)) return (int)GetLastError();
+    printf("{\"processId\":%lu,\"processStartFileTime\":%llu,\"errorMode\":%lu,\"executable\":",
+        GetCurrentProcessId(),
+        ((unsigned long long)created.dwHighDateTime << 32) | created.dwLowDateTime,
+        GetErrorMode());
+    json_wide(executable);
+    printf("}\n");
+    fclose(receipt);
+    if (!SetEvent(ready)) return (int)GetLastError();
+    DWORD wait = WaitForSingleObject(release, INFINITE);
+    CloseHandle(ready);
+    CloseHandle(release);
+    return wait == WAIT_OBJECT_0 ? 0 : (int)GetLastError();
+}
+
+int wmain(int argc, wchar_t **argv)
+{
+    if (argc == 5 && wcscmp(argv[1], L"ownership-wait") == 0)
+        return ownership_wait(argv);
+    if (argc == 3 && wcscmp(argv[1], L"--error-mode") == 0) {
+        FILE *receipt = NULL;
+        if (_wfopen_s(&receipt, argv[2], L"w")) return ERROR_WRITE_FAULT;
+        fprintf(receipt, "{\"errorMode\":%lu}\n", GetErrorMode());
+        fclose(receipt);
+        return 0;
+    }
     STARTUPINFOW startup = {0};
     DWORD session = 0;
     PROCESS_MITIGATION_SYSTEM_CALL_DISABLE_POLICY policy = {0};
@@ -154,3 +216,4 @@ int main(int argc, char **argv)
     fflush(stdout);
     return loadError ? (int)loadError : 0;
 }
+#endif

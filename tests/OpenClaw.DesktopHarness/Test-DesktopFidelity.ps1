@@ -4,7 +4,8 @@ param(
     [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F]{64}$')][string]$ExpectedNativeSha256,
     [Parameter(Mandatory)][string]$OutputDirectory,
     [ValidateSet('Debug','Release')][string]$Configuration = 'Debug',
-    [string]$NativeProbeExecutable
+    [string]$NativeProbeExecutable,
+    [string]$NativeInitFailureExecutable
 )
 
 $ErrorActionPreference = 'Stop'
@@ -34,13 +35,22 @@ if ([string]::IsNullOrWhiteSpace($NativeProbeExecutable)) {
     $vcvars = Join-Path ([string]$installations[0]) 'VC\Auxiliary\Build\vcvars64.bat'
     if (!(Test-Path -LiteralPath $vcvars)) { throw 'The selected MSVC developer environment is unavailable.' }
     $NativeProbeExecutable = Join-Path $output 'token-probe.exe'
+    $NativeInitFailureExecutable = Join-Path $output 'quiet-init-failure.exe'
     $object = Join-Path $output 'token-probe.obj'
     $command = 'call "{0}" >nul && cl.exe /nologo /O1 /MT /W4 /Fe:"{1}" /Fo:"{2}" "{3}" /link advapi32.lib' -f $vcvars,$NativeProbeExecutable,$object,"$PSScriptRoot\token-probe.c"
     & $env:ComSpec /d /c $command *> "$output\native-probe-build.log"
     if ($LASTEXITCODE -ne 0) { throw "Native probe build failed. See $output\native-probe-build.log" }
+    $failureSource="$PSScriptRoot\token-probe.c"
+    $command='call "{0}" >nul && cl.exe /nologo /O1 /MT /W4 /LD /DOPENCLAW_FAIL_ATTACH_DLL /Fe:"{1}\quiet-init-fixture.dll" /Fo:"{1}\quiet-init-fixture.obj" "{2}" /link /IMPLIB:"{1}\quiet-init-fixture.lib" && cl.exe /nologo /O1 /MT /W4 /DOPENCLAW_FAIL_ATTACH_EXE /Fe:"{1}\quiet-init-failure.exe" /Fo:"{1}\quiet-init-failure.obj" "{2}" /link "{1}\quiet-init-fixture.lib"' -f $vcvars,$output,$failureSource
+    & $env:ComSpec /d /c $command *> "$output\native-failure-fixture-build.log"
+    if ($LASTEXITCODE -ne 0) { throw "Native failure fixture build failed. See $output\native-failure-fixture-build.log" }
 }
 $NativeProbeExecutable = [IO.Path]::GetFullPath($NativeProbeExecutable)
 if (!(Test-Path -LiteralPath $NativeProbeExecutable -PathType Leaf)) { throw 'Native token probe is missing.' }
+if ([string]::IsNullOrWhiteSpace($NativeInitFailureExecutable) -or
+    !(Test-Path -LiteralPath $NativeInitFailureExecutable -PathType Leaf)) {
+    throw 'The real DLL-attach-failure fixture is required with an externally built native probe.'
+}
 
 $cases = @()
 foreach ($case in @(
@@ -118,6 +128,7 @@ foreach ($case in @(
 }
 & "$PSScriptRoot\Test-LauncherOwnership.ps1" -Launcher $launcher -ProbeExecutable $probe `
     -NativeExecutable $native -NativeProbeExecutable $NativeProbeExecutable `
+    -NativeInitFailureExecutable $NativeInitFailureExecutable `
     -OutputDirectory "$output\ownership"
 $sourceHead = @(git -C $repository rev-parse HEAD)
 if ($LASTEXITCODE -ne 0) { throw 'Could not record the tested source head.' }

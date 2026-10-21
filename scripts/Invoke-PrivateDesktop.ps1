@@ -22,6 +22,18 @@ using System.Text;
 
 public static class ProofDesktop
 {
+    private static readonly object ErrorModeLock = new object();
+    [DllImport("kernel32.dll")]
+    public static extern uint GetErrorMode();
+    [DllImport("kernel32.dll")]
+    public static extern uint SetErrorMode(uint mode);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool GetExitCodeProcess(IntPtr process, out uint exitCode);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool GetProcessTimes(IntPtr process, out long created, out long exited,
+        out long kernel, out long user);
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern uint WaitForInputIdle(IntPtr process, uint milliseconds);
     [DllImport("kernel32.dll", SetLastError = true)]
     public static extern bool TerminateProcess(IntPtr process, uint exitCode);
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -49,6 +61,26 @@ public static class ProofDesktop
         public int size;
         public IntPtr descriptor;
         public int inheritHandle;
+    }
+
+    public static bool CreateQuietProcess(string executable, StringBuilder command, uint flags,
+        string directory, ref StartupInfo startup, ref ProcessInfo info,
+        out int error, out uint previousErrorMode, out uint launchErrorMode)
+    {
+        lock (ErrorModeLock)
+        {
+            previousErrorMode = GetErrorMode();
+            launchErrorMode = previousErrorMode | 0x0001u | 0x0002u;
+            SetErrorMode(launchErrorMode);
+            try
+            {
+                bool created = CreateProcessW(executable, command, IntPtr.Zero, IntPtr.Zero,
+                    false, flags, IntPtr.Zero, directory, ref startup, out info);
+                error = Marshal.GetLastWin32Error();
+                return created;
+            }
+            finally { SetErrorMode(previousErrorMode); }
+        }
     }
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -211,16 +243,46 @@ try {
     $startup.desktop = "winsta0\$DesktopName"
     $command = [Text.StringBuilder]::new(('"{0}" {1}' -f $Executable, $ArgumentLine))
     $creationFlags = if ($ConsoleProcess) { 0x08000000 } else { 0 }
-    if (-not [ProofDesktop]::CreateProcessW($Executable, $command, [IntPtr]::Zero,
-        [IntPtr]::Zero, $false, $creationFlags, [IntPtr]::Zero, (Split-Path $Executable),
-        [ref]$startup, [ref]$info)) {
+    $creationError=0
+    [uint32]$previousErrorMode=0
+    [uint32]$launchErrorMode=0
+    if (-not [ProofDesktop]::CreateQuietProcess($Executable, $command, $creationFlags,
+        (Split-Path $Executable), [ref]$startup, [ref]$info, [ref]$creationError,
+        [ref]$previousErrorMode, [ref]$launchErrorMode)) {
+        throw [ComponentModel.Win32Exception]::new($creationError)
+    }
+    [long]$created=0; [long]$exited=0; [long]$kernel=0; [long]$user=0
+    if (![ProofDesktop]::GetProcessTimes($info.process,[ref]$created,[ref]$exited,[ref]$kernel,[ref]$user)) {
         throw [ComponentModel.Win32Exception]::new([Runtime.InteropServices.Marshal]::GetLastWin32Error())
     }
-    $process = Get-Process -Id $info.processId -ErrorAction Stop
-    $inputIdle = if ($ConsoleProcess) { $null } else { $process.WaitForInputIdle(30000) }
+    $parent=[Diagnostics.Process]::GetCurrentProcess()
+    try {
+        [ordered]@{
+            capturedUtc=[DateTimeOffset]::UtcNow.ToString('O')
+            processId=$info.processId
+            processStartUtc=[DateTime]::FromFileTimeUtc($created).ToString('O')
+            parentProcessId=$parent.Id
+            parentProcessStartUtc=$parent.StartTime.ToUniversalTime().ToString('O')
+            executable=$Executable
+            argumentLine=$ArgumentLine
+            requestedDesktop=$startup.desktop
+            creationFlags=$creationFlags
+            previousErrorMode=$previousErrorMode
+            launchErrorMode=$launchErrorMode
+            restoredErrorMode=[ProofDesktop]::GetErrorMode()
+        } | ConvertTo-Json | Set-Content -LiteralPath "$ResultPath.launch.json" -Encoding utf8
+    } finally { $parent.Dispose() }
+    $inputIdle=$null
+    if (!$ConsoleProcess) {
+        $idle=[ProofDesktop]::WaitForInputIdle($info.process,30000)
+        if ($idle -eq [uint32]::MaxValue) {
+            throw [ComponentModel.Win32Exception]::new([Runtime.InteropServices.Marshal]::GetLastWin32Error())
+        }
+        $inputIdle=($idle -eq 0)
+    }
     [ordered]@{
-        processId = $process.Id
-        processStartUtc = $process.StartTime.ToUniversalTime().ToString('o')
+        processId = $info.processId
+        processStartUtc = [DateTime]::FromFileTimeUtc($created).ToString('o')
         executable = $Executable
         desktop = $startup.desktop
         dataDirectory = $DataDirectory
@@ -232,10 +294,26 @@ try {
         createdDaclAndLabel = $createdSecurity
         aclAndLabelBytesEqual = $descriptorMatches
     } | ConvertTo-Json | Set-Content -LiteralPath $ResultPath -Encoding utf8
-    if ($WaitForExit -and -not $process.WaitForExit($ProcessTimeoutSeconds * 1000)) {
-        $process.Kill($true)
-        $process.WaitForExit()
-        throw 'The exact-owned desktop process exceeded its bound.'
+    if ($WaitForExit) {
+        $wait=[ProofDesktop]::WaitForSingleObject($info.process,[uint32]($ProcessTimeoutSeconds * 1000))
+        if ($wait -eq 258) { throw 'The exact-owned desktop process exceeded its bound.' }
+        if ($wait -ne 0) { throw 'The exact-owned desktop process wait failed.' }
+        [uint32]$nativeExitCode=0
+        if (![ProofDesktop]::GetExitCodeProcess($info.process,[ref]$nativeExitCode)) {
+            throw [ComponentModel.Win32Exception]::new([Runtime.InteropServices.Marshal]::GetLastWin32Error())
+        }
+        [ordered]@{
+            observedUtc=[DateTimeOffset]::UtcNow.ToString('O')
+            processId=$info.processId
+            nativeExitCode=$nativeExitCode
+            nativeExitStatus=('0x{0:X8}' -f $nativeExitCode)
+            nativeHandleSignaled=$true
+        } | ConvertTo-Json | Set-Content -LiteralPath "$ResultPath.exit.json" -Encoding utf8
+        if ($nativeExitCode -eq [uint32]3221225794) {
+            $initializationFailure=[InvalidOperationException]::new('The exact-owned child failed native DLL initialization (0xC0000142). Stop this proof lane.')
+            $initializationFailure.Data['NativeProcessExitCode']=$nativeExitCode
+            throw $initializationFailure
+        }
     }
     if ([ProofDesktop]::Describe([ProofDesktop]::ReadDaclAndLabel($reference)) -cne $referenceSecurity) {
         throw 'The Default reference changed during the proof; no restoration attempted.'

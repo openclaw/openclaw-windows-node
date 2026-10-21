@@ -15,6 +15,19 @@ Only `-NamePrefix` is caller-selectable; the actual name always gets an
 unpredictable per-invocation suffix. Exact desktop names are not accepted.
 Caller isolation environment values, including unset values, are restored after
 both successful and failed launches.
+Before CreateProcess, the launcher temporarily adds `SEM_FAILCRITICALERRORS` and
+`SEM_NOGPFAULTERRORBOX` to its process-wide error mode. The child inherits those
+flags; `CREATE_DEFAULT_ERROR_MODE` is not used. The exact previous caller mode is
+restored immediately in finally, including CreateProcess failure. This covers
+DLL initialization failures before managed Main without changing registry or WER
+policy. A nonblocking launch still returns without waiting for child readiness.
+
+Native-handle launch receipts (`.launch.json`) retain parent/child identities,
+start times, requested desktop, flags and error modes before writing the ordinary
+result receipt. Bounded waits retain explicit native exit status (`.exit.json`).
+`0xC0000142` stops the proof with a native-initialization failure, not an inferred
+timeout or an expected negative result. The status alone does not diagnose its
+underlying cause.
 
 Run from the repository root with the exact SDK native library from the managed
 probe's build output and its independently verified input digest. The probe
@@ -32,6 +45,18 @@ The script builds the managed probe and discovers an existing MSVC toolchain to
 build `token-probe.c`. Developer environment setup and native compilation stay
 in the same process. Alternatively, pass `-NativeProbeExecutable` with a build
 of that source. No package or workload installation is attempted.
+When supplying `-NativeProbeExecutable`, also supply
+`-NativeInitFailureExecutable`. The default native build creates that executable
+and its statically imported DLL from `token-probe.c` with
+`OPENCLAW_FAIL_ATTACH_EXE` and `OPENCLAW_FAIL_ATTACH_DLL`. The DLL returns FALSE
+from `DLL_PROCESS_ATTACH`, producing a real loader failure before executable Main.
+Build is safe; executing this failure fixture requires explicit coordinator/Home
+approval after reviewing the quiet-launch fix. Never run an intentionally
+unquiet negative control on a shared host.
+`Test-LauncherOwnership.ps1 -QuietStartupOnly` selects the native-only startup,
+receipt-failure, nonblocking and environment lane. It returns before the managed
+SDK probe and live-contender lane. Its receipt explicitly leaves visible
+no-modal observation unverified for the coordinated Home observer.
 
 Four actual child-process cases must pass, with no skips: native token/USER32 and
 controlled PowerShell on each of the NULL-security and Default-equivalent caller
@@ -61,10 +86,27 @@ that the child's observed desktop is a distinct generated name, reject the old
 exact-name parameter, and check caller environment restoration on successful and
 failed launches. The child also reports its actual inherited isolation overrides.
 Receipt-write failure after successful CreateProcess is covered with an actual
-event-controlled waiting child. The launcher terminates and reaps only the child
+native event-controlled waiting child, independent of managed apphost startup.
+The launcher terminates and reaps only the child
 identified by its native process handle. A separate successful nonblocking launch
 must retain its waiting child until the test releases it. Neither path switches
 the input desktop.
+The native child also reports its inherited error mode. Success, CreateProcess
+failure, postlaunch failure and native DLL initialization failure must all restore
+the caller's mode and isolation environment. The DLL failure must exit within the
+existing child-signal budget with explicit `0xC0000142` and owned-desktop absence.
+No readiness-timeout result qualifies as proof of that failure.
+The task-owned test controller uses a known mode with both quiet bits cleared so
+the inheritance check detects a missing setter even if ambient PowerShell was
+already quiet. No child is launched with that nonquiet mode, and the ambient
+controller mode is restored in finally.
+
+For a cleanup baseline, safety-backport only the parent quiet-error-mode change
+to the old launcher and label it accordingly. Such a baseline is not exact
+historical source. Keep the old missing-cleanup behavior; do not replay the
+unquiet historical launcher. Bounded visible no-modal observation must be
+coordinated with Home; process exit and private-desktop absence alone do not
+establish absence of a system-hosted dialog on another desktop.
 
 `desktop-fidelity-regression.json`, per-case actual config/results and security
 records are retained under the supplied output directory. The

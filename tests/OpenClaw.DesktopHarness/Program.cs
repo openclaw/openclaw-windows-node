@@ -10,22 +10,6 @@ using OpenClaw.Shared;
 using OpenClaw.Shared.Mxc;
 using Microsoft.Mxc.Sdk.V1;
 
-if (args is ["ownership-wait", var readyName, var releaseName, var ownershipReceipt])
-{
-    using var ready = EventWaitHandle.OpenExisting(readyName);
-    using var release = EventWaitHandle.OpenExisting(releaseName);
-    using var child = Process.GetCurrentProcess();
-    File.WriteAllText(ownershipReceipt, JsonSerializer.Serialize(new
-    {
-        processId = child.Id,
-        processStartUtc = child.StartTime.ToUniversalTime().ToString("O"),
-        executable = Environment.ProcessPath
-    }));
-    ready.Set();
-    release.WaitOne();
-    return;
-}
-
 if (args.Length < 3)
     throw new ArgumentException("Output directory, exact SDK native library and payload kind are required.");
 var output = Path.GetFullPath(args[0]);

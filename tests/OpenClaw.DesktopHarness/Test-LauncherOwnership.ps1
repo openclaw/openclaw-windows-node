@@ -4,7 +4,9 @@ param(
     [Parameter(Mandatory)][string]$ProbeExecutable,
     [Parameter(Mandatory)][string]$NativeExecutable,
     [Parameter(Mandatory)][string]$NativeProbeExecutable,
+    [Parameter(Mandatory)][string]$NativeInitFailureExecutable,
     [Parameter(Mandatory)][string]$OutputDirectory,
+    [switch]$QuietStartupOnly,
     [ValidateRange(1,2147483647)][int]$ChildSignalTimeoutMs = 30000
 )
 $ErrorActionPreference='Stop'
@@ -15,8 +17,14 @@ $saved=@{}
 foreach ($name in $names) { $saved[$name]=@{ exists=$initial.Contains($name); value=$initial[$name] } }
 $reference=[IntPtr]::Zero
 $contender=[IntPtr]::Zero
+Add-Type -TypeDefinition 'using System.Runtime.InteropServices;public static class ProofCallerErrorMode{[DllImport("kernel32.dll")]public static extern uint GetErrorMode();[DllImport("kernel32.dll")]public static extern uint SetErrorMode(uint mode);}'
+$ambientErrorMode=[ProofCallerErrorMode]::GetErrorMode()
+$callerErrorMode=$ambientErrorMode -band (-bnot [uint32]3)
 
 function Assert-Sentinels {
+    if ([ProofCallerErrorMode]::GetErrorMode() -ne $callerErrorMode) {
+        throw 'The launcher changed the caller process error mode.'
+    }
     $current=[Environment]::GetEnvironmentVariables('Process')
     if ($current['OPENCLAW_TRAY_DATA_DIR'] -cne 'caller-data-sentinel' -or
         $current.Contains('OPENCLAW_TRAY_LOCALAPPDATA_DIR') -or
@@ -37,6 +45,8 @@ function Assert-DesktopAbsent([string]$Name) {
 }
 
 try {
+    # Only the task-owned controller uses this mode; every child must receive the quiet flags.
+    [void][ProofCallerErrorMode]::SetErrorMode($callerErrorMode)
     [Environment]::SetEnvironmentVariable('OPENCLAW_TRAY_DATA_DIR','caller-data-sentinel','Process')
     [Environment]::SetEnvironmentVariable('OPENCLAW_TRAY_LOCALAPPDATA_DIR',[NullString]::Value,'Process')
     [Environment]::SetEnvironmentVariable('OPENCLAW_MCP_PORT','caller-port-sentinel','Process')
@@ -67,6 +77,15 @@ try {
     $failedDesktop=Get-Content -LiteralPath "$failedPath.security.json" -Raw | ConvertFrom-Json
     Assert-DesktopAbsent $failedDesktop.desktop
 
+    $inheritedModePath="$OutputDirectory\inherited-error-mode.json"
+    & $Launcher -Executable $NativeProbeExecutable -ArgumentLine ('--error-mode "{0}"' -f $inheritedModePath) `
+        -DataDirectory "$OutputDirectory\error-mode-profile" -McpPort 0 -ConsoleProcess -WaitForExit `
+        -ResultPath "$OutputDirectory\error-mode-launch.json"
+    Assert-Sentinels
+    $inheritedMode=Get-Content -LiteralPath $inheritedModePath -Raw | ConvertFrom-Json
+    if ($inheritedMode.errorMode -ne ($callerErrorMode -bor 3)) {
+        throw 'The actual native child did not inherit both quiet startup error-mode flags.'
+    }
     $eventId=[Guid]::NewGuid().ToString('N')
     $ready=[Threading.EventWaitHandle]::new($false,'ManualReset',"Local\OwnedReady$eventId")
     $release=[Threading.EventWaitHandle]::new($false,'ManualReset',"Local\OwnedRelease$eventId")
@@ -78,18 +97,18 @@ try {
         New-Item -ItemType Directory -Path $blockedReceipt | Out-Null
         $postCreateFailure=$null
         try {
-            & $Launcher -Executable $ProbeExecutable -ArgumentLine $arguments `
+            & $Launcher -Executable $NativeProbeExecutable -ArgumentLine $arguments `
                 -DataDirectory "$OutputDirectory\post-create-profile" -McpPort 0 -ConsoleProcess `
                 -ResultPath $blockedReceipt
         } catch { $postCreateFailure=$_ }
         if ($postCreateFailure -and !$postCreateFailure.Exception.Data['OwnedProcessReaped']) {
             if (!$ready.WaitOne($ChildSignalTimeoutMs)) {
-                throw 'Post-create failure did not reach the controlled waiting child.'
+                throw [InvalidOperationException]::new('Post-create failure did not reach the controlled native waiting child.', $postCreateFailure.Exception)
             }
             $childState=Get-Content -LiteralPath $childReceipt -Raw | ConvertFrom-Json
             $unreaped=Get-Process -Id $childState.processId
-            if ($unreaped.Path -cne $ProbeExecutable -or
-                $unreaped.StartTime.ToUniversalTime().Ticks -ne ([datetime]$childState.processStartUtc).ToUniversalTime().Ticks -or
+            if ($unreaped.Path -cne $NativeProbeExecutable -or
+                $unreaped.StartTime.ToFileTimeUtc() -ne $childState.processStartFileTime -or
                 $unreaped.HasExited) {
                 throw 'Could not verify the identity of the unreaped controlled child.'
             }
@@ -105,7 +124,7 @@ try {
         Assert-Sentinels
         $ready.Reset() | Out-Null
         $successPath="$OutputDirectory\nonblocking-result.json"
-        & $Launcher -Executable $ProbeExecutable -ArgumentLine $arguments `
+        & $Launcher -Executable $NativeProbeExecutable -ArgumentLine $arguments `
             -DataDirectory "$OutputDirectory\nonblocking-profile" -McpPort 0 -ConsoleProcess `
             -ResultPath $successPath
         $success=Get-Content -LiteralPath $successPath -Raw | ConvertFrom-Json
@@ -130,6 +149,41 @@ try {
         $ready.Dispose()
         $release.Dispose()
     }
+
+    $initializationFailure=$null
+    $initializationResult="$OutputDirectory\initialization-failure.json"
+    try {
+        & $Launcher -Executable $NativeInitFailureExecutable `
+            -DataDirectory "$OutputDirectory\initialization-failure-profile" -McpPort 0 `
+            -ConsoleProcess -WaitForExit `
+            -ProcessTimeoutSeconds ([int][Math]::Ceiling($ChildSignalTimeoutMs / 1000.0)) `
+            -ResultPath $initializationResult
+    } catch { $initializationFailure=$_ }
+    if (!$initializationFailure -or
+        $initializationFailure.Exception.Data['NativeProcessExitCode'] -ne [uint32]3221225794 -or
+        !$initializationFailure.Exception.Data['OwnedProcessReaped']) {
+        throw 'The real DLL attach failure did not stop with explicit native initialization status and owned cleanup.'
+    }
+    Assert-Sentinels
+    $initializationDesktop=Get-Content -LiteralPath "$initializationResult.security.json" -Raw | ConvertFrom-Json
+    Assert-DesktopAbsent $initializationDesktop.desktop
+    $initializationExit=Get-Content -LiteralPath "$initializationResult.exit.json" -Raw | ConvertFrom-Json
+    if (!$initializationExit.nativeHandleSignaled -or $initializationExit.nativeExitStatus -cne '0xC0000142') {
+        throw 'The initialization-failure proof has no explicit native exit-status receipt.'
+    }
+    [ordered]@{
+        completedUtc=[DateTimeOffset]::UtcNow.ToString('O')
+        childInheritedQuietErrorMode=$true
+        callerErrorModeRestored=$true
+        nativeDllInitializationExitStatus=$initializationExit.nativeExitStatus
+        nativeHandleSignaled=$true
+        ownedDesktopAbsent=$true
+        postCreateReceiptFailureReaped=$true
+        successfulNonblockingChildRetained=$true
+        environmentRestored=$true
+        visibleNoModalObservation='Not recorded. Requires coordinated Home observation.'
+    } | ConvertTo-Json | Set-Content -LiteralPath "$OutputDirectory\quiet-startup-regression.json" -Encoding utf8
+    if ($QuietStartupOnly) { return }
 
     $contenderName="NativeContender$([Guid]::NewGuid().ToString('N'))"
     $reference=[ProofDesktop]::OpenDesktopW('Default',0,$false,0x20001)
@@ -181,10 +235,14 @@ try {
         contenderSecurityUnchanged=$true
         postCreateReceiptFailureReaped=$true
         successfulNonblockingChildRetained=$true
+        childInheritedQuietErrorMode=$true
+        callerErrorModeRestored=$true
+        nativeDllInitializationFailureStopped=$true
         ownedDesktopsRemoved=$true
     } | ConvertTo-Json | Set-Content -LiteralPath "$OutputDirectory\ownership-regression.json" -Encoding utf8
 }
 finally {
+    [void][ProofCallerErrorMode]::SetErrorMode($ambientErrorMode)
     if ($contender -ne [IntPtr]::Zero) { [void][ProofDesktop]::CloseDesktop($contender) }
     if ($reference -ne [IntPtr]::Zero) { [void][ProofDesktop]::CloseDesktop($reference) }
     foreach ($name in $names) {
