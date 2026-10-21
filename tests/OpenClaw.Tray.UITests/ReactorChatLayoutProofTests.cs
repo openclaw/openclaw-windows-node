@@ -1,3 +1,5 @@
+extern alias TrayRuntime;
+
 using System.Collections.Immutable;
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
@@ -22,6 +24,7 @@ using OpenClaw.TestSupport;
 using Windows.Foundation;
 using static Microsoft.UI.Reactor.Factories;
 using static OpenClaw.Tray.UITests.TestSupport;
+using FluentIconCatalog = TrayRuntime::OpenClawTray.Helpers.FluentIconCatalog;
 
 namespace OpenClaw.Tray.UITests;
 

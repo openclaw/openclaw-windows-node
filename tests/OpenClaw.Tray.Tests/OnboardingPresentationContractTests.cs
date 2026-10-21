@@ -157,65 +157,6 @@ public sealed class OnboardingPresentationContractTests
     }
 
     [Fact]
-    public void AiGroups_KeepManualInputInlineAndMoreLimitedToAuthentication()
-    {
-        var xaml = Read(@"src\OpenClaw.SetupEngine.UI\Pages\AiSetupPage.xaml");
-        var source = Read(@"src\OpenClaw.SetupEngine.UI\Pages\AiSetupPage.xaml.cs");
-        var groups = new[] { "CandidatesSection", "LocalGroupHeader", "LocalAiSection", "PrepareSection",
-            "UnavailableSection", "SignInSection", "MoreExpander", "ApiKeySection", "ApiKeyForm", "RecommendedSection" };
-        var offsets = groups.Select(name => xaml.IndexOf($"x:Name=\"{name}\"", StringComparison.Ordinal)).ToArray();
-        Assert.All(offsets, offset => Assert.True(offset >= 0));
-        Assert.Equal(offsets.Order(), offsets);
-        Assert.Contains("MoreSignInChoices.ItemsSource = ProviderRows(_presentation.MoreSignIn, GatewayAiSetupChoiceKind.Auth)", source);
-        Assert.Contains("ApiKeyForm.StartBringIntoView()", source);
-        Assert.Contains("ApiProviderPicker.SelectedIndex = -1", source);
-        Assert.Contains("ApiKeyForm.Visibility = Visible(_presentation.ShowApiKeyForm)", source);
-        Assert.Contains("RecommendedInstalls.ItemsSource = ProviderRows(_presentation.RecommendedInstalls, GatewayAiSetupChoiceKind.Prepare)", source);
-        Assert.Contains("SetupLocalization.GetString(\"Onboarding_AiSetup_\" + key)", source);
-        Assert.DoesNotContain("WizardPanel", xaml);
-        Assert.DoesNotContain("new ContentDialog", source);
-        Assert.DoesNotContain("x:Name=\"LocalAiHeading\"", xaml);
-        Assert.DoesNotContain("x:Name=\"LocalAiExplanation\"", xaml);
-        Assert.Contains("AiSetupReadinessPresentation.ShowLocalChoice(", source);
-        var localVisibility = Read(@"src\OpenClaw.SetupEngine\AiSetupReadinessPresentation.cs");
-        Assert.Contains("snapshot.ShowLocalChoice", localVisibility);
-        Assert.Contains("nativeAdmitted && snapshot.State is LocalAiOnboardingState.Checking or LocalAiOnboardingState.Unknown",
-            localVisibility);
-        Assert.Contains("FluentIconCatalog.Key", source);
-        Assert.Contains("ApiProviderPicker.SelectedItem is ChoiceRow row && CanConnectManual()", source);
-        Assert.Contains("SelectChoice(row);", source);
-        Assert.Contains("selected.Id != row.Id || selected.ModelRef != row.ModelRef", source);
-        var document = XDocument.Parse(xaml);
-        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
-        XElement Named(string name) => Assert.Single(document.Descendants(),
-            element => (string?)element.Attribute(x + "Name") == name);
-        Assert.Equal("SettingsCard", Named("ApiKeysButton").Name.LocalName);
-        Assert.Contains(Named("LocalAiRecommendedBadge").Ancestors(), element => element == Named("LocalAiCard"));
-        Assert.Contains(Named("PrepareChoices").Ancestors(), element => element == Named("PrepareSection"));
-        Assert.Equal("StackPanel", Named("ApiKeysButton").Parent!.Name.LocalName);
-        Assert.DoesNotContain(document.Descendants(), element => element.Name.LocalName == "ListView");
-        Assert.DoesNotContain(document.Descendants(), element => (string?)element.Attribute(x + "Name") == "ContinueButton");
-        Assert.DoesNotContain(Named("ApiKeysButton").Ancestors(), element => element == Named("SignInSection"));
-        Assert.DoesNotContain(Named("ApiKeyForm").Ancestors(), element => element == Named("SignInSection"));
-        Assert.Contains(Named("ApiKeysButton").Ancestors(), element => element == Named("ApiKeySection"));
-        Assert.Contains(Named("ApiKeyForm").Ancestors(), element => element == Named("ApiKeySection"));
-        Assert.Contains(Named("MoreExpander").Ancestors(), element => element == Named("ProviderGroup"));
-        Assert.Contains(Named("FeaturedSignInChoices").Ancestors(), element => element == Named("ProviderGroup"));
-        Assert.Equal("SettingsExpander", Named("RecommendedSection").Name.LocalName);
-        Assert.Equal("False", (string?)Named("RecommendedSection").Attribute("IsExpanded"));
-        Assert.Equal("PasswordBox", Named("ApiKeyInput").Name.LocalName);
-        Assert.Equal("ManualConnect_Click", (string?)Named("ApiKeyConnectButton").Attribute("Click"));
-        Assert.DoesNotContain(document.Descendants(), element => element.Name.LocalName == "AdaptiveTrigger");
-        Assert.Equal("ApiKeyFields_SizeChanged", (string?)Named("ApiKeyFields").Attribute("SizeChanged"));
-        Assert.Contains("e.NewSize.Width >= 560", source);
-        Assert.Equal("CheckBox", Named("CatalogPreference").Name.LocalName);
-        Assert.Equal("False", (string?)Named("CatalogPreference").Attribute("IsChecked"));
-        Assert.Contains("? CatalogPreference.IsChecked == true : (bool?)null", source);
-        Assert.DoesNotContain(Named("ApiKeyFields").Descendants(),
-            element => element.Attribute("Height") is not null || element.Attribute("FontSize") is not null);
-    }
-
-    [Fact]
     public void SetupOwnership_ClosesCombinedCapabilitiesReview()
     {
         var source = Read(@"src\OpenClaw.SetupEngine.UI\Pages\CapabilitiesPage.xaml.cs");

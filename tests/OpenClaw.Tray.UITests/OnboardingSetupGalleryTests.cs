@@ -837,7 +837,7 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
         }
         if (state == "api-key")
         {
-            await OnboardingNativeProof.InvokeSettingsCardAsync(window, Find<SettingsCard>(page, "ApiKeysButton"));
+            await OnboardingNativeProof.InvokeSettingsCardAsync(window, Find<SetupActionCard>(page, "ApiKeysButton"));
             await WaitAsync(() => Find<StackPanel>(page, "ApiKeyForm").Visibility == Visibility.Visible,
                 "API Keys card opens the separate manual form");
             Assert.Null(page.FindName("ApiKeysChoices"));
