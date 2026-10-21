@@ -148,6 +148,34 @@ Capacity-dependent Windows validation is named in
 they need. A declaration does not claim that the pool ran, and unavailable
 proof must remain reported as blocked.
 
+### Choose the local execution target
+
+Choose by the behavior under test, not merely a name containing `Mxc`.
+This is testing guidance, not automatic CI migration, host reservation or a new
+scheduler. Keep mandatory code-change closeout and every applicable proof pool.
+
+| Behavior to prove | Default target and boundary |
+|---|---|
+| Build, unit/component logic, pure MXC policy and mocked capabilities | Task-owned host worktree with isolated test settings; no VM needed solely because the code concerns MXC |
+| App layout, navigation, chat/history and fixture-covered client behavior | [Isolated app with the deterministic fixture Gateway](GATEWAY_FIXTURE_TESTING.md); cheapest app-only default, not real pairing, node invocation or MXC proof |
+| Native-Gateway E2E and multiple real native Gateway instances | [Named side-by-side development patches](../.agents/skills/native-gateway-from-source/SKILL.md#default-multi-instance-native-gateway-testing) on one authorized, capable Windows 11 client host with Developer Mode; separate packages/sessions/profiles/ports, not one Hyper-V VM per Gateway |
+| Integration with an existing Gateway | Explicitly operator-approved endpoint and operations, with a task-owned app profile; discovery is not permission to reconfigure, restart or use a shared runtime |
+| Clean-machine/image, signed-package install/upgrade, genuine OS isolation or unavailable host capabilities | Separate reusable local or approved cloud Windows client VM; development patches do not prove signed Store/MSIX lifecycle |
+| Required WSL Gateway or MXC `system.run` path | Existing real WSL suite, including `.\scripts\validate-mxc-e2e.ps1` where required, on an authorized capable host/VM; native patch startup does not replace it |
+
+The named-patch default also applies when selecting future cloud native-Gateway
+E2E targets, after actual Windows client/session/listener capabilities are
+qualified. Do not assume `windows-latest` or Windows Server is MXC-ready or
+claim the cloud lane ran. Unsupported or skipped proof remains blocked.
+
+Serialize deployment/cache mutation and initial port selection/startup, then
+allow independent already-prepared instances to serve concurrent tests within
+host capacity. Package separation does not remove CPU/RAM costs, isolate the OS,
+or grant concurrent desktop-input ownership. Use unique task-owned names, explicit
+Companion patch selection, distinct app data/endpoints and ownership-checked
+cleanup as described in the canonical skill. Never stop another task's runtime
+or copy the user's profile/credentials to make a test pass.
+
 ### Explain the validation plan
 
 Use the existing classifier in read-only planning mode:

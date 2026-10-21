@@ -20,6 +20,14 @@ If the validation host is macOS, read [PARALLELS.md](PARALLELS.md) for the optio
 
 ## Required validation
 
+First follow [execution-target routing](../../../docs/TEST_COVERAGE.md#choose-the-local-execution-target):
+app-only proof defaults to the isolated fixture Gateway; native-Gateway E2E
+defaults to [named side-by-side patches](../native-gateway-from-source/SKILL.md#default-multi-instance-native-gateway-testing)
+on an authorized, capable Windows client host, locally or in future cloud lanes.
+Use separate VMs for OS/clean-image isolation or unavailable host capabilities,
+not one VM per Gateway. Preserve required real MXC/WSL proof and explicit
+authority for existing shared Gateways.
+
 Select the changed contract before running checks. Use the
 [read-only validation plan](../../../docs/TEST_COVERAGE.md#explain-the-validation-plan)
 to distinguish hosted lanes, mandatory local code-change closeout, and custom
@@ -49,7 +57,7 @@ dotnet test .\tests\OpenClaw.WinNode.Cli.Tests\OpenClaw.WinNode.Cli.Tests.csproj
 
 | Surface | Proof to collect |
 |---|---|
-| UI / WinUI | On an authorized isolated desktop, launch `.\run-app-local.ps1 -Isolated -AllowNonMain`, exercise the changed path with computer-use or developer-provided screenshots/output, and include visible evidence or blocker. If the developer captures manually, provide exact steps and confirm screenshot/artifact links resolve after updating the PR body. |
+| UI / WinUI | Follow [execution-target routing](../../../docs/TEST_COVERAGE.md#choose-the-local-execution-target): use the fixture by default, or an explicitly selected real Gateway with isolated app data. On an authorized desktop, exercise the changed path with computer-use or developer-provided screenshots/output, and include visible evidence or blocker. If the developer captures manually, provide exact steps and confirm screenshot/artifact links resolve after updating the PR body. |
 | Local MCP | Enable **Local MCP Server**, run `winnode --list-tools`, then invoke the changed command with `winnode --command <name> --params '<json-object>'`. |
 | Raw MCP HTTP | For protocol/server-shape changes, paste JSON-RPC `tools/list` and `tools/call` responses from `http://127.0.0.1:8765/`. |
 | Gateway path | When relevant and available, prove `openclaw nodes invoke --command <name> --params '<json-object>'`; otherwise state the gateway blocker. |
