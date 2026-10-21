@@ -214,6 +214,43 @@ public sealed class NodeExecDenialWireTests(ITestOutputHelper output)
     }
 
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task RealCoordinator_PromptExpiry_IsNotDefiniteDenial(
+        bool gatewayEvent, bool lateDecision)
+    {
+        using var temp = new TempDirectory();
+        WritePromptPolicy(temp.Path, "full");
+        using var store = new ExecApprovalsStore(temp.Path, NullLogger.Instance);
+        var clock = new ManualTimeProvider();
+        var timeout = TimeSpan.FromMinutes(1);
+        var prompt = new CallbackPromptHandler((_, token) =>
+        {
+            clock.Advance(timeout);
+            return lateDecision
+                ? Task.FromResult(ExecApprovalPromptOutcome.AllowAlways)
+                : Task.FromCanceled<ExecApprovalPromptOutcome>(token);
+        });
+        var coordinator = new ExecApprovalsCoordinator(
+            store, AlwaysCanPresentEvaluator.Instance, prompt, NullLogger.Instance,
+            promptTimeout: timeout, timeProvider: clock);
+        var runner = new RecordingRunner();
+
+        var response = await InvokeOverSocketAsync(
+            gatewayEvent, coordinator, runner, SystemCommand());
+
+        Assert.False(response.GetProperty("ok").GetBoolean());
+        var error = response.GetProperty("error");
+        Assert.Contains("InternalError", error.GetProperty("message").GetString());
+        Assert.Contains("prompt-timeout", error.GetProperty("message").GetString());
+        Assert.False(error.TryGetProperty("code", out _));
+        Assert.Equal(0, runner.CallCount);
+        Assert.Empty(store.ResolveReadOnly("main").Allowlist);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task RealCoordinator_PolicyTightenedDuringPrompt_IsDefiniteDenial(bool gatewayEvent)

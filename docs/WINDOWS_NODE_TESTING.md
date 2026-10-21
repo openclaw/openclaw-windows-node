@@ -397,7 +397,9 @@ Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `ap
   failure. Both prevent launch.
   Presenter exceptions, failed dispatcher enqueue, dialog errors and cancelled
   prompts fail closed as `InternalError (prompt-failed)` without using
-  `askFallback` or claiming a user refusal. Confirmed policy tightening while a
+  `askFallback` or claiming a user refusal. An expired unanswered prompt likewise
+  remains `InternalError (prompt-timeout)`, even if a late answer arrives.
+  Confirmed policy tightening while a
   prompt is open retains the `ValidationFailed` result code, with typed
   definite-denial provenance so the Gateway receives `SYSTEM_RUN_DENIED`.
 - A contained, non-timeout process exit `0xC0000142` (`STATUS_DLL_INIT_FAILED`)

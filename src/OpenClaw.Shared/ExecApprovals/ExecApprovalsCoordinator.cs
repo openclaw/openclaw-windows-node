@@ -20,6 +20,7 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
     private readonly IExecApprovalV2PromptHandler _prompt;
     private readonly IOpenClawLogger _logger;
     private readonly TimeSpan _promptTimeout;
+    private readonly TimeProvider _timeProvider;
 
     // Bounded lifetime for an approval dialog: if the owner does not respond within this window
     // the prompt is cancelled and fails closed, so a request never hangs forever (the
@@ -36,13 +37,15 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
         ICanPresentEvaluator canPresentEvaluator,
         IExecApprovalV2PromptHandler promptHandler,
         IOpenClawLogger logger,
-        TimeSpan? promptTimeout = null)
+        TimeSpan? promptTimeout = null,
+        TimeProvider? timeProvider = null)
     {
         _store = store;
         _canPresent = canPresentEvaluator;
         _prompt = promptHandler;
         _logger = logger;
         _promptTimeout = promptTimeout ?? DefaultPromptTimeout;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public async Task<ExecApprovalV2Result> HandleAsync(NodeInvokeRequest request, string correlationId,
@@ -175,8 +178,9 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
             {
                 promptAttempted = true;
                 ExecApprovalPromptOutcome promptResult;
-                using var promptCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                promptCts.CancelAfter(_promptTimeout);
+                using var expiry = new CancellationTokenSource(_promptTimeout, _timeProvider);
+                using var promptCts = CancellationTokenSource.CreateLinkedTokenSource(
+                    cancellationToken, expiry.Token);
                 try
                 {
                     // Bound the dialog's lifetime: on timeout the token cancels, the prompt
@@ -187,14 +191,14 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
                         promptCts.Token).WaitAsync(promptCts.Token).ConfigureAwait(false);
                     cancellationToken.ThrowIfCancellationRequested();
                     if (promptCts.IsCancellationRequested)
-                        return LogAndReturn(ExecApprovalV2Result.UserDenied("prompt-timeout"),
+                        return LogAndReturn(ExecApprovalV2Result.InternalError("prompt-timeout"),
                             correlationId, promptAttempted: true, fallbackUsed: false,
                             canonical: context.DisplayCommand);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
                 catch (OperationCanceledException) when (promptCts.IsCancellationRequested)
                 {
-                    return LogAndReturn(ExecApprovalV2Result.UserDenied("prompt-timeout"),
+                    return LogAndReturn(ExecApprovalV2Result.InternalError("prompt-timeout"),
                         correlationId, promptAttempted: true, fallbackUsed: false,
                         canonical: context.DisplayCommand);
                 }

@@ -13,6 +13,7 @@ using OpenClaw.Shared.Capabilities;
 using OpenClaw.Shared.Mxc;
 using OpenClaw.Shared.Tests.Mxc;
 using Microsoft.Mxc.Sdk.V1;
+using OpenClaw.TestSupport;
 
 namespace OpenClaw.Shared.Tests;
 
@@ -102,7 +103,8 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         ICanPresentEvaluator? canPresent = null,
         IExecApprovalV2PromptHandler? prompt = null,
         IOpenClawLogger? logger = null,
-        TimeSpan? promptTimeout = null)
+        TimeSpan? promptTimeout = null,
+        TimeProvider? timeProvider = null)
     {
         var log = logger ?? NullLogger.Instance;
         return new(
@@ -110,7 +112,8 @@ public class ExecApprovalsCoordinatorTests : IDisposable
             canPresent ?? AlwaysCannotPresentEvaluator.Instance,
             prompt ?? ExecApprovalV2NullPromptHandler.Instance,
             log,
-            promptTimeout);
+            promptTimeout,
+            timeProvider);
     }
 
     // ── 1. No file → prompt on miss; unattended fallback denies ───────────────
@@ -410,16 +413,23 @@ public class ExecApprovalsCoordinatorTests : IDisposable
     }
 
     [Fact]
-    public async Task Prompt_Timeout_ResolvesDeny()
+    public async Task Prompt_Timeout_FailsClosedWithoutClaimingUserDenial()
     {
-        // A dialog the owner never answers must not hang the request: the prompt timeout
-        // cancels it and the coordinator denies.
         WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"always"}}""");
-        var result = await MakeCoordinator(
+        var clock = new ManualTimeProvider();
+        var timeout = TimeSpan.FromMinutes(1);
+        var prompt = new TokenAwaitingPromptHandler();
+        var pending = MakeCoordinator(
             canPresent: AlwaysCanPresentEvaluator.Instance,
-            prompt: new TokenAwaitingPromptHandler(),
-            promptTimeout: TimeSpan.FromMilliseconds(50)).HandleAsync(DefaultReq(), "to1");
+            prompt: prompt,
+            promptTimeout: timeout,
+            timeProvider: clock).HandleAsync(DefaultReq(), "to1");
+        await prompt.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        clock.Advance(timeout);
+        var result = await pending;
         Assert.False(result.IsAllow);
+        Assert.Equal(ExecApprovalV2Code.InternalError, result.Code);
+        Assert.False(result.IsDefiniteDenial);
         Assert.Equal("prompt-timeout", result.Reason);
     }
 
@@ -2184,10 +2194,13 @@ public class ExecApprovalsCoordinatorTests : IDisposable
     // then it denies (mirroring the real dialog's cancellation-to-Deny behavior).
     private sealed class TokenAwaitingPromptHandler : IExecApprovalV2PromptHandler
     {
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         public async Task<ExecApprovalPromptOutcome> PromptAsync(
             ExecApprovalV2PromptRequest _,
             CancellationToken cancellationToken = default)
         {
+            Entered.TrySetResult();
             try { await Task.Delay(Timeout.Infinite, cancellationToken).ConfigureAwait(false); }
             catch (OperationCanceledException) { }
             return ExecApprovalPromptOutcome.Deny;
