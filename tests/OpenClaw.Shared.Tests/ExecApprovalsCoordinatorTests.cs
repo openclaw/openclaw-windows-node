@@ -419,7 +419,7 @@ public class ExecApprovalsCoordinatorTests : IDisposable
     public async Task PreApproved_RevalidationStoreFailure_IsNotAConfirmedPolicyDenial()
     {
         WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"off"}}""");
-        using var store = new ExecApprovalsStore(_dir, NullLogger.Instance);
+        using var store = new ExecApprovalsStore(_dir, NullLogger.Instance, stateDirOverride: _dir);
         var coordinator = new ExecApprovalsCoordinator(
             store,
             AlwaysCannotPresentEvaluator.Instance,
