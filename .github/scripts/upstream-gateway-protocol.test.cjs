@@ -508,7 +508,10 @@ test("live-shaped tooling/source discrepancy collects partial evidence without r
 // exact npm tarball validation. Only external transports are replaced.
 function boundary(t, value = report()) {
   const artifact = tarball(value.protocol.schema);
-  const state = { issues: [], pulls: [], tasks: [], timeline: [], calls: [], override: null };
+  const state = { issues: [], pulls: [], tasks: [], timeline: [], calls: [], override: null,
+    tracker: { number: 1829, title: "Gateway capability tracking", state: "open", labels: [], assignees: [],
+      body: "<!-- upstream-gateway-tracker:v1 -->\n<!-- upstream-gateway-owned:begin -->\nNot activated.\n<!-- upstream-gateway-owned:end -->" },
+  };
   t.mock.method(global, "fetch", async (url) => {
     const key = String(url);
     if (key.endsWith(".tgz")) return new Response(artifact.compressed);
@@ -530,10 +533,11 @@ function boundary(t, value = report()) {
       case "GET /repos/{owner}/{repo}/git/trees/{tree_sha}":
         data = { truncated: false, tree: Object.entries(value.main.files).map(([path, entry]) => ({ path, sha: entry.sha, type: "blob" })) }; break;
       case "GET /repos/{owner}/{repo}/issues":
-        data = state.issues.filter((item) => (args.state === "all" || item.state === args.state)
+        data = [...state.issues, state.tracker].filter((item) => (args.state === "all" || item.state === args.state)
           && (!args.labels || item.labels.some((label) => label.name === args.labels))); break;
       case "GET /repos/{owner}/{repo}/pulls": data = state.pulls.filter((item) => item.state === "open"); break;
-      case "GET /repos/{owner}/{repo}/issues/{issue_number}": data = state.issues.find((item) => item.number === args.issue_number); break;
+      case "GET /repos/{owner}/{repo}/issues/{issue_number}":
+        data = args.issue_number === 1829 ? state.tracker : state.issues.find((item) => item.number === args.issue_number); break;
       case "GET /repos/{owner}/{repo}/issues/{issue_number}/timeline": data = state.timeline; break;
       case "GET /repos/{owner}/{repo}/pulls/{pull_number}": data = state.pulls.find((item) => item.number === args.pull_number); break;
       case "GET /repos/{owner}/{repo}/labels/{name}": data = {}; break;
@@ -543,7 +547,7 @@ function boundary(t, value = report()) {
         state.issues.push(data); status = 201; break;
       case "PATCH /repos/{owner}/{repo}/issues/{issue_number}":
         assert.equal(args.headers?.authorization, undefined, "issue writes must use the workflow token");
-        data = state.issues.find((item) => item.number === args.issue_number);
+        data = args.issue_number === 1829 ? state.tracker : state.issues.find((item) => item.number === args.issue_number);
         if (args.body !== undefined) data.body = args.body;
         if (args.state !== undefined) data.state = args.state;
         break;
@@ -573,12 +577,12 @@ function boundary(t, value = report()) {
 }
 const writes = (state) => state.calls.filter((call) => !call.route.startsWith("GET "));
 
-test("public workflow path creates one tracker and no-PR task; repeated publication metadata is quiet", async (t) => {
+test("public workflow path reuses the fixed tracker and creates a no-PR task; repeated publication metadata is quiet", async (t) => {
   const value = report();
   const h = boundary(t, value);
   const first = await h.publish();
   assert.equal(first.issueNumber, 1);
-  assert.equal(first.trackerNumber, 2);
+  assert.equal(first.trackerNumber, 1829);
   assert.equal((await h.handoff()).state, "queued");
   await h.publish(value, { createWork: false });
   const count = writes(h.state).length;
@@ -595,15 +599,44 @@ test("public workflow path creates one tracker and no-PR task; repeated publicat
   await h.handoff();
   assert.equal(writes(h.state).length, count);
   assert.equal(h.state.tasks.length, 1);
-  assert.equal(h.state.issues.length, 2);
+  assert.equal(h.state.issues.length, 1);
   assert.ok(!h.state.calls.some((call) => call.route.includes("/assignees") || call.route.endsWith("/comments")));
   assert.ok(!h.state.calls.some((call) => call.args.pull_number === 4751512507), "task artifact database ID is not a PR number");
+});
+
+test("fixed tracker number ignores copied markers and title changes", async (t) => {
+  const h = boundary(t);
+  h.state.tracker.title = "Renamed by a maintainer";
+  h.state.issues.push({ ...structuredClone(h.state.tracker), number: 80,
+    labels: [{ name: "upstream-gateway-tracker" }] });
+  const copy = h.state.issues[0].body;
+  assert.equal((await h.publish()).trackerNumber, 1829);
+  assert.match(h.state.tracker.body, /Capability review status/);
+  assert.equal(h.state.issues[0].body, copy);
+  const posts = h.state.calls.filter((call) => call.route === "POST /repos/{owner}/{repo}/issues");
+  assert.equal(posts.length, 1, "only a candidate may be created, never a tracker");
+  assert.match(posts[0].args.body, /upstream-gateway-candidate:v1:/);
+  assert.ok(!h.state.calls.some((call) => call.args.labels === "upstream-gateway-tracker"));
+});
+
+test("unavailable fixed tracker stops without creating a replacement", async (t) => {
+  const h = boundary(t);
+  for (const mutate of [
+    () => { h.state.tracker.state = "closed"; },
+    () => { h.state.tracker.state = "open"; h.state.tracker.pull_request = {}; },
+    () => { delete h.state.tracker.pull_request; h.state.tracker.body = "Marker removed"; },
+  ]) {
+    mutate();
+    await assert.rejects(h.publish(), /Tracker #1829/);
+    assert.equal(writes(h.state).length, 0);
+  }
 });
 
 test("human prose survives meaningful tracker updates and closed exact candidates never reopen", async (t) => {
   const h = boundary(t);
   await h.publish();
-  const [candidate, tracker] = h.state.issues;
+  const [candidate] = h.state.issues;
+  const tracker = h.state.tracker;
   tracker.body = "Human introduction\n" + tracker.body + "\nHuman conclusion";
   candidate.state = "closed";
   await h.publish();
@@ -614,7 +647,7 @@ test("human prose survives meaningful tracker updates and closed exact candidate
   assert.equal((await h.publish()).issueNumber, undefined);
   assert.equal(writes(h.state).length, count);
   assert.equal(candidate.state, "closed");
-  assert.equal(h.state.issues.length, 2);
+  assert.equal(h.state.issues.length, 1);
 });
 
 test("existing generic monitor work and assignments precede candidate creation", async (t) => {
@@ -626,7 +659,7 @@ test("existing generic monitor work and assignments precede candidate creation",
     h.state.issues = [{ number: 80, state: "open", body: "", labels: [], assignees: [], ...item }];
     await h.publish();
     assert.equal(h.state.issues.filter((issue) => issue.body.includes("upstream-gateway-candidate:v1:")).length, 0);
-    assert.match(h.state.issues.at(-1).body, /deferred-existing-work/);
+    assert.match(h.state.tracker.body, /deferred-existing-work/);
   }
 });
 
@@ -654,7 +687,7 @@ test("prose-matched related work informs investigation without suppressing it", 
   assert.doesNotMatch(task.args.prompt, /#80\b/);
   await h.publish(); await h.handoff(issueNumber);
   assert.equal(h.state.tasks.length, 1, "repeat observations must reuse the exact investigation");
-  assert.equal(h.state.issues.length, 3);
+  assert.equal(h.state.issues.length, 2);
 });
 
 test("changed contract waits behind active candidate or PR rather than duplicating work", async (t) => {
@@ -663,12 +696,12 @@ test("changed contract waits behind active candidate or PR rather than duplicati
   await h.publish();
   h.state.issues[0].body = h.state.issues[0].body.replace(value.capabilities.families[0].candidateHash, "f".repeat(64));
   await h.publish();
-  assert.equal(h.state.issues.length, 2);
-  assert.match(h.state.issues[1].body, /deferred-existing-work/);
+  assert.equal(h.state.issues.length, 1);
+  assert.match(h.state.tracker.body, /deferred-existing-work/);
   h.state.issues[0].state = "closed";
   h.state.pulls = [{ number: 100, state: "open", body: "Closes #1", draft: true }];
   await h.publish();
-  assert.equal(h.state.issues.length, 2);
+  assert.equal(h.state.issues.length, 1);
 });
 
 test("active agent task defers, unknown state or lookup failure performs no handoff writes", async (t) => {
@@ -744,7 +777,7 @@ test("missing token and revoked queued authority never create a task", async (t)
     };
     await assert.rejects(h.handoff(), /authority changed before task/);
     assert.equal(h.state.tasks.length, 0);
-    assert.equal(h.state.issues.length, 2);
+    assert.equal(h.state.issues.length, 1);
   }
 });
 

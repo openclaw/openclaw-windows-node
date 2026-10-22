@@ -41,9 +41,15 @@ inventories as released source remain excluded from baselines.
 
 ## One tracker, focused investigations
 
-One permanent issue has the `upstream-gateway-tracker` label and canonical
-`upstream-gateway-tracker:v1` marker. The monitor replaces only its delimited
-bot-owned section when candidate evidence or status changes. Human prose outside
+The permanent tracker is [issue #1829](https://github.com/openclaw/openclaw-windows-node/issues/1829),
+addressed directly by its fixed issue number in the publisher. There is no title,
+label or marker search and no automatic tracker creation or replacement. Copies
+of its title or marker do not change which issue is updated. The body marker and
+delimiters validate the target section; a missing, closed or damaged tracker stops
+publication until that issue is restored.
+
+The monitor replaces only its delimited bot-owned section when candidate evidence
+or status changes. Human prose outside
 that section and all discussion survive. Run IDs, package versions, timestamps
 and unrelated daily commits do not refresh its body. Every run still retains
 its full observation artifact. Keep this tracker open; do not assign it to Copilot.
@@ -210,7 +216,7 @@ Responses and decompressed tarballs are bounded to 32 MiB, source inventory to
 budget; publication/handoff have 10 minutes each. Issue/timeline/task queries
 stop at 2,000 records and fail closed rather than treating partial history as
 absence. Preserve labels, identity markers and bot-owned delimiters. Missing or
-ambiguous canonical state needs manual reconciliation, not another tracker.
+damaged tracker state needs manual restoration of #1829, not another tracker.
 
 ## Validation
 

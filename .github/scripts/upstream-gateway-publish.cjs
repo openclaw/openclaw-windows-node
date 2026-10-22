@@ -7,7 +7,7 @@ const MARKER = "<!-- upstream-gateway-protocol:v1:";
 // GitHub returns the Coding Agent as Copilot, not its request-login spelling.
 const COPILOT_USER_ID = 198982749;
 const HEALTH_LABEL = "upstream-gateway-protocol-health";
-const TRACKER_LABEL = "upstream-gateway-tracker";
+const TRACKER_NUMBER = 1829;
 const TRACKER = "<!-- upstream-gateway-tracker:v1 -->";
 const BEGIN = "<!-- upstream-gateway-owned:begin -->";
 const END = "<!-- upstream-gateway-owned:end -->";
@@ -125,7 +125,7 @@ function candidateMarker(family) {
 }
 function hasLabel(issue, label) { return issue.labels?.some((item) => item.name === label || item === label); }
 function isCandidate(issue) { return !issue.pull_request && CANDIDATE.test(issue.body ?? ""); }
-function isTracker(issue) { return !issue.pull_request && issue.body?.includes(TRACKER); }
+function isTracker(issue) { return !issue.pull_request && issue.number === TRACKER_NUMBER; }
 function attempt(issue) {
   const matches = [...(issue.body ?? "").matchAll(new RegExp(TASK.source, "g"))];
   if (matches.length !== 1) fail("Candidate task state missing or ambiguous; restore its bot-owned section");
@@ -157,8 +157,8 @@ async function updateSection(github, repo, number, identity, section, requireOpe
   const current = await getIssue(github, repo, number);
   if (!current.body?.includes(identity) || current.pull_request || (requireOpen && current.state !== "open"))
     fail("Issue authority changed; reconcile before writing");
-  if (identity === TRACKER ? !hasLabel(current, TRACKER_LABEL) : !hasLabel(current, LABEL))
-    fail("Issue label authority changed; reconcile before writing");
+  if (identity === TRACKER ? !isTracker(current) || current.state !== "open" : !hasLabel(current, LABEL))
+    fail("Issue authority changed; reconcile before writing");
   if (identity !== TRACKER) {
     const previous = attempt(current);
     const next = attempt({ body: section });
@@ -183,19 +183,18 @@ async function workState(github, context) {
   // Labeled history preserves closed acknowledgments; unfiltered open work also
   // catches legacy tasks, manual assignments and work without monitor titles.
   const history = await boundedList(github, "GET /repos/{owner}/{repo}/issues", { ...repo, state: "all", labels: LABEL });
-  const trackers = await boundedList(github, "GET /repos/{owner}/{repo}/issues", { ...repo, state: "all", labels: TRACKER_LABEL });
+  const tracker = await getIssue(github, repo, TRACKER_NUMBER);
+  if (!isTracker(tracker) || tracker.state !== "open" || !tracker.body?.includes(TRACKER))
+    fail("Tracker #" + TRACKER_NUMBER + " is unavailable or invalid; restore it before continuing");
+  replaceSection(tracker.body, "");
   const open = await boundedList(github, "GET /repos/{owner}/{repo}/issues", { ...repo, state: "open" });
   const pulls = await boundedList(github, "GET /repos/{owner}/{repo}/pulls", { ...repo, state: "open" });
-  const issues = [...new Map([...history, ...trackers, ...open].filter((item) => !item.pull_request)
+  const issues = [...new Map([...history, ...open].filter((item) => !item.pull_request)
     .map((item) => [item.number, item])).values()];
   if (issues.some((item) => !Number.isSafeInteger(item.number) || item.number <= 0
     || !["open", "closed"].includes(item.state))) fail("Invalid issue history");
-  const canonical = issues.filter(isTracker);
-  if (canonical.length > 1 || trackers.some((item) => !item.pull_request && !isTracker(item)))
-    fail("Permanent tracker identity missing or ambiguous; reconcile manually");
   for (const issue of issues.filter(isCandidate)) { attempt(issue); replaceSection(issue.body, ""); }
-  if (canonical[0]) replaceSection(canonical[0].body, "");
-  return { issues, pulls, tracker: canonical[0] };
+  return { issues, pulls, tracker };
 }
 function copilotAssigned(item) { return item.assignees?.some((assignee) => assignee.id === COPILOT_USER_ID); }
 function blocker(work, except) {
@@ -260,19 +259,8 @@ async function syncTracker(github, context, work, rows) {
   if (work.tracker?.body.includes(key)) return work.tracker.number;
   const section = key + "\n" + content + "\n\n[Evidence at last meaningful change](https://github.com/"
     + context.repo.owner + "/" + context.repo.repo + "/actions/runs/" + context.runId + ")";
-  if (work.tracker) {
-    await updateSection(github, context.repo, work.tracker.number, TRACKER, section);
-    return work.tracker.number;
-  }
-  await ensureLabel(github, context.repo, TRACKER_LABEL);
-  const latest = await workState(github, context);
-  if (latest.tracker) return syncTracker(github, context, latest, rows);
-  const { data } = await github.request("POST /repos/{owner}/{repo}/issues", {
-    ...context.repo, title: "Gateway capability tracking", labels: [TRACKER_LABEL],
-    body: TRACKER + "\nPermanent tracker. Keep human notes outside the bot-owned section; discussion is never rewritten.\n\n"
-      + BEGIN + "\n" + section + "\n" + END,
-  });
-  return data.number;
+  await updateSection(github, context.repo, TRACKER_NUMBER, TRACKER, section);
+  return TRACKER_NUMBER;
 }
 async function publish({ github, context, report, core, now = Date.now(), createWork = true }) {
   const assessment = await verifyInvestigation({ github, report });
