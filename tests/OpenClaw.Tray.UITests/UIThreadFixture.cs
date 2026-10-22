@@ -99,7 +99,9 @@ public sealed class UIThreadFixture : IDisposable
         {
             var threadState = _uiThread.IsAlive ? _uiThread.ThreadState.ToString() : "stopped";
             throw new InvalidOperationException(
-                $"UIThreadFixture failed to initialize within {timeoutSeconds}s; phase='{_startupPhase}', threadState='{threadState}'");
+                $"UIThreadFixture failed to initialize within {timeoutSeconds}s; phase='{_startupPhase}', " +
+                $"threadState='{threadState}', callerManagedThreadId={Environment.CurrentManagedThreadId}, " +
+                $"uiManagedThreadId={_uiThread.ManagedThreadId}");
         }
 
         if (_startupError != null)
@@ -204,10 +206,11 @@ public sealed class UIThreadFixture : IDisposable
         {
             OnboardingNativeProof.InitializeProductProcessDpi();
             OnboardingNativeProof.TraceDpiContext("UIThreadProc: before bootstrap");
-            _startupPhase = "initializing Windows App SDK bootstrap";
+            _startupPhase = "initializing WinRT COM wrappers";
             WinRT.ComWrappersSupport.InitializeComWrappers();
 
             // Initialize WinAppSDK runtime (unpackaged process).
+            _startupPhase = "initializing Windows App SDK bootstrap";
             if (Interlocked.Exchange(ref s_bootstrapInitialized, 1) == 0)
             {
                 Bootstrap.Initialize(WinAppSdkMajorMinor, WinAppSdkVersionTag);

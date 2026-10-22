@@ -1617,7 +1617,16 @@ public class ExecApprovalsStoreTests : IDisposable
 
         WriteAtomically(FilePath, originalJson);
 
-        await WaitForConditionAsync(() => changes.Count == 1, "Expected the reverted external update event.");
+        await WaitForConditionAsync(
+            () => changes.Count == 1,
+            "Expected the reverted external update event.",
+            failureDetails: () =>
+            {
+                var observed = changes.ToArray();
+                return $"originalHash={Hash(originalJson)}; reactivatedHash={reactivated.Snapshot?.Hash}; " +
+                    $"eventCount={observed.Length}; " +
+                    $"events={JsonSerializer.Serialize(observed.Select(change => new { change.Sequence, change.Kind, change.Hash }))}";
+            });
         await Task.Delay(250);
 
         var change = Assert.Single(changes);
@@ -1823,7 +1832,11 @@ public class ExecApprovalsStoreTests : IDisposable
         File.Move(tempPath, filePath, overwrite: true);
     }
 
-    private static async Task WaitForConditionAsync(Func<bool> condition, string message, int timeoutMs = 5000)
+    private static async Task WaitForConditionAsync(
+        Func<bool> condition,
+        string message,
+        int timeoutMs = 5000,
+        Func<string>? failureDetails = null)
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (DateTime.UtcNow < deadline)
@@ -1836,7 +1849,8 @@ public class ExecApprovalsStoreTests : IDisposable
             await Task.Delay(50);
         }
 
-        Assert.True(condition(), message);
+        var satisfied = condition();
+        Assert.True(satisfied, satisfied || failureDetails is null ? message : $"{message} {failureDetails()}");
     }
 }
 

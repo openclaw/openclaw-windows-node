@@ -5592,6 +5592,60 @@ Make sure the gateway is running.</value>
   <data name="ConnectionPage_OpenDashboard" xml:space="preserve">
     <value>Open dashboard</value>
   </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthMenu" xml:space="preserve">
+    <value>Use Tailscale identity for dashboard</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthTitle" xml:space="preserve">
+    <value>Use Tailscale identity for dashboard?</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthBody" xml:space="preserve">
+    <value>This requests Tailscale identity authentication on a gateway with gateway-managed foreground Tailscale Serve. Your saved token, device identity, WSL distro, and pairing remain unchanged. This action does not change Serve.</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthEnable" xml:space="preserve">
+    <value>Enable</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthEnabled" xml:space="preserve">
+    <value>Tailscale dashboard identity enabled.</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthAccepted" xml:space="preserve">
+    <value>The gateway accepted the Tailscale identity setting. Dashboard links will verify that it is applied and ready before omitting the token.</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailureUnsupportedTopology" xml:space="preserve">
+    <value>This action requires gateway-managed foreground Tailscale Serve. Setup's background Serve is not supported. Ask the gateway administrator to review the deployment. No setting was changed.</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailureIngressNotReady" xml:space="preserve">
+    <value>Gateway-managed Tailscale ingress is not ready or could not be verified. Check the gateway and Tailscale connection, then retry. No setting was changed.</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailureIneligible" xml:space="preserve">
+    <value>This gateway is no longer a managed Tailscale gateway. Refresh the gateway list and try again.</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailureNotActive" xml:space="preserve">
+    <value>Select this gateway as active, then try again.</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailureNotConnected" xml:space="preserve">
+    <value>Connect to this gateway, then try again.</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailureMissingConfigScope" xml:space="preserve">
+    <value>Reconnect with operator.admin access. Ask the gateway administrator if that permission is unavailable.</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailureConfigUnavailable" xml:space="preserve">
+    <value>The gateway configuration could not be read. Reconnect to the gateway and try again.</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailurePatchRejected" xml:space="preserve">
+    <value>The gateway did not confirm the change. Reconnect and retry. Retrying safely reapplies only the same Tailscale setting.</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailurePersistenceFailed" xml:space="preserve">
+    <value>The local Tailscale trust setting could not be saved. Check access to the OpenClaw Tray data folder, then retry.</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailureGeneric" xml:space="preserve">
+    <value>Tailscale dashboard identity could not be enabled. Reconnect to the gateway and try again.</value>
+  </data>
+  <data name="DashboardLink_NoBrowserCompatibleCredential" xml:space="preserve">
+    <value>No browser-compatible gateway credential is available</value>
+  </data>
+  <data name="DashboardLink_TailscaleRevalidationFailed" xml:space="preserve">
+    <value>Tailscale dashboard authentication revalidation failed</value>
+  </data>
   <data name="ConnectionPage_GatewayOptionsA11y" xml:space="preserve">
     <value>Options for {0}</value>
   </data>
@@ -6418,7 +6472,7 @@ Make sure the gateway is running.</value>
     <value>Connect to a gateway before saving config.</value>
   </data>
   <data name="ConfigPage_StatusReadOnlyMessage" xml:space="preserve">
-    <value>This operator token does not have operator.write permission, so config changes cannot be saved.</value>
+    <value>This operator token does not have operator.admin permission, so config changes cannot be saved.</value>
   </data>
   <data name="ConfigPage_StatusConfigNotLoadedTitle" xml:space="preserve">
     <value>Config not loaded</value>
@@ -6499,7 +6553,7 @@ Make sure the gateway is running.</value>
     <value>This operator token lacks operator.read permission, so the gateway config cannot be loaded here.</value>
   </data>
   <data name="ConfigPage_ConfigIsReadOnlyMessage" xml:space="preserve">
-    <value>This operator token can read config but lacks operator.write permission. You can inspect and validate drafts, but Save is disabled.</value>
+    <value>This operator token can read config but lacks operator.admin permission. You can inspect and validate drafts, but Save is disabled.</value>
   </data>
   <data name="ConfigPage_MetaNoUnsavedChanges" xml:space="preserve">
     <value>No unsaved changes.</value>
@@ -6526,7 +6580,7 @@ Make sure the gateway is running.</value>
     <value>Config unavailable: missing operator.read</value>
   </data>
   <data name="ConfigPage_SaveStatusReadOnlyMissingWrite" xml:space="preserve">
-    <value>Read-only: missing operator.write</value>
+    <value>Read-only: missing operator.admin</value>
   </data>
   <data name="ConfigPage_SaveStatusFixValidationBeforeSaving" xml:space="preserve">
     <value>Fix validation errors before saving</value>

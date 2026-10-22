@@ -5588,6 +5588,60 @@
   <data name="ConnectionPage_OpenDashboard" xml:space="preserve">
     <value>打开仪表板</value>
   </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthMenu" xml:space="preserve">
+    <value>使用 Tailscale 身份访问仪表板</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthTitle" xml:space="preserve">
+    <value>使用 Tailscale 身份访问仪表板？</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthBody" xml:space="preserve">
+    <value>这将向自行管理前台 Tailscale Serve 的网关请求 Tailscale 身份认证。已保存的令牌、设备身份、WSL 发行版和配对信息均保持不变。此操作不会更改 Serve。</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthEnable" xml:space="preserve">
+    <value>启用</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthEnabled" xml:space="preserve">
+    <value>已启用仪表板的 Tailscale 身份认证。</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthAccepted" xml:space="preserve">
+    <value>网关已接受 Tailscale 身份设置。仪表板链接将在确认设置已应用且就绪后才省略令牌。</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailureUnsupportedTopology" xml:space="preserve">
+    <value>此操作需要由网关管理的前台 Tailscale Serve。不支持安装程序创建的后台 Serve。请让网关管理员检查部署。未更改任何设置。</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailureIngressNotReady" xml:space="preserve">
+    <value>由网关管理的 Tailscale 入口尚未就绪或无法验证。请检查网关和 Tailscale 连接后重试。未更改任何设置。</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailureIneligible" xml:space="preserve">
+    <value>此网关已不再是受管理的 Tailscale 网关。请刷新网关列表后重试。</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailureNotActive" xml:space="preserve">
+    <value>请将此网关设为当前活动网关后重试。</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailureNotConnected" xml:space="preserve">
+    <value>请先连接到此网关，然后重试。</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailureMissingConfigScope" xml:space="preserve">
+    <value>请使用具有 operator.admin 权限的连接重新连接。若无法获得此权限，请联系网关管理员。</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailureConfigUnavailable" xml:space="preserve">
+    <value>无法读取网关配置。请重新连接网关后重试。</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailurePatchRejected" xml:space="preserve">
+    <value>网关未确认此更改。请重新连接后重试。重试只会安全地重新应用同一项 Tailscale 设置。</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailurePersistenceFailed" xml:space="preserve">
+    <value>无法在本地保存 Tailscale 信任设置。请检查 OpenClaw Tray 数据文件夹的访问权限后重试。</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailureGeneric" xml:space="preserve">
+    <value>无法启用 Tailscale 仪表板身份认证。请重新连接网关后重试。</value>
+  </data>
+  <data name="DashboardLink_NoBrowserCompatibleCredential" xml:space="preserve">
+    <value>没有可供浏览器使用的网关凭据</value>
+  </data>
+  <data name="DashboardLink_TailscaleRevalidationFailed" xml:space="preserve">
+    <value>重新验证仪表板的 Tailscale 身份认证失败</value>
+  </data>
   <data name="ConnectionPage_GatewayOptionsA11y" xml:space="preserve">
     <value>{0} 的选项</value>
   </data>
@@ -6414,7 +6468,7 @@
     <value>保存配置前请先连接到网关。</value>
   </data>
   <data name="ConfigPage_StatusReadOnlyMessage" xml:space="preserve">
-    <value>此操作员令牌没有 operator.write 权限，因此无法保存配置更改。</value>
+    <value>此操作员令牌没有 operator.admin 权限，因此无法保存配置更改。</value>
   </data>
   <data name="ConfigPage_StatusConfigNotLoadedTitle" xml:space="preserve">
     <value>配置未加载</value>
@@ -6495,7 +6549,7 @@
     <value>此操作员令牌缺少 operator.read 权限，因此无法在此处加载网关配置。</value>
   </data>
   <data name="ConfigPage_ConfigIsReadOnlyMessage" xml:space="preserve">
-    <value>此操作员令牌可以读取配置，但缺少 operator.write 权限。你可以检查并验证草稿，但“保存”已禁用。</value>
+    <value>此操作员令牌可以读取配置，但缺少 operator.admin 权限。你可以检查并验证草稿，但“保存”已禁用。</value>
   </data>
   <data name="ConfigPage_MetaNoUnsavedChanges" xml:space="preserve">
     <value>没有未保存的更改。</value>
@@ -6522,7 +6576,7 @@
     <value>配置不可用：缺少 operator.read</value>
   </data>
   <data name="ConfigPage_SaveStatusReadOnlyMissingWrite" xml:space="preserve">
-    <value>只读：缺少 operator.write</value>
+    <value>只读：缺少 operator.admin</value>
   </data>
   <data name="ConfigPage_SaveStatusFixValidationBeforeSaving" xml:space="preserve">
     <value>保存前请修复验证错误</value>

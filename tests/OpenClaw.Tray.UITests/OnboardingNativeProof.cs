@@ -472,7 +472,7 @@ internal static class OnboardingNativeProof
             var path = Path.Combine(directory, $"{name}.png");
             bitmap.Save(path, System.Drawing.Imaging.ImageFormat.Png);
             var sha = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
-            var ocr = await AssertLabelsAsync(path, requiredLabels);
+            var ocr = await CaptureLabelEvidenceAsync(path, requiredLabels);
             var manualLabelEvidence = ocr.MissingLabels.Length == 0 ? [] :
                 await ReadExactVisibleLabelEvidenceAsync(handle, bounds, ocr.MissingLabels);
             var metadata = new
@@ -710,49 +710,166 @@ internal static class OnboardingNativeProof
         }).ToArray();
     });
 
-    private static async Task<OcrEvidence> AssertLabelsAsync(string path, string[] labels)
+    private static async Task<OcrEvidence> CaptureLabelEvidenceAsync(string path, string[] labels)
     {
-        var engine = Windows.Media.Ocr.OcrEngine.TryCreateFromLanguage(new Windows.Globalization.Language("en-US"))
-            ?? throw new InvalidOperationException("English Windows OCR is required for native-window proof.");
-        var file = await Windows.Storage.StorageFile.GetFileFromPathAsync(path);
-        using var stream = await file.OpenAsync(Windows.Storage.FileAccessMode.Read);
-        var decoder = await BitmapDecoder.CreateAsync(stream);
         static string Normalize(string text) => string.Concat(text.Where(char.IsLetterOrDigit)).ToLowerInvariant();
-        using var originalBitmap = await decoder.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore);
-        using var originalTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-        var original = await engine.RecognizeAsync(originalBitmap).AsTask(originalTimeout.Token);
-        if (labels.All(label => Normalize(original.Text).Contains(Normalize(label), StringComparison.Ordinal)))
-            return new(original.Text, original.Text, 1, decoder.PixelWidth, decoder.PixelHeight,
-                decoder.PixelWidth, decoder.PixelHeight, []);
-        // OCR operates on the entire immutable capture at a bounded analysis resolution.
-        // One higher-resolution analysis pass, never iterative label/geometry polling.
-        // Retain the original PNG; do not recolor, crop or relax expected labels.
-        var max = Windows.Media.Ocr.OcrEngine.MaxImageDimension;
-        var factor = Math.Min(2d, (double)max / Math.Max(decoder.PixelWidth, decoder.PixelHeight));
-        var transform = new BitmapTransform
+        static object? Optional(Func<object?> read)
         {
-            ScaledWidth = (uint)Math.Max(1, Math.Round(decoder.PixelWidth * factor)),
-            ScaledHeight = (uint)Math.Max(1, Math.Round(decoder.PixelHeight * factor)),
-            InterpolationMode = BitmapInterpolationMode.Cubic,
-        };
-        using var bitmap = await decoder.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore,
-            transform, ExifOrientationMode.IgnoreExifOrientation, ColorManagementMode.DoNotColorManage);
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-        var result = await engine.RecognizeAsync(bitmap).AsTask(timeout.Token);
-        var missing = labels.Where(label => !Normalize(result.Text).Contains(Normalize(label), StringComparison.Ordinal)).ToArray();
-        File.WriteAllText(Path.ChangeExtension(path, ".ocr.json"), JsonSerializer.Serialize(new
+            try { return read(); }
+            catch { return null; }
+        }
+        object? ReadRecognitionAdmissionContext()
         {
-            image = path, sha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))),
-            requiredLabels = labels, originalText = original.Text, scaledText = result.Text,
-            missingLabels = missing, factor,
-        }, new JsonSerializerOptions { WriteIndented = true }));
-        // Coordinator-approved evidence split only for the two documented capital-I/l
-        // ambiguities. Never substitute text or call OCR successful; human pixel review
-        // and exact visible HWND-scoped native labels are both still required.
-        foreach (var label in missing)
-            Assert.Contains(label, new[] { "Set up your AI", "Set up a local model" });
-        return new(original.Text, result.Text, factor, decoder.PixelWidth, decoder.PixelHeight,
-            transform.ScaledWidth, transform.ScaledHeight, missing);
+            try
+            {
+                return new
+                {
+                    managedThreadId = Optional(() => Environment.CurrentManagedThreadId),
+                    apartment = Optional(() => System.Threading.Thread.CurrentThread.GetApartmentState().ToString()),
+                    synchronizationContext = Optional(() => System.Threading.SynchronizationContext.Current?.GetType().FullName),
+                };
+            }
+            catch { return null; }
+        }
+
+        var started = Stopwatch.GetTimestamp();
+        var phase = "create-engine";
+        var pass = 0;
+        uint? imageWidth = null;
+        uint? imageHeight = null;
+        uint? recognitionWidth = null;
+        uint? recognitionHeight = null;
+        int? timeoutRequestedMilliseconds = null;
+        CancellationToken? activeToken = null;
+        Task? recognitionTask = null;
+        long? recognitionStartedTicks = null;
+        object? recognitionAdmissionContext = null;
+        try
+        {
+            var engine = Windows.Media.Ocr.OcrEngine.TryCreateFromLanguage(new Windows.Globalization.Language("en-US"))
+                ?? throw new InvalidOperationException("English Windows OCR is required for native-window proof.");
+            phase = "open-image";
+            var file = await Windows.Storage.StorageFile.GetFileFromPathAsync(path);
+            phase = "decode-image";
+            using var stream = await file.OpenAsync(Windows.Storage.FileAccessMode.Read);
+            var decoder = await BitmapDecoder.CreateAsync(stream);
+            try { imageWidth = decoder.PixelWidth; }
+            catch { }
+            try { imageHeight = decoder.PixelHeight; }
+            catch { }
+            phase = "prepare-original-bitmap";
+            using var originalBitmap = await decoder.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore);
+            recognitionWidth = imageWidth;
+            recognitionHeight = imageHeight;
+            var originalAdmissionContext = ReadRecognitionAdmissionContext();
+            using var originalTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            activeToken = originalTimeout.Token;
+            timeoutRequestedMilliseconds = 3000;
+            phase = "recognize-original";
+            pass = 1;
+            recognitionAdmissionContext = originalAdmissionContext;
+            try { recognitionStartedTicks = Stopwatch.GetTimestamp(); }
+            catch { recognitionStartedTicks = null; }
+            var originalTask = engine.RecognizeAsync(originalBitmap).AsTask(originalTimeout.Token);
+            recognitionTask = originalTask;
+            var original = await originalTask;
+            recognitionStartedTicks = null;
+            recognitionAdmissionContext = null;
+            recognitionTask = null;
+            activeToken = null;
+            timeoutRequestedMilliseconds = null;
+            phase = "inspect-original-result";
+            if (labels.All(label => Normalize(original.Text).Contains(Normalize(label), StringComparison.Ordinal)))
+                return new(original.Text, original.Text, 1, decoder.PixelWidth, decoder.PixelHeight,
+                    decoder.PixelWidth, decoder.PixelHeight, []);
+            phase = "prepare-scaled-bitmap";
+            var max = Windows.Media.Ocr.OcrEngine.MaxImageDimension;
+            var factor = Math.Min(2d, (double)max / Math.Max(decoder.PixelWidth, decoder.PixelHeight));
+            var transform = new BitmapTransform
+            {
+                ScaledWidth = (uint)Math.Max(1, Math.Round(decoder.PixelWidth * factor)),
+                ScaledHeight = (uint)Math.Max(1, Math.Round(decoder.PixelHeight * factor)),
+                InterpolationMode = BitmapInterpolationMode.Cubic,
+            };
+            using var bitmap = await decoder.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore,
+                transform, ExifOrientationMode.IgnoreExifOrientation, ColorManagementMode.DoNotColorManage);
+            recognitionWidth = transform.ScaledWidth;
+            recognitionHeight = transform.ScaledHeight;
+            var scaledAdmissionContext = ReadRecognitionAdmissionContext();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            activeToken = timeout.Token;
+            timeoutRequestedMilliseconds = 3000;
+            phase = "recognize-scaled";
+            pass = 2;
+            recognitionAdmissionContext = scaledAdmissionContext;
+            try { recognitionStartedTicks = Stopwatch.GetTimestamp(); }
+            catch { recognitionStartedTicks = null; }
+            var resultTask = engine.RecognizeAsync(bitmap).AsTask(timeout.Token);
+            recognitionTask = resultTask;
+            var result = await resultTask;
+            recognitionStartedTicks = null;
+            recognitionAdmissionContext = null;
+            recognitionTask = null;
+            activeToken = null;
+            timeoutRequestedMilliseconds = null;
+            phase = "inspect-scaled-result";
+            var missing = labels.Where(label => !Normalize(result.Text).Contains(Normalize(label), StringComparison.Ordinal)).ToArray();
+            phase = "write-success-evidence";
+            File.WriteAllText(Path.ChangeExtension(path, ".ocr.json"), JsonSerializer.Serialize(new
+            {
+                image = path, sha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))),
+                requiredLabels = labels, originalText = original.Text, scaledText = result.Text,
+                missingLabels = missing, factor,
+            }, new JsonSerializerOptions { WriteIndented = true }));
+            phase = "validate-missing-labels";
+            foreach (var label in missing)
+                Assert.Contains(label, new[] { "Set up your AI", "Set up a local model" });
+            return new(original.Text, result.Text, factor, decoder.PixelWidth, decoder.PixelHeight,
+                transform.ScaledWidth, transform.ScaledHeight, missing);
+        }
+        catch (Exception exception)
+        {
+            try
+            {
+                var diagnostic = new
+                {
+                    schemaVersion = 1,
+                    image = Optional(() => Path.GetFileName(path)),
+                    sha256 = Optional(() => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)))),
+                    phase,
+                    elapsedMilliseconds = Optional(() => Stopwatch.GetElapsedTime(started).TotalMilliseconds),
+                    pass,
+                    dimensions = new
+                    {
+                        imageWidth, imageHeight,
+                        recognitionWidth, recognitionHeight,
+                    },
+                    timeoutRequestedMilliseconds,
+                    cancellationTokenSourceCreated = timeoutRequestedMilliseconds.HasValue,
+                    recognitionElapsedMilliseconds = Optional(() => recognitionStartedTicks.HasValue
+                        ? Stopwatch.GetElapsedTime(recognitionStartedTicks.Value).TotalMilliseconds
+                        : (double?)null),
+                    recognitionAdmissionContext,
+                    cancellationRequested = Optional(() => activeToken?.IsCancellationRequested),
+                    taskStatus = Optional(() => recognitionTask?.Status.ToString()),
+                    exceptionType = Optional(() => exception.GetType().FullName),
+                    exceptionHResult = Optional(() => exception.HResult),
+                    runtime = new
+                    {
+                        dotnet = Optional(() => Environment.Version.ToString()),
+                        ocrAssembly = Optional(() => typeof(Windows.Media.Ocr.OcrEngine).Assembly.GetName().FullName),
+                        bitmapAssembly = Optional(() => typeof(BitmapDecoder).Assembly.GetName().FullName),
+                        managedThreadId = Optional(() => Environment.CurrentManagedThreadId),
+                        apartment = Optional(() => System.Threading.Thread.CurrentThread.GetApartmentState().ToString()),
+                        synchronizationContext = Optional(() => System.Threading.SynchronizationContext.Current?.GetType().FullName),
+                    },
+                };
+                File.WriteAllText(Path.ChangeExtension(path, ".ocr-failure.json"), JsonSerializer.Serialize(diagnostic,
+                    new JsonSerializerOptions { WriteIndented = true }));
+            }
+            catch { }
+            throw;
+        }
     }
 
     private static SourceIdentity ReadSourceIdentity()

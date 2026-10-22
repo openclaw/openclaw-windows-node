@@ -5588,6 +5588,60 @@
   <data name="ConnectionPage_OpenDashboard" xml:space="preserve">
     <value>開啟儀表板</value>
   </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthMenu" xml:space="preserve">
+    <value>使用 Tailscale 身分存取儀表板</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthTitle" xml:space="preserve">
+    <value>使用 Tailscale 身分存取儀表板？</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthBody" xml:space="preserve">
+    <value>這會向自行管理前景 Tailscale Serve 的閘道要求 Tailscale 身分驗證。已儲存的權杖、裝置身分、WSL 發行版本和配對資訊均維持不變。此操作不會變更 Serve。</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthEnable" xml:space="preserve">
+    <value>啟用</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthEnabled" xml:space="preserve">
+    <value>已啟用儀表板的 Tailscale 身分驗證。</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthAccepted" xml:space="preserve">
+    <value>閘道已接受 Tailscale 身分設定。儀表板連結會在確認設定已套用且就緒後才省略權杖。</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailureUnsupportedTopology" xml:space="preserve">
+    <value>此操作需要由閘道管理的前景 Tailscale Serve。不支援安裝程式建立的背景 Serve。請讓閘道管理員檢查部署。未變更任何設定。</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailureIngressNotReady" xml:space="preserve">
+    <value>由閘道管理的 Tailscale 入口尚未就緒或無法驗證。請檢查閘道和 Tailscale 連線後重試。未變更任何設定。</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailureIneligible" xml:space="preserve">
+    <value>此閘道已不再是受管理的 Tailscale 閘道。請重新整理閘道清單後再試一次。</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailureNotActive" xml:space="preserve">
+    <value>請將此閘道設為目前作用中的閘道，然後再試一次。</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailureNotConnected" xml:space="preserve">
+    <value>請先連線到此閘道，然後再試一次。</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailureMissingConfigScope" xml:space="preserve">
+    <value>請使用具備 operator.admin 權限的連線重新連線。若無法取得此權限，請聯絡閘道管理員。</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailureConfigUnavailable" xml:space="preserve">
+    <value>無法讀取閘道設定。請重新連線至閘道後再試一次。</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailurePatchRejected" xml:space="preserve">
+    <value>閘道未確認這項變更。請重新連線後重試。重試只會安全地重新套用同一項 Tailscale 設定。</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailurePersistenceFailed" xml:space="preserve">
+    <value>無法在本機儲存 Tailscale 信任設定。請檢查 OpenClaw Tray 資料資料夾的存取權限後再試一次。</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailureGeneric" xml:space="preserve">
+    <value>無法啟用 Tailscale 儀表板身分驗證。請重新連線至閘道後再試一次。</value>
+  </data>
+  <data name="DashboardLink_NoBrowserCompatibleCredential" xml:space="preserve">
+    <value>沒有可供瀏覽器使用的閘道認證</value>
+  </data>
+  <data name="DashboardLink_TailscaleRevalidationFailed" xml:space="preserve">
+    <value>重新驗證儀表板的 Tailscale 身分驗證失敗</value>
+  </data>
   <data name="ConnectionPage_GatewayOptionsA11y" xml:space="preserve">
     <value>{0} 的選項</value>
   </data>
@@ -6414,7 +6468,7 @@
     <value>儲存設定前請先連線到閘道。</value>
   </data>
   <data name="ConfigPage_StatusReadOnlyMessage" xml:space="preserve">
-    <value>此操作員權杖沒有 operator.write 權限，因此無法儲存設定變更。</value>
+    <value>此操作員權杖沒有 operator.admin 權限，因此無法儲存設定變更。</value>
   </data>
   <data name="ConfigPage_StatusConfigNotLoadedTitle" xml:space="preserve">
     <value>設定未載入</value>
@@ -6495,7 +6549,7 @@
     <value>此操作員權杖缺少 operator.read 權限，因此無法在此載入閘道設定。</value>
   </data>
   <data name="ConfigPage_ConfigIsReadOnlyMessage" xml:space="preserve">
-    <value>此操作員權杖可以讀取設定，但缺少 operator.write 權限。您可以檢查並驗證草稿，但「儲存」已停用。</value>
+    <value>此操作員權杖可以讀取設定，但缺少 operator.admin 權限。您可以檢查並驗證草稿，但「儲存」已停用。</value>
   </data>
   <data name="ConfigPage_MetaNoUnsavedChanges" xml:space="preserve">
     <value>沒有未儲存的變更。</value>
@@ -6522,7 +6576,7 @@
     <value>設定無法使用：缺少 operator.read</value>
   </data>
   <data name="ConfigPage_SaveStatusReadOnlyMissingWrite" xml:space="preserve">
-    <value>唯讀：缺少 operator.write</value>
+    <value>唯讀：缺少 operator.admin</value>
   </data>
   <data name="ConfigPage_SaveStatusFixValidationBeforeSaving" xml:space="preserve">
     <value>儲存前請修正驗證錯誤</value>
