@@ -1520,6 +1520,32 @@ public sealed class NativeLocalAiLifecycleTests
     }
 
     [Fact]
+    public async Task SetPrimaryAndFallbackModel_RefusesPendingBindingBeforeWriting()
+    {
+        using var fixture = new Fixture();
+        await fixture.Lifecycle.PrepareAsync(fixture.Install, default);
+        fixture.Store.Save(fixture.Store.Load()! with { PreviousPrimary = "openai/gpt-5", Pending = true });
+        int writes = 0;
+        Func<CancellationToken, Task> write = _ => { writes++; return Task.CompletedTask; };
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            fixture.Lifecycle.SetPrimaryAndFallbackModelAsync("openai/gpt-6", write, default));
+        // Writing the saved fallback would still strand a published provider, so it is refused too.
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            fixture.Lifecycle.SetPrimaryAndFallbackModelAsync("openai/gpt-5", write, default));
+        Assert.Equal(0, writes);
+
+        fixture.Store.Save(fixture.Store.Load()! with { Pending = false });
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Lifecycle.SetPrimaryAndFallbackModelAsync(
+            "openai/gpt-6", _ => throw new InvalidOperationException("boom"), default));
+        Assert.Equal("openai/gpt-5", fixture.Store.Load()!.PreviousPrimary);
+
+        await fixture.Lifecycle.SetPrimaryAndFallbackModelAsync("openai/gpt-6", write, default);
+        Assert.Equal(1, writes);
+        Assert.Equal("openai/gpt-6", fixture.Store.Load()!.PreviousPrimary);
+    }
+
+    [Fact]
     public async Task SetupRegistrationExcludesExplicitRelease()
     {
         using var fixture = new Fixture();

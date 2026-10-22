@@ -149,6 +149,14 @@ public interface ILocalAiRuntime : IAsyncDisposable
     /// <summary>Changes the non-Local-AI primary the Gateway returns to when Local AI withdraws.</summary>
     Task SetGatewayFallbackModelAsync(string? model, CancellationToken cancellationToken = default)
         => throw new InvalidOperationException("This Local AI runtime cannot change its Gateway fallback.");
+    /// <summary>
+    /// Writes a non-Local-AI Gateway primary through <paramref name="writePrimary"/> and records it as
+    /// the fallback. Refuses, without calling <paramref name="writePrimary"/>, while the Gateway route
+    /// has an unconfirmed write.
+    /// </summary>
+    Task SetGatewayPrimaryAndFallbackModelAsync(string model, Func<CancellationToken, Task> writePrimary,
+        CancellationToken cancellationToken = default)
+        => throw new InvalidOperationException("This Local AI runtime cannot change its Gateway fallback.");
     LocalAiRuntimeSnapshot Snapshot { get; }
     event EventHandler<LocalAiRuntimeSnapshotChangedEventArgs>? StateChanged;
     Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken = default);

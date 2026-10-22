@@ -16,6 +16,8 @@ internal sealed class LocalAiGatewayLifecycle(
     Func<GatewayConnectionManager?> getManager, ILocalAiEndpointLifecycle wsl,
     IOpenClawLogger logger) : ILocalAiEndpointLifecycle
 {
+    private const string UnconfirmedGatewayChangeDetail =
+        "Local AI has an unconfirmed Gateway change. Reconnect the original Gateway and review Local AI first.";
     private readonly LocalAiNativeBindingStore _store = new(paths);
     private readonly LocalAiManifestStore _manifest = new(paths);
     private readonly LocalAiApiCredentialStore _credentials = new(paths);
@@ -275,8 +277,23 @@ internal sealed class LocalAiGatewayLifecycle(
         await using var lease = await _store.AcquireAsync(ct).ConfigureAwait(false);
         if (_store.Load() is not { } binding || binding.PreviousPrimary == model) return;
         if (binding.Pending)
-            throw new InvalidOperationException("Local AI has an unconfirmed Gateway change. Reconnect the original Gateway and review Local AI first.");
+            throw new InvalidOperationException(UnconfirmedGatewayChangeDetail);
         _store.Save(binding with { PreviousPrimary = model });
+    }
+
+    public async Task SetPrimaryAndFallbackModelAsync(string model, Func<CancellationToken, Task> writePrimary,
+        CancellationToken ct)
+    {
+        // The lease spans the check, the Gateway write and the receipt update, so no publication can
+        // mark the receipt pending in between. Unlike SetFallbackModelAsync, Pending is checked before
+        // any same-value shortcut: writing the current fallback still strands a published provider.
+        await using var lease = await _store.AcquireAsync(ct).ConfigureAwait(false);
+        var binding = _store.Load();
+        if (binding?.Pending == true)
+            throw new InvalidOperationException(UnconfirmedGatewayChangeDetail);
+        await writePrimary(ct).ConfigureAwait(false);
+        if (binding is not null && binding.PreviousPrimary != model)
+            _store.Save(binding with { PreviousPrimary = model });
     }
 
     public async Task ReconcileVerifiedAsync(GatewayRecord record, IGatewayAiSetupTransport transport,

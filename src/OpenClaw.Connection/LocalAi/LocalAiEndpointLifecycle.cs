@@ -70,6 +70,19 @@ public interface ILocalAiEndpointLifecycle
     /// </summary>
     Task SetFallbackModelAsync(string? model, CancellationToken cancellationToken) => Task.CompletedTask;
 
+    /// <summary>
+    /// Runs <paramref name="writePrimary"/> to set a non-Local-AI Gateway primary, then records
+    /// <paramref name="model"/> as the fallback, as one receipt transaction. Durable owners refuse
+    /// before <paramref name="writePrimary"/> runs while a route write is unconfirmed: recovery can
+    /// only settle a primary that matches the saved Local AI model or its fallback.
+    /// </summary>
+    async Task SetPrimaryAndFallbackModelAsync(string model, Func<CancellationToken, Task> writePrimary,
+        CancellationToken cancellationToken)
+    {
+        await writePrimary(cancellationToken).ConfigureAwait(false);
+        await SetFallbackModelAsync(model, cancellationToken).ConfigureAwait(false);
+    }
+
     Task<LocalAiEndpointLifecycleResult> QuiesceAsync(
         LocalAiResolvedInstall install,
         LocalAiQuiesceReason reason = LocalAiQuiesceReason.Teardown,

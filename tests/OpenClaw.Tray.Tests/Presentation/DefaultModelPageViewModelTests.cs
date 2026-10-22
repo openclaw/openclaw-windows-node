@@ -40,7 +40,23 @@ public sealed class DefaultModelPageViewModelTests
         Assert.True(await viewModel.ApplyAsync(), viewModel.Error);
 
         Assert.Equal(["openai/gpt-6"], gateway.PrimaryWrites);
-        Assert.Equal(["fallback:openai/gpt-6"], runtime.Calls);
+        Assert.Equal(["primary+fallback:openai/gpt-6"], runtime.Calls);
+    }
+
+    [Fact]
+    public async Task CloudChoiceWhileNativeRouteUnconfirmed_SendsNoPrimaryWrite()
+    {
+        // A native publication saved but lost its reply: the runtime failed and the receipt is pending.
+        var gateway = new FakeGateway { State = State("llamacpp/qwen", localRoute: true) };
+        var runtime = new RecordingRuntime(Installed(LocalAiRuntimeState.Failed)) { PendingReceipt = true };
+        using var viewModel = Create(gateway, runtime);
+
+        viewModel.SelectedOptionId = Gpt.SelectionId;
+        Assert.False(await viewModel.ApplyAsync());
+
+        Assert.Contains("unconfirmed Gateway change", viewModel.Error);
+        Assert.Empty(gateway.PrimaryWrites);
+        Assert.False(viewModel.StatusApplied);
     }
 
     [Fact]
@@ -181,6 +197,7 @@ public sealed class DefaultModelPageViewModelTests
         public List<string> Calls { get; } = [];
         public LocalAiRuntimeSnapshot? StopResult { get; init; }
         public LocalAiRuntimeSnapshot? StartResult { get; init; }
+        public bool PendingReceipt { get; init; }
         public LocalAiRuntimeSnapshot Snapshot { get; private set; } = snapshot;
         public event EventHandler<LocalAiRuntimeSnapshotChangedEventArgs>? StateChanged { add { } remove { } }
 
@@ -188,6 +205,15 @@ public sealed class DefaultModelPageViewModelTests
         {
             Calls.Add($"fallback:{model}");
             return Task.CompletedTask;
+        }
+
+        public async Task SetGatewayPrimaryAndFallbackModelAsync(string model, Func<CancellationToken, Task> writePrimary,
+            CancellationToken cancellationToken = default)
+        {
+            if (PendingReceipt)
+                throw new InvalidOperationException("Local AI has an unconfirmed Gateway change.");
+            await writePrimary(cancellationToken);
+            Calls.Add($"primary+fallback:{model}");
         }
 
         public Task<LocalAiRuntimeSnapshot> EnsureStartedAsync(CancellationToken cancellationToken = default)

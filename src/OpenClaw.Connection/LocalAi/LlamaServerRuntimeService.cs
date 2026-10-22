@@ -279,13 +279,38 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
             // The lifecycle receipt is updated first and is idempotent: if the manifest write
             // below fails, retrying the same fallback repairs both instead of returning early.
             await _options.EndpointLifecycle.SetFallbackModelAsync(model, cancellationToken).ConfigureAwait(false);
-            if (string.Equals(_install!.Manifest.GatewayFallbackModel, model, StringComparison.Ordinal))
-                return;
-            LocalAiInstallManifest updated = _install.Manifest with { GatewayFallbackModel = model };
-            await _manifestStore.SaveAsync(updated, cancellationToken).ConfigureAwait(false);
-            _install = _manifestStore.ResolveAndValidate(updated);
+            await SaveGatewayFallbackManifestAsync(model, cancellationToken).ConfigureAwait(false);
         }
         finally { _operationGate.Release(); }
+    }
+
+    public async Task SetGatewayPrimaryAndFallbackModelAsync(string model, Func<CancellationToken, Task> writePrimary,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(writePrimary);
+        LocalAiGatewayModelPolicy.ValidateFallbackModel(model);
+        await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ThrowIfDisposed();
+            bool installed = _install is not null || await TryLoadInstallAsync(cancellationToken).ConfigureAwait(false);
+            // Without an install there is no manifest to update, but a durable receipt may still exist,
+            // so the lifecycle check runs either way.
+            await _options.EndpointLifecycle.SetPrimaryAndFallbackModelAsync(model, writePrimary, cancellationToken)
+                .ConfigureAwait(false);
+            if (installed)
+                await SaveGatewayFallbackManifestAsync(model, cancellationToken).ConfigureAwait(false);
+        }
+        finally { _operationGate.Release(); }
+    }
+
+    private async Task SaveGatewayFallbackManifestAsync(string? model, CancellationToken cancellationToken)
+    {
+        if (string.Equals(_install!.Manifest.GatewayFallbackModel, model, StringComparison.Ordinal))
+            return;
+        LocalAiInstallManifest updated = _install.Manifest with { GatewayFallbackModel = model };
+        await _manifestStore.SaveAsync(updated, cancellationToken).ConfigureAwait(false);
+        _install = _manifestStore.ResolveAndValidate(updated);
     }
 
     public LocalAiRuntimeSnapshot Snapshot

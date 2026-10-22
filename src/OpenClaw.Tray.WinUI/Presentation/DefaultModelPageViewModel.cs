@@ -184,9 +184,11 @@ internal sealed class DefaultModelPageViewModel : INavigationAware, IDisposable,
             return true;
         }
 
-        await _gateway.SetPrimaryModelAsync(modelRef);
         if (ownsRoute)
-            await _localAi.SetGatewayFallbackModelAsync(modelRef);
+            // The runtime refuses before any config.patch while its route write is unconfirmed.
+            await _localAi.SetGatewayPrimaryAndFallbackModelAsync(modelRef, _ => _gateway.SetPrimaryModelAsync(modelRef));
+        else
+            await _gateway.SetPrimaryModelAsync(modelRef);
         return true;
     }
 
