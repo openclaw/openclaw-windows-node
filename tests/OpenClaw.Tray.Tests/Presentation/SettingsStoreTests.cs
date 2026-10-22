@@ -62,6 +62,9 @@ public sealed class SettingsStoreTests
         using (var release = new ManualResetEventSlim())
         {
             var timeout = TimeSpan.FromSeconds(5);
+            // The holder must outlast the writer-start wait plus the 150 ms window, so only the
+            // test's release can end it. A self-release would complete it during that window.
+            var holderTimeout = timeout * 2;
             var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var writingStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var path = Path.Combine(temp.Path, "settings.json");
@@ -73,10 +76,11 @@ public sealed class SettingsStoreTests
             {
                 editor.NotificationSound = "background";
                 entered.SetResult();
-                if (!release.Wait(timeout))
+                if (!release.Wait(holderTimeout))
                     throw new TimeoutException("The background settings writer was not released.");
             }), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
             Task? writing = null;
+            Exception? failure = null;
             try
             {
                 var ready = await Task.WhenAny(entered.Task, background).WaitAsync(timeout);
@@ -92,10 +96,26 @@ public sealed class SettingsStoreTests
                 Assert.NotSame(writing, await Task.WhenAny(writing, Task.Delay(150)));
                 Assert.False(background.IsCompleted);
             }
+            catch (Exception ex)
+            {
+                failure = ex;
+                throw;
+            }
             finally
             {
                 release.Set();
-                await Task.WhenAll(background, writing ?? Task.CompletedTask);
+                // Join both workers before the fixtures are disposed. After an earlier failure, a
+                // worker fault is secondary and must not replace that failure.
+                var workers = Task.WhenAll(background, writing ?? Task.CompletedTask);
+                if (failure is null)
+                {
+                    await workers;
+                }
+                else
+                {
+                    await Task.WhenAny(workers);
+                    _ = workers.Exception;
+                }
             }
             var saved = new SettingsManager(temp.Path);
             Assert.Equal("background", saved.NotificationSound);
