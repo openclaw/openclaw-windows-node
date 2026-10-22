@@ -166,6 +166,26 @@ public sealed partial class GatewayFixtureProtocolTests
     }
 
     [Fact]
+    public async Task RestartClose_DrainsConcurrentClosesBeforeConnectionResourcesAreDisposed()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
+        for (var iteration = 0; iteration < 25; iteration++)
+        {
+            await using var connected = await ConnectedClient.OpenAsync(server, token);
+            using var deadline = new CancellationTokenSource(Deadline);
+            var closes = Enumerable.Range(0, 8)
+                .Select(_ => server.CloseConnectionsAsync(deadline.Token)).ToArray();
+            var disconnect = connected.Client.DisconnectAsync();
+            await Task.WhenAll(closes.Append(disconnect)).WaitAsync(Deadline);
+        }
+        await server.DisposeAsync().AsTask().WaitAsync(Deadline);
+        Assert.Equal(0, server.ActiveConnectionCount);
+        Assert.Equal(0, server.SubscriptionCount);
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
+    [Fact]
     public async Task ContextUsageScenario_RealClientReceivesStrictPromptsReplayHistoryAndIndependentListingSnapshots()
     {
         var usage = new ContextUsageFixture();
@@ -251,6 +271,19 @@ public sealed partial class GatewayFixtureProtocolTests
 
         static JsonElement UsageRow(JsonElement listing) => listing.GetProperty("sessions").EnumerateArray()
             .Single(row => row.GetProperty("key").GetString() == ContextUsageFixture.SessionKey);
+    }
+
+    [Fact]
+    public async Task RestartClose_PreservesCallerCancellation()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => server.CloseConnectionsAsync(cancellation.Token));
+        Assert.Equal(GatewayScenario.MainSessionKey,
+            (await connected.Client.RequestChatHistoryAsync()).SessionKey);
     }
 
     [Theory]
@@ -786,6 +819,30 @@ public sealed partial class GatewayFixtureProtocolTests
         var request = Assert.Single(server.Requests, request => request.Method == "exec.approval.resolve");
         Assert.Equal("fixture-never-issued", request.ApprovalId);
         Assert.Equal("deny", request.Decision);
+        Assert.Equal("error:INVALID_PARAMS", request.Outcome);
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
+    [Fact]
+    public async Task RealClient_ApprovalResolveRejectsIdFromUndeliveredEvent()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
+
+        var publishError = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            server.PublishAgentEventAsync(GatewayScenario.MainSessionKey, new
+            {
+                phase = "requested",
+                approvalId = "fixture-undelivered",
+            }));
+        Assert.Contains("No authenticated fixture connection", publishError.Message);
+
+        await using var connected = await ConnectedClient.OpenAsync(server, token);
+        var resolveError = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            connected.Client.ResolveExecApprovalAsync("fixture-undelivered", "deny"));
+
+        Assert.Contains("not issued by the fixture", resolveError.Message);
+        var request = Assert.Single(server.Requests, request => request.Method == "exec.approval.resolve");
         Assert.Equal("error:INVALID_PARAMS", request.Outcome);
         Assert.Empty(server.UnexpectedRequests);
     }
