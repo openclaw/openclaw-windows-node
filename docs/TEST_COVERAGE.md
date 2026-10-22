@@ -294,6 +294,13 @@ package test. Running the packaging repository's pinned npm version in WSL does
 not prove Microsoft Store acquisition, package identity, MXC session setup, or
 the packaged Gateway lifecycle.
 
+Both E2E tray fixtures read `gateways.json` through `GatewayRegistryFile`, which
+joins the production `PersistenceFileLease` before opening the file. This keeps
+fixture reads out of an in-flight atomic replacement without retrying IO or
+hiding malformed JSON. The fixture-free `SetupAndConnectTestsRegistryReads`
+regressions cover writer/reader ordering, concurrent saves and error propagation;
+they do not replace the real WSL Gateway setup/connect proofs.
+
 Actual package E2E needs a disposable Windows account/host with a successful
 MXC session capability probe and a verified installable MSIX from
 [`openclaw-windows-packaging`](https://github.com/openclaw/openclaw-windows-packaging).

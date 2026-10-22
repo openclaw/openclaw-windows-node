@@ -720,8 +720,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
 
     public (string GatewayUrl, string? SharedGatewayToken, string ActiveId) ReadActiveGatewayRecord()
     {
-        var gatewaysPath = Path.Combine(DataDir, "gateways.json");
-        using var doc = JsonDocument.Parse(File.ReadAllText(gatewaysPath));
+        using var doc = GatewayRegistryFile.Read(DataDir);
         var root = doc.RootElement;
         var activeId = TryGetPropertyIgnoreCase(root, "ActiveId", out var activeIdElement)
             ? activeIdElement.GetString()
@@ -779,8 +778,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
             nodeToken.ValueKind == JsonValueKind.String &&
             !string.IsNullOrWhiteSpace(nodeToken.GetString());
 
-        var gatewaysPath = Path.Combine(DataDir, "gateways.json");
-        using var gatewaysDoc = JsonDocument.Parse(File.ReadAllText(gatewaysPath));
+        using var gatewaysDoc = GatewayRegistryFile.Read(DataDir);
         var hasBootstrapToken = false;
         if (TryGetPropertyIgnoreCase(gatewaysDoc.RootElement, "Gateways", out var gatewaysElement) &&
             gatewaysElement.ValueKind == JsonValueKind.Array)
