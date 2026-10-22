@@ -132,10 +132,8 @@ changed** state and the next bounded decision. A complete local draft can still
 describe blocked work; it is not a ready-to-merge claim.
 
 Stop before publication without explicit authority. If separately authorized,
-follow the [repository's branch and PR policy](../../../AGENTS.md#required-validation-after-every-change):
-use a personal-fork feature branch unless the user explicitly directs a different
-repository. Verify the intended repository/base/head and live PR state, then use
-the host's supported publication tools and their guard/failure contracts.
+verify the intended repository/base/head and live PR state, then use the host's
+supported publication tools and their guard/failure contracts.
 Preserve concurrent human edits; after an uncertain write, inspect the result
 before retrying.
 Verify published content and links without treating publication as proof.
