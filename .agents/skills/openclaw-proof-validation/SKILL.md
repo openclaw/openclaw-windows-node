@@ -140,6 +140,11 @@ $token = Get-Content $tokenPath -Raw
 
 ## PR proof package
 
+This section owns evidence requirements and their limits. Use
+[Windows PR preparation](../windows-pr-prepare/SKILL.md) to assemble that evidence
+into the current PR template and report readiness without assuming publication
+authority.
+
 Before publishing or updating a PR, collect:
 
 1. `## Validation` with exact commands and pass/fail counts.
