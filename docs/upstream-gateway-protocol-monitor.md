@@ -58,10 +58,11 @@ pending. A changed relevant contract can become a new candidate.
 
 Before creating work, bounded queries reconcile candidate history, generic open
 monitor work, open issues, existing Copilot assignments and open PRs. Question,
-interactive Gateway and chat-parity overlap is checked in titles **and bodies**
-for the question-answer family. Related work is linked in the tracker rather
-than duplicated; it is not proof of complete support. Closed overlap no longer
-defers new evidence. Unrelated work is not suppressed by that family check.
+interactive Gateway and chat-parity prose matches in titles **and bodies** are
+linked as context in the question-answer candidate and refreshed in its task
+prompt. They never suppress an investigation or establish coverage. The agent
+must assess current related work before choosing a disposition. Exact candidates,
+monitor work, existing Copilot work and linked PRs still prevent duplicate tasks.
 
 One monitor candidate is worked at a time. The handoff also checks the
 repository Agent tasks API for queued, in-progress, idle and waiting-for-user

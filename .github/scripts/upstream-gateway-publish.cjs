@@ -204,12 +204,18 @@ function blocker(work, except) {
     ?? work.pulls.find((item) => copilotAssigned(item) || item.user?.id === COPILOT_USER_ID
       || work.issues.some((issue) => (hasLabel(issue, LABEL) || isCandidate(issue)) && closes(item, issue.number)));
 }
-function overlap(work, family, except) {
-  if (family.id !== "question-answer") return null;
-  return [...work.issues.filter((item) => item.state === "open"), ...work.pulls].find((item) =>
+function relatedWork(work, family, except) {
+  if (family.id !== "question-answer") return "";
+  const matches = [...work.issues.filter((item) => item.state === "open"), ...work.pulls].filter((item) =>
     item.number !== except && !isTracker(item) && !isCandidate(item) && !hasLabel(item, LABEL)
     && /\bquestion[- .](?:answer|list|get|resolve|requested|resolved)\b|\bQ&A\b|\bchat parity\b|\binteractive (?:gateway|fixture)\b/i
       .test((item.title ?? "") + "\n" + (item.body ?? "")));
+  if (!matches.length) return "";
+  // Prose is a discovery hint, never authority to suppress an investigation.
+  return "\n\n## Related work to assess\n\n"
+    + "Possible overlap, not verified coverage. Inspect current work before deciding whether to reuse it or implement a gap.\n"
+    + matches.slice(0, 20).map((item) => "- #" + item.number).join("\n")
+    + (matches.length > 20 ? "\nMore matches exist; search current issues and PRs for remaining coverage." : "");
 }
 function closes(pull, number) {
   const ref = "(?:#" + number + "|openclaw/openclaw-windows-node#" + number
@@ -284,9 +290,9 @@ async function publish({ github, context, report, core, now = Date.now(), create
       const progress = await issueProgress(github, context, issue, now);
       status = progress.state;
       related = progress.pull;
-      if (status === "deferred-existing-work") related = blocker(work, issue.number) ?? overlap(work, family, issue.number);
+      if (status === "deferred-existing-work") related = blocker(work, issue.number);
     } else if (family.status === "pending") {
-      related = blocker(work) ?? overlap(work, family);
+      related = blocker(work);
       status = related ? "deferred-existing-work" : "new-candidate";
     }
     if (status === "new-candidate" && createWork) {
@@ -294,14 +300,14 @@ async function publish({ github, context, report, core, now = Date.now(), create
       const latest = await workState(github, context);
       if (latest.issues.some((item) => item.body?.includes(candidateMarker(family))))
         fail("Candidate appeared during reconciliation; rerun without creating a duplicate");
-      related = blocker(latest) ?? overlap(latest, family);
+      related = blocker(latest);
       if (related) status = "deferred-existing-work";
       else {
         const body = candidateMarker(family) + "\n## Investigate " + family.id + "\n\n"
           + "Contract evidence: " + family.contractHash + ". This is a review candidate, not a confirmed defect.\n\n"
           + render(report) + "\n[Current observation and full report artifact](https://github.com/"
           + context.repo.owner + "/" + context.repo.repo + "/actions/runs/" + context.runId + ")\n\n"
-          + INSTRUCTIONS + "\n\n" + BEGIN + "\n"
+          + INSTRUCTIONS + relatedWork(latest, family) + "\n\n" + BEGIN + "\n"
           + taskSection({ state: "ready", reservation: null, taskId: null }) + "\n" + END;
         if (body.length > 60000) fail("Candidate evidence exceeds issue body budget");
         const { data } = await github.request("POST /repos/{owner}/{repo}/issues", {
@@ -389,7 +395,7 @@ async function handoff({ github, context, report, core, issueNumber, copilotToke
   if (saved.reservation) fail("Task creation is reserved or uncertain. Inspect agent tasks and record its ID or disposition; no automatic replay.");
   if (!current || current.status !== "pending") fail("Candidate contract changed or no longer pending; review its disposition, do not start stale work");
   const work = await workState(github, context);
-  const existing = blocker(work, issueNumber) ?? overlap(work, current, issueNumber);
+  const existing = blocker(work, issueNumber);
   if (existing) {
     await updateSection(github, context.repo, issueNumber, identity, taskSection({ ...saved, attention: "deferred-existing-work" }));
     return { state: "deferred-existing-work", issueNumber: existing.number };
@@ -410,7 +416,7 @@ async function handoff({ github, context, report, core, issueNumber, copilotToke
   await updateSection(github, context.repo, issueNumber, identity, taskSection(saved), true);
   if ((await taskList(github, context.repo, headers)).length) fail("Another task appeared after reservation; reconcile before any retry");
   const latestWork = await workState(github, context);
-  if (blocker(latestWork, issueNumber) || overlap(latestWork, current, issueNumber))
+  if (blocker(latestWork, issueNumber))
     fail("Existing work appeared after reservation; reconcile before any retry");
   issue = await getIssue(github, context.repo, issueNumber);
   const authority = attempt(issue);
@@ -421,7 +427,7 @@ async function handoff({ github, context, report, core, issueNumber, copilotToke
   const { data, status } = await github.request("POST /agents/repos/{owner}/{repo}/tasks", {
     ...context.repo, headers, base_ref: repository.default_branch, create_pull_request: false,
     prompt: identity + "\nInvestigate candidate https://github.com/" + context.repo.owner + "/" + context.repo.repo
-      + "/issues/" + issueNumber + ".\n" + INSTRUCTIONS,
+      + "/issues/" + issueNumber + ".\n" + INSTRUCTIONS + relatedWork(latestWork, current, issueNumber),
   });
   if (status !== 201) fail("Agent task creation response uncertain; reservation retained, do not retry");
   const task = validateTask(data);

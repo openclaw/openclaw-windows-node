@@ -617,25 +617,44 @@ test("human prose survives meaningful tracker updates and closed exact candidate
   assert.equal(h.state.issues.length, 2);
 });
 
-test("existing generic monitor work, assignments and body-only overlap precede candidate creation", async (t) => {
+test("existing generic monitor work and assignments precede candidate creation", async (t) => {
   const h = boundary(t);
   for (const item of [
     { labels: [{ name: publisher.LABEL }] },
     { assignees: [{ login: "Copilot", id: 198982749 }] },
-    { body: "Tracks question.resolve production parity", title: "Another feature" },
   ]) {
     h.state.issues = [{ number: 80, state: "open", body: "", labels: [], assignees: [], ...item }];
     await h.publish();
     assert.equal(h.state.issues.filter((issue) => issue.body.includes("upstream-gateway-candidate:v1:")).length, 0);
     assert.match(h.state.issues.at(-1).body, /deferred-existing-work/);
   }
-  h.state.issues = [];
-  h.state.pulls = [{ number: 100, state: "open", title: "Unrelated refactor", body: "interactive Gateway fixture", assignees: [] }];
-  await h.publish();
-  assert.equal(h.state.issues.length, 1, "overlap creates tracker only");
-  h.state.pulls[0].state = "closed";
-  await h.publish();
-  assert.equal(h.state.issues.length, 2, "resolved overlap is not a permanent suppressor");
+});
+
+test("prose-matched related work informs investigation without suppressing it", async (t) => {
+  const h = boundary(t);
+  h.state.issues = [{ number: 80, state: "open", labels: [], assignees: [],
+    title: "Support question", body: "How does question.resolve work?" }];
+  h.state.pulls = [{ number: 100, state: "open", title: "Unrelated refactor",
+    body: "interactive Gateway fixture", assignees: [] }];
+  const { issueNumber } = await h.publish();
+  assert.equal(issueNumber, 2, "prose alone must not prevent candidate creation");
+  const candidate = h.state.issues.find((issue) => issue.number === issueNumber);
+  assert.match(candidate.body, /Possible overlap, not verified coverage/);
+  assert.match(candidate.body, /- #80\n- #100/);
+  h.state.issues[0].state = "closed";
+  let lists = 0;
+  h.state.override = (route) => {
+    if (route === "GET /agents/repos/{owner}/{repo}/tasks" && ++lists === 2)
+      h.state.pulls.push({ number: 101, state: "open", title: "Chat parity notes", body: "", assignees: [] });
+  };
+  assert.equal((await h.handoff(issueNumber)).state, "queued");
+  const task = h.state.calls.find((call) => call.route === "POST /agents/repos/{owner}/{repo}/tasks");
+  assert.equal(task.args.create_pull_request, false);
+  assert.match(task.args.prompt, /- #100\n- #101/);
+  assert.doesNotMatch(task.args.prompt, /#80\b/);
+  await h.publish(); await h.handoff(issueNumber);
+  assert.equal(h.state.tasks.length, 1, "repeat observations must reuse the exact investigation");
+  assert.equal(h.state.issues.length, 3);
 });
 
 test("changed contract waits behind active candidate or PR rather than duplicating work", async (t) => {
