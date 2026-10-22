@@ -463,13 +463,13 @@ public sealed partial class OnboardingAiPageTests(UIThreadFixture ui, ITestOutpu
             var selected = picker.SelectedItem;
             var input = Find<PasswordBox>(page, "ApiKeyInput");
             input.Password = "synthetic-popup-test-key";
-            input.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
+            scroll.ChangeView(null, scroll.ScrollableHeight, null, disableAnimation: true);
             await OnboardingNativeProof.NextCompositionAsync();
             await WaitAsync(() => Find<Button>(page, "ApiKeyConnectButton").IsEnabled);
             // Opening the form already scheduled an animated bring-into-view.
             // Capture its settled viewport, not an intermediate compositor offset.
             await TestSupport.WaitForRenderedConditionAsync(
-                () => viewportSettled && scroll.VerticalOffset > 0, "API key form finishes scrolling before opening provider");
+                () => viewportSettled && IsInputVisible(), "API key form finishes scrolling before opening provider");
             var offset = scroll.VerticalOffset;
             var resizedAcrossBreakpoint = width == 1120;
             var candidates = Find<ItemsControl>(page, "CandidateChoices").ItemsSource;
@@ -499,7 +499,7 @@ public sealed partial class OnboardingAiPageTests(UIThreadFixture ui, ITestOutpu
                 () => ReferenceEquals(Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(page.XamlRoot), input),
                 "provider cancellation restores API key input focus");
             await TestSupport.WaitForRenderedConditionAsync(
-                () => viewportSettled && (resizedAcrossBreakpoint ? IsInputVisible() : Math.Abs(scroll.VerticalOffset - offset) <= 1),
+                () => viewportSettled && IsInputVisible() && (resizedAcrossBreakpoint || Math.Abs(scroll.VerticalOffset - offset) <= 1),
                 "provider cancellation restores the settled viewport");
             Assert.True(Find<Button>(page, "RefreshButton").IsEnabled);
             Assert.Same(input, Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(page.XamlRoot));
@@ -539,9 +539,12 @@ public sealed partial class OnboardingAiPageTests(UIThreadFixture ui, ITestOutpu
 
             bool IsInputVisible()
             {
-                var bounds = input.TransformToVisual(scroll).TransformBounds(
+                var root = Assert.IsAssignableFrom<FrameworkElement>(scroll.XamlRoot.Content);
+                var bounds = input.TransformToVisual(root).TransformBounds(
                     new Windows.Foundation.Rect(0, 0, input.ActualWidth, input.ActualHeight));
-                return bounds.Top >= 0 && bounds.Bottom <= scroll.ViewportHeight;
+                var viewport = scroll.TransformToVisual(root).TransformBounds(
+                    new Windows.Foundation.Rect(0, 0, scroll.ViewportWidth, scroll.ViewportHeight));
+                return bounds.Top >= viewport.Top && bounds.Bottom <= viewport.Bottom;
             }
         }, theme: theme, width: width, configure: transport =>
         {

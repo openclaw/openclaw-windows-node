@@ -1311,14 +1311,20 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         if (ancestor is null)
             return Math.Clamp(preferredOffset, 0, scroller.ScrollableHeight);
 
-        var bounds = focus.TransformToVisual(scroller).TransformBounds(
+        var root = scroller.XamlRoot?.Content as FrameworkElement;
+        if (root is null)
+            return Math.Clamp(preferredOffset, 0, scroller.ScrollableHeight);
+
+        var bounds = focus.TransformToVisual(root).TransformBounds(
             new Windows.Foundation.Rect(0, 0, focus.ActualWidth, focus.ActualHeight));
+        var viewport = scroller.TransformToVisual(root).TransformBounds(
+            new Windows.Foundation.Rect(0, 0, scroller.ViewportWidth, scroller.ViewportHeight));
         var targetOffset = Math.Clamp(preferredOffset, 0, scroller.ScrollableHeight);
         var projectedTop = bounds.Top + scroller.VerticalOffset - targetOffset;
-        if (projectedTop < 0)
-            targetOffset = scroller.VerticalOffset + bounds.Top;
-        else if (projectedTop + bounds.Height > scroller.ViewportHeight)
-            targetOffset = scroller.VerticalOffset + bounds.Bottom - scroller.ViewportHeight;
+        if (projectedTop < viewport.Top)
+            targetOffset = scroller.VerticalOffset + bounds.Top - viewport.Top;
+        else if (projectedTop + bounds.Height > viewport.Bottom)
+            targetOffset = scroller.VerticalOffset + bounds.Bottom - viewport.Bottom;
 
         return Math.Clamp(targetOffset, 0, scroller.ScrollableHeight);
     }

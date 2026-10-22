@@ -140,18 +140,18 @@ public sealed class SetupStepIndicatorTests(UIThreadFixture ui)
                 [OnboardingStage.Welcome, OnboardingStage.Gateway, OnboardingStage.Capabilities,
                     OnboardingStage.GatewayReview, OnboardingStage.Install, OnboardingStage.AiSetup,
                     OnboardingStage.Ready],
-                OnboardingStage.Install,
-                OnboardingStage.GatewayReview);
+                OnboardingStage.AiSetup,
+                OnboardingStage.Install);
             root.UpdateLayout();
             await ui.YieldToRenderAsync();
             if (new UISettings().AnimationsEnabled)
                 await TestSupport.WaitForRenderedConditionAsync(
                     () => Assert.IsType<ScaleTransform>(
-                        Named<Ellipse>(previous, "CurrentDot")[1].RenderTransform).ScaleX > 1,
+                        Named<Ellipse>(previous, "CurrentDot")[2].RenderTransform).ScaleX > 1,
                     "cross-page step transition starts");
             else
                 Assert.Equal(1, Assert.IsType<ScaleTransform>(
-                    Named<Ellipse>(previous, "CurrentDot")[1].RenderTransform).ScaleX);
+                    Named<Ellipse>(previous, "CurrentDot")[2].RenderTransform).ScaleX);
             root.Children.Remove(previous);
         });
     }
