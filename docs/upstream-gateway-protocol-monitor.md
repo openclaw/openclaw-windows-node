@@ -88,11 +88,16 @@ run never automatically retries that reservation. Inspect the task service and
 record the matching task ID or an explicit disposition before proceeding. Do
 not simply delete the reservation and rerun. Task artifact pull IDs are database
 IDs, not PR numbers; the monitor uses issue timeline closing references for PR
-reconciliation. Legacy assignments and linked draft PRs are reused, never replaced.
+reconciliation. Legacy assignments and linked draft PRs are reused, never replaced. Copilot
+is recognized by its stable GitHub account ID, including the returned `Copilot`
+identity rather than the request-login spelling.
 Failed/timed-out tasks, completed tasks without disposition, closed PRs with open
 candidates, and tasks stalled beyond 24 hours require attention rather than
 another task. The workflow concurrency group serializes this monitor, not all
 human or third-party GitHub activity; state is reread before side effects.
+GitHub keeps only one pending run per concurrency group, so bursts can coalesce
+publication events. Nightly polling reconciles current state, not every canceled
+exact version; this is not a durable publication-event queue.
 
 ## Assessment and review baseline
 

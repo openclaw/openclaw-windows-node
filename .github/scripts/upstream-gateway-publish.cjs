@@ -4,7 +4,8 @@ const { verifyInvestigation, render, hash } = require("./upstream-gateway-protoc
 
 const LABEL = "upstream-gateway-protocol";
 const MARKER = "<!-- upstream-gateway-protocol:v1:";
-const BOT = "copilot-swe-agent[bot]";
+// GitHub returns the Coding Agent as Copilot, not its request-login spelling.
+const COPILOT_USER_ID = 198982749;
 const HEALTH_LABEL = "upstream-gateway-protocol-health";
 const TRACKER_LABEL = "upstream-gateway-tracker";
 const TRACKER = "<!-- upstream-gateway-tracker:v1 -->";
@@ -196,11 +197,11 @@ async function workState(github, context) {
   if (canonical[0]) replaceSection(canonical[0].body, "");
   return { issues, pulls, tracker: canonical[0] };
 }
-function copilotAssigned(item) { return item.assignees?.some((assignee) => assignee.login === BOT); }
+function copilotAssigned(item) { return item.assignees?.some((assignee) => assignee.id === COPILOT_USER_ID); }
 function blocker(work, except) {
   return work.issues.find((item) => item.number !== except && !isTracker(item)
     && ((item.state === "open" && (hasLabel(item, LABEL) || isCandidate(item) || copilotAssigned(item))) || activeReservation(item)))
-    ?? work.pulls.find((item) => copilotAssigned(item) || item.user?.login === BOT
+    ?? work.pulls.find((item) => copilotAssigned(item) || item.user?.id === COPILOT_USER_ID
       || work.issues.some((issue) => (hasLabel(issue, LABEL) || isCandidate(issue)) && closes(item, issue.number)));
 }
 function overlap(work, family, except) {
@@ -235,7 +236,7 @@ async function issueProgress(github, context, issue, now) {
   if (pull) return { state: pull.draft ? "draft-pr-observed" : "open-pr-needs-review", pull };
   if (issue.state === "closed") return { state: "reviewed" };
   if (linked.length) return { state: "closed-pr-needs-disposition" };
-  const assigned = timeline.filter((event) => event.event === "assigned" && event.assignee?.login === BOT);
+  const assigned = timeline.filter((event) => event.event === "assigned" && event.assignee?.id === COPILOT_USER_ID);
   if (copilotAssigned(issue) || assigned.length) {
     const times = assigned.map((event) => Date.parse(event.created_at)).filter(Number.isFinite);
     return { state: !copilotAssigned(issue) ? "legacy-assignment-needs-disposition"

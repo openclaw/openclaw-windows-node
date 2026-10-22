@@ -621,7 +621,7 @@ test("existing generic monitor work, assignments and body-only overlap precede c
   const h = boundary(t);
   for (const item of [
     { labels: [{ name: publisher.LABEL }] },
-    { assignees: [{ login: "copilot-swe-agent[bot]" }] },
+    { assignees: [{ login: "Copilot", id: 198982749 }] },
     { body: "Tracks question.resolve production parity", title: "Another feature" },
   ]) {
     h.state.issues = [{ number: 80, state: "open", body: "", labels: [], assignees: [], ...item }];
@@ -688,6 +688,14 @@ test("stalled or completed-without-disposition task remains visible, never resub
   h.state.issues[0].state = "closed";
   assert.equal((await h.handoff()).state, "completed");
   assert.equal(h.state.tasks.length, 1);
+});
+
+test("returned Copilot timeline identity prevents a replacement task", async (t) => {
+  const h = boundary(t);
+  await h.publish();
+  h.state.timeline = [{ event: "assigned", assignee: { login: "Copilot", id: 198982749 } }];
+  assert.equal((await h.handoff()).state, "legacy-assignment-needs-disposition");
+  assert.equal(h.state.tasks.length, 0);
 });
 
 test("linked draft is reused and closing different issues is not implementation evidence", async (t) => {
