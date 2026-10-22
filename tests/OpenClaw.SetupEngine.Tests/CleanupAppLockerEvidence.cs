@@ -9,6 +9,7 @@ public sealed class CleanupAppLockerEvidence
     public const string Channel = "Microsoft-Windows-AppLocker/EXE and DLL";
     private readonly object gate = new object();
     private readonly List<XmlDocument> records = new List<XmlDocument>();
+    private readonly HashSet<long> recordIds = new HashSet<long>();
     private readonly long minimumRecordId;
     private long appliedRecordId = -1;
     private bool policyError;
@@ -21,12 +22,23 @@ public sealed class CleanupAppLockerEvidence
 
     public string Query
     {
-        get
-        {
-            return "*[System[Provider[@Name='" + Provider +
-                "'] and (EventID=8000 or EventID=8001 or EventID=8002 or EventID=8003 or EventID=8004)" +
-                " and EventRecordID > " + minimumRecordId.ToString(CultureInfo.InvariantCulture) + "]]";
-        }
+        get { return QueryAfter(minimumRecordId); }
+    }
+
+    public string QueryAfter(long recordId)
+    {
+        if (recordId < minimumRecordId) throw new ArgumentOutOfRangeException("recordId");
+        return "*[System[Provider[@Name='" + Provider +
+            "'] and (EventID=8000 or EventID=8001 or EventID=8002 or EventID=8003 or EventID=8004)" +
+            " and EventRecordID > " + recordId.ToString(CultureInfo.InvariantCulture) + "]]";
+    }
+
+    public string ReconcileAndRead(Func<IEnumerable<string>> queryAvailable, Func<string> read)
+    {
+        string result = read();
+        if (result.Length != 0) return result;
+        foreach (string xml in queryAvailable()) Observe(xml);
+        return read();
     }
 
     public bool PolicyApplied
@@ -77,6 +89,7 @@ public sealed class CleanupAppLockerEvidence
             return false;
         lock (gate)
         {
+            if (!recordIds.Add(recordId)) return false;
             records.Add(document);
             if (id == 8000) policyError = true;
             if (id == 8001) appliedRecordId = Math.Max(appliedRecordId, recordId);

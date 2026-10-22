@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.Eventing.Reader;
 using System.Threading;
@@ -11,10 +12,13 @@ public sealed class CleanupAppLockerCapture : IDisposable
     private Exception callbackError;
     private bool disposed;
     public readonly CleanupAppLockerEvidence Evidence;
+    private long reconciledRecordId;
+    private const int ReconciliationIntervalMilliseconds = 100;
 
     public CleanupAppLockerCapture(long minimumRecordId)
     {
         Evidence = new CleanupAppLockerEvidence(minimumRecordId);
+        reconciledRecordId = minimumRecordId;
         var query = new EventLogQuery(CleanupAppLockerEvidence.Channel, PathType.LogName, Evidence.Query);
         // Replay only records after the caller's boundary, including subscription startup.
         watcher = new EventLogWatcher(query, null, true);
@@ -51,11 +55,30 @@ public sealed class CleanupAppLockerCapture : IDisposable
                 if (disposed) throw new ObjectDisposedException("CleanupAppLockerCapture");
                 if (callbackError != null) throw new InvalidOperationException("AppLocker event subscription failed.", callbackError);
             }
-            var result = read();
-            if (result.Length != 0) return result;
+            var result = Evidence.ReconcileAndRead(QueryAvailable, read);
             int remaining = timeoutMilliseconds - checked((int)clock.ElapsedMilliseconds);
             if (remaining <= 0) throw new TimeoutException("No qualified AppLocker event within the unchanged observation budget.");
-            changed.WaitOne(remaining);
+            if (result.Length != 0) return result;
+            changed.WaitOne(Math.Min(remaining, ReconciliationIntervalMilliseconds));
+        }
+    }
+
+    private IEnumerable<string> QueryAvailable()
+    {
+        var query = new EventLogQuery(CleanupAppLockerEvidence.Channel, PathType.LogName,
+            Evidence.QueryAfter(reconciledRecordId));
+        using (var reader = new EventLogReader(query))
+        {
+            EventRecord record;
+            while ((record = reader.ReadEvent(TimeSpan.Zero)) != null)
+            {
+                using (record)
+                {
+                    // A readable record must not depend on live subscription notification latency.
+                    yield return record.ToXml();
+                    reconciledRecordId = Math.Max(reconciledRecordId, record.RecordId.GetValueOrDefault());
+                }
+            }
         }
     }
 

@@ -95,4 +95,37 @@ public sealed class CleanupAppLockerEvidenceTests
         evidence.Observe(Event(8002, 2, rule: "12345678-1111-2222-3333-444444444444"));
         Assert.NotEmpty(evidence.FindExecution(@"C:\proof\host.exe", 8002, Sid, "C:", Rule));
     }
+
+    [Fact]
+    public void MissingNotification_ReconcilesReadablePolicyAndExecutionRecords()
+    {
+        var evidence = new CleanupAppLockerEvidence(20);
+        var result = evidence.ReconcileAndRead(
+            () => new[] { Event(8001, 21), Event(8004, 22) },
+            () => evidence.PolicyApplied
+                ? evidence.FindExecution(@"C:\proof\host.exe", 8004, Sid, "C:", Rule)
+                : string.Empty);
+        Assert.NotEmpty(result);
+        Assert.Equal(21, evidence.AppliedRecordId);
+        Assert.False(evidence.Observe(Event(8004, 22)));
+    }
+
+    [Fact]
+    public void ReconciliationQueryFailure_PropagatesInsteadOfBecomingMissingEvents()
+    {
+        var evidence = new CleanupAppLockerEvidence(20);
+        var failure = new InvalidOperationException("query access failure");
+        Assert.Same(failure, Assert.Throws<InvalidOperationException>(() =>
+            evidence.ReconcileAndRead(() => throw failure, () => string.Empty)));
+    }
+
+    [Fact]
+    public void ReconciliationWithoutRecords_DoesNotInventAcceptance()
+    {
+        var evidence = new CleanupAppLockerEvidence(20);
+        Assert.Equal(string.Empty, evidence.ReconcileAndRead(
+            () => Array.Empty<string>(), () => evidence.PolicyApplied ? "applied" : string.Empty));
+        Assert.Equal(-1, evidence.AppliedRecordId);
+        Assert.Throws<ArgumentOutOfRangeException>(() => evidence.QueryAfter(19));
+    }
 }
