@@ -20,6 +20,8 @@ public sealed class ProgramArgumentTests : IDisposable
         "--tailscale-hostname",
         "--autostart-name",
         "--startup-task-name",
+        "--gateway-id",
+        "--gateway-binding",
     ];
 
     private static readonly string[] s_expectedFlagOptionNames =
@@ -290,6 +292,20 @@ public sealed class ProgramArgumentTests : IDisposable
         var exitCode = await Program.Main(["--config", "--headless"]);
 
         Assert.Equal(2, exitCode);
+    }
+
+    [Theory]
+    [InlineData("--gateway-binding", "binding")]
+    [InlineData("--gateway-id", "selected-gateway")]
+    public async Task Main_RejectsPartialRemovalTargetBeforeCreatingProfile(string option, string value)
+    {
+        var dataDir = Path.Combine(_tempDir, "must-not-create");
+
+        var exitCode = await Program.Main(
+            ["--uninstall", "--confirm-destructive", option, value, "--data-dir", dataDir]);
+
+        Assert.Equal(2, exitCode);
+        Assert.False(Directory.Exists(dataDir));
     }
 
     [Fact]

@@ -485,6 +485,28 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
     }
 
     [Fact]
+    public async Task ExistingNativeWithoutFocusedMethodsHidesClassicAndRejectsStaleActivation()
+    {
+        const string guidance = "This native Gateway does not support AI setup. Update the Gateway and try again. The classic wizard cannot be used for an existing native installation.";
+        var navigations = 0;
+        await WithPageAsync((page, transport, completed) =>
+        {
+            Assert.Equal(guidance, Find<TextBlock>(page, "StatusText").Text);
+            Assert.Equal(Visibility.Collapsed, Find<Button>(page, "LegacyButton").Visibility);
+            typeof(AiSetupPage).GetMethod("Legacy_Click",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+                .Invoke(page, [Find<Button>(page, "LegacyButton"), new RoutedEventArgs()]);
+            Assert.Equal(0, navigations);
+            Assert.True(Find<InfoBar>(page, "ErrorBar").IsOpen);
+            Assert.Equal(guidance, Find<InfoBar>(page, "ErrorBar").Message);
+            Assert.Empty(transport.MethodCalls);
+            Assert.Equal(0, completed());
+            return Task.CompletedTask;
+        }, focusedSupported: false, allowClassicWizardFallback: false,
+            navigateToClassic: () => { navigations++; return true; });
+    }
+
+    [Fact]
     public async Task EmptyDetection_ShowsInlineKeyFormWithoutSelectingOrTesting()
     {
         await WithPageAsync((page, transport, completed) =>
@@ -1675,7 +1697,8 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
         PageTransport? reconnectTransport = null,
         string? expectedGatewayId = null, bool nativeProof = false, ElementTheme theme = ElementTheme.Light,
         double width = 720, LocalAiInstallAndUseIntent? installAndUse = null, Func<bool>? ready = null,
-        Action<GatewayAiSetupCompletion>? completedProof = null)
+        Action<GatewayAiSetupCompletion>? completedProof = null, bool allowClassicWizardFallback = true,
+        Func<bool>? navigateToClassic = null)
     {
         await ui.ResetContainerAsync();
         await ui.RunOnUIAsync(async () =>
@@ -1715,11 +1738,11 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                 var data = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR")
                     ?? throw new InvalidOperationException("Set isolated tray data before onboarding UI tests.");
                 var args = new AiSetupPageArgs(new SetupConfig(), data, data,
-                    () => true, () => { completions++; return Task.CompletedTask; },
+                    navigateToClassic ?? (() => true), () => { completions++; return Task.CompletedTask; },
                     ExpectedConfiguredModelRef: expectedModelRef,
                     TransportFactory: () => connects++ == 0 ? transport : reconnectTransport ?? transport,
                     LocalAiHost: localAiHost, ReviewLocalAi: reviewLocalAi, ExpectedGatewayId: expectedGatewayId,
-                    InstallAndUse: installAndUse,
+                    InstallAndUse: installAndUse, AllowClassicWizardFallback: allowClassicWizardFallback,
                     CompleteVerifiedSetup: completedProof is null ? null : proof =>
                     {
                         completedProof(proof);
@@ -1735,7 +1758,9 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                     ? completions > 0 || Find<InfoBar>(page, "ErrorBar").IsOpen
                     : focusedSupported ? Find<StackPanel>(page, "ChoicePanel").Visibility == Visibility.Visible ||
                         Find<InfoBar>(page, "ErrorBar").IsOpen
-                    : Find<Button>(page, "LegacyButton").Visibility == Visibility.Visible);
+                    : allowClassicWizardFallback
+                        ? Find<Button>(page, "LegacyButton").Visibility == Visibility.Visible
+                        : Find<TextBlock>(page, "StatusText").Text.Contains("The classic wizard cannot be used", StringComparison.Ordinal));
                 ui.Container.UpdateLayout();
                 await ui.YieldToRenderAsync();
                 await assertion(page, transport, () => completions);

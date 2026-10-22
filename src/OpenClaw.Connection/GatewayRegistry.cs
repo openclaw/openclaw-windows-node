@@ -18,6 +18,7 @@ public sealed class GatewayRegistry
     private readonly IOpenClawLogger _logger;
     private List<GatewayRecord> _records = [];
     private string? _activeId;
+    private IReadOnlyList<string> _suppressedLegacyGatewayUrls = [];
     private GatewayRegistrySnapshot _persisted = new([], null);
     private string? _persistedInvalidJson;
 
@@ -68,6 +69,12 @@ public sealed class GatewayRegistry
     public GatewayRegistrySnapshot GetSnapshot()
     {
         lock (_lock) return new(_records.ToArray(), _activeId);
+    }
+
+    /// <summary>Explicit removal revokes automatic reuse of legacy credentials for this endpoint.</summary>
+    public bool IsLegacyMigrationSuppressed(string url)
+    {
+        lock (_lock) return _suppressedLegacyGatewayUrls.Any(removed => GatewayUrlsEquivalent(removed, url));
     }
 
     public static bool HasSameSetupAuthority(GatewayRegistrySnapshot left, GatewayRegistrySnapshot right) =>
@@ -131,6 +138,7 @@ public sealed class GatewayRegistry
                 (record.LastConnected is null || connected > record.LastConnected)
                     ? record with { LastConnected = connected } : record).ToList();
             _activeId = data.ActiveId;
+            _suppressedLegacyGatewayUrls = data.SuppressedLegacyGatewayUrls ?? [];
             _persisted = new(records.ToArray(), data.ActiveId);
             snapshot = new(_records.ToArray(), _activeId);
             changed = !HasSameSetupAuthority(baseline, snapshot);
@@ -140,7 +148,9 @@ public sealed class GatewayRegistry
     }
 
     /// <summary>Applies an operation-owned state atomically; concurrent memory or disk authority is preserved.</summary>
-    public GatewayRegistrySnapshot ReplaceSnapshotAndSave(GatewayRegistrySnapshot expectedMemory, GatewayRegistrySnapshot replacement)
+    public GatewayRegistrySnapshot ReplaceSnapshotAndSave(
+        GatewayRegistrySnapshot expectedMemory, GatewayRegistrySnapshot replacement,
+        string? suppressLegacyGatewayUrl = null)
     {
         GatewayRegistrySnapshot snapshot;
         lock (_lock)
@@ -151,7 +161,7 @@ public sealed class GatewayRegistry
             var previousActive = _activeId;
             _records = replacement.Records.ToList();
             _activeId = replacement.ActiveId;
-            try { SaveLocked(expectedMemory); }
+            try { SaveLocked(expectedMemory, suppressLegacyGatewayUrl); }
             catch { _records = previousRecords; _activeId = previousActive; throw; }
             snapshot = new(_records.ToArray(), _activeId);
         }
@@ -308,7 +318,7 @@ public sealed class GatewayRegistry
             SaveLocked(expected);
     }
 
-    private void SaveLocked(GatewayRegistrySnapshot? expected = null)
+    private void SaveLocked(GatewayRegistrySnapshot? expected = null, string? suppressLegacyGatewayUrl = null)
     {
         using var lease = PersistenceFileLease.Acquire(_filePath);
         var diskJson = _fs.FileExists(_filePath) ? _fs.ReadAllText(_filePath) : null;
@@ -336,7 +346,14 @@ public sealed class GatewayRegistry
             (record with { LastConnected = null }) == (current with { LastConnected = null }) &&
             current.LastConnected is { } stamp && (record.LastConnected is null || stamp > record.LastConnected)
                 ? record with { LastConnected = stamp } : record).ToList();
-        var data = new RegistryData { Gateways = records, ActiveId = _activeId };
+        var suppressedUrls = disk.SuppressedLegacyGatewayUrls ?? [];
+        if (suppressLegacyGatewayUrl is not null &&
+            !suppressedUrls.Any(url => GatewayUrlsEquivalent(url, suppressLegacyGatewayUrl)))
+            suppressedUrls.Add(suppressLegacyGatewayUrl);
+        var data = new RegistryData
+        {
+            Gateways = records, ActiveId = _activeId, SuppressedLegacyGatewayUrls = suppressedUrls,
+        };
         var json = JsonSerializer.Serialize(data, s_jsonOptions);
 
         var dir = Path.GetDirectoryName(_filePath);
@@ -351,6 +368,7 @@ public sealed class GatewayRegistry
             _fs.WriteAllText(tempPath, json);
             _fs.MoveFile(tempPath, _filePath, overwrite: true);
             _records = records;
+            _suppressedLegacyGatewayUrls = suppressedUrls;
             _persisted = new(records.ToArray(), _activeId);
             _persistedInvalidJson = null;
         }
@@ -383,6 +401,7 @@ public sealed class GatewayRegistry
             {
                 _records = [];
                 _activeId = null;
+                _suppressedLegacyGatewayUrls = [];
                 _persisted = new([], null);
                 _persistedInvalidJson = null;
                 return;
@@ -395,6 +414,7 @@ public sealed class GatewayRegistry
                     ?? throw new InvalidDataException("The saved Gateway registry is invalid.");
                 _records = data.Gateways ?? [];
                 _activeId = data.ActiveId;
+                _suppressedLegacyGatewayUrls = data.SuppressedLegacyGatewayUrls ?? [];
                 _persisted = new(_records.ToArray(), _activeId);
                 _persistedInvalidJson = null;
             }
@@ -402,6 +422,7 @@ public sealed class GatewayRegistry
             {
                 _records = [];
                 _activeId = null;
+                _suppressedLegacyGatewayUrls = [];
                 _persisted = new([], null);
                 _persistedInvalidJson = json;
                 _logger.Warn($"Gateway registry file '{_filePath}' is not valid JSON; starting with an empty registry. {ex.Message}");
@@ -559,6 +580,12 @@ public sealed class GatewayRegistry
         if (string.IsNullOrWhiteSpace(gatewayUrl))
             return false;
 
+        if (IsLegacyMigrationSuppressed(gatewayUrl))
+        {
+            logger?.Info("[Registry] Legacy Gateway migration was suppressed by explicit removal.");
+            return false;
+        }
+
         // Idempotent: don't duplicate if already migrated
         if (FindByUrl(gatewayUrl) != null)
         {
@@ -675,6 +702,7 @@ public sealed class GatewayRegistry
     {
         public List<GatewayRecord>? Gateways { get; set; }
         public string? ActiveId { get; set; }
+        public List<string>? SuppressedLegacyGatewayUrls { get; set; }
     }
 }
 

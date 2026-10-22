@@ -33,12 +33,8 @@ public sealed class ExistingConfigDetector
         registry.Load();
         var all = registry.GetAll();
 
-        var localRecord = string.IsNullOrWhiteSpace(expectedLocalGatewayId)
-            ? all.FirstOrDefault(r => r.IsLocal && r.SshTunnel == null)
-            : all.FirstOrDefault(r =>
-                string.Equals(r.Id, expectedLocalGatewayId, StringComparison.Ordinal) &&
-                GatewayRecordEditing.IsSetupManagedLocalRecord(r));
-        var preserved = all.Where(r => !r.IsLocal || r.SshTunnel != null).ToList();
+        var localRecord = SelectWslReplacement(all, targetDistroName, expectedLocalGatewayId);
+        var preserved = all.Where(r => r.Id != localRecord?.Id).ToList();
 
         var logger = new SetupLogger(filePath: null, LogLevel.Warn);
         var result = new CommandRunner(logger)
@@ -88,6 +84,13 @@ public sealed class ExistingConfigDetector
             PreservedGatewayCount: preserved.Count,
             PreservedGatewayNames: preserved.Select(r => r.FriendlyName ?? r.Url).ToList());
     }
+
+    internal static GatewayRecord? SelectWslReplacement(
+        IReadOnlyList<GatewayRecord> records, string distro, string? expectedId) =>
+        records.FirstOrDefault(record =>
+            (string.IsNullOrWhiteSpace(expectedId) || record.Id == expectedId) &&
+            GatewayRecordEditing.IsSetupManagedLocalRecord(record) &&
+            string.Equals(GatewayRecordEditing.ResolveManagedDistroName(record), distro, StringComparison.OrdinalIgnoreCase));
 
     internal static bool InterpretDistroList(CommandResult result, string targetDistroName)
     {

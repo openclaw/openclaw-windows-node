@@ -37,6 +37,11 @@ public sealed class FunctionalUiFlyoutIdentityTests
     public async Task OpenContentFlyout_SurvivesStatusRenders_UpdatesRows_AndPrunesWhenRemoved()
     {
         await _ui.ResetContainerAsync();
+        var original = await _ui.RunOnUIAsync(() => Task.FromResult((
+            Position: _ui.TestWindow.AppWindow.Position,
+            Size: _ui.TestWindow.AppWindow.Size,
+            Width: _ui.Container.Width,
+            Height: _ui.Container.Height))).WaitAsync(UiOperationTimeout);
 
         UiRenderer? renderer = null;
         UIElement? initialRoot = null;
@@ -176,8 +181,11 @@ public sealed class FunctionalUiFlyoutIdentityTests
                     initialFlyout.Content = null;
                 renderer?.Dispose();
                 _ui.Container.Children.Clear();
+                _ui.Container.Width = original.Width;
+                _ui.Container.Height = original.Height;
                 _ui.Container.UpdateLayout();
-                _ui.TestWindow.AppWindow.MoveAndResize(new RectInt32(-32000, -32000, 1, 1));
+                _ui.TestWindow.AppWindow.MoveAndResize(new RectInt32(
+                    original.Position.X, original.Position.Y, original.Size.Width, original.Size.Height));
             });
         }
     }

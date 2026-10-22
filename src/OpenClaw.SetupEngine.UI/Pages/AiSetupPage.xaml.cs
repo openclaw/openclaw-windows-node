@@ -23,7 +23,8 @@ public sealed record AiSetupPageArgs(
     Func<GatewayAiSetupCompletion, Task>? CompleteVerifiedSetup = null,
     NativeGatewaySetupSession? NativeSession = null, Func<Task>? CancelNativeSetup = null,
     GatewayConnectionManager? ConnectionManager = null, string? ExpectedEndpointBinding = null,
-    LocalAiInstallAndUseIntent? InstallAndUse = null);
+    LocalAiInstallAndUseIntent? InstallAndUse = null,
+    bool AllowClassicWizardFallback = true);
 
 public sealed partial class AiSetupPage : Page, IAsyncDisposable
 {
@@ -76,6 +77,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
     private string? ExpectedGatewayId => _localUse?.Expected?.GatewayId ?? _args?.ExpectedGatewayId;
     private readonly ProviderArtworkSession _artworkSession = new();
     private GatewayAiSetupClient? Client => _controller?.Client;
+    private bool CanUseClassicWizard => _args?.AllowClassicWizardFallback != false && !_managedNative;
 
     public AiSetupPage()
     {
@@ -791,7 +793,11 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
 
     private void Legacy_Click(object sender, RoutedEventArgs e)
     {
-        if (!_closed && !BackdropLocked && Client?.Phase == GatewayAiSetupPhase.ClassicWizardRequired && !_args!.NavigateToLegacyWizard())
+        if (_closed || BackdropLocked || Client?.Phase != GatewayAiSetupPhase.ClassicWizardRequired)
+            return;
+        if (!CanUseClassicWizard)
+            ShowError("NativeClassicUnavailable");
+        else if (!_args!.NavigateToLegacyWizard())
             ShowError("NavigationFailed");
     }
 
@@ -1002,7 +1008,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                 ShowError("InvalidInput");
             var status = S(phase switch
             {
-                GatewayAiSetupPhase.ClassicWizardRequired => "Unsupported",
+                GatewayAiSetupPhase.ClassicWizardRequired => CanUseClassicWizard ? "Unsupported" : "NativeClassicUnavailable",
                 GatewayAiSetupPhase.Uncertain => _busy ? "WorkingProvider" : "Uncertain",
                 GatewayAiSetupPhase.VerificationRequired => Client!.WaitingForRestart ? "Reconnecting" : "Verifying",
                 GatewayAiSetupPhase.Prepared => "Prepared",
@@ -1027,7 +1033,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                     _presentation.Candidates.Count > 0);
                 LocalGroupHeader.Visibility = Visible(LocalAiSection.Visibility == Visibility.Visible ||
                     ChoicePanel.Visibility == Visibility.Visible && PrepareSection.Visibility == Visibility.Visible);
-                LegacyButton.Visibility = phase == GatewayAiSetupPhase.ClassicWizardRequired ? Visibility.Visible : Visibility.Collapsed;
+                LegacyButton.Visibility = Visible(phase == GatewayAiSetupPhase.ClassicWizardRequired && CanUseClassicWizard);
             }
             else
             {

@@ -1,4 +1,5 @@
 using OpenClaw.Shared;
+using OpenClaw.Connection;
 using OpenClawTray.Helpers;
 using System.Linq;
 
@@ -15,12 +16,13 @@ internal sealed class TrayTooltipBuilder
 
     internal string Build()
     {
+        var tunnel = CommandCenterTopologyTunnelResolver.Derive(
+            _snapshot.ActiveGateway is not null, _snapshot.ActiveGateway?.SshTunnel,
+            _snapshot.Settings?.UseSshTunnel == true, _snapshot.Settings?.SshTunnelHost,
+            _snapshot.Settings?.SshTunnelLocalPort ?? 0, _snapshot.Settings?.SshTunnelRemotePort ?? 0);
         var topology = GatewayTopologyClassifier.Classify(
-            _snapshot.Settings?.GatewayUrl,
-            _snapshot.Settings?.UseSshTunnel == true,
-            _snapshot.Settings?.SshTunnelHost,
-            _snapshot.Settings?.SshTunnelLocalPort ?? 0,
-            _snapshot.Settings?.SshTunnelRemotePort ?? 0);
+            _snapshot.ActiveGateway?.Url ?? _snapshot.Settings?.GatewayUrl,
+            tunnel.UsesSshTunnel, tunnel.SshHost, tunnel.LocalPort, tunnel.RemotePort);
 
         var channelReady = _snapshot.Channels.Count(c => ChannelHealth.IsHealthyStatus(c.Status));
         var nodeOnline = _snapshot.Nodes.Count(n => n.IsOnline);
@@ -41,7 +43,7 @@ internal sealed class TrayTooltipBuilder
         if (_snapshot.Channels.Length == 0 && isHealthy) warningCount++;
 
         var tooltip = $"{AppIdentity.TrayName} - {statusText}; " +
-            $"{topology.DisplayName}; " +
+            $"{(_snapshot.ActiveGateway is { } gateway && GatewayRecordEditing.IsSetupManagedLocalRecord(gateway) ? "WSL" : topology.DisplayName)}; " +
             $"Channels {channelReady}/{_snapshot.Channels.Length}; " +
             $"Nodes {nodeOnline}/{nodeTotal}; " +
             $"Warnings {warningCount}; " +
