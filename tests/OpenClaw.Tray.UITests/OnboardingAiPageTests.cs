@@ -471,12 +471,21 @@ public sealed partial class OnboardingAiPageTests(UIThreadFixture ui, ITestOutpu
             await TestSupport.WaitForRenderedConditionAsync(
                 () => viewportSettled && scroll.VerticalOffset > 0, "API key form finishes scrolling before opening provider");
             var offset = scroll.VerticalOffset;
+            var resizedAcrossBreakpoint = width == 1120;
             var candidates = Find<ItemsControl>(page, "CandidateChoices").ItemsSource;
             var subtitle = Find<TextBlock>(page, "StatusText").Text;
             Invoke(Find<Button>(page, "ApiKeyConnectButton"));
             var dialog = GetDialog(page);
             await WaitAsync(() => dialog.CanSubmit);
             AssertBackdrop();
+            if (resizedAcrossBreakpoint)
+            {
+                page.Frame.Width = 720;
+                page.Frame.Height = 560;
+                page.UpdateLayout();
+                await ui.YieldToRenderAsync();
+                Assert.False(Find<SetupPageShell>(page, "AiShell").IsWideLayout);
+            }
             var cancel = Assert.IsType<Button>(dialog.FindName("CancelButton"));
             Invoke(cancel);
             await WaitAsync(() => dialog.IsSecondaryButtonEnabled);
@@ -490,21 +499,25 @@ public sealed partial class OnboardingAiPageTests(UIThreadFixture ui, ITestOutpu
                 () => ReferenceEquals(Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(page.XamlRoot), input),
                 "provider cancellation restores API key input focus");
             await TestSupport.WaitForRenderedConditionAsync(
-                () => viewportSettled && Math.Abs(scroll.VerticalOffset - offset) <= 1,
+                () => viewportSettled && (resizedAcrossBreakpoint ? IsInputVisible() : Math.Abs(scroll.VerticalOffset - offset) <= 1),
                 "provider cancellation restores the settled viewport");
             Assert.True(Find<Button>(page, "RefreshButton").IsEnabled);
             Assert.Same(input, Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(page.XamlRoot));
             Assert.True(viewportSettled);
-            Assert.InRange(Math.Abs(scroll.VerticalOffset - offset), 0, 1);
+            if (resizedAcrossBreakpoint)
+                OnboardingNativeProof.AssertFullyVisible(input, scroll);
+            else
+                Assert.InRange(Math.Abs(scroll.VerticalOffset - offset), 0, 1);
             Assert.Same(selected, picker.SelectedItem);
             Assert.Empty(input.Password);
             Assert.Equal(1, transport.MethodCalls.Count(method => method == "openclaw.setup.activate.start"));
             Assert.Equal(2, transport.MethodCalls.Count(method => method == "wizard.cancel"));
             Assert.Equal(0, completed());
+            var restoredOffset = scroll.VerticalOffset;
             Assert.True(Find<Button>(page, "RefreshButton").Focus(FocusState.Programmatic));
             await WaitAsync(() => scroll.BringIntoViewOnFocusChange);
-            scroll.ChangeView(null, offset > 1 ? 0 : scroll.ScrollableHeight, null, disableAnimation: true);
-            await WaitAsync(() => viewportSettled && Math.Abs(scroll.VerticalOffset - offset) > 1);
+            scroll.ChangeView(null, restoredOffset > 1 ? 0 : scroll.ScrollableHeight, null, disableAnimation: true);
+            await WaitAsync(() => viewportSettled && Math.Abs(scroll.VerticalOffset - restoredOffset) > 1);
 
             void AssertBackdrop()
             {
@@ -515,12 +528,20 @@ public sealed partial class OnboardingAiPageTests(UIThreadFixture ui, ITestOutpu
                 Assert.Same(selected, picker.SelectedItem);
                 Assert.True(more.IsExpanded);
                 Assert.False(more.IsEnabled);
-                Assert.InRange(Math.Abs(scroll.VerticalOffset - offset), 0, 1);
+                if (!resizedAcrossBreakpoint)
+                    Assert.InRange(Math.Abs(scroll.VerticalOffset - offset), 0, 1);
                 Assert.False(picker.IsEnabled);
                 Assert.False(Find<ItemsControl>(page, "CandidateChoices").IsEnabled);
                 Assert.False(Find<Button>(page, "RefreshButton").IsEnabled);
                 Assert.False(Find<Button>(page, "ApiKeyConnectButton").IsEnabled);
                 Assert.Same(dialog, GetDialog(page));
+            }
+
+            bool IsInputVisible()
+            {
+                var bounds = input.TransformToVisual(scroll).TransformBounds(
+                    new Windows.Foundation.Rect(0, 0, input.ActualWidth, input.ActualHeight));
+                return bounds.Top >= 0 && bounds.Bottom <= scroll.ViewportHeight;
             }
         }, theme: theme, width: width, configure: transport =>
         {

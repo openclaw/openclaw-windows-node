@@ -91,7 +91,9 @@ public sealed class ProgressPageShellTests(UIThreadFixture ui)
             Assert.Equal(AutomationHeadingLevel.Level1, AutomationProperties.GetHeadingLevel(title));
             var progress = Find<SetupStepIndicator>(page, "FlowProgress");
             progress.Update(OnboardingFlowPolicy.GetStages(SetupGatewayRoute.ManagedWsl, new SetupConfig()), OnboardingStage.Install);
-            Assert.Equal("Step 5 of 7", AutomationProperties.GetName(progress));
+            Assert.Equal("Step 2 of 4", AutomationProperties.GetName(progress));
+            Assert.Equal(AutomationLiveSetting.Assertive,
+                AutomationProperties.GetLiveSetting(Find<TextBlock>(page, "ProgressSpeech")));
             var mascot = Find<OnboardingMascot>(page, "ProgressMascot");
             var primary = Find<Button>(page, "OnboardButton");
             if (mode == "milestone")

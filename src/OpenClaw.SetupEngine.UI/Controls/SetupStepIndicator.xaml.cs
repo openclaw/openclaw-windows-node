@@ -29,6 +29,7 @@ public sealed partial class SetupStepIndicator : UserControl, ISetupProgressIndi
     private AccessibilitySettings? _accessibilitySettings;
     private XamlRoot? _root;
     private int _current = -1;
+    private int? _pendingTransitionFrom;
     private bool _loaded;
     private bool _inViewport = true;
 
@@ -56,6 +57,9 @@ public sealed partial class SetupStepIndicator : UserControl, ISetupProgressIndi
     }
 
     public void Update(IReadOnlyList<SetupStepItem> steps)
+        => UpdateSteps(steps, null);
+
+    private void UpdateSteps(IReadOnlyList<SetupStepItem> steps, int? previousCurrent)
     {
         ArgumentNullException.ThrowIfNull(steps);
         var current = -1;
@@ -84,7 +88,8 @@ public sealed partial class SetupStepIndicator : UserControl, ISetupProgressIndi
         if (_steps.SequenceEqual(steps))
             return;
         _steps = steps.ToArray();
-        var previous = _current;
+        var previous = previousCurrent ?? _current;
+        _pendingTransitionFrom = null;
         StopTransitions();
         while (_rows.Count > steps.Count)
         {
@@ -127,15 +132,14 @@ public sealed partial class SetupStepIndicator : UserControl, ISetupProgressIndi
         _current = current;
         Visibility = steps.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         RefreshGlows();
-        if (previous >= 0 && current >= 0 && previous != current && CanAnimate)
-        {
-            _rows[current].Pop();
-            if (current > previous && current > 0)
-                _rows[current - 1].Pour();
-        }
+        if (previous >= 0 && current >= 0 && previous != current)
+            StartOrQueueTransition(previous, current);
     }
 
     public void Update(IReadOnlyList<OnboardingStage> stages, OnboardingStage current)
+        => Update(stages, current, null);
+
+    public void Update(IReadOnlyList<OnboardingStage> stages, OnboardingStage current, OnboardingStage? previous)
     {
         ArgumentNullException.ThrowIfNull(stages);
         var position = stages.ToList().IndexOf(current);
@@ -144,7 +148,8 @@ public sealed partial class SetupStepIndicator : UserControl, ISetupProgressIndi
             Update(Array.Empty<SetupStepItem>());
             return;
         }
-        var groups = stages.Select((stage, index) => (Key: StepKey(stage), Index: index)).GroupBy(stage => stage.Key);
+        var groups = stages.Select((stage, index) => (Stage: stage, Key: StepKey(stage), Index: index))
+            .GroupBy(stage => stage.Key).ToArray();
         var steps = groups.Select(group =>
         {
             var state = group.Any(stage => stage.Index == position) ? SetupStepState.Current :
@@ -158,8 +163,13 @@ public sealed partial class SetupStepIndicator : UserControl, ISetupProgressIndi
             };
             return new SetupStepItem(SetupLocalization.GetString("Onboarding_Milestone_" + group.Key), state, description);
         }).ToArray();
-        Update(steps);
-        AutomationProperties.SetName(this, SetupLocalization.Format("Onboarding_Flow_Position", position + 1, stages.Count));
+        var currentMilestone = Array.FindIndex(groups, group => group.Any(stage => stage.Stage == current));
+        int? previousMilestone = previous is { } previousStage
+            ? Array.FindIndex(groups, group => group.Any(stage => stage.Stage == previousStage))
+            : null;
+        UpdateSteps(steps, previousMilestone);
+        AutomationProperties.SetName(this, SetupLocalization.Format(
+            "Onboarding_Flow_Position", currentMilestone + 1, steps.Length));
     }
 
     private static string StepKey(OnboardingStage stage) => stage switch
@@ -186,11 +196,18 @@ public sealed partial class SetupStepIndicator : UserControl, ISetupProgressIndi
         _root = XamlRoot;
         if (_root is not null) _root.Changed += OnRootChanged;
         RefreshGlows();
+        if (_pendingTransitionFrom is { } previous)
+        {
+            _pendingTransitionFrom = null;
+            if (_current >= 0 && CanAnimate)
+                PlayTransition(previous, _current);
+        }
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs args)
     {
         _loaded = false;
+        _pendingTransitionFrom = null;
         StopTransitions();
         foreach (var row in _rows) row.DisposeGlow();
         if (_uiSettings is not null)
@@ -220,6 +237,21 @@ public sealed partial class SetupStepIndicator : UserControl, ISetupProgressIndi
     private void StopTransitions()
     {
         foreach (var row in _rows) row.Stop();
+    }
+
+    private void StartOrQueueTransition(int previous, int current)
+    {
+        if (CanAnimate)
+            PlayTransition(previous, current);
+        else if (!_loaded)
+            _pendingTransitionFrom = previous;
+    }
+
+    private void PlayTransition(int previous, int current)
+    {
+        _rows[current].Pop();
+        if (current > previous && current > 0)
+            _rows[current - 1].Pour();
     }
 
     private void RefreshGlows()

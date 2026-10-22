@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
 using OpenClaw.SetupEngine.UI;
@@ -31,6 +33,7 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
     private SetupInstallationProgress? _installationProgress;
     private Task _pipelineTask = Task.CompletedTask;
     private bool _closed;
+    private bool _milestoneAnnouncementPending;
     private SetupWindow? _window;
     private SetupLoadingProgress.Scope? _loading;
     private bool _resumeLoadingAfterAuthorization;
@@ -41,6 +44,7 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
     public ProgressPage()
     {
         InitializeComponent();
+        ProgressSpeech.Loaded += (_, _) => AnnounceMilestoneIfReady();
         Unloaded += (_, _) =>
         {
             CancelPipeline();
@@ -416,10 +420,22 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
         TitleText.Text = SetupLocalization.GetString("Onboarding_V4_InstalledTitle");
         SubtitleText.Text = SetupLocalization.GetString("Onboarding_V4_InstalledSubtitle");
         ProgressSpeech.Text = SetupLocalization.GetString("Onboarding_V4_InstalledSpeech");
+        _milestoneAnnouncementPending = true;
+        AnnounceMilestoneIfReady();
         ProgressMascot.Mood = OnboardingMascotMood.Happy;
         InstallContent.Visibility = Visibility.Collapsed;
         MilestonePanel.Visibility = Visibility.Visible;
         OnboardButton.Visibility = Visibility.Visible;
+    }
+
+    private void AnnounceMilestoneIfReady()
+    {
+        if (!_milestoneAnnouncementPending || !ProgressSpeech.IsLoaded)
+            return;
+        _milestoneAnnouncementPending = false;
+        AutomationPeer peer = FrameworkElementAutomationPeer.FromElement(ProgressSpeech)
+            ?? FrameworkElementAutomationPeer.CreatePeerForElement(ProgressSpeech);
+        peer.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
     }
 
     private void Onboard_Click(object sender, RoutedEventArgs e)

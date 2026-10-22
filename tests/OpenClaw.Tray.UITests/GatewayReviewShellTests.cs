@@ -46,7 +46,7 @@ public sealed class GatewayReviewShellTests(UIThreadFixture ui)
             Assert.False(consent.IsChecked);
             Assert.Contains("ReviewShell-NoRealDistro", consent.Content.ToString());
             var rail = Assert.IsType<SetupStepIndicator>(page.FindName("FlowProgress"));
-            Assert.Equal("Step 4 of 7", AutomationProperties.GetName(rail));
+            Assert.Equal("Step 2 of 4", AutomationProperties.GetName(rail));
             var before = JsonSerializer.Serialize(window.AccessDraft.Config);
             commands.IsExpanded = true;
             await TestSupport.WaitForSettingsExpanderSettledAsync(ui, commands, true);

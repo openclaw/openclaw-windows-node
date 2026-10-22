@@ -233,7 +233,7 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                 if (wizard)
                 {
                     var milestones = Assert.IsType<SetupStepIndicator>(progress);
-                    Assert.Equal("Step 5 of 5", AutomationProperties.GetName(milestones));
+                    Assert.Equal("Step 3 of 3", AutomationProperties.GetName(milestones));
                     Assert.Equal(3, TestSupport.FindDescendants<TextBlock>(milestones).Count(text => text.Name == "StepTitle"));
                     var shell = Assert.IsType<SetupPageShell>(page.Content);
                     Assert.Same(Find<Grid>(page, "NavigationFooter"), shell.Footer);
@@ -241,7 +241,7 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                 else
                 {
                     Assert.IsType<SetupStepIndicator>(progress);
-                    Assert.Equal("Step 4 of 6", AutomationProperties.GetName(progress));
+                    Assert.Equal("Step 2 of 4", AutomationProperties.GetName(progress));
                 }
                 Assert.False(string.IsNullOrWhiteSpace(AutomationProperties.GetName(progress)));
                 string[] actions;

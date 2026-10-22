@@ -391,7 +391,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
             Assert.Equal(8, Find<SettingsExpander>(page, "FineTuneExpander").Items.Count);
             Assert.False(Capability(page, SetupCapability.Browser).IsEnabled);
             Assert.Equal(profile == SetupCapabilityProfile.Full, Capability(page, SetupCapability.Browser).IsOn);
-            AssertProgress(page, stageCount: 7, current: 2);
+            AssertProgress(page, milestoneCount: 4, currentMilestone: 0);
             await SavePageProofAsync(window, page, $"onboarding-windows-profile-{profile}");
         });
     }
@@ -476,12 +476,12 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
 
             Assert.Null(capabilities.FindName("WindowsAccess"));
             Assert.Equal(beforePrivacy, JsonSerializer.Serialize(window.AccessDraft.Config));
-            AssertProgress(capabilities, stageCount: 7, current: 2);
+            AssertProgress(capabilities, milestoneCount: 4, currentMilestone: 0);
             await SavePageProofAsync(window, capabilities, "onboarding-capabilities-presets");
 
             Invoke(FooterButton(capabilities, next: true));
             var review = await MountedPageAsync<GatewaySetupPage>(window, frame);
-            AssertProgress(review, stageCount: 7, current: 3);
+            AssertProgress(review, milestoneCount: 4, currentMilestone: 1);
             AssertReviewReplacement(review);
             Assert.Equal(Visibility.Collapsed, Find<InfoBar>(review, "ReviewRequired").Visibility);
             Assert.True(Find<InfoBar>(review, "ReplacementWarning").IsOpen);
@@ -754,7 +754,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
             Find<ListView>(capabilities, "ProfileSelector").SelectedIndex = (int)SetupCapabilityProfile.ReadOnly;
             await ExpandCapabilitiesAsync(capabilities);
             Find<ToggleSwitch>(capabilities, "StartupPreferenceToggle").IsOn = false;
-            AssertProgress(capabilities, stageCount: 3, current: 2);
+            AssertProgress(capabilities, milestoneCount: 1, currentMilestone: 0);
             Assert.False(Capability(capabilities, SetupCapability.Browser).IsEnabled);
             Assert.Null(capabilities.FindName("WindowsAccess"));
             await SavePageProofAsync(window, capabilities, $"onboarding-windows-gateway-free-{route}");
@@ -790,7 +790,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
             typeof(SetupWindow).GetMethod("NavigateToNativeConnection",
                 System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(window, [route]);
             var editor = await MountedPageAsync<SetupNativeConnectionPage>(window, frame);
-            AssertProgress(editor, stageCount: 5, current: 1);
+            AssertProgress(editor, milestoneCount: 3, currentMilestone: 0);
             AssertNativeConnectionLabels(editor);
             Find<Button>(editor, "CancelButton").Visibility = Visibility.Visible;
             var scale = editor.XamlRoot.RasterizationScale;
@@ -836,7 +836,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
                 TestSupport.FindDescendants<SettingsCard>(choices).ElementAt(choiceIndex), route + "_Click");
             var editor = await MountedPageAsync<SetupNativeConnectionPage>(window, frame);
             Assert.Equal(route, window.AccessDraft.Route);
-            AssertProgress(editor, stageCount: 5, current: 1);
+            AssertProgress(editor, milestoneCount: 3, currentMilestone: 0);
             AssertNativeConnectionLabels(editor);
             Find<TextBox>(editor, "AddressInput").Text = "wss://mounted-flow.invalid";
             Find<PasswordBox>(editor, "TokenInput").Password = "synthetic-unsent-test-token";
@@ -1011,7 +1011,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
                         var welcome = await MountedPageAsync<SecurityNoticePage>(window, frame);
                         var progress = Find<SetupStepIndicator>(welcome, "FlowProgress");
                         Assert.Equal(4, TestSupport.FindDescendants<TextBlock>(progress).Count(label => label.Name == "StepTitle"));
-                        Assert.Equal("Step 1 of 7", AutomationProperties.GetName(progress));
+                        Assert.Equal("Step 1 of 4", AutomationProperties.GetName(progress));
                         Assert.False(string.IsNullOrWhiteSpace(Find<TextBlock>(welcome, "WelcomeDescription").Text));
                         Assert.DoesNotContain("Onboarding_", Find<TextBlock>(welcome, "WelcomeDescription").Text);
                     }
@@ -1219,11 +1219,11 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
         Assert.True(draft.Config.Capabilities.Device);
     }
 
-    private static void AssertProgress(Page page, int stageCount, int current)
+    private static void AssertProgress(Page page, int milestoneCount, int currentMilestone)
     {
         var timeline = Find<SetupStepIndicator>(page, "FlowProgress");
         Assert.Equal(Visibility.Visible, timeline.Visibility);
-        Assert.Equal($"Step {current + 1} of {stageCount}", AutomationProperties.GetName(timeline));
+        Assert.Equal($"Step {currentMilestone + 1} of {milestoneCount}", AutomationProperties.GetName(timeline));
         Assert.Single(TestSupport.FindDescendants<TextBlock>(timeline),
             label => label.Name == "StepTitle" && AutomationProperties.GetName(label).EndsWith(", current step", StringComparison.Ordinal));
         if (page is GatewaySetupPage)

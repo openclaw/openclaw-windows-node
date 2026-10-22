@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
+using OpenClaw.SetupEngine;
 using OpenClaw.SetupEngine.UI.Controls;
 using Windows.UI.ViewManagement;
 
@@ -112,7 +113,8 @@ public sealed class SetupStepIndicatorTests(UIThreadFixture ui)
             await ui.YieldToRenderAsync();
             var transform = Assert.IsType<ScaleTransform>(Named<Ellipse>(indicator, "CurrentDot")[1].RenderTransform);
             var glow = Named<Grid>(indicator, "GlowHost")[1];
-            Assert.NotNull(ElementCompositionPreview.GetElementChildVisual(glow));
+            Assert.Equal(!new AccessibilitySettings().HighContrast,
+                ElementCompositionPreview.GetElementChildVisual(glow) is not null);
             if (new UISettings().AnimationsEnabled)
                 Assert.InRange(transform.ScaleX, 1, 4d / 3 + 0.01);
             else
@@ -124,6 +126,33 @@ public sealed class SetupStepIndicatorTests(UIThreadFixture ui)
             root.Children.Clear();
             await ui.YieldToRenderAsync();
             Assert.Null(ElementCompositionPreview.GetElementChildVisual(glow));
+        });
+    }
+
+    [Fact]
+    public async Task NewIndicator_AnimatesFromPreviousPageMilestone()
+    {
+        await WithIndicatorAsync(async (indicator, root) =>
+        {
+            var previous = new SetupStepIndicator();
+            root.Children.Add(previous);
+            previous.Update(
+                [OnboardingStage.Welcome, OnboardingStage.Gateway, OnboardingStage.Capabilities,
+                    OnboardingStage.GatewayReview, OnboardingStage.Install, OnboardingStage.AiSetup,
+                    OnboardingStage.Ready],
+                OnboardingStage.Install,
+                OnboardingStage.GatewayReview);
+            root.UpdateLayout();
+            await ui.YieldToRenderAsync();
+            if (new UISettings().AnimationsEnabled)
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => Assert.IsType<ScaleTransform>(
+                        Named<Ellipse>(previous, "CurrentDot")[1].RenderTransform).ScaleX > 1,
+                    "cross-page step transition starts");
+            else
+                Assert.Equal(1, Assert.IsType<ScaleTransform>(
+                    Named<Ellipse>(previous, "CurrentDot")[1].RenderTransform).ScaleX);
+            root.Children.Remove(previous);
         });
     }
 

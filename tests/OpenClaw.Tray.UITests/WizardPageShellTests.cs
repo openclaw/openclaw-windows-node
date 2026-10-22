@@ -39,7 +39,7 @@ public sealed class WizardPageShellTests(UIThreadFixture ui)
             Assert.Equal(AutomationHeadingLevel.Level1,
                 AutomationProperties.GetHeadingLevel(Find<TextBlock>(page, "HeadingText")));
             Assert.IsType<StackPanel>(page.FindName("MainScroller"));
-            Assert.Equal("Step 5 of 5", AutomationProperties.GetName(indicator));
+            Assert.Equal("Step 3 of 3", AutomationProperties.GetName(indicator));
             Assert.DoesNotContain(TestSupport.FindDescendants<TextBlock>(indicator),
                 text => text.Text == "Start chatting");
             input.Text = "draft answer";

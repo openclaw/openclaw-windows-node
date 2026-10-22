@@ -86,7 +86,7 @@ public sealed class NativeGatewayInstallationShellTests(UIThreadFixture ui)
             var rail = Find<SetupStepIndicator>(page, "FlowProgress");
             rail.Update(OnboardingFlowPolicy.GetStages(SetupGatewayRoute.Native, window.AccessDraft.Config),
                 OnboardingStage.Install);
-            Assert.Equal("Step 4 of 6", AutomationProperties.GetName(rail));
+            Assert.Equal("Step 2 of 4", AutomationProperties.GetName(rail));
             Assert.Equal(0, shell.Scroller.ScrollableWidth);
             var notice = Find<TextBlock>(page, "AcquisitionNotice");
             Assert.Contains("five-minute limit", notice.Text);

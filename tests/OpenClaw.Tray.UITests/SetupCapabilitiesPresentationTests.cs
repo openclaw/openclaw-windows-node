@@ -67,7 +67,7 @@ public sealed class SetupCapabilitiesPresentationTests(UIThreadFixture ui, ITest
             Assert.Equal("What can your assistant use?", heading.Text);
             Assert.Equal(40, heading.FontSize);
             Assert.Equal(AutomationHeadingLevel.Level1, AutomationProperties.GetHeadingLevel(heading));
-            Assert.Equal("Step 3 of 7", AutomationProperties.GetName(Find<SetupStepIndicator>(page, "FlowProgress")));
+            Assert.Equal("Step 1 of 4", AutomationProperties.GetName(Find<SetupStepIndicator>(page, "FlowProgress")));
             var next = Find<Button>(page, "ContinueButton");
             var back = Find<Button>(page, "BackButton");
             Assert.Equal("Next", next.Content);

@@ -4,4 +4,7 @@ namespace OpenClaw.SetupEngine.UI.Controls;
 public interface ISetupProgressIndicator
 {
     void Update(IReadOnlyList<OnboardingStage> stages, OnboardingStage current);
+
+    void Update(IReadOnlyList<OnboardingStage> stages, OnboardingStage current, OnboardingStage? previous) =>
+        Update(stages, current);
 }

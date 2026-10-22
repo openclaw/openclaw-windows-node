@@ -78,7 +78,7 @@ public sealed class GatewayDetailShellTests(UIThreadFixture ui)
                 Assert.Equal(detail switch { "local" => "Local AI", "tailscale" => "Tailscale Serve", _ => "WSL networking consent" }, title.Text);
                 Assert.Equal(40, title.FontSize);
                 Assert.Equal(AutomationHeadingLevel.Level1, AutomationProperties.GetHeadingLevel(title));
-                Assert.Equal("Step 4 of 7", AutomationProperties.GetName(
+                Assert.Equal("Step 2 of 4", AutomationProperties.GetName(
                     Assert.IsType<SetupStepIndicator>(page.FindName("FlowProgress"))));
                 var back = Assert.IsType<Button>(page.FindName("BackButton"));
                 var primary = Assert.IsType<Button>(page.FindName("PrimaryButton"));

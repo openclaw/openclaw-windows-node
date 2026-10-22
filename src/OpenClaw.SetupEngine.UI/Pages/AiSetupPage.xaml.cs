@@ -1289,8 +1289,8 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                     }
                     _providerRestoreFocus = focus;
                     _providerRestoreBringOnFocus = bringOnFocus;
-                    _providerRestoreOffset = backdrop.VerticalOffset;
-                    ChoicesScroller.ChangeView(null, backdrop.VerticalOffset, null, disableAnimation: true);
+                    _providerRestoreOffset = GetFocusVisibleOffset(ChoicesScroller, focus, backdrop.VerticalOffset);
+                    ChoicesScroller.ChangeView(null, _providerRestoreOffset, null, disableAnimation: true);
                 }
                 finally
                 {
@@ -1300,6 +1300,27 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             }))
                 Trace.TraceWarning("AI setup could not restore the provider chooser after dialog close.");
         }, onError: ReportFailure);
+    }
+
+    private static double GetFocusVisibleOffset(ScrollViewer scroller, Control focus, double preferredOffset)
+    {
+        var content = scroller.Content as DependencyObject;
+        DependencyObject? ancestor = focus;
+        while (ancestor is not null && !ReferenceEquals(ancestor, content))
+            ancestor = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(ancestor);
+        if (ancestor is null)
+            return Math.Clamp(preferredOffset, 0, scroller.ScrollableHeight);
+
+        var bounds = focus.TransformToVisual(scroller).TransformBounds(
+            new Windows.Foundation.Rect(0, 0, focus.ActualWidth, focus.ActualHeight));
+        var targetOffset = Math.Clamp(preferredOffset, 0, scroller.ScrollableHeight);
+        var projectedTop = bounds.Top + scroller.VerticalOffset - targetOffset;
+        if (projectedTop < 0)
+            targetOffset = scroller.VerticalOffset + bounds.Top;
+        else if (projectedTop + bounds.Height > scroller.ViewportHeight)
+            targetOffset = scroller.VerticalOffset + bounds.Bottom - scroller.ViewportHeight;
+
+        return Math.Clamp(targetOffset, 0, scroller.ScrollableHeight);
     }
 
     private void CancelProviderViewportRestore()

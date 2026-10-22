@@ -15,7 +15,8 @@
                             Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
                         <TextBlock x:Name="ProgressSpeech" x:Uid="Onboarding_V4_InstallationSpeech"
-                                   Text="Working on it..." FontSize="16" TextWrapping="Wrap" TextAlignment="Center" />
+                                   Text="Working on it..." FontSize="16" TextWrapping="Wrap" TextAlignment="Center"
+                                   AutomationProperties.LiveSetting="Assertive" />
                     </Border>
                     <Path Grid.Row="1" Data="M0,0 L10,10 L20,0" HorizontalAlignment="Center"
                           Fill="{ThemeResource CardBackgroundFillColorDefaultBrush}"

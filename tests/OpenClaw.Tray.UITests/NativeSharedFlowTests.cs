@@ -53,7 +53,7 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
             Assert.Empty(Find<TextBlock>(page, "NativeOutput").Text);
             Assert.Equal(Visibility.Collapsed, Find<Button>(page, "LegacyButton").Visibility);
             var progress = Find<SetupStepIndicator>(page, "FlowProgress");
-            Assert.Equal("Step 5 of 6", AutomationProperties.GetName(progress));
+            Assert.Equal("Step 3 of 4", AutomationProperties.GetName(progress));
             page.UpdateLayout();
             await ui.YieldToRenderAsync();
             await SaveViewportsAsync(window, page, $"native-shared-ai-{destination}-{theme}");
@@ -352,7 +352,7 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
                     var readyRoot = Assert.IsAssignableFrom<FrameworkElement>(readyWindow.Content);
                     Assert.Equal(2, Find<StackPanel>(ready, "Choices").Children.Count);
                     var timeline = Find<SetupStepIndicator>(ready, "FlowProgress");
-                    Assert.Equal("Step 6 of 6", AutomationProperties.GetName(timeline));
+                    Assert.Equal("Step 4 of 4", AutomationProperties.GetName(timeline));
                     timeline.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
                     await ui.YieldToRenderAsync();
                     await OnboardingNativeProof.NextCompositionAsync();

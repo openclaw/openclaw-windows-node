@@ -208,7 +208,7 @@ public sealed class SetupNativeConnectionShellTests(UIThreadFixture ui)
                 progress.IsAnimationEnabled = false;
                 progress.Update(OnboardingFlowPolicy.GetStages(SetupGatewayRoute.Existing, new SetupConfig()),
                     OnboardingStage.Gateway);
-                Assert.Equal("Step 2 of 5", AutomationProperties.GetName(progress));
+                Assert.Equal("Step 1 of 3", AutomationProperties.GetName(progress));
                 page.UpdateLayout();
                 await ui.YieldToRenderAsync();
                 await assertion(page, state);

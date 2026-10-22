@@ -52,12 +52,12 @@ public sealed class SetupWelcomeShellTests(UIThreadFixture ui, ITestOutputHelper
     }
 
     [Theory]
-    [InlineData(SetupGatewayRoute.Native, 4, "Step 1 of 6")]
-    [InlineData(SetupGatewayRoute.ManagedWsl, 4, "Step 1 of 7")]
-    [InlineData(SetupGatewayRoute.Existing, 3, "Step 1 of 5")]
-    [InlineData(SetupGatewayRoute.Remote, 3, "Step 1 of 5")]
-    [InlineData(SetupGatewayRoute.McpOnly, 1, "Step 1 of 3")]
-    [InlineData(SetupGatewayRoute.Deferred, 1, "Step 1 of 3")]
+    [InlineData(SetupGatewayRoute.Native, 4, "Step 1 of 4")]
+    [InlineData(SetupGatewayRoute.ManagedWsl, 4, "Step 1 of 4")]
+    [InlineData(SetupGatewayRoute.Existing, 3, "Step 1 of 3")]
+    [InlineData(SetupGatewayRoute.Remote, 3, "Step 1 of 3")]
+    [InlineData(SetupGatewayRoute.McpOnly, 1, "Step 1 of 1")]
+    [InlineData(SetupGatewayRoute.Deferred, 1, "Step 1 of 1")]
     public async Task Milestones_ReflectOnlySuppliedRoute(SetupGatewayRoute route, int count, string announcement)
     {
         await WithWindowAsync((window, frame, _) =>
